@@ -412,6 +412,17 @@ NASA_VIDEO = TestVideo(
 )
 
 # Video generated with:
+# ffmpeg -y -f lavfi -i testsrc2 -t 5 -c:v h264 -r 60 -g 600 -pix_fmt yuv420p testsrc2.mp4
+TESTSRC2_VIDEO = TestVideo(
+    filename="testsrc2.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={},  # Automatically loaded from json file
+)
+
+# Video generated with:
 # ffmpeg -f lavfi -i testsrc2=duration=1:size=200x200:rate=30 -c:v libx265 -pix_fmt yuv420p10le -preset fast -crf 23 h265_10bits.mp4
 H265_10BITS = TestVideo(
     filename="h265_10bits.mp4",
