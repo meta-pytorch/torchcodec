@@ -56,6 +56,7 @@ from .utils import (
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
     unsplit_device_str,
+    TESTSRC2_VIDEO,
 )
 
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -1382,10 +1383,10 @@ class TestVideoEncoderOps:
         return frames
 
     @pytest.mark.parametrize("format", ("mov", "mp4", "avi"))
-    # TODO-VideoEncoder: enable additional formats (mkv, webm)
+    # TODO-VideoEncoder: enable additional formats ("mkv", "webm", "flv")
+    # via user selected video codecs
     def test_video_encoder_test_round_trip(self, tmp_path, format):
-        # TODO-VideoEncoder: Test with FFmpeg's testsrc2 video
-        asset = NASA_VIDEO
+        asset = TESTSRC2_VIDEO
 
         # Test that decode(encode(decode(asset))) == decode(asset)
         source_frames = self.decode(str(asset.path)).data
@@ -1399,6 +1400,7 @@ class TestVideoEncoderOps:
         for s_frame, rt_frame in zip(source_frames, round_trip_frames):
             res = psnr(s_frame, rt_frame)
             assert res > 30
+            torch.testing.assert_close(s_frame, rt_frame, atol=2, rtol=0)
 
 
 if __name__ == "__main__":
