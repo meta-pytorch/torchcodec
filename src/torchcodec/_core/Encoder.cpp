@@ -1,7 +1,4 @@
 #include <sstream>
-extern "C" {
-#include <libavutil/pixdesc.h>
-}
 
 #include "src/torchcodec/_core/AVIOTensorContext.h"
 #include "src/torchcodec/_core/Encoder.h"
@@ -582,23 +579,9 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
-  av_log_set_level(AV_LOG_DEBUG);
-
-  // Always try default
-  // This works for flv (format accepts libx264, but errors)
-  // but fails for avi (should use libx264, but defaults to mpeg4)
   const AVCodec* avCodec =
       avcodec_find_encoder(avFormatContext_->oformat->video_codec);
-  // Try libx264 first, then fallback to default ffmpeg
-  // const AVCodec* avCodec = avcodec_find_encoder(AV_CODEC_ID_H264);
-  // if (avCodec == nullptr || avformat_query_codec(avFormatContext_->oformat,
-  // avCodec->id, 0) == 0) {
-  //   std::cout << "for " << avFormatContext_->oformat
-  //             << ", 264 was unavailable or unsupported! " << std::endl;
-  //   avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
-  // }
   TORCH_CHECK(avCodec != nullptr, "Video codec not found");
-  std::cout << "Using codec: " << avCodec->name << std::endl;
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
   TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
@@ -616,25 +599,15 @@ void VideoEncoder::initializeEncoder(
   outWidth_ = inWidth_;
   outHeight_ = inHeight_;
 
-  // Use YUV444P as default output format for lossless encoding
   // TODO-VideoEncoder: Enable other pixel formats
-  // outPixelFormat_ = AV_PIX_FMT_YUV444P;
-  // outPixelFormat_ = AV_PIX_FMT_YUV420P;
-
-  // use first?
-  // outPixelFormat_ = getSupportedPixelFormats(*avCodec)[0];
-
   // Let FFmpeg choose best pixel format to minimize loss
-  int loss = 0;
   outPixelFormat_ = avcodec_find_best_pix_fmt_of_list(
-      getSupportedPixelFormats(*avCodec), // List of codec-supported formats
+      getSupportedPixelFormats(*avCodec), // List of supported formats
       AV_PIX_FMT_GBRP, // We reorder input to GBRP currently
       0, // No alpha channel
-      &loss // Information about conversion losses
+      0 // Discard conversion loss information
   );
   TORCH_CHECK(outPixelFormat_ != -1, "Failed to find best pix fmt")
-  std::cout << "Using pixel format: " << av_get_pix_fmt_name(outPixelFormat_)
-            << std::endl;
 
   // Configure codec parameters
   avCodecContext_->codec_id = avCodec->id;
@@ -645,21 +618,19 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_->time_base = {1, inFrameRate_};
   avCodecContext_->framerate = {inFrameRate_, 1};
 
-  // Set global header flag for containers that need it (like Matroska)
-  // This populates extradata to enable mkv encoding
-  // https://stackoverflow.com/questions/60278773/invalid-data-when-creating-mkv-container-with-h264-stream-because-extradata-is-n
+  // Set flag for containers that require extradata to be in the codec context
   if (avFormatContext_->oformat->flags & AVFMT_GLOBALHEADER) {
     avCodecContext_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
 
-  // accept optional args
+  // Apply videoStreamOptions
   AVDictionary* options = nullptr;
   if (videoStreamOptions.crf.has_value()) {
     av_dict_set(
         &options,
         "crf",
-        "0",
-        videoStreamOptions.crf.value()); // Needed to produce lossless videos
+        std::to_string(videoStreamOptions.crf.value()).c_str(),
+        0);
   }
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &options);
   av_dict_free(&options);
@@ -684,12 +655,10 @@ void VideoEncoder::initializeEncoder(
 }
 
 void VideoEncoder::encode() {
-  av_log_set_level(AV_LOG_DEBUG);
   // To be on the safe side we enforce that encode() can only be called once
   TORCH_CHECK(!encodeWasCalled_, "Cannot call encode() twice.");
   encodeWasCalled_ = true;
 
-  av_dump_format(avFormatContext_.get(), 0, avFormatContext_->url, 1);
   int status = avformat_write_header(avFormatContext_.get(), nullptr);
   TORCH_CHECK(
       status == AVSUCCESS,
@@ -810,6 +779,9 @@ void VideoEncoder::encodeFrame(
     if (packet->duration == 0) {
       packet->duration = 1;
     }
+    // av_packet_rescale_ts ensures encoded frames have correct timestamps.
+    // This prevents "no more frames" errors when decoding encoded frames,
+    // https://github.com/pytorch/audio/blob/b6a3368a45aaafe05f1a6a9f10c68adc5e944d9e/src/libtorio/ffmpeg/stream_writer/encoder.cpp#L46
     av_packet_rescale_ts(
         packet.get(), avCodecContext_->time_base, avStream_->time_base);
     packet->stream_index = streamIndex_;
