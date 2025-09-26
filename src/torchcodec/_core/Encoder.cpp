@@ -652,12 +652,18 @@ void VideoEncoder::initializeEncoder(
     avCodecContext_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
 
-  // AVDictionary* options = nullptr;
-  // av_dict_set(&options, "preset", "veryslow", 0); // Highest quality encoding
-  // av_dict_set(&options, "crf", "0", 0); // Needed to produce lossless videos
-  // int status = avcodec_open2(avCodecContext_.get(), avCodec, &options);
-  // av_dict_free(&options);
-  int status = avcodec_open2(avCodecContext_.get(), avCodec, nullptr);
+  // accept optional args
+  AVDictionary* options = nullptr;
+  if (videoStreamOptions.crf.has_value()) {
+    av_dict_set(
+        &options,
+        "crf",
+        "0",
+        videoStreamOptions.crf.value()); // Needed to produce lossless videos
+  }
+  int status = avcodec_open2(avCodecContext_.get(), avCodec, &options);
+  av_dict_free(&options);
+
   TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_open2 failed: ",
