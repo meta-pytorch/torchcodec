@@ -9,7 +9,7 @@ import io
 import os
 from functools import partial
 
-from .utils import in_fbcode
+from .utils import get_ffmpeg_major_version, in_fbcode
 
 os.environ["TORCH_LOGS"] = "output_code"
 import json
@@ -1383,9 +1383,18 @@ class TestVideoEncoderOps:
         return frames
 
     @pytest.mark.parametrize("format", ("mov", "mp4", "avi", "mkv", "webm", "flv"))
-    # TODO-VideoEncoder: enable additional formats ("mkv", "webm", "flv")
     def test_video_encoder_test_round_trip(self, tmp_path, format):
-        asset = TESTSRC2_VIDEO
+
+        ffmpeg_version = get_ffmpeg_major_version()
+        if ffmpeg_version == 4 and format == "webm":
+            pytest.skip("Codec for webm is not available in the FFmpeg4 installation.")
+        # The output pixel format depends on the codecs available, and FFmpeg version.
+        # In the cases where YUV420P is chosen and chroma subsampling happens, we need higher tolerance.
+        if ffmpeg_version == 6 or format in ("avi", "flv"):
+            atol = 55
+        else:
+            atol = 2
+        asset = NASA_VIDEO
 
         # Test that decode(encode(decode(asset))) == decode(asset)
         source_frames = self.decode(str(asset.path)).data
@@ -1399,7 +1408,7 @@ class TestVideoEncoderOps:
         for s_frame, rt_frame in zip(source_frames, round_trip_frames):
             res = psnr(s_frame, rt_frame)
             assert res > 30
-            torch.testing.assert_close(s_frame, rt_frame, atol=0, rtol=0)
+            torch.testing.assert_close(s_frame, rt_frame, atol=atol, rtol=0)
 
 
 if __name__ == "__main__":
