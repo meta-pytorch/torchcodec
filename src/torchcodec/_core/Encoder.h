@@ -154,6 +154,7 @@ class VideoEncoder {
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;
   int streamIndex_ = -1;
+  AVStream* avStream_;
   UniqueSwsContext swsContext_;
 
   const torch::Tensor frames_;
