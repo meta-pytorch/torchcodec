@@ -615,8 +615,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   std::vector<size_t> argsort;
   if (!indicesAreSorted) {
     // if frameIndices is [13, 10, 12, 11]
-    // when sorted, it's  [10, 11, 12, 13] <-- this is the sorted order we
-    // want
+    // when sorted, it's  [10, 11, 12, 13] <-- this is the sorted order we want
     //                                         to use to decode the frames
     // and argsort is     [ 1,  3,  2,  0]
     argsort.resize(frameIndices.size());
