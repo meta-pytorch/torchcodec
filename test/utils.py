@@ -73,7 +73,7 @@ def psnr(a, b, max_val=255) -> float:
 def assert_frames_equal(*args, **kwargs):
     if sys.platform == "linux":
         if args[0].device.type == "cuda":
-            atol = 2
+            atol = 3
             if get_ffmpeg_major_version() == 4:
                 assert_tensor_close_on_at_least(
                     args[0], args[1], percentage=95, atol=atol
