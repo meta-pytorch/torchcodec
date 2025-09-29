@@ -39,7 +39,12 @@ class CpuDeviceInterface : public DeviceInterface {
  private:
   int convertAVFrameToTensorUsingSwScale(
       const UniqueAVFrame& avFrame,
-      torch::Tensor& outputTensor);
+      torch::Tensor& outputTensor,
+      const FrameDims& outputDims);
+
+  torch::Tensor convertAVFrameToTensorUsingFilterGraph(
+      const UniqueAVFrame& avFrame,
+      const FrameDims& outputDims);
 
   ColorConversionLibrary getColorConversionLibrary(
       const FrameDims& inputFrameDims) const;

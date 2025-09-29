@@ -178,33 +178,13 @@ void CpuDeviceInterface::convertAVFrameToFrameOutput(
 
   auto colorConversionLibrary = getColorConversionLibrary(outputDims);
   torch::Tensor outputTensor;
-  enum AVPixelFormat frameFormat =
-      static_cast<enum AVPixelFormat>(avFrame->format);
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
-    // We need to compare the current frame context with our previous frame
-    // context. If they are different, then we need to re-create our colorspace
-    // conversion objects. We create our colorspace conversion objects late so
-    // that we don't have to depend on the unreliable metadata in the header.
-    // And we sometimes re-create them because it's possible for frame
-    // resolution to change mid-stream. Finally, we want to reuse the colorspace
-    // conversion objects as much as possible for performance reasons.
-    SwsFrameContext swsFrameContext(
-        avFrame->width,
-        avFrame->height,
-        frameFormat,
-        outputDims.width,
-        outputDims.height);
-
     outputTensor = preAllocatedOutputTensor.value_or(
         allocateEmptyHWCTensor(outputDims, torch::kCPU));
 
-    if (!swsContext_ || prevSwsFrameContext_ != swsFrameContext) {
-      createSwsContext(swsFrameContext, avFrame->colorspace);
-      prevSwsFrameContext_ = swsFrameContext;
-    }
     int resultHeight =
-        convertAVFrameToTensorUsingSwScale(avFrame, outputTensor);
+        convertAVFrameToTensorUsingSwScale(avFrame, outputTensor, outputDims);
 
     // If this check failed, it would mean that the frame wasn't reshaped to
     // the expected height.
@@ -218,23 +198,7 @@ void CpuDeviceInterface::convertAVFrameToFrameOutput(
 
     frameOutput.data = outputTensor;
   } else if (colorConversionLibrary == ColorConversionLibrary::FILTERGRAPH) {
-    FiltersContext filtersContext(
-        avFrame->width,
-        avFrame->height,
-        frameFormat,
-        avFrame->sample_aspect_ratio,
-        outputDims.width,
-        outputDims.height,
-        AV_PIX_FMT_RGB24,
-        filters_,
-        timeBase_);
-
-    if (!filterGraph_ || prevFiltersContext_ != filtersContext) {
-      filterGraph_ =
-          std::make_unique<FilterGraph>(filtersContext, videoStreamOptions_);
-      prevFiltersContext_ = std::move(filtersContext);
-    }
-    outputTensor = rgbAVFrameToTensor(filterGraph_->convert(avFrame));
+    outputTensor = convertAVFrameToTensorUsingFilterGraph(avFrame, outputDims);
 
     // Similarly to above, if this check fails it means the frame wasn't
     // reshaped to its expected dimensions by filtergraph.
@@ -267,7 +231,30 @@ void CpuDeviceInterface::convertAVFrameToFrameOutput(
 
 int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
     const UniqueAVFrame& avFrame,
-    torch::Tensor& outputTensor) {
+    torch::Tensor& outputTensor,
+    const FrameDims& outputDims) {
+  enum AVPixelFormat frameFormat =
+      static_cast<enum AVPixelFormat>(avFrame->format);
+
+  // We need to compare the current frame context with our previous frame
+  // context. If they are different, then we need to re-create our colorspace
+  // conversion objects. We create our colorspace conversion objects late so
+  // that we don't have to depend on the unreliable metadata in the header.
+  // And we sometimes re-create them because it's possible for frame
+  // resolution to change mid-stream. Finally, we want to reuse the colorspace
+  // conversion objects as much as possible for performance reasons.
+  SwsFrameContext swsFrameContext(
+      avFrame->width,
+      avFrame->height,
+      frameFormat,
+      outputDims.width,
+      outputDims.height);
+
+  if (!swsContext_ || prevSwsFrameContext_ != swsFrameContext) {
+    createSwsContext(swsFrameContext, avFrame->colorspace);
+    prevSwsFrameContext_ = swsFrameContext;
+  }
+
   uint8_t* pointers[4] = {
       outputTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
   int expectedOutputWidth = outputTensor.sizes()[1];
@@ -293,7 +280,7 @@ void CpuDeviceInterface::createSwsContext(
       swsFrameContext.outputWidth,
       swsFrameContext.outputHeight,
       AV_PIX_FMT_RGB24,
-      SWS_BILINEAR,
+      swsFlags_,
       nullptr,
       nullptr,
       nullptr);
@@ -326,6 +313,31 @@ void CpuDeviceInterface::createSwsContext(
   TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
 
   swsContext_.reset(swsContext);
+}
+
+torch::Tensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
+    const UniqueAVFrame& avFrame,
+    const FrameDims& outputDims) {
+  enum AVPixelFormat frameFormat =
+      static_cast<enum AVPixelFormat>(avFrame->format);
+
+  FiltersContext filtersContext(
+      avFrame->width,
+      avFrame->height,
+      frameFormat,
+      avFrame->sample_aspect_ratio,
+      outputDims.width,
+      outputDims.height,
+      AV_PIX_FMT_RGB24,
+      filters_,
+      timeBase_);
+
+  if (!filterGraph_ || prevFiltersContext_ != filtersContext) {
+    filterGraph_ =
+        std::make_unique<FilterGraph>(filtersContext, videoStreamOptions_);
+    prevFiltersContext_ = std::move(filtersContext);
+  }
+  return rgbAVFrameToTensor(filterGraph_->convert(avFrame));
 }
 
 } // namespace facebook::torchcodec
