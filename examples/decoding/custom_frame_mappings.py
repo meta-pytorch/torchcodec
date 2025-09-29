@@ -24,7 +24,7 @@ This makes it ideal for workflows where:
 # %%
 # First, some boilerplate: we'll download a short video from the web, and
 # use ffmpeg to create a longer version by repeating it multiple times. We'll end up
-# with two videos: a short one of approximately 14 seconds and a long one of about 14 minutes.
+# with two videos: a short one of approximately 14 seconds and a long one of about 12 minutes.
 # You can ignore this part and skip below to :ref:`frame_mappings_creation`.
 
 import tempfile
@@ -48,7 +48,7 @@ with open(short_video_path, 'wb') as f:
 long_video_path = Path(temp_dir) / "long_video.mp4"
 ffmpeg_command = [
     "ffmpeg",
-    "-stream_loop", "80",  # repeat video 80 times to get a ~18 min video
+    "-stream_loop", "50",  # repeat video 50 times to get a ~12 min video
     "-i", f"{short_video_path}",
     "-c", "copy",
     f"{long_video_path}"
@@ -83,7 +83,7 @@ import json
 # Lets define a simple function to run ffprobe on a video's first stream index, then writes the results in output_json_path.
 def generate_frame_mappings(video_path, output_json_path, stream_index):
     ffprobe_cmd = ["ffprobe", "-i", f"{video_path}", "-select_streams", f"{stream_index}", "-show_frames", "-show_entries", "frame=pts,duration,key_frame", "-of", "json"]
-    print(f"Running ffprobe:\n{' '.join(ffprobe_cmd)}")
+    print(f"Running ffprobe:\n{' '.join(ffprobe_cmd)}\n")
     ffprobe_result = subprocess.run(ffprobe_cmd, check=True, capture_output=True, text=True)
     with open(output_json_path, "w") as f:
         f.write(ffprobe_result.stdout)
