@@ -411,7 +411,6 @@ NASA_VIDEO = TestVideo(
     frames={},  # Automatically loaded from json file
 )
 
-
 # Video generated with:
 # ffmpeg -f lavfi -i testsrc2=duration=1:size=200x200:rate=30 -c:v libx265 -pix_fmt yuv420p10le -preset fast -crf 23 h265_10bits.mp4
 H265_10BITS = TestVideo(
