@@ -24,7 +24,7 @@ This makes it ideal for workflows where:
 # %%
 # First, some boilerplate: we'll download a short video from the web, and
 # use ffmpeg to create a longer version by repeating it multiple times. We'll end up
-# with two videos: a short one of approximately 3 minutes and a long one of about 13 minutes.
+# with two videos: a short one of approximately 14 seconds and a long one of about 14 minutes.
 # You can ignore this part and skip below to :ref:`frame_mappings_creation`.
 
 import tempfile
@@ -32,7 +32,9 @@ from pathlib import Path
 import subprocess
 import requests
 
-url = "https://download.pytorch.org/torchaudio/tutorial-assets/stream-api/NASAs_Most_Scientifically_Complex_Space_Observatory_Requires_Precision-MP4_small.mp4"
+# Video source: https://www.pexels.com/video/dog-eating-854132/
+# License: CC0. Author: Coverr.
+url = "https://videos.pexels.com/video-files/854132/854132-sd_640_360_25fps.mp4"
 response = requests.get(url, headers={"User-Agent": ""})
 if response.status_code != 200:
     raise RuntimeError(f"Failed to download video. {response.status_code = }.")
@@ -46,7 +48,7 @@ with open(short_video_path, 'wb') as f:
 long_video_path = Path(temp_dir) / "long_video.mp4"
 ffmpeg_command = [
     "ffmpeg",
-    "-stream_loop", "3",  # repeat video 3 times to get a ~13 min video
+    "-stream_loop", "80",  # repeat video 80 times to get a ~18 min video
     "-i", f"{short_video_path}",
     "-c", "copy",
     f"{long_video_path}"
@@ -77,24 +79,27 @@ import tempfile
 from time import perf_counter_ns
 import json
 
+
+# Lets define a simple function to run ffprobe on a video's first stream index, then writes the results in output_json_path.
+def generate_frame_mappings(video_path, output_json_path, stream_index):
+    ffprobe_cmd = ["ffprobe", "-i", f"{video_path}", "-select_streams", f"{stream_index}", "-show_frames", "-show_entries", "frame=pts,duration,key_frame", "-of", "json"]
+    print(f"Running ffprobe:\n{' '.join(ffprobe_cmd)}")
+    ffprobe_result = subprocess.run(ffprobe_cmd, check=True, capture_output=True, text=True)
+    with open(output_json_path, "w") as f:
+        f.write(ffprobe_result.stdout)
+
+
 stream_index = 0
 long_json_path = Path(temp_dir) / "long_custom_frame_mappings.json"
 short_json_path = Path(temp_dir) / "short_custom_frame_mappings.json"
 
-ffprobe_cmd = ["ffprobe", "-i", f"{long_video_path}", "-select_streams", f"{stream_index}", "-show_frames", "-show_entries", "frame=pts,duration,key_frame", "-of", "json"]
-ffprobe_result = subprocess.run(ffprobe_cmd, check=True, capture_output=True, text=True)
-with open(long_json_path, "w") as f:
-    f.write(ffprobe_result.stdout)
-
-ffprobe_cmd = ["ffprobe", "-i", f"{short_video_path}", "-select_streams", f"{stream_index}", "-show_frames", "-show_entries", "frame=pts,duration,key_frame", "-of", "json"]
-ffprobe_result = subprocess.run(ffprobe_cmd, check=True, capture_output=True, text=True)
-with open(short_json_path, "w") as f:
-    f.write(ffprobe_result.stdout)
-
-sample_data = json.loads(ffprobe_result.stdout)
-print("Data structure of custom frame mappings:")
+generate_frame_mappings(long_video_path, long_json_path, stream_index)
+generate_frame_mappings(short_video_path, short_json_path, stream_index)
+with open(short_json_path) as f:
+    sample_data = json.loads(f.read())
+print("Sample of fields in custom frame mappings:")
 for frame in sample_data["frames"][:3]:
-    print(f"{frame}")
+    print(f"{frame['key_frame'] = }, {frame['pts'] = }, {frame['duration'] = }")
 
 # %%
 # .. _custom_frame_mappings_perf_creation:
@@ -103,12 +108,13 @@ for frame in sample_data["frames"][:3]:
 # --------------------------------------
 #
 # Custom frame mappings affect the **creation** of a :class:`~torchcodec.decoders.VideoDecoder`
-# object. As video length increases, the performance gain compared to exact mode increases.
+# object. As video length or resolution increases, the performance gain compared to exact mode increases.
 #
 
 import torch
 
 
+# Here, we define a benchmarking function, with the option to seek to the start of a file_like.
 def bench(f, file_like=False, average_over=50, warmup=2, **f_kwargs):
     for _ in range(warmup):
         f(**f_kwargs)
@@ -145,9 +151,9 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 # Performance: Frame decoding with custom frame mappings
 # ------------------------------------------------------
 #
-# Although using custom_frame_mappings only impacts the initialization speed of
+# Although using ``custom_frame_mappings`` only impacts the initialization speed of
 # :class:`~torchcodec.decoders.VideoDecoder`, decoding workflows
-# usually involve creating a :class:`~torchcodec.decoders.VideoDecoder` instance,
+# involve creating a :class:`~torchcodec.decoders.VideoDecoder` instance,
 # so the performance benefits are realized.
 
 
