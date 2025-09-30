@@ -79,7 +79,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
     bool occupied = false;
 
     FrameBufferSlot() : guessedPts(-1), occupied(false) {
-      memset(&dispInfo, 0, sizeof(dispInfo));
+      std::memset(&dispInfo, 0, sizeof(dispInfo));
     }
   };
 
