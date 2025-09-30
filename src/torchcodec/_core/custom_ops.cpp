@@ -33,7 +33,7 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "encode_audio_to_file(Tensor samples, int sample_rate, str filename, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
   m.def(
-      "encode_video_to_file(Tensor frames, int frame_rate, str filename, int crf) -> ()");
+      "encode_video_to_file(Tensor frames, int frame_rate, str filename, int? crf=None) -> ()");
   m.def(
       "encode_audio_to_tensor(Tensor samples, int sample_rate, str format, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> Tensor");
   m.def(
@@ -502,7 +502,7 @@ void encode_video_to_file(
     const at::Tensor& frames,
     int64_t frame_rate,
     std::string_view file_name,
-    int64_t crf) {
+    std::optional<int64_t> crf = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.crf = crf;
   VideoEncoder(

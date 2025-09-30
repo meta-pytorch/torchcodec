@@ -1393,11 +1393,12 @@ class TestVideoEncoderOps:
 
         encoded_path = str(tmp_path / f"encoder_output.{format}")
         frame_rate = 30  # Frame rate is fixed with num frames decoded
-        encode_video_to_file(source_frames, frame_rate, encoded_path, 0)
+        encode_video_to_file(source_frames, frame_rate, encoded_path, crf=0)
         round_trip_frames = self.decode(encoded_path).data
 
-        # The output pixel format depends on the codecs available, and FFmpeg version.
-        # In the cases where YUV420P is chosen and chroma subsampling happens, assert_close needs higher tolerance.
+        # In the cases where a lossy pixel format conversion occurs, higher tolerance is needed.
+        # Converting to the output format may perform chroma subsampling.
+        # Other times, no conversion between YUV and RGB is required.
         if ffmpeg_version == 6 or format in ("avi", "flv"):
             atol = 55
         else:
