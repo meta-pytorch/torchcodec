@@ -120,12 +120,11 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
   decoder_info.display_area.top = videoFormat->display_area.top;
   decoder_info.display_area.bottom = videoFormat->display_area.bottom;
 
-  CUvideodecoder rawDecoder;
-  result = cuvidCreateDecoder(&rawDecoder, &decoder_info);
+  CUvideodecoder* decoder = new CUvideodecoder();
+  result = cuvidCreateDecoder(decoder, &decoder_info);
   TORCH_CHECK(
       result == CUDA_SUCCESS, "Failed to create NVDEC decoder: ", result);
-
-  return UniqueCUvideodecoder(rawDecoder, CUvideoDecoderDeleter{});
+  return UniqueCUvideodecoder(decoder, CUvideoDecoderDeleter{});
 }
 
 } // namespace
@@ -317,7 +316,7 @@ int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* pPicParams) {
   TORCH_CHECK(decoder_, "Decoder not initialized before picture decode");
 
   // Send frame to be decoded by NVDEC - non-blocking call.
-  CUresult result = cuvidDecodePicture(decoder_.get(), pPicParams);
+  CUresult result = cuvidDecodePicture(*decoder_.get(), pPicParams);
   if (result != CUDA_SUCCESS) {
     return 0; // Yes, you're reading that right, 0 mean error.
   }
@@ -383,11 +382,7 @@ int BetaCudaDeviceInterface::receiveFrame(
   // blocking calls that waits until the frame is fully decoded and ready to be
   // used.
   CUresult result = cuvidMapVideoFrame(
-      static_cast<CUvideodecoder>(decoder_.get()),
-      dispInfo.picture_index,
-      &framePtr,
-      &pitch,
-      &procParams);
+      *decoder_.get(), dispInfo.picture_index, &framePtr, &pitch, &procParams);
 
   if (result != CUDA_SUCCESS) {
     return AVERROR_EXTERNAL;
@@ -397,7 +392,7 @@ int BetaCudaDeviceInterface::receiveFrame(
 
   // Unmap the frame so that the decoder can reuse its corresponding output
   // surface. Whether this is blocking is unclear?
-  cuvidUnmapVideoFrame(static_cast<CUvideodecoder>(decoder_.get()), framePtr);
+  cuvidUnmapVideoFrame(*decoder_.get(), framePtr);
   // TODONVDEC P0: Get clarity on this:
   // We assume that the framePtr is still valid after unmapping. That framePtr
   // is now part of the avFrame, which we'll return to the caller, and the

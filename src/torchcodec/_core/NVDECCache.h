@@ -21,14 +21,16 @@ namespace facebook::torchcodec {
 // this NVDEC Cache involves a cache key (the decoder parameters).
 
 struct CUvideoDecoderDeleter {
-  void operator()(CUvideodecoder decoder) const {
-    if (decoder) {
-      cuvidDestroyDecoder(decoder);
+  void operator()(CUvideodecoder* decoderPtr) const {
+    if (decoderPtr && *decoderPtr) {
+      cuvidDestroyDecoder(*decoderPtr);
+      delete decoderPtr;
     }
   }
 };
 
-using UniqueCUvideodecoder = std::unique_ptr<void, CUvideoDecoderDeleter>;
+using UniqueCUvideodecoder =
+    std::unique_ptr<CUvideodecoder, CUvideoDecoderDeleter>;
 
 // A per-device cache for NVDEC decoders. There is one instance of this class
 // per GPU device, and it is accessed through the static getCache() method.
