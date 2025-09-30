@@ -54,16 +54,15 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   int sendPacket(ReferenceAVPacket& packet) override;
   int receiveFrame(UniqueAVFrame& avFrame, int64_t desiredPts) override;
   void flush() override;
-  ReferenceAVPacket* applyBSF(
-      ReferenceAVPacket& packet,
-      AutoAVPacket& filteredAutoPacket,
-      ReferenceAVPacket& filteredPacket) override;
 
   // NVDEC callback functions (must be public for C callbacks)
   unsigned char streamPropertyChange(CUVIDEOFORMAT* videoFormat);
   int frameReadyForDecoding(CUVIDPICPARAMS* pPicParams);
 
  private:
+  // Apply bitstream filter, modifies packet in-place
+  void applyBSF(ReferenceAVPacket& packet);
+
   class FrameBuffer {
    public:
     struct Slot {

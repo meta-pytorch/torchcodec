@@ -252,6 +252,8 @@ int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
   CUVIDSOURCEDATAPACKET cuvidPacket = {};
 
   if (packet.get() && packet->data && packet->size > 0) {
+    applyBSF(packet);
+
     // Regular packet with data
     cuvidPacket.payload = packet->data;
     cuvidPacket.payload_size = packet->size;
@@ -275,27 +277,36 @@ int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
   return AVSUCCESS;
 }
 
-// TODONVDEC P0: cleanup this raw pointer / reference monstruosity.
-ReferenceAVPacket* BetaCudaDeviceInterface::applyBSF(
-    ReferenceAVPacket& packet,
-    [[maybe_unused]] AutoAVPacket& filteredAutoPacket,
-    ReferenceAVPacket& filteredPacket) {
+void BetaCudaDeviceInterface::applyBSF(ReferenceAVPacket& packet) {
   if (!bitstreamFilter_) {
-    return &packet;
+    return;
   }
+
   int retVal = av_bsf_send_packet(bitstreamFilter_.get(), packet.get());
   TORCH_CHECK(
       retVal >= AVSUCCESS,
       "Failed to send packet to bitstream filter: ",
       getFFMPEGErrorStringFromErrorCode(retVal));
 
+  // Create a temporary packet to receive the filtered data
+  // TODO P1: the docs mention there can theoretically be multiple output
+  // packets for a single input, i.e. we may need to call av_bsf_receive_packet
+  // more than once. We should figure out whether that applies to the BSF we're
+  // using.
+  AutoAVPacket filteredAutoPacket;
+  ReferenceAVPacket filteredPacket(filteredAutoPacket);
   retVal = av_bsf_receive_packet(bitstreamFilter_.get(), filteredPacket.get());
   TORCH_CHECK(
       retVal >= AVSUCCESS,
       "Failed to receive packet from bitstream filter: ",
       getFFMPEGErrorStringFromErrorCode(retVal));
 
-  return &filteredPacket;
+  // Free the original packet's data which isn't needed anymore, and move the
+  // fields of the filtered packet into the original packet. The filtered packet
+  // fields are re-set by av_packet_move_ref, so when it goes out of scope and
+  // gets destructed, it's not going to affect the original packet.
+  av_packet_unref(packet.get());
+  av_packet_move_ref(packet.get(), filteredPacket.get());
 }
 
 // Parser triggers this callback within cuvidParseVideoData when a frame is

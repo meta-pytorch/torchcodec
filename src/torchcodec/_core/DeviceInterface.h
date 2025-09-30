@@ -102,15 +102,6 @@ class DeviceInterface {
     // Custom decoders can override this method
   }
 
-  // Apply bitstream filter if needed, returns pointer to packet to use
-  // Default implementation returns the original packet (no filtering)
-  virtual ReferenceAVPacket* applyBSF(
-      ReferenceAVPacket& packet,
-      [[maybe_unused]] AutoAVPacket& filteredAutoPacket,
-      [[maybe_unused]] ReferenceAVPacket& filteredPacket) {
-    return &packet; // No filtering by default
-  }
-
  protected:
   torch::Device device_;
 };

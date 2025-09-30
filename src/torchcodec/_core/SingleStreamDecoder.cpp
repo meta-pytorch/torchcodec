@@ -1222,15 +1222,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
     // We got a valid packet. Send it to the decoder, and we'll receive it in
     // the next iteration.
     if (useCustomInterface) {
-      // TODONVDEC P0:
-      // - cleanup this raw pointer / reference monstruosity.
-      // - don't even expose applyBSF in the interface. This should just be part
-      //   of sendPacket().
-      AutoAVPacket filteredAutoPacket;
-      ReferenceAVPacket filteredPacket(filteredAutoPacket);
-      ReferenceAVPacket* packetToSend = deviceInterface_->applyBSF(
-          packet, filteredAutoPacket, filteredPacket);
-      status = deviceInterface_->sendPacket(*packetToSend);
+      status = deviceInterface_->sendPacket(packet);
     } else {
       status = avcodec_send_packet(streamInfo.codecContext.get(), packet.get());
     }
