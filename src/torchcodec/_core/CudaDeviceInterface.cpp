@@ -25,8 +25,9 @@ extern "C" {
 namespace facebook::torchcodec {
 namespace {
 
-static bool g_cuda =
-    registerDeviceInterface(torch::kCUDA, [](const torch::Device& device) {
+static bool g_cuda = registerDeviceInterface(
+    DeviceInterfaceKey(torch::kCUDA),
+    [](const torch::Device& device) {
       return new CudaDeviceInterface(device);
     });
 

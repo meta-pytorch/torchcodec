@@ -10,7 +10,7 @@ namespace facebook::torchcodec {
 namespace {
 
 static bool g_cpu = registerDeviceInterface(
-    torch::kCPU,
+    DeviceInterfaceKey(torch::kCPU),
     [](const torch::Device& device) { return new CpuDeviceInterface(device); });
 
 } // namespace

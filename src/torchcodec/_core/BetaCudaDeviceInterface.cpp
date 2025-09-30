@@ -27,9 +27,8 @@ namespace facebook::torchcodec {
 
 namespace {
 
-// Register the BETA CUDA interface with 'beta' variant
 static bool g_cuda_beta = registerDeviceInterface(
-    DeviceInterfaceKey(torch::kCUDA, "beta"),
+    DeviceInterfaceKey(torch::kCUDA, /*variant=*/"beta"),
     [](const torch::Device& device) {
       return new BetaCudaDeviceInterface(device);
     });

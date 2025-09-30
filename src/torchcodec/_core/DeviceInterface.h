@@ -122,13 +122,6 @@ bool registerDeviceInterface(
     const DeviceInterfaceKey& key,
     const CreateDeviceInterfaceFn createInterface);
 
-// Backward-compatible registration function when variant is "default"
-// TODONVDEC P2 We only need this if someone in the wild has already started
-// registering their own interfaces. Ask Dmitry.
-bool registerDeviceInterface(
-    torch::DeviceType deviceType,
-    const CreateDeviceInterfaceFn createInterface);
-
 void validateDeviceInterface(
     const std::string device,
     const std::string variant);

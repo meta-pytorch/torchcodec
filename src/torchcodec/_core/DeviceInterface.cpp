@@ -48,13 +48,6 @@ bool registerDeviceInterface(
   return true;
 }
 
-bool registerDeviceInterface(
-    torch::DeviceType deviceType,
-    CreateDeviceInterfaceFn createInterface) {
-  return registerDeviceInterface(
-      DeviceInterfaceKey(deviceType), createInterface);
-}
-
 void validateDeviceInterface(
     const std::string device,
     const std::string variant) {
