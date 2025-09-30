@@ -133,10 +133,6 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
   TORCH_CHECK(g_cuda_beta, "BetaCudaDeviceInterface was not registered!");
   TORCH_CHECK(
       device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
-
-  // TODONVDEC P1: init size should probably be min_num_decode_surfaces from
-  // video format
-  frameBuffer_.resize(4);
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
@@ -344,7 +340,7 @@ int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* pPicParams) {
   dispInfo.repeat_first_field = 0;
   dispInfo.timestamp = guessedPts;
 
-  FrameBufferSlot* slot = findEmptySlot();
+  FrameBuffer::Slot* slot = frameBuffer_.findEmptySlot();
   slot->dispInfo = dispInfo;
   slot->guessedPts = guessedPts;
   slot->occupied = true;
@@ -358,7 +354,7 @@ int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* pPicParams) {
 int BetaCudaDeviceInterface::receiveFrame(
     UniqueAVFrame& avFrame,
     int64_t desiredPts) {
-  FrameBufferSlot* slot = findFrameWithExactPts(desiredPts);
+  FrameBuffer::Slot* slot = frameBuffer_.findFrameWithExactPts(desiredPts);
   if (slot == nullptr) {
     // No frame found, instruct caller to try again later after sending more
     // packets.
@@ -532,9 +528,8 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       preAllocatedOutputTensor);
 }
 
-// TODONVDEC P0: Don't let buffer grow indefinitely.
-BetaCudaDeviceInterface::FrameBufferSlot*
-BetaCudaDeviceInterface::findEmptySlot() {
+BetaCudaDeviceInterface::FrameBuffer::Slot*
+BetaCudaDeviceInterface::FrameBuffer::findEmptySlot() {
   for (auto& slot : frameBuffer_) {
     if (!slot.occupied) {
       return &slot;
@@ -544,8 +539,9 @@ BetaCudaDeviceInterface::findEmptySlot() {
   return &frameBuffer_.back();
 }
 
-BetaCudaDeviceInterface::FrameBufferSlot*
-BetaCudaDeviceInterface::findFrameWithExactPts(int64_t desiredPts) {
+BetaCudaDeviceInterface::FrameBuffer::Slot*
+BetaCudaDeviceInterface::FrameBuffer::findFrameWithExactPts(
+    int64_t desiredPts) {
   for (auto& slot : frameBuffer_) {
     if (slot.occupied && slot.guessedPts == desiredPts) {
       return &slot;

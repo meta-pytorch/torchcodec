@@ -64,6 +64,40 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   int frameReadyForDecoding(CUVIDPICPARAMS* pPicParams);
 
  private:
+  class FrameBuffer {
+   public:
+    struct Slot {
+      CUVIDPARSERDISPINFO dispInfo;
+      int64_t guessedPts;
+      bool occupied = false;
+
+      Slot() : guessedPts(-1), occupied(false) {
+        std::memset(&dispInfo, 0, sizeof(dispInfo));
+      }
+    };
+
+    // TODONVDEC P1: init size should probably be min_num_decode_surfaces from
+    // video format
+    FrameBuffer() : frameBuffer_(4) {}
+
+    ~FrameBuffer() = default;
+
+    Slot* findEmptySlot();
+    Slot* findFrameWithExactPts(int64_t desiredPts);
+
+    // Iterator support for range-based for loops
+    auto begin() {
+      return frameBuffer_.begin();
+    }
+
+    auto end() {
+      return frameBuffer_.end();
+    }
+
+   private:
+    std::vector<Slot> frameBuffer_;
+  };
+
   UniqueAVFrame convertCudaFrameToAVFrame(
       CUdeviceptr framePtr,
       unsigned int pitch,
@@ -73,19 +107,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   UniqueCUvideodecoder decoder_;
   CUVIDEOFORMAT videoFormat_ = {};
 
-  struct FrameBufferSlot {
-    CUVIDPARSERDISPINFO dispInfo;
-    int64_t guessedPts;
-    bool occupied = false;
-
-    FrameBufferSlot() : guessedPts(-1), occupied(false) {
-      std::memset(&dispInfo, 0, sizeof(dispInfo));
-    }
-  };
-
-  std::vector<FrameBufferSlot> frameBuffer_;
-  FrameBufferSlot* findEmptySlot();
-  FrameBufferSlot* findFrameWithExactPts(int64_t desiredPts);
+  FrameBuffer frameBuffer_;
 
   std::queue<int64_t> packetsPtsQueue;
 
