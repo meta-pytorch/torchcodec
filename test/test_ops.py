@@ -1393,7 +1393,7 @@ class TestVideoEncoderOps:
 
         encoded_path = str(tmp_path / f"encoder_output.{format}")
         frame_rate = 30  # Frame rate is fixed with num frames decoded
-        encode_video_to_file(source_frames, frame_rate, encoded_path, crf=0)
+        encode_video_to_file(source_frames, frame_rate, encoded_path, 0)
         round_trip_frames = self.decode(encoded_path).data
 
         # The output pixel format depends on the codecs available, and FFmpeg version.
