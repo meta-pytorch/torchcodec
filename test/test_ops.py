@@ -1384,18 +1384,10 @@ class TestVideoEncoderOps:
 
     @pytest.mark.parametrize("format", ("mov", "mp4", "avi", "mkv", "webm", "flv"))
     def test_video_encoder_test_round_trip(self, tmp_path, format):
-
         ffmpeg_version = get_ffmpeg_major_version()
         if ffmpeg_version == 4 and format == "webm":
             pytest.skip("Codec for webm is not available in the FFmpeg4 installation.")
-        # The output pixel format depends on the codecs available, and FFmpeg version.
-        # In the cases where YUV420P is chosen and chroma subsampling happens, we need higher tolerance.
-        if ffmpeg_version == 6 or format in ("avi", "flv"):
-            atol = 55
-        else:
-            atol = 2
         asset = NASA_VIDEO
-
         # Test that decode(encode(decode(asset))) == decode(asset)
         source_frames = self.decode(str(asset.path)).data
 
@@ -1404,6 +1396,13 @@ class TestVideoEncoderOps:
         encode_video_to_file(source_frames, frame_rate, encoded_path, crf=0)
         round_trip_frames = self.decode(encoded_path).data
 
+        # The output pixel format depends on the codecs available, and FFmpeg version.
+        # In the cases where YUV420P is chosen and chroma subsampling happens, assert_close needs higher tolerance.
+        if ffmpeg_version == 6 or format in ("avi", "flv"):
+            atol = 55
+        else:
+            atol = 2
+        # TODO-VideoEncoder: Test with FFmpeg's testsrc2 video
         # Check that PSNR for decode(encode(samples)) is above 30
         for s_frame, rt_frame in zip(source_frames, round_trip_frames):
             res = psnr(s_frame, rt_frame)
