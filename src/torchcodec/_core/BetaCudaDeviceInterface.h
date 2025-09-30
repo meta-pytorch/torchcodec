@@ -56,7 +56,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void flush() override;
 
   // NVDEC callback functions (must be public for C callbacks)
-  unsigned char streamPropertyChange(CUVIDEOFORMAT* videoFormat);
+  int streamPropertyChange(CUVIDEOFORMAT* videoFormat);
   int frameReadyForDecoding(CUVIDPICPARAMS* pPicParams);
 
  private:

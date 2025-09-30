@@ -37,7 +37,7 @@ static int CUDAAPI
 pfnSequenceCallback(void* pUserData, CUVIDEOFORMAT* videoFormat) {
   BetaCudaDeviceInterface* decoder =
       static_cast<BetaCudaDeviceInterface*>(pUserData);
-  return static_cast<int>(decoder->streamPropertyChange(videoFormat));
+  return decoder->streamPropertyChange(videoFormat);
 }
 
 static int CUDAAPI
@@ -217,8 +217,7 @@ void BetaCudaDeviceInterface::initializeInterface(AVStream* avStream) {
 // TODONVDEC P1: Code below mostly assume this is called only once at the start,
 // we should handle the case of multiple calls. Probably need to flush buffers,
 // etc.
-unsigned char BetaCudaDeviceInterface::streamPropertyChange(
-    CUVIDEOFORMAT* videoFormat) {
+int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
   TORCH_CHECK(videoFormat != nullptr, "Invalid video format");
 
   videoFormat_ = *videoFormat;
@@ -243,7 +242,7 @@ unsigned char BetaCudaDeviceInterface::streamPropertyChange(
   // DALI also returns min_num_decode_surfaces from this function. This
   // instructs the parser to reset its ulMaxNumDecodeSurfaces field to this
   // value.
-  return videoFormat_.min_num_decode_surfaces;
+  return static_cast<int>(videoFormat_.min_num_decode_surfaces);
 }
 
 // Moral equivalent of avcodec_send_packet(). Here, we pass the AVPacket down to
