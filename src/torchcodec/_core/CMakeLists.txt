@@ -107,11 +107,6 @@ function(make_torchcodec_libraries
     )
 
     if(ENABLE_CUDA)
-        list(APPEND core_library_dependencies
-            ${CUDA_nppi_LIBRARY}
-            ${CUDA_nppicc_LIBRARY}
-        )
-
         # Try to find NVCUVID. Try the normal way first. This should work locally.
         find_library(NVCUVID_LIBRARY NAMES nvcuvid)
         # If not found, try with version suffix, or hardcoded path. Appears
@@ -129,11 +124,11 @@ function(make_torchcodec_libraries
             message(FATAL_ERROR "Could not find NVCUVID library")
         endif()
 
-        # Add CUDA Driver library (needed for cuCtxGetCurrent, etc.)
-        find_library(CUDA_DRIVER_LIBRARY NAMES cuda REQUIRED)
-        message(STATUS "Found CUDA Driver library: ${CUDA_DRIVER_LIBRARY}")
-
-        list(APPEND core_library_dependencies ${NVCUVID_LIBRARY} ${CUDA_DRIVER_LIBRARY})
+        list(APPEND core_library_dependencies
+            ${CUDA_nppi_LIBRARY}
+            ${CUDA_nppicc_LIBRARY}
+            ${NVCUVID_LIBRARY}
+        )
     endif()
 
     make_torchcodec_sublibrary(

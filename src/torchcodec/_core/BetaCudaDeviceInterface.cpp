@@ -14,7 +14,7 @@
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/NVDECCache.h"
 
-#include <cuda_runtime.h> // For cudaStreamSynchronize
+// #include <cuda_runtime.h> // For cudaStreamSynchronize
 #include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
 #include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
 
