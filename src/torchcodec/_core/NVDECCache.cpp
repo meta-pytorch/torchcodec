@@ -19,7 +19,7 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-NVDECCache& NVDECCache::GetCache(int deviceIndex) {
+NVDECCache& NVDECCache::getCache(int deviceIndex) {
   const int MAX_CUDA_GPUS = 128;
   TORCH_CHECK(
       deviceIndex >= -1 && deviceIndex < MAX_CUDA_GPUS,

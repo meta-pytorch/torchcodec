@@ -31,10 +31,10 @@ struct CUvideoDecoderDeleter {
 using UniqueCUvideodecoder = std::unique_ptr<void, CUvideoDecoderDeleter>;
 
 // A per-device cache for NVDEC decoders. There is one instance of this class
-// per GPU device, and it is accessed through the static GetCache() method.
+// per GPU device, and it is accessed through the static getCache() method.
 class NVDECCache {
  public:
-  static NVDECCache& GetCache(int deviceIndex);
+  static NVDECCache& getCache(int deviceIndex);
 
   // Get decoder from cache - returns nullptr if none available
   UniqueCUvideodecoder getDecoder(CUVIDEOFORMAT* videoFormat);

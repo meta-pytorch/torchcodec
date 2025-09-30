@@ -146,7 +146,7 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
   // NVDEC but not yet "mapped" - i.e. those that are still in frameBuffer_?
 
   if (decoder_) {
-    NVDECCache::GetCache(device_.index())
+    NVDECCache::getCache(device_.index())
         .returnDecoder(&videoFormat_, std::move(decoder_));
   }
 
@@ -235,7 +235,7 @@ unsigned char BetaCudaDeviceInterface::streamPropertyChange(
   }
 
   if (!decoder_) {
-    decoder_ = NVDECCache::GetCache(device_.index()).getDecoder(videoFormat);
+    decoder_ = NVDECCache::getCache(device_.index()).getDecoder(videoFormat);
 
     if (!decoder_) {
       // TODONVDEC P0: consider re-configuring an existing decoder instead of
