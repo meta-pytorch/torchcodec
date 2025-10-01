@@ -1146,7 +1146,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
 
   while (true) {
     if (useCustomInterface) {
-      status = deviceInterface_->receiveFrame(avFrame, cursor_);
+      status = deviceInterface_->receiveFrame(avFrame);
     } else {
       status =
           avcodec_receive_frame(streamInfo.codecContext.get(), avFrame.get());

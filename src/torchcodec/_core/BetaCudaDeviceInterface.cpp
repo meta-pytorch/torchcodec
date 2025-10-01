@@ -41,10 +41,17 @@ pfnSequenceCallback(void* pUserData, CUVIDEOFORMAT* videoFormat) {
 }
 
 static int CUDAAPI
-pfnDecodePictureCallback(void* pUserData, CUVIDPICPARAMS* pPicParams) {
+pfnDecodePictureCallback(void* pUserData, CUVIDPICPARAMS* picParams) {
   BetaCudaDeviceInterface* decoder =
       static_cast<BetaCudaDeviceInterface*>(pUserData);
-  return decoder->frameReadyForDecoding(pPicParams);
+  return decoder->frameReadyForDecoding(picParams);
+}
+
+static int CUDAAPI
+pfnDisplayPictureCallback(void* pUserData, CUVIDPARSERDISPINFO* dispInfo) {
+  BetaCudaDeviceInterface* decoder =
+      static_cast<BetaCudaDeviceInterface*>(pUserData);
+  return decoder->frameReadyInDisplayOrder(dispInfo);
 }
 
 static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
@@ -203,7 +210,7 @@ void BetaCudaDeviceInterface::initializeInterface(AVStream* avStream) {
   parserParams.pUserData = this;
   parserParams.pfnSequenceCallback = pfnSequenceCallback;
   parserParams.pfnDecodePicture = pfnDecodePictureCallback;
-  parserParams.pfnDisplayPicture = nullptr;
+  parserParams.pfnDisplayPicture = pfnDisplayPictureCallback;
 
   CUresult result = cuvidCreateVideoParser(&videoParser_, &parserParams);
   TORCH_CHECK(
@@ -259,10 +266,6 @@ int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
     cuvidPacket.flags = CUVID_PKT_TIMESTAMP;
     cuvidPacket.timestamp = packet->pts;
 
-    // Like DALI: store packet PTS in queue to later assign to frames as they
-    // come out
-    packetsPtsQueue.push(packet->pts);
-
   } else {
     // End of stream packet
     cuvidPacket.flags = CUVID_PKT_ENDOFSTREAM;
@@ -312,67 +315,39 @@ void BetaCudaDeviceInterface::applyBSF(ReferenceAVPacket& packet) {
 // ready to be decoded, i.e. the parser received all the necessary packets for a
 // given frame. It means we can send that frame to be decoded by the hardware
 // NVDEC decoder by calling cuvidDecodePicture which is non-blocking.
-int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* pPicParams) {
+int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* picParams) {
   if (isFlushing_) {
     return 0;
   }
 
-  TORCH_CHECK(pPicParams != nullptr, "Invalid picture parameters");
+  TORCH_CHECK(picParams != nullptr, "Invalid picture parameters");
   TORCH_CHECK(decoder_, "Decoder not initialized before picture decode");
 
   // Send frame to be decoded by NVDEC - non-blocking call.
-  CUresult result = cuvidDecodePicture(*decoder_.get(), pPicParams);
+  CUresult result = cuvidDecodePicture(*decoder_.get(), picParams);
   if (result != CUDA_SUCCESS) {
-    return 0; // Yes, you're reading that right, 0 mean error.
+    return 0; // Yes, you're reading that right, 0 means error.
   }
 
-  // The frame was sent to be decoded on the NVDEC hardware. Now we store some
-  // relevant info into our frame buffer so that we can retrieve the decoded
-  // frame later when receiveFrame() is called.
-  // Importantly we need to 'guess' the PTS of that frame. The heuristic we use
-  // (like in DALI) is that the frames are ready to be decoded in the same order
-  // as the packets were sent to the parser. So we assign the PTS of the frame
-  // by popping the PTS of the oldest packet in our packetsPtsQueue (note:
-  // oldest doesn't necessarily mean lowest PTS!).
-
-  TORCH_CHECK(
-      // TODONVDEC P0 the queue may be empty, handle that.
-      !packetsPtsQueue.empty(),
-      "PTS queue is empty when decoding a frame");
-  int64_t guessedPts = packetsPtsQueue.front();
-  packetsPtsQueue.pop();
-
-  // Field values taken from DALI
-  CUVIDPARSERDISPINFO dispInfo = {};
-  dispInfo.picture_index = pPicParams->CurrPicIdx;
-  dispInfo.progressive_frame = !pPicParams->field_pic_flag;
-  dispInfo.top_field_first = pPicParams->bottom_field_flag ^ 1;
-  dispInfo.repeat_first_field = 0;
-  dispInfo.timestamp = guessedPts;
-
-  FrameBuffer::Slot* slot = frameBuffer_.findEmptySlot();
-  slot->dispInfo = dispInfo;
-  slot->guessedPts = guessedPts;
-  slot->occupied = true;
-
+  frameBuffer_.markAsBeingDecoded(/*slotId=*/picParams->CurrPicIdx);
   return 1;
 }
 
-// Moral equivalent of avcodec_receive_frame(). Here, we look for a decoded
-// frame with the exact desired PTS in our frame buffer. This logic is only
-// valid in exact seek_mode, for now.
-int BetaCudaDeviceInterface::receiveFrame(
-    UniqueAVFrame& avFrame,
-    int64_t desiredPts) {
-  FrameBuffer::Slot* slot = frameBuffer_.findFrameWithExactPts(desiredPts);
+int BetaCudaDeviceInterface::frameReadyInDisplayOrder(
+    CUVIDPARSERDISPINFO* dispInfo) {
+  frameBuffer_.markSlotReadyAndSetInfo(
+      /*slotId=*/dispInfo->picture_index, dispInfo);
+  return 1;
+}
+
+// Moral equivalent of avcodec_receive_frame().
+int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
+  FrameBuffer::Slot* slot = frameBuffer_.findReadySlotWithLowestPts();
   if (slot == nullptr) {
     // No frame found, instruct caller to try again later after sending more
     // packets.
     return AVERROR(EAGAIN);
   }
-
-  slot->occupied = false;
-  slot->guessedPts = -1;
 
   CUVIDPROCPARAMS procParams = {};
   CUVIDPARSERDISPINFO dispInfo = slot->dispInfo;
@@ -381,6 +356,8 @@ int BetaCudaDeviceInterface::receiveFrame(
   procParams.unpaired_field = dispInfo.repeat_first_field < 0;
   CUdeviceptr framePtr = 0;
   unsigned int pitch = 0;
+
+  frameBuffer_.free(slot->slotId);
 
   // We know the frame we want was sent to the hardware decoder, but now we need
   // to "map" it to an "output surface" before we can use its data. This is a
@@ -435,7 +412,7 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
   avFrame->width = width;
   avFrame->height = height;
   avFrame->format = AV_PIX_FMT_CUDA;
-  avFrame->pts = dispInfo.timestamp; // == guessedPts
+  avFrame->pts = dispInfo.timestamp;
 
   unsigned int frameRateNum = videoFormat_.frame_rate.numerator;
   unsigned int frameRateDen = videoFormat_.frame_rate.denominator;
@@ -498,13 +475,7 @@ void BetaCudaDeviceInterface::flush() {
 
   isFlushing_ = false;
 
-  for (auto& slot : frameBuffer_) {
-    slot.occupied = false;
-    slot.guessedPts = -1;
-  }
-
-  std::queue<int64_t> empty;
-  packetsPtsQueue.swap(empty);
+  frameBuffer_.clear();
 
   eofSent_ = false;
 }
@@ -538,26 +509,52 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       preAllocatedOutputTensor);
 }
 
-BetaCudaDeviceInterface::FrameBuffer::Slot*
-BetaCudaDeviceInterface::FrameBuffer::findEmptySlot() {
-  for (auto& slot : frameBuffer_) {
-    if (!slot.occupied) {
-      return &slot;
-    }
-  }
-  frameBuffer_.emplace_back();
-  return &frameBuffer_.back();
+void BetaCudaDeviceInterface::FrameBuffer::markAsBeingDecoded(int slotId) {
+  auto it = frameBuffer_.find(slotId);
+  TORCH_CHECK(
+      it == frameBuffer_.end(),
+      "Slot ",
+      slotId,
+      " is already occupied. This should never happen.");
+
+  frameBuffer_.emplace(slotId, Slot(slotId, SlotState::BEING_DECODED));
+}
+
+void BetaCudaDeviceInterface::FrameBuffer::markSlotReadyAndSetInfo(
+    int slotId,
+    CUVIDPARSERDISPINFO* dispInfo) {
+  auto it = frameBuffer_.find(slotId);
+  TORCH_CHECK(
+      it != frameBuffer_.end(),
+      "Could not find matching slot with slotId ",
+      slotId,
+      ". This should never happen.");
+
+  it->second.state = SlotState::READY_FOR_OUTPUT;
+  it->second.dispInfo = *dispInfo;
+}
+
+void BetaCudaDeviceInterface::FrameBuffer::free(int slotId) {
+  auto it = frameBuffer_.find(slotId);
+  TORCH_CHECK(
+      it != frameBuffer_.end(),
+      "Tried to free non-existing slot with slotId",
+      slotId,
+      ". This should never happen.");
+  frameBuffer_.erase(it);
 }
 
 BetaCudaDeviceInterface::FrameBuffer::Slot*
-BetaCudaDeviceInterface::FrameBuffer::findFrameWithExactPts(
-    int64_t desiredPts) {
-  for (auto& slot : frameBuffer_) {
-    if (slot.occupied && slot.guessedPts == desiredPts) {
-      return &slot;
+BetaCudaDeviceInterface::FrameBuffer::findReadySlotWithLowestPts() {
+  Slot* outputSlot = nullptr;
+  for (auto& [_, slot] : frameBuffer_) {
+    if (slot.state == SlotState::READY_FOR_OUTPUT &&
+        (outputSlot == nullptr ||
+         slot.dispInfo.timestamp < outputSlot->dispInfo.timestamp)) {
+      outputSlot = &slot;
     }
   }
-  return nullptr;
+  return outputSlot;
 }
 
 } // namespace facebook::torchcodec

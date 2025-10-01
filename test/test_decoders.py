@@ -1403,9 +1403,10 @@ class TestVideoDecoder:
     @needs_cuda
     @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
     @pytest.mark.parametrize("contiguous_indices", (True, False))
-    def test_beta_cuda_interface_get_frame_at(self, asset, contiguous_indices):
-        ref_decoder = VideoDecoder(asset.path, device="cuda")
-        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta")
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_beta_cuda_interface_get_frame_at(self, asset, contiguous_indices, seek_mode):
+        ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta", seek_mode=seek_mode)
 
         assert ref_decoder.metadata == beta_decoder.metadata
 
@@ -1425,9 +1426,10 @@ class TestVideoDecoder:
     @needs_cuda
     @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
     @pytest.mark.parametrize("contiguous_indices", (True, False))
-    def test_beta_cuda_interface_get_frames_at(self, asset, contiguous_indices):
-        ref_decoder = VideoDecoder(asset.path, device="cuda")
-        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta")
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_beta_cuda_interface_get_frames_at(self, asset, contiguous_indices, seek_mode):
+        ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta", seek_mode=seek_mode)
 
         assert ref_decoder.metadata == beta_decoder.metadata
 
@@ -1446,15 +1448,71 @@ class TestVideoDecoder:
         )
 
     @needs_cuda
+    @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_beta_cuda_interface_get_frame_played_at(self, asset, seek_mode):
+        ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta", seek_mode=seek_mode)
+
+        assert ref_decoder.metadata == beta_decoder.metadata
+
+        timestamps = torch.linspace(
+            0, ref_decoder.metadata.duration_seconds - 1e-4, steps=10
+        )
+        for pts in timestamps:
+            ref_frame = ref_decoder.get_frame_played_at(pts)
+            beta_frame = beta_decoder.get_frame_played_at(pts)
+            torch.testing.assert_close(beta_frame.data, ref_frame.data, rtol=0, atol=0)
+
+            assert beta_frame.pts_seconds == ref_frame.pts_seconds
+            assert beta_frame.duration_seconds == ref_frame.duration_seconds
+
+    @needs_cuda
+    @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_beta_cuda_interface_get_frames_played_at(self, asset, seek_mode):
+        ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta", seek_mode=seek_mode)
+
+        assert ref_decoder.metadata == beta_decoder.metadata
+
+        timestamps = torch.linspace(
+            0, ref_decoder.metadata.duration_seconds - 1e-4, steps=10
+        ).tolist()
+
+        ref_frames = ref_decoder.get_frames_played_at(timestamps)
+        beta_frames = beta_decoder.get_frames_played_at(timestamps)
+        torch.testing.assert_close(beta_frames.data, ref_frames.data, rtol=0, atol=0)
+        torch.testing.assert_close(beta_frames.pts_seconds, ref_frames.pts_seconds)
+        torch.testing.assert_close(
+            beta_frames.duration_seconds, ref_frames.duration_seconds
+        )
+
+    @needs_cuda
+    @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_beta_cuda_interface_backwards(self, asset, seek_mode):
+
+        ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta", seek_mode=seek_mode)
+
+        assert ref_decoder.metadata == beta_decoder.metadata
+
+        for frame_index in [0, 100, 10, 50, 20, 200, 150, 389]:
+            frame_index = min(frame_index, len(ref_decoder) - 1)
+            ref_frame = ref_decoder.get_frame_at(frame_index)
+            beta_frame = beta_decoder.get_frame_at(frame_index)
+            torch.testing.assert_close(beta_frame.data, ref_frame.data, rtol=0, atol=0)
+
+            assert beta_frame.pts_seconds == ref_frame.pts_seconds
+            assert beta_frame.duration_seconds == ref_frame.duration_seconds
+
+    @needs_cuda
     def test_beta_cuda_interface_error(self):
         with pytest.raises(RuntimeError, match="Can only do H264 for now"):
             VideoDecoder(AV1_VIDEO.path, device="cuda:0:beta")
         with pytest.raises(RuntimeError, match="Can only do H264 for now"):
             VideoDecoder(H265_VIDEO.path, device="cuda:0:beta")
-        with pytest.raises(
-            ValueError, match="Seek mode must be exact for BETA CUDA interface."
-        ):
-            VideoDecoder(NASA_VIDEO.path, device="cuda:0:beta", seek_mode="approximate")
         with pytest.raises(RuntimeError, match="Unsupported device"):
             VideoDecoder(NASA_VIDEO.path, device="cuda:0:bad_variant")
 

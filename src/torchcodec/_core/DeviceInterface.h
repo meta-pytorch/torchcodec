@@ -87,9 +87,7 @@ class DeviceInterface {
   // Moral equivalent of avcodec_receive_frame()
   // Returns AVSUCCESS on success, AVERROR(EAGAIN) if no frame ready,
   // AVERROR_EOF if end of stream, or other AVERROR on failure
-  virtual int receiveFrame(
-      [[maybe_unused]] UniqueAVFrame& avFrame,
-      [[maybe_unused]] int64_t desiredPts) {
+  virtual int receiveFrame([[maybe_unused]] UniqueAVFrame& avFrame) {
     TORCH_CHECK(
         false,
         "Send/receive packet decoding not implemented for this device interface");

@@ -52,12 +52,13 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   }
 
   int sendPacket(ReferenceAVPacket& packet) override;
-  int receiveFrame(UniqueAVFrame& avFrame, int64_t desiredPts) override;
+  int receiveFrame(UniqueAVFrame& avFrame) override;
   void flush() override;
 
   // NVDEC callback functions (must be public for C callbacks)
   int streamPropertyChange(CUVIDEOFORMAT* videoFormat);
-  int frameReadyForDecoding(CUVIDPICPARAMS* pPicParams);
+  int frameReadyForDecoding(CUVIDPICPARAMS* picParams);
+  int frameReadyInDisplayOrder(CUVIDPARSERDISPINFO* dispInfo);
 
  private:
   // Apply bitstream filter, modifies packet in-place
@@ -65,36 +66,35 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   class FrameBuffer {
    public:
+    enum class SlotState { BEING_DECODED, READY_FOR_OUTPUT };
+
     struct Slot {
       CUVIDPARSERDISPINFO dispInfo;
-      int64_t guessedPts;
-      bool occupied = false;
+      SlotState state;
+      int slotId;
 
-      Slot() : guessedPts(-1), occupied(false) {
+      explicit Slot(int id, SlotState s) : state(s), slotId(id) {
         std::memset(&dispInfo, 0, sizeof(dispInfo));
+        TORCH_CHECK(
+            state == SlotState::BEING_DECODED,
+            "Programmer: are you sure you want to create a slot that is not BEING_DECODED?");
       }
     };
 
-    // TODONVDEC P1: init size should probably be min_num_decode_surfaces from
-    // video format
-    FrameBuffer() : frameBuffer_(4) {}
-
+    FrameBuffer() = default;
     ~FrameBuffer() = default;
 
-    Slot* findEmptySlot();
-    Slot* findFrameWithExactPts(int64_t desiredPts);
+    void markAsBeingDecoded(int slotId);
+    void markSlotReadyAndSetInfo(int slotId, CUVIDPARSERDISPINFO* dispInfo);
+    void free(int slotId);
+    Slot* findReadySlotWithLowestPts();
 
-    // Iterator support for range-based for loops
-    auto begin() {
-      return frameBuffer_.begin();
-    }
-
-    auto end() {
-      return frameBuffer_.end();
+    void clear() {
+      frameBuffer_.clear();
     }
 
    private:
-    std::vector<Slot> frameBuffer_;
+    std::unordered_map<int, Slot> frameBuffer_;
   };
 
   UniqueAVFrame convertCudaFrameToAVFrame(
@@ -107,8 +107,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   CUVIDEOFORMAT videoFormat_ = {};
 
   FrameBuffer frameBuffer_;
-
-  std::queue<int64_t> packetsPtsQueue;
 
   bool eofSent_ = false;
 
