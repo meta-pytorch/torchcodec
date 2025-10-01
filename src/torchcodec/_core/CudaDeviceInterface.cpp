@@ -195,16 +195,18 @@ CudaDeviceInterface::~CudaDeviceInterface() {
 
 void CudaDeviceInterface::initialize(
     AVCodecContext* codecContext,
-    const VideoStreamOptions& videoStreamOptions,
-    [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
-    const AVRational& timeBase,
-    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
+    const AVRational& timeBase) {
   TORCH_CHECK(ctx_, "FFmpeg HW device has not been initialized");
   TORCH_CHECK(codecContext != nullptr, "codecContext is null");
-
   codecContext->hw_device_ctx = av_buffer_ref(ctx_.get());
-  videoStreamOptions_ = videoStreamOptions;
   timeBase_ = timeBase;
+}
+
+void CudaDeviceInterface::initializeVideo(
+    const VideoStreamOptions& videoStreamOptions,
+    [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
+    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
+  videoStreamOptions_ = videoStreamOptions;
 }
 
 UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12(
@@ -220,13 +222,13 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12(
     return std::move(avFrame);
   }
 
+  auto hwFramesCtx =
+      reinterpret_cast<AVHWFramesContext*>(avFrame->hw_frames_ctx->data);
   TORCH_CHECK(
-      avFrame->hw_frames_ctx != nullptr,
+      hwFramesCtx != nullptr,
       "The AVFrame does not have a hw_frames_ctx. "
       "That's unexpected, please report this to the TorchCodec repo.");
 
-  auto hwFramesCtx =
-      reinterpret_cast<AVHWFramesContext*>(avFrame->hw_frames_ctx->data);
   AVPixelFormat actualFormat = hwFramesCtx->sw_format;
 
   // If the frame is already in NV12 format, we don't need to do anything.
@@ -355,10 +357,10 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
       TORCH_CHECK(
           cpuInterface != nullptr, "Failed to create CPU device interface");
       cpuInterface->initialize(
-          nullptr,
+          /*codecContext=*/nullptr, timeBase_);
+      cpuInterface->initializeVideo(
           VideoStreamOptions(),
           {},
-          timeBase_,
           /*resizedOutputDims=*/std::nullopt);
 
       cpuInterface->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);

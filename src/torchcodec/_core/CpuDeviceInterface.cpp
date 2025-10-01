@@ -48,12 +48,15 @@ CpuDeviceInterface::CpuDeviceInterface(const torch::Device& device)
 
 void CpuDeviceInterface::initialize(
     [[maybe_unused]] AVCodecContext* codecContext,
+    const AVRational& timeBase) {
+  timeBase_ = timeBase;
+}
+
+void CpuDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     const std::vector<std::unique_ptr<Transform>>& transforms,
-    const AVRational& timeBase,
     const std::optional<FrameDims>& resizedOutputDims) {
   videoStreamOptions_ = videoStreamOptions;
-  timeBase_ = timeBase;
   resizedOutputDims_ = resizedOutputDims;
 
   // We can only use swscale when we have a single resize transform. Note that

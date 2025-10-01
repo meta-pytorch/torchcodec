@@ -20,12 +20,13 @@ class CudaDeviceInterface : public DeviceInterface {
 
   std::optional<const AVCodec*> findCodec(const AVCodecID& codecId) override;
 
-  void initialize(
-      AVCodecContext* codecContext,
+  void initialize(AVCodecContext* codecContext, const AVRational& timeBase)
+      override;
+
+  void initializeVideo(
       const VideoStreamOptions& videoStreamOptions,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
           transforms,
-      const AVRational& timeBase,
       [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims)
       override;
 

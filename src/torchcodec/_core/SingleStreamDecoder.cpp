@@ -436,6 +436,9 @@ void SingleStreamDecoder::addStream(
   TORCH_CHECK(codecContext != nullptr);
   streamInfo.codecContext.reset(codecContext);
 
+  deviceInterface_->initialize(
+      streamInfo.codecContext.get(), streamInfo.timeBase);
+
   int retVal = avcodec_parameters_to_context(
       streamInfo.codecContext.get(), streamInfo.stream->codecpar);
   TORCH_CHECK_EQ(retVal, AVSUCCESS);
@@ -443,6 +446,10 @@ void SingleStreamDecoder::addStream(
   streamInfo.codecContext->thread_count = ffmpegThreadCount.value_or(0);
   streamInfo.codecContext->pkt_timebase = streamInfo.stream->time_base;
 
+  // Note that we must make sure to call avcodec_open2() AFTER we initialize
+  // the device interface. Device initialization tells the codec context which
+  // device to use. If we initialize the device interface after avcodec_open2(),
+  // then all decoding may fall back to the CPU.
   retVal = avcodec_open2(streamInfo.codecContext.get(), avCodec, nullptr);
   TORCH_CHECK(retVal >= AVSUCCESS, getFFMPEGErrorStringFromErrorCode(retVal));
 
@@ -510,18 +517,14 @@ void SingleStreamDecoder::addVideoStream(
     if (transform->getOutputFrameDims().has_value()) {
       resizedOutputDims_ = transform->getOutputFrameDims().value();
     }
+
+    // Note that we are claiming ownership of the transform objects passed in to
+    // us.
     transforms_.push_back(std::unique_ptr<Transform>(transform));
   }
 
-  // We initialize the device context late because we want to know a lot of
-  // information that we can only know after resolving the codec, opening the
-  // stream and inspecting the metadata.
-  deviceInterface_->initialize(
-      streamInfo.codecContext.get(),
-      videoStreamOptions,
-      transforms_,
-      streamInfo.timeBase,
-      resizedOutputDims_);
+  deviceInterface_->initializeVideo(
+      videoStreamOptions, transforms_, resizedOutputDims_);
 }
 
 void SingleStreamDecoder::addAudioStream(

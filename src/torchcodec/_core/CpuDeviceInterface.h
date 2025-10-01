@@ -25,9 +25,11 @@ class CpuDeviceInterface : public DeviceInterface {
 
   virtual void initialize(
       [[maybe_unused]] AVCodecContext* codecContext,
+      const AVRational& timeBase) override;
+
+  virtual void initializeVideo(
       const VideoStreamOptions& videoStreamOptions,
       const std::vector<std::unique_ptr<Transform>>& transforms,
-      const AVRational& timeBase,
       const std::optional<FrameDims>& resizedOutputDims) override;
 
   void convertAVFrameToFrameOutput(
@@ -73,6 +75,14 @@ class CpuDeviceInterface : public DeviceInterface {
 
   VideoStreamOptions videoStreamOptions_;
   AVRational timeBase_;
+
+  // If the resized output dimensions are present, then we always use those as
+  // the output frame's dimensions. If they are not present, then we use the
+  // dimensions of the raw decoded frame. Note that we do not know the
+  // dimensions of the raw decoded frame until very late; we learn it in
+  // convertAVFrameToFrameOutput(). Deciding the final output frame's actual
+  // dimensions late allows us to handle video streams with variable
+  // resolutions.
   std::optional<FrameDims> resizedOutputDims_;
 
   // Color-conversion objects. Only one of filterGraph_ and swsContext_ should
