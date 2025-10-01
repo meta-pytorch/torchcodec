@@ -513,22 +513,22 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 }
 
 void BetaCudaDeviceInterface::FrameBuffer::markAsBeingDecoded(int slotId) {
-  auto it = frameBuffer_.find(slotId);
+  auto it = map_.find(slotId);
   TORCH_CHECK(
-      it == frameBuffer_.end(),
+      it == map_.end(),
       "Slot ",
       slotId,
       " is already occupied. This should never happen.");
 
-  frameBuffer_.emplace(slotId, Slot(slotId, SlotState::BEING_DECODED));
+  map_.emplace(slotId, Slot(slotId, SlotState::BEING_DECODED));
 }
 
 void BetaCudaDeviceInterface::FrameBuffer::markSlotReadyAndSetInfo(
     int slotId,
     CUVIDPARSERDISPINFO* dispInfo) {
-  auto it = frameBuffer_.find(slotId);
+  auto it = map_.find(slotId);
   TORCH_CHECK(
-      it != frameBuffer_.end(),
+      it != map_.end(),
       "Could not find matching slot with slotId ",
       slotId,
       ". This should never happen.");
@@ -538,19 +538,19 @@ void BetaCudaDeviceInterface::FrameBuffer::markSlotReadyAndSetInfo(
 }
 
 void BetaCudaDeviceInterface::FrameBuffer::free(int slotId) {
-  auto it = frameBuffer_.find(slotId);
+  auto it = map_.find(slotId);
   TORCH_CHECK(
-      it != frameBuffer_.end(),
+      it != map_.end(),
       "Tried to free non-existing slot with slotId",
       slotId,
       ". This should never happen.");
-  frameBuffer_.erase(it);
+  map_.erase(it);
 }
 
 BetaCudaDeviceInterface::FrameBuffer::Slot*
 BetaCudaDeviceInterface::FrameBuffer::findReadySlotWithLowestPts() {
   Slot* outputSlot = nullptr;
-  for (auto& [_, slot] : frameBuffer_) {
+  for (auto& [_, slot] : map_) {
     if (slot.state == SlotState::READY_FOR_OUTPUT &&
         (outputSlot == nullptr ||
          slot.dispInfo.timestamp < outputSlot->dispInfo.timestamp)) {

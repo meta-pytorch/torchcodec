@@ -90,11 +90,11 @@ class BetaCudaDeviceInterface : public DeviceInterface {
     Slot* findReadySlotWithLowestPts();
 
     void clear() {
-      frameBuffer_.clear();
+      map_.clear();
     }
 
    private:
-    std::unordered_map<int, Slot> frameBuffer_;
+    std::unordered_map<int, Slot> map_;
   };
 
   UniqueAVFrame convertCudaFrameToAVFrame(

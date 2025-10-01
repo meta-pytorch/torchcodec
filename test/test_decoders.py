@@ -1406,9 +1406,13 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
     @pytest.mark.parametrize("contiguous_indices", (True, False))
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
-    def test_beta_cuda_interface_get_frame_at(self, asset, contiguous_indices, seek_mode):
+    def test_beta_cuda_interface_get_frame_at(
+        self, asset, contiguous_indices, seek_mode
+    ):
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
-        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta", seek_mode=seek_mode)
+        beta_decoder = VideoDecoder(
+            asset.path, device="cuda:0:beta", seek_mode=seek_mode
+        )
 
         assert ref_decoder.metadata == beta_decoder.metadata
 
@@ -1429,9 +1433,13 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
     @pytest.mark.parametrize("contiguous_indices", (True, False))
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
-    def test_beta_cuda_interface_get_frames_at(self, asset, contiguous_indices, seek_mode):
+    def test_beta_cuda_interface_get_frames_at(
+        self, asset, contiguous_indices, seek_mode
+    ):
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
-        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta", seek_mode=seek_mode)
+        beta_decoder = VideoDecoder(
+            asset.path, device="cuda:0:beta", seek_mode=seek_mode
+        )
 
         assert ref_decoder.metadata == beta_decoder.metadata
 
@@ -1454,7 +1462,9 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frame_played_at(self, asset, seek_mode):
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
-        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta", seek_mode=seek_mode)
+        beta_decoder = VideoDecoder(
+            asset.path, device="cuda:0:beta", seek_mode=seek_mode
+        )
 
         assert ref_decoder.metadata == beta_decoder.metadata
 
@@ -1474,7 +1484,9 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frames_played_at(self, asset, seek_mode):
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
-        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta", seek_mode=seek_mode)
+        beta_decoder = VideoDecoder(
+            asset.path, device="cuda:0:beta", seek_mode=seek_mode
+        )
 
         assert ref_decoder.metadata == beta_decoder.metadata
 
@@ -1496,7 +1508,9 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_backwards(self, asset, seek_mode):
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
-        beta_decoder = VideoDecoder(asset.path, device="cuda:0:beta", seek_mode=seek_mode)
+        beta_decoder = VideoDecoder(
+            asset.path, device="cuda:0:beta", seek_mode=seek_mode
+        )
 
         assert ref_decoder.metadata == beta_decoder.metadata
 
