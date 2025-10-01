@@ -44,7 +44,7 @@ jobs:
     name: Build and Upload Mac wheel
     uses: pytorch/test-infra/.github/workflows/build_wheels_macos.yml@main
     with:
-      repository: pytorch/torchcodec
+      repository: meta-pytorch/torchcodec
       ref: ""
       test-infra-repository: pytorch/test-infra
       test-infra-ref: main
