@@ -82,6 +82,8 @@ class VideoDecoder:
                 }
 
             Alternative field names "pkt_pts" and "pkt_duration" are also supported.
+            Read more about this parameter in:
+            :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py`
 
     Attributes:
         metadata (VideoStreamMetadata): Metadata of the video stream.
@@ -494,11 +496,15 @@ def _read_custom_frame_mappings(
             "Invalid custom frame mappings. The 'pts'/'pkt_pts', 'duration'/'pkt_duration', and 'key_frame' keys are required in the frame metadata."
         )
 
-    frame_data = [
-        (float(frame[pts_key]), frame["key_frame"], float(frame[duration_key]))
-        for frame in input_data["frames"]
-    ]
-    all_frames, is_key_frame, duration = map(torch.tensor, zip(*frame_data))
+    all_frames = torch.tensor(
+        [int(frame[pts_key]) for frame in input_data["frames"]], dtype=torch.int64
+    )
+    is_key_frame = torch.tensor(
+        [int(frame["key_frame"]) for frame in input_data["frames"]], dtype=torch.bool
+    )
+    duration = torch.tensor(
+        [int(frame[duration_key]) for frame in input_data["frames"]], dtype=torch.int64
+    )
     if not (len(all_frames) == len(is_key_frame) == len(duration)):
         raise ValueError("Mismatched lengths in frame index data")
     return all_frames, is_key_frame, duration
