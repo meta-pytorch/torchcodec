@@ -533,6 +533,11 @@ void BetaCudaDeviceInterface::FrameBuffer::markSlotReadyAndSetInfo(
       slotId,
       ". This should never happen.");
 
+  TORCH_CHECK(
+      it->second.state == SlotState::BEING_DECODED,
+      "Slot ",
+      slotId,
+      " is not in BEING_DECODED state. This should never happen.");
   it->second.state = SlotState::READY_FOR_OUTPUT;
   it->second.dispInfo = *dispInfo;
 }
