@@ -274,7 +274,8 @@ void _add_video_stream(
       "width and height must both be set or unset.");
   std::vector<Transform*> transforms;
   if (width.has_value()) {
-    transforms.push_back(new ResizeTransform(width.value(), height.value()));
+    transforms.push_back(
+        new ResizeTransform(FrameDims(height.value(), width.value())));
     width.reset();
     height.reset();
   }

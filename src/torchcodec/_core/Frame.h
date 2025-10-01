@@ -14,12 +14,12 @@
 namespace facebook::torchcodec {
 
 struct FrameDims {
-  int width = 0;
   int height = 0;
+  int width = 0;
 
   FrameDims() = default;
 
-  FrameDims(int w, int h) : width(w), height(h) {}
+  FrameDims(int h, int w) : height(h), width(w) {}
 };
 
 // All public video decoding entry points return either a FrameOutput or a

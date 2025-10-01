@@ -161,7 +161,7 @@ void CpuDeviceInterface::convertAVFrameToFrameOutput(
   // FrameBatchOutputs based on the the stream metadata. But single-frame APIs
   // can still work in such situations, so they should.
   auto outputDims =
-      resizedOutputDims_.value_or(FrameDims(avFrame->width, avFrame->height));
+      resizedOutputDims_.value_or(FrameDims(avFrame->height, avFrame->width));
 
   if (preAllocatedOutputTensor.has_value()) {
     auto shape = preAllocatedOutputTensor.value().sizes();

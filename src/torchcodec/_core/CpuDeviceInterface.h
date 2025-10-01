@@ -96,10 +96,14 @@ class CpuDeviceInterface : public DeviceInterface {
   UniqueSwsContext swsContext_;
   SwsFrameContext prevSwsFrameContext_;
 
-  // The filter we supply to filterGraph_, if it is used. The copy filter just
-  // copies the input to the output. Computationally, it should be a no-op. If
-  // we get no user-provided transforms, we will use the copy filter. Otherwise,
-  // we will construct the string from the transforms.
+  // The filter we supply to filterGraph_, if it is used. The default is the
+  // copy filter, which just copies the input to the output. Computationally, it
+  // should be a no-op. If we get no user-provided transforms, we will use the
+  // copy filter. Otherwise, we will construct the string from the transforms.
+  //
+  // Note that even if we only use the copy filter, we still get the desired
+  // colorspace conversion. We construct the filtergraph with its output sink
+  // set to RGB24.
   std::string filters_ = "copy";
 
   // The flags we supply to swsContext_, if it used. The flags control the

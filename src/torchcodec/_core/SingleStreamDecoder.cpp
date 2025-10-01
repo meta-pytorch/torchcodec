@@ -504,7 +504,7 @@ void SingleStreamDecoder::addVideoStream(
   }
 
   metadataDims_ =
-      FrameDims(streamMetadata.width.value(), streamMetadata.height.value());
+      FrameDims(streamMetadata.height.value(), streamMetadata.width.value());
   for (auto& transform : transforms) {
     TORCH_CHECK(transform != nullptr, "Transforms should never be nullptr!");
     if (transform->getOutputFrameDims().has_value()) {

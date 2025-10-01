@@ -37,15 +37,13 @@ class Transform {
 
 class ResizeTransform : public Transform {
  public:
-  enum class InterpolationMode { BILINEAR, BICUBIC, NEAREST };
+  enum class InterpolationMode { BILINEAR };
 
-  ResizeTransform(int width, int height)
-      : width_(width),
-        height_(height),
-        interpolationMode_(InterpolationMode::BILINEAR) {}
+  ResizeTransform(const FrameDims& dims)
+      : outputDims_(dims), interpolationMode_(InterpolationMode::BILINEAR) {}
 
-  ResizeTransform(int width, int height, InterpolationMode interpolationMode)
-      : width_(width), height_(height), interpolationMode_(interpolationMode) {}
+  ResizeTransform(const FrameDims& dims, InterpolationMode interpolationMode)
+      : outputDims_(dims), interpolationMode_(interpolationMode) {}
 
   std::string getFilterGraphCpu() const override;
   std::optional<FrameDims> getOutputFrameDims() const override;
@@ -54,8 +52,7 @@ class ResizeTransform : public Transform {
   int getSwsFlags() const;
 
  private:
-  int width_;
-  int height_;
+  FrameDims outputDims_;
   InterpolationMode interpolationMode_;
 };
 

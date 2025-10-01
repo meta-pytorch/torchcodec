@@ -17,10 +17,6 @@ std::string toFilterGraphInterpolation(
   switch (mode) {
     case ResizeTransform::InterpolationMode::BILINEAR:
       return "bilinear";
-    case ResizeTransform::InterpolationMode::BICUBIC:
-      return "bicubic";
-    case ResizeTransform::InterpolationMode::NEAREST:
-      return "nearest";
     default:
       TORCH_CHECK(
           false,
@@ -33,10 +29,6 @@ int toSwsInterpolation(ResizeTransform::InterpolationMode mode) {
   switch (mode) {
     case ResizeTransform::InterpolationMode::BILINEAR:
       return SWS_BILINEAR;
-    case ResizeTransform::InterpolationMode::BICUBIC:
-      return SWS_BICUBIC;
-    case ResizeTransform::InterpolationMode::NEAREST:
-      return SWS_POINT;
     default:
       TORCH_CHECK(
           false,
@@ -48,12 +40,13 @@ int toSwsInterpolation(ResizeTransform::InterpolationMode mode) {
 } // namespace
 
 std::string ResizeTransform::getFilterGraphCpu() const {
-  return "scale=" + std::to_string(width_) + ":" + std::to_string(height_) +
+  return "scale=" + std::to_string(outputDims_.width) + ":" +
+      std::to_string(outputDims_.height) +
       ":sws_flags=" + toFilterGraphInterpolation(interpolationMode_);
 }
 
 std::optional<FrameDims> ResizeTransform::getOutputFrameDims() const {
-  return FrameDims(width_, height_);
+  return outputDims_;
 }
 
 bool ResizeTransform::isResize() const {

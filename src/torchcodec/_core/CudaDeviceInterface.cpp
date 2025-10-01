@@ -174,6 +174,14 @@ CudaDeviceInterface::CudaDeviceInterface(const torch::Device& device)
   TORCH_CHECK(g_cuda, "CudaDeviceInterface was not registered!");
   TORCH_CHECK(
       device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
+
+  // It is important for pytorch itself to create the cuda context. If ffmpeg
+  // creates the context it may not be compatible with pytorch.
+  // This is a dummy tensor to initialize the cuda context.
+  torch::Tensor dummyTensorForCudaInitialization = torch::empty(
+      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
+  ctx_ = getCudaContext(device_);
+  nppCtx_ = getNppStreamContext(device_);
 }
 
 CudaDeviceInterface::~CudaDeviceInterface() {
@@ -191,20 +199,12 @@ void CudaDeviceInterface::initialize(
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
     const AVRational& timeBase,
     [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
-  TORCH_CHECK(!ctx_, "FFmpeg HW device context already initialized");
+  TORCH_CHECK(ctx_, "FFmpeg HW device has not been initialized");
   TORCH_CHECK(codecContext != nullptr, "codecContext is null");
 
+  codecContext->hw_device_ctx = av_buffer_ref(ctx_.get());
   videoStreamOptions_ = videoStreamOptions;
   timeBase_ = timeBase;
-
-  // It is important for pytorch itself to create the cuda context. If ffmpeg
-  // creates the context it may not be compatible with pytorch.
-  // This is a dummy tensor to initialize the cuda context.
-  torch::Tensor dummyTensorForCudaInitialization = torch::empty(
-      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
-  ctx_ = getCudaContext(device_);
-  nppCtx_ = getNppStreamContext(device_);
-  codecContext->hw_device_ctx = av_buffer_ref(ctx_.get());
 }
 
 UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12(
@@ -304,7 +304,7 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
   // Note that CUDA does not yet support transforms, so the only possible
   // frame dimensions are the raw decoded frame's dimensions.
-  auto frameDims = FrameDims(avFrame->width, avFrame->height);
+  auto frameDims = FrameDims(avFrame->height, avFrame->width);
 
   if (preAllocatedOutputTensor.has_value()) {
     auto shape = preAllocatedOutputTensor.value().sizes();
@@ -379,14 +379,15 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
 
   // Above we checked that the AVFrame was on GPU, but that's not enough, we
   // also need to check that the AVFrame is in AV_PIX_FMT_NV12 format (8 bits),
-  // because this is what the NPP color conversion routines expect.
+  // because this is what the NPP color conversion routines expect. This SHOULD
+  // be enforced by our call to maybeConvertAVFrameToNV12() above.
+  auto hwFramesCtx =
+      reinterpret_cast<AVHWFramesContext*>(avFrame->hw_frames_ctx->data);
   TORCH_CHECK(
-      avFrame->hw_frames_ctx != nullptr,
+      hwFramesCtx != nullptr,
       "The AVFrame does not have a hw_frames_ctx. "
       "That's unexpected, please report this to the TorchCodec repo.");
 
-  auto hwFramesCtx =
-      reinterpret_cast<AVHWFramesContext*>(avFrame->hw_frames_ctx->data);
   AVPixelFormat actualFormat = hwFramesCtx->sw_format;
 
   TORCH_CHECK(
