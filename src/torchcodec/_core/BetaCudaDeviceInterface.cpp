@@ -152,6 +152,9 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
 }
 
 void BetaCudaDeviceInterface::initializeInterface(AVStream* avStream) {
+  torch::Tensor dummyTensorForCudaInitialization = torch::empty(
+      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
+
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
 
