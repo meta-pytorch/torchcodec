@@ -1393,7 +1393,9 @@ class TestVideoEncoderOps:
 
         encoded_path = str(tmp_path / f"encoder_output.{format}")
         frame_rate = 30  # Frame rate is fixed with num frames decoded
-        encode_video_to_file(source_frames, frame_rate, encoded_path, crf=0)
+        encode_video_to_file(
+            frames=source_frames, frame_rate=frame_rate, filename=encoded_path, crf=0
+        )
         round_trip_frames = self.decode(encoded_path).data
 
         # In the cases where a lossy pixel format conversion occurs, higher tolerance is needed.
