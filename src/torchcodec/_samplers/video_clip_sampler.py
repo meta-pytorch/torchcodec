@@ -105,7 +105,7 @@ class IndexBasedSamplerArgs(SamplerArgs):
     sample_step: int = 1
 
 
-class VideoClipSampler(nn.Module):
+class DEPRECATED_VideoClipSampler(nn.Module):
     """
     VideoClipSampler will do video clip sampling with given video args and sampler args.
     The video args contains video related information, frames_per_clip, dimensions etc.
