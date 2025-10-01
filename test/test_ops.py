@@ -9,7 +9,7 @@ import io
 import os
 from functools import partial
 
-from .utils import get_ffmpeg_major_version, in_fbcode
+from .utils import get_ffmpeg_major_version, in_fbcode, IS_WINDOWS
 
 os.environ["TORCH_LOGS"] = "output_code"
 import json
@@ -1385,8 +1385,15 @@ class TestVideoEncoderOps:
     @pytest.mark.parametrize("format", ("mov", "mp4", "avi", "mkv", "webm", "flv"))
     def test_video_encoder_test_round_trip(self, tmp_path, format):
         ffmpeg_version = get_ffmpeg_major_version()
-        if ffmpeg_version == 4 and format == "webm":
-            pytest.skip("Codec for webm is not available in the FFmpeg4 installation.")
+        if format == "webm":
+            if ffmpeg_version == 4:
+                pytest.skip(
+                    "Codec for webm is not available in the FFmpeg4 installation."
+                )
+            if IS_WINDOWS and ffmpeg_version in (6, 7):
+                pytest.skip(
+                    "Codec for webm is not available in the FFmpeg6/7 installation on Windows."
+                )
         asset = NASA_VIDEO
         # Test that decode(encode(decode(asset))) == decode(asset)
         source_frames = self.decode(str(asset.path)).data
