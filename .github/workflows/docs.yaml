@@ -33,7 +33,7 @@ jobs:
     name: Build and Upload wheel
     uses: pytorch/test-infra/.github/workflows/build_wheels_linux.yml@main
     with:
-      repository: pytorch/torchcodec
+      repository: meta-pytorch/torchcodec
       ref: ""
       test-infra-repository: pytorch/test-infra
       test-infra-ref: main
@@ -70,7 +70,7 @@ jobs:
           echo python_version_without_periods=${python_version_without_periods} >> $GITHUB_ENV
       - uses: actions/download-artifact@v4
         with:
-          name: pytorch_torchcodec__${{ matrix.python-version }}_cu${{ env.cuda_version_without_periods }}_x86_64
+          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cu${{ env.cuda_version_without_periods }}_x86_64
           path: pytorch/torchcodec/dist/
       - name: Setup miniconda using test-infra
         uses: pytorch/test-infra/.github/actions/setup-miniconda@main

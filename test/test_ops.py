@@ -487,27 +487,41 @@ class TestVideoDecoderOps:
         reason="ffprobe not available internally",
     )
     def test_seek_mode_custom_frame_mappings_fails(self):
-        decoder = create_from_file(
-            str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
-        )
         with pytest.raises(
             RuntimeError,
             match="Missing frame mappings when custom_frame_mappings seek mode is set.",
         ):
+            decoder = create_from_file(
+                str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
+            )
             add_video_stream(decoder, stream_index=0, custom_frame_mappings=None)
 
-        decoder = create_from_file(
-            str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
-        )
-        different_lengths = (
-            torch.tensor([1, 2, 3]),
-            torch.tensor([1, 2]),
-            torch.tensor([1, 2, 3]),
-        )
+        with pytest.raises(
+            RuntimeError,
+            match="all_frames and duration tensors must be int64 dtype, and is_key_frame tensor must be a bool dtype.",
+        ):
+            decoder = create_from_file(
+                str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
+            )
+            wrong_types = (
+                torch.tensor([1.1, 2.2, 3.3]),
+                torch.tensor([1, 2]),
+                torch.tensor([1, 2, 3]),
+            )
+            add_video_stream(decoder, stream_index=0, custom_frame_mappings=wrong_types)
+
         with pytest.raises(
             RuntimeError,
             match="all_frames, is_key_frame, and duration from custom_frame_mappings were not same size.",
         ):
+            decoder = create_from_file(
+                str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
+            )
+            different_lengths = (
+                torch.tensor([1, 2, 3]),
+                torch.tensor([False, False]),
+                torch.tensor([1, 2, 3]),
+            )
             add_video_stream(
                 decoder, stream_index=0, custom_frame_mappings=different_lengths
             )
@@ -1276,6 +1290,26 @@ class TestVideoEncoderOps:
                 frames=torch.randint(high=1, size=(10, 2, 60, 60), dtype=torch.uint8),
                 frame_rate=10,
                 filename=output_file,
+            )
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"Couldn't allocate AVFormatContext. The destination file is ./file.bad_extension, check the desired extension\?",
+        ):
+            encode_video_to_file(
+                frames=torch.randint(high=255, size=(10, 3, 60, 60), dtype=torch.uint8),
+                frame_rate=10,
+                filename="./file.bad_extension",
+            )
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"avio_open failed. The destination file is ./bad/path.mp3, make sure it's a valid path\?",
+        ):
+            encode_video_to_file(
+                frames=torch.randint(high=255, size=(10, 3, 60, 60), dtype=torch.uint8),
+                frame_rate=10,
+                filename="./bad/path.mp3",
             )
 
     def decode(self, file_path) -> torch.Tensor:
