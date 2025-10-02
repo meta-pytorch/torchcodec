@@ -222,7 +222,8 @@ TEST_P(SingleStreamDecoderTest, DecodesFramesInABatchInNCHW) {
       *ourDecoder->getContainerMetadata().bestVideoStreamIndex;
   ourDecoder->addVideoStream(bestVideoStreamIndex);
   // Frame with index 180 corresponds to timestamp 6.006.
-  auto output = ourDecoder->getFramesAtIndices({0, 180});
+  auto frameIndices = torch::tensor({0, 180});
+  auto output = ourDecoder->getFramesAtIndices(frameIndices);
   auto tensor = output.data;
   EXPECT_EQ(tensor.sizes(), std::vector<long>({2, 3, 270, 480}));
 
@@ -246,7 +247,8 @@ TEST_P(SingleStreamDecoderTest, DecodesFramesInABatchInNHWC) {
   videoStreamOptions.dimensionOrder = "NHWC";
   ourDecoder->addVideoStream(bestVideoStreamIndex, videoStreamOptions);
   // Frame with index 180 corresponds to timestamp 6.006.
-  auto output = ourDecoder->getFramesAtIndices({0, 180});
+  auto frameIndices = torch::tensor({0, 180});
+  auto output = ourDecoder->getFramesAtIndices(frameIndices);
   auto tensor = output.data;
   EXPECT_EQ(tensor.sizes(), std::vector<long>({2, 270, 480, 3}));
 

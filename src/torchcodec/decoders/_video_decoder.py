@@ -240,24 +240,20 @@ class VideoDecoder:
             duration_seconds=duration_seconds.item(),
         )
 
-    def get_frames_at(self, indices: list[int]) -> FrameBatch:
+    def get_frames_at(self, indices: Union[torch.Tensor, list[int]]) -> FrameBatch:
         """Return frames at the given indices.
 
         Args:
-            indices (list of int): The indices of the frames to retrieve.
+            indices (torch.Tensor or list of int): The indices of the frames to retrieve.
 
         Returns:
             FrameBatch: The frames at the given indices.
         """
-        if isinstance(indices, torch.Tensor):
-            # TODO we should avoid converting tensors to lists and just let the
-            # core ops and C++ code natively accept tensors.  See
-            # https://github.com/pytorch/torchcodec/issues/879
-            indices = indices.to(torch.int).tolist()
 
         data, pts_seconds, duration_seconds = core.get_frames_at_indices(
             self._decoder, frame_indices=indices
         )
+
         return FrameBatch(
             data=data,
             pts_seconds=pts_seconds,

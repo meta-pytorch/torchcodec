@@ -106,7 +106,7 @@ class SingleStreamDecoder {
 
   // Returns frames at the given indices for a given stream as a single stacked
   // Tensor.
-  FrameBatchOutput getFramesAtIndices(const std::vector<int64_t>& frameIndices);
+  FrameBatchOutput getFramesAtIndices(const torch::Tensor& frameIndices);
 
   // Returns frames within a given range. The range is defined by [start, stop).
   // The values retrieved from the range are: [start, start+step,
