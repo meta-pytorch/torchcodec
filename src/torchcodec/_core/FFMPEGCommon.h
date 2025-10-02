@@ -135,6 +135,7 @@ class ReferenceAVPacket {
   ~ReferenceAVPacket();
   AVPacket* get();
   AVPacket* operator->();
+  void reset(ReferenceAVPacket& other);
 };
 
 // av_find_best_stream is not const-correct before commit:

@@ -97,12 +97,17 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
       "x",
       caps.nMaxHeight);
 
+  // See nMaxMBCount in cuviddec.h
+  constexpr unsigned int macroblockConstant = 256;
   TORCH_CHECK(
-      videoFormat->coded_width * videoFormat->coded_height / 256 <=
+      videoFormat->coded_width * videoFormat->coded_height /
+              macroblockConstant <=
           caps.nMaxMBCount,
       "Video is too large (too many macroblocks). "
-      "Provided (width * height / 256): ",
-      videoFormat->coded_width * videoFormat->coded_height / 256,
+      "Provided (width * height / ",
+      macroblockConstant,
+      "): ",
+      videoFormat->coded_width * videoFormat->coded_height / macroblockConstant,
       " vs supported:",
       caps.nMaxMBCount);
 
@@ -310,8 +315,10 @@ void BetaCudaDeviceInterface::applyBSF(ReferenceAVPacket& packet) {
   // fields of the filtered packet into the original packet. The filtered packet
   // fields are re-set by av_packet_move_ref, so when it goes out of scope and
   // gets destructed, it's not going to affect the original packet.
-  av_packet_unref(packet.get());
-  av_packet_move_ref(packet.get(), filteredPacket.get());
+  packet.reset(filteredPacket);
+  // TODONVDEC P0: consider cleaner ways to do this. Maybe we should let
+  // applyBSF return a new packet, and maybe that new packet needs to be a field
+  // on the interface to avoid complex lifetime issues.
 }
 
 // Parser triggers this callback within cuvidParseVideoData when a frame is
@@ -411,6 +418,9 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
   avFrame->format = AV_PIX_FMT_CUDA;
   avFrame->pts = dispInfo.timestamp;
 
+  // TODONVDEC P0: Zero division error!!!
+  // TODONVDEC P0: Move AVRational arithmetic to FFMPEGCommon, and put the
+  // similar SingleStreamDecoder stuff there too.
   unsigned int frameRateNum = videoFormat_.frame_rate.numerator;
   unsigned int frameRateDen = videoFormat_.frame_rate.denominator;
   int64_t duration = static_cast<int64_t>((frameRateDen * timeBase_.den)) /
