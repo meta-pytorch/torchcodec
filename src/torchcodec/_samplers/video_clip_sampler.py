@@ -227,6 +227,8 @@ class DEPRECATED_VideoClipSampler(nn.Module):
                 clip_start_idx + i * index_based_sampler_args.video_frame_dilation
                 for i in range(index_based_sampler_args.frames_per_clip)
             ]
+            # Need torch.stack to convert List[Tensor[int]] into 1D Tensor[int]
+            batch_indexes = torch.stack(batch_indexes)
             frames, *_ = get_frames_at_indices(
                 video_decoder,
                 frame_indices=batch_indexes,

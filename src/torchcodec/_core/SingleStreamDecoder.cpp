@@ -606,11 +606,18 @@ FrameOutput SingleStreamDecoder::getFrameAtIndexInternal(
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
-    const std::vector<int64_t>& frameIndices) {
+    const torch::Tensor& frameIndices) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
 
-  auto indicesAreSorted =
-      std::is_sorted(frameIndices.begin(), frameIndices.end());
+  auto frameIndicesAccessor = frameIndices.accessor<int64_t, 1>();
+
+  bool indicesAreSorted = true;
+  for (int64_t i = 1; i < frameIndices.numel(); ++i) {
+    if (frameIndicesAccessor[i] < frameIndicesAccessor[i - 1]) {
+      indicesAreSorted = false;
+      break;
+    }
+  }
 
   std::vector<size_t> argsort;
   if (!indicesAreSorted) {
@@ -618,13 +625,15 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     // when sorted, it's  [10, 11, 12, 13] <-- this is the sorted order we want
     //                                         to use to decode the frames
     // and argsort is     [ 1,  3,  2,  0]
-    argsort.resize(frameIndices.size());
+    argsort.resize(frameIndices.numel());
     for (size_t i = 0; i < argsort.size(); ++i) {
       argsort[i] = i;
     }
     std::sort(
-        argsort.begin(), argsort.end(), [&frameIndices](size_t a, size_t b) {
-          return frameIndices[a] < frameIndices[b];
+        argsort.begin(),
+        argsort.end(),
+        [&frameIndicesAccessor](size_t a, size_t b) {
+          return frameIndicesAccessor[a] < frameIndicesAccessor[b];
         });
   }
 
@@ -633,12 +642,12 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   const auto& streamInfo = streamInfos_[activeStreamIndex_];
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
-      frameIndices.size(), videoStreamOptions, streamMetadata);
+      frameIndices.numel(), videoStreamOptions, streamMetadata);
 
   auto previousIndexInVideo = -1;
-  for (size_t f = 0; f < frameIndices.size(); ++f) {
+  for (int64_t f = 0; f < frameIndices.numel(); ++f) {
     auto indexInOutput = indicesAreSorted ? f : argsort[f];
-    auto indexInVideo = frameIndices[indexInOutput];
+    auto indexInVideo = frameIndicesAccessor[indexInOutput];
 
     if ((f > 0) && (indexInVideo == previousIndexInVideo)) {
       // Avoid decoding the same frame twice
@@ -780,7 +789,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
     frameIndices[i] = secondsToIndexLowerBound(frameSeconds);
   }
 
-  return getFramesAtIndices(frameIndices);
+  // TODO: Support tensors natively instead of a vector to avoid a copy.
+  return getFramesAtIndices(torch::tensor(frameIndices));
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
