@@ -93,7 +93,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
 } // namespace facebook::torchcodec
 
-// Note: [sendPacket, receiveFrame, frame ordering and NVCUVID callbacks]
+/* clang-format off */
+// Note: [General design, sendPacket, receiveFrame, frame ordering and NVCUVID callbacks]
 //
 // At a high level, this decoding interface mimics the FFmpeg send/receive
 // architecture:
@@ -120,46 +121,63 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 // - B1 is a B-frame (bi-directional) which needs both I0 and P2 to be decoded
 // - P2 is a P-frame (predicted frame) which only needs I0 to be decodec.
 //
-// Because B1 needs both I0 and P2 to be properly decoded, the decode order must
-// be: I0 P2 B1 P4 B3 ... which is different from the display order.
+// Because B1 needs both I0 and P2 to be properly decoded, the decode order
+// (packet order), defined by the encoder, must be: I0 P2 B1 P4 B3 ... which is
+// different from the display order.
 //
-// We don't have to worry about the decode order: it's up to the parser to
-// figure that out. But we have to make sure that receiveFrame() returns frames
-// in display order.
-//
-// SendPacket(AVPacket)'s job is just to send the packet to the NVCUVID parser
-// by calling cuvidParseVideoData(packet). When cuvidParseVideoData(packet) is
-// called, it may trigger callbacks, particularly:
+// SendPacket(AVPacket)'s job is just to pass down the packet to the NVCUVID
+// parser by calling cuvidParseVideoData(packet). When
+// cuvidParseVideoData(packet) is called, it may trigger callbacks,
+// particularly:
+// - streamPropertyChange(videoFormat): triggered once at the start of the
+//   stream, and possibly later if the stream properties change (e.g.
+//   resolution).
 // - frameReadyForDecoding(picParams)): triggered **in decode order** when the
 //   parser has accumulated enough data to decode a frame. We send that frame to
-//   the NVDEC hardware for **async** decoding. While that frame is being
-//   decoded, we store a light reference (a Slot) to that frame in the
-//   readyFrames_, and mark that slot as BEING_DECODED. The value that uniquely
-//   identifies that frame in the readyFrames_ is its "slotId", which is given
-//   to us by NVCUVID in the callback parameter: picParams->CurrPicIdx.
+//   the NVDEC hardware for **async** decoding.
 // - frameReadyInDisplayOrder(dispInfo)): triggered **in display order** when a
-//   frame is ready to be "displayed" (returned). When it is triggered, we look
-//   up the corresponding frame/slot in the readyFrames_, using
-//   dispInfo->picture_index to match it against a given BEING_DECODED slotId.
-//   We mark that frame/slot as READY_FOR_OUTPUT.
-//   Crucially, this callback also tells us the pts of that frame. We store
-//   the pts and other relevant info the slot.
+//   frame is ready to be "displayed" (returned). At that point, the parser also
+//   gives us the pts of that frame. We store (a reference to) that frame in a
+//   FIFO queue: readyFrames_.
 //
-// Said differently, from the perspective of the readyFrames_, at any point in
-// time a slot/frame in the readyFrames_ can be in 3 states:
-// - empty: no slot for that slotId exists in the readyFrames_
-// - BEING_DECODED: frameReadyForDecoding was triggered for that frame, and the
-//   frame was sent to NVDEC for async decoding. We don't know its pts because
-//   the parser didn't trigger frameReadyInDisplayOrder() for that frame yet.
-// - READY_FOR_OUTPUT: frameReadyInDisplayOrder was triggered for that frame, it
-//   is decoded and ready to be mapped and returned. We know its pts.
+// When receiveFrame(AVFrame) is called, if readyFrames_ is not empty, we pop
+// the front of the queue, which is the next frame in display order, and map it
+// to an AVFrame by calling cuvidMapVideoFrame(). If readyFrames_ is empty we
+// return EAGAIN to indicate the caller should send more packets.
 //
-// Because frameReadyInDisplayOrder is triggered in display order, we know that
-// if a slot is READY_FOR_OUTPUT, then all frames with a lower pts are also
-// READY_FOR_OUTPUT, or already returned. So when receiveFrame() is called, we
-// just need to look for the READY_FOR_OUTPUT slot with the lowest pts, and
-// return that frame. This guarantees that receiveFrame() returns frames in
-// display order. If no slot is READY_FOR_OUTPUT, then we return EAGAIN to
-// indicate the caller should send more packets.
+// There is potentially a small inefficiency due to the callback design: in
+// order for us to know that a frame is ready in display order, we need the
+// frameReadyInDisplayOrder callback to be triggered. This can only happen
+// within cuvidParseVideoData(packet) in sendPacket(). This means there may be
+// the following sequence of calls:
 //
-// Simple, innit?
+// sendPacket(relevantAVPacket)
+//   cuvidParseVideoData(relevantAVPacket)
+//     frameReadyForDecoding()
+//       cuvidDecodePicture()            Send frame to NVDEC for async decoding
+//
+// receiveFrame() -> EAGAIN              Frame is potentially already decoded 
+//                                       and could be returned, but we don't
+//                                       know because frameReadyInDisplayOrder
+//                                       hasn't been triggered yet. We'll only
+//                                       know after sending another,
+//                                       potentially irrelevant packet.
+//
+// sendPacket(irrelevantAVPacket)
+//   cuvidParseVideoData(irrelevantAVPacket)
+//     frameReadyInDisplayOrder()       Only now do we know that our target
+//                                      frame is ready.
+//
+// receiveFrame()                       return target frame
+//
+// How much this matters in practice is unclear, but probably negligible in
+// general. Particularly when frames are decoded consecutively anyway, the
+// "irrelevantPacket" is actually relevant for a future target frame.
+//
+// Note that the alternative is to *not* rely on the frameReadyInDisplayOrder
+// callback. It's technically possible, but it would mean we now have to solve
+// two hard, *codec-dependent* problems that the callback was solving for us:
+// - we have to guess the frame's pts ourselves
+// - we have to re-order the frames ourselves to preserve display order.
+//
+/* clang-format on */
