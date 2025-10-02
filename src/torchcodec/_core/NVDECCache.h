@@ -49,11 +49,11 @@ class NVDECCache {
   // all these parameters match.
   struct CacheKey {
     cudaVideoCodec codecType;
-    unsigned int width;
-    unsigned int height;
+    uint32_t width;
+    uint32_t height;
     cudaVideoChromaFormat chromaFormat;
-    unsigned int bitDepthLumaMinus8;
-    unsigned char numDecodeSurfaces;
+    uint32_t bitDepthLumaMinus8;
+    uint8_t numDecodeSurfaces;
 
     CacheKey() = delete;
 
