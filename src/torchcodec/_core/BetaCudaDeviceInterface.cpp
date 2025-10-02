@@ -144,7 +144,7 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
   // TODONVDEC P0: we probably need to free the frames that have been decoded by
-  // NVDEC but not yet "mapped" - i.e. those that are still in frameBuffer_?
+  // NVDEC but not yet "mapped" - i.e. those that are still in readyFrames_?
 
   if (decoder_) {
     NVDECCache::getCache(device_.index())
@@ -328,39 +328,33 @@ int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* picParams) {
 
   // Send frame to be decoded by NVDEC - non-blocking call.
   CUresult result = cuvidDecodePicture(*decoder_.get(), picParams);
-  if (result != CUDA_SUCCESS) {
-    return 0; // Yes, you're reading that right, 0 means error.
-  }
 
-  frameBuffer_.markAsBeingDecoded(/*slotId=*/picParams->CurrPicIdx);
-  return 1;
+  // Yes, you're reading that right, 0 means error, 1 means success
+  return (result == CUDA_SUCCESS);
 }
 
 int BetaCudaDeviceInterface::frameReadyInDisplayOrder(
     CUVIDPARSERDISPINFO* dispInfo) {
-  frameBuffer_.markSlotReadyAndSetInfo(
-      /*slotId=*/dispInfo->picture_index, dispInfo);
-  return 1;
+  readyFrames_.push(*dispInfo);
+  return 1; // success
 }
 
 // Moral equivalent of avcodec_receive_frame().
 int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
-  FrameBuffer::Slot* slot = frameBuffer_.findReadySlotWithLowestPts();
-  if (slot == nullptr) {
+  if (readyFrames_.empty()) {
     // No frame found, instruct caller to try again later after sending more
     // packets.
     return AVERROR(EAGAIN);
   }
+  CUVIDPARSERDISPINFO dispInfo = readyFrames_.front();
+  readyFrames_.pop();
 
   CUVIDPROCPARAMS procParams = {};
-  CUVIDPARSERDISPINFO dispInfo = slot->dispInfo;
   procParams.progressive_frame = dispInfo.progressive_frame;
   procParams.top_field_first = dispInfo.top_field_first;
   procParams.unpaired_field = dispInfo.repeat_first_field < 0;
   CUdeviceptr framePtr = 0;
   unsigned int pitch = 0;
-
-  frameBuffer_.free(slot->slotId);
 
   // We know the frame we want was sent to the hardware decoder, but now we need
   // to "map" it to an "output surface" before we can use its data. This is a
@@ -478,7 +472,8 @@ void BetaCudaDeviceInterface::flush() {
 
   isFlushing_ = false;
 
-  frameBuffer_.clear();
+  std::queue<CUVIDPARSERDISPINFO> emptyQueue;
+  std::swap(readyFrames_, emptyQueue);
 
   eofSent_ = false;
 }
@@ -510,59 +505,6 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       avFrame,
       frameOutput,
       preAllocatedOutputTensor);
-}
-
-void BetaCudaDeviceInterface::FrameBuffer::markAsBeingDecoded(int slotId) {
-  auto it = map_.find(slotId);
-  TORCH_CHECK(
-      it == map_.end(),
-      "Slot ",
-      slotId,
-      " is already occupied. This should never happen.");
-
-  map_.emplace(slotId, Slot(slotId, SlotState::BEING_DECODED));
-}
-
-void BetaCudaDeviceInterface::FrameBuffer::markSlotReadyAndSetInfo(
-    int slotId,
-    CUVIDPARSERDISPINFO* dispInfo) {
-  auto it = map_.find(slotId);
-  TORCH_CHECK(
-      it != map_.end(),
-      "Could not find matching slot with slotId ",
-      slotId,
-      ". This should never happen.");
-
-  TORCH_CHECK(
-      it->second.state == SlotState::BEING_DECODED,
-      "Slot ",
-      slotId,
-      " is not in BEING_DECODED state. This should never happen.");
-  it->second.state = SlotState::READY_FOR_OUTPUT;
-  it->second.dispInfo = *dispInfo;
-}
-
-void BetaCudaDeviceInterface::FrameBuffer::free(int slotId) {
-  auto it = map_.find(slotId);
-  TORCH_CHECK(
-      it != map_.end(),
-      "Tried to free non-existing slot with slotId",
-      slotId,
-      ". This should never happen.");
-  map_.erase(it);
-}
-
-BetaCudaDeviceInterface::FrameBuffer::Slot*
-BetaCudaDeviceInterface::FrameBuffer::findReadySlotWithLowestPts() {
-  Slot* outputSlot = nullptr;
-  for (auto& [_, slot] : map_) {
-    if (slot.state == SlotState::READY_FOR_OUTPUT &&
-        (outputSlot == nullptr ||
-         slot.dispInfo.timestamp < outputSlot->dispInfo.timestamp)) {
-      outputSlot = &slot;
-    }
-  }
-  return outputSlot;
 }
 
 } // namespace facebook::torchcodec
