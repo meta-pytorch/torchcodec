@@ -462,7 +462,7 @@ void SingleStreamDecoder::addStream(
   if (mediaType == AVMEDIA_TYPE_VIDEO) {
     if (deviceInterface_) {
       deviceInterface_->initializeContext(codecContext);
-      deviceInterface_->initializeInterface(streamInfo.stream);
+      deviceInterface_->initializeInterface(streamInfo.stream, formatContext_);
     }
   }
 

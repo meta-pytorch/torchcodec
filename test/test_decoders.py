@@ -44,6 +44,7 @@ from .utils import (
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
     TEST_SRC_2_720P,
+    TEST_SRC_2_720P_H265,
 )
 
 
@@ -1415,7 +1416,9 @@ class TestVideoDecoder:
     # assert_tensor_close_on_at_least or something like that.
 
     @needs_cuda
-    @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
+    @pytest.mark.parametrize(
+        "asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE, TEST_SRC_2_720P_H265)
+    )
     @pytest.mark.parametrize("contiguous_indices", (True, False))
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frame_at(
@@ -1445,7 +1448,9 @@ class TestVideoDecoder:
             assert beta_frame.duration_seconds == ref_frame.duration_seconds
 
     @needs_cuda
-    @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
+    @pytest.mark.parametrize(
+        "asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE, TEST_SRC_2_720P_H265)
+    )
     @pytest.mark.parametrize("contiguous_indices", (True, False))
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frames_at(
@@ -1476,7 +1481,9 @@ class TestVideoDecoder:
         )
 
     @needs_cuda
-    @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
+    @pytest.mark.parametrize(
+        "asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE, TEST_SRC_2_720P_H265)
+    )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frame_played_at(self, asset, seek_mode):
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
@@ -1498,7 +1505,9 @@ class TestVideoDecoder:
             assert beta_frame.duration_seconds == ref_frame.duration_seconds
 
     @needs_cuda
-    @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
+    @pytest.mark.parametrize(
+        "asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE, TEST_SRC_2_720P_H265)
+    )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frames_played_at(self, asset, seek_mode):
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
@@ -1521,7 +1530,9 @@ class TestVideoDecoder:
         )
 
     @needs_cuda
-    @pytest.mark.parametrize("asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE))
+    @pytest.mark.parametrize(
+        "asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE, TEST_SRC_2_720P_H265)
+    )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_backwards(self, asset, seek_mode):
 
@@ -1542,11 +1553,23 @@ class TestVideoDecoder:
             assert beta_frame.duration_seconds == ref_frame.duration_seconds
 
     @needs_cuda
+    def test_beta_cuda_interface_small_h265(self):
+        # TODONVDEC P2 investigate why/how the default interface can decode this
+        # video.
+
+        # This is fine on the default interface - why?
+        VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
+        # But it fails on the beta interface due to input validation checks, which we took from DALI!
+        with pytest.raises(
+            RuntimeError,
+            match="Video is too small in at least one dimension. Provided: 128x128 vs supported:144x144",
+        ):
+            VideoDecoder(H265_VIDEO.path, device="cuda:0:beta").get_frame_at(0)
+
+    @needs_cuda
     def test_beta_cuda_interface_error(self):
-        with pytest.raises(RuntimeError, match="Can only do H264 for now"):
+        with pytest.raises(RuntimeError, match="Unsupported codec type: av1"):
             VideoDecoder(AV1_VIDEO.path, device="cuda:0:beta")
-        with pytest.raises(RuntimeError, match="Can only do H264 for now"):
-            VideoDecoder(H265_VIDEO.path, device="cuda:0:beta")
         with pytest.raises(RuntimeError, match="Unsupported device"):
             VideoDecoder(NASA_VIDEO.path, device="cuda:0:bad_variant")
 

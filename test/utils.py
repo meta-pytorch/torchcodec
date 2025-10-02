@@ -688,3 +688,12 @@ TEST_SRC_2_720P = TestVideo(
     },
     frames={0: {}},  # Not needed for now
 )
+# ffmpeg -f lavfi -i testsrc2=duration=10:size=1280x720:rate=30 -c:v libx265 -crf 23 -preset medium output.mp4
+TEST_SRC_2_720P_H265 = TestVideo(
+    filename="testsrc2_h265.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)

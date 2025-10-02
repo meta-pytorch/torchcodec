@@ -55,7 +55,9 @@ class DeviceInterface {
   virtual void initializeContext(
       [[maybe_unused]] AVCodecContext* codecContext) {}
 
-  virtual void initializeInterface([[maybe_unused]] AVStream* stream) {}
+  virtual void initializeInterface(
+      [[maybe_unused]] const AVStream* stream,
+      [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx) {}
 
   virtual void convertAVFrameToFrameOutput(
       const VideoStreamOptions& videoStreamOptions,
