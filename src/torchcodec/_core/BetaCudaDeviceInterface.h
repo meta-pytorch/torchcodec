@@ -156,7 +156,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 //     frameReadyForDecoding()
 //       cuvidDecodePicture()            Send frame to NVDEC for async decoding
 //
-// receiveFrame() -> EAGAIN              Frame is potentially already decoded 
+// receiveFrame() -> EAGAIN              Frame is potentially already decoded
 //                                       and could be returned, but we don't
 //                                       know because frameReadyInDisplayOrder
 //                                       hasn't been triggered yet. We'll only
