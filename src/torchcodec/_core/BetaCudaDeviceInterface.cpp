@@ -90,12 +90,17 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
       "x",
       caps.nMaxHeight);
 
+  // See nMaxMBCount in cuviddec.h
+  constexpr unsigned int macroblockConstant = 256;
   TORCH_CHECK(
-      videoFormat->coded_width * videoFormat->coded_height / 256 <=
+      videoFormat->coded_width * videoFormat->coded_height /
+              macroblockConstant <=
           caps.nMaxMBCount,
       "Video is too large (too many macroblocks). "
-      "Provided (width * height / 256): ",
-      videoFormat->coded_width * videoFormat->coded_height / 256,
+      "Provided (width * height / ",
+      macroblockConstant,
+      "): ",
+      videoFormat->coded_width * videoFormat->coded_height / macroblockConstant,
       " vs supported:",
       caps.nMaxMBCount);
 
@@ -440,6 +445,9 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
   avFrame->format = AV_PIX_FMT_CUDA;
   avFrame->pts = dispInfo.timestamp; // == guessedPts
 
+  // TODONVDEC P0: Zero division error!!!
+  // TODONVDEC P0: Move AVRational arithmetic to FFMPEGCommon, and put the
+  // similar SingleStreamDecoder stuff there too.
   unsigned int frameRateNum = videoFormat_.frame_rate.numerator;
   unsigned int frameRateDen = videoFormat_.frame_rate.denominator;
   int64_t duration = static_cast<int64_t>((frameRateDen * timeBase_.den)) /
