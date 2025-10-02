@@ -312,8 +312,10 @@ void BetaCudaDeviceInterface::applyBSF(ReferenceAVPacket& packet) {
   // fields of the filtered packet into the original packet. The filtered packet
   // fields are re-set by av_packet_move_ref, so when it goes out of scope and
   // gets destructed, it's not going to affect the original packet.
-  av_packet_unref(packet.get());
-  av_packet_move_ref(packet.get(), filteredPacket.get());
+  packet.reset(filteredPacket);
+  // TODONVDEC P0: consider cleaner ways to do this. Maybe we should let
+  // applyBSF return a new packet, and maybe that new packet needs to be a field
+  // on the interface to avoid complex lifetime issues.
 }
 
 // Parser triggers this callback within cuvidParseVideoData when a frame is

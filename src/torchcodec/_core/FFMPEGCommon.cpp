@@ -33,6 +33,13 @@ AVPacket* ReferenceAVPacket::operator->() {
   return avPacket_;
 }
 
+void ReferenceAVPacket::reset(ReferenceAVPacket& other) {
+  if (this != &other) {
+    av_packet_unref(avPacket_);
+    av_packet_move_ref(avPacket_, other.avPacket_);
+  }
+}
+
 AVCodecOnlyUseForCallingAVFindBestStream
 makeAVCodecOnlyUseForCallingAVFindBestStream(const AVCodec* codec) {
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(59, 18, 100)
