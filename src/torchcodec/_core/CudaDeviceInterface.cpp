@@ -209,7 +209,7 @@ void CudaDeviceInterface::initializeVideo(
   videoStreamOptions_ = videoStreamOptions;
 }
 
-UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12(
+UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
     UniqueAVFrame& avFrame) {
   // We need FFmpeg filters to handle those conversion cases which are not
   // directly implemented in CUDA or CPU device interface (in case of a
@@ -323,16 +323,16 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
 
   // All of our CUDA decoding assumes NV12 format. We handle non-NV12 formats by
   // converting them to NV12.
-  avFrame = maybeConvertAVFrameToNV12(avFrame);
+  avFrame = maybeConvertAVFrameToNV12OrRGB24(avFrame);
 
   if (avFrame->format != AV_PIX_FMT_CUDA) {
     // The frame's format is AV_PIX_FMT_CUDA if and only if its content is on
     // the GPU. In this branch, the frame is on the CPU. There are two possible
     // reasons:
     //
-    //   1. During maybeConvertAVFrameToNV12(), we had a non-NV12 format frame
-    //      and we're on FFmpeg 4.4 or earlier. In such cases, we had to use CPU
-    //      filters and we just converted the frame to RGB24.
+    //   1. During maybeConvertAVFrameToNV12OrRGB24(), we had a non-NV12 format
+    //      frame and we're on FFmpeg 4.4 or earlier. In such cases, we had to
+    //      use CPU filters and we just converted the frame to RGB24.
     //   2. This is what NVDEC gave us if it wasn't able to decode a frame, for
     //      whatever reason. Typically that happens if the video's encoder isn't
     //      supported by NVDEC.
@@ -382,7 +382,7 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   // Above we checked that the AVFrame was on GPU, but that's not enough, we
   // also need to check that the AVFrame is in AV_PIX_FMT_NV12 format (8 bits),
   // because this is what the NPP color conversion routines expect. This SHOULD
-  // be enforced by our call to maybeConvertAVFrameToNV12() above.
+  // be enforced by our call to maybeConvertAVFrameToNV12OrRGB24() above.
   auto hwFramesCtx =
       reinterpret_cast<AVHWFramesContext*>(avFrame->hw_frames_ctx->data);
   TORCH_CHECK(

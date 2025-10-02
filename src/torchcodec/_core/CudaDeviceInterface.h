@@ -40,7 +40,7 @@ class CudaDeviceInterface : public DeviceInterface {
   // Our CUDA decoding code assumes NV12 format. In order to handle other
   // kinds of input, we need to convert them to NV12. Our current implementation
   // does this using filtergraph.
-  UniqueAVFrame maybeConvertAVFrameToNV12(UniqueAVFrame& avFrame);
+  UniqueAVFrame maybeConvertAVFrameToNV12OrRGB24(UniqueAVFrame& avFrame);
 
   VideoStreamOptions videoStreamOptions_;
   AVRational timeBase_;
