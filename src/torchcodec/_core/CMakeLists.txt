@@ -304,6 +304,8 @@ else()
         set(ffmpeg_major_version "6")
     elseif (${libavcodec_major_version} STREQUAL "61")
         set(ffmpeg_major_version "7")
+    elseif (${libavcodec_major_version} STREQUAL "62")
+        set(ffmpeg_major_version "8")
     else()
         message(
             FATAL_ERROR
