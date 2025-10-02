@@ -1202,6 +1202,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
       if (status == AVERROR_EOF) {
         // End of file reached. We must drain the decoder
         if (useCustomInterface) {
+          // TODONVDEC P0: Re-think this. This should be simpler.
           AutoAVPacket eofAutoPacket;
           ReferenceAVPacket eofPacket(eofAutoPacket);
           eofPacket->data = nullptr;
