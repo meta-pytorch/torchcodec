@@ -13,11 +13,21 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
+// TODONVDEC P1 Changes were made to this file to accomodate for the BETA CUDA
+// interface (see other TODONVDEC below). That's because the BETA CUDA interface
+// relies on this default CUDA interface to do the color conversion. That's
+// hacky, ugly, and leads to complicated code. We should refactor all this so
+// that an interface doesn't need to know anything about any other interface.
+// Note - this is more than just about the BETA CUDA interface: this default
+// interface already relies on the CPU interface to do software decoding when
+// needed, and that's already leading to similar complications.
+
 namespace facebook::torchcodec {
 namespace {
 
-static bool g_cuda =
-    registerDeviceInterface(torch::kCUDA, [](const torch::Device& device) {
+static bool g_cuda = registerDeviceInterface(
+    DeviceInterfaceKey(torch::kCUDA),
+    [](const torch::Device& device) {
       return new CudaDeviceInterface(device);
     });
 
@@ -193,13 +203,18 @@ CudaDeviceInterface::~CudaDeviceInterface() {
   }
 }
 
-void CudaDeviceInterface::initialize(
-    AVCodecContext* codecContext,
-    const AVRational& timeBase) {
-  TORCH_CHECK(ctx_, "FFmpeg HW device has not been initialized");
-  TORCH_CHECK(codecContext != nullptr, "codecContext is null");
-  codecContext->hw_device_ctx = av_buffer_ref(ctx_.get());
-  timeBase_ = timeBase;
+void CudaDeviceInterface::initialize(const AVStream* avStream) {
+  TORCH_CHECK(avStream != nullptr, "avStream is null");
+  timeBase_ = avStream->time_base;
+
+  cpuInterface_ = createDeviceInterface(torch::kCPU);
+  TORCH_CHECK(
+      cpuInterface_ != nullptr, "Failed to create CPU device interface");
+  cpuInterface_->initialize(avStream);
+  cpuInterface_->initializeVideo(
+      VideoStreamOptions(),
+      {},
+      /*resizedOutputDims=*/std::nullopt);
 }
 
 void CudaDeviceInterface::initializeVideo(
@@ -207,6 +222,13 @@ void CudaDeviceInterface::initializeVideo(
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
     [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
   videoStreamOptions_ = videoStreamOptions;
+}
+
+void CudaDeviceInterface::registerHardwareDeviceWithCodec(
+    AVCodecContext* codecContext) {
+  TORCH_CHECK(ctx_, "FFmpeg HW device has not been initialized");
+  TORCH_CHECK(codecContext != nullptr, "codecContext is null");
+  codecContext->hw_device_ctx = av_buffer_ref(ctx_.get());
 }
 
 UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
@@ -219,6 +241,12 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
   // skipping filters context as CPU device interface will handle everything for
   // us.
   if (avFrame->format != AV_PIX_FMT_CUDA) {
+    return std::move(avFrame);
+  }
+
+  if (avFrame->hw_frames_ctx == nullptr) {
+    // TODONVDEC P2 return early for for beta interface where avFrames don't
+    // have a hw_frames_ctx. We should get rid of this or improve the logic.
     return std::move(avFrame);
   }
 
@@ -351,19 +379,7 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     } else {
       // Reason 2 above. We need to do a full conversion which requires an
       // actual CPU device.
-      //
-      // TODO: Perhaps we should cache cpuInterface?
-      auto cpuInterface = createDeviceInterface(torch::kCPU);
-      TORCH_CHECK(
-          cpuInterface != nullptr, "Failed to create CPU device interface");
-      cpuInterface->initialize(
-          /*codecContext=*/nullptr, timeBase_);
-      cpuInterface->initializeVideo(
-          VideoStreamOptions(),
-          {},
-          /*resizedOutputDims=*/std::nullopt);
-
-      cpuInterface->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
+      cpuInterface_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
     }
 
     // Finally, we need to send the frame back to the GPU. Note that the
@@ -383,22 +399,23 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   // also need to check that the AVFrame is in AV_PIX_FMT_NV12 format (8 bits),
   // because this is what the NPP color conversion routines expect. This SHOULD
   // be enforced by our call to maybeConvertAVFrameToNV12OrRGB24() above.
-  auto hwFramesCtx =
-      reinterpret_cast<AVHWFramesContext*>(avFrame->hw_frames_ctx->data);
-  TORCH_CHECK(
-      hwFramesCtx != nullptr,
-      "The AVFrame does not have a hw_frames_ctx. "
-      "That's unexpected, please report this to the TorchCodec repo.");
+  // TODONVDEC P2 this can be hit from the beta interface, but there's no
+  // hw_frames_ctx in this case. We should try to understand how that affects
+  // this validation.
+  AVHWFramesContext* hwFramesCtx = nullptr;
+  if (avFrame->hw_frames_ctx != nullptr) {
+    hwFramesCtx =
+        reinterpret_cast<AVHWFramesContext*>(avFrame->hw_frames_ctx->data);
+    AVPixelFormat actualFormat = hwFramesCtx->sw_format;
 
-  AVPixelFormat actualFormat = hwFramesCtx->sw_format;
-
-  TORCH_CHECK(
-      actualFormat == AV_PIX_FMT_NV12,
-      "The AVFrame is ",
-      (av_get_pix_fmt_name(actualFormat) ? av_get_pix_fmt_name(actualFormat)
-                                         : "unknown"),
-      ", but we expected AV_PIX_FMT_NV12. "
-      "That's unexpected, please report this to the TorchCodec repo.");
+    TORCH_CHECK(
+        actualFormat == AV_PIX_FMT_NV12,
+        "The AVFrame is ",
+        (av_get_pix_fmt_name(actualFormat) ? av_get_pix_fmt_name(actualFormat)
+                                           : "unknown"),
+        ", but we expected AV_PIX_FMT_NV12. "
+        "That's unexpected, please report this to the TorchCodec repo.");
+  }
 
   torch::Tensor& dst = frameOutput.data;
   if (preAllocatedOutputTensor.has_value()) {
@@ -418,21 +435,24 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   // arbitrary, but unfortunately we know it's hardcoded to be the default
   // stream by FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/66e40840d15b514f275ce3ce2a4bf72ec68c7311/libavutil/hwcontext_cuda.c#L387-L388
-  TORCH_CHECK(
-      hwFramesCtx->device_ctx != nullptr,
-      "The AVFrame's hw_frames_ctx does not have a device_ctx. ");
-  auto cudaDeviceCtx =
-      static_cast<AVCUDADeviceContext*>(hwFramesCtx->device_ctx->hwctx);
-  TORCH_CHECK(cudaDeviceCtx != nullptr, "The hardware context is null");
-
-  at::cuda::CUDAEvent nvdecDoneEvent;
-  at::cuda::CUDAStream nvdecStream = // That's always the default stream. Sad.
-      c10::cuda::getStreamFromExternal(cudaDeviceCtx->stream, deviceIndex);
-  nvdecDoneEvent.record(nvdecStream);
-
-  // Don't start NPP work before NVDEC is done decoding the frame!
   at::cuda::CUDAStream nppStream = at::cuda::getCurrentCUDAStream(deviceIndex);
-  nvdecDoneEvent.block(nppStream);
+  if (hwFramesCtx) {
+    // TODONVDEC P2 this block won't be hit from the beta interface because
+    // there is no hwFramesCtx, but we should still make sure there's no CUDA
+    // stream sync issue in the beta interface.
+    TORCH_CHECK(
+        hwFramesCtx->device_ctx != nullptr,
+        "The AVFrame's hw_frames_ctx does not have a device_ctx. ");
+    auto cudaDeviceCtx =
+        static_cast<AVCUDADeviceContext*>(hwFramesCtx->device_ctx->hwctx);
+    TORCH_CHECK(cudaDeviceCtx != nullptr, "The hardware context is null");
+    at::cuda::CUDAEvent nvdecDoneEvent;
+    at::cuda::CUDAStream nvdecStream = // That's always the default stream. Sad.
+        c10::cuda::getStreamFromExternal(cudaDeviceCtx->stream, deviceIndex);
+    nvdecDoneEvent.record(nvdecStream);
+    // Don't start NPP work before NVDEC is done decoding the frame!
+    nvdecDoneEvent.block(nppStream);
+  }
 
   // Create the NPP context if we haven't yet.
   nppCtx_->hStream = nppStream.stream();

@@ -143,12 +143,31 @@ class VideoDecoder:
         if isinstance(device, torch_device):
             device = str(device)
 
+        # If device looks like "cuda:0:beta", make it "cuda:0" and set
+        # device_variant to "beta"
+        # TODONVDEC P2 Consider alternative ways of exposing custom device
+        # variants, and if we want this new decoder backend to be a "device
+        # variant" at all.
+        device_variant = "default"
+        if device is not None:
+            device_split = device.split(":")
+            if len(device_split) == 3:
+                device_variant = device_split[2]
+                device = ":".join(device_split[0:2])
+
+        # TODONVDEC P0 Support approximate mode. Not ideal to validate that here
+        # either, but validating this at a lower level forces to add yet another
+        # (temprorary) validation API to the device inteface
+        if device_variant == "beta" and seek_mode != "exact":
+            raise ValueError("Seek mode must be exact for BETA CUDA interface.")
+
         core.add_video_stream(
             self._decoder,
             stream_index=stream_index,
             dimension_order=dimension_order,
             num_threads=num_ffmpeg_threads,
             device=device,
+            device_variant=device_variant,
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
@@ -240,24 +259,20 @@ class VideoDecoder:
             duration_seconds=duration_seconds.item(),
         )
 
-    def get_frames_at(self, indices: list[int]) -> FrameBatch:
+    def get_frames_at(self, indices: Union[torch.Tensor, list[int]]) -> FrameBatch:
         """Return frames at the given indices.
 
         Args:
-            indices (list of int): The indices of the frames to retrieve.
+            indices (torch.Tensor or list of int): The indices of the frames to retrieve.
 
         Returns:
             FrameBatch: The frames at the given indices.
         """
-        if isinstance(indices, torch.Tensor):
-            # TODO we should avoid converting tensors to lists and just let the
-            # core ops and C++ code natively accept tensors.  See
-            # https://github.com/pytorch/torchcodec/issues/879
-            indices = indices.to(torch.int).tolist()
 
         data, pts_seconds, duration_seconds = core.get_frames_at_indices(
             self._decoder, frame_indices=indices
         )
+
         return FrameBatch(
             data=data,
             pts_seconds=pts_seconds,

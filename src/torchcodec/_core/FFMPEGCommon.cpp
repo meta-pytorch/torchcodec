@@ -33,6 +33,13 @@ AVPacket* ReferenceAVPacket::operator->() {
   return avPacket_;
 }
 
+void ReferenceAVPacket::reset(ReferenceAVPacket& other) {
+  if (this != &other) {
+    av_packet_unref(avPacket_);
+    av_packet_move_ref(avPacket_, other.avPacket_);
+  }
+}
+
 AVCodecOnlyUseForCallingAVFindBestStream
 makeAVCodecOnlyUseForCallingAVFindBestStream(const AVCodec* codec) {
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(59, 18, 100)
@@ -53,6 +60,14 @@ int64_t getDuration(const UniqueAVFrame& avFrame) {
   return avFrame->pkt_duration;
 #else
   return avFrame->duration;
+#endif
+}
+
+void setDuration(const UniqueAVFrame& avFrame, int64_t duration) {
+#if LIBAVUTIL_VERSION_MAJOR < 58
+  avFrame->pkt_duration = duration;
+#else
+  avFrame->duration = duration;
 #endif
 }
 

@@ -9,6 +9,7 @@
 #include <torch/types.h>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace facebook::torchcodec {
 
@@ -40,6 +41,8 @@ struct VideoStreamOptions {
 
   // By default we use CPU for decoding for both C++ and python users.
   torch::Device device = torch::kCPU;
+  // Device variant (e.g., "default", "beta", etc.)
+  std::string_view deviceVariant = "default";
 
   // Encoding options
   std::optional<int> bitRate;

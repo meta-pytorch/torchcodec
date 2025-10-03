@@ -1219,7 +1219,7 @@ class TestAudioDecoderOps:
         torch.manual_seed(0)
         indices = torch.randint(
             0, len(NASA_VIDEO.frames[NASA_VIDEO.default_stream_index]), size=(50,)
-        ).tolist()
+        )
 
         frames_file_like, *_ = get_frames_at_indices(
             decoder_file_like, frame_indices=indices

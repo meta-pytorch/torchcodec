@@ -43,9 +43,9 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
   m.def(
-      "_add_video_stream(Tensor(a!) decoder, *, int? width=None, int? height=None, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str? device=None, (Tensor, Tensor, Tensor)? custom_frame_mappings=None, str? color_conversion_library=None) -> ()");
+      "_add_video_stream(Tensor(a!) decoder, *, int? width=None, int? height=None, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None, str? color_conversion_library=None) -> ()");
   m.def(
-      "add_video_stream(Tensor(a!) decoder, *, int? width=None, int? height=None, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str? device=None, (Tensor, Tensor, Tensor)? custom_frame_mappings=None) -> ()");
+      "add_video_stream(Tensor(a!) decoder, *, int? width=None, int? height=None, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None) -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
   m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
@@ -55,7 +55,7 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "get_frame_at_index(Tensor(a!) decoder, *, int frame_index) -> (Tensor, Tensor, Tensor)");
   m.def(
-      "get_frames_at_indices(Tensor(a!) decoder, *, int[] frame_indices) -> (Tensor, Tensor, Tensor)");
+      "get_frames_at_indices(Tensor(a!) decoder, *, Tensor frame_indices) -> (Tensor, Tensor, Tensor)");
   m.def(
       "get_frames_in_range(Tensor(a!) decoder, *, int start, int stop, int? step=None) -> (Tensor, Tensor, Tensor)");
   m.def(
@@ -257,7 +257,8 @@ void _add_video_stream(
     std::optional<int64_t> num_threads = std::nullopt,
     std::optional<std::string_view> dimension_order = std::nullopt,
     std::optional<int64_t> stream_index = std::nullopt,
-    std::optional<std::string_view> device = std::nullopt,
+    std::string_view device = "cpu",
+    std::string_view device_variant = "default",
     std::optional<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
         custom_frame_mappings = std::nullopt,
     std::optional<std::string_view> color_conversion_library = std::nullopt) {
@@ -302,9 +303,12 @@ void _add_video_stream(
           ". color_conversion_library must be either filtergraph or swscale.");
     }
   }
-  if (device.has_value()) {
-    videoStreamOptions.device = createTorchDevice(std::string(device.value()));
-  }
+
+  validateDeviceInterface(std::string(device), std::string(device_variant));
+
+  videoStreamOptions.device = torch::Device(std::string(device));
+  videoStreamOptions.deviceVariant = device_variant;
+
   std::optional<SingleStreamDecoder::FrameMappings> converted_mappings =
       custom_frame_mappings.has_value()
       ? std::make_optional(makeFrameMappings(custom_frame_mappings.value()))
@@ -325,7 +329,8 @@ void add_video_stream(
     std::optional<int64_t> num_threads = std::nullopt,
     std::optional<std::string_view> dimension_order = std::nullopt,
     std::optional<int64_t> stream_index = std::nullopt,
-    std::optional<std::string_view> device = std::nullopt,
+    std::string_view device = "cpu",
+    std::string_view device_variant = "default",
     const std::optional<std::tuple<at::Tensor, at::Tensor, at::Tensor>>&
         custom_frame_mappings = std::nullopt) {
   _add_video_stream(
@@ -336,6 +341,7 @@ void add_video_stream(
       dimension_order,
       stream_index,
       device,
+      device_variant,
       custom_frame_mappings);
 }
 
@@ -396,11 +402,9 @@ OpsFrameOutput get_frame_at_index(at::Tensor& decoder, int64_t frame_index) {
 // Return the frames at given indices for a given stream
 OpsFrameBatchOutput get_frames_at_indices(
     at::Tensor& decoder,
-    at::IntArrayRef frame_indices) {
+    const at::Tensor& frame_indices) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  std::vector<int64_t> frameIndicesVec(
-      frame_indices.begin(), frame_indices.end());
-  auto result = videoDecoder->getFramesAtIndices(frameIndicesVec);
+  auto result = videoDecoder->getFramesAtIndices(frame_indices);
   return makeOpsFrameBatchOutput(result);
 }
 

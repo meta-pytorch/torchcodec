@@ -108,7 +108,7 @@ class SingleStreamDecoder {
 
   // Returns frames at the given indices for a given stream as a single stacked
   // Tensor.
-  FrameBatchOutput getFramesAtIndices(const std::vector<int64_t>& frameIndices);
+  FrameBatchOutput getFramesAtIndices(const torch::Tensor& frameIndices);
 
   // Returns frames within a given range. The range is defined by [start, stop).
   // The values retrieved from the range are: [start, start+step,
@@ -311,6 +311,7 @@ class SingleStreamDecoder {
       int streamIndex,
       AVMediaType mediaType,
       const torch::Device& device = torch::kCPU,
+      const std::string_view deviceVariant = "default",
       std::optional<int> ffmpegThreadCount = std::nullopt);
 
   // Returns the "best" stream index for a given media type. The "best" is
