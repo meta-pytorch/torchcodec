@@ -23,9 +23,7 @@ class CpuDeviceInterface : public DeviceInterface {
     return std::nullopt;
   }
 
-  virtual void initialize(
-      [[maybe_unused]] AVCodecContext* codecContext,
-      const AVRational& timeBase) override;
+  virtual void initialize(const AVStream* avStream) override;
 
   virtual void initializeVideo(
       const VideoStreamOptions& videoStreamOptions,

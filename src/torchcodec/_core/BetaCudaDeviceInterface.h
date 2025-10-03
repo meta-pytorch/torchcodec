@@ -37,11 +37,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   explicit BetaCudaDeviceInterface(const torch::Device& device);
   virtual ~BetaCudaDeviceInterface();
 
-  void initializeInterface(AVStream* stream) override;
+  void initialize(const AVStream* avStream) override;
 
   void convertAVFrameToFrameOutput(
-      const VideoStreamOptions& videoStreamOptions,
-      const AVRational& timeBase,
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor =

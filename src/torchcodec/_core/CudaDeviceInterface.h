@@ -20,8 +20,7 @@ class CudaDeviceInterface : public DeviceInterface {
 
   std::optional<const AVCodec*> findCodec(const AVCodecID& codecId) override;
 
-  void initialize(AVCodecContext* codecContext, const AVRational& timeBase)
-      override;
+  void initialize(const AVStream* avStream) override;
 
   void initializeVideo(
       const VideoStreamOptions& videoStreamOptions,
@@ -29,6 +28,8 @@ class CudaDeviceInterface : public DeviceInterface {
           transforms,
       [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims)
       override;
+
+  void registerHardwareDeviceWithCodec(AVCodecContext* codecContext) override;
 
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
@@ -41,6 +42,10 @@ class CudaDeviceInterface : public DeviceInterface {
   // kinds of input, we need to convert them to NV12. Our current implementation
   // does this using filtergraph.
   UniqueAVFrame maybeConvertAVFrameToNV12OrRGB24(UniqueAVFrame& avFrame);
+
+  // We sometimes encounter frames that cannot be decoded on the CUDA device.
+  // Rather than erroring out, we decode them on the CPU.
+  std::unique_ptr<DeviceInterface> cpuInterface_;
 
   VideoStreamOptions videoStreamOptions_;
   AVRational timeBase_;

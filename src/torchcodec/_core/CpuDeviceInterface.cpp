@@ -46,10 +46,9 @@ CpuDeviceInterface::CpuDeviceInterface(const torch::Device& device)
       device_.type() == torch::kCPU, "Unsupported device: ", device_.str());
 }
 
-void CpuDeviceInterface::initialize(
-    [[maybe_unused]] AVCodecContext* codecContext,
-    const AVRational& timeBase) {
-  timeBase_ = timeBase;
+void CpuDeviceInterface::initialize(const AVStream* avStream) {
+  TORCH_CHECK(avStream != nullptr, "avStream is null");
+  timeBase_ = avStream->time_base;
 }
 
 void CpuDeviceInterface::initializeVideo(
