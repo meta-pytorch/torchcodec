@@ -35,22 +35,19 @@ static bool g_cuda_beta = registerDeviceInterface(
 
 static int CUDAAPI
 pfnSequenceCallback(void* pUserData, CUVIDEOFORMAT* videoFormat) {
-  BetaCudaDeviceInterface* decoder =
-      static_cast<BetaCudaDeviceInterface*>(pUserData);
+  auto decoder = static_cast<BetaCudaDeviceInterface*>(pUserData);
   return decoder->streamPropertyChange(videoFormat);
 }
 
 static int CUDAAPI
 pfnDecodePictureCallback(void* pUserData, CUVIDPICPARAMS* picParams) {
-  BetaCudaDeviceInterface* decoder =
-      static_cast<BetaCudaDeviceInterface*>(pUserData);
+  auto decoder = static_cast<BetaCudaDeviceInterface*>(pUserData);
   return decoder->frameReadyForDecoding(picParams);
 }
 
 static int CUDAAPI
 pfnDisplayPictureCallback(void* pUserData, CUVIDPARSERDISPINFO* dispInfo) {
-  BetaCudaDeviceInterface* decoder =
-      static_cast<BetaCudaDeviceInterface*>(pUserData);
+  auto decoder = static_cast<BetaCudaDeviceInterface*>(pUserData);
   return decoder->frameReadyInDisplayOrder(dispInfo);
 }
 
