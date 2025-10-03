@@ -35,22 +35,19 @@ static bool g_cuda_beta = registerDeviceInterface(
 
 static int CUDAAPI
 pfnSequenceCallback(void* pUserData, CUVIDEOFORMAT* videoFormat) {
-  BetaCudaDeviceInterface* decoder =
-      static_cast<BetaCudaDeviceInterface*>(pUserData);
+  auto decoder = static_cast<BetaCudaDeviceInterface*>(pUserData);
   return decoder->streamPropertyChange(videoFormat);
 }
 
 static int CUDAAPI
 pfnDecodePictureCallback(void* pUserData, CUVIDPICPARAMS* picParams) {
-  BetaCudaDeviceInterface* decoder =
-      static_cast<BetaCudaDeviceInterface*>(pUserData);
+  auto decoder = static_cast<BetaCudaDeviceInterface*>(pUserData);
   return decoder->frameReadyForDecoding(picParams);
 }
 
 static int CUDAAPI
 pfnDisplayPictureCallback(void* pUserData, CUVIDPARSERDISPINFO* dispInfo) {
-  BetaCudaDeviceInterface* decoder =
-      static_cast<BetaCudaDeviceInterface*>(pUserData);
+  auto decoder = static_cast<BetaCudaDeviceInterface*>(pUserData);
   return decoder->frameReadyInDisplayOrder(dispInfo);
 }
 
@@ -112,27 +109,29 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
       caps.nMaxMBCount);
 
   // Decoder creation parameters, taken from DALI
-  CUVIDDECODECREATEINFO decoder_info = {};
-  decoder_info.bitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
-  decoder_info.ChromaFormat = videoFormat->chroma_format;
-  decoder_info.CodecType = videoFormat->codec;
-  decoder_info.ulHeight = videoFormat->coded_height;
-  decoder_info.ulWidth = videoFormat->coded_width;
-  decoder_info.ulMaxHeight = videoFormat->coded_height;
-  decoder_info.ulMaxWidth = videoFormat->coded_width;
-  decoder_info.ulTargetHeight =
+  CUVIDDECODECREATEINFO decoderParams = {};
+  decoderParams.bitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
+  decoderParams.ChromaFormat = videoFormat->chroma_format;
+  decoderParams.OutputFormat = cudaVideoSurfaceFormat_NV12;
+  decoderParams.ulCreationFlags = cudaVideoCreate_Default;
+  decoderParams.CodecType = videoFormat->codec;
+  decoderParams.ulHeight = videoFormat->coded_height;
+  decoderParams.ulWidth = videoFormat->coded_width;
+  decoderParams.ulMaxHeight = videoFormat->coded_height;
+  decoderParams.ulMaxWidth = videoFormat->coded_width;
+  decoderParams.ulTargetHeight =
       videoFormat->display_area.bottom - videoFormat->display_area.top;
-  decoder_info.ulTargetWidth =
+  decoderParams.ulTargetWidth =
       videoFormat->display_area.right - videoFormat->display_area.left;
-  decoder_info.ulNumDecodeSurfaces = videoFormat->min_num_decode_surfaces;
-  decoder_info.ulNumOutputSurfaces = 2;
-  decoder_info.display_area.left = videoFormat->display_area.left;
-  decoder_info.display_area.right = videoFormat->display_area.right;
-  decoder_info.display_area.top = videoFormat->display_area.top;
-  decoder_info.display_area.bottom = videoFormat->display_area.bottom;
+  decoderParams.ulNumDecodeSurfaces = videoFormat->min_num_decode_surfaces;
+  decoderParams.ulNumOutputSurfaces = 2;
+  decoderParams.display_area.left = videoFormat->display_area.left;
+  decoderParams.display_area.right = videoFormat->display_area.right;
+  decoderParams.display_area.top = videoFormat->display_area.top;
+  decoderParams.display_area.bottom = videoFormat->display_area.bottom;
 
   CUvideodecoder* decoder = new CUvideodecoder();
-  result = cuvidCreateDecoder(decoder, &decoder_info);
+  result = cuvidCreateDecoder(decoder, &decoderParams);
   TORCH_CHECK(
       result == CUDA_SUCCESS, "Failed to create NVDEC decoder: ", result);
   return UniqueCUvideodecoder(decoder, CUvideoDecoderDeleter{});
@@ -260,11 +259,18 @@ void BetaCudaDeviceInterface::initializeBSF(
       getFFMPEGErrorStringFromErrorCode(retVal));
 }
 
-void BetaCudaDeviceInterface::initializeInterface(
+void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx) {
   torch::Tensor dummyTensorForCudaInitialization = torch::empty(
       {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
+
+  auto cudaDevice = torch::Device(torch::kCUDA);
+  defaultCudaInterface_ =
+      std::unique_ptr<DeviceInterface>(createDeviceInterface(cudaDevice));
+  AVCodecContext dummyCodecContext = {};
+  defaultCudaInterface_->initialize(avStream, avFormatCtx);
+  defaultCudaInterface_->registerHardwareDeviceWithCodec(&dummyCodecContext);
 
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
@@ -422,6 +428,10 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   CUVIDPARSERDISPINFO dispInfo = readyFrames_.front();
   readyFrames_.pop();
 
+  // TODONVDEC P1 we need to set the procParams.output_stream field to the
+  // current CUDA stream and ensure proper synchronization. There's a related
+  // NVDECTODO in CudaDeviceInterface.cpp where we do the necessary
+  // synchronization for NPP.
   CUVIDPROCPARAMS procParams = {};
   procParams.progressive_frame = dispInfo.progressive_frame;
   procParams.top_field_first = dispInfo.top_field_first;
@@ -555,8 +565,6 @@ void BetaCudaDeviceInterface::flush() {
 }
 
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
-    const VideoStreamOptions& videoStreamOptions,
-    const AVRational& timeBase,
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
@@ -567,20 +575,8 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
   // TODONVDEC P1: we use the 'default' cuda device interface for color
   // conversion. That's a temporary hack to make things work. we should abstract
   // the color conversion stuff separately.
-  if (!defaultCudaInterface_) {
-    auto cudaDevice = torch::Device(torch::kCUDA);
-    defaultCudaInterface_ =
-        std::unique_ptr<DeviceInterface>(createDeviceInterface(cudaDevice));
-    AVCodecContext dummyCodecContext = {};
-    defaultCudaInterface_->initializeContext(&dummyCodecContext);
-  }
-
   defaultCudaInterface_->convertAVFrameToFrameOutput(
-      videoStreamOptions,
-      timeBase,
-      avFrame,
-      frameOutput,
-      preAllocatedOutputTensor);
+      avFrame, frameOutput, preAllocatedOutputTensor);
 }
 
 } // namespace facebook::torchcodec
