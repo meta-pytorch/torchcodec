@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "src/torchcodec/_core/FFMPEGCommon.h"
+#include "FFMPEGCommon.h"
 
 namespace facebook::torchcodec {
 

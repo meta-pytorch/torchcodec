@@ -7,9 +7,9 @@
 #include <torch/types.h>
 #include <mutex>
 
-#include "src/torchcodec/_core/CUDACommon.h"
-#include "src/torchcodec/_core/FFMPEGCommon.h"
-#include "src/torchcodec/_core/NVDECCache.h"
+#include "CUDACommon.h"
+#include "FFMPEGCommon.h"
+#include "NVDECCache.h"
 
 #include <cuda_runtime.h> // For cudaGetDevice
 

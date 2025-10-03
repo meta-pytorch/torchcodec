@@ -4,9 +4,9 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include "src/torchcodec/_core/Transform.h"
+#include "Transform.h"
 #include <torch/types.h>
-#include "src/torchcodec/_core/FFMPEGCommon.h"
+#include "FFMPEGCommon.h"
 
 namespace facebook::torchcodec {
 
