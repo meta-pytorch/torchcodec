@@ -180,6 +180,44 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
   }
 }
 
+void BetaCudaDeviceInterface::initialize(
+    const AVStream* avStream,
+    const UniqueDecodingAVFormatContext& avFormatCtx) {
+  torch::Tensor dummyTensorForCudaInitialization = torch::empty(
+      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
+
+  auto cudaDevice = torch::Device(torch::kCUDA);
+  defaultCudaInterface_ =
+      std::unique_ptr<DeviceInterface>(createDeviceInterface(cudaDevice));
+  AVCodecContext dummyCodecContext = {};
+  defaultCudaInterface_->initialize(avStream, avFormatCtx);
+  defaultCudaInterface_->registerHardwareDeviceWithCodec(&dummyCodecContext);
+
+  TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
+  timeBase_ = avStream->time_base;
+
+  const AVCodecParameters* codecPar = avStream->codecpar;
+  TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
+
+  initializeBSF(codecPar, avFormatCtx);
+
+  // Create parser. Default values that aren't obvious are taken from DALI.
+  CUVIDPARSERPARAMS parserParams = {};
+  parserParams.CodecType = validateCodecSupport(codecPar->codec_id);
+  parserParams.ulMaxNumDecodeSurfaces = 8;
+  parserParams.ulMaxDisplayDelay = 0;
+  // Callback setup, all are triggered by the parser within a call
+  // to cuvidParseVideoData
+  parserParams.pUserData = this;
+  parserParams.pfnSequenceCallback = pfnSequenceCallback;
+  parserParams.pfnDecodePicture = pfnDecodePictureCallback;
+  parserParams.pfnDisplayPicture = pfnDisplayPictureCallback;
+
+  CUresult result = cuvidCreateVideoParser(&videoParser_, &parserParams);
+  TORCH_CHECK(
+      result == CUDA_SUCCESS, "Failed to create video parser: ", result);
+}
+
 void BetaCudaDeviceInterface::initializeBSF(
     const AVCodecParameters* codecPar,
     const UniqueDecodingAVFormatContext& avFormatCtx) {
@@ -257,44 +295,6 @@ void BetaCudaDeviceInterface::initializeBSF(
       retVal == AVSUCCESS,
       "Failed to initialize bitstream filter: ",
       getFFMPEGErrorStringFromErrorCode(retVal));
-}
-
-void BetaCudaDeviceInterface::initialize(
-    const AVStream* avStream,
-    const UniqueDecodingAVFormatContext& avFormatCtx) {
-  torch::Tensor dummyTensorForCudaInitialization = torch::empty(
-      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
-
-  auto cudaDevice = torch::Device(torch::kCUDA);
-  defaultCudaInterface_ =
-      std::unique_ptr<DeviceInterface>(createDeviceInterface(cudaDevice));
-  AVCodecContext dummyCodecContext = {};
-  defaultCudaInterface_->initialize(avStream, avFormatCtx);
-  defaultCudaInterface_->registerHardwareDeviceWithCodec(&dummyCodecContext);
-
-  TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
-  timeBase_ = avStream->time_base;
-
-  const AVCodecParameters* codecPar = avStream->codecpar;
-  TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
-
-  initializeBSF(codecPar, avFormatCtx);
-
-  // Create parser. Default values that aren't obvious are taken from DALI.
-  CUVIDPARSERPARAMS parserParams = {};
-  parserParams.CodecType = validateCodecSupport(codecPar->codec_id);
-  parserParams.ulMaxNumDecodeSurfaces = 8;
-  parserParams.ulMaxDisplayDelay = 0;
-  // Callback setup, all are triggered by the parser within a call
-  // to cuvidParseVideoData
-  parserParams.pUserData = this;
-  parserParams.pfnSequenceCallback = pfnSequenceCallback;
-  parserParams.pfnDecodePicture = pfnDecodePictureCallback;
-  parserParams.pfnDisplayPicture = pfnDisplayPictureCallback;
-
-  CUresult result = cuvidCreateVideoParser(&videoParser_, &parserParams);
-  TORCH_CHECK(
-      result == CUDA_SUCCESS, "Failed to create video parser: ", result);
 }
 
 // This callback is called by the parser within cuvidParseVideoData when there
