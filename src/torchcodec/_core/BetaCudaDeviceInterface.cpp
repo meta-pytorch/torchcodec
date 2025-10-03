@@ -331,28 +331,33 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
 // Moral equivalent of avcodec_send_packet(). Here, we pass the AVPacket down to
 // the NVCUVID parser.
 int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
+  TORCH_CHECK(
+      packet.get() && packet->data && packet->size > 0,
+      "sendPacket received an empty packet, this is unexpected, please report.");
+
+  applyBSF(packet);
+
   CUVIDSOURCEDATAPACKET cuvidPacket = {};
+  cuvidPacket.payload = packet->data;
+  cuvidPacket.payload_size = packet->size;
+  cuvidPacket.flags = CUVID_PKT_TIMESTAMP;
+  cuvidPacket.timestamp = packet->pts;
 
-  if (packet.get() && packet->data && packet->size > 0) {
-    applyBSF(packet);
+  return sendCuvidPacket(cuvidPacket);
+}
 
-    // Regular packet with data
-    cuvidPacket.payload = packet->data;
-    cuvidPacket.payload_size = packet->size;
-    cuvidPacket.flags = CUVID_PKT_TIMESTAMP;
-    cuvidPacket.timestamp = packet->pts;
+int BetaCudaDeviceInterface::sendEOFPacket() {
+  CUVIDSOURCEDATAPACKET cuvidPacket = {};
+  cuvidPacket.flags = CUVID_PKT_ENDOFSTREAM;
+  eofSent_ = true;
 
-  } else {
-    // End of stream packet
-    cuvidPacket.flags = CUVID_PKT_ENDOFSTREAM;
-    eofSent_ = true;
-  }
+  return sendCuvidPacket(cuvidPacket);
+}
 
+int BetaCudaDeviceInterface::sendCuvidPacket(
+    CUVIDSOURCEDATAPACKET& cuvidPacket) {
   CUresult result = cuvidParseVideoData(videoParser_, &cuvidPacket);
-  if (result != CUDA_SUCCESS) {
-    return AVERROR_EXTERNAL;
-  }
-  return AVSUCCESS;
+  return result == CUDA_SUCCESS ? AVSUCCESS : AVERROR_EXTERNAL;
 }
 
 void BetaCudaDeviceInterface::applyBSF(ReferenceAVPacket& packet) {
@@ -541,17 +546,7 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
 void BetaCudaDeviceInterface::flush() {
   isFlushing_ = true;
 
-  // TODONVDEC P0: simplify flushing and "eofSent_" logic. We should just have a
-  // "sendEofPacket()" function that does the right thing, instead of setting
-  // CUVID_PKT_ENDOFSTREAM in different places.
-  if (!eofSent_) {
-    CUVIDSOURCEDATAPACKET cuvidPacket = {};
-    cuvidPacket.flags = CUVID_PKT_ENDOFSTREAM;
-    CUresult result = cuvidParseVideoData(videoParser_, &cuvidPacket);
-    if (result == CUDA_SUCCESS) {
-      eofSent_ = true;
-    }
-  }
+  sendEOFPacket();
 
   isFlushing_ = false;
 

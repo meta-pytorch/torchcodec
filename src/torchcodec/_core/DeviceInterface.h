@@ -86,6 +86,14 @@ class DeviceInterface {
     return AVERROR(ENOSYS);
   }
 
+  // Send an EOF packet to flush the decoder
+  // Returns AVSUCCESS on success, or other AVERROR on failure
+  virtual int sendEOFPacket() {
+    TORCH_CHECK(
+        false, "Send EOF packet not implemented for this device interface");
+    return AVERROR(ENOSYS);
+  }
+
   // Moral equivalent of avcodec_receive_frame()
   // Returns AVSUCCESS on success, AVERROR(EAGAIN) if no frame ready,
   // AVERROR_EOF if end of stream, or other AVERROR on failure
