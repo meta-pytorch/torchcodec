@@ -232,4 +232,10 @@ AVIOContext* avioAllocContext(
     AVIOWriteFunction write_packet,
     AVIOSeekFunction seek);
 
+double ptsToSeconds(int64_t pts, const AVRational& timeBase);
+int64_t secondsToClosestPts(double seconds, const AVRational& timeBase);
+int64_t computeSafeDuration(
+    const AVRational& frameRate,
+    const AVRational& timeBase);
+
 } // namespace facebook::torchcodec

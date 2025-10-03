@@ -86,7 +86,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   // isFlushing_)
   bool isFlushing_ = false;
 
-  AVRational timeBase_ = {0, 0};
+  AVRational timeBase_ = {0, 1};
+  AVRational frameRateAvgFromFFmpeg_ = {0, 1};
 
   UniqueAVBSFContext bitstreamFilter_;
 

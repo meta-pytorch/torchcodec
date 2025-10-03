@@ -17,16 +17,6 @@
 namespace facebook::torchcodec {
 namespace {
 
-double ptsToSeconds(int64_t pts, const AVRational& timeBase) {
-  // To perform the multiplication before the division, av_q2d is not used
-  return static_cast<double>(pts) * timeBase.num / timeBase.den;
-}
-
-int64_t secondsToClosestPts(double seconds, const AVRational& timeBase) {
-  return static_cast<int64_t>(
-      std::round(seconds * timeBase.den / timeBase.num));
-}
-
 // Some videos aren't properly encoded and do not specify pts values for
 // packets, and thus for frames. Unset values correspond to INT64_MIN. When that
 // happens, we fallback to the dts value which hopefully exists and is correct.

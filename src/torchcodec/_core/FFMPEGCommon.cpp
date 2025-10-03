@@ -501,4 +501,26 @@ AVIOContext* avioAllocContext(
       seek);
 }
 
+double ptsToSeconds(int64_t pts, const AVRational& timeBase) {
+  // To perform the multiplication before the division, av_q2d is not used
+  return static_cast<double>(pts) * timeBase.num / timeBase.den;
+}
+
+int64_t secondsToClosestPts(double seconds, const AVRational& timeBase) {
+  return static_cast<int64_t>(
+      std::round(seconds * timeBase.den / timeBase.num));
+}
+
+int64_t computeSafeDuration(
+    const AVRational& frameRate,
+    const AVRational& timeBase) {
+  if (frameRate.num <= 0 || frameRate.den <= 0 || timeBase.num <= 0 ||
+      timeBase.den <= 0) {
+    return 0;
+  } else {
+    return (static_cast<int64_t>(frameRate.den) * timeBase.den) /
+        (static_cast<int64_t>(timeBase.num) * frameRate.num);
+  }
+}
+
 } // namespace facebook::torchcodec

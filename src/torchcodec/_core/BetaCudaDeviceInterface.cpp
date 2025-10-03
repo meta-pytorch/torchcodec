@@ -144,8 +144,9 @@ cudaVideoCodec validateCodecSupport(AVCodecID codecId) {
       return cudaVideoCodec_H264;
     case AV_CODEC_ID_HEVC:
       return cudaVideoCodec_HEVC;
+    case AV_CODEC_ID_AV1:
+      return cudaVideoCodec_AV1;
     // TODONVDEC P0: support more codecs
-    // case AV_CODEC_ID_AV1: return cudaVideoCodec_AV1;
     // case AV_CODEC_ID_MPEG4: return cudaVideoCodec_MPEG4;
     // case AV_CODEC_ID_VP8: return cudaVideoCodec_VP8;
     // case AV_CODEC_ID_VP9: return cudaVideoCodec_VP9;
@@ -268,6 +269,7 @@ void BetaCudaDeviceInterface::initializeInterface(
 
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
+  frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
 
   const AVCodecParameters* codecPar = avStream->codecpar;
   TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
@@ -484,14 +486,19 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
   avFrame->format = AV_PIX_FMT_CUDA;
   avFrame->pts = dispInfo.timestamp;
 
-  // TODONVDEC P0: Zero division error!!!
-  // TODONVDEC P0: Move AVRational arithmetic to FFMPEGCommon, and put the
-  // similar SingleStreamDecoder stuff there too.
-  unsigned int frameRateNum = videoFormat_.frame_rate.numerator;
-  unsigned int frameRateDen = videoFormat_.frame_rate.denominator;
-  int64_t duration = static_cast<int64_t>((frameRateDen * timeBase_.den)) /
-      (frameRateNum * timeBase_.num);
-  setDuration(avFrame, duration);
+  // TODONVDEC P2: We compute the duration based on average frame rate info:
+  // either from NVCUVID if it's valid, otherwise from FFmpeg as fallback. But
+  // both of these are based on average frame rate, so if the video has
+  // variable frame rate, the durations may be off. We should try to see if we
+  // can set the duration more accurately. Unfortunately it's not given by
+  // dispInfo. One option would be to set it based on the pts difference between
+  // consecutive frames, if the next frame is already available.
+  int frameRateNum = static_cast<int>(videoFormat_.frame_rate.numerator);
+  int frameRateDen = static_cast<int>(videoFormat_.frame_rate.denominator);
+  AVRational frameRate = (frameRateNum > 0 && frameRateDen > 0)
+      ? AVRational{frameRateNum, frameRateDen}
+      : frameRateAvgFromFFmpeg_;
+  setDuration(avFrame, computeSafeDuration(frameRate, timeBase_));
 
   // We need to assign the frame colorspace. This is crucial for proper color
   // conversion. NVCUVID stores that in the matrix_coefficients field, but

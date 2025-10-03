@@ -1417,13 +1417,23 @@ class TestVideoDecoder:
 
     @needs_cuda
     @pytest.mark.parametrize(
-        "asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE, TEST_SRC_2_720P_H265)
+        "asset",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            BT709_FULL_RANGE,
+            TEST_SRC_2_720P_H265,
+            AV1_VIDEO,
+        ),
     )
     @pytest.mark.parametrize("contiguous_indices", (True, False))
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frame_at(
         self, asset, contiguous_indices, seek_mode
     ):
+        if asset == AV1_VIDEO and seek_mode == "approximate":
+            pytest.skip("AV1 asset doesn't work with approximate mode")
+
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
             asset.path, device="cuda:0:beta", seek_mode=seek_mode
@@ -1449,13 +1459,23 @@ class TestVideoDecoder:
 
     @needs_cuda
     @pytest.mark.parametrize(
-        "asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE, TEST_SRC_2_720P_H265)
+        "asset",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            BT709_FULL_RANGE,
+            TEST_SRC_2_720P_H265,
+            AV1_VIDEO,
+        ),
     )
     @pytest.mark.parametrize("contiguous_indices", (True, False))
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frames_at(
         self, asset, contiguous_indices, seek_mode
     ):
+        if asset == AV1_VIDEO and seek_mode == "approximate":
+            pytest.skip("AV1 asset doesn't work with approximate mode")
+
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
             asset.path, device="cuda:0:beta", seek_mode=seek_mode
@@ -1482,10 +1502,20 @@ class TestVideoDecoder:
 
     @needs_cuda
     @pytest.mark.parametrize(
-        "asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE, TEST_SRC_2_720P_H265)
+        "asset",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            BT709_FULL_RANGE,
+            TEST_SRC_2_720P_H265,
+            AV1_VIDEO,
+        ),
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frame_played_at(self, asset, seek_mode):
+        if asset == AV1_VIDEO and seek_mode == "approximate":
+            pytest.skip("AV1 asset doesn't work with approximate mode")
+
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
             asset.path, device="cuda:0:beta", seek_mode=seek_mode
@@ -1506,10 +1536,20 @@ class TestVideoDecoder:
 
     @needs_cuda
     @pytest.mark.parametrize(
-        "asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE, TEST_SRC_2_720P_H265)
+        "asset",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            BT709_FULL_RANGE,
+            TEST_SRC_2_720P_H265,
+            AV1_VIDEO,
+        ),
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frames_played_at(self, asset, seek_mode):
+        if asset == AV1_VIDEO and seek_mode == "approximate":
+            pytest.skip("AV1 asset doesn't work with approximate mode")
+
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
             asset.path, device="cuda:0:beta", seek_mode=seek_mode
@@ -1531,10 +1571,19 @@ class TestVideoDecoder:
 
     @needs_cuda
     @pytest.mark.parametrize(
-        "asset", (NASA_VIDEO, TEST_SRC_2_720P, BT709_FULL_RANGE, TEST_SRC_2_720P_H265)
+        "asset",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            BT709_FULL_RANGE,
+            TEST_SRC_2_720P_H265,
+            AV1_VIDEO,
+        ),
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_backwards(self, asset, seek_mode):
+        if asset == AV1_VIDEO and seek_mode == "approximate":
+            pytest.skip("AV1 asset doesn't work with approximate mode")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
@@ -1543,8 +1592,14 @@ class TestVideoDecoder:
 
         assert ref_decoder.metadata == beta_decoder.metadata
 
-        for frame_index in [0, 100, 10, 50, 20, 200, 150, 389]:
+        for frame_index in [0, 1, 2, 1, 0, 100, 10, 50, 20, 200, 150, 150, 150, 389, 2]:
+            # This is ugly, but OK: the indices values above are relevant for
+            # the NASA_VIDEO.  We need to avoid going out of bounds for other
+            # videos so we cap the frame_index. This test still serves its
+            # purpose: no matter what the range of the video, we're still doing
+            # backwards seeks.
             frame_index = min(frame_index, len(ref_decoder) - 1)
+
             ref_frame = ref_decoder.get_frame_at(frame_index)
             beta_frame = beta_decoder.get_frame_at(frame_index)
             torch.testing.assert_close(beta_frame.data, ref_frame.data, rtol=0, atol=0)
@@ -1568,8 +1623,6 @@ class TestVideoDecoder:
 
     @needs_cuda
     def test_beta_cuda_interface_error(self):
-        with pytest.raises(RuntimeError, match="Unsupported codec type: av1"):
-            VideoDecoder(AV1_VIDEO.path, device="cuda:0:beta")
         with pytest.raises(RuntimeError, match="Unsupported device"):
             VideoDecoder(NASA_VIDEO.path, device="cuda:0:bad_variant")
 
