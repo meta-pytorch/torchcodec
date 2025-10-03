@@ -112,27 +112,29 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
       caps.nMaxMBCount);
 
   // Decoder creation parameters, taken from DALI
-  CUVIDDECODECREATEINFO decoder_info = {};
-  decoder_info.bitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
-  decoder_info.ChromaFormat = videoFormat->chroma_format;
-  decoder_info.CodecType = videoFormat->codec;
-  decoder_info.ulHeight = videoFormat->coded_height;
-  decoder_info.ulWidth = videoFormat->coded_width;
-  decoder_info.ulMaxHeight = videoFormat->coded_height;
-  decoder_info.ulMaxWidth = videoFormat->coded_width;
-  decoder_info.ulTargetHeight =
+  CUVIDDECODECREATEINFO decoderParams = {};
+  decoderParams.bitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
+  decoderParams.ChromaFormat = videoFormat->chroma_format;
+  decoderParams.OutputFormat = cudaVideoSurfaceFormat_NV12;
+  decoderParams.ulCreationFlags = cudaVideoCreate_Default;
+  decoderParams.CodecType = videoFormat->codec;
+  decoderParams.ulHeight = videoFormat->coded_height;
+  decoderParams.ulWidth = videoFormat->coded_width;
+  decoderParams.ulMaxHeight = videoFormat->coded_height;
+  decoderParams.ulMaxWidth = videoFormat->coded_width;
+  decoderParams.ulTargetHeight =
       videoFormat->display_area.bottom - videoFormat->display_area.top;
-  decoder_info.ulTargetWidth =
+  decoderParams.ulTargetWidth =
       videoFormat->display_area.right - videoFormat->display_area.left;
-  decoder_info.ulNumDecodeSurfaces = videoFormat->min_num_decode_surfaces;
-  decoder_info.ulNumOutputSurfaces = 2;
-  decoder_info.display_area.left = videoFormat->display_area.left;
-  decoder_info.display_area.right = videoFormat->display_area.right;
-  decoder_info.display_area.top = videoFormat->display_area.top;
-  decoder_info.display_area.bottom = videoFormat->display_area.bottom;
+  decoderParams.ulNumDecodeSurfaces = videoFormat->min_num_decode_surfaces;
+  decoderParams.ulNumOutputSurfaces = 2;
+  decoderParams.display_area.left = videoFormat->display_area.left;
+  decoderParams.display_area.right = videoFormat->display_area.right;
+  decoderParams.display_area.top = videoFormat->display_area.top;
+  decoderParams.display_area.bottom = videoFormat->display_area.bottom;
 
   CUvideodecoder* decoder = new CUvideodecoder();
-  result = cuvidCreateDecoder(decoder, &decoder_info);
+  result = cuvidCreateDecoder(decoder, &decoderParams);
   TORCH_CHECK(
       result == CUDA_SUCCESS, "Failed to create NVDEC decoder: ", result);
   return UniqueCUvideodecoder(decoder, CUvideoDecoderDeleter{});
@@ -356,6 +358,10 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   CUVIDPARSERDISPINFO dispInfo = readyFrames_.front();
   readyFrames_.pop();
 
+  // TODONVDEC P1 we need to set the procParams.output_stream field to the
+  // current CUDA stream and ensure proper synchronization. There's a related
+  // NVDECTODO in CudaDeviceInterface.cpp where we do the necessary
+  // synchronization for NPP.
   CUVIDPROCPARAMS procParams = {};
   procParams.progressive_frame = dispInfo.progressive_frame;
   procParams.top_field_first = dispInfo.top_field_first;
