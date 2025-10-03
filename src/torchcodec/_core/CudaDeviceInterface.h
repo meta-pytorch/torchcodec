@@ -20,28 +20,43 @@ class CudaDeviceInterface : public DeviceInterface {
 
   std::optional<const AVCodec*> findCodec(const AVCodecID& codecId) override;
 
-  void initializeContext(AVCodecContext* codecContext) override;
+  void initialize(const AVStream* avStream) override;
+
+  void initializeVideo(
+      const VideoStreamOptions& videoStreamOptions,
+      [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
+          transforms,
+      [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims)
+      override;
+
+  void registerHardwareDeviceWithCodec(AVCodecContext* codecContext) override;
 
   void convertAVFrameToFrameOutput(
-      const VideoStreamOptions& videoStreamOptions,
-      const AVRational& timeBase,
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor =
           std::nullopt) override;
 
  private:
-  std::unique_ptr<FiltersContext> initializeFiltersContext(
-      const VideoStreamOptions& videoStreamOptions,
-      const UniqueAVFrame& avFrame,
-      const AVRational& timeBase);
+  // Our CUDA decoding code assumes NV12 format. In order to handle other
+  // kinds of input, we need to convert them to NV12. Our current implementation
+  // does this using filtergraph.
+  UniqueAVFrame maybeConvertAVFrameToNV12OrRGB24(UniqueAVFrame& avFrame);
+
+  // We sometimes encounter frames that cannot be decoded on the CUDA device.
+  // Rather than erroring out, we decode them on the CPU.
+  std::unique_ptr<DeviceInterface> cpuInterface_;
+
+  VideoStreamOptions videoStreamOptions_;
+  AVRational timeBase_;
 
   UniqueAVBufferRef ctx_;
   std::unique_ptr<NppStreamContext> nppCtx_;
-  // Current filter context. Used to know whether a new FilterGraph
-  // should be created to process the next frame.
-  std::unique_ptr<FiltersContext> filtersContext_;
-  std::unique_ptr<FilterGraph> filterGraph_;
+
+  // This filtergraph instance is only used for NV12 format conversion in
+  // maybeConvertAVFrameToNV12().
+  std::unique_ptr<FiltersContext> nv12ConversionContext_;
+  std::unique_ptr<FilterGraph> nv12Conversion_;
 };
 
 } // namespace facebook::torchcodec

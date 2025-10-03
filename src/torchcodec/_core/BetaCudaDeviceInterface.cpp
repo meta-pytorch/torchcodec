@@ -35,22 +35,19 @@ static bool g_cuda_beta = registerDeviceInterface(
 
 static int CUDAAPI
 pfnSequenceCallback(void* pUserData, CUVIDEOFORMAT* videoFormat) {
-  BetaCudaDeviceInterface* decoder =
-      static_cast<BetaCudaDeviceInterface*>(pUserData);
+  auto decoder = static_cast<BetaCudaDeviceInterface*>(pUserData);
   return decoder->streamPropertyChange(videoFormat);
 }
 
 static int CUDAAPI
 pfnDecodePictureCallback(void* pUserData, CUVIDPICPARAMS* picParams) {
-  BetaCudaDeviceInterface* decoder =
-      static_cast<BetaCudaDeviceInterface*>(pUserData);
+  auto decoder = static_cast<BetaCudaDeviceInterface*>(pUserData);
   return decoder->frameReadyForDecoding(picParams);
 }
 
 static int CUDAAPI
 pfnDisplayPictureCallback(void* pUserData, CUVIDPARSERDISPINFO* dispInfo) {
-  BetaCudaDeviceInterface* decoder =
-      static_cast<BetaCudaDeviceInterface*>(pUserData);
+  auto decoder = static_cast<BetaCudaDeviceInterface*>(pUserData);
   return decoder->frameReadyInDisplayOrder(dispInfo);
 }
 
@@ -165,12 +162,19 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
   }
 }
 
-void BetaCudaDeviceInterface::initializeInterface(AVStream* avStream) {
+void BetaCudaDeviceInterface::initialize(const AVStream* avStream) {
   torch::Tensor dummyTensorForCudaInitialization = torch::empty(
       {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
 
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
+
+  auto cudaDevice = torch::Device(torch::kCUDA);
+  defaultCudaInterface_ =
+      std::unique_ptr<DeviceInterface>(createDeviceInterface(cudaDevice));
+  AVCodecContext dummyCodecContext = {};
+  defaultCudaInterface_->initialize(avStream);
+  defaultCudaInterface_->registerHardwareDeviceWithCodec(&dummyCodecContext);
 
   const AVCodecParameters* codecpar = avStream->codecpar;
   TORCH_CHECK(codecpar != nullptr, "CodecParameters cannot be null");
@@ -495,8 +499,6 @@ void BetaCudaDeviceInterface::flush() {
 }
 
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
-    const VideoStreamOptions& videoStreamOptions,
-    const AVRational& timeBase,
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
@@ -507,20 +509,8 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
   // TODONVDEC P1: we use the 'default' cuda device interface for color
   // conversion. That's a temporary hack to make things work. we should abstract
   // the color conversion stuff separately.
-  if (!defaultCudaInterface_) {
-    auto cudaDevice = torch::Device(torch::kCUDA);
-    defaultCudaInterface_ =
-        std::unique_ptr<DeviceInterface>(createDeviceInterface(cudaDevice));
-    AVCodecContext dummyCodecContext = {};
-    defaultCudaInterface_->initializeContext(&dummyCodecContext);
-  }
-
   defaultCudaInterface_->convertAVFrameToFrameOutput(
-      videoStreamOptions,
-      timeBase,
-      avFrame,
-      frameOutput,
-      preAllocatedOutputTensor);
+      avFrame, frameOutput, preAllocatedOutputTensor);
 }
 
 } // namespace facebook::torchcodec
