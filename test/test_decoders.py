@@ -45,6 +45,7 @@ from .utils import (
     SINE_MONO_S32_8000,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
+    unsplit_device_str,
 )
 
 
@@ -178,6 +179,7 @@ class TestVideoDecoder:
             device=device,
             seek_mode=seek_mode,
         )
+        device, _ = unsplit_device_str(device)
 
         ref_frame0 = NASA_VIDEO.get_frame_data_by_index(0).to(device)
         ref_frame1 = NASA_VIDEO.get_frame_data_by_index(1).to(device)
@@ -223,6 +225,7 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_getitem_slice(self, device, seek_mode):
         decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        device, _ = unsplit_device_str(device)
 
         # ensure that the degenerate case of a range of size 1 works
 
@@ -400,6 +403,7 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_iteration(self, device, seek_mode):
         decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        device, _ = unsplit_device_str(device)
 
         ref_frame0 = NASA_VIDEO.get_frame_data_by_index(0).to(device)
         ref_frame1 = NASA_VIDEO.get_frame_data_by_index(1).to(device)
@@ -447,6 +451,7 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frame_at(self, device, seek_mode):
         decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        device, _ = unsplit_device_str(device)
 
         ref_frame9 = NASA_VIDEO.get_frame_data_by_index(9).to(device)
         frame9 = decoder.get_frame_at(9)
@@ -510,6 +515,7 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_at(self, device, seek_mode):
         decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        device, _ = unsplit_device_str(device)
 
         # test positive and negative frame index
         frames = decoder.get_frames_at([35, 25, -1, -2])
@@ -585,6 +591,7 @@ class TestVideoDecoder:
             pytest.skip("AV1 decoding on CUDA is not supported internally")
 
         decoder = VideoDecoder(AV1_VIDEO.path, device=device)
+        device, _ = unsplit_device_str(device)
         ref_frame10 = AV1_VIDEO.get_frame_data_by_index(10)
         ref_frame_info10 = AV1_VIDEO.get_frame_info(10)
         decoded_frame10 = decoder.get_frame_at(10)
@@ -596,6 +603,7 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frame_played_at(self, device, seek_mode):
         decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        device, _ = unsplit_device_str(device)
 
         ref_frame_played_at_6 = NASA_VIDEO.get_frame_data_by_index(180).to(device)
         assert_frames_equal(
@@ -635,8 +643,8 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_played_at(self, device, seek_mode):
-
         decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        device, _ = unsplit_device_str(device)
 
         # Note: We know the frame at ~0.84s has index 25, the one at 1.16s has
         # index 35. We use those indices as reference to test against.
@@ -695,6 +703,7 @@ class TestVideoDecoder:
             device=device,
             seek_mode=seek_mode,
         )
+        device, _ = unsplit_device_str(device)
 
         # test degenerate case where we only actually get 1 frame
         ref_frames9 = NASA_VIDEO.get_frame_data_by_range(
@@ -799,6 +808,7 @@ class TestVideoDecoder:
             device=device,
             seek_mode=seek_mode,
         )
+        device, _ = unsplit_device_str(device)
 
         # high range ends get capped to num_frames
         frames387_389 = decoder.get_frames_in_range(start=387, stop=1000)
@@ -874,6 +884,7 @@ class TestVideoDecoder:
             device=device,
             seek_mode=seek_mode,
         )
+        device, _ = unsplit_device_str(device)
 
         assert decoder.metadata.num_frames_from_header is None
         assert decoder.metadata.num_frames_from_content is None
@@ -942,6 +953,7 @@ class TestVideoDecoder:
             device=device,
             seek_mode=seek_mode,
         )
+        device, _ = unsplit_device_str(device)
 
         # Note that we are comparing the results of VideoDecoder's method:
         #   get_frames_played_in_range()
@@ -1134,6 +1146,7 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_compile(self, device):
         decoder = VideoDecoder(NASA_VIDEO.path, device=device)
+        device, _ = unsplit_device_str(device)
 
         @contextlib.contextmanager
         def restore_capture_scalar_outputs():
@@ -1271,6 +1284,19 @@ class TestVideoDecoder:
         # This just validates that we can decode 10-bit videos.
         # TODO validate against the ref that the decoded frames are correct
 
+        if device == "cuda:0:beta":
+            # This fails on our BETA interface on asset 0 (only!) with:
+            #
+            # RuntimeError: Codec configuration not supported on this GPU.
+            # Codec: 4, chroma format: 1, bit depth: 10
+            #
+            # I don't remember but I suspect asset 0 is actually the one that
+            # fallsback to the CPU path on the default CUDA interface (that
+            # would make sense)
+            # We should investigate if and how we could make that fallback
+            # happen for the BETA interface.
+            pytest.skip("TODONVDEC P2 - investigate and unskip")
+
         decoder = VideoDecoder(asset.path, device=device)
         decoder.get_frame_at(10)
 
@@ -1316,6 +1342,7 @@ class TestVideoDecoder:
                 device=device,
                 custom_frame_mappings=custom_frame_mappings,
             )
+        device, _ = unsplit_device_str(device)
         frame_0 = decoder.get_frame_at(0)
         frame_5 = decoder.get_frame_at(5)
         assert_frames_equal(

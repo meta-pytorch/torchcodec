@@ -27,7 +27,27 @@ def needs_cuda(test_item):
 
 
 def all_supported_devices():
-    return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    return (
+        "cpu",
+        pytest.param("cuda", marks=pytest.mark.needs_cuda),
+        pytest.param("cuda:0:beta", marks=pytest.mark.needs_cuda),
+    )
+
+
+def unsplit_device_str(device_str: str) -> str:
+    # helper meant to be used as
+    # device, device_variant = unsplit_device_str(device)
+    # when `device` comes from all_supported_devices() and may be "cuda:0:beta".
+    # It is used:
+    # - before calling `.to(device)` where device can't be "cuda:0:beta"
+    # - before calling add_video_stream(device=device, device_variant=device_variant)
+    #
+    # TODONVDEC P2: Find a less clunky way to test the BETA CUDA interface. It
+    # will ultimately depend on how we want to publicly expose it.
+    if device_str == "cuda:0:beta":
+        return "cuda", "beta"
+    else:
+        return device_str, "default"
 
 
 def get_ffmpeg_major_version():
