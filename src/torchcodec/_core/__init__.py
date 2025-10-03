@@ -19,6 +19,7 @@ from .ops import (
     _test_frame_pts_equality,
     add_audio_stream,
     add_video_stream,
+    core_library_path,
     create_from_bytes,
     create_from_file,
     create_from_file_like,
@@ -41,4 +42,5 @@ from .ops import (
     get_next_frame,
     scan_all_streams_to_update_metadata,
     seek_to_pts,
+    variant,
 )
