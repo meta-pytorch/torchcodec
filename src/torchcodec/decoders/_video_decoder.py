@@ -336,20 +336,17 @@ class VideoDecoder:
             duration_seconds=duration_seconds.item(),
         )
 
-    def get_frames_played_at(self, seconds: list[float]) -> FrameBatch:
+    def get_frames_played_at(
+        self, seconds: Union[torch.Tensor, list[float]]
+    ) -> FrameBatch:
         """Return frames played at the given timestamps in seconds.
 
         Args:
-            seconds (list of float): The timestamps in seconds when the frames are played.
+            seconds (torch.Tensor or list of float): The timestamps in seconds when the frames are played.
 
         Returns:
             FrameBatch: The frames that are played at ``seconds``.
         """
-        if isinstance(seconds, torch.Tensor):
-            # TODO we should avoid converting tensors to lists and just let the
-            # core ops and C++ code natively accept tensors.  See
-            # https://github.com/pytorch/torchcodec/issues/879
-            seconds = seconds.to(torch.float).tolist()
 
         data, pts_seconds, duration_seconds = core.get_frames_by_pts(
             self._decoder, timestamps=seconds

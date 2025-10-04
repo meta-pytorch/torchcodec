@@ -63,7 +63,7 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "get_frames_by_pts_in_range_audio(Tensor(a!) decoder, *, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def(
-      "get_frames_by_pts(Tensor(a!) decoder, *, float[] timestamps) -> (Tensor, Tensor, Tensor)");
+      "get_frames_by_pts(Tensor(a!) decoder, *, Tensor timestamps) -> (Tensor, Tensor, Tensor)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -405,10 +405,9 @@ OpsFrameBatchOutput get_frames_in_range(
 // Return the frames at given ptss for a given stream
 OpsFrameBatchOutput get_frames_by_pts(
     at::Tensor& decoder,
-    at::ArrayRef<double> timestamps) {
+    const at::Tensor& timestamps) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  std::vector<double> timestampsVec(timestamps.begin(), timestamps.end());
-  auto result = videoDecoder->getFramesPlayedAt(timestampsVec);
+  auto result = videoDecoder->getFramesPlayedAt(timestamps);
   return makeOpsFrameBatchOutput(result);
 }
 

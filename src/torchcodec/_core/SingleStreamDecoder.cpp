@@ -753,7 +753,7 @@ FrameOutput SingleStreamDecoder::getFramePlayedAt(double seconds) {
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
-    const std::vector<double>& timestamps) {
+    const torch::Tensor& timestamps) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
 
   const auto& streamMetadata =
@@ -767,9 +767,13 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
   // avoid decoding that unique frame twice is to convert the input timestamps
   // to indices, and leverage the de-duplication logic of getFramesAtIndices.
 
-  std::vector<int64_t> frameIndices(timestamps.size());
-  for (size_t i = 0; i < timestamps.size(); ++i) {
-    auto frameSeconds = timestamps[i];
+  torch::Tensor frameIndices =
+      torch::empty({timestamps.numel()}, torch::kInt64);
+  auto frameIndicesAccessor = frameIndices.accessor<int64_t, 1>();
+  auto timestampsAccessor = timestamps.accessor<double, 1>();
+
+  for (int64_t i = 0; i < timestamps.numel(); ++i) {
+    auto frameSeconds = timestampsAccessor[i];
     TORCH_CHECK(
         frameSeconds >= minSeconds,
         "frame pts is " + std::to_string(frameSeconds) +
@@ -786,11 +790,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
               ".");
     }
 
-    frameIndices[i] = secondsToIndexLowerBound(frameSeconds);
+    frameIndicesAccessor[i] = secondsToIndexLowerBound(frameSeconds);
   }
 
-  // TODO: Support tensors natively instead of a vector to avoid a copy.
-  return getFramesAtIndices(torch::tensor(frameIndices));
+  return getFramesAtIndices(frameIndices);
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(

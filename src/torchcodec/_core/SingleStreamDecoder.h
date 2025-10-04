@@ -121,7 +121,7 @@ class SingleStreamDecoder {
   // seconds=5.999, etc.
   FrameOutput getFramePlayedAt(double seconds);
 
-  FrameBatchOutput getFramesPlayedAt(const std::vector<double>& timestamps);
+  FrameBatchOutput getFramesPlayedAt(const torch::Tensor& timestamps);
 
   // Returns frames within a given pts range. The range is defined by
   // [startSeconds, stopSeconds) with respect to the pts values for frames. The
