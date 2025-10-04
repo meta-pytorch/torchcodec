@@ -244,6 +244,7 @@ def encode_video_to_file_abstract(
     frames: torch.Tensor,
     frame_rate: int,
     filename: str,
+    crf: Optional[int] = None,
 ) -> None:
     return
 
