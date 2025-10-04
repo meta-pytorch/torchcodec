@@ -152,9 +152,10 @@ cudaVideoCodec validateCodecSupport(AVCodecID codecId) {
       return cudaVideoCodec_AV1;
     case AV_CODEC_ID_VP9:
       return cudaVideoCodec_VP9;
+    case AV_CODEC_ID_VP8:
+      return cudaVideoCodec_VP8;
     // TODONVDEC P0: support more codecs
     // case AV_CODEC_ID_MPEG4: return cudaVideoCodec_MPEG4;
-    // case AV_CODEC_ID_VP8: return cudaVideoCodec_VP8;
     // case AV_CODEC_ID_MJPEG: return cudaVideoCodec_JPEG;
     default: {
       TORCH_CHECK(false, "Unsupported codec type: ", avcodec_get_name(codecId));
