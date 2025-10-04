@@ -424,8 +424,8 @@ int BetaCudaDeviceInterface::frameReadyInDisplayOrder(
 int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   if (readyFrames_.empty()) {
     // No frame found, instruct caller to try again later after sending more
-    // packets.
-    return AVERROR(EAGAIN);
+    // packets, or to stop if EOF was already sent.
+    return eofSent_ ? AVERROR_EOF : AVERROR(EAGAIN);
   }
   CUVIDPARSERDISPINFO dispInfo = readyFrames_.front();
   readyFrames_.pop();
