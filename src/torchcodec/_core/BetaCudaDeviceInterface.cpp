@@ -11,6 +11,7 @@
 
 #include "src/torchcodec/_core/BetaCudaDeviceInterface.h"
 
+#include "src/torchcodec/_core/CUDACommon.h"
 #include "src/torchcodec/_core/DeviceInterface.h"
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/NVDECCache.h"
@@ -182,6 +183,12 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
   TORCH_CHECK(g_cuda_beta, "BetaCudaDeviceInterface was not registered!");
   TORCH_CHECK(
       device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
+
+  // Initialize CUDA context with a dummy tensor
+  torch::Tensor dummyTensorForCudaInitialization = torch::empty(
+      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
+
+  nppCtx_ = getNppStreamContext(device_);
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
@@ -202,21 +209,13 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     cuvidDestroyVideoParser(videoParser_);
     videoParser_ = nullptr;
   }
+
+  returnNppStreamContextToCache(device_, std::move(nppCtx_));
 }
 
 void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx) {
-  torch::Tensor dummyTensorForCudaInitialization = torch::empty(
-      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
-
-  auto cudaDevice = torch::Device(torch::kCUDA);
-  defaultCudaInterface_ =
-      std::unique_ptr<DeviceInterface>(createDeviceInterface(cudaDevice));
-  AVCodecContext dummyCodecContext = {};
-  defaultCudaInterface_->initialize(avStream, avFormatCtx);
-  defaultCudaInterface_->registerHardwareDeviceWithCodec(&dummyCodecContext);
-
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
@@ -603,15 +602,19 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
+  // TODONVDEC P2: we may need to handle 10bit videos the same way the default
+  // interface does it with maybeConvertAVFrameToNV12OrRGB24().
   TORCH_CHECK(
       avFrame->format == AV_PIX_FMT_CUDA,
       "Expected CUDA format frame from BETA CUDA interface");
 
-  // TODONVDEC P1: we use the 'default' cuda device interface for color
-  // conversion. That's a temporary hack to make things work. we should abstract
-  // the color conversion stuff separately.
-  defaultCudaInterface_->convertAVFrameToFrameOutput(
-      avFrame, frameOutput, preAllocatedOutputTensor);
+  validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
+
+  at::cuda::CUDAStream nvdecStream =
+      at::cuda::getCurrentCUDAStream(device_.index());
+
+  frameOutput.data = convertNV12FrameToRGB(
+      avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
 }
 
 } // namespace facebook::torchcodec

@@ -7,6 +7,7 @@
 #pragma once
 
 #include <npp.h>
+#include "src/torchcodec/_core/CUDACommon.h"
 #include "src/torchcodec/_core/DeviceInterface.h"
 #include "src/torchcodec/_core/FilterGraph.h"
 
@@ -53,7 +54,7 @@ class CudaDeviceInterface : public DeviceInterface {
   AVRational timeBase_;
 
   UniqueAVBufferRef ctx_;
-  std::unique_ptr<NppStreamContext> nppCtx_;
+  UniqueNppContext nppCtx_;
 
   // This filtergraph instance is only used for NV12 format conversion in
   // maybeConvertAVFrameToNV12().
