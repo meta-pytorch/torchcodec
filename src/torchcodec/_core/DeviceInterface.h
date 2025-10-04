@@ -14,6 +14,7 @@
 #include "FFMPEGCommon.h"
 #include "src/torchcodec/_core/Frame.h"
 #include "src/torchcodec/_core/StreamOptions.h"
+#include "src/torchcodec/_core/Transform.h"
 
 namespace facebook::torchcodec {
 
@@ -50,18 +51,27 @@ class DeviceInterface {
     return std::nullopt;
   };
 
-  // Initialize the hardware device that is specified in `device`. Some builds
-  // support CUDA and others only support CPU.
-  virtual void initializeContext(
+  // Initialize the device with parameters generic to all kinds of decoding.
+  virtual void initialize(
+      const AVStream* avStream,
+      const UniqueDecodingAVFormatContext& avFormatCtx) = 0;
+
+  // Initialize the device with parameters specific to video decoding. There is
+  // a default empty implementation.
+  virtual void initializeVideo(
+      [[maybe_unused]] const VideoStreamOptions& videoStreamOptions,
+      [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
+          transforms,
+      [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {}
+
+  // In order for decoding to actually happen on an FFmpeg managed hardware
+  // device, we need to register the DeviceInterface managed
+  // AVHardwareDeviceContext with the AVCodecContext. We don't need to do this
+  // on the CPU and if FFmpeg is not managing the hardware device.
+  virtual void registerHardwareDeviceWithCodec(
       [[maybe_unused]] AVCodecContext* codecContext) {}
 
-  virtual void initializeInterface(
-      [[maybe_unused]] const AVStream* stream,
-      [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx) {}
-
   virtual void convertAVFrameToFrameOutput(
-      const VideoStreamOptions& videoStreamOptions,
-      const AVRational& timeBase,
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt) = 0;
@@ -71,7 +81,11 @@ class DeviceInterface {
   // ------------------------------------------
 
   // Override to return true if this device interface can decode packets
-  // directly
+  // directly. This means that the following two member functions can both
+  // be called:
+  //
+  //   1. sendPacket()
+  //   2. receiveFrame()
   virtual bool canDecodePacketDirectly() const {
     return false;
   }
@@ -128,5 +142,7 @@ void validateDeviceInterface(
 std::unique_ptr<DeviceInterface> createDeviceInterface(
     const torch::Device& device,
     const std::string_view variant = "default");
+
+torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 
 } // namespace facebook::torchcodec
