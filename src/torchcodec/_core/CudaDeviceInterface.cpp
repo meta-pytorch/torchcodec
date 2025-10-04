@@ -472,7 +472,6 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
 
   // For background, see
   // Note [YUV -> RGB Color Conversion, color space and color range]
-  // if (avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT709) {
   if (avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT709) {
     if (avFrame->color_range == AVColorRange::AVCOL_RANGE_JPEG) {
       // NPP provides a pre-defined color conversion function for BT.709 full
