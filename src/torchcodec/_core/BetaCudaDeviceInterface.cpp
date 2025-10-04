@@ -350,13 +350,20 @@ int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
       packet.get() && packet->data && packet->size > 0,
       "sendPacket received an empty packet, this is unexpected, please report.");
 
-  applyBSF(packet);
+  // Apply BSF if needed. We want applyBSF to return a *new* filtered packet, or
+  // the original one if no BSF is needed. This new filtered packet must be
+  // allocated outside of applyBSF: if it were allocated inside applyBSF, it
+  // would be destroyed at the end of the function, leaving us with a dangling
+  // reference.
+  AutoAVPacket filteredAutoPacket;
+  ReferenceAVPacket filteredPacket(filteredAutoPacket);
+  ReferenceAVPacket& packetToSend = applyBSF(packet, filteredPacket);
 
   CUVIDSOURCEDATAPACKET cuvidPacket = {};
-  cuvidPacket.payload = packet->data;
-  cuvidPacket.payload_size = packet->size;
+  cuvidPacket.payload = packetToSend->data;
+  cuvidPacket.payload_size = packetToSend->size;
   cuvidPacket.flags = CUVID_PKT_TIMESTAMP;
-  cuvidPacket.timestamp = packet->pts;
+  cuvidPacket.timestamp = packetToSend->pts;
 
   return sendCuvidPacket(cuvidPacket);
 }
@@ -375,9 +382,11 @@ int BetaCudaDeviceInterface::sendCuvidPacket(
   return result == CUDA_SUCCESS ? AVSUCCESS : AVERROR_EXTERNAL;
 }
 
-void BetaCudaDeviceInterface::applyBSF(ReferenceAVPacket& packet) {
+ReferenceAVPacket& BetaCudaDeviceInterface::applyBSF(
+    ReferenceAVPacket& packet,
+    ReferenceAVPacket& filteredPacket) {
   if (!bitstreamFilter_) {
-    return;
+    return packet;
   }
 
   int retVal = av_bsf_send_packet(bitstreamFilter_.get(), packet.get());
@@ -386,27 +395,17 @@ void BetaCudaDeviceInterface::applyBSF(ReferenceAVPacket& packet) {
       "Failed to send packet to bitstream filter: ",
       getFFMPEGErrorStringFromErrorCode(retVal));
 
-  // Create a temporary packet to receive the filtered data
   // TODO P1: the docs mention there can theoretically be multiple output
   // packets for a single input, i.e. we may need to call av_bsf_receive_packet
   // more than once. We should figure out whether that applies to the BSF we're
   // using.
-  AutoAVPacket filteredAutoPacket;
-  ReferenceAVPacket filteredPacket(filteredAutoPacket);
   retVal = av_bsf_receive_packet(bitstreamFilter_.get(), filteredPacket.get());
   TORCH_CHECK(
       retVal >= AVSUCCESS,
       "Failed to receive packet from bitstream filter: ",
       getFFMPEGErrorStringFromErrorCode(retVal));
 
-  // Free the original packet's data which isn't needed anymore, and move the
-  // fields of the filtered packet into the original packet. The filtered packet
-  // fields are re-set by av_packet_move_ref, so when it goes out of scope and
-  // gets destructed, it's not going to affect the original packet.
-  packet.reset(filteredPacket);
-  // TODONVDEC P0: consider cleaner ways to do this. Maybe we should let
-  // applyBSF return a new packet, and maybe that new packet needs to be a field
-  // on the interface to avoid complex lifetime issues.
+  return filteredPacket;
 }
 
 // Parser triggers this callback within cuvidParseVideoData when a frame is
