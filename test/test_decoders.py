@@ -45,6 +45,7 @@ from .utils import (
     SINE_MONO_S32_8000,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
+    TEST_SRC_2_720P_VP9,
     unsplit_device_str,
 )
 
@@ -588,7 +589,7 @@ class TestVideoDecoder:
             return
 
         if device == "cuda" and in_fbcode():
-            pytest.skip("AV1 decoding on CUDA is not supported internally")
+            pytest.skip("decoding on CUDA is not supported internally")
 
         decoder = VideoDecoder(AV1_VIDEO.path, device=device)
         device, _ = unsplit_device_str(device)
@@ -1451,6 +1452,7 @@ class TestVideoDecoder:
             BT709_FULL_RANGE,
             TEST_SRC_2_720P_H265,
             AV1_VIDEO,
+            TEST_SRC_2_720P_VP9,
         ),
     )
     @pytest.mark.parametrize("contiguous_indices", (True, False))
@@ -1458,8 +1460,8 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_get_frame_at(
         self, asset, contiguous_indices, seek_mode
     ):
-        if asset == AV1_VIDEO and seek_mode == "approximate":
-            pytest.skip("AV1 asset doesn't work with approximate mode")
+        if asset in (AV1_VIDEO, TEST_SRC_2_720P_VP9) and seek_mode == "approximate":
+            pytest.skip("asset doesn't work with approximate mode")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
@@ -1493,6 +1495,7 @@ class TestVideoDecoder:
             BT709_FULL_RANGE,
             TEST_SRC_2_720P_H265,
             AV1_VIDEO,
+            TEST_SRC_2_720P_VP9,
         ),
     )
     @pytest.mark.parametrize("contiguous_indices", (True, False))
@@ -1500,8 +1503,8 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_get_frames_at(
         self, asset, contiguous_indices, seek_mode
     ):
-        if asset == AV1_VIDEO and seek_mode == "approximate":
-            pytest.skip("AV1 asset doesn't work with approximate mode")
+        if asset in (AV1_VIDEO, TEST_SRC_2_720P_VP9) and seek_mode == "approximate":
+            pytest.skip("asset doesn't work with approximate mode")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
@@ -1536,12 +1539,13 @@ class TestVideoDecoder:
             BT709_FULL_RANGE,
             TEST_SRC_2_720P_H265,
             AV1_VIDEO,
+            TEST_SRC_2_720P_VP9,
         ),
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frame_played_at(self, asset, seek_mode):
-        if asset == AV1_VIDEO and seek_mode == "approximate":
-            pytest.skip("AV1 asset doesn't work with approximate mode")
+        if asset in (AV1_VIDEO, TEST_SRC_2_720P_VP9) and seek_mode == "approximate":
+            pytest.skip("asset doesn't work with approximate mode")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
@@ -1572,13 +1576,14 @@ class TestVideoDecoder:
             TEST_SRC_2_720P,
             BT709_FULL_RANGE,
             TEST_SRC_2_720P_H265,
+            TEST_SRC_2_720P_VP9,
             AV1_VIDEO,
         ),
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frames_played_at(self, asset, seek_mode):
-        if asset == AV1_VIDEO and seek_mode == "approximate":
-            pytest.skip("AV1 asset doesn't work with approximate mode")
+        if asset in (AV1_VIDEO, TEST_SRC_2_720P_VP9) and seek_mode == "approximate":
+            pytest.skip("asset doesn't work with approximate mode")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
@@ -1611,12 +1616,13 @@ class TestVideoDecoder:
             BT709_FULL_RANGE,
             TEST_SRC_2_720P_H265,
             AV1_VIDEO,
+            TEST_SRC_2_720P_VP9,
         ),
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_backwards(self, asset, seek_mode):
-        if asset == AV1_VIDEO and seek_mode == "approximate":
-            pytest.skip("AV1 asset doesn't work with approximate mode")
+        if asset in (AV1_VIDEO, TEST_SRC_2_720P_VP9) and seek_mode == "approximate":
+            pytest.skip("asset doesn't work with approximate mode")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
