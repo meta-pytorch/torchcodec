@@ -166,10 +166,13 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
-  // TODONVDEC P0: we probably need to free the frames that have been decoded by
-  // NVDEC but not yet "mapped" - i.e. those that are still in readyFrames_?
-
   if (decoder_) {
+    // DALI doesn't seem to do any particular cleanup of the decoder before
+    // sending it to the cache, so we probably don't need to do anything either.
+    // Just to be safe, we flush.
+    // What happens to those decode surfaces that haven't yet been mapped is
+    // unclear.
+    flush();
     NVDECCache::getCache(device_.index())
         .returnDecoder(&videoFormat_, std::move(decoder_));
   }
@@ -320,7 +323,7 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
     decoder_ = NVDECCache::getCache(device_.index()).getDecoder(videoFormat);
 
     if (!decoder_) {
-      // TODONVDEC P0: consider re-configuring an existing decoder instead of
+      // TODONVDEC P2: consider re-configuring an existing decoder instead of
       // re-creating one. See docs, see DALI.
       decoder_ = createDecoder(videoFormat);
     }
@@ -405,13 +408,8 @@ void BetaCudaDeviceInterface::applyBSF(ReferenceAVPacket& packet) {
 // given frame. It means we can send that frame to be decoded by the hardware
 // NVDEC decoder by calling cuvidDecodePicture which is non-blocking.
 int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* picParams) {
-  if (isFlushing_) {
-    return 0;
-  }
-
   TORCH_CHECK(picParams != nullptr, "Invalid picture parameters");
   TORCH_CHECK(decoder_, "Decoder not initialized before picture decode");
-
   // Send frame to be decoded by NVDEC - non-blocking call.
   CUresult result = cuvidDecodePicture(*decoder_.get(), picParams);
 
@@ -554,16 +552,17 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
 }
 
 void BetaCudaDeviceInterface::flush() {
-  isFlushing_ = true;
-
+  // The NVCUVID docs mention that after seeking, i.e. when flush() is called,
+  // we should send a packet with the CUVID_PKT_DISCONTINUITY flag. The docs
+  // don't say whether this should be an empty packet, or whether it should be a
+  // flag on the next non-empty packet. It doesn't matter: neither work :)
+  // Sending an EOF packet, however, does work. So we do that. And we re-set the
+  // eofSent_ flag to false because that's not a true EOF notification.
   sendEOFPacket();
-
-  isFlushing_ = false;
+  eofSent_ = false;
 
   std::queue<CUVIDPARSERDISPINFO> emptyQueue;
   std::swap(readyFrames_, emptyQueue);
-
-  eofSent_ = false;
 }
 
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(

@@ -63,6 +63,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
  private:
   int sendCuvidPacket(CUVIDSOURCEDATAPACKET& cuvidPacket);
+
   // Apply bitstream filter, modifies packet in-place
   void applyBSF(ReferenceAVPacket& packet);
   void initializeBSF(
@@ -81,10 +82,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   std::queue<CUVIDPARSERDISPINFO> readyFrames_;
 
   bool eofSent_ = false;
-
-  // Flush flag to prevent decode operations during flush (like DALI's
-  // isFlushing_)
-  bool isFlushing_ = false;
 
   AVRational timeBase_ = {0, 1};
   AVRational frameRateAvgFromFFmpeg_ = {0, 1};
