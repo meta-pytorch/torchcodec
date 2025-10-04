@@ -196,6 +196,7 @@ void BetaCudaDeviceInterface::initialize(
 
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
+  frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
 
   const AVCodecParameters* codecPar = avStream->codecpar;
   TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
