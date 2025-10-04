@@ -426,35 +426,36 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     dst = allocateEmptyHWCTensor(frameDims, device_);
   }
 
-  torch::DeviceIndex deviceIndex = getNonNegativeDeviceIndex(device_);
-
-  // Create a CUDA event and attach it to the AVFrame's CUDA stream. That's the
-  // NVDEC stream, i.e. the CUDA stream that the frame was decoded on.
-  // We will be waiting for this event to complete before calling the NPP
-  // functions, to ensure NVDEC has finished decoding the frame before running
-  // the NPP color-conversion.
-  // Note that our code is generic and assumes that the NVDEC's stream can be
-  // arbitrary, but unfortunately we know it's hardcoded to be the default
-  // stream by FFmpeg:
+  // We need to make sure NVDEC has finished decoding a frame before
+  // color-converting it with NPP.
+  // So we make the NPP stream wait for NVDEC to finish.
+  // If we're in the default CUDA interface, we figure out the NVDEC stream from
+  // the avFrame's hardware context. But in reality, we know that this stream is
+  // hardcoded to be the default stream by FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/66e40840d15b514f275ce3ce2a4bf72ec68c7311/libavutil/hwcontext_cuda.c#L387-L388
-  at::cuda::CUDAStream nppStream = at::cuda::getCurrentCUDAStream(deviceIndex);
+  // If we're in the BETA CUDA interface, we know the NVDEC stream was set with
+  // getCurrentCUDAStream(), so it's the same as the nppStream.
+  at::cuda::CUDAStream nppStream =
+      at::cuda::getCurrentCUDAStream(device_.index());
+  // We can't create a CUDAStream without assigning it a value so we initialize
+  // it to the nppStream, which is valid for the BETA interface.
+  at::cuda::CUDAStream nvdecStream = nppStream;
   if (hwFramesCtx) {
-    // TODONVDEC P2 this block won't be hit from the beta interface because
-    // there is no hwFramesCtx, but we should still make sure there's no CUDA
-    // stream sync issue in the beta interface.
+    // Default interface path
     TORCH_CHECK(
         hwFramesCtx->device_ctx != nullptr,
         "The AVFrame's hw_frames_ctx does not have a device_ctx. ");
     auto cudaDeviceCtx =
         static_cast<AVCUDADeviceContext*>(hwFramesCtx->device_ctx->hwctx);
     TORCH_CHECK(cudaDeviceCtx != nullptr, "The hardware context is null");
-    at::cuda::CUDAEvent nvdecDoneEvent;
-    at::cuda::CUDAStream nvdecStream = // That's always the default stream. Sad.
-        c10::cuda::getStreamFromExternal(cudaDeviceCtx->stream, deviceIndex);
-    nvdecDoneEvent.record(nvdecStream);
-    // Don't start NPP work before NVDEC is done decoding the frame!
-    nvdecDoneEvent.block(nppStream);
+    nvdecStream = // That's always the default stream. Sad.
+        c10::cuda::getStreamFromExternal(
+            cudaDeviceCtx->stream, device_.index());
   }
+  // Don't start NPP work before NVDEC is done decoding the frame!
+  at::cuda::CUDAEvent nvdecDoneEvent;
+  nvdecDoneEvent.record(nvdecStream);
+  nvdecDoneEvent.block(nppStream);
 
   // Create the NPP context if we haven't yet.
   nppCtx_->hStream = nppStream.stream();
