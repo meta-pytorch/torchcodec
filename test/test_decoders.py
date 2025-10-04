@@ -1490,13 +1490,6 @@ class TestVideoDecoder:
         for frame_index in indices:
             ref_frame = ref_decoder.get_frame_at(frame_index)
             beta_frame = beta_decoder.get_frame_at(frame_index)
-            if asset == TEST_SRC_2_720P_MPEG4:
-                from torchvision.io import write_png
-                from torchvision.utils import make_grid
-
-                img = make_grid([beta_frame.data, ref_frame.data], nrow=2)
-                write_png(img.cpu(), f"/tmp/frame_{frame_index:04d}.png")
-
             # TODONVDEC P1 see above
             if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
