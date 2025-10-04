@@ -294,7 +294,6 @@ void BetaCudaDeviceInterface::initializeBSF(
 
     default:
       // No bitstream filter needed for other codecs
-      // TODONVDEC P1 MPEG4 will need one!
       break;
   }
 
