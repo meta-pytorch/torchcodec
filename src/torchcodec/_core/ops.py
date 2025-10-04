@@ -117,7 +117,7 @@ get_frame_at_index = torch.ops.torchcodec_ns.get_frame_at_index.default
 _get_frames_at_indices_tensor_input = (
     torch.ops.torchcodec_ns.get_frames_at_indices.default
 )
-get_frames_by_pts = torch.ops.torchcodec_ns.get_frames_by_pts.default
+_get_frames_by_pts_tensor_input = torch.ops.torchcodec_ns.get_frames_by_pts.default
 get_frames_in_range = torch.ops.torchcodec_ns.get_frames_in_range.default
 get_frames_by_pts_in_range = torch.ops.torchcodec_ns.get_frames_by_pts_in_range.default
 get_frames_by_pts_in_range_audio = (
@@ -210,6 +210,22 @@ def get_frames_at_indices(
         # Convert list to tensor for dispatch
         frame_indices = torch.tensor(frame_indices)
     return _get_frames_at_indices_tensor_input(decoder, frame_indices=frame_indices)
+
+
+def get_frames_by_pts(
+    decoder: torch.Tensor, *, timestamps: Union[torch.Tensor, list[float]]
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if isinstance(timestamps, torch.Tensor):
+        # Ensure indices is the correct dtype (float64)
+        timestamps = timestamps.to(torch.float64)
+    else:
+        # Convert list to tensor for dispatch
+        try:
+            timestamps = torch.tensor(timestamps, dtype=torch.float64)
+        except (ValueError, TypeError):
+            # Type validation in C++ layer
+            pass
+    return _get_frames_by_pts_tensor_input(decoder, timestamps=timestamps)
 
 
 # ==============================
@@ -363,7 +379,7 @@ def get_frame_at_pts_abstract(
 def get_frames_by_pts_abstract(
     decoder: torch.Tensor,
     *,
-    timestamps: List[float],
+    timestamps: Union[torch.Tensor, List[float]],
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (
