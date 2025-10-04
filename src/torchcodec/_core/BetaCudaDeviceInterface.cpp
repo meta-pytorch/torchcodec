@@ -156,8 +156,18 @@ cudaVideoCodec validateCodecSupport(AVCodecID codecId) {
       return cudaVideoCodec_VP8;
     case AV_CODEC_ID_MPEG4:
       return cudaVideoCodec_MPEG4;
-    // TODONVDEC P0: support more codecs
-    // case AV_CODEC_ID_MJPEG: return cudaVideoCodec_JPEG;
+    // Formats below are currently not tested, but they should "mostly" work.
+    // MPEG1 was briefly locally tested and it was ok-ish despite duration being
+    // off. Since they're far less popular, we keep them disabled by default but
+    // we can consider enabling them upon user requests.
+    // case AV_CODEC_ID_MPEG1VIDEO:
+    //   return cudaVideoCodec_MPEG1;
+    // case AV_CODEC_ID_MPEG2VIDEO:
+    //   return cudaVideoCodec_MPEG2;
+    // case AV_CODEC_ID_MJPEG:
+    //   return cudaVideoCodec_JPEG;
+    // case AV_CODEC_ID_VC1:
+    //   return cudaVideoCodec_VC1;
     default: {
       TORCH_CHECK(false, "Unsupported codec type: ", avcodec_get_name(codecId));
     }
