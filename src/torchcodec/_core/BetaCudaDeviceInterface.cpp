@@ -4,6 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+#include <c10/cuda/CUDAStream.h>
 #include <torch/types.h>
 #include <mutex>
 #include <vector>
@@ -459,14 +460,18 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   CUVIDPARSERDISPINFO dispInfo = readyFrames_.front();
   readyFrames_.pop();
 
-  // TODONVDEC P1 we need to set the procParams.output_stream field to the
-  // current CUDA stream and ensure proper synchronization. There's a related
-  // NVDECTODO in CudaDeviceInterface.cpp where we do the necessary
-  // synchronization for NPP.
   CUVIDPROCPARAMS procParams = {};
   procParams.progressive_frame = dispInfo.progressive_frame;
   procParams.top_field_first = dispInfo.top_field_first;
   procParams.unpaired_field = dispInfo.repeat_first_field < 0;
+  // We set the NVDEC stream to the current stream. It will be waited upon by
+  // the NPP stream before any color conversion. Currently, that syncing logic
+  // is in the default interface.
+  // Re types: we get a cudaStream_t from PyTorch but it's interchangeable with
+  // CUstream
+  procParams.output_stream = reinterpret_cast<CUstream>(
+      at::cuda::getCurrentCUDAStream(device_.index()).stream());
+
   CUdeviceptr framePtr = 0;
   unsigned int pitch = 0;
 
