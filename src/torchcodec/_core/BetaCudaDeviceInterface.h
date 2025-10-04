@@ -64,14 +64,14 @@ class BetaCudaDeviceInterface : public DeviceInterface {
  private:
   int sendCuvidPacket(CUVIDSOURCEDATAPACKET& cuvidPacket);
 
+  void initializeBSF(
+      const AVCodecParameters* codecPar,
+      const UniqueDecodingAVFormatContext& avFormatCtx);
   // Apply bitstream filter, returns filtered packet or original if no filter
   // needed.
   ReferenceAVPacket& applyBSF(
       ReferenceAVPacket& packet,
       ReferenceAVPacket& filteredPacket);
-  void initializeBSF(
-      const AVCodecParameters* codecPar,
-      const UniqueDecodingAVFormatContext& avFormatCtx);
 
   CUdeviceptr previouslyMappedFrame_ = 0;
   void unmapPreviousFrame();
