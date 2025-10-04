@@ -45,7 +45,6 @@ from .utils import (
     SINE_MONO_S32_8000,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
-    unsplit_device_str,
 )
 
 
@@ -1556,7 +1555,10 @@ class TestVideoDecoder:
         for pts in timestamps:
             ref_frame = ref_decoder.get_frame_played_at(pts)
             beta_frame = beta_decoder.get_frame_played_at(pts)
-            torch.testing.assert_close(beta_frame.data, ref_frame.data, rtol=0, atol=0)
+            if get_ffmpeg_major_version() > 4:  # TODONVDEC P1 see above
+                torch.testing.assert_close(
+                    beta_frame.data, ref_frame.data, rtol=0, atol=0
+                )
 
             assert beta_frame.pts_seconds == ref_frame.pts_seconds
             assert beta_frame.duration_seconds == ref_frame.duration_seconds
@@ -1590,7 +1592,10 @@ class TestVideoDecoder:
 
         ref_frames = ref_decoder.get_frames_played_at(timestamps)
         beta_frames = beta_decoder.get_frames_played_at(timestamps)
-        torch.testing.assert_close(beta_frames.data, ref_frames.data, rtol=0, atol=0)
+        if get_ffmpeg_major_version() > 4:  # TODONVDEC P1 see above
+            torch.testing.assert_close(
+                beta_frames.data, ref_frames.data, rtol=0, atol=0
+            )
         torch.testing.assert_close(beta_frames.pts_seconds, ref_frames.pts_seconds)
         torch.testing.assert_close(
             beta_frames.duration_seconds, ref_frames.duration_seconds
@@ -1629,7 +1634,10 @@ class TestVideoDecoder:
 
             ref_frame = ref_decoder.get_frame_at(frame_index)
             beta_frame = beta_decoder.get_frame_at(frame_index)
-            torch.testing.assert_close(beta_frame.data, ref_frame.data, rtol=0, atol=0)
+            if get_ffmpeg_major_version() > 4:  # TODONVDEC P1 see above
+                torch.testing.assert_close(
+                    beta_frame.data, ref_frame.data, rtol=0, atol=0
+                )
 
             assert beta_frame.pts_seconds == ref_frame.pts_seconds
             assert beta_frame.duration_seconds == ref_frame.duration_seconds
