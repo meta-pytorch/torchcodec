@@ -747,3 +747,10 @@ TEST_SRC_2_720P_MPEG4 = TestVideo(
     },
     frames={0: {}},  # Not needed for now
 )
+
+
+def supports_approximate_mode(asset: TestVideo) -> bool:
+    # TODONVDEC P2: open an issue about his. That's actually not related to
+    # NVDEC at all, those don't support approximate mode because they don't set
+    # a duration. CPU decoder fails too!
+    return asset not in (AV1_VIDEO, TEST_SRC_2_720P_VP9, TEST_SRC_2_720P_VP8)
