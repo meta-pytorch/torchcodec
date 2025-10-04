@@ -70,6 +70,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const AVCodecParameters* codecPar,
       const UniqueDecodingAVFormatContext& avFormatCtx);
 
+  CUdeviceptr previouslyMappedFrame_ = 0;
+  void unmapPreviousFrame();
+
   UniqueAVFrame convertCudaFrameToAVFrame(
       CUdeviceptr framePtr,
       unsigned int pitch,
