@@ -4,12 +4,14 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+#include <c10/cuda/CUDAStream.h>
 #include <torch/types.h>
 #include <mutex>
 #include <vector>
 
 #include "src/torchcodec/_core/BetaCudaDeviceInterface.h"
 
+#include "src/torchcodec/_core/CUDACommon.h"
 #include "src/torchcodec/_core/DeviceInterface.h"
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/NVDECCache.h"
@@ -181,6 +183,12 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
   TORCH_CHECK(g_cuda_beta, "BetaCudaDeviceInterface was not registered!");
   TORCH_CHECK(
       device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
+
+  // Initialize CUDA context with a dummy tensor
+  torch::Tensor dummyTensorForCudaInitialization = torch::empty(
+      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
+
+  nppCtx_ = getNppStreamContext(device_);
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
@@ -201,6 +209,8 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     cuvidDestroyVideoParser(videoParser_);
     videoParser_ = nullptr;
   }
+
+  returnNppStreamContextToCache(device_, std::move(nppCtx_));
 }
 
 void BetaCudaDeviceInterface::initialize(
@@ -208,13 +218,6 @@ void BetaCudaDeviceInterface::initialize(
     const UniqueDecodingAVFormatContext& avFormatCtx) {
   torch::Tensor dummyTensorForCudaInitialization = torch::empty(
       {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
-
-  auto cudaDevice = torch::Device(torch::kCUDA);
-  defaultCudaInterface_ =
-      std::unique_ptr<DeviceInterface>(createDeviceInterface(cudaDevice));
-  AVCodecContext dummyCodecContext = {};
-  defaultCudaInterface_->initialize(avStream, avFormatCtx);
-  defaultCudaInterface_->registerHardwareDeviceWithCodec(&dummyCodecContext);
 
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
@@ -459,14 +462,18 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   CUVIDPARSERDISPINFO dispInfo = readyFrames_.front();
   readyFrames_.pop();
 
-  // TODONVDEC P1 we need to set the procParams.output_stream field to the
-  // current CUDA stream and ensure proper synchronization. There's a related
-  // NVDECTODO in CudaDeviceInterface.cpp where we do the necessary
-  // synchronization for NPP.
   CUVIDPROCPARAMS procParams = {};
   procParams.progressive_frame = dispInfo.progressive_frame;
   procParams.top_field_first = dispInfo.top_field_first;
   procParams.unpaired_field = dispInfo.repeat_first_field < 0;
+  // We set the NVDEC stream to the current stream. It will be waited upon by
+  // the NPP stream before any color conversion. Currently, that syncing logic
+  // is in the default interface.
+  // Re types: we get a cudaStream_t from PyTorch but it's interchangeable with
+  // CUstream
+  procParams.output_stream = reinterpret_cast<CUstream>(
+      at::cuda::getCurrentCUDAStream(device_.index()).stream());
+
   CUdeviceptr framePtr = 0;
   unsigned int pitch = 0;
 
@@ -598,15 +605,19 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
+  // TODONVDEC P2: we may need to handle 10bit videos the same way the default
+  // interface does it with maybeConvertAVFrameToNV12OrRGB24().
   TORCH_CHECK(
       avFrame->format == AV_PIX_FMT_CUDA,
       "Expected CUDA format frame from BETA CUDA interface");
 
-  // TODONVDEC P1: we use the 'default' cuda device interface for color
-  // conversion. That's a temporary hack to make things work. we should abstract
-  // the color conversion stuff separately.
-  defaultCudaInterface_->convertAVFrameToFrameOutput(
-      avFrame, frameOutput, preAllocatedOutputTensor);
+  validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
+
+  at::cuda::CUDAStream nvdecStream =
+      at::cuda::getCurrentCUDAStream(device_.index());
+
+  frameOutput.data = convertNV12FrameToRGB(
+      avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
 }
 
 } // namespace facebook::torchcodec
