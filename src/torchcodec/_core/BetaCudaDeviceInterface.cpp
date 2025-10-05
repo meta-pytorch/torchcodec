@@ -111,7 +111,7 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
   // Below we'll set the decoderParams.OutputFormat to NV12, so we need to make
   // sure it's actually supported.
   TORCH_CHECK(
-      caps.nOutputFormatMask & (1 << cudaVideoSurfaceFormat_NV12),
+      (caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1,
       "NV12 output format is not supported for this configuration. ",
       "Codec: ",
       static_cast<int>(videoFormat->codec),
