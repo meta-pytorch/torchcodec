@@ -8,6 +8,11 @@
 
 #include <c10/util/Exception.h>
 
+extern "C" {
+#include <libavfilter/avfilter.h>
+#include <libavfilter/buffersink.h>
+}
+
 namespace facebook::torchcodec {
 
 AutoAVPacket::AutoAVPacket() : avPacket_(av_packet_alloc()) {
@@ -372,6 +377,63 @@ SwrContext* createSwrContext(
       "a buggy FFmpeg version. FFmpeg4 is known to fail here in some "
       "valid scenarios. Try to upgrade FFmpeg?");
   return swrContext;
+}
+
+AVFilterContext* createBuffersinkFilter(
+    AVFilterGraph* filterGraph,
+    const char* name,
+    enum AVPixelFormat outputFormat) {
+  const AVFilter* buffersink = avfilter_get_by_name("buffersink");
+  if (!buffersink) {
+    return nullptr;
+  }
+
+  AVFilterContext* sinkContext = nullptr;
+  int status;
+
+// av_opt_set_int_list was replaced by av_opt_set() in FFmpeg 8.
+#if LIBAVUTIL_VERSION_MAJOR >= 60 // FFmpeg >= 8
+  // Output options like pixel_formats must be set before filter init
+  sinkContext = avfilter_graph_alloc_filter(filterGraph, buffersink, name);
+  if (!sinkContext) {
+    return nullptr;
+  }
+  // av_opt_set uses the string representation of a pixel format
+  const char* fmt_name = av_get_pix_fmt_name(outputFormat);
+  if (!fmt_name) {
+    return nullptr;
+  }
+  status = av_opt_set(
+      sinkContext, "pixel_formats", fmt_name, AV_OPT_SEARCH_CHILDREN);
+  if (status < 0) {
+    return nullptr;
+  }
+  status = avfilter_init_str(sinkContext, nullptr);
+  if (status < 0) {
+    return nullptr;
+  }
+#else // FFmpeg <= 7
+  // For older FFmpeg versions, create filter and then set options
+  status = avfilter_graph_create_filter(
+      &sinkContext, buffersink, name, nullptr, nullptr, filterGraph);
+  if (status < 0) {
+    return nullptr;
+  }
+
+  enum AVPixelFormat pix_fmts[] = {outputFormat, AV_PIX_FMT_NONE};
+
+  status = av_opt_set_int_list(
+      sinkContext,
+      "pix_fmts",
+      pix_fmts,
+      AV_PIX_FMT_NONE,
+      AV_OPT_SEARCH_CHILDREN);
+  if (status < 0) {
+    return nullptr;
+  }
+#endif
+
+  return sinkContext;
 }
 
 UniqueAVFrame convertAudioAVFrameSamples(

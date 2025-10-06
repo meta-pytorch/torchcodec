@@ -23,6 +23,7 @@ extern "C" {
 #include <libavutil/display.h>
 #include <libavutil/file.h>
 #include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/version.h>
 #include <libswresample/swresample.h>
@@ -236,5 +237,10 @@ int64_t secondsToClosestPts(double seconds, const AVRational& timeBase);
 int64_t computeSafeDuration(
     const AVRational& frameRate,
     const AVRational& timeBase);
+
+AVFilterContext* createBuffersinkFilter(
+    AVFilterGraph* filterGraph,
+    const char* name,
+    enum AVPixelFormat outputFormat);
 
 } // namespace facebook::torchcodec
