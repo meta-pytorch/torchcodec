@@ -27,7 +27,27 @@ def needs_cuda(test_item):
 
 
 def all_supported_devices():
-    return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    return (
+        "cpu",
+        pytest.param("cuda", marks=pytest.mark.needs_cuda),
+        pytest.param("cuda:0:beta", marks=pytest.mark.needs_cuda),
+    )
+
+
+def unsplit_device_str(device_str: str) -> str:
+    # helper meant to be used as
+    # device, device_variant = unsplit_device_str(device)
+    # when `device` comes from all_supported_devices() and may be "cuda:0:beta".
+    # It is used:
+    # - before calling `.to(device)` where device can't be "cuda:0:beta"
+    # - before calling add_video_stream(device=device, device_variant=device_variant)
+    #
+    # TODONVDEC P2: Find a less clunky way to test the BETA CUDA interface. It
+    # will ultimately depend on how we want to publicly expose it.
+    if device_str == "cuda:0:beta":
+        return "cuda", "beta"
+    else:
+        return device_str, "default"
 
 
 def get_ffmpeg_major_version():
@@ -688,3 +708,49 @@ TEST_SRC_2_720P = TestVideo(
     },
     frames={0: {}},  # Not needed for now
 )
+# ffmpeg -f lavfi -i testsrc2=duration=10:size=1280x720:rate=30 -c:v libx265 -crf 23 -preset medium output.mp4
+TEST_SRC_2_720P_H265 = TestVideo(
+    filename="testsrc2_h265.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v libvpx-vp9 -b:v 1M output_vp9.webm
+TEST_SRC_2_720P_VP9 = TestVideo(
+    filename="testsrc2_vp9.webm",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v libvpx -b:v 1M output_vp8.webm
+TEST_SRC_2_720P_VP8 = TestVideo(
+    filename="testsrc2_vp8.webm",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v mpeg4 -q:v 5 output_mpeg4.avi
+TEST_SRC_2_720P_MPEG4 = TestVideo(
+    filename="testsrc2_mpeg4.avi",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+
+def supports_approximate_mode(asset: TestVideo) -> bool:
+    # TODONVDEC P2: open an issue about his. That's actually not related to
+    # NVDEC at all, those don't support approximate mode because they don't set
+    # a duration. CPU decoder fails too!
+    return asset not in (AV1_VIDEO, TEST_SRC_2_720P_VP9, TEST_SRC_2_720P_VP8)

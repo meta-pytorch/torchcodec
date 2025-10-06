@@ -135,7 +135,6 @@ class ReferenceAVPacket {
   ~ReferenceAVPacket();
   AVPacket* get();
   AVPacket* operator->();
-  void reset(ReferenceAVPacket& other);
 };
 
 // av_find_best_stream is not const-correct before commit:
@@ -231,5 +230,11 @@ AVIOContext* avioAllocContext(
     AVIOReadFunction read_packet,
     AVIOWriteFunction write_packet,
     AVIOSeekFunction seek);
+
+double ptsToSeconds(int64_t pts, const AVRational& timeBase);
+int64_t secondsToClosestPts(double seconds, const AVRational& timeBase);
+int64_t computeSafeDuration(
+    const AVRational& frameRate,
+    const AVRational& timeBase);
 
 } // namespace facebook::torchcodec

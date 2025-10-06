@@ -95,10 +95,11 @@ function(make_torchcodec_libraries
         SingleStreamDecoder.cpp
         Encoder.cpp
         ValidationUtils.cpp
+        Transform.cpp
     )
 
     if(ENABLE_CUDA)
-	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp)
+	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp)
     endif()
 
     set(core_library_dependencies

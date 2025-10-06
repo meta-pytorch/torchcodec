@@ -155,12 +155,6 @@ class VideoDecoder:
                 device_variant = device_split[2]
                 device = ":".join(device_split[0:2])
 
-        # TODONVDEC P0 Support approximate mode. Not ideal to validate that here
-        # either, but validating this at a lower level forces to add yet another
-        # (temprorary) validation API to the device inteface
-        if device_variant == "beta" and seek_mode != "exact":
-            raise ValueError("Seek mode must be exact for BETA CUDA interface.")
-
         core.add_video_stream(
             self._decoder,
             stream_index=stream_index,
