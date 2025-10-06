@@ -1288,18 +1288,15 @@ class TestVideoDecoder:
         # This just validates that we can decode 10-bit videos.
         # TODO validate against the ref that the decoded frames are correct
 
-        if device == "cuda:0:beta":
-            # This fails on our BETA interface on asset 0 (only!) with:
+        if device == "cuda:0:beta" and asset is H264_10BITS:
+            # This fails on the BETA interface with:
             #
             # RuntimeError: Codec configuration not supported on this GPU.
             # Codec: 4, chroma format: 1, bit depth: 10
             #
-            # I don't remember but I suspect asset 0 is actually the one that
-            # fallsback to the CPU path on the default CUDA interface (that
-            # would make sense)
-            # We should investigate if and how we could make that fallback
-            # happen for the BETA interface.
-            pytest.skip("TODONVDEC P2 - investigate and unskip")
+            # It works on the default interface because FFmpeg fallsback to the
+            # CPU, while the BETA interface doesn't.
+            pytest.skip("Asset not supported by NVDEC")
 
         decoder = VideoDecoder(asset.path, device=device)
         decoder.get_frame_at(10)
@@ -1674,12 +1671,11 @@ class TestVideoDecoder:
 
     @needs_cuda
     def test_beta_cuda_interface_small_h265(self):
-        # TODONVDEC P2 investigate why/how the default interface can decode this
-        # video.
+        # Test to illustrate current difference in behavior between the BETA and
+        # the default interface: this video isn't supported by NVDEC, but in the
+        # default interface, FFMPEG fallsback to the CPU while we don't.
 
-        # This is fine on the default interface - why?
         VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
-        # But it fails on the beta interface due to input validation checks, which we took from DALI!
         with pytest.raises(
             RuntimeError,
             match="Video is too small in at least one dimension. Provided: 128x128 vs supported:144x144",

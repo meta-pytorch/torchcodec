@@ -110,10 +110,30 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
       " vs supported:",
       caps.nMaxMBCount);
 
+  // Below we'll set the decoderParams.OutputFormat to NV12, so we need to make
+  // sure it's actually supported.
+  TORCH_CHECK(
+      (caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1,
+      "NV12 output format is not supported for this configuration. ",
+      "Codec: ",
+      static_cast<int>(videoFormat->codec),
+      ", chroma format: ",
+      static_cast<int>(videoFormat->chroma_format),
+      ", bit depth: ",
+      videoFormat->bit_depth_luma_minus8 + 8);
+
   // Decoder creation parameters, most are taken from DALI
   CUVIDDECODECREATEINFO decoderParams = {};
   decoderParams.bitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
   decoderParams.ChromaFormat = videoFormat->chroma_format;
+  // We explicitly request NV12 format, which means 10bit videos will be
+  // automatically converted to 8bits by NVDEC itself. That is, the raw frames
+  // we get back from cuvidMapVideoFrame will already be in 8bit format.  We
+  // won't need to do the conversion ourselves, so that's a lot easier.
+  // In the default interface, we have to do the 10 -> 8bits conversion
+  // ourselves later in convertAVFrameToFrameOutput(), because FFmpeg explicitly
+  // requests 10 or 16bits output formats for >8-bit videos!
+  // https://github.com/FFmpeg/FFmpeg/blob/e05f8acabff468c1382277c1f31fa8e9d90c3202/libavcodec/nvdec.c#L376-L403
   decoderParams.OutputFormat = cudaVideoSurfaceFormat_NV12;
   decoderParams.ulCreationFlags = cudaVideoCreate_Default;
   decoderParams.CodecType = videoFormat->codec;
