@@ -646,13 +646,18 @@ class TestVideoDecoder:
 
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
-    def test_get_frames_played_at(self, device, seek_mode):
+    @pytest.mark.parametrize("input_type", ("list", "tensor"))
+    def test_get_frames_played_at(self, device, seek_mode, input_type):
         decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
         device, _ = unsplit_device_str(device)
 
         # Note: We know the frame at ~0.84s has index 25, the one at 1.16s has
         # index 35. We use those indices as reference to test against.
-        seconds = [0.84, 1.17, 0.85]
+        if input_type == "list":
+            seconds = [0.84, 1.17, 0.85]
+        else:  # tensor
+            seconds = torch.tensor([0.84, 1.17, 0.85])
+
         reference_indices = [25, 35, 25]
         frames = decoder.get_frames_played_at(seconds)
 
