@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include <npp.h>
 #include "src/torchcodec/_core/CUDACommon.h"
 #include "src/torchcodec/_core/DeviceInterface.h"
 #include "src/torchcodec/_core/FilterGraph.h"
