@@ -9,14 +9,6 @@ import io
 import os
 from functools import partial
 
-from .utils import (
-    assert_tensor_close_on_at_least,
-    get_ffmpeg_major_version,
-    in_fbcode,
-    IS_WINDOWS,
-    TEST_SRC_2_720P,
-)
-
 os.environ["TORCH_LOGS"] = "output_code"
 import json
 import subprocess
@@ -53,6 +45,10 @@ from torchcodec._core import (
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    assert_tensor_close_on_at_least,
+    get_ffmpeg_major_version,
+    in_fbcode,
+    IS_WINDOWS,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
@@ -61,8 +57,8 @@ from .utils import (
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    TEST_SRC_2_720P,
     unsplit_device_str,
-    TESTSRC2_VIDEO,
 )
 
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
@@ -1432,11 +1428,19 @@ class TestVideoEncoderOps:
             assert_close(s_frame, rt_frame, atol=atol, rtol=0)
 
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
+    @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
     @pytest.mark.parametrize("format", ("mov", "mp4", "avi", "mkv", "webm", "flv"))
     def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
         ffmpeg_version = get_ffmpeg_major_version()
-        if format == "webm" and ffmpeg_version == 4:
-            pytest.skip("Codec for webm is not available in the FFmpeg4 installation.")
+        if format == "webm":
+            if ffmpeg_version == 4:
+                pytest.skip(
+                    "Codec for webm is not available in the FFmpeg4 installation."
+                )
+            if IS_WINDOWS and ffmpeg_version in (6, 7):
+                pytest.skip(
+                    "Codec for webm is not available in the FFmpeg6/7 installation on Windows."
+                )
         asset = TEST_SRC_2_720P
         source_frames = self.decode(str(asset.path)).data
         frame_rate = 30

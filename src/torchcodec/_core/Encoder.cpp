@@ -583,7 +583,6 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
-  av_log_set_level(AV_LOG_VERBOSE);
   const AVCodec* avCodec =
       avcodec_find_encoder(avFormatContext_->oformat->video_codec);
   TORCH_CHECK(avCodec != nullptr, "Video codec not found");
