@@ -640,11 +640,12 @@ void VideoEncoder::initializeEncoder(
     // For codecs that don't support CRF (mpeg4, flv1),
     // use quality-based encoding via global_quality + qscale flag
     avCodecContext_->flags |= AV_CODEC_FLAG_QSCALE;
-    // While qscale is similar to crf, it is likely not interchangeable.
-    // Reuse of crf below is only intended to work in VideoEncoder tests where
-    // crf = 0
-    avCodecContext_->global_quality =
-        FF_QP2LAMBDA * videoStreamOptions.crf.value();
+    // Reuse of crf below is only intended to work in tests where crf = 0
+    // Use qmin as lower bound for best possible quality
+    int qp = videoStreamOptions.crf.value() <= avCodecContext_->qmin
+        ? avCodecContext_->qmin
+        : videoStreamOptions.crf.value();
+    avCodecContext_->global_quality = FF_QP2LAMBDA * qp;
   }
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &options);
   av_dict_free(&options);
