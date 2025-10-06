@@ -63,7 +63,7 @@ jobs:
       fail-fast: false
       matrix:
           # 3.10 corresponds to the minimum python version for which we build
-          # the wheel unless the label cliflow/binaries/all is present in the
+          # the wheel unless the label ciflow/binaries/all is present in the
           # PR.
         python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
         cuda-version: ['12.6', '12.8', '13.0']
