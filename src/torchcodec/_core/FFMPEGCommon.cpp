@@ -387,7 +387,6 @@ AVFilterContext* createBuffersinkFilter(
   if (!buffersink) {
     return nullptr;
   }
-
   AVFilterContext* sinkContext = nullptr;
   int status;
 
