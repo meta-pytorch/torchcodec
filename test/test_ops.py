@@ -1429,7 +1429,9 @@ class TestVideoEncoderOps:
 
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
-    @pytest.mark.parametrize("format", ("mov", "mp4", "avi", "mkv", "webm", "flv"))
+    @pytest.mark.parametrize(
+        "format", ("mov", "mp4", "avi", "mkv", "webm", "flv", "gif")
+    )
     def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm":
