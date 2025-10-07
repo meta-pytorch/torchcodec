@@ -699,7 +699,9 @@ class TestVideoDecoder:
         with pytest.raises(RuntimeError, match="must be less than"):
             decoder.get_frames_played_at([14])
 
-        with pytest.raises(RuntimeError, match="Expected a value of type"):
+        with pytest.raises(
+            ValueError, match="Couldn't convert timestamps input to a tensor"
+        ):
             decoder.get_frames_played_at(["bad"])
 
     @pytest.mark.parametrize("device", all_supported_devices())
