@@ -45,6 +45,10 @@ if (LINUX)
         1cb946d8b7c6393c2c3ebe1f900b8de7a2885fe614c45d4ec32c9833084f2f26
     )
     set(
+        f8_sha256
+        c55b3c1a4b5e4d5fdd7c632bea3ab6f45b4e37cc8e0999dda3f84a8ed8defad8
+    )
+    set(
        f4_library_file_names
        libavutil.so.56
        libavcodec.so.58
@@ -84,6 +88,16 @@ if (LINUX)
        libswscale.so.8
        libswresample.so.5
     )
+    set(
+       f8_library_file_names
+       libavutil.so.60
+       libavcodec.so.62
+       libavformat.so.62
+       libavdevice.so.62
+       libavfilter.so.11
+       libswscale.so.9
+       libswresample.so.6
+    )
 elseif (APPLE)
     set(lib_dir "lib")
     set(
@@ -105,6 +119,10 @@ elseif (APPLE)
     set(
         f7_sha256
         48a4fc8ce098305cfd4a58f40889249c523ca3c285f66ba704b5bad0e3ada53a
+    )
+    set(
+        f8_sha256
+        beb936b76f25d2621228a12cdb67c9ae3d1eff7aa713ef8d1167ebf0c25bd5ec
     )
 
     set(
@@ -147,6 +165,16 @@ elseif (APPLE)
        libswscale.8.dylib
        libswresample.5.dylib
     )
+    set(
+       f8_library_file_names
+       libavutil.60.dylib
+       libavcodec.62.dylib
+       libavformat.62.dylib
+       libavdevice.62.dylib
+       libavfilter.11.dylib
+       libswscale.9.dylib
+       libswresample.6.dylib
+    )
 
 elseif (WIN32)
     set(lib_dir "bin")
@@ -169,6 +197,10 @@ elseif (WIN32)
     set(
         f7_sha256
         ae391ace382330e912793b70b68529ee7c91026d2869b4df7e7c3e7d3656bdd5
+    )
+    set(
+        f8_sha256
+        bac845ac79876b104959cb0e7b9dec772a261116344dd17d2f97e7ddfac4a73f
     )
 
     set(
@@ -211,6 +243,16 @@ elseif (WIN32)
         swscale.lib
         swresample.lib
     )
+    set(
+        f8_library_file_names
+        avutil.lib
+        avcodec.lib
+        avformat.lib
+        avdevice.lib
+        avfilter.lib
+        swscale.lib
+        swresample.lib
+    )
 else()
     message(
         FATAL_ERROR
@@ -242,19 +284,27 @@ FetchContent_Declare(
     URL_HASH
     SHA256=${f7_sha256}
 )
+FetchContent_Declare(
+    f8
+    URL ${platform_url}/8.0.tar.gz
+    URL_HASH
+    SHA256=${f8_sha256}
+)
 
-FetchContent_MakeAvailable(f4 f5 f6 f7)
+FetchContent_MakeAvailable(f4 f5 f6 f7 f8)
 
 add_library(ffmpeg4 INTERFACE)
 add_library(ffmpeg5 INTERFACE)
 add_library(ffmpeg6 INTERFACE)
 add_library(ffmpeg7 INTERFACE)
+add_library(ffmpeg8 INTERFACE)
 
 # Note: the f?_SOURCE_DIR variables were set by FetchContent_MakeAvailable
 target_include_directories(ffmpeg4 INTERFACE ${f4_SOURCE_DIR}/include)
 target_include_directories(ffmpeg5 INTERFACE ${f5_SOURCE_DIR}/include)
 target_include_directories(ffmpeg6 INTERFACE ${f6_SOURCE_DIR}/include)
 target_include_directories(ffmpeg7 INTERFACE ${f7_SOURCE_DIR}/include)
+target_include_directories(ffmpeg8 INTERFACE ${f8_SOURCE_DIR}/include)
 
 
 list(
@@ -277,6 +327,11 @@ list(
     PREPEND ${f7_SOURCE_DIR}/${lib_dir}/
     OUTPUT_VARIABLE f7_library_paths
 )
+list(
+    TRANSFORM f8_library_file_names
+    PREPEND ${f8_SOURCE_DIR}/${lib_dir}/
+    OUTPUT_VARIABLE f8_library_paths
+)
 
 target_link_libraries(
     ffmpeg4
@@ -297,4 +352,9 @@ target_link_libraries(
     ffmpeg7
     INTERFACE
     ${f7_library_paths}
+)
+target_link_libraries(
+    ffmpeg8
+    INTERFACE
+    ${f8_library_paths}
 )
