@@ -44,7 +44,7 @@ jobs:
     name: Build and Upload Mac wheel
     uses: pytorch/test-infra/.github/workflows/build_wheels_macos.yml@main
     with:
-      repository: pytorch/torchcodec
+      repository: meta-pytorch/torchcodec
       ref: ""
       test-infra-repository: pytorch/test-infra
       test-infra-ref: main
@@ -71,7 +71,7 @@ jobs:
       - name: Download wheel
         uses: actions/download-artifact@v4
         with:
-          name: pytorch_torchcodec__${{ matrix.python-version }}_cpu_
+          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cpu_
           path: pytorch/torchcodec/dist/
 
       - name: Setup conda env

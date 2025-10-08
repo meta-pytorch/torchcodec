@@ -114,8 +114,10 @@ seek_to_pts = torch.ops.torchcodec_ns.seek_to_pts.default
 get_next_frame = torch.ops.torchcodec_ns.get_next_frame.default
 get_frame_at_pts = torch.ops.torchcodec_ns.get_frame_at_pts.default
 get_frame_at_index = torch.ops.torchcodec_ns.get_frame_at_index.default
-get_frames_at_indices = torch.ops.torchcodec_ns.get_frames_at_indices.default
-get_frames_by_pts = torch.ops.torchcodec_ns.get_frames_by_pts.default
+_get_frames_at_indices_tensor_input = (
+    torch.ops.torchcodec_ns.get_frames_at_indices.default
+)
+_get_frames_by_pts_tensor_input = torch.ops.torchcodec_ns.get_frames_by_pts.default
 get_frames_in_range = torch.ops.torchcodec_ns.get_frames_in_range.default
 get_frames_by_pts_in_range = torch.ops.torchcodec_ns.get_frames_by_pts_in_range.default
 get_frames_by_pts_in_range_audio = (
@@ -198,6 +200,33 @@ def encode_audio_to_file_like(
     )
 
 
+def get_frames_at_indices(
+    decoder: torch.Tensor, *, frame_indices: Union[torch.Tensor, list[int]]
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if isinstance(frame_indices, torch.Tensor):
+        # Ensure indices is the correct dtype (int64)
+        frame_indices = frame_indices.to(torch.int64)
+    else:
+        # Convert list to tensor for dispatch
+        frame_indices = torch.tensor(frame_indices)
+    return _get_frames_at_indices_tensor_input(decoder, frame_indices=frame_indices)
+
+
+def get_frames_by_pts(
+    decoder: torch.Tensor, *, timestamps: Union[torch.Tensor, list[float]]
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if isinstance(timestamps, torch.Tensor):
+        # Ensure indices is the correct dtype (float64)
+        timestamps = timestamps.to(torch.float64)
+    else:
+        # Convert list to tensor for dispatch
+        try:
+            timestamps = torch.tensor(timestamps, dtype=torch.float64)
+        except Exception as e:
+            raise ValueError("Couldn't convert timestamps input to a tensor") from e
+    return _get_frames_by_pts_tensor_input(decoder, timestamps=timestamps)
+
+
 # ==============================
 # Abstract impl for the operators. Needed by torch.compile.
 # ==============================
@@ -275,7 +304,8 @@ def _add_video_stream_abstract(
     num_threads: Optional[int] = None,
     dimension_order: Optional[str] = None,
     stream_index: Optional[int] = None,
-    device: Optional[str] = None,
+    device: str = "cpu",
+    device_variant: str = "default",
     custom_frame_mappings: Optional[
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]
     ] = None,
@@ -293,7 +323,8 @@ def add_video_stream_abstract(
     num_threads: Optional[int] = None,
     dimension_order: Optional[str] = None,
     stream_index: Optional[int] = None,
-    device: Optional[str] = None,
+    device: str = "cpu",
+    device_variant: str = "default",
     custom_frame_mappings: Optional[
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]
     ] = None,
@@ -347,7 +378,7 @@ def get_frame_at_pts_abstract(
 def get_frames_by_pts_abstract(
     decoder: torch.Tensor,
     *,
-    timestamps: List[float],
+    timestamps: Union[torch.Tensor, List[float]],
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (
@@ -371,9 +402,7 @@ def get_frame_at_index_abstract(
 
 @register_fake("torchcodec_ns::get_frames_at_indices")
 def get_frames_at_indices_abstract(
-    decoder: torch.Tensor,
-    *,
-    frame_indices: List[int],
+    decoder: torch.Tensor, *, frame_indices: Union[torch.Tensor, List[int]]
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (

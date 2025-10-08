@@ -9,11 +9,11 @@
 #include <torch/types.h>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace facebook::torchcodec {
 
 enum ColorConversionLibrary {
-  // TODO: Add an AUTO option later.
   // Use the libavfilter library for color conversion.
   FILTERGRAPH,
   // Use the libswscale library for color conversion.
@@ -28,16 +28,21 @@ struct VideoStreamOptions {
   // utilize all cores. If not set, it will be the default FFMPEG behavior for
   // the given codec.
   std::optional<int> ffmpegThreadCount;
+
   // Currently the dimension order can be either NHWC or NCHW.
   // H=height, W=width, C=channel.
   std::string dimensionOrder = "NCHW";
-  // The output height and width of the frame. If not specified, the output
-  // is the same as the original video.
-  std::optional<int> width;
-  std::optional<int> height;
-  std::optional<ColorConversionLibrary> colorConversionLibrary;
+
+  // By default we have to use filtergraph, as it is more general. We can only
+  // use swscale when we have met strict requirements. See
+  // CpuDeviceInterface::initialze() for the logic.
+  ColorConversionLibrary colorConversionLibrary =
+      ColorConversionLibrary::FILTERGRAPH;
+
   // By default we use CPU for decoding for both C++ and python users.
   torch::Device device = torch::kCPU;
+  // Device variant (e.g., "default", "beta", etc.)
+  std::string_view deviceVariant = "default";
 
   // Encoding options
   std::optional<int> bitRate;

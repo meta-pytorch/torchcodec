@@ -56,6 +56,14 @@ int64_t getDuration(const UniqueAVFrame& avFrame) {
 #endif
 }
 
+void setDuration(const UniqueAVFrame& avFrame, int64_t duration) {
+#if LIBAVUTIL_VERSION_MAJOR < 58
+  avFrame->pkt_duration = duration;
+#else
+  avFrame->duration = duration;
+#endif
+}
+
 const int* getSupportedSampleRates(const AVCodec& avCodec) {
   const int* supportedSampleRates = nullptr;
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100) // FFmpeg >= 7.1
@@ -484,6 +492,28 @@ AVIOContext* avioAllocContext(
       reinterpret_cast<AVIOWriteFunctionOld>(write_packet),
 #endif
       seek);
+}
+
+double ptsToSeconds(int64_t pts, const AVRational& timeBase) {
+  // To perform the multiplication before the division, av_q2d is not used
+  return static_cast<double>(pts) * timeBase.num / timeBase.den;
+}
+
+int64_t secondsToClosestPts(double seconds, const AVRational& timeBase) {
+  return static_cast<int64_t>(
+      std::round(seconds * timeBase.den / timeBase.num));
+}
+
+int64_t computeSafeDuration(
+    const AVRational& frameRate,
+    const AVRational& timeBase) {
+  if (frameRate.num <= 0 || frameRate.den <= 0 || timeBase.num <= 0 ||
+      timeBase.den <= 0) {
+    return 0;
+  } else {
+    return (static_cast<int64_t>(frameRate.den) * timeBase.den) /
+        (static_cast<int64_t>(timeBase.num) * frameRate.num);
+  }
 }
 
 } // namespace facebook::torchcodec

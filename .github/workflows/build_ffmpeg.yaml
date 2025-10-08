@@ -35,7 +35,7 @@ jobs:
     with:
       job-name: Build
       upload-artifact: ffmpeg-lgpl-linux_x86_64-${{ matrix.ffmpeg-version }}
-      repository: pytorch/torchcodec
+      repository: meta-pytorch/torchcodec
       script: |
         export FFMPEG_VERSION="${{ matrix.ffmpeg-version }}"
         export FFMPEG_ROOT="${PWD}/ffmpeg"
@@ -57,7 +57,7 @@ jobs:
     with:
       job-name: Build
       upload-artifact: ffmpeg-lgpl-macos-${{ matrix.ffmpeg-version }}
-      repository: pytorch/torchcodec
+      repository: meta-pytorch/torchcodec
       runner: macos-14-xlarge
       script: |
         export FFMPEG_VERSION="${{ matrix.ffmpeg-version }}"
@@ -80,7 +80,7 @@ jobs:
     with:
       job-name: Build
       upload-artifact: ffmpeg-lgpl-windows_x86_64-${{ matrix.ffmpeg-version }}
-      repository: pytorch/torchcodec
+      repository: meta-pytorch/torchcodec
       script: |
         export FFMPEG_VERSION="${{ matrix.ffmpeg-version }}"
         export FFMPEG_ROOT="${PWD}/ffmpeg"
