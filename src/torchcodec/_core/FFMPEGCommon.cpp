@@ -384,9 +384,8 @@ AVFilterContext* createBuffersinkFilter(
     const char* name,
     enum AVPixelFormat outputFormat) {
   const AVFilter* buffersink = avfilter_get_by_name("buffersink");
-  if (!buffersink) {
-    return nullptr;
-  }
+  TORCH_CHECK(buffersink != nullptr, "Failed to get buffersink filter.");
+
   AVFilterContext* sinkContext = nullptr;
   int status;
 
@@ -394,9 +393,9 @@ AVFilterContext* createBuffersinkFilter(
 #if LIBAVUTIL_VERSION_MAJOR >= 60 // FFmpeg >= 8
   // Output options like pixel_formats must be set before filter init
   sinkContext = avfilter_graph_alloc_filter(filterGraph, buffersink, name);
-  if (!sinkContext) {
-    return nullptr;
-  }
+  TORCH_CHECK(
+      sinkContext != nullptr, "Failed to allocate buffersink filter context.");
+
   status = av_opt_set_array(
       sinkContext,
       "pixel_formats",
@@ -405,20 +404,24 @@ AVFilterContext* createBuffersinkFilter(
       1, // nb_elems
       AV_OPT_TYPE_PIXEL_FMT,
       &outputFormat);
-  if (status < 0) {
-    return nullptr;
-  }
+  TORCH_CHECK(
+      status >= 0,
+      "Failed to set pixel format for buffersink filter: ",
+      getFFMPEGErrorStringFromErrorCode(status));
+
   status = avfilter_init_str(sinkContext, nullptr);
-  if (status < 0) {
-    return nullptr;
-  }
+  TORCH_CHECK(
+      status >= 0,
+      "Failed to initialize buffersink filter: ",
+      getFFMPEGErrorStringFromErrorCode(status));
 #else // FFmpeg <= 7
   // For older FFmpeg versions, create filter and then set options
   status = avfilter_graph_create_filter(
       &sinkContext, buffersink, name, nullptr, nullptr, filterGraph);
-  if (status < 0) {
-    return nullptr;
-  }
+  TORCH_CHECK(
+      status >= 0,
+      "Failed to create buffersink filter: ",
+      getFFMPEGErrorStringFromErrorCode(status));
 
   enum AVPixelFormat pix_fmts[] = {outputFormat, AV_PIX_FMT_NONE};
 
@@ -428,9 +431,10 @@ AVFilterContext* createBuffersinkFilter(
       pix_fmts,
       AV_PIX_FMT_NONE,
       AV_OPT_SEARCH_CHILDREN);
-  if (status < 0) {
-    return nullptr;
-  }
+  TORCH_CHECK(
+      status >= 0,
+      "Failed to set pixel formats for buffersink filter: ",
+      getFFMPEGErrorStringFromErrorCode(status));
 #endif
 
   return sinkContext;
