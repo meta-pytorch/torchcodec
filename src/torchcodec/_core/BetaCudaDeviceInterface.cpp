@@ -203,10 +203,7 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
   TORCH_CHECK(
       device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
 
-  // Initialize CUDA context with a dummy tensor
-  torch::Tensor dummyTensorForCudaInitialization = torch::empty(
-      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
-
+  initializeCudaContextWithPytorch(device_);
   nppCtx_ = getNppStreamContext(device_);
 }
 

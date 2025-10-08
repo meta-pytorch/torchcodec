@@ -129,11 +129,10 @@ CudaDeviceInterface::CudaDeviceInterface(const torch::Device& device)
   TORCH_CHECK(
       device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
 
-  // It is important for pytorch itself to create the cuda context. If ffmpeg
-  // creates the context it may not be compatible with pytorch.
-  // This is a dummy tensor to initialize the cuda context.
-  torch::Tensor dummyTensorForCudaInitialization = torch::empty(
-      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
+  initializeCudaContextWithPytorch(device_);
+
+  // TODO rename this, this is a hardware device context, not a CUDA context!
+  // See https://github.com/meta-pytorch/torchcodec/issues/924
   ctx_ = getCudaContext(device_);
   nppCtx_ = getNppStreamContext(device_);
 }

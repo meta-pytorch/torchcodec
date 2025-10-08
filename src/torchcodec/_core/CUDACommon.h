@@ -22,6 +22,8 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
+void initializeCudaContextWithPytorch(const torch::Device& device);
+
 // Unique pointer type for NPP stream context
 using UniqueNppContext = std::unique_ptr<NppStreamContext>;
 
