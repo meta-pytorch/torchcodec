@@ -43,9 +43,9 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
   m.def(
-      "_add_video_stream(Tensor(a!) decoder, *, int? width=None, int? height=None, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None, str? color_conversion_library=None) -> ()");
+      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None, str? color_conversion_library=None) -> ()");
   m.def(
-      "add_video_stream(Tensor(a!) decoder, *, int? width=None, int? height=None, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None) -> ()");
+      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None) -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
   m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
@@ -183,6 +183,50 @@ SingleStreamDecoder::SeekMode seekModeFromString(std::string_view seekMode) {
   }
 }
 
+Transform* makeResizeTransform(
+    const std::vector<std::string>& resizeTransformSpec) {
+  TORCH_CHECK(
+      resizeTransformSpec.size() == 3,
+      "resizeTransformSpec must have 3 elements including its name");
+  int height = std::stoi(resizeTransformSpec[1]);
+  int width = std::stoi(resizeTransformSpec[2]);
+  return new ResizeTransform(FrameDims(height, width));
+}
+
+std::vector<std::string> split(const std::string& str, char delimiter) {
+  std::vector<std::string> tokens;
+  std::string token;
+  std::istringstream tokenStream(str);
+  while (std::getline(tokenStream, token, delimiter)) {
+    tokens.push_back(token);
+  }
+  return tokens;
+}
+
+// The transformSpecsRaw string is always in the format:
+//
+//   "name1, param1, param2, ...; name2, param1, param2, ...; ..."
+//
+// Where "nameX" is the name of the transform, and "paramX" are the parameters.
+std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
+  std::vector<Transform*> transforms;
+  std::vector<std::string> transformSpecs = split(transformSpecsRaw, ';');
+  for (const std::string& transformSpecRaw : transformSpecs) {
+    std::vector<std::string> transformSpec = split(transformSpecRaw, ',');
+    TORCH_CHECK(
+        transformSpec.size() >= 1,
+        "Invalid transform spec: " + transformSpecRaw);
+
+    auto name = transformSpec[0];
+    if (name == "resize") {
+      transforms.push_back(makeResizeTransform(transformSpec));
+    } else {
+      TORCH_CHECK(false, "Invalid transform name: " + name);
+    }
+  }
+  return transforms;
+}
+
 } // namespace
 
 // ==============================
@@ -252,35 +296,17 @@ at::Tensor _create_from_file_like(
 
 void _add_video_stream(
     at::Tensor& decoder,
-    std::optional<int64_t> width = std::nullopt,
-    std::optional<int64_t> height = std::nullopt,
     std::optional<int64_t> num_threads = std::nullopt,
     std::optional<std::string_view> dimension_order = std::nullopt,
     std::optional<int64_t> stream_index = std::nullopt,
     std::string_view device = "cpu",
     std::string_view device_variant = "default",
+    std::string_view transform_specs = "",
     std::optional<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
         custom_frame_mappings = std::nullopt,
     std::optional<std::string_view> color_conversion_library = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.ffmpegThreadCount = num_threads;
-
-  // TODO: Eliminate this temporary bridge code. This exists because we have
-  //       not yet exposed the transforms API on the Python side. We also want
-  //       to remove the `width` and `height` arguments from the Python API.
-  //
-  // TEMPORARY BRIDGE CODE START
-  TORCH_CHECK(
-      width.has_value() == height.has_value(),
-      "width and height must both be set or unset.");
-  std::vector<Transform*> transforms;
-  if (width.has_value()) {
-    transforms.push_back(
-        new ResizeTransform(FrameDims(height.value(), width.value())));
-    width.reset();
-    height.reset();
-  }
-  // TEMPORARY BRIDGE CODE END
 
   if (dimension_order.has_value()) {
     std::string stdDimensionOrder{dimension_order.value()};
@@ -309,6 +335,9 @@ void _add_video_stream(
   videoStreamOptions.device = torch::Device(std::string(device));
   videoStreamOptions.deviceVariant = device_variant;
 
+  std::vector<Transform*> transforms =
+      makeTransforms(std::string(transform_specs));
+
   std::optional<SingleStreamDecoder::FrameMappings> converted_mappings =
       custom_frame_mappings.has_value()
       ? std::make_optional(makeFrameMappings(custom_frame_mappings.value()))
@@ -324,24 +353,22 @@ void _add_video_stream(
 // Add a new video stream at `stream_index` using the provided options.
 void add_video_stream(
     at::Tensor& decoder,
-    std::optional<int64_t> width = std::nullopt,
-    std::optional<int64_t> height = std::nullopt,
     std::optional<int64_t> num_threads = std::nullopt,
     std::optional<std::string_view> dimension_order = std::nullopt,
     std::optional<int64_t> stream_index = std::nullopt,
     std::string_view device = "cpu",
     std::string_view device_variant = "default",
+    std::string_view transform_specs = "",
     const std::optional<std::tuple<at::Tensor, at::Tensor, at::Tensor>>&
         custom_frame_mappings = std::nullopt) {
   _add_video_stream(
       decoder,
-      width,
-      height,
       num_threads,
       dimension_order,
       stream_index,
       device,
       device_variant,
+      transform_specs,
       custom_frame_mappings);
 }
 
