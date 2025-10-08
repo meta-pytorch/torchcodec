@@ -397,13 +397,14 @@ AVFilterContext* createBuffersinkFilter(
   if (!sinkContext) {
     return nullptr;
   }
-  // av_opt_set uses the string representation of a pixel format
-  const char* fmt_name = av_get_pix_fmt_name(outputFormat);
-  if (!fmt_name) {
-    return nullptr;
-  }
-  status = av_opt_set(
-      sinkContext, "pixel_formats", fmt_name, AV_OPT_SEARCH_CHILDREN);
+  status = av_opt_set_array(
+      sinkContext,
+      "pixel_formats",
+      AV_OPT_SEARCH_CHILDREN,
+      0, // start_elem
+      1, // nb_elems
+      AV_OPT_TYPE_PIXEL_FMT,
+      &outputFormat);
   if (status < 0) {
     return nullptr;
   }
