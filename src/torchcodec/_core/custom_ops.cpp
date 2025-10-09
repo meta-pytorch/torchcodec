@@ -196,6 +196,12 @@ int checkedToPositiveInt(const std::string& str) {
   return ret;
 }
 
+// Resize transform specs take the form:
+//
+//   "resize, <height>, <width>"
+//
+// Where "resize" is the string literal and <height> and <width> are positive
+// integers.
 Transform* makeResizeTransform(
     const std::vector<std::string>& resizeTransformSpec) {
   TORCH_CHECK(
