@@ -29,17 +29,17 @@ def decode_full_video(video_path, decode_device_string, resize_device_string):
     num_threads = None
     if "cuda" in decode_device_string:
         num_threads = 1
-    width = None
-    height = None
+
+    resize_spec = ""
     if "native" in resize_device_string:
-        width = RESIZED_WIDTH
-        height = RESIZED_HEIGHT
+        resize_spec = f"resize, {RESIZED_HEIGHT}, {RESIZED_WIDTH}"
+
     torchcodec._core._add_video_stream(
         decoder,
         stream_index=-1,
         device=decode_device_string,
         num_threads=num_threads,
-        transform_specs=f"resize, {height}, {width}",
+        transform_specs=resize_spec,
     )
 
     start_time = time.time()
