@@ -7,6 +7,7 @@
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 
 #include <c10/util/Exception.h>
+
 extern "C" {
 #include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
@@ -398,6 +399,8 @@ AVFilterContext* createBuffersinkFilter(
   TORCH_CHECK(
       sinkContext != nullptr, "Failed to allocate buffersink filter context.");
 
+  // When setting pix_fmts, only the first element is used, so nb_elems = 1
+  // AV_PIX_FMT_NONE acts as a terminator for the array in av_opt_set_int_list
   status = av_opt_set_array(
       sinkContext,
       "pixel_formats",
