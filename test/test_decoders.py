@@ -1717,8 +1717,13 @@ class TestAudioDecoder:
             == decoder.metadata.stream_index
             == asset.default_stream_index
         )
+
+        expected_duration_seconds_from_header = asset.duration_seconds
+        if asset == NASA_AUDIO_MP3 and get_ffmpeg_major_version() >= 8:
+            expected_duration_seconds_from_header = 13.056
+
         assert decoder.metadata.duration_seconds_from_header == pytest.approx(
-            asset.duration_seconds
+            expected_duration_seconds_from_header
         )
         assert decoder.metadata.sample_rate == asset.sample_rate
         assert decoder.metadata.num_channels == asset.num_channels
