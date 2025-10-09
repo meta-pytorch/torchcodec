@@ -9,7 +9,7 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
-#include "src/torchcodec/_core/AVIOContextHolder.h"
+#include "AVIOContextHolder.h"
 
 namespace py = pybind11;
 

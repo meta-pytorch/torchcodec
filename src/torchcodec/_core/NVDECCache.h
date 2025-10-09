@@ -11,8 +11,8 @@
 #include <mutex>
 
 #include <cuda.h>
-#include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
-#include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
+#include "nvcuvid_include/cuviddec.h"
+#include "nvcuvid_include/nvcuvid.h"
 
 namespace facebook::torchcodec {
 

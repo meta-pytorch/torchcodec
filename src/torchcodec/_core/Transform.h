@@ -8,7 +8,7 @@
 
 #include <optional>
 #include <string>
-#include "src/torchcodec/_core/Frame.h"
+#include "Frame.h"
 
 namespace facebook::torchcodec {
 
