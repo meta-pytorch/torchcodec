@@ -17,6 +17,11 @@ torch::Tensor validateSamples(const torch::Tensor& samples) {
       samples.dim() == 2,
       "samples must have 2 dimensions, got ",
       samples.dim());
+  TORCH_CHECK(
+      samples.numel() == 0 || samples.data_ptr() != nullptr,
+      "Samples tensor has null data pointer but non-zero numel. ",
+      "This indicates an invalid tensor state.");
+
 
   // We enforce this, but if we get user reports we should investigate whether
   // that's actually needed.
