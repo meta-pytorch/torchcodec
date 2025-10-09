@@ -239,7 +239,6 @@ int64_t computeSafeDuration(
 
 AVFilterContext* createBuffersinkFilter(
     AVFilterGraph* filterGraph,
-    const char* name,
     enum AVPixelFormat outputFormat);
 
 } // namespace facebook::torchcodec

@@ -93,8 +93,8 @@ FilterGraph::FilterGraph(
       "Failed to create filter graph : ",
       getFFMPEGErrorStringFromErrorCode(status));
 
-  sinkContext_ = createBuffersinkFilter(
-      filterGraph_.get(), "out", filtersContext.outputFormat);
+  sinkContext_ =
+      createBuffersinkFilter(filterGraph_.get(), filtersContext.outputFormat);
   TORCH_CHECK(
       sinkContext_ != nullptr, "Failed to create and configure buffersink");
 

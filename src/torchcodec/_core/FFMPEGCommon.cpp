@@ -7,7 +7,6 @@
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 
 #include <c10/util/Exception.h>
-
 extern "C" {
 #include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
@@ -381,18 +380,21 @@ SwrContext* createSwrContext(
 
 AVFilterContext* createBuffersinkFilter(
     AVFilterGraph* filterGraph,
-    const char* name,
     enum AVPixelFormat outputFormat) {
   const AVFilter* buffersink = avfilter_get_by_name("buffersink");
   TORCH_CHECK(buffersink != nullptr, "Failed to get buffersink filter.");
 
   AVFilterContext* sinkContext = nullptr;
   int status;
+  const char* filterName = "out";
 
-// av_opt_set_int_list was replaced by av_opt_set() in FFmpeg 8.
+  enum AVPixelFormat pix_fmts[] = {outputFormat, AV_PIX_FMT_NONE};
+
+// av_opt_set_int_list was replaced by av_opt_set_array() in FFmpeg 8.
 #if LIBAVUTIL_VERSION_MAJOR >= 60 // FFmpeg >= 8
   // Output options like pixel_formats must be set before filter init
-  sinkContext = avfilter_graph_alloc_filter(filterGraph, buffersink, name);
+  sinkContext =
+      avfilter_graph_alloc_filter(filterGraph, buffersink, filterName);
   TORCH_CHECK(
       sinkContext != nullptr, "Failed to allocate buffersink filter context.");
 
@@ -403,7 +405,7 @@ AVFilterContext* createBuffersinkFilter(
       0, // start_elem
       1, // nb_elems
       AV_OPT_TYPE_PIXEL_FMT,
-      &outputFormat);
+      pix_fmts);
   TORCH_CHECK(
       status >= 0,
       "Failed to set pixel format for buffersink filter: ",
@@ -417,13 +419,11 @@ AVFilterContext* createBuffersinkFilter(
 #else // FFmpeg <= 7
   // For older FFmpeg versions, create filter and then set options
   status = avfilter_graph_create_filter(
-      &sinkContext, buffersink, name, nullptr, nullptr, filterGraph);
+      &sinkContext, buffersink, filterName, nullptr, nullptr, filterGraph);
   TORCH_CHECK(
       status >= 0,
       "Failed to create buffersink filter: ",
       getFFMPEGErrorStringFromErrorCode(status));
-
-  enum AVPixelFormat pix_fmts[] = {outputFormat, AV_PIX_FMT_NONE};
 
   status = av_opt_set_int_list(
       sinkContext,
