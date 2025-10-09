@@ -591,7 +591,7 @@ class TestVideoDecoder:
         if device == "cuda" and get_ffmpeg_major_version() == 4:
             return
 
-        if device == "cuda" and in_fbcode():
+        if "cuda" in device and in_fbcode():
             pytest.skip("decoding on CUDA is not supported internally")
 
         decoder = VideoDecoder(AV1_VIDEO.path, device=device)
@@ -1477,6 +1477,9 @@ class TestVideoDecoder:
         if seek_mode == "approximate" and not supports_approximate_mode(asset):
             pytest.skip("asset doesn't work with approximate mode")
 
+        if in_fbcode() and asset is AV1_VIDEO:
+            pytest.skip("AV1 CUDA not supported internally")
+
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
             asset.path, device="cuda:0:beta", seek_mode=seek_mode
@@ -1522,6 +1525,8 @@ class TestVideoDecoder:
     ):
         if seek_mode == "approximate" and not supports_approximate_mode(asset):
             pytest.skip("asset doesn't work with approximate mode")
+        if in_fbcode() and asset is AV1_VIDEO:
+            pytest.skip("AV1 CUDA not supported internally")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
@@ -1566,6 +1571,8 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_get_frame_played_at(self, asset, seek_mode):
         if seek_mode == "approximate" and not supports_approximate_mode(asset):
             pytest.skip("asset doesn't work with approximate mode")
+        if in_fbcode() and asset is AV1_VIDEO:
+            pytest.skip("AV1 CUDA not supported internally")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
@@ -1607,6 +1614,8 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_get_frames_played_at(self, asset, seek_mode):
         if seek_mode == "approximate" and not supports_approximate_mode(asset):
             pytest.skip("asset doesn't work with approximate mode")
+        if in_fbcode() and asset is AV1_VIDEO:
+            pytest.skip("AV1 CUDA not supported internally")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(
@@ -1649,6 +1658,8 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_backwards(self, asset, seek_mode):
         if seek_mode == "approximate" and not supports_approximate_mode(asset):
             pytest.skip("asset doesn't work with approximate mode")
+        if in_fbcode() and asset is AV1_VIDEO:
+            pytest.skip("AV1 CUDA not supported internally")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         beta_decoder = VideoDecoder(

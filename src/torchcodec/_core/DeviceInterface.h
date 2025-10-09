@@ -32,8 +32,8 @@ struct DeviceInterfaceKey {
 
   explicit DeviceInterfaceKey(torch::DeviceType type) : deviceType(type) {}
 
-  DeviceInterfaceKey(torch::DeviceType type, const std::string_view& var)
-      : deviceType(type), variant(var) {}
+  DeviceInterfaceKey(torch::DeviceType type, const std::string_view& variant)
+      : deviceType(type), variant(variant) {}
 };
 
 class DeviceInterface {
