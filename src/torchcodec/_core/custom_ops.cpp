@@ -183,13 +183,26 @@ SingleStreamDecoder::SeekMode seekModeFromString(std::string_view seekMode) {
   }
 }
 
+int checkedToPositiveInt(const std::string& str) {
+  int ret = 0;
+  try {
+    ret = std::stoi(str);
+  } catch (const std::invalid_argument&) {
+    TORCH_CHECK(false, "String cannot be converted to an int:" + str);
+  } catch (const std::out_of_range&) {
+    TORCH_CHECK(false, "String would become integer out of range:" + str);
+  }
+  TORCH_CHECK(ret > 0, "String must be a positive integer:" + str);
+  return ret;
+}
+
 Transform* makeResizeTransform(
     const std::vector<std::string>& resizeTransformSpec) {
   TORCH_CHECK(
       resizeTransformSpec.size() == 3,
       "resizeTransformSpec must have 3 elements including its name");
-  int height = std::stoi(resizeTransformSpec[1]);
-  int width = std::stoi(resizeTransformSpec[2]);
+  int height = checkedToPositiveInt(resizeTransformSpec[1]);
+  int width = checkedToPositiveInt(resizeTransformSpec[2]);
   return new ResizeTransform(FrameDims(height, width));
 }
 

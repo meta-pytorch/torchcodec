@@ -655,6 +655,52 @@ class TestVideoDecoderOps:
         ):
             add_video_stream(decoder, device="cuda", transform_specs="resize, 100, 100")
 
+    def test_transform_fails(self):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        with pytest.raises(
+            RuntimeError,
+            match="Invalid transform spec",
+        ):
+            add_video_stream(decoder, transform_specs=";")
+
+        with pytest.raises(
+            RuntimeError,
+            match="Invalid transform name",
+        ):
+            add_video_stream(decoder, transform_specs="invalid, 1, 2")
+
+    def test_resize_transform_fails(self):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        with pytest.raises(
+            RuntimeError,
+            match="must have 3 elements",
+        ):
+            add_video_stream(decoder, transform_specs="resize, 100, 100, 100")
+
+        with pytest.raises(
+            RuntimeError,
+            match="must be a positive integer",
+        ):
+            add_video_stream(decoder, transform_specs="resize, -10, 100")
+
+        with pytest.raises(
+            RuntimeError,
+            match="must be a positive integer",
+        ):
+            add_video_stream(decoder, transform_specs="resize, 100, 0")
+
+        with pytest.raises(
+            RuntimeError,
+            match="cannot be converted to an int",
+        ):
+            add_video_stream(decoder, transform_specs="resize, blah, 100")
+
+        with pytest.raises(
+            RuntimeError,
+            match="out of range",
+        ):
+            add_video_stream(decoder, transform_specs="resize, 100, 1000000000000")
+
     @pytest.mark.parametrize("dimension_order", ("NHWC", "NCHW"))
     @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
     def test_color_conversion_library_with_dimension_order(

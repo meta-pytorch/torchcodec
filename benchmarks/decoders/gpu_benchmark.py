@@ -39,8 +39,7 @@ def decode_full_video(video_path, decode_device_string, resize_device_string):
         stream_index=-1,
         device=decode_device_string,
         num_threads=num_threads,
-        width=width,
-        height=height,
+        transform_specs=f"resize, {height}, {width}",
     )
 
     start_time = time.time()
