@@ -80,42 +80,45 @@ class DeviceInterface {
   // Extension points for custom decoding paths
   // ------------------------------------------
 
-  // Override to return true if this device interface can decode packets
-  // directly. This means that the following two member functions can both
-  // be called:
-  //
-  //   1. sendPacket()
-  //   2. receiveFrame()
-  virtual bool canDecodePacketDirectly() const {
-    return false;
+  // Set the codec context for default FFmpeg decoding operations
+  // This must be called during initialization before using
+  // sendPacket/receiveFrame
+  virtual void setCodecContext(AVCodecContext* codecContext) {
+    codecContext_ = codecContext;
   }
 
-  // Moral equivalent of avcodec_send_packet()
   // Returns AVSUCCESS on success, AVERROR(EAGAIN) if decoder queue full, or
   // other AVERROR on failure
-  virtual int sendPacket([[maybe_unused]] ReferenceAVPacket& avPacket) {
-    TORCH_CHECK(
-        false,
-        "Send/receive packet decoding not implemented for this device interface");
-    return AVERROR(ENOSYS);
+  // Default implementation uses FFmpeg directly
+  virtual int sendPacket(ReferenceAVPacket& avPacket) {
+    if (!codecContext_) {
+      TORCH_CHECK(
+          false, "Codec context not available for default packet sending");
+      return AVERROR(EINVAL);
+    }
+    return avcodec_send_packet(codecContext_, avPacket.get());
   }
 
   // Send an EOF packet to flush the decoder
   // Returns AVSUCCESS on success, or other AVERROR on failure
+  // Default implementation uses FFmpeg directly
   virtual int sendEOFPacket() {
-    TORCH_CHECK(
-        false, "Send EOF packet not implemented for this device interface");
-    return AVERROR(ENOSYS);
+    if (!codecContext_) {
+      TORCH_CHECK(false, "Codec context not available for EOF packet sending");
+      return AVERROR(EINVAL);
+    }
+    return avcodec_send_packet(codecContext_, nullptr);
   }
 
-  // Moral equivalent of avcodec_receive_frame()
   // Returns AVSUCCESS on success, AVERROR(EAGAIN) if no frame ready,
   // AVERROR_EOF if end of stream, or other AVERROR on failure
-  virtual int receiveFrame([[maybe_unused]] UniqueAVFrame& avFrame) {
-    TORCH_CHECK(
-        false,
-        "Send/receive packet decoding not implemented for this device interface");
-    return AVERROR(ENOSYS);
+  // Default implementation uses FFmpeg directly
+  virtual int receiveFrame(UniqueAVFrame& avFrame) {
+    if (!codecContext_) {
+      TORCH_CHECK(false, "Codec context not available for frame receiving");
+      return AVERROR(EINVAL);
+    }
+    return avcodec_receive_frame(codecContext_, avFrame.get());
   }
 
   // Flush remaining frames from decoder
@@ -126,6 +129,7 @@ class DeviceInterface {
 
  protected:
   torch::Device device_;
+  AVCodecContext* codecContext_ = nullptr; // Non-owning pointer
 };
 
 using CreateDeviceInterfaceFn =
