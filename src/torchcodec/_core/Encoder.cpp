@@ -629,23 +629,12 @@ void VideoEncoder::initializeEncoder(
 
   // Apply videoStreamOptions
   AVDictionary* options = nullptr;
-  if (videoStreamOptions.crf.has_value() &&
-      (avCodec->id != AV_CODEC_ID_MPEG4 && avCodec->id != AV_CODEC_ID_FLV1)) {
+  if (videoStreamOptions.crf.has_value()) {
     av_dict_set(
         &options,
         "crf",
         std::to_string(videoStreamOptions.crf.value()).c_str(),
         0);
-  } else {
-    // For codecs that don't support CRF (mpeg4, flv1),
-    // use quality-based encoding via global_quality + qscale flag
-    avCodecContext_->flags |= AV_CODEC_FLAG_QSCALE;
-    // Reuse of crf below is only intended to work in tests where crf = 0
-    // Use qmin as lower bound for best possible quality
-    int qp = videoStreamOptions.crf.value() <= avCodecContext_->qmin
-        ? avCodecContext_->qmin
-        : videoStreamOptions.crf.value();
-    avCodecContext_->global_quality = FF_QP2LAMBDA * qp;
   }
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &options);
   av_dict_free(&options);

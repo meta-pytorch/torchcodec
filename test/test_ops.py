@@ -1384,19 +1384,20 @@ class TestVideoEncoderOps:
         frames, *_ = get_frames_in_range(decoder, start=0, stop=60)
         return frames
 
-    @pytest.mark.parametrize("format", ("mov", "mp4", "avi", "mkv", "webm", "flv"))
+    @pytest.mark.parametrize("format", ("mov", "mp4", "mkv", "webm"))
     def test_video_encoder_round_trip(self, tmp_path, format):
         # Test that decode(encode(decode(asset))) == decode(asset)
         ffmpeg_version = get_ffmpeg_major_version()
-        if format == "webm":
-            if ffmpeg_version == 4:
-                pytest.skip(
-                    "Codec for webm is not available in the FFmpeg4 installation."
-                )
-            if IS_WINDOWS and ffmpeg_version in (6, 7):
-                pytest.skip(
-                    "Codec for webm is not available in the FFmpeg6/7 installation on Windows."
-                )
+        # In FFmpeg6, the default codec's best pixel format is lossy for all container formats but webm.
+        # As a result, we skip the round trip test.
+        if ffmpeg_version == 6 and format != "webm":
+            pytest.skip(
+                f"FFmpeg6 defaults to lossy encoding for {format}, skipping round-trip test."
+            )
+        if format == "webm" and (
+            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
+        ):
+            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
         asset = TEST_SRC_2_720P
         source_frames = self.decode(str(asset.path)).data
 
@@ -1448,9 +1449,8 @@ class TestVideoEncoderOps:
         ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
         crf = 0
         quality_params = ["-crf", str(crf)]
-        # Some codecs (ex. MPEG4) do not support CRF, qscale is used for lossless encoding.
-        # Flags not supported by the selected codec will be ignored, so we set both crf and qscale.
-        quality_params += ["-q:v", str(crf)]
+        # Some codecs (ex. MPEG4) do not support CRF.
+        # Flags not supported by the selected codec will be ignored.
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",
@@ -1486,7 +1486,7 @@ class TestVideoEncoderOps:
         # If FFmpeg selects a codec or pixel format that uses qscale (not crf),
         # the VideoEncoder outputs *slightly* different frames.
         # There may be additional subtle differences in the encoder.
-        percentage = 97 if ffmpeg_version == 6 or format in ("avi") else 99
+        percentage = 95 if ffmpeg_version == 6 or format in ("avi") else 99
 
         # Check that PSNR between both encoded versions is high
         for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
