@@ -33,7 +33,7 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "encode_audio_to_file(Tensor samples, int sample_rate, str filename, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
   m.def(
-      "encode_video_to_file(Tensor frames, int frame_rate, str filename) -> ()");
+      "encode_video_to_file(Tensor frames, int frame_rate, str filename, int? crf=None) -> ()");
   m.def(
       "encode_audio_to_tensor(Tensor samples, int sample_rate, str format, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> Tensor");
   m.def(
@@ -501,8 +501,10 @@ OpsAudioFramesOutput get_frames_by_pts_in_range_audio(
 void encode_video_to_file(
     const at::Tensor& frames,
     int64_t frame_rate,
-    std::string_view file_name) {
+    std::string_view file_name,
+    std::optional<int64_t> crf = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
+  videoStreamOptions.crf = crf;
   VideoEncoder(
       frames,
       validateInt64ToInt(frame_rate, "frame_rate"),
