@@ -15,8 +15,8 @@ namespace detail {
 
 struct TensorContext {
   torch::Tensor data;
-  int64_t current_pos;
-  int64_t max_pos;
+  int64_t current;
+  int64_t max;
 };
 
 } // namespace detail
