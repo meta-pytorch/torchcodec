@@ -66,10 +66,10 @@ jobs:
           # PR.
           # For the actual release we should add that label and change this to
           # include more python versions.
-        python-version: ['3.10']
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
         # We test against 12.6 and 13.0 to avoid having too big of a CI matrix,
         # but for releases we should add 12.8.
-        cuda-version: ['12.6', '13.0']
+        cuda-version: ['12.6', '12.8', '13.0']
         # TODO: put back ffmpeg 5 https://github.com/pytorch/torchcodec/issues/325
         ffmpeg-version-for-tests: ['4.4.2', '6', '7', '8.0']
 
