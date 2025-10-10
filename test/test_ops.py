@@ -1386,6 +1386,7 @@ class TestVideoEncoderOps:
 
     @pytest.mark.parametrize("format", ("mov", "mp4", "avi", "mkv", "webm", "flv"))
     def test_video_encoder_round_trip(self, tmp_path, format):
+        # Test that decode(encode(decode(asset))) == decode(asset)
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm":
             if ffmpeg_version == 4:
@@ -1397,7 +1398,6 @@ class TestVideoEncoderOps:
                     "Codec for webm is not available in the FFmpeg6/7 installation on Windows."
                 )
         asset = TEST_SRC_2_720P
-        # Test that decode(encode(decode(asset))) == decode(asset)
         source_frames = self.decode(str(asset.path)).data
 
         encoded_path = str(tmp_path / f"encoder_output.{format}")
@@ -1406,12 +1406,8 @@ class TestVideoEncoderOps:
             frames=source_frames, frame_rate=frame_rate, filename=encoded_path, crf=0
         )
         round_trip_frames = self.decode(encoded_path).data
-        assert (
-            source_frames.shape == round_trip_frames.shape
-        ), f"Shape mismatch: source {source_frames.shape} vs round_trip {round_trip_frames.shape}"
-        assert (
-            source_frames.dtype == round_trip_frames.dtype
-        ), f"Dtype mismatch: source {source_frames.dtype} vs round_trip {round_trip_frames.dtype}"
+        assert source_frames.shape == round_trip_frames.shape
+        assert source_frames.dtype == round_trip_frames.dtype
 
         # If FFmpeg selects a codec or pixel format that does lossy encoding, assert 99% of pixels
         # are within a higher tolerance.
@@ -1421,13 +1417,10 @@ class TestVideoEncoderOps:
         else:
             assert_close = torch.testing.assert_close
             atol = 2
-        # Check that PSNR for decode(encode(samples)) is above 30
         for s_frame, rt_frame in zip(source_frames, round_trip_frames):
-            res = psnr(s_frame, rt_frame)
-            assert res > 30
+            assert psnr(s_frame, rt_frame) > 30
             assert_close(s_frame, rt_frame, atol=atol, rtol=0)
 
-    @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
     @pytest.mark.parametrize(
         "format", ("mov", "mp4", "avi", "mkv", "webm", "flv", "gif")
@@ -1453,7 +1446,6 @@ class TestVideoEncoderOps:
             f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
 
         ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
-        # Test that lossless encoding is identical
         crf = 0
         quality_params = ["-crf", str(crf)]
         # Some codecs (ex. MPEG4) do not support CRF, qscale is used for lossless encoding.
