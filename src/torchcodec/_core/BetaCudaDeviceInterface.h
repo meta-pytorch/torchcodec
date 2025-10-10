@@ -48,7 +48,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       std::optional<torch::Tensor> preAllocatedOutputTensor =
           std::nullopt) override;
 
-
   int sendPacket(ReferenceAVPacket& packet) override;
   int sendEOFPacket() override;
   int receiveFrame(UniqueAVFrame& avFrame) override;
