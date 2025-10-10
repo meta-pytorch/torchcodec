@@ -212,6 +212,18 @@ Transform* makeResizeTransform(
   return new ResizeTransform(FrameDims(height, width));
 }
 
+Transform* makeCropTransform(
+    const std::vector<std::string>& cropTransformSpec) {
+  TORCH_CHECK(
+      cropTransformSpec.size() == 5,
+      "cropTransformSpec must have 5 elements including its name");
+  int width = checkedToPositiveInt(cropTransformSpec[1]);
+  int height = checkedToPositiveInt(cropTransformSpec[2]);
+  int x = checkedToPositiveInt(cropTransformSpec[3]);
+  int y = checkedToPositiveInt(cropTransformSpec[4]);
+  return new CropTransform(x, y, FrameDims(height, width));
+}
+
 std::vector<std::string> split(const std::string& str, char delimiter) {
   std::vector<std::string> tokens;
   std::string token;
@@ -239,6 +251,8 @@ std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
     auto name = transformSpec[0];
     if (name == "resize") {
       transforms.push_back(makeResizeTransform(transformSpec));
+    } else if (name == "crop") {
+      transforms.push_back(makeCropTransform(transformSpec));
     } else {
       TORCH_CHECK(false, "Invalid transform name: " + name);
     }

@@ -57,4 +57,14 @@ int ResizeTransform::getSwsFlags() const {
   return toSwsInterpolation(interpolationMode_);
 }
 
+std::string CropTransform::getFilterGraphCpu() const {
+  return "crop=" + std::to_string(outputDims_.width) + ":" +
+      std::to_string(outputDims_.height) + ":" +
+      std::to_string(x_) + ":" + std::to_string(y_);
+}
+
+std::optional<FrameDims> CropTransform::getOutputFrameDims() const {
+  return outputDims_;
+}
+
 } // namespace facebook::torchcodec

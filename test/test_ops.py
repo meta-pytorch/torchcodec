@@ -701,6 +701,12 @@ class TestVideoDecoderOps:
         ):
             add_video_stream(decoder, transform_specs="resize, 100, 1000000000000")
 
+    def test_crop_transform(self):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder, transform_specs="crop, 300, 200, 50, 35")
+        frame0, *_ = get_frame_at_index(decoder, frame_index=0)
+        assert frame0.shape == (3, 200, 300)
+
     @pytest.mark.parametrize("dimension_order", ("NHWC", "NCHW"))
     @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
     def test_color_conversion_library_with_dimension_order(

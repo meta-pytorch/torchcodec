@@ -56,4 +56,18 @@ class ResizeTransform : public Transform {
   InterpolationMode interpolationMode_;
 };
 
+class CropTransform : public Transform {
+public:
+  CropTransform(int x, int y, const FrameDims& dims)
+      : outputDims_(dims), x_(x), y_(y) {}
+
+  std::string getFilterGraphCpu() const override;
+  std::optional<FrameDims> getOutputFrameDims() const override;
+
+private:
+  FrameDims outputDims_;
+  int x_;
+  int y_;
+};
+
 } // namespace facebook::torchcodec

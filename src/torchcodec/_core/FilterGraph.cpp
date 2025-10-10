@@ -130,7 +130,8 @@ FilterGraph::FilterGraph(
   TORCH_CHECK(
       status >= 0,
       "Failed to configure filter graph: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      getFFMPEGErrorStringFromErrorCode(status),
+      ", provided filters: " + filtersContext.filtergraphStr);
 }
 
 UniqueAVFrame FilterGraph::convert(const UniqueAVFrame& avFrame) {
