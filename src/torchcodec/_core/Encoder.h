@@ -153,7 +153,6 @@ class VideoEncoder {
 
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;
-  int streamIndex_ = -1;
   AVStream* avStream_;
   UniqueSwsContext swsContext_;
 

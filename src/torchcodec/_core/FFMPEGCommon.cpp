@@ -92,7 +92,7 @@ const int* getSupportedSampleRates(const AVCodec& avCodec) {
 
 const AVPixelFormat* getSupportedPixelFormats(const AVCodec& avCodec) {
   const AVPixelFormat* supportedPixelFormats = nullptr;
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100)
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100) // FFmpeg >= 7.1
   int numPixelFormats = 0;
   int ret = avcodec_get_supported_config(
       nullptr,

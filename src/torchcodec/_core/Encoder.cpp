@@ -666,7 +666,6 @@ void VideoEncoder::initializeEncoder(
       status == AVSUCCESS,
       "avcodec_parameters_from_context failed: ",
       getFFMPEGErrorStringFromErrorCode(status));
-  streamIndex_ = avStream_->index;
 }
 
 void VideoEncoder::encode() {
@@ -791,15 +790,16 @@ void VideoEncoder::encodeFrame(
         "Error receiving packet: ",
         getFFMPEGErrorStringFromErrorCode(status));
 
+    // The code below is borrowed from torchaudio:
+    // https://github.com/pytorch/audio/blob/b6a3368a45aaafe05f1a6a9f10c68adc5e944d9e/src/libtorio/ffmpeg/stream_writer/encoder.cpp#L46
+    // Setting packet->duration to 1 allows the last frame to be properly
+    // encoded, and needs to be set before calling av_packet_rescale_ts.
     if (packet->duration == 0) {
       packet->duration = 1;
     }
-    // av_packet_rescale_ts ensures encoded frames have correct timestamps.
-    // This prevents "no more frames" errors when decoding encoded frames,
-    // https://github.com/pytorch/audio/blob/b6a3368a45aaafe05f1a6a9f10c68adc5e944d9e/src/libtorio/ffmpeg/stream_writer/encoder.cpp#L46
     av_packet_rescale_ts(
         packet.get(), avCodecContext_->time_base, avStream_->time_base);
-    packet->stream_index = streamIndex_;
+    packet->stream_index = avStream_->index;
 
     status = av_interleaved_write_frame(avFormatContext_.get(), packet.get());
     TORCH_CHECK(
