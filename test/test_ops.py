@@ -29,6 +29,7 @@ from torchcodec._core import (
     create_from_tensor,
     encode_audio_to_file,
     encode_video_to_file,
+    encode_video_to_tensor,
     get_ffmpeg_library_versions,
     get_frame_at_index,
     get_frame_at_pts,
@@ -1378,16 +1379,20 @@ class TestVideoEncoderOps:
                 filename="./bad/path.mp3",
             )
 
-    def decode(self, file_path) -> torch.Tensor:
-        decoder = create_from_file(str(file_path), seek_mode="approximate")
+    def decode(self, file_path=None, tensor=None) -> torch.Tensor:
+        if file_path is not None:
+            decoder = create_from_file(str(file_path), seek_mode="approximate")
+        elif tensor is not None:
+            decoder = create_from_tensor(tensor, seek_mode="approximate")
         add_video_stream(decoder)
         frames, *_ = get_frames_in_range(decoder, start=0, stop=60)
         return frames
 
     @pytest.mark.parametrize(
         "format", ("mov", "mp4", "mkv", pytest.param("webm", marks=pytest.mark.slow))
+    @pytest.mark.parametrize("output_method", ("to_file", "to_tensor"))
     )
-    def test_video_encoder_round_trip(self, tmp_path, format):
+    def test_video_encoder_round_trip(self, tmp_path, format, output_method):
         # Test that decode(encode(decode(asset))) == decode(asset)
         ffmpeg_version = get_ffmpeg_major_version()
         # In FFmpeg6, the default codec's best pixel format is lossy for all container formats but webm.
@@ -1401,14 +1406,25 @@ class TestVideoEncoderOps:
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
         asset = TEST_SRC_2_720P
-        source_frames = self.decode(str(asset.path)).data
+        source_frames = self.decode(file_path=str(asset.path)).data
 
-        encoded_path = str(tmp_path / f"encoder_output.{format}")
         frame_rate = 30  # Frame rate is fixed with num frames decoded
-        encode_video_to_file(
-            frames=source_frames, frame_rate=frame_rate, filename=encoded_path, crf=0
-        )
-        round_trip_frames = self.decode(encoded_path).data
+        if output_method == "to_file":
+            encoded_path = str(tmp_path / f"encoder_output.{format}")
+            encode_video_to_file(
+                frames=source_frames,
+                frame_rate=frame_rate,
+                filename=encoded_path,
+                crf=0,
+            )
+            round_trip_frames = self.decode(file_path=encoded_path).data
+        else:  # to_tensor
+            format = "matroska" if format == "mkv" else format
+            encoded_tensor = encode_video_to_tensor(
+                source_frames, frame_rate, format, crf=0
+            )
+            round_trip_frames = self.decode(tensor=encoded_tensor).data
+
         assert source_frames.shape == round_trip_frames.shape
         assert source_frames.dtype == round_trip_frames.dtype
 

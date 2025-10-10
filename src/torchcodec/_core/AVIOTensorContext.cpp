@@ -75,6 +75,11 @@ int write(void* opaque, const uint8_t* buf, int buf_size) {
   uint8_t* outputTensorData = tensorContext->data.data_ptr<uint8_t>();
   std::memcpy(outputTensorData + tensorContext->current, buf, bufSize);
   tensorContext->current += bufSize;
+  // Track the maximum position written so getOutputTensor's narrow() does not
+  // truncate the file if final seek was backwards
+  if (tensorContext->current > tensorContext->max) {
+    tensorContext->max = tensorContext->current;
+  }
   return buf_size;
 }
 
@@ -101,7 +106,7 @@ int64_t seek(void* opaque, int64_t offset, int whence) {
 } // namespace
 
 AVIOFromTensorContext::AVIOFromTensorContext(torch::Tensor data)
-    : tensorContext_{data, 0} {
+    : tensorContext_{data, 0, 0} {
   TORCH_CHECK(data.numel() > 0, "data must not be empty");
   TORCH_CHECK(data.is_contiguous(), "data must be contiguous");
   TORCH_CHECK(data.scalar_type() == torch::kUInt8, "data must be kUInt8");
@@ -110,14 +115,17 @@ AVIOFromTensorContext::AVIOFromTensorContext(torch::Tensor data)
 }
 
 AVIOToTensorContext::AVIOToTensorContext()
-    : tensorContext_{torch::empty({INITIAL_TENSOR_SIZE}, {torch::kUInt8}), 0} {
+    : tensorContext_{
+          torch::empty({INITIAL_TENSOR_SIZE}, {torch::kUInt8}),
+          0,
+          0} {
   createAVIOContext(
       nullptr, &write, &seek, &tensorContext_, /*isForWriting=*/true);
 }
 
 torch::Tensor AVIOToTensorContext::getOutputTensor() {
   return tensorContext_.data.narrow(
-      /*dim=*/0, /*start=*/0, /*length=*/tensorContext_.current);
+      /*dim=*/0, /*start=*/0, /*length=*/tensorContext_.max);
 }
 
 } // namespace facebook::torchcodec

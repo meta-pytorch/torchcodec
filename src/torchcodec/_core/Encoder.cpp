@@ -4,10 +4,6 @@
 #include "src/torchcodec/_core/Encoder.h"
 #include "torch/types.h"
 
-extern "C" {
-#include <libavutil/pixdesc.h>
-}
-
 namespace facebook::torchcodec {
 
 namespace {
@@ -543,9 +539,15 @@ torch::Tensor validateFrames(const torch::Tensor& frames) {
 
 VideoEncoder::~VideoEncoder() {
   if (avFormatContext_ && avFormatContext_->pb) {
-    avio_flush(avFormatContext_->pb);
-    avio_close(avFormatContext_->pb);
-    avFormatContext_->pb = nullptr;
+    if (avFormatContext_->pb->error == 0) {
+      avio_flush(avFormatContext_->pb);
+    }
+    if (!avioContextHolder_) {
+      if (avFormatContext_->pb->error == 0) {
+        avio_close(avFormatContext_->pb);
+      }
+      avFormatContext_->pb = nullptr;
+    }
   }
 }
 
@@ -578,6 +580,34 @@ VideoEncoder::VideoEncoder(
       fileName,
       ", make sure it's a valid path? ",
       getFFMPEGErrorStringFromErrorCode(status));
+  initializeEncoder(videoStreamOptions);
+}
+
+VideoEncoder::VideoEncoder(
+    const torch::Tensor& frames,
+    int frameRate,
+    std::string_view formatName,
+    std::unique_ptr<AVIOContextHolder> avioContextHolder,
+    const VideoStreamOptions& videoStreamOptions)
+    : frames_(validateFrames(frames)),
+      inFrameRate_(frameRate),
+      avioContextHolder_(std::move(avioContextHolder)) {
+  setFFmpegLogLevel();
+  AVFormatContext* avFormatContext = nullptr;
+  int status = avformat_alloc_output_context2(
+      &avFormatContext, nullptr, formatName.data(), nullptr);
+
+  TORCH_CHECK(
+      avFormatContext != nullptr,
+      "Couldn't allocate AVFormatContext. ",
+      "Check the desired format? Got format=",
+      formatName,
+      ". ",
+      getFFMPEGErrorStringFromErrorCode(status));
+  avFormatContext_.reset(avFormatContext);
+
+  avFormatContext_->pb = avioContextHolder_->getAVIOContext();
+
   initializeEncoder(videoStreamOptions);
 }
 
@@ -749,6 +779,17 @@ UniqueAVFrame VideoEncoder::convertTensorToAVFrame(
       avFrame->linesize);
   TORCH_CHECK(status == outHeight_, "sws_scale failed");
   return avFrame;
+}
+
+torch::Tensor VideoEncoder::encodeToTensor() {
+  TORCH_CHECK(
+      avioContextHolder_ != nullptr,
+      "Cannot encode to tensor, avio tensor context doesn't exist.");
+  encode();
+  auto avioToTensorContext =
+      dynamic_cast<AVIOToTensorContext*>(avioContextHolder_.get());
+  TORCH_CHECK(avioToTensorContext != nullptr, "Invalid AVIO context holder.");
+  return avioToTensorContext->getOutputTensor();
 }
 
 void VideoEncoder::encodeFrame(
