@@ -631,8 +631,7 @@ class TestVideoDecoderOps:
         filtergraph_decoder = create_from_file(str(input_video.path))
         _add_video_stream(
             filtergraph_decoder,
-            width=target_width,
-            height=target_height,
+            transform_specs=f"resize, {target_height}, {target_width}",
             color_conversion_library="filtergraph",
         )
         filtergraph_frame0, _, _ = get_next_frame(filtergraph_decoder)
@@ -640,8 +639,7 @@ class TestVideoDecoderOps:
         swscale_decoder = create_from_file(str(input_video.path))
         _add_video_stream(
             swscale_decoder,
-            width=target_width,
-            height=target_height,
+            transform_specs=f"resize, {target_height}, {target_width}",
             color_conversion_library="swscale",
         )
         swscale_frame0, _, _ = get_next_frame(swscale_decoder)
@@ -655,7 +653,53 @@ class TestVideoDecoderOps:
             RuntimeError,
             match="Transforms are only supported for CPU devices.",
         ):
-            add_video_stream(decoder, device="cuda", width=100, height=100)
+            add_video_stream(decoder, device="cuda", transform_specs="resize, 100, 100")
+
+    def test_transform_fails(self):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        with pytest.raises(
+            RuntimeError,
+            match="Invalid transform spec",
+        ):
+            add_video_stream(decoder, transform_specs=";")
+
+        with pytest.raises(
+            RuntimeError,
+            match="Invalid transform name",
+        ):
+            add_video_stream(decoder, transform_specs="invalid, 1, 2")
+
+    def test_resize_transform_fails(self):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        with pytest.raises(
+            RuntimeError,
+            match="must have 3 elements",
+        ):
+            add_video_stream(decoder, transform_specs="resize, 100, 100, 100")
+
+        with pytest.raises(
+            RuntimeError,
+            match="must be a positive integer",
+        ):
+            add_video_stream(decoder, transform_specs="resize, -10, 100")
+
+        with pytest.raises(
+            RuntimeError,
+            match="must be a positive integer",
+        ):
+            add_video_stream(decoder, transform_specs="resize, 100, 0")
+
+        with pytest.raises(
+            RuntimeError,
+            match="cannot be converted to an int",
+        ):
+            add_video_stream(decoder, transform_specs="resize, blah, 100")
+
+        with pytest.raises(
+            RuntimeError,
+            match="out of range",
+        ):
+            add_video_stream(decoder, transform_specs="resize, 100, 1000000000000")
 
     @pytest.mark.parametrize("dimension_order", ("NHWC", "NCHW"))
     @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
@@ -763,8 +807,7 @@ class TestVideoDecoderOps:
         filtergraph_decoder = create_from_file(str(video_path))
         _add_video_stream(
             filtergraph_decoder,
-            width=target_width,
-            height=target_height,
+            transform_specs=f"resize, {target_height}, {target_width}",
             color_conversion_library="filtergraph",
         )
         filtergraph_frame0, _, _ = get_next_frame(filtergraph_decoder)
@@ -772,8 +815,7 @@ class TestVideoDecoderOps:
         auto_decoder = create_from_file(str(video_path))
         add_video_stream(
             auto_decoder,
-            width=target_width,
-            height=target_height,
+            transform_specs=f"resize, {target_height}, {target_width}",
         )
         auto_frame0, _, _ = get_next_frame(auto_decoder)
         assert_frames_equal(filtergraph_frame0, auto_frame0)

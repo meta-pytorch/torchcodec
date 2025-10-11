@@ -131,7 +131,16 @@ def test_get_metadata_audio_file(metadata_getter):
     best_audio_stream_metadata = metadata.streams[metadata.best_audio_stream_index]
     assert isinstance(best_audio_stream_metadata, AudioStreamMetadata)
     assert best_audio_stream_metadata is metadata.best_audio_stream
-    assert best_audio_stream_metadata.duration_seconds_from_header == 13.248
+
+    ffmpeg_major_version = get_ffmpeg_major_version()
+    expected_duration_seconds_from_header = (
+        13.056 if ffmpeg_major_version >= 8 else 13.248
+    )
+
+    assert (
+        best_audio_stream_metadata.duration_seconds_from_header
+        == expected_duration_seconds_from_header
+    )
     assert best_audio_stream_metadata.begin_stream_seconds_from_header == 0.138125
     assert best_audio_stream_metadata.bit_rate == 64000
     assert best_audio_stream_metadata.codec == "mp3"
@@ -281,11 +290,15 @@ def test_repr():
   average_fps: 29.97002997002997
 """
     )
+    ffmpeg_major_version = get_ffmpeg_major_version()
+    expected_duration_seconds_from_header = (
+        13.056 if ffmpeg_major_version >= 8 else 13.248
+    )
 
     assert (
         str(AudioDecoder(NASA_AUDIO_MP3.path).metadata)
-        == """AudioStreamMetadata:
-  duration_seconds_from_header: 13.248
+        == f"""AudioStreamMetadata:
+  duration_seconds_from_header: {expected_duration_seconds_from_header}
   begin_stream_seconds_from_header: 0.138125
   bit_rate: 64000.0
   codec: mp3

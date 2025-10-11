@@ -71,7 +71,7 @@ jobs:
         # but for releases we should add 12.8.
         cuda-version: ['12.6', '13.0']
         # TODO: put back ffmpeg 5 https://github.com/pytorch/torchcodec/issues/325
-        ffmpeg-version-for-tests: ['4.4.2', '6', '7']
+        ffmpeg-version-for-tests: ['4.4.2', '6', '7', '8.0']
 
     container:
       image: "pytorch/manylinux2_28-builder:cuda${{ matrix.cuda-version }}"

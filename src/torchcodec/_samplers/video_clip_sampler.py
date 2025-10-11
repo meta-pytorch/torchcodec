@@ -147,8 +147,7 @@ class DEPRECATED_VideoClipSampler(nn.Module):
         scan_all_streams_to_update_metadata(video_decoder)
         add_video_stream(
             video_decoder,
-            width=target_width,
-            height=target_height,
+            transform_specs=f"resize, {target_height}, {target_width}",
             num_threads=self.decoder_args.num_threads,
         )
 
