@@ -1412,7 +1412,7 @@ class TestVideoEncoderOps:
 
         # If FFmpeg selects a codec or pixel format that does lossy encoding, assert 99% of pixels
         # are within a higher tolerance.
-        if ffmpeg_version == 6 or format in ("avi", "flv"):
+        if ffmpeg_version == 6:
             assert_close = partial(assert_tensor_close_on_at_least, percentage=99)
             atol = 15
         else:
