@@ -1378,9 +1378,9 @@ class TestVideoEncoderOps:
                 filename="./bad/path.mp3",
             )
 
-    def decode(self, file_path, device="cpu") -> torch.Tensor:
+    def decode(self, file_path) -> torch.Tensor:
         decoder = create_from_file(str(file_path), seek_mode="approximate")
-        add_video_stream(decoder, device=device)
+        add_video_stream(decoder)
         frames, *_ = get_frames_in_range(decoder, start=0, stop=60)
         return frames
 
@@ -1399,14 +1399,14 @@ class TestVideoEncoderOps:
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
         asset = TEST_SRC_2_720P
-        source_frames = self.decode(str(asset.path), device="cpu").data
+        source_frames = self.decode(str(asset.path)).data
 
         encoded_path = str(tmp_path / f"encoder_output.{format}")
         frame_rate = 30  # Frame rate is fixed with num frames decoded
         encode_video_to_file(
             frames=source_frames, frame_rate=frame_rate, filename=encoded_path, crf=0
         )
-        round_trip_frames = self.decode(encoded_path, device="cpu").data
+        round_trip_frames = self.decode(encoded_path).data
         assert source_frames.shape == round_trip_frames.shape
         assert source_frames.dtype == round_trip_frames.dtype
 
