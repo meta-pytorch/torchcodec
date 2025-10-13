@@ -1486,7 +1486,7 @@ class TestVideoEncoderOps:
         # If FFmpeg selects a codec or pixel format that uses qscale (not crf),
         # the VideoEncoder outputs *slightly* different frames.
         # There may be additional subtle differences in the encoder.
-        percentage = 94 if ffmpeg_version == 6 or format in ("avi") else 99
+        percentage = 94 if ffmpeg_version == 6 or format == "avi" else 99
 
         # Check that PSNR between both encoded versions is high
         for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
