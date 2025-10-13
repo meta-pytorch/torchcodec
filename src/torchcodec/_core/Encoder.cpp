@@ -609,7 +609,7 @@ void VideoEncoder::initializeEncoder(
       getSupportedPixelFormats(*avCodec), // List of supported formats
       AV_PIX_FMT_GBRP, // We reorder input to GBRP currently
       0, // No alpha channel
-      0 // Discard conversion loss information
+      nullptr // Discard conversion loss information
   );
   TORCH_CHECK(outPixelFormat_ != -1, "Failed to find best pix fmt")
 
