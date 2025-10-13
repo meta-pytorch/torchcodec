@@ -168,6 +168,7 @@ void setDuration(const UniqueAVFrame& frame, int64_t duration);
 
 const int* getSupportedSampleRates(const AVCodec& avCodec);
 const AVSampleFormat* getSupportedOutputSampleFormats(const AVCodec& avCodec);
+const AVPixelFormat* getSupportedPixelFormats(const AVCodec& avCodec);
 
 int getNumChannels(const UniqueAVFrame& avFrame);
 int getNumChannels(const UniqueAVCodecContext& avCodecContext);
