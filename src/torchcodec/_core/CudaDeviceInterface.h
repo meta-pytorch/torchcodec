@@ -52,7 +52,7 @@ class CudaDeviceInterface : public DeviceInterface {
   VideoStreamOptions videoStreamOptions_;
   AVRational timeBase_;
 
-  UniqueAVBufferRef ctx_;
+  UniqueAVBufferRef hardwareDeviceCtx_;
   UniqueNppContext nppCtx_;
 
   // This filtergraph instance is only used for NV12 format conversion in
