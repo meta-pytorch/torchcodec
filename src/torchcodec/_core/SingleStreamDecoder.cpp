@@ -785,8 +785,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
 
   for (int64_t i = 0; i < timestamps.numel(); ++i) {
     auto frameSeconds = timestampsAccessor[i];
+    // Use machine epsilon scaled for video processing precision errors
+    constexpr double eps = std::numeric_limits<double>::epsilon() * 1000;
     TORCH_CHECK(
-        frameSeconds >= minSeconds,
+        frameSeconds >= (minSeconds - eps),
         "frame pts is " + std::to_string(frameSeconds) +
             "; must be greater than or equal to " + std::to_string(minSeconds) +
             ".");
@@ -795,7 +797,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
     // metadata, then we assume the frame's pts is valid.
     if (maxSeconds.has_value()) {
       TORCH_CHECK(
-          frameSeconds < maxSeconds.value(),
+          frameSeconds < (maxSeconds.value() + eps),
           "frame pts is " + std::to_string(frameSeconds) +
               "; must be less than " + std::to_string(maxSeconds.value()) +
               ".");
