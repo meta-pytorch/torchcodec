@@ -22,8 +22,6 @@ extern "C" {
 #include <libavutil/dict.h>
 #include <libavutil/display.h>
 #include <libavutil/file.h>
-#include <libavutil/hwcontext.h>
-#include <libavutil/hwcontext_cuda.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/version.h>
@@ -243,9 +241,8 @@ AVFilterContext* createBuffersinkFilter(
     AVFilterGraph* filterGraph,
     enum AVPixelFormat outputFormat);
 
-// Returns the appropriate flags for av_hwdevice_ctx_create() based on FFmpeg
-// version. This abstracts FFmpeg version differences for hardware device
-// context creation.
-int64_t getHardwareDeviceCreationFlags();
+// Returns whether hardware context can be reused based on FFmpeg
+// version.
+int64_t canReuseHardwareContext();
 
 } // namespace facebook::torchcodec

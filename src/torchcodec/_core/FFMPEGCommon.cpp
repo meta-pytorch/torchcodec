@@ -585,11 +585,11 @@ int64_t computeSafeDuration(
   }
 }
 
-int64_t getHardwareDeviceCreationFlags() {
+int64_t canReuseHardwareContext() {
   // 58.26.100 introduced the concept of reusing the existing cuda context
   // which is much faster and lower memory than creating a new cuda context.
 #if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(58, 26, 100)
-  return AV_CUDA_USE_CURRENT_CONTEXT;
+  return 1;
 #else
   return 0;
 #endif

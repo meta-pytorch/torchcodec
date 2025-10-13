@@ -62,7 +62,7 @@ UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device) {
   AVBufferRef* hw_device_ctx_raw = nullptr;
   std::string deviceOrdinal = std::to_string(nonNegativeDeviceIndex);
 
-  int flags = getHardwareDeviceCreationFlags();
+  int flags = (canReuseHardwareContext()) ? AV_CUDA_USE_CURRENT_CONTEXT : 0;
   int err = av_hwdevice_ctx_create(
       &hw_device_ctx_raw, type, deviceOrdinal.c_str(), nullptr, flags);
 
