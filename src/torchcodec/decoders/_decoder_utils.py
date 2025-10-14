@@ -9,7 +9,7 @@ import io
 from contextlib import contextmanager
 from pathlib import Path
 
-from typing import Generator, Optional, Union
+from typing import Generator, Union
 
 from torch import Tensor
 from torchcodec import _core as core
