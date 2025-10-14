@@ -41,9 +41,6 @@ def unsplit_device_str(device_str: str) -> str:
     # It is used:
     # - before calling `.to(device)` where device can't be "cuda:0:beta"
     # - before calling add_video_stream(device=device, device_variant=device_variant)
-    #
-    # TODONVDEC P2: Find a less clunky way to test the BETA CUDA interface. It
-    # will ultimately depend on how we want to publicly expose it.
     if device_str == "cuda:0:beta":
         return "cuda", "beta"
     else:
