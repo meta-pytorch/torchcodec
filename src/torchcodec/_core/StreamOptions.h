@@ -45,9 +45,9 @@ struct VideoStreamOptions {
   std::string_view deviceVariant = "default";
 
   // Encoding options
-  std::optional<int> bitRate;
-  std::optional<int> gopSize;
-  std::optional<int> maxBFrames;
+  // TODO-VideoEncoder: Consider adding other optional fields here
+  // (bit rate, gop size, max b frames, preset)
+  std::optional<int> crf;
 };
 
 struct AudioStreamOptions {
