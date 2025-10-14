@@ -1702,7 +1702,7 @@ class TestVideoDecoder:
 
     @needs_cuda
     def test_beta_cuda_interface_error(self):
-        with pytest.raises(RuntimeError, match="Unsupported device"):
+        with pytest.raises(RuntimeError, match="Invalid device string"):
             VideoDecoder(NASA_VIDEO.path, device="cuda:0:bad_variant")
 
 

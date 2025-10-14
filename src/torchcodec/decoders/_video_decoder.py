@@ -15,6 +15,7 @@ from torch import device as torch_device, Tensor
 
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec.decoders._decoder_utils import (
+    _get_current_cuda_backend,
     create_decoder,
     ERROR_REPORTING_INSTRUCTIONS,
 )
@@ -143,17 +144,17 @@ class VideoDecoder:
         if isinstance(device, torch_device):
             device = str(device)
 
-        # If device looks like "cuda:0:beta", make it "cuda:0" and set
-        # device_variant to "beta"
-        # TODONVDEC P2 Consider alternative ways of exposing custom device
-        # variants, and if we want this new decoder backend to be a "device
-        # variant" at all.
-        device_variant = "default"
-        if device is not None:
-            device_split = device.split(":")
-            if len(device_split) == 3:
-                device_variant = device_split[2]
-                device = ":".join(device_split[0:2])
+        device_variant = _get_current_cuda_backend()
+        if device_variant == "ffmpeg":
+            # TODONVDEC P2 rename 'default' into 'ffmpeg' everywhere.
+            device_variant = "default"
+
+        # Legacy support for device="cuda:0:beta" syntax
+        # TODONVDEC P2: remove support for this everywhere. This will require
+        # updating our tests.
+        if device == "cuda:0:beta":
+            device = "cuda:0"
+            device_variant = "beta"
 
         core.add_video_stream(
             self._decoder,

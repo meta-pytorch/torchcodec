@@ -8,6 +8,7 @@
 # but that results in circular import.
 from ._frame import AudioSamples, Frame, FrameBatch  # usort:skip # noqa
 from . import decoders, samplers  # noqa
+from .decoders._decoder_utils import set_cuda_backend  # noqa
 
 try:
     # Note that version.py is generated during install.
