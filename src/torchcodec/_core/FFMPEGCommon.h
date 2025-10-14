@@ -242,8 +242,4 @@ AVFilterContext* createBuffersinkFilter(
     AVFilterGraph* filterGraph,
     enum AVPixelFormat outputFormat);
 
-// Returns whether hardware context can be reused based on FFmpeg
-// version.
-int64_t canReuseHardwareContext();
-
 } // namespace facebook::torchcodec

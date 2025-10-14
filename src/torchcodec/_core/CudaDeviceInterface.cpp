@@ -41,6 +41,14 @@ const int MAX_CONTEXTS_PER_GPU_IN_CACHE = -1;
 PerGpuCache<AVBufferRef, Deleterp<AVBufferRef, void, av_buffer_unref>>
     g_cached_hw_device_ctxs(MAX_CUDA_GPUS, MAX_CONTEXTS_PER_GPU_IN_CACHE);
 
+// 58.26.100 introduced the concept of reusing the existing cuda context
+// which is much faster and lower memory than creating a new cuda context.
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(58, 26, 100)
+int flags = AV_CUDA_USE_CURRENT_CONTEXT;
+#else
+int flags = 0;
+#endif
+
 UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device) {
   enum AVHWDeviceType type = av_hwdevice_find_type_by_name("cuda");
   TORCH_CHECK(type != AV_HWDEVICE_TYPE_NONE, "Failed to find cuda device");
@@ -62,7 +70,6 @@ UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device) {
   AVBufferRef* hw_device_ctx_raw = nullptr;
   std::string deviceOrdinal = std::to_string(nonNegativeDeviceIndex);
 
-  int flags = (canReuseHardwareContext()) ? AV_CUDA_USE_CURRENT_CONTEXT : 0;
   int err = av_hwdevice_ctx_create(
       &hw_device_ctx_raw, type, deviceOrdinal.c_str(), nullptr, flags);
 
