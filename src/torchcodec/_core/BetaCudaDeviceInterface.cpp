@@ -221,7 +221,6 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
   }
 
   if (videoParser_) {
-    // TODONVDEC P2: consider caching this? Does DALI do that?
     cuvidDestroyVideoParser(videoParser_);
     videoParser_ = nullptr;
   }

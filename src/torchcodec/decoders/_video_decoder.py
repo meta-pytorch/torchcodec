@@ -145,9 +145,6 @@ class VideoDecoder:
 
         # If device looks like "cuda:0:beta", make it "cuda:0" and set
         # device_variant to "beta"
-        # TODONVDEC P2 Consider alternative ways of exposing custom device
-        # variants, and if we want this new decoder backend to be a "device
-        # variant" at all.
         device_variant = "default"
         if device is not None:
             device_split = device.split(":")
