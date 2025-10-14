@@ -27,7 +27,7 @@ NVDECCache& NVDECCache::getCache(int deviceIndex) {
       deviceIndex);
   static NVDECCache cacheInstances[MAX_CUDA_GPUS];
   if (deviceIndex == -1) {
-    // TODO NVDEC P3: Unify with existing getNonNegativeDeviceIndex()
+    // TODONVDEC P3: Unify with existing getNonNegativeDeviceIndex()
     TORCH_CHECK(
         cudaGetDevice(&deviceIndex) == cudaSuccess,
         "Failed to get current CUDA device.");

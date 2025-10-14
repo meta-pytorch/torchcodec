@@ -68,8 +68,6 @@ class NVDECCache {
     CacheKey(const CacheKey&) = default;
     CacheKey& operator=(const CacheKey&) = default;
 
-    // TODONVDEC P2: consider a more sophisticated and potentially
-    // less strict cache key comparison logic
     bool operator<(const CacheKey& other) const {
       return std::tie(
                  codecType,
