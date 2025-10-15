@@ -94,9 +94,10 @@ urllib.request.urlretrieve(
 #
 # To use CUDA decoder, you need to pass in a cuda device to the decoder.
 #
-from torchcodec.decoders import VideoDecoder
+from torchcodec.decoders import set_cuda_backend, VideoDecoder
 
-decoder = VideoDecoder(video_file, device="cuda")
+with set_cuda_backend("beta"):  # Use the BETA backend, it's faster!
+    decoder = VideoDecoder(video_file, device="cuda")
 frame = decoder[0]
 
 # %%
@@ -120,7 +121,8 @@ print(frame.data.device)
 # against equivalent results from the CPU decoders.
 timestamps = [12, 19, 45, 131, 180]
 cpu_decoder = VideoDecoder(video_file, device="cpu")
-cuda_decoder = VideoDecoder(video_file, device="cuda")
+with set_cuda_backend("beta"):
+    cuda_decoder = VideoDecoder(video_file, device="cuda")
 cpu_frames = cpu_decoder.get_frames_played_at(timestamps).data
 cuda_frames = cuda_decoder.get_frames_played_at(timestamps).data
 
