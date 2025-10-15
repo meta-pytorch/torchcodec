@@ -41,9 +41,6 @@ def unsplit_device_str(device_str: str) -> str:
     # It is used:
     # - before calling `.to(device)` where device can't be "cuda:0:beta"
     # - before calling add_video_stream(device=device, device_variant=device_variant)
-    #
-    # TODONVDEC P2: Find a less clunky way to test the BETA CUDA interface. It
-    # will ultimately depend on how we want to publicly expose it.
     if device_str == "cuda:0:beta":
         return "cuda", "beta"
     else:
@@ -750,7 +747,7 @@ TEST_SRC_2_720P_MPEG4 = TestVideo(
 
 
 def supports_approximate_mode(asset: TestVideo) -> bool:
-    # TODONVDEC P2: open an issue about his. That's actually not related to
-    # NVDEC at all, those don't support approximate mode because they don't set
-    # a duration. CPU decoder fails too!
+    # Those are missing the `duration` field so they fail in approximate mode (on all devices).
+    # TODO: we should address this, see
+    # https://github.com/meta-pytorch/torchcodec/issues/945
     return asset not in (AV1_VIDEO, TEST_SRC_2_720P_VP9, TEST_SRC_2_720P_VP8)
