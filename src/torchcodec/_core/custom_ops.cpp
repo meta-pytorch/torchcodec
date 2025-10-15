@@ -212,6 +212,14 @@ Transform* makeResizeTransform(
   return new ResizeTransform(FrameDims(height, width));
 }
 
+// Crop transform specs take the form:
+//
+//   "crop, <width>, <height>, <x>, <y>"
+//
+// Where "crop" is the string literal and <width>, <height>, <x> and <y> are
+// positive integers. Note that that in this spec, we are following the filtergraph
+// convention of (width, height). This makes it easier to compare it against actual
+// filtergraph strings.
 Transform* makeCropTransform(
     const std::vector<std::string>& cropTransformSpec) {
   TORCH_CHECK(
@@ -221,7 +229,7 @@ Transform* makeCropTransform(
   int height = checkedToPositiveInt(cropTransformSpec[2]);
   int x = checkedToPositiveInt(cropTransformSpec[3]);
   int y = checkedToPositiveInt(cropTransformSpec[4]);
-  return new CropTransform(x, y, FrameDims(height, width));
+  return new CropTransform(FrameDims(height, width), x, y);
 }
 
 std::vector<std::string> split(const std::string& str, char delimiter) {

@@ -58,7 +58,7 @@ class ResizeTransform : public Transform {
 
 class CropTransform : public Transform {
 public:
-  CropTransform(int x, int y, const FrameDims& dims)
+  CropTransform(const FrameDims& dims, int x, int y)
       : outputDims_(dims), x_(x), y_(y) {}
 
   std::string getFilterGraphCpu() const override;

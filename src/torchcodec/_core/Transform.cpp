@@ -58,9 +58,12 @@ int ResizeTransform::getSwsFlags() const {
 }
 
 std::string CropTransform::getFilterGraphCpu() const {
+  // Force format conversion to RGB before cropping to ensure consistent
+  // behavior with torchvision and to avoid issues with chroma subsampling in
+  // YUV formats.
   return "crop=" + std::to_string(outputDims_.width) + ":" +
-      std::to_string(outputDims_.height) + ":" +
-      std::to_string(x_) + ":" + std::to_string(y_);
+      std::to_string(outputDims_.height) + ":" + std::to_string(x_) + ":" +
+      std::to_string(y_) + ":exact=1";
 }
 
 std::optional<FrameDims> CropTransform::getOutputFrameDims() const {

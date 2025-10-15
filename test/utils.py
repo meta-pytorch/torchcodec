@@ -329,14 +329,18 @@ class TestVideo(TestContainerFile):
     """Base class for the *video* streams of a video container"""
 
     def get_frame_data_by_index(
-        self, idx: int, *, stream_index: Optional[int] = None
+        self, idx: int, *, stream_index: Optional[int] = None, filters: Optional[str] = None
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
 
-        file_path = _get_file_path(
-            f"{self.filename}.stream{stream_index}.frame{idx:06d}.pt"
-        )
+        stream_and_frame = f"stream{stream_index}.frame{idx:06d}"
+        if filters is not None:
+            full_name = f"{self.filename}.{filters}.{stream_and_frame}.pt"
+        else:
+            full_name = f"{self.filename}.{stream_and_frame}.pt"
+
+        file_path = _get_file_path(full_name)
         return torch.load(file_path, weights_only=True).permute(2, 0, 1)
 
     def get_frame_data_by_range(
