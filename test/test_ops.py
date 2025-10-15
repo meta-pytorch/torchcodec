@@ -1434,6 +1434,28 @@ class TestVideoEncoderOps:
             assert psnr(s_frame, rt_frame) > 30
             assert_close(s_frame, rt_frame, atol=atol, rtol=0)
 
+    @pytest.mark.parametrize(
+        "format", ("mov", "mp4", "avi", "mkv", "webm", "flv", "gif")
+    )
+    def test_against_to_file(self, tmp_path, format):
+        # Test that to_file and to_tensor produce the same results
+        ffmpeg_version = get_ffmpeg_major_version()
+        if format == "webm" and (
+            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
+        ):
+            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
+        params = dict(frame_rate=30, crf=0)
+
+        encoded_file = tmp_path / f"output.{format}"
+        encode_video_to_file(frames=source_frames, filename=str(encoded_file), **params)
+        encoded_tensor = encode_video_to_tensor(source_frames, format=format, **params)
+
+        torch.testing.assert_close(
+            self.decode(encoded_file).data, self.decode(encoded_tensor).data
+        )
+
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
     @pytest.mark.parametrize(
         "format",
@@ -1449,15 +1471,11 @@ class TestVideoEncoderOps:
     )
     def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
         ffmpeg_version = get_ffmpeg_major_version()
-        if format == "webm":
-            if ffmpeg_version == 4:
-                pytest.skip(
-                    "Codec for webm is not available in the FFmpeg4 installation."
-                )
-            if IS_WINDOWS and ffmpeg_version in (6, 7):
-                pytest.skip(
-                    "Codec for webm is not available in the FFmpeg6/7 installation on Windows."
-                )
+        if format == "webm" and (
+            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
+        ):
+            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+
         source_frames = self.decode(TEST_SRC_2_720P.path).data
 
         # Encode with FFmpeg CLI

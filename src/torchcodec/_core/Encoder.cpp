@@ -538,6 +538,7 @@ torch::Tensor validateFrames(const torch::Tensor& frames) {
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
+  // TODO-VideoEncoder: Unify destructor with ~AudioEncoder()
   if (avFormatContext_ && avFormatContext_->pb) {
     if (avFormatContext_->pb->error == 0) {
       avio_flush(avFormatContext_->pb);
