@@ -18,15 +18,15 @@ constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
 int read(void* opaque, uint8_t* buf, int buf_size) {
   auto tensorContext = static_cast<detail::TensorContext*>(opaque);
   TORCH_CHECK(
-      tensorContext->current <= tensorContext->data.numel(),
-      "Tried to read outside of the buffer: current=",
-      tensorContext->current,
+      tensorContext->current_pos <= tensorContext->data.numel(),
+      "Tried to read outside of the buffer: current_pos=",
+      tensorContext->current_pos,
       ", size=",
       tensorContext->data.numel());
 
   int64_t numBytesRead = std::min(
       static_cast<int64_t>(buf_size),
-      tensorContext->data.numel() - tensorContext->current);
+      tensorContext->data.numel() - tensorContext->current_pos);
 
   TORCH_CHECK(
       numBytesRead >= 0,
@@ -34,8 +34,8 @@ int read(void* opaque, uint8_t* buf, int buf_size) {
       numBytesRead,
       ", size=",
       tensorContext->data.numel(),
-      ", current=",
-      tensorContext->current);
+      ", current_pos=",
+      tensorContext->current_pos);
 
   if (numBytesRead == 0) {
     return AVERROR_EOF;
@@ -43,9 +43,9 @@ int read(void* opaque, uint8_t* buf, int buf_size) {
 
   std::memcpy(
       buf,
-      tensorContext->data.data_ptr<uint8_t>() + tensorContext->current,
+      tensorContext->data.data_ptr<uint8_t>() + tensorContext->current_pos,
       numBytesRead);
-  tensorContext->current += numBytesRead;
+  tensorContext->current_pos += numBytesRead;
   return numBytesRead;
 }
 
@@ -54,7 +54,7 @@ int write(void* opaque, const uint8_t* buf, int buf_size) {
   auto tensorContext = static_cast<detail::TensorContext*>(opaque);
 
   int64_t bufSize = static_cast<int64_t>(buf_size);
-  if (tensorContext->current + bufSize > tensorContext->data.numel()) {
+  if (tensorContext->current_pos + bufSize > tensorContext->data.numel()) {
     TORCH_CHECK(
         tensorContext->data.numel() * 2 <= MAX_TENSOR_SIZE,
         "We tried to allocate an output encoded tensor larger than ",
@@ -68,18 +68,17 @@ int write(void* opaque, const uint8_t* buf, int buf_size) {
   }
 
   TORCH_CHECK(
-      tensorContext->current + bufSize <= tensorContext->data.numel(),
+      tensorContext->current_pos + bufSize <= tensorContext->data.numel(),
       "Re-allocation of the output tensor didn't work. ",
       "This should not happen, please report on TorchCodec bug tracker");
 
   uint8_t* outputTensorData = tensorContext->data.data_ptr<uint8_t>();
-  std::memcpy(outputTensorData + tensorContext->current, buf, bufSize);
-  tensorContext->current += bufSize;
+  std::memcpy(outputTensorData + tensorContext->current_pos, buf, bufSize);
+  tensorContext->current_pos += bufSize;
   // Track the maximum position written so getOutputTensor's narrow() does not
   // truncate the file if final seek was backwards
-  if (tensorContext->current > tensorContext->max) {
-    tensorContext->max = tensorContext->current;
-  }
+  tensorContext->max_pos =
+      std::max(tensorContext->current_pos, tensorContext->max_pos);
   return buf_size;
 }
 
@@ -93,7 +92,7 @@ int64_t seek(void* opaque, int64_t offset, int whence) {
       ret = tensorContext->data.numel();
       break;
     case SEEK_SET:
-      tensorContext->current = offset;
+      tensorContext->current_pos = offset;
       ret = offset;
       break;
     default:
@@ -125,7 +124,7 @@ AVIOToTensorContext::AVIOToTensorContext()
 
 torch::Tensor AVIOToTensorContext::getOutputTensor() {
   return tensorContext_.data.narrow(
-      /*dim=*/0, /*start=*/0, /*length=*/tensorContext_.max);
+      /*dim=*/0, /*start=*/0, /*length=*/tensorContext_.max_pos);
 }
 
 } // namespace facebook::torchcodec
