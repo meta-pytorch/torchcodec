@@ -593,6 +593,8 @@ VideoEncoder::VideoEncoder(
       inFrameRate_(frameRate),
       avioContextHolder_(std::move(avioContextHolder)) {
   setFFmpegLogLevel();
+  // Map mkv -> matroska when used as format name
+  formatName = (formatName == "mkv") ? "matroska" : formatName;
   AVFormatContext* avFormatContext = nullptr;
   int status = avformat_alloc_output_context2(
       &avFormatContext, nullptr, formatName.data(), nullptr);
