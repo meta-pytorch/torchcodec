@@ -259,6 +259,7 @@ def encode_video_to_file_abstract(
     frames: torch.Tensor,
     frame_rate: int,
     filename: str,
+    crf: Optional[int] = None,
 ) -> None:
     return
 
@@ -303,7 +304,7 @@ def _add_video_stream_abstract(
     dimension_order: Optional[str] = None,
     stream_index: Optional[int] = None,
     device: str = "cpu",
-    device_variant: str = "default",
+    device_variant: str = "ffmpeg",
     transform_specs: str = "",
     custom_frame_mappings: Optional[
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]
@@ -321,7 +322,7 @@ def add_video_stream_abstract(
     dimension_order: Optional[str] = None,
     stream_index: Optional[int] = None,
     device: str = "cpu",
-    device_variant: str = "default",
+    device_variant: str = "ffmpeg",
     transform_specs: str = "",
     custom_frame_mappings: Optional[
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]

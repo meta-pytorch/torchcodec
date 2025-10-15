@@ -95,30 +95,16 @@ class PerGpuCache {
   std::vector<std::unique_ptr<Cache<T, D>>> cache_;
 };
 
-// Note: this function is inline for convenience, not performance. Because the
-// rest of this file is template functions, they must all be defined in this
-// header. This function is not a template function, and should, in principle,
-// be defined in a .cpp file to preserve the One Definition Rule. That's
-// annoying for such a small amount of code, so we just inline it. If this file
-// grows, and there are more such functions, we should break them out into a
-// .cpp file.
-inline torch::DeviceIndex getNonNegativeDeviceIndex(
-    const torch::Device& device) {
-  torch::DeviceIndex deviceIndex = device.index();
-  // For single GPU machines libtorch returns -1 for the device index. So for
-  // that case we set the device index to 0. That's used in per-gpu cache
-  // implementation and during initialization of CUDA and FFmpeg contexts
-  // which require non negative indices.
-  deviceIndex = std::max<at::DeviceIndex>(deviceIndex, 0);
-  TORCH_CHECK(deviceIndex >= 0, "Device index out of range");
-  return deviceIndex;
-}
+// Forward declaration of getDeviceIndex which exists in CUDACommon.h
+// This avoids circular dependency between Cache.h and CUDACommon.cpp which also
+// needs to include Cache.h
+int getDeviceIndex(const torch::Device& device);
 
 template <typename T, typename D>
 bool PerGpuCache<T, D>::addIfCacheHasCapacity(
     const torch::Device& device,
     element_type&& obj) {
-  torch::DeviceIndex deviceIndex = getNonNegativeDeviceIndex(device);
+  int deviceIndex = getDeviceIndex(device);
   TORCH_CHECK(
       static_cast<size_t>(deviceIndex) < cache_.size(),
       "Device index out of range");
@@ -128,7 +114,7 @@ bool PerGpuCache<T, D>::addIfCacheHasCapacity(
 template <typename T, typename D>
 typename PerGpuCache<T, D>::element_type PerGpuCache<T, D>::get(
     const torch::Device& device) {
-  torch::DeviceIndex deviceIndex = getNonNegativeDeviceIndex(device);
+  int deviceIndex = getDeviceIndex(device);
   TORCH_CHECK(
       static_cast<size_t>(deviceIndex) < cache_.size(),
       "Device index out of range");

@@ -8,8 +8,6 @@ import io
 import os
 from functools import partial
 
-from .utils import in_fbcode
-
 os.environ["TORCH_LOGS"] = "output_code"
 import json
 
@@ -45,6 +43,10 @@ from torchcodec._core import (
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    assert_tensor_close_on_at_least,
+    get_ffmpeg_major_version,
+    in_fbcode,
+    IS_WINDOWS,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
@@ -53,6 +55,7 @@ from .utils import (
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    TEST_SRC_2_720P,
     unsplit_device_str,
 )
 
@@ -1202,24 +1205,117 @@ class TestVideoEncoderOps:
         frames, *_ = get_frames_in_range(decoder, start=0, stop=60)
         return frames
 
-    @pytest.mark.parametrize("format", ("mov", "mp4", "avi"))
-    # TODO-VideoEncoder: enable additional formats (mkv, webm)
-    def test_video_encoder_test_round_trip(self, tmp_path, format):
-        # TODO-VideoEncoder: Test with FFmpeg's testsrc2 video
-        asset = NASA_VIDEO
-
+    @pytest.mark.parametrize("format", ("mov", "mp4", "mkv", "webm"))
+    def test_video_encoder_round_trip(self, tmp_path, format):
         # Test that decode(encode(decode(asset))) == decode(asset)
+        ffmpeg_version = get_ffmpeg_major_version()
+        # In FFmpeg6, the default codec's best pixel format is lossy for all container formats but webm.
+        # As a result, we skip the round trip test.
+        if ffmpeg_version == 6 and format != "webm":
+            pytest.skip(
+                f"FFmpeg6 defaults to lossy encoding for {format}, skipping round-trip test."
+            )
+        if format == "webm" and (
+            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
+        ):
+            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+        asset = TEST_SRC_2_720P
         source_frames = self.decode(str(asset.path)).data
 
         encoded_path = str(tmp_path / f"encoder_output.{format}")
         frame_rate = 30  # Frame rate is fixed with num frames decoded
-        encode_video_to_file(source_frames, frame_rate, encoded_path)
+        encode_video_to_file(
+            frames=source_frames, frame_rate=frame_rate, filename=encoded_path, crf=0
+        )
         round_trip_frames = self.decode(encoded_path).data
+        assert source_frames.shape == round_trip_frames.shape
+        assert source_frames.dtype == round_trip_frames.dtype
 
-        # Check that PSNR for decode(encode(samples)) is above 30
+        # If FFmpeg selects a codec or pixel format that does lossy encoding, assert 99% of pixels
+        # are within a higher tolerance.
+        if ffmpeg_version == 6:
+            assert_close = partial(assert_tensor_close_on_at_least, percentage=99)
+            atol = 15
+        else:
+            assert_close = torch.testing.assert_close
+            atol = 2
         for s_frame, rt_frame in zip(source_frames, round_trip_frames):
-            res = psnr(s_frame, rt_frame)
+            assert psnr(s_frame, rt_frame) > 30
+            assert_close(s_frame, rt_frame, atol=atol, rtol=0)
+
+    @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
+    @pytest.mark.parametrize(
+        "format", ("mov", "mp4", "avi", "mkv", "webm", "flv", "gif")
+    )
+    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
+        ffmpeg_version = get_ffmpeg_major_version()
+        if format == "webm":
+            if ffmpeg_version == 4:
+                pytest.skip(
+                    "Codec for webm is not available in the FFmpeg4 installation."
+                )
+            if IS_WINDOWS and ffmpeg_version in (6, 7):
+                pytest.skip(
+                    "Codec for webm is not available in the FFmpeg6/7 installation on Windows."
+                )
+        asset = TEST_SRC_2_720P
+        source_frames = self.decode(str(asset.path)).data
+        frame_rate = 30
+
+        # Encode with FFmpeg CLI
+        temp_raw_path = str(tmp_path / "temp_input.raw")
+        with open(temp_raw_path, "wb") as f:
+            f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
+
+        ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
+        crf = 0
+        quality_params = ["-crf", str(crf)]
+        # Some codecs (ex. MPEG4) do not support CRF.
+        # Flags not supported by the selected codec will be ignored.
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-s",
+            f"{source_frames.shape[3]}x{source_frames.shape[2]}",
+            "-r",
+            str(frame_rate),
+            "-i",
+            temp_raw_path,
+            *quality_params,
+            ffmpeg_encoded_path,
+        ]
+        subprocess.run(ffmpeg_cmd, check=True)
+
+        # Encode with our video encoder
+        encoder_output_path = str(tmp_path / f"encoder_output.{format}")
+        encode_video_to_file(
+            frames=source_frames,
+            frame_rate=frame_rate,
+            filename=encoder_output_path,
+            crf=crf,
+        )
+
+        ffmpeg_frames = self.decode(ffmpeg_encoded_path).data
+        encoder_frames = self.decode(encoder_output_path).data
+
+        assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
+
+        # If FFmpeg selects a codec or pixel format that uses qscale (not crf),
+        # the VideoEncoder outputs *slightly* different frames.
+        # There may be additional subtle differences in the encoder.
+        percentage = 94 if ffmpeg_version == 6 or format == "avi" else 99
+
+        # Check that PSNR between both encoded versions is high
+        for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
+            res = psnr(ff_frame, enc_frame)
             assert res > 30
+            assert_tensor_close_on_at_least(
+                ff_frame, enc_frame, percentage=percentage, atol=2
+            )
 
 
 if __name__ == "__main__":
