@@ -58,7 +58,7 @@ def unsplit_device_str(device_str: str) -> str:
         return device_str, "ffmpeg"
 
 
-def make_video_decoder(*args, **kwargs) -> Union[VideoDecoder, str]:
+def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
     # Helper to create a VideoDecoder with the right cuda backend if needed.
     # kwargs is expected to have a "device" key which comes from
     # all_supported_devices(), and can be _CUDA_BETA_DEVICE_STR.
