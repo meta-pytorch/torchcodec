@@ -1405,19 +1405,20 @@ class TestVideoEncoderOps:
         asset = TEST_SRC_2_720P
         source_frames = self.decode(str(asset.path)).data
 
-        frame_rate = 30  # Frame rate is fixed with num frames decoded
+        params = dict(
+            frame_rate=30, crf=0
+        )  # Frame rate is fixed with num frames decoded
         if method == "to_file":
             encoded_path = str(tmp_path / f"encoder_output.{format}")
             encode_video_to_file(
                 frames=source_frames,
-                frame_rate=frame_rate,
                 filename=encoded_path,
-                crf=0,
+                **params,
             )
             round_trip_frames = self.decode(file_path=encoded_path).data
         else:  # to_tensor
             encoded_tensor = encode_video_to_tensor(
-                source_frames, frame_rate, format, crf=0
+                source_frames, format=format, **params
             )
             round_trip_frames = self.decode(tensor=encoded_tensor).data
 
@@ -1462,7 +1463,6 @@ class TestVideoEncoderOps:
                 )
         asset = TEST_SRC_2_720P
         source_frames = self.decode(str(asset.path)).data
-        frame_rate = 30
 
         # Encode with FFmpeg CLI
         temp_raw_path = str(tmp_path / "temp_input.raw")
@@ -1470,8 +1470,8 @@ class TestVideoEncoderOps:
             f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
 
         ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
+        frame_rate = 30
         crf = 0
-        quality_params = ["-crf", str(crf)]
         # Some codecs (ex. MPEG4) do not support CRF.
         # Flags not supported by the selected codec will be ignored.
         ffmpeg_cmd = [
@@ -1487,7 +1487,8 @@ class TestVideoEncoderOps:
             str(frame_rate),
             "-i",
             temp_raw_path,
-            *quality_params,
+            "-crf",
+            str(crf),
             ffmpeg_encoded_path,
         ]
         subprocess.run(ffmpeg_cmd, check=True)
