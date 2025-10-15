@@ -1320,7 +1320,7 @@ class TestVideoDecoder:
             # RuntimeError: Codec configuration not supported on this GPU.
             # Codec: 4, chroma format: 1, bit depth: 10
             #
-            # It works on the default interface because FFmpeg fallsback to the
+            # It works on the ffmpeg interface because FFmpeg fallsback to the
             # CPU, while the BETA interface doesn't.
             pytest.skip("Asset not supported by NVDEC")
 
@@ -1703,8 +1703,8 @@ class TestVideoDecoder:
     @needs_cuda
     def test_beta_cuda_interface_small_h265(self):
         # Test to illustrate current difference in behavior between the BETA and
-        # the default interface: this video isn't supported by NVDEC, but in the
-        # default interface, FFMPEG fallsback to the CPU while we don't.
+        # the ffmpeg interface: this video isn't supported by NVDEC, but in the
+        # ffmpeg interface, FFMPEG fallsback to the CPU while we don't.
 
         VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
 

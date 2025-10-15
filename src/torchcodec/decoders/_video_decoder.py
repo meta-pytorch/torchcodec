@@ -56,6 +56,8 @@ class VideoDecoder:
             Passing 0 lets FFmpeg decide on the number of threads.
             Default: 1.
         device (str or torch.device, optional): The device to use for decoding. Default: "cpu".
+            If you pass a CUDA device, we recommend trying the "beta" CUDA
+            backend which is faster! See :func:`~torchcodec.decoders.set_cuda_backend`.
         seek_mode (str, optional): Determines if frame access will be "exact" or
             "approximate". Exact guarantees that requesting frame i will always
             return frame i, but doing so requires an initial :term:`scan` of the
@@ -145,9 +147,6 @@ class VideoDecoder:
             device = str(device)
 
         device_variant = _get_cuda_backend()
-        if device_variant == "ffmpeg":
-            # TODONVDEC P2 rename 'default' into 'ffmpeg' everywhere.
-            device_variant = "default"
 
         core.add_video_stream(
             self._decoder,
