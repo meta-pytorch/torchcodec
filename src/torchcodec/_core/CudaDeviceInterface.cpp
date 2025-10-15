@@ -56,9 +56,9 @@ UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device) {
   TORCH_CHECK(type != AV_HWDEVICE_TYPE_NONE, "Failed to find cuda device");
   torch::DeviceIndex nonNegativeDeviceIndex = getNonNegativeDeviceIndex(device);
 
-  UniqueAVBufferRef hw_device_ctx = g_cached_hw_device_ctxs.get(device);
-  if (hw_device_ctx) {
-    return hw_device_ctx;
+  UniqueAVBufferRef hardwareDeviceCtx = g_cached_hw_device_ctxs.get(device);
+  if (hardwareDeviceCtx) {
+    return hardwareDeviceCtx;
   }
 
   // Create hardware device context
