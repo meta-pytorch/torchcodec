@@ -30,7 +30,6 @@ jobs:
     with:
       package-type: wheel
       os: windows
-      channel: test
       test-infra-repository: pytorch/test-infra
       test-infra-ref: release/2.9
       with-xpu: disable

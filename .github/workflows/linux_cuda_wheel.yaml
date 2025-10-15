@@ -29,7 +29,6 @@ jobs:
     with:
       package-type: wheel
       os: linux
-      channel: test
       test-infra-repository: pytorch/test-infra
       test-infra-ref: release/2.9
       with-cpu: disable
