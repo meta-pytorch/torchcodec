@@ -59,8 +59,8 @@ int ResizeTransform::getSwsFlags() const {
 
 CropTransform::CropTransform(const FrameDims& dims, int x, int y)
     : outputDims_(dims), x_(x), y_(y) {
-  TORCH_CHECK(x_ >= 0, "Crop x position must be positive, got: ", x_);
-  TORCH_CHECK(y_ >= 0, "Crop y position must be positive, got: ", y_);
+  TORCH_CHECK(x_ >= 0, "Crop x position must be >= 0, got: ", x_);
+  TORCH_CHECK(y_ >= 0, "Crop y position must be >= 0, got: ", y_);
 }
 
 std::string CropTransform::getFilterGraphCpu() const {
