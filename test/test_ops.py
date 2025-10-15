@@ -42,6 +42,7 @@ from torchcodec._core import (
     get_next_frame,
     seek_to_pts,
 )
+from torchcodec.decoders import VideoDecoder
 
 from .utils import (
     all_supported_devices,
@@ -1379,18 +1380,15 @@ class TestVideoEncoderOps:
                 filename="./bad/path.mp3",
             )
 
-    def decode(self, file_path) -> torch.Tensor:
-        decoder = create_from_file(str(file_path), seek_mode="approximate")
-        add_video_stream(decoder)
-        frames, *_ = get_frames_in_range(decoder, start=0, stop=60)
-        return frames
+    def decode(self, source=None) -> torch.Tensor:
+        return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
 
     @pytest.mark.parametrize(
         "format", ("mov", "mp4", "mkv", pytest.param("webm", marks=pytest.mark.slow))
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor"))
     def test_video_encoder_round_trip(self, tmp_path, format, method):
-        # Test that decode(encode(decode(asset))) == decode(asset)
+        # Test that decode(encode(decode(frames))) == decode(frames)
         ffmpeg_version = get_ffmpeg_major_version()
         # In FFmpeg6, the default codec's best pixel format is lossy for all container formats but webm.
         # As a result, we skip the round trip test.
@@ -1402,8 +1400,7 @@ class TestVideoEncoderOps:
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
-        asset = TEST_SRC_2_720P
-        source_frames = self.decode(str(asset.path)).data
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
 
         params = dict(
             frame_rate=30, crf=0
@@ -1415,12 +1412,12 @@ class TestVideoEncoderOps:
                 filename=encoded_path,
                 **params,
             )
-            round_trip_frames = self.decode(file_path=encoded_path).data
+            round_trip_frames = self.decode(encoded_path).data
         else:  # to_tensor
             encoded_tensor = encode_video_to_tensor(
                 source_frames, format=format, **params
             )
-            round_trip_frames = self.decode(tensor=encoded_tensor).data
+            round_trip_frames = self.decode(encoded_tensor).data
 
         assert source_frames.shape == round_trip_frames.shape
         assert source_frames.dtype == round_trip_frames.dtype
@@ -1461,8 +1458,7 @@ class TestVideoEncoderOps:
                 pytest.skip(
                     "Codec for webm is not available in the FFmpeg6/7 installation on Windows."
                 )
-        asset = TEST_SRC_2_720P
-        source_frames = self.decode(str(asset.path)).data
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
 
         # Encode with FFmpeg CLI
         temp_raw_path = str(tmp_path / "temp_input.raw")
