@@ -158,6 +158,15 @@ int getNumChannels(const UniqueAVCodecContext& avCodecContext) {
 #endif
 }
 
+int getNumChannels(const SharedAVCodecContext& avCodecContext) {
+#if LIBAVFILTER_VERSION_MAJOR > 8 || \
+    (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44)
+  return avCodecContext->ch_layout.nb_channels;
+#else
+  return avCodecContext->channels;
+#endif
+}
+
 void setDefaultChannelLayout(
     UniqueAVCodecContext& avCodecContext,
     int numChannels) {

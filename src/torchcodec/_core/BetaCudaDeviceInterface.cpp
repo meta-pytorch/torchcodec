@@ -231,8 +231,10 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
 
 void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
-    const UniqueDecodingAVFormatContext& avFormatCtx) {
+    const UniqueDecodingAVFormatContext& avFormatCtx,
+    const SharedAVCodecContext& codecContext) {
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
+  codecContext_ = codecContext;
   timeBase_ = avStream->time_base;
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
 

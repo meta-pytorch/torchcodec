@@ -54,7 +54,8 @@ class DeviceInterface {
   // Initialize the device with parameters generic to all kinds of decoding.
   virtual void initialize(
       const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx) = 0;
+      const UniqueDecodingAVFormatContext& avFormatCtx,
+      const SharedAVCodecContext& codecContext) = 0;
 
   // Initialize the device with parameters specific to video decoding. There is
   // a default empty implementation.
@@ -80,23 +81,14 @@ class DeviceInterface {
   // Extension points for custom decoding paths
   // ------------------------------------------
 
-  // Set the codec context for default FFmpeg decoding operations
-  // This must be called during initialization before using
-  // sendPacket/receiveFrame
-  virtual void setCodecContext(AVCodecContext* codecContext) {
-    codecContext_ = codecContext;
-  }
-
   // Returns AVSUCCESS on success, AVERROR(EAGAIN) if decoder queue full, or
   // other AVERROR on failure
   // Default implementation uses FFmpeg directly
   virtual int sendPacket(ReferenceAVPacket& avPacket) {
-    if (!codecContext_) {
-      TORCH_CHECK(
-          false, "Codec context not available for default packet sending");
-      return AVERROR(EINVAL);
-    }
-    return avcodec_send_packet(codecContext_, avPacket.get());
+    TORCH_CHECK(
+        codecContext_ != nullptr,
+        "Codec context not available for default packet sending");
+    return avcodec_send_packet(codecContext_.get(), avPacket.get());
   }
 
   // Send an EOF packet to flush the decoder
@@ -107,29 +99,30 @@ class DeviceInterface {
       TORCH_CHECK(false, "Codec context not available for EOF packet sending");
       return AVERROR(EINVAL);
     }
-    return avcodec_send_packet(codecContext_, nullptr);
+    return avcodec_send_packet(codecContext_.get(), nullptr);
   }
 
   // Returns AVSUCCESS on success, AVERROR(EAGAIN) if no frame ready,
   // AVERROR_EOF if end of stream, or other AVERROR on failure
   // Default implementation uses FFmpeg directly
   virtual int receiveFrame(UniqueAVFrame& avFrame) {
-    if (!codecContext_) {
-      TORCH_CHECK(false, "Codec context not available for frame receiving");
-      return AVERROR(EINVAL);
-    }
-    return avcodec_receive_frame(codecContext_, avFrame.get());
+    TORCH_CHECK(
+        codecContext_ != nullptr,
+        "Codec context not available for default frame receiving");
+    return avcodec_receive_frame(codecContext_.get(), avFrame.get());
   }
 
   // Flush remaining frames from decoder
   virtual void flush() {
-    // Default implementation is no-op for standard decoders
-    // Custom decoders can override this method
+    TORCH_CHECK(
+        codecContext_ != nullptr,
+        "Codec context not available for default flushing");
+    avcodec_flush_buffers(codecContext_.get());
   }
 
  protected:
   torch::Device device_;
-  AVCodecContext* codecContext_ = nullptr; // Non-owning pointer
+  SharedAVCodecContext codecContext_;
 };
 
 using CreateDeviceInterfaceFn =

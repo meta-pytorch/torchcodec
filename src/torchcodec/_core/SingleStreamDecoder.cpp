@@ -429,7 +429,6 @@ void SingleStreamDecoder::addStream(
   TORCH_CHECK(
       deviceInterface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
-  deviceInterface_->initialize(streamInfo.stream, formatContext_);
 
   // TODO_CODE_QUALITY it's pretty meh to have a video-specific logic within
   // addStream() which is supposed to be generic
@@ -441,7 +440,8 @@ void SingleStreamDecoder::addStream(
 
   AVCodecContext* codecContext = avcodec_alloc_context3(avCodec);
   TORCH_CHECK(codecContext != nullptr);
-  streamInfo.codecContext.reset(codecContext);
+  streamInfo.codecContext = SharedAVCodecContext(
+      codecContext, [](AVCodecContext* ctx) { avcodec_free_context(&ctx); });
 
   int retVal = avcodec_parameters_to_context(
       streamInfo.codecContext.get(), streamInfo.stream->codecpar);
@@ -453,18 +453,19 @@ void SingleStreamDecoder::addStream(
   // Note that we must make sure to register the harware device context
   // with the codec context before calling avcodec_open2(). Otherwise, decoding
   // will happen on the CPU and not the hardware device.
-  deviceInterface_->registerHardwareDeviceWithCodec(codecContext);
+  deviceInterface_->registerHardwareDeviceWithCodec(
+      streamInfo.codecContext.get());
   retVal = avcodec_open2(streamInfo.codecContext.get(), avCodec, nullptr);
   TORCH_CHECK(retVal >= AVSUCCESS, getFFMPEGErrorStringFromErrorCode(retVal));
 
-  codecContext->time_base = streamInfo.stream->time_base;
+  streamInfo.codecContext->time_base = streamInfo.stream->time_base;
 
-  // Set the codec context on the device interface for default FFmpeg
-  // implementations
-  deviceInterface_->setCodecContext(codecContext);
+  // Initialize the device interface with the codec context
+  deviceInterface_->initialize(
+      streamInfo.stream, formatContext_, streamInfo.codecContext);
 
   containerMetadata_.allStreamMetadata[activeStreamIndex_].codecName =
-      std::string(avcodec_get_name(codecContext->codec_id));
+      std::string(avcodec_get_name(streamInfo.codecContext->codec_id));
 
   // We will only need packets from the active stream, so we tell FFmpeg to
   // discard packets from the other streams. Note that av_read_frame() may still
@@ -1153,8 +1154,6 @@ void SingleStreamDecoder::maybeSeekToBeforeDesiredPts() {
       getFFMPEGErrorStringFromErrorCode(status));
 
   decodeStats_.numFlushes++;
-  avcodec_flush_buffers(streamInfo.codecContext.get());
-
   deviceInterface_->flush();
 }
 
