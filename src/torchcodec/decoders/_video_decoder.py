@@ -15,7 +15,7 @@ from torch import device as torch_device, Tensor
 
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec.decoders._decoder_utils import (
-    _get_current_cuda_backend,
+    _get_cuda_backend,
     create_decoder,
     ERROR_REPORTING_INSTRUCTIONS,
 )
@@ -144,7 +144,7 @@ class VideoDecoder:
         if isinstance(device, torch_device):
             device = str(device)
 
-        device_variant = _get_current_cuda_backend()
+        device_variant = _get_cuda_backend()
         if device_variant == "ffmpeg":
             # TODONVDEC P2 rename 'default' into 'ffmpeg' everywhere.
             device_variant = "default"

@@ -99,5 +99,5 @@ def set_cuda_backend(backend: str) -> Generator[None, None, None]:
         _CUDA_BACKEND.reset(previous_state)
 
 
-def _get_current_cuda_backend() -> str:
+def _get_cuda_backend() -> str:
     return _CUDA_BACKEND.get()
