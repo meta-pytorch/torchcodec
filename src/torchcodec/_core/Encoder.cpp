@@ -4,6 +4,10 @@
 #include "src/torchcodec/_core/Encoder.h"
 #include "torch/types.h"
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 namespace facebook::torchcodec {
 
 namespace {
@@ -587,15 +591,6 @@ void VideoEncoder::initializeEncoder(
   TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
   avCodecContext_.reset(avCodecContext);
 
-  // Set encoding options
-  // TODO-VideoEncoder: Allow bitrate to be set
-  std::optional<int> desiredBitRate = videoStreamOptions.bitRate;
-  if (desiredBitRate.has_value()) {
-    TORCH_CHECK(
-        *desiredBitRate >= 0, "bit_rate=", *desiredBitRate, " must be >= 0.");
-  }
-  avCodecContext_->bit_rate = desiredBitRate.value_or(0);
-
   // Store dimension order and input pixel format
   // TODO-VideoEncoder: Remove assumption that tensor in NCHW format
   auto sizes = frames_.sizes();
@@ -608,9 +603,15 @@ void VideoEncoder::initializeEncoder(
   outWidth_ = inWidth_;
   outHeight_ = inHeight_;
 
-  // Use YUV420P as default output format
   // TODO-VideoEncoder: Enable other pixel formats
-  outPixelFormat_ = AV_PIX_FMT_YUV420P;
+  // Let FFmpeg choose best pixel format to minimize loss
+  outPixelFormat_ = avcodec_find_best_pix_fmt_of_list(
+      getSupportedPixelFormats(*avCodec), // List of supported formats
+      AV_PIX_FMT_GBRP, // We reorder input to GBRP currently
+      0, // No alpha channel
+      nullptr // Discard conversion loss information
+  );
+  TORCH_CHECK(outPixelFormat_ != -1, "Failed to find best pix fmt")
 
   // Configure codec parameters
   avCodecContext_->codec_id = avCodec->id;
@@ -621,37 +622,39 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_->time_base = {1, inFrameRate_};
   avCodecContext_->framerate = {inFrameRate_, 1};
 
-  // TODO-VideoEncoder: Allow GOP size and max B-frames to be set
-  if (videoStreamOptions.gopSize.has_value()) {
-    avCodecContext_->gop_size = *videoStreamOptions.gopSize;
-  } else {
-    avCodecContext_->gop_size = 12; // Default GOP size
+  // Set flag for containers that require extradata to be in the codec context
+  if (avFormatContext_->oformat->flags & AVFMT_GLOBALHEADER) {
+    avCodecContext_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
 
-  if (videoStreamOptions.maxBFrames.has_value()) {
-    avCodecContext_->max_b_frames = *videoStreamOptions.maxBFrames;
-  } else {
-    avCodecContext_->max_b_frames = 0; // No max B-frames to reduce compression
+  // Apply videoStreamOptions
+  AVDictionary* options = nullptr;
+  if (videoStreamOptions.crf.has_value()) {
+    av_dict_set(
+        &options,
+        "crf",
+        std::to_string(videoStreamOptions.crf.value()).c_str(),
+        0);
   }
+  int status = avcodec_open2(avCodecContext_.get(), avCodec, &options);
+  av_dict_free(&options);
 
-  int status = avcodec_open2(avCodecContext_.get(), avCodec, nullptr);
   TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_open2 failed: ",
       getFFMPEGErrorStringFromErrorCode(status));
 
-  AVStream* avStream = avformat_new_stream(avFormatContext_.get(), nullptr);
-  TORCH_CHECK(avStream != nullptr, "Couldn't create new stream.");
+  avStream_ = avformat_new_stream(avFormatContext_.get(), nullptr);
+  TORCH_CHECK(avStream_ != nullptr, "Couldn't create new stream.");
 
   // Set the stream time base to encode correct frame timestamps
-  avStream->time_base = avCodecContext_->time_base;
+  avStream_->time_base = avCodecContext_->time_base;
   status = avcodec_parameters_from_context(
-      avStream->codecpar, avCodecContext_.get());
+      avStream_->codecpar, avCodecContext_.get());
   TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_parameters_from_context failed: ",
       getFFMPEGErrorStringFromErrorCode(status));
-  streamIndex_ = avStream->index;
 }
 
 void VideoEncoder::encode() {
@@ -694,7 +697,7 @@ UniqueAVFrame VideoEncoder::convertTensorToAVFrame(
         outWidth_,
         outHeight_,
         outPixelFormat_,
-        SWS_BILINEAR,
+        SWS_BICUBIC, // Used by FFmpeg CLI
         nullptr,
         nullptr,
         nullptr));
@@ -757,7 +760,7 @@ void VideoEncoder::encodeFrame(
       "Error while sending frame: ",
       getFFMPEGErrorStringFromErrorCode(status));
 
-  while (true) {
+  while (status >= 0) {
     ReferenceAVPacket packet(autoAVPacket);
     status = avcodec_receive_packet(avCodecContext_.get(), packet.get());
     if (status == AVERROR(EAGAIN) || status == AVERROR_EOF) {
@@ -776,7 +779,16 @@ void VideoEncoder::encodeFrame(
         "Error receiving packet: ",
         getFFMPEGErrorStringFromErrorCode(status));
 
-    packet->stream_index = streamIndex_;
+    // The code below is borrowed from torchaudio:
+    // https://github.com/pytorch/audio/blob/b6a3368a45aaafe05f1a6a9f10c68adc5e944d9e/src/libtorio/ffmpeg/stream_writer/encoder.cpp#L46
+    // Setting packet->duration to 1 allows the last frame to be properly
+    // encoded, and needs to be set before calling av_packet_rescale_ts.
+    if (packet->duration == 0) {
+      packet->duration = 1;
+    }
+    av_packet_rescale_ts(
+        packet.get(), avCodecContext_->time_base, avStream_->time_base);
+    packet->stream_index = avStream_->index;
 
     status = av_interleaved_write_frame(avFormatContext_.get(), packet.get());
     TORCH_CHECK(

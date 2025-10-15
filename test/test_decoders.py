@@ -18,9 +18,11 @@ from torchcodec import _core, FrameBatch
 from torchcodec.decoders import (
     AudioDecoder,
     AudioStreamMetadata,
+    set_cuda_backend,
     VideoDecoder,
     VideoStreamMetadata,
 )
+from torchcodec.decoders._decoder_utils import _get_cuda_backend
 
 from .utils import (
     all_supported_devices,
@@ -1702,8 +1704,62 @@ class TestVideoDecoder:
 
     @needs_cuda
     def test_beta_cuda_interface_error(self):
-        with pytest.raises(RuntimeError, match="Unsupported device"):
+        with pytest.raises(RuntimeError, match="Invalid device string"):
             VideoDecoder(NASA_VIDEO.path, device="cuda:0:bad_variant")
+
+    @needs_cuda
+    def test_set_cuda_backend(self):
+        # Tests for the set_cuda_backend() context manager.
+
+        with pytest.raises(ValueError, match="Invalid CUDA backend"):
+            with set_cuda_backend("bad_backend"):
+                pass
+
+        # set_cuda_backend() is meant to be used as a context manager. Using it
+        # as a global call does nothing because the "context" is exited right
+        # away. This is a good thing, we prefer users to use it as a CM only.
+        set_cuda_backend("beta")
+        assert _get_cuda_backend() == "ffmpeg"  # Not changed to "beta".
+
+        # Case insensitive
+        with set_cuda_backend("BETA"):
+            assert _get_cuda_backend() == "beta"
+
+        def assert_decoder_uses(decoder, *, expected_backend):
+            # Assert that a decoder instance is using a given backend.
+            #
+            # We know H265_VIDEO fails on the BETA backend while it works on the
+            # ffmpeg one.
+            if expected_backend == "ffmpeg":
+                decoder.get_frame_at(0)  # this would fail if this was BETA
+            else:
+                with pytest.raises(RuntimeError, match="Video is too small"):
+                    decoder.get_frame_at(0)
+
+        # Check that the default is the ffmpeg backend
+        assert _get_cuda_backend() == "ffmpeg"
+        dec = VideoDecoder(H265_VIDEO.path, device="cuda")
+        assert_decoder_uses(dec, expected_backend="ffmpeg")
+
+        # Check the setting "beta" effectively uses the BETA backend.
+        # We also show that the affects decoder creation only. When the decoder
+        # is created with a given backend, it stays in this backend for the rest
+        # of its life. This is normal and intended.
+        with set_cuda_backend("beta"):
+            dec = VideoDecoder(H265_VIDEO.path, device="cuda")
+        assert _get_cuda_backend() == "ffmpeg"
+        assert_decoder_uses(dec, expected_backend="beta")
+        with set_cuda_backend("ffmpeg"):
+            assert_decoder_uses(dec, expected_backend="beta")
+
+        # Hacky way to ensure passing "cuda:1" is supported by both backends. We
+        # just check that there's an error when passing cuda:N where N is too
+        # high.
+        bad_device_number = torch.cuda.device_count() + 1
+        for backend in ("ffmpeg", "beta"):
+            with pytest.raises(RuntimeError, match="invalid device ordinal"):
+                with set_cuda_backend(backend):
+                    VideoDecoder(H265_VIDEO.path, device=f"cuda:{bad_device_number}")
 
 
 class TestAudioDecoder:
