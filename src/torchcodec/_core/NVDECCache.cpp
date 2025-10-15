@@ -7,6 +7,7 @@
 #include <torch/types.h>
 #include <mutex>
 
+#include "src/torchcodec/_core/CUDACommon.h"
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/NVDECCache.h"
 
@@ -19,19 +20,10 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-NVDECCache& NVDECCache::getCache(int deviceIndex) {
-  const int MAX_CUDA_GPUS = 128;
-  TORCH_CHECK(
-      deviceIndex >= -1 && deviceIndex < MAX_CUDA_GPUS,
-      "Invalid device index = ",
-      deviceIndex);
+NVDECCache& NVDECCache::getCache(const torch::Device& device) {
   static NVDECCache cacheInstances[MAX_CUDA_GPUS];
-  if (deviceIndex == -1) {
-    // TODONVDEC P3: Unify with existing getNonNegativeDeviceIndex()
-    TORCH_CHECK(
-        cudaGetDevice(&deviceIndex) == cudaSuccess,
-        "Failed to get current CUDA device.");
-  }
+
+  int deviceIndex = getDeviceIndex(device);
   return cacheInstances[deviceIndex];
 }
 

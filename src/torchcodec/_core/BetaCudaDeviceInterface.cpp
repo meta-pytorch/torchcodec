@@ -216,8 +216,8 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     // unclear.
     flush();
     unmapPreviousFrame();
-    NVDECCache::getCache(device_.index())
-        .returnDecoder(&videoFormat_, std::move(decoder_));
+    NVDECCache::getCache(device_).returnDecoder(
+        &videoFormat_, std::move(decoder_));
   }
 
   if (videoParser_) {
@@ -361,11 +361,12 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
   }
 
   if (!decoder_) {
-    decoder_ = NVDECCache::getCache(device_.index()).getDecoder(videoFormat);
+    decoder_ = NVDECCache::getCache(device_).getDecoder(videoFormat);
 
     if (!decoder_) {
       // TODONVDEC P2: consider re-configuring an existing decoder instead of
-      // re-creating one. See docs, see DALI.
+      // re-creating one. See docs, see DALI. Re-configuration doesn't seem to
+      // be enabled in DALI by default.
       decoder_ = createDecoder(videoFormat);
     }
 
