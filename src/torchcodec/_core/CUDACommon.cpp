@@ -5,14 +5,12 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "src/torchcodec/_core/CUDACommon.h"
+#include "src/torchcodec/_core/Cache.h" // for PerGpuCache
 
 namespace facebook::torchcodec {
 
 namespace {
 
-// Pytorch can only handle up to 128 GPUs.
-// https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
-const int MAX_CUDA_GPUS = 128;
 // Set to -1 to have an infinitely sized cache. Set it to 0 to disable caching.
 // Set to a positive number to have a cache of that size.
 const int MAX_CONTEXTS_PER_GPU_IN_CACHE = -1;
@@ -249,7 +247,7 @@ torch::Tensor convertNV12FrameToRGB(
 }
 
 UniqueNppContext getNppStreamContext(const torch::Device& device) {
-  torch::DeviceIndex nonNegativeDeviceIndex = getNonNegativeDeviceIndex(device);
+  int deviceIndex = getDeviceIndex(device);
 
   UniqueNppContext nppCtx = g_cached_npp_ctxs.get(device);
   if (nppCtx) {
@@ -266,13 +264,13 @@ UniqueNppContext getNppStreamContext(const torch::Device& device) {
 
   nppCtx = std::make_unique<NppStreamContext>();
   cudaDeviceProp prop{};
-  cudaError_t err = cudaGetDeviceProperties(&prop, nonNegativeDeviceIndex);
+  cudaError_t err = cudaGetDeviceProperties(&prop, deviceIndex);
   TORCH_CHECK(
       err == cudaSuccess,
       "cudaGetDeviceProperties failed: ",
       cudaGetErrorString(err));
 
-  nppCtx->nCudaDeviceId = nonNegativeDeviceIndex;
+  nppCtx->nCudaDeviceId = deviceIndex;
   nppCtx->nMultiProcessorCount = prop.multiProcessorCount;
   nppCtx->nMaxThreadsPerMultiProcessor = prop.maxThreadsPerMultiProcessor;
   nppCtx->nMaxThreadsPerBlock = prop.maxThreadsPerBlock;
@@ -310,6 +308,23 @@ void validatePreAllocatedTensorShape(
         "x3, got ",
         shape);
   }
+}
+
+int getDeviceIndex(const torch::Device& device) {
+  // PyTorch uses int8_t as its torch::DeviceIndex, but FFmpeg and CUDA
+  // libraries use int. So we use int, too.
+  int deviceIndex = static_cast<int>(device.index());
+  TORCH_CHECK(
+      deviceIndex >= -1 && deviceIndex < MAX_CUDA_GPUS,
+      "Invalid device index = ",
+      deviceIndex);
+
+  if (deviceIndex == -1) {
+    TORCH_CHECK(
+        cudaGetDevice(&deviceIndex) == cudaSuccess,
+        "Failed to get current CUDA device.");
+  }
+  return deviceIndex;
 }
 
 } // namespace facebook::torchcodec
