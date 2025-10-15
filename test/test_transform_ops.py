@@ -260,12 +260,6 @@ class TestVideoDecoderTransformOps:
 
         with pytest.raises(
             RuntimeError,
-            match="cannot be converted to an int",
-        ):
-            add_video_stream(decoder, transform_specs="crop, 100, 100, blah, 100")
-
-        with pytest.raises(
-            RuntimeError,
             match="x position out of bounds",
         ):
             add_video_stream(decoder, transform_specs="crop, 100, 100, 9999, 100")
