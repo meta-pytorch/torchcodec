@@ -129,7 +129,7 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
   // automatically converted to 8bits by NVDEC itself. That is, the raw frames
   // we get back from cuvidMapVideoFrame will already be in 8bit format.  We
   // won't need to do the conversion ourselves, so that's a lot easier.
-  // In the default interface, we have to do the 10 -> 8bits conversion
+  // In the ffmpeg CUDA interface, we have to do the 10 -> 8bits conversion
   // ourselves later in convertAVFrameToFrameOutput(), because FFmpeg explicitly
   // requests 10 or 16bits output formats for >8-bit videos!
   // https://github.com/FFmpeg/FFmpeg/blob/e05f8acabff468c1382277c1f31fa8e9d90c3202/libavcodec/nvdec.c#L376-L403
@@ -216,12 +216,11 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     // unclear.
     flush();
     unmapPreviousFrame();
-    NVDECCache::getCache(device_.index())
-        .returnDecoder(&videoFormat_, std::move(decoder_));
+    NVDECCache::getCache(device_).returnDecoder(
+        &videoFormat_, std::move(decoder_));
   }
 
   if (videoParser_) {
-    // TODONVDEC P2: consider caching this? Does DALI do that?
     cuvidDestroyVideoParser(videoParser_);
     videoParser_ = nullptr;
   }
@@ -364,11 +363,12 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
   }
 
   if (!decoder_) {
-    decoder_ = NVDECCache::getCache(device_.index()).getDecoder(videoFormat);
+    decoder_ = NVDECCache::getCache(device_).getDecoder(videoFormat);
 
     if (!decoder_) {
       // TODONVDEC P2: consider re-configuring an existing decoder instead of
-      // re-creating one. See docs, see DALI.
+      // re-creating one. See docs, see DALI. Re-configuration doesn't seem to
+      // be enabled in DALI by default.
       decoder_ = createDecoder(videoFormat);
     }
 
@@ -482,8 +482,7 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   procParams.top_field_first = dispInfo.top_field_first;
   procParams.unpaired_field = dispInfo.repeat_first_field < 0;
   // We set the NVDEC stream to the current stream. It will be waited upon by
-  // the NPP stream before any color conversion. Currently, that syncing logic
-  // is in the default interface.
+  // the NPP stream before any color conversion.
   // Re types: we get a cudaStream_t from PyTorch but it's interchangeable with
   // CUstream
   procParams.output_stream = reinterpret_cast<CUstream>(
@@ -620,8 +619,8 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
-  // TODONVDEC P2: we may need to handle 10bit videos the same way the default
-  // interface does it with maybeConvertAVFrameToNV12OrRGB24().
+  // TODONVDEC P2: we may need to handle 10bit videos the same way the CUDA
+  // ffmpeg interface does it with maybeConvertAVFrameToNV12OrRGB24().
   TORCH_CHECK(
       avFrame->format == AV_PIX_FMT_CUDA,
       "Expected CUDA format frame from BETA CUDA interface");

@@ -32,9 +32,6 @@ static bool g_cuda = registerDeviceInterface(
 // from
 //    the cache. If the cache is empty we create a new cuda context.
 
-// Pytorch can only handle up to 128 GPUs.
-// https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
-const int MAX_CUDA_GPUS = 128;
 // Set to -1 to have an infinitely sized cache. Set it to 0 to disable caching.
 // Set to a positive number to have a cache of that size.
 const int MAX_CONTEXTS_PER_GPU_IN_CACHE = -1;
@@ -54,7 +51,7 @@ int getFlagsAVHardwareDeviceContextCreate() {
 UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device) {
   enum AVHWDeviceType type = av_hwdevice_find_type_by_name("cuda");
   TORCH_CHECK(type != AV_HWDEVICE_TYPE_NONE, "Failed to find cuda device");
-  torch::DeviceIndex nonNegativeDeviceIndex = getNonNegativeDeviceIndex(device);
+  int deviceIndex = getDeviceIndex(device);
 
   UniqueAVBufferRef hardwareDeviceCtx = g_cached_hw_device_ctxs.get(device);
   if (hardwareDeviceCtx) {
@@ -68,9 +65,9 @@ UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device) {
   // So we ensure the deviceIndex is not negative.
   // We set the device because we may be called from a different thread than
   // the one that initialized the cuda context.
-  cudaSetDevice(nonNegativeDeviceIndex);
+  cudaSetDevice(deviceIndex);
   AVBufferRef* hardwareDeviceCtxRaw = nullptr;
-  std::string deviceOrdinal = std::to_string(nonNegativeDeviceIndex);
+  std::string deviceOrdinal = std::to_string(deviceIndex);
 
   int err = av_hwdevice_ctx_create(
       &hardwareDeviceCtxRaw,
