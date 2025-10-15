@@ -22,9 +22,7 @@ namespace facebook::torchcodec {
 
 NVDECCache& NVDECCache::getCache(const torch::Device& device) {
   static NVDECCache cacheInstances[MAX_CUDA_GPUS];
-
-  int deviceIndex = getDeviceIndex(device);
-  return cacheInstances[deviceIndex];
+  return cacheInstances[getDeviceIndex(device)];
 }
 
 UniqueCUvideodecoder NVDECCache::getDecoder(CUVIDEOFORMAT* videoFormat) {

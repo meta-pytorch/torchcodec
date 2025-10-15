@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "src/torchcodec/_core/CUDACommon.h"
+#include "src/torchcodec/_core/Cache.h" // for PerGpuCache
 
 namespace facebook::torchcodec {
 
