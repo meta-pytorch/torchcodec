@@ -4,7 +4,6 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-import contextlib
 import io
 import os
 from functools import partial
@@ -13,7 +12,6 @@ from .utils import in_fbcode
 
 os.environ["TORCH_LOGS"] = "output_code"
 import json
-import subprocess
 
 import numpy as np
 import pytest

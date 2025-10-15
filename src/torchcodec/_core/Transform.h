@@ -8,7 +8,9 @@
 
 #include <optional>
 #include <string>
+#include "Metadata.h"
 #include "src/torchcodec/_core/Frame.h"
+#include "src/torchcodec/_core/Metadata.h"
 
 namespace facebook::torchcodec {
 
@@ -33,6 +35,16 @@ class Transform {
   virtual bool isResize() const {
     return false;
   }
+
+  // The validity of some transforms depends on the characteristics of the
+  // AVStream they're being applied to. For example, some transforms will
+  // specify coordinates inside a frame, we need to validate that those are
+  // within the frame's bounds.
+  //
+  // Note that the validation function does not return anything. We expect
+  // invalid configurations to throw an exception.
+  virtual void validate(
+      [[maybe_unused]] const StreamMetadata& streamMetadata) const {}
 };
 
 class ResizeTransform : public Transform {
@@ -57,14 +69,14 @@ class ResizeTransform : public Transform {
 };
 
 class CropTransform : public Transform {
-public:
-  CropTransform(const FrameDims& dims, int x, int y)
-      : outputDims_(dims), x_(x), y_(y) {}
+ public:
+  CropTransform(const FrameDims& dims, int x, int y);
 
   std::string getFilterGraphCpu() const override;
   std::optional<FrameDims> getOutputFrameDims() const override;
+  void validate(const StreamMetadata& streamMetadata) const override;
 
-private:
+ private:
   FrameDims outputDims_;
   int x_;
   int y_;

@@ -15,8 +15,6 @@ import pytest
 
 import torch
 
-from torchvision.transforms import v2
-
 from torchcodec._core import (
     _add_video_stream,
     add_video_stream,
@@ -26,11 +24,9 @@ from torchcodec._core import (
     get_next_frame,
 )
 
-from .utils import (
-    assert_frames_equal,
-    NASA_VIDEO,
-    needs_cuda,
-)
+from torchvision.transforms import v2
+
+from .utils import assert_frames_equal, NASA_VIDEO, needs_cuda
 
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
@@ -261,3 +257,15 @@ class TestVideoDecoderTransformOps:
             match="cannot be converted to an int",
         ):
             add_video_stream(decoder, transform_specs="crop, 100, 100, blah, 100")
+
+        with pytest.raises(
+            RuntimeError,
+            match="cannot be converted to an int",
+        ):
+            add_video_stream(decoder, transform_specs="crop, 100, 100, blah, 100")
+
+        with pytest.raises(
+            RuntimeError,
+            match="x position out of bounds",
+        ):
+            add_video_stream(decoder, transform_specs="crop, 100, 100, 9999, 100")

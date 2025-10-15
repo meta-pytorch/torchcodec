@@ -217,9 +217,9 @@ Transform* makeResizeTransform(
 //   "crop, <width>, <height>, <x>, <y>"
 //
 // Where "crop" is the string literal and <width>, <height>, <x> and <y> are
-// positive integers. Note that that in this spec, we are following the filtergraph
-// convention of (width, height). This makes it easier to compare it against actual
-// filtergraph strings.
+// positive integers. Note that that in this spec, we are following the
+// filtergraph convention of (width, height). This makes it easier to compare it
+// against actual filtergraph strings.
 Transform* makeCropTransform(
     const std::vector<std::string>& cropTransformSpec) {
   TORCH_CHECK(

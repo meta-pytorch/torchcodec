@@ -8,6 +8,11 @@
 
 namespace facebook::torchcodec {
 
+FrameDims::FrameDims(int height, int width) : height(height), width(width) {
+  TORCH_CHECK(height > 0, "FrameDims.height must be > 0, got: ", height);
+  TORCH_CHECK(width > 0, "FrameDims.width must be > 0, got: ", width);
+}
+
 FrameBatchOutput::FrameBatchOutput(
     int64_t numFrames,
     const FrameDims& outputDims,

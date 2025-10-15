@@ -329,7 +329,11 @@ class TestVideo(TestContainerFile):
     """Base class for the *video* streams of a video container"""
 
     def get_frame_data_by_index(
-        self, idx: int, *, stream_index: Optional[int] = None, filters: Optional[str] = None
+        self,
+        idx: int,
+        *,
+        stream_index: Optional[int] = None,
+        filters: Optional[str] = None,
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
