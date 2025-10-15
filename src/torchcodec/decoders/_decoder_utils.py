@@ -66,20 +66,29 @@ def set_cuda_backend(backend: str) -> Generator[None, None, None]:
 
     This context manager allows you to specify which CUDA backend implementation
     to use when creating :class:`~torchcodec.decoders.VideoDecoder` instances
-    with CUDA devices.  This is thread-safe and async-safe.
+    with CUDA devices.
 
-    Note that you still need to pass `device="cuda"` when creating the
-    :class:`~torchcodec.decoders.VideoDecoder` instance. If a CUDA device isn't
-    specified, this context manager will have no effect.
+    .. note::
+        **We recommend trying the "beta" backend instead of the default "ffmpeg"
+        backend!** The beta backend is faster, and will eventually become the
+        default in future versions. It may have rough edges that we'll polish
+        over time, but it's already quite stable and ready for adoption. Let us
+        know what you think!
 
     Only the creation of the decoder needs to be inside the context manager, the
-    decoding methods can be called outside of it.
+    decoding methods can be called outside of it. You still need to pass
+    ``device="cuda"`` when creating the
+    :class:`~torchcodec.decoders.VideoDecoder` instance. If a CUDA device isn't
+    specified, this context manager will have no effect. See example below.
+
+    This is thread-safe and async-safe.
 
     Args:
-        backend (str): The CUDA backend to use. Can be "ffmpeg" or "beta". Default is "ffmpeg".
+        backend (str): The CUDA backend to use. Can be "ffmpeg" (default) or
+            "beta". We recommend trying "beta" as it's faster!
 
     Example:
-        >>> with torchcodec.set_cuda_backend("beta"):
+        >>> with set_cuda_backend("beta"):
         ...     decoder = VideoDecoder("video.mp4", device="cuda")
         ...
         ... # Only the decoder creation needs to be part of the context manager.
