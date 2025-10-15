@@ -1380,6 +1380,16 @@ class TestVideoEncoderOps:
                 filename="./bad/path.mp3",
             )
 
+        with pytest.raises(
+            RuntimeError,
+            match=r"Couldn't allocate AVFormatContext. Check the desired format\? Got format=bad_format",
+        ):
+            encode_video_to_tensor(
+                frames=torch.randint(high=255, size=(10, 3, 60, 60), dtype=torch.uint8),
+                frame_rate=10,
+                format="bad_format",
+            )
+
     def decode(self, source=None) -> torch.Tensor:
         return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
 
