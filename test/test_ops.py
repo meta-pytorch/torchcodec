@@ -1384,6 +1384,7 @@ class TestVideoEncoderOps:
         frames, *_ = get_frames_in_range(decoder, start=0, stop=60)
         return frames
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("format", ("mov", "mp4", "mkv", "webm"))
     def test_video_encoder_round_trip(self, tmp_path, format):
         # Test that decode(encode(decode(asset))) == decode(asset)
@@ -1422,6 +1423,7 @@ class TestVideoEncoderOps:
             assert psnr(s_frame, rt_frame) > 30
             assert_close(s_frame, rt_frame, atol=atol, rtol=0)
 
+    @pytest.mark.slow
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
     @pytest.mark.parametrize(
         "format", ("mov", "mp4", "avi", "mkv", "webm", "flv", "gif")
