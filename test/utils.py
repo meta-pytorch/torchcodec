@@ -44,7 +44,7 @@ def unsplit_device_str(device_str: str) -> str:
     if device_str == "cuda:0:beta":
         return "cuda", "beta"
     else:
-        return device_str, "default"
+        return device_str, "ffmpeg"
 
 
 def get_ffmpeg_major_version():

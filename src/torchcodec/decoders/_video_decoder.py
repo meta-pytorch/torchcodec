@@ -147,9 +147,6 @@ class VideoDecoder:
             device = str(device)
 
         device_variant = _get_cuda_backend()
-        if device_variant == "ffmpeg":
-            # TODONVDEC P2 rename 'default' into 'ffmpeg' everywhere.
-            device_variant = "default"
 
         # Legacy support for device="cuda:0:beta" syntax
         # TODONVDEC P2: remove support for this everywhere. This will require
