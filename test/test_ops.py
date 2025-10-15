@@ -10,10 +10,10 @@ from functools import partial
 
 os.environ["TORCH_LOGS"] = "output_code"
 import json
+import subprocess
 
 import numpy as np
 import pytest
-import subprocess
 
 import torch
 
