@@ -9,7 +9,6 @@
 #include <torch/types.h>
 #include <memory>
 #include <mutex>
-#include "src/torchcodec/_core/CUDACommon.h"
 
 namespace facebook::torchcodec {
 
@@ -95,6 +94,11 @@ class PerGpuCache {
   // and non-copyable, so we need to wrap it in std::unique_ptr.
   std::vector<std::unique_ptr<Cache<T, D>>> cache_;
 };
+
+// Forward declaration of getDeviceIndex which exists in CUDACommon.h
+// This avoids circular dependency between Cache.h and CUDACommon.cpp which also
+// needs to include Cache.h
+int getDeviceIndex(const torch::Device& device);
 
 template <typename T, typename D>
 bool PerGpuCache<T, D>::addIfCacheHasCapacity(
