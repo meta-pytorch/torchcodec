@@ -90,7 +90,7 @@ jobs:
         run: python -m pip install --upgrade pip
       - name: Install PyTorch
         run: |
-          python -m pip install torch --index-url https://download.pytorch.org/whl/test/cpu
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
       - name: Install torchcodec from the wheel
         run: |
           wheel_path=`find pytorch/torchcodec/dist -type f -name "*.whl"`
