@@ -98,25 +98,18 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
 
 std::optional<cudaVideoChromaFormat> mapChromaFormat(
     const AVPixFmtDescriptor* desc) {
-  if (!desc) {
-    return std::nullopt;
-  }
+  TORCH_CHECK(desc != nullptr, "desc can't be null");
 
   if (desc->nb_components == 1) {
     return cudaVideoChromaFormat_Monochrome;
-  }
-
-  // Check if it's YUV (has chroma planes and not RGB)
-  if (desc->nb_components >= 3 && !(desc->flags & AV_PIX_FMT_FLAG_RGB)) {
+  } else if (desc->nb_components >= 3 && !(desc->flags & AV_PIX_FMT_FLAG_RGB)) {
+    // Make sure it's YUV: has chroma planes and isn't RGB
     if (desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0) {
-      // 4:4:4 (no subsampling)
-      return cudaVideoChromaFormat_444;
+      return cudaVideoChromaFormat_444; // 1x1 subsampling = 4:4:4
     } else if (desc->log2_chroma_w == 1 && desc->log2_chroma_h == 1) {
-      // 4:2:0 (2x2 subsampling)
-      return cudaVideoChromaFormat_420;
+      return cudaVideoChromaFormat_420; // 2x2 subsampling = 4:2:0
     } else if (desc->log2_chroma_w == 1 && desc->log2_chroma_h == 0) {
-      // 4:2:2 (2x1 subsampling)
-      return cudaVideoChromaFormat_422;
+      return cudaVideoChromaFormat_422; // 2x1 subsampling = 4:2:2
     }
   }
 
@@ -154,20 +147,20 @@ std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
   }
 }
 
-bool shouldFallbackToCPU(const SharedAVCodecContext& codecContext) {
+bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
   auto codecType = validateCodecSupport(codecContext->codec_id);
   if (!codecType.has_value()) {
-    return true;
+    return false;
   }
 
   const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(codecContext->pix_fmt);
   if (!desc) {
-    return true;
+    return false;
   }
 
   auto chromaFormat = mapChromaFormat(desc);
   if (!chromaFormat.has_value()) {
-    return true;
+    return false;
   }
 
   auto caps = CUVIDDECODECAPS{};
@@ -177,11 +170,11 @@ bool shouldFallbackToCPU(const SharedAVCodecContext& codecContext) {
 
   CUresult result = cuvidGetDecoderCaps(&caps);
   if (result != CUDA_SUCCESS) {
-    return true;
+    return false;
   }
 
   if (!caps.bIsSupported) {
-    return true;
+    return false;
   }
 
   if (!(static_cast<unsigned int>(codecContext->coded_width) >=
@@ -192,7 +185,7 @@ bool shouldFallbackToCPU(const SharedAVCodecContext& codecContext) {
             caps.nMaxWidth &&
         static_cast<unsigned int>(codecContext->coded_height) <=
             caps.nMaxHeight)) {
-    return true;
+    return false;
   }
 
   // See nMaxMBCount in cuviddec.h
@@ -201,16 +194,16 @@ bool shouldFallbackToCPU(const SharedAVCodecContext& codecContext) {
             codecContext->coded_width * codecContext->coded_height) /
             macroblockConstant <=
         caps.nMaxMBCount)) {
-    return true;
+    return false;
   }
 
   // We explicitly request NV12 output format in createDecoder(), so we need to
   // make sure it's supported.
   if (!((caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1)) {
-    return true;
+    return false;
   }
 
-  return false;
+  return true;
 }
 
 } // namespace
@@ -250,7 +243,7 @@ void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
     [[maybe_unused]] const SharedAVCodecContext& codecContext) {
-  if (shouldFallbackToCPU(codecContext)) {
+  if (!nativeNVDECSupport(codecContext)) {
     cpuFallback_ = createDeviceInterface(torch::kCPU);
     TORCH_CHECK(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
@@ -403,7 +396,6 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
       // TODONVDEC P2: consider re-configuring an existing decoder instead of
       // re-creating one. See docs, see DALI. Re-configuration doesn't seem to
       // be enabled in DALI by default.
-
       decoder_ = createDecoder(videoFormat);
     }
 
