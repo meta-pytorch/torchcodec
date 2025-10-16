@@ -54,6 +54,8 @@ pfnDisplayPictureCallback(void* pUserData, CUVIDPARSERDISPINFO* dispInfo) {
 
 static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
   // Decoder creation parameters, most are taken from DALI
+  // Callers should ensure video is supported by calling videoIsSupported() first.
+
   CUVIDDECODECREATEINFO decoderParams = {};
   decoderParams.bitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
   decoderParams.ChromaFormat = videoFormat->chroma_format;
@@ -345,11 +347,10 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
       // TODONVDEC P2: consider re-configuring an existing decoder instead of
       // re-creating one. See docs, see DALI. Re-configuration doesn't seem to
       // be enabled in DALI by default.
-      // Check if NVDEC supports this video configuration
+      
       if (!videoIsSupported(videoFormat)) {
         usingCpuFallback_ = true;
-        capabilityCheckPending_ = false;
-        return static_cast<int>(videoFormat_.min_num_decode_surfaces);
+        return 0;
       }
 
       decoder_ = createDecoder(videoFormat);
@@ -377,13 +378,13 @@ int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
       "sendPacket received an empty packet, this is unexpected, please report.");
 
   // On first packet, store a copy before sending to CUDA parser
-  if (capabilityCheckPending_) {
+  if (isFirstPacket_) {
     // Make a deep copy of the packet before CUDA parser potentially corrupts it
     bufferedFirstPacket_ = av_packet_alloc();
     TORCH_CHECK(bufferedFirstPacket_, "Failed to allocate packet for fallback");
     int ret = av_packet_ref(bufferedFirstPacket_, packet.get());
     TORCH_CHECK(ret >= 0, "Failed to copy packet for fallback");
-    capabilityCheckPending_ = false;
+    isFirstPacket_ = false;
   }
 
   // Apply BSF if needed. We want applyBSF to return a *new* filtered packet, or
@@ -407,7 +408,7 @@ int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
   // packet to CPU
   if (usingCpuFallback_) {
     printf("Falling back to CPU!!!! And re-sending packet\n");
-    // TORCH_CHECK(false, "Falling back to CPU!!!! And re-sending packet");
+    // // TORCH_CHECK(false, "Falling back to CPU!!!! And re-sending packet");
     // Create AutoAVPacket, then ReferenceAVPacket to access get() method
     AutoAVPacket autoBufferedPacket;
     ReferenceAVPacket refBufferedPacket(autoBufferedPacket);

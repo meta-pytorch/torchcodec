@@ -98,7 +98,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   // CPU fallback support
   std::unique_ptr<DeviceInterface> cpuInterface_;
   bool usingCpuFallback_ = false;
-  bool capabilityCheckPending_ = true;
+  bool isFirstPacket_ = true;
   AVPacket* bufferedFirstPacket_ = nullptr;
 };
 
