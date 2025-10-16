@@ -127,6 +127,12 @@ def assert_tensor_close_on_at_least(
         )
 
 
+# We embed filtergraph expressions in filenames, but they contain characters that
+# some filesystems don't like. We turn all special characters into underscores.
+def sanitize_filtergraph_expression(expression: str) -> str:
+    return "".join(c if c.isalnum() else "_" for c in expression)
+
+
 def in_fbcode() -> bool:
     return os.environ.get("IN_FBCODE_TORCHCODEC") == "1"
 
@@ -337,7 +343,7 @@ class TestVideo(TestContainerFile):
 
         stream_and_frame = f"stream{stream_index}.frame{idx:06d}"
         if filters is not None:
-            full_name = f"{self.filename}.{filters}.{stream_and_frame}.pt"
+            full_name = f"{self.filename}.{sanitize_filtergraph_expression(filters)}.{stream_and_frame}.pt"
         else:
             full_name = f"{self.filename}.{stream_and_frame}.pt"
 

@@ -209,9 +209,10 @@ class TestVideoDecoderTransformOps:
             add_video_stream(decoder, transform_specs="resize, 100, 1000000000000")
 
     def test_crop_transform(self):
-        # w=300, h=200, x=50, y=35
-        crop_spec = "crop, 300, 200, 50, 35"
-        crop_filtergraph = "crop=300:200:50:35:exact=1"
+        # Note that filtergraph accepts dimensions as (w, h) and we accept them as (h, w).
+        crop_spec = "crop, 200, 300, 50, 35"  # h=200, w=300, x=50, y=35
+        crop_filtergraph = "crop=300:200:50:35:exact=1"  # w=300, h=200, x=50, y=35
+        expected_shape = (3, 200, 300)  # channels=3, height=200, width=300
 
         decoder_crop = create_from_file(str(NASA_VIDEO.path))
         add_video_stream(decoder_crop, transform_specs=crop_spec)
@@ -230,9 +231,9 @@ class TestVideoDecoderTransformOps:
                 frame_full, top=35, left=50, height=200, width=300
             )
 
-            assert frame.shape == (3, 200, 300)
-            assert frame_ref.shape == (3, 200, 300)
-            assert frame_tv.shape == (3, 200, 300)
+            assert frame.shape == expected_shape
+            assert frame_ref.shape == expected_shape
+            assert frame_tv.shape == expected_shape
 
             assert_frames_equal(frame, frame_tv)
             assert_frames_equal(frame, frame_ref)

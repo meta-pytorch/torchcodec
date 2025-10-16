@@ -12,6 +12,8 @@ import numpy as np
 import torch
 from PIL import Image
 
+from .utils import sanitize_filtergraph_expression
+
 # Run this script to update the resources used in unit tests. The resources are all derived
 # from source media already checked into the repo.
 
@@ -62,7 +64,6 @@ def get_frame_by_index(video_path, frame, output_path, stream, filters=None):
         "1",
         output_path,
     ]
-    print("===" + " ".join([str(x) for x in cmd]))
     subprocess.run(cmd, check=True)
 
 
@@ -107,12 +108,10 @@ def generate_nasa_13013_references():
         convert_image_to_tensor(output_bmp)
 
     # Extract frames with specific filters. We have tests that assume these exact filters.
-    # We prepend format=rgb24 to ensure the color conversion happens before the crop,
-    # matching the behavior of the torchcodec filtergraph implementation.
     FRAMES = [0, 15, 200, 389]
     crop_filter = "crop=300:200:50:35:exact=1"
     for frame in FRAMES:
-        output_bmp = f"{VIDEO_PATH}.{crop_filter}.stream3.frame{frame:06d}.bmp"
+        output_bmp = f"{VIDEO_PATH}.{sanitize_filtergraph_expression(crop_filter)}.stream3.frame{frame:06d}.bmp"
         get_frame_by_index(VIDEO_PATH, frame, output_bmp, stream=3, filters=crop_filter)
         convert_image_to_tensor(output_bmp)
 

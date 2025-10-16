@@ -50,4 +50,4 @@ jobs:
 
       - name: Run generation reference resources
         run: |
-          python test/generate_reference_resources.py
+          python -m test.generate_reference_resources

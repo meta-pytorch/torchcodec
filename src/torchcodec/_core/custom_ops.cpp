@@ -214,9 +214,9 @@ Transform* makeResizeTransform(
 
 // Crop transform specs take the form:
 //
-//   "crop, <width>, <height>, <x>, <y>"
+//   "crop, <height>, <width> <x>, <y>"
 //
-// Where "crop" is the string literal and <width>, <height>, <x> and <y> are
+// Where "crop" is the string literal and <height>, <width>, <x> and <y> are
 // positive integers. Note that that in this spec, we are following the
 // filtergraph convention of (width, height). This makes it easier to compare it
 // against actual filtergraph strings.
@@ -225,8 +225,8 @@ Transform* makeCropTransform(
   TORCH_CHECK(
       cropTransformSpec.size() == 5,
       "cropTransformSpec must have 5 elements including its name");
-  int width = checkedToPositiveInt(cropTransformSpec[1]);
-  int height = checkedToPositiveInt(cropTransformSpec[2]);
+  int height = checkedToPositiveInt(cropTransformSpec[1]);
+  int width = checkedToPositiveInt(cropTransformSpec[2]);
   int x = checkedToPositiveInt(cropTransformSpec[3]);
   int y = checkedToPositiveInt(cropTransformSpec[4]);
   return new CropTransform(FrameDims(height, width), x, y);
