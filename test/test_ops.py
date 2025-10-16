@@ -1330,6 +1330,7 @@ class TestAudioEncoderOps:
 
 class TestVideoEncoderOps:
 
+    # TODO-VideoEncoder: Parametrize test after moving to test_encoders
     def test_bad_input(self, tmp_path):
         output_file = str(tmp_path / ".mp4")
 
@@ -1445,7 +1446,16 @@ class TestVideoEncoderOps:
             assert_close(s_frame, rt_frame, atol=atol, rtol=0)
 
     @pytest.mark.parametrize(
-        "format", ("mov", "mp4", "avi", "mkv", "webm", "flv", "gif")
+        "format",
+        (
+            "mov",
+            "mp4",
+            "avi",
+            "mkv",
+            "flv",
+            "gif",
+            pytest.param("webm", marks=pytest.mark.slow),
+        ),
     )
     def test_against_to_file(self, tmp_path, format):
         # Test that to_file and to_tensor produce the same results
@@ -1463,7 +1473,10 @@ class TestVideoEncoderOps:
         encoded_tensor = encode_video_to_tensor(source_frames, format=format, **params)
 
         torch.testing.assert_close(
-            self.decode(encoded_file).data, self.decode(encoded_tensor).data
+            self.decode(encoded_file).data,
+            self.decode(encoded_tensor).data,
+            atol=0,
+            rtol=0,
         )
 
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
