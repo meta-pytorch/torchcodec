@@ -440,8 +440,7 @@ void SingleStreamDecoder::addStream(
 
   AVCodecContext* codecContext = avcodec_alloc_context3(avCodec);
   TORCH_CHECK(codecContext != nullptr);
-  streamInfo.codecContext = SharedAVCodecContext(
-      codecContext, [](AVCodecContext* ctx) { avcodec_free_context(&ctx); });
+  streamInfo.codecContext = makeSharedAVCodecContext(codecContext);
 
   int retVal = avcodec_parameters_to_context(
       streamInfo.codecContext.get(), streamInfo.stream->codecpar);
