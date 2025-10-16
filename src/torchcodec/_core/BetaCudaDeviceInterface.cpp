@@ -96,36 +96,6 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
   return UniqueCUvideodecoder(decoder, CUvideoDecoderDeleter{});
 }
 
-bool videoIsSupported(CUVIDEOFORMAT* videoFormat) {
-  // Check decoder capabilities - same checks as DALI
-  auto caps = CUVIDDECODECAPS{};
-  caps.eCodecType = videoFormat->codec;
-  caps.eChromaFormat = videoFormat->chroma_format;
-  caps.nBitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
-  CUresult result = cuvidGetDecoderCaps(&caps);
-  TORCH_CHECK(result == CUDA_SUCCESS, "Failed to get decoder caps: ", result);
-
-  if (!caps.bIsSupported) {
-    return false;
-  }
-
-  if (!(videoFormat->coded_width >= caps.nMinWidth &&
-        videoFormat->coded_height >= caps.nMinHeight &&
-        videoFormat->coded_width <= caps.nMaxWidth &&
-        videoFormat->coded_height <= caps.nMaxHeight)) {
-    return false;
-  }
-
-  constexpr unsigned int macroblockConstant = 256;
-  if (!(videoFormat->coded_width * videoFormat->coded_height /
-            macroblockConstant <=
-        caps.nMaxMBCount)) {
-    return false;
-  }
-
-  return true;
-}
-
 std::optional<cudaVideoChromaFormat> mapChromaFormat(
     const AVPixFmtDescriptor* desc) {
   if (!desc) {
