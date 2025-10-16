@@ -95,10 +95,9 @@ class DeviceInterface {
   // Returns AVSUCCESS on success, or other AVERROR on failure
   // Default implementation uses FFmpeg directly
   virtual int sendEOFPacket() {
-    if (!codecContext_) {
-      TORCH_CHECK(false, "Codec context not available for EOF packet sending");
-      return AVERROR(EINVAL);
-    }
+    TORCH_CHECK(
+        codecContext_ != nullptr,
+        "Codec context not available for default EOF packet sending");
     return avcodec_send_packet(codecContext_.get(), nullptr);
   }
 
