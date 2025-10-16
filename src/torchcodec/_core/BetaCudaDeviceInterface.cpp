@@ -52,46 +52,7 @@ pfnDisplayPictureCallback(void* pUserData, CUVIDPARSERDISPINFO* dispInfo) {
   return decoder->frameReadyInDisplayOrder(dispInfo);
 }
 
-static UniqueCUvideodecoder createDecoder(
-    CUVIDEOFORMAT* videoFormat,
-    bool* capabilityCheckFailed) {
-  // Check decoder capabilities - same checks as DALI
-  auto caps = CUVIDDECODECAPS{};
-  caps.eCodecType = videoFormat->codec;
-  caps.eChromaFormat = videoFormat->chroma_format;
-  caps.nBitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
-  CUresult result = cuvidGetDecoderCaps(&caps);
-  TORCH_CHECK(result == CUDA_SUCCESS, "Failed to get decoder caps: ", result);
-
-  if (!caps.bIsSupported) {
-    *capabilityCheckFailed = true;
-    return nullptr;
-  }
-
-  if (videoFormat->coded_width < caps.nMinWidth ||
-      videoFormat->coded_height < caps.nMinHeight ||
-      videoFormat->coded_width > caps.nMaxWidth ||
-      videoFormat->coded_height > caps.nMaxHeight) {
-    *capabilityCheckFailed = true;
-    return nullptr;
-  }
-
-  // See nMaxMBCount in cuviddec.h
-  constexpr unsigned int macroblockConstant = 256;
-  if (videoFormat->coded_width * videoFormat->coded_height /
-          macroblockConstant >
-      caps.nMaxMBCount) {
-    *capabilityCheckFailed = true;
-    return nullptr;
-  }
-
-  // Below we'll set the decoderParams.OutputFormat to NV12, so we need to make
-  // sure it's actually supported.
-  if (!((caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1)) {
-    *capabilityCheckFailed = true;
-    return nullptr;
-  }
-
+static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
   // Decoder creation parameters, most are taken from DALI
   CUVIDDECODECREATEINFO decoderParams = {};
   decoderParams.bitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
@@ -128,10 +89,40 @@ static UniqueCUvideodecoder createDecoder(
   decoderParams.display_area.bottom = videoFormat->display_area.bottom;
 
   CUvideodecoder* decoder = new CUvideodecoder();
-  result = cuvidCreateDecoder(decoder, &decoderParams);
+  CUresult result = cuvidCreateDecoder(decoder, &decoderParams);
   TORCH_CHECK(
       result == CUDA_SUCCESS, "Failed to create NVDEC decoder: ", result);
   return UniqueCUvideodecoder(decoder, CUvideoDecoderDeleter{});
+}
+
+bool videoIsSupported(CUVIDEOFORMAT* videoFormat) {
+  // Check decoder capabilities - same checks as DALI
+  auto caps = CUVIDDECODECAPS{};
+  caps.eCodecType = videoFormat->codec;
+  caps.eChromaFormat = videoFormat->chroma_format;
+  caps.nBitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
+  CUresult result = cuvidGetDecoderCaps(&caps);
+  TORCH_CHECK(result == CUDA_SUCCESS, "Failed to get decoder caps: ", result);
+
+  if (!caps.bIsSupported) {
+    return false;
+  }
+
+  if (!(videoFormat->coded_width >= caps.nMinWidth &&
+        videoFormat->coded_height >= caps.nMinHeight &&
+        videoFormat->coded_width <= caps.nMaxWidth &&
+        videoFormat->coded_height <= caps.nMaxHeight)) {
+    return false;
+  }
+
+  constexpr unsigned int macroblockConstant = 256;
+  if (!(videoFormat->coded_width * videoFormat->coded_height /
+            macroblockConstant <=
+        caps.nMaxMBCount)) {
+    return false;
+  }
+
+  return true;
 }
 
 cudaVideoCodec validateCodecSupport(AVCodecID codecId) {
@@ -354,14 +345,14 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
       // TODONVDEC P2: consider re-configuring an existing decoder instead of
       // re-creating one. See docs, see DALI. Re-configuration doesn't seem to
       // be enabled in DALI by default.
-      bool capabilityCheckFailed = false;
-      decoder_ = createDecoder(videoFormat, &capabilityCheckFailed);
-
-      if (capabilityCheckFailed) {
+      // Check if NVDEC supports this video configuration
+      if (!videoIsSupported(videoFormat)) {
         usingCpuFallback_ = true;
         capabilityCheckPending_ = false;
-        return 0;
+        return static_cast<int>(videoFormat_.min_num_decode_surfaces);
       }
+
+      decoder_ = createDecoder(videoFormat);
     }
 
     TORCH_CHECK(decoder_, "Failed to get or create decoder");
