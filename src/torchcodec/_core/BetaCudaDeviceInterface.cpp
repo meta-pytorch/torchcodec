@@ -360,7 +360,7 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
       if (capabilityCheckFailed) {
         usingCpuFallback_ = true;
         capabilityCheckPending_ = false;
-        return static_cast<int>(videoFormat_.min_num_decode_surfaces);
+        return 0;
       }
     }
 
