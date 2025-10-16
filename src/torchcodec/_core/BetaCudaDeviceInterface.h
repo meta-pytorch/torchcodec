@@ -94,6 +94,12 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   // NPP context for color conversion
   UniqueNppContext nppCtx_;
+
+  // CPU fallback support
+  std::unique_ptr<DeviceInterface> cpuInterface_;
+  bool usingCpuFallback_ = false;
+  bool capabilityCheckPending_ = true;
+  AVPacket* bufferedFirstPacket_ = nullptr;
 };
 
 } // namespace facebook::torchcodec

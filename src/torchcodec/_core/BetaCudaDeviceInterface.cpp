@@ -52,7 +52,9 @@ pfnDisplayPictureCallback(void* pUserData, CUVIDPARSERDISPINFO* dispInfo) {
   return decoder->frameReadyInDisplayOrder(dispInfo);
 }
 
-static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
+static UniqueCUvideodecoder createDecoder(
+    CUVIDEOFORMAT* videoFormat,
+    bool* capabilityCheckFailed = nullptr) {
   // Check decoder capabilities - same checks as DALI
   auto caps = CUVIDDECODECAPS{};
   caps.eCodecType = videoFormat->codec;
@@ -61,65 +63,84 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
   CUresult result = cuvidGetDecoderCaps(&caps);
   TORCH_CHECK(result == CUDA_SUCCESS, "Failed to get decoder caps: ", result);
 
-  TORCH_CHECK(
-      caps.bIsSupported,
-      "Codec configuration not supported on this GPU. "
-      "Codec: ",
-      static_cast<int>(videoFormat->codec),
-      ", chroma format: ",
-      static_cast<int>(videoFormat->chroma_format),
-      ", bit depth: ",
-      videoFormat->bit_depth_luma_minus8 + 8);
+  if (!caps.bIsSupported) {
+    if (capabilityCheckFailed) {
+      *capabilityCheckFailed = true;
+      return nullptr;
+    }
+    TORCH_CHECK(
+        false,
+        "Codec configuration not supported on this GPU. "
+        "Codec: ",
+        static_cast<int>(videoFormat->codec),
+        ", chroma format: ",
+        static_cast<int>(videoFormat->chroma_format),
+        ", bit depth: ",
+        videoFormat->bit_depth_luma_minus8 + 8);
+  }
 
-  TORCH_CHECK(
-      videoFormat->coded_width >= caps.nMinWidth &&
-          videoFormat->coded_height >= caps.nMinHeight,
-      "Video is too small in at least one dimension. Provided: ",
-      videoFormat->coded_width,
-      "x",
-      videoFormat->coded_height,
-      " vs supported:",
-      caps.nMinWidth,
-      "x",
-      caps.nMinHeight);
-
-  TORCH_CHECK(
-      videoFormat->coded_width <= caps.nMaxWidth &&
-          videoFormat->coded_height <= caps.nMaxHeight,
-      "Video is too large in at least one dimension. Provided: ",
-      videoFormat->coded_width,
-      "x",
-      videoFormat->coded_height,
-      " vs supported:",
-      caps.nMaxWidth,
-      "x",
-      caps.nMaxHeight);
+  if (videoFormat->coded_width < caps.nMinWidth ||
+      videoFormat->coded_height < caps.nMinHeight ||
+      videoFormat->coded_width > caps.nMaxWidth ||
+      videoFormat->coded_height > caps.nMaxHeight) {
+    if (capabilityCheckFailed) {
+      *capabilityCheckFailed = true;
+      return nullptr;
+    }
+    TORCH_CHECK(
+        false,
+        "Video dimensions not supported. Provided: ",
+        videoFormat->coded_width,
+        "x",
+        videoFormat->coded_height,
+        " vs supported: ",
+        caps.nMinWidth,
+        "x",
+        caps.nMinHeight,
+        " to ",
+        caps.nMaxWidth,
+        "x",
+        caps.nMaxHeight);
+  }
 
   // See nMaxMBCount in cuviddec.h
   constexpr unsigned int macroblockConstant = 256;
-  TORCH_CHECK(
-      videoFormat->coded_width * videoFormat->coded_height /
-              macroblockConstant <=
-          caps.nMaxMBCount,
-      "Video is too large (too many macroblocks). "
-      "Provided (width * height / ",
-      macroblockConstant,
-      "): ",
-      videoFormat->coded_width * videoFormat->coded_height / macroblockConstant,
-      " vs supported:",
-      caps.nMaxMBCount);
+  if (videoFormat->coded_width * videoFormat->coded_height /
+          macroblockConstant >
+      caps.nMaxMBCount) {
+    if (capabilityCheckFailed) {
+      *capabilityCheckFailed = true;
+      return nullptr;
+    }
+    TORCH_CHECK(
+        false,
+        "Video is too large (too many macroblocks). "
+        "Provided (width * height / ",
+        macroblockConstant,
+        "): ",
+        videoFormat->coded_width * videoFormat->coded_height /
+            macroblockConstant,
+        " vs supported:",
+        caps.nMaxMBCount);
+  }
 
   // Below we'll set the decoderParams.OutputFormat to NV12, so we need to make
   // sure it's actually supported.
-  TORCH_CHECK(
-      (caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1,
-      "NV12 output format is not supported for this configuration. ",
-      "Codec: ",
-      static_cast<int>(videoFormat->codec),
-      ", chroma format: ",
-      static_cast<int>(videoFormat->chroma_format),
-      ", bit depth: ",
-      videoFormat->bit_depth_luma_minus8 + 8);
+  if (!((caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1)) {
+    if (capabilityCheckFailed) {
+      *capabilityCheckFailed = true;
+      return nullptr;
+    }
+    TORCH_CHECK(
+        false,
+        "NV12 output format is not supported for this configuration. ",
+        "Codec: ",
+        static_cast<int>(videoFormat->codec),
+        ", chroma format: ",
+        static_cast<int>(videoFormat->chroma_format),
+        ", bit depth: ",
+        videoFormat->bit_depth_luma_minus8 + 8);
+  }
 
   // Decoder creation parameters, most are taken from DALI
   CUVIDDECODECREATEINFO decoderParams = {};
@@ -225,6 +246,11 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     videoParser_ = nullptr;
   }
 
+  // Clean up buffered packet if it wasn't used (commented out to avoid
+  // potential issues) if (bufferedFirstPacket_) {
+  //   av_packet_free(&bufferedFirstPacket_);
+  // }
+
   returnNppStreamContextToCache(device_, std::move(nppCtx_));
 }
 
@@ -238,6 +264,16 @@ void BetaCudaDeviceInterface::initialize(
 
   const AVCodecParameters* codecPar = avStream->codecpar;
   TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
+
+  // Initialize CPU interface for potential fallback
+  cpuInterface_ = createDeviceInterface(torch::kCPU);
+  TORCH_CHECK(
+      cpuInterface_ != nullptr, "Failed to create CPU device interface");
+  cpuInterface_->initialize(avStream, avFormatCtx, codecContext);
+  cpuInterface_->initializeVideo(
+      VideoStreamOptions(),
+      {},
+      /*resizedOutputDims=*/std::nullopt);
 
   initializeBSF(codecPar, avFormatCtx);
 
@@ -368,7 +404,14 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
       // TODONVDEC P2: consider re-configuring an existing decoder instead of
       // re-creating one. See docs, see DALI. Re-configuration doesn't seem to
       // be enabled in DALI by default.
-      decoder_ = createDecoder(videoFormat);
+      bool capabilityCheckFailed = false;
+      decoder_ = createDecoder(videoFormat, &capabilityCheckFailed);
+
+      if (capabilityCheckFailed) {
+        usingCpuFallback_ = true;
+        capabilityCheckPending_ = false;
+        return static_cast<int>(videoFormat_.min_num_decode_surfaces);
+      }
     }
 
     TORCH_CHECK(decoder_, "Failed to get or create decoder");
@@ -383,9 +426,24 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
 // Moral equivalent of avcodec_send_packet(). Here, we pass the AVPacket down to
 // the NVCUVID parser.
 int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
+  printf("usingCpuFallback_: %d\n", usingCpuFallback_);
+  if (usingCpuFallback_) {
+    return cpuInterface_->sendPacket(packet);
+  }
+
   TORCH_CHECK(
       packet.get() && packet->data && packet->size > 0,
       "sendPacket received an empty packet, this is unexpected, please report.");
+
+  // On first packet, store a copy before sending to CUDA parser
+  if (capabilityCheckPending_) {
+    // Make a deep copy of the packet before CUDA parser potentially corrupts it
+    bufferedFirstPacket_ = av_packet_alloc();
+    TORCH_CHECK(bufferedFirstPacket_, "Failed to allocate packet for fallback");
+    int ret = av_packet_ref(bufferedFirstPacket_, packet.get());
+    TORCH_CHECK(ret >= 0, "Failed to copy packet for fallback");
+    capabilityCheckPending_ = false;
+  }
 
   // Apply BSF if needed. We want applyBSF to return a *new* filtered packet, or
   // the original one if no BSF is needed. This new filtered packet must be
@@ -402,10 +460,29 @@ int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
   cuvidPacket.flags = CUVID_PKT_TIMESTAMP;
   cuvidPacket.timestamp = packetToSend->pts;
 
-  return sendCuvidPacket(cuvidPacket);
+  int result = sendCuvidPacket(cuvidPacket);
+
+  // If capability check failed and we switched to CPU fallback, send buffered
+  // packet to CPU
+  if (usingCpuFallback_) {
+    printf("Falling back to CPU!!!! And re-sending packet\n");
+    TORCH_CHECK(false, "Falling back to CPU!!!! And re-sending packet");
+    // Create AutoAVPacket, then ReferenceAVPacket to access get() method
+    AutoAVPacket autoBufferedPacket;
+    ReferenceAVPacket refBufferedPacket(autoBufferedPacket);
+    // Copy the buffered packet data
+    av_packet_ref(refBufferedPacket.get(), bufferedFirstPacket_);
+    return cpuInterface_->sendPacket(refBufferedPacket);
+  }
+
+  return result;
 }
 
 int BetaCudaDeviceInterface::sendEOFPacket() {
+  if (usingCpuFallback_) {
+    return cpuInterface_->sendEOFPacket();
+  }
+
   CUVIDSOURCEDATAPACKET cuvidPacket = {};
   cuvidPacket.flags = CUVID_PKT_ENDOFSTREAM;
   eofSent_ = true;
@@ -450,6 +527,9 @@ ReferenceAVPacket& BetaCudaDeviceInterface::applyBSF(
 // given frame. It means we can send that frame to be decoded by the hardware
 // NVDEC decoder by calling cuvidDecodePicture which is non-blocking.
 int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* picParams) {
+  if (usingCpuFallback_) {
+    return 1; // success
+  }
   TORCH_CHECK(picParams != nullptr, "Invalid picture parameters");
   TORCH_CHECK(decoder_, "Decoder not initialized before picture decode");
   // Send frame to be decoded by NVDEC - non-blocking call.
@@ -467,6 +547,10 @@ int BetaCudaDeviceInterface::frameReadyInDisplayOrder(
 
 // Moral equivalent of avcodec_receive_frame().
 int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
+  if (usingCpuFallback_) {
+    return cpuInterface_->receiveFrame(avFrame);
+  }
+
   if (readyFrames_.empty()) {
     // No frame found, instruct caller to try again later after sending more
     // packets, or to stop if EOF was already sent.
@@ -601,6 +685,11 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
 }
 
 void BetaCudaDeviceInterface::flush() {
+  if (usingCpuFallback_) {
+    cpuInterface_->flush();
+    return;
+  }
+
   // The NVCUVID docs mention that after seeking, i.e. when flush() is called,
   // we should send a packet with the CUVID_PKT_DISCONTINUITY flag. The docs
   // don't say whether this should be an empty packet, or whether it should be a
@@ -618,6 +707,21 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
+  if (usingCpuFallback_) {
+    // CPU decoded frame - need to do CPU color conversion then transfer to GPU
+    FrameOutput cpuFrameOutput;
+    cpuInterface_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
+
+    // Transfer CPU frame to GPU
+    if (preAllocatedOutputTensor.has_value()) {
+      preAllocatedOutputTensor.value().copy_(cpuFrameOutput.data);
+      frameOutput.data = preAllocatedOutputTensor.value();
+    } else {
+      frameOutput.data = cpuFrameOutput.data.to(device_);
+    }
+    return;
+  }
+
   // TODONVDEC P2: we may need to handle 10bit videos the same way the CUDA
   // ffmpeg interface does it with maybeConvertAVFrameToNV12OrRGB24().
   TORCH_CHECK(
