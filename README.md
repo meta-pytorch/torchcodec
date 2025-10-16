@@ -148,7 +148,7 @@ format you want. Refer to Nvidia's GPU support matrix for more details
 
 1. Install FFmpeg with NVDEC support.
    TorchCodec with CUDA should work with FFmpeg versions in [4, 7] on all platforms,
-   and FFmpeg version 8 is supported on Mac and Linux.
+   and FFmpeg version 8 is supported on Linux.
 
    If FFmpeg is not already installed, or you need a more recent version, an
    easy way to install it is to use `conda`:
