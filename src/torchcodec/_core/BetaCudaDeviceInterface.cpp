@@ -54,7 +54,7 @@ pfnDisplayPictureCallback(void* pUserData, CUVIDPARSERDISPINFO* dispInfo) {
 
 static UniqueCUvideodecoder createDecoder(
     CUVIDEOFORMAT* videoFormat,
-    bool* capabilityCheckFailed = nullptr) {
+    bool* capabilityCheckFailed) {
   // Check decoder capabilities - same checks as DALI
   auto caps = CUVIDDECODECAPS{};
   caps.eCodecType = videoFormat->codec;
@@ -64,43 +64,16 @@ static UniqueCUvideodecoder createDecoder(
   TORCH_CHECK(result == CUDA_SUCCESS, "Failed to get decoder caps: ", result);
 
   if (!caps.bIsSupported) {
-    if (capabilityCheckFailed) {
-      *capabilityCheckFailed = true;
-      return nullptr;
-    }
-    TORCH_CHECK(
-        false,
-        "Codec configuration not supported on this GPU. "
-        "Codec: ",
-        static_cast<int>(videoFormat->codec),
-        ", chroma format: ",
-        static_cast<int>(videoFormat->chroma_format),
-        ", bit depth: ",
-        videoFormat->bit_depth_luma_minus8 + 8);
+    *capabilityCheckFailed = true;
+    return nullptr;
   }
 
   if (videoFormat->coded_width < caps.nMinWidth ||
       videoFormat->coded_height < caps.nMinHeight ||
       videoFormat->coded_width > caps.nMaxWidth ||
       videoFormat->coded_height > caps.nMaxHeight) {
-    if (capabilityCheckFailed) {
-      *capabilityCheckFailed = true;
-      return nullptr;
-    }
-    TORCH_CHECK(
-        false,
-        "Video dimensions not supported. Provided: ",
-        videoFormat->coded_width,
-        "x",
-        videoFormat->coded_height,
-        " vs supported: ",
-        caps.nMinWidth,
-        "x",
-        caps.nMinHeight,
-        " to ",
-        caps.nMaxWidth,
-        "x",
-        caps.nMaxHeight);
+    *capabilityCheckFailed = true;
+    return nullptr;
   }
 
   // See nMaxMBCount in cuviddec.h
@@ -108,38 +81,15 @@ static UniqueCUvideodecoder createDecoder(
   if (videoFormat->coded_width * videoFormat->coded_height /
           macroblockConstant >
       caps.nMaxMBCount) {
-    if (capabilityCheckFailed) {
-      *capabilityCheckFailed = true;
-      return nullptr;
-    }
-    TORCH_CHECK(
-        false,
-        "Video is too large (too many macroblocks). "
-        "Provided (width * height / ",
-        macroblockConstant,
-        "): ",
-        videoFormat->coded_width * videoFormat->coded_height /
-            macroblockConstant,
-        " vs supported:",
-        caps.nMaxMBCount);
+    *capabilityCheckFailed = true;
+    return nullptr;
   }
 
   // Below we'll set the decoderParams.OutputFormat to NV12, so we need to make
   // sure it's actually supported.
   if (!((caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1)) {
-    if (capabilityCheckFailed) {
-      *capabilityCheckFailed = true;
-      return nullptr;
-    }
-    TORCH_CHECK(
-        false,
-        "NV12 output format is not supported for this configuration. ",
-        "Codec: ",
-        static_cast<int>(videoFormat->codec),
-        ", chroma format: ",
-        static_cast<int>(videoFormat->chroma_format),
-        ", bit depth: ",
-        videoFormat->bit_depth_luma_minus8 + 8);
+    *capabilityCheckFailed = true;
+    return nullptr;
   }
 
   // Decoder creation parameters, most are taken from DALI
@@ -466,7 +416,7 @@ int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
   // packet to CPU
   if (usingCpuFallback_) {
     printf("Falling back to CPU!!!! And re-sending packet\n");
-    TORCH_CHECK(false, "Falling back to CPU!!!! And re-sending packet");
+    // TORCH_CHECK(false, "Falling back to CPU!!!! And re-sending packet");
     // Create AutoAVPacket, then ReferenceAVPacket to access get() method
     AutoAVPacket autoBufferedPacket;
     ReferenceAVPacket refBufferedPacket(autoBufferedPacket);

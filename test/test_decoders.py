@@ -1696,12 +1696,13 @@ class TestVideoDecoder:
         # ffmpeg interface, FFMPEG fallsback to the CPU while we don't.
 
         print()
-        # VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
+        a = VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
         # with pytest.raises(
         #     RuntimeError,
         #     match="Video is too small in at least one dimension. Provided: 128x128 vs supported:144x144",
         # ):
-        VideoDecoder(H265_VIDEO.path, device="cuda:0:beta").get_frame_at(0)
+        b = VideoDecoder(H265_VIDEO.path, device="cuda:0:beta").get_frame_at(0)
+        torch.testing.assert_close(a.data, b.data, rtol=0, atol=0)
 
     @needs_cuda
     def test_beta_cuda_interface_error(self):
