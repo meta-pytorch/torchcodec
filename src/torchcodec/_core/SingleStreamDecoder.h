@@ -221,7 +221,7 @@ class SingleStreamDecoder {
     AVMediaType avMediaType = AVMEDIA_TYPE_UNKNOWN;
 
     AVRational timeBase = {};
-    UniqueAVCodecContext codecContext;
+    SharedAVCodecContext codecContext;
 
     // The FrameInfo indices we built when scanFileAndUpdateMetadataAndIndex was
     // called.
