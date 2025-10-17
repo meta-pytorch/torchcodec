@@ -1438,8 +1438,7 @@ class TestVideoEncoderOps:
                 file_like=file_like,
                 **params,
             )
-            file_like.seek(0)
-            round_trip_frames = self.decode(file_like).data
+            round_trip_frames = self.decode(file_like.getvalue()).data
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -1584,6 +1583,82 @@ class TestVideoEncoderOps:
             assert res > 30
             assert_tensor_close_on_at_least(
                 ff_frame, enc_frame, percentage=percentage, atol=2
+            )
+
+    def test_to_file_like_custom_file_object(self):
+        """Test with a custom file-like object that implements write and seek."""
+
+        class CustomFileObject:
+            def __init__(self):
+                self._file = io.BytesIO()
+
+            def write(self, data):
+                return self._file.write(data)
+
+            def seek(self, offset, whence=0):
+                return self._file.seek(offset, whence)
+
+            def get_encoded_data(self):
+                return self._file.getvalue()
+
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
+        file_like = CustomFileObject()
+        encode_video_to_file_like(
+            source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
+        )
+        decoded_samples = self.decode(file_like.get_encoded_data())
+
+        torch.testing.assert_close(
+            decoded_samples.data,
+            source_frames,
+            atol=2,
+            rtol=0,
+        )
+
+    def test_to_file_like_real_file(self, tmp_path):
+        """Test to_file_like with a real file opened in binary write mode."""
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
+        file_path = tmp_path / "test_file_like.mp4"
+
+        with open(file_path, "wb") as file_like:
+            encode_video_to_file_like(
+                source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
+            )
+        decoded_samples = self.decode(str(file_path))
+
+        torch.testing.assert_close(
+            decoded_samples.data,
+            source_frames,
+            atol=2,
+            rtol=0,
+        )
+
+    def test_to_file_like_bad_methods(self):
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
+
+        class NoWriteMethod:
+            def seek(self, offset, whence=0):
+                return 0
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a write method"
+        ):
+            encode_video_to_file_like(
+                source_frames,
+                frame_rate=30,
+                format="mp4",
+                file_like=NoWriteMethod(),
+            )
+
+        class NoSeekMethod:
+            def write(self, data):
+                return len(data)
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a seek method"
+        ):
+            encode_video_to_file_like(
+                source_frames, frame_rate=30, format="mp4", file_like=NoSeekMethod()
             )
 
 
