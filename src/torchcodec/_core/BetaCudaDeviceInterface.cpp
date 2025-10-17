@@ -187,15 +187,15 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
 
   auto coded_width = static_cast<unsigned int>(codecContext->coded_width);
   auto coded_height = static_cast<unsigned int>(codecContext->coded_height);
-  if (!(coded_width >= static_cast<unsigned int>(caps.nMinWidth) &&
-        coded_height >= static_cast<unsigned int>(caps.nMinHeight) &&
-        coded_width <= caps.nMaxWidth && coded_height <= caps.nMaxHeight)) {
+  if (coded_width < static_cast<unsigned int>(caps.nMinWidth) ||
+      coded_height < static_cast<unsigned int>(caps.nMinHeight) ||
+      coded_width > caps.nMaxWidth || coded_height > caps.nMaxHeight) {
     return false;
   }
 
   // See nMaxMBCount in cuviddec.h
   constexpr unsigned int macroblockConstant = 256;
-  if (!(coded_width * coded_height / macroblockConstant <= caps.nMaxMBCount)) {
+  if (coded_width * coded_height / macroblockConstant > caps.nMaxMBCount) {
     return false;
   }
 
@@ -204,7 +204,9 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
   // TODO: If this fail, we could consider decoding to something else than NV12
   // (like cudaVideoSurfaceFormat_P016) instead of falling back to CPU. This is
   // what FFmpeg does.
-  if (!((caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1)) {
+  bool supportsNV12Output =
+      (caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1;
+  if (!supportsNV12Output) {
     return false;
   }
 
