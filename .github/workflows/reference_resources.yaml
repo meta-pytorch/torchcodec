@@ -82,6 +82,11 @@ jobs:
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
           python -m pip install numpy pillow pytest
 
+      - name: Install torchcodec from the wheel
+        run: |
+          wheel_path=`find pytorch/torchcodec/dist -type f -name "*.whl"`
+          echo Installing $wheel_path
+          python -m pip install $wheel_path -vvv
       - name: Check out repo
         uses: actions/checkout@v3
 
