@@ -214,6 +214,26 @@ Transform* makeResizeTransform(
   return new ResizeTransform(FrameDims(height, width));
 }
 
+// Crop transform specs take the form:
+//
+//   "crop, <height>, <width>, <x>, <y>"
+//
+// Where "crop" is the string literal and <height>, <width>, <x> and <y> are
+// positive integers. <x> and <y> are the x and y coordinates of the top left
+// corner of the crop. Note that we follow the PyTorch convention of (height,
+// width) for specifying image dimensions; FFmpeg uses (width, height).
+Transform* makeCropTransform(
+    const std::vector<std::string>& cropTransformSpec) {
+  TORCH_CHECK(
+      cropTransformSpec.size() == 5,
+      "cropTransformSpec must have 5 elements including its name");
+  int height = checkedToPositiveInt(cropTransformSpec[1]);
+  int width = checkedToPositiveInt(cropTransformSpec[2]);
+  int x = checkedToPositiveInt(cropTransformSpec[3]);
+  int y = checkedToPositiveInt(cropTransformSpec[4]);
+  return new CropTransform(FrameDims(height, width), x, y);
+}
+
 std::vector<std::string> split(const std::string& str, char delimiter) {
   std::vector<std::string> tokens;
   std::string token;
@@ -241,6 +261,8 @@ std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
     auto name = transformSpec[0];
     if (name == "resize") {
       transforms.push_back(makeResizeTransform(transformSpec));
+    } else if (name == "crop") {
+      transforms.push_back(makeCropTransform(transformSpec));
     } else {
       TORCH_CHECK(false, "Invalid transform name: " + name);
     }

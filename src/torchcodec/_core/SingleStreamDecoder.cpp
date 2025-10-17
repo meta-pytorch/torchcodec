@@ -12,6 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include "Metadata.h"
 #include "torch/types.h"
 
 namespace facebook::torchcodec {
@@ -527,6 +528,7 @@ void SingleStreamDecoder::addVideoStream(
     if (transform->getOutputFrameDims().has_value()) {
       resizedOutputDims_ = transform->getOutputFrameDims().value();
     }
+    transform->validate(streamMetadata);
 
     // Note that we are claiming ownership of the transform objects passed in to
     // us.
