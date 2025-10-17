@@ -54,7 +54,6 @@ pfnDisplayPictureCallback(void* pUserData, CUVIDPARSERDISPINFO* dispInfo) {
 
 static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
   // Decoder creation parameters, most are taken from DALI
-
   CUVIDDECODECREATEINFO decoderParams = {};
   decoderParams.bitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
   decoderParams.ChromaFormat = videoFormat->chroma_format;
