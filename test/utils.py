@@ -76,14 +76,25 @@ def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
     return dec, clean_device
 
 
-def get_ffmpeg_major_version():
+def _get_ffmpeg_version_string():
     ffmpeg_version = get_ffmpeg_library_versions()["ffmpeg_version"]
     # When building FFmpeg from source there can be a `n` prefix in the version
     # string.  This is quite brittle as we're using av_version_info(), which has
     # no stable format. See https://github.com/pytorch/torchcodec/issues/100
     if ffmpeg_version.startswith("n"):
         ffmpeg_version = ffmpeg_version.removeprefix("n")
+
+    return ffmpeg_version
+
+
+def get_ffmpeg_major_version():
+    ffmpeg_version = _get_ffmpeg_version_string()
     return int(ffmpeg_version.split(".")[0])
+
+
+def get_ffmpeg_minor_version():
+    ffmpeg_version = _get_ffmpeg_version_string()
+    return int(ffmpeg_version.split(".")[1])
 
 
 def cuda_version_used_for_building_torch() -> Optional[tuple[int, int]]:

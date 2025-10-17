@@ -71,8 +71,7 @@ jobs:
         # TODO: FFmpeg 5 on Windows segfaults in avcodec_open2() when passing
         # bad parameters.
         # See https://github.com/pytorch/torchcodec/pull/806
-        # TODO: Support FFmpeg 8 on Windows
-        ffmpeg-version-for-tests: ['4.4.2', '5.1.2', '6.1.1', '7.0.1']
+        ffmpeg-version-for-tests: ['4.4.2', '5.1.2', '6.1.1', '7.0.1', '8.0']
     needs: build
     steps:
       - uses: actions/download-artifact@v4
@@ -83,7 +82,11 @@ jobs:
         uses: conda-incubator/setup-miniconda@v2
         with:
           auto-update-conda: true
-          miniconda-version: "latest"
+          # Using miniforge instead of miniconda ensures that the default
+          # conda channel is conda-forge instead of main/default. This ensures
+          # ABI consistency between dependencies:
+          # https://conda-forge.org/docs/user/transitioning_from_defaults/
+          miniforge-version: latest
           activate-environment: test
           python-version: ${{ matrix.python-version }}
       - name: Update pip
