@@ -47,6 +47,7 @@ jobs:
       build-command: "BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1 python -m build --wheel -vvv --no-isolation"
 
   test-reference-resource-generation:
+    needs: build
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
