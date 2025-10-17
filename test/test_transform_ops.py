@@ -5,9 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 import contextlib
-import os
 
 import json
+import os
 import subprocess
 
 import pytest
