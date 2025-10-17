@@ -29,6 +29,7 @@ from torchcodec._core import (
     create_from_tensor,
     encode_audio_to_file,
     encode_video_to_file,
+    encode_video_to_file_like,
     encode_video_to_tensor,
     get_ffmpeg_library_versions,
     get_frame_at_index,
@@ -1397,7 +1398,7 @@ class TestVideoEncoderOps:
     @pytest.mark.parametrize(
         "format", ("mov", "mp4", "mkv", pytest.param("webm", marks=pytest.mark.slow))
     )
-    @pytest.mark.parametrize("method", ("to_file", "to_tensor"))
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_video_encoder_round_trip(self, tmp_path, format, method):
         # Test that decode(encode(decode(frames))) == decode(frames)
         ffmpeg_version = get_ffmpeg_major_version()
@@ -1424,11 +1425,23 @@ class TestVideoEncoderOps:
                 **params,
             )
             round_trip_frames = self.decode(encoded_path).data
-        else:  # to_tensor
+        elif method == "to_tensor":
             encoded_tensor = encode_video_to_tensor(
                 source_frames, format=format, **params
             )
             round_trip_frames = self.decode(encoded_tensor).data
+        elif method == "to_file_like":
+            file_like = io.BytesIO()
+            encode_video_to_file_like(
+                frames=source_frames,
+                format=format,
+                file_like=file_like,
+                **params,
+            )
+            file_like.seek(0)
+            round_trip_frames = self.decode(file_like).data
+        else:
+            raise ValueError(f"Unknown method: {method}")
 
         assert source_frames.shape == round_trip_frames.shape
         assert source_frames.dtype == round_trip_frames.dtype
@@ -1445,6 +1458,7 @@ class TestVideoEncoderOps:
             assert psnr(s_frame, rt_frame) > 30
             assert_close(s_frame, rt_frame, atol=atol, rtol=0)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize(
         "format",
         (
@@ -1457,8 +1471,9 @@ class TestVideoEncoderOps:
             pytest.param("webm", marks=pytest.mark.slow),
         ),
     )
-    def test_against_to_file(self, tmp_path, format):
-        # Test that to_file and to_tensor produce the same results
+    @pytest.mark.parametrize("method", ("to_tensor", "to_file_like"))
+    def test_against_to_file(self, tmp_path, format, method):
+        # Test that to_file, to_tensor, and to_file_like produce the same results
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
@@ -1470,11 +1485,25 @@ class TestVideoEncoderOps:
 
         encoded_file = tmp_path / f"output.{format}"
         encode_video_to_file(frames=source_frames, filename=str(encoded_file), **params)
-        encoded_tensor = encode_video_to_tensor(source_frames, format=format, **params)
+
+        if method == "to_tensor":
+            encoded_output = encode_video_to_tensor(
+                source_frames, format=format, **params
+            )
+        else:  # to_file_like
+            file_like = io.BytesIO()
+            encode_video_to_file_like(
+                frames=source_frames,
+                file_like=file_like,
+                format=format,
+                **params,
+            )
+            file_like.seek(0)
+            encoded_output = file_like
 
         torch.testing.assert_close(
             self.decode(encoded_file).data,
-            self.decode(encoded_tensor).data,
+            self.decode(encoded_output).data,
             atol=0,
             rtol=0,
         )
