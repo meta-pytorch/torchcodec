@@ -73,6 +73,12 @@ using UniqueAVCodecContext = std::unique_ptr<
     Deleterp<AVCodecContext, void, avcodec_free_context>>;
 using SharedAVCodecContext = std::shared_ptr<AVCodecContext>;
 
+// create SharedAVCodecContext with custom deleter
+inline SharedAVCodecContext makeSharedAVCodecContext(AVCodecContext* ctx) {
+  return SharedAVCodecContext(
+      ctx, Deleterp<AVCodecContext, void, avcodec_free_context>{});
+}
+
 using UniqueAVFrame =
     std::unique_ptr<AVFrame, Deleterp<AVFrame, void, av_frame_free>>;
 using UniqueAVFilterGraph = std::unique_ptr<
