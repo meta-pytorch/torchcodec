@@ -95,7 +95,7 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
   return UniqueCUvideodecoder(decoder, CUvideoDecoderDeleter{});
 }
 
-std::optional<cudaVideoChromaFormat> mapChromaFormat(
+std::optional<cudaVideoChromaFormat> validateChromaSupport(
     const AVPixFmtDescriptor* desc) {
   // Return the corresponding cudaVideoChromaFormat if supported, std::nullopt
   // otherwise.
@@ -165,7 +165,7 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
     return false;
   }
 
-  auto chromaFormat = mapChromaFormat(desc);
+  auto chromaFormat = validateChromaSupport(desc);
   if (!chromaFormat.has_value()) {
     return false;
   }
