@@ -29,6 +29,7 @@ from torchcodec._core import (
     create_from_tensor,
     encode_audio_to_file,
     encode_video_to_file,
+    encode_video_to_tensor,
     get_ffmpeg_library_versions,
     get_frame_at_index,
     get_frame_at_pts,
@@ -41,6 +42,7 @@ from torchcodec._core import (
     get_next_frame,
     seek_to_pts,
 )
+from torchcodec.decoders import VideoDecoder
 
 from .utils import (
     all_supported_devices,
@@ -1328,6 +1330,7 @@ class TestAudioEncoderOps:
 
 class TestVideoEncoderOps:
 
+    # TODO-VideoEncoder: Parametrize test after moving to test_encoders
     def test_bad_input(self, tmp_path):
         output_file = str(tmp_path / ".mp4")
 
@@ -1378,17 +1381,25 @@ class TestVideoEncoderOps:
                 filename="./bad/path.mp3",
             )
 
-    def decode(self, file_path) -> torch.Tensor:
-        decoder = create_from_file(str(file_path), seek_mode="approximate")
-        add_video_stream(decoder)
-        frames, *_ = get_frames_in_range(decoder, start=0, stop=60)
-        return frames
+        with pytest.raises(
+            RuntimeError,
+            match=r"Couldn't allocate AVFormatContext. Check the desired format\? Got format=bad_format",
+        ):
+            encode_video_to_tensor(
+                frames=torch.randint(high=255, size=(10, 3, 60, 60), dtype=torch.uint8),
+                frame_rate=10,
+                format="bad_format",
+            )
+
+    def decode(self, source=None) -> torch.Tensor:
+        return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
 
     @pytest.mark.parametrize(
         "format", ("mov", "mp4", "mkv", pytest.param("webm", marks=pytest.mark.slow))
     )
-    def test_video_encoder_round_trip(self, tmp_path, format):
-        # Test that decode(encode(decode(asset))) == decode(asset)
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor"))
+    def test_video_encoder_round_trip(self, tmp_path, format, method):
+        # Test that decode(encode(decode(frames))) == decode(frames)
         ffmpeg_version = get_ffmpeg_major_version()
         # In FFmpeg6, the default codec's best pixel format is lossy for all container formats but webm.
         # As a result, we skip the round trip test.
@@ -1400,15 +1411,25 @@ class TestVideoEncoderOps:
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
-        asset = TEST_SRC_2_720P
-        source_frames = self.decode(str(asset.path)).data
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
 
-        encoded_path = str(tmp_path / f"encoder_output.{format}")
-        frame_rate = 30  # Frame rate is fixed with num frames decoded
-        encode_video_to_file(
-            frames=source_frames, frame_rate=frame_rate, filename=encoded_path, crf=0
-        )
-        round_trip_frames = self.decode(encoded_path).data
+        params = dict(
+            frame_rate=30, crf=0
+        )  # Frame rate is fixed with num frames decoded
+        if method == "to_file":
+            encoded_path = str(tmp_path / f"encoder_output.{format}")
+            encode_video_to_file(
+                frames=source_frames,
+                filename=encoded_path,
+                **params,
+            )
+            round_trip_frames = self.decode(encoded_path).data
+        else:  # to_tensor
+            encoded_tensor = encode_video_to_tensor(
+                source_frames, format=format, **params
+            )
+            round_trip_frames = self.decode(encoded_tensor).data
+
         assert source_frames.shape == round_trip_frames.shape
         assert source_frames.dtype == round_trip_frames.dtype
 
@@ -1423,6 +1444,40 @@ class TestVideoEncoderOps:
         for s_frame, rt_frame in zip(source_frames, round_trip_frames):
             assert psnr(s_frame, rt_frame) > 30
             assert_close(s_frame, rt_frame, atol=atol, rtol=0)
+
+    @pytest.mark.parametrize(
+        "format",
+        (
+            "mov",
+            "mp4",
+            "avi",
+            "mkv",
+            "flv",
+            "gif",
+            pytest.param("webm", marks=pytest.mark.slow),
+        ),
+    )
+    def test_against_to_file(self, tmp_path, format):
+        # Test that to_file and to_tensor produce the same results
+        ffmpeg_version = get_ffmpeg_major_version()
+        if format == "webm" and (
+            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
+        ):
+            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
+        params = dict(frame_rate=30, crf=0)
+
+        encoded_file = tmp_path / f"output.{format}"
+        encode_video_to_file(frames=source_frames, filename=str(encoded_file), **params)
+        encoded_tensor = encode_video_to_tensor(source_frames, format=format, **params)
+
+        torch.testing.assert_close(
+            self.decode(encoded_file).data,
+            self.decode(encoded_tensor).data,
+            atol=0,
+            rtol=0,
+        )
 
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
     @pytest.mark.parametrize(
@@ -1439,18 +1494,12 @@ class TestVideoEncoderOps:
     )
     def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
         ffmpeg_version = get_ffmpeg_major_version()
-        if format == "webm":
-            if ffmpeg_version == 4:
-                pytest.skip(
-                    "Codec for webm is not available in the FFmpeg4 installation."
-                )
-            if IS_WINDOWS and ffmpeg_version in (6, 7):
-                pytest.skip(
-                    "Codec for webm is not available in the FFmpeg6/7 installation on Windows."
-                )
-        asset = TEST_SRC_2_720P
-        source_frames = self.decode(str(asset.path)).data
-        frame_rate = 30
+        if format == "webm" and (
+            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
+        ):
+            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
 
         # Encode with FFmpeg CLI
         temp_raw_path = str(tmp_path / "temp_input.raw")
@@ -1458,8 +1507,8 @@ class TestVideoEncoderOps:
             f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
 
         ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
+        frame_rate = 30
         crf = 0
-        quality_params = ["-crf", str(crf)]
         # Some codecs (ex. MPEG4) do not support CRF.
         # Flags not supported by the selected codec will be ignored.
         ffmpeg_cmd = [
@@ -1475,7 +1524,8 @@ class TestVideoEncoderOps:
             str(frame_rate),
             "-i",
             temp_raw_path,
-            *quality_params,
+            "-crf",
+            str(crf),
             ffmpeg_encoded_path,
         ]
         subprocess.run(ffmpeg_cmd, check=True)
