@@ -14,6 +14,7 @@ import pytest
 import torch
 
 from torchcodec._core import get_ffmpeg_library_versions
+from torchcodec.decoders import set_cuda_backend, VideoDecoder
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
@@ -26,25 +27,53 @@ def needs_cuda(test_item):
     return pytest.mark.needs_cuda(test_item)
 
 
+# This is a special device string that we use to test the "beta" CUDA backend.
+# It only exists here, in this test utils file. Public and core APIs have no
+# idea that this is how we're tesing them. That is, that's not a supported
+# `device` parameter for the VideoDecoder or for the _core APIs.
+# Tests using all_supported_devices() will get this device string, and the test
+# need to clean it up by calling either make_video_decoder for VideoDecoder, or
+# unsplit_device_str for core APIs.
+_CUDA_BETA_DEVICE_STR = "cuda:beta"
+
+
 def all_supported_devices():
     return (
         "cpu",
         pytest.param("cuda", marks=pytest.mark.needs_cuda),
-        pytest.param("cuda:0:beta", marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
     )
 
 
 def unsplit_device_str(device_str: str) -> str:
     # helper meant to be used as
     # device, device_variant = unsplit_device_str(device)
-    # when `device` comes from all_supported_devices() and may be "cuda:0:beta".
+    # when `device` comes from all_supported_devices() and may be _CUDA_BETA_DEVICE_STR.
     # It is used:
-    # - before calling `.to(device)` where device can't be "cuda:0:beta"
+    # - before calling `.to(device)` where device can't be _CUDA_BETA_DEVICE_STR.
     # - before calling add_video_stream(device=device, device_variant=device_variant)
-    if device_str == "cuda:0:beta":
+    if device_str == _CUDA_BETA_DEVICE_STR:
         return "cuda", "beta"
     else:
         return device_str, "ffmpeg"
+
+
+def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
+    # Helper to create a VideoDecoder with the right cuda backend if needed.
+    # kwargs is expected to have a "device" key which comes from
+    # all_supported_devices(), and can be _CUDA_BETA_DEVICE_STR.
+    device = kwargs.pop("device", "cpu")
+    if device == _CUDA_BETA_DEVICE_STR:
+        clean_device, backend = "cuda", "beta"
+    else:
+        clean_device, backend = device, "ffmpeg"
+
+    # set_cuda_backend is a no-op if the device is "cpu", so we can use it
+    # unconditionally.
+    with set_cuda_backend(backend):
+        dec = VideoDecoder(*args, **kwargs, device=clean_device)
+
+    return dec, clean_device
 
 
 def get_ffmpeg_major_version():

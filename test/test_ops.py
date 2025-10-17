@@ -1384,7 +1384,9 @@ class TestVideoEncoderOps:
         frames, *_ = get_frames_in_range(decoder, start=0, stop=60)
         return frames
 
-    @pytest.mark.parametrize("format", ("mov", "mp4", "mkv", "webm"))
+    @pytest.mark.parametrize(
+        "format", ("mov", "mp4", "mkv", pytest.param("webm", marks=pytest.mark.slow))
+    )
     def test_video_encoder_round_trip(self, tmp_path, format):
         # Test that decode(encode(decode(asset))) == decode(asset)
         ffmpeg_version = get_ffmpeg_major_version()
@@ -1424,7 +1426,16 @@ class TestVideoEncoderOps:
 
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
     @pytest.mark.parametrize(
-        "format", ("mov", "mp4", "avi", "mkv", "webm", "flv", "gif")
+        "format",
+        (
+            "mov",
+            "mp4",
+            "avi",
+            "mkv",
+            "flv",
+            "gif",
+            pytest.param("webm", marks=pytest.mark.slow),
+        ),
     )
     def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
         ffmpeg_version = get_ffmpeg_major_version()
