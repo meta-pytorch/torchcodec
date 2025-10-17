@@ -148,13 +148,6 @@ class VideoDecoder:
 
         device_variant = _get_cuda_backend()
 
-        # Legacy support for device="cuda:0:beta" syntax
-        # TODONVDEC P2: remove support for this everywhere. This will require
-        # updating our tests.
-        if device == "cuda:0:beta":
-            device = "cuda:0"
-            device_variant = "beta"
-
         core.add_video_stream(
             self._decoder,
             stream_index=stream_index,
