@@ -98,6 +98,8 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
 
 std::optional<cudaVideoChromaFormat> mapChromaFormat(
     const AVPixFmtDescriptor* desc) {
+  // Return the corresponding cudaVideoChromaFormat if supported, std::nullopt
+  // otherwise.
   TORCH_CHECK(desc != nullptr, "desc can't be null");
 
   if (desc->nb_components == 1) {
@@ -117,6 +119,10 @@ std::optional<cudaVideoChromaFormat> mapChromaFormat(
 }
 
 std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
+  // Return the corresponding cudaVideoCodec if supported, std::nullopt
+  // otherwise
+  // Note that we currently return nullopt (and thus fallback to CPU) for some
+  // codecs that are technically supported by NVDEC, see comment below.
   switch (codecId) {
     case AV_CODEC_ID_H264:
       return cudaVideoCodec_H264;
@@ -148,6 +154,8 @@ std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
 }
 
 bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
+  // Return true iff the input video stream is supported by our NVDEC
+  // implementation.
   auto codecType = validateCodecSupport(codecContext->codec_id);
   if (!codecType.has_value()) {
     return false;
@@ -177,28 +185,25 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
     return false;
   }
 
-  if (!(static_cast<unsigned int>(codecContext->coded_width) >=
-            caps.nMinWidth &&
-        static_cast<unsigned int>(codecContext->coded_height) >=
-            caps.nMinHeight &&
-        static_cast<unsigned int>(codecContext->coded_width) <=
-            caps.nMaxWidth &&
-        static_cast<unsigned int>(codecContext->coded_height) <=
-            caps.nMaxHeight)) {
+  auto coded_width = static_cast<unsigned int>(codecContext->coded_width);
+  auto coded_height = static_cast<unsigned int>(codecContext->coded_height);
+  if (!(coded_width >= static_cast<unsigned int>(caps.nMinWidth) &&
+        coded_height >= static_cast<unsigned int>(caps.nMinHeight) &&
+        coded_width <= caps.nMaxWidth && coded_height <= caps.nMaxHeight)) {
     return false;
   }
 
   // See nMaxMBCount in cuviddec.h
   constexpr unsigned int macroblockConstant = 256;
-  if (!(static_cast<unsigned int>(
-            codecContext->coded_width * codecContext->coded_height) /
-            macroblockConstant <=
-        caps.nMaxMBCount)) {
+  if (!(coded_width * coded_height / macroblockConstant <= caps.nMaxMBCount)) {
     return false;
   }
 
-  // We explicitly request NV12 output format in createDecoder(), so we need to
-  // make sure it's supported.
+  // We'll set the decoderParams.OutputFormat to NV12, so we need to make
+  // sure it's actually supported.
+  // TODO: If this fail, we could consider decoding to something else than NV12
+  // (like cudaVideoSurfaceFormat_P016) instead of falling back to CPU. This is
+  // what FFmpeg does.
   if (!((caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1)) {
     return false;
   }
