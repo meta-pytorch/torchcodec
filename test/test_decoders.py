@@ -1757,7 +1757,7 @@ class TestVideoDecoder:
         # Check that the default is the ffmpeg backend
         assert _get_cuda_backend() == "ffmpeg"
         dec = VideoDecoder(H265_VIDEO.path, device="cuda")
-        # assert_decoder_uses(dec, expected_backend="ffmpeg")
+        assert_decoder_uses(dec, expected_backend="ffmpeg")
 
         # Check the setting "beta" effectively uses the BETA backend.
         # We also show that the affects decoder creation only. When the decoder
