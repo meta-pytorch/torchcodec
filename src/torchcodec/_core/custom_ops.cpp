@@ -214,12 +214,12 @@ Transform* makeResizeTransform(
 
 // Crop transform specs take the form:
 //
-//   "crop, <height>, <width> <x>, <y>"
+//   "crop, <height>, <width>, <x>, <y>"
 //
 // Where "crop" is the string literal and <height>, <width>, <x> and <y> are
-// positive integers. Note that that in this spec, we are following the
-// filtergraph convention of (width, height). This makes it easier to compare it
-// against actual filtergraph strings.
+// positive integers. <x> and <y> are the x and y coordinates of the top left
+// corner of the crop. Note that we follow the PyTorch convention of (height,
+// width) for specifying image dimensions; FFmpeg uses (width, height).
 Transform* makeCropTransform(
     const std::vector<std::string>& cropTransformSpec) {
   TORCH_CHECK(

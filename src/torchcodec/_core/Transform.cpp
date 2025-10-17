@@ -75,7 +75,9 @@ std::optional<FrameDims> CropTransform::getOutputFrameDims() const {
 
 void CropTransform::validate(const StreamMetadata& streamMetadata) const {
   TORCH_CHECK(x_ <= streamMetadata.width, "Crop x position out of bounds");
+  TORCH_CHECK(x_ + outputDims_.width <= streamMetadata.width, "Crop x position out of bounds")
   TORCH_CHECK(y_ <= streamMetadata.height, "Crop y position out of bounds");
+  TORCH_CHECK(y_ + outputDims_.height <= streamMetadata.height, "Crop y position out of bounds");
 }
 
 } // namespace facebook::torchcodec

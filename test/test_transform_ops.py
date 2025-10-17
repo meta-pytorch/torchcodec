@@ -7,7 +7,6 @@
 import contextlib
 import os
 
-os.environ["TORCH_LOGS"] = "output_code"
 import json
 import subprocess
 
@@ -210,9 +209,13 @@ class TestVideoDecoderTransformOps:
 
     def test_crop_transform(self):
         # Note that filtergraph accepts dimensions as (w, h) and we accept them as (h, w).
-        crop_spec = "crop, 200, 300, 50, 35"  # h=200, w=300, x=50, y=35
-        crop_filtergraph = "crop=300:200:50:35:exact=1"  # w=300, h=200, x=50, y=35
-        expected_shape = (3, 200, 300)  # channels=3, height=200, width=300
+        width = 300
+        height = 200
+        x = 50
+        y = 35
+        crop_spec = f"crop, {height}, {width}, {x}, {y}"
+        crop_filtergraph = f"crop={width}:{height}:{x}:{y}:exact=1"
+        expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
 
         decoder_crop = create_from_file(str(NASA_VIDEO.path))
         add_video_stream(decoder_crop, transform_specs=crop_spec)
@@ -228,7 +231,7 @@ class TestVideoDecoderTransformOps:
 
             frame_full, *_ = get_frame_at_index(decoder_full, frame_index=frame_index)
             frame_tv = v2.functional.crop(
-                frame_full, top=35, left=50, height=200, width=300
+                frame_full, top=y, left=x, height=height, width=width
             )
 
             assert frame.shape == expected_shape
@@ -239,28 +242,38 @@ class TestVideoDecoderTransformOps:
             assert_frames_equal(frame, frame_ref)
 
     def test_crop_transform_fails(self):
-        decoder = create_from_file(str(NASA_VIDEO.path))
 
         with pytest.raises(
             RuntimeError,
             match="must have 5 elements",
         ):
+            decoder = create_from_file(str(NASA_VIDEO.path))
             add_video_stream(decoder, transform_specs="crop, 100, 100")
 
         with pytest.raises(
             RuntimeError,
             match="must be a positive integer",
         ):
+            decoder = create_from_file(str(NASA_VIDEO.path))
             add_video_stream(decoder, transform_specs="crop, -10, 100, 100, 100")
 
         with pytest.raises(
             RuntimeError,
             match="cannot be converted to an int",
         ):
+            decoder = create_from_file(str(NASA_VIDEO.path))
             add_video_stream(decoder, transform_specs="crop, 100, 100, blah, 100")
 
         with pytest.raises(
             RuntimeError,
             match="x position out of bounds",
         ):
+            decoder = create_from_file(str(NASA_VIDEO.path))
             add_video_stream(decoder, transform_specs="crop, 100, 100, 9999, 100")
+
+        with pytest.raises(
+            RuntimeError,
+            match="y position out of bounds",
+        ):
+            decoder = create_from_file(str(NASA_VIDEO.path))
+            add_video_stream(decoder, transform_specs="crop, 999, 100, 100, 100")
