@@ -8,7 +8,6 @@
 
 #include <optional>
 #include <string>
-#include "Metadata.h"
 #include "src/torchcodec/_core/Frame.h"
 #include "src/torchcodec/_core/Metadata.h"
 
