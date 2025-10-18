@@ -6,23 +6,20 @@
 
 import subprocess
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 
 import torch
 from PIL import Image
 
-from .utils import sanitize_filtergraph_expression
+from .utils import AV1_VIDEO, H265_VIDEO, NASA_VIDEO, TestVideo
 
 # Run this script to update the resources used in unit tests. The resources are all derived
 # from source media already checked into the repo.
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-TORCHCODEC_PATH = SCRIPT_DIR.parent
-RESOURCES_DIR = TORCHCODEC_PATH / "test" / "resources"
 
-
-def convert_image_to_tensor(image_path):
+def convert_image_to_tensor(image_path: str) -> None:
     image_path = Path(image_path)
     if not image_path.exists():
         return
@@ -37,7 +34,23 @@ def convert_image_to_tensor(image_path):
     image_path.unlink()
 
 
-def get_frame_by_index(video_path, frame, output_path, stream, filters=None):
+def generate_frame_by_index(
+    video: TestVideo,
+    *,
+    frame_index: int,
+    stream_index: int,
+    filters: Optional[str] = None,
+) -> None:
+    # Note that we are using 0-based index naming. As a result, we are
+    # generating files one-by-one, giving the actual file name that we want.
+    # ffmpeg does have an option to generate multiple files for us, but it uses
+    # 1-based indexing. We can't use 1-based indexing because we want to match
+    # the 0-based indexing in our tests.
+    base_path = video.get_base_path_by_index(
+        frame_index, stream_index=stream_index, filters=filters
+    )
+    output_bmp = f"{base_path}.bmp"
+
     # Note that we have an exlicit format conversion to rgb24 in our filtergraph specification,
     # which always happens BEFORE any of the filters that we receive as input. We do this to
     # ensure that the color conversion happens BEFORE the filters, matching the behavior of the
@@ -45,7 +58,7 @@ def get_frame_by_index(video_path, frame, output_path, stream, filters=None):
     #
     # Not doing this would result in the color conversion happening AFTER the filters, which
     # would result in different color values for the same frame.
-    filtergraph = f"select='eq(n\\,{frame})',format=rgb24"
+    filtergraph = f"select='eq(n\\,{frame_index})',format=rgb24"
     if filters is not None:
         filtergraph = filtergraph + f",{filters}"
 
@@ -53,21 +66,24 @@ def get_frame_by_index(video_path, frame, output_path, stream, filters=None):
         "ffmpeg",
         "-y",
         "-i",
-        video_path,
+        video.path,
         "-map",
-        f"0:{stream}",
+        f"0:{stream_index}",
         "-vf",
         filtergraph,
         "-fps_mode",
         "passthrough",
         "-update",
         "1",
-        output_path,
+        output_bmp,
     ]
     subprocess.run(cmd, check=True)
+    convert_image_to_tensor(output_bmp)
 
 
-def get_frame_by_timestamp(video_path, timestamp, output_path):
+def generate_frame_by_timestamp(
+    video_path: str, timestamp: float, output_path: str
+) -> None:
     cmd = [
         "ffmpeg",
         "-y",
@@ -80,40 +96,32 @@ def get_frame_by_timestamp(video_path, timestamp, output_path):
         output_path,
     ]
     subprocess.run(cmd, check=True)
+    convert_image_to_tensor(output_path)
 
 
 def generate_nasa_13013_references():
-    VIDEO_PATH = RESOURCES_DIR / "nasa_13013.mp4"
-
     # Note: The naming scheme used here must match the naming scheme used to load
     # tensors in ./utils.py.
-    STREAMS = [0, 3]
-    FRAMES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 20, 25, 30, 35, 386, 387, 388, 389]
-    for stream in STREAMS:
-        for frame in FRAMES:
-            # Note that we are using 0-based index naming. Asking ffmpeg to number output
-            # frames would result in 1-based index naming. We enforce 0-based index naming
-            # so that the name of reference frames matches the index when accessing that
-            # frame in the Python decoder.
-            output_bmp = f"{VIDEO_PATH}.stream{stream}.frame{frame:06d}.bmp"
-            get_frame_by_index(VIDEO_PATH, frame, output_bmp, stream=stream)
-            convert_image_to_tensor(output_bmp)
+    streams = [0, 3]
+    frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 20, 25, 30, 35, 386, 387, 388, 389]
+    for stream in streams:
+        for frame in frames:
+            generate_frame_by_index(NASA_VIDEO, frame_index=frame, stream_index=stream)
 
     # Extract individual frames at specific timestamps, including the last frame of the video.
     seek_timestamp = [6.0, 6.1, 10.0, 12.979633]
     timestamp_name = [f"{seek_timestamp:06f}" for seek_timestamp in seek_timestamp]
     for timestamp, name in zip(seek_timestamp, timestamp_name):
-        output_bmp = f"{VIDEO_PATH}.time{name}.bmp"
-        get_frame_by_timestamp(VIDEO_PATH, timestamp, output_bmp)
-        convert_image_to_tensor(output_bmp)
+        output_bmp = f"{NASA_VIDEO.path}.time{name}.bmp"
+        generate_frame_by_timestamp(NASA_VIDEO.path, timestamp, output_bmp)
 
     # Extract frames with specific filters. We have tests that assume these exact filters.
-    FRAMES = [0, 15, 200, 389]
+    frames = [0, 15, 200, 389]
     crop_filter = "crop=300:200:50:35:exact=1"
-    for frame in FRAMES:
-        output_bmp = f"{VIDEO_PATH}.{sanitize_filtergraph_expression(crop_filter)}.stream3.frame{frame:06d}.bmp"
-        get_frame_by_index(VIDEO_PATH, frame, output_bmp, stream=3, filters=crop_filter)
-        convert_image_to_tensor(output_bmp)
+    for frame in frames:
+        generate_frame_by_index(
+            NASA_VIDEO, frame_index=frame, stream_index=3, filters=crop_filter
+        )
 
 
 def generate_h265_video_references():
@@ -122,25 +130,18 @@ def generate_h265_video_references():
     # ./configure --enable-nonfree --enable-gpl --prefix=$(readlink -f ../bin) --enable-libx265  --enable-rpath --extra-ldflags=-Wl,-rpath=$CONDA_PREFIX/lib --enable-filter=drawtext --enable-libfontconfig --enable-libfreetype --enable-libharfbuzz
     # ffmpeg -f lavfi -i color=size=128x128:duration=1:rate=10:color=blue -vf "drawtext=fontsize=30:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2:text='Frame %{frame_num}'" -vcodec libx265 -pix_fmt yuv420p -g 2 -crf 10 h265_video.mp4 -y
     # Note that this video only has 1 stream, at index 0.
-    VIDEO_PATH = RESOURCES_DIR / "h265_video.mp4"
-    FRAMES = [5]
-    for frame in FRAMES:
-        output_bmp = f"{VIDEO_PATH}.stream0.frame{frame:06d}.bmp"
-        get_frame_by_index(VIDEO_PATH, frame, output_bmp, stream=0)
-        convert_image_to_tensor(output_bmp)
+    frames = [5]
+    for frame in frames:
+        generate_frame_by_index(H265_VIDEO, frame_index=frame, stream_index=0)
 
 
 def generate_av1_video_references():
     # This video was generated by running the following:
     # ffmpeg -f lavfi -i testsrc=duration=5:size=640x360:rate=25,format=yuv420p -c:v libaom-av1 -crf 30 -colorspace bt709 -color_primaries bt709 -color_trc bt709 av1_video.mkv
     # Note that this video only has 1 stream, at index 0.
-    VIDEO_PATH = RESOURCES_DIR / "av1_video.mkv"
-    FRAMES = [10]
-
-    for frame in FRAMES:
-        output_bmp = f"{VIDEO_PATH}.stream0.frame{frame:06d}.bmp"
-        get_frame_by_index(VIDEO_PATH, frame, output_bmp, stream=0)
-        convert_image_to_tensor(output_bmp)
+    frames = [10]
+    for frame in frames:
+        generate_frame_by_index(AV1_VIDEO, frame_index=frame, stream_index=0)
 
 
 def main():
