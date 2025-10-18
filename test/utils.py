@@ -371,6 +371,17 @@ class TestContainerFile:
 class TestVideo(TestContainerFile):
     """Base class for the *video* streams of a video container"""
 
+    def get_base_path_by_index(
+        self, idx: int, *, stream_index: int, filters: Optional[str] = None
+    ) -> pathlib.Path:
+        stream_and_frame = f"stream{stream_index}.frame{idx:06d}"
+        if filters is not None:
+            full_name = f"{self.filename}.{sanitize_filtergraph_expression(filters)}.{stream_and_frame}"
+        else:
+            full_name = f"{self.filename}.{stream_and_frame}"
+
+        return _get_file_path(full_name)
+
     def get_frame_data_by_index(
         self,
         idx: int,
@@ -381,14 +392,8 @@ class TestVideo(TestContainerFile):
         if stream_index is None:
             stream_index = self.default_stream_index
 
-        stream_and_frame = f"stream{stream_index}.frame{idx:06d}"
-        if filters is not None:
-            full_name = f"{self.filename}.{sanitize_filtergraph_expression(filters)}.{stream_and_frame}.pt"
-        else:
-            full_name = f"{self.filename}.{stream_and_frame}.pt"
-
-        file_path = _get_file_path(full_name)
-        return torch.load(file_path, weights_only=True).permute(2, 0, 1)
+        tensor_file_path = f"{self.get_base_path_by_index(idx, stream_index=stream_index, filters=filters)}.pt"
+        return torch.load(tensor_file_path, weights_only=True).permute(2, 0, 1)
 
     def get_frame_data_by_range(
         self,
@@ -483,6 +488,114 @@ H264_10BITS = TestVideo(
     },
     frames={0: {}},  # Not needed yet
 )
+
+
+H265_VIDEO = TestVideo(
+    filename="h265_video.mp4",
+    default_stream_index=0,
+    # This metadata is extracted manually.
+    #  $ ffprobe -v error -hide_banner -select_streams v:0 -show_frames -of json test/resources/h265_video.mp4 > out.json
+    stream_infos={
+        0: TestVideoStreamInfo(width=128, height=128, num_color_channels=3),
+    },
+    frames={
+        0: {
+            6: TestFrameInfo(pts_seconds=0.6, duration_seconds=0.1),
+        },
+    },
+)
+
+AV1_VIDEO = TestVideo(
+    filename="av1_video.mkv",
+    default_stream_index=0,
+    # This metadata is extracted manually.
+    #  $ ffprobe -v error -hide_banner -select_streams v:0 -show_frames -of json test/resources/av1_video.mkv > out.json
+    stream_infos={
+        0: TestVideoStreamInfo(width=640, height=360, num_color_channels=3),
+    },
+    frames={
+        0: {
+            10: TestFrameInfo(pts_seconds=0.400000, duration_seconds=0.040000),
+        },
+    },
+)
+
+
+# This is a BT.709 full range video, generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=1:size=1920x720:rate=30 \
+# -c:v libx264 -pix_fmt yuv420p -color_primaries bt709 -color_trc bt709 \
+# -colorspace bt709 -color_range pc bt709_full_range.mp4
+#
+# We can confirm the color space and color range with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/bt709_full_range.mp4
+# color_range=pc
+# color_space=bt709
+# color_transfer=bt709
+# color_primaries=bt709
+BT709_FULL_RANGE = TestVideo(
+    filename="bt709_full_range.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=1280x720:rate=30 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -b:v 2500k -r 30 -movflags +faststart output_720p_2s.mp4
+TEST_SRC_2_720P = TestVideo(
+    filename="testsrc2.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+# ffmpeg -f lavfi -i testsrc2=duration=10:size=1280x720:rate=30 -c:v libx265 -crf 23 -preset medium output.mp4
+TEST_SRC_2_720P_H265 = TestVideo(
+    filename="testsrc2_h265.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v libvpx-vp9 -b:v 1M output_vp9.webm
+TEST_SRC_2_720P_VP9 = TestVideo(
+    filename="testsrc2_vp9.webm",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v libvpx -b:v 1M output_vp8.webm
+TEST_SRC_2_720P_VP8 = TestVideo(
+    filename="testsrc2_vp8.webm",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v mpeg4 -q:v 5 output_mpeg4.avi
+TEST_SRC_2_720P_MPEG4 = TestVideo(
+    filename="testsrc2_mpeg4.avi",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+
+def supports_approximate_mode(asset: TestVideo) -> bool:
+    # Those are missing the `duration` field so they fail in approximate mode (on all devices).
+    # TODO: we should address this, see
+    # https://github.com/meta-pytorch/torchcodec/issues/945
+    return asset not in (AV1_VIDEO, TEST_SRC_2_720P_VP9, TEST_SRC_2_720P_VP8)
 
 
 @dataclass
@@ -698,110 +811,3 @@ SINE_MONO_S16 = TestAudio(
         )
     },
 )
-
-H265_VIDEO = TestVideo(
-    filename="h265_video.mp4",
-    default_stream_index=0,
-    # This metadata is extracted manually.
-    #  $ ffprobe -v error -hide_banner -select_streams v:0 -show_frames -of json test/resources/h265_video.mp4 > out.json
-    stream_infos={
-        0: TestVideoStreamInfo(width=128, height=128, num_color_channels=3),
-    },
-    frames={
-        0: {
-            6: TestFrameInfo(pts_seconds=0.6, duration_seconds=0.1),
-        },
-    },
-)
-
-AV1_VIDEO = TestVideo(
-    filename="av1_video.mkv",
-    default_stream_index=0,
-    # This metadata is extracted manually.
-    #  $ ffprobe -v error -hide_banner -select_streams v:0 -show_frames -of json test/resources/av1_video.mkv > out.json
-    stream_infos={
-        0: TestVideoStreamInfo(width=640, height=360, num_color_channels=3),
-    },
-    frames={
-        0: {
-            10: TestFrameInfo(pts_seconds=0.400000, duration_seconds=0.040000),
-        },
-    },
-)
-
-
-# This is a BT.709 full range video, generated with:
-# ffmpeg -f lavfi -i testsrc2=duration=1:size=1920x720:rate=30 \
-# -c:v libx264 -pix_fmt yuv420p -color_primaries bt709 -color_trc bt709 \
-# -colorspace bt709 -color_range pc bt709_full_range.mp4
-#
-# We can confirm the color space and color range with:
-# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/bt709_full_range.mp4
-# color_range=pc
-# color_space=bt709
-# color_transfer=bt709
-# color_primaries=bt709
-BT709_FULL_RANGE = TestVideo(
-    filename="bt709_full_range.mp4",
-    default_stream_index=0,
-    stream_infos={
-        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
-    },
-    frames={0: {}},  # Not needed for now
-)
-
-# ffmpeg -f lavfi -i testsrc2=duration=2:size=1280x720:rate=30 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -b:v 2500k -r 30 -movflags +faststart output_720p_2s.mp4
-TEST_SRC_2_720P = TestVideo(
-    filename="testsrc2.mp4",
-    default_stream_index=0,
-    stream_infos={
-        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
-    },
-    frames={0: {}},  # Not needed for now
-)
-# ffmpeg -f lavfi -i testsrc2=duration=10:size=1280x720:rate=30 -c:v libx265 -crf 23 -preset medium output.mp4
-TEST_SRC_2_720P_H265 = TestVideo(
-    filename="testsrc2_h265.mp4",
-    default_stream_index=0,
-    stream_infos={
-        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
-    },
-    frames={0: {}},  # Not needed for now
-)
-
-# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v libvpx-vp9 -b:v 1M output_vp9.webm
-TEST_SRC_2_720P_VP9 = TestVideo(
-    filename="testsrc2_vp9.webm",
-    default_stream_index=0,
-    stream_infos={
-        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
-    },
-    frames={0: {}},  # Not needed for now
-)
-
-# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v libvpx -b:v 1M output_vp8.webm
-TEST_SRC_2_720P_VP8 = TestVideo(
-    filename="testsrc2_vp8.webm",
-    default_stream_index=0,
-    stream_infos={
-        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
-    },
-    frames={0: {}},  # Not needed for now
-)
-
-# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v mpeg4 -q:v 5 output_mpeg4.avi
-TEST_SRC_2_720P_MPEG4 = TestVideo(
-    filename="testsrc2_mpeg4.avi",
-    default_stream_index=0,
-    stream_infos={
-        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
-    },
-    frames={0: {}},  # Not needed for now
-)
-
-
-def supports_approximate_mode(asset: TestVideo) -> bool:
-    # Those are missing the `duration` field so they fail in approximate mode (on all devices).
-    # TODO: we should address this, see
-    # https://github.com/meta-pytorch/torchcodec/issues/945
-    return asset not in (AV1_VIDEO, TEST_SRC_2_720P_VP9, TEST_SRC_2_720P_VP8)
