@@ -16,11 +16,17 @@ from torchcodec.encoders import AudioEncoder
 from .utils import (
     assert_tensor_close_on_at_least,
     get_ffmpeg_major_version,
+    get_ffmpeg_minor_version,
     in_fbcode,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
     SINE_MONO_S32,
     TestContainerFile,
+)
+
+IS_WINDOWS_WITH_FFMPEG_LE_70 = IS_WINDOWS and (
+    get_ffmpeg_major_version() < 7
+    or (get_ffmpeg_major_version() == 7 and get_ffmpeg_minor_version() == 0)
 )
 
 
@@ -155,7 +161,11 @@ class TestAudioEncoder:
         avcodec_open2_failed_msg = "avcodec_open2 failed: Invalid argument"
         with pytest.raises(
             RuntimeError,
-            match=avcodec_open2_failed_msg if IS_WINDOWS else "invalid sample rate=10",
+            match=(
+                avcodec_open2_failed_msg
+                if IS_WINDOWS_WITH_FFMPEG_LE_70
+                else "invalid sample rate=10"
+            ),
         ):
             getattr(decoder, method)(**valid_params)
 
@@ -164,14 +174,18 @@ class TestAudioEncoder:
         )
         with pytest.raises(
             RuntimeError,
-            match=avcodec_open2_failed_msg if IS_WINDOWS else "invalid sample rate=10",
+            match=(
+                avcodec_open2_failed_msg
+                if IS_WINDOWS_WITH_FFMPEG_LE_70
+                else "invalid sample rate=10"
+            ),
         ):
             getattr(decoder, method)(sample_rate=10, **valid_params)
         with pytest.raises(
             RuntimeError,
             match=(
                 avcodec_open2_failed_msg
-                if IS_WINDOWS
+                if IS_WINDOWS_WITH_FFMPEG_LE_70
                 else "invalid sample rate=99999999"
             ),
         ):
@@ -192,7 +206,7 @@ class TestAudioEncoder:
         for num_channels in (0, 3):
             match = (
                 avcodec_open2_failed_msg
-                if IS_WINDOWS
+                if IS_WINDOWS_WITH_FFMPEG_LE_70
                 else re.escape(
                     f"Desired number of channels ({num_channels}) is not supported"
                 )
@@ -316,7 +330,7 @@ class TestAudioEncoder:
         else:
             rtol, atol = None, None
 
-        if IS_WINDOWS and format == "mp3":
+        if IS_WINDOWS_WITH_FFMPEG_LE_70 and format == "mp3":
             # We're getting a "Could not open input file" on Windows mp3 files when decoding.
             # TODO: https://github.com/pytorch/torchcodec/issues/837
             return
@@ -370,7 +384,7 @@ class TestAudioEncoder:
         else:
             raise ValueError(f"Unknown method: {method}")
 
-        if not (IS_WINDOWS and format == "mp3"):
+        if not (IS_WINDOWS_WITH_FFMPEG_LE_70 and format == "mp3"):
             # We're getting a "Could not open input file" on Windows mp3 files when decoding.
             # TODO: https://github.com/pytorch/torchcodec/issues/837
             torch.testing.assert_close(

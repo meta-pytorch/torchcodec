@@ -33,11 +33,13 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "encode_audio_to_file(Tensor samples, int sample_rate, str filename, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
   m.def(
-      "encode_video_to_file(Tensor frames, int frame_rate, str filename, int? crf=None) -> ()");
-  m.def(
       "encode_audio_to_tensor(Tensor samples, int sample_rate, str format, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> Tensor");
   m.def(
       "_encode_audio_to_file_like(Tensor samples, int sample_rate, str format, int file_like_context, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
+  m.def(
+      "encode_video_to_file(Tensor frames, int frame_rate, str filename, int? crf=None) -> ()");
+  m.def(
+      "encode_video_to_tensor(Tensor frames, int frame_rate, str format, int? crf=None) -> Tensor");
   m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
   m.def(
@@ -520,21 +522,6 @@ OpsAudioFramesOutput get_frames_by_pts_in_range_audio(
   return makeOpsAudioFramesOutput(result);
 }
 
-void encode_video_to_file(
-    const at::Tensor& frames,
-    int64_t frame_rate,
-    std::string_view file_name,
-    std::optional<int64_t> crf = std::nullopt) {
-  VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.crf = crf;
-  VideoEncoder(
-      frames,
-      validateInt64ToInt(frame_rate, "frame_rate"),
-      file_name,
-      videoStreamOptions)
-      .encode();
-}
-
 void encode_audio_to_file(
     const at::Tensor& samples,
     int64_t sample_rate,
@@ -607,6 +594,38 @@ void _encode_audio_to_file_like(
       std::move(avioContextHolder),
       audioStreamOptions);
   encoder.encode();
+}
+
+void encode_video_to_file(
+    const at::Tensor& frames,
+    int64_t frame_rate,
+    std::string_view file_name,
+    std::optional<int64_t> crf = std::nullopt) {
+  VideoStreamOptions videoStreamOptions;
+  videoStreamOptions.crf = crf;
+  VideoEncoder(
+      frames,
+      validateInt64ToInt(frame_rate, "frame_rate"),
+      file_name,
+      videoStreamOptions)
+      .encode();
+}
+
+at::Tensor encode_video_to_tensor(
+    const at::Tensor& frames,
+    int64_t frame_rate,
+    std::string_view format,
+    std::optional<int64_t> crf = std::nullopt) {
+  auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
+  VideoStreamOptions videoStreamOptions;
+  videoStreamOptions.crf = crf;
+  return VideoEncoder(
+             frames,
+             validateInt64ToInt(frame_rate, "frame_rate"),
+             format,
+             std::move(avioContextHolder),
+             videoStreamOptions)
+      .encodeToTensor();
 }
 
 // For testing only. We need to implement this operation as a core library
@@ -869,9 +888,10 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
 
 TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("encode_audio_to_file", &encode_audio_to_file);
-  m.impl("encode_video_to_file", &encode_video_to_file);
   m.impl("encode_audio_to_tensor", &encode_audio_to_tensor);
   m.impl("_encode_audio_to_file_like", &_encode_audio_to_file_like);
+  m.impl("encode_video_to_file", &encode_video_to_file);
+  m.impl("encode_video_to_tensor", &encode_video_to_tensor);
   m.impl("seek_to_pts", &seek_to_pts);
   m.impl("add_video_stream", &add_video_stream);
   m.impl("_add_video_stream", &_add_video_stream);
