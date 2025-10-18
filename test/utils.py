@@ -392,7 +392,10 @@ class TestVideo(TestContainerFile):
         if stream_index is None:
             stream_index = self.default_stream_index
 
-        tensor_file_path = f"{self.get_base_path_by_index(idx, stream_index=stream_index, filters=filters)}.pt"
+        base_path = self.get_base_path_by_index(
+            idx, stream_index=stream_index, filters=filters
+        )
+        tensor_file_path = f"{base_path}.pt"
         return torch.load(tensor_file_path, weights_only=True).permute(2, 0, 1)
 
     def get_frame_data_by_range(
