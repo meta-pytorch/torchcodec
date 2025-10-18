@@ -98,23 +98,23 @@ def main():
         f"Benchmarking {path.name}, duration: {duration}, codec: {metadata.codec}, averaging over {args.num_exp} runs:"
     )
 
-    height = metadata.height
-    width = metadata.width
-    dimensions = [
-        (int(height * 0.5), int(width * 0.5)),
-        (int(height * 0.25), int(width * 0.25)),
-        (int(height * 0.125), int(width * 0.125)),
-    ]
-    fraction_of_total_frames_to_sample = [0.01, 0.05, 0.1]
+    input_height = metadata.height
+    input_width = metadata.width
+    fraction_of_total_frames_to_sample = [0.005, 0.01, 0.05, 0.1]
+    fraction_of_input_dimensions = [0.5, 0.25, 0.125]
 
-    for fraction in fraction_of_total_frames_to_sample:
-        print(f"Sampling {fraction * 100}% of {metadata.num_frames} frames")
-        num_frames_to_sample = math.ceil(metadata.num_frames * fraction)
+    for num_fraction in fraction_of_total_frames_to_sample:
+        num_frames_to_sample = math.ceil(metadata.num_frames * num_fraction)
+        print(
+            f"Sampling {num_fraction * 100}%, {num_frames_to_sample}, of {metadata.num_frames} frames"
+        )
         uniform_timestamps = [
             i * duration / num_frames_to_sample for i in range(num_frames_to_sample)
         ]
 
-        for dims in dimensions:
+        for dims_fraction in fraction_of_input_dimensions:
+            dims = (int(input_height * dims_fraction), int(input_width * dims_fraction))
+
             times = bench(
                 torchvision_resize, path, uniform_timestamps, dims, num_exp=args.num_exp
             )
@@ -130,8 +130,8 @@ def main():
             report_stats(times, prefix=f"decoder_native_resize({dims})")
             print()
 
-            center_x = (height - dims[0]) // 2
-            center_y = (width - dims[1]) // 2
+            center_x = (input_height - dims[0]) // 2
+            center_y = (input_width - dims[1]) // 2
             times = bench(
                 torchvision_crop,
                 path,
