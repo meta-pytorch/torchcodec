@@ -76,14 +76,25 @@ def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
     return dec, clean_device
 
 
-def get_ffmpeg_major_version():
+def _get_ffmpeg_version_string():
     ffmpeg_version = get_ffmpeg_library_versions()["ffmpeg_version"]
     # When building FFmpeg from source there can be a `n` prefix in the version
     # string.  This is quite brittle as we're using av_version_info(), which has
     # no stable format. See https://github.com/pytorch/torchcodec/issues/100
     if ffmpeg_version.startswith("n"):
         ffmpeg_version = ffmpeg_version.removeprefix("n")
+
+    return ffmpeg_version
+
+
+def get_ffmpeg_major_version():
+    ffmpeg_version = _get_ffmpeg_version_string()
     return int(ffmpeg_version.split(".")[0])
+
+
+def get_ffmpeg_minor_version():
+    ffmpeg_version = _get_ffmpeg_version_string()
+    return int(ffmpeg_version.split(".")[1])
 
 
 def cuda_version_used_for_building_torch() -> Optional[tuple[int, int]]:
@@ -154,6 +165,12 @@ def assert_tensor_close_on_at_least(
             f"Expected at least {percentage}% of values to be within atol={atol}, "
             f"but only {valid_percentage}% were."
         )
+
+
+# We embed filtergraph expressions in filenames, but they contain characters that
+# some filesystems don't like. We turn all special characters into underscores.
+def sanitize_filtergraph_expression(expression: str) -> str:
+    return "".join(c if c.isalnum() else "_" for c in expression)
 
 
 def in_fbcode() -> bool:
@@ -355,14 +372,22 @@ class TestVideo(TestContainerFile):
     """Base class for the *video* streams of a video container"""
 
     def get_frame_data_by_index(
-        self, idx: int, *, stream_index: Optional[int] = None
+        self,
+        idx: int,
+        *,
+        stream_index: Optional[int] = None,
+        filters: Optional[str] = None,
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
 
-        file_path = _get_file_path(
-            f"{self.filename}.stream{stream_index}.frame{idx:06d}.pt"
-        )
+        stream_and_frame = f"stream{stream_index}.frame{idx:06d}"
+        if filters is not None:
+            full_name = f"{self.filename}.{sanitize_filtergraph_expression(filters)}.{stream_and_frame}.pt"
+        else:
+            full_name = f"{self.filename}.{stream_and_frame}.pt"
+
+        file_path = _get_file_path(full_name)
         return torch.load(file_path, weights_only=True).permute(2, 0, 1)
 
     def get_frame_data_by_range(

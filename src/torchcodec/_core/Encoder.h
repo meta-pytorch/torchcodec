@@ -141,7 +141,16 @@ class VideoEncoder {
       std::string_view fileName,
       const VideoStreamOptions& videoStreamOptions);
 
+  VideoEncoder(
+      const torch::Tensor& frames,
+      int frameRate,
+      std::string_view formatName,
+      std::unique_ptr<AVIOContextHolder> avioContextHolder,
+      const VideoStreamOptions& videoStreamOptions);
+
   void encode();
+
+  torch::Tensor encodeToTensor();
 
  private:
   void initializeEncoder(const VideoStreamOptions& videoStreamOptions);
@@ -166,6 +175,8 @@ class VideoEncoder {
   int outWidth_ = -1;
   int outHeight_ = -1;
   AVPixelFormat outPixelFormat_ = AV_PIX_FMT_NONE;
+
+  std::unique_ptr<AVIOContextHolder> avioContextHolder_;
 
   bool encodeWasCalled_ = false;
 };
