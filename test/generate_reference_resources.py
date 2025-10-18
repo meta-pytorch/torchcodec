@@ -106,9 +106,7 @@ def generate_nasa_13013_references():
     frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 20, 25, 30, 35, 386, 387, 388, 389]
     for stream in streams:
         for frame in frames:
-            generate_frame_by_index(
-                NASA_VIDEO, frame_index=frame, stream_index=stream
-            )
+            generate_frame_by_index(NASA_VIDEO, frame_index=frame, stream_index=stream)
 
     # Extract individual frames at specific timestamps, including the last frame of the video.
     seek_timestamp = [6.0, 6.1, 10.0, 12.979633]
