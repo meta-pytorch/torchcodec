@@ -106,7 +106,7 @@ def generate_nasa_13013_references():
     frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 20, 25, 30, 35, 386, 387, 388, 389]
     for stream in streams:
         for frame in frames:
-            output_bmp = generate_frame_by_index(
+            generate_frame_by_index(
                 NASA_VIDEO, frame_index=frame, stream_index=stream
             )
 
