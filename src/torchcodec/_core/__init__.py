@@ -26,6 +26,7 @@ from .ops import (
     encode_audio_to_file_like,
     encode_audio_to_tensor,
     encode_video_to_file,
+    encode_video_to_file_like,
     encode_video_to_tensor,
     get_ffmpeg_library_versions,
     get_frame_at_index,

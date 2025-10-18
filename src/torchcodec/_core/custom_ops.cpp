@@ -41,6 +41,8 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "encode_video_to_tensor(Tensor frames, int frame_rate, str format, int? crf=None) -> Tensor");
   m.def(
+      "_encode_video_to_file_like(Tensor frames, int frame_rate, str format, int file_like_context, int? crf=None) -> ()");
+  m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
@@ -628,6 +630,30 @@ at::Tensor encode_video_to_tensor(
       .encodeToTensor();
 }
 
+void _encode_video_to_file_like(
+    const at::Tensor& frames,
+    int64_t frame_rate,
+    std::string_view format,
+    int64_t file_like_context,
+    std::optional<int64_t> crf = std::nullopt) {
+  auto fileLikeContext =
+      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+  TORCH_CHECK(
+      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
+  std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
+
+  VideoStreamOptions videoStreamOptions;
+  videoStreamOptions.crf = crf;
+
+  VideoEncoder encoder(
+      frames,
+      validateInt64ToInt(frame_rate, "frame_rate"),
+      format,
+      std::move(avioContextHolder),
+      videoStreamOptions);
+  encoder.encode();
+}
+
 // For testing only. We need to implement this operation as a core library
 // function because what we're testing is round-tripping pts values as
 // double-precision floating point numbers from C++ to Python and back to C++.
@@ -892,6 +918,7 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("_encode_audio_to_file_like", &_encode_audio_to_file_like);
   m.impl("encode_video_to_file", &encode_video_to_file);
   m.impl("encode_video_to_tensor", &encode_video_to_tensor);
+  m.impl("_encode_video_to_file_like", &_encode_video_to_file_like);
   m.impl("seek_to_pts", &seek_to_pts);
   m.impl("add_video_stream", &add_video_stream);
   m.impl("_add_video_stream", &_add_video_stream);
