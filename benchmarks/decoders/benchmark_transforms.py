@@ -47,7 +47,7 @@ def report_stats(times: Tensor, unit: str = "ms", prefix: str = "") -> float:
 def torchvision_resize(
     path: Path, pts_seconds: list[float], dims: tuple[int, int]
 ) -> None:
-    decoder = create_from_file(str(path))
+    decoder = create_from_file(str(path), seek_mode="approximate")
     add_video_stream(decoder)
     raw_frames, *_ = get_frames_by_pts(decoder, timestamps=pts_seconds)
     return v2.functional.resize(raw_frames, size=dims)
@@ -56,7 +56,7 @@ def torchvision_resize(
 def torchvision_crop(
     path: Path, pts_seconds: list[float], dims: tuple[int, int], x: int, y: int
 ) -> None:
-    decoder = create_from_file(str(path))
+    decoder = create_from_file(str(path), seek_mode="approximate")
     add_video_stream(decoder)
     raw_frames, *_ = get_frames_by_pts(decoder, timestamps=pts_seconds)
     return v2.functional.crop(raw_frames, top=y, left=x, height=dims[0], width=dims[1])
@@ -65,7 +65,7 @@ def torchvision_crop(
 def decoder_native_resize(
     path: Path, pts_seconds: list[float], dims: tuple[int, int]
 ) -> None:
-    decoder = create_from_file(str(path))
+    decoder = create_from_file(str(path), seek_mode="approximate")
     add_video_stream(decoder, transform_specs=f"resize, {dims[0]}, {dims[1]}")
     return get_frames_by_pts(decoder, timestamps=pts_seconds)[0]
 
@@ -73,7 +73,7 @@ def decoder_native_resize(
 def decoder_native_crop(
     path: Path, pts_seconds: list[float], dims: tuple[int, int], x: int, y: int
 ) -> None:
-    decoder = create_from_file(str(path))
+    decoder = create_from_file(str(path), seek_mode="approximate")
     add_video_stream(decoder, transform_specs=f"crop, {dims[0]}, {dims[1]}, {x}, {y}")
     return get_frames_by_pts(decoder, timestamps=pts_seconds)[0]
 
