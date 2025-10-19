@@ -14,6 +14,7 @@
 #include "src/torchcodec/_core/DeviceInterface.h"
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/NVDECCache.h"
+#include "src/torchcodec/_core/NVCUVIDLoader.h"
 
 // #include <cuda_runtime.h> // For cudaStreamSynchronize
 #include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
@@ -53,12 +54,13 @@ pfnDisplayPictureCallback(void* pUserData, CUVIDPARSERDISPINFO* dispInfo) {
 }
 
 static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
+  const auto& nvcuvid = NVCUVIDLoader::instance().api();
   // Check decoder capabilities - same checks as DALI
   auto caps = CUVIDDECODECAPS{};
   caps.eCodecType = videoFormat->codec;
   caps.eChromaFormat = videoFormat->chroma_format;
   caps.nBitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
-  CUresult result = cuvidGetDecoderCaps(&caps);
+  CUresult result = nvcuvid.cuvidGetDecoderCaps(&caps);
   TORCH_CHECK(result == CUDA_SUCCESS, "Failed to get decoder caps: ", result);
 
   TORCH_CHECK(
@@ -157,7 +159,7 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
   decoderParams.display_area.bottom = videoFormat->display_area.bottom;
 
   CUvideodecoder* decoder = new CUvideodecoder();
-  result = cuvidCreateDecoder(decoder, &decoderParams);
+  result = nvcuvid.cuvidCreateDecoder(decoder, &decoderParams);
   TORCH_CHECK(
       result == CUDA_SUCCESS, "Failed to create NVDEC decoder: ", result);
   return UniqueCUvideodecoder(decoder, CUvideoDecoderDeleter{});
@@ -221,7 +223,8 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
   }
 
   if (videoParser_) {
-    cuvidDestroyVideoParser(videoParser_);
+    const auto& nvcuvid = NVCUVIDLoader::instance().api();
+    nvcuvid.cuvidDestroyVideoParser(videoParser_);
     videoParser_ = nullptr;
   }
 
@@ -253,7 +256,11 @@ void BetaCudaDeviceInterface::initialize(
   parserParams.pfnDecodePicture = pfnDecodePictureCallback;
   parserParams.pfnDisplayPicture = pfnDisplayPictureCallback;
 
-  CUresult result = cuvidCreateVideoParser(&videoParser_, &parserParams);
+  TORCH_CHECK(
+    NVCUVIDLoader::instance().ensureLoaded(),
+    "NVDEC runtime library (libnvcuvid) could not be loaded. Make sure the NVIDIA Video Codec SDK runtime is installed and libnvcuvid.so is present on your system.");
+  const auto& nvcuvid = NVCUVIDLoader::instance().api();
+  CUresult result = nvcuvid.cuvidCreateVideoParser(&videoParser_, &parserParams);
   TORCH_CHECK(
       result == CUDA_SUCCESS, "Failed to create video parser: ", result);
 }
@@ -415,7 +422,8 @@ int BetaCudaDeviceInterface::sendEOFPacket() {
 
 int BetaCudaDeviceInterface::sendCuvidPacket(
     CUVIDSOURCEDATAPACKET& cuvidPacket) {
-  CUresult result = cuvidParseVideoData(videoParser_, &cuvidPacket);
+  const auto& nvcuvid = NVCUVIDLoader::instance().api();
+  CUresult result = nvcuvid.cuvidParseVideoData(videoParser_, &cuvidPacket);
   return result == CUDA_SUCCESS ? AVSUCCESS : AVERROR_EXTERNAL;
 }
 
@@ -453,7 +461,8 @@ int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* picParams) {
   TORCH_CHECK(picParams != nullptr, "Invalid picture parameters");
   TORCH_CHECK(decoder_, "Decoder not initialized before picture decode");
   // Send frame to be decoded by NVDEC - non-blocking call.
-  CUresult result = cuvidDecodePicture(*decoder_.get(), picParams);
+  const auto& nvcuvid = NVCUVIDLoader::instance().api();
+  CUresult result = nvcuvid.cuvidDecodePicture(*decoder_.get(), picParams);
 
   // Yes, you're reading that right, 0 means error, 1 means success
   return (result == CUDA_SUCCESS);
@@ -506,7 +515,8 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   // SingleStreamDecoder. Either way, the underlying output surface can be
   // safely re-used.
   unmapPreviousFrame();
-  CUresult result = cuvidMapVideoFrame(
+  const auto& nvcuvid2 = NVCUVIDLoader::instance().api();
+  CUresult result = nvcuvid2.cuvidMapVideoFrame(
       *decoder_.get(), dispInfo.picture_index, &framePtr, &pitch, &procParams);
   if (result != CUDA_SUCCESS) {
     return AVERROR_EXTERNAL;
@@ -523,7 +533,8 @@ void BetaCudaDeviceInterface::unmapPreviousFrame() {
     return;
   }
   CUresult result =
-      cuvidUnmapVideoFrame(*decoder_.get(), previouslyMappedFrame_);
+    NVCUVIDLoader::instance().api().cuvidUnmapVideoFrame(
+      *decoder_.get(), previouslyMappedFrame_);
   TORCH_CHECK(
       result == CUDA_SUCCESS, "Failed to unmap previous frame: ", result);
   previouslyMappedFrame_ = 0;

@@ -14,6 +14,7 @@
 #include <torch/types.h>
 #include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
 #include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
+#include "src/torchcodec/_core/NVCUVIDLoader.h"
 
 namespace facebook::torchcodec {
 
@@ -24,7 +25,8 @@ namespace facebook::torchcodec {
 struct CUvideoDecoderDeleter {
   void operator()(CUvideodecoder* decoderPtr) const {
     if (decoderPtr && *decoderPtr) {
-      cuvidDestroyDecoder(*decoderPtr);
+      // Destroy via dynamic loader to avoid hard dependency on libnvcuvid.
+      NVCUVIDLoader::instance().api().cuvidDestroyDecoder(*decoderPtr);
       delete decoderPtr;
     }
   }
