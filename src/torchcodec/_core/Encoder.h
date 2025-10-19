@@ -162,7 +162,7 @@ class VideoEncoder {
 
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;
-  AVStream* avStream_;
+  AVStream* avStream_ = nullptr;
   UniqueSwsContext swsContext_;
 
   const torch::Tensor frames_;
