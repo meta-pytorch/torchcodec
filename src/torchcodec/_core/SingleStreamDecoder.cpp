@@ -1583,7 +1583,16 @@ std::optional<int64_t> SingleStreamDecoder::getNumFrames(
     case SeekMode::exact:
       return streamMetadata.numFramesFromContent.value();
     case SeekMode::approximate: {
-      return streamMetadata.numFramesFromHeader;
+      if (streamMetadata.numFramesFromHeader.has_value()) {
+        return streamMetadata.numFramesFromHeader;
+      } else if (
+          streamMetadata.averageFpsFromHeader.has_value() &&
+          streamMetadata.durationSecondsFromHeader.has_value()) {
+        return static_cast<int64_t>(std::lround(
+            streamMetadata.averageFpsFromHeader.value() *
+            streamMetadata.durationSecondsFromHeader.value()));
+      }
+      return std::nullopt;
     }
     default:
       TORCH_CHECK(false, "Unknown SeekMode");
