@@ -284,8 +284,11 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
       frameOutput.data = cpuFrameOutput.data.to(device_);
     }
 
+    usingCPUFallback_ = true;
     return;
   }
+
+  usingCPUFallback_ = false;
 
   // Above we checked that the AVFrame was on GPU, but that's not enough, we
   // also need to check that the AVFrame is in AV_PIX_FMT_NV12 format (8 bits),
@@ -349,6 +352,14 @@ std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
   }
 
   return std::nullopt;
+}
+
+std::string CudaDeviceInterface::getDetails() {
+  // Note: for this interface specificaly the fallback is only known after a
+  // frame has been decoded, not before: that's when FFmpeg decides to fallback,
+  // so we can't know earlier.
+  return std::string("FFmpeg CUDA Device Interface. Using ") +
+      (usingCPUFallback_ ? "CPU fallback." : "NVDEC.");
 }
 
 } // namespace facebook::torchcodec

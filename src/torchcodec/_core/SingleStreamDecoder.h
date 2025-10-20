@@ -186,6 +186,8 @@ class SingleStreamDecoder {
   DecodeStats getDecodeStats() const;
   void resetDecodeStats();
 
+  std::string getInterfaceDetails() const;
+
  private:
   // --------------------------------------------------------------------------
   // STREAMINFO AND ASSOCIATED STRUCTS

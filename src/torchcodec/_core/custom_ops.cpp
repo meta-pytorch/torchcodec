@@ -72,6 +72,7 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "get_stream_json_metadata(Tensor(a!) decoder, int stream_index) -> str");
   m.def("_get_json_ffmpeg_library_versions() -> str");
+  m.def("_get_backend_details(Tensor(a!) decoder) -> str");
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
@@ -869,6 +870,11 @@ std::string _get_json_ffmpeg_library_versions() {
   return ss.str();
 }
 
+std::string get_backend_details(at::Tensor& decoder) {
+  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
+  return videoDecoder->getInterfaceDetails();
+}
+
 // Scans video packets to get more accurate metadata like frame count, exact
 // keyframe positions, etc. Exact keyframe positions are useful for efficient
 // accurate seeking. Note that this function reads the entire video but it does
@@ -912,6 +918,8 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "scan_all_streams_to_update_metadata",
       &scan_all_streams_to_update_metadata);
+
+  m.impl("_get_backend_details", &get_backend_details);
 }
 
 } // namespace facebook::torchcodec

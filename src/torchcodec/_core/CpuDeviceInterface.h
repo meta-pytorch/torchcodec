@@ -39,6 +39,8 @@ class CpuDeviceInterface : public DeviceInterface {
       std::optional<torch::Tensor> preAllocatedOutputTensor =
           std::nullopt) override;
 
+  std::string getDetails() override;
+
  private:
   int convertAVFrameToTensorUsingSwScale(
       const UniqueAVFrame& avFrame,
