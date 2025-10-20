@@ -658,7 +658,7 @@ class TestVideoEncoder:
                 dest = str(tmp_path / "output.mp4")
                 VideoEncoder(frames, frame_rate=30).to_file(dest=dest)
                 with open(dest, "rb") as f:
-                    return torch.frombuffer(f.read(), dtype=torch.uint8)
+                    return torch.frombuffer(f.read(), dtype=torch.uint8).clone()
             elif method == "to_tensor":
                 return VideoEncoder(frames, frame_rate=30).to_tensor(format="mp4")
             elif method == "to_file_like":
@@ -705,4 +705,3 @@ class TestVideoEncoder:
             assert len(encoded_bytes) > 0
         else:
             raise ValueError(f"Unknown method: {method}")
-class VideoEncoder

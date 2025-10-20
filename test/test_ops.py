@@ -1278,7 +1278,10 @@ class TestVideoEncoderOps:
             pytest.param("webm", marks=pytest.mark.slow),
         ),
     )
-    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format, device):
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
@@ -1322,6 +1325,7 @@ class TestVideoEncoderOps:
             frames=source_frames,
             frame_rate=frame_rate,
             filename=encoder_output_path,
+            device=device,
             crf=crf,
         )
 
