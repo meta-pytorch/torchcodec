@@ -355,7 +355,7 @@ std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
 }
 
 std::string CudaDeviceInterface::getDetails() {
-  // Note: for this interface specificaly the fallback is only known after a
+  // Note: for this interface specifically the fallback is only known after a
   // frame has been decoded, not before: that's when FFmpeg decides to fallback,
   // so we can't know earlier.
   return std::string("FFmpeg CUDA Device Interface. Using ") +
