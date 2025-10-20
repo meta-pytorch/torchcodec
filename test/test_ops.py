@@ -1217,7 +1217,6 @@ class TestVideoEncoderOps:
             assert psnr(s_frame, rt_frame) > 30
             assert_close(s_frame, rt_frame, atol=atol, rtol=0)
 
-    @pytest.mark.slow
     @pytest.mark.parametrize(
         "format",
         (
