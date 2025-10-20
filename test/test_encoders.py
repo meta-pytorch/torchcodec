@@ -676,3 +676,33 @@ class TestVideoEncoder:
         torch.testing.assert_close(
             encoded_from_contiguous, encoded_from_non_contiguous, rtol=0, atol=0
         )
+
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_device_video_encoder(self, method, device, tmp_path):
+        # Test that encoding works on CPU and CUDA devices
+        num_frames, channels, height, width = 5, 3, 64, 64
+        frames = (torch.rand(num_frames, channels, height, width) * 255).to(torch.uint8)
+
+        encoder = VideoEncoder(frames, frame_rate=30, device=device)
+
+        if method == "to_file":
+            dest = str(tmp_path / "output.mp4")
+            encoder.to_file(dest=dest)
+            # Verify file was created
+            assert Path(dest).exists()
+        elif method == "to_tensor":
+            encoded = encoder.to_tensor(format="mp4")
+            assert encoded.dtype == torch.uint8
+            assert encoded.ndim == 1
+            assert encoded.numel() > 0
+        elif method == "to_file_like":
+            file_like = io.BytesIO()
+            encoder.to_file_like(file_like, format="mp4")
+            encoded_bytes = file_like.getvalue()
+            assert len(encoded_bytes) > 0
+        else:
+            raise ValueError(f"Unknown method: {method}")
+class VideoEncoder
