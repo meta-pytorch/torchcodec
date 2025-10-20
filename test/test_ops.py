@@ -1496,8 +1496,7 @@ class TestVideoEncoderOps:
                 format=format,
                 **params,
             )
-            file_like.seek(0)
-            encoded_output = file_like
+            encoded_output = file_like.getvalue()
 
         torch.testing.assert_close(
             self.decode(encoded_file).data,
