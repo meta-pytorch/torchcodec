@@ -11,7 +11,7 @@ import pytest
 import torch
 from torchcodec.decoders import AudioDecoder
 
-from torchcodec.encoders import AudioEncoder
+from torchcodec.encoders import AudioEncoder, VideoEncoder
 
 from .utils import (
     assert_tensor_close_on_at_least,
@@ -564,3 +564,117 @@ class TestAudioEncoder:
             RuntimeError, match="File like object must implement a seek method"
         ):
             encoder.to_file_like(NoSeekMethod(), format="wav")
+
+
+class TestVideoEncoder:
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    def test_bad_input_parameterized(self, tmp_path, method):
+        if method == "to_file":
+            valid_params = dict(dest=str(tmp_path / "output.mp4"))
+        elif method == "to_tensor":
+            valid_params = dict(format="mp4")
+        elif method == "to_file_like":
+            valid_params = dict(file_like=io.BytesIO(), format="mp4")
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        with pytest.raises(
+            ValueError, match="Expected uint8 frames, got frames.dtype = torch.float32"
+        ):
+            encoder = VideoEncoder(
+                frames=torch.rand(5, 3, 64, 64),
+                frame_rate=30,
+            )
+            getattr(encoder, method)(**valid_params)
+
+        with pytest.raises(
+            ValueError, match=r"Expected 3D or 4D frames, got frames.shape = torch.Size"
+        ):
+            encoder = VideoEncoder(
+                frames=torch.zeros(10),
+                frame_rate=30,
+            )
+            getattr(encoder, method)(**valid_params)
+
+        with pytest.raises(
+            RuntimeError, match=r"frame must have 3 channels \(R, G, B\), got 2"
+        ):
+            encoder = VideoEncoder(
+                frames=torch.zeros((5, 2, 64, 64), dtype=torch.uint8),
+                frame_rate=30,
+            )
+            getattr(encoder, method)(**valid_params)
+
+    def test_bad_input(self, tmp_path):
+        encoder = VideoEncoder(
+            frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
+            frame_rate=30,
+        )
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"Couldn't allocate AVFormatContext. The destination file is ./file.bad_extension, check the desired extension\?",
+        ):
+            encoder.to_file("./file.bad_extension")
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"avio_open failed. The destination file is ./bad/path.mp3, make sure it's a valid path\?",
+        ):
+            encoder.to_file("./bad/path.mp3")
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"Couldn't allocate AVFormatContext. Check the desired format\? Got format=bad_format",
+        ):
+            encoder.to_tensor(format="bad_format")
+
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    def test_contiguity(self, method, tmp_path):
+        # Ensure that 2 sets of video frames with the same pixel values are encoded
+        # in the same way, regardless of their memory layout. Here we encode 2 equal
+        # frame tensors, one is contiguous while the other is non-contiguous.
+
+        num_frames, channels, height, width = 5, 3, 64, 64
+        contiguous_frames = (
+            (torch.rand(num_frames, channels, height, width) * 255)
+            .to(torch.uint8)
+            .contiguous()
+        )
+        assert contiguous_frames.is_contiguous()
+
+        # Create non-contiguous frames by permuting, calling contiguous to update memory layout,
+        # then permuting back to the initial order
+        non_contiguous_frames = (
+            contiguous_frames.permute(0, 3, 2, 1).contiguous().permute(0, 3, 2, 1)
+        )
+        assert non_contiguous_frames.stride() != contiguous_frames.stride()
+        assert not non_contiguous_frames.is_contiguous()
+
+        torch.testing.assert_close(
+            contiguous_frames, non_contiguous_frames, rtol=0, atol=0
+        )
+
+        def encode_to_tensor(frames):
+            if method == "to_file":
+                dest = str(tmp_path / "output.mp4")
+                VideoEncoder(frames, frame_rate=30).to_file(dest=dest)
+                with open(dest, "rb") as f:
+                    return torch.frombuffer(f.read(), dtype=torch.uint8)
+            elif method == "to_tensor":
+                return VideoEncoder(frames, frame_rate=30).to_tensor(format="mp4")
+            elif method == "to_file_like":
+                file_like = io.BytesIO()
+                VideoEncoder(frames, frame_rate=30).to_file_like(
+                    file_like, format="mp4"
+                )
+                return torch.frombuffer(file_like.getvalue(), dtype=torch.uint8)
+            else:
+                raise ValueError(f"Unknown method: {method}")
+
+        encoded_from_contiguous = encode_to_tensor(contiguous_frames)
+        encoded_from_non_contiguous = encode_to_tensor(non_contiguous_frames)
+
+        torch.testing.assert_close(
+            encoded_from_contiguous, encoded_from_non_contiguous, rtol=0, atol=0
+        )
