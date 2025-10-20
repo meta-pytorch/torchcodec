@@ -1702,7 +1702,7 @@ double SingleStreamDecoder::getPtsSecondsForFrame(int64_t frameIndex) {
       streamInfo.allFrames[frameIndex].pts, streamInfo.timeBase);
 }
 
-std::string SingleStreamDecoder::getInterfaceDetails() const {
+std::string SingleStreamDecoder::getDeviceInterfaceDetails() const {
   TORCH_CHECK(deviceInterface_ != nullptr, "Device interface doesn't exist.");
   return deviceInterface_->getDetails();
 }

@@ -186,7 +186,7 @@ class SingleStreamDecoder {
   DecodeStats getDecodeStats() const;
   void resetDecodeStats();
 
-  std::string getInterfaceDetails() const;
+  std::string getDeviceInterfaceDetails() const;
 
  private:
   // --------------------------------------------------------------------------

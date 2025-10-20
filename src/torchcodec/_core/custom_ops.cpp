@@ -872,7 +872,7 @@ std::string _get_json_ffmpeg_library_versions() {
 
 std::string get_backend_details(at::Tensor& decoder) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  return videoDecoder->getInterfaceDetails();
+  return videoDecoder->getDeviceInterfaceDetails();
 }
 
 // Scans video packets to get more accurate metadata like frame count, exact
