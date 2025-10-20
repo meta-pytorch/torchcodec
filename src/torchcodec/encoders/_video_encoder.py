@@ -1,10 +1,11 @@
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import torch
-from torch import Tensor
+from torch import device as torch_device, Tensor
 
 from torchcodec import _core
+from torchcodec.decoders._decoder_utils import _get_cuda_backend
 
 
 class VideoEncoder:
@@ -16,6 +17,9 @@ class VideoEncoder:
             C is 3 channels (RGB), H is height, and W is width.
             Values must be uint8 in the range ``[0, 255]``.
         frame_rate (int): The frame rate of the **input** ``frames``. Also defines the encoded **output** frame rate.
+        device (str or torch.device, optional): The device to use for encoding. Default: "cpu".
+            If you pass a CUDA device, frames will be encoded on GPU.
+            Note: The "beta" CUDA backend is not supported for encoding.
     """
 
     def __init__(self, frames: Tensor, *, frame_rate: int):
@@ -29,8 +33,21 @@ class VideoEncoder:
         if frame_rate <= 0:
             raise ValueError(f"{frame_rate = } must be > 0.")
 
+        # Validate and store device
+        if isinstance(device, torch_device):
+            device = str(device)
+
+        # Check if beta variant is being used and reject it
+        device_variant = _get_cuda_backend()
+        if "cuda" in device.lower() and device_variant == "beta":
+            raise ValueError(
+                "The beta CUDA backend is not supported for video encoding. "
+                "Please use device='cuda' without the beta backend context manager."
+            )
+
         self._frames = frames
         self._frame_rate = frame_rate
+        self._device = device
 
     def to_file(
         self,
@@ -47,6 +64,7 @@ class VideoEncoder:
             frames=self._frames,
             frame_rate=self._frame_rate,
             filename=str(dest),
+            device=self._device,
         )
 
     def to_tensor(
@@ -66,6 +84,7 @@ class VideoEncoder:
             frames=self._frames,
             frame_rate=self._frame_rate,
             format=format,
+            device=self._device,
         )
 
     def to_file_like(
@@ -89,4 +108,5 @@ class VideoEncoder:
             frame_rate=self._frame_rate,
             format=format,
             file_like=file_like,
+            device=self._device,
         )
