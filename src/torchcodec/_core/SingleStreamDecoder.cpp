@@ -158,6 +158,16 @@ void SingleStreamDecoder::initializeDecoder() {
         ptsToSeconds(formatContext_->duration, defaultTimeBase);
   }
 
+  // Use container duration as fallback for streams missing stream duration
+  if (containerMetadata_.durationSecondsFromHeader.has_value()) {
+    for (auto& streamMetadata : containerMetadata_.allStreamMetadata) {
+      if (!streamMetadata.durationSecondsFromHeader.has_value()) {
+        streamMetadata.durationSecondsFromHeader =
+            containerMetadata_.durationSecondsFromHeader;
+      }
+    }
+  }
+
   if (formatContext_->bit_rate > 0) {
     containerMetadata_.bitRate = formatContext_->bit_rate;
   }

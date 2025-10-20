@@ -798,10 +798,3 @@ TEST_SRC_2_720P_MPEG4 = TestVideo(
     },
     frames={0: {}},  # Not needed for now
 )
-
-
-def supports_approximate_mode(asset: TestVideo) -> bool:
-    # Those are missing the `duration` field so they fail in approximate mode (on all devices).
-    # TODO: we should address this, see
-    # https://github.com/meta-pytorch/torchcodec/issues/945
-    return asset not in (AV1_VIDEO, TEST_SRC_2_720P_VP9, TEST_SRC_2_720P_VP8)

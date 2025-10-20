@@ -46,7 +46,6 @@ from .utils import (
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
-    supports_approximate_mode,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
     TEST_SRC_2_720P_MPEG4,
@@ -1492,8 +1491,6 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_get_frame_at(
         self, asset, contiguous_indices, seek_mode
     ):
-        if seek_mode == "approximate" and not supports_approximate_mode(asset):
-            pytest.skip("asset doesn't work with approximate mode")
 
         if in_fbcode() and asset is AV1_VIDEO:
             pytest.skip("AV1 CUDA not supported internally")
@@ -1540,8 +1537,6 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_get_frames_at(
         self, asset, contiguous_indices, seek_mode
     ):
-        if seek_mode == "approximate" and not supports_approximate_mode(asset):
-            pytest.skip("asset doesn't work with approximate mode")
         if in_fbcode() and asset is AV1_VIDEO:
             pytest.skip("AV1 CUDA not supported internally")
 
@@ -1585,8 +1580,6 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frame_played_at(self, asset, seek_mode):
-        if seek_mode == "approximate" and not supports_approximate_mode(asset):
-            pytest.skip("asset doesn't work with approximate mode")
         if in_fbcode() and asset is AV1_VIDEO:
             pytest.skip("AV1 CUDA not supported internally")
 
@@ -1627,8 +1620,6 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frames_played_at(self, asset, seek_mode):
-        if seek_mode == "approximate" and not supports_approximate_mode(asset):
-            pytest.skip("asset doesn't work with approximate mode")
         if in_fbcode() and asset is AV1_VIDEO:
             pytest.skip("AV1 CUDA not supported internally")
 
@@ -1670,8 +1661,6 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_backwards(self, asset, seek_mode):
-        if seek_mode == "approximate" and not supports_approximate_mode(asset):
-            pytest.skip("asset doesn't work with approximate mode")
         if in_fbcode() and asset is AV1_VIDEO:
             pytest.skip("AV1 CUDA not supported internally")
 
