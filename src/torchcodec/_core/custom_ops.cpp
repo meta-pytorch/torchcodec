@@ -33,19 +33,21 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "encode_audio_to_file(Tensor samples, int sample_rate, str filename, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
   m.def(
-      "encode_video_to_file(Tensor frames, int frame_rate, str filename, int? crf=None) -> ()");
-  m.def(
       "encode_audio_to_tensor(Tensor samples, int sample_rate, str format, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> Tensor");
   m.def(
       "_encode_audio_to_file_like(Tensor samples, int sample_rate, str format, int file_like_context, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
+  m.def(
+      "encode_video_to_file(Tensor frames, int frame_rate, str filename, int? crf=None) -> ()");
+  m.def(
+      "encode_video_to_tensor(Tensor frames, int frame_rate, str format, int? crf=None) -> Tensor");
   m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
   m.def(
-      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None, str? color_conversion_library=None) -> ()");
+      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None, str? color_conversion_library=None) -> ()");
   m.def(
-      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None) -> ()");
+      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None) -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
   m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
@@ -212,6 +214,26 @@ Transform* makeResizeTransform(
   return new ResizeTransform(FrameDims(height, width));
 }
 
+// Crop transform specs take the form:
+//
+//   "crop, <height>, <width>, <x>, <y>"
+//
+// Where "crop" is the string literal and <height>, <width>, <x> and <y> are
+// positive integers. <x> and <y> are the x and y coordinates of the top left
+// corner of the crop. Note that we follow the PyTorch convention of (height,
+// width) for specifying image dimensions; FFmpeg uses (width, height).
+Transform* makeCropTransform(
+    const std::vector<std::string>& cropTransformSpec) {
+  TORCH_CHECK(
+      cropTransformSpec.size() == 5,
+      "cropTransformSpec must have 5 elements including its name");
+  int height = checkedToPositiveInt(cropTransformSpec[1]);
+  int width = checkedToPositiveInt(cropTransformSpec[2]);
+  int x = checkedToPositiveInt(cropTransformSpec[3]);
+  int y = checkedToPositiveInt(cropTransformSpec[4]);
+  return new CropTransform(FrameDims(height, width), x, y);
+}
+
 std::vector<std::string> split(const std::string& str, char delimiter) {
   std::vector<std::string> tokens;
   std::string token;
@@ -239,6 +261,8 @@ std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
     auto name = transformSpec[0];
     if (name == "resize") {
       transforms.push_back(makeResizeTransform(transformSpec));
+    } else if (name == "crop") {
+      transforms.push_back(makeCropTransform(transformSpec));
     } else {
       TORCH_CHECK(false, "Invalid transform name: " + name);
     }
@@ -319,7 +343,7 @@ void _add_video_stream(
     std::optional<std::string_view> dimension_order = std::nullopt,
     std::optional<int64_t> stream_index = std::nullopt,
     std::string_view device = "cpu",
-    std::string_view device_variant = "default",
+    std::string_view device_variant = "ffmpeg",
     std::string_view transform_specs = "",
     std::optional<std::tuple<at::Tensor, at::Tensor, at::Tensor>>
         custom_frame_mappings = std::nullopt,
@@ -376,7 +400,7 @@ void add_video_stream(
     std::optional<std::string_view> dimension_order = std::nullopt,
     std::optional<int64_t> stream_index = std::nullopt,
     std::string_view device = "cpu",
-    std::string_view device_variant = "default",
+    std::string_view device_variant = "ffmpeg",
     std::string_view transform_specs = "",
     const std::optional<std::tuple<at::Tensor, at::Tensor, at::Tensor>>&
         custom_frame_mappings = std::nullopt) {
@@ -498,21 +522,6 @@ OpsAudioFramesOutput get_frames_by_pts_in_range_audio(
   return makeOpsAudioFramesOutput(result);
 }
 
-void encode_video_to_file(
-    const at::Tensor& frames,
-    int64_t frame_rate,
-    std::string_view file_name,
-    std::optional<int64_t> crf = std::nullopt) {
-  VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.crf = crf;
-  VideoEncoder(
-      frames,
-      validateInt64ToInt(frame_rate, "frame_rate"),
-      file_name,
-      videoStreamOptions)
-      .encode();
-}
-
 void encode_audio_to_file(
     const at::Tensor& samples,
     int64_t sample_rate,
@@ -585,6 +594,38 @@ void _encode_audio_to_file_like(
       std::move(avioContextHolder),
       audioStreamOptions);
   encoder.encode();
+}
+
+void encode_video_to_file(
+    const at::Tensor& frames,
+    int64_t frame_rate,
+    std::string_view file_name,
+    std::optional<int64_t> crf = std::nullopt) {
+  VideoStreamOptions videoStreamOptions;
+  videoStreamOptions.crf = crf;
+  VideoEncoder(
+      frames,
+      validateInt64ToInt(frame_rate, "frame_rate"),
+      file_name,
+      videoStreamOptions)
+      .encode();
+}
+
+at::Tensor encode_video_to_tensor(
+    const at::Tensor& frames,
+    int64_t frame_rate,
+    std::string_view format,
+    std::optional<int64_t> crf = std::nullopt) {
+  auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
+  VideoStreamOptions videoStreamOptions;
+  videoStreamOptions.crf = crf;
+  return VideoEncoder(
+             frames,
+             validateInt64ToInt(frame_rate, "frame_rate"),
+             format,
+             std::move(avioContextHolder),
+             videoStreamOptions)
+      .encodeToTensor();
 }
 
 // For testing only. We need to implement this operation as a core library
@@ -847,9 +888,10 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
 
 TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("encode_audio_to_file", &encode_audio_to_file);
-  m.impl("encode_video_to_file", &encode_video_to_file);
   m.impl("encode_audio_to_tensor", &encode_audio_to_tensor);
   m.impl("_encode_audio_to_file_like", &_encode_audio_to_file_like);
+  m.impl("encode_video_to_file", &encode_video_to_file);
+  m.impl("encode_video_to_tensor", &encode_video_to_tensor);
   m.impl("seek_to_pts", &seek_to_pts);
   m.impl("add_video_stream", &add_video_stream);
   m.impl("_add_video_stream", &_add_video_stream);

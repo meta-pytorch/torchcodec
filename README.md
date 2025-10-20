@@ -107,8 +107,8 @@ ffmpeg -f lavfi -i \
    `torch` and `torchcodec`.
 
 2. Install FFmpeg, if it's not already installed. Linux distributions usually
-   come with FFmpeg pre-installed. TorchCodec supports all major FFmpeg versions
-   in [4, 7].
+   come with FFmpeg pre-installed. TorchCodec supports major FFmpeg versions
+   in [4, 7] on all platforms, and FFmpeg version 8 is supported on Mac and Linux.
 
    If FFmpeg is not already installed, or you need a more recent version, an
    easy way to install it is to use `conda`:
@@ -131,6 +131,7 @@ The following table indicates the compatibility between versions of
 | `torchcodec`       | `torch`            | Python              |
 | ------------------ | ------------------ | ------------------- |
 | `main` / `nightly` | `main` / `nightly` | `>=3.10`, `<=3.13`   |
+| `0.8`              | `2.9`              | `>=3.10`, `<=3.13`   |
 | `0.7`              | `2.8`              | `>=3.9`, `<=3.13`   |
 | `0.6`              | `2.8`              | `>=3.9`, `<=3.13`   |
 | `0.5`              | `2.7`              | `>=3.9`, `<=3.13`   |
@@ -147,7 +148,8 @@ format you want. Refer to Nvidia's GPU support matrix for more details
 [here](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new).
 
 1. Install FFmpeg with NVDEC support.
-   TorchCodec with CUDA should work with FFmpeg versions in [4, 7].
+   TorchCodec with CUDA should work with FFmpeg versions in [4, 7] on all platforms,
+   and FFmpeg version 8 is supported on Linux.
 
    If FFmpeg is not already installed, or you need a more recent version, an
    easy way to install it is to use `conda`:

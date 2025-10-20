@@ -15,6 +15,7 @@ from torch import device as torch_device, Tensor
 
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec.decoders._decoder_utils import (
+    _get_cuda_backend,
     create_decoder,
     ERROR_REPORTING_INSTRUCTIONS,
 )
@@ -55,6 +56,8 @@ class VideoDecoder:
             Passing 0 lets FFmpeg decide on the number of threads.
             Default: 1.
         device (str or torch.device, optional): The device to use for decoding. Default: "cpu".
+            If you pass a CUDA device, we recommend trying the "beta" CUDA
+            backend which is faster! See :func:`~torchcodec.decoders.set_cuda_backend`.
         seek_mode (str, optional): Determines if frame access will be "exact" or
             "approximate". Exact guarantees that requesting frame i will always
             return frame i, but doing so requires an initial :term:`scan` of the
@@ -143,17 +146,7 @@ class VideoDecoder:
         if isinstance(device, torch_device):
             device = str(device)
 
-        # If device looks like "cuda:0:beta", make it "cuda:0" and set
-        # device_variant to "beta"
-        # TODONVDEC P2 Consider alternative ways of exposing custom device
-        # variants, and if we want this new decoder backend to be a "device
-        # variant" at all.
-        device_variant = "default"
-        if device is not None:
-            device_split = device.split(":")
-            if len(device_split) == 3:
-                device_variant = device_split[2]
-                device = ":".join(device_split[0:2])
+        device_variant = _get_cuda_backend()
 
         core.add_video_stream(
             self._decoder,

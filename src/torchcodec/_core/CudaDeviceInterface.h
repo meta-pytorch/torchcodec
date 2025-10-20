@@ -22,7 +22,8 @@ class CudaDeviceInterface : public DeviceInterface {
 
   void initialize(
       const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx) override;
+      const UniqueDecodingAVFormatContext& avFormatCtx,
+      const SharedAVCodecContext& codecContext) override;
 
   void initializeVideo(
       const VideoStreamOptions& videoStreamOptions,
@@ -52,7 +53,7 @@ class CudaDeviceInterface : public DeviceInterface {
   VideoStreamOptions videoStreamOptions_;
   AVRational timeBase_;
 
-  UniqueAVBufferRef ctx_;
+  UniqueAVBufferRef hardwareDeviceCtx_;
   UniqueNppContext nppCtx_;
 
   // This filtergraph instance is only used for NV12 format conversion in

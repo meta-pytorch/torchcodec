@@ -12,6 +12,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
+#include "Metadata.h"
 #include "torch/types.h"
 
 namespace facebook::torchcodec {
@@ -429,7 +430,6 @@ void SingleStreamDecoder::addStream(
   TORCH_CHECK(
       deviceInterface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
-  deviceInterface_->initialize(streamInfo.stream, formatContext_);
 
   // TODO_CODE_QUALITY it's pretty meh to have a video-specific logic within
   // addStream() which is supposed to be generic
@@ -441,7 +441,7 @@ void SingleStreamDecoder::addStream(
 
   AVCodecContext* codecContext = avcodec_alloc_context3(avCodec);
   TORCH_CHECK(codecContext != nullptr);
-  streamInfo.codecContext.reset(codecContext);
+  streamInfo.codecContext = makeSharedAVCodecContext(codecContext);
 
   int retVal = avcodec_parameters_to_context(
       streamInfo.codecContext.get(), streamInfo.stream->codecpar);
@@ -453,14 +453,19 @@ void SingleStreamDecoder::addStream(
   // Note that we must make sure to register the harware device context
   // with the codec context before calling avcodec_open2(). Otherwise, decoding
   // will happen on the CPU and not the hardware device.
-  deviceInterface_->registerHardwareDeviceWithCodec(codecContext);
+  deviceInterface_->registerHardwareDeviceWithCodec(
+      streamInfo.codecContext.get());
   retVal = avcodec_open2(streamInfo.codecContext.get(), avCodec, nullptr);
   TORCH_CHECK(retVal >= AVSUCCESS, getFFMPEGErrorStringFromErrorCode(retVal));
 
-  codecContext->time_base = streamInfo.stream->time_base;
+  streamInfo.codecContext->time_base = streamInfo.stream->time_base;
+
+  // Initialize the device interface with the codec context
+  deviceInterface_->initialize(
+      streamInfo.stream, formatContext_, streamInfo.codecContext);
 
   containerMetadata_.allStreamMetadata[activeStreamIndex_].codecName =
-      std::string(avcodec_get_name(codecContext->codec_id));
+      std::string(avcodec_get_name(streamInfo.codecContext->codec_id));
 
   // We will only need packets from the active stream, so we tell FFmpeg to
   // discard packets from the other streams. Note that av_read_frame() may still
@@ -523,6 +528,7 @@ void SingleStreamDecoder::addVideoStream(
     if (transform->getOutputFrameDims().has_value()) {
       resizedOutputDims_ = transform->getOutputFrameDims().value();
     }
+    transform->validate(streamMetadata);
 
     // Note that we are claiming ownership of the transform objects passed in to
     // us.
@@ -1149,8 +1155,6 @@ void SingleStreamDecoder::maybeSeekToBeforeDesiredPts() {
       getFFMPEGErrorStringFromErrorCode(status));
 
   decodeStats_.numFlushes++;
-  avcodec_flush_buffers(streamInfo.codecContext.get());
-
   deviceInterface_->flush();
 }
 
@@ -1169,24 +1173,16 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
     cursorWasJustSet_ = false;
   }
 
-  StreamInfo& streamInfo = streamInfos_[activeStreamIndex_];
   UniqueAVFrame avFrame(av_frame_alloc());
   AutoAVPacket autoAVPacket;
   int status = AVSUCCESS;
   bool reachedEOF = false;
 
-  // TODONVDEC P2: Instead of calling canDecodePacketDirectly() and rely on
-  // if/else blocks to dispatch to the interface or to FFmpeg, consider *always*
-  // dispatching to the interface. The default implementation of the interface's
-  // receiveFrame and sendPacket could just be calling avcodec_receive_frame and
-  // avcodec_send_packet. This would make the decoding loop even more generic.
+  // The default implementation uses avcodec_receive_frame and
+  // avcodec_send_packet, while specialized interfaces can override for
+  // hardware-specific optimizations.
   while (true) {
-    if (deviceInterface_->canDecodePacketDirectly()) {
-      status = deviceInterface_->receiveFrame(avFrame);
-    } else {
-      status =
-          avcodec_receive_frame(streamInfo.codecContext.get(), avFrame.get());
-    }
+    status = deviceInterface_->receiveFrame(avFrame);
 
     if (status != AVSUCCESS && status != AVERROR(EAGAIN)) {
       // Non-retriable error
@@ -1222,13 +1218,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
 
       if (status == AVERROR_EOF) {
         // End of file reached. We must drain the decoder
-        if (deviceInterface_->canDecodePacketDirectly()) {
-          status = deviceInterface_->sendEOFPacket();
-        } else {
-          status = avcodec_send_packet(
-              streamInfo.codecContext.get(),
-              /*avpkt=*/nullptr);
-        }
+        status = deviceInterface_->sendEOFPacket();
         TORCH_CHECK(
             status >= AVSUCCESS,
             "Could not flush decoder: ",
@@ -1253,11 +1243,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
 
     // We got a valid packet. Send it to the decoder, and we'll receive it in
     // the next iteration.
-    if (deviceInterface_->canDecodePacketDirectly()) {
-      status = deviceInterface_->sendPacket(packet);
-    } else {
-      status = avcodec_send_packet(streamInfo.codecContext.get(), packet.get());
-    }
+    status = deviceInterface_->sendPacket(packet);
     TORCH_CHECK(
         status >= AVSUCCESS,
         "Could not push packet to decoder: ",

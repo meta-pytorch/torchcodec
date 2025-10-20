@@ -71,17 +71,21 @@ jobs:
           name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cpu_x86_64
           path: pytorch/torchcodec/dist/
       - name: Setup conda env
-        uses: conda-incubator/setup-miniconda@v2
+        uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
-          miniconda-version: "latest"
+          # Using miniforge instead of miniconda ensures that the default
+          # conda channel is conda-forge instead of main/default. This ensures
+          # ABI consistency between dependencies:
+          # https://conda-forge.org/docs/user/transitioning_from_defaults/
+          miniforge-version: latest
           activate-environment: test
           python-version: ${{ matrix.python-version }}
       - name: Update pip
         run: python -m pip install --upgrade pip
       - name: Install PyTorch
         run: |
-          python -m pip install --pre torch --index-url https://download.pytorch.org/whl/nightly/cpu
+          python -m pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cpu
       - name: Install torchcodec from the wheel
         run: |
           wheel_path=`find pytorch/torchcodec/dist -type f -name "*.whl"`

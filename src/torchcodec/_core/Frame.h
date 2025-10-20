@@ -19,7 +19,7 @@ struct FrameDims {
 
   FrameDims() = default;
 
-  FrameDims(int h, int w) : height(h), width(w) {}
+  FrameDims(int h, int w);
 };
 
 // All public video decoding entry points return either a FrameOutput or a

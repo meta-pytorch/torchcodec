@@ -14,6 +14,7 @@ import pytest
 import torch
 
 from torchcodec._core import get_ffmpeg_library_versions
+from torchcodec.decoders import set_cuda_backend, VideoDecoder
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
@@ -26,38 +27,74 @@ def needs_cuda(test_item):
     return pytest.mark.needs_cuda(test_item)
 
 
+# This is a special device string that we use to test the "beta" CUDA backend.
+# It only exists here, in this test utils file. Public and core APIs have no
+# idea that this is how we're tesing them. That is, that's not a supported
+# `device` parameter for the VideoDecoder or for the _core APIs.
+# Tests using all_supported_devices() will get this device string, and the test
+# need to clean it up by calling either make_video_decoder for VideoDecoder, or
+# unsplit_device_str for core APIs.
+_CUDA_BETA_DEVICE_STR = "cuda:beta"
+
+
 def all_supported_devices():
     return (
         "cpu",
         pytest.param("cuda", marks=pytest.mark.needs_cuda),
-        pytest.param("cuda:0:beta", marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
     )
 
 
 def unsplit_device_str(device_str: str) -> str:
     # helper meant to be used as
     # device, device_variant = unsplit_device_str(device)
-    # when `device` comes from all_supported_devices() and may be "cuda:0:beta".
+    # when `device` comes from all_supported_devices() and may be _CUDA_BETA_DEVICE_STR.
     # It is used:
-    # - before calling `.to(device)` where device can't be "cuda:0:beta"
+    # - before calling `.to(device)` where device can't be _CUDA_BETA_DEVICE_STR.
     # - before calling add_video_stream(device=device, device_variant=device_variant)
-    #
-    # TODONVDEC P2: Find a less clunky way to test the BETA CUDA interface. It
-    # will ultimately depend on how we want to publicly expose it.
-    if device_str == "cuda:0:beta":
+    if device_str == _CUDA_BETA_DEVICE_STR:
         return "cuda", "beta"
     else:
-        return device_str, "default"
+        return device_str, "ffmpeg"
 
 
-def get_ffmpeg_major_version():
+def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
+    # Helper to create a VideoDecoder with the right cuda backend if needed.
+    # kwargs is expected to have a "device" key which comes from
+    # all_supported_devices(), and can be _CUDA_BETA_DEVICE_STR.
+    device = kwargs.pop("device", "cpu")
+    if device == _CUDA_BETA_DEVICE_STR:
+        clean_device, backend = "cuda", "beta"
+    else:
+        clean_device, backend = device, "ffmpeg"
+
+    # set_cuda_backend is a no-op if the device is "cpu", so we can use it
+    # unconditionally.
+    with set_cuda_backend(backend):
+        dec = VideoDecoder(*args, **kwargs, device=clean_device)
+
+    return dec, clean_device
+
+
+def _get_ffmpeg_version_string():
     ffmpeg_version = get_ffmpeg_library_versions()["ffmpeg_version"]
     # When building FFmpeg from source there can be a `n` prefix in the version
     # string.  This is quite brittle as we're using av_version_info(), which has
     # no stable format. See https://github.com/pytorch/torchcodec/issues/100
     if ffmpeg_version.startswith("n"):
         ffmpeg_version = ffmpeg_version.removeprefix("n")
+
+    return ffmpeg_version
+
+
+def get_ffmpeg_major_version():
+    ffmpeg_version = _get_ffmpeg_version_string()
     return int(ffmpeg_version.split(".")[0])
+
+
+def get_ffmpeg_minor_version():
+    ffmpeg_version = _get_ffmpeg_version_string()
+    return int(ffmpeg_version.split(".")[1])
 
 
 def cuda_version_used_for_building_torch() -> Optional[tuple[int, int]]:
@@ -128,6 +165,12 @@ def assert_tensor_close_on_at_least(
             f"Expected at least {percentage}% of values to be within atol={atol}, "
             f"but only {valid_percentage}% were."
         )
+
+
+# We embed filtergraph expressions in filenames, but they contain characters that
+# some filesystems don't like. We turn all special characters into underscores.
+def sanitize_filtergraph_expression(expression: str) -> str:
+    return "".join(c if c.isalnum() else "_" for c in expression)
 
 
 def in_fbcode() -> bool:
@@ -329,14 +372,22 @@ class TestVideo(TestContainerFile):
     """Base class for the *video* streams of a video container"""
 
     def get_frame_data_by_index(
-        self, idx: int, *, stream_index: Optional[int] = None
+        self,
+        idx: int,
+        *,
+        stream_index: Optional[int] = None,
+        filters: Optional[str] = None,
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
 
-        file_path = _get_file_path(
-            f"{self.filename}.stream{stream_index}.frame{idx:06d}.pt"
-        )
+        stream_and_frame = f"stream{stream_index}.frame{idx:06d}"
+        if filters is not None:
+            full_name = f"{self.filename}.{sanitize_filtergraph_expression(filters)}.{stream_and_frame}.pt"
+        else:
+            full_name = f"{self.filename}.{stream_and_frame}.pt"
+
+        file_path = _get_file_path(full_name)
         return torch.load(file_path, weights_only=True).permute(2, 0, 1)
 
     def get_frame_data_by_range(
@@ -750,7 +801,7 @@ TEST_SRC_2_720P_MPEG4 = TestVideo(
 
 
 def supports_approximate_mode(asset: TestVideo) -> bool:
-    # TODONVDEC P2: open an issue about his. That's actually not related to
-    # NVDEC at all, those don't support approximate mode because they don't set
-    # a duration. CPU decoder fails too!
+    # Those are missing the `duration` field so they fail in approximate mode (on all devices).
+    # TODO: we should address this, see
+    # https://github.com/meta-pytorch/torchcodec/issues/945
     return asset not in (AV1_VIDEO, TEST_SRC_2_720P_VP9, TEST_SRC_2_720P_VP8)

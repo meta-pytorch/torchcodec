@@ -69,7 +69,7 @@ def load_torchcodec_shared_libraries():
     raise RuntimeError(
         f"""Could not load libtorchcodec. Likely causes:
           1. FFmpeg is not properly installed in your environment. We support
-             versions 4, 5, 6 and 7.
+             versions 4, 5, 6, and 7 on all platforms, and 8 on Mac and Linux.
           2. The PyTorch version ({torch.__version__}) is not compatible with
              this version of TorchCodec. Refer to the version compatibility
              table:
@@ -92,14 +92,17 @@ create_from_file = torch._dynamo.disallow_in_graph(
 encode_audio_to_file = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.encode_audio_to_file.default
 )
-encode_video_to_file = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.encode_video_to_file.default
-)
 encode_audio_to_tensor = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.encode_audio_to_tensor.default
 )
 _encode_audio_to_file_like = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns._encode_audio_to_file_like.default
+)
+encode_video_to_file = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.encode_video_to_file.default
+)
+encode_video_to_tensor = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.encode_video_to_tensor.default
 )
 create_from_tensor = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_from_tensor.default
@@ -254,16 +257,6 @@ def encode_audio_to_file_abstract(
     return
 
 
-@register_fake("torchcodec_ns::encode_video_to_file")
-def encode_video_to_file_abstract(
-    frames: torch.Tensor,
-    frame_rate: int,
-    filename: str,
-    crf: Optional[int] = None,
-) -> None:
-    return
-
-
 @register_fake("torchcodec_ns::encode_audio_to_tensor")
 def encode_audio_to_tensor_abstract(
     samples: torch.Tensor,
@@ -289,6 +282,26 @@ def _encode_audio_to_file_like_abstract(
     return
 
 
+@register_fake("torchcodec_ns::encode_video_to_file")
+def encode_video_to_file_abstract(
+    frames: torch.Tensor,
+    frame_rate: int,
+    filename: str,
+    crf: Optional[int],
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::encode_video_to_tensor")
+def encode_video_to_tensor_abstract(
+    frames: torch.Tensor,
+    frame_rate: int,
+    format: str,
+    crf: Optional[int],
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
 @register_fake("torchcodec_ns::create_from_tensor")
 def create_from_tensor_abstract(
     video_tensor: torch.Tensor, seek_mode: Optional[str]
@@ -304,7 +317,7 @@ def _add_video_stream_abstract(
     dimension_order: Optional[str] = None,
     stream_index: Optional[int] = None,
     device: str = "cpu",
-    device_variant: str = "default",
+    device_variant: str = "ffmpeg",
     transform_specs: str = "",
     custom_frame_mappings: Optional[
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]
@@ -322,7 +335,7 @@ def add_video_stream_abstract(
     dimension_order: Optional[str] = None,
     stream_index: Optional[int] = None,
     device: str = "cpu",
-    device_variant: str = "default",
+    device_variant: str = "ffmpeg",
     transform_specs: str = "",
     custom_frame_mappings: Optional[
         tuple[torch.Tensor, torch.Tensor, torch.Tensor]
