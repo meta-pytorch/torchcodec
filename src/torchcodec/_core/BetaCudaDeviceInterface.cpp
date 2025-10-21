@@ -215,8 +215,7 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
 } // namespace
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
-    : DeviceInterface(device),
-      prevSwsFrameContext_(0, 0, AV_PIX_FMT_NONE, 0, 0) {
+    : DeviceInterface(device) {
   TORCH_CHECK(g_cuda_beta, "BetaCudaDeviceInterface was not registered!");
   TORCH_CHECK(
       device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());

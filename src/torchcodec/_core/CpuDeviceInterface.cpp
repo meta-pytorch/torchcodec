@@ -16,8 +16,7 @@ static bool g_cpu = registerDeviceInterface(
 } // namespace
 
 CpuDeviceInterface::CpuDeviceInterface(const torch::Device& device)
-    : DeviceInterface(device),
-      prevSwsFrameContext_(0, 0, AV_PIX_FMT_NONE, 0, 0) {
+    : DeviceInterface(device) {
   TORCH_CHECK(g_cpu, "CpuDeviceInterface was not registered!");
   TORCH_CHECK(
       device_.type() == torch::kCPU, "Unsupported device: ", device_.str());
