@@ -81,6 +81,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       unsigned int pitch,
       const CUVIDPARSERDISPINFO& dispInfo);
 
+  // Convert CPU frame to GPU NV12 frame for GPU color conversion
+  UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
+
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;
   CUVIDEOFORMAT videoFormat_ = {};
