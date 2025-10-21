@@ -100,6 +100,10 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   // NPP context for color conversion
   UniqueNppContext nppCtx_;
 
+  // Swscale context caching for CPU->GPU NV12 conversion
+  UniqueSwsContext swsContext_;
+  SwsFrameContext prevSwsFrameContext_;
+
   std::unique_ptr<DeviceInterface> cpuFallback_;
 };
 

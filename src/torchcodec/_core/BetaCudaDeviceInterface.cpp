@@ -215,7 +215,7 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
 } // namespace
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
-    : DeviceInterface(device) {
+    : DeviceInterface(device), prevSwsFrameContext_(0, 0, AV_PIX_FMT_NONE, 0, 0) {
   TORCH_CHECK(g_cuda_beta, "BetaCudaDeviceInterface was not registered!");
   TORCH_CHECK(
       device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
@@ -679,7 +679,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
   int width = cpuFrame->width;
   int height = cpuFrame->height;
 
-  // Step 1: Convert to NV12 on CPU using swscale
+  // Step 1: Convert to NV12 on CPU using cached swscale context
   UniqueAVFrame nv12CpuFrame(av_frame_alloc());
   TORCH_CHECK(nv12CpuFrame != nullptr, "Failed to allocate NV12 CPU frame");
 
@@ -687,18 +687,23 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
   nv12CpuFrame->width = width;
   nv12CpuFrame->height = height;
 
-  int ret = av_frame_get_buffer(nv12CpuFrame.get(), 32);
+  int ret = av_frame_get_buffer(nv12CpuFrame.get(), 0);
   TORCH_CHECK(ret >= 0, "Failed to allocate NV12 CPU frame buffer: ",
               getFFMPEGErrorStringFromErrorCode(ret));
 
-  UniqueSwsContext swsCtx(sws_getContext(
+  // Create or reuse swscale context using caching logic
+  SwsFrameContext swsFrameContext(
       width, height, static_cast<AVPixelFormat>(cpuFrame->format),
-      width, height, AV_PIX_FMT_NV12,
-      SWS_BILINEAR, nullptr, nullptr, nullptr));
-  TORCH_CHECK(swsCtx != nullptr, "Failed to create SwsContext for CPU->NV12 conversion");
+      width, height);
+
+  if (!swsContext_ || prevSwsFrameContext_ != swsFrameContext) {
+    swsContext_ = createSwsContext(
+        swsFrameContext, cpuFrame->colorspace, AV_PIX_FMT_NV12, SWS_BILINEAR);
+    prevSwsFrameContext_ = swsFrameContext;
+  }
 
   int convertedHeight = sws_scale(
-      swsCtx.get(),
+      swsContext_.get(),
       const_cast<const uint8_t* const*>(cpuFrame->data), cpuFrame->linesize,
       0, height,
       nv12CpuFrame->data, nv12CpuFrame->linesize);
@@ -760,7 +765,6 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
-  // Convert CPU frame to GPU NV12 if using CPU fallback, otherwise use existing GPU frame
   UniqueAVFrame gpuFrame = cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
 
   // TODONVDEC P2: we may need to handle 10bit videos the same way the CUDA

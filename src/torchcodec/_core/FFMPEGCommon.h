@@ -9,6 +9,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <torch/types.h>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -102,6 +103,32 @@ using UniqueAVBufferRef =
 using UniqueAVBufferSrcParameters = std::unique_ptr<
     AVBufferSrcParameters,
     Deleterv<AVBufferSrcParameters, void, av_freep>>;
+
+// Common swscale context management for efficient reuse across device interfaces
+struct SwsFrameContext {
+  int inputWidth;
+  int inputHeight;
+  AVPixelFormat inputFormat;
+  int outputWidth;
+  int outputHeight;
+
+  SwsFrameContext(
+      int inputWidth,
+      int inputHeight,
+      AVPixelFormat inputFormat,
+      int outputWidth,
+      int outputHeight);
+
+  bool operator==(const SwsFrameContext& other) const;
+  bool operator!=(const SwsFrameContext& other) const;
+};
+
+// Utility functions for swscale context management
+UniqueSwsContext createSwsContext(
+    const SwsFrameContext& swsFrameContext,
+    AVColorSpace colorspace,
+    AVPixelFormat outputFormat = AV_PIX_FMT_RGB24,
+    int swsFlags = SWS_BILINEAR);
 
 // These 2 classes share the same underlying AVPacket object. They are meant to
 // be used in tandem, like so:
