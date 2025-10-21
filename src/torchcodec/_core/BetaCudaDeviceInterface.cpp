@@ -667,7 +667,7 @@ void BetaCudaDeviceInterface::flush() {
 
 namespace {
 // Cleanup callback for CUDA memory allocated for GPU frames
-void cudaBufferFreeCallback(void* opaque, uint8_t* data) {
+void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
   cudaFree(opaque);
 }
 } // namespace
