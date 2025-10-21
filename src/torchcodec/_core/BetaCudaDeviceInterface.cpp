@@ -760,33 +760,22 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
-  if (cpuFallback_) {
-    // CPU decoded frame - convert to GPU NV12 and do GPU color conversion
-    UniqueAVFrame gpuNV12Frame = transferCpuFrameToGpuNV12(avFrame);
-
-    validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuNV12Frame);
-
-    at::cuda::CUDAStream nvdecStream =
-        at::cuda::getCurrentCUDAStream(device_.index());
-
-    frameOutput.data = convertNV12FrameToRGB(
-        gpuNV12Frame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
-    return;
-  }
+  // Convert CPU frame to GPU NV12 if using CPU fallback, otherwise use existing GPU frame
+  UniqueAVFrame gpuFrame = cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
 
   // TODONVDEC P2: we may need to handle 10bit videos the same way the CUDA
   // ffmpeg interface does it with maybeConvertAVFrameToNV12OrRGB24().
   TORCH_CHECK(
-      avFrame->format == AV_PIX_FMT_CUDA,
+      gpuFrame->format == AV_PIX_FMT_CUDA,
       "Expected CUDA format frame from BETA CUDA interface");
 
-  validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
+  validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
 
   at::cuda::CUDAStream nvdecStream =
       at::cuda::getCurrentCUDAStream(device_.index());
 
   frameOutput.data = convertNV12FrameToRGB(
-      avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+      gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {
