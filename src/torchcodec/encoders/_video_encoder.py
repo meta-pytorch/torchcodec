@@ -22,7 +22,13 @@ class VideoEncoder:
             Note: The "beta" CUDA backend is not supported for encoding.
     """
 
-    def __init__(self, frames: Tensor, *, frame_rate: int):
+    def __init__(
+        self,
+        frames: Tensor,
+        *,
+        frame_rate: int,
+        device: Optional[Union[str, torch_device]] = "cpu",
+    ):
         torch._C._log_api_usage_once("torchcodec.encoders.VideoEncoder")
         if not isinstance(frames, Tensor):
             raise ValueError(f"Expected frames to be a Tensor, got {type(frames) = }.")
