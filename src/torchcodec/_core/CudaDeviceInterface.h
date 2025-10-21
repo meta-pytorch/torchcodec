@@ -40,6 +40,8 @@ class CudaDeviceInterface : public DeviceInterface {
       std::optional<torch::Tensor> preAllocatedOutputTensor =
           std::nullopt) override;
 
+  std::string getDetails() override;
+
  private:
   // Our CUDA decoding code assumes NV12 format. In order to handle other
   // kinds of input, we need to convert them to NV12. Our current implementation
@@ -60,6 +62,8 @@ class CudaDeviceInterface : public DeviceInterface {
   // maybeConvertAVFrameToNV12().
   std::unique_ptr<FiltersContext> nv12ConversionContext_;
   std::unique_ptr<FilterGraph> nv12Conversion_;
+
+  bool usingCPUFallback_ = false;
 };
 
 } // namespace facebook::torchcodec

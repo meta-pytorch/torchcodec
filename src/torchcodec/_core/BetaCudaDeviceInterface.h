@@ -59,6 +59,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   int frameReadyForDecoding(CUVIDPICPARAMS* picParams);
   int frameReadyInDisplayOrder(CUVIDPARSERDISPINFO* dispInfo);
 
+  std::string getDetails() override;
+
  private:
   int sendCuvidPacket(CUVIDSOURCEDATAPACKET& cuvidPacket);
 
