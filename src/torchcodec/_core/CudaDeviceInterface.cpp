@@ -1,9 +1,9 @@
 #include <ATen/cuda/CUDAEvent.h>
 #include <c10/cuda/CUDAStream.h>
-#include <npp.h>
 #include <torch/types.h>
 #include <mutex>
 
+#include "src/torchcodec/_core/Cache.h"
 #include "src/torchcodec/_core/CudaDeviceInterface.h"
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 
@@ -15,8 +15,9 @@ extern "C" {
 namespace facebook::torchcodec {
 namespace {
 
-static bool g_cuda =
-    registerDeviceInterface(torch::kCUDA, [](const torch::Device& device) {
+static bool g_cuda = registerDeviceInterface(
+    DeviceInterfaceKey(torch::kCUDA),
+    [](const torch::Device& device) {
       return new CudaDeviceInterface(device);
     });
 
@@ -31,77 +32,48 @@ static bool g_cuda =
 // from
 //    the cache. If the cache is empty we create a new cuda context.
 
-// Pytorch can only handle up to 128 GPUs.
-// https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
-const int MAX_CUDA_GPUS = 128;
 // Set to -1 to have an infinitely sized cache. Set it to 0 to disable caching.
 // Set to a positive number to have a cache of that size.
 const int MAX_CONTEXTS_PER_GPU_IN_CACHE = -1;
-std::vector<AVBufferRef*> g_cached_hw_device_ctxs[MAX_CUDA_GPUS];
-std::mutex g_cached_hw_device_mutexes[MAX_CUDA_GPUS];
+PerGpuCache<AVBufferRef, Deleterp<AVBufferRef, void, av_buffer_unref>>
+    g_cached_hw_device_ctxs(MAX_CUDA_GPUS, MAX_CONTEXTS_PER_GPU_IN_CACHE);
 
-torch::DeviceIndex getFFMPEGCompatibleDeviceIndex(const torch::Device& device) {
-  torch::DeviceIndex deviceIndex = device.index();
-  deviceIndex = std::max<at::DeviceIndex>(deviceIndex, 0);
-  TORCH_CHECK(deviceIndex >= 0, "Device index out of range");
-  // FFMPEG cannot handle negative device indices.
-  // For single GPU- machines libtorch returns -1 for the device index. So for
-  // that case we set the device index to 0.
-  // TODO: Double check if this works for multi-GPU machines correctly.
-  return deviceIndex;
-}
-
-void addToCacheIfCacheHasCapacity(
-    const torch::Device& device,
-    AVBufferRef* hwContext) {
-  torch::DeviceIndex deviceIndex = getFFMPEGCompatibleDeviceIndex(device);
-  if (static_cast<int>(deviceIndex) >= MAX_CUDA_GPUS) {
-    return;
-  }
-  std::scoped_lock lock(g_cached_hw_device_mutexes[deviceIndex]);
-  if (MAX_CONTEXTS_PER_GPU_IN_CACHE >= 0 &&
-      g_cached_hw_device_ctxs[deviceIndex].size() >=
-          MAX_CONTEXTS_PER_GPU_IN_CACHE) {
-    return;
-  }
-  g_cached_hw_device_ctxs[deviceIndex].push_back(av_buffer_ref(hwContext));
-}
-
-AVBufferRef* getFromCache(const torch::Device& device) {
-  torch::DeviceIndex deviceIndex = getFFMPEGCompatibleDeviceIndex(device);
-  if (static_cast<int>(deviceIndex) >= MAX_CUDA_GPUS) {
-    return nullptr;
-  }
-  std::scoped_lock lock(g_cached_hw_device_mutexes[deviceIndex]);
-  if (g_cached_hw_device_ctxs[deviceIndex].size() > 0) {
-    AVBufferRef* hw_device_ctx = g_cached_hw_device_ctxs[deviceIndex].back();
-    g_cached_hw_device_ctxs[deviceIndex].pop_back();
-    return hw_device_ctx;
-  }
-  return nullptr;
-}
-
+int getFlagsAVHardwareDeviceContextCreate() {
+// 58.26.100 introduced the concept of reusing the existing cuda context
+// which is much faster and lower memory than creating a new cuda context.
 #if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(58, 26, 100)
+  return AV_CUDA_USE_CURRENT_CONTEXT;
+#else
+  return 0;
+#endif
+}
 
-AVBufferRef* getFFMPEGContextFromExistingCudaContext(
-    const torch::Device& device,
-    torch::DeviceIndex nonNegativeDeviceIndex,
-    enum AVHWDeviceType type) {
+UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device) {
+  enum AVHWDeviceType type = av_hwdevice_find_type_by_name("cuda");
+  TORCH_CHECK(type != AV_HWDEVICE_TYPE_NONE, "Failed to find cuda device");
+  int deviceIndex = getDeviceIndex(device);
+
+  UniqueAVBufferRef hardwareDeviceCtx = g_cached_hw_device_ctxs.get(device);
+  if (hardwareDeviceCtx) {
+    return hardwareDeviceCtx;
+  }
+
+  // Create hardware device context
   c10::cuda::CUDAGuard deviceGuard(device);
-  // Valid values for the argument to cudaSetDevice are 0 to maxDevices - 1:
-  // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__DEVICE.html#group__CUDART__DEVICE_1g159587909ffa0791bbe4b40187a4c6bb
-  // So we ensure the deviceIndex is not negative.
   // We set the device because we may be called from a different thread than
   // the one that initialized the cuda context.
-  cudaSetDevice(nonNegativeDeviceIndex);
-  AVBufferRef* hw_device_ctx = nullptr;
-  std::string deviceOrdinal = std::to_string(nonNegativeDeviceIndex);
+  TORCH_CHECK(
+      cudaSetDevice(deviceIndex) == cudaSuccess, "Failed to set CUDA device");
+  AVBufferRef* hardwareDeviceCtxRaw = nullptr;
+  std::string deviceOrdinal = std::to_string(deviceIndex);
+
   int err = av_hwdevice_ctx_create(
-      &hw_device_ctx,
+      &hardwareDeviceCtxRaw,
       type,
       deviceOrdinal.c_str(),
       nullptr,
-      AV_CUDA_USE_CURRENT_CONTEXT);
+      getFlagsAVHardwareDeviceContextCreate());
+
   if (err < 0) {
     /* clang-format off */
     TORCH_CHECK(
@@ -112,55 +84,10 @@ AVBufferRef* getFFMPEGContextFromExistingCudaContext(
         "). FFmpeg error: ", getFFMPEGErrorStringFromErrorCode(err));
     /* clang-format on */
   }
-  return hw_device_ctx;
+
+  return UniqueAVBufferRef(hardwareDeviceCtxRaw);
 }
 
-#else
-
-AVBufferRef* getFFMPEGContextFromNewCudaContext(
-    [[maybe_unused]] const torch::Device& device,
-    torch::DeviceIndex nonNegativeDeviceIndex,
-    enum AVHWDeviceType type) {
-  AVBufferRef* hw_device_ctx = nullptr;
-  std::string deviceOrdinal = std::to_string(nonNegativeDeviceIndex);
-  int err = av_hwdevice_ctx_create(
-      &hw_device_ctx, type, deviceOrdinal.c_str(), nullptr, 0);
-  if (err < 0) {
-    TORCH_CHECK(
-        false,
-        "Failed to create specified HW device",
-        getFFMPEGErrorStringFromErrorCode(err));
-  }
-  return hw_device_ctx;
-}
-
-#endif
-
-AVBufferRef* getCudaContext(const torch::Device& device) {
-  enum AVHWDeviceType type = av_hwdevice_find_type_by_name("cuda");
-  TORCH_CHECK(type != AV_HWDEVICE_TYPE_NONE, "Failed to find cuda device");
-  torch::DeviceIndex nonNegativeDeviceIndex =
-      getFFMPEGCompatibleDeviceIndex(device);
-
-  AVBufferRef* hw_device_ctx = getFromCache(device);
-  if (hw_device_ctx != nullptr) {
-    return hw_device_ctx;
-  }
-
-  // 58.26.100 introduced the concept of reusing the existing cuda context
-  // which is much faster and lower memory than creating a new cuda context.
-  // So we try to use that if it is available.
-  // FFMPEG 6.1.2 appears to be the earliest release that contains version
-  // 58.26.100 of avutil.
-  // https://github.com/FFmpeg/FFmpeg/blob/4acb9b7d1046944345ae506165fb55883d04d8a6/doc/APIchanges#L265
-#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(58, 26, 100)
-  return getFFMPEGContextFromExistingCudaContext(
-      device, nonNegativeDeviceIndex, type);
-#else
-  return getFFMPEGContextFromNewCudaContext(
-      device, nonNegativeDeviceIndex, type);
-#endif
-}
 } // namespace
 
 CudaDeviceInterface::CudaDeviceInterface(const torch::Device& device)
@@ -168,97 +95,238 @@ CudaDeviceInterface::CudaDeviceInterface(const torch::Device& device)
   TORCH_CHECK(g_cuda, "CudaDeviceInterface was not registered!");
   TORCH_CHECK(
       device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
+
+  initializeCudaContextWithPytorch(device_);
+
+  hardwareDeviceCtx_ = getHardwareDeviceContext(device_);
+  nppCtx_ = getNppStreamContext(device_);
 }
 
 CudaDeviceInterface::~CudaDeviceInterface() {
-  if (ctx_) {
-    addToCacheIfCacheHasCapacity(device_, ctx_);
-    av_buffer_unref(&ctx_);
+  if (hardwareDeviceCtx_) {
+    g_cached_hw_device_ctxs.addIfCacheHasCapacity(
+        device_, std::move(hardwareDeviceCtx_));
   }
+  returnNppStreamContextToCache(device_, std::move(nppCtx_));
 }
 
-void CudaDeviceInterface::initializeContext(AVCodecContext* codecContext) {
-  TORCH_CHECK(!ctx_, "FFmpeg HW device context already initialized");
+void CudaDeviceInterface::initialize(
+    const AVStream* avStream,
+    const UniqueDecodingAVFormatContext& avFormatCtx,
+    const SharedAVCodecContext& codecContext) {
+  TORCH_CHECK(avStream != nullptr, "avStream is null");
+  codecContext_ = codecContext;
+  timeBase_ = avStream->time_base;
 
-  // It is important for pytorch itself to create the cuda context. If ffmpeg
-  // creates the context it may not be compatible with pytorch.
-  // This is a dummy tensor to initialize the cuda context.
-  torch::Tensor dummyTensorForCudaInitialization = torch::empty(
-      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device_));
-  ctx_ = getCudaContext(device_);
-  codecContext->hw_device_ctx = av_buffer_ref(ctx_);
-  return;
+  // TODO: Ideally, we should keep all interface implementations independent.
+  cpuInterface_ = createDeviceInterface(torch::kCPU);
+  TORCH_CHECK(
+      cpuInterface_ != nullptr, "Failed to create CPU device interface");
+  cpuInterface_->initialize(avStream, avFormatCtx, codecContext);
+  cpuInterface_->initializeVideo(
+      VideoStreamOptions(),
+      {},
+      /*resizedOutputDims=*/std::nullopt);
+}
+
+void CudaDeviceInterface::initializeVideo(
+    const VideoStreamOptions& videoStreamOptions,
+    [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
+    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
+  videoStreamOptions_ = videoStreamOptions;
+}
+
+void CudaDeviceInterface::registerHardwareDeviceWithCodec(
+    AVCodecContext* codecContext) {
+  TORCH_CHECK(
+      hardwareDeviceCtx_, "Hardware device context has not been initialized");
+  TORCH_CHECK(codecContext != nullptr, "codecContext is null");
+  codecContext->hw_device_ctx = av_buffer_ref(hardwareDeviceCtx_.get());
+}
+
+UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
+    UniqueAVFrame& avFrame) {
+  // We need FFmpeg filters to handle those conversion cases which are not
+  // directly implemented in CUDA or CPU device interface (in case of a
+  // fallback).
+
+  // Input frame is on CPU, we will just pass it to CPU device interface, so
+  // skipping filters context as CPU device interface will handle everything for
+  // us.
+  if (avFrame->format != AV_PIX_FMT_CUDA) {
+    return std::move(avFrame);
+  }
+
+  auto hwFramesCtx =
+      reinterpret_cast<AVHWFramesContext*>(avFrame->hw_frames_ctx->data);
+  TORCH_CHECK(
+      hwFramesCtx != nullptr,
+      "The AVFrame does not have a hw_frames_ctx. "
+      "That's unexpected, please report this to the TorchCodec repo.");
+
+  AVPixelFormat actualFormat = hwFramesCtx->sw_format;
+
+  // If the frame is already in NV12 format, we don't need to do anything.
+  if (actualFormat == AV_PIX_FMT_NV12) {
+    return std::move(avFrame);
+  }
+
+  AVPixelFormat outputFormat;
+  std::stringstream filters;
+
+  unsigned version_int = avfilter_version();
+  if (version_int < AV_VERSION_INT(8, 0, 103)) {
+    // Color conversion support ('format=' option) was added to scale_cuda from
+    // n5.0. With the earlier version of ffmpeg we have no choice but use CPU
+    // filters. See:
+    // https://github.com/FFmpeg/FFmpeg/commit/62dc5df941f5e196164c151691e4274195523e95
+    outputFormat = AV_PIX_FMT_RGB24;
+
+    auto actualFormatName = av_get_pix_fmt_name(actualFormat);
+    TORCH_CHECK(
+        actualFormatName != nullptr,
+        "The actual format of a frame is unknown to FFmpeg. "
+        "That's unexpected, please report this to the TorchCodec repo.");
+
+    filters << "hwdownload,format=" << actualFormatName;
+  } else {
+    // Actual output color format will be set via filter options
+    outputFormat = AV_PIX_FMT_CUDA;
+
+    filters << "scale_cuda=format=nv12:interp_algo=bilinear";
+  }
+
+  enum AVPixelFormat frameFormat =
+      static_cast<enum AVPixelFormat>(avFrame->format);
+
+  auto newContext = std::make_unique<FiltersContext>(
+      avFrame->width,
+      avFrame->height,
+      frameFormat,
+      avFrame->sample_aspect_ratio,
+      avFrame->width,
+      avFrame->height,
+      outputFormat,
+      filters.str(),
+      timeBase_,
+      av_buffer_ref(avFrame->hw_frames_ctx));
+
+  if (!nv12Conversion_ || *nv12ConversionContext_ != *newContext) {
+    nv12Conversion_ =
+        std::make_unique<FilterGraph>(*newContext, videoStreamOptions_);
+    nv12ConversionContext_ = std::move(newContext);
+  }
+  auto filteredAVFrame = nv12Conversion_->convert(avFrame);
+
+  // If this check fails it means the frame wasn't
+  // reshaped to its expected dimensions by filtergraph.
+  TORCH_CHECK(
+      (filteredAVFrame->width == nv12ConversionContext_->outputWidth) &&
+          (filteredAVFrame->height == nv12ConversionContext_->outputHeight),
+      "Expected frame from filter graph of ",
+      nv12ConversionContext_->outputWidth,
+      "x",
+      nv12ConversionContext_->outputHeight,
+      ", got ",
+      filteredAVFrame->width,
+      "x",
+      filteredAVFrame->height);
+
+  return filteredAVFrame;
 }
 
 void CudaDeviceInterface::convertAVFrameToFrameOutput(
-    const VideoStreamOptions& videoStreamOptions,
-    [[maybe_unused]] const AVRational& timeBase,
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
+  validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
+
+  // All of our CUDA decoding assumes NV12 format. We handle non-NV12 formats by
+  // converting them to NV12.
+  avFrame = maybeConvertAVFrameToNV12OrRGB24(avFrame);
+
+  if (avFrame->format != AV_PIX_FMT_CUDA) {
+    // The frame's format is AV_PIX_FMT_CUDA if and only if its content is on
+    // the GPU. In this branch, the frame is on the CPU. There are two possible
+    // reasons:
+    //
+    //   1. During maybeConvertAVFrameToNV12OrRGB24(), we had a non-NV12 format
+    //      frame and we're on FFmpeg 4.4 or earlier. In such cases, we had to
+    //      use CPU filters and we just converted the frame to RGB24.
+    //   2. This is what NVDEC gave us if it wasn't able to decode a frame, for
+    //      whatever reason. Typically that happens if the video's encoder isn't
+    //      supported by NVDEC.
+    //
+    // In both cases, we have a frame on the CPU. We send the frame back to the
+    // CUDA device when we're done.
+
+    enum AVPixelFormat frameFormat =
+        static_cast<enum AVPixelFormat>(avFrame->format);
+
+    FrameOutput cpuFrameOutput;
+    if (frameFormat == AV_PIX_FMT_RGB24) {
+      // Reason 1 above. The frame is already in RGB24, we just need to convert
+      // it to a tensor.
+      cpuFrameOutput.data = rgbAVFrameToTensor(avFrame);
+    } else {
+      // Reason 2 above. We need to do a full conversion which requires an
+      // actual CPU device.
+      cpuInterface_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
+    }
+
+    // Finally, we need to send the frame back to the GPU. Note that the
+    // pre-allocated tensor is on the GPU, so we can't send that to the CPU
+    // device interface. We copy it over here.
+    if (preAllocatedOutputTensor.has_value()) {
+      preAllocatedOutputTensor.value().copy_(cpuFrameOutput.data);
+      frameOutput.data = preAllocatedOutputTensor.value();
+    } else {
+      frameOutput.data = cpuFrameOutput.data.to(device_);
+    }
+
+    usingCPUFallback_ = true;
+    return;
+  }
+
+  usingCPUFallback_ = false;
+
+  // Above we checked that the AVFrame was on GPU, but that's not enough, we
+  // also need to check that the AVFrame is in AV_PIX_FMT_NV12 format (8 bits),
+  // because this is what the NPP color conversion routines expect. This SHOULD
+  // be enforced by our call to maybeConvertAVFrameToNV12OrRGB24() above.
   TORCH_CHECK(
-      avFrame->format == AV_PIX_FMT_CUDA,
-      "Expected format to be AV_PIX_FMT_CUDA, got " +
-          std::string(av_get_pix_fmt_name((AVPixelFormat)avFrame->format)));
-  auto frameDims =
-      getHeightAndWidthFromOptionsOrAVFrame(videoStreamOptions, avFrame);
-  int height = frameDims.height;
-  int width = frameDims.width;
-  torch::Tensor& dst = frameOutput.data;
-  if (preAllocatedOutputTensor.has_value()) {
-    dst = preAllocatedOutputTensor.value();
-    auto shape = dst.sizes();
-    TORCH_CHECK(
-        (shape.size() == 3) && (shape[0] == height) && (shape[1] == width) &&
-            (shape[2] == 3),
-        "Expected tensor of shape ",
-        height,
-        "x",
-        width,
-        "x3, got ",
-        shape);
-  } else {
-    dst = allocateEmptyHWCTensor(height, width, device_);
-  }
+      avFrame->hw_frames_ctx != nullptr,
+      "The AVFrame does not have a hw_frames_ctx. This should never happen");
+  AVHWFramesContext* hwFramesCtx =
+      reinterpret_cast<AVHWFramesContext*>(avFrame->hw_frames_ctx->data);
+  TORCH_CHECK(
+      hwFramesCtx != nullptr,
+      "The AVFrame does not have a valid hw_frames_ctx. This should never happen");
 
-  // Use the user-requested GPU for running the NPP kernel.
-  c10::cuda::CUDAGuard deviceGuard(device_);
+  AVPixelFormat actualFormat = hwFramesCtx->sw_format;
+  TORCH_CHECK(
+      actualFormat == AV_PIX_FMT_NV12,
+      "The AVFrame is ",
+      (av_get_pix_fmt_name(actualFormat) ? av_get_pix_fmt_name(actualFormat)
+                                         : "unknown"),
+      ", but we expected AV_PIX_FMT_NV12. "
+      "That's unexpected, please report this to the TorchCodec repo.");
 
-  NppiSize oSizeROI = {width, height};
-  Npp8u* input[2] = {avFrame->data[0], avFrame->data[1]};
+  // Figure out the NVDEC stream from the avFrame's hardware context.
+  // In reality, we know that this stream is hardcoded to be the default stream
+  // by FFmpeg:
+  // https://github.com/FFmpeg/FFmpeg/blob/66e40840d15b514f275ce3ce2a4bf72ec68c7311/libavutil/hwcontext_cuda.c#L387-L388
+  TORCH_CHECK(
+      hwFramesCtx->device_ctx != nullptr,
+      "The AVFrame's hw_frames_ctx does not have a device_ctx. ");
+  auto cudaDeviceCtx =
+      static_cast<AVCUDADeviceContext*>(hwFramesCtx->device_ctx->hwctx);
+  TORCH_CHECK(cudaDeviceCtx != nullptr, "The hardware context is null");
+  at::cuda::CUDAStream nvdecStream = // That's always the default stream. Sad.
+      c10::cuda::getStreamFromExternal(cudaDeviceCtx->stream, device_.index());
 
-  auto start = std::chrono::high_resolution_clock::now();
-  NppStatus status;
-  if (avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT709) {
-    status = nppiNV12ToRGB_709CSC_8u_P2C3R(
-        input,
-        avFrame->linesize[0],
-        static_cast<Npp8u*>(dst.data_ptr()),
-        dst.stride(0),
-        oSizeROI);
-  } else {
-    status = nppiNV12ToRGB_8u_P2C3R(
-        input,
-        avFrame->linesize[0],
-        static_cast<Npp8u*>(dst.data_ptr()),
-        dst.stride(0),
-        oSizeROI);
-  }
-  TORCH_CHECK(status == NPP_SUCCESS, "Failed to convert NV12 frame.");
-
-  // Make the pytorch stream wait for the npp kernel to finish before using the
-  // output.
-  at::cuda::CUDAEvent nppDoneEvent;
-  at::cuda::CUDAStream nppStreamWrapper =
-      c10::cuda::getStreamFromExternal(nppGetStream(), device_.index());
-  nppDoneEvent.record(nppStreamWrapper);
-  nppDoneEvent.block(at::cuda::getCurrentCUDAStream());
-
-  auto end = std::chrono::high_resolution_clock::now();
-
-  std::chrono::duration<double, std::micro> duration = end - start;
-  VLOG(9) << "NPP Conversion of frame height=" << height << " width=" << width
-          << " took: " << duration.count() << "us" << std::endl;
+  frameOutput.data = convertNV12FrameToRGB(
+      avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
 }
 
 // inspired by https://github.com/FFmpeg/FFmpeg/commit/ad67ea9
@@ -284,6 +352,14 @@ std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
   }
 
   return std::nullopt;
+}
+
+std::string CudaDeviceInterface::getDetails() {
+  // Note: for this interface specifically the fallback is only known after a
+  // frame has been decoded, not before: that's when FFmpeg decides to fallback,
+  // so we can't know earlier.
+  return std::string("FFmpeg CUDA Device Interface. Using ") +
+      (usingCPUFallback_ ? "CPU fallback." : "NVDEC.");
 }
 
 } // namespace facebook::torchcodec

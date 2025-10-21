@@ -126,13 +126,23 @@ class CMakeBuild(build_ext):
             f"-DTORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR={torchcodec_disable_compile_warning_as_error}",
         ]
 
+        self.build_temp = os.getenv("TORCHCODEC_CMAKE_BUILD_DIR", self.build_temp)
+        print(f"Using {self.build_temp = }", flush=True)
         Path(self.build_temp).mkdir(parents=True, exist_ok=True)
 
+        print("Calling cmake (configure)", flush=True)
         subprocess.check_call(
             ["cmake", str(_ROOT_DIR)] + cmake_args, cwd=self.build_temp
         )
-        subprocess.check_call(["cmake", "--build", "."], cwd=self.build_temp)
-        subprocess.check_call(["cmake", "--install", "."], cwd=self.build_temp)
+        print("Calling cmake --build", flush=True)
+        subprocess.check_call(
+            ["cmake", "--build", ".", "--config", cmake_build_type], cwd=self.build_temp
+        )
+        print("Calling cmake --install", flush=True)
+        subprocess.check_call(
+            ["cmake", "--install", ".", "--config", cmake_build_type],
+            cwd=self.build_temp,
+        )
 
     def copy_extensions_to_source(self):
         """Copy built extensions from temporary folder back into source tree.
@@ -150,10 +160,10 @@ class CMakeBuild(build_ext):
             # dynamically loaded module. For more, see:
             #   https://stackoverflow.com/a/2339910
             extensions = ["dylib", "so"]
+        elif sys.platform in ("win32", "cygwin"):
+            extensions = ["dll", "pyd"]
         else:
-            raise NotImplementedError(
-                "Platforms other than linux/darwin are not supported yet"
-            )
+            raise NotImplementedError(f"Platform {sys.platform} is not supported")
 
         for ext in extensions:
             for lib_file in self._install_prefix.glob(f"*.{ext}"):

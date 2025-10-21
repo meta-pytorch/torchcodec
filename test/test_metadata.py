@@ -10,16 +10,16 @@ from fractions import Fraction
 import pytest
 
 from torchcodec._core import (
+    add_video_stream,
     AudioStreamMetadata,
     create_from_file,
     get_container_metadata,
     get_container_metadata_from_header,
-    get_ffmpeg_library_versions,
     VideoStreamMetadata,
 )
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
-from .utils import NASA_AUDIO_MP3, NASA_VIDEO
+from .utils import get_ffmpeg_major_version, NASA_AUDIO_MP3, NASA_VIDEO
 
 
 # TODO: Expected values in these tests should be based on the assets's
@@ -28,6 +28,17 @@ from .utils import NASA_AUDIO_MP3, NASA_VIDEO
 
 def _get_container_metadata(path, seek_mode):
     decoder = create_from_file(str(path), seek_mode=seek_mode)
+
+    # For custom_frame_mappings seek mode, add a video stream to update metadata
+    if seek_mode == "custom_frame_mappings":
+        custom_frame_mappings = NASA_VIDEO.get_custom_frame_mappings()
+
+        # Add the best video stream (index 3 for NASA_VIDEO)
+        add_video_stream(
+            decoder,
+            stream_index=NASA_VIDEO.default_stream_index,
+            custom_frame_mappings=custom_frame_mappings,
+        )
     return get_container_metadata(decoder)
 
 
@@ -37,17 +48,25 @@ def _get_container_metadata(path, seek_mode):
         get_container_metadata_from_header,
         functools.partial(_get_container_metadata, seek_mode="approximate"),
         functools.partial(_get_container_metadata, seek_mode="exact"),
+        functools.partial(_get_container_metadata, seek_mode="custom_frame_mappings"),
     ),
 )
 def test_get_metadata(metadata_getter):
+    seek_mode = (
+        metadata_getter.keywords["seek_mode"]
+        if isinstance(metadata_getter, functools.partial)
+        else None
+    )
+    if (seek_mode == "custom_frame_mappings") and get_ffmpeg_major_version() in (4, 5):
+        pytest.skip(reason="ffprobe isn't accurate on ffmpeg 4 and 5")
+    with_added_video_stream = seek_mode == "custom_frame_mappings"
+    metadata = metadata_getter(NASA_VIDEO.path)
+
     with_scan = (
-        metadata_getter.keywords["seek_mode"] == "exact"
+        (seek_mode == "exact" or seek_mode == "custom_frame_mappings")
         if isinstance(metadata_getter, functools.partial)
         else False
     )
-
-    metadata = metadata_getter(NASA_VIDEO.path)
-    # metadata = metadata_getter(NASA_VIDEO.path)
 
     assert len(metadata.streams) == 6
     assert metadata.best_video_stream_index == 3
@@ -58,9 +77,7 @@ def test_get_metadata(metadata_getter):
     with pytest.raises(NotImplementedError, match="Decide on logic"):
         metadata.bit_rate
 
-    ffmpeg_major_version = int(
-        get_ffmpeg_library_versions()["ffmpeg_version"].split(".")[0]
-    )
+    ffmpeg_major_version = get_ffmpeg_major_version()
     if ffmpeg_major_version <= 5:
         expected_duration_seconds_from_header = 16.57
         expected_bit_rate_from_header = 324915
@@ -82,7 +99,9 @@ def test_get_metadata(metadata_getter):
     assert best_video_stream_metadata.begin_stream_seconds_from_header == 0
     assert best_video_stream_metadata.bit_rate == 128783
     assert best_video_stream_metadata.average_fps == pytest.approx(29.97, abs=0.001)
-    assert best_video_stream_metadata.pixel_aspect_ratio is None
+    assert best_video_stream_metadata.pixel_aspect_ratio == (
+        Fraction(1, 1) if with_added_video_stream else None
+    )
     assert best_video_stream_metadata.codec == "h264"
     assert best_video_stream_metadata.num_frames_from_content == (
         390 if with_scan else None
@@ -112,7 +131,16 @@ def test_get_metadata_audio_file(metadata_getter):
     best_audio_stream_metadata = metadata.streams[metadata.best_audio_stream_index]
     assert isinstance(best_audio_stream_metadata, AudioStreamMetadata)
     assert best_audio_stream_metadata is metadata.best_audio_stream
-    assert best_audio_stream_metadata.duration_seconds_from_header == 13.248
+
+    ffmpeg_major_version = get_ffmpeg_major_version()
+    expected_duration_seconds_from_header = (
+        13.056 if ffmpeg_major_version >= 8 else 13.248
+    )
+
+    assert (
+        best_audio_stream_metadata.duration_seconds_from_header
+        == expected_duration_seconds_from_header
+    )
     assert best_audio_stream_metadata.begin_stream_seconds_from_header == 0.138125
     assert best_audio_stream_metadata.bit_rate == 64000
     assert best_audio_stream_metadata.codec == "mp3"
@@ -262,11 +290,15 @@ def test_repr():
   average_fps: 29.97002997002997
 """
     )
+    ffmpeg_major_version = get_ffmpeg_major_version()
+    expected_duration_seconds_from_header = (
+        13.056 if ffmpeg_major_version >= 8 else 13.248
+    )
 
     assert (
         str(AudioDecoder(NASA_AUDIO_MP3.path).metadata)
-        == """AudioStreamMetadata:
-  duration_seconds_from_header: 13.248
+        == f"""AudioStreamMetadata:
+  duration_seconds_from_header: {expected_duration_seconds_from_header}
   begin_stream_seconds_from_header: 0.138125
   bit_rate: 64000.0
   codec: mp3

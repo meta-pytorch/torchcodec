@@ -7,6 +7,7 @@
 import contextlib
 import gc
 import json
+from functools import partial
 from unittest.mock import patch
 
 import numpy
@@ -17,25 +18,40 @@ from torchcodec import _core, FrameBatch
 from torchcodec.decoders import (
     AudioDecoder,
     AudioStreamMetadata,
+    set_cuda_backend,
     VideoDecoder,
     VideoStreamMetadata,
 )
+from torchcodec.decoders._decoder_utils import _get_cuda_backend
 
 from .utils import (
+    all_supported_devices,
     assert_frames_equal,
     AV1_VIDEO,
-    cpu_and_cuda,
+    BT709_FULL_RANGE,
+    cuda_version_used_for_building_torch,
     get_ffmpeg_major_version,
+    H264_10BITS,
+    H265_10BITS,
     H265_VIDEO,
     in_fbcode,
+    make_video_decoder,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
+    needs_cuda,
+    psnr,
     SINE_MONO_S16,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    supports_approximate_mode,
+    TEST_SRC_2_720P,
+    TEST_SRC_2_720P_H265,
+    TEST_SRC_2_720P_MPEG4,
+    TEST_SRC_2_720P_VP8,
+    TEST_SRC_2_720P_VP9,
 )
 
 
@@ -80,7 +96,7 @@ class TestDecoder:
                 def read(self, size: int) -> bytes:
                     return self._file.read(size)
 
-                def seek(self, offset: int, whence: int) -> bytes:
+                def seek(self, offset: int, whence: int) -> int:
                     return self._file.seek(offset, whence)
 
             source = CustomReader(open(asset.path, mode="rb", buffering=0))
@@ -160,10 +176,10 @@ class TestVideoDecoder:
             VideoDecoder(NASA_VIDEO.path, seek_mode="blah")
 
     @pytest.mark.parametrize("num_ffmpeg_threads", (1, 4))
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_getitem_int(self, num_ffmpeg_threads, device, seek_mode):
-        decoder = VideoDecoder(
+        decoder, device = make_video_decoder(
             NASA_VIDEO.path,
             num_ffmpeg_threads=num_ffmpeg_threads,
             device=device,
@@ -173,7 +189,7 @@ class TestVideoDecoder:
         ref_frame0 = NASA_VIDEO.get_frame_data_by_index(0).to(device)
         ref_frame1 = NASA_VIDEO.get_frame_data_by_index(1).to(device)
         ref_frame180 = NASA_VIDEO.get_frame_data_by_index(180).to(device)
-        ref_frame_last = NASA_VIDEO.get_frame_data_by_index(289).to(device)
+        ref_frame_last = NASA_VIDEO.get_frame_data_by_index(389).to(device)
 
         assert_frames_equal(ref_frame0, decoder[0])
         assert_frames_equal(ref_frame1, decoder[1])
@@ -186,7 +202,7 @@ class TestVideoDecoder:
         ref_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
         ref_frame1 = NASA_VIDEO.get_frame_data_by_index(1)
         ref_frame180 = NASA_VIDEO.get_frame_data_by_index(180)
-        ref_frame_last = NASA_VIDEO.get_frame_data_by_index(289)
+        ref_frame_last = NASA_VIDEO.get_frame_data_by_index(389)
 
         # test against numpy.int64
         assert_frames_equal(ref_frame0, decoder[numpy.int64(0)])
@@ -210,10 +226,12 @@ class TestVideoDecoder:
         assert_frames_equal(ref_frame1, decoder[numpy.uint32(1)])
         assert_frames_equal(ref_frame180, decoder[numpy.uint32(180)])
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_getitem_slice(self, device, seek_mode):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        decoder, device = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
         # ensure that the degenerate case of a range of size 1 works
 
@@ -370,15 +388,17 @@ class TestVideoDecoder:
         decoder = VideoDecoder(NASA_VIDEO.path, device=torch.device("cpu"))
         assert isinstance(decoder.metadata, VideoStreamMetadata)
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_getitem_fails(self, device, seek_mode):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
-        with pytest.raises(IndexError, match="out of bounds"):
+        with pytest.raises(IndexError, match="Invalid frame index"):
             frame = decoder[1000]  # noqa
 
-        with pytest.raises(IndexError, match="out of bounds"):
+        with pytest.raises(IndexError, match="Invalid frame index"):
             frame = decoder[-1000]  # noqa
 
         with pytest.raises(TypeError, match="Unsupported key type"):
@@ -387,17 +407,19 @@ class TestVideoDecoder:
         with pytest.raises(TypeError, match="Unsupported key type"):
             frame = decoder[2.3]  # noqa
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_iteration(self, device, seek_mode):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        decoder, device = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
         ref_frame0 = NASA_VIDEO.get_frame_data_by_index(0).to(device)
         ref_frame1 = NASA_VIDEO.get_frame_data_by_index(1).to(device)
         ref_frame9 = NASA_VIDEO.get_frame_data_by_index(9).to(device)
         ref_frame35 = NASA_VIDEO.get_frame_data_by_index(35).to(device)
         ref_frame180 = NASA_VIDEO.get_frame_data_by_index(180).to(device)
-        ref_frame_last = NASA_VIDEO.get_frame_data_by_index(289).to(device)
+        ref_frame_last = NASA_VIDEO.get_frame_data_by_index(389).to(device)
 
         # Access an arbitrary frame to make sure that the later iteration
         # still works as expected. The underlying C++ decoder object is
@@ -419,6 +441,7 @@ class TestVideoDecoder:
             elif i == 389:
                 assert_frames_equal(ref_frame_last, frame)
 
+    @pytest.mark.slow
     def test_iteration_slow(self):
         decoder = VideoDecoder(NASA_VIDEO.path)
         ref_frame_last = NASA_VIDEO.get_frame_data_by_index(389)
@@ -433,10 +456,12 @@ class TestVideoDecoder:
 
         assert iterations == len(decoder) == 390
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frame_at(self, device, seek_mode):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        decoder, device = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
         ref_frame9 = NASA_VIDEO.get_frame_data_by_index(9).to(device)
         frame9 = decoder.get_frame_at(9)
@@ -471,9 +496,9 @@ class TestVideoDecoder:
         frame9 = decoder.get_frame_at(numpy.uint32(9))
         assert_frames_equal(ref_frame9, frame9.data)
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frame_at_tuple_unpacking(self, device):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device)
+        decoder, _ = make_video_decoder(NASA_VIDEO.path, device=device)
 
         frame = decoder.get_frame_at(50)
         data, pts, duration = decoder.get_frame_at(50)
@@ -482,21 +507,28 @@ class TestVideoDecoder:
         assert frame.pts_seconds == pts
         assert frame.duration_seconds == duration
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frame_at_fails(self, device, seek_mode):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
-        with pytest.raises(IndexError, match="out of bounds"):
+        with pytest.raises(
+            IndexError,
+            match="negative indices must have an absolute value less than the number of frames",
+        ):
             frame = decoder.get_frame_at(-10000)  # noqa
 
-        with pytest.raises(IndexError, match="out of bounds"):
+        with pytest.raises(IndexError, match="must be less than"):
             frame = decoder.get_frame_at(10000)  # noqa
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_at(self, device, seek_mode):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        decoder, device = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
         # test positive and negative frame index
         frames = decoder.get_frames_at([35, 25, -1, -2])
@@ -544,29 +576,36 @@ class TestVideoDecoder:
             frames.duration_seconds, expected_duration_seconds, atol=1e-4, rtol=0
         )
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_at_fails(self, device, seek_mode):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
-        expected_converted_index = -10000 + len(decoder)
         with pytest.raises(
-            RuntimeError, match=f"Invalid frame index={expected_converted_index}"
+            IndexError,
+            match="negative indices must have an absolute value less than the number of frames",
         ):
             decoder.get_frames_at([-10000])
 
-        with pytest.raises(RuntimeError, match="Invalid frame index=390"):
+        with pytest.raises(IndexError, match="Invalid frame index=390"):
             decoder.get_frames_at([390])
 
-        with pytest.raises(RuntimeError, match="Expected a value of type"):
+        with pytest.raises(
+            RuntimeError, match="expected scalar type Long but found Float"
+        ):
             decoder.get_frames_at([0.3])
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frame_at_av1(self, device):
         if device == "cuda" and get_ffmpeg_major_version() == 4:
             return
 
-        decoder = VideoDecoder(AV1_VIDEO.path, device=device)
+        if "cuda" in device and in_fbcode():
+            pytest.skip("decoding on CUDA is not supported internally")
+
+        decoder, device = make_video_decoder(AV1_VIDEO.path, device=device)
         ref_frame10 = AV1_VIDEO.get_frame_data_by_index(10)
         ref_frame_info10 = AV1_VIDEO.get_frame_info(10)
         decoded_frame10 = decoder.get_frame_at(10)
@@ -574,10 +613,12 @@ class TestVideoDecoder:
         assert decoded_frame10.pts_seconds == ref_frame_info10.pts_seconds
         assert_frames_equal(decoded_frame10.data, ref_frame10.to(device=device))
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frame_played_at(self, device, seek_mode):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        decoder, device = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
         ref_frame_played_at_6 = NASA_VIDEO.get_frame_data_by_index(180).to(device)
         assert_frames_equal(
@@ -603,10 +644,12 @@ class TestVideoDecoder:
         ref_frame6 = H265_VIDEO.get_frame_data_by_index(5)
         assert_frames_equal(ref_frame6, decoder.get_frame_played_at(0.5).data)
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frame_played_at_fails(self, device, seek_mode):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
         with pytest.raises(IndexError, match="Invalid pts in seconds"):
             frame = decoder.get_frame_played_at(-1.0)  # noqa
@@ -614,15 +657,21 @@ class TestVideoDecoder:
         with pytest.raises(IndexError, match="Invalid pts in seconds"):
             frame = decoder.get_frame_played_at(100.0)  # noqa
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
-    def test_get_frames_played_at(self, device, seek_mode):
-
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+    @pytest.mark.parametrize("input_type", ("list", "tensor"))
+    def test_get_frames_played_at(self, device, seek_mode, input_type):
+        decoder, device = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
         # Note: We know the frame at ~0.84s has index 25, the one at 1.16s has
         # index 35. We use those indices as reference to test against.
-        seconds = [0.84, 1.17, 0.85]
+        if input_type == "list":
+            seconds = [0.84, 1.17, 0.85]
+        else:  # tensor
+            seconds = torch.tensor([0.84, 1.17, 0.85])
+
         reference_indices = [25, 35, 25]
         frames = decoder.get_frames_played_at(seconds)
 
@@ -653,10 +702,12 @@ class TestVideoDecoder:
             frames.duration_seconds, expected_duration_seconds, atol=1e-4, rtol=0
         )
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_played_at_fails(self, device, seek_mode):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
         with pytest.raises(RuntimeError, match="must be greater than or equal to"):
             decoder.get_frames_played_at([-1])
@@ -664,14 +715,16 @@ class TestVideoDecoder:
         with pytest.raises(RuntimeError, match="must be less than"):
             decoder.get_frames_played_at([14])
 
-        with pytest.raises(RuntimeError, match="Expected a value of type"):
+        with pytest.raises(
+            ValueError, match="Couldn't convert timestamps input to a tensor"
+        ):
             decoder.get_frames_played_at(["bad"])
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("stream_index", [0, 3, None])
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_in_range(self, stream_index, device, seek_mode):
-        decoder = VideoDecoder(
+        decoder, device = make_video_decoder(
             NASA_VIDEO.path,
             stream_index=stream_index,
             device=device,
@@ -772,7 +825,59 @@ class TestVideoDecoder:
             empty_frames.duration_seconds, NASA_VIDEO.empty_duration_seconds
         )
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_get_frames_in_range_slice_indices_syntax(self, device, seek_mode):
+        decoder, device = make_video_decoder(
+            NASA_VIDEO.path,
+            stream_index=3,
+            device=device,
+            seek_mode=seek_mode,
+        )
+
+        # high range ends get capped to num_frames
+        frames387_389 = decoder.get_frames_in_range(start=387, stop=1000)
+        assert frames387_389.data.shape == torch.Size(
+            [
+                3,
+                NASA_VIDEO.get_num_color_channels(stream_index=3),
+                NASA_VIDEO.get_height(stream_index=3),
+                NASA_VIDEO.get_width(stream_index=3),
+            ]
+        )
+        ref_frame387_389 = NASA_VIDEO.get_frame_data_by_range(
+            start=387, stop=390, stream_index=3
+        ).to(device)
+        assert_frames_equal(frames387_389.data, ref_frame387_389)
+
+        # negative indices are converted
+        frames387_389 = decoder.get_frames_in_range(start=-3, stop=1000)
+        assert frames387_389.data.shape == torch.Size(
+            [
+                3,
+                NASA_VIDEO.get_num_color_channels(stream_index=3),
+                NASA_VIDEO.get_height(stream_index=3),
+                NASA_VIDEO.get_width(stream_index=3),
+            ]
+        )
+        assert_frames_equal(frames387_389.data, ref_frame387_389)
+
+        # "None" as stop is treated as end of the video
+        frames387_None = decoder.get_frames_in_range(start=-3, stop=None)
+        assert frames387_None.data.shape == torch.Size(
+            [
+                3,
+                NASA_VIDEO.get_num_color_channels(stream_index=3),
+                NASA_VIDEO.get_height(stream_index=3),
+                NASA_VIDEO.get_width(stream_index=3),
+            ]
+        )
+        reference_frame387_389 = NASA_VIDEO.get_frame_data_by_range(
+            start=387, stop=390, stream_index=3
+        ).to(device)
+        assert_frames_equal(frames387_None.data, reference_frame387_389)
+
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     @patch("torchcodec._core._metadata._get_stream_json_metadata")
     def test_get_frames_with_missing_num_frames_metadata(
@@ -798,7 +903,7 @@ class TestVideoDecoder:
         # Set the return value of the mock to be the mock_stream_dict
         mock_get_stream_json_metadata.return_value = json.dumps(mock_stream_dict)
 
-        decoder = VideoDecoder(
+        decoder, device = make_video_decoder(
             NASA_VIDEO.path,
             stream_index=3,
             device=device,
@@ -835,10 +940,10 @@ class TestVideoDecoder:
             lambda decoder: decoder.get_frames_played_in_range(0, 1).data,
         ),
     )
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_dimension_order(self, dimension_order, frame_getter, device, seek_mode):
-        decoder = VideoDecoder(
+        decoder, _ = make_video_decoder(
             NASA_VIDEO.path,
             dimension_order=dimension_order,
             device=device,
@@ -863,10 +968,10 @@ class TestVideoDecoder:
             VideoDecoder(NASA_VIDEO.path, dimension_order="NCDHW")
 
     @pytest.mark.parametrize("stream_index", [0, 3, None])
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_by_pts_in_range(self, stream_index, device, seek_mode):
-        decoder = VideoDecoder(
+        decoder, device = make_video_decoder(
             NASA_VIDEO.path,
             stream_index=stream_index,
             device=device,
@@ -1002,10 +1107,12 @@ class TestVideoDecoder:
         )
         assert_frames_equal(all_frames.data, decoder[:])
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_by_pts_in_range_fails(self, device, seek_mode):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode=seek_mode)
+        decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
 
         with pytest.raises(ValueError, match="Invalid start seconds"):
             frame = decoder.get_frames_played_in_range(100.0, 1.0)  # noqa
@@ -1016,9 +1123,11 @@ class TestVideoDecoder:
         with pytest.raises(ValueError, match="Invalid stop seconds"):
             frame = decoder.get_frames_played_in_range(0, 23)  # noqa
 
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_key_frame_indices(self, device):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device, seek_mode="exact")
+        decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode="exact"
+        )
         key_frame_indices = decoder._get_key_frame_indices()
 
         # The key frame indices were generated from the following command:
@@ -1039,7 +1148,9 @@ class TestVideoDecoder:
             key_frame_indices, nasa_reference_key_frame_indices, atol=0, rtol=0
         )
 
-        decoder = VideoDecoder(AV1_VIDEO.path, device=device, seek_mode="exact")
+        decoder, _ = make_video_decoder(
+            AV1_VIDEO.path, device=device, seek_mode="exact"
+        )
         key_frame_indices = decoder._get_key_frame_indices()
 
         # $ ffprobe -v error -hide_banner -select_streams v:0 -show_frames -of csv test/resources/av1_video.mkv | grep -n ",I," | cut -d ':' -f 1 > key_frames.txt
@@ -1049,7 +1160,9 @@ class TestVideoDecoder:
             key_frame_indices, av1_reference_key_frame_indices, atol=0, rtol=0
         )
 
-        decoder = VideoDecoder(H265_VIDEO.path, device=device, seek_mode="exact")
+        decoder, _ = make_video_decoder(
+            H265_VIDEO.path, device=device, seek_mode="exact"
+        )
         key_frame_indices = decoder._get_key_frame_indices()
 
         # ffprobe -v error -hide_banner -select_streams v:0 -show_frames -of csv test/resources/h265_video.mp4 | grep -n ",I," | cut -d ':' -f 1 > key_frames.txt
@@ -1061,9 +1174,9 @@ class TestVideoDecoder:
 
     # TODO investigate why this fails internally.
     @pytest.mark.skipif(in_fbcode(), reason="Compile test fails internally.")
-    @pytest.mark.parametrize("device", cpu_and_cuda())
+    @pytest.mark.parametrize("device", all_supported_devices())
     def test_compile(self, device):
-        decoder = VideoDecoder(NASA_VIDEO.path, device=device)
+        decoder, device = make_video_decoder(NASA_VIDEO.path, device=device)
 
         @contextlib.contextmanager
         def restore_capture_scalar_outputs():
@@ -1138,6 +1251,518 @@ class TestVideoDecoder:
         with pytest.raises(AssertionError, match="not equal"):
             torch.testing.assert_close(decoder[0], decoder[10])
 
+    @needs_cuda
+    @pytest.mark.parametrize("asset", (BT709_FULL_RANGE, NASA_VIDEO))
+    def test_full_and_studio_range_bt709_video(self, asset):
+        # Test ensuring result consistency between CPU and GPU decoder on BT709
+        # videos, one with full color range, one with studio range.
+        # This is a non-regression test for times when we used to not support
+        # full range on GPU.
+        #
+        # NASA_VIDEO is a BT709 studio range video, as can be confirmed with
+        # ffprobe -v quiet -select_streams v:0 -show_entries
+        # stream=color_space,color_transfer,color_primaries,color_range -of
+        # default=noprint_wrappers=1 test/resources/nasa_13013.mp4
+        decoder_gpu = VideoDecoder(asset.path, device="cuda")
+        decoder_cpu = VideoDecoder(asset.path, device="cpu")
+
+        for frame_index in (0, 10, 20, 5):
+            gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
+            cpu_frame = decoder_cpu.get_frame_at(frame_index).data
+
+            if cuda_version_used_for_building_torch() >= (13, 0):
+                torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
+            elif cuda_version_used_for_building_torch() >= (12, 9):
+                torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=2)
+            elif cuda_version_used_for_building_torch() == (12, 8):
+                assert psnr(gpu_frame, cpu_frame) > 20
+
+    @needs_cuda
+    def test_10bit_gpu_fallsback_to_cpu(self):
+        # Test for 10-bit videos that aren't supported by NVDEC: we decode and
+        # do the color conversion on the CPU.
+        # Here we just assert that the GPU results are the same as the CPU
+        # results.
+        # TODO see other TODO below in test_10bit_videos_cpu: we should validate
+        # the frames against a reference.
+
+        # We know from previous tests that the H264_10BITS video isn't supported
+        # by NVDEC, so NVDEC decodes it on the CPU.
+        asset = H264_10BITS
+
+        decoder_gpu = VideoDecoder(asset.path, device="cuda")
+        decoder_cpu = VideoDecoder(asset.path)
+
+        frame_indices = [0, 10, 20, 5]
+        for frame_index in frame_indices:
+            frame_gpu = decoder_gpu.get_frame_at(frame_index).data
+            assert frame_gpu.device.type == "cuda"
+            frame_cpu = decoder_cpu.get_frame_at(frame_index).data
+            assert_frames_equal(frame_gpu.cpu(), frame_cpu)
+
+        # We also check a batch API just to be on the safe side, making sure the
+        # pre-allocated tensor is passed down correctly to the CPU
+        # implementation.
+        frames_gpu = decoder_gpu.get_frames_at(frame_indices).data
+        assert frames_gpu.device.type == "cuda"
+        frames_cpu = decoder_cpu.get_frames_at(frame_indices).data
+        assert_frames_equal(frames_gpu.cpu(), frames_cpu)
+
+    @pytest.mark.parametrize("device", all_supported_devices())
+    @pytest.mark.parametrize("asset", (H264_10BITS, H265_10BITS))
+    def test_10bit_videos(self, device, asset):
+        # This just validates that we can decode 10-bit videos.
+        # TODO validate against the ref that the decoded frames are correct
+
+        if device == "cuda:beta" and asset is H264_10BITS:
+            # This fails on the BETA interface with:
+            #
+            # RuntimeError: Codec configuration not supported on this GPU.
+            # Codec: 4, chroma format: 1, bit depth: 10
+            #
+            # It works on the ffmpeg interface because FFmpeg fallsback to the
+            # CPU, while the BETA interface doesn't.
+            pytest.skip("Asset not supported by NVDEC")
+
+        decoder, _ = make_video_decoder(asset.path, device=device)
+        decoder.get_frame_at(10)
+
+    def setup_frame_mappings(tmp_path, file, stream_index):
+        json_path = tmp_path / "custom_frame_mappings.json"
+        custom_frame_mappings = NASA_VIDEO.generate_custom_frame_mappings(stream_index)
+        if file:
+            # Write the custom frame mappings to a JSON file
+            with open(json_path, "w") as f:
+                f.write(custom_frame_mappings)
+            return json_path
+        else:
+            # Return the custom frame mappings as a JSON string
+            return custom_frame_mappings
+
+    @pytest.mark.skipif(
+        in_fbcode(),
+        reason="ffprobe not available internally",
+    )
+    @pytest.mark.parametrize("device", all_supported_devices())
+    @pytest.mark.parametrize("stream_index", [0, 3])
+    @pytest.mark.parametrize(
+        "method",
+        (
+            partial(setup_frame_mappings, file=True),
+            partial(setup_frame_mappings, file=False),
+        ),
+    )
+    def test_custom_frame_mappings_json_and_bytes(
+        self, tmp_path, device, stream_index, method
+    ):
+        custom_frame_mappings = method(tmp_path=tmp_path, stream_index=stream_index)
+        # Optionally open the custom frame mappings file if it is a file path
+        # or use a null context if it is a string.
+        with (
+            open(custom_frame_mappings, "r")
+            if hasattr(custom_frame_mappings, "read")
+            else contextlib.nullcontext()
+        ) as custom_frame_mappings:
+            decoder, device = make_video_decoder(
+                NASA_VIDEO.path,
+                stream_index=stream_index,
+                device=device,
+                custom_frame_mappings=custom_frame_mappings,
+            )
+        frame_0 = decoder.get_frame_at(0)
+        frame_5 = decoder.get_frame_at(5)
+        assert_frames_equal(
+            frame_0.data,
+            NASA_VIDEO.get_frame_data_by_index(0, stream_index=stream_index).to(device),
+        )
+        assert_frames_equal(
+            frame_5.data,
+            NASA_VIDEO.get_frame_data_by_index(5, stream_index=stream_index).to(device),
+        )
+        frames0_5 = decoder.get_frames_played_in_range(
+            frame_0.pts_seconds, frame_5.pts_seconds
+        )
+        assert_frames_equal(
+            frames0_5.data,
+            NASA_VIDEO.get_frame_data_by_range(0, 5, stream_index=stream_index).to(
+                device
+            ),
+        )
+
+    @pytest.mark.skipif(
+        in_fbcode(),
+        reason="ffprobe not available internally",
+    )
+    @pytest.mark.parametrize("device", all_supported_devices())
+    @pytest.mark.parametrize(
+        "custom_frame_mappings,expected_match",
+        [
+            pytest.param(
+                None,
+                "seek_mode",
+                id="valid_content_approximate",
+            ),
+            ("{}", "The input is empty or missing the required 'frames' key."),
+            (
+                '{"valid": "json"}',
+                "The input is empty or missing the required 'frames' key.",
+            ),
+            (
+                '{"frames": [{"missing": "keys"}]}',
+                "keys are required in the frame metadata.",
+            ),
+        ],
+    )
+    def test_custom_frame_mappings_init_fails(
+        self, device, custom_frame_mappings, expected_match
+    ):
+        if custom_frame_mappings is None:
+            custom_frame_mappings = NASA_VIDEO.generate_custom_frame_mappings(0)
+        with pytest.raises(ValueError, match=expected_match):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                stream_index=0,
+                device=device,
+                custom_frame_mappings=custom_frame_mappings,
+                seek_mode=("approximate" if expected_match == "seek_mode" else "exact"),
+            )
+
+    @pytest.mark.parametrize("device", all_supported_devices())
+    def test_custom_frame_mappings_init_fails_invalid_json(self, tmp_path, device):
+        invalid_json_path = tmp_path / "invalid_json"
+        with open(invalid_json_path, "w+") as f:
+            f.write("invalid input")
+
+        # Test both file object and string
+        with open(invalid_json_path, "r") as file_obj:
+            for custom_frame_mappings in [
+                file_obj,
+                file_obj.read(),
+            ]:
+                with pytest.raises(ValueError, match="Invalid custom frame mappings"):
+                    VideoDecoder(
+                        NASA_VIDEO.path,
+                        stream_index=0,
+                        device=device,
+                        custom_frame_mappings=custom_frame_mappings,
+                    )
+
+    def test_get_frames_at_tensor_indices(self):
+        # Non-regression test for tensor support in get_frames_at() and
+        # get_frames_played_at()
+        decoder = VideoDecoder(NASA_VIDEO.path)
+
+        decoder.get_frames_at(torch.tensor([0, 10], dtype=torch.int))
+        decoder.get_frames_at(torch.tensor([0, 10], dtype=torch.float))
+
+        decoder.get_frames_played_at(torch.tensor([0, 1], dtype=torch.int))
+        decoder.get_frames_played_at(torch.tensor([0, 1], dtype=torch.float))
+
+    # TODONVDEC P1:
+    # - unskip equality assertion checks on FFMpeg4. The comparison
+    #   checks are failing on very few pixels, e.g.:
+    #
+    #   E   Mismatched elements: 648586 / 82944000 (0.8%)
+    #   E   Greatest absolute difference: 164 at index (20, 2, 27, 96)
+    #   E   Greatest relative difference: inf at index (5, 1, 112, 186)
+    #
+    #   So we're skipping them to unblock for now, but we should call
+    #   assert_tensor_close_on_at_least or something like that.
+    # - unskip equality assertion checks for MPEG4 asset. The frames are decoded
+    #   fine, it's the color conversion that's different. The frame from the
+    #   BETA interface is assumed to be 701 while the one from the default
+    #   interface is 601.
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            BT709_FULL_RANGE,
+            TEST_SRC_2_720P_H265,
+            AV1_VIDEO,
+            TEST_SRC_2_720P_VP9,
+            TEST_SRC_2_720P_VP8,
+            TEST_SRC_2_720P_MPEG4,
+        ),
+    )
+    @pytest.mark.parametrize("contiguous_indices", (True, False))
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_beta_cuda_interface_get_frame_at(
+        self, asset, contiguous_indices, seek_mode
+    ):
+        if seek_mode == "approximate" and not supports_approximate_mode(asset):
+            pytest.skip("asset doesn't work with approximate mode")
+
+        if in_fbcode() and asset is AV1_VIDEO:
+            pytest.skip("AV1 CUDA not supported internally")
+
+        ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        with set_cuda_backend("beta"):
+            beta_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+
+        assert ref_decoder.metadata == beta_decoder.metadata
+
+        if contiguous_indices:
+            indices = range(len(ref_decoder))
+        else:
+            indices = range(0, len(ref_decoder), 10)
+
+        for frame_index in indices:
+            ref_frame = ref_decoder.get_frame_at(frame_index)
+            beta_frame = beta_decoder.get_frame_at(frame_index)
+            # TODONVDEC P1 see above
+            if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+                torch.testing.assert_close(
+                    beta_frame.data, ref_frame.data, rtol=0, atol=0
+                )
+
+            assert beta_frame.pts_seconds == ref_frame.pts_seconds
+            assert beta_frame.duration_seconds == ref_frame.duration_seconds
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            BT709_FULL_RANGE,
+            TEST_SRC_2_720P_H265,
+            AV1_VIDEO,
+            TEST_SRC_2_720P_VP9,
+            TEST_SRC_2_720P_VP8,
+            TEST_SRC_2_720P_MPEG4,
+        ),
+    )
+    @pytest.mark.parametrize("contiguous_indices", (True, False))
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_beta_cuda_interface_get_frames_at(
+        self, asset, contiguous_indices, seek_mode
+    ):
+        if seek_mode == "approximate" and not supports_approximate_mode(asset):
+            pytest.skip("asset doesn't work with approximate mode")
+        if in_fbcode() and asset is AV1_VIDEO:
+            pytest.skip("AV1 CUDA not supported internally")
+
+        ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        with set_cuda_backend("beta"):
+            beta_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+
+        assert ref_decoder.metadata == beta_decoder.metadata
+
+        if contiguous_indices:
+            indices = range(len(ref_decoder))
+        else:
+            indices = range(0, len(ref_decoder), 10)
+        indices = list(indices)
+
+        ref_frames = ref_decoder.get_frames_at(indices)
+        beta_frames = beta_decoder.get_frames_at(indices)
+        # TODONVDEC P1 see above
+        if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            torch.testing.assert_close(
+                beta_frames.data, ref_frames.data, rtol=0, atol=0
+            )
+        torch.testing.assert_close(beta_frames.pts_seconds, ref_frames.pts_seconds)
+        torch.testing.assert_close(
+            beta_frames.duration_seconds, ref_frames.duration_seconds
+        )
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            BT709_FULL_RANGE,
+            TEST_SRC_2_720P_H265,
+            AV1_VIDEO,
+            TEST_SRC_2_720P_VP9,
+            TEST_SRC_2_720P_VP8,
+            TEST_SRC_2_720P_MPEG4,
+        ),
+    )
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_beta_cuda_interface_get_frame_played_at(self, asset, seek_mode):
+        if seek_mode == "approximate" and not supports_approximate_mode(asset):
+            pytest.skip("asset doesn't work with approximate mode")
+        if in_fbcode() and asset is AV1_VIDEO:
+            pytest.skip("AV1 CUDA not supported internally")
+
+        ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        with set_cuda_backend("beta"):
+            beta_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+
+        assert ref_decoder.metadata == beta_decoder.metadata
+
+        timestamps = torch.linspace(
+            0, ref_decoder.metadata.duration_seconds - 1e-4, steps=10
+        )
+        for pts in timestamps:
+            ref_frame = ref_decoder.get_frame_played_at(pts)
+            beta_frame = beta_decoder.get_frame_played_at(pts)
+            # TODONVDEC P1 see above
+            if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+                torch.testing.assert_close(
+                    beta_frame.data, ref_frame.data, rtol=0, atol=0
+                )
+
+            assert beta_frame.pts_seconds == ref_frame.pts_seconds
+            assert beta_frame.duration_seconds == ref_frame.duration_seconds
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            BT709_FULL_RANGE,
+            TEST_SRC_2_720P_H265,
+            AV1_VIDEO,
+            TEST_SRC_2_720P_VP9,
+            TEST_SRC_2_720P_VP8,
+            TEST_SRC_2_720P_MPEG4,
+        ),
+    )
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_beta_cuda_interface_get_frames_played_at(self, asset, seek_mode):
+        if seek_mode == "approximate" and not supports_approximate_mode(asset):
+            pytest.skip("asset doesn't work with approximate mode")
+        if in_fbcode() and asset is AV1_VIDEO:
+            pytest.skip("AV1 CUDA not supported internally")
+
+        ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        with set_cuda_backend("beta"):
+            beta_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+
+        assert ref_decoder.metadata == beta_decoder.metadata
+
+        timestamps = torch.linspace(
+            0, ref_decoder.metadata.duration_seconds - 1e-4, steps=10
+        ).tolist()
+
+        ref_frames = ref_decoder.get_frames_played_at(timestamps)
+        beta_frames = beta_decoder.get_frames_played_at(timestamps)
+        # TODONVDEC P1 see above
+        if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            torch.testing.assert_close(
+                beta_frames.data, ref_frames.data, rtol=0, atol=0
+            )
+        torch.testing.assert_close(beta_frames.pts_seconds, ref_frames.pts_seconds)
+        torch.testing.assert_close(
+            beta_frames.duration_seconds, ref_frames.duration_seconds
+        )
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            BT709_FULL_RANGE,
+            TEST_SRC_2_720P_H265,
+            AV1_VIDEO,
+            TEST_SRC_2_720P_VP9,
+            TEST_SRC_2_720P_VP8,
+            TEST_SRC_2_720P_MPEG4,
+        ),
+    )
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_beta_cuda_interface_backwards(self, asset, seek_mode):
+        if seek_mode == "approximate" and not supports_approximate_mode(asset):
+            pytest.skip("asset doesn't work with approximate mode")
+        if in_fbcode() and asset is AV1_VIDEO:
+            pytest.skip("AV1 CUDA not supported internally")
+
+        ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        with set_cuda_backend("beta"):
+            beta_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+
+        assert ref_decoder.metadata == beta_decoder.metadata
+
+        for frame_index in [0, 1, 2, 1, 0, 100, 10, 50, 20, 200, 150, 150, 150, 389, 2]:
+            # This is ugly, but OK: the indices values above are relevant for
+            # the NASA_VIDEO.  We need to avoid going out of bounds for other
+            # videos so we cap the frame_index. This test still serves its
+            # purpose: no matter what the range of the video, we're still doing
+            # backwards seeks.
+            frame_index = min(frame_index, len(ref_decoder) - 1)
+
+            ref_frame = ref_decoder.get_frame_at(frame_index)
+            beta_frame = beta_decoder.get_frame_at(frame_index)
+            # TODONVDEC P1 see above
+            if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+                torch.testing.assert_close(
+                    beta_frame.data, ref_frame.data, rtol=0, atol=0
+                )
+
+            assert beta_frame.pts_seconds == ref_frame.pts_seconds
+            assert beta_frame.duration_seconds == ref_frame.duration_seconds
+
+    @needs_cuda
+    def test_beta_cuda_interface_cpu_fallback(self):
+        # Non-regression test for the CPU fallback behavior of the BETA CUDA
+        # interface.
+        # We know that the H265_VIDEO asset isn't supported by NVDEC, its
+        # dimensions are too small. We also know that the FFmpeg CUDA interface
+        # fallbacks to the CPU path in such cases. We assert that we fall back
+        # to the CPU path, too.
+
+        ffmpeg = VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
+        with set_cuda_backend("beta"):
+            beta = VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
+
+        torch.testing.assert_close(ffmpeg.data, beta.data, rtol=0, atol=0)
+
+    @needs_cuda
+    def test_beta_cuda_interface_error(self):
+        with pytest.raises(RuntimeError, match="Invalid device string"):
+            VideoDecoder(NASA_VIDEO.path, device="cuda:0:bad_variant")
+
+    @needs_cuda
+    def test_set_cuda_backend(self):
+        # Tests for the set_cuda_backend() context manager.
+
+        with pytest.raises(ValueError, match="Invalid CUDA backend"):
+            with set_cuda_backend("bad_backend"):
+                pass
+
+        # set_cuda_backend() is meant to be used as a context manager. Using it
+        # as a global call does nothing because the "context" is exited right
+        # away. This is a good thing, we prefer users to use it as a CM only.
+        set_cuda_backend("beta")
+        assert _get_cuda_backend() == "ffmpeg"  # Not changed to "beta".
+
+        # Case insensitive
+        with set_cuda_backend("BETA"):
+            assert _get_cuda_backend() == "beta"
+
+        # Check that the default is the ffmpeg backend
+        assert _get_cuda_backend() == "ffmpeg"
+        dec = VideoDecoder(H265_VIDEO.path, device="cuda")
+        assert _core._get_backend_details(dec._decoder).startswith("FFmpeg CUDA")
+
+        # Check the setting "beta" effectively uses the BETA backend.
+        # We also show that the affects decoder creation only. When the decoder
+        # is created with a given backend, it stays in this backend for the rest
+        # of its life. This is normal and intended.
+        with set_cuda_backend("beta"):
+            dec = VideoDecoder(H265_VIDEO.path, device="cuda")
+        assert _get_cuda_backend() == "ffmpeg"
+        assert _core._get_backend_details(dec._decoder).startswith("Beta CUDA")
+        with set_cuda_backend("ffmpeg"):
+            assert _core._get_backend_details(dec._decoder).startswith("Beta CUDA")
+
+        # Hacky way to ensure passing "cuda:1" is supported by both backends. We
+        # just check that there's an error when passing cuda:N where N is too
+        # high.
+        bad_device_number = torch.cuda.device_count() + 1
+        for backend in ("ffmpeg", "beta"):
+            with pytest.raises(RuntimeError, match="invalid device ordinal"):
+                with set_cuda_backend(backend):
+                    VideoDecoder(H265_VIDEO.path, device=f"cuda:{bad_device_number}")
+
 
 class TestAudioDecoder:
     @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3, SINE_MONO_S32))
@@ -1150,8 +1775,13 @@ class TestAudioDecoder:
             == decoder.metadata.stream_index
             == asset.default_stream_index
         )
+
+        expected_duration_seconds_from_header = asset.duration_seconds
+        if asset == NASA_AUDIO_MP3 and get_ffmpeg_major_version() >= 8:
+            expected_duration_seconds_from_header = 13.056
+
         assert decoder.metadata.duration_seconds_from_header == pytest.approx(
-            asset.duration_seconds
+            expected_duration_seconds_from_header
         )
         assert decoder.metadata.sample_rate == asset.sample_rate
         assert decoder.metadata.num_channels == asset.num_channels
@@ -1430,26 +2060,25 @@ class TestAudioDecoder:
             frames_44100_to_8000.data, frames_8000.data, atol=0.03, rtol=0
         )
 
-    def test_s16_ffmpeg4_bug(self):
-        # s16 fails on FFmpeg4 but can be decoded on other versions.
-        # Debugging logs show that we're hitting:
-        # [SWR @ 0x560a7abdaf80] Input channel count and layout are unset
-        # which seems to point to:
-        # https://github.com/FFmpeg/FFmpeg/blob/40a6963fbd0c47be358a3760480180b7b532e1e9/libswresample/swresample.c#L293-L305
-        # ¯\_(ツ)_/¯
+    def test_decode_s16_ffmpeg4(self):
+        # Non-regression test for https://github.com/pytorch/torchcodec/issues/843
+        # Ensures that decoding s16 on FFmpeg4 handles
+        # unset input channel count and layout
 
         asset = SINE_MONO_S16
         decoder = AudioDecoder(asset.path)
         assert decoder.metadata.sample_rate == asset.sample_rate
         assert decoder.metadata.sample_format == asset.sample_format
 
-        cm = (
-            pytest.raises(RuntimeError, match="The frame has 0 channels, expected 1.")
-            if get_ffmpeg_major_version() == 4
-            else contextlib.nullcontext()
+        test_samples = decoder.get_samples_played_in_range()
+        assert test_samples.data.shape[0] == decoder.metadata.num_channels
+        assert test_samples.sample_rate == decoder.metadata.sample_rate
+        reference_frames = asset.get_frame_data_by_range(
+            start=0, stop=1, stream_index=0
         )
-        with cm:
-            decoder.get_samples_played_in_range()
+        torch.testing.assert_close(
+            test_samples.data[0], reference_frames, atol=0, rtol=0
+        )
 
     @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
     @pytest.mark.parametrize("sample_rate", (None, 8000, 16_000, 44_1000))

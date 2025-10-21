@@ -11,10 +11,29 @@ find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development)
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
 else()
-    set(TORCHCODEC_WERROR_OPTION "-Werror")
+    if (WIN32)
+        # TODO set warnings as errors on Windows as well.
+        # set(TORCHCODEC_WERROR_OPTION "/WX")
+    else()
+        set(TORCHCODEC_WERROR_OPTION "-Werror")
+    endif()
 endif()
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic ${TORCHCODEC_WERROR_OPTION} ${TORCH_CXX_FLAGS}")
+if (WIN32)
+  # Avoid warnings about non-ASCII characters in source files.
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4819")
+  # Important for when we add Windows CUDA: exporting all symbols is limited to
+  # 65535 symbols, which (apparently) will not work for CUDA.
+  # https://github.com/pytorch/pytorch/pull/3650
+  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
+if (WIN32)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4 ${TORCHCODEC_WERROR_OPTION} ${TORCH_CXX_FLAGS}")
+else()
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic ${TORCHCODEC_WERROR_OPTION} ${TORCH_CXX_FLAGS}")
+endif()
+
 
 function(make_torchcodec_sublibrary
     library_name
@@ -39,6 +58,7 @@ function(make_torchcodec_sublibrary
         PUBLIC
         ${library_dependencies}
     )
+
 endfunction()
 
 function(make_torchcodec_libraries
@@ -48,55 +68,75 @@ function(make_torchcodec_libraries
     # We create three shared libraries per version of FFmpeg, where the version
     # is denoted by N:
     #
-    # 1. libtorchcodec_decoderN.{ext}: Base library which contains the
+    # 1. libtorchcodec_coreN.{ext}: Base library which contains the
     #    implementation of VideoDecoder and everything VideoDecoder needs. On
-    #    Linux, {ext} is so. On Mac, it is dylib.
+    #    Linux, {ext} is so. On Mac, it is dylib. On Windows it's dll.
     #
     # 2. libtorchcodec_custom_opsN.{ext}: Implementation of the PyTorch custom
-    #    ops. Depends on libtorchcodec_decoderN.{ext}. On Linux, {ext} is so.
-    #    On Mac, it is dylib.
+    #    ops. Depends on libtorchcodec_coreN.{ext}. On Linux, {ext} is so.
+    #    On Mac, it is dylib. On Windows it's dll.
     #
     # 3. libtorchcodec_pybind_opsN.{ext}: Implementation of the pybind11 ops. We
     #    keep these separate from the PyTorch custom ops because we have to
     #    load these libraries separately on the Python side. Depends on
-    #    libtorchcodec_decoderN.{ext}. On BOTH Linux and Mac {ext} is so.
+    #    libtorchcodec_coreN.{ext}. On BOTH Linux and Mac {ext} is so. On
+    #    Windows, it's pyd.
 
-    # 1. Create libtorchcodec_decoderN.{ext}.
-    set(decoder_library_name "libtorchcodec_decoder${ffmpeg_major_version}")
-    set(decoder_sources
+    # 1. Create libtorchcodec_coreN.{ext}.
+    set(core_library_name "libtorchcodec_core${ffmpeg_major_version}")
+    set(core_sources
         AVIOContextHolder.cpp
         AVIOTensorContext.cpp
         FFMPEGCommon.cpp
+        FilterGraph.cpp
         Frame.cpp
         DeviceInterface.cpp
         CpuDeviceInterface.cpp
         SingleStreamDecoder.cpp
-        # TODO: lib name should probably not be "*_decoder*" now that it also
-        # contains an encoder
         Encoder.cpp
+        ValidationUtils.cpp
+        Transform.cpp
     )
 
     if(ENABLE_CUDA)
-	    list(APPEND decoder_sources CudaDeviceInterface.cpp)
+	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp)
     endif()
 
-    set(decoder_library_dependencies
+    set(core_library_dependencies
         ${ffmpeg_target}
         ${TORCH_LIBRARIES}
     )
 
     if(ENABLE_CUDA)
-        list(APPEND decoder_library_dependencies
+        # Try to find NVCUVID. Try the normal way first. This should work locally.
+        find_library(NVCUVID_LIBRARY NAMES nvcuvid)
+        # If not found, try with version suffix, or hardcoded path. Appears
+        # to be necessary on the CI.
+        if(NOT NVCUVID_LIBRARY)
+            find_library(NVCUVID_LIBRARY NAMES nvcuvid.1 PATHS /usr/lib64 /usr/lib)
+        endif()
+        if(NOT NVCUVID_LIBRARY)
+            set(NVCUVID_LIBRARY "/usr/lib64/libnvcuvid.so.1")
+        endif()
+
+        if(NVCUVID_LIBRARY)
+            message(STATUS "Found NVCUVID: ${NVCUVID_LIBRARY}")
+        else()
+            message(FATAL_ERROR "Could not find NVCUVID library")
+        endif()
+
+        list(APPEND core_library_dependencies
             ${CUDA_nppi_LIBRARY}
             ${CUDA_nppicc_LIBRARY}
+            ${NVCUVID_LIBRARY}
         )
     endif()
 
     make_torchcodec_sublibrary(
-        "${decoder_library_name}"
+        "${core_library_name}"
         SHARED
-        "${decoder_sources}"
-        "${decoder_library_dependencies}"
+        "${core_sources}"
+        "${core_library_dependencies}"
     )
 
     # 2. Create libtorchcodec_custom_opsN.{ext}.
@@ -106,7 +146,7 @@ function(make_torchcodec_libraries
         custom_ops.cpp
     )
     set(custom_ops_dependencies
-        ${decoder_library_name}
+        ${core_library_name}
         ${Python3_LIBRARIES}
     )
     make_torchcodec_sublibrary(
@@ -123,7 +163,7 @@ function(make_torchcodec_libraries
         pybind_ops.cpp
     )
     set(pybind_ops_dependencies
-       ${decoder_library_name}
+       ${core_library_name}
        pybind11::module # This library dependency makes sure we have the right
                         # Python libraries included as well as all of the right
                         # settings so that we can successfully load the shared
@@ -142,28 +182,62 @@ function(make_torchcodec_libraries
         "${pybind_ops_sources}"
         "${pybind_ops_dependencies}"
     )
+
+    if(WIN32)
+      # On Windows, we need to set the suffix to .pyd so that Python can
+      # import the shared library as a module. Just setting the MODULE type
+      # isn't enough.
+      set_target_properties(${pybind_ops_library_name} PROPERTIES SUFFIX ".pyd")
+    endif()
+
     # pybind11 limits the visibility of symbols in the shared library to prevent
     # stray initialization of py::objects. The rest of the object code must
     # match. See:
     #   https://pybind11.readthedocs.io/en/stable/faq.html#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclass-member-wattributes
-    target_compile_options(
+    # We have to do this for both pybind_ops and custom_ops because they include
+    # some of the same headers.
+    #
+    # Note that this is Linux only. It's not necessary on Windows, and on Mac
+    # hiding visibility can actually break dyanmic casts across share libraries
+    # because the type infos don't get exported.
+    if(LINUX)
+        target_compile_options(
+            ${pybind_ops_library_name}
+            PUBLIC
+            "-fvisibility=hidden"
+        )
+        target_compile_options(
+            ${custom_ops_library_name}
+            PUBLIC
+            "-fvisibility=hidden"
+        )
+    endif()
+
+    # The value we use here must match the value we return from
+    # _get_pybind_ops_module_name() on the Python side. If the values do not
+    # match, then we will be unable to import the C++ shared library as a
+    # Python module at runtime.
+    target_compile_definitions(
         ${pybind_ops_library_name}
-        PUBLIC
-      "-fvisibility=hidden"
+        PRIVATE
+        PYBIND_OPS_MODULE_NAME=core_pybind_ops
     )
-    # If we don't make sure this flag is set, we run into segfauls at import
-    # time on Mac. See:
-    #    https://github.com/pybind/pybind11/issues/3907#issuecomment-1170412764
-    target_link_options(
-        ${pybind_ops_library_name}
-        PUBLIC
-        "LINKER:-undefined,dynamic_lookup"
-    )
+
+    if(APPLE)
+        # If we don't make sure this flag is set, we run into segfauls at import
+        # time on Mac. See:
+        # https://github.com/pybind/pybind11/issues/3907#issuecomment-1170412764
+        target_link_options(
+            ${pybind_ops_library_name}
+            PUBLIC
+            "LINKER:-undefined,dynamic_lookup"
+        )
+    endif()
 
     # Install all libraries.
     set(
         all_libraries
-        ${decoder_library_name}
+        ${core_library_name}
         ${custom_ops_library_name}
         ${pybind_ops_library_name}
     )
@@ -176,7 +250,9 @@ function(make_torchcodec_libraries
     install(
         TARGETS ${all_libraries}
         LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}  # For Windows
     )
+
 endfunction()
 
 if(DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3})
@@ -187,11 +263,12 @@ if(DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3})
         you still need a different FFmpeg to be installed for run time!"
     )
 
-    # This will expose the ffmpeg4, ffmpeg5, ffmpeg6, and ffmpeg7 targets
+    # This will expose the ffmpeg4, ffmpeg5, ffmpeg6, ffmpeg7, and ffmpeg8 targets
     include(
         ${CMAKE_CURRENT_SOURCE_DIR}/fetch_and_expose_non_gpl_ffmpeg_libs.cmake
     )
 
+    make_torchcodec_libraries(8 ffmpeg8)
     make_torchcodec_libraries(7 ffmpeg7)
     make_torchcodec_libraries(6 ffmpeg6)
     make_torchcodec_libraries(4 ffmpeg4)
@@ -228,6 +305,8 @@ else()
         set(ffmpeg_major_version "6")
     elseif (${libavcodec_major_version} STREQUAL "61")
         set(ffmpeg_major_version "7")
+    elseif (${libavcodec_major_version} STREQUAL "62")
+        set(ffmpeg_major_version "8")
     else()
         message(
             FATAL_ERROR
@@ -240,7 +319,7 @@ else()
     # Expose these values updwards so that the test compilation does not need
     # to re-figure it out. FIXME: it's not great that we just copy-paste the
     # library names.
-    set(libtorchcodec_library_name "libtorchcodec_decoder${ffmpeg_major_version}" PARENT_SCOPE)
+    set(libtorchcodec_library_name "libtorchcodec_core${ffmpeg_major_version}" PARENT_SCOPE)
     set(libtorchcodec_custom_ops_name "libtorchcodec_custom_ops${ffmpeg_major_version}" PARENT_SCOPE)
     set(libav_include_dirs ${LIBAV_INCLUDE_DIRS} PARENT_SCOPE)
 endif()

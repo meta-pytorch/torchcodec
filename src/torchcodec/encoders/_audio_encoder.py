@@ -15,10 +15,13 @@ class AudioEncoder:
             tensor of shape ``(num_channels, num_samples)``, or a 1D tensor in
             which case ``num_channels = 1`` is assumed. Values must be float
             values in ``[-1, 1]``.
-        sample_rate (int): The sample rate of the **input** ``samples``.
+        sample_rate (int): The sample rate of the **input** ``samples``. The
+            sample rate of the encoded output can be specified using the
+            encoding methods (``to_file``, etc.).
     """
 
     def __init__(self, samples: Tensor, *, sample_rate: int):
+        torch._C._log_api_usage_once("torchcodec.encoders.AudioEncoder")
         # Some of these checks are also done in C++: it's OK, they're cheap, and
         # doing them here allows to surface them when the AudioEncoder is
         # instantiated, rather than later when the encoding methods are called.
@@ -45,6 +48,7 @@ class AudioEncoder:
         *,
         bit_rate: Optional[int] = None,
         num_channels: Optional[int] = None,
+        sample_rate: Optional[int] = None,
     ) -> None:
         """Encode samples into a file.
 
@@ -59,13 +63,16 @@ class AudioEncoder:
             num_channels (int, optional): The number of channels of the encoded
                 output samples. By default, the number of channels of the input
                 ``samples`` is used.
+            sample_rate (int, optional): The sample rate of the encoded output.
+                By default, the sample rate of the input ``samples`` is used.
         """
         _core.encode_audio_to_file(
             samples=self._samples,
             sample_rate=self._sample_rate,
-            filename=dest,
+            filename=str(dest),
             bit_rate=bit_rate,
             num_channels=num_channels,
+            desired_sample_rate=sample_rate,
         )
 
     def to_tensor(
@@ -74,6 +81,7 @@ class AudioEncoder:
         *,
         bit_rate: Optional[int] = None,
         num_channels: Optional[int] = None,
+        sample_rate: Optional[int] = None,
     ) -> Tensor:
         """Encode samples into raw bytes, as a 1D uint8 Tensor.
 
@@ -87,6 +95,8 @@ class AudioEncoder:
             num_channels (int, optional): The number of channels of the encoded
                 output samples. By default, the number of channels of the input
                 ``samples`` is used.
+            sample_rate (int, optional): The sample rate of the encoded output.
+                By default, the sample rate of the input ``samples`` is used.
 
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor.
@@ -97,4 +107,44 @@ class AudioEncoder:
             format=format,
             bit_rate=bit_rate,
             num_channels=num_channels,
+            desired_sample_rate=sample_rate,
+        )
+
+    def to_file_like(
+        self,
+        file_like,
+        format: str,
+        *,
+        bit_rate: Optional[int] = None,
+        num_channels: Optional[int] = None,
+        sample_rate: Optional[int] = None,
+    ) -> None:
+        """Encode samples into a file-like object.
+
+        Args:
+            file_like: A file-like object that supports ``write()`` and
+                ``seek()`` methods, such as io.BytesIO(), an open file in binary
+                write mode, etc. Methods must have the following signature:
+                ``write(data: bytes) -> int`` and ``seek(offset: int, whence:
+                int = 0) -> int``.
+            format (str): The format of the encoded samples, e.g. "mp3", "wav"
+                or "flac".
+            bit_rate (int, optional): The output bit rate. Encoders typically
+                support a finite set of bit rate values, so ``bit_rate`` will be
+                matched to one of those supported values. The default is chosen
+                by FFmpeg.
+            num_channels (int, optional): The number of channels of the encoded
+                output samples. By default, the number of channels of the input
+                ``samples`` is used.
+            sample_rate (int, optional): The sample rate of the encoded output.
+                By default, the sample rate of the input ``samples`` is used.
+        """
+        _core.encode_audio_to_file_like(
+            samples=self._samples,
+            sample_rate=self._sample_rate,
+            format=format,
+            file_like=file_like,
+            bit_rate=bit_rate,
+            num_channels=num_channels,
+            desired_sample_rate=sample_rate,
         )

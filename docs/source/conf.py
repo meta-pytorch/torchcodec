@@ -84,6 +84,8 @@ class CustomGalleryExampleSortKey:
                 "file_like.py",
                 "approximate_mode.py",
                 "sampling.py",
+                "parallel_decoding.py",
+                "custom_frame_mappings.py",
             ]
         else:
             assert "examples/encoding" in self.src_dir

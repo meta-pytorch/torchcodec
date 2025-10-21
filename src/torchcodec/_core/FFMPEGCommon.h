@@ -12,9 +12,12 @@
 
 extern "C" {
 #include <libavcodec/avcodec.h>
+#include <libavcodec/bsf.h>
 #include <libavfilter/avfilter.h>
+#include <libavfilter/buffersrc.h>
 #include <libavformat/avformat.h>
 #include <libavformat/avio.h>
+#include <libavutil/audio_fifo.h>
 #include <libavutil/avutil.h>
 #include <libavutil/dict.h>
 #include <libavutil/display.h>
@@ -33,6 +36,15 @@ namespace facebook::torchcodec {
 // wrap FFMPEG structs with unique_ptrs for ease of use.
 template <typename T, typename R, R (*Fn)(T**)>
 struct Deleterp {
+  inline void operator()(T* p) const {
+    if (p) {
+      Fn(&p);
+    }
+  }
+};
+
+template <typename T, typename R, R (*Fn)(void*)>
+struct Deleterv {
   inline void operator()(T* p) const {
     if (p) {
       Fn(&p);
@@ -59,6 +71,14 @@ using UniqueEncodingAVFormatContext = std::unique_ptr<
 using UniqueAVCodecContext = std::unique_ptr<
     AVCodecContext,
     Deleterp<AVCodecContext, void, avcodec_free_context>>;
+using SharedAVCodecContext = std::shared_ptr<AVCodecContext>;
+
+// create SharedAVCodecContext with custom deleter
+inline SharedAVCodecContext makeSharedAVCodecContext(AVCodecContext* ctx) {
+  return SharedAVCodecContext(
+      ctx, Deleterp<AVCodecContext, void, avcodec_free_context>{});
+}
+
 using UniqueAVFrame =
     std::unique_ptr<AVFrame, Deleterp<AVFrame, void, av_frame_free>>;
 using UniqueAVFilterGraph = std::unique_ptr<
@@ -73,6 +93,15 @@ using UniqueSwsContext =
     std::unique_ptr<SwsContext, Deleter<SwsContext, void, sws_freeContext>>;
 using UniqueSwrContext =
     std::unique_ptr<SwrContext, Deleterp<SwrContext, void, swr_free>>;
+using UniqueAVAudioFifo = std::
+    unique_ptr<AVAudioFifo, Deleter<AVAudioFifo, void, av_audio_fifo_free>>;
+using UniqueAVBSFContext =
+    std::unique_ptr<AVBSFContext, Deleterp<AVBSFContext, void, av_bsf_free>>;
+using UniqueAVBufferRef =
+    std::unique_ptr<AVBufferRef, Deleterp<AVBufferRef, void, av_buffer_unref>>;
+using UniqueAVBufferSrcParameters = std::unique_ptr<
+    AVBufferSrcParameters,
+    Deleterv<AVBufferSrcParameters, void, av_freep>>;
 
 // These 2 classes share the same underlying AVPacket object. They are meant to
 // be used in tandem, like so:
@@ -143,9 +172,14 @@ std::string getFFMPEGErrorStringFromErrorCode(int errorCode);
 // struct member representing duration has changed across the versions we
 // support.
 int64_t getDuration(const UniqueAVFrame& frame);
+void setDuration(const UniqueAVFrame& frame, int64_t duration);
+
+const int* getSupportedSampleRates(const AVCodec& avCodec);
+const AVSampleFormat* getSupportedOutputSampleFormats(const AVCodec& avCodec);
+const AVPixelFormat* getSupportedPixelFormats(const AVCodec& avCodec);
 
 int getNumChannels(const UniqueAVFrame& avFrame);
-int getNumChannels(const UniqueAVCodecContext& avCodecContext);
+int getNumChannels(const SharedAVCodecContext& avCodecContext);
 
 void setDefaultChannelLayout(
     UniqueAVCodecContext& avCodecContext,
@@ -159,6 +193,12 @@ void setChannelLayout(
     UniqueAVFrame& dstAVFrame,
     const UniqueAVFrame& srcAVFrame,
     int desiredNumChannels);
+
+UniqueAVFrame allocateAVFrame(
+    int numSamples,
+    int sampleRate,
+    int numChannels,
+    AVSampleFormat sampleFormat);
 
 SwrContext* createSwrContext(
     AVSampleFormat srcSampleFormat,
@@ -199,5 +239,15 @@ AVIOContext* avioAllocContext(
     AVIOReadFunction read_packet,
     AVIOWriteFunction write_packet,
     AVIOSeekFunction seek);
+
+double ptsToSeconds(int64_t pts, const AVRational& timeBase);
+int64_t secondsToClosestPts(double seconds, const AVRational& timeBase);
+int64_t computeSafeDuration(
+    const AVRational& frameRate,
+    const AVRational& timeBase);
+
+AVFilterContext* createBuffersinkFilter(
+    AVFilterGraph* filterGraph,
+    enum AVPixelFormat outputFormat);
 
 } // namespace facebook::torchcodec

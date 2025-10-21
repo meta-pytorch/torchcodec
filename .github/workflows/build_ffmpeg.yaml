@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ffmpeg-version: ["4.4.4", "5.1.4", "6.1.1", "7.0.1"]
+        ffmpeg-version: ["4.4.4", "5.1.4", "6.1.1", "7.0.1", "8.0"]
     uses: pytorch/test-infra/.github/workflows/linux_job_v2.yml@main
     permissions:
       id-token: write
@@ -35,7 +35,7 @@ jobs:
     with:
       job-name: Build
       upload-artifact: ffmpeg-lgpl-linux_x86_64-${{ matrix.ffmpeg-version }}
-      repository: pytorch/torchcodec
+      repository: meta-pytorch/torchcodec
       script: |
         export FFMPEG_VERSION="${{ matrix.ffmpeg-version }}"
         export FFMPEG_ROOT="${PWD}/ffmpeg"
@@ -52,12 +52,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ffmpeg-version: ["4.4.4", "5.1.4", "6.1.1", "7.0.1"]
+        ffmpeg-version: ["4.4.4", "5.1.4", "6.1.1", "7.0.1", "8.0"]
     uses: pytorch/test-infra/.github/workflows/macos_job.yml@main
     with:
       job-name: Build
       upload-artifact: ffmpeg-lgpl-macos-${{ matrix.ffmpeg-version }}
-      repository: pytorch/torchcodec
+      repository: meta-pytorch/torchcodec
       runner: macos-14-xlarge
       script: |
         export FFMPEG_VERSION="${{ matrix.ffmpeg-version }}"
@@ -75,12 +75,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ffmpeg-version: ["4.4.4", "5.1.4", "6.1.1", "7.0.1"]
+        ffmpeg-version: ["4.4.4", "5.1.4", "6.1.1", "7.0.1", "8.0"]
     uses: pytorch/test-infra/.github/workflows/windows_job.yml@main
     with:
       job-name: Build
       upload-artifact: ffmpeg-lgpl-windows_x86_64-${{ matrix.ffmpeg-version }}
-      repository: pytorch/torchcodec
+      repository: meta-pytorch/torchcodec
       script: |
         export FFMPEG_VERSION="${{ matrix.ffmpeg-version }}"
         export FFMPEG_ROOT="${PWD}/ffmpeg"

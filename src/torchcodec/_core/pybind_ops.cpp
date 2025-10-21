@@ -7,39 +7,44 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <cstdint>
-#include <string>
 
 #include "src/torchcodec/_core/AVIOFileLikeContext.h"
-#include "src/torchcodec/_core/SingleStreamDecoder.h"
 
 namespace py = pybind11;
 
 namespace facebook::torchcodec {
 
-// In principle, this should be able to return a tensor. But when we try that,
-// we run into the bug reported here:
+// Note: It's not immediately obvous why we need both custom_ops.cpp and
+//       pybind_ops.cpp. We do all other Python to C++ bridging in
+//       custom_ops.cpp, and that even depends on pybind11, so why have an
+//       explicit pybind-only file?
 //
-//   https://github.com/pytorch/pytorch/issues/136664
+//       The reason is that we want to accept OWNERSHIP of a file-like object
+//       from the Python side. In order to do that, we need a proper
+//       py::object. For raw bytes, we can launder that through a tensor on the
+//       custom_ops.cpp side, but we can't launder a proper Python object
+//       through a tensor. Custom ops can't accept a proper Python object
+//       through py::object, so we have to do direct pybind11 here.
 //
-// So we instead launder the pointer through an int, and then use a conversion
-// function on the custom ops side to launder that int into a tensor.
-int64_t create_from_file_like(
-    py::object file_like,
-    std::optional<std::string_view> seek_mode) {
-  SingleStreamDecoder::SeekMode realSeek = SingleStreamDecoder::SeekMode::exact;
-  if (seek_mode.has_value()) {
-    realSeek = seekModeFromString(seek_mode.value());
-  }
-
-  auto avioContextHolder = std::make_unique<AVIOFileLikeContext>(file_like);
-
-  SingleStreamDecoder* decoder =
-      new SingleStreamDecoder(std::move(avioContextHolder), realSeek);
-  return reinterpret_cast<int64_t>(decoder);
+// TODO: Investigate if we can do something better here. See:
+//         https://github.com/pytorch/torchcodec/issues/896
+//       Short version is that we're laundering a pointer through an int, the
+//       Python side forwards that to decoder creation functions in
+//       custom_ops.cpp and we do another cast on that side to get a pointer
+//       again. We want to investigate if we can do something cleaner by
+//       defining proper pybind objects.
+int64_t create_file_like_context(py::object file_like, bool is_for_writing) {
+  AVIOFileLikeContext* context =
+      new AVIOFileLikeContext(file_like, is_for_writing);
+  return reinterpret_cast<int64_t>(context);
 }
 
-PYBIND11_MODULE(decoder_core_pybind_ops, m) {
-  m.def("create_from_file_like", &create_from_file_like);
+#ifndef PYBIND_OPS_MODULE_NAME
+#error PYBIND_OPS_MODULE_NAME must be defined!
+#endif
+
+PYBIND11_MODULE(PYBIND_OPS_MODULE_NAME, m) {
+  m.def("create_file_like_context", &create_file_like_context);
 }
 
 } // namespace facebook::torchcodec

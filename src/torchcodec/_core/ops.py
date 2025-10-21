@@ -15,6 +15,7 @@ from torch.library import get_ctx, register_fake
 
 from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchcodec/src:internally_replaced_utils
     _get_extension_path,
+    _get_pybind_ops_module_name,
     _load_pybind11_module,
 )
 
@@ -22,13 +23,10 @@ _pybind_ops: Optional[ModuleType] = None
 
 
 def load_torchcodec_shared_libraries():
-    # Successively try to load libtorchcodec_*7.so, libtorchcodec_*6.so,
-    # libtorchcodec_*5.so, and libtorchcodec_*4.so. Each of these correspond to an
-    # ffmpeg major version. This should cover all potential ffmpeg versions
-    # installed on the user's machine.
-    #
-    # On fbcode, _get_extension_path() is overridden and directly points to the
-    # correct .so file, so this for-loop succeeds on the first iteration.
+    # Successively try to load the shared libraries for each version of FFmpeg
+    # that we support. We always start with the highest version, working our way
+    # down to the lowest version. Once we can load ALL shared libraries for a
+    # version of FFmpeg, we have succeeded and we stop.
     #
     # Note that we use two different methods for loading shared libraries:
     #
@@ -43,9 +41,9 @@ def load_torchcodec_shared_libraries():
     #      libraries do not meet those conditions.
 
     exceptions = []
-    pybind_ops_module_name = "decoder_core_pybind_ops"
-    for ffmpeg_major_version in (7, 6, 5, 4):
-        decoder_library_name = f"libtorchcodec_decoder{ffmpeg_major_version}"
+    for ffmpeg_major_version in (8, 7, 6, 5, 4):
+        pybind_ops_module_name = _get_pybind_ops_module_name(ffmpeg_major_version)
+        decoder_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
         custom_ops_library_name = f"libtorchcodec_custom_ops{ffmpeg_major_version}"
         pybind_ops_library_name = f"libtorchcodec_pybind_ops{ffmpeg_major_version}"
         try:
@@ -71,7 +69,7 @@ def load_torchcodec_shared_libraries():
     raise RuntimeError(
         f"""Could not load libtorchcodec. Likely causes:
           1. FFmpeg is not properly installed in your environment. We support
-             versions 4, 5, 6 and 7.
+             versions 4, 5, 6, and 7 on all platforms, and 8 on Mac and Linux.
           2. The PyTorch version ({torch.__version__}) is not compatible with
              this version of TorchCodec. Refer to the version compatibility
              table:
@@ -97,11 +95,23 @@ encode_audio_to_file = torch._dynamo.disallow_in_graph(
 encode_audio_to_tensor = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.encode_audio_to_tensor.default
 )
+_encode_audio_to_file_like = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns._encode_audio_to_file_like.default
+)
+encode_video_to_file = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.encode_video_to_file.default
+)
+encode_video_to_tensor = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.encode_video_to_tensor.default
+)
+_encode_video_to_file_like = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns._encode_video_to_file_like.default
+)
 create_from_tensor = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_from_tensor.default
 )
-_convert_to_tensor = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns._convert_to_tensor.default
+_create_from_file_like = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns._create_from_file_like.default
 )
 add_video_stream = torch.ops.torchcodec_ns.add_video_stream.default
 _add_video_stream = torch.ops.torchcodec_ns._add_video_stream.default
@@ -110,8 +120,10 @@ seek_to_pts = torch.ops.torchcodec_ns.seek_to_pts.default
 get_next_frame = torch.ops.torchcodec_ns.get_next_frame.default
 get_frame_at_pts = torch.ops.torchcodec_ns.get_frame_at_pts.default
 get_frame_at_index = torch.ops.torchcodec_ns.get_frame_at_index.default
-get_frames_at_indices = torch.ops.torchcodec_ns.get_frames_at_indices.default
-get_frames_by_pts = torch.ops.torchcodec_ns.get_frames_by_pts.default
+_get_frames_at_indices_tensor_input = (
+    torch.ops.torchcodec_ns.get_frames_at_indices.default
+)
+_get_frames_by_pts_tensor_input = torch.ops.torchcodec_ns.get_frames_by_pts.default
 get_frames_in_range = torch.ops.torchcodec_ns.get_frames_in_range.default
 get_frames_by_pts_in_range = torch.ops.torchcodec_ns.get_frames_by_pts_in_range.default
 get_frames_by_pts_in_range_audio = (
@@ -130,6 +142,7 @@ _get_stream_json_metadata = torch.ops.torchcodec_ns.get_stream_json_metadata.def
 _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
+_get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
 
 
 # =============================
@@ -150,7 +163,102 @@ def create_from_file_like(
     file_like: Union[io.RawIOBase, io.BufferedReader], seek_mode: Optional[str] = None
 ) -> torch.Tensor:
     assert _pybind_ops is not None
-    return _convert_to_tensor(_pybind_ops.create_from_file_like(file_like, seek_mode))
+    return _create_from_file_like(
+        _pybind_ops.create_file_like_context(
+            file_like, False  # False means not for writing
+        ),
+        seek_mode,
+    )
+
+
+def encode_audio_to_file_like(
+    samples: torch.Tensor,
+    sample_rate: int,
+    format: str,
+    file_like: Union[io.RawIOBase, io.BufferedIOBase],
+    bit_rate: Optional[int] = None,
+    num_channels: Optional[int] = None,
+    desired_sample_rate: Optional[int] = None,
+) -> None:
+    """Encode audio samples to a file-like object.
+
+    Args:
+        samples: Audio samples tensor
+        sample_rate: Sample rate in Hz
+        format: Audio format (e.g., "wav", "mp3", "flac")
+        file_like: File-like object that supports write() and seek() methods
+        bit_rate: Optional bit rate for encoding
+        num_channels: Optional number of output channels
+        desired_sample_rate: Optional desired sample rate for the output.
+    """
+    assert _pybind_ops is not None
+
+    if samples.dtype != torch.float32:
+        raise ValueError(f"samples must have dtype torch.float32, got {samples.dtype}")
+
+    _encode_audio_to_file_like(
+        samples,
+        sample_rate,
+        format,
+        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
+        bit_rate,
+        num_channels,
+        desired_sample_rate,
+    )
+
+
+def encode_video_to_file_like(
+    frames: torch.Tensor,
+    frame_rate: int,
+    format: str,
+    file_like: Union[io.RawIOBase, io.BufferedIOBase],
+    crf: Optional[int] = None,
+) -> None:
+    """Encode video frames to a file-like object.
+
+    Args:
+        frames: Video frames tensor
+        frame_rate: Frame rate in frames per second
+        format: Video format (e.g., "mp4", "mov", "mkv")
+        file_like: File-like object that supports write() and seek() methods
+        crf: Optional constant rate factor for encoding quality
+    """
+    assert _pybind_ops is not None
+
+    _encode_video_to_file_like(
+        frames,
+        frame_rate,
+        format,
+        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
+        crf,
+    )
+
+
+def get_frames_at_indices(
+    decoder: torch.Tensor, *, frame_indices: Union[torch.Tensor, list[int]]
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if isinstance(frame_indices, torch.Tensor):
+        # Ensure indices is the correct dtype (int64)
+        frame_indices = frame_indices.to(torch.int64)
+    else:
+        # Convert list to tensor for dispatch
+        frame_indices = torch.tensor(frame_indices)
+    return _get_frames_at_indices_tensor_input(decoder, frame_indices=frame_indices)
+
+
+def get_frames_by_pts(
+    decoder: torch.Tensor, *, timestamps: Union[torch.Tensor, list[float]]
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    if isinstance(timestamps, torch.Tensor):
+        # Ensure indices is the correct dtype (float64)
+        timestamps = timestamps.to(torch.float64)
+    else:
+        # Convert list to tensor for dispatch
+        try:
+            timestamps = torch.tensor(timestamps, dtype=torch.float64)
+        except Exception as e:
+            raise ValueError("Couldn't convert timestamps input to a tensor") from e
+    return _get_frames_by_pts_tensor_input(decoder, timestamps=timestamps)
 
 
 # ==============================
@@ -161,6 +269,13 @@ def create_from_file_abstract(filename: str, seek_mode: Optional[str]) -> torch.
     return torch.empty([], dtype=torch.long)
 
 
+@register_fake("torchcodec_ns::_create_from_file_like")
+def _create_from_file_like_abstract(
+    file_like: int, seek_mode: Optional[str]
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
 @register_fake("torchcodec_ns::encode_audio_to_file")
 def encode_audio_to_file_abstract(
     samples: torch.Tensor,
@@ -168,6 +283,7 @@ def encode_audio_to_file_abstract(
     filename: str,
     bit_rate: Optional[int] = None,
     num_channels: Optional[int] = None,
+    desired_sample_rate: Optional[int] = None,
 ) -> None:
     return
 
@@ -179,8 +295,53 @@ def encode_audio_to_tensor_abstract(
     format: str,
     bit_rate: Optional[int] = None,
     num_channels: Optional[int] = None,
+    desired_sample_rate: Optional[int] = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::_encode_audio_to_file_like")
+def _encode_audio_to_file_like_abstract(
+    samples: torch.Tensor,
+    sample_rate: int,
+    format: str,
+    file_like_context: int,
+    bit_rate: Optional[int] = None,
+    num_channels: Optional[int] = None,
+    desired_sample_rate: Optional[int] = None,
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::encode_video_to_file")
+def encode_video_to_file_abstract(
+    frames: torch.Tensor,
+    frame_rate: int,
+    filename: str,
+    crf: Optional[int],
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::encode_video_to_tensor")
+def encode_video_to_tensor_abstract(
+    frames: torch.Tensor,
+    frame_rate: int,
+    format: str,
+    crf: Optional[int],
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::_encode_video_to_file_like")
+def _encode_video_to_file_like_abstract(
+    frames: torch.Tensor,
+    frame_rate: int,
+    format: str,
+    file_like_context: int,
+    crf: Optional[int] = None,
+) -> None:
+    return
 
 
 @register_fake("torchcodec_ns::create_from_tensor")
@@ -190,21 +351,19 @@ def create_from_tensor_abstract(
     return torch.empty([], dtype=torch.long)
 
 
-@register_fake("torchcodec_ns::_convert_to_tensor")
-def _convert_to_tensor_abstract(decoder_ptr: int) -> torch.Tensor:
-    return torch.empty([], dtype=torch.long)
-
-
 @register_fake("torchcodec_ns::_add_video_stream")
 def _add_video_stream_abstract(
     decoder: torch.Tensor,
     *,
-    width: Optional[int] = None,
-    height: Optional[int] = None,
     num_threads: Optional[int] = None,
     dimension_order: Optional[str] = None,
     stream_index: Optional[int] = None,
-    device: Optional[str] = None,
+    device: str = "cpu",
+    device_variant: str = "ffmpeg",
+    transform_specs: str = "",
+    custom_frame_mappings: Optional[
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+    ] = None,
     color_conversion_library: Optional[str] = None,
 ) -> None:
     return
@@ -214,12 +373,15 @@ def _add_video_stream_abstract(
 def add_video_stream_abstract(
     decoder: torch.Tensor,
     *,
-    width: Optional[int] = None,
-    height: Optional[int] = None,
     num_threads: Optional[int] = None,
     dimension_order: Optional[str] = None,
     stream_index: Optional[int] = None,
-    device: Optional[str] = None,
+    device: str = "cpu",
+    device_variant: str = "ffmpeg",
+    transform_specs: str = "",
+    custom_frame_mappings: Optional[
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+    ] = None,
 ) -> None:
     return
 
@@ -270,7 +432,7 @@ def get_frame_at_pts_abstract(
 def get_frames_by_pts_abstract(
     decoder: torch.Tensor,
     *,
-    timestamps: List[float],
+    timestamps: Union[torch.Tensor, List[float]],
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (
@@ -294,9 +456,7 @@ def get_frame_at_index_abstract(
 
 @register_fake("torchcodec_ns::get_frames_at_indices")
 def get_frames_at_indices_abstract(
-    decoder: torch.Tensor,
-    *,
-    frame_indices: List[int],
+    decoder: torch.Tensor, *, frame_indices: Union[torch.Tensor, List[int]]
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (
@@ -391,3 +551,8 @@ def scan_all_streams_to_update_metadata_abstract(decoder: torch.Tensor) -> None:
 def get_ffmpeg_library_versions():
     versions_json = _get_json_ffmpeg_library_versions()
     return json.loads(versions_json)
+
+
+@register_fake("torchcodec_ns::_get_backend_details")
+def _get_backend_details_abstract(decoder: torch.Tensor) -> str:
+    return ""

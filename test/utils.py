@@ -2,6 +2,7 @@ import importlib
 import json
 import os
 import pathlib
+import subprocess
 import sys
 
 from dataclasses import dataclass, field
@@ -13,6 +14,10 @@ import pytest
 import torch
 
 from torchcodec._core import get_ffmpeg_library_versions
+from torchcodec.decoders import set_cuda_backend, VideoDecoder
+from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
+
+IS_WINDOWS = sys.platform in ("win32", "cygwin")
 
 
 # Decorator for skipping CUDA tests when CUDA isn't available. The tests are
@@ -22,12 +27,99 @@ def needs_cuda(test_item):
     return pytest.mark.needs_cuda(test_item)
 
 
-def cpu_and_cuda():
-    return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+# This is a special device string that we use to test the "beta" CUDA backend.
+# It only exists here, in this test utils file. Public and core APIs have no
+# idea that this is how we're tesing them. That is, that's not a supported
+# `device` parameter for the VideoDecoder or for the _core APIs.
+# Tests using all_supported_devices() will get this device string, and the test
+# need to clean it up by calling either make_video_decoder for VideoDecoder, or
+# unsplit_device_str for core APIs.
+_CUDA_BETA_DEVICE_STR = "cuda:beta"
+
+
+def all_supported_devices():
+    return (
+        "cpu",
+        pytest.param("cuda", marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
+    )
+
+
+def unsplit_device_str(device_str: str) -> str:
+    # helper meant to be used as
+    # device, device_variant = unsplit_device_str(device)
+    # when `device` comes from all_supported_devices() and may be _CUDA_BETA_DEVICE_STR.
+    # It is used:
+    # - before calling `.to(device)` where device can't be _CUDA_BETA_DEVICE_STR.
+    # - before calling add_video_stream(device=device, device_variant=device_variant)
+    if device_str == _CUDA_BETA_DEVICE_STR:
+        return "cuda", "beta"
+    else:
+        return device_str, "ffmpeg"
+
+
+def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
+    # Helper to create a VideoDecoder with the right cuda backend if needed.
+    # kwargs is expected to have a "device" key which comes from
+    # all_supported_devices(), and can be _CUDA_BETA_DEVICE_STR.
+    device = kwargs.pop("device", "cpu")
+    if device == _CUDA_BETA_DEVICE_STR:
+        clean_device, backend = "cuda", "beta"
+    else:
+        clean_device, backend = device, "ffmpeg"
+
+    # set_cuda_backend is a no-op if the device is "cpu", so we can use it
+    # unconditionally.
+    with set_cuda_backend(backend):
+        dec = VideoDecoder(*args, **kwargs, device=clean_device)
+
+    return dec, clean_device
+
+
+def _get_ffmpeg_version_string():
+    ffmpeg_version = get_ffmpeg_library_versions()["ffmpeg_version"]
+    # When building FFmpeg from source there can be a `n` prefix in the version
+    # string.  This is quite brittle as we're using av_version_info(), which has
+    # no stable format. See https://github.com/pytorch/torchcodec/issues/100
+    if ffmpeg_version.startswith("n"):
+        ffmpeg_version = ffmpeg_version.removeprefix("n")
+
+    return ffmpeg_version
 
 
 def get_ffmpeg_major_version():
-    return int(get_ffmpeg_library_versions()["ffmpeg_version"].split(".")[0])
+    ffmpeg_version = _get_ffmpeg_version_string()
+    return int(ffmpeg_version.split(".")[0])
+
+
+def get_ffmpeg_minor_version():
+    ffmpeg_version = _get_ffmpeg_version_string()
+    return int(ffmpeg_version.split(".")[1])
+
+
+def cuda_version_used_for_building_torch() -> Optional[tuple[int, int]]:
+    # Return the CUDA version that was used to build PyTorch. That's not always
+    # the same as the CUDA version that is currently installed on the running
+    # machine, which is what we actually want. On the CI though, these are the
+    # same.
+    if torch.version.cuda is None:
+        return None
+    else:
+        return tuple(int(x) for x in torch.version.cuda.split("."))
+
+
+def psnr(a, b, max_val=255) -> float:
+    # Return Peak Signal-to-Noise Ratio (PSNR) between two tensors a and b. The
+    # higher, the better.
+    # According to https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio,
+    # typical values for the PSNR in lossy image and video compression are
+    # between 30 and 50 dB.
+    # Acceptable values for wireless transmission quality loss are considered to
+    # be about 20 dB to 25 dB
+    mse = torch.mean((a.float() - b.float()) ** 2)
+    if mse == 0:
+        return float("inf")
+    return 20 * torch.log10(max_val / torch.sqrt(mse)).item()
 
 
 # For use with decoded data frames. On CPU Linux, we expect exact, bit-for-bit
@@ -38,7 +130,7 @@ def get_ffmpeg_major_version():
 def assert_frames_equal(*args, **kwargs):
     if sys.platform == "linux":
         if args[0].device.type == "cuda":
-            atol = 2
+            atol = 3 if cuda_version_used_for_building_torch() >= (13, 0) else 2
             if get_ffmpeg_major_version() == 4:
                 assert_tensor_close_on_at_least(
                     args[0], args[1], percentage=95, atol=atol
@@ -53,7 +145,9 @@ def assert_frames_equal(*args, **kwargs):
 
 # Asserts that at least `percentage`% of the values are within the absolute tolerance.
 # Percentage is expected in [0, 100] (actually, [60, 100])
-def assert_tensor_close_on_at_least(actual_tensor, ref_tensor, *, percentage, atol):
+def assert_tensor_close_on_at_least(
+    actual_tensor, ref_tensor, *, percentage, atol, **kwargs
+):
     # In theory lower bound should be 0, but we want to make sure we don't
     # mistakenly pass percentage in [0, 1]
     assert 60 < percentage <= 100, (
@@ -71,6 +165,12 @@ def assert_tensor_close_on_at_least(actual_tensor, ref_tensor, *, percentage, at
             f"Expected at least {percentage}% of values to be within atol={atol}, "
             f"but only {valid_percentage}% were."
         )
+
+
+# We embed filtergraph expressions in filenames, but they contain characters that
+# some filesystems don't like. We turn all special characters into underscores.
+def sanitize_filtergraph_expression(expression: str) -> str:
+    return "".join(c if c.isalnum() else "_" for c in expression)
 
 
 def in_fbcode() -> bool:
@@ -121,6 +221,9 @@ class TestContainerFile:
     default_stream_index: int
     stream_infos: Dict[int, Union[TestVideoStreamInfo, TestAudioStreamInfo]]
     frames: Dict[int, Dict[int, TestFrameInfo]]
+    _custom_frame_mappings_data: Dict[
+        int, Optional[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]
+    ] = field(default_factory=dict)
 
     def __post_init__(self):
         # We load the .frames attribute from the checked-in json files, if needed.
@@ -223,6 +326,38 @@ class TestContainerFile:
 
         return self.frames[stream_index][idx]
 
+    # This function is used to get the frame mappings for the custom_frame_mappings seek mode.
+    def get_custom_frame_mappings(
+        self, stream_index: Optional[int] = None
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if stream_index is None:
+            stream_index = self.default_stream_index
+        if self._custom_frame_mappings_data.get(stream_index) is None:
+            self._custom_frame_mappings_data[stream_index] = (
+                _read_custom_frame_mappings(
+                    self.generate_custom_frame_mappings(stream_index)
+                )
+            )
+        return self._custom_frame_mappings_data[stream_index]
+
+    def generate_custom_frame_mappings(self, stream_index: int) -> str:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-i",
+                f"{self.path}",
+                "-select_streams",
+                f"{stream_index}",
+                "-show_frames",
+                "-of",
+                "json",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        return result
+
     @property
     def empty_pts_seconds(self) -> torch.Tensor:
         return torch.empty([0], dtype=torch.float64)
@@ -236,16 +371,32 @@ class TestContainerFile:
 class TestVideo(TestContainerFile):
     """Base class for the *video* streams of a video container"""
 
+    def get_base_path_by_index(
+        self, idx: int, *, stream_index: int, filters: Optional[str] = None
+    ) -> pathlib.Path:
+        stream_and_frame = f"stream{stream_index}.frame{idx:06d}"
+        if filters is not None:
+            full_name = f"{self.filename}.{sanitize_filtergraph_expression(filters)}.{stream_and_frame}"
+        else:
+            full_name = f"{self.filename}.{stream_and_frame}"
+
+        return _get_file_path(full_name)
+
     def get_frame_data_by_index(
-        self, idx: int, *, stream_index: Optional[int] = None
+        self,
+        idx: int,
+        *,
+        stream_index: Optional[int] = None,
+        filters: Optional[str] = None,
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
 
-        file_path = _get_file_path(
-            f"{self.filename}.stream{stream_index}.frame{idx:06d}.pt"
+        base_path = self.get_base_path_by_index(
+            idx, stream_index=stream_index, filters=filters
         )
-        return torch.load(file_path, weights_only=True).permute(2, 0, 1)
+        tensor_file_path = f"{base_path}.pt"
+        return torch.load(tensor_file_path, weights_only=True).permute(2, 0, 1)
 
     def get_frame_data_by_range(
         self,
@@ -318,6 +469,136 @@ NASA_VIDEO = TestVideo(
     },
     frames={},  # Automatically loaded from json file
 )
+
+# Video generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=1:size=200x200:rate=30 -c:v libx265 -pix_fmt yuv420p10le -preset fast -crf 23 h265_10bits.mp4
+H265_10BITS = TestVideo(
+    filename="h265_10bits.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=200, height=200, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed yet
+)
+
+# Video generated with:
+# peg -f lavfi -i testsrc2=duration=1:size=200x200:rate=30 -c:v libx264 -pix_fmt yuv420p10le -preset fast -crf 23 h264_10bits.mp4
+H264_10BITS = TestVideo(
+    filename="h264_10bits.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=200, height=200, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed yet
+)
+
+
+H265_VIDEO = TestVideo(
+    filename="h265_video.mp4",
+    default_stream_index=0,
+    # This metadata is extracted manually.
+    #  $ ffprobe -v error -hide_banner -select_streams v:0 -show_frames -of json test/resources/h265_video.mp4 > out.json
+    stream_infos={
+        0: TestVideoStreamInfo(width=128, height=128, num_color_channels=3),
+    },
+    frames={
+        0: {
+            6: TestFrameInfo(pts_seconds=0.6, duration_seconds=0.1),
+        },
+    },
+)
+
+AV1_VIDEO = TestVideo(
+    filename="av1_video.mkv",
+    default_stream_index=0,
+    # This metadata is extracted manually.
+    #  $ ffprobe -v error -hide_banner -select_streams v:0 -show_frames -of json test/resources/av1_video.mkv > out.json
+    stream_infos={
+        0: TestVideoStreamInfo(width=640, height=360, num_color_channels=3),
+    },
+    frames={
+        0: {
+            10: TestFrameInfo(pts_seconds=0.400000, duration_seconds=0.040000),
+        },
+    },
+)
+
+
+# This is a BT.709 full range video, generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=1:size=1920x720:rate=30 \
+# -c:v libx264 -pix_fmt yuv420p -color_primaries bt709 -color_trc bt709 \
+# -colorspace bt709 -color_range pc bt709_full_range.mp4
+#
+# We can confirm the color space and color range with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/bt709_full_range.mp4
+# color_range=pc
+# color_space=bt709
+# color_transfer=bt709
+# color_primaries=bt709
+BT709_FULL_RANGE = TestVideo(
+    filename="bt709_full_range.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=1280x720:rate=30 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -b:v 2500k -r 30 -movflags +faststart output_720p_2s.mp4
+TEST_SRC_2_720P = TestVideo(
+    filename="testsrc2.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+# ffmpeg -f lavfi -i testsrc2=duration=10:size=1280x720:rate=30 -c:v libx265 -crf 23 -preset medium output.mp4
+TEST_SRC_2_720P_H265 = TestVideo(
+    filename="testsrc2_h265.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v libvpx-vp9 -b:v 1M output_vp9.webm
+TEST_SRC_2_720P_VP9 = TestVideo(
+    filename="testsrc2_vp9.webm",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v libvpx -b:v 1M output_vp8.webm
+TEST_SRC_2_720P_VP8 = TestVideo(
+    filename="testsrc2_vp8.webm",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i testsrc2=size=1280x720:rate=30:duration=1 -c:v mpeg4 -q:v 5 output_mpeg4.avi
+TEST_SRC_2_720P_MPEG4 = TestVideo(
+    filename="testsrc2_mpeg4.avi",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+
+def supports_approximate_mode(asset: TestVideo) -> bool:
+    # Those are missing the `duration` field so they fail in approximate mode (on all devices).
+    # TODO: we should address this, see
+    # https://github.com/meta-pytorch/torchcodec/issues/945
+    return asset not in (AV1_VIDEO, TEST_SRC_2_720P_VP9, TEST_SRC_2_720P_VP8)
 
 
 @dataclass
@@ -416,6 +697,8 @@ class TestAudio(TestContainerFile):
         return self.stream_infos[self.default_stream_index].sample_format
 
 
+# This file was generated with:
+# ffmpeg -y -i test/resources/nasa_13013.mp4 -b:a 192K -vn test/resources/nasa_13013.mp4.audio.mp3"
 NASA_AUDIO_MP3 = TestAudio(
     filename="nasa_13013.mp4.audio.mp3",
     default_stream_index=0,
@@ -529,35 +812,5 @@ SINE_MONO_S16 = TestAudio(
             num_frames=63,
             sample_format="s16",
         )
-    },
-)
-
-H265_VIDEO = TestVideo(
-    filename="h265_video.mp4",
-    default_stream_index=0,
-    # This metadata is extracted manually.
-    #  $ ffprobe -v error -hide_banner -select_streams v:0 -show_frames -of json test/resources/h265_video.mp4 > out.json
-    stream_infos={
-        0: TestVideoStreamInfo(width=128, height=128, num_color_channels=3),
-    },
-    frames={
-        0: {
-            6: TestFrameInfo(pts_seconds=0.6, duration_seconds=0.1),
-        },
-    },
-)
-
-AV1_VIDEO = TestVideo(
-    filename="av1_video.mkv",
-    default_stream_index=0,
-    # This metadata is extracted manually.
-    #  $ ffprobe -v error -hide_banner -select_streams v:0 -show_frames -of json test/resources/av1_video.mkv > out.json
-    stream_infos={
-        0: TestVideoStreamInfo(width=640, height=360, num_color_channels=3),
-    },
-    frames={
-        0: {
-            10: TestFrameInfo(pts_seconds=0.400000, duration_seconds=0.040000),
-        },
     },
 )

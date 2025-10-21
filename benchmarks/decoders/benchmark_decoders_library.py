@@ -1,5 +1,4 @@
 import abc
-import json
 import subprocess
 import typing
 import urllib.request
@@ -20,7 +19,6 @@ from torchcodec._core import (
     create_from_file,
     get_frames_at_indices,
     get_frames_by_pts,
-    get_json_metadata,
     get_next_frame,
     seek_to_pts,
 )
@@ -48,6 +46,9 @@ class AbstractDecoder:
 
     def decode_first_n_frames_description(self, n) -> str:
         return f"first {n} frames"
+
+    def init_decode_and_resize(self):
+        pass
 
     @abc.abstractmethod
     def decode_and_resize(self, video_file, pts_list, height, width, device):
@@ -109,9 +110,12 @@ class TorchVision(AbstractDecoder):
         self._backend = backend
         self._print_each_iteration_time = False
         import torchvision  # noqa: F401
-        from torchvision.transforms import v2 as transforms_v2
 
         self.torchvision = torchvision
+
+    def init_decode_and_resize(self):
+        from torchvision.transforms import v2 as transforms_v2
+
         self.transforms_v2 = transforms_v2
 
     def decode_frames(self, video_file, pts_list):
@@ -238,11 +242,7 @@ class TorchCodecCore(AbstractDecoder):
             color_conversion_library=self._color_conversion_library,
             device=self._device,
         )
-        metadata = json.loads(get_json_metadata(decoder))
-        best_video_stream = metadata["bestVideoStreamIndex"]
-        frames, *_ = get_frames_by_pts(
-            decoder, stream_index=best_video_stream, timestamps=pts_list
-        )
+        frames, *_ = get_frames_by_pts(decoder, timestamps=pts_list)
         return frames
 
     def decode_first_n_frames(self, video_file, n):
@@ -273,6 +273,7 @@ class TorchCodecCoreNonBatch(AbstractDecoder):
         self._color_conversion_library = color_conversion_library
         self._device = device
 
+    def init_decode_and_resize(self):
         from torchvision.transforms import v2 as transforms_v2
 
         self.transforms_v2 = transforms_v2
@@ -356,11 +357,7 @@ class TorchCodecCoreBatch(AbstractDecoder):
             color_conversion_library=self._color_conversion_library,
             device=self._device,
         )
-        metadata = json.loads(get_json_metadata(decoder))
-        best_video_stream = metadata["bestVideoStreamIndex"]
-        frames, *_ = get_frames_by_pts(
-            decoder, stream_index=best_video_stream, timestamps=pts_list
-        )
+        frames, *_ = get_frames_by_pts(decoder, timestamps=pts_list)
         return frames
 
     def decode_first_n_frames(self, video_file, n):
@@ -371,12 +368,8 @@ class TorchCodecCoreBatch(AbstractDecoder):
             color_conversion_library=self._color_conversion_library,
             device=self._device,
         )
-        metadata = json.loads(get_json_metadata(decoder))
-        best_video_stream = metadata["bestVideoStreamIndex"]
         indices_list = list(range(n))
-        frames, *_ = get_frames_at_indices(
-            decoder, stream_index=best_video_stream, frame_indices=indices_list
-        )
+        frames, *_ = get_frames_at_indices(decoder, frame_indices=indices_list)
         return frames
 
 
@@ -393,6 +386,7 @@ class TorchCodecPublic(AbstractDecoder):
         self._seek_mode = seek_mode
         self._stream_index = int(stream_index) if stream_index else None
 
+    def init_decode_and_resize(self):
         from torchvision.transforms import v2 as transforms_v2
 
         self.transforms_v2 = transforms_v2
@@ -457,6 +451,7 @@ class TorchCodecPublicNonBatch(AbstractDecoder):
         self._device = device
         self._seek_mode = seek_mode
 
+    def init_decode_and_resize(self):
         from torchvision.transforms import v2 as transforms_v2
 
         self.transforms_v2 = transforms_v2
@@ -560,10 +555,12 @@ class TorchAudioDecoder(AbstractDecoder):
 
         self.torchaudio = torchaudio
 
+        self._stream_index = int(stream_index) if stream_index else None
+
+    def init_decode_and_resize(self):
         from torchvision.transforms import v2 as transforms_v2
 
         self.transforms_v2 = transforms_v2
-        self._stream_index = int(stream_index) if stream_index else None
 
     def decode_frames(self, video_file, pts_list):
         stream_reader = self.torchaudio.io.StreamReader(src=video_file)
@@ -897,6 +894,7 @@ def run_benchmarks(
 
             if dataloader_parameters:
                 bp = dataloader_parameters.batch_parameters
+                decoder.init_decode_and_resize()
                 description = (
                     f"concurrency {bp.num_threads}"
                     f"batch {bp.batch_size}"

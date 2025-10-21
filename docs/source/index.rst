@@ -11,7 +11,7 @@ We achieve these capabilities through:
 
 * Pythonic APIs that mirror Python and PyTorch conventions.
 * Relying on `FFmpeg <https://www.ffmpeg.org/>`_ to do the decoding / encoding.
-  TorchCodec uses the version of FFmpeg you already have installed. FMPEG is a
+  TorchCodec uses the version of FFmpeg you already have installed. FFmpeg is a
   mature library with broad coverage available on most systems. It is, however,
   not easy to use.  TorchCodec abstracts FFmpeg's complexity to ensure it is
   used correctly and efficiently.
@@ -69,12 +69,21 @@ Decoding
         How to efficiently decode videos from the cloud
 
      .. grid-item-card:: :octicon:`file-code;1em`
+        Parallel decoding
+        :img-top: _static/img/card-background.svg
+        :link: generated_examples/decoding/parallel_decoding.html
+        :link-type: url
+
+        How to decode a video with multiple processes or threads.
+
+     .. grid-item-card:: :octicon:`file-code;1em`
         Clip sampling
         :img-top: _static/img/card-background.svg
         :link: generated_examples/decoding/sampling.html
         :link-type: url
 
         How to sample regular and random clips from a video
+
 
 Encoding
 ^^^^^^^^

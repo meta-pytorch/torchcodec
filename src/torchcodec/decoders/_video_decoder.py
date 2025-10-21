@@ -5,14 +5,17 @@
 # LICENSE file in the root directory of this source tree.
 
 import io
+import json
 import numbers
 from pathlib import Path
 from typing import Literal, Optional, Tuple, Union
 
+import torch
 from torch import device as torch_device, Tensor
 
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec.decoders._decoder_utils import (
+    _get_cuda_backend,
     create_decoder,
     ERROR_REPORTING_INSTRUCTIONS,
 )
@@ -29,7 +32,7 @@ class VideoDecoder:
             - If ``bytes`` object or ``torch.Tensor``: the raw encoded video data.
             - If file-like object: we read video data from the object on demand. The object must
               expose the methods `read(self, size: int) -> bytes` and
-              `seek(self, offset: int, whence: int) -> bytes`. Read more in:
+              `seek(self, offset: int, whence: int) -> int`. Read more in:
               :ref:`sphx_glr_generated_examples_decoding_file_like.py`.
         stream_index (int, optional): Specifies which stream in the video to decode frames from.
             Note that this index is absolute across all media types. If left unspecified, then
@@ -38,6 +41,7 @@ class VideoDecoder:
             This can be either "NCHW" (default) or "NHWC", where N is the batch
             size, C is the number of channels, H is the height, and W is the
             width of the frames.
+
             .. note::
 
                 Frames are natively decoded in NHWC format by the underlying
@@ -52,6 +56,8 @@ class VideoDecoder:
             Passing 0 lets FFmpeg decide on the number of threads.
             Default: 1.
         device (str or torch.device, optional): The device to use for decoding. Default: "cpu".
+            If you pass a CUDA device, we recommend trying the "beta" CUDA
+            backend which is faster! See :func:`~torchcodec.decoders.set_cuda_backend`.
         seek_mode (str, optional): Determines if frame access will be "exact" or
             "approximate". Exact guarantees that requesting frame i will always
             return frame i, but doing so requires an initial :term:`scan` of the
@@ -60,7 +66,27 @@ class VideoDecoder:
             probably is. Default: "exact".
             Read more about this parameter in:
             :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py`
+        custom_frame_mappings (str, bytes, or file-like object, optional):
+            Mapping of frames to their metadata, typically generated via ffprobe.
+            This enables accurate frame seeking without requiring a full video scan.
+            Do not set seek_mode when custom_frame_mappings is provided.
+            Expected JSON format:
 
+            .. code-block:: json
+
+                {
+                    "frames": [
+                        {
+                            "pts": 0,
+                            "duration": 1001,
+                            "key_frame": 1
+                        }
+                    ]
+                }
+
+            Alternative field names "pkt_pts" and "pkt_duration" are also supported.
+            Read more about this parameter in:
+            :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py`
 
     Attributes:
         metadata (VideoStreamMetadata): Metadata of the video stream.
@@ -78,12 +104,31 @@ class VideoDecoder:
         num_ffmpeg_threads: int = 1,
         device: Optional[Union[str, torch_device]] = "cpu",
         seek_mode: Literal["exact", "approximate"] = "exact",
+        custom_frame_mappings: Optional[
+            Union[str, bytes, io.RawIOBase, io.BufferedReader]
+        ] = None,
     ):
+        torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
         if seek_mode not in allowed_seek_modes:
             raise ValueError(
                 f"Invalid seek mode ({seek_mode}). "
                 f"Supported values are {', '.join(allowed_seek_modes)}."
+            )
+
+        # Validate seek_mode and custom_frame_mappings are not mismatched
+        if custom_frame_mappings is not None and seek_mode == "approximate":
+            raise ValueError(
+                "custom_frame_mappings is incompatible with seek_mode='approximate'. "
+                "Use seek_mode='custom_frame_mappings' or leave it unspecified to automatically use custom frame mappings."
+            )
+
+        # Auto-select custom_frame_mappings seek_mode and process data when mappings are provided
+        custom_frame_mappings_data = None
+        if custom_frame_mappings is not None:
+            seek_mode = "custom_frame_mappings"  # type: ignore[assignment]
+            custom_frame_mappings_data = _read_custom_frame_mappings(
+                custom_frame_mappings
             )
 
         self._decoder = create_decoder(source=source, seek_mode=seek_mode)
@@ -101,12 +146,16 @@ class VideoDecoder:
         if isinstance(device, torch_device):
             device = str(device)
 
+        device_variant = _get_cuda_backend()
+
         core.add_video_stream(
             self._decoder,
             stream_index=stream_index,
             dimension_order=dimension_order,
             num_threads=num_ffmpeg_threads,
             device=device,
+            device_variant=device_variant,
+            custom_frame_mappings=custom_frame_mappings_data,
         )
 
         (
@@ -124,13 +173,6 @@ class VideoDecoder:
 
     def _getitem_int(self, key: int) -> Tensor:
         assert isinstance(key, int)
-
-        if key < 0:
-            key += self._num_frames
-        if key >= self._num_frames or key < 0:
-            raise IndexError(
-                f"Index {key} is out of bounds; length is {self._num_frames}"
-            )
 
         frame_data, *_ = core.get_frame_at_index(self._decoder, frame_index=key)
         return frame_data
@@ -195,13 +237,6 @@ class VideoDecoder:
         Returns:
             Frame: The frame at the given index.
         """
-        if index < 0:
-            index += self._num_frames
-
-        if not 0 <= index < self._num_frames:
-            raise IndexError(
-                f"Index {index} is out of bounds; must be in the range [0, {self._num_frames})."
-            )
         data, pts_seconds, duration_seconds = core.get_frame_at_index(
             self._decoder, frame_index=index
         )
@@ -211,22 +246,20 @@ class VideoDecoder:
             duration_seconds=duration_seconds.item(),
         )
 
-    def get_frames_at(self, indices: list[int]) -> FrameBatch:
+    def get_frames_at(self, indices: Union[torch.Tensor, list[int]]) -> FrameBatch:
         """Return frames at the given indices.
 
         Args:
-            indices (list of int): The indices of the frames to retrieve.
+            indices (torch.Tensor or list of int): The indices of the frames to retrieve.
 
         Returns:
             FrameBatch: The frames at the given indices.
         """
-        indices = [
-            index if index >= 0 else index + self._num_frames for index in indices
-        ]
 
         data, pts_seconds, duration_seconds = core.get_frames_at_indices(
             self._decoder, frame_indices=indices
         )
+
         return FrameBatch(
             data=data,
             pts_seconds=pts_seconds,
@@ -247,16 +280,8 @@ class VideoDecoder:
         Returns:
             FrameBatch: The frames within the specified range.
         """
-        if not 0 <= start < self._num_frames:
-            raise IndexError(
-                f"Start index {start} is out of bounds; must be in the range [0, {self._num_frames})."
-            )
-        if stop < start:
-            raise IndexError(
-                f"Stop index ({stop}) must not be less than the start index ({start})."
-            )
-        if not step > 0:
-            raise IndexError(f"Step ({step}) must be greater than 0.")
+        # Adjust start / stop indices to enable indexing semantics, ex. [-10, 1000] returns the last 10 frames
+        start, stop, step = slice(start, stop, step).indices(self._num_frames)
         frames = core.get_frames_in_range(
             self._decoder,
             start=start,
@@ -298,15 +323,18 @@ class VideoDecoder:
             duration_seconds=duration_seconds.item(),
         )
 
-    def get_frames_played_at(self, seconds: list[float]) -> FrameBatch:
+    def get_frames_played_at(
+        self, seconds: Union[torch.Tensor, list[float]]
+    ) -> FrameBatch:
         """Return frames played at the given timestamps in seconds.
 
         Args:
-            seconds (list of float): The timestamps in seconds when the frames are played.
+            seconds (torch.Tensor or list of float): The timestamps in seconds when the frames are played.
 
         Returns:
             FrameBatch: The frames that are played at ``seconds``.
         """
+
         data, pts_seconds, duration_seconds = core.get_frames_by_pts(
             self._decoder, timestamps=seconds
         )
@@ -402,3 +430,61 @@ def _get_and_validate_stream_metadata(
         end_stream_seconds,
         num_frames,
     )
+
+
+def _read_custom_frame_mappings(
+    custom_frame_mappings: Union[str, bytes, io.RawIOBase, io.BufferedReader]
+) -> tuple[Tensor, Tensor, Tensor]:
+    """Parse custom frame mappings from JSON data and extract frame metadata.
+
+    Args:
+        custom_frame_mappings: JSON data containing frame metadata, provided as:
+            - A JSON string (str, bytes)
+            - A file-like object with a read() method
+
+    Returns:
+        A tuple of three tensors:
+        - all_frames (Tensor): Presentation timestamps (PTS) for each frame
+        - is_key_frame (Tensor): Boolean tensor indicating which frames are key frames
+        - duration (Tensor): Duration of each frame
+    """
+    try:
+        input_data = (
+            json.load(custom_frame_mappings)
+            if hasattr(custom_frame_mappings, "read")
+            else json.loads(custom_frame_mappings)
+        )
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"Invalid custom frame mappings: {e}. It should be a valid JSON string or a file-like object."
+        ) from e
+
+    if not input_data or "frames" not in input_data:
+        raise ValueError(
+            "Invalid custom frame mappings. The input is empty or missing the required 'frames' key."
+        )
+
+    first_frame = input_data["frames"][0]
+    pts_key = next((key for key in ("pts", "pkt_pts") if key in first_frame), None)
+    duration_key = next(
+        (key for key in ("duration", "pkt_duration") if key in first_frame), None
+    )
+    key_frame_present = "key_frame" in first_frame
+
+    if not pts_key or not duration_key or not key_frame_present:
+        raise ValueError(
+            "Invalid custom frame mappings. The 'pts'/'pkt_pts', 'duration'/'pkt_duration', and 'key_frame' keys are required in the frame metadata."
+        )
+
+    all_frames = torch.tensor(
+        [int(frame[pts_key]) for frame in input_data["frames"]], dtype=torch.int64
+    )
+    is_key_frame = torch.tensor(
+        [int(frame["key_frame"]) for frame in input_data["frames"]], dtype=torch.bool
+    )
+    duration = torch.tensor(
+        [int(frame[duration_key]) for frame in input_data["frames"]], dtype=torch.int64
+    )
+    if not (len(all_frames) == len(is_key_frame) == len(duration)):
+        raise ValueError("Mismatched lengths in frame index data")
+    return all_frames, is_key_frame, duration
