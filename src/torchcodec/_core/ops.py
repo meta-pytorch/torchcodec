@@ -104,6 +104,9 @@ encode_video_to_file = torch._dynamo.disallow_in_graph(
 encode_video_to_tensor = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.encode_video_to_tensor.default
 )
+_encode_video_to_file_like = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns._encode_video_to_file_like.default
+)
 create_from_tensor = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_from_tensor.default
 )
@@ -200,6 +203,33 @@ def encode_audio_to_file_like(
         bit_rate,
         num_channels,
         desired_sample_rate,
+    )
+
+
+def encode_video_to_file_like(
+    frames: torch.Tensor,
+    frame_rate: int,
+    format: str,
+    file_like: Union[io.RawIOBase, io.BufferedIOBase],
+    crf: Optional[int] = None,
+) -> None:
+    """Encode video frames to a file-like object.
+
+    Args:
+        frames: Video frames tensor
+        frame_rate: Frame rate in frames per second
+        format: Video format (e.g., "mp4", "mov", "mkv")
+        file_like: File-like object that supports write() and seek() methods
+        crf: Optional constant rate factor for encoding quality
+    """
+    assert _pybind_ops is not None
+
+    _encode_video_to_file_like(
+        frames,
+        frame_rate,
+        format,
+        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
+        crf,
     )
 
 
@@ -300,6 +330,17 @@ def encode_video_to_tensor_abstract(
     crf: Optional[int],
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::_encode_video_to_file_like")
+def _encode_video_to_file_like_abstract(
+    frames: torch.Tensor,
+    frame_rate: int,
+    format: str,
+    file_like_context: int,
+    crf: Optional[int] = None,
+) -> None:
+    return
 
 
 @register_fake("torchcodec_ns::create_from_tensor")

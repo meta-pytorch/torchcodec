@@ -1701,20 +1701,19 @@ class TestVideoDecoder:
             assert beta_frame.duration_seconds == ref_frame.duration_seconds
 
     @needs_cuda
-    def test_beta_cuda_interface_small_h265(self):
-        # Test to illustrate current difference in behavior between the BETA and
-        # the ffmpeg interface: this video isn't supported by NVDEC, but in the
-        # ffmpeg interface, FFMPEG fallsback to the CPU while we don't.
+    def test_beta_cuda_interface_cpu_fallback(self):
+        # Non-regression test for the CPU fallback behavior of the BETA CUDA
+        # interface.
+        # We know that the H265_VIDEO asset isn't supported by NVDEC, its
+        # dimensions are too small. We also know that the FFmpeg CUDA interface
+        # fallbacks to the CPU path in such cases. We assert that we fall back
+        # to the CPU path, too.
 
-        VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
-
+        ffmpeg = VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
         with set_cuda_backend("beta"):
-            dec = VideoDecoder(H265_VIDEO.path, device="cuda")
-        with pytest.raises(
-            RuntimeError,
-            match="Video is too small in at least one dimension. Provided: 128x128 vs supported:144x144",
-        ):
-            dec.get_frame_at(0)
+            beta = VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
+
+        torch.testing.assert_close(ffmpeg.data, beta.data, rtol=0, atol=0)
 
     @needs_cuda
     def test_beta_cuda_interface_error(self):
@@ -1740,15 +1739,20 @@ class TestVideoDecoder:
             assert _get_cuda_backend() == "beta"
 
         def assert_decoder_uses(decoder, *, expected_backend):
+            # TODO: This doesn't work anymore after
+            # https://github.com/meta-pytorch/torchcodec/pull/977
+            # We need to define a better way to assert which backend a decoder
+            # is using.
+            return
             # Assert that a decoder instance is using a given backend.
             #
             # We know H265_VIDEO fails on the BETA backend while it works on the
             # ffmpeg one.
-            if expected_backend == "ffmpeg":
-                decoder.get_frame_at(0)  # this would fail if this was BETA
-            else:
-                with pytest.raises(RuntimeError, match="Video is too small"):
-                    decoder.get_frame_at(0)
+            # if expected_backend == "ffmpeg":
+            #     decoder.get_frame_at(0)  # this would fail if this was BETA
+            # else:
+            #     with pytest.raises(RuntimeError, match="Video is too small"):
+            #         decoder.get_frame_at(0)
 
         # Check that the default is the ffmpeg backend
         assert _get_cuda_backend() == "ffmpeg"

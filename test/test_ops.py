@@ -28,6 +28,7 @@ from torchcodec._core import (
     create_from_tensor,
     encode_audio_to_file,
     encode_video_to_file,
+    encode_video_to_file_like,
     encode_video_to_tensor,
     get_ffmpeg_library_versions,
     get_frame_at_index,
@@ -1151,7 +1152,7 @@ class TestAudioEncoderOps:
 
 
 class TestVideoEncoderOps:
-
+    # TODO-VideoEncoder: Test encoding against different memory layouts (ex. test_contiguity)
     # TODO-VideoEncoder: Parametrize test after moving to test_encoders
     def test_bad_input(self, tmp_path):
         output_file = str(tmp_path / ".mp4")
@@ -1219,7 +1220,7 @@ class TestVideoEncoderOps:
     @pytest.mark.parametrize(
         "format", ("mov", "mp4", "mkv", pytest.param("webm", marks=pytest.mark.slow))
     )
-    @pytest.mark.parametrize("method", ("to_file", "to_tensor"))
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_video_encoder_round_trip(self, tmp_path, format, method):
         # Test that decode(encode(decode(frames))) == decode(frames)
         ffmpeg_version = get_ffmpeg_major_version()
@@ -1246,11 +1247,22 @@ class TestVideoEncoderOps:
                 **params,
             )
             round_trip_frames = self.decode(encoded_path).data
-        else:  # to_tensor
+        elif method == "to_tensor":
             encoded_tensor = encode_video_to_tensor(
                 source_frames, format=format, **params
             )
             round_trip_frames = self.decode(encoded_tensor).data
+        elif method == "to_file_like":
+            file_like = io.BytesIO()
+            encode_video_to_file_like(
+                frames=source_frames,
+                format=format,
+                file_like=file_like,
+                **params,
+            )
+            round_trip_frames = self.decode(file_like.getvalue()).data
+        else:
+            raise ValueError(f"Unknown method: {method}")
 
         assert source_frames.shape == round_trip_frames.shape
         assert source_frames.dtype == round_trip_frames.dtype
@@ -1279,8 +1291,9 @@ class TestVideoEncoderOps:
             pytest.param("webm", marks=pytest.mark.slow),
         ),
     )
-    def test_against_to_file(self, tmp_path, format):
-        # Test that to_file and to_tensor produce the same results
+    @pytest.mark.parametrize("method", ("to_tensor", "to_file_like"))
+    def test_against_to_file(self, tmp_path, format, method):
+        # Test that to_file, to_tensor, and to_file_like produce the same results
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
@@ -1292,11 +1305,24 @@ class TestVideoEncoderOps:
 
         encoded_file = tmp_path / f"output.{format}"
         encode_video_to_file(frames=source_frames, filename=str(encoded_file), **params)
-        encoded_tensor = encode_video_to_tensor(source_frames, format=format, **params)
+
+        if method == "to_tensor":
+            encoded_output = encode_video_to_tensor(
+                source_frames, format=format, **params
+            )
+        else:  # to_file_like
+            file_like = io.BytesIO()
+            encode_video_to_file_like(
+                frames=source_frames,
+                file_like=file_like,
+                format=format,
+                **params,
+            )
+            encoded_output = file_like.getvalue()
 
         torch.testing.assert_close(
             self.decode(encoded_file).data,
-            self.decode(encoded_tensor).data,
+            self.decode(encoded_output).data,
             atol=0,
             rtol=0,
         )
@@ -1377,6 +1403,82 @@ class TestVideoEncoderOps:
             assert res > 30
             assert_tensor_close_on_at_least(
                 ff_frame, enc_frame, percentage=percentage, atol=2
+            )
+
+    def test_to_file_like_custom_file_object(self):
+        """Test with a custom file-like object that implements write and seek."""
+
+        class CustomFileObject:
+            def __init__(self):
+                self._file = io.BytesIO()
+
+            def write(self, data):
+                return self._file.write(data)
+
+            def seek(self, offset, whence=0):
+                return self._file.seek(offset, whence)
+
+            def get_encoded_data(self):
+                return self._file.getvalue()
+
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
+        file_like = CustomFileObject()
+        encode_video_to_file_like(
+            source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
+        )
+        decoded_samples = self.decode(file_like.get_encoded_data())
+
+        torch.testing.assert_close(
+            decoded_samples.data,
+            source_frames,
+            atol=2,
+            rtol=0,
+        )
+
+    def test_to_file_like_real_file(self, tmp_path):
+        """Test to_file_like with a real file opened in binary write mode."""
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
+        file_path = tmp_path / "test_file_like.mp4"
+
+        with open(file_path, "wb") as file_like:
+            encode_video_to_file_like(
+                source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
+            )
+        decoded_samples = self.decode(str(file_path))
+
+        torch.testing.assert_close(
+            decoded_samples.data,
+            source_frames,
+            atol=2,
+            rtol=0,
+        )
+
+    def test_to_file_like_bad_methods(self):
+        source_frames = self.decode(TEST_SRC_2_720P.path).data
+
+        class NoWriteMethod:
+            def seek(self, offset, whence=0):
+                return 0
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a write method"
+        ):
+            encode_video_to_file_like(
+                source_frames,
+                frame_rate=30,
+                format="mp4",
+                file_like=NoWriteMethod(),
+            )
+
+        class NoSeekMethod:
+            def write(self, data):
+                return len(data)
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a seek method"
+        ):
+            encode_video_to_file_like(
+                source_frames, frame_rate=30, format="mp4", file_like=NoSeekMethod()
             )
 
 
