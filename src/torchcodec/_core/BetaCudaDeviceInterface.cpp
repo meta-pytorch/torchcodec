@@ -215,7 +215,8 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
 } // namespace
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
-    : DeviceInterface(device), prevSwsFrameContext_(0, 0, AV_PIX_FMT_NONE, 0, 0) {
+    : DeviceInterface(device),
+      prevSwsFrameContext_(0, 0, AV_PIX_FMT_NONE, 0, 0) {
   TORCH_CHECK(g_cuda_beta, "BetaCudaDeviceInterface was not registered!");
   TORCH_CHECK(
       device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
@@ -679,7 +680,6 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
   int width = cpuFrame->width;
   int height = cpuFrame->height;
 
-  // Step 1: Convert to NV12 on CPU using cached swscale context
   UniqueAVFrame nv12CpuFrame(av_frame_alloc());
   TORCH_CHECK(nv12CpuFrame != nullptr, "Failed to allocate NV12 CPU frame");
 
@@ -688,13 +688,17 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
   nv12CpuFrame->height = height;
 
   int ret = av_frame_get_buffer(nv12CpuFrame.get(), 0);
-  TORCH_CHECK(ret >= 0, "Failed to allocate NV12 CPU frame buffer: ",
-              getFFMPEGErrorStringFromErrorCode(ret));
+  TORCH_CHECK(
+      ret >= 0,
+      "Failed to allocate NV12 CPU frame buffer: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
 
-  // Create or reuse swscale context using caching logic
   SwsFrameContext swsFrameContext(
-      width, height, static_cast<AVPixelFormat>(cpuFrame->format),
-      width, height);
+      width,
+      height,
+      static_cast<AVPixelFormat>(cpuFrame->format),
+      width,
+      height);
 
   if (!swsContext_ || prevSwsFrameContext_ != swsFrameContext) {
     swsContext_ = createSwsContext(
@@ -704,21 +708,27 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
 
   int convertedHeight = sws_scale(
       swsContext_.get(),
-      const_cast<const uint8_t* const*>(cpuFrame->data), cpuFrame->linesize,
-      0, height,
-      nv12CpuFrame->data, nv12CpuFrame->linesize);
-  TORCH_CHECK(convertedHeight == height, "sws_scale failed for CPU->NV12 conversion");
+      const_cast<const uint8_t* const*>(cpuFrame->data),
+      cpuFrame->linesize,
+      0,
+      height,
+      nv12CpuFrame->data,
+      nv12CpuFrame->linesize);
+  TORCH_CHECK(
+      convertedHeight == height, "sws_scale failed for CPU->NV12 conversion");
 
-  // Step 2: Allocate CUDA memory
   int ySize = width * height;
   int uvSize = ySize / 2; // NV12: UV plane is half the size of Y plane
-  size_t totalSize = ySize + uvSize;
+  size_t totalSize = static_cast<size_t>(ySize + uvSize);
 
   uint8_t* cudaBuffer = nullptr;
-  cudaError_t err = cudaMalloc(reinterpret_cast<void**>(&cudaBuffer), totalSize);
-  TORCH_CHECK(err == cudaSuccess, "Failed to allocate CUDA memory: ", cudaGetErrorString(err));
+  cudaError_t err =
+      cudaMalloc(reinterpret_cast<void**>(&cudaBuffer), totalSize);
+  TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to allocate CUDA memory: ",
+      cudaGetErrorString(err));
 
-  // Step 3: Create GPU frame
   UniqueAVFrame gpuFrame(av_frame_alloc());
   TORCH_CHECK(gpuFrame != nullptr, "Failed to allocate GPU AVFrame");
 
@@ -730,33 +740,47 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
   gpuFrame->linesize[0] = width;
   gpuFrame->linesize[1] = width;
 
-  // Step 4: Copy data from CPU NV12 to GPU using cudaMemcpy2D for safety
   err = cudaMemcpy2D(
-      gpuFrame->data[0], gpuFrame->linesize[0],
-      nv12CpuFrame->data[0], nv12CpuFrame->linesize[0],
-      width, height,
+      gpuFrame->data[0],
+      gpuFrame->linesize[0],
+      nv12CpuFrame->data[0],
+      nv12CpuFrame->linesize[0],
+      width,
+      height,
       cudaMemcpyHostToDevice);
-  TORCH_CHECK(err == cudaSuccess, "Failed to copy Y plane to GPU: ", cudaGetErrorString(err));
+  TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy Y plane to GPU: ",
+      cudaGetErrorString(err));
 
   err = cudaMemcpy2D(
-      gpuFrame->data[1], gpuFrame->linesize[1],
-      nv12CpuFrame->data[1], nv12CpuFrame->linesize[1],
-      width, height / 2,
+      gpuFrame->data[1],
+      gpuFrame->linesize[1],
+      nv12CpuFrame->data[1],
+      nv12CpuFrame->linesize[1],
+      width,
+      height / 2,
       cudaMemcpyHostToDevice);
-  TORCH_CHECK(err == cudaSuccess, "Failed to copy UV plane to GPU: ", cudaGetErrorString(err));
+  TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy UV plane to GPU: ",
+      cudaGetErrorString(err));
 
-  // Step 5: Set up proper GPU memory cleanup using AVFrame's reference counting
   ret = av_frame_copy_props(gpuFrame.get(), cpuFrame.get());
-  TORCH_CHECK(ret >= 0, "Failed to copy frame properties: ",
-              getFFMPEGErrorStringFromErrorCode(ret));
+  TORCH_CHECK(
+      ret >= 0,
+      "Failed to copy frame properties: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
 
-  // Create a buffer reference that will automatically free CUDA memory when frame is destroyed
   gpuFrame->opaque_ref = av_buffer_create(
-      reinterpret_cast<uint8_t*>(cudaBuffer), 0, // size=0 since we're not using the data pointer
-      cudaBufferFreeCallback,
-      cudaBuffer, // pass the actual CUDA buffer as opaque data
-      0);
-  TORCH_CHECK(gpuFrame->opaque_ref != nullptr, "Failed to create GPU memory cleanup reference");
+      nullptr, // data
+      0, // data size
+      cudaBufferFreeCallback,  // callback triggered by av_frame_free()
+      cudaBuffer, // parameter to callback
+      0); // flags
+  TORCH_CHECK(
+      gpuFrame->opaque_ref != nullptr,
+      "Failed to create GPU memory cleanup reference");
 
   return gpuFrame;
 }
@@ -765,7 +789,8 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
-  UniqueAVFrame gpuFrame = cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
+  UniqueAVFrame gpuFrame =
+      cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
 
   // TODONVDEC P2: we may need to handle 10bit videos the same way the CUDA
   // ffmpeg interface does it with maybeConvertAVFrameToNV12OrRGB24().

@@ -54,7 +54,6 @@ class CpuDeviceInterface : public DeviceInterface {
   ColorConversionLibrary getColorConversionLibrary(
       const FrameDims& inputFrameDims) const;
 
-
   VideoStreamOptions videoStreamOptions_;
   AVRational timeBase_;
 

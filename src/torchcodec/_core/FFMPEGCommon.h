@@ -6,10 +6,10 @@
 
 #pragma once
 
+#include <torch/types.h>
 #include <memory>
 #include <stdexcept>
 #include <string>
-#include <torch/types.h>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -104,7 +104,8 @@ using UniqueAVBufferSrcParameters = std::unique_ptr<
     AVBufferSrcParameters,
     Deleterv<AVBufferSrcParameters, void, av_freep>>;
 
-// Common swscale context management for efficient reuse across device interfaces
+// Common swscale context management for efficient reuse across device
+// interfaces
 struct SwsFrameContext {
   int inputWidth;
   int inputHeight;
