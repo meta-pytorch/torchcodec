@@ -11,9 +11,11 @@ import pytest
 import torch
 from torchcodec.decoders import AudioDecoder
 
+from torchcodec.decoders._video_decoder import VideoDecoder
 from torchcodec.encoders import AudioEncoder, VideoEncoder
 
 from .utils import (
+    TEST_SRC_2_720P,
     assert_tensor_close_on_at_least,
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
@@ -567,6 +569,16 @@ class TestAudioEncoder:
 
 
 class TestVideoEncoder:
+
+    def decode(self, source=None) -> torch.Tensor:
+        return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
+
+    def save_image(self, a, b, name):
+        from torchvision.io import write_png
+        from torchvision.utils import make_grid
+        image = make_grid(torch.stack([a, b]), nrow=2).cpu()
+        write_png(image, f"{name}.png")
+
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_bad_input_parameterized(self, tmp_path, method):
         if method == "to_file":
@@ -683,8 +695,11 @@ class TestVideoEncoder:
     )
     def test_device_video_encoder(self, method, device, tmp_path):
         # Test that encoding works on CPU and CUDA devices
-        num_frames, channels, height, width = 5, 3, 64, 64
-        frames = (torch.rand(num_frames, channels, height, width) * 255).to(torch.uint8)
+        # num_frames, channels, height, width = 5, 3, 1024, 1024
+        # frames = (torch.rand(num_frames, channels, height, width) * 255).to(torch.uint8)
+
+        asset = TEST_SRC_2_720P
+        frames = self.decode(asset.path).data
 
         encoder = VideoEncoder(frames, frame_rate=30, device=device)
 
@@ -693,15 +708,30 @@ class TestVideoEncoder:
             encoder.to_file(dest=dest)
             # Verify file was created
             assert Path(dest).exists()
+            self.save_image(
+                frames[0],
+                self.decode(Path(dest)).data[0],
+                name=f"{device}_to_file",
+            )
         elif method == "to_tensor":
             encoded = encoder.to_tensor(format="mp4")
             assert encoded.dtype == torch.uint8
             assert encoded.ndim == 1
             assert encoded.numel() > 0
+            self.save_image(
+                frames[0],
+                self.decode(encoded).data[0],
+                name=f"{device}_to_tensor",
+            )
         elif method == "to_file_like":
             file_like = io.BytesIO()
             encoder.to_file_like(file_like, format="mp4")
             encoded_bytes = file_like.getvalue()
             assert len(encoded_bytes) > 0
+            self.save_image(
+                frames[0],
+                self.decode(encoded_bytes).data[0],
+                name=f"{device}_to_file_like",
+            )
         else:
             raise ValueError(f"Unknown method: {method}")
