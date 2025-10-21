@@ -1,6 +1,7 @@
 #pragma once
 #include <torch/types.h>
 #include "src/torchcodec/_core/AVIOContextHolder.h"
+#include "src/torchcodec/_core/DeviceInterface.h"
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/StreamOptions.h"
 
@@ -177,6 +178,7 @@ class VideoEncoder {
   AVPixelFormat outPixelFormat_ = AV_PIX_FMT_NONE;
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
+  std::unique_ptr<DeviceInterface> deviceInterface_;
 
   bool encodeWasCalled_ = false;
 };

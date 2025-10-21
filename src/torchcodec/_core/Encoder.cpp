@@ -615,9 +615,24 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
+  deviceInterface_ = createDeviceInterface(
+      videoStreamOptions.device, videoStreamOptions.deviceVariant);
+  TORCH_CHECK(
+      deviceInterface_ != nullptr,
+      "Failed to create device interface. This should never happen, please report.");
+
   const AVCodec* avCodec =
       avcodec_find_encoder(avFormatContext_->oformat->video_codec);
   TORCH_CHECK(avCodec != nullptr, "Video codec not found");
+
+  // Try to find a hardware-accelerated encoder if not using CPU
+  if (videoStreamOptions.device.type() != torch::kCPU) {
+    auto hardwareCodec =
+        deviceInterface_->findCodec(avFormatContext_->oformat->video_codec);
+    if (hardwareCodec.has_value()) {
+      avCodec = hardwareCodec.value();
+    }
+  }
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
   TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
@@ -668,6 +683,11 @@ void VideoEncoder::initializeEncoder(
         std::to_string(videoStreamOptions.crf.value()).c_str(),
         0);
   }
+
+  // Register the hardware device context with the codec
+  // context before calling avcodec_open2().
+  deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
+
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &options);
   av_dict_free(&options);
 
