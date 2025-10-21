@@ -212,6 +212,12 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
   return true;
 }
 
+// Callback for freeing CUDA memory associated with AVFrame see where it's used
+// for more details.
+void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
+  cudaFree(opaque);
+}
+
 } // namespace
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
@@ -665,20 +671,23 @@ void BetaCudaDeviceInterface::flush() {
   std::swap(readyFrames_, emptyQueue);
 }
 
-namespace {
-// Cleanup callback for CUDA memory allocated for GPU frames
-void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
-  cudaFree(opaque);
-}
-} // namespace
-
 UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
     UniqueAVFrame& cpuFrame) {
+  // This is called in the context of the CPU fallback: the frame was decoded on
+  // the CPU, and in this function we convert that frame into NV12 format and
+  // send it to the GPU.
+  // We do that in 2 steps:
+  // - First we convert the input CPU frame into an intermediate NV12 CPU frame
+  //   using sws_scale.
+  // - Then we allocate GPU memory and copy the NV12 CPU frame to the GPU. This
+  //   is what we return
+
   TORCH_CHECK(cpuFrame != nullptr, "CPU frame cannot be null");
 
   int width = cpuFrame->width;
   int height = cpuFrame->height;
 
+  // intermediate NV12 CPU frame. It's not on the GPU yet.
   UniqueAVFrame nv12CpuFrame(av_frame_alloc());
   TORCH_CHECK(nv12CpuFrame != nullptr, "Failed to allocate NV12 CPU frame");
 
@@ -707,7 +716,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
 
   int convertedHeight = sws_scale(
       swsContext_.get(),
-      const_cast<const uint8_t* const*>(cpuFrame->data),
+      cpuFrame->data,
       cpuFrame->linesize,
       0,
       height,
@@ -739,6 +748,9 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
   gpuFrame->linesize[0] = width;
   gpuFrame->linesize[1] = width;
 
+  // Note that we use cudaMemcpy2D here instead of cudaMemcpy because the
+  // linesizes (strides) may be different than the widths for the input CPU
+  // frame. That's precisely what cudaMemcpy2D is for.
   err = cudaMemcpy2D(
       gpuFrame->data[0],
       gpuFrame->linesize[0],
@@ -771,10 +783,16 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
       "Failed to copy frame properties: ",
       getFFMPEGErrorStringFromErrorCode(ret));
 
+  // We're almost done, but we need to make sure the CUDA memory is freed
+  // properly. Usually, AVFrame data is freed when av_frame_free() is called
+  // (upon UniqueAVFrame destruction), but since we allocated the CUDA memory
+  // ourselves, FFmpeg doesn't know how to free it. The recommended way to deal
+  // with this is to associate the opaque_ref field of the AVFrame with a `free`
+  // callback that will then be called by av_frame_free().
   gpuFrame->opaque_ref = av_buffer_create(
-      nullptr, // data
+      nullptr, // data - we don't need any
       0, // data size
-      cudaBufferFreeCallback,  // callback triggered by av_frame_free()
+      cudaBufferFreeCallback, // callback triggered by av_frame_free()
       cudaBuffer, // parameter to callback
       0); // flags
   TORCH_CHECK(

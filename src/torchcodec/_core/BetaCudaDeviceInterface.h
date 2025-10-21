@@ -81,7 +81,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       unsigned int pitch,
       const CUVIDPARSERDISPINFO& dispInfo);
 
-  // Convert CPU frame to GPU NV12 frame for GPU color conversion
   UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
 
   CUvideoparser videoParser_ = nullptr;
@@ -100,11 +99,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   // NPP context for color conversion
   UniqueNppContext nppCtx_;
 
-  // Swscale context caching for CPU->GPU NV12 conversion
+  std::unique_ptr<DeviceInterface> cpuFallback_;
   UniqueSwsContext swsContext_;
   SwsFrameContext prevSwsFrameContext_;
-
-  std::unique_ptr<DeviceInterface> cpuFallback_;
 };
 
 } // namespace facebook::torchcodec
