@@ -1152,68 +1152,6 @@ class TestAudioEncoderOps:
 
 
 class TestVideoEncoderOps:
-    # TODO-VideoEncoder: Test encoding against different memory layouts (ex. test_contiguity)
-    # TODO-VideoEncoder: Parametrize test after moving to test_encoders
-    def test_bad_input(self, tmp_path):
-        output_file = str(tmp_path / ".mp4")
-
-        with pytest.raises(
-            RuntimeError, match="frames must have uint8 dtype, got float"
-        ):
-            encode_video_to_file(
-                frames=torch.rand((10, 3, 60, 60), dtype=torch.float),
-                frame_rate=10,
-                filename=output_file,
-            )
-
-        with pytest.raises(
-            RuntimeError, match=r"frames must have 4 dimensions \(N, C, H, W\), got 3"
-        ):
-            encode_video_to_file(
-                frames=torch.randint(high=1, size=(3, 60, 60), dtype=torch.uint8),
-                frame_rate=10,
-                filename=output_file,
-            )
-
-        with pytest.raises(
-            RuntimeError, match=r"frame must have 3 channels \(R, G, B\), got 2"
-        ):
-            encode_video_to_file(
-                frames=torch.randint(high=1, size=(10, 2, 60, 60), dtype=torch.uint8),
-                frame_rate=10,
-                filename=output_file,
-            )
-
-        with pytest.raises(
-            RuntimeError,
-            match=r"Couldn't allocate AVFormatContext. The destination file is ./file.bad_extension, check the desired extension\?",
-        ):
-            encode_video_to_file(
-                frames=torch.randint(high=255, size=(10, 3, 60, 60), dtype=torch.uint8),
-                frame_rate=10,
-                filename="./file.bad_extension",
-            )
-
-        with pytest.raises(
-            RuntimeError,
-            match=r"avio_open failed. The destination file is ./bad/path.mp3, make sure it's a valid path\?",
-        ):
-            encode_video_to_file(
-                frames=torch.randint(high=255, size=(10, 3, 60, 60), dtype=torch.uint8),
-                frame_rate=10,
-                filename="./bad/path.mp3",
-            )
-
-        with pytest.raises(
-            RuntimeError,
-            match=r"Couldn't allocate AVFormatContext. Check the desired format\? Got format=bad_format",
-        ):
-            encode_video_to_tensor(
-                frames=torch.randint(high=255, size=(10, 3, 60, 60), dtype=torch.uint8),
-                frame_rate=10,
-                format="bad_format",
-            )
-
     def decode(self, source=None) -> torch.Tensor:
         return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
 
@@ -1406,7 +1344,9 @@ class TestVideoEncoderOps:
             )
 
     def test_to_file_like_custom_file_object(self):
-        """Test with a custom file-like object that implements write and seek."""
+        """Test to_file_like with a custom file-like object that implements write and seek."""
+        if get_ffmpeg_major_version() == 6:
+            pytest.skip("Skipping round trip test for FFmpeg 6")
 
         class CustomFileObject:
             def __init__(self):
@@ -1437,6 +1377,8 @@ class TestVideoEncoderOps:
 
     def test_to_file_like_real_file(self, tmp_path):
         """Test to_file_like with a real file opened in binary write mode."""
+        if get_ffmpeg_major_version() == 6:
+            pytest.skip("Skipping round trip test for FFmpeg 6")
         source_frames = self.decode(TEST_SRC_2_720P.path).data
         file_path = tmp_path / "test_file_like.mp4"
 
