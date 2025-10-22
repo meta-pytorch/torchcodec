@@ -14,6 +14,7 @@ from ._metadata import (
 )
 from .ops import (
     _add_video_stream,
+    _get_backend_details,
     _get_key_frame_indices,
     _test_frame_pts_equality,
     add_audio_stream,

@@ -699,4 +699,9 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
 }
 
+std::string BetaCudaDeviceInterface::getDetails() {
+  return std::string("Beta CUDA Device Interface. Using ") +
+      (cpuFallback_ ? "CPU fallback." : "NVDEC.");
+}
+
 } // namespace facebook::torchcodec

@@ -346,4 +346,8 @@ torch::Tensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
   return rgbAVFrameToTensor(filterGraph_->convert(avFrame));
 }
 
+std::string CpuDeviceInterface::getDetails() {
+  return std::string("CPU Device Interface.");
+}
+
 } // namespace facebook::torchcodec
