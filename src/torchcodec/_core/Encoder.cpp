@@ -1,7 +1,7 @@
 #include <sstream>
 
-#include "src/torchcodec/_core/AVIOTensorContext.h"
-#include "src/torchcodec/_core/Encoder.h"
+#include "AVIOTensorContext.h"
+#include "Encoder.h"
 #include "torch/types.h"
 
 namespace facebook::torchcodec {

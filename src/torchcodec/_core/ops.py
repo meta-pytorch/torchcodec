@@ -6,6 +6,7 @@
 
 import io
 import json
+import os
 import warnings
 from types import ModuleType
 from typing import List, Optional, Tuple, Union
@@ -21,6 +22,8 @@ from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchco
 
 _pybind_ops: Optional[ModuleType] = None
 
+variant = None
+core_library_path = None
 
 def load_torchcodec_shared_libraries():
     # Successively try to load the shared libraries for each version of FFmpeg
@@ -47,7 +50,8 @@ def load_torchcodec_shared_libraries():
         custom_ops_library_name = f"libtorchcodec_custom_ops{ffmpeg_major_version}"
         pybind_ops_library_name = f"libtorchcodec_pybind_ops{ffmpeg_major_version}"
         try:
-            torch.ops.load_library(_get_extension_path(decoder_library_name))
+            decoder_library_path = _get_extension_path(decoder_library_name)
+            torch.ops.load_library(decoder_library_path)
             torch.ops.load_library(_get_extension_path(custom_ops_library_name))
 
             pybind_ops_library_path = _get_extension_path(pybind_ops_library_name)
@@ -55,6 +59,10 @@ def load_torchcodec_shared_libraries():
             _pybind_ops = _load_pybind11_module(
                 pybind_ops_module_name, pybind_ops_library_path
             )
+            global variant
+            global core_library_path
+            variant = ffmpeg_major_version
+            core_library_path = decoder_library_path
             return
         except Exception as e:
             # TODO: recording and reporting exceptions this way is OK for now as  it's just for debugging,

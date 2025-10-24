@@ -11,8 +11,8 @@
 #include <npp.h>
 #include <torch/types.h>
 
-#include "src/torchcodec/_core/FFMPEGCommon.h"
-#include "src/torchcodec/_core/Frame.h"
+#include "FFMPEGCommon.h"
+#include "Frame.h"
 
 extern "C" {
 #include <libavutil/hwcontext_cuda.h>
