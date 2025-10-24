@@ -98,6 +98,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   UniqueNppContext nppCtx_;
 
   std::unique_ptr<DeviceInterface> cpuFallback_;
+
+  // Track whether NVCUVID was successfully loaded
+  bool nvcuvidAvailable_ = false;
 };
 
 } // namespace facebook::torchcodec
