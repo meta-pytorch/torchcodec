@@ -18,7 +18,7 @@
 // #include <cuda_runtime.h> // For cudaStreamSynchronize
 
 // Include dynamic loader for interface
-#include "src/torchcodec/_core/NVCUVIDDynamicLoader.h"
+#include "src/torchcodec/_core/NVCUVIDRuntimeLoader.h"
 
 // Include NVCUVID headers for types
 #include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
@@ -161,11 +161,6 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
   // Return true iff the input video stream is supported by our NVDEC
   // implementation.
 
-  // First check if NVCUVID is available
-  if (!isNVCUVIDLoaded()) {
-    return false;
-  }
-
   auto codecType = validateCodecSupport(codecContext->codec_id);
   if (!codecType.has_value()) {
     return false;
@@ -234,13 +229,7 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
   initializeCudaContextWithPytorch(device_);
   nppCtx_ = getNppStreamContext(device_);
 
-  // Try to load NVCUVID - if this fails, we'll use CPU fallback
-  if (!initNVCUVID()) {
-    // NVCUVID loading failed, we'll create CPU fallback during initialize()
-    nvcuvidAvailable_ = false;
-  } else {
-    nvcuvidAvailable_ = true;
-  }
+  nvcuvidAvailable_ =  loadNVCUVIDLibrary();
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
@@ -719,15 +708,16 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {
+  std::string details = "Beta CUDA Device Interface.";
   if (cpuFallback_) {
+    details += " Using CPU fallback.";
     if (!nvcuvidAvailable_) {
-      return "Beta CUDA Device Interface. Using CPU fallback (NVCUVID not available - install NVIDIA drivers with NVDEC support).";
-    } else {
-      return "Beta CUDA Device Interface. Using CPU fallback.";
+      details += " NVCUVID not available!";
     }
   } else {
-    return "Beta CUDA Device Interface. Using NVDEC.";
+    details += " Using NVDEC.";
   }
+  return details;
 }
 
 } // namespace facebook::torchcodec

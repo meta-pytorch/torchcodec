@@ -8,8 +8,6 @@
 
 namespace facebook::torchcodec {
 
-// Simple interface for dynamic NVCUVID loading
-bool initNVCUVID();
-bool isNVCUVIDLoaded();
+bool loadNVCUVIDLibrary();
 
 } // namespace facebook::torchcodec
