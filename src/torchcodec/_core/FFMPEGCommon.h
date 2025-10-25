@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <torch/types.h>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -249,5 +250,31 @@ int64_t computeSafeDuration(
 AVFilterContext* createBuffersinkFilter(
     AVFilterGraph* filterGraph,
     enum AVPixelFormat outputFormat);
+
+struct SwsFrameContext {
+  int inputWidth = 0;
+  int inputHeight = 0;
+  AVPixelFormat inputFormat = AV_PIX_FMT_NONE;
+  int outputWidth = 0;
+  int outputHeight = 0;
+
+  SwsFrameContext() = default;
+  SwsFrameContext(
+      int inputWidth,
+      int inputHeight,
+      AVPixelFormat inputFormat,
+      int outputWidth,
+      int outputHeight);
+
+  bool operator==(const SwsFrameContext& other) const;
+  bool operator!=(const SwsFrameContext& other) const;
+};
+
+// Utility functions for swscale context management
+UniqueSwsContext createSwsContext(
+    const SwsFrameContext& swsFrameContext,
+    AVColorSpace colorspace,
+    AVPixelFormat outputFormat = AV_PIX_FMT_RGB24,
+    int swsFlags = SWS_BILINEAR);
 
 } // namespace facebook::torchcodec

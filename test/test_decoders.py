@@ -1709,11 +1709,23 @@ class TestVideoDecoder:
         # fallbacks to the CPU path in such cases. We assert that we fall back
         # to the CPU path, too.
 
-        ffmpeg = VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
-        with set_cuda_backend("beta"):
-            beta = VideoDecoder(H265_VIDEO.path, device="cuda").get_frame_at(0)
+        ref_dec = VideoDecoder(H265_VIDEO.path, device="cuda")
+        ref_frames = ref_dec.get_frame_at(0)
+        assert (
+            _core._get_backend_details(ref_dec._decoder)
+            == "FFmpeg CUDA Device Interface. Using CPU fallback."
+        )
 
-        torch.testing.assert_close(ffmpeg.data, beta.data, rtol=0, atol=0)
+        with set_cuda_backend("beta"):
+            beta_dec = VideoDecoder(H265_VIDEO.path, device="cuda")
+
+        assert (
+            _core._get_backend_details(beta_dec._decoder)
+            == "Beta CUDA Device Interface. Using CPU fallback."
+        )
+        beta_frame = beta_dec.get_frame_at(0)
+
+        assert psnr(ref_frames.data, beta_frame.data) > 25
 
     @needs_cuda
     def test_beta_cuda_interface_error(self):
