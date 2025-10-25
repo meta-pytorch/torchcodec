@@ -16,6 +16,11 @@
 #include "src/torchcodec/_core/NVDECCache.h"
 
 // #include <cuda_runtime.h> // For cudaStreamSynchronize
+
+// Include dynamic loader for interface
+#include "src/torchcodec/_core/NVCUVIDRuntimeLoader.h"
+
+// Include NVCUVID headers for types
 #include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
 #include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
 
@@ -155,6 +160,7 @@ std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
 bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
   // Return true iff the input video stream is supported by our NVDEC
   // implementation.
+
   auto codecType = validateCodecSupport(codecContext->codec_id);
   if (!codecType.has_value()) {
     return false;
@@ -222,6 +228,8 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
 
   initializeCudaContextWithPytorch(device_);
   nppCtx_ = getNppStreamContext(device_);
+
+  nvcuvidAvailable_ =  loadNVCUVIDLibrary();
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
@@ -249,7 +257,7 @@ void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
     [[maybe_unused]] const SharedAVCodecContext& codecContext) {
-  if (!nativeNVDECSupport(codecContext)) {
+  if (!nvcuvidAvailable_ || !nativeNVDECSupport(codecContext)) {
     cpuFallback_ = createDeviceInterface(torch::kCPU);
     TORCH_CHECK(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
@@ -552,7 +560,7 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   // SingleStreamDecoder. Either way, the underlying output surface can be
   // safely re-used.
   unmapPreviousFrame();
-  CUresult result = cuvidMapVideoFrame(
+  CUresult result = cuvidMapVideoFrame64(
       *decoder_.get(), dispInfo.picture_index, &framePtr, &pitch, &procParams);
   if (result != CUDA_SUCCESS) {
     return AVERROR_EXTERNAL;
@@ -569,7 +577,7 @@ void BetaCudaDeviceInterface::unmapPreviousFrame() {
     return;
   }
   CUresult result =
-      cuvidUnmapVideoFrame(*decoder_.get(), previouslyMappedFrame_);
+      cuvidUnmapVideoFrame64(*decoder_.get(), previouslyMappedFrame_);
   TORCH_CHECK(
       result == CUDA_SUCCESS, "Failed to unmap previous frame: ", result);
   previouslyMappedFrame_ = 0;
@@ -700,8 +708,16 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {
-  return std::string("Beta CUDA Device Interface. Using ") +
-      (cpuFallback_ ? "CPU fallback." : "NVDEC.");
+  std::string details = "Beta CUDA Device Interface.";
+  if (cpuFallback_) {
+    details += " Using CPU fallback.";
+    if (!nvcuvidAvailable_) {
+      details += " NVCUVID not available!";
+    }
+  } else {
+    details += " Using NVDEC.";
+  }
+  return details;
 }
 
 } // namespace facebook::torchcodec
