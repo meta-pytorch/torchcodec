@@ -15,12 +15,7 @@
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/NVDECCache.h"
 
-// #include <cuda_runtime.h> // For cudaStreamSynchronize
-
-// Include dynamic loader for interface
 #include "src/torchcodec/_core/NVCUVIDRuntimeLoader.h"
-
-// Include NVCUVID headers for types
 #include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
 #include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
 

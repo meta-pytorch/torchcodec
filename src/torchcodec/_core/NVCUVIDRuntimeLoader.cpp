@@ -16,8 +16,37 @@
 
 namespace facebook::torchcodec {
 
-// Function typedefs
+
+
 /* clang-format off */
+// This file defines the logic to load the libnvcuvid.so library **at runtime**,
+// along with the corresponding NVCUVID functions that we'll need.
+//
+// We do this because we *do not want* to link (statically or dynamically)
+// against libnvcuvid.so: it is not always available on the users machine! If we
+// were to link against libnvcuvid.so, that would mean that our
+// libtorchcodec_coreN.so would try to look for it when loaded at import time.
+// And if it's not on the users machine, that causes `import torchcodec` to
+// fail. Source: that's what we did, and we got user reports.
+//
+// So, we don't link against libnvcuvid.so. But we still want to call its
+// functions. So here's how it's done, we'll use cuvidCreateVideoParser as an
+// example, but it works the same for all.
+//
+// This:
+// typedef CUresult CUDAAPI tcuvidCreateVideoParser(CUvideoparser*, CUVIDPARSERPARAMS*);
+// defines tcuvidCreateVideoParser, which is the *type* of a *function*.
+// We define such a function of that type just below with:
+// static tcuvidCreateVideoParser* dl_cuvidCreateVideoParser = nullptr;
+// For now dl_cuvidCreateVideoParser is null, but later it will be a proper
+// function that can be called with dl_cuvidCreateVideoParser(...);
+//
+// For that to happen we need to call loadNVCUVIDLibrary(): we first
+// dlopen(libnvcuvid.so) which loads the .so, and then bind
+// dl_cuvidCreateVideoParser to its actual address by calling dlsym. If all went
+// well, by now, we can safely call dl_cuvidCreateVideoParser(...);
+
+
 typedef CUresult CUDAAPI tcuvidCreateVideoParser(CUvideoparser*, CUVIDPARSERPARAMS*);
 typedef CUresult CUDAAPI tcuvidParseVideoData(CUvideoparser, CUVIDSOURCEDATAPACKET*);
 typedef CUresult CUDAAPI tcuvidDestroyVideoParser(CUvideoparser);
