@@ -1725,7 +1725,7 @@ class TestVideoDecoder:
         )
         beta_frame = beta_dec.get_frame_at(0)
 
-        assert psnr(ref_frames.data.cpu(), beta_frame.data.cpu()) > 25
+        assert psnr(ref_frames.data, beta_frame.data) > 25
 
     @needs_cuda
     def test_beta_cuda_interface_error(self):
