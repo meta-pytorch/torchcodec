@@ -9,15 +9,22 @@
 #include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
 #include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
 
-#include <dlfcn.h>
 #include <torch/types.h>
 #include <cstdio>
 #include <mutex>
 
+#if defined(WIN64) || defined(_WIN64)
+#include <windows.h>
+typedef HMODULE tHandle;
+#else
+#include <dlfcn.h>
+typedef void* tHandle;
+#endif
+
 namespace facebook::torchcodec {
 
 /* clang-format off */
-// This file defines the logic to load the libnvcuvid.so library **at runtime**,
+// This file defines the logic to load the NVCUVID library **at runtime**,
 // along with the corresponding NVCUVID functions that we'll need.
 //
 // We do this because we *do not want* to link (statically or dynamically)
@@ -98,7 +105,7 @@ static tcuvidUnmapVideoFrame* dl_cuvidUnmapVideoFrame = nullptr;
 static tcuvidMapVideoFrame64* dl_cuvidMapVideoFrame64 = nullptr;
 static tcuvidUnmapVideoFrame64* dl_cuvidUnmapVideoFrame64 = nullptr;
 
-static void* g_nvcuvid_handle = nullptr;
+static tHandle g_nvcuvid_handle = nullptr;
 static std::mutex g_nvcuvid_mutex;
 
 bool isLoaded() {
@@ -112,19 +119,26 @@ bool isLoaded() {
 }
 
 template <typename T>
-T* loadFunction(const char* functionName) {
+T* bindFunction(const char* functionName) {
+#if defined(WIN64) || defined(_WIN64)
+  return reinterpret_cast<T*>(GetProcAddress(g_nvcuvid_handle, functionName));
+#else
   return reinterpret_cast<T*>(dlsym(g_nvcuvid_handle, functionName));
+#endif
 }
 
-bool loadNVCUVIDLibrary() {
-  // Loads libnvcuvid.so and all required function pointers.
-  // Returns true on success, false on failure.
-  std::lock_guard<std::mutex> lock(g_nvcuvid_mutex);
-
-  if (isLoaded()) {
-    return true;
+bool _loadLibrary() {
+#if defined(WIN64) || defined(_WIN64)
+#ifdef UNICODE
+  static LPCWSTR nvcuvidDll = L"nvcuvid.dll";
+#else
+  static LPCSTR nvcuvidDll = "nvcuvid.dll";
+#endif
+  g_nvcuvid_handle = LoadLibrary(nvcuvidDll);
+  if (g_nvcuvid_handle == nullptr) {
+    return false;
   }
-
+#else
   g_nvcuvid_handle = dlopen("libnvcuvid.so", RTLD_NOW);
   if (g_nvcuvid_handle == nullptr) {
     g_nvcuvid_handle = dlopen("libnvcuvid.so.1", RTLD_NOW);
@@ -132,30 +146,47 @@ bool loadNVCUVIDLibrary() {
   if (g_nvcuvid_handle == nullptr) {
     return false;
   }
+#endif
+
+  return true;
+}
+
+bool loadNVCUVIDLibrary() {
+  // Loads NVCUVID library and all required function pointers.
+  // Returns true on success, false on failure.
+  std::lock_guard<std::mutex> lock(g_nvcuvid_mutex);
+
+  if (isLoaded()) {
+    return true;
+  }
+
+  if (!_loadLibrary()) {
+    return false;
+  }
 
   // Load all function pointers. They'll be set to nullptr if not found.
   dl_cuvidCreateVideoParser =
-      loadFunction<tcuvidCreateVideoParser>("cuvidCreateVideoParser");
+      bindFunction<tcuvidCreateVideoParser>("cuvidCreateVideoParser");
   dl_cuvidParseVideoData =
-      loadFunction<tcuvidParseVideoData>("cuvidParseVideoData");
+      bindFunction<tcuvidParseVideoData>("cuvidParseVideoData");
   dl_cuvidDestroyVideoParser =
-      loadFunction<tcuvidDestroyVideoParser>("cuvidDestroyVideoParser");
+      bindFunction<tcuvidDestroyVideoParser>("cuvidDestroyVideoParser");
   dl_cuvidGetDecoderCaps =
-      loadFunction<tcuvidGetDecoderCaps>("cuvidGetDecoderCaps");
+      bindFunction<tcuvidGetDecoderCaps>("cuvidGetDecoderCaps");
   dl_cuvidCreateDecoder =
-      loadFunction<tcuvidCreateDecoder>("cuvidCreateDecoder");
+      bindFunction<tcuvidCreateDecoder>("cuvidCreateDecoder");
   dl_cuvidDestroyDecoder =
-      loadFunction<tcuvidDestroyDecoder>("cuvidDestroyDecoder");
+      bindFunction<tcuvidDestroyDecoder>("cuvidDestroyDecoder");
   dl_cuvidDecodePicture =
-      loadFunction<tcuvidDecodePicture>("cuvidDecodePicture");
+      bindFunction<tcuvidDecodePicture>("cuvidDecodePicture");
   dl_cuvidMapVideoFrame =
-      loadFunction<tcuvidMapVideoFrame>("cuvidMapVideoFrame");
+      bindFunction<tcuvidMapVideoFrame>("cuvidMapVideoFrame");
   dl_cuvidUnmapVideoFrame =
-      loadFunction<tcuvidUnmapVideoFrame>("cuvidUnmapVideoFrame");
+      bindFunction<tcuvidUnmapVideoFrame>("cuvidUnmapVideoFrame");
   dl_cuvidMapVideoFrame64 =
-      loadFunction<tcuvidMapVideoFrame64>("cuvidMapVideoFrame64");
+      bindFunction<tcuvidMapVideoFrame64>("cuvidMapVideoFrame64");
   dl_cuvidUnmapVideoFrame64 =
-      loadFunction<tcuvidUnmapVideoFrame64>("cuvidUnmapVideoFrame64");
+      bindFunction<tcuvidUnmapVideoFrame64>("cuvidUnmapVideoFrame64");
 
   return isLoaded();
 }
