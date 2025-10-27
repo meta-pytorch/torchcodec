@@ -1,3 +1,9 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
 # This is a fake smoke test that runs on the test-infra instances after we build
 # a wheel. We cannot run a real smoke test over there, because the machines are
 # too old to even install a proper ffmpeg version - and without ffmpeg,
