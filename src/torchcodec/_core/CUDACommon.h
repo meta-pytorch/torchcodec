@@ -11,7 +11,6 @@
 #include <npp.h>
 #include <torch/types.h>
 
-#include "src/torchcodec/_core/Cache.h"
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/Frame.h"
 
@@ -21,6 +20,10 @@ extern "C" {
 }
 
 namespace facebook::torchcodec {
+
+// Pytorch can only handle up to 128 GPUs.
+// https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
+constexpr int MAX_CUDA_GPUS = 128;
 
 void initializeCudaContextWithPytorch(const torch::Device& device);
 
@@ -42,5 +45,7 @@ void returnNppStreamContextToCache(
 void validatePreAllocatedTensorShape(
     const std::optional<torch::Tensor>& preAllocatedOutputTensor,
     const UniqueAVFrame& avFrame);
+
+int getDeviceIndex(const torch::Device& device);
 
 } // namespace facebook::torchcodec

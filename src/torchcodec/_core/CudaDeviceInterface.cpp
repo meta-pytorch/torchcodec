@@ -32,9 +32,6 @@ static bool g_cuda = registerDeviceInterface(
 // from
 //    the cache. If the cache is empty we create a new cuda context.
 
-// Pytorch can only handle up to 128 GPUs.
-// https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
-const int MAX_CUDA_GPUS = 128;
 // Set to -1 to have an infinitely sized cache. Set it to 0 to disable caching.
 // Set to a positive number to have a cache of that size.
 const int MAX_CONTEXTS_PER_GPU_IN_CACHE = -1;
@@ -54,7 +51,7 @@ int getFlagsAVHardwareDeviceContextCreate() {
 UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device) {
   enum AVHWDeviceType type = av_hwdevice_find_type_by_name("cuda");
   TORCH_CHECK(type != AV_HWDEVICE_TYPE_NONE, "Failed to find cuda device");
-  torch::DeviceIndex nonNegativeDeviceIndex = getNonNegativeDeviceIndex(device);
+  int deviceIndex = getDeviceIndex(device);
 
   UniqueAVBufferRef hardwareDeviceCtx = g_cached_hw_device_ctxs.get(device);
   if (hardwareDeviceCtx) {
@@ -63,14 +60,12 @@ UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device) {
 
   // Create hardware device context
   c10::cuda::CUDAGuard deviceGuard(device);
-  // Valid values for the argument to cudaSetDevice are 0 to maxDevices - 1:
-  // https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__DEVICE.html#group__CUDART__DEVICE_1g159587909ffa0791bbe4b40187a4c6bb
-  // So we ensure the deviceIndex is not negative.
   // We set the device because we may be called from a different thread than
   // the one that initialized the cuda context.
-  cudaSetDevice(nonNegativeDeviceIndex);
+  TORCH_CHECK(
+      cudaSetDevice(deviceIndex) == cudaSuccess, "Failed to set CUDA device");
   AVBufferRef* hardwareDeviceCtxRaw = nullptr;
-  std::string deviceOrdinal = std::to_string(nonNegativeDeviceIndex);
+  std::string deviceOrdinal = std::to_string(deviceIndex);
 
   int err = av_hwdevice_ctx_create(
       &hardwareDeviceCtxRaw,
@@ -117,15 +112,17 @@ CudaDeviceInterface::~CudaDeviceInterface() {
 
 void CudaDeviceInterface::initialize(
     const AVStream* avStream,
-    const UniqueDecodingAVFormatContext& avFormatCtx) {
+    const UniqueDecodingAVFormatContext& avFormatCtx,
+    const SharedAVCodecContext& codecContext) {
   TORCH_CHECK(avStream != nullptr, "avStream is null");
+  codecContext_ = codecContext;
   timeBase_ = avStream->time_base;
 
   // TODO: Ideally, we should keep all interface implementations independent.
   cpuInterface_ = createDeviceInterface(torch::kCPU);
   TORCH_CHECK(
       cpuInterface_ != nullptr, "Failed to create CPU device interface");
-  cpuInterface_->initialize(avStream, avFormatCtx);
+  cpuInterface_->initialize(avStream, avFormatCtx, codecContext);
   cpuInterface_->initializeVideo(
       VideoStreamOptions(),
       {},
@@ -287,8 +284,11 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
       frameOutput.data = cpuFrameOutput.data.to(device_);
     }
 
+    usingCPUFallback_ = true;
     return;
   }
+
+  usingCPUFallback_ = false;
 
   // Above we checked that the AVFrame was on GPU, but that's not enough, we
   // also need to check that the AVFrame is in AV_PIX_FMT_NV12 format (8 bits),
@@ -352,6 +352,14 @@ std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
   }
 
   return std::nullopt;
+}
+
+std::string CudaDeviceInterface::getDetails() {
+  // Note: for this interface specifically the fallback is only known after a
+  // frame has been decoded, not before: that's when FFmpeg decides to fallback,
+  // so we can't know earlier.
+  return std::string("FFmpeg CUDA Device Interface. Using ") +
+      (usingCPUFallback_ ? "CPU fallback." : "NVDEC.");
 }
 
 } // namespace facebook::torchcodec

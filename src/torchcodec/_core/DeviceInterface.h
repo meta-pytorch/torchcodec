@@ -21,7 +21,7 @@ namespace facebook::torchcodec {
 // Key for device interface registration with device type + variant support
 struct DeviceInterfaceKey {
   torch::DeviceType deviceType;
-  std::string_view variant = "default"; // e.g., "default", "beta", etc.
+  std::string_view variant = "ffmpeg"; // e.g., "ffmpeg", "beta", etc.
 
   bool operator<(const DeviceInterfaceKey& other) const {
     if (deviceType != other.deviceType) {
@@ -54,7 +54,8 @@ class DeviceInterface {
   // Initialize the device with parameters generic to all kinds of decoding.
   virtual void initialize(
       const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx) = 0;
+      const UniqueDecodingAVFormatContext& avFormatCtx,
+      const SharedAVCodecContext& codecContext) = 0;
 
   // Initialize the device with parameters specific to video decoding. There is
   // a default empty implementation.
@@ -80,52 +81,51 @@ class DeviceInterface {
   // Extension points for custom decoding paths
   // ------------------------------------------
 
-  // Override to return true if this device interface can decode packets
-  // directly. This means that the following two member functions can both
-  // be called:
-  //
-  //   1. sendPacket()
-  //   2. receiveFrame()
-  virtual bool canDecodePacketDirectly() const {
-    return false;
-  }
-
-  // Moral equivalent of avcodec_send_packet()
   // Returns AVSUCCESS on success, AVERROR(EAGAIN) if decoder queue full, or
   // other AVERROR on failure
-  virtual int sendPacket([[maybe_unused]] ReferenceAVPacket& avPacket) {
+  // Default implementation uses FFmpeg directly
+  virtual int sendPacket(ReferenceAVPacket& avPacket) {
     TORCH_CHECK(
-        false,
-        "Send/receive packet decoding not implemented for this device interface");
-    return AVERROR(ENOSYS);
+        codecContext_ != nullptr,
+        "Codec context not available for default packet sending");
+    return avcodec_send_packet(codecContext_.get(), avPacket.get());
   }
 
   // Send an EOF packet to flush the decoder
   // Returns AVSUCCESS on success, or other AVERROR on failure
+  // Default implementation uses FFmpeg directly
   virtual int sendEOFPacket() {
     TORCH_CHECK(
-        false, "Send EOF packet not implemented for this device interface");
-    return AVERROR(ENOSYS);
+        codecContext_ != nullptr,
+        "Codec context not available for default EOF packet sending");
+    return avcodec_send_packet(codecContext_.get(), nullptr);
   }
 
-  // Moral equivalent of avcodec_receive_frame()
   // Returns AVSUCCESS on success, AVERROR(EAGAIN) if no frame ready,
   // AVERROR_EOF if end of stream, or other AVERROR on failure
-  virtual int receiveFrame([[maybe_unused]] UniqueAVFrame& avFrame) {
+  // Default implementation uses FFmpeg directly
+  virtual int receiveFrame(UniqueAVFrame& avFrame) {
     TORCH_CHECK(
-        false,
-        "Send/receive packet decoding not implemented for this device interface");
-    return AVERROR(ENOSYS);
+        codecContext_ != nullptr,
+        "Codec context not available for default frame receiving");
+    return avcodec_receive_frame(codecContext_.get(), avFrame.get());
   }
 
   // Flush remaining frames from decoder
   virtual void flush() {
-    // Default implementation is no-op for standard decoders
-    // Custom decoders can override this method
+    TORCH_CHECK(
+        codecContext_ != nullptr,
+        "Codec context not available for default flushing");
+    avcodec_flush_buffers(codecContext_.get());
+  }
+
+  virtual std::string getDetails() {
+    return "";
   }
 
  protected:
   torch::Device device_;
+  SharedAVCodecContext codecContext_;
 };
 
 using CreateDeviceInterfaceFn =
@@ -141,7 +141,7 @@ void validateDeviceInterface(
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
     const torch::Device& device,
-    const std::string_view variant = "default");
+    const std::string_view variant = "ffmpeg");
 
 torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 

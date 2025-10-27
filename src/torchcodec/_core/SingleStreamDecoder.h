@@ -186,6 +186,8 @@ class SingleStreamDecoder {
   DecodeStats getDecodeStats() const;
   void resetDecodeStats();
 
+  std::string getDeviceInterfaceDetails() const;
+
  private:
   // --------------------------------------------------------------------------
   // STREAMINFO AND ASSOCIATED STRUCTS
@@ -221,7 +223,7 @@ class SingleStreamDecoder {
     AVMediaType avMediaType = AVMEDIA_TYPE_UNKNOWN;
 
     AVRational timeBase = {};
-    UniqueAVCodecContext codecContext;
+    SharedAVCodecContext codecContext;
 
     // The FrameInfo indices we built when scanFileAndUpdateMetadataAndIndex was
     // called.
@@ -311,7 +313,7 @@ class SingleStreamDecoder {
       int streamIndex,
       AVMediaType mediaType,
       const torch::Device& device = torch::kCPU,
-      const std::string_view deviceVariant = "default",
+      const std::string_view deviceVariant = "ffmpeg",
       std::optional<int> ffmpegThreadCount = std::nullopt);
 
   // Returns the "best" stream index for a given media type. The "best" is

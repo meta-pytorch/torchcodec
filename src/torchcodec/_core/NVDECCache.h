@@ -11,6 +11,9 @@
 #include <mutex>
 
 #include <cuda.h>
+#include <torch/types.h>
+
+#include "src/torchcodec/_core/NVCUVIDRuntimeLoader.h"
 #include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
 #include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
 
@@ -36,7 +39,7 @@ using UniqueCUvideodecoder =
 // per GPU device, and it is accessed through the static getCache() method.
 class NVDECCache {
  public:
-  static NVDECCache& getCache(int deviceIndex);
+  static NVDECCache& getCache(const torch::Device& device);
 
   // Get decoder from cache - returns nullptr if none available
   UniqueCUvideodecoder getDecoder(CUVIDEOFORMAT* videoFormat);
@@ -68,11 +71,6 @@ class NVDECCache {
     CacheKey(const CacheKey&) = default;
     CacheKey& operator=(const CacheKey&) = default;
 
-    // TODONVDEC P2: we only implement operator< which is enough for std::map,
-    // but:
-    // - we should consider using std::unordered_map
-    // - we should consider a more sophisticated and potentially less strict
-    // cache key comparison logic
     bool operator<(const CacheKey& other) const {
       return std::tie(
                  codecType,

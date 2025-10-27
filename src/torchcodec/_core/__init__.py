@@ -14,6 +14,7 @@ from ._metadata import (
 )
 from .ops import (
     _add_video_stream,
+    _get_backend_details,
     _get_key_frame_indices,
     _test_frame_pts_equality,
     add_audio_stream,
@@ -26,6 +27,8 @@ from .ops import (
     encode_audio_to_file_like,
     encode_audio_to_tensor,
     encode_video_to_file,
+    encode_video_to_file_like,
+    encode_video_to_tensor,
     get_ffmpeg_library_versions,
     get_frame_at_index,
     get_frame_at_pts,

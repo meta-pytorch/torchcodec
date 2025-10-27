@@ -41,8 +41,8 @@ struct VideoStreamOptions {
 
   // By default we use CPU for decoding for both C++ and python users.
   torch::Device device = torch::kCPU;
-  // Device variant (e.g., "default", "beta", etc.)
-  std::string_view deviceVariant = "default";
+  // Device variant (e.g., "ffmpeg", "beta", etc.)
+  std::string_view deviceVariant = "ffmpeg";
 
   // Encoding options
   // TODO-VideoEncoder: Consider adding other optional fields here

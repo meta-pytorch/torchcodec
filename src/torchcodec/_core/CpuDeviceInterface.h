@@ -25,7 +25,8 @@ class CpuDeviceInterface : public DeviceInterface {
 
   virtual void initialize(
       const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx) override;
+      const UniqueDecodingAVFormatContext& avFormatCtx,
+      const SharedAVCodecContext& codecContext) override;
 
   virtual void initializeVideo(
       const VideoStreamOptions& videoStreamOptions,
@@ -37,6 +38,8 @@ class CpuDeviceInterface : public DeviceInterface {
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor =
           std::nullopt) override;
+
+  std::string getDetails() override;
 
  private:
   int convertAVFrameToTensorUsingSwScale(

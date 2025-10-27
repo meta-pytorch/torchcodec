@@ -48,8 +48,10 @@ CpuDeviceInterface::CpuDeviceInterface(const torch::Device& device)
 
 void CpuDeviceInterface::initialize(
     const AVStream* avStream,
-    [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx) {
+    [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx,
+    const SharedAVCodecContext& codecContext) {
   TORCH_CHECK(avStream != nullptr, "avStream is null");
+  codecContext_ = codecContext;
   timeBase_ = avStream->time_base;
 }
 
@@ -342,6 +344,10 @@ torch::Tensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
     prevFiltersContext_ = std::move(filtersContext);
   }
   return rgbAVFrameToTensor(filterGraph_->convert(avFrame));
+}
+
+std::string CpuDeviceInterface::getDetails() {
+  return std::string("CPU Device Interface.");
 }
 
 } // namespace facebook::torchcodec

@@ -40,17 +40,14 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void initialize(
       const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx) override;
+      const UniqueDecodingAVFormatContext& avFormatCtx,
+      const SharedAVCodecContext& codecContext) override;
 
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor =
           std::nullopt) override;
-
-  bool canDecodePacketDirectly() const override {
-    return true;
-  }
 
   int sendPacket(ReferenceAVPacket& packet) override;
   int sendEOFPacket() override;
@@ -61,6 +58,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   int streamPropertyChange(CUVIDEOFORMAT* videoFormat);
   int frameReadyForDecoding(CUVIDPICPARAMS* picParams);
   int frameReadyInDisplayOrder(CUVIDPARSERDISPINFO* dispInfo);
+
+  std::string getDetails() override;
 
  private:
   int sendCuvidPacket(CUVIDSOURCEDATAPACKET& cuvidPacket);
@@ -97,6 +96,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   // NPP context for color conversion
   UniqueNppContext nppCtx_;
+
+  std::unique_ptr<DeviceInterface> cpuFallback_;
+  bool nvcuvidAvailable_ = false;
 };
 
 } // namespace facebook::torchcodec
