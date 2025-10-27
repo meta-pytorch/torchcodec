@@ -128,6 +128,8 @@ T* bindFunction(const char* functionName) {
 }
 
 bool _loadLibrary() {
+  // Helper that just calls dlopen or equivalent on Windows. In a separate
+  // function because of the #ifdef uglyness.
 #if defined(WIN64) || defined(_WIN64)
 #ifdef UNICODE
   static LPCWSTR nvcuvidDll = L"nvcuvid.dll";
@@ -255,7 +257,8 @@ cuvidDecodePicture(CUvideodecoder decoder, CUVIDPICPARAMS* picParams) {
 #if !defined(__CUVID_DEVPTR64) || defined(__CUVID_INTERNAL)
 // We need to protect the definition of the 32bit versions under the above
 // conditions (see cuviddec.h). Defining them unconditionally would cause
-// compilation errors when cuviddec.h re-defines those to the 64bit versions.
+// conflict compilation errors when cuviddec.h redefines those to the 64bit
+// versions.
 CUresult CUDAAPI cuvidMapVideoFrame(
     CUvideodecoder decoder,
     int pixIndex,
