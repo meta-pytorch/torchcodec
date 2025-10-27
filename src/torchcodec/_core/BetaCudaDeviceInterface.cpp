@@ -224,7 +224,7 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
   initializeCudaContextWithPytorch(device_);
   nppCtx_ = getNppStreamContext(device_);
 
-  nvcuvidAvailable_ =  loadNVCUVIDLibrary();
+  nvcuvidAvailable_ = loadNVCUVIDLibrary();
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {

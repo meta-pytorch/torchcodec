@@ -16,8 +16,6 @@
 
 namespace facebook::torchcodec {
 
-
-
 /* clang-format off */
 // This file defines the logic to load the libnvcuvid.so library **at runtime**,
 // along with the corresponding NVCUVID functions that we'll need.
@@ -38,15 +36,40 @@ namespace facebook::torchcodec {
 // defines tcuvidCreateVideoParser, which is the *type* of a *function*.
 // We define such a function of that type just below with:
 // static tcuvidCreateVideoParser* dl_cuvidCreateVideoParser = nullptr;
-// For now dl_cuvidCreateVideoParser is null, but later it will be a proper
-// function that can be called with dl_cuvidCreateVideoParser(...);
+// "dl" is for "dynamically loaded. For now dl_cuvidCreateVideoParser is
+// nullptr, but later it will be a proper function [pointer] that can be called
+// with dl_cuvidCreateVideoParser(...);
 //
-// For that to happen we need to call loadNVCUVIDLibrary(): we first
-// dlopen(libnvcuvid.so) which loads the .so, and then bind
-// dl_cuvidCreateVideoParser to its actual address by calling dlsym. If all went
-// well, by now, we can safely call dl_cuvidCreateVideoParser(...);
+// For that to happen we need to call loadNVCUVIDLibrary(): in there, we first
+// dlopen(libnvcuvid.so) which loads the .so somewhere in memory. Then we call
+// dlsym(...), which binds dl_cuvidCreateVideoParser to its actual address: it
+// literally sets the value of the dl_cuvidCreateVideoParser pointer to the
+// address of the actual code section. If all went well, by now, we can safely
+// call dl_cuvidCreateVideoParser(...);
+// All of that happens at runtime *after* import time, when the first instance
+// of the Beta CUDA interface is created, i.e. only when the user explicitly
+// requests it.
+//
+// At the bottom of this file we have an `extern "C"` section with function
+// definitions like:
+//
+// CUresult CUDAAPI cuvidCreateVideoParser(
+//  CUvideoparser* videoParser,
+//  CUVIDPARSERPARAMS* parserParams)  {...}
+//
+// These are the actual functions that are compiled against and called by the
+// Beta CUDA interface code. Crucially, these functions signature match exactly
+// the NVCUVID functions (as defined in cuviddec.h). Inside of
+// cuvidCreateVideoParser(...) we simply call the dl_cuvidCreateVideoParser
+// function [pointer] that we dynamically loaded earlier.
+//
+// At runtime, within the Beta CUDA interface code we have a fallback mechanism
+// to switch back to the CPU backend if any of the NVCUVID functions are not
+// available, or if libnvcuvid.so itself couldn't be found. This is what FFmpeg
+// does too.
 
 
+// Function pointers types
 typedef CUresult CUDAAPI tcuvidCreateVideoParser(CUvideoparser*, CUVIDPARSERPARAMS*);
 typedef CUresult CUDAAPI tcuvidParseVideoData(CUvideoparser, CUVIDSOURCEDATAPACKET*);
 typedef CUresult CUDAAPI tcuvidDestroyVideoParser(CUvideoparser);
@@ -58,7 +81,7 @@ typedef CUresult CUDAAPI tcuvidMapVideoFrame64(CUvideodecoder, int, unsigned lon
 typedef CUresult CUDAAPI tcuvidUnmapVideoFrame64(CUvideodecoder, unsigned long long);
 /* clang-format on */
 
-// Global function pointers
+// Global function pointers - will be dynamically loaded
 static tcuvidCreateVideoParser* dl_cuvidCreateVideoParser = nullptr;
 static tcuvidParseVideoData* dl_cuvidParseVideoData = nullptr;
 static tcuvidDestroyVideoParser* dl_cuvidDestroyVideoParser = nullptr;
@@ -87,6 +110,8 @@ T* loadFunction(const char* functionName) {
 }
 
 bool loadNVCUVIDLibrary() {
+  // Loads libnvcuvid.so and all required function pointers.
+  // Returns true on success, false on failure.
   std::lock_guard<std::mutex> lock(g_nvcuvid_mutex);
 
   if (isLoaded()) {
