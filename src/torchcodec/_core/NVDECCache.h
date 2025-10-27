@@ -12,6 +12,8 @@
 
 #include <cuda.h>
 #include <torch/types.h>
+
+#include "src/torchcodec/_core/NVCUVIDRuntimeLoader.h"
 #include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
 #include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
 
