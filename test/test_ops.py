@@ -1345,8 +1345,6 @@ class TestVideoEncoderOps:
 
     def test_to_file_like_custom_file_object(self):
         """Test to_file_like with a custom file-like object that implements write and seek."""
-        if get_ffmpeg_major_version() == 6:
-            pytest.skip("Skipping round trip test for FFmpeg 6")
 
         class CustomFileObject:
             def __init__(self):
@@ -1377,8 +1375,6 @@ class TestVideoEncoderOps:
 
     def test_to_file_like_real_file(self, tmp_path):
         """Test to_file_like with a real file opened in binary write mode."""
-        if get_ffmpeg_major_version() == 6:
-            pytest.skip("Skipping round trip test for FFmpeg 6")
         source_frames = self.decode(TEST_SRC_2_720P.path).data
         file_path = tmp_path / "test_file_like.mp4"
 

@@ -636,11 +636,9 @@ class TestVideoEncoder:
         # frame tensors, one is contiguous while the other is non-contiguous.
 
         num_frames, channels, height, width = 5, 3, 64, 64
-        contiguous_frames = (
-            (torch.rand(num_frames, channels, height, width) * 255)
-            .to(torch.uint8)
-            .contiguous()
-        )
+        contiguous_frames = torch.randint(
+            0, 256, size=(num_frames, channels, height, width), dtype=torch.uint8
+        ).contiguous()
         assert contiguous_frames.is_contiguous()
 
         # Create non-contiguous frames by permuting, calling contiguous to update memory layout,
