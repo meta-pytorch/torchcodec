@@ -6,9 +6,9 @@
 
 #pragma once
 
-#include "src/torchcodec/_core/CUDACommon.h"
-#include "src/torchcodec/_core/DeviceInterface.h"
-#include "src/torchcodec/_core/FilterGraph.h"
+#include "CUDACommon.h"
+#include "DeviceInterface.h"
+#include "FilterGraph.h"
 
 namespace facebook::torchcodec {
 

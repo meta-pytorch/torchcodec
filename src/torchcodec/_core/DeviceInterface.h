@@ -12,9 +12,9 @@
 #include <stdexcept>
 #include <string>
 #include "FFMPEGCommon.h"
-#include "src/torchcodec/_core/Frame.h"
-#include "src/torchcodec/_core/StreamOptions.h"
-#include "src/torchcodec/_core/Transform.h"
+#include "Frame.h"
+#include "StreamOptions.h"
+#include "Transform.h"
 
 namespace facebook::torchcodec {
 

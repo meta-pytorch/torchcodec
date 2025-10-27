@@ -10,11 +10,11 @@
 #include <string>
 #include "c10/core/SymIntArrayRef.h"
 #include "c10/util/Exception.h"
-#include "src/torchcodec/_core/AVIOFileLikeContext.h"
-#include "src/torchcodec/_core/AVIOTensorContext.h"
-#include "src/torchcodec/_core/Encoder.h"
-#include "src/torchcodec/_core/SingleStreamDecoder.h"
-#include "src/torchcodec/_core/ValidationUtils.h"
+#include "AVIOFileLikeContext.h"
+#include "AVIOTensorContext.h"
+#include "Encoder.h"
+#include "SingleStreamDecoder.h"
+#include "ValidationUtils.h"
 
 namespace facebook::torchcodec {
 

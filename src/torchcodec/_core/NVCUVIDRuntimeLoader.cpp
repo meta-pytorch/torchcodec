@@ -17,10 +17,10 @@ bool loadNVCUVIDLibrary() {
 } // namespace facebook::torchcodec
 #else
 
-#include "src/torchcodec/_core/NVCUVIDRuntimeLoader.h"
+#include "NVCUVIDRuntimeLoader.h"
 
-#include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
-#include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
+#include "nvcuvid_include/cuviddec.h"
+#include "nvcuvid_include/nvcuvid.h"
 
 #include <torch/types.h>
 #include <cstdio>

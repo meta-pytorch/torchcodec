@@ -9,15 +9,15 @@
 #include <mutex>
 #include <vector>
 
-#include "src/torchcodec/_core/BetaCudaDeviceInterface.h"
+#include "BetaCudaDeviceInterface.h"
 
-#include "src/torchcodec/_core/DeviceInterface.h"
-#include "src/torchcodec/_core/FFMPEGCommon.h"
-#include "src/torchcodec/_core/NVDECCache.h"
+#include "DeviceInterface.h"
+#include "FFMPEGCommon.h"
+#include "NVDECCache.h"
 
-#include "src/torchcodec/_core/NVCUVIDRuntimeLoader.h"
-#include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
-#include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
+#include "NVCUVIDRuntimeLoader.h"
+#include "nvcuvid_include/cuviddec.h"
+#include "nvcuvid_include/nvcuvid.h"
 
 extern "C" {
 #include <libavutil/hwcontext_cuda.h>

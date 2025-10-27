@@ -8,8 +8,8 @@
 
 #include <optional>
 #include <string>
-#include "src/torchcodec/_core/Frame.h"
-#include "src/torchcodec/_core/Metadata.h"
+#include "Frame.h"
+#include "Metadata.h"
 
 namespace facebook::torchcodec {
 
