@@ -4,6 +4,19 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+#ifdef FBCODE_CAFFE2
+// No need to do anything on fbcode. NVCUVID is available there, we can take a
+// hard dependency on it.
+// The FBCODE_CAFFE2 macro is defined in the upstream fbcode build of torch, so
+// we can rely on it, that's what torch does too.
+
+namespace facebook::torchcodec {
+bool loadNVCUVIDLibrary() {
+  return true;
+}
+} // namespace facebook::torchcodec
+#else
+
 #include "src/torchcodec/_core/NVCUVIDRuntimeLoader.h"
 
 #include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
@@ -303,3 +316,5 @@ cuvidUnmapVideoFrame64(CUvideodecoder decoder, unsigned long long framePtr) {
 }
 
 } // extern "C"
+
+#endif // FBCODE_CAFFE2
