@@ -555,7 +555,7 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   // SingleStreamDecoder. Either way, the underlying output surface can be
   // safely re-used.
   unmapPreviousFrame();
-  CUresult result = cuvidMapVideoFrame64(
+  CUresult result = cuvidMapVideoFrame(
       *decoder_.get(), dispInfo.picture_index, &framePtr, &pitch, &procParams);
   if (result != CUDA_SUCCESS) {
     return AVERROR_EXTERNAL;
@@ -572,7 +572,7 @@ void BetaCudaDeviceInterface::unmapPreviousFrame() {
     return;
   }
   CUresult result =
-      cuvidUnmapVideoFrame64(*decoder_.get(), previouslyMappedFrame_);
+      cuvidUnmapVideoFrame(*decoder_.get(), previouslyMappedFrame_);
   TORCH_CHECK(
       result == CUDA_SUCCESS, "Failed to unmap previous frame: ", result);
   previouslyMappedFrame_ = 0;

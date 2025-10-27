@@ -29,7 +29,9 @@ namespace facebook::torchcodec {
 //
 // So, we don't link against libnvcuvid.so. But we still want to call its
 // functions. So here's how it's done, we'll use cuvidCreateVideoParser as an
-// example, but it works the same for all.
+// example, but it works the same for all. We are largely following the
+// instructions from the NVCUVID docs:
+// https://docs.nvidia.com/video-technologies/video-codec-sdk/13.0/nvdec-video-decoder-api-prog-guide/index.html#dynamic-loading-nvidia-components
 //
 // This:
 // typedef CUresult CUDAAPI tcuvidCreateVideoParser(CUvideoparser*, CUVIDPARSERPARAMS*);
@@ -77,6 +79,8 @@ typedef CUresult CUDAAPI tcuvidGetDecoderCaps(CUVIDDECODECAPS*);
 typedef CUresult CUDAAPI tcuvidCreateDecoder(CUvideodecoder*, CUVIDDECODECREATEINFO*);
 typedef CUresult CUDAAPI tcuvidDestroyDecoder(CUvideodecoder);
 typedef CUresult CUDAAPI tcuvidDecodePicture(CUvideodecoder, CUVIDPICPARAMS*);
+typedef CUresult CUDAAPI tcuvidMapVideoFrame(CUvideodecoder, int, unsigned int*, unsigned int*, CUVIDPROCPARAMS*);
+typedef CUresult CUDAAPI tcuvidUnmapVideoFrame(CUvideodecoder, unsigned int);
 typedef CUresult CUDAAPI tcuvidMapVideoFrame64(CUvideodecoder, int, unsigned long long*, unsigned int*, CUVIDPROCPARAMS*);
 typedef CUresult CUDAAPI tcuvidUnmapVideoFrame64(CUvideodecoder, unsigned long long);
 /* clang-format on */
@@ -89,6 +93,8 @@ static tcuvidGetDecoderCaps* dl_cuvidGetDecoderCaps = nullptr;
 static tcuvidCreateDecoder* dl_cuvidCreateDecoder = nullptr;
 static tcuvidDestroyDecoder* dl_cuvidDestroyDecoder = nullptr;
 static tcuvidDecodePicture* dl_cuvidDecodePicture = nullptr;
+static tcuvidMapVideoFrame* dl_cuvidMapVideoFrame = nullptr;
+static tcuvidUnmapVideoFrame* dl_cuvidUnmapVideoFrame = nullptr;
 static tcuvidMapVideoFrame64* dl_cuvidMapVideoFrame64 = nullptr;
 static tcuvidUnmapVideoFrame64* dl_cuvidUnmapVideoFrame64 = nullptr;
 
@@ -100,7 +106,8 @@ bool isLoaded() {
       g_nvcuvid_handle && dl_cuvidCreateVideoParser && dl_cuvidParseVideoData &&
       dl_cuvidDestroyVideoParser && dl_cuvidGetDecoderCaps &&
       dl_cuvidCreateDecoder && dl_cuvidDestroyDecoder &&
-      dl_cuvidDecodePicture && dl_cuvidMapVideoFrame64 &&
+      dl_cuvidDecodePicture && dl_cuvidMapVideoFrame &&
+      dl_cuvidUnmapVideoFrame && dl_cuvidMapVideoFrame64 &&
       dl_cuvidUnmapVideoFrame64);
 }
 
@@ -141,6 +148,10 @@ bool loadNVCUVIDLibrary() {
       loadFunction<tcuvidDestroyDecoder>("cuvidDestroyDecoder");
   dl_cuvidDecodePicture =
       loadFunction<tcuvidDecodePicture>("cuvidDecodePicture");
+  dl_cuvidMapVideoFrame =
+      loadFunction<tcuvidMapVideoFrame>("cuvidMapVideoFrame");
+  dl_cuvidUnmapVideoFrame =
+      loadFunction<tcuvidUnmapVideoFrame>("cuvidUnmapVideoFrame");
   dl_cuvidMapVideoFrame64 =
       loadFunction<tcuvidMapVideoFrame64>("cuvidMapVideoFrame64");
   dl_cuvidUnmapVideoFrame64 =
@@ -209,6 +220,32 @@ cuvidDecodePicture(CUvideodecoder decoder, CUVIDPICPARAMS* picParams) {
       "cuvidDecodePicture called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidDecodePicture(decoder, picParams);
 }
+
+#if !defined(__CUVID_DEVPTR64) || defined(__CUVID_INTERNAL)
+// We need to protect the definition of the 32bit versions under the above
+// conditions (see cuviddec.h). Defining them unconditionally would cause
+// compilation errors when cuviddec.h re-defines those to the 64bit versions.
+CUresult CUDAAPI cuvidMapVideoFrame(
+    CUvideodecoder decoder,
+    int pixIndex,
+    unsigned int* framePtr,
+    unsigned int* pitch,
+    CUVIDPROCPARAMS* procParams) {
+  TORCH_CHECK(
+      facebook::torchcodec::dl_cuvidMapVideoFrame,
+      "cuvidMapVideoFrame called but NVCUVID not loaded!");
+  return facebook::torchcodec::dl_cuvidMapVideoFrame(
+      decoder, pixIndex, framePtr, pitch, procParams);
+}
+
+CUresult CUDAAPI
+cuvidUnmapVideoFrame(CUvideodecoder decoder, unsigned int framePtr) {
+  TORCH_CHECK(
+      facebook::torchcodec::dl_cuvidUnmapVideoFrame,
+      "cuvidUnmapVideoFrame called but NVCUVID not loaded!");
+  return facebook::torchcodec::dl_cuvidUnmapVideoFrame(decoder, framePtr);
+}
+#endif
 
 CUresult CUDAAPI cuvidMapVideoFrame64(
     CUvideodecoder decoder,
