@@ -641,13 +641,13 @@ class TestVideoEncoder:
         ).contiguous()
         assert contiguous_frames.is_contiguous()
 
-        # Create non-contiguous frames by permuting, calling contiguous to update memory layout,
-        # then permuting back to the initial order
+        # Permute NCHW to NHWC, then update the memory layout, then permute back
         non_contiguous_frames = (
-            contiguous_frames.permute(0, 3, 2, 1).contiguous().permute(0, 3, 2, 1)
+            contiguous_frames.permute(0, 2, 3, 1).contiguous().permute(0, 3, 1, 2)
         )
         assert non_contiguous_frames.stride() != contiguous_frames.stride()
         assert not non_contiguous_frames.is_contiguous()
+        assert non_contiguous_frames.is_contiguous(memory_format=torch.channels_last)
 
         torch.testing.assert_close(
             contiguous_frames, non_contiguous_frames, rtol=0, atol=0
