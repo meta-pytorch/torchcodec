@@ -103,7 +103,7 @@ class VideoDecoder:
         dimension_order: Literal["NCHW", "NHWC"] = "NCHW",
         num_ffmpeg_threads: int = 1,
         device: Optional[Union[str, torch_device]] = "cpu",
-        transforms: List[Any] = [], # TRANSFORMS TODO: what is the user-facing type?
+        transforms: List[Any] = [],  # TRANSFORMS TODO: what is the user-facing type?
         seek_mode: Literal["exact", "approximate"] = "exact",
         custom_frame_mappings: Optional[
             Union[str, bytes, io.RawIOBase, io.BufferedReader]
@@ -435,6 +435,7 @@ def _get_and_validate_stream_metadata(
         num_frames,
     )
 
+
 def make_transform_specs(transforms: List[Any]) -> str:
     from torchvision.transforms import v2
 
@@ -447,10 +448,9 @@ def make_transform_specs(transforms: List[Any]) -> str:
                 )
             transform_specs.append(f"resize, {transform.size[0]}, {transform.size[1]}")
         else:
-            raise ValueError(
-                f"Unsupported transform {transform}."
-            )
+            raise ValueError(f"Unsupported transform {transform}.")
     return ";".join(transform_specs)
+
 
 def _read_custom_frame_mappings(
     custom_frame_mappings: Union[str, bytes, io.RawIOBase, io.BufferedReader]

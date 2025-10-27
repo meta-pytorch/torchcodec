@@ -40,7 +40,9 @@ class TestPublicVideoDecoderTransformOps:
         height = int(NASA_VIDEO.get_height() * height_scaling_factor)
         width = int(NASA_VIDEO.get_width() * width_scaling_factor)
 
-        decoder_resize = VideoDecoder(NASA_VIDEO.path, transforms=[v2.Resize(size=(height, width))])
+        decoder_resize = VideoDecoder(
+            NASA_VIDEO.path, transforms=[v2.Resize(size=(height, width))]
+        )
         decoder_full = VideoDecoder(NASA_VIDEO.path)
         for frame_index in [0, 10, 17, 100, 230, 389]:
             expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
@@ -60,15 +62,18 @@ class TestPublicVideoDecoderTransformOps:
         width = 240
         expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
         resize_filtergraph = f"scale={width}:{height}:flags=bilinear"
-        decoder_resize = VideoDecoder(NASA_VIDEO.path, transforms=[v2.Resize(size=(height, width))])
+        decoder_resize = VideoDecoder(
+            NASA_VIDEO.path, transforms=[v2.Resize(size=(height, width))]
+        )
         for frame_index in [17, 230, 389]:
             frame_resize = decoder_resize[frame_index]
-            frame_ref = NASA_VIDEO.get_frame_data_by_index(frame_index, filters=resize_filtergraph)
+            frame_ref = NASA_VIDEO.get_frame_data_by_index(
+                frame_index, filters=resize_filtergraph
+            )
 
             assert frame_resize.shape == expected_shape
             assert frame_ref.shape == expected_shape
             assert_frames_equal(frame_resize, frame_ref)
-
 
     def test_resize_fails(self):
         with pytest.raises(
@@ -83,6 +88,7 @@ class TestPublicVideoDecoderTransformOps:
             match="Unsupported transform",
         ):
             VideoDecoder(NASA_VIDEO.path, transforms=[v2.RandomHorizontalFlip(p=1.0)])
+
 
 class TestCoreVideoDecoderTransformOps:
     # We choose arbitrary values for width and height scaling to get better
