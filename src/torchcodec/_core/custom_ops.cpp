@@ -8,13 +8,13 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
-#include "c10/core/SymIntArrayRef.h"
-#include "c10/util/Exception.h"
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
 #include "SingleStreamDecoder.h"
 #include "ValidationUtils.h"
+#include "c10/core/SymIntArrayRef.h"
+#include "c10/util/Exception.h"
 
 namespace facebook::torchcodec {
 
