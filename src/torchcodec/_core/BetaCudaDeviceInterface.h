@@ -59,6 +59,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   int frameReadyForDecoding(CUVIDPICPARAMS* picParams);
   int frameReadyInDisplayOrder(CUVIDPARSERDISPINFO* dispInfo);
 
+  std::string getDetails() override;
+
  private:
   int sendCuvidPacket(CUVIDSOURCEDATAPACKET& cuvidPacket);
 
@@ -96,6 +98,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   UniqueNppContext nppCtx_;
 
   std::unique_ptr<DeviceInterface> cpuFallback_;
+  bool nvcuvidAvailable_ = false;
 };
 
 } // namespace facebook::torchcodec

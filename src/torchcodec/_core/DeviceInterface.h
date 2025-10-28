@@ -119,6 +119,10 @@ class DeviceInterface {
     avcodec_flush_buffers(codecContext_.get());
   }
 
+  virtual std::string getDetails() {
+    return "";
+  }
+
  protected:
   torch::Device device_;
   SharedAVCodecContext codecContext_;

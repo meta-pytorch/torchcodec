@@ -1727,26 +1727,10 @@ class TestVideoDecoder:
         with set_cuda_backend("BETA"):
             assert _get_cuda_backend() == "beta"
 
-        def assert_decoder_uses(decoder, *, expected_backend):
-            # TODO: This doesn't work anymore after
-            # https://github.com/meta-pytorch/torchcodec/pull/977
-            # We need to define a better way to assert which backend a decoder
-            # is using.
-            return
-            # Assert that a decoder instance is using a given backend.
-            #
-            # We know H265_VIDEO fails on the BETA backend while it works on the
-            # ffmpeg one.
-            # if expected_backend == "ffmpeg":
-            #     decoder.get_frame_at(0)  # this would fail if this was BETA
-            # else:
-            #     with pytest.raises(RuntimeError, match="Video is too small"):
-            #         decoder.get_frame_at(0)
-
         # Check that the default is the ffmpeg backend
         assert _get_cuda_backend() == "ffmpeg"
         dec = VideoDecoder(H265_VIDEO.path, device="cuda")
-        assert_decoder_uses(dec, expected_backend="ffmpeg")
+        assert _core._get_backend_details(dec._decoder).startswith("FFmpeg CUDA")
 
         # Check the setting "beta" effectively uses the BETA backend.
         # We also show that the affects decoder creation only. When the decoder
@@ -1755,9 +1739,9 @@ class TestVideoDecoder:
         with set_cuda_backend("beta"):
             dec = VideoDecoder(H265_VIDEO.path, device="cuda")
         assert _get_cuda_backend() == "ffmpeg"
-        assert_decoder_uses(dec, expected_backend="beta")
+        assert _core._get_backend_details(dec._decoder).startswith("Beta CUDA")
         with set_cuda_backend("ffmpeg"):
-            assert_decoder_uses(dec, expected_backend="beta")
+            assert _core._get_backend_details(dec._decoder).startswith("Beta CUDA")
 
         # Hacky way to ensure passing "cuda:1" is supported by both backends. We
         # just check that there's an error when passing cuda:N where N is too

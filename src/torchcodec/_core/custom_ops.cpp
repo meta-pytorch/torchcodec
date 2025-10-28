@@ -41,6 +41,8 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "encode_video_to_tensor(Tensor frames, int frame_rate, str format, int? crf=None) -> Tensor");
   m.def(
+      "_encode_video_to_file_like(Tensor frames, int frame_rate, str format, int file_like_context, int? crf=None) -> ()");
+  m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
@@ -72,6 +74,7 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "get_stream_json_metadata(Tensor(a!) decoder, int stream_index) -> str");
   m.def("_get_json_ffmpeg_library_versions() -> str");
+  m.def("_get_backend_details(Tensor(a!) decoder) -> str");
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
@@ -628,6 +631,30 @@ at::Tensor encode_video_to_tensor(
       .encodeToTensor();
 }
 
+void _encode_video_to_file_like(
+    const at::Tensor& frames,
+    int64_t frame_rate,
+    std::string_view format,
+    int64_t file_like_context,
+    std::optional<int64_t> crf = std::nullopt) {
+  auto fileLikeContext =
+      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+  TORCH_CHECK(
+      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
+  std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
+
+  VideoStreamOptions videoStreamOptions;
+  videoStreamOptions.crf = crf;
+
+  VideoEncoder encoder(
+      frames,
+      validateInt64ToInt(frame_rate, "frame_rate"),
+      format,
+      std::move(avioContextHolder),
+      videoStreamOptions);
+  encoder.encode();
+}
+
 // For testing only. We need to implement this operation as a core library
 // function because what we're testing is round-tripping pts values as
 // double-precision floating point numbers from C++ to Python and back to C++.
@@ -869,6 +896,11 @@ std::string _get_json_ffmpeg_library_versions() {
   return ss.str();
 }
 
+std::string get_backend_details(at::Tensor& decoder) {
+  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
+  return videoDecoder->getDeviceInterfaceDetails();
+}
+
 // Scans video packets to get more accurate metadata like frame count, exact
 // keyframe positions, etc. Exact keyframe positions are useful for efficient
 // accurate seeking. Note that this function reads the entire video but it does
@@ -892,6 +924,7 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("_encode_audio_to_file_like", &_encode_audio_to_file_like);
   m.impl("encode_video_to_file", &encode_video_to_file);
   m.impl("encode_video_to_tensor", &encode_video_to_tensor);
+  m.impl("_encode_video_to_file_like", &_encode_video_to_file_like);
   m.impl("seek_to_pts", &seek_to_pts);
   m.impl("add_video_stream", &add_video_stream);
   m.impl("_add_video_stream", &_add_video_stream);
@@ -912,6 +945,8 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "scan_all_streams_to_update_metadata",
       &scan_all_streams_to_update_metadata);
+
+  m.impl("_get_backend_details", &get_backend_details);
 }
 
 } // namespace facebook::torchcodec

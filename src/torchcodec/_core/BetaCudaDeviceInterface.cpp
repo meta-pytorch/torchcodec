@@ -15,7 +15,7 @@
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/NVDECCache.h"
 
-// #include <cuda_runtime.h> // For cudaStreamSynchronize
+#include "src/torchcodec/_core/NVCUVIDRuntimeLoader.h"
 #include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
 #include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
 
@@ -155,6 +155,7 @@ std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
 bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
   // Return true iff the input video stream is supported by our NVDEC
   // implementation.
+
   auto codecType = validateCodecSupport(codecContext->codec_id);
   if (!codecType.has_value()) {
     return false;
@@ -222,6 +223,8 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
 
   initializeCudaContextWithPytorch(device_);
   nppCtx_ = getNppStreamContext(device_);
+
+  nvcuvidAvailable_ = loadNVCUVIDLibrary();
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
@@ -249,7 +252,7 @@ void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
     [[maybe_unused]] const SharedAVCodecContext& codecContext) {
-  if (!nativeNVDECSupport(codecContext)) {
+  if (!nvcuvidAvailable_ || !nativeNVDECSupport(codecContext)) {
     cpuFallback_ = createDeviceInterface(torch::kCPU);
     TORCH_CHECK(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
@@ -697,6 +700,19 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   frameOutput.data = convertNV12FrameToRGB(
       avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+}
+
+std::string BetaCudaDeviceInterface::getDetails() {
+  std::string details = "Beta CUDA Device Interface.";
+  if (cpuFallback_) {
+    details += " Using CPU fallback.";
+    if (!nvcuvidAvailable_) {
+      details += " NVCUVID not available!";
+    }
+  } else {
+    details += " Using NVDEC.";
+  }
+  return details;
 }
 
 } // namespace facebook::torchcodec
