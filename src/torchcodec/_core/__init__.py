@@ -30,6 +30,7 @@ from .ops import (
     encode_video_to_file,
     encode_video_to_file_like,
     encode_video_to_tensor,
+    ffmpeg_major_version,
     get_ffmpeg_library_versions,
     get_frame_at_index,
     get_frame_at_pts,
@@ -42,5 +43,4 @@ from .ops import (
     get_next_frame,
     scan_all_streams_to_update_metadata,
     seek_to_pts,
-    variant,
 )
