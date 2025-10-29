@@ -5,7 +5,6 @@ import torch
 from torch import device as torch_device, Tensor
 
 from torchcodec import _core
-from torchcodec.decoders._decoder_utils import _get_cuda_backend
 
 
 class VideoEncoder:
@@ -42,14 +41,6 @@ class VideoEncoder:
         # Validate and store device
         if isinstance(device, torch_device):
             device = str(device)
-
-        # Check if beta variant is being used and reject it
-        device_variant = _get_cuda_backend()
-        if "cuda" in device.lower() and device_variant == "beta":
-            raise ValueError(
-                "The beta CUDA backend is not supported for video encoding. "
-                "Please use device='cuda' without the beta backend context manager."
-            )
 
         self._frames = frames
         self._frame_rate = frame_rate
