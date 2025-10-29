@@ -65,6 +65,21 @@ class DeviceInterface {
           transforms,
       [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {}
 
+  // Initialize the device with parameters specific to audio decoding. There is
+  // a default empty implementation.
+  virtual void initializeAudio(
+      [[maybe_unused]] const AudioStreamOptions& audioStreamOptions) {}
+
+  // Flush any remaining samples from the audio resampler buffer.
+  // When sample rate conversion is involved, some samples may be buffered
+  // between frames for proper interpolation. This function flushes those
+  // buffered samples.
+  // Returns an optional tensor containing the flushed samples, or std::nullopt
+  // if there are no buffered samples or audio is not supported.
+  virtual std::optional<torch::Tensor> maybeFlushAudioBuffers() {
+    return std::nullopt;
+  }
+
   // In order for decoding to actually happen on an FFmpeg managed hardware
   // device, we need to register the DeviceInterface managed
   // AVHardwareDeviceContext with the AVCodecContext. We don't need to do this
@@ -75,6 +90,7 @@ class DeviceInterface {
   virtual void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
+      AVMediaType mediaType,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt) = 0;
 
   // ------------------------------------------

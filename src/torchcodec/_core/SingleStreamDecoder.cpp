@@ -570,6 +570,9 @@ void SingleStreamDecoder::addAudioStream(
   // support that format, but it looks like it does nothing, so this probably
   // doesn't hurt.
   streamInfo.codecContext->request_sample_fmt = AV_SAMPLE_FMT_FLTP;
+
+  // Initialize device interface for audio
+  deviceInterface_->initializeAudio(audioStreamOptions);
 }
 
 // --------------------------------------------------------------------------
@@ -1025,7 +1028,7 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
         (stopPts <= lastDecodedAvFrameEnd);
   }
 
-  auto lastSamples = maybeFlushSwrBuffers();
+  auto lastSamples = deviceInterface_->maybeFlushAudioBuffers();
   if (lastSamples.has_value()) {
     frames.push_back(*lastSamples);
   }
@@ -1293,134 +1296,9 @@ FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
   frameOutput.durationSeconds = ptsToSeconds(
       getDuration(avFrame),
       formatContext_->streams[activeStreamIndex_]->time_base);
-  if (streamInfo.avMediaType == AVMEDIA_TYPE_AUDIO) {
-    convertAudioAVFrameToFrameOutputOnCPU(avFrame, frameOutput);
-  } else {
-    deviceInterface_->convertAVFrameToFrameOutput(
-        avFrame, frameOutput, preAllocatedOutputTensor);
-  }
+  deviceInterface_->convertAVFrameToFrameOutput(
+      avFrame, frameOutput, streamInfo.avMediaType, preAllocatedOutputTensor);
   return frameOutput;
-}
-
-void SingleStreamDecoder::convertAudioAVFrameToFrameOutputOnCPU(
-    UniqueAVFrame& srcAVFrame,
-    FrameOutput& frameOutput) {
-  AVSampleFormat srcSampleFormat =
-      static_cast<AVSampleFormat>(srcAVFrame->format);
-  AVSampleFormat outSampleFormat = AV_SAMPLE_FMT_FLTP;
-
-  StreamInfo& streamInfo = streamInfos_[activeStreamIndex_];
-  int srcSampleRate = srcAVFrame->sample_rate;
-  int outSampleRate =
-      streamInfo.audioStreamOptions.sampleRate.value_or(srcSampleRate);
-
-  int srcNumChannels = getNumChannels(streamInfo.codecContext);
-  TORCH_CHECK(
-      srcNumChannels == getNumChannels(srcAVFrame),
-      "The frame has ",
-      getNumChannels(srcAVFrame),
-      " channels, expected ",
-      srcNumChannels,
-      ". If you are hitting this, it may be because you are using "
-      "a buggy FFmpeg version. FFmpeg4 is known to fail here in some "
-      "valid scenarios. Try to upgrade FFmpeg?");
-  int outNumChannels =
-      streamInfo.audioStreamOptions.numChannels.value_or(srcNumChannels);
-
-  bool mustConvert =
-      (srcSampleFormat != outSampleFormat || srcSampleRate != outSampleRate ||
-       srcNumChannels != outNumChannels);
-
-  UniqueAVFrame convertedAVFrame;
-  if (mustConvert) {
-    if (!swrContext_) {
-      swrContext_.reset(createSwrContext(
-          srcSampleFormat,
-          outSampleFormat,
-          srcSampleRate,
-          outSampleRate,
-          srcAVFrame,
-          outNumChannels));
-    }
-
-    convertedAVFrame = convertAudioAVFrameSamples(
-        swrContext_,
-        srcAVFrame,
-        outSampleFormat,
-        outSampleRate,
-        outNumChannels);
-  }
-  const UniqueAVFrame& avFrame = mustConvert ? convertedAVFrame : srcAVFrame;
-
-  AVSampleFormat format = static_cast<AVSampleFormat>(avFrame->format);
-  TORCH_CHECK(
-      format == outSampleFormat,
-      "Something went wrong, the frame didn't get converted to the desired format. ",
-      "Desired format = ",
-      av_get_sample_fmt_name(outSampleFormat),
-      "source format = ",
-      av_get_sample_fmt_name(format));
-
-  int numChannels = getNumChannels(avFrame);
-  TORCH_CHECK(
-      numChannels == outNumChannels,
-      "Something went wrong, the frame didn't get converted to the desired ",
-      "number of channels = ",
-      outNumChannels,
-      ". Got ",
-      numChannels,
-      " instead.");
-
-  auto numSamples = avFrame->nb_samples; // per channel
-
-  frameOutput.data = torch::empty({numChannels, numSamples}, torch::kFloat32);
-
-  if (numSamples > 0) {
-    uint8_t* outputChannelData =
-        static_cast<uint8_t*>(frameOutput.data.data_ptr());
-    auto numBytesPerChannel = numSamples * av_get_bytes_per_sample(format);
-    for (auto channel = 0; channel < numChannels;
-         ++channel, outputChannelData += numBytesPerChannel) {
-      std::memcpy(
-          outputChannelData,
-          avFrame->extended_data[channel],
-          numBytesPerChannel);
-    }
-  }
-}
-
-std::optional<torch::Tensor> SingleStreamDecoder::maybeFlushSwrBuffers() {
-  // When sample rate conversion is involved, swresample buffers some of the
-  // samples in-between calls to swr_convert (see the libswresample docs).
-  // That's because the last few samples in a given frame require future
-  // samples from the next frame to be properly converted. This function
-  // flushes out the samples that are stored in swresample's buffers.
-  auto& streamInfo = streamInfos_[activeStreamIndex_];
-  if (!swrContext_) {
-    return std::nullopt;
-  }
-  auto numRemainingSamples = // this is an upper bound
-      swr_get_out_samples(swrContext_.get(), 0);
-
-  if (numRemainingSamples == 0) {
-    return std::nullopt;
-  }
-
-  int numChannels = streamInfo.audioStreamOptions.numChannels.value_or(
-      getNumChannels(streamInfo.codecContext));
-  torch::Tensor lastSamples =
-      torch::empty({numChannels, numRemainingSamples}, torch::kFloat32);
-
-  std::vector<uint8_t*> outputBuffers(numChannels);
-  for (auto i = 0; i < numChannels; i++) {
-    outputBuffers[i] = static_cast<uint8_t*>(lastSamples[i].data_ptr());
-  }
-
-  auto actualNumRemainingSamples = swr_convert(
-      swrContext_.get(), outputBuffers.data(), numRemainingSamples, nullptr, 0);
-
-  return lastSamples.narrow(
-      /*dim=*/1, /*start=*/0, /*length=*/actualNumRemainingSamples);
 }
 
 // --------------------------------------------------------------------------

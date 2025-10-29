@@ -238,6 +238,7 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
 void CudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
+    [[maybe_unused]] AVMediaType mediaType,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
   validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
 
@@ -271,7 +272,8 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     } else {
       // Reason 2 above. We need to do a full conversion which requires an
       // actual CPU device.
-      cpuInterface_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
+      cpuInterface_->convertAVFrameToFrameOutput(
+          avFrame, cpuFrameOutput, AVMEDIA_TYPE_VIDEO);
     }
 
     // Finally, we need to send the frame back to the GPU. Note that the

@@ -37,6 +37,7 @@ class CudaDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
+      AVMediaType mediaType,
       std::optional<torch::Tensor> preAllocatedOutputTensor =
           std::nullopt) override;
 

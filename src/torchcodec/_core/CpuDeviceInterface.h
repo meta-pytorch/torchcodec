@@ -33,15 +33,30 @@ class CpuDeviceInterface : public DeviceInterface {
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resizedOutputDims) override;
 
+  virtual void initializeAudio(
+      const AudioStreamOptions& audioStreamOptions) override;
+
+  virtual std::optional<torch::Tensor> maybeFlushAudioBuffers() override;
+
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
+      AVMediaType mediaType,
       std::optional<torch::Tensor> preAllocatedOutputTensor =
           std::nullopt) override;
 
   std::string getDetails() override;
 
  private:
+  void convertAudioAVFrameToFrameOutput(
+      UniqueAVFrame& srcAVFrame,
+      FrameOutput& frameOutput);
+
+  void convertVideoAVFrameToFrameOutput(
+      UniqueAVFrame& avFrame,
+      FrameOutput& frameOutput,
+      std::optional<torch::Tensor> preAllocatedOutputTensor);
+
   int convertAVFrameToTensorUsingSwScale(
       const UniqueAVFrame& avFrame,
       torch::Tensor& outputTensor,
@@ -130,6 +145,10 @@ class CpuDeviceInterface : public DeviceInterface {
   bool userRequestedSwScale_;
 
   bool initialized_ = false;
+
+  // Audio-specific members
+  AudioStreamOptions audioStreamOptions_;
+  UniqueSwrContext swrContext_;
 };
 
 } // namespace facebook::torchcodec

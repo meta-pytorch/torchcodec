@@ -671,11 +671,13 @@ void BetaCudaDeviceInterface::flush() {
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
+    [[maybe_unused]] AVMediaType mediaType,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
   if (cpuFallback_) {
     // CPU decoded frame - need to do CPU color conversion then transfer to GPU
     FrameOutput cpuFrameOutput;
-    cpuFallback_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
+    cpuFallback_->convertAVFrameToFrameOutput(
+        avFrame, cpuFrameOutput, AVMEDIA_TYPE_VIDEO);
 
     // Transfer CPU frame to GPU
     if (preAllocatedOutputTensor.has_value()) {
