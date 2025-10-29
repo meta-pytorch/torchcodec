@@ -729,6 +729,9 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
       convertedHeight == height, "sws_scale failed for CPU->NV12 conversion");
 
   int ySize = width * height;
+  TORCH_CHECK(
+      ySize % 2 == 0,
+      "Y plane size must be even. Please report on TorchCodec repo.");
   int uvSize = ySize / 2; // NV12: UV plane is half the size of Y plane
   size_t totalSize = static_cast<size_t>(ySize + uvSize);
 
@@ -767,6 +770,9 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
       "Failed to copy Y plane to GPU: ",
       cudaGetErrorString(err));
 
+  TORCH_CHECK(
+      height % 2 == 0,
+      "height must be even. Please report on TorchCodec repo.");
   err = cudaMemcpy2D(
       gpuFrame->data[1],
       gpuFrame->linesize[1],
