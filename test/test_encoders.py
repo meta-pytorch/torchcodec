@@ -588,7 +588,7 @@ class TestVideoEncoder:
             getattr(encoder, method)(**valid_params)
 
         with pytest.raises(
-            ValueError, match=r"Expected 3D or 4D frames, got frames.shape = torch.Size"
+            ValueError, match=r"Expected 4D frames, got frames.shape = torch.Size"
         ):
             encoder = VideoEncoder(
                 frames=torch.zeros(10),
