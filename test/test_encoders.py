@@ -573,12 +573,6 @@ class TestVideoEncoder:
     def decode(self, source=None) -> torch.Tensor:
         return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
 
-    def save_image(self, a, b, name):
-        from torchvision.io import write_png
-        from torchvision.utils import make_grid
-        image = make_grid(torch.stack([a, b]), nrow=2).cpu()
-        write_png(image, f"{name}.png")
-
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_bad_input_parameterized(self, tmp_path, method):
         if method == "to_file":
@@ -642,15 +636,20 @@ class TestVideoEncoder:
             encoder.to_tensor(format="bad_format")
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_contiguity(self, method, tmp_path):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_contiguity(self, method, tmp_path, device):
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal
         # frame tensors, one is contiguous while the other is non-contiguous.
 
-        num_frames, channels, height, width = 5, 3, 64, 64
-        contiguous_frames = torch.randint(
-            0, 256, size=(num_frames, channels, height, width), dtype=torch.uint8
-        ).contiguous()
+        num_frames, channels, height, width = 5, 3, 256, 256
+        contiguous_frames = (
+            (torch.rand(num_frames, channels, height, width) * 255)
+            .to(torch.uint8)
+            .contiguous()
+        )
         assert contiguous_frames.is_contiguous()
 
         # Permute NCHW to NHWC, then update the memory layout, then permute back
@@ -668,14 +667,14 @@ class TestVideoEncoder:
         def encode_to_tensor(frames):
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
-                VideoEncoder(frames, frame_rate=30).to_file(dest=dest)
+                VideoEncoder(frames, frame_rate=30, device=device).to_file(dest=dest)
                 with open(dest, "rb") as f:
                     return torch.frombuffer(f.read(), dtype=torch.uint8).clone()
             elif method == "to_tensor":
-                return VideoEncoder(frames, frame_rate=30).to_tensor(format="mp4")
+                return VideoEncoder(frames, frame_rate=30, device=device).to_tensor(format="mp4")
             elif method == "to_file_like":
                 file_like = io.BytesIO()
-                VideoEncoder(frames, frame_rate=30).to_file_like(
+                VideoEncoder(frames, frame_rate=30, device=device).to_file_like(
                     file_like, format="mp4"
                 )
                 return torch.frombuffer(file_like.getvalue(), dtype=torch.uint8)
@@ -708,30 +707,16 @@ class TestVideoEncoder:
             encoder.to_file(dest=dest)
             # Verify file was created
             assert Path(dest).exists()
-            self.save_image(
-                frames[0],
-                self.decode(Path(dest)).data[0],
-                name=f"{device}_to_file",
-            )
         elif method == "to_tensor":
             encoded = encoder.to_tensor(format="mp4")
             assert encoded.dtype == torch.uint8
             assert encoded.ndim == 1
             assert encoded.numel() > 0
-            self.save_image(
-                frames[0],
-                self.decode(encoded).data[0],
-                name=f"{device}_to_tensor",
-            )
         elif method == "to_file_like":
             file_like = io.BytesIO()
             encoder.to_file_like(file_like, format="mp4")
             encoded_bytes = file_like.getvalue()
             assert len(encoded_bytes) > 0
-            self.save_image(
-                frames[0],
-                self.decode(encoded_bytes).data[0],
-                name=f"{device}_to_file_like",
-            )
         else:
             raise ValueError(f"Unknown method: {method}")
+
