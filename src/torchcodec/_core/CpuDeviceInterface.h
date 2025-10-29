@@ -18,7 +18,6 @@ class CpuDeviceInterface : public DeviceInterface {
 
   virtual ~CpuDeviceInterface() {}
 
-
   virtual void initialize(
       const AVStream* avStream,
       const UniqueDecodingAVFormatContext& avFormatCtx,

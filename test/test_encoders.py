@@ -721,4 +721,3 @@ class TestVideoEncoder:
             assert len(encoded_bytes) > 0
         else:
             raise ValueError(f"Unknown method: {method}")
-
