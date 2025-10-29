@@ -1167,7 +1167,7 @@ class TestVideoEncoderOps:
         ffmpeg_version = get_ffmpeg_major_version()
         # In FFmpeg6, the default codec's best pixel format is lossy for all container formats but webm.
         # As a result, we skip the round trip test.
-        if ffmpeg_version == 6 and format != "webm":
+        if ffmpeg_version == 6 and format != "webm" and device == "cpu":
             pytest.skip(
                 f"FFmpeg6 defaults to lossy encoding for {format}, skipping round-trip test."
             )
@@ -1175,12 +1175,15 @@ class TestVideoEncoderOps:
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+        if device == "cuda" and format not in ("mp4", "mov", "mkv"):
+            pytest.skip(
+                f"No NVENC encoder available for format {format}, skipping test."
+            )
+
         source_frames = self.decode(TEST_SRC_2_720P.path).data
 
         # Frame rate is fixed with num frames decoded
-        params = dict(
-            frame_rate=30, crf=0, device=device
-        )  
+        params = dict(frame_rate=30, crf=0, device=device)
         if method == "to_file":
             encoded_path = str(tmp_path / f"encoder_output.{format}")
             encode_video_to_file(
@@ -1214,7 +1217,9 @@ class TestVideoEncoderOps:
         if ffmpeg_version == 6 or device == "cuda":
             atol = 15
             percentage = 98
-            assert_close = partial(assert_tensor_close_on_at_least, percentage=percentage)
+            assert_close = partial(
+                assert_tensor_close_on_at_least, percentage=percentage
+            )
         else:
             assert_close = torch.testing.assert_close
             atol = 2
@@ -1296,6 +1301,16 @@ class TestVideoEncoderOps:
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
 
+        # Pass flag to FFmpeg CLI to NVENC encoder when device is CUDA and format has a compatible NVENC codec
+        codec_str = ""
+        if device == "cuda":
+            if format in ("mp4", "mov", "mkv"):
+                codec_str = "-c:v h264_nvenc"
+            else:
+                pytest.skip(
+                    f"No NVENC encoder available for format {format}, skipping test."
+                )
+
         source_frames = self.decode(TEST_SRC_2_720P.path).data
 
         # Encode with FFmpeg CLI
@@ -1306,7 +1321,7 @@ class TestVideoEncoderOps:
         ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
         frame_rate = 30
         crf = 0
-        # Some codecs (ex. MPEG4) do not support CRF.
+        # Some codecs (ex. MPEG4) and CUDA backend codecs do not support CRF.
         # Flags not supported by the selected codec will be ignored.
         ffmpeg_cmd = [
             "ffmpeg",
@@ -1323,20 +1338,16 @@ class TestVideoEncoderOps:
             temp_raw_path,
         ]
 
-        # Use NVENC encoder when device is CUDA and format has an NVENC codec
-        if device == "cuda":
-            if format in ("mp4", "mov", "mkv"):
-                ffmpeg_cmd.extend(["-c:v", "h264_nvenc"])
-            elif format == "webm":
-                ffmpeg_cmd.extend(["-c:v", "vp9_nvenc"])  # Use NVENC for VP9
-            # TODO-VideoEncoder: formats "flv", "avi" should also use respective NVENC codecs, 
-            # but do not auto select them.
+        if codec_str:
+            ffmpeg_cmd.extend(codec_str.split())
 
-        ffmpeg_cmd.extend([
-            "-crf",
-            str(crf),
-            ffmpeg_encoded_path,
-        ])
+        ffmpeg_cmd.extend(
+            [
+                "-crf",
+                str(crf),
+                ffmpeg_encoded_path,
+            ]
+        )
         subprocess.run(ffmpeg_cmd, check=True)
 
         # Encode with our video encoder
@@ -1389,14 +1400,21 @@ class TestVideoEncoderOps:
         source_frames = self.decode(TEST_SRC_2_720P.path).data
         file_like = CustomFileObject()
         encode_video_to_file_like(
-            source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like, device=device
+            source_frames,
+            frame_rate=30,
+            crf=0,
+            format="mp4",
+            file_like=file_like,
+            device=device,
         )
         decoded_samples = self.decode(file_like.get_encoded_data())
 
         if device == "cuda":
             atol = 15
             percentage = 98
-            assert_close = partial(assert_tensor_close_on_at_least, percentage=percentage)
+            assert_close = partial(
+                assert_tensor_close_on_at_least, percentage=percentage
+            )
         else:
             assert_close = torch.testing.assert_close
             atol = 2
@@ -1418,14 +1436,21 @@ class TestVideoEncoderOps:
 
         with open(file_path, "wb") as file_like:
             encode_video_to_file_like(
-                source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like, device=device
+                source_frames,
+                frame_rate=30,
+                crf=0,
+                format="mp4",
+                file_like=file_like,
+                device=device,
             )
         decoded_samples = self.decode(str(file_path))
 
         if device == "cuda":
             atol = 15
             percentage = 98
-            assert_close = partial(assert_tensor_close_on_at_least, percentage=percentage)
+            assert_close = partial(
+                assert_tensor_close_on_at_least, percentage=percentage
+            )
         else:
             assert_close = torch.testing.assert_close
             atol = 2

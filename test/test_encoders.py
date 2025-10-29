@@ -15,7 +15,6 @@ from torchcodec.decoders._video_decoder import VideoDecoder
 from torchcodec.encoders import AudioEncoder, VideoEncoder
 
 from .utils import (
-    TEST_SRC_2_720P,
     assert_tensor_close_on_at_least,
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
@@ -23,6 +22,7 @@ from .utils import (
     IS_WINDOWS,
     NASA_AUDIO_MP3,
     SINE_MONO_S32,
+    TEST_SRC_2_720P,
     TestContainerFile,
 )
 
@@ -671,7 +671,9 @@ class TestVideoEncoder:
                 with open(dest, "rb") as f:
                     return torch.frombuffer(f.read(), dtype=torch.uint8).clone()
             elif method == "to_tensor":
-                return VideoEncoder(frames, frame_rate=30, device=device).to_tensor(format="mp4")
+                return VideoEncoder(frames, frame_rate=30, device=device).to_tensor(
+                    format="mp4"
+                )
             elif method == "to_file_like":
                 file_like = io.BytesIO()
                 VideoEncoder(frames, frame_rate=30, device=device).to_file_like(

@@ -116,7 +116,8 @@ function(make_torchcodec_libraries
             find_library(NVCUVID_LIBRARY NAMES nvcuvid.1 PATHS /usr/lib64 /usr/lib)
         endif()
         if(NOT NVCUVID_LIBRARY)
-            set(NVCUVID_LIBRARY "/usr/lib64/libnvcuvid.so.1")
+            # set(NVCUVID_LIBRARY "/usr/lib64/libnvcuvid.so.1")
+            set(NVCUVID_LIBRARY "/usr/lib/x86_64-linux-gnu/libnvcuvid.so")
         endif()
 
         if(NVCUVID_LIBRARY)
