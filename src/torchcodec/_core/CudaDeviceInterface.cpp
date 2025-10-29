@@ -355,12 +355,10 @@ std::optional<const AVCodec*> CudaDeviceInterface::findEncoder(
     if (codec->id != codecId || !av_codec_is_encoder(codec)) {
       continue;
     }
-
     if (codecSupportsCudaHardware(codec)) {
       return codec;
     }
   }
-
   return std::nullopt;
 }
 

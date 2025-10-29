@@ -1393,7 +1393,6 @@ class TestVideoEncoderOps:
         )
         decoded_samples = self.decode(file_like.get_encoded_data())
 
-        ffmpeg_version = get_ffmpeg_major_version()
         if device == "cuda":
             atol = 15
             percentage = 98
@@ -1423,8 +1422,6 @@ class TestVideoEncoderOps:
             )
         decoded_samples = self.decode(str(file_path))
 
-        # Use adaptive tolerance based on device and FFmpeg version, consistent with test_video_encoder_round_trip
-        ffmpeg_version = get_ffmpeg_major_version()
         if device == "cuda":
             atol = 15
             percentage = 98
