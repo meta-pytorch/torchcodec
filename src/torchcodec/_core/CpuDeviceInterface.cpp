@@ -89,7 +89,7 @@ void CpuDeviceInterface::initializeVideo(
     // Note that we ensure that the transforms come BEFORE the format
     // conversion. This means that the transforms are applied in the frame's
     // original pixel format and colorspace.
-    filters_ = filters.str() + filters_;
+    filters_ = filters.str() + "," + filters_;
   }
 
   initialized_ = true;
