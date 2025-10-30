@@ -1214,12 +1214,9 @@ class TestVideoEncoderOps:
 
         # If FFmpeg selects a codec or pixel format that does lossy encoding, assert 99% of pixels
         # are within a higher tolerance.
-        if ffmpeg_version == 6:
+        if ffmpeg_version == 6 or device == "cuda":
             atol = 15
-            assert_close = partial(assert_tensor_close_on_at_least, percentage=99)
-        elif device == "cuda":
-            atol = 15
-            percentage = 98
+            percentage = 98 if device == "cuda" else 99
             assert_close = partial(
                 assert_tensor_close_on_at_least, percentage=percentage
             )
