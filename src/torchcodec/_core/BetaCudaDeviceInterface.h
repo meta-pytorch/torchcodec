@@ -81,6 +81,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       unsigned int pitch,
       const CUVIDPARSERDISPINFO& dispInfo);
 
+  UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
+
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;
   CUVIDEOFORMAT videoFormat_ = {};
@@ -98,6 +100,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   UniqueNppContext nppCtx_;
 
   std::unique_ptr<DeviceInterface> cpuFallback_;
+  bool nvcuvidAvailable_ = false;
+  UniqueSwsContext swsContext_;
+  SwsFrameContext prevSwsFrameContext_;
 };
 
 } // namespace facebook::torchcodec

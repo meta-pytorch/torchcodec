@@ -1,3 +1,9 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
 """
 The goal of this script is to ensure that the .so files we ship do not contain
 symbol versions from libstdc++ that are too recent. This is a very manual way of

@@ -602,4 +602,73 @@ int64_t computeSafeDuration(
   }
 }
 
+SwsFrameContext::SwsFrameContext(
+    int inputWidth,
+    int inputHeight,
+    AVPixelFormat inputFormat,
+    int outputWidth,
+    int outputHeight)
+    : inputWidth(inputWidth),
+      inputHeight(inputHeight),
+      inputFormat(inputFormat),
+      outputWidth(outputWidth),
+      outputHeight(outputHeight) {}
+
+bool SwsFrameContext::operator==(const SwsFrameContext& other) const {
+  return inputWidth == other.inputWidth && inputHeight == other.inputHeight &&
+      inputFormat == other.inputFormat && outputWidth == other.outputWidth &&
+      outputHeight == other.outputHeight;
+}
+
+bool SwsFrameContext::operator!=(const SwsFrameContext& other) const {
+  return !(*this == other);
+}
+
+UniqueSwsContext createSwsContext(
+    const SwsFrameContext& swsFrameContext,
+    AVColorSpace colorspace,
+    AVPixelFormat outputFormat,
+    int swsFlags) {
+  SwsContext* swsContext = sws_getContext(
+      swsFrameContext.inputWidth,
+      swsFrameContext.inputHeight,
+      swsFrameContext.inputFormat,
+      swsFrameContext.outputWidth,
+      swsFrameContext.outputHeight,
+      outputFormat,
+      swsFlags,
+      nullptr,
+      nullptr,
+      nullptr);
+  TORCH_CHECK(swsContext, "sws_getContext() returned nullptr");
+
+  int* invTable = nullptr;
+  int* table = nullptr;
+  int srcRange, dstRange, brightness, contrast, saturation;
+  int ret = sws_getColorspaceDetails(
+      swsContext,
+      &invTable,
+      &srcRange,
+      &table,
+      &dstRange,
+      &brightness,
+      &contrast,
+      &saturation);
+  TORCH_CHECK(ret != -1, "sws_getColorspaceDetails returned -1");
+
+  const int* colorspaceTable = sws_getCoefficients(colorspace);
+  ret = sws_setColorspaceDetails(
+      swsContext,
+      colorspaceTable,
+      srcRange,
+      colorspaceTable,
+      dstRange,
+      brightness,
+      contrast,
+      saturation);
+  TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
+
+  return UniqueSwsContext(swsContext);
+}
+
 } // namespace facebook::torchcodec
