@@ -268,21 +268,9 @@ class SingleStreamDecoder {
       UniqueAVFrame& avFrame,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
-  void convertAVFrameToFrameOutputOnCPU(
-      UniqueAVFrame& avFrame,
-      FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
-
   void convertAudioAVFrameToFrameOutputOnCPU(
       UniqueAVFrame& srcAVFrame,
       FrameOutput& frameOutput);
-
-  torch::Tensor convertAVFrameToTensorUsingFilterGraph(
-      const UniqueAVFrame& avFrame);
-
-  int convertAVFrameToTensorUsingSwsScale(
-      const UniqueAVFrame& avFrame,
-      torch::Tensor& outputTensor);
 
   std::optional<torch::Tensor> maybeFlushSwrBuffers();
 
