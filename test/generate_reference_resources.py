@@ -52,15 +52,15 @@ def generate_frame_by_index(
     output_bmp = f"{base_path}.bmp"
 
     # Note that we have an exlicit format conversion to rgb24 in our filtergraph specification,
-    # which always happens BEFORE any of the filters that we receive as input. We do this to
-    # ensure that the color conversion happens BEFORE the filters, matching the behavior of the
+    # which always happens AFTER any of the filters that we receive as input. We do this to
+    # ensure that the color conversion happens AFTER the filters, matching the behavior of the
     # torchcodec filtergraph implementation.
-    #
-    # Not doing this would result in the color conversion happening AFTER the filters, which
-    # would result in different color values for the same frame.
-    filtergraph = f"select='eq(n\\,{frame_index})',format=rgb24"
+    select = f"select='eq(n\\,{frame_index})'"
+    format = "format=rgb24"
     if filters is not None:
-        filtergraph = filtergraph + f",{filters}"
+        filtergraph = ",".join([select, filters, format])
+    else:
+        filtergraph = ",".join([select, format])
 
     cmd = [
         "ffmpeg",
@@ -99,7 +99,7 @@ def generate_frame_by_timestamp(
     convert_image_to_tensor(output_path)
 
 
-def generate_nasa_13013_references():
+def generate_nasa_13013_references_by_index():
     # Note: The naming scheme used here must match the naming scheme used to load
     # tensors in ./utils.py.
     streams = [0, 3]
@@ -108,6 +108,8 @@ def generate_nasa_13013_references():
         for frame in frames:
             generate_frame_by_index(NASA_VIDEO, frame_index=frame, stream_index=stream)
 
+
+def generate_nasa_13013_references_by_timestamp():
     # Extract individual frames at specific timestamps, including the last frame of the video.
     seek_timestamp = [6.0, 6.1, 10.0, 12.979633]
     timestamp_name = [f"{seek_timestamp:06f}" for seek_timestamp in seek_timestamp]
@@ -115,6 +117,8 @@ def generate_nasa_13013_references():
         output_bmp = f"{NASA_VIDEO.path}.time{name}.bmp"
         generate_frame_by_timestamp(NASA_VIDEO.path, timestamp, output_bmp)
 
+
+def generate_nasa_13013_references_crop():
     # Extract frames with specific filters. We have tests that assume these exact filters.
     frames = [0, 15, 200, 389]
     crop_filter = "crop=300:200:50:35:exact=1"
@@ -123,6 +127,8 @@ def generate_nasa_13013_references():
             NASA_VIDEO, frame_index=frame, stream_index=3, filters=crop_filter
         )
 
+
+def generate_nasa_13013_references_resize():
     frames = [17, 230, 389]
     # Note that the resize algorithm passed to flags is exposed to users,
     # but bilinear is the default we use.
@@ -131,6 +137,13 @@ def generate_nasa_13013_references():
         generate_frame_by_index(
             NASA_VIDEO, frame_index=frame, stream_index=3, filters=resize_filter
         )
+
+
+def generate_nasa_13013_references():
+    generate_nasa_13013_references_by_index()
+    generate_nasa_13013_references_by_timestamp()
+    generate_nasa_13013_references_crop()
+    generate_nasa_13013_references_resize()
 
 
 def generate_h265_video_references():

@@ -109,15 +109,32 @@ class CpuDeviceInterface : public DeviceInterface {
   UniqueSwsContext swsContext_;
   SwsFrameContext prevSwsFrameContext_;
 
-  // The filter we supply to filterGraph_, if it is used. The default is the
-  // copy filter, which just copies the input to the output. Computationally, it
-  // should be a no-op. If we get no user-provided transforms, we will use the
-  // copy filter. Otherwise, we will construct the string from the transforms.
+  // We pass the filters to FFmpeg's filtergraph API. It is a simple pipeline
+  // of what FFmpeg calls "filters" to apply to decoded frames before returning
+  // them. In the PyTorch ecosystem, we call these "transforms". During
+  // initialization, we convert the user-supplied transforms into this string of
+  // filters.
   //
-  // Note that even if we only use the copy filter, we still get the desired
-  // colorspace conversion. We construct the filtergraph with its output sink
-  // set to RGB24.
-  std::string filters_ = "copy";
+  // Note that we start with the format conversion, and then we ensure that the
+  // user-supplied filters always happen BEFORE the format conversion. We want
+  // the user-supplied filters to operate on frames in their original pixel
+  // format and colorspace.
+  //
+  // The reason why is not obvious: when users do not need to perform any
+  // transforms, or the only transform they apply is a single resize, we can
+  // sometimes just call swscale directly; see getColorConversionLibrary() for
+  // the full conditions. A single call to swscale's sws_scale() will always do
+  // the scaling (resize) in the frame's original pixel format and colorspace.
+  // In order for calling swscale directly to be an optimization, we must make
+  // sure that the behavior between calling it directly and using filtergraph
+  // is identical.
+  //
+  // If we had to apply transforms in the output pixel format and colorspace,
+  // we could achieve that by calling sws_scale() twice: once to do the resize
+  // and another time to do the format conversion. But that goes against the
+  // whole point of calling sws_scale() directly, as it's a performance
+  // optimization.
+  std::string filters_ = "format=rgb24";
 
   // The flags we supply to swsContext_, if it used. The flags control the
   // resizing algorithm. We default to bilinear. Users can override this with a

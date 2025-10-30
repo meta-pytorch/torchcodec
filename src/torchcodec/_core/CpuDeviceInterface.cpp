@@ -94,6 +94,12 @@ void CpuDeviceInterface::initializeVideo(
   // If we have any transforms, replace filters_ with the filter strings from
   // the transforms. As noted above, we decide between swscale and filtergraph
   // when we actually decode a frame.
+  //
+  // Note: We explicitly add the format conversion filter at the end to ensure
+  // that color conversion happens AFTER the transforms, not before. This
+  // matches the behavior of the reference generation in the test suite.
+  // Without this, FFmpeg's automatic format negotiation might insert the
+  // conversion before the transforms, which would produce different results.
   std::stringstream filters;
   bool first = true;
   for (const auto& transform : transforms) {
@@ -104,7 +110,10 @@ void CpuDeviceInterface::initializeVideo(
     first = false;
   }
   if (!transforms.empty()) {
-    filters_ = filters.str();
+    // Note that we ensure that the transforms come BEFORE the format
+    // conversion. This means that the transforms are applied in the frame's
+    // original pixel format and colorspace.
+    filters_ = filters.str() + filters_;
   }
 
   initialized_ = true;
@@ -324,17 +333,17 @@ void CpuDeviceInterface::createSwsContext(
 torch::Tensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
     const UniqueAVFrame& avFrame,
     const FrameDims& outputDims) {
-  enum AVPixelFormat frameFormat =
+  enum AVPixelFormat avFrameFormat =
       static_cast<enum AVPixelFormat>(avFrame->format);
 
   FiltersContext filtersContext(
       avFrame->width,
       avFrame->height,
-      frameFormat,
+      avFrameFormat,
       avFrame->sample_aspect_ratio,
       outputDims.width,
       outputDims.height,
-      AV_PIX_FMT_RGB24,
+      /*outputFormat=*/AV_PIX_FMT_RGB24,
       filters_,
       timeBase_);
 

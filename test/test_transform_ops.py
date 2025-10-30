@@ -22,72 +22,12 @@ from torchcodec._core import (
     get_json_metadata,
     get_next_frame,
 )
-from torchcodec.decoders import VideoDecoder
 
 from torchvision.transforms import v2
 
 from .utils import assert_frames_equal, NASA_VIDEO, needs_cuda, psnr
 
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
-
-
-class TestPublicVideoDecoderTransformOps:
-    @pytest.mark.parametrize(
-        "height_scaling_factor, width_scaling_factor",
-        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0)),
-    )
-    def test_resize_torchvision(self, height_scaling_factor, width_scaling_factor):
-        height = int(NASA_VIDEO.get_height() * height_scaling_factor)
-        width = int(NASA_VIDEO.get_width() * width_scaling_factor)
-
-        decoder_resize = VideoDecoder(
-            NASA_VIDEO.path, transforms=[v2.Resize(size=(height, width))]
-        )
-        decoder_full = VideoDecoder(NASA_VIDEO.path)
-        for frame_index in [0, 10, 17, 100, 230, 389]:
-            expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
-            frame_resize = decoder_resize[frame_index]
-
-            frame_full = decoder_full[frame_index]
-            frame_tv = v2.functional.resize(frame_full, size=(height, width))
-
-            assert frame_resize.shape == expected_shape
-            assert frame_tv.shape == expected_shape
-
-            # Copied from PR #992; not sure if it's the best way to check
-            assert psnr(frame_resize, frame_tv) > 25
-
-    def test_resize_ffmpeg(self):
-        height = 135
-        width = 240
-        expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
-        resize_filtergraph = f"scale={width}:{height}:flags=bilinear"
-        decoder_resize = VideoDecoder(
-            NASA_VIDEO.path, transforms=[v2.Resize(size=(height, width))]
-        )
-        for frame_index in [17, 230, 389]:
-            frame_resize = decoder_resize[frame_index]
-            frame_ref = NASA_VIDEO.get_frame_data_by_index(
-                frame_index, filters=resize_filtergraph
-            )
-
-            assert frame_resize.shape == expected_shape
-            assert frame_ref.shape == expected_shape
-            assert_frames_equal(frame_resize, frame_ref)
-
-    def test_resize_fails(self):
-        with pytest.raises(
-            ValueError,
-            match=r"must have a \(height, width\) pair for the size",
-        ):
-            VideoDecoder(NASA_VIDEO.path, transforms=[v2.Resize(size=(100))])
-
-    def test_transform_fails(self):
-        with pytest.raises(
-            ValueError,
-            match="Unsupported transform",
-        ):
-            VideoDecoder(NASA_VIDEO.path, transforms=[v2.RandomHorizontalFlip(p=1.0)])
 
 
 class TestCoreVideoDecoderTransformOps:
@@ -235,6 +175,58 @@ class TestCoreVideoDecoderTransformOps:
         ):
             add_video_stream(decoder, transform_specs="invalid, 1, 2")
 
+    @pytest.mark.parametrize(
+        "height_scaling_factor, width_scaling_factor",
+        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0)),
+    )
+    def test_resize_torchvision(self, height_scaling_factor, width_scaling_factor):
+        height = int(NASA_VIDEO.get_height() * height_scaling_factor)
+        width = int(NASA_VIDEO.get_width() * width_scaling_factor)
+        resize_spec = f"resize, {height}, {width}"
+
+        decoder_resize = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_resize, transform_specs=resize_spec)
+
+        decoder_full = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_full)
+
+        for frame_index in [0, 10, 17, 100, 230, 389]:
+            expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
+            frame_resize, *_ = get_frame_at_index(
+                decoder_resize, frame_index=frame_index
+            )
+
+            frame_full, *_ = get_frame_at_index(decoder_full, frame_index=frame_index)
+            frame_tv = v2.functional.resize(frame_full, size=(height, width))
+
+            assert frame_resize.shape == expected_shape
+            assert frame_tv.shape == expected_shape
+
+            # Copied from PR #992; not sure if it's the best way to check
+            assert psnr(frame_resize, frame_tv) > 35
+
+    def test_resize_ffmpeg(self):
+        height = 135
+        width = 240
+        expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
+        resize_spec = f"resize, {height}, {width}"
+        resize_filtergraph = f"scale={width}:{height}:flags=bilinear"
+
+        decoder_resize = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_resize, transform_specs=resize_spec)
+
+        for frame_index in [17, 230, 389]:
+            frame_resize, *_ = get_frame_at_index(
+                decoder_resize, frame_index=frame_index
+            )
+            frame_ref = NASA_VIDEO.get_frame_data_by_index(
+                frame_index, filters=resize_filtergraph
+            )
+
+            assert frame_resize.shape == expected_shape
+            assert frame_ref.shape == expected_shape
+            assert_frames_equal(frame_resize, frame_ref)
+
     def test_resize_transform_fails(self):
         decoder = create_from_file(str(NASA_VIDEO.path))
         with pytest.raises(
@@ -298,7 +290,7 @@ class TestCoreVideoDecoderTransformOps:
             assert frame_ref.shape == expected_shape
             assert frame_tv.shape == expected_shape
 
-            assert_frames_equal(frame, frame_tv)
+            assert psnr(frame, frame_tv) > 35
             assert_frames_equal(frame, frame_ref)
 
     def test_crop_transform_fails(self):

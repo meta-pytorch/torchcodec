@@ -246,8 +246,9 @@ int64_t computeSafeDuration(
     const AVRational& frameRate,
     const AVRational& timeBase);
 
-AVFilterContext* createBuffersinkFilter(
+AVFilterContext* createAVFilterContextWithOptions(
     AVFilterGraph* filterGraph,
-    enum AVPixelFormat outputFormat);
+    const AVFilter* buffer,
+    const enum AVPixelFormat outputFormat);
 
 } // namespace facebook::torchcodec

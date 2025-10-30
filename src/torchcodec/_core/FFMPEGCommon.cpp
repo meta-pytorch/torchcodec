@@ -399,68 +399,65 @@ SwrContext* createSwrContext(
   return swrContext;
 }
 
-AVFilterContext* createBuffersinkFilter(
+AVFilterContext* createAVFilterContextWithOptions(
     AVFilterGraph* filterGraph,
-    enum AVPixelFormat outputFormat) {
-  const AVFilter* buffersink = avfilter_get_by_name("buffersink");
-  TORCH_CHECK(buffersink != nullptr, "Failed to get buffersink filter.");
-
-  AVFilterContext* sinkContext = nullptr;
-  int status;
+    const AVFilter* buffer,
+    const enum AVPixelFormat outputFormat) {
+  AVFilterContext* avFilterContext = nullptr;
   const char* filterName = "out";
 
-  enum AVPixelFormat pix_fmts[] = {outputFormat, AV_PIX_FMT_NONE};
+  enum AVPixelFormat pixFmts[] = {outputFormat, AV_PIX_FMT_NONE};
 
 // av_opt_set_int_list was replaced by av_opt_set_array() in FFmpeg 8.
 #if LIBAVUTIL_VERSION_MAJOR >= 60 // FFmpeg >= 8
   // Output options like pixel_formats must be set before filter init
-  sinkContext =
-      avfilter_graph_alloc_filter(filterGraph, buffersink, filterName);
+  avFilterContext =
+      avfilter_graph_alloc_filter(filterGraph, buffer, filterName);
   TORCH_CHECK(
-      sinkContext != nullptr, "Failed to allocate buffersink filter context.");
+      avFilterContext != nullptr, "Failed to allocate buffer filter context.");
 
   // When setting pix_fmts, only the first element is used, so nb_elems = 1
   // AV_PIX_FMT_NONE acts as a terminator for the array in av_opt_set_int_list
-  status = av_opt_set_array(
-      sinkContext,
+  int status = av_opt_set_array(
+      avFilterContext,
       "pixel_formats",
       AV_OPT_SEARCH_CHILDREN,
       0, // start_elem
       1, // nb_elems
       AV_OPT_TYPE_PIXEL_FMT,
-      pix_fmts);
+      pixFmts);
   TORCH_CHECK(
       status >= 0,
-      "Failed to set pixel format for buffersink filter: ",
+      "Failed to set pixel format for buffer filter: ",
       getFFMPEGErrorStringFromErrorCode(status));
 
-  status = avfilter_init_str(sinkContext, nullptr);
+  status = avfilter_init_str(avFilterContext, nullptr);
   TORCH_CHECK(
       status >= 0,
-      "Failed to initialize buffersink filter: ",
+      "Failed to initialize buffer filter: ",
       getFFMPEGErrorStringFromErrorCode(status));
 #else // FFmpeg <= 7
   // For older FFmpeg versions, create filter and then set options
-  status = avfilter_graph_create_filter(
-      &sinkContext, buffersink, filterName, nullptr, nullptr, filterGraph);
+  int status = avfilter_graph_create_filter(
+      &avFilterContext, buffer, filterName, nullptr, nullptr, filterGraph);
   TORCH_CHECK(
       status >= 0,
-      "Failed to create buffersink filter: ",
+      "Failed to create buffer filter: ",
       getFFMPEGErrorStringFromErrorCode(status));
 
   status = av_opt_set_int_list(
-      sinkContext,
+      avFilterContext,
       "pix_fmts",
-      pix_fmts,
+      pixFmts,
       AV_PIX_FMT_NONE,
       AV_OPT_SEARCH_CHILDREN);
   TORCH_CHECK(
       status >= 0,
-      "Failed to set pixel formats for buffersink filter: ",
+      "Failed to set pixel formats for buffer filter: ",
       getFFMPEGErrorStringFromErrorCode(status));
 #endif
 
-  return sinkContext;
+  return avFilterContext;
 }
 
 UniqueAVFrame convertAudioAVFrameSamples(

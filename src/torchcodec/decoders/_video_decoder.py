@@ -8,7 +8,7 @@ import io
 import json
 import numbers
 from pathlib import Path
-from typing import Any, List, Literal, Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, Union
 
 import torch
 from torch import device as torch_device, Tensor
@@ -103,7 +103,6 @@ class VideoDecoder:
         dimension_order: Literal["NCHW", "NHWC"] = "NCHW",
         num_ffmpeg_threads: int = 1,
         device: Optional[Union[str, torch_device]] = "cpu",
-        transforms: List[Any] = [],  # TRANSFORMS TODO: what is the user-facing type?
         seek_mode: Literal["exact", "approximate"] = "exact",
         custom_frame_mappings: Optional[
             Union[str, bytes, io.RawIOBase, io.BufferedReader]
@@ -149,8 +148,6 @@ class VideoDecoder:
 
         device_variant = _get_cuda_backend()
 
-        transform_specs = make_transform_specs(transforms)
-
         core.add_video_stream(
             self._decoder,
             stream_index=stream_index,
@@ -158,7 +155,6 @@ class VideoDecoder:
             num_threads=num_ffmpeg_threads,
             device=device,
             device_variant=device_variant,
-            transform_specs=transform_specs,
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
@@ -434,22 +430,6 @@ def _get_and_validate_stream_metadata(
         end_stream_seconds,
         num_frames,
     )
-
-
-def make_transform_specs(transforms: List[Any]) -> str:
-    from torchvision.transforms import v2
-
-    transform_specs = []
-    for transform in transforms:
-        if isinstance(transform, v2.Resize):
-            if len(transform.size) != 2:
-                raise ValueError(
-                    f"Resize transform must have a (height, width) pair for the size, got {transform.size}."
-                )
-            transform_specs.append(f"resize, {transform.size[0]}, {transform.size[1]}")
-        else:
-            raise ValueError(f"Unsupported transform {transform}.")
-    return ";".join(transform_specs)
 
 
 def _read_custom_frame_mappings(
