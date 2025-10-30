@@ -15,11 +15,11 @@
 
 #pragma once
 
-#include "src/torchcodec/_core/CUDACommon.h"
-#include "src/torchcodec/_core/Cache.h"
-#include "src/torchcodec/_core/DeviceInterface.h"
-#include "src/torchcodec/_core/FFMPEGCommon.h"
-#include "src/torchcodec/_core/NVDECCache.h"
+#include "CUDACommon.h"
+#include "Cache.h"
+#include "DeviceInterface.h"
+#include "FFMPEGCommon.h"
+#include "NVDECCache.h"
 
 #include <map>
 #include <memory>
@@ -28,8 +28,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
-#include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
+#include "nvcuvid_include/cuviddec.h"
+#include "nvcuvid_include/nvcuvid.h"
 
 namespace facebook::torchcodec {
 

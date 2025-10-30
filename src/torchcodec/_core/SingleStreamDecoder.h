@@ -12,12 +12,12 @@
 #include <ostream>
 #include <string_view>
 
-#include "src/torchcodec/_core/AVIOContextHolder.h"
-#include "src/torchcodec/_core/DeviceInterface.h"
-#include "src/torchcodec/_core/FFMPEGCommon.h"
-#include "src/torchcodec/_core/Frame.h"
-#include "src/torchcodec/_core/StreamOptions.h"
-#include "src/torchcodec/_core/Transform.h"
+#include "AVIOContextHolder.h"
+#include "DeviceInterface.h"
+#include "FFMPEGCommon.h"
+#include "Frame.h"
+#include "StreamOptions.h"
+#include "Transform.h"
 
 namespace facebook::torchcodec {
 
@@ -272,13 +272,6 @@ class SingleStreamDecoder {
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
-
-  torch::Tensor convertAVFrameToTensorUsingFilterGraph(
-      const UniqueAVFrame& avFrame);
-
-  int convertAVFrameToTensorUsingSwsScale(
-      const UniqueAVFrame& avFrame,
-      torch::Tensor& outputTensor);
 
   // --------------------------------------------------------------------------
   // PTS <-> INDEX CONVERSIONS

@@ -1,8 +1,8 @@
 #pragma once
 #include <torch/types.h>
-#include "src/torchcodec/_core/AVIOContextHolder.h"
-#include "src/torchcodec/_core/FFMPEGCommon.h"
-#include "src/torchcodec/_core/StreamOptions.h"
+#include "AVIOContextHolder.h"
+#include "FFMPEGCommon.h"
+#include "StreamOptions.h"
 
 namespace facebook::torchcodec {
 class AudioEncoder {
