@@ -1289,7 +1289,6 @@ FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
   // Convert the frame to tensor.
   FrameOutput frameOutput;
-  auto& streamInfo = streamInfos_[activeStreamIndex_];
   frameOutput.ptsSeconds = ptsToSeconds(
       getPtsOrDts(avFrame),
       formatContext_->streams[activeStreamIndex_]->time_base);
@@ -1297,7 +1296,7 @@ FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
       getDuration(avFrame),
       formatContext_->streams[activeStreamIndex_]->time_base);
   deviceInterface_->convertAVFrameToFrameOutput(
-      avFrame, frameOutput, streamInfo.avMediaType, preAllocatedOutputTensor);
+      avFrame, frameOutput, preAllocatedOutputTensor);
   return frameOutput;
 }
 

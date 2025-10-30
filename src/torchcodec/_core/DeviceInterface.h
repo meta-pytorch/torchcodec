@@ -90,7 +90,6 @@ class DeviceInterface {
   virtual void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      AVMediaType mediaType,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt) = 0;
 
   // ------------------------------------------
@@ -142,6 +141,7 @@ class DeviceInterface {
  protected:
   torch::Device device_;
   SharedAVCodecContext codecContext_;
+  AVMediaType avMediaType_;
 };
 
 using CreateDeviceInterfaceFn =

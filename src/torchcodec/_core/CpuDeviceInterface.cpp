@@ -35,6 +35,7 @@ void CpuDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resizedOutputDims) {
+  avMediaType_ = AVMEDIA_TYPE_VIDEO;
   videoStreamOptions_ = videoStreamOptions;
   resizedOutputDims_ = resizedOutputDims;
 
@@ -88,6 +89,7 @@ void CpuDeviceInterface::initializeVideo(
 
 void CpuDeviceInterface::initializeAudio(
     const AudioStreamOptions& audioStreamOptions) {
+  avMediaType_ = AVMEDIA_TYPE_AUDIO;
   audioStreamOptions_ = audioStreamOptions;
   initialized_ = true;
 }
@@ -123,11 +125,10 @@ ColorConversionLibrary CpuDeviceInterface::getColorConversionLibrary(
 void CpuDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    AVMediaType mediaType,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
   TORCH_CHECK(initialized_, "CpuDeviceInterface was not initialized.");
 
-  if (mediaType == AVMEDIA_TYPE_AUDIO) {
+  if (avMediaType_ == AVMEDIA_TYPE_AUDIO) {
     convertAudioAVFrameToFrameOutput(avFrame, frameOutput);
   } else {
     convertVideoAVFrameToFrameOutput(
@@ -390,7 +391,8 @@ std::optional<torch::Tensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
   if (!swrContext_) {
     return std::nullopt;
   }
-  auto numRemainingSamples = swr_get_out_samples(swrContext_.get(), 0);
+  auto numRemainingSamples = // this is an upper bound
+      swr_get_out_samples(swrContext_.get(), 0);
 
   if (numRemainingSamples == 0) {
     return std::nullopt;

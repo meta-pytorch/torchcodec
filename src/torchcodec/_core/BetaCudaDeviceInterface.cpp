@@ -814,7 +814,6 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    [[maybe_unused]] AVMediaType mediaType,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
   UniqueAVFrame gpuFrame =
       cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);

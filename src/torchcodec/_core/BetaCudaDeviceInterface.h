@@ -46,9 +46,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      AVMediaType mediaType,
-      std::optional<torch::Tensor> preAllocatedOutputTensor =
-          std::nullopt) override;
+      std::optional<torch::Tensor> preAllocatedOutputTensor) override;
 
   int sendPacket(ReferenceAVPacket& packet) override;
   int sendEOFPacket() override;
