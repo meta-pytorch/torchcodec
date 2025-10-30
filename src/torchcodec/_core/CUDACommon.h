@@ -13,6 +13,7 @@
 
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/Frame.h"
+#include "src/torchcodec/_core/SwsContext.h"
 
 extern "C" {
 #include <libavutil/hwcontext_cuda.h>
@@ -47,5 +48,12 @@ void validatePreAllocatedTensorShape(
     const UniqueAVFrame& avFrame);
 
 int getDeviceIndex(const torch::Device& device);
+
+// Convert CPU frame to NV12 and transfer to GPU for GPU-accelerated color
+// conversion. Used during CPU fallback to move color conversion to GPU.
+UniqueAVFrame transferCpuFrameToGpuNV12(
+    UniqueAVFrame& cpuFrame,
+    SwsScaler& swsCtx,
+    const torch::Device& device);
 
 } // namespace facebook::torchcodec

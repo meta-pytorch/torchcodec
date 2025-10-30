@@ -215,35 +215,17 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
     const UniqueAVFrame& avFrame,
     torch::Tensor& outputTensor,
     const FrameDims& outputDims) {
-  enum AVPixelFormat frameFormat =
-      static_cast<enum AVPixelFormat>(avFrame->format);
-
-  // We need to compare the current frame context with our previous frame
-  // context. If they are different, then we need to re-create our colorspace
-  // conversion objects. We create our colorspace conversion objects late so
-  // that we don't have to depend on the unreliable metadata in the header.
-  // And we sometimes re-create them because it's possible for frame
-  // resolution to change mid-stream. Finally, we want to reuse the colorspace
-  // conversion objects as much as possible for performance reasons.
-  SwsFrameContext swsFrameContext(
-      avFrame->width,
-      avFrame->height,
-      frameFormat,
-      outputDims.width,
-      outputDims.height);
-
-  if (!swsContext_ || prevSwsFrameContext_ != swsFrameContext) {
-    swsContext_ = createSwsContext(
-        swsFrameContext, avFrame->colorspace, AV_PIX_FMT_RGB24, swsFlags_);
-    prevSwsFrameContext_ = swsFrameContext;
-  }
+  // Get or create swscale context. The SwsContext class manages caching
+  // and recreation logic internally based on frame properties.
+  auto swsContext = swsCtx_.getOrCreateContext(
+      avFrame, outputDims, avFrame->colorspace, AV_PIX_FMT_RGB24, swsFlags_);
 
   uint8_t* pointers[4] = {
       outputTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
   int expectedOutputWidth = outputTensor.sizes()[1];
   int linesizes[4] = {expectedOutputWidth * 3, 0, 0, 0};
   int resultHeight = sws_scale(
-      swsContext_.get(),
+      swsContext.get(),
       avFrame->data,
       avFrame->linesize,
       0,

@@ -327,4 +327,137 @@ int getDeviceIndex(const torch::Device& device) {
   return deviceIndex;
 }
 
+// Callback for freeing CUDA memory associated with AVFrame
+void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
+  cudaFree(opaque);
+}
+
+UniqueAVFrame transferCpuFrameToGpuNV12(
+    UniqueAVFrame& cpuFrame,
+    SwsScaler& swsCtx,
+    [[maybe_unused]] const torch::Device& device) {
+  // This function converts a CPU frame to NV12 format and transfers it to GPU.
+  // We do that in 2 steps:
+  // - First we convert the input CPU frame into an intermediate NV12 CPU frame
+  //   using sws_scale.
+  // - Then we allocate GPU memory and copy the NV12 CPU frame to the GPU. This
+  //   is what we return.
+
+  TORCH_CHECK(cpuFrame != nullptr, "CPU frame cannot be null");
+
+  int width = cpuFrame->width;
+  int height = cpuFrame->height;
+
+  // Intermediate NV12 CPU frame. It's not on the GPU yet.
+  UniqueAVFrame nv12CpuFrame(av_frame_alloc());
+  TORCH_CHECK(nv12CpuFrame != nullptr, "Failed to allocate NV12 CPU frame");
+
+  nv12CpuFrame->format = AV_PIX_FMT_NV12;
+  nv12CpuFrame->width = width;
+  nv12CpuFrame->height = height;
+
+  int ret = av_frame_get_buffer(nv12CpuFrame.get(), 0);
+  TORCH_CHECK(
+      ret >= 0,
+      "Failed to allocate NV12 CPU frame buffer: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
+
+  FrameDims outputDims(height, width);
+  auto swsContext = swsCtx.getOrCreateContext(
+      cpuFrame, outputDims, cpuFrame->colorspace, AV_PIX_FMT_NV12, SWS_BILINEAR);
+
+  int convertedHeight = sws_scale(
+      swsContext.get(),
+      cpuFrame->data,
+      cpuFrame->linesize,
+      0,
+      height,
+      nv12CpuFrame->data,
+      nv12CpuFrame->linesize);
+  TORCH_CHECK(
+      convertedHeight == height, "sws_scale failed for CPU->NV12 conversion");
+
+  int ySize = width * height;
+  TORCH_CHECK(
+      ySize % 2 == 0,
+      "Y plane size must be even. Please report on TorchCodec repo.");
+  int uvSize = ySize / 2; // NV12: UV plane is half the size of Y plane
+  size_t totalSize = static_cast<size_t>(ySize + uvSize);
+
+  uint8_t* cudaBuffer = nullptr;
+  cudaError_t err =
+      cudaMalloc(reinterpret_cast<void**>(&cudaBuffer), totalSize);
+  TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to allocate CUDA memory: ",
+      cudaGetErrorString(err));
+
+  UniqueAVFrame gpuFrame(av_frame_alloc());
+  TORCH_CHECK(gpuFrame != nullptr, "Failed to allocate GPU AVFrame");
+
+  gpuFrame->format = AV_PIX_FMT_CUDA;
+  gpuFrame->width = width;
+  gpuFrame->height = height;
+  gpuFrame->data[0] = cudaBuffer;
+  gpuFrame->data[1] = cudaBuffer + ySize;
+  gpuFrame->linesize[0] = width;
+  gpuFrame->linesize[1] = width;
+
+  // Note that we use cudaMemcpy2D here instead of cudaMemcpy because the
+  // linesizes (strides) may be different than the widths for the input CPU
+  // frame. That's precisely what cudaMemcpy2D is for.
+  err = cudaMemcpy2D(
+      gpuFrame->data[0],
+      gpuFrame->linesize[0],
+      nv12CpuFrame->data[0],
+      nv12CpuFrame->linesize[0],
+      width,
+      height,
+      cudaMemcpyHostToDevice);
+  TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy Y plane to GPU: ",
+      cudaGetErrorString(err));
+
+  TORCH_CHECK(
+      height % 2 == 0,
+      "height must be even. Please report on TorchCodec repo.");
+  err = cudaMemcpy2D(
+      gpuFrame->data[1],
+      gpuFrame->linesize[1],
+      nv12CpuFrame->data[1],
+      nv12CpuFrame->linesize[1],
+      width,
+      height / 2,
+      cudaMemcpyHostToDevice);
+  TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy UV plane to GPU: ",
+      cudaGetErrorString(err));
+
+  ret = av_frame_copy_props(gpuFrame.get(), cpuFrame.get());
+  TORCH_CHECK(
+      ret >= 0,
+      "Failed to copy frame properties: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
+
+  // We're almost done, but we need to make sure the CUDA memory is freed
+  // properly. Usually, AVFrame data is freed when av_frame_free() is called
+  // (upon UniqueAVFrame destruction), but since we allocated the CUDA memory
+  // ourselves, FFmpeg doesn't know how to free it. The recommended way to deal
+  // with this is to associate the opaque_ref field of the AVFrame with a `free`
+  // callback that will then be called by av_frame_free().
+  gpuFrame->opaque_ref = av_buffer_create(
+      nullptr, // data - we don't need any
+      0, // data size
+      cudaBufferFreeCallback, // callback triggered by av_frame_free()
+      cudaBuffer, // parameter to callback
+      0); // flags
+  TORCH_CHECK(
+      gpuFrame->opaque_ref != nullptr,
+      "Failed to create GPU memory cleanup reference");
+
+  return gpuFrame;
+}
+
 } // namespace facebook::torchcodec

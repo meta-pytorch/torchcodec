@@ -9,6 +9,7 @@
 #include "src/torchcodec/_core/DeviceInterface.h"
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/FilterGraph.h"
+#include "src/torchcodec/_core/SwsContext.h"
 
 namespace facebook::torchcodec {
 
@@ -66,26 +67,18 @@ class CpuDeviceInterface : public DeviceInterface {
   // resolutions.
   std::optional<FrameDims> resizedOutputDims_;
 
-  // Color-conversion objects. Only one of filterGraph_ and swsContext_ should
-  // be non-null. Which one we use is determined dynamically in
+  // Color-conversion objects. Only one of filterGraph_ and swsCtx_ should
+  // be actively used. Which one we use is determined dynamically in
   // getColorConversionLibrary() each time we decode a frame.
   //
-  // Creating both filterGraph_ and swsContext_ is relatively expensive, so we
-  // reuse them across frames. However, it is possbile that subsequent frames
+  // Creating both filterGraph_ and swsCtx_ is relatively expensive, so we
+  // reuse them across frames. However, it is possible that subsequent frames
   // are different enough (change in dimensions) that we can't reuse the color
-  // conversion object. We store the relevant frame context from the frame used
-  // to create the object last time. We always compare the current frame's info
-  // against the previous one to determine if we need to recreate the color
-  // conversion object.
-  //
-  // TODO: The names of these fields is confusing, as the actual color
-  //       conversion object for Sws has "context" in the name,  and we use
-  //       "context" for the structs we store to know if we need to recreate a
-  //       color conversion object. We should clean that up.
+  // conversion object. These objects internally track the frame properties
+  // needed to determine if they need to be recreated.
   std::unique_ptr<FilterGraph> filterGraph_;
   FiltersContext prevFiltersContext_;
-  UniqueSwsContext swsContext_;
-  SwsFrameContext prevSwsFrameContext_;
+  SwsScaler swsCtx_;
 
   // The filter we supply to filterGraph_, if it is used. The default is the
   // copy filter, which just copies the input to the output. Computationally, it
