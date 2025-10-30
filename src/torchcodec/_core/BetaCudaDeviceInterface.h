@@ -20,6 +20,7 @@
 #include "src/torchcodec/_core/DeviceInterface.h"
 #include "src/torchcodec/_core/FFMPEGCommon.h"
 #include "src/torchcodec/_core/NVDECCache.h"
+#include "src/torchcodec/_core/SwsContext.h"
 
 #include <map>
 #include <memory>
@@ -81,8 +82,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       unsigned int pitch,
       const CUVIDPARSERDISPINFO& dispInfo);
 
-  UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
-
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;
   CUVIDEOFORMAT videoFormat_ = {};
@@ -101,8 +100,10 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   std::unique_ptr<DeviceInterface> cpuFallback_;
   bool nvcuvidAvailable_ = false;
-  UniqueSwsContext swsContext_;
-  SwsFrameContext prevSwsFrameContext_;
+
+  // Swscale context cache for GPU transfer during CPU fallback.
+  // Used to convert CPU frames to NV12 before transferring to GPU.
+  SwsScaler swsCtx_;
 };
 
 } // namespace facebook::torchcodec

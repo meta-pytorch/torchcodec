@@ -9,6 +9,7 @@
 #include "src/torchcodec/_core/CUDACommon.h"
 #include "src/torchcodec/_core/DeviceInterface.h"
 #include "src/torchcodec/_core/FilterGraph.h"
+#include "src/torchcodec/_core/SwsContext.h"
 
 namespace facebook::torchcodec {
 
@@ -62,6 +63,10 @@ class CudaDeviceInterface : public DeviceInterface {
   // maybeConvertAVFrameToNV12().
   std::unique_ptr<FiltersContext> nv12ConversionContext_;
   std::unique_ptr<FilterGraph> nv12Conversion_;
+
+  // Swscale context cache for GPU transfer during CPU fallback.
+  // Used to convert CPU frames to NV12 before transferring to GPU.
+  SwsScaler swsCtx_;
 
   bool usingCPUFallback_ = false;
 };

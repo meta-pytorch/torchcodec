@@ -257,34 +257,26 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     //      whatever reason. Typically that happens if the video's encoder isn't
     //      supported by NVDEC.
     //
-    // In both cases, we have a frame on the CPU. We send the frame back to the
-    // CUDA device when we're done.
+    // In both cases, we have a frame on the CPU. Instead of doing color
+    // conversion on CPU and then transferring to GPU, we transfer to GPU first
+    // and do GPU-accelerated color conversion with NPP.
 
-    enum AVPixelFormat frameFormat =
-        static_cast<enum AVPixelFormat>(avFrame->format);
-
-    FrameOutput cpuFrameOutput;
-    if (frameFormat == AV_PIX_FMT_RGB24) {
-      // Reason 1 above. The frame is already in RGB24, we just need to convert
-      // it to a tensor.
-      cpuFrameOutput.data = rgbAVFrameToTensor(avFrame);
-    } else {
-      // Reason 2 above. We need to do a full conversion which requires an
-      // actual CPU device.
-      cpuInterface_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
-    }
-
-    // Finally, we need to send the frame back to the GPU. Note that the
-    // pre-allocated tensor is on the GPU, so we can't send that to the CPU
-    // device interface. We copy it over here.
-    if (preAllocatedOutputTensor.has_value()) {
-      preAllocatedOutputTensor.value().copy_(cpuFrameOutput.data);
-      frameOutput.data = preAllocatedOutputTensor.value();
-    } else {
-      frameOutput.data = cpuFrameOutput.data.to(device_);
-    }
+    // Transfer CPU frame to GPU as NV12 for GPU-accelerated color conversion
+    avFrame = transferCpuFrameToGpuNV12(avFrame, swsCtx_, device_);
 
     usingCPUFallback_ = true;
+
+    // Now the frame is on GPU in NV12 format. Do GPU-accelerated color
+    // conversion with NPP.
+    TORCH_CHECK(
+        avFrame->format == AV_PIX_FMT_CUDA,
+        "Expected CUDA format frame after GPU transfer");
+
+    at::cuda::CUDAStream nvdecStream =
+        at::cuda::getCurrentCUDAStream(device_.index());
+
+    frameOutput.data = convertNV12FrameToRGB(
+        avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
     return;
   }
 

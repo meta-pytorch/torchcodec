@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "src/torchcodec/_core/FFMPEGCommon.h"
+#include "src/torchcodec/_core/SwsContext.h"
 
 #include <c10/util/Exception.h>
 
@@ -603,28 +604,6 @@ int64_t computeSafeDuration(
     return (static_cast<int64_t>(frameRate.den) * timeBase.den) /
         (static_cast<int64_t>(timeBase.num) * frameRate.num);
   }
-}
-
-SwsFrameContext::SwsFrameContext(
-    int inputWidth,
-    int inputHeight,
-    AVPixelFormat inputFormat,
-    int outputWidth,
-    int outputHeight)
-    : inputWidth(inputWidth),
-      inputHeight(inputHeight),
-      inputFormat(inputFormat),
-      outputWidth(outputWidth),
-      outputHeight(outputHeight) {}
-
-bool SwsFrameContext::operator==(const SwsFrameContext& other) const {
-  return inputWidth == other.inputWidth && inputHeight == other.inputHeight &&
-      inputFormat == other.inputFormat && outputWidth == other.outputWidth &&
-      outputHeight == other.outputHeight;
-}
-
-bool SwsFrameContext::operator!=(const SwsFrameContext& other) const {
-  return !(*this == other);
 }
 
 UniqueSwsContext createSwsContext(
