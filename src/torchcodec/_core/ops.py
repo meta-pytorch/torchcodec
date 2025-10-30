@@ -212,7 +212,7 @@ def encode_video_to_file_like(
     frame_rate: int,
     format: str,
     file_like: Union[io.RawIOBase, io.BufferedIOBase],
-    device: str = "cpu",
+    device: Optional[str] = "cpu",
     crf: Optional[int] = None,
 ) -> None:
     """Encode video frames to a file-like object.
