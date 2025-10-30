@@ -215,7 +215,7 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
     const UniqueAVFrame& avFrame,
     torch::Tensor& outputTensor,
     const FrameDims& outputDims) {
-  // Get or create swscale context. The SwsContext class manages caching
+  // Get or create swscale context. The SwsScaler class manages caching
   // and recreation logic internally based on frame properties.
   auto swsContext = swsCtx_.getOrCreateContext(
       avFrame, outputDims, avFrame->colorspace, AV_PIX_FMT_RGB24, swsFlags_);
@@ -225,7 +225,7 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
   int expectedOutputWidth = outputTensor.sizes()[1];
   int linesizes[4] = {expectedOutputWidth * 3, 0, 0, 0};
   int resultHeight = sws_scale(
-      swsContext.get(),
+      swsContext,
       avFrame->data,
       avFrame->linesize,
       0,

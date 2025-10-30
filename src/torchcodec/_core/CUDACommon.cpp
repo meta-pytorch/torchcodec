@@ -367,7 +367,7 @@ UniqueAVFrame transferCpuFrameToGpuNV12(
       cpuFrame, outputDims, cpuFrame->colorspace, AV_PIX_FMT_NV12, SWS_BILINEAR);
 
   int convertedHeight = sws_scale(
-      swsContext.get(),
+      swsContext,
       cpuFrame->data,
       cpuFrame->linesize,
       0,
