@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include <torch/types.h>
 #include <memory>
 #include <stdexcept>
 #include <string>
