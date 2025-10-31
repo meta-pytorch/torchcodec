@@ -42,7 +42,7 @@ int toSwsInterpolation(ResizeTransform::InterpolationMode mode) {
 std::string ResizeTransform::getFilterGraphCpu() const {
   return "scale=" + std::to_string(outputDims_.width) + ":" +
       std::to_string(outputDims_.height) +
-      ":sws_flags=" + toFilterGraphInterpolation(interpolationMode_);
+      ":flags=" + toFilterGraphInterpolation(interpolationMode_);
 }
 
 std::optional<FrameDims> ResizeTransform::getOutputFrameDims() const {
