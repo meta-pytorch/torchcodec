@@ -87,15 +87,15 @@ class CpuDeviceInterface : public DeviceInterface {
   UniqueSwsContext swsContext_;
   SwsFrameContext prevSwsFrameContext_;
 
-  // We pass the filters to FFmpeg's filtergraph API. It is a simple pipeline
+  // We pass these filters to FFmpeg's filtergraph API. It is a simple pipeline
   // of what FFmpeg calls "filters" to apply to decoded frames before returning
   // them. In the PyTorch ecosystem, we call these "transforms". During
   // initialization, we convert the user-supplied transforms into this string of
   // filters.
   //
-  // Note that we start with the format conversion, and then we ensure that the
-  // user-supplied filters always happen BEFORE the format conversion. We want
-  // the user-supplied filters to operate on frames in their original pixel
+  // Note that we start with just the format conversion, and then we ensure that
+  // the user-supplied filters always happen BEFORE the format conversion. We
+  // want the user-supplied filters to operate on frames in their original pixel
   // format and colorspace.
   //
   // The reason why is not obvious: when users do not need to perform any
@@ -111,6 +111,14 @@ class CpuDeviceInterface : public DeviceInterface {
   // we could achieve that by calling sws_scale() twice: once to do the resize
   // and another time to do the format conversion. But that will be slower,
   // which goes against the whole point of calling sws_scale() directly.
+  //
+  // Further note that we also configure the sink node of the filtergraph to
+  // be AV_PIX_FMT_RGB24. However, the explicit format conversion in the
+  // filters is not redundant. Filtergraph will automatically insert scale
+  // filters that will change the resolution and format of frames to meet the
+  // requirements of downstream filters. If we don't put an explicit format
+  // conversion to rgb24 at the end, filtergraph may automatically insert format
+  // conversions before our filters.
   std::string filters_ = "format=rgb24";
 
   // The flags we supply to swsContext_, if it used. The flags control the
