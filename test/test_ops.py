@@ -1212,20 +1212,15 @@ class TestVideoEncoderOps:
         assert source_frames.shape == round_trip_frames.shape
         assert source_frames.dtype == round_trip_frames.dtype
 
-        # If FFmpeg selects a codec or pixel format that does lossy encoding, assert 99% of pixels
-        # are within a higher tolerance.
-        if ffmpeg_version == 6 or device == "cuda":
-            atol = 15
-            percentage = 98 if device == "cuda" else 99
-            assert_close = partial(
-                assert_tensor_close_on_at_least, percentage=percentage
-            )
+        # If encoding on GPU, assert 99% of pixels are within a strict tolerance.
+        if device == "cuda":
+            assert_close = partial(assert_tensor_close_on_at_least, atol=3, percentage=99)
         else:
-            assert_close = torch.testing.assert_close
-            atol = 2
+            assert_close = partial(
+                torch.testing.assert_close, atol=2, rtol=0
+            )
         for s_frame, rt_frame in zip(source_frames, round_trip_frames):
-            assert psnr(s_frame, rt_frame) > 30
-            assert_close(s_frame, rt_frame, atol=atol, rtol=0)
+            assert_close(s_frame, rt_frame)
 
     @pytest.mark.parametrize(
         "format",
@@ -1340,14 +1335,10 @@ class TestVideoEncoderOps:
 
         if codec_str:
             ffmpeg_cmd.extend(codec_str.split())
+        quality_param = "qp" if device == "cuda" else "crf"
 
-        ffmpeg_cmd.extend(
-            [
-                "-crf",
-                str(crf),
-                ffmpeg_encoded_path,
-            ]
-        )
+        ffmpeg_cmd.extend([f"-{quality_param}", str(crf)])
+        ffmpeg_cmd.extend([ffmpeg_encoded_path])
         subprocess.run(ffmpeg_cmd, check=True)
 
         # Encode with our video encoder
@@ -1372,8 +1363,7 @@ class TestVideoEncoderOps:
 
         # Check that PSNR between both encoded versions is high
         for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
-            res = psnr(ff_frame, enc_frame)
-            assert res > 30
+            assert psnr(ff_frame, enc_frame) > 30
             assert_tensor_close_on_at_least(
                 ff_frame, enc_frame, percentage=percentage, atol=2
             )
