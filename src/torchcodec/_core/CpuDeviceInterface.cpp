@@ -70,12 +70,6 @@ void CpuDeviceInterface::initializeVideo(
   // If we have any transforms, replace filters_ with the filter strings from
   // the transforms. As noted above, we decide between swscale and filtergraph
   // when we actually decode a frame.
-  //
-  // Note: We explicitly add the format conversion filter at the end to ensure
-  // that color conversion happens AFTER the transforms, not before. This
-  // matches the behavior of the reference generation in the test suite.
-  // Without this, FFmpeg's automatic format negotiation might insert the
-  // conversion before the transforms, which would produce different results.
   std::stringstream filters;
   bool first = true;
   for (const auto& transform : transforms) {

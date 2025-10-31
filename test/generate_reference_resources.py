@@ -51,10 +51,11 @@ def generate_frame_by_index(
     )
     output_bmp = f"{base_path}.bmp"
 
-    # Note that we have an exlicit format conversion to rgb24 in our filtergraph specification,
-    # which always happens AFTER any of the filters that we receive as input. We do this to
-    # ensure that the color conversion happens AFTER the filters, matching the behavior of the
-    # torchcodec filtergraph implementation.
+    # Note that we have an exlicit format conversion to rgb24 in our filtergraph
+    # specification, and we always place the user-supplied filters BEFORE the
+    # format conversion. We do this to ensure that the filters are applied in
+    # the pixel format and colorspace of the input frames. This behavior matches
+    # the TorchCodec implementation.
     select = f"select='eq(n\\,{frame_index})'"
     format = "format=rgb24"
     if filters is not None:

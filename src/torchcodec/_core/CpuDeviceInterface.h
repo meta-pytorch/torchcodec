@@ -109,9 +109,8 @@ class CpuDeviceInterface : public DeviceInterface {
   //
   // If we had to apply transforms in the output pixel format and colorspace,
   // we could achieve that by calling sws_scale() twice: once to do the resize
-  // and another time to do the format conversion. But that goes against the
-  // whole point of calling sws_scale() directly, as it's a performance
-  // optimization.
+  // and another time to do the format conversion. But that will be slower,
+  // which goes against the whole point of calling sws_scale() directly.
   std::string filters_ = "format=rgb24";
 
   // The flags we supply to swsContext_, if it used. The flags control the
