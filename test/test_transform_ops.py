@@ -308,7 +308,7 @@ class TestCoreVideoDecoderTransformOps:
             #  frame_tv    [format=input] -> [format=rgb24] -> [crop]
             #
             # As a consequence, they are not going to be identical.
-            assert_tensor_close_on_at_least(frame_crop, frame_tv, percentage=85, atol=3)
+            assert_tensor_close_on_at_least(frame_crop, frame_tv, percentage=90, atol=2)
 
             assert_frames_equal(frame_crop, frame_ref)
 
