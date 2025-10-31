@@ -25,7 +25,12 @@ from torchcodec._core import (
 
 from torchvision.transforms import v2
 
-from .utils import assert_frames_equal, NASA_VIDEO, needs_cuda, psnr
+from .utils import (
+    assert_frames_equal,
+    assert_tensor_close_on_at_least,
+    NASA_VIDEO,
+    needs_cuda,
+)
 
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
@@ -202,8 +207,15 @@ class TestCoreVideoDecoderTransformOps:
             assert frame_resize.shape == expected_shape
             assert frame_tv.shape == expected_shape
 
-            # Copied from PR #992; not sure if it's the best way to check
-            assert psnr(frame_resize, frame_tv) > 35
+            # The two tensors have been resized in different colorspaces:
+            #
+            #  frame_resize: [format=input] -> [resize] -> [format=rgb24]
+            #  frame_tv      [format=input] -> [format=rgb24] -> [resize]
+            #
+            # As a consequence, they are not going to be identical.
+            assert_tensor_close_on_at_least(
+                frame_resize, frame_tv, percentage=85, atol=3
+            )
 
     def test_resize_ffmpeg(self):
         height = 135
@@ -276,7 +288,7 @@ class TestCoreVideoDecoderTransformOps:
         add_video_stream(decoder_full)
 
         for frame_index in [0, 15, 200, 389]:
-            frame, *_ = get_frame_at_index(decoder_crop, frame_index=frame_index)
+            frame_crop, *_ = get_frame_at_index(decoder_crop, frame_index=frame_index)
             frame_ref = NASA_VIDEO.get_frame_data_by_index(
                 frame_index, filters=crop_filtergraph
             )
@@ -286,12 +298,19 @@ class TestCoreVideoDecoderTransformOps:
                 frame_full, top=y, left=x, height=height, width=width
             )
 
-            assert frame.shape == expected_shape
+            assert frame_crop.shape == expected_shape
             assert frame_ref.shape == expected_shape
             assert frame_tv.shape == expected_shape
 
-            assert psnr(frame, frame_tv) > 35
-            assert_frames_equal(frame, frame_ref)
+            # The two tensors have been cropped in different colorspaces:
+            #
+            #  frame_crop: [format=input] -> [crop] -> [format=rgb24]
+            #  frame_tv    [format=input] -> [format=rgb24] -> [crop]
+            #
+            # As a consequence, they are not going to be identical.
+            assert_tensor_close_on_at_least(frame_crop, frame_tv, percentage=85, atol=3)
+
+            assert_frames_equal(frame_crop, frame_ref)
 
     def test_crop_transform_fails(self):
 
