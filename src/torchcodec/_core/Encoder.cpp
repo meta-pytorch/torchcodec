@@ -677,9 +677,12 @@ void VideoEncoder::initializeEncoder(
   // Apply videoStreamOptions
   AVDictionary* options = nullptr;
   if (videoStreamOptions.crf.has_value()) {
+    // nvenc encoders use qp, others use crf (for C++ tests)
+    std::string_view quality_param =
+        (strstr(avCodec->name, "nvenc") == nullptr) ? "crf" : "qp";
     av_dict_set(
         &options,
-        "crf",
+        quality_param.data(),
         std::to_string(videoStreamOptions.crf.value()).c_str(),
         0);
   }
