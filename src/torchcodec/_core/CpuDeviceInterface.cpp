@@ -69,9 +69,9 @@ void CpuDeviceInterface::initializeVideo(
     first = false;
   }
   if (!transforms.empty()) {
-    // Note that we ensure that the transforms come BEFORE the format
-    // conversion. This means that the transforms are applied in the frame's
-    // original pixel format and colorspace.
+    // Note that we ensure that the transforms come AFTER the format conversion.
+    // This means that the transforms are applied in the output pixel format and
+    // colorspace.
     filters_ += "," + filters.str();
   }
 
