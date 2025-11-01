@@ -1169,7 +1169,7 @@ class TestVideoEncoderOps:
                 f"FFmpeg6 defaults to lossy encoding for {format}, skipping round-trip test."
             )
         if format == "webm" and (
-            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
+            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7, 8))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
         source_frames = self.decode(TEST_SRC_2_720P.path).data
@@ -1234,7 +1234,7 @@ class TestVideoEncoderOps:
         # Test that to_file, to_tensor, and to_file_like produce the same results
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
-            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
+            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7, 8))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
 
@@ -1281,7 +1281,7 @@ class TestVideoEncoderOps:
     def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
-            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
+            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7, 8))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
 
