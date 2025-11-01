@@ -25,21 +25,11 @@ std::string toFilterGraphInterpolation(
   }
 }
 
-int toSwsInterpolation(ResizeTransform::InterpolationMode mode) {
-  switch (mode) {
-    case ResizeTransform::InterpolationMode::BILINEAR:
-      return SWS_BILINEAR;
-    default:
-      TORCH_CHECK(
-          false,
-          "Unknown interpolation mode: " +
-              std::to_string(static_cast<int>(mode)));
-  }
-}
-
 } // namespace
 
 std::string ResizeTransform::getFilterGraphCpu() const {
+  // Note that we turn on gamma correct scaling. This produces results that are
+  // closer to what TorchVision's resize produces.
   return "scale=" + std::to_string(outputDims_.width) + ":" +
       std::to_string(outputDims_.height) +
       ":flags=" + toFilterGraphInterpolation(interpolationMode_);
@@ -47,14 +37,6 @@ std::string ResizeTransform::getFilterGraphCpu() const {
 
 std::optional<FrameDims> ResizeTransform::getOutputFrameDims() const {
   return outputDims_;
-}
-
-bool ResizeTransform::isResize() const {
-  return true;
-}
-
-int ResizeTransform::getSwsFlags() const {
-  return toSwsInterpolation(interpolationMode_);
 }
 
 CropTransform::CropTransform(const FrameDims& dims, int x, int y)

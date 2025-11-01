@@ -46,8 +46,7 @@ void CpuDeviceInterface::initializeVideo(
   // We calculate this value during initilization but we don't refer to it until
   // getColorConversionLibrary() is called. Calculating this value during
   // initialization saves us from having to save all of the transforms.
-  areTransformsSwScaleCompatible_ = transforms.empty() ||
-      (transforms.size() == 1 && transforms[0]->isResize());
+  areTransformsSwScaleCompatible_ = transforms.empty();
 
   // Note that we do not expose this capability in the public API, only through
   // the core API.
@@ -56,16 +55,6 @@ void CpuDeviceInterface::initializeVideo(
   // it in getColorConversionLibrary().
   userRequestedSwScale_ = videoStreamOptions_.colorConversionLibrary ==
       ColorConversionLibrary::SWSCALE;
-
-  // We can only use swscale when we have a single resize transform. Note that
-  // we actually decide on whether or not to actually use swscale at the last
-  // possible moment, when we actually convert the frame. This is because we
-  // need to know the actual frame dimensions.
-  if (transforms.size() == 1 && transforms[0]->isResize()) {
-    auto resize = dynamic_cast<ResizeTransform*>(transforms[0].get());
-    TORCH_CHECK(resize != nullptr, "ResizeTransform expected but not found!")
-    swsFlags_ = resize->getSwsFlags();
-  }
 
   // If we have any transforms, replace filters_ with the filter strings from
   // the transforms. As noted above, we decide between swscale and filtergraph
@@ -83,7 +72,7 @@ void CpuDeviceInterface::initializeVideo(
     // Note that we ensure that the transforms come BEFORE the format
     // conversion. This means that the transforms are applied in the frame's
     // original pixel format and colorspace.
-    filters_ = filters.str() + "," + filters_;
+    filters_ += "," + filters.str();
   }
 
   initialized_ = true;
@@ -221,6 +210,11 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
   enum AVPixelFormat frameFormat =
       static_cast<enum AVPixelFormat>(avFrame->format);
 
+  TORCH_CHECK(
+      avFrame->height == outputDims.height &&
+          avFrame->width == outputDims.width,
+      "Input dimensions are not equal to output dimensions; resize for sws_scale() is not yet supported.");
+
   // We need to compare the current frame context with our previous frame
   // context. If they are different, then we need to re-create our colorspace
   // conversion objects. We create our colorspace conversion objects late so
@@ -237,7 +231,11 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
 
   if (!swsContext_ || prevSwsFrameContext_ != swsFrameContext) {
     swsContext_ = createSwsContext(
-        swsFrameContext, avFrame->colorspace, AV_PIX_FMT_RGB24, swsFlags_);
+        swsFrameContext,
+        avFrame->colorspace,
+        /*outputFormat=*/AV_PIX_FMT_RGB24,
+        /*swsFlags=*/0); // We don't set any flags because we don't yet use
+                         // sws_scale() for resizing.
     prevSwsFrameContext_ = swsFrameContext;
   }
 

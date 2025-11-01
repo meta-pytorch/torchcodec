@@ -182,7 +182,7 @@ class TestCoreVideoDecoderTransformOps:
 
     @pytest.mark.parametrize(
         "height_scaling_factor, width_scaling_factor",
-        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0)),
+        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
     )
     def test_resize_torchvision(self, height_scaling_factor, width_scaling_factor):
         height = int(NASA_VIDEO.get_height() * height_scaling_factor)
@@ -207,14 +207,8 @@ class TestCoreVideoDecoderTransformOps:
             assert frame_resize.shape == expected_shape
             assert frame_tv.shape == expected_shape
 
-            # The two tensors have been resized in different colorspaces:
-            #
-            #  frame_resize: [format=input] -> [resize] -> [format=rgb24]
-            #  frame_tv      [format=input] -> [format=rgb24] -> [resize]
-            #
-            # As a consequence, they are not going to be identical.
             assert_tensor_close_on_at_least(
-                frame_resize, frame_tv, percentage=85, atol=3
+                frame_resize, frame_tv, percentage=99, atol=1
             )
 
     def test_resize_ffmpeg(self):
@@ -302,15 +296,8 @@ class TestCoreVideoDecoderTransformOps:
             assert frame_ref.shape == expected_shape
             assert frame_tv.shape == expected_shape
 
-            # The two tensors have been cropped in different colorspaces:
-            #
-            #  frame_crop: [format=input] -> [crop] -> [format=rgb24]
-            #  frame_tv    [format=input] -> [format=rgb24] -> [crop]
-            #
-            # As a consequence, they are not going to be identical.
-            assert_tensor_close_on_at_least(frame_crop, frame_tv, percentage=90, atol=2)
-
             assert_frames_equal(frame_crop, frame_ref)
+            assert_frames_equal(frame_crop, frame_tv)
 
     def test_crop_transform_fails(self):
 

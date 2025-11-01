@@ -93,6 +93,7 @@ class CpuDeviceInterface : public DeviceInterface {
   // initialization, we convert the user-supplied transforms into this string of
   // filters.
   //
+  // TODO: make sure Scott corrects the below:
   // Note that we start with just the format conversion, and then we ensure that
   // the user-supplied filters always happen BEFORE the format conversion. We
   // want the user-supplied filters to operate on frames in their original pixel

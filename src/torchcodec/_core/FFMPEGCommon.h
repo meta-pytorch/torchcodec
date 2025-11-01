@@ -275,7 +275,7 @@ struct SwsFrameContext {
 UniqueSwsContext createSwsContext(
     const SwsFrameContext& swsFrameContext,
     AVColorSpace colorspace,
-    AVPixelFormat outputFormat = AV_PIX_FMT_RGB24,
-    int swsFlags = SWS_BILINEAR);
+    AVPixelFormat outputFormat,
+    int swsFlags);
 
 } // namespace facebook::torchcodec
