@@ -430,7 +430,7 @@ class TestVideo(TestContainerFile):
             [0, self.num_color_channels, self.height, self.width], dtype=torch.uint8
         )
 
-    def get_width(self, *, stream_index: Optional[int]) -> int:
+    def get_width(self, *, stream_index: Optional[int] = None) -> int:
         if stream_index is None:
             stream_index = self.default_stream_index
 

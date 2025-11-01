@@ -100,15 +100,25 @@ class CpuDeviceInterface : public DeviceInterface {
   UniqueSwsContext swsContext_;
   SwsFrameContext prevSwsFrameContext_;
 
-  // The filter we supply to filterGraph_, if it is used. The default is the
-  // copy filter, which just copies the input to the output. Computationally, it
-  // should be a no-op. If we get no user-provided transforms, we will use the
-  // copy filter. Otherwise, we will construct the string from the transforms.
+  // We pass these filters to FFmpeg's filtergraph API. It is a simple pipeline
+  // of what FFmpeg calls "filters" to apply to decoded frames before returning
+  // them. In the PyTorch ecosystem, we call these "transforms". During
+  // initialization, we convert the user-supplied transforms into this string of
+  // filters.
   //
-  // Note that even if we only use the copy filter, we still get the desired
-  // colorspace conversion. We construct the filtergraph with its output sink
-  // set to RGB24.
-  std::string filters_ = "copy";
+  // Note that we start with just the format conversion, and then we ensure that
+  // the user-supplied filters always happen AFTER the format conversion. We
+  // want the user-supplied filters to operate on frames in the output pixel
+  // format and colorspace.
+  //
+  // We apply the transforms on the output pixel format and colorspace because
+  // then decoder-native transforms are as close as possible to returning
+  // untransformed frames and applying TochVision transforms to them.
+  //
+  // We ensure that the transforms happen on the output pixel format and
+  // colorspace by making sure all of the user-supplied filters happen AFTER
+  // an explicit format conversion.
+  std::string filters_ = "format=rgb24";
 
   // The flags we supply to swsContext_, if it used. The flags control the
   // resizing algorithm. We default to bilinear. Users can override this with a

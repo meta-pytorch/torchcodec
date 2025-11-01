@@ -63,8 +63,8 @@ FilterGraph::FilterGraph(
     filterGraph_->nb_threads = videoStreamOptions.ffmpegThreadCount.value();
   }
 
-  const AVFilter* buffersrc = avfilter_get_by_name("buffer");
-
+  // Configure the source context.
+  const AVFilter* bufferSrc = avfilter_get_by_name("buffer");
   UniqueAVBufferSrcParameters srcParams(av_buffersrc_parameters_alloc());
   TORCH_CHECK(srcParams, "Failed to allocate buffersrc params");
 
@@ -78,7 +78,7 @@ FilterGraph::FilterGraph(
   }
 
   sourceContext_ =
-      avfilter_graph_alloc_filter(filterGraph_.get(), buffersrc, "in");
+      avfilter_graph_alloc_filter(filterGraph_.get(), bufferSrc, "in");
   TORCH_CHECK(sourceContext_, "Failed to allocate filter graph");
 
   int status = av_buffersrc_parameters_set(sourceContext_, srcParams.get());
@@ -93,23 +93,31 @@ FilterGraph::FilterGraph(
       "Failed to create filter graph : ",
       getFFMPEGErrorStringFromErrorCode(status));
 
-  sinkContext_ =
-      createBuffersinkFilter(filterGraph_.get(), filtersContext.outputFormat);
+  // Configure the sink context.
+  const AVFilter* bufferSink = avfilter_get_by_name("buffersink");
+  TORCH_CHECK(bufferSink != nullptr, "Failed to get buffersink filter.");
+
+  sinkContext_ = createAVFilterContextWithOptions(
+      filterGraph_.get(), bufferSink, filtersContext.outputFormat);
   TORCH_CHECK(
       sinkContext_ != nullptr, "Failed to create and configure buffersink");
 
+  // Create the filtergraph nodes based on the source and sink contexts.
   UniqueAVFilterInOut outputs(avfilter_inout_alloc());
-  UniqueAVFilterInOut inputs(avfilter_inout_alloc());
-
   outputs->name = av_strdup("in");
   outputs->filter_ctx = sourceContext_;
   outputs->pad_idx = 0;
   outputs->next = nullptr;
+
+  UniqueAVFilterInOut inputs(avfilter_inout_alloc());
   inputs->name = av_strdup("out");
   inputs->filter_ctx = sinkContext_;
   inputs->pad_idx = 0;
   inputs->next = nullptr;
 
+  // Create the filtergraph specified by the filtergraph string in the context
+  // of the inputs and outputs. Note the dance we have to do with release and
+  // resetting the output and input nodes because FFmpeg modifies them in place.
   AVFilterInOut* outputsTmp = outputs.release();
   AVFilterInOut* inputsTmp = inputs.release();
   status = avfilter_graph_parse_ptr(
@@ -126,6 +134,7 @@ FilterGraph::FilterGraph(
       getFFMPEGErrorStringFromErrorCode(status),
       ", provided filters: " + filtersContext.filtergraphStr);
 
+  // Check filtergraph validity and configure links and formats.
   status = avfilter_graph_config(filterGraph_.get(), nullptr);
   TORCH_CHECK(
       status >= 0,
