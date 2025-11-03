@@ -1159,12 +1159,15 @@ class TestVideoEncoderOps:
         "format", ("mov", "mp4", "mkv", pytest.param("webm", marks=pytest.mark.slow))
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_video_encoder_round_trip(self, tmp_path, format, method):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_video_encoder_round_trip(self, tmp_path, format, method, device):
         # Test that decode(encode(decode(frames))) == decode(frames)
         ffmpeg_version = get_ffmpeg_major_version()
         # In FFmpeg6, the default codec's best pixel format is lossy for all container formats but webm.
         # As a result, we skip the round trip test.
-        if ffmpeg_version == 6 and format != "webm":
+        if ffmpeg_version == 6 and format != "webm" and device == "cpu":
             pytest.skip(
                 f"FFmpeg6 defaults to lossy encoding for {format}, skipping round-trip test."
             )
@@ -1172,11 +1175,20 @@ class TestVideoEncoderOps:
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+        if device == "cuda":
+            if format not in ("mp4", "mov", "mkv"):
+                pytest.skip(
+                    f"No NVENC encoder available for format {format}, skipping test."
+                )
+            if ffmpeg_version == 4:
+                pytest.skip(
+                    "CUDA encoding on FFmpeg 4 results in lower quality, skipping round trip test."
+                )
+
         source_frames = self.decode(TEST_SRC_2_720P.path).data
 
-        params = dict(
-            frame_rate=30, crf=0
-        )  # Frame rate is fixed with num frames decoded
+        # Frame rate is fixed with num frames decoded
+        params = dict(frame_rate=30, crf=0, device=device)
         if method == "to_file":
             encoded_path = str(tmp_path / f"encoder_output.{format}")
             encode_video_to_file(
@@ -1205,17 +1217,15 @@ class TestVideoEncoderOps:
         assert source_frames.shape == round_trip_frames.shape
         assert source_frames.dtype == round_trip_frames.dtype
 
-        # If FFmpeg selects a codec or pixel format that does lossy encoding, assert 99% of pixels
-        # are within a higher tolerance.
-        if ffmpeg_version == 6:
-            assert_close = partial(assert_tensor_close_on_at_least, percentage=99)
-            atol = 15
+        # If encoding on GPU, assert 99% of pixels are within a strict tolerance.
+        if device == "cuda":
+            assert_close = partial(
+                assert_tensor_close_on_at_least, atol=3, percentage=99
+            )
         else:
-            assert_close = torch.testing.assert_close
-            atol = 2
+            assert_close = partial(torch.testing.assert_close, atol=2, rtol=0)
         for s_frame, rt_frame in zip(source_frames, round_trip_frames):
-            assert psnr(s_frame, rt_frame) > 30
-            assert_close(s_frame, rt_frame, atol=atol, rtol=0)
+            assert_close(s_frame, rt_frame)
 
     @pytest.mark.parametrize(
         "format",
@@ -1230,7 +1240,10 @@ class TestVideoEncoderOps:
         ),
     )
     @pytest.mark.parametrize("method", ("to_tensor", "to_file_like"))
-    def test_against_to_file(self, tmp_path, format, method):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_against_to_file(self, tmp_path, format, method, device):
         # Test that to_file, to_tensor, and to_file_like produce the same results
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
@@ -1239,7 +1252,7 @@ class TestVideoEncoderOps:
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
 
         source_frames = self.decode(TEST_SRC_2_720P.path).data
-        params = dict(frame_rate=30, crf=0)
+        params = dict(frame_rate=30, crf=0, device=device)
 
         encoded_file = tmp_path / f"output.{format}"
         encode_video_to_file(frames=source_frames, filename=str(encoded_file), **params)
@@ -1278,12 +1291,27 @@ class TestVideoEncoderOps:
             pytest.param("webm", marks=pytest.mark.slow),
         ),
     )
-    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format, device):
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+
+        # Pass flag to FFmpeg CLI to NVENC encoder when device is CUDA and format has a compatible NVENC codec
+        codec_str = ""
+        if device == "cuda":
+            if format not in ("mp4", "mov", "mkv"):
+                pytest.skip(
+                    f"No NVENC encoder available for format {format}, skipping test."
+                )
+            if ffmpeg_version == 4:
+                pytest.skip(
+                    "CUDA encoding on FFmpeg 4 results in lower quality, skipping round trip test."
+                )
 
         source_frames = self.decode(TEST_SRC_2_720P.path).data
 
@@ -1295,7 +1323,7 @@ class TestVideoEncoderOps:
         ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
         frame_rate = 30
         crf = 0
-        # Some codecs (ex. MPEG4) do not support CRF.
+        # Some codecs (ex. MPEG4) and CUDA backend codecs do not support CRF.
         # Flags not supported by the selected codec will be ignored.
         ffmpeg_cmd = [
             "ffmpeg",
@@ -1310,10 +1338,14 @@ class TestVideoEncoderOps:
             str(frame_rate),
             "-i",
             temp_raw_path,
-            "-crf",
-            str(crf),
-            ffmpeg_encoded_path,
         ]
+
+        if device == "cuda":
+            ffmpeg_cmd.extend(["-c:v", "h264_nvenc"])
+        quality_param = "qp" if device == "cuda" else "crf"
+
+        ffmpeg_cmd.extend([f"-{quality_param}", str(crf)])
+        ffmpeg_cmd.extend([ffmpeg_encoded_path])
         subprocess.run(ffmpeg_cmd, check=True)
 
         # Encode with our video encoder
@@ -1322,6 +1354,7 @@ class TestVideoEncoderOps:
             frames=source_frames,
             frame_rate=frame_rate,
             filename=encoder_output_path,
+            device=device,
             crf=crf,
         )
 
@@ -1337,13 +1370,15 @@ class TestVideoEncoderOps:
 
         # Check that PSNR between both encoded versions is high
         for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
-            res = psnr(ff_frame, enc_frame)
-            assert res > 30
+            assert psnr(ff_frame, enc_frame) > 30
             assert_tensor_close_on_at_least(
                 ff_frame, enc_frame, percentage=percentage, atol=2
             )
 
-    def test_to_file_like_custom_file_object(self):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_to_file_like_custom_file_object(self, device):
         """Test to_file_like with a custom file-like object that implements write and seek."""
 
         class CustomFileObject:
@@ -1362,33 +1397,52 @@ class TestVideoEncoderOps:
         source_frames = self.decode(TEST_SRC_2_720P.path).data
         file_like = CustomFileObject()
         encode_video_to_file_like(
-            source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
+            source_frames,
+            frame_rate=30,
+            crf=0,
+            format="mp4",
+            file_like=file_like,
+            device=device,
         )
         decoded_samples = self.decode(file_like.get_encoded_data())
 
-        torch.testing.assert_close(
+        if device == "cuda":
+            assert_close = assert_frames_equal
+        else:
+            assert_close = partial(torch.testing.assert_close, atol=2)
+
+        assert_close(
             decoded_samples.data,
-            source_frames,
-            atol=2,
-            rtol=0,
+            source_frames
         )
 
-    def test_to_file_like_real_file(self, tmp_path):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_to_file_like_real_file(self, tmp_path, device):
         """Test to_file_like with a real file opened in binary write mode."""
         source_frames = self.decode(TEST_SRC_2_720P.path).data
         file_path = tmp_path / "test_file_like.mp4"
 
         with open(file_path, "wb") as file_like:
             encode_video_to_file_like(
-                source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
+                source_frames,
+                frame_rate=30,
+                crf=0,
+                format="mp4",
+                file_like=file_like,
+                device=device,
             )
         decoded_samples = self.decode(str(file_path))
 
-        torch.testing.assert_close(
+        if device == "cuda":
+            assert_close = assert_frames_equal
+        else:
+            assert_close = partial(torch.testing.assert_close, atol=2)
+
+        assert_close(
             decoded_samples.data,
-            source_frames,
-            atol=2,
-            rtol=0,
+            source_frames
         )
 
     def test_to_file_like_bad_methods(self):
