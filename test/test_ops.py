@@ -1302,7 +1302,6 @@ class TestVideoEncoderOps:
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
 
         # Pass flag to FFmpeg CLI to NVENC encoder when device is CUDA and format has a compatible NVENC codec
-        codec_str = ""
         if device == "cuda":
             if format not in ("mp4", "mov", "mkv"):
                 pytest.skip(
@@ -1411,10 +1410,7 @@ class TestVideoEncoderOps:
         else:
             assert_close = partial(torch.testing.assert_close, atol=2)
 
-        assert_close(
-            decoded_samples.data,
-            source_frames
-        )
+        assert_close(decoded_samples.data, source_frames)
 
     @pytest.mark.parametrize(
         "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
@@ -1440,10 +1436,7 @@ class TestVideoEncoderOps:
         else:
             assert_close = partial(torch.testing.assert_close, atol=2)
 
-        assert_close(
-            decoded_samples.data,
-            source_frames
-        )
+        assert_close(decoded_samples.data, source_frames)
 
     def test_to_file_like_bad_methods(self):
         source_frames = self.decode(TEST_SRC_2_720P.path).data

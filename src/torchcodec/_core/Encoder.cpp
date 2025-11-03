@@ -627,7 +627,9 @@ void VideoEncoder::initializeEncoder(
 
   // Try to find a hardware-accelerated encoder if not using CPU
   if (videoStreamOptions.device.type() != torch::kCPU) {
-    avCodec = deviceInterface_->findEncoder(avFormatContext_->oformat->video_codec).value_or(avCodec);
+    avCodec =
+        deviceInterface_->findEncoder(avFormatContext_->oformat->video_codec)
+            .value_or(avCodec);
   }
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
