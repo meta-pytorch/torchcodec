@@ -754,13 +754,12 @@ void VideoEncoder::initializeEncoder(
     TORCH_CHECK(
         avFormatContext_->oformat != nullptr,
         "Output format is null, unable to find default codec.");
-    avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
-    // TODO: merge above logic w this logic
     // Try to find a hardware-accelerated encoder if not using CPU
+    avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
     if (videoStreamOptions.device.type() != torch::kCPU) {
       avCodec = deviceInterface_->findEncoder(avFormatContext_->oformat->video_codec).value_or(avCodec);
-    TORCH_CHECK(avCodec != nullptr, "Video codec not found");
     }
+    TORCH_CHECK(avCodec != nullptr, "Video codec not found");
 
   }
 
