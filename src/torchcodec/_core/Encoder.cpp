@@ -724,6 +724,12 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
+  deviceInterface_ = createDeviceInterface(
+      videoStreamOptions.device, videoStreamOptions.deviceVariant);
+  TORCH_CHECK(
+      deviceInterface_ != nullptr,
+      "Failed to create device interface. This should never happen, please report.");
+
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
@@ -749,7 +755,13 @@ void VideoEncoder::initializeEncoder(
         avFormatContext_->oformat != nullptr,
         "Output format is null, unable to find default codec.");
     avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
+    // TODO: merge above logic w this logic
+    // Try to find a hardware-accelerated encoder if not using CPU
+    if (videoStreamOptions.device.type() != torch::kCPU) {
+      avCodec = deviceInterface_->findEncoder(avFormatContext_->oformat->video_codec).value_or(avCodec);
     TORCH_CHECK(avCodec != nullptr, "Video codec not found");
+    }
+
   }
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
@@ -820,6 +832,11 @@ void VideoEncoder::initializeEncoder(
         videoStreamOptions.preset.value().c_str(),
         0);
   }
+
+  // Register the hardware device context with the codec
+  // context before calling avcodec_open2().
+  deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
+
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &avCodecOptions);
   av_dict_free(&avCodecOptions);
 

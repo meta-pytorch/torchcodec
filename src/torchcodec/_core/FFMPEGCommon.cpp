@@ -40,7 +40,7 @@ AVPacket* ReferenceAVPacket::operator->() {
 
 AVCodecOnlyUseForCallingAVFindBestStream
 makeAVCodecOnlyUseForCallingAVFindBestStream(const AVCodec* codec) {
-#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(59, 18, 100)
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(59, 18, 100) // FFmpeg < 5.0.3
   return const_cast<AVCodec*>(codec);
 #else
   return codec;

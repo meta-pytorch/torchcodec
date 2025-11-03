@@ -11,6 +11,7 @@ import pytest
 import torch
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
+from torchcodec.decoders._video_decoder import VideoDecoder
 from torchcodec.encoders import AudioEncoder, VideoEncoder
 
 from .utils import (
@@ -765,12 +766,81 @@ class TestVideoEncoder:
             getattr(encoder, method)(**valid_params, extra_options=extra_options)
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_contiguity(self, method, tmp_path):
+        @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_pixel_format_errors(self, method, tmp_path):
+        frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
+        encoder = VideoEncoder(frames, frame_rate=30)
+
+        if method == "to_file":
+            valid_params = dict(dest=str(tmp_path / "output.mp4"))
+        elif method == "to_tensor":
+            valid_params = dict(format="mp4")
+        elif method == "to_file_like":
+            valid_params = dict(file_like=io.BytesIO(), format="mp4")
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"Unknown pixel format: invalid_pix_fmt[\s\S]*Supported pixel formats.*yuv420p",
+        ):
+            getattr(encoder, method)(**valid_params, pixel_format="invalid_pix_fmt")
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"Specified pixel format rgb24 is not supported[\s\S]*Supported pixel formats.*yuv420p",
+        ):
+            getattr(encoder, method)(**valid_params, pixel_format="rgb24")
+
+    @pytest.mark.parametrize(
+        "extra_options,error",
+        [
+            ({"qp": -10}, "qp=-10 is out of valid range"),
+            (
+                {"qp": ""},
+                "Option qp expects a numeric value but got",
+            ),
+            (
+                {"direct-pred": "a"},
+                "Option direct-pred expects a numeric value but got 'a'",
+            ),
+            ({"tune": "not_a_real_tune"}, "avcodec_open2 failed: Invalid argument"),
+            (
+                {"tune": 10},
+                "avcodec_open2 failed: Invalid argument",
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    def test_extra_options_errors(self, method, tmp_path, extra_options, error):
+        frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
+        encoder = VideoEncoder(frames, frame_rate=30)
+
+        if method == "to_file":
+            valid_params = dict(dest=str(tmp_path / "output.mp4"))
+        elif method == "to_tensor":
+            valid_params = dict(format="mp4")
+        elif method == "to_file_like":
+            valid_params = dict(file_like=io.BytesIO(), format="mp4")
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        with pytest.raises(
+            RuntimeError,
+            match=error,
+        ):
+            getattr(encoder, method)(**valid_params, extra_options=extra_options)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_contiguity(self, method, tmp_path, device):
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal
         # frame tensors, one is contiguous while the other is non-contiguous.
 
-        num_frames, channels, height, width = 5, 3, 64, 64
+        num_frames, channels, height, width = 5, 3, 256, 256
         contiguous_frames = torch.randint(
             0, 256, size=(num_frames, channels, height, width), dtype=torch.uint8
         ).contiguous()
@@ -792,16 +862,18 @@ class TestVideoEncoder:
             common_params = dict(crf=0, pixel_format="yuv444p")
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
-                VideoEncoder(frames, frame_rate=30).to_file(dest=dest, **common_params)
+                VideoEncoder(frames, frame_rate=30, device=device).to_file(dest=dest, **common_params)
                 with open(dest, "rb") as f:
-                    return torch.frombuffer(f.read(), dtype=torch.uint8)
+                    return torch.frombuffer(f.read(), dtype=torch.uint8).clone()
             elif method == "to_tensor":
-                return VideoEncoder(frames, frame_rate=30).to_tensor(
-                    format="mp4", **common_params
+                return VideoEncoder(frames, frame_rate=30, device=device).to_tensor(
+                    
+                    format="mp4"
+                , **common_params
                 )
             elif method == "to_file_like":
                 file_like = io.BytesIO()
-                VideoEncoder(frames, frame_rate=30).to_file_like(
+                VideoEncoder(frames, frame_rate=30, device=device).to_file_like(
                     file_like, format="mp4", **common_params
                 )
                 return torch.frombuffer(file_like.getvalue(), dtype=torch.uint8)

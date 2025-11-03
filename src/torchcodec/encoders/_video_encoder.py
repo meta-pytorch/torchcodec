@@ -1,8 +1,8 @@
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Optional, Union
 
 import torch
-from torch import Tensor
+from torch import device as torch_device, Tensor
 
 from torchcodec import _core
 
@@ -16,9 +16,18 @@ class VideoEncoder:
             C is 3 channels (RGB), H is height, and W is width.
             Values must be uint8 in the range ``[0, 255]``.
         frame_rate (int): The frame rate of the **input** ``frames``. Also defines the encoded **output** frame rate.
+        device (str or torch.device, optional): The device to use for encoding. Default: "cpu".
+            If you pass a CUDA device, frames will be encoded on GPU.
+            Note: The "beta" CUDA backend is not supported for encoding.
     """
 
-    def __init__(self, frames: Tensor, *, frame_rate: int):
+    def __init__(
+        self,
+        frames: Tensor,
+        *,
+        frame_rate: int,
+        device: Optional[Union[str, torch_device]] = "cpu",
+    ):
         torch._C._log_api_usage_once("torchcodec.encoders.VideoEncoder")
         if not isinstance(frames, Tensor):
             raise ValueError(f"Expected frames to be a Tensor, got {type(frames) = }.")
@@ -29,8 +38,13 @@ class VideoEncoder:
         if frame_rate <= 0:
             raise ValueError(f"{frame_rate = } must be > 0.")
 
+        # Validate and store device
+        if isinstance(device, torch_device):
+            device = str(device)
+
         self._frames = frames
         self._frame_rate = frame_rate
+        self._device = device
 
     def to_file(
         self,
@@ -69,6 +83,7 @@ class VideoEncoder:
             frames=self._frames,
             frame_rate=self._frame_rate,
             filename=str(dest),
+            device=self._device,
             codec=codec,
             pixel_format=pixel_format,
             crf=crf,
@@ -117,6 +132,7 @@ class VideoEncoder:
             frames=self._frames,
             frame_rate=self._frame_rate,
             format=format,
+            device=self._device,
             codec=codec,
             pixel_format=pixel_format,
             crf=crf,
@@ -169,6 +185,7 @@ class VideoEncoder:
             frame_rate=self._frame_rate,
             format=format,
             file_like=file_like,
+            device=self._device,
             codec=codec,
             pixel_format=pixel_format,
             crf=crf,

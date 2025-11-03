@@ -46,7 +46,12 @@ class DeviceInterface {
     return device_;
   };
 
-  virtual std::optional<const AVCodec*> findCodec(
+  virtual std::optional<const AVCodec*> findEncoder(
+      [[maybe_unused]] const AVCodecID& codecId) {
+    return std::nullopt;
+  };
+
+  virtual std::optional<const AVCodec*> findDecoder(
       [[maybe_unused]] const AVCodecID& codecId) {
     return std::nullopt;
   };
