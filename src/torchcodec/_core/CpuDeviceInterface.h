@@ -107,11 +107,6 @@ class CpuDeviceInterface : public DeviceInterface {
   // an explicit format conversion.
   std::string filters_ = "format=rgb24";
 
-  // The flags we supply to swsContext_, if it used. The flags control the
-  // resizing algorithm. We default to bilinear. Users can override this with a
-  // ResizeTransform.
-  int swsFlags_ = SWS_BILINEAR;
-
   // Values set during initialization and referred to in
   // getColorConversionLibrary().
   bool areTransformsSwScaleCompatible_;
