@@ -135,14 +135,13 @@ class TestCoreVideoDecoderTransformOps:
         )
 
         auto_decoder = create_from_file(str(video_path))
-        _add_video_stream(
+        add_video_stream(
             auto_decoder,
-            color_conversion_library="swscale",
         )
 
         filtergraph_frame0, *_ = get_frame_at_index(filtergraph_decoder, frame_index=0)
-        swscale_frame0, *_ = get_frame_at_index(auto_decoder, frame_index=0)
-        assert_frames_equal(filtergraph_frame0, swscale_frame0)
+        auto_frame0, *_ = get_frame_at_index(auto_decoder, frame_index=0)
+        assert_frames_equal(filtergraph_frame0, auto_frame0)
 
     @needs_cuda
     def test_scaling_on_cuda_fails(self):
