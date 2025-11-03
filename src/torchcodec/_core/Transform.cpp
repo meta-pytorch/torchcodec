@@ -28,8 +28,6 @@ std::string toFilterGraphInterpolation(
 } // namespace
 
 std::string ResizeTransform::getFilterGraphCpu() const {
-  // Note that we turn on gamma correct scaling. This produces results that are
-  // closer to what TorchVision's resize produces.
   return "scale=" + std::to_string(outputDims_.width) + ":" +
       std::to_string(outputDims_.height) +
       ":flags=" + toFilterGraphInterpolation(interpolationMode_);
