@@ -20,7 +20,6 @@ from torchcodec._core import (
     create_from_file,
     get_frame_at_index,
     get_json_metadata,
-    get_next_frame,
 )
 
 from torchvision.transforms import v2
@@ -28,6 +27,8 @@ from torchvision.transforms import v2
 from .utils import (
     assert_frames_equal,
     assert_tensor_close_on_at_least,
+    AV1_VIDEO,
+    H265_VIDEO,
     NASA_VIDEO,
     needs_cuda,
 )
@@ -36,56 +37,46 @@ torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
 
 class TestCoreVideoDecoderTransformOps:
-    # We choose arbitrary values for width and height scaling to get better
-    # test coverage. Some pairs upscale the image while others downscale it.
-    @pytest.mark.parametrize(
-        "width_scaling_factor,height_scaling_factor",
-        ((1.31, 1.5), (0.71, 0.5), (1.31, 0.7), (0.71, 1.5), (1.0, 1.0)),
-    )
-    @pytest.mark.parametrize("input_video", [NASA_VIDEO])
-    def test_color_conversion_library_with_scaling(
-        self, input_video, width_scaling_factor, height_scaling_factor
-    ):
-        decoder = create_from_file(str(input_video.path))
+    @pytest.mark.parametrize("video", [NASA_VIDEO, H265_VIDEO, AV1_VIDEO])
+    def test_color_conversion_library(self, video):
+        decoder = create_from_file(str(video.path))
         add_video_stream(decoder)
         metadata = get_json_metadata(decoder)
         metadata_dict = json.loads(metadata)
-        assert metadata_dict["width"] == input_video.width
-        assert metadata_dict["height"] == input_video.height
+        num_frames = metadata_dict["numFramesFromHeader"]
 
-        target_height = int(input_video.height * height_scaling_factor)
-        target_width = int(input_video.width * width_scaling_factor)
-        if width_scaling_factor != 1.0:
-            assert target_width != input_video.width
-        if height_scaling_factor != 1.0:
-            assert target_height != input_video.height
-
-        filtergraph_decoder = create_from_file(str(input_video.path))
+        filtergraph_decoder = create_from_file(str(video.path))
         _add_video_stream(
             filtergraph_decoder,
-            transform_specs=f"resize, {target_height}, {target_width}",
             color_conversion_library="filtergraph",
         )
-        filtergraph_frame0, _, _ = get_next_frame(filtergraph_decoder)
 
-        swscale_decoder = create_from_file(str(input_video.path))
+        swscale_decoder = create_from_file(str(video.path))
         _add_video_stream(
             swscale_decoder,
-            transform_specs=f"resize, {target_height}, {target_width}",
             color_conversion_library="swscale",
         )
-        swscale_frame0, _, _ = get_next_frame(swscale_decoder)
-        assert_frames_equal(filtergraph_frame0, swscale_frame0)
-        assert filtergraph_frame0.shape == (3, target_height, target_width)
 
-    @pytest.mark.parametrize(
-        "width_scaling_factor,height_scaling_factor",
-        ((1.31, 1.5), (0.71, 0.5), (1.31, 0.7), (0.71, 1.5), (1.0, 1.0)),
-    )
+        for frame_index in [
+            0,
+            int(num_frames * 0.25),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            num_frames - 1,
+        ]:
+            filtergraph_frame, *_ = get_frame_at_index(
+                filtergraph_decoder, frame_index=frame_index
+            )
+            swscale_frame, *_ = get_frame_at_index(
+                swscale_decoder, frame_index=frame_index
+            )
+
+            assert_frames_equal(filtergraph_frame, swscale_frame)
+
     @pytest.mark.parametrize("width", [30, 32, 300])
     @pytest.mark.parametrize("height", [128])
     def test_color_conversion_library_with_generated_videos(
-        self, tmp_path, width, height, width_scaling_factor, height_scaling_factor
+        self, tmp_path, width, height
     ):
         # We consider filtergraph to be the reference color conversion library.
         # However the video decoder sometimes uses swscale as that is faster.
@@ -134,28 +125,24 @@ class TestCoreVideoDecoderTransformOps:
         assert metadata_dict["width"] == width
         assert metadata_dict["height"] == height
 
-        target_height = int(height * height_scaling_factor)
-        target_width = int(width * width_scaling_factor)
-        if width_scaling_factor != 1.0:
-            assert target_width != width
-        if height_scaling_factor != 1.0:
-            assert target_height != height
+        num_frames = metadata_dict["numFramesFromHeader"]
+        assert num_frames is not None and num_frames == 1
 
         filtergraph_decoder = create_from_file(str(video_path))
         _add_video_stream(
             filtergraph_decoder,
-            transform_specs=f"resize, {target_height}, {target_width}",
             color_conversion_library="filtergraph",
         )
-        filtergraph_frame0, _, _ = get_next_frame(filtergraph_decoder)
 
         auto_decoder = create_from_file(str(video_path))
-        add_video_stream(
+        _add_video_stream(
             auto_decoder,
-            transform_specs=f"resize, {target_height}, {target_width}",
+            color_conversion_library="swscale",
         )
-        auto_frame0, _, _ = get_next_frame(auto_decoder)
-        assert_frames_equal(filtergraph_frame0, auto_frame0)
+
+        filtergraph_frame0, *_ = get_frame_at_index(filtergraph_decoder, frame_index=0)
+        swscale_frame0, *_ = get_frame_at_index(auto_decoder, frame_index=0)
+        assert_frames_equal(filtergraph_frame0, swscale_frame0)
 
     @needs_cuda
     def test_scaling_on_cuda_fails(self):
