@@ -16,7 +16,7 @@
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
 #include "Frame.h"
-#include "SeekMode.h"
+#include "Metadata.h"
 #include "StreamOptions.h"
 #include "Transform.h"
 

@@ -10,8 +10,6 @@
 #include <string>
 #include <vector>
 
-#include "SeekMode.h"
-
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -19,6 +17,8 @@ extern "C" {
 }
 
 namespace facebook::torchcodec {
+
+enum class SeekMode { exact, approximate, custom_frame_mappings };
 
 struct StreamMetadata {
   // Common (video and audio) fields derived from the AVStream.

@@ -186,7 +186,7 @@ def test_repr():
   bit_rate: 64000.0
   codec: mp3
   stream_index: 0
-  duration_seconds: 13.013
+  duration_seconds: {expected_duration_seconds_from_header}
   begin_stream_seconds: 0.0
   sample_rate: 8000
   num_channels: 2

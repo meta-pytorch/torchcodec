@@ -14,12 +14,8 @@ std::optional<double> StreamMetadata::getDurationSeconds(
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
       // In exact mode, use the scanned content value
-      if (endStreamPtsSecondsFromContent.has_value() &&
-          beginStreamPtsSecondsFromContent.has_value()) {
-        return endStreamPtsSecondsFromContent.value() -
-            beginStreamPtsSecondsFromContent.value();
-      }
-      return std::nullopt;
+      return endStreamPtsSecondsFromContent.value() -
+          beginStreamPtsSecondsFromContent.value();
     case SeekMode::approximate:
       if (durationSecondsFromHeader.has_value()) {
         return durationSecondsFromHeader.value();
@@ -38,10 +34,7 @@ double StreamMetadata::getBeginStreamSeconds(SeekMode seekMode) const {
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      if (beginStreamPtsSecondsFromContent.has_value()) {
-        return beginStreamPtsSecondsFromContent.value();
-      }
-      return 0.0;
+      return beginStreamPtsSecondsFromContent.value();
     case SeekMode::approximate:
       return 0.0;
   }
@@ -53,10 +46,7 @@ std::optional<double> StreamMetadata::getEndStreamSeconds(
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      if (endStreamPtsSecondsFromContent.has_value()) {
-        return endStreamPtsSecondsFromContent.value();
-      }
-      return getDurationSeconds(seekMode);
+      return endStreamPtsSecondsFromContent.value();
     case SeekMode::approximate:
       return getDurationSeconds(seekMode);
   }
@@ -67,10 +57,7 @@ std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      if (numFramesFromContent.has_value()) {
-        return numFramesFromContent.value();
-      }
-      return std::nullopt;
+      return numFramesFromContent.value();
     case SeekMode::approximate: {
       if (numFramesFromHeader.has_value()) {
         return numFramesFromHeader.value();
