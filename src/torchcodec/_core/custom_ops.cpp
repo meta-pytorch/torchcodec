@@ -176,13 +176,13 @@ std::string mapToJson(const std::map<std::string, std::string>& metadataMap) {
   return ss.str();
 }
 
-SingleStreamDecoder::SeekMode seekModeFromString(std::string_view seekMode) {
+SeekMode seekModeFromString(std::string_view seekMode) {
   if (seekMode == "exact") {
-    return SingleStreamDecoder::SeekMode::exact;
+    return SeekMode::exact;
   } else if (seekMode == "approximate") {
-    return SingleStreamDecoder::SeekMode::approximate;
+    return SeekMode::approximate;
   } else if (seekMode == "custom_frame_mappings") {
-    return SingleStreamDecoder::SeekMode::custom_frame_mappings;
+    return SeekMode::custom_frame_mappings;
   } else {
     TORCH_CHECK(false, "Invalid seek mode: " + std::string(seekMode));
   }
@@ -285,7 +285,7 @@ at::Tensor create_from_file(
     std::optional<std::string_view> seek_mode = std::nullopt) {
   std::string filenameStr(filename);
 
-  SingleStreamDecoder::SeekMode realSeek = SingleStreamDecoder::SeekMode::exact;
+  SeekMode realSeek = SeekMode::exact;
   if (seek_mode.has_value()) {
     realSeek = seekModeFromString(seek_mode.value());
   }
@@ -306,7 +306,7 @@ at::Tensor create_from_tensor(
       video_tensor.scalar_type() == torch::kUInt8,
       "video_tensor must be kUInt8");
 
-  SingleStreamDecoder::SeekMode realSeek = SingleStreamDecoder::SeekMode::exact;
+  SeekMode realSeek = SeekMode::exact;
   if (seek_mode.has_value()) {
     realSeek = seekModeFromString(seek_mode.value());
   }
@@ -329,7 +329,7 @@ at::Tensor _create_from_file_like(
       fileLikeContext != nullptr, "file_like_context must be a valid pointer");
   std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
 
-  SingleStreamDecoder::SeekMode realSeek = SingleStreamDecoder::SeekMode::exact;
+  SeekMode realSeek = SeekMode::exact;
   if (seek_mode.has_value()) {
     realSeek = seekModeFromString(seek_mode.value());
   }
@@ -796,12 +796,17 @@ std::string get_stream_json_metadata(
   }
 
   auto streamMetadata = allStreamMetadata[stream_index];
+  auto seekMode = videoDecoder->getSeekMode();
 
   std::map<std::string, std::string> map;
 
   if (streamMetadata.durationSecondsFromHeader.has_value()) {
     map["durationSecondsFromHeader"] =
         std::to_string(*streamMetadata.durationSecondsFromHeader);
+  }
+  if (streamMetadata.getDurationSeconds(seekMode).has_value()) {
+    map["durationSeconds"] =
+        std::to_string(streamMetadata.getDurationSeconds(seekMode).value());
   }
   if (streamMetadata.bitRate.has_value()) {
     map["bitRate"] = std::to_string(*streamMetadata.bitRate);
@@ -814,6 +819,11 @@ std::string get_stream_json_metadata(
     map["numFramesFromHeader"] =
         std::to_string(*streamMetadata.numFramesFromHeader);
   }
+  if (streamMetadata.getNumFrames(seekMode).has_value()) {
+    map["numFrames"] =
+        std::to_string(streamMetadata.getNumFrames(seekMode).value());
+  }
+
   if (streamMetadata.beginStreamSecondsFromHeader.has_value()) {
     map["beginStreamSecondsFromHeader"] =
         std::to_string(*streamMetadata.beginStreamSecondsFromHeader);
@@ -822,9 +832,15 @@ std::string get_stream_json_metadata(
     map["beginStreamSecondsFromContent"] =
         std::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
   }
+  map["beginStreamSeconds"] =
+      std::to_string(streamMetadata.getBeginStreamSeconds(seekMode));
   if (streamMetadata.endStreamPtsSecondsFromContent.has_value()) {
     map["endStreamSecondsFromContent"] =
         std::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
+  }
+  if (streamMetadata.getEndStreamSeconds(seekMode).has_value()) {
+    map["endStreamSeconds"] =
+        std::to_string(streamMetadata.getEndStreamSeconds(seekMode).value());
   }
   if (streamMetadata.codecName.has_value()) {
     map["codec"] = quoteValue(streamMetadata.codecName.value());
@@ -844,6 +860,10 @@ std::string get_stream_json_metadata(
   if (streamMetadata.averageFpsFromHeader.has_value()) {
     map["averageFpsFromHeader"] =
         std::to_string(*streamMetadata.averageFpsFromHeader);
+  }
+  if (streamMetadata.getAverageFps(seekMode).has_value()) {
+    map["averageFps"] =
+        std::to_string(streamMetadata.getAverageFps(seekMode).value());
   }
   if (streamMetadata.sampleRate.has_value()) {
     map["sampleRate"] = std::to_string(*streamMetadata.sampleRate);

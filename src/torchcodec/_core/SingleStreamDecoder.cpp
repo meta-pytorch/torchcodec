@@ -367,6 +367,10 @@ ContainerMetadata SingleStreamDecoder::getContainerMetadata() const {
   return containerMetadata_;
 }
 
+SeekMode SingleStreamDecoder::getSeekMode() const {
+  return seekMode_;
+}
+
 torch::Tensor SingleStreamDecoder::getKeyFrameIndices() {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   validateScannedAllStreams("getKeyFrameIndices");

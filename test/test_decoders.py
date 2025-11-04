@@ -899,6 +899,11 @@ class TestVideoDecoder:
             "mediaType": "video",
             "numFramesFromHeader": None,
             "numFramesFromContent": None,
+            "beginStreamSeconds": 0.0,
+            "durationSeconds": 13.013,
+            "endStreamSeconds": 13.013,
+            "numFrames": int(29.97003 * 13.013),  # Calculated from fps * duration
+            "averageFps": 29.97003,
         }
         # Set the return value of the mock to be the mock_stream_dict
         mock_get_stream_json_metadata.return_value = json.dumps(mock_stream_dict)

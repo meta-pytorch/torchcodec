@@ -16,6 +16,7 @@
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
 #include "Frame.h"
+#include "SeekMode.h"
 #include "StreamOptions.h"
 #include "Transform.h"
 
@@ -29,8 +30,6 @@ class SingleStreamDecoder {
   // --------------------------------------------------------------------------
   // CONSTRUCTION API
   // --------------------------------------------------------------------------
-
-  enum class SeekMode { exact, approximate, custom_frame_mappings };
 
   // Creates a SingleStreamDecoder from the video at videoFilePath.
   explicit SingleStreamDecoder(
@@ -59,6 +58,9 @@ class SingleStreamDecoder {
 
   // Returns the metadata for the container.
   ContainerMetadata getContainerMetadata() const;
+
+  // Returns the seek mode of this decoder.
+  SeekMode getSeekMode() const;
 
   // Returns the key frame indices as a tensor. The tensor is 1D and contains
   // int64 values, where each value is the frame index for a key frame.

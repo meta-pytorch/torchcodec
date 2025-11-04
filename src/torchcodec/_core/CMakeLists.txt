@@ -96,6 +96,7 @@ function(make_torchcodec_libraries
         Encoder.cpp
         ValidationUtils.cpp
         Transform.cpp
+        Metadata.cpp
     )
 
     if(ENABLE_CUDA)

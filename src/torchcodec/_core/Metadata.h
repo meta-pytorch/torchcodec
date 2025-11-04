@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 
+#include "SeekMode.h"
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
@@ -52,6 +54,13 @@ struct StreamMetadata {
   std::optional<int64_t> sampleRate;
   std::optional<int64_t> numChannels;
   std::optional<std::string> sampleFormat;
+
+  // Computed methods with fallback logic
+  std::optional<double> getDurationSeconds(SeekMode seekMode) const;
+  double getBeginStreamSeconds(SeekMode seekMode) const;
+  std::optional<double> getEndStreamSeconds(SeekMode seekMode) const;
+  std::optional<int64_t> getNumFrames(SeekMode seekMode) const;
+  std::optional<double> getAverageFps(SeekMode seekMode) const;
 };
 
 struct ContainerMetadata {
