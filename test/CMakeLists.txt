@@ -34,3 +34,22 @@ target_link_libraries(
 
 include(GoogleTest)
 gtest_discover_tests(VideoDecoderTest)
+
+
+add_executable(
+  MetadataTest
+  MetadataTest.cpp
+)
+
+target_include_directories(MetadataTest SYSTEM PRIVATE ${TORCH_INCLUDE_DIRS})
+target_include_directories(MetadataTest SYSTEM PRIVATE ${libav_include_dirs})
+target_include_directories(MetadataTest PRIVATE ../)
+
+target_link_libraries(
+  MetadataTest
+  ${libtorchcodec_library_name}
+  ${libtorchcodec_custom_ops_name}
+  GTest::gtest_main
+)
+
+gtest_discover_tests(MetadataTest)
