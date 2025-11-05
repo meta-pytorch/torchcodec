@@ -5,15 +5,17 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "Metadata.h"
+#include "torch/types.h"
 
 namespace facebook::torchcodec {
 
 std::optional<double> StreamMetadata::getDurationSeconds(
     SeekMode seekMode) const {
   switch (seekMode) {
-    case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      // In exact mode, use the scanned content value
+      return endStreamPtsSecondsFromContent.value() -
+          beginStreamPtsSecondsFromContent.value();
+    case SeekMode::custom_frame_mappings:
       if (endStreamPtsSecondsFromContent.has_value() &&
           beginStreamPtsSecondsFromContent.has_value()) {
         return endStreamPtsSecondsFromContent.value() -
@@ -30,48 +32,51 @@ std::optional<double> StreamMetadata::getDurationSeconds(
             averageFpsFromHeader.value();
       }
       return std::nullopt;
+    default:
+      TORCH_CHECK(false, "Unknown SeekMode");
   }
-  return std::nullopt;
 }
 
 double StreamMetadata::getBeginStreamSeconds(SeekMode seekMode) const {
   switch (seekMode) {
-    case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
+      return beginStreamPtsSecondsFromContent.value();
+    case SeekMode::custom_frame_mappings:
+    case SeekMode::approximate:
       if (beginStreamPtsSecondsFromContent.has_value()) {
         return beginStreamPtsSecondsFromContent.value();
       }
       return 0.0;
-    case SeekMode::approximate:
-      return 0.0;
+    default:
+      TORCH_CHECK(false, "Unknown SeekMode");
   }
-  return 0.0;
 }
 
 std::optional<double> StreamMetadata::getEndStreamSeconds(
     SeekMode seekMode) const {
   switch (seekMode) {
-    case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
+      return endStreamPtsSecondsFromContent.value();
+    case SeekMode::custom_frame_mappings:
+    case SeekMode::approximate:
       if (endStreamPtsSecondsFromContent.has_value()) {
         return endStreamPtsSecondsFromContent.value();
       }
       return getDurationSeconds(seekMode);
-    case SeekMode::approximate:
-      return getDurationSeconds(seekMode);
+    default:
+      TORCH_CHECK(false, "Unknown SeekMode");
   }
-  return std::nullopt;
 }
 
 std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
   switch (seekMode) {
-    case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
+      return numFramesFromContent.value();
+    case SeekMode::custom_frame_mappings:
+    case SeekMode::approximate: {
       if (numFramesFromContent.has_value()) {
         return numFramesFromContent.value();
       }
-      return std::nullopt;
-    case SeekMode::approximate: {
       if (numFramesFromHeader.has_value()) {
         return numFramesFromHeader.value();
       }
@@ -82,14 +87,23 @@ std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
       }
       return std::nullopt;
     }
+    default:
+      TORCH_CHECK(false, "Unknown SeekMode");
   }
-  return std::nullopt;
 }
 
 std::optional<double> StreamMetadata::getAverageFps(SeekMode seekMode) const {
   switch (seekMode) {
-    case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
+      if (endStreamPtsSecondsFromContent.value() !=
+          beginStreamPtsSecondsFromContent.value()) {
+        return static_cast<double>(
+            getNumFrames(seekMode).value() /
+            (endStreamPtsSecondsFromContent.value() -
+             beginStreamPtsSecondsFromContent.value()));
+      }
+    case SeekMode::custom_frame_mappings:
+    case SeekMode::approximate:
       if (getNumFrames(seekMode).has_value() &&
           beginStreamPtsSecondsFromContent.has_value() &&
           endStreamPtsSecondsFromContent.has_value() &&
@@ -101,10 +115,9 @@ std::optional<double> StreamMetadata::getAverageFps(SeekMode seekMode) const {
              beginStreamPtsSecondsFromContent.value()));
       }
       return averageFpsFromHeader;
-    case SeekMode::approximate:
-      return averageFpsFromHeader;
+    default:
+      TORCH_CHECK(false, "Unknown SeekMode");
   }
-  return std::nullopt;
 }
 
 } // namespace facebook::torchcodec
