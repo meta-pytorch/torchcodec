@@ -1445,43 +1445,17 @@ int64_t SingleStreamDecoder::getPts(int64_t frameIndex) {
 
 std::optional<int64_t> SingleStreamDecoder::getNumFrames(
     const StreamMetadata& streamMetadata) {
-  switch (seekMode_) {
-    case SeekMode::custom_frame_mappings:
-    case SeekMode::exact:
-      return streamMetadata.numFramesFromContent.value();
-    case SeekMode::approximate: {
-      return streamMetadata.numFramesFromHeader;
-    }
-    default:
-      TORCH_CHECK(false, "Unknown SeekMode");
-  }
+  return streamMetadata.getNumFrames(seekMode_);
 }
 
 double SingleStreamDecoder::getMinSeconds(
     const StreamMetadata& streamMetadata) {
-  switch (seekMode_) {
-    case SeekMode::custom_frame_mappings:
-    case SeekMode::exact:
-      return streamMetadata.beginStreamPtsSecondsFromContent.value();
-    case SeekMode::approximate:
-      return 0;
-    default:
-      TORCH_CHECK(false, "Unknown SeekMode");
-  }
+  return streamMetadata.getBeginStreamSeconds(seekMode_);
 }
 
 std::optional<double> SingleStreamDecoder::getMaxSeconds(
     const StreamMetadata& streamMetadata) {
-  switch (seekMode_) {
-    case SeekMode::custom_frame_mappings:
-    case SeekMode::exact:
-      return streamMetadata.endStreamPtsSecondsFromContent.value();
-    case SeekMode::approximate: {
-      return streamMetadata.durationSecondsFromHeader;
-    }
-    default:
-      TORCH_CHECK(false, "Unknown SeekMode");
-  }
+  return streamMetadata.getEndStreamSeconds(seekMode_);
 }
 
 // --------------------------------------------------------------------------
