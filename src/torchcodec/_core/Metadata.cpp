@@ -12,16 +12,14 @@ namespace facebook::torchcodec {
 std::optional<double> StreamMetadata::getDurationSeconds(
     SeekMode seekMode) const {
   switch (seekMode) {
+    case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
+      TORCH_CHECK(
+          endStreamPtsSecondsFromContent.has_value() &&
+              beginStreamPtsSecondsFromContent.has_value(),
+          "Missing beginStreamPtsSecondsFromContent or endStreamPtsSecondsFromContent");
       return endStreamPtsSecondsFromContent.value() -
           beginStreamPtsSecondsFromContent.value();
-    case SeekMode::custom_frame_mappings:
-      if (endStreamPtsSecondsFromContent.has_value() &&
-          beginStreamPtsSecondsFromContent.has_value()) {
-        return endStreamPtsSecondsFromContent.value() -
-            beginStreamPtsSecondsFromContent.value();
-      }
-      return std::nullopt;
     case SeekMode::approximate:
       if (durationSecondsFromHeader.has_value()) {
         return durationSecondsFromHeader.value();
@@ -39,9 +37,12 @@ std::optional<double> StreamMetadata::getDurationSeconds(
 
 double StreamMetadata::getBeginStreamSeconds(SeekMode seekMode) const {
   switch (seekMode) {
-    case SeekMode::exact:
-      return beginStreamPtsSecondsFromContent.value();
     case SeekMode::custom_frame_mappings:
+    case SeekMode::exact:
+      TORCH_CHECK(
+          beginStreamPtsSecondsFromContent.has_value(),
+          "Missing beginStreamPtsSecondsFromContent");
+      return beginStreamPtsSecondsFromContent.value();
     case SeekMode::approximate:
       if (beginStreamPtsSecondsFromContent.has_value()) {
         return beginStreamPtsSecondsFromContent.value();
@@ -55,9 +56,12 @@ double StreamMetadata::getBeginStreamSeconds(SeekMode seekMode) const {
 std::optional<double> StreamMetadata::getEndStreamSeconds(
     SeekMode seekMode) const {
   switch (seekMode) {
-    case SeekMode::exact:
-      return endStreamPtsSecondsFromContent.value();
     case SeekMode::custom_frame_mappings:
+    case SeekMode::exact:
+      TORCH_CHECK(
+          endStreamPtsSecondsFromContent.has_value(),
+          "Missing endStreamPtsSecondsFromContent");
+      return endStreamPtsSecondsFromContent.value();
     case SeekMode::approximate:
       if (endStreamPtsSecondsFromContent.has_value()) {
         return endStreamPtsSecondsFromContent.value();
@@ -70,9 +74,11 @@ std::optional<double> StreamMetadata::getEndStreamSeconds(
 
 std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
   switch (seekMode) {
-    case SeekMode::exact:
-      return numFramesFromContent.value();
     case SeekMode::custom_frame_mappings:
+    case SeekMode::exact:
+      TORCH_CHECK(
+          numFramesFromContent.has_value(), "Missing numFramesFromContent");
+      return numFramesFromContent.value();
     case SeekMode::approximate: {
       if (numFramesFromContent.has_value()) {
         return numFramesFromContent.value();

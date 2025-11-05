@@ -112,27 +112,6 @@ TEST(MetadataTest, DurationSecondsFallback) {
         metadata.getDurationSeconds(SeekMode::exact).value(), 15.0, 1e-6);
   }
 
-  // in exact mode, begin content available but end missing, should fall back to
-  // header
-  {
-    StreamMetadata metadata;
-    metadata.durationSecondsFromHeader = 60.0;
-    metadata.beginStreamPtsSecondsFromContent = 1.0;
-    metadata.endStreamPtsSecondsFromContent = std::nullopt;
-
-    EXPECT_EQ(metadata.getDurationSeconds(SeekMode::exact), std::nullopt);
-  }
-
-  // Test case 3: end content available but begin missing, should fall back
-  {
-    StreamMetadata metadata;
-    metadata.durationSecondsFromHeader = 60.0;
-    metadata.beginStreamPtsSecondsFromContent = std::nullopt;
-    metadata.endStreamPtsSecondsFromContent = 1.0;
-
-    EXPECT_EQ(metadata.getDurationSeconds(SeekMode::exact), std::nullopt);
-  }
-
   // in exact mode, only content values, no header
   {
     StreamMetadata metadata;

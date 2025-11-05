@@ -371,6 +371,10 @@ SeekMode SingleStreamDecoder::getSeekMode() const {
   return seekMode_;
 }
 
+int SingleStreamDecoder::getActiveStreamIndex() const {
+  return activeStreamIndex_;
+}
+
 torch::Tensor SingleStreamDecoder::getKeyFrameIndices() {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   validateScannedAllStreams("getKeyFrameIndices");

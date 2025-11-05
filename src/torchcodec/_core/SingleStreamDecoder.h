@@ -62,6 +62,9 @@ class SingleStreamDecoder {
   // Returns the seek mode of this decoder.
   SeekMode getSeekMode() const;
 
+  // Returns the active stream index. Returns -2 if no stream is active.
+  int getActiveStreamIndex() const;
+
   // Returns the key frame indices as a tensor. The tensor is 1D and contains
   // int64 values, where each value is the frame index for a key frame.
   torch::Tensor getKeyFrameIndices();

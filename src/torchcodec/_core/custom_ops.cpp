@@ -797,91 +797,160 @@ std::string get_stream_json_metadata(
 
   auto streamMetadata = allStreamMetadata[stream_index];
   auto seekMode = videoDecoder->getSeekMode();
+  int activeStreamIndex = videoDecoder->getActiveStreamIndex();
 
   std::map<std::string, std::string> map;
 
-  if (streamMetadata.durationSecondsFromHeader.has_value()) {
-    map["durationSecondsFromHeader"] =
-        std::to_string(*streamMetadata.durationSecondsFromHeader);
-  }
-  if (streamMetadata.getDurationSeconds(seekMode).has_value()) {
-    map["durationSeconds"] =
-        std::to_string(streamMetadata.getDurationSeconds(seekMode).value());
-  }
-  if (streamMetadata.bitRate.has_value()) {
-    map["bitRate"] = std::to_string(*streamMetadata.bitRate);
-  }
-  if (streamMetadata.numFramesFromContent.has_value()) {
-    map["numFramesFromContent"] =
-        std::to_string(*streamMetadata.numFramesFromContent);
-  }
-  if (streamMetadata.numFramesFromHeader.has_value()) {
-    map["numFramesFromHeader"] =
-        std::to_string(*streamMetadata.numFramesFromHeader);
-  }
-  if (streamMetadata.getNumFrames(seekMode).has_value()) {
-    map["numFrames"] =
-        std::to_string(streamMetadata.getNumFrames(seekMode).value());
-  }
+  if ((seekMode == SeekMode::custom_frame_mappings &&
+       stream_index == activeStreamIndex) ||
+      (seekMode != SeekMode::custom_frame_mappings)) {
+    if (streamMetadata.durationSecondsFromHeader.has_value()) {
+      map["durationSecondsFromHeader"] =
+          std::to_string(*streamMetadata.durationSecondsFromHeader);
+    }
+    if (streamMetadata.getDurationSeconds(seekMode).has_value()) {
+      map["durationSeconds"] =
+          std::to_string(streamMetadata.getDurationSeconds(seekMode).value());
+    }
+    if (streamMetadata.bitRate.has_value()) {
+      map["bitRate"] = std::to_string(*streamMetadata.bitRate);
+    }
+    if (streamMetadata.numFramesFromContent.has_value()) {
+      map["numFramesFromContent"] =
+          std::to_string(*streamMetadata.numFramesFromContent);
+    }
+    if (streamMetadata.numFramesFromHeader.has_value()) {
+      map["numFramesFromHeader"] =
+          std::to_string(*streamMetadata.numFramesFromHeader);
+    }
+    if (streamMetadata.getNumFrames(seekMode).has_value()) {
+      map["numFrames"] =
+          std::to_string(streamMetadata.getNumFrames(seekMode).value());
+    }
 
-  if (streamMetadata.beginStreamSecondsFromHeader.has_value()) {
-    map["beginStreamSecondsFromHeader"] =
-        std::to_string(*streamMetadata.beginStreamSecondsFromHeader);
-  }
-  if (streamMetadata.beginStreamPtsSecondsFromContent.has_value()) {
-    map["beginStreamSecondsFromContent"] =
-        std::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
-  }
-  map["beginStreamSeconds"] =
-      std::to_string(streamMetadata.getBeginStreamSeconds(seekMode));
-  if (streamMetadata.endStreamPtsSecondsFromContent.has_value()) {
-    map["endStreamSecondsFromContent"] =
-        std::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
-  }
-  if (streamMetadata.getEndStreamSeconds(seekMode).has_value()) {
-    map["endStreamSeconds"] =
-        std::to_string(streamMetadata.getEndStreamSeconds(seekMode).value());
-  }
-  if (streamMetadata.codecName.has_value()) {
-    map["codec"] = quoteValue(streamMetadata.codecName.value());
-  }
-  if (streamMetadata.width.has_value()) {
-    map["width"] = std::to_string(*streamMetadata.width);
-  }
-  if (streamMetadata.height.has_value()) {
-    map["height"] = std::to_string(*streamMetadata.height);
-  }
-  if (streamMetadata.sampleAspectRatio.has_value()) {
-    map["sampleAspectRatioNum"] =
-        std::to_string((*streamMetadata.sampleAspectRatio).num);
-    map["sampleAspectRatioDen"] =
-        std::to_string((*streamMetadata.sampleAspectRatio).den);
-  }
-  if (streamMetadata.averageFpsFromHeader.has_value()) {
-    map["averageFpsFromHeader"] =
-        std::to_string(*streamMetadata.averageFpsFromHeader);
-  }
-  if (streamMetadata.getAverageFps(seekMode).has_value()) {
-    map["averageFps"] =
-        std::to_string(streamMetadata.getAverageFps(seekMode).value());
-  }
-  if (streamMetadata.sampleRate.has_value()) {
-    map["sampleRate"] = std::to_string(*streamMetadata.sampleRate);
-  }
-  if (streamMetadata.numChannels.has_value()) {
-    map["numChannels"] = std::to_string(*streamMetadata.numChannels);
-  }
-  if (streamMetadata.sampleFormat.has_value()) {
-    map["sampleFormat"] = quoteValue(streamMetadata.sampleFormat.value());
-  }
-  if (streamMetadata.mediaType == AVMEDIA_TYPE_VIDEO) {
-    map["mediaType"] = quoteValue("video");
-  } else if (streamMetadata.mediaType == AVMEDIA_TYPE_AUDIO) {
-    map["mediaType"] = quoteValue("audio");
+    if (streamMetadata.beginStreamSecondsFromHeader.has_value()) {
+      map["beginStreamSecondsFromHeader"] =
+          std::to_string(*streamMetadata.beginStreamSecondsFromHeader);
+    }
+    if (streamMetadata.beginStreamPtsSecondsFromContent.has_value()) {
+      map["beginStreamSecondsFromContent"] =
+          std::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
+    }
+    map["beginStreamSeconds"] =
+        std::to_string(streamMetadata.getBeginStreamSeconds(seekMode));
+    if (streamMetadata.endStreamPtsSecondsFromContent.has_value()) {
+      map["endStreamSecondsFromContent"] =
+          std::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
+    }
+    if (streamMetadata.getEndStreamSeconds(seekMode).has_value()) {
+      map["endStreamSeconds"] =
+          std::to_string(streamMetadata.getEndStreamSeconds(seekMode).value());
+    }
+    if (streamMetadata.codecName.has_value()) {
+      map["codec"] = quoteValue(streamMetadata.codecName.value());
+    }
+    if (streamMetadata.width.has_value()) {
+      map["width"] = std::to_string(*streamMetadata.width);
+    }
+    if (streamMetadata.height.has_value()) {
+      map["height"] = std::to_string(*streamMetadata.height);
+    }
+    if (streamMetadata.sampleAspectRatio.has_value()) {
+      map["sampleAspectRatioNum"] =
+          std::to_string((*streamMetadata.sampleAspectRatio).num);
+      map["sampleAspectRatioDen"] =
+          std::to_string((*streamMetadata.sampleAspectRatio).den);
+    }
+    if (streamMetadata.averageFpsFromHeader.has_value()) {
+      map["averageFpsFromHeader"] =
+          std::to_string(*streamMetadata.averageFpsFromHeader);
+    }
+    if (streamMetadata.getAverageFps(seekMode).has_value()) {
+      map["averageFps"] =
+          std::to_string(streamMetadata.getAverageFps(seekMode).value());
+    }
+    if (streamMetadata.sampleRate.has_value()) {
+      map["sampleRate"] = std::to_string(*streamMetadata.sampleRate);
+    }
+    if (streamMetadata.numChannels.has_value()) {
+      map["numChannels"] = std::to_string(*streamMetadata.numChannels);
+    }
+    if (streamMetadata.sampleFormat.has_value()) {
+      map["sampleFormat"] = quoteValue(streamMetadata.sampleFormat.value());
+    }
+    if (streamMetadata.mediaType == AVMEDIA_TYPE_VIDEO) {
+      map["mediaType"] = quoteValue("video");
+    } else if (streamMetadata.mediaType == AVMEDIA_TYPE_AUDIO) {
+      map["mediaType"] = quoteValue("audio");
+    } else {
+      map["mediaType"] = quoteValue("other");
+    }
+    return mapToJson(map);
   } else {
-    map["mediaType"] = quoteValue("other");
+    if (streamMetadata.durationSecondsFromHeader.has_value()) {
+      map["durationSecondsFromHeader"] =
+          std::to_string(*streamMetadata.durationSecondsFromHeader);
+    }
+    if (streamMetadata.bitRate.has_value()) {
+      map["bitRate"] = std::to_string(*streamMetadata.bitRate);
+    }
+    if (streamMetadata.numFramesFromContent.has_value()) {
+      map["numFramesFromContent"] =
+          std::to_string(*streamMetadata.numFramesFromContent);
+    }
+    if (streamMetadata.numFramesFromHeader.has_value()) {
+      map["numFramesFromHeader"] =
+          std::to_string(*streamMetadata.numFramesFromHeader);
+    }
+    if (streamMetadata.beginStreamSecondsFromHeader.has_value()) {
+      map["beginStreamSecondsFromHeader"] =
+          std::to_string(*streamMetadata.beginStreamSecondsFromHeader);
+    }
+    if (streamMetadata.beginStreamPtsSecondsFromContent.has_value()) {
+      map["beginStreamSecondsFromContent"] =
+          std::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
+    }
+    if (streamMetadata.endStreamPtsSecondsFromContent.has_value()) {
+      map["endStreamSecondsFromContent"] =
+          std::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
+    }
+    if (streamMetadata.codecName.has_value()) {
+      map["codec"] = quoteValue(streamMetadata.codecName.value());
+    }
+    if (streamMetadata.width.has_value()) {
+      map["width"] = std::to_string(*streamMetadata.width);
+    }
+    if (streamMetadata.height.has_value()) {
+      map["height"] = std::to_string(*streamMetadata.height);
+    }
+    if (streamMetadata.sampleAspectRatio.has_value()) {
+      map["sampleAspectRatioNum"] =
+          std::to_string((*streamMetadata.sampleAspectRatio).num);
+      map["sampleAspectRatioDen"] =
+          std::to_string((*streamMetadata.sampleAspectRatio).den);
+    }
+    if (streamMetadata.averageFpsFromHeader.has_value()) {
+      map["averageFpsFromHeader"] =
+          std::to_string(*streamMetadata.averageFpsFromHeader);
+    }
+    if (streamMetadata.sampleRate.has_value()) {
+      map["sampleRate"] = std::to_string(*streamMetadata.sampleRate);
+    }
+    if (streamMetadata.numChannels.has_value()) {
+      map["numChannels"] = std::to_string(*streamMetadata.numChannels);
+    }
+    if (streamMetadata.sampleFormat.has_value()) {
+      map["sampleFormat"] = quoteValue(streamMetadata.sampleFormat.value());
+    }
+    if (streamMetadata.mediaType == AVMEDIA_TYPE_VIDEO) {
+      map["mediaType"] = quoteValue("video");
+    } else if (streamMetadata.mediaType == AVMEDIA_TYPE_AUDIO) {
+      map["mediaType"] = quoteValue("audio");
+    } else {
+      map["mediaType"] = quoteValue("other");
+    }
+    return mapToJson(map);
   }
-  return mapToJson(map);
 }
 
 // Returns version information about the various FFMPEG libraries that are
