@@ -177,7 +177,9 @@ class TestCoreVideoDecoderTransformOps:
         ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
     )
     @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
-    def test_resize_torchvision(self, video, height_scaling_factor, width_scaling_factor):
+    def test_resize_torchvision(
+        self, video, height_scaling_factor, width_scaling_factor
+    ):
         num_frames = self.get_num_frames_core_ops(video)
 
         height = int(video.get_height() * height_scaling_factor)
