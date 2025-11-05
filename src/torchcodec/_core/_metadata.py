@@ -52,7 +52,7 @@ class StreamMetadata:
         return s
 
 
-@dataclass(repr=False)
+@dataclass
 class VideoStreamMetadata(StreamMetadata):
     """Metadata of a single video stream."""
 
@@ -106,6 +106,9 @@ class VideoStreamMetadata(StreamMetadata):
     """Average fps of the stream (float or None).
     if :term:`scan` was performed, computes from
     num_frames and duration, otherwise uses header value."""
+
+    def __repr__(self):
+        return super().__repr__()
 
 
 @dataclass
