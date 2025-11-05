@@ -94,16 +94,8 @@ std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
 
 std::optional<double> StreamMetadata::getAverageFps(SeekMode seekMode) const {
   switch (seekMode) {
-    case SeekMode::exact:
-      if (endStreamPtsSecondsFromContent.value() !=
-          beginStreamPtsSecondsFromContent.value()) {
-        return static_cast<double>(
-            getNumFrames(seekMode).value() /
-            (endStreamPtsSecondsFromContent.value() -
-             beginStreamPtsSecondsFromContent.value()));
-      }
     case SeekMode::custom_frame_mappings:
-    case SeekMode::approximate:
+    case SeekMode::exact:
       if (getNumFrames(seekMode).has_value() &&
           beginStreamPtsSecondsFromContent.has_value() &&
           endStreamPtsSecondsFromContent.has_value() &&
@@ -114,6 +106,8 @@ std::optional<double> StreamMetadata::getAverageFps(SeekMode seekMode) const {
             (endStreamPtsSecondsFromContent.value() -
              beginStreamPtsSecondsFromContent.value()));
       }
+      return averageFpsFromHeader;
+    case SeekMode::approximate:
       return averageFpsFromHeader;
     default:
       TORCH_CHECK(false, "Unknown SeekMode");
