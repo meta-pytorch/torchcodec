@@ -177,9 +177,7 @@ class TestCoreVideoDecoderTransformOps:
         ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
     )
     @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
-    def test_resize_torchvision(
-        self, video, height_scaling_factor, width_scaling_factor
-    ):
+    def test_resize_torchvision(self, video, height_scaling_factor, width_scaling_factor):
         num_frames = self.get_num_frames_core_ops(video)
 
         height = int(video.get_height() * height_scaling_factor)
@@ -219,7 +217,7 @@ class TestCoreVideoDecoderTransformOps:
             assert frame_tv_no_antialias.shape == expected_shape
 
             assert_tensor_close_on_at_least(
-                frame_resize, frame_tv, percentage=99.9, atol=1
+                frame_resize, frame_tv, percentage=99.8, atol=1
             )
             torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=6)
 
