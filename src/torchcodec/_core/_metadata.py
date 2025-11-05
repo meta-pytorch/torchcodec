@@ -40,11 +40,10 @@ class StreamMetadata:
 
     # Computed fields (computed in C++ with fallback logic)
     duration_seconds: Optional[float]
-    """Duration of the stream in seconds. Computed in C++ with fallback logic:
-    tries to calculate from content if scan was performed, otherwise falls back
-    to header values."""
+    """Duration of the stream in seconds. Tries to calculate from content
+    if :term:`scan` was performed, otherwise falls back to header values."""
     begin_stream_seconds: Optional[float]
-    """Beginning of the stream, in seconds. Computed in C++ with fallback logic."""
+    """Beginning of the stream, in seconds."""
 
     def __repr__(self):
         s = self.__class__.__name__ + ":\n"
@@ -98,15 +97,14 @@ class VideoStreamMetadata(StreamMetadata):
     # Computed fields (computed in C++ with fallback logic)
     end_stream_seconds: Optional[float]
     """End of the stream, in seconds (float or None).
-    Conceptually, this corresponds to last_frame.pts + last_frame.duration.
-    Computed in C++ with fallback logic."""
+    Conceptually, this corresponds to last_frame.pts + last_frame.duration."""
     num_frames: Optional[int]
     """Number of frames in the stream (int or None).
-    Computed in C++ with fallback logic: uses content if scan was performed,
+    Uses content if :term:`scan` was performed,
     otherwise falls back to header values or calculates from duration and fps."""
     average_fps: Optional[float]
     """Average fps of the stream (float or None).
-    Computed in C++ with fallback logic: if scan was performed, computes from
+    if :term:`scan` was performed, computes from
     num_frames and duration, otherwise uses header value."""
 
 

@@ -615,7 +615,7 @@ FrameOutput SingleStreamDecoder::getFrameAtIndexInternal(
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
 
-  std::optional<int64_t> numFrames = getNumFrames(streamMetadata);
+  std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
   if (numFrames.has_value()) {
     // If the frameIndex is negative, we convert it to a positive index
     frameIndex = frameIndex >= 0 ? frameIndex : frameIndex + numFrames.value();
@@ -709,7 +709,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
 
   // Note that if we do not have the number of frames available in our
   // metadata, then we assume that the upper part of the range is valid.
-  std::optional<int64_t> numFrames = getNumFrames(streamMetadata);
+  std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
   if (numFrames.has_value()) {
     TORCH_CHECK(
         stop <= numFrames.value(),
@@ -783,8 +783,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
 
-  double minSeconds = getMinSeconds(streamMetadata);
-  std::optional<double> maxSeconds = getMaxSeconds(streamMetadata);
+  double minSeconds = streamMetadata.getBeginStreamSeconds(seekMode_);
+  std::optional<double> maxSeconds =
+      streamMetadata.getEndStreamSeconds(seekMode_);
 
   // The frame played at timestamp t and the one played at timestamp `t +
   // eps` are probably the same frame, with the same index. The easiest way to
@@ -861,7 +862,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     return frameBatchOutput;
   }
 
-  double minSeconds = getMinSeconds(streamMetadata);
+  double minSeconds = streamMetadata.getBeginStreamSeconds(seekMode_);
   TORCH_CHECK(
       startSeconds >= minSeconds,
       "Start seconds is " + std::to_string(startSeconds) +
@@ -870,7 +871,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
 
   // Note that if we can't determine the maximum seconds from the metadata,
   // then we assume upper range is valid.
-  std::optional<double> maxSeconds = getMaxSeconds(streamMetadata);
+  std::optional<double> maxSeconds =
+      streamMetadata.getEndStreamSeconds(seekMode_);
   if (maxSeconds.has_value()) {
     TORCH_CHECK(
         startSeconds < maxSeconds.value(),
@@ -1443,21 +1445,6 @@ int64_t SingleStreamDecoder::getPts(int64_t frameIndex) {
 // STREAM AND METADATA APIS
 // --------------------------------------------------------------------------
 
-std::optional<int64_t> SingleStreamDecoder::getNumFrames(
-    const StreamMetadata& streamMetadata) {
-  return streamMetadata.getNumFrames(seekMode_);
-}
-
-double SingleStreamDecoder::getMinSeconds(
-    const StreamMetadata& streamMetadata) {
-  return streamMetadata.getBeginStreamSeconds(seekMode_);
-}
-
-std::optional<double> SingleStreamDecoder::getMaxSeconds(
-    const StreamMetadata& streamMetadata) {
-  return streamMetadata.getEndStreamSeconds(seekMode_);
-}
-
 // --------------------------------------------------------------------------
 // VALIDATION UTILS
 // --------------------------------------------------------------------------
@@ -1507,7 +1494,7 @@ void SingleStreamDecoder::validateFrameIndex(
 
   // Note that if we do not have the number of frames available in our
   // metadata, then we assume that the frameIndex is valid.
-  std::optional<int64_t> numFrames = getNumFrames(streamMetadata);
+  std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
   if (numFrames.has_value()) {
     if (frameIndex >= numFrames.value()) {
       throw std::out_of_range(
