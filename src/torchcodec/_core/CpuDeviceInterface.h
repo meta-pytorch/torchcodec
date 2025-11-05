@@ -93,19 +93,13 @@ class CpuDeviceInterface : public DeviceInterface {
   // initialization, we convert the user-supplied transforms into this string of
   // filters.
   //
-  // Note that we start with just the format conversion, and then we ensure that
-  // the user-supplied filters always happen AFTER the format conversion. We
-  // want the user-supplied filters to operate on frames in the output pixel
-  // format and colorspace.
+  // Note that if there are no user-supplied transforms, then the default filter
+  // we use is the copy filter, which is just an identity: it emits the output
+  // frame unchanged. We supply such a filter because we can't supply just the
+  // empty-string; we must supply SOME filter.
   //
-  // We apply the transforms on the output pixel format and colorspace because
-  // then decoder-native transforms are as close as possible to returning
-  // untransformed frames and applying TochVision transforms to them.
-  //
-  // We ensure that the transforms happen on the output pixel format and
-  // colorspace by making sure all of the user-supplied filters happen AFTER
-  // an explicit format conversion.
-  std::string filters_ = "format=rgb24";
+  // See also [Tranform and Format Conversion Order] for more on filters.
+  std::string filters_ = "copy";
 
   // Values set during initialization and referred to in
   // getColorConversionLibrary().

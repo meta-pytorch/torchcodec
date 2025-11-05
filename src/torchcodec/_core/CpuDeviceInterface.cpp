@@ -69,10 +69,18 @@ void CpuDeviceInterface::initializeVideo(
     first = false;
   }
   if (!transforms.empty()) {
-    // Note that we ensure that the transforms come AFTER the format conversion.
-    // This means that the transforms are applied in the output pixel format and
-    // colorspace.
-    filters_ += "," + filters.str();
+    // Note [Transform and Format Conversion Order]
+    // We have to ensure that all user filters happen AFTER the explicit format
+    // conversion. That is, we want the filters to be applied in RGB24, not the
+    // pixel format of the input frame.
+    //
+    // The ouput frame will always be in RGB24, as we specify the sink node with
+    // AV_PIX_FORMAT_RGB24. Filtergraph will automatically insert a filter
+    // conversion to ensure the output frame matches the pixel format
+    // specified in the sink. But by default, it will insert it after the user
+    // filters. We need an explicit format conversion to get the behavior we
+    // want.
+    filters_ = "format=rgb24," + filters.str();
   }
 
   initialized_ = true;
@@ -233,9 +241,14 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
     swsContext_ = createSwsContext(
         swsFrameContext,
         avFrame->colorspace,
+
+        // See [Transform and Format Conversion Order] for more on the output
+        // pixel format.
         /*outputFormat=*/AV_PIX_FMT_RGB24,
-        /*swsFlags=*/0); // We don't set any flags because we don't yet use
-                         // sws_scale() for resizing.
+
+        // We don't set any flags because we don't yet use sw_scale() for
+        // resizing.
+        /*swsFlags=*/0);
     prevSwsFrameContext_ = swsFrameContext;
   }
 
