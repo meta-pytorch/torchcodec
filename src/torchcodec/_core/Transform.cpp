@@ -4,9 +4,9 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include "src/torchcodec/_core/Transform.h"
+#include "Transform.h"
 #include <torch/types.h>
-#include "src/torchcodec/_core/FFMPEGCommon.h"
+#include "FFMPEGCommon.h"
 
 namespace facebook::torchcodec {
 
@@ -25,18 +25,6 @@ std::string toFilterGraphInterpolation(
   }
 }
 
-int toSwsInterpolation(ResizeTransform::InterpolationMode mode) {
-  switch (mode) {
-    case ResizeTransform::InterpolationMode::BILINEAR:
-      return SWS_BILINEAR;
-    default:
-      TORCH_CHECK(
-          false,
-          "Unknown interpolation mode: " +
-              std::to_string(static_cast<int>(mode)));
-  }
-}
-
 } // namespace
 
 std::string ResizeTransform::getFilterGraphCpu() const {
@@ -47,14 +35,6 @@ std::string ResizeTransform::getFilterGraphCpu() const {
 
 std::optional<FrameDims> ResizeTransform::getOutputFrameDims() const {
   return outputDims_;
-}
-
-bool ResizeTransform::isResize() const {
-  return true;
-}
-
-int ResizeTransform::getSwsFlags() const {
-  return toSwsInterpolation(interpolationMode_);
 }
 
 CropTransform::CropTransform(const FrameDims& dims, int x, int y)

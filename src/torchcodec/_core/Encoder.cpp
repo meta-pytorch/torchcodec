@@ -1,7 +1,7 @@
 #include <sstream>
 
-#include "src/torchcodec/_core/AVIOTensorContext.h"
-#include "src/torchcodec/_core/Encoder.h"
+#include "AVIOTensorContext.h"
+#include "Encoder.h"
 #include "torch/types.h"
 
 namespace facebook::torchcodec {
@@ -531,7 +531,6 @@ torch::Tensor validateFrames(const torch::Tensor& frames) {
       frames.sizes()[1] == 3,
       "frame must have 3 channels (R, G, B), got ",
       frames.sizes()[1]);
-  // TODO-VideoEncoder: Investigate if non-contiguous frames can be accepted
   return frames.contiguous();
 }
 

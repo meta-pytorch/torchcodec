@@ -20,61 +20,23 @@ from torchcodec._core import (
     create_from_file,
     get_frame_at_index,
     get_json_metadata,
-    get_next_frame,
 )
 from torchcodec.decoders import VideoDecoder
 
 from torchvision.transforms import v2
 
-from .utils import assert_frames_equal, NASA_VIDEO, needs_cuda, psnr
-
-torch._dynamo.config.capture_dynamic_output_shape_ops = True
+from .utils import (
+    assert_frames_equal,
+    assert_tensor_close_on_at_least,
+    AV1_VIDEO,
+    H265_VIDEO,
+    NASA_VIDEO,
+    needs_cuda,
+    TEST_SRC_2_720P,
+)
 
 
 class TestPublicVideoDecoderTransformOps:
-    @pytest.mark.parametrize(
-        "height_scaling_factor, width_scaling_factor",
-        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0)),
-    )
-    def test_resize_torchvision(self, height_scaling_factor, width_scaling_factor):
-        height = int(NASA_VIDEO.get_height() * height_scaling_factor)
-        width = int(NASA_VIDEO.get_width() * width_scaling_factor)
-
-        decoder_resize = VideoDecoder(
-            NASA_VIDEO.path, transforms=[v2.Resize(size=(height, width))]
-        )
-        decoder_full = VideoDecoder(NASA_VIDEO.path)
-        for frame_index in [0, 10, 17, 100, 230, 389]:
-            expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
-            frame_resize = decoder_resize[frame_index]
-
-            frame_full = decoder_full[frame_index]
-            frame_tv = v2.functional.resize(frame_full, size=(height, width))
-
-            assert frame_resize.shape == expected_shape
-            assert frame_tv.shape == expected_shape
-
-            # Copied from PR #992; not sure if it's the best way to check
-            assert psnr(frame_resize, frame_tv) > 25
-
-    def test_resize_ffmpeg(self):
-        height = 135
-        width = 240
-        expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
-        resize_filtergraph = f"scale={width}:{height}:flags=bilinear"
-        decoder_resize = VideoDecoder(
-            NASA_VIDEO.path, transforms=[v2.Resize(size=(height, width))]
-        )
-        for frame_index in [17, 230, 389]:
-            frame_resize = decoder_resize[frame_index]
-            frame_ref = NASA_VIDEO.get_frame_data_by_index(
-                frame_index, filters=resize_filtergraph
-            )
-
-            assert frame_resize.shape == expected_shape
-            assert frame_ref.shape == expected_shape
-            assert_frames_equal(frame_resize, frame_ref)
-
     def test_resize_fails(self):
         with pytest.raises(
             ValueError,
@@ -91,56 +53,51 @@ class TestPublicVideoDecoderTransformOps:
 
 
 class TestCoreVideoDecoderTransformOps:
-    # We choose arbitrary values for width and height scaling to get better
-    # test coverage. Some pairs upscale the image while others downscale it.
-    @pytest.mark.parametrize(
-        "width_scaling_factor,height_scaling_factor",
-        ((1.31, 1.5), (0.71, 0.5), (1.31, 0.7), (0.71, 1.5), (1.0, 1.0)),
-    )
-    @pytest.mark.parametrize("input_video", [NASA_VIDEO])
-    def test_color_conversion_library_with_scaling(
-        self, input_video, width_scaling_factor, height_scaling_factor
-    ):
-        decoder = create_from_file(str(input_video.path))
+    def get_num_frames_core_ops(self, video):
+        decoder = create_from_file(str(video.path))
         add_video_stream(decoder)
         metadata = get_json_metadata(decoder)
         metadata_dict = json.loads(metadata)
-        assert metadata_dict["width"] == input_video.width
-        assert metadata_dict["height"] == input_video.height
+        num_frames = metadata_dict["numFramesFromHeader"]
+        assert num_frames is not None
+        return num_frames
 
-        target_height = int(input_video.height * height_scaling_factor)
-        target_width = int(input_video.width * width_scaling_factor)
-        if width_scaling_factor != 1.0:
-            assert target_width != input_video.width
-        if height_scaling_factor != 1.0:
-            assert target_height != input_video.height
+    @pytest.mark.parametrize("video", [NASA_VIDEO, H265_VIDEO, AV1_VIDEO])
+    def test_color_conversion_library(self, video):
+        num_frames = self.get_num_frames_core_ops(video)
 
-        filtergraph_decoder = create_from_file(str(input_video.path))
+        filtergraph_decoder = create_from_file(str(video.path))
         _add_video_stream(
             filtergraph_decoder,
-            transform_specs=f"resize, {target_height}, {target_width}",
             color_conversion_library="filtergraph",
         )
-        filtergraph_frame0, _, _ = get_next_frame(filtergraph_decoder)
 
-        swscale_decoder = create_from_file(str(input_video.path))
+        swscale_decoder = create_from_file(str(video.path))
         _add_video_stream(
             swscale_decoder,
-            transform_specs=f"resize, {target_height}, {target_width}",
             color_conversion_library="swscale",
         )
-        swscale_frame0, _, _ = get_next_frame(swscale_decoder)
-        assert_frames_equal(filtergraph_frame0, swscale_frame0)
-        assert filtergraph_frame0.shape == (3, target_height, target_width)
 
-    @pytest.mark.parametrize(
-        "width_scaling_factor,height_scaling_factor",
-        ((1.31, 1.5), (0.71, 0.5), (1.31, 0.7), (0.71, 1.5), (1.0, 1.0)),
-    )
+        for frame_index in [
+            0,
+            int(num_frames * 0.25),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            num_frames - 1,
+        ]:
+            filtergraph_frame, *_ = get_frame_at_index(
+                filtergraph_decoder, frame_index=frame_index
+            )
+            swscale_frame, *_ = get_frame_at_index(
+                swscale_decoder, frame_index=frame_index
+            )
+
+            assert_frames_equal(filtergraph_frame, swscale_frame)
+
     @pytest.mark.parametrize("width", [30, 32, 300])
     @pytest.mark.parametrize("height", [128])
     def test_color_conversion_library_with_generated_videos(
-        self, tmp_path, width, height, width_scaling_factor, height_scaling_factor
+        self, tmp_path, width, height
     ):
         # We consider filtergraph to be the reference color conversion library.
         # However the video decoder sometimes uses swscale as that is faster.
@@ -189,27 +146,22 @@ class TestCoreVideoDecoderTransformOps:
         assert metadata_dict["width"] == width
         assert metadata_dict["height"] == height
 
-        target_height = int(height * height_scaling_factor)
-        target_width = int(width * width_scaling_factor)
-        if width_scaling_factor != 1.0:
-            assert target_width != width
-        if height_scaling_factor != 1.0:
-            assert target_height != height
+        num_frames = metadata_dict["numFramesFromHeader"]
+        assert num_frames is not None and num_frames == 1
 
         filtergraph_decoder = create_from_file(str(video_path))
         _add_video_stream(
             filtergraph_decoder,
-            transform_specs=f"resize, {target_height}, {target_width}",
             color_conversion_library="filtergraph",
         )
-        filtergraph_frame0, _, _ = get_next_frame(filtergraph_decoder)
 
         auto_decoder = create_from_file(str(video_path))
         add_video_stream(
             auto_decoder,
-            transform_specs=f"resize, {target_height}, {target_width}",
         )
-        auto_frame0, _, _ = get_next_frame(auto_decoder)
+
+        filtergraph_frame0, *_ = get_frame_at_index(filtergraph_decoder, frame_index=0)
+        auto_frame0, *_ = get_frame_at_index(auto_decoder, frame_index=0)
         assert_frames_equal(filtergraph_frame0, auto_frame0)
 
     @needs_cuda
@@ -234,6 +186,90 @@ class TestCoreVideoDecoderTransformOps:
             match="Invalid transform name",
         ):
             add_video_stream(decoder, transform_specs="invalid, 1, 2")
+
+    @pytest.mark.parametrize(
+        "height_scaling_factor, width_scaling_factor",
+        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
+    )
+    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
+    def test_resize_torchvision(
+        self, video, height_scaling_factor, width_scaling_factor
+    ):
+        num_frames = self.get_num_frames_core_ops(video)
+
+        height = int(video.get_height() * height_scaling_factor)
+        width = int(video.get_width() * width_scaling_factor)
+        resize_spec = f"resize, {height}, {width}"
+
+        decoder_resize = create_from_file(str(video.path))
+        add_video_stream(decoder_resize, transform_specs=resize_spec)
+
+        decoder_full = create_from_file(str(video.path))
+        add_video_stream(decoder_full)
+
+        for frame_index in [
+            0,
+            int(num_frames * 0.1),
+            int(num_frames * 0.2),
+            int(num_frames * 0.3),
+            int(num_frames * 0.4),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            int(num_frames * 0.90),
+            num_frames - 1,
+        ]:
+            expected_shape = (video.get_num_color_channels(), height, width)
+            frame_resize, *_ = get_frame_at_index(
+                decoder_resize, frame_index=frame_index
+            )
+
+            frame_full, *_ = get_frame_at_index(decoder_full, frame_index=frame_index)
+            frame_tv = v2.functional.resize(frame_full, size=(height, width))
+            frame_tv_no_antialias = v2.functional.resize(
+                frame_full, size=(height, width), antialias=False
+            )
+
+            assert frame_resize.shape == expected_shape
+            assert frame_tv.shape == expected_shape
+            assert frame_tv_no_antialias.shape == expected_shape
+
+            assert_tensor_close_on_at_least(
+                frame_resize, frame_tv, percentage=99.8, atol=1
+            )
+            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=6)
+
+            if height_scaling_factor < 1 or width_scaling_factor < 1:
+                # Antialias only relevant when down-scaling!
+                with pytest.raises(AssertionError, match="Expected at least"):
+                    assert_tensor_close_on_at_least(
+                        frame_resize, frame_tv_no_antialias, percentage=99, atol=1
+                    )
+                with pytest.raises(AssertionError, match="Tensor-likes are not close"):
+                    torch.testing.assert_close(
+                        frame_resize, frame_tv_no_antialias, rtol=0, atol=6
+                    )
+
+    def test_resize_ffmpeg(self):
+        height = 135
+        width = 240
+        expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
+        resize_spec = f"resize, {height}, {width}"
+        resize_filtergraph = f"scale={width}:{height}:flags=bilinear"
+
+        decoder_resize = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_resize, transform_specs=resize_spec)
+
+        for frame_index in [17, 230, 389]:
+            frame_resize, *_ = get_frame_at_index(
+                decoder_resize, frame_index=frame_index
+            )
+            frame_ref = NASA_VIDEO.get_frame_data_by_index(
+                frame_index, filters=resize_filtergraph
+            )
+
+            assert frame_resize.shape == expected_shape
+            assert frame_ref.shape == expected_shape
+            assert_frames_equal(frame_resize, frame_ref)
 
     def test_resize_transform_fails(self):
         decoder = create_from_file(str(NASA_VIDEO.path))
@@ -284,7 +320,7 @@ class TestCoreVideoDecoderTransformOps:
         add_video_stream(decoder_full)
 
         for frame_index in [0, 15, 200, 389]:
-            frame, *_ = get_frame_at_index(decoder_crop, frame_index=frame_index)
+            frame_crop, *_ = get_frame_at_index(decoder_crop, frame_index=frame_index)
             frame_ref = NASA_VIDEO.get_frame_data_by_index(
                 frame_index, filters=crop_filtergraph
             )
@@ -294,12 +330,12 @@ class TestCoreVideoDecoderTransformOps:
                 frame_full, top=y, left=x, height=height, width=width
             )
 
-            assert frame.shape == expected_shape
+            assert frame_crop.shape == expected_shape
             assert frame_ref.shape == expected_shape
             assert frame_tv.shape == expected_shape
 
-            assert_frames_equal(frame, frame_tv)
-            assert_frames_equal(frame, frame_ref)
+            assert_frames_equal(frame_crop, frame_ref)
+            assert_frames_equal(frame_crop, frame_tv)
 
     def test_crop_transform_fails(self):
 

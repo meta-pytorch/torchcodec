@@ -8,8 +8,8 @@
 
 #include <optional>
 #include <string>
-#include "src/torchcodec/_core/Frame.h"
-#include "src/torchcodec/_core/Metadata.h"
+#include "Frame.h"
+#include "Metadata.h"
 
 namespace facebook::torchcodec {
 
@@ -27,12 +27,6 @@ class Transform {
   // must override this member function and return the output frame dimensions.
   virtual std::optional<FrameDims> getOutputFrameDims() const {
     return std::nullopt;
-  }
-
-  // The ResizeTransform is special, because it is the only transform that
-  // swscale can handle.
-  virtual bool isResize() const {
-    return false;
   }
 
   // The validity of some transforms depends on the characteristics of the
@@ -58,9 +52,6 @@ class ResizeTransform : public Transform {
 
   std::string getFilterGraphCpu() const override;
   std::optional<FrameDims> getOutputFrameDims() const override;
-  bool isResize() const override;
-
-  int getSwsFlags() const;
 
  private:
   FrameDims outputDims_;
