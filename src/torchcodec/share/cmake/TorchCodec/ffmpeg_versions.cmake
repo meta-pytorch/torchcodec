@@ -199,6 +199,10 @@ else()
     )
 endif()
 
+# Create and expose torchcodec::ffmpeg${ffmpeg_major_version} target which can
+# then be used as a dependency in other targets.
+# prefix must be the path to the FFmpeg installation containing the usual
+# `include` and `lib` directories.
 function(add_ffmpeg_target ffmpeg_major_version prefix)
     # Check that given ffmpeg major version is something we support and error out if
     # it's not.
@@ -211,24 +215,24 @@ function(add_ffmpeg_target ffmpeg_major_version prefix)
     endif()
 
     set(target "torchcodec::ffmpeg${ffmpeg_major_version}")
-    set(incdir "${prefix}/include")
+    set(include_dir "${prefix}/include")
     if (LINUX OR APPLE)
-        set(libdir "${prefix}/lib")
+        set(lib_dir "${prefix}/lib")
     elseif (WIN32)
-        set(libdir "${prefix}/bin")
+        set(lib_dir "${prefix}/bin")
     else()
         message(FATAL_ERROR "Unsupported operating system: ${CMAKE_SYSTEM_NAME}")
     endif()
 
     list(
         TRANSFORM f${ffmpeg_major_version}_library_file_names
-        PREPEND ${libdir}/
+        PREPEND ${lib_dir}/
         OUTPUT_VARIABLE lib_paths
     )
 
     message("Adding ${target} target")
     # Verify that ffmpeg includes and libraries actually exist.
-    foreach (path IN LISTS incdir lib_paths)
+    foreach (path IN LISTS include_dir lib_paths)
         if (NOT EXISTS "${path}")
             message(FATAL_ERROR "${path} does not exist")
         endif()
@@ -236,7 +240,7 @@ function(add_ffmpeg_target ffmpeg_major_version prefix)
 
     # Actually define the target
     add_library(${target} INTERFACE IMPORTED)
-    target_include_directories(${target} INTERFACE ${incdir})
+    target_include_directories(${target} INTERFACE ${include_dir})
     target_link_libraries(${target} INTERFACE ${lib_paths})
 endfunction()
 
