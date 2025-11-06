@@ -9,12 +9,6 @@ endif()
 
 include(FetchContent)
 
-if (UNIX AND NOT APPLE)
-    set(LINUX TRUE)
-else()
-    set(LINUX FALSE)
-endif()
-
 set(
     base_url
     https://pytorch.s3.amazonaws.com/torchcodec/ffmpeg/2025-03-14
@@ -136,6 +130,7 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(f4 f5 f6 f7 f8)
 
+# makes add_ffmpeg_target available
 include("${CMAKE_CURRENT_SOURCE_DIR}/../share/cmake/TorchCodec/ffmpeg_versions.cmake")
 
 # Note: the f?_SOURCE_DIR variables were set by FetchContent_MakeAvailable

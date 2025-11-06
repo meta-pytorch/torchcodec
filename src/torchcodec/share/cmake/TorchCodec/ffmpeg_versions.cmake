@@ -39,7 +39,7 @@ set(TORCHCODEC_SUPPORTED_FFMPEG_VERSIONS "4;5;6;7;8")
 
 # Below we define FFmpeg library names we expect to have for each FFmpeg
 # major version on each platform we support.
-if (UNIX AND NOT APPLE)
+if (LINUX)
     set(
        f4_library_file_names
        libavutil.so.56
@@ -212,7 +212,7 @@ function(add_ffmpeg_target ffmpeg_major_version prefix)
 
     set(target "torchcodec::ffmpeg${ffmpeg_major_version}")
     set(incdir "${prefix}/include")
-    if (UNIX OR APPLE)
+    if (LINUX OR APPLE)
         set(libdir "${prefix}/lib")
     elseif (WIN32)
         set(libdir "${prefix}/bin")
