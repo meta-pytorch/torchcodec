@@ -80,9 +80,6 @@ std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
           numFramesFromContent.has_value(), "Missing numFramesFromContent");
       return numFramesFromContent.value();
     case SeekMode::approximate: {
-      if (numFramesFromContent.has_value()) {
-        return numFramesFromContent.value();
-      }
       if (numFramesFromHeader.has_value()) {
         return numFramesFromHeader.value();
       }

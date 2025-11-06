@@ -801,9 +801,17 @@ std::string get_stream_json_metadata(
 
   std::map<std::string, std::string> map;
 
-  if ((seekMode == SeekMode::custom_frame_mappings &&
-       stream_index == activeStreamIndex) ||
-      (seekMode != SeekMode::custom_frame_mappings)) {
+  // Check whether content-based metadata is available for this stream.
+  // In exact mode: content-based metadata exists for all streams.
+  // In approximate mode: content-based metadata does not exist for any stream.
+  // In custom_frame_mappings: content-based metadata exists only for the active
+  // stream.
+  // Our fallback logic assumes content-based metadata is available.
+  // It is available for decoding on the active stream, but would break
+  // when getting metadata from non-active streams.
+  if ((seekMode != SeekMode::custom_frame_mappings) ||
+      (seekMode == SeekMode::custom_frame_mappings &&
+       stream_index == activeStreamIndex)) {
     if (streamMetadata.durationSecondsFromHeader.has_value()) {
       map["durationSecondsFromHeader"] =
           std::to_string(*streamMetadata.durationSecondsFromHeader);
