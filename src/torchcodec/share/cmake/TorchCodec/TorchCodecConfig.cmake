@@ -5,15 +5,17 @@
 #
 # This will define the following variables:
 #
-#   TORCHCODEC_FOUND        -- True if the system has the TorchCodec library
-#   TORCHCODEC_VARIANTS     -- List of TorchCodec variants
+#   TORCHCODEC_FOUND: True if the system has the TorchCodec library
+#   TORCHCODEC_VARIANTS: list of TorchCodec variants. A variant is a supprorted
+#   FFmpeg major version.
 #
 # and the following imported targets:
 #
 #   torchcodec::ffmpeg${N}
 #   torchcodec::core${N}
 #
-# where N is a TorchCodec variant from TORCHCODEC_VARIANTS list.
+# where N is a TorchCodec variant (FFmpeg major version) from
+# TORCHCODEC_VARIANTS list.
 
 include(FindPackageHandleStandardArgs)
 include("${CMAKE_CURRENT_LIST_DIR}/ffmpeg_versions.cmake")
