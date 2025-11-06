@@ -1296,7 +1296,7 @@ FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
       getDuration(avFrame),
       formatContext_->streams[activeStreamIndex_]->time_base);
   deviceInterface_->convertAVFrameToFrameOutput(
-      avFrame, frameOutput, preAllocatedOutputTensor);
+      avFrame, frameOutput, std::move(preAllocatedOutputTensor));
   return frameOutput;
 }
 
