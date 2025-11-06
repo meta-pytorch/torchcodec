@@ -4,6 +4,10 @@
 #include "Encoder.h"
 #include "torch/types.h"
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 namespace facebook::torchcodec {
 
 namespace {
@@ -635,15 +639,21 @@ void VideoEncoder::initializeEncoder(
   outWidth_ = inWidth_;
   outHeight_ = inHeight_;
 
-  // TODO-VideoEncoder: Enable other pixel formats
-  // Let FFmpeg choose best pixel format to minimize loss
-  outPixelFormat_ = avcodec_find_best_pix_fmt_of_list(
-      getSupportedPixelFormats(*avCodec), // List of supported formats
-      AV_PIX_FMT_GBRP, // We reorder input to GBRP currently
-      0, // No alpha channel
-      nullptr // Discard conversion loss information
-  );
-  TORCH_CHECK(outPixelFormat_ != -1, "Failed to find best pix fmt")
+  if (videoStreamOptions.pixelFormat.has_value()) {
+    outPixelFormat_ =
+        av_get_pix_fmt(videoStreamOptions.pixelFormat.value().c_str());
+    TORCH_CHECK(
+        outPixelFormat_ != AV_PIX_FMT_NONE,
+        "Unknown pixel format: ",
+        videoStreamOptions.pixelFormat.value());
+  } else {
+    const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
+    // If pixel formats are undefined for some reason, try a broadly supported
+    // default.
+    outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
+        ? formats[0]
+        : AV_PIX_FMT_YUV420P;
+  }
 
   // Configure codec parameters
   avCodecContext_->codec_id = avCodec->id;

@@ -1162,21 +1162,14 @@ class TestVideoEncoderOps:
     def test_video_encoder_round_trip(self, tmp_path, format, method):
         # Test that decode(encode(decode(frames))) == decode(frames)
         ffmpeg_version = get_ffmpeg_major_version()
-        # In FFmpeg6, the default codec's best pixel format is lossy for all container formats but webm.
-        # As a result, we skip the round trip test.
-        if ffmpeg_version == 6 and format != "webm":
-            pytest.skip(
-                f"FFmpeg6 defaults to lossy encoding for {format}, skipping round-trip test."
-            )
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
         source_frames = self.decode(TEST_SRC_2_720P.path).data
 
-        params = dict(
-            frame_rate=30, crf=0
-        )  # Frame rate is fixed with num frames decoded
+        # Frame rate is fixed with num frames decoded
+        params = dict(frame_rate=30, pixel_format="yuv444p", crf=0)
         if method == "to_file":
             encoded_path = str(tmp_path / f"encoder_output.{format}")
             encode_video_to_file(
@@ -1274,16 +1267,18 @@ class TestVideoEncoderOps:
             "avi",
             "mkv",
             "flv",
-            "gif",
             pytest.param("webm", marks=pytest.mark.slow),
         ),
     )
-    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
+    @pytest.mark.parametrize("pixel_format", ("yuv444p", "yuv420p"))
+    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format, pixel_format):
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+        if format in ("avi", "flv") and pixel_format == "yuv444p":
+            pytest.skip(f"Default codec for {format} does not support {pixel_format}")
 
         source_frames = self.decode(TEST_SRC_2_720P.path).data
 
@@ -1303,13 +1298,15 @@ class TestVideoEncoderOps:
             "-f",
             "rawvideo",
             "-pix_fmt",
-            "rgb24",
+            "rgb24",  # Input format
             "-s",
             f"{source_frames.shape[3]}x{source_frames.shape[2]}",
             "-r",
             str(frame_rate),
             "-i",
             temp_raw_path,
+            "-pix_fmt",
+            pixel_format,  # Output format
             "-crf",
             str(crf),
             ffmpeg_encoded_path,
@@ -1322,6 +1319,7 @@ class TestVideoEncoderOps:
             frames=source_frames,
             frame_rate=frame_rate,
             filename=encoder_output_path,
+            pixel_format=pixel_format,
             crf=crf,
         )
 
@@ -1362,7 +1360,12 @@ class TestVideoEncoderOps:
         source_frames = self.decode(TEST_SRC_2_720P.path).data
         file_like = CustomFileObject()
         encode_video_to_file_like(
-            source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
+            source_frames,
+            frame_rate=30,
+            pixel_format="yuv444p",
+            crf=0,
+            format="mp4",
+            file_like=file_like,
         )
         decoded_samples = self.decode(file_like.get_encoded_data())
 
@@ -1380,7 +1383,12 @@ class TestVideoEncoderOps:
 
         with open(file_path, "wb") as file_like:
             encode_video_to_file_like(
-                source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
+                source_frames,
+                frame_rate=30,
+                pixel_format="yuv444p",
+                crf=0,
+                format="mp4",
+                file_like=file_like,
             )
         decoded_samples = self.decode(str(file_path))
 
