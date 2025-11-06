@@ -1,40 +1,8 @@
-# TorchCodec supports 2 building scenarios in the respect to compatibility with
-# FFmpeg:
-#
-# * Building against single FFmpeg version. In this case FFmpeg libraries can
-#   be detected by standard pkg-config approach.
-# * Building against multiple FFmpeg versions at once. In this case the goal is
-#   to build few shared libraries each compatible with specific FFmpeg version.
-#   At runtime TochCodec will check current environment and select compatible
-#   build of the shared library.
-#
-# This file contains helper definitions and functions to expose CMake FFmpeg
-# targets for both scenarios described above. File defines:
-#
-# `TORCHCODEC_SUPPORTED_FFMPEG_VERSIONS`
-#   CMake list of all FFmpeg major versions supported by TorchCodec. Note that
-#   this is a list of FFmpeg versions known to TorchCodec rather than a list
-#   of FFmpeg versions available on the current system.
-#
-# `add_ffmpeg_target(ffmpeg_major_version prefix)`
-#   * ffmpeg_major_version - FFmpeg major version for which CMake target needs
-#     to be defined
-#   * prefix - Path to the FFmpeg installation folder
-#
-#   This function checks that required FFmpeg objects (includes and libraries)
-#   are actually available and defines the following target:
-#   * `torchcodec::ffmpeg{$ffmpeg_major_version}`
-#
-# `add_ffmpeg_target_with_pkg_config(ret_ffmpeg_major_version_var)`
-#   * `ret_ffmpeg_major_version_var` - parent scope variable where function
-#     will return major version of ffmpeg which was found
-#
-#   This function searches for the FFmpeg with pkg-config and defines the
-#   following target:
-#   * `torchcodec::ffmpeg{$ffmpeg_major_version}`
-#   where `$ffmpeg_major_version` as major version of the detected FFmpeg.
+# This file exposes helpers to create and expose FFmpeg targets as torchcodec::ffmpeg${N}
+# where N is the FFmpeg major version.
 
-# All FFmpeg major versions supported by TorchCodec.
+#  List of FFmpeg versions that TorchCodec can support - that's not a list of
+#  FFmpeg versions available on the current system!
 set(TORCHCODEC_SUPPORTED_FFMPEG_VERSIONS "4;5;6;7;8")
 
 # Below we define FFmpeg library names we expect to have for each FFmpeg
@@ -201,8 +169,8 @@ endif()
 
 # Create and expose torchcodec::ffmpeg${ffmpeg_major_version} target which can
 # then be used as a dependency in other targets.
-# prefix must be the path to the FFmpeg installation containing the usual
-# `include` and `lib` directories.
+# prefix is the path to the FFmpeg installation containing the usual `include`
+# and `lib` directories.
 function(add_ffmpeg_target ffmpeg_major_version prefix)
     # Check that given ffmpeg major version is something we support and error out if
     # it's not.
@@ -244,6 +212,9 @@ function(add_ffmpeg_target ffmpeg_major_version prefix)
     target_link_libraries(${target} INTERFACE ${lib_paths})
 endfunction()
 
+# Create and expose torchcodec::ffmpeg${ffmpeg_major_version} target which can
+# then be used as a dependency in other targets.
+# The FFmpeg installation is found by pkg-config.
 function(add_ffmpeg_target_with_pkg_config ret_ffmpeg_major_version_var)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(TORCHCODEC_LIBAV REQUIRED IMPORTED_TARGET
@@ -257,6 +228,7 @@ function(add_ffmpeg_target_with_pkg_config ret_ffmpeg_major_version_var)
     )
 
     # Split libavcodec's version string by '.' and convert it to a list
+    # The TORCHCODEC_LIBAV_libavcodec_VERSION is made available by pkg-config.
     string(REPLACE "." ";" libavcodec_version_list ${TORCHCODEC_LIBAV_libavcodec_VERSION})
     # Get the first element of the list, which is the major version
     list(GET libavcodec_version_list 0 libavcodec_major_version)
