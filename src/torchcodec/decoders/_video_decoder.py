@@ -55,7 +55,8 @@ class VideoDecoder:
             decoding which is best if you are running a single instance of ``VideoDecoder``.
             Passing 0 lets FFmpeg decide on the number of threads.
             Default: 1.
-        device (str or torch.device, optional): The device to use for decoding. Default: "cpu".
+        device (str or torch.device, optional): The device to use for decoding.
+            If ``None`` (default), uses the current default device.
             If you pass a CUDA device, we recommend trying the "beta" CUDA
             backend which is faster! See :func:`~torchcodec.decoders.set_cuda_backend`.
         seek_mode (str, optional): Determines if frame access will be "exact" or
@@ -102,7 +103,7 @@ class VideoDecoder:
         stream_index: Optional[int] = None,
         dimension_order: Literal["NCHW", "NHWC"] = "NCHW",
         num_ffmpeg_threads: int = 1,
-        device: Optional[Union[str, torch_device]] = "cpu",
+        device: Optional[Union[str, torch_device]] = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
         custom_frame_mappings: Optional[
             Union[str, bytes, io.RawIOBase, io.BufferedReader]
@@ -143,7 +144,10 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
-        if isinstance(device, torch_device):
+        # Handle device=None by using the current default device
+        if device is None:
+            device = str(torch.get_default_device())
+        elif isinstance(device, torch_device):
             device = str(device)
 
         device_variant = _get_cuda_backend()
