@@ -6,7 +6,7 @@
 # This will define the following variables:
 #
 #   TORCHCODEC_FOUND: True if the system has the TorchCodec library
-#   TORCHCODEC_VARIANTS: list of TorchCodec variants. A variant is a supprorted
+#   TORCHCODEC_VARIANTS: list of TorchCodec variants. A variant is a supported
 #   FFmpeg major version.
 #
 # and the following imported targets:
@@ -35,9 +35,9 @@ function(add_torchcodec_target ffmpeg_major_version)
         message(FATAL_ERROR "torchcodec::ffmpeg${ffmpeg_major_version} target is not defined")
     endif()
 
-    find_library(_LIB_PATH torchcodec_core${ffmpeg_major_version}
+    find_library(lib_path torchcodec_core${ffmpeg_major_version}
         PATHS "${TORCHCODEC_INSTALL_PREFIX}" NO_CACHE NO_DEFAULT_PATH)
-    if (NOT _LIB_PATH)
+    if (NOT lib_path)
         message(FATAL_ERROR "torchcodec_core${ffmpeg_major_version} shared library is missing")
     endif()
 
@@ -46,17 +46,17 @@ function(add_torchcodec_target ffmpeg_major_version)
     add_dependencies(${target} torchcodec::ffmpeg${ffmpeg_major_version})
     set_target_properties(${target} PROPERTIES
       INTERFACE_INCLUDE_DIRECTORIES ${TORCHCODEC_INCLUDE_DIRS}
-      IMPORTED_LOCATION ${_LIB_PATH}
+      IMPORTED_LOCATION ${lib_path}
     )
-    # Removing _LIB_PATH from cache otherwise it won't be updated
-    # on the next call to find_library().
-    unset(_LIB_PATH CACHE)
 
     list(APPEND TORCHCODEC_VARIANTS "${ffmpeg_major_version}")
     set(TORCHCODEC_VARIANTS "${TORCHCODEC_VARIANTS}" PARENT_SCOPE)
 endfunction()
 
-set(USE_PKG_CONFIG TRUE)
+# If any of the TORCHCODEC_FFMPEG${N}_INSTALL_PREFIX environment variables
+# are defined, use them to locate the corresponding FFmpeg and TorchCodec targets.
+# Otherwise, fall back to pkg-config to find FFmpeg.
+set(use_pkg_config TRUE)
 foreach(ffmpeg_major_version IN LISTS TORCHCODEC_SUPPORTED_FFMPEG_VERSIONS)
     if (DEFINED ENV{TORCHCODEC_FFMPEG${ffmpeg_major_version}_INSTALL_PREFIX})
         add_ffmpeg_target(
@@ -64,12 +64,11 @@ foreach(ffmpeg_major_version IN LISTS TORCHCODEC_SUPPORTED_FFMPEG_VERSIONS)
             "$ENV{TORCHCODEC_FFMPEG${ffmpeg_major_version}_INSTALL_PREFIX}"
         )
         add_torchcodec_target(${ffmpeg_major_version})
-        set(USE_PKG_CONFIG FALSE)
+        set(use_pkg_config FALSE)
     endif()
 endforeach()
 
-if (USE_PKG_CONFIG)
-    # We will get major version of ffmpeg in `ffmpeg_major_version` variable
+if (use_pkg_config)
     add_ffmpeg_target_with_pkg_config(ffmpeg_major_version)
     add_torchcodec_target(${ffmpeg_major_version})
 endif()
