@@ -4,14 +4,15 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Sequence
 
 
 @dataclass
 class DecoderNativeTransform(ABC):
     """TODO: docstring"""
+
     @abstractmethod
     def make_params(self) -> str:
         pass

@@ -481,7 +481,9 @@ def _convert_to_decoder_native_transforms(
     return converted_transforms
 
 
-def _make_transform_specs(transforms: Optional[Sequence[DecoderNativeTransform]]) -> str:
+def _make_transform_specs(
+    transforms: Optional[Sequence[DecoderNativeTransform]],
+) -> str:
     if transforms is None:
         return ""
 

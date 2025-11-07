@@ -128,7 +128,6 @@ def generate_nasa_13013_references_crop():
         )
 
 
-
 def generate_nasa_13013_references_resize():
     frames = [17, 230, 389]
     # Note that the resize algorithm passed to flags is exposed to users,
