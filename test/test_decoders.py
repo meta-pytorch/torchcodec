@@ -396,8 +396,8 @@ class TestVideoDecoder:
         ],
     )
     def test_device_none_default_device(self, device_str):
-        # device=None should respect both torch.device() context manager
-        # and torch.set_default_device()
+        # VideoDecoder defaults to device=None, which should respect both
+        # torch.device() context manager and torch.set_default_device().
 
         # Test with context manager
         with torch.device(device_str):

@@ -144,7 +144,6 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
-        # Handle device=None by using the current default device
         if device is None:
             device = str(torch.get_default_device())
         elif isinstance(device, torch_device):
