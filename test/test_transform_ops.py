@@ -37,6 +37,66 @@ from .utils import (
 
 
 class TestPublicVideoDecoderTransformOps:
+    @pytest.mark.parametrize(
+        "height_scaling_factor, width_scaling_factor",
+        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
+    )
+    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
+    def test_resize_torchvision(
+        self, video, height_scaling_factor, width_scaling_factor
+    ):
+        height = int(video.get_height() * height_scaling_factor)
+        width = int(video.get_width() * width_scaling_factor)
+
+        decoder_resize = VideoDecoder(
+            video.path, transforms=[v2.Resize(size=(height, width))]
+        )
+
+        decoder_full = VideoDecoder(video.path)
+
+        num_frames = len(decoder_resize)
+        assert num_frames == len(decoder_full)
+
+        for frame_index in [
+            0,
+            int(num_frames * 0.1),
+            int(num_frames * 0.2),
+            int(num_frames * 0.3),
+            int(num_frames * 0.4),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            int(num_frames * 0.90),
+            num_frames - 1,
+        ]:
+            expected_shape = (video.get_num_color_channels(), height, width)
+            frame_resize = decoder_resize[frame_index]
+            frame_full = decoder_full[frame_index]
+
+            frame_tv = v2.functional.resize(frame_full, size=(height, width))
+            frame_tv_no_antialias = v2.functional.resize(
+                frame_full, size=(height, width), antialias=False
+            )
+
+            assert frame_resize.shape == expected_shape
+            assert frame_tv.shape == expected_shape
+            assert frame_tv_no_antialias.shape == expected_shape
+
+            assert_tensor_close_on_at_least(
+                frame_resize, frame_tv, percentage=99.8, atol=1
+            )
+            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=6)
+
+            if height_scaling_factor < 1 or width_scaling_factor < 1:
+                # Antialias only relevant when down-scaling!
+                with pytest.raises(AssertionError, match="Expected at least"):
+                    assert_tensor_close_on_at_least(
+                        frame_resize, frame_tv_no_antialias, percentage=99, atol=1
+                    )
+                with pytest.raises(AssertionError, match="Tensor-likes are not close"):
+                    torch.testing.assert_close(
+                        frame_resize, frame_tv_no_antialias, rtol=0, atol=6
+                    )
+
     def test_resize_fails(self):
         with pytest.raises(
             ValueError,
@@ -186,68 +246,6 @@ class TestCoreVideoDecoderTransformOps:
             match="Invalid transform name",
         ):
             add_video_stream(decoder, transform_specs="invalid, 1, 2")
-
-    @pytest.mark.parametrize(
-        "height_scaling_factor, width_scaling_factor",
-        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
-    )
-    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
-    def test_resize_torchvision(
-        self, video, height_scaling_factor, width_scaling_factor
-    ):
-        num_frames = self.get_num_frames_core_ops(video)
-
-        height = int(video.get_height() * height_scaling_factor)
-        width = int(video.get_width() * width_scaling_factor)
-        resize_spec = f"resize, {height}, {width}"
-
-        decoder_resize = create_from_file(str(video.path))
-        add_video_stream(decoder_resize, transform_specs=resize_spec)
-
-        decoder_full = create_from_file(str(video.path))
-        add_video_stream(decoder_full)
-
-        for frame_index in [
-            0,
-            int(num_frames * 0.1),
-            int(num_frames * 0.2),
-            int(num_frames * 0.3),
-            int(num_frames * 0.4),
-            int(num_frames * 0.5),
-            int(num_frames * 0.75),
-            int(num_frames * 0.90),
-            num_frames - 1,
-        ]:
-            expected_shape = (video.get_num_color_channels(), height, width)
-            frame_resize, *_ = get_frame_at_index(
-                decoder_resize, frame_index=frame_index
-            )
-
-            frame_full, *_ = get_frame_at_index(decoder_full, frame_index=frame_index)
-            frame_tv = v2.functional.resize(frame_full, size=(height, width))
-            frame_tv_no_antialias = v2.functional.resize(
-                frame_full, size=(height, width), antialias=False
-            )
-
-            assert frame_resize.shape == expected_shape
-            assert frame_tv.shape == expected_shape
-            assert frame_tv_no_antialias.shape == expected_shape
-
-            assert_tensor_close_on_at_least(
-                frame_resize, frame_tv, percentage=99.8, atol=1
-            )
-            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=6)
-
-            if height_scaling_factor < 1 or width_scaling_factor < 1:
-                # Antialias only relevant when down-scaling!
-                with pytest.raises(AssertionError, match="Expected at least"):
-                    assert_tensor_close_on_at_least(
-                        frame_resize, frame_tv_no_antialias, percentage=99, atol=1
-                    )
-                with pytest.raises(AssertionError, match="Tensor-likes are not close"):
-                    torch.testing.assert_close(
-                        frame_resize, frame_tv_no_antialias, rtol=0, atol=6
-                    )
 
     def test_resize_ffmpeg(self):
         height = 135

@@ -8,7 +8,7 @@ import io
 import json
 import numbers
 from pathlib import Path
-from typing import Any, List, Literal, Optional, Tuple, Union
+from typing import Literal, Optional, Sequence, Tuple, Union
 
 import torch
 from torch import device as torch_device, Tensor
@@ -19,6 +19,7 @@ from torchcodec.decoders._decoder_utils import (
     create_decoder,
     ERROR_REPORTING_INSTRUCTIONS,
 )
+from torchcodec.transforms import DecoderNativeTransform, Resize
 
 
 class VideoDecoder:
@@ -103,7 +104,7 @@ class VideoDecoder:
         dimension_order: Literal["NCHW", "NHWC"] = "NCHW",
         num_ffmpeg_threads: int = 1,
         device: Optional[Union[str, torch_device]] = "cpu",
-        transforms: List[Any] = [],  # TRANSFORMS TODO: what is the user-facing type?
+        transforms: Optional[Sequence[DecoderNativeTransform]] = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
         custom_frame_mappings: Optional[
             Union[str, bytes, io.RawIOBase, io.BufferedReader]
@@ -149,7 +150,7 @@ class VideoDecoder:
 
         device_variant = _get_cuda_backend()
 
-        transform_specs = make_transform_specs(transforms)
+        transform_specs = _make_transform_specs(transforms)
 
         core.add_video_stream(
             self._decoder,
@@ -436,20 +437,56 @@ def _get_and_validate_stream_metadata(
     )
 
 
-def make_transform_specs(transforms: List[Any]) -> str:
-    from torchvision.transforms import v2
+# This function, _make_transform_specs, and the transforms argument to
+# VideoDecoder actually accept a union of DecoderNativeTransform and
+# TorchVision transforms. We don't put that in our type annotation because
+# that would require importing torchvision at module scope which would mean we
+# have a hard dependency on torchvision.
+# TODO: better explanation of the above.
+def _convert_to_decoder_native_transforms(
+    transforms: Sequence[DecoderNativeTransform],
+) -> Sequence[DecoderNativeTransform]:
+    try:
+        from torchvision.transforms import v2
 
-    transform_specs = []
+        tv_available = True
+    except ImportError:
+        tv_available = False
+
+    converted_transforms = []
     for transform in transforms:
-        if isinstance(transform, v2.Resize):
-            if len(transform.size) != 2:
+        if not isinstance(transform, DecoderNativeTransform):
+            if not tv_available:
                 raise ValueError(
-                    f"Resize transform must have a (height, width) pair for the size, got {transform.size}."
+                    f"The supplied transform, {transform}, is not a TorchCodec "
+                    " DecoderNativeTransform. TorchCodec also accept TorchVision "
+                    "v2 transforms, but TorchVision is not installed."
                 )
-            transform_specs.append(f"resize, {transform.size[0]}, {transform.size[1]}")
+            if isinstance(transform, v2.Resize):
+                if len(transform.size) != 2:
+                    raise ValueError(
+                        "TorchVision Resize transform must have a (height, width) "
+                        f"pair for the size, got {transform.size}."
+                    )
+                converted_transforms.append(Resize(size=transform.size))
+            else:
+                raise ValueError(
+                    f"Unsupported transform: {transform}. Transforms must be "
+                    "either a TorchCodec DecoderNativeTransform or a TorchVision "
+                    "v2 transform."
+                )
         else:
-            raise ValueError(f"Unsupported transform {transform}.")
-    return ";".join(transform_specs)
+            converted_transforms.append(transform)
+
+    return converted_transforms
+
+
+def _make_transform_specs(transforms: Optional[Sequence[DecoderNativeTransform]]) -> str:
+    if transforms is None:
+        return ""
+
+    transforms = _convert_to_decoder_native_transforms(transforms)
+    return ";".join([t.make_params() for t in transforms])
 
 
 def _read_custom_frame_mappings(
