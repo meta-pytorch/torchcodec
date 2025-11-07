@@ -30,7 +30,8 @@ class Resize(DecoderNativeTransform):
 
     # Also note that this type is more restrictive than what TorchVision
     # accepts, but it accurately reflects current decoder-native transform
-    # limitations.
+    # limitations. We can reflect that not just in our docs, but also type
+    # annotations.
     size: Sequence[int]
 
     def make_params(self) -> str:
