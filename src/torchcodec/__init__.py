@@ -10,7 +10,7 @@ from pathlib import Path
 # but that results in circular import.
 from ._core import core_library_path, ffmpeg_major_version
 from ._frame import AudioSamples, Frame, FrameBatch  # usort:skip # noqa
-from . import decoders, samplers  # noqa
+from . import decoders, encoders, samplers  # noqa
 
 try:
     # Note that version.py is generated during install.

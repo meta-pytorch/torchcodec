@@ -268,11 +268,10 @@ class SingleStreamDecoder {
       UniqueAVFrame& avFrame,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
-  void convertAudioAVFrameToFrameOutputOnCPU(
-      UniqueAVFrame& srcAVFrame,
-      FrameOutput& frameOutput);
-
-  std::optional<torch::Tensor> maybeFlushSwrBuffers();
+  void convertAVFrameToFrameOutputOnCPU(
+      UniqueAVFrame& avFrame,
+      FrameOutput& frameOutput,
+      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
   // --------------------------------------------------------------------------
   // PTS <-> INDEX CONVERSIONS
@@ -346,11 +345,6 @@ class SingleStreamDecoder {
   bool cursorWasJustSet_ = false;
   int64_t lastDecodedAvFramePts_ = 0;
   int64_t lastDecodedAvFrameDuration_ = 0;
-
-  // Audio only. We cache it for performance. The video equivalents live in
-  // deviceInterface_. We store swrContext_ here because we only handle audio
-  // on the CPU.
-  UniqueSwrContext swrContext_;
 
   // Stores various internal decoding stats.
   DecodeStats decodeStats_;
