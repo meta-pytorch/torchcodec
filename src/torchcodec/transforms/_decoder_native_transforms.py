@@ -34,4 +34,5 @@ class Resize(DecoderNativeTransform):
     size: Sequence[int]
 
     def make_params(self) -> str:
+        assert len(self.size) == 2
         return f"resize, {self.size[0]}, {self.size[1]}"
