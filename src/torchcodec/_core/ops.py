@@ -321,8 +321,8 @@ def encode_video_to_file_abstract(
     frames: torch.Tensor,
     frame_rate: int,
     filename: str,
-    crf: Optional[int],
-    pixel_format: Optional[str],
+    crf: Optional[int] = None,
+    pixel_format: Optional[str] = None,
 ) -> None:
     return
 
@@ -332,8 +332,8 @@ def encode_video_to_tensor_abstract(
     frames: torch.Tensor,
     frame_rate: int,
     format: str,
-    crf: Optional[int],
-    pixel_format: Optional[str],
+    crf: Optional[int] = None,
+    pixel_format: Optional[str] = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
