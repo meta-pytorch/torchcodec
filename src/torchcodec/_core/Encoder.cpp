@@ -674,7 +674,9 @@ void VideoEncoder::initializeEncoder(
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
     const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
-    // Use first listed pixel format as default.
+    // Use first listed pixel format as default (often yuv420p).
+    // This is similar to FFmpeg's logic:
+    // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
     // If pixel formats are undefined for some reason, try yuv420p
     outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
         ? formats[0]
