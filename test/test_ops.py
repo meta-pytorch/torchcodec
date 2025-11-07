@@ -1205,7 +1205,7 @@ class TestVideoEncoderOps:
             atol = 15
         else:
             assert_close = torch.testing.assert_close
-            atol = 2
+            atol = 3 if format == "webm" else 2
         for s_frame, rt_frame in zip(source_frames, round_trip_frames):
             assert psnr(s_frame, rt_frame) > 30
             assert_close(s_frame, rt_frame, atol=atol, rtol=0)

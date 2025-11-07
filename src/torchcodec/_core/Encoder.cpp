@@ -648,8 +648,7 @@ void VideoEncoder::initializeEncoder(
         videoStreamOptions.pixelFormat.value());
   } else {
     const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
-    // If pixel formats are undefined for some reason, try a broadly supported
-    // default.
+    // If pixel formats are undefined for some reason, try yuv420p
     outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
         ? formats[0]
         : AV_PIX_FMT_YUV420P;
