@@ -630,6 +630,30 @@ class TestVideoEncoder:
             encoder.to_tensor(format="bad_format")
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    def test_pixel_format_errors(self, method, tmp_path):
+        frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
+        encoder = VideoEncoder(frames, frame_rate=30)
+
+        if method == "to_file":
+            valid_params = dict(dest=str(tmp_path / "output.mp4"))
+        elif method == "to_tensor":
+            valid_params = dict(format="mp4")
+        elif method == "to_file_like":
+            valid_params = dict(file_like=io.BytesIO(), format="mp4")
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"Unknown pixel format: invalid_pix_fmt[\s\S]*Supported pixel formats.*yuv420p",
+        ):
+            getattr(encoder, method)(**valid_params, pixel_format="invalid_pix_fmt")
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"Specified pixel format rgb24 is not supported[\s\S]*Supported pixel formats.*yuv420p",
+        ):
+            getattr(encoder, method)(**valid_params, pixel_format="rgb24")
+
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_contiguity(self, method, tmp_path):
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal

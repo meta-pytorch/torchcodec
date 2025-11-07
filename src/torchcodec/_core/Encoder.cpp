@@ -538,6 +538,36 @@ torch::Tensor validateFrames(const torch::Tensor& frames) {
   return frames.contiguous();
 }
 
+AVPixelFormat validatePixelFormat(
+    const AVCodec& avCodec,
+    const std::string& targetPixelFormat) {
+  AVPixelFormat pixelFormat = av_get_pix_fmt(targetPixelFormat.c_str());
+
+  // Validate that the encoder supports this pixel format
+  const AVPixelFormat* supportedFormats = getSupportedPixelFormats(avCodec);
+  if (supportedFormats != nullptr) {
+    for (int i = 0; supportedFormats[i] != AV_PIX_FMT_NONE; ++i) {
+      if (supportedFormats[i] == pixelFormat) {
+        return pixelFormat;
+      }
+    }
+  }
+
+  std::stringstream errorMsg;
+  // av_get_pix_fmt failed to find a pix_fmt
+  if (pixelFormat == AV_PIX_FMT_NONE) {
+    errorMsg << "Unknown pixel format: " << targetPixelFormat;
+  } else {
+    errorMsg << "Specified pixel format " << targetPixelFormat
+             << " is not supported by the " << avCodec.name << " encoder.";
+  }
+  // Build error message, similar to FFmpeg's error log
+  errorMsg << "\nSupported pixel formats for " << avCodec.name << ":";
+  for (int i = 0; supportedFormats[i] != AV_PIX_FMT_NONE; ++i) {
+    errorMsg << " " << av_get_pix_fmt_name(supportedFormats[i]);
+  }
+  TORCH_CHECK(false, errorMsg.str());
+}
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
@@ -641,13 +671,10 @@ void VideoEncoder::initializeEncoder(
 
   if (videoStreamOptions.pixelFormat.has_value()) {
     outPixelFormat_ =
-        av_get_pix_fmt(videoStreamOptions.pixelFormat.value().c_str());
-    TORCH_CHECK(
-        outPixelFormat_ != AV_PIX_FMT_NONE,
-        "Unknown pixel format: ",
-        videoStreamOptions.pixelFormat.value());
+        validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
     const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
+    // Use first listed pixel format as default.
     // If pixel formats are undefined for some reason, try yuv420p
     outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
         ? formats[0]
