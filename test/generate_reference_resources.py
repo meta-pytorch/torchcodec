@@ -127,14 +127,6 @@ def generate_nasa_13013_references_crop():
             NASA_VIDEO, frame_index=frame, stream_index=3, filters=crop_filter
         )
 
-    frames = [17, 230, 389]
-    # Note that the resize algorithm passed to flags is exposed to users,
-    # but bilinear is the default we use.
-    resize_filter = "scale=240:135:flags=bilinear"
-    for frame in frames:
-        generate_frame_by_index(
-            NASA_VIDEO, frame_index=frame, stream_index=3, filters=resize_filter
-        )
 
 
 def generate_nasa_13013_references_resize():
