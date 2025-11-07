@@ -345,6 +345,7 @@ class SingleStreamDecoder {
   bool cursorWasJustSet_ = false;
   int64_t lastDecodedAvFramePts_ = 0;
   int64_t lastDecodedAvFrameDuration_ = 0;
+  int64_t lastDecodedFrameIndex_ = INT64_MIN;
 
   // Stores various internal decoding stats.
   DecodeStats decodeStats_;
