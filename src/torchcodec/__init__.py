@@ -8,7 +8,6 @@ from pathlib import Path
 
 # Note: usort wants to put Frame and FrameBatch after decoders and samplers,
 # but that results in circular import.
-from ._core import core_library_path, ffmpeg_major_version
 from ._frame import AudioSamples, Frame, FrameBatch  # usort:skip # noqa
 from . import decoders, encoders, samplers  # noqa
 
@@ -18,9 +17,11 @@ try:
 except Exception:
     pass
 
-# `torchcodec.cmake_prefix_path` is a Python-based way to programmatically
-# obtain the correct CMAKE_PREFIX_PATH value for the TorchCodec installation.
-# It can be used in a build system of a C++ application to ensure that CMake
-# can successfully find TorchCodec C++ libraries. This variable is exposed
-# as TorchCodec API.
+# cmake_prefix_path is needed for downstream cmake-based builds that use
+# torchcodec as a dependency to tell cmake where torchcodec is installed and where to find its
+# CMake configuration files.
+# Pytorch itself has a similar mechanism which we use in our setup.py!
 cmake_prefix_path = Path(__file__).parent / "share" / "cmake"
+# Similarly, these are exposed for downstream builds that use torchcodec as a
+# dependency.
+from ._core import core_library_path, ffmpeg_major_version  # usort:skip
