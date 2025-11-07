@@ -98,18 +98,19 @@ std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
 std::optional<double> StreamMetadata::getAverageFps(SeekMode seekMode) const {
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
-    case SeekMode::exact:
-      if (getNumFrames(seekMode).has_value() &&
+    case SeekMode::exact: {
+      auto numFrames = getNumFrames(seekMode);
+      if (numFrames.has_value() &&
           beginStreamPtsSecondsFromContent.has_value() &&
-          endStreamPtsSecondsFromContent.has_value() &&
-          (beginStreamPtsSecondsFromContent.value() !=
-           endStreamPtsSecondsFromContent.value())) {
-        return static_cast<double>(
-            getNumFrames(seekMode).value() /
-            (endStreamPtsSecondsFromContent.value() -
-             beginStreamPtsSecondsFromContent.value()));
+          endStreamPtsSecondsFromContent.has_value()) {
+        double duration = endStreamPtsSecondsFromContent.value() -
+            beginStreamPtsSecondsFromContent.value();
+        if (duration != 0.0) {
+          return static_cast<double>(numFrames.value()) / duration;
+        }
       }
       return averageFpsFromHeader;
+    }
     case SeekMode::approximate:
       return averageFpsFromHeader;
     default:
