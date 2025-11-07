@@ -10,7 +10,6 @@ from functools import partial
 
 os.environ["TORCH_LOGS"] = "output_code"
 import json
-import subprocess
 
 import numpy as np
 import pytest
@@ -27,9 +26,6 @@ from torchcodec._core import (
     create_from_file_like,
     create_from_tensor,
     encode_audio_to_file,
-    encode_video_to_file,
-    encode_video_to_file_like,
-    encode_video_to_tensor,
     get_ffmpeg_library_versions,
     get_frame_at_index,
     get_frame_at_pts,
@@ -42,24 +38,18 @@ from torchcodec._core import (
     get_next_frame,
     seek_to_pts,
 )
-from torchcodec.decoders import VideoDecoder
 
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
-    assert_tensor_close_on_at_least,
-    get_ffmpeg_major_version,
     in_fbcode,
-    IS_WINDOWS,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
     needs_cuda,
-    psnr,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
-    TEST_SRC_2_720P,
     unsplit_device_str,
 )
 
