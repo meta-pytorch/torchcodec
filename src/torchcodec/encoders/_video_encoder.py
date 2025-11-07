@@ -37,7 +37,7 @@ class VideoEncoder:
         dest: Union[str, Path],
         *,
         pixel_format: Optional[str] = None,
-        crf: int = None,
+        crf: Optional[int] = None,
     ) -> None:
         """Encode frames into a file.
 
@@ -64,7 +64,7 @@ class VideoEncoder:
         format: str,
         *,
         pixel_format: Optional[str] = None,
-        crf: int = None,
+        crf: Optional[int] = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
 
@@ -94,7 +94,7 @@ class VideoEncoder:
         format: str,
         *,
         pixel_format: Optional[str] = None,
-        crf: int = None,
+        crf: Optional[int] = None,
     ) -> None:
         """Encode frames into a file-like object.
 
