@@ -4,4 +4,4 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-from ._decoder_native_transforms import DecoderNativeTransform, Resize  # noqa
+from ._decoder_transforms import DecoderTransform, Resize  # noqa
