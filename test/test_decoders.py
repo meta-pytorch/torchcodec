@@ -388,6 +388,31 @@ class TestVideoDecoder:
         decoder = VideoDecoder(NASA_VIDEO.path, device=torch.device("cpu"))
         assert isinstance(decoder.metadata, VideoStreamMetadata)
 
+    @pytest.mark.parametrize(
+        "device_str",
+        [
+            "cpu",
+            pytest.param("cuda", marks=pytest.mark.needs_cuda),
+        ],
+    )
+    def test_device_none_default_device(self, device_str):
+        # VideoDecoder defaults to device=None, which should respect both
+        # torch.device() context manager and torch.set_default_device().
+
+        # Test with context manager
+        with torch.device(device_str):
+            decoder = VideoDecoder(NASA_VIDEO.path)
+            assert decoder[0].device.type == device_str
+
+        # Test with set_default_device
+        original_device = torch.get_default_device()
+        try:
+            torch.set_default_device(device_str)
+            decoder = VideoDecoder(NASA_VIDEO.path)
+            assert decoder[0].device.type == device_str
+        finally:
+            torch.set_default_device(original_device)
+
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_getitem_fails(self, device, seek_mode):
