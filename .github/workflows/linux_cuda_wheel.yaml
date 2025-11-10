@@ -122,7 +122,7 @@ jobs:
       - name: Install test dependencies
         run: |
           # Ideally we would find a way to get those dependencies from pyproject.toml
-          ${CONDA_RUN} python -m pip install numpy pytest pillow
+          ${CONDA_RUN} python -m pip install numpy pytest==8.4.2 pillow
 
       - name: Delete the src/ folder just for fun
         run: |
