@@ -13,6 +13,7 @@ import subprocess
 import pytest
 
 import torch
+import torchcodec
 
 from torchcodec._core import (
     _add_video_stream,
@@ -48,7 +49,12 @@ class TestPublicVideoDecoderTransformOps:
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
 
+        # We're using both the TorchCodec object and the TorchVision object to
+        # ensure that they specify exactly the same thing.
         decoder_resize = VideoDecoder(
+            video.path, transforms=[torchcodec.transforms.Resize(size=(height, width))]
+        )
+        decoder_resize_tv = VideoDecoder(
             video.path, transforms=[v2.Resize(size=(height, width))]
         )
 
@@ -68,8 +74,10 @@ class TestPublicVideoDecoderTransformOps:
             int(num_frames * 0.90),
             num_frames - 1,
         ]:
-            expected_shape = (video.get_num_color_channels(), height, width)
+            frame_resize_tv = decoder_resize_tv[frame_index]
             frame_resize = decoder_resize[frame_index]
+            assert_frames_equal(frame_resize_tv, frame_resize)
+
             frame_full = decoder_full[frame_index]
 
             frame_tv = v2.functional.resize(frame_full, size=(height, width))
@@ -77,6 +85,7 @@ class TestPublicVideoDecoderTransformOps:
                 frame_full, size=(height, width), antialias=False
             )
 
+            expected_shape = (video.get_num_color_channels(), height, width)
             assert frame_resize.shape == expected_shape
             assert frame_tv.shape == expected_shape
             assert frame_tv_no_antialias.shape == expected_shape
