@@ -43,11 +43,12 @@ def load_torchcodec_shared_libraries():
     exceptions = []
     for ffmpeg_major_version in (8, 7, 6, 5, 4):
         pybind_ops_module_name = _get_pybind_ops_module_name(ffmpeg_major_version)
-        decoder_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
+        core_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
         custom_ops_library_name = f"libtorchcodec_custom_ops{ffmpeg_major_version}"
         pybind_ops_library_name = f"libtorchcodec_pybind_ops{ffmpeg_major_version}"
         try:
-            torch.ops.load_library(_get_extension_path(decoder_library_name))
+            core_library_path = _get_extension_path(core_library_name)
+            torch.ops.load_library(core_library_path)
             torch.ops.load_library(_get_extension_path(custom_ops_library_name))
 
             pybind_ops_library_path = _get_extension_path(pybind_ops_library_name)
@@ -55,7 +56,7 @@ def load_torchcodec_shared_libraries():
             _pybind_ops = _load_pybind11_module(
                 pybind_ops_module_name, pybind_ops_library_path
             )
-            return
+            return ffmpeg_major_version, core_library_path
         except Exception as e:
             # TODO: recording and reporting exceptions this way is OK for now as  it's just for debugging,
             # but we should probably handle that via a proper logging mechanism.
@@ -81,7 +82,7 @@ def load_torchcodec_shared_libraries():
     )
 
 
-load_torchcodec_shared_libraries()
+ffmpeg_major_version, core_library_path = load_torchcodec_shared_libraries()
 
 
 # Note: We use disallow_in_graph because PyTorch does constant propagation of
