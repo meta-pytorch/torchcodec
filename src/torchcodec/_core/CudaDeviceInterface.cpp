@@ -329,11 +329,40 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
       avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
 }
 
+namespace {
+// Helper function to check if a codec supports CUDA hardware acceleration
+bool codecSupportsCudaHardware(const AVCodec* codec) {
+  const AVCodecHWConfig* config = nullptr;
+  for (int j = 0; (config = avcodec_get_hw_config(codec, j)) != nullptr; ++j) {
+    if (config->device_type == AV_HWDEVICE_TYPE_CUDA) {
+      return true;
+    }
+  }
+  return false;
+}
+} // namespace
+
 // inspired by https://github.com/FFmpeg/FFmpeg/commit/ad67ea9
 // we have to do this because of an FFmpeg bug where hardware decoding is not
 // appropriately set, so we just go off and find the matching codec for the CUDA
 // device
-std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
+
+std::optional<const AVCodec*> CudaDeviceInterface::findEncoder(
+    const AVCodecID& codecId) {
+  void* i = nullptr;
+  const AVCodec* codec = nullptr;
+  while ((codec = av_codec_iterate(&i)) != nullptr) {
+    if (codec->id != codecId || !av_codec_is_encoder(codec)) {
+      continue;
+    }
+    if (codecSupportsCudaHardware(codec)) {
+      return codec;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<const AVCodec*> CudaDeviceInterface::findDecoder(
     const AVCodecID& codecId) {
   void* i = nullptr;
   const AVCodec* codec = nullptr;
@@ -342,12 +371,8 @@ std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
       continue;
     }
 
-    const AVCodecHWConfig* config = nullptr;
-    for (int j = 0; (config = avcodec_get_hw_config(codec, j)) != nullptr;
-         ++j) {
-      if (config->device_type == AV_HWDEVICE_TYPE_CUDA) {
-        return codec;
-      }
+    if (codecSupportsCudaHardware(codec)) {
+      return codec;
     }
   }
 

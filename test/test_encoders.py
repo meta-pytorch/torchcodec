@@ -11,6 +11,7 @@ import pytest
 import torch
 from torchcodec.decoders import AudioDecoder
 
+from torchcodec.decoders._video_decoder import VideoDecoder
 from torchcodec.encoders import AudioEncoder, VideoEncoder
 
 from .utils import (
@@ -567,6 +568,10 @@ class TestAudioEncoder:
 
 
 class TestVideoEncoder:
+
+    def decode(self, source=None) -> torch.Tensor:
+        return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
+
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_bad_input_parameterized(self, tmp_path, method):
         if method == "to_file":
@@ -630,12 +635,15 @@ class TestVideoEncoder:
             encoder.to_tensor(format="bad_format")
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_contiguity(self, method, tmp_path):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_contiguity(self, method, tmp_path, device):
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal
         # frame tensors, one is contiguous while the other is non-contiguous.
 
-        num_frames, channels, height, width = 5, 3, 64, 64
+        num_frames, channels, height, width = 5, 3, 256, 256
         contiguous_frames = torch.randint(
             0, 256, size=(num_frames, channels, height, width), dtype=torch.uint8
         ).contiguous()
@@ -656,14 +664,16 @@ class TestVideoEncoder:
         def encode_to_tensor(frames):
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
-                VideoEncoder(frames, frame_rate=30).to_file(dest=dest)
+                VideoEncoder(frames, frame_rate=30, device=device).to_file(dest=dest)
                 with open(dest, "rb") as f:
-                    return torch.frombuffer(f.read(), dtype=torch.uint8)
+                    return torch.frombuffer(f.read(), dtype=torch.uint8).clone()
             elif method == "to_tensor":
-                return VideoEncoder(frames, frame_rate=30).to_tensor(format="mp4")
+                return VideoEncoder(frames, frame_rate=30, device=device).to_tensor(
+                    format="mp4"
+                )
             elif method == "to_file_like":
                 file_like = io.BytesIO()
-                VideoEncoder(frames, frame_rate=30).to_file_like(
+                VideoEncoder(frames, frame_rate=30, device=device).to_file_like(
                     file_like, format="mp4"
                 )
                 return torch.frombuffer(file_like.getvalue(), dtype=torch.uint8)
