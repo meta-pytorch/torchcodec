@@ -706,6 +706,10 @@ void VideoEncoder::initializeEncoder(
         std::to_string(videoStreamOptions.crf.value()).c_str(),
         0);
   }
+  if (videoStreamOptions.preset.has_value()) {
+    av_dict_set(
+        &options, "preset", videoStreamOptions.preset.value().c_str(), 0);
+  }
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &options);
   av_dict_free(&options);
 

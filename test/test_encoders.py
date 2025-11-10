@@ -801,13 +801,26 @@ class TestVideoEncoder:
             pytest.param("webm", marks=pytest.mark.slow),
         ),
     )
-    @pytest.mark.parametrize("pixel_format", ("yuv444p", "yuv420p"))
-    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format, pixel_format):
+    @pytest.mark.parametrize(
+        "encode_params",
+        [
+            {"pixel_format": "yuv444p", "crf": 0, "preset": None},
+            {"pixel_format": "yuv420p", "crf": 30, "preset": None},
+            {"pixel_format": "yuv420p", "crf": None, "preset": "ultrafast"},
+            {"pixel_format": "yuv420p", "crf": None, "preset": None},
+        ],
+    )
+    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format, encode_params):
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+
+        pixel_format = encode_params["pixel_format"]
+        crf = encode_params["crf"]
+        preset = encode_params["preset"]
+
         if format in ("avi", "flv") and pixel_format == "yuv444p":
             pytest.skip(f"Default codec for {format} does not support {pixel_format}")
 
@@ -820,8 +833,7 @@ class TestVideoEncoder:
 
         ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
         frame_rate = 30
-        crf = 0
-        # Some codecs (ex. MPEG4) do not support CRF.
+        # Some codecs (ex. MPEG4) do not support CRF or preset.
         # Flags not supported by the selected codec will be ignored.
         ffmpeg_cmd = [
             "ffmpeg",
@@ -836,18 +848,26 @@ class TestVideoEncoder:
             str(frame_rate),
             "-i",
             temp_raw_path,
-            "-pix_fmt",
-            pixel_format,  # Output format
-            "-crf",
-            str(crf),
-            ffmpeg_encoded_path,
         ]
+        if pixel_format is not None:  # Output format
+            ffmpeg_cmd.extend(["-pix_fmt", pixel_format])
+        if preset is not None:
+            ffmpeg_cmd.extend(["-preset", preset])
+        if crf is not None:
+            ffmpeg_cmd.extend(["-crf", str(crf)])
+        # Output path must be last
+        ffmpeg_cmd.append(ffmpeg_encoded_path)
         subprocess.run(ffmpeg_cmd, check=True)
 
         # Encode with our video encoder
         encoder_output_path = str(tmp_path / f"encoder_output.{format}")
         encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
-        encoder.to_file(dest=encoder_output_path, pixel_format=pixel_format, crf=crf)
+        encoder.to_file(
+            dest=encoder_output_path,
+            pixel_format=pixel_format,
+            crf=crf,
+            preset=preset,
+        )
 
         ffmpeg_frames = self.decode(ffmpeg_encoded_path).data
         encoder_frames = self.decode(encoder_output_path).data
