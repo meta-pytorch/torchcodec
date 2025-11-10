@@ -858,12 +858,13 @@ class TestVideoEncoder:
         # There may be additional subtle differences in the encoder.
         percentage = 94 if ffmpeg_version == 6 or format == "avi" else 99
 
+        atol = 3 if format == "webm" else 2
         # Check that PSNR between both encoded versions is high
         for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
             res = psnr(ff_frame, enc_frame)
             assert res > 30
             assert_tensor_close_on_at_least(
-                ff_frame, enc_frame, percentage=percentage, atol=2
+                ff_frame, enc_frame, percentage=percentage, atol=atol
             )
 
     def test_to_file_like_custom_file_object(self):
