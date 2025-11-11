@@ -626,7 +626,9 @@ FrameOutput SingleStreamDecoder::getFrameAtIndexInternal(
   }
   validateFrameIndex(streamMetadata, frameIndex);
 
-  // Only set cursor if we're not decoding sequentially
+  // Only set cursor if we're not decoding sequentially: when decoding
+  // sequentially, we don't need to seek anywhere, so by *not* setting the
+  // cursor we allow canWeAvoidSeeking() to return true early.
   if (frameIndex != lastDecodedFrameIndex_ + 1) {
     int64_t pts = getPts(frameIndex);
     setCursorPtsInSeconds(ptsToSeconds(pts, streamInfo.timeBase));
