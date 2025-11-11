@@ -48,6 +48,10 @@ struct VideoStreamOptions {
   // TODO-VideoEncoder: Consider adding other optional fields here
   // (bit rate, gop size, max b frames, preset)
   std::optional<int> crf;
+
+  // Optional pixel format for video encoding (e.g., "yuv420p", "yuv444p")
+  // If not specified, uses codec's default format.
+  std::optional<std::string> pixelFormat;
 };
 
 struct AudioStreamOptions {

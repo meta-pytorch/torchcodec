@@ -43,11 +43,12 @@ def load_torchcodec_shared_libraries():
     exceptions = []
     for ffmpeg_major_version in (8, 7, 6, 5, 4):
         pybind_ops_module_name = _get_pybind_ops_module_name(ffmpeg_major_version)
-        decoder_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
+        core_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
         custom_ops_library_name = f"libtorchcodec_custom_ops{ffmpeg_major_version}"
         pybind_ops_library_name = f"libtorchcodec_pybind_ops{ffmpeg_major_version}"
         try:
-            torch.ops.load_library(_get_extension_path(decoder_library_name))
+            core_library_path = _get_extension_path(core_library_name)
+            torch.ops.load_library(core_library_path)
             torch.ops.load_library(_get_extension_path(custom_ops_library_name))
 
             pybind_ops_library_path = _get_extension_path(pybind_ops_library_name)
@@ -55,7 +56,7 @@ def load_torchcodec_shared_libraries():
             _pybind_ops = _load_pybind11_module(
                 pybind_ops_module_name, pybind_ops_library_path
             )
-            return
+            return ffmpeg_major_version, core_library_path
         except Exception as e:
             # TODO: recording and reporting exceptions this way is OK for now as  it's just for debugging,
             # but we should probably handle that via a proper logging mechanism.
@@ -81,7 +82,7 @@ def load_torchcodec_shared_libraries():
     )
 
 
-load_torchcodec_shared_libraries()
+ffmpeg_major_version, core_library_path = load_torchcodec_shared_libraries()
 
 
 # Note: We use disallow_in_graph because PyTorch does constant propagation of
@@ -213,6 +214,7 @@ def encode_video_to_file_like(
     format: str,
     file_like: Union[io.RawIOBase, io.BufferedIOBase],
     crf: Optional[int] = None,
+    pixel_format: Optional[str] = None,
 ) -> None:
     """Encode video frames to a file-like object.
 
@@ -222,6 +224,7 @@ def encode_video_to_file_like(
         format: Video format (e.g., "mp4", "mov", "mkv")
         file_like: File-like object that supports write() and seek() methods
         crf: Optional constant rate factor for encoding quality
+        pixel_format: Optional pixel format (e.g., "yuv420p", "yuv444p")
     """
     assert _pybind_ops is not None
 
@@ -230,6 +233,7 @@ def encode_video_to_file_like(
         frame_rate,
         format,
         _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
+        pixel_format,
         crf,
     )
 
@@ -318,7 +322,8 @@ def encode_video_to_file_abstract(
     frames: torch.Tensor,
     frame_rate: int,
     filename: str,
-    crf: Optional[int],
+    crf: Optional[int] = None,
+    pixel_format: Optional[str] = None,
 ) -> None:
     return
 
@@ -328,7 +333,8 @@ def encode_video_to_tensor_abstract(
     frames: torch.Tensor,
     frame_rate: int,
     format: str,
-    crf: Optional[int],
+    crf: Optional[int] = None,
+    pixel_format: Optional[str] = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
@@ -340,6 +346,7 @@ def _encode_video_to_file_like_abstract(
     format: str,
     file_like_context: int,
     crf: Optional[int] = None,
+    pixel_format: Optional[str] = None,
 ) -> None:
     return
 

@@ -37,11 +37,11 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_encode_audio_to_file_like(Tensor samples, int sample_rate, str format, int file_like_context, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
   m.def(
-      "encode_video_to_file(Tensor frames, int frame_rate, str filename, int? crf=None) -> ()");
+      "encode_video_to_file(Tensor frames, int frame_rate, str filename, str? pixel_format=None, int? crf=None) -> ()");
   m.def(
-      "encode_video_to_tensor(Tensor frames, int frame_rate, str format, int? crf=None) -> Tensor");
+      "encode_video_to_tensor(Tensor frames, int frame_rate, str format, str? pixel_format=None, int? crf=None) -> Tensor");
   m.def(
-      "_encode_video_to_file_like(Tensor frames, int frame_rate, str format, int file_like_context, int? crf=None) -> ()");
+      "_encode_video_to_file_like(Tensor frames, int frame_rate, str format, int file_like_context, str? pixel_format=None, int? crf=None) -> ()");
   m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
   m.def(
@@ -176,13 +176,13 @@ std::string mapToJson(const std::map<std::string, std::string>& metadataMap) {
   return ss.str();
 }
 
-SingleStreamDecoder::SeekMode seekModeFromString(std::string_view seekMode) {
+SeekMode seekModeFromString(std::string_view seekMode) {
   if (seekMode == "exact") {
-    return SingleStreamDecoder::SeekMode::exact;
+    return SeekMode::exact;
   } else if (seekMode == "approximate") {
-    return SingleStreamDecoder::SeekMode::approximate;
+    return SeekMode::approximate;
   } else if (seekMode == "custom_frame_mappings") {
-    return SingleStreamDecoder::SeekMode::custom_frame_mappings;
+    return SeekMode::custom_frame_mappings;
   } else {
     TORCH_CHECK(false, "Invalid seek mode: " + std::string(seekMode));
   }
@@ -285,7 +285,7 @@ at::Tensor create_from_file(
     std::optional<std::string_view> seek_mode = std::nullopt) {
   std::string filenameStr(filename);
 
-  SingleStreamDecoder::SeekMode realSeek = SingleStreamDecoder::SeekMode::exact;
+  SeekMode realSeek = SeekMode::exact;
   if (seek_mode.has_value()) {
     realSeek = seekModeFromString(seek_mode.value());
   }
@@ -306,7 +306,7 @@ at::Tensor create_from_tensor(
       video_tensor.scalar_type() == torch::kUInt8,
       "video_tensor must be kUInt8");
 
-  SingleStreamDecoder::SeekMode realSeek = SingleStreamDecoder::SeekMode::exact;
+  SeekMode realSeek = SeekMode::exact;
   if (seek_mode.has_value()) {
     realSeek = seekModeFromString(seek_mode.value());
   }
@@ -329,7 +329,7 @@ at::Tensor _create_from_file_like(
       fileLikeContext != nullptr, "file_like_context must be a valid pointer");
   std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
 
-  SingleStreamDecoder::SeekMode realSeek = SingleStreamDecoder::SeekMode::exact;
+  SeekMode realSeek = SeekMode::exact;
   if (seek_mode.has_value()) {
     realSeek = seekModeFromString(seek_mode.value());
   }
@@ -603,8 +603,10 @@ void encode_video_to_file(
     const at::Tensor& frames,
     int64_t frame_rate,
     std::string_view file_name,
+    std::optional<std::string> pixel_format = std::nullopt,
     std::optional<int64_t> crf = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
+  videoStreamOptions.pixelFormat = pixel_format;
   videoStreamOptions.crf = crf;
   VideoEncoder(
       frames,
@@ -618,9 +620,11 @@ at::Tensor encode_video_to_tensor(
     const at::Tensor& frames,
     int64_t frame_rate,
     std::string_view format,
+    std::optional<std::string> pixel_format = std::nullopt,
     std::optional<int64_t> crf = std::nullopt) {
   auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
   VideoStreamOptions videoStreamOptions;
+  videoStreamOptions.pixelFormat = pixel_format;
   videoStreamOptions.crf = crf;
   return VideoEncoder(
              frames,
@@ -636,6 +640,7 @@ void _encode_video_to_file_like(
     int64_t frame_rate,
     std::string_view format,
     int64_t file_like_context,
+    std::optional<std::string> pixel_format = std::nullopt,
     std::optional<int64_t> crf = std::nullopt) {
   auto fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
@@ -644,6 +649,7 @@ void _encode_video_to_file_like(
   std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
 
   VideoStreamOptions videoStreamOptions;
+  videoStreamOptions.pixelFormat = pixel_format;
   videoStreamOptions.crf = crf;
 
   VideoEncoder encoder(
@@ -796,6 +802,8 @@ std::string get_stream_json_metadata(
   }
 
   auto streamMetadata = allStreamMetadata[stream_index];
+  auto seekMode = videoDecoder->getSeekMode();
+  int activeStreamIndex = videoDecoder->getActiveStreamIndex();
 
   std::map<std::string, std::string> map;
 
@@ -861,6 +869,38 @@ std::string get_stream_json_metadata(
   } else {
     map["mediaType"] = quoteValue("other");
   }
+
+  // Check whether content-based metadata is available for this stream.
+  // In exact mode: content-based metadata exists for all streams.
+  // In approximate mode: content-based metadata does not exist for any stream.
+  // In custom_frame_mappings: content-based metadata exists only for the active
+  // stream.
+  // Our fallback logic assumes content-based metadata is available.
+  // It is available for decoding on the active stream, but would break
+  // when getting metadata from non-active streams.
+  if ((seekMode != SeekMode::custom_frame_mappings) ||
+      (seekMode == SeekMode::custom_frame_mappings &&
+       stream_index == activeStreamIndex)) {
+    if (streamMetadata.getDurationSeconds(seekMode).has_value()) {
+      map["durationSeconds"] =
+          std::to_string(streamMetadata.getDurationSeconds(seekMode).value());
+    }
+    if (streamMetadata.getNumFrames(seekMode).has_value()) {
+      map["numFrames"] =
+          std::to_string(streamMetadata.getNumFrames(seekMode).value());
+    }
+    map["beginStreamSeconds"] =
+        std::to_string(streamMetadata.getBeginStreamSeconds(seekMode));
+    if (streamMetadata.getEndStreamSeconds(seekMode).has_value()) {
+      map["endStreamSeconds"] =
+          std::to_string(streamMetadata.getEndStreamSeconds(seekMode).value());
+    }
+    if (streamMetadata.getAverageFps(seekMode).has_value()) {
+      map["averageFps"] =
+          std::to_string(streamMetadata.getAverageFps(seekMode).value());
+    }
+  }
+
   return mapToJson(map);
 }
 
