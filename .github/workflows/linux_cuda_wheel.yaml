@@ -74,7 +74,7 @@ jobs:
         ffmpeg-version-for-tests: ['4.4.2', '6', '7', '8.0']
 
     container:
-      image: "pytorch/manylinux2_28-builder:cuda${{ matrix.cuda-version }}"
+      image: "pytorch/manylinux2_28-builder:cuda${{ matrix.cuda-version }}-33c74927083180f050d839e75420d4554d986dee"
       options: "--gpus all -e NVIDIA_DRIVER_CAPABILITIES=video,compute,utility"
     needs: build
     steps:
@@ -108,7 +108,7 @@ jobs:
         run: ${CONDA_RUN} python -m pip install --upgrade pip
       - name: Install PyTorch
         run: |
-          ${CONDA_RUN} python -m pip install --pre torch==2.10.0.dev20251106 torchvision --index-url https://download.pytorch.org/whl/nightly/cu${{ env.cuda_version_without_periods }}
+          ${CONDA_RUN} python -m pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cu${{ env.cuda_version_without_periods }}
           ${CONDA_RUN} python -c 'import torch; print(f"{torch.__version__}"); print(f"{torch.__file__}"); print(f"{torch.cuda.is_available()=}")'
       - name: Install torchcodec from the wheel
         run: |
