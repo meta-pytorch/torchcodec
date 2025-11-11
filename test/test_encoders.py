@@ -610,6 +610,13 @@ class TestVideoEncoder:
             )
             getattr(encoder, method)(**valid_params)
 
+        with pytest.raises(RuntimeError, match=r"crf=-10 is out of valid range"):
+            encoder = VideoEncoder(
+                frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
+                frame_rate=30,
+            )
+            getattr(encoder, method)(**valid_params, crf=-10)
+
     def test_bad_input(self, tmp_path):
         encoder = VideoEncoder(
             frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
