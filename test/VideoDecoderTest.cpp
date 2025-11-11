@@ -64,10 +64,10 @@ class SingleStreamDecoderTest : public testing::TestWithParam<bool> {
 
       auto contextHolder = std::make_unique<AVIOFromTensorContext>(tensor);
       return std::make_unique<SingleStreamDecoder>(
-          std::move(contextHolder), SingleStreamDecoder::SeekMode::approximate);
+          std::move(contextHolder), SeekMode::approximate);
     } else {
       return std::make_unique<SingleStreamDecoder>(
-          filepath, SingleStreamDecoder::SeekMode::approximate);
+          filepath, SeekMode::approximate);
     }
   }
 

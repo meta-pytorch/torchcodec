@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import torch
 from torch import Tensor
@@ -35,6 +35,8 @@ class VideoEncoder:
     def to_file(
         self,
         dest: Union[str, Path],
+        *,
+        pixel_format: Optional[str] = None,
     ) -> None:
         """Encode frames into a file.
 
@@ -42,22 +44,29 @@ class VideoEncoder:
             dest (str or ``pathlib.Path``): The path to the output file, e.g.
                 ``video.mp4``. The extension of the file determines the video
                 container format.
+            pixel_format (str, optional): The pixel format for encoding (e.g.,
+                "yuv420p", "yuv444p"). If not specified, uses codec's default format.
         """
         _core.encode_video_to_file(
             frames=self._frames,
             frame_rate=self._frame_rate,
             filename=str(dest),
+            pixel_format=pixel_format,
         )
 
     def to_tensor(
         self,
         format: str,
+        *,
+        pixel_format: Optional[str] = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
 
         Args:
             format (str): The container format of the encoded frames, e.g. "mp4", "mov",
             "mkv", "avi", "webm", "flv", or "gif"
+            pixel_format (str, optional): The pixel format to encode frames into (e.g.,
+                "yuv420p", "yuv444p"). If not specified, uses codec's default format.
 
         Returns:
             Tensor: The raw encoded bytes as 4D uint8 Tensor.
@@ -66,12 +75,15 @@ class VideoEncoder:
             frames=self._frames,
             frame_rate=self._frame_rate,
             format=format,
+            pixel_format=pixel_format,
         )
 
     def to_file_like(
         self,
         file_like,
         format: str,
+        *,
+        pixel_format: Optional[str] = None,
     ) -> None:
         """Encode frames into a file-like object.
 
@@ -83,10 +95,13 @@ class VideoEncoder:
                 int = 0) -> int``.
             format (str): The container format of the encoded frames, e.g. "mp4", "mov",
                 "mkv", "avi", "webm", "flv", or "gif".
+            pixel_format (str, optional): The pixel format for encoding (e.g.,
+                "yuv420p", "yuv444p"). If not specified, uses codec's default format.
         """
         _core.encode_video_to_file_like(
             frames=self._frames,
             frame_rate=self._frame_rate,
             format=format,
             file_like=file_like,
+            pixel_format=pixel_format,
         )
