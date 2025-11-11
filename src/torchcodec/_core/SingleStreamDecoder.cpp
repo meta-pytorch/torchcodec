@@ -1106,6 +1106,9 @@ I    P     P    P    I    P    P    P    I    P    P    I    P    P    I    P
 */
 bool SingleStreamDecoder::canWeAvoidSeeking() const {
   const StreamInfo& streamInfo = streamInfos_.at(activeStreamIndex_);
+  if (!cursorWasJustSet_) {
+    return true;
+  }
   if (streamInfo.avMediaType == AVMEDIA_TYPE_AUDIO) {
     // For audio, we only need to seek if a backwards seek was requested
     // within getFramesPlayedInRangeAudio(), when setCursorPtsInSeconds() was
@@ -1187,10 +1190,8 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
 
   resetDecodeStats();
 
-  if (cursorWasJustSet_) {
-    maybeSeekToBeforeDesiredPts();
-    cursorWasJustSet_ = false;
-  }
+  maybeSeekToBeforeDesiredPts();
+  cursorWasJustSet_ = false;
 
   UniqueAVFrame avFrame(av_frame_alloc());
   AutoAVPacket autoAVPacket;
