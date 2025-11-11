@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Literal, Optional, Sequence, Tuple, Union
 
 import torch
-from torch import device as torch_device, Tensor
+from torch import device as torch_device, nn, Tensor
 
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec.decoders._decoder_utils import (
@@ -69,8 +69,10 @@ class VideoDecoder:
             :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py`
         transforms (sequence of transform objects, optional): Sequence of transforms to be
             applied to the decoded frames by the decoder itself, in order. Accepts both
-            ``torchcodec.transforms.DecoderTransform`` and ``torchvision.transforms.v2.Transform``
-            objects. All transforms are applied in the ouput pixel format and colorspace.
+            :class:`torchcodec.transforms.DecoderTransform` and
+            :class:`torchvision.transforms.v2.Transform` objects. All transforms are applied
+            in the ouput pixel format and colorspace. Read more about this parameter in:
+            SCOTT_NEEDS_TO_WRITE_A_TUTORIAL.
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
@@ -109,7 +111,7 @@ class VideoDecoder:
         num_ffmpeg_threads: int = 1,
         device: Optional[Union[str, torch_device]] = "cpu",
         seek_mode: Literal["exact", "approximate"] = "exact",
-        transforms: Optional[Sequence[DecoderTransform]] = None,
+        transforms: Optional[Sequence[Union[DecoderTransform, nn.Module]]] = None,
         custom_frame_mappings: Optional[
             Union[str, bytes, io.RawIOBase, io.BufferedReader]
         ] = None,
@@ -442,7 +444,7 @@ def _get_and_validate_stream_metadata(
 
 
 def _convert_to_decoder_native_transforms(
-    transforms: Sequence[DecoderTransform],
+    transforms: Sequence[Union[DecoderTransform, nn.Module]],
 ) -> List[DecoderTransform]:
     """Convert a sequence of transforms that may contain TorchVision transform
     objects into a list of only TorchCodec transform objects.
@@ -494,7 +496,7 @@ def _convert_to_decoder_native_transforms(
 
 
 def _make_transform_specs(
-    transforms: Optional[Sequence[DecoderTransform]],
+    transforms: Optional[Sequence[Union[DecoderTransform, nn.Module]]],
 ) -> str:
     """Given a sequence of transforms, turn those into the specification string
        the core API expects.

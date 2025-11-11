@@ -14,8 +14,7 @@ class DecoderTransform(ABC):
     """Base class for all decoder transforms.
 
     A DecoderTransform is a transform that is applied by the decoder before
-    returning the decoded frame. The implementation does not live in TorchCodec
-    itself, but in the underyling decoder. Applying DecoderTransforms to frames
+    returning the decoded frame.  Applying DecoderTransforms to frames
     should be both faster and more memory efficient than receiving normally
     decoded frames and applying the same kind of transform.
 
@@ -23,12 +22,13 @@ class DecoderTransform(ABC):
     specificially in torchvision.transforms.v2. For such transforms, we ensure
     that:
 
-      1. Default behaviors are the same.
-      2. The parameters for the DecoderTransform are a subset of the
+      1. The names are the same.
+      2. Default behaviors are the same.
+      3. The parameters for the DecoderTransform are a subset of the
          TorchVision transform.
-      3. Parameters with the same name control the same behavior and accept a
+      4. Parameters with the same name control the same behavior and accept a
          subset of the same types.
-      4. The difference between the frames returned by a DecoderTransform and
+      5. The difference between the frames returned by a DecoderTransform and
          the complementary TorchVision transform are small.
 
     All DecoderTranforms are applied in the output pixel format and colorspace.
