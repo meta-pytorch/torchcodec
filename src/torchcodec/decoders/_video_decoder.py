@@ -8,7 +8,7 @@ import io
 import json
 import numbers
 from pathlib import Path
-from typing import List, Literal, Optional, Sequence, Tuple, Union
+from typing import Literal, Optional, Sequence, Tuple, Union
 
 import torch
 from torch import device as torch_device, nn, Tensor
@@ -446,7 +446,7 @@ def _get_and_validate_stream_metadata(
 
 def _convert_to_decoder_transforms(
     transforms: Sequence[Union[DecoderTransform, nn.Module]],
-) -> List[DecoderTransform]:
+) -> Sequence[DecoderTransform]:
     """Convert a sequence of transforms that may contain TorchVision transform
     objects into a list of only TorchCodec transform objects.
 
@@ -459,7 +459,7 @@ def _convert_to_decoder_transforms(
             have a hard dependency on TorchVision.
 
     Returns:
-        List of DecoderTransform objects.
+        Sequence of DecoderTransform objects.
     """
     try:
         from torchvision.transforms import v2
