@@ -617,6 +617,24 @@ class TestVideoEncoder:
             )
             getattr(encoder, method)(**valid_params, crf=-10)
 
+    @pytest.mark.parametrize("method", ["to_file", "to_tensor", "to_file_like"])
+    @pytest.mark.parametrize("crf", [23, 23.5, -0.9])
+    def test_crf_valid_values(self, method, crf, tmp_path):
+        if method == "to_file":
+            valid_params = {"dest": str(tmp_path / "test.mp4")}
+        elif method == "to_tensor":
+            valid_params = {"format": "mp4"}
+        elif method == "to_file_like":
+            valid_params = dict(file_like=io.BytesIO(), format="mp4")
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        encoder = VideoEncoder(
+            frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
+            frame_rate=30,
+        )
+        getattr(encoder, method)(**valid_params, crf=crf)
+
     def test_bad_input(self, tmp_path):
         encoder = VideoEncoder(
             frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),

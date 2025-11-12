@@ -570,17 +570,16 @@ AVPixelFormat validatePixelFormat(
   TORCH_CHECK(false, errorMsg.str());
 }
 
-void validateNumericOption(
+void validateDoubleOption(
     const AVCodec& avCodec,
     const char* optionName,
-    int value) {
-  // First determine if codec's private class is defined
+    double value) {
   if (!avCodec.priv_class) {
     return;
   }
   const AVOption* option = av_opt_find2(
-      // The obj arg must be converted from const AVClass* const* to non-const
-      // void* First cast to remove const, then cast to void*
+      // Convert obj arg from const AVClass* const* to non-const void*
+      // First cast to remove const, then cast to void*
       const_cast<void*>(static_cast<const void*>(&avCodec.priv_class)),
       optionName,
       nullptr,
@@ -739,7 +738,7 @@ void VideoEncoder::initializeEncoder(
   // Apply videoStreamOptions
   AVDictionary* options = nullptr;
   if (videoStreamOptions.crf.has_value()) {
-    validateNumericOption(*avCodec, "crf", videoStreamOptions.crf.value());
+    validateDoubleOption(*avCodec, "crf", videoStreamOptions.crf.value());
     av_dict_set(
         &options,
         "crf",
