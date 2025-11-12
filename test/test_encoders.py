@@ -610,6 +610,37 @@ class TestVideoEncoder:
             )
             getattr(encoder, method)(**valid_params)
 
+        with pytest.raises(RuntimeError, match=r"crf=-10 is out of valid range"):
+            encoder = VideoEncoder(
+                frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
+                frame_rate=30,
+            )
+            getattr(encoder, method)(**valid_params, crf=-10)
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"avcodec_open2 failed: Invalid argument",
+        ):
+            encoder.to_tensor(format="mp4", preset="fake_preset")
+
+    @pytest.mark.parametrize("method", ["to_file", "to_tensor", "to_file_like"])
+    @pytest.mark.parametrize("crf", [23, 23.5, -0.9])
+    def test_crf_valid_values(self, method, crf, tmp_path):
+        if method == "to_file":
+            valid_params = {"dest": str(tmp_path / "test.mp4")}
+        elif method == "to_tensor":
+            valid_params = {"format": "mp4"}
+        elif method == "to_file_like":
+            valid_params = dict(file_like=io.BytesIO(), format="mp4")
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        encoder = VideoEncoder(
+            frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
+            frame_rate=30,
+        )
+        getattr(encoder, method)(**valid_params, crf=crf)
+
     def test_bad_input(self):
         encoder = VideoEncoder(
             frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
@@ -633,12 +664,6 @@ class TestVideoEncoder:
             match=r"Couldn't allocate AVFormatContext. Check the desired format\? Got format=bad_format",
         ):
             encoder.to_tensor(format="bad_format")
-
-        with pytest.raises(
-            RuntimeError,
-            match=r"avcodec_open2 failed: Invalid argument",
-        ):
-            encoder.to_tensor(format="mp4", preset="fake_preset")
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_pixel_format_errors(self, method, tmp_path):

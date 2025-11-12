@@ -37,7 +37,7 @@ class VideoEncoder:
         dest: Union[str, Path],
         *,
         pixel_format: Optional[str] = None,
-        crf: Optional[int] = None,
+        crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
     ) -> None:
         """Encode frames into a file.
@@ -48,7 +48,7 @@ class VideoEncoder:
                 container format.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
-            crf (int, optional): Constant Rate Factor for encoding quality. Lower values
+            crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
                 mean better quality. Valid range depends on the encoder (commonly 0-51).
                 Defaults to None (which will use encoder's default).
             preset (str or int, optional): Encoder option that controls the tradeoff between
@@ -71,7 +71,7 @@ class VideoEncoder:
         format: str,
         *,
         pixel_format: Optional[str] = None,
-        crf: Optional[int] = None,
+        crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
@@ -81,7 +81,7 @@ class VideoEncoder:
                 "mkv", "avi", "webm", "flv", etc.
             pixel_format (str, optional): The pixel format to encode frames into (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
-            crf (int, optional): Constant Rate Factor for encoding quality. Lower values
+            crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
                 mean better quality. Valid range depends on the encoder (commonly 0-51).
                 Defaults to None (which will use encoder's default).
             preset (str or int, optional): Encoder option that controls the tradeoff between
@@ -109,7 +109,7 @@ class VideoEncoder:
         format: str,
         *,
         pixel_format: Optional[str] = None,
-        crf: Optional[int] = None,
+        crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
     ) -> None:
         """Encode frames into a file-like object.
@@ -124,7 +124,7 @@ class VideoEncoder:
                 "mkv", "avi", "webm", "flv", etc.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
-            crf (int, optional): Constant Rate Factor for encoding quality. Lower values
+            crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
                 mean better quality. Valid range depends on the encoder (commonly 0-51).
                 Defaults to None (which will use encoder's default).
             preset (str or int, optional): Encoder option that controls the tradeoff between
