@@ -517,7 +517,7 @@ def _make_transform_specs(
         return ""
 
     transforms = _convert_to_decoder_native_transforms(transforms)
-    return ";".join([t.make_params() for t in transforms])
+    return ";".join([t._make_params() for t in transforms])
 
 
 def _read_custom_frame_mappings(
