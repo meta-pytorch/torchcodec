@@ -70,7 +70,8 @@ class VideoDecoder:
         transforms (sequence of transform objects, optional): Sequence of transforms to be
             applied to the decoded frames by the decoder itself, in order. Accepts both
             :class:`~torchcodec.transforms.DecoderTransform` and
-            `torchvision.transforms.v2.Transform` objects. All transforms are applied
+            `torchvision.transforms.v2.Transform <https://docs.pytorch.org/vision/stable/transforms.html#v2-api-reference-recommended>`_
+            objects. All transforms are applied
             in the ouput pixel format and colorspace. Read more about this parameter in:
             TODO_DECODER_TRANSFORMS_TUTORIAL.
         custom_frame_mappings (str, bytes, or file-like object, optional):

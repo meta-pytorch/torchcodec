@@ -19,8 +19,9 @@ class DecoderTransform(ABC):
     decoded frames and applying the same kind of transform.
 
     Most `DecoderTransform` objects have a complementary transform in TorchVision,
-    specificially in :mod:`torchvision.transforms.v2`. For such transforms,
-    we ensure that:
+    specificially in
+    `torchvision.transforms.v2 <https://docs.pytorch.org/vision/stable/transforms.html#v2-api-reference-recommended>`_.
+    For such transforms, we ensure that:
 
       1. The names are the same.
       2. Default behaviors are the same.
@@ -43,7 +44,8 @@ class DecoderTransform(ABC):
 class Resize(DecoderTransform):
     """Resize the decoded frame to a given size.
 
-    Complementary TorchVision transform: :class:`torchvision.transforms.v2.Resize`.
+    Complementary TorchVision transform:
+    `torchvision.transforms.v2.Resize <https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.v2.Resize.html#torchvision.transforms.v2.Resize>`_.
     Interpolation is always bilinear. Anti-aliasing is always on.
 
     Args:
