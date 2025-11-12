@@ -36,6 +36,7 @@ class VideoEncoder:
         self,
         dest: Union[str, Path],
         *,
+        codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
     ) -> None:
         """Encode frames into a file.
@@ -44,6 +45,9 @@ class VideoEncoder:
             dest (str or ``pathlib.Path``): The path to the output file, e.g.
                 ``video.mp4``. The extension of the file determines the video
                 container format.
+            codec (str, optional): The codec to use for encoding (e.g., "libx264",
+                "h264"). If not specified, the default codec
+                for the container format will be used.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
         """
@@ -51,6 +55,7 @@ class VideoEncoder:
             frames=self._frames,
             frame_rate=self._frame_rate,
             filename=str(dest),
+            codec=codec,
             pixel_format=pixel_format,
         )
 
@@ -58,23 +63,28 @@ class VideoEncoder:
         self,
         format: str,
         *,
+        codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
 
         Args:
             format (str): The container format of the encoded frames, e.g. "mp4", "mov",
-            "mkv", "avi", "webm", "flv", or "gif"
+                    "mkv", "avi", "webm", "flv", etc.
+            codec (str, optional): The codec to use for encoding (e.g., "libx264",
+                "h264"). If not specified, the default codec
+                for the container format will be used.
             pixel_format (str, optional): The pixel format to encode frames into (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
 
         Returns:
-            Tensor: The raw encoded bytes as 4D uint8 Tensor.
+            Tensor: The raw encoded bytes as 1D uint8 Tensor.
         """
         return _core.encode_video_to_tensor(
             frames=self._frames,
             frame_rate=self._frame_rate,
             format=format,
+            codec=codec,
             pixel_format=pixel_format,
         )
 
@@ -83,6 +93,7 @@ class VideoEncoder:
         file_like,
         format: str,
         *,
+        codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
     ) -> None:
         """Encode frames into a file-like object.
@@ -94,7 +105,10 @@ class VideoEncoder:
                 ``write(data: bytes) -> int`` and ``seek(offset: int, whence:
                 int = 0) -> int``.
             format (str): The container format of the encoded frames, e.g. "mp4", "mov",
-                "mkv", "avi", "webm", "flv", or "gif".
+                "mkv", "avi", "webm", "flv", etc.
+            codec (str, optional): The codec to use for encoding (e.g., "libx264",
+                "h264"). If not specified, the default codec
+                for the container format will be used.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
         """
@@ -103,5 +117,6 @@ class VideoEncoder:
             frame_rate=self._frame_rate,
             format=format,
             file_like=file_like,
+            codec=codec,
             pixel_format=pixel_format,
         )

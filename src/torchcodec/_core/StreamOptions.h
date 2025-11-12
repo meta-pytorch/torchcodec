@@ -45,6 +45,7 @@ struct VideoStreamOptions {
   std::string_view deviceVariant = "ffmpeg";
 
   // Encoding options
+  std::optional<std::string> codec;
   // TODO-VideoEncoder: Consider adding other optional fields here
   // (bit rate, gop size, max b frames, preset)
   std::optional<int> crf;

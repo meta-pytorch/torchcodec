@@ -605,6 +605,12 @@ class TestVideoEncoder:
             )
             getattr(encoder, method)(**valid_params)
 
+        with pytest.raises(
+            RuntimeError,
+            match=r"Video codec invalid_codec_name not found.",
+        ):
+            encoder.to_file(str(tmp_path / "output.mp4"), codec="invalid_codec_name")
+
     def test_bad_input(self, tmp_path):
         encoder = VideoEncoder(
             frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
@@ -628,6 +634,24 @@ class TestVideoEncoder:
             match=r"Couldn't allocate AVFormatContext. Check the desired format\? Got format=bad_format",
         ):
             encoder.to_tensor(format="bad_format")
+
+    @pytest.mark.parametrize("method", ["to_file", "to_tensor", "to_file_like"])
+    @pytest.mark.parametrize("codec", ["h264", "hevc", "av1", "libx264", None])
+    def test_codec_valid_values(self, method, codec, tmp_path):
+        if method == "to_file":
+            valid_params = {"dest": str(tmp_path / "test.mp4")}
+        elif method == "to_tensor":
+            valid_params = {"format": "mp4"}
+        elif method == "to_file_like":
+            valid_params = dict(file_like=io.BytesIO(), format="mp4")
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        encoder = VideoEncoder(
+            frames=torch.zeros((5, 3, 128, 128), dtype=torch.uint8),
+            frame_rate=30,
+        )
+        getattr(encoder, method)(**valid_params, codec=codec)
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_pixel_format_errors(self, method, tmp_path):

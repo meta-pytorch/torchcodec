@@ -649,9 +649,30 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
-  const AVCodec* avCodec =
-      avcodec_find_encoder(avFormatContext_->oformat->video_codec);
-  TORCH_CHECK(avCodec != nullptr, "Video codec not found");
+  const AVCodec* avCodec = nullptr;
+  // If codec arg is provided, find codec using logic similar to FFmpeg:
+  // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
+  if (videoStreamOptions.codec.has_value()) {
+    const std::string& codec = videoStreamOptions.codec.value();
+    // Try to find codec by name ("libx264", "libsvtav1")
+    avCodec = avcodec_find_encoder_by_name(codec.c_str());
+    // Try to find by codec descriptor ("h264", "av1")
+    if (!avCodec) {
+      const AVCodecDescriptor* desc =
+          avcodec_descriptor_get_by_name(codec.c_str());
+      if (desc) {
+        avCodec = avcodec_find_encoder(desc->id);
+      }
+    }
+    TORCH_CHECK(
+        avCodec != nullptr,
+        "Video codec ",
+        codec,
+        " not found. Provide a codec name ('libx264', 'libx265') or a codec descriptor ('h264', 'hevc'), or do not specify a codec to use the default codec.");
+  } else {
+    avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
+    TORCH_CHECK(avCodec != nullptr, "Video codec not found");
+  }
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
   TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
