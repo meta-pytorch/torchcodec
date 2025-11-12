@@ -1108,9 +1108,6 @@ I    P     P    P    I    P    P    P    I    P    P    I    P    P    I    P
 */
 bool SingleStreamDecoder::canWeAvoidSeeking() const {
   const StreamInfo& streamInfo = streamInfos_.at(activeStreamIndex_);
-  if (!cursorWasJustSet_) {
-    return true;
-  }
   if (streamInfo.avMediaType == AVMEDIA_TYPE_AUDIO) {
     // For audio, we only need to seek if a backwards seek was requested
     // within getFramesPlayedInRangeAudio(), when setCursorPtsInSeconds() was
