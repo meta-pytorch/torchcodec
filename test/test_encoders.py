@@ -609,6 +609,10 @@ class TestVideoEncoder:
             RuntimeError,
             match=r"Video codec invalid_codec_name not found.",
         ):
+            encoder = VideoEncoder(
+                frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
+                frame_rate=30,
+            )
             encoder.to_file(str(tmp_path / "output.mp4"), codec="invalid_codec_name")
 
     def test_bad_input(self, tmp_path):
