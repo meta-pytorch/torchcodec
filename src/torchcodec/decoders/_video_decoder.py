@@ -444,7 +444,7 @@ def _get_and_validate_stream_metadata(
     )
 
 
-def _convert_to_decoder_native_transforms(
+def _convert_to_decoder_transforms(
     transforms: Sequence[Union[DecoderTransform, nn.Module]],
 ) -> List[DecoderTransform]:
     """Convert a sequence of transforms that may contain TorchVision transform
@@ -517,7 +517,7 @@ def _make_transform_specs(
     if transforms is None:
         return ""
 
-    transforms = _convert_to_decoder_native_transforms(transforms)
+    transforms = _convert_to_decoder_transforms(transforms)
     return ";".join([t._make_params() for t in transforms])
 
 
