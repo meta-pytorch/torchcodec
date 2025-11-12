@@ -9,15 +9,15 @@
 #include <mutex>
 #include <vector>
 
-#include "src/torchcodec/_core/BetaCudaDeviceInterface.h"
+#include "BetaCudaDeviceInterface.h"
 
-#include "src/torchcodec/_core/DeviceInterface.h"
-#include "src/torchcodec/_core/FFMPEGCommon.h"
-#include "src/torchcodec/_core/NVDECCache.h"
+#include "DeviceInterface.h"
+#include "FFMPEGCommon.h"
+#include "NVDECCache.h"
 
-#include "src/torchcodec/_core/NVCUVIDRuntimeLoader.h"
-#include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
-#include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
+#include "NVCUVIDRuntimeLoader.h"
+#include "nvcuvid_include/cuviddec.h"
+#include "nvcuvid_include/nvcuvid.h"
 
 extern "C" {
 #include <libavutil/hwcontext_cuda.h>
@@ -211,6 +211,12 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
   }
 
   return true;
+}
+
+// Callback for freeing CUDA memory associated with AVFrame see where it's used
+// for more details.
+void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
+  cudaFree(opaque);
 }
 
 } // namespace
@@ -668,38 +674,163 @@ void BetaCudaDeviceInterface::flush() {
   std::swap(readyFrames_, emptyQueue);
 }
 
+UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
+    UniqueAVFrame& cpuFrame) {
+  // This is called in the context of the CPU fallback: the frame was decoded on
+  // the CPU, and in this function we convert that frame into NV12 format and
+  // send it to the GPU.
+  // We do that in 2 steps:
+  // - First we convert the input CPU frame into an intermediate NV12 CPU frame
+  //   using sws_scale.
+  // - Then we allocate GPU memory and copy the NV12 CPU frame to the GPU. This
+  //   is what we return
+
+  TORCH_CHECK(cpuFrame != nullptr, "CPU frame cannot be null");
+
+  int width = cpuFrame->width;
+  int height = cpuFrame->height;
+
+  // intermediate NV12 CPU frame. It's not on the GPU yet.
+  UniqueAVFrame nv12CpuFrame(av_frame_alloc());
+  TORCH_CHECK(nv12CpuFrame != nullptr, "Failed to allocate NV12 CPU frame");
+
+  nv12CpuFrame->format = AV_PIX_FMT_NV12;
+  nv12CpuFrame->width = width;
+  nv12CpuFrame->height = height;
+
+  int ret = av_frame_get_buffer(nv12CpuFrame.get(), 0);
+  TORCH_CHECK(
+      ret >= 0,
+      "Failed to allocate NV12 CPU frame buffer: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
+
+  SwsFrameContext swsFrameContext(
+      width,
+      height,
+      static_cast<AVPixelFormat>(cpuFrame->format),
+      width,
+      height);
+
+  if (!swsContext_ || prevSwsFrameContext_ != swsFrameContext) {
+    swsContext_ = createSwsContext(
+        swsFrameContext, cpuFrame->colorspace, AV_PIX_FMT_NV12, SWS_BILINEAR);
+    prevSwsFrameContext_ = swsFrameContext;
+  }
+
+  int convertedHeight = sws_scale(
+      swsContext_.get(),
+      cpuFrame->data,
+      cpuFrame->linesize,
+      0,
+      height,
+      nv12CpuFrame->data,
+      nv12CpuFrame->linesize);
+  TORCH_CHECK(
+      convertedHeight == height, "sws_scale failed for CPU->NV12 conversion");
+
+  int ySize = width * height;
+  TORCH_CHECK(
+      ySize % 2 == 0,
+      "Y plane size must be even. Please report on TorchCodec repo.");
+  int uvSize = ySize / 2; // NV12: UV plane is half the size of Y plane
+  size_t totalSize = static_cast<size_t>(ySize + uvSize);
+
+  uint8_t* cudaBuffer = nullptr;
+  cudaError_t err =
+      cudaMalloc(reinterpret_cast<void**>(&cudaBuffer), totalSize);
+  TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to allocate CUDA memory: ",
+      cudaGetErrorString(err));
+
+  UniqueAVFrame gpuFrame(av_frame_alloc());
+  TORCH_CHECK(gpuFrame != nullptr, "Failed to allocate GPU AVFrame");
+
+  gpuFrame->format = AV_PIX_FMT_CUDA;
+  gpuFrame->width = width;
+  gpuFrame->height = height;
+  gpuFrame->data[0] = cudaBuffer;
+  gpuFrame->data[1] = cudaBuffer + ySize;
+  gpuFrame->linesize[0] = width;
+  gpuFrame->linesize[1] = width;
+
+  // Note that we use cudaMemcpy2D here instead of cudaMemcpy because the
+  // linesizes (strides) may be different than the widths for the input CPU
+  // frame. That's precisely what cudaMemcpy2D is for.
+  err = cudaMemcpy2D(
+      gpuFrame->data[0],
+      gpuFrame->linesize[0],
+      nv12CpuFrame->data[0],
+      nv12CpuFrame->linesize[0],
+      width,
+      height,
+      cudaMemcpyHostToDevice);
+  TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy Y plane to GPU: ",
+      cudaGetErrorString(err));
+
+  TORCH_CHECK(
+      height % 2 == 0,
+      "height must be even. Please report on TorchCodec repo.");
+  err = cudaMemcpy2D(
+      gpuFrame->data[1],
+      gpuFrame->linesize[1],
+      nv12CpuFrame->data[1],
+      nv12CpuFrame->linesize[1],
+      width,
+      height / 2,
+      cudaMemcpyHostToDevice);
+  TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy UV plane to GPU: ",
+      cudaGetErrorString(err));
+
+  ret = av_frame_copy_props(gpuFrame.get(), cpuFrame.get());
+  TORCH_CHECK(
+      ret >= 0,
+      "Failed to copy frame properties: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
+
+  // We're almost done, but we need to make sure the CUDA memory is freed
+  // properly. Usually, AVFrame data is freed when av_frame_free() is called
+  // (upon UniqueAVFrame destruction), but since we allocated the CUDA memory
+  // ourselves, FFmpeg doesn't know how to free it. The recommended way to deal
+  // with this is to associate the opaque_ref field of the AVFrame with a `free`
+  // callback that will then be called by av_frame_free().
+  gpuFrame->opaque_ref = av_buffer_create(
+      nullptr, // data - we don't need any
+      0, // data size
+      cudaBufferFreeCallback, // callback triggered by av_frame_free()
+      cudaBuffer, // parameter to callback
+      0); // flags
+  TORCH_CHECK(
+      gpuFrame->opaque_ref != nullptr,
+      "Failed to create GPU memory cleanup reference");
+
+  return gpuFrame;
+}
+
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
-  if (cpuFallback_) {
-    // CPU decoded frame - need to do CPU color conversion then transfer to GPU
-    FrameOutput cpuFrameOutput;
-    cpuFallback_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
-
-    // Transfer CPU frame to GPU
-    if (preAllocatedOutputTensor.has_value()) {
-      preAllocatedOutputTensor.value().copy_(cpuFrameOutput.data);
-      frameOutput.data = preAllocatedOutputTensor.value();
-    } else {
-      frameOutput.data = cpuFrameOutput.data.to(device_);
-    }
-    return;
-  }
+  UniqueAVFrame gpuFrame =
+      cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
 
   // TODONVDEC P2: we may need to handle 10bit videos the same way the CUDA
   // ffmpeg interface does it with maybeConvertAVFrameToNV12OrRGB24().
   TORCH_CHECK(
-      avFrame->format == AV_PIX_FMT_CUDA,
+      gpuFrame->format == AV_PIX_FMT_CUDA,
       "Expected CUDA format frame from BETA CUDA interface");
 
-  validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
+  validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
 
   at::cuda::CUDAStream nvdecStream =
       at::cuda::getCurrentCUDAStream(device_.index());
 
   frameOutput.data = convertNV12FrameToRGB(
-      avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+      gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {

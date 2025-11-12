@@ -12,12 +12,13 @@
 #include <ostream>
 #include <string_view>
 
-#include "src/torchcodec/_core/AVIOContextHolder.h"
-#include "src/torchcodec/_core/DeviceInterface.h"
-#include "src/torchcodec/_core/FFMPEGCommon.h"
-#include "src/torchcodec/_core/Frame.h"
-#include "src/torchcodec/_core/StreamOptions.h"
-#include "src/torchcodec/_core/Transform.h"
+#include "AVIOContextHolder.h"
+#include "DeviceInterface.h"
+#include "FFMPEGCommon.h"
+#include "Frame.h"
+#include "Metadata.h"
+#include "StreamOptions.h"
+#include "Transform.h"
 
 namespace facebook::torchcodec {
 
@@ -29,8 +30,6 @@ class SingleStreamDecoder {
   // --------------------------------------------------------------------------
   // CONSTRUCTION API
   // --------------------------------------------------------------------------
-
-  enum class SeekMode { exact, approximate, custom_frame_mappings };
 
   // Creates a SingleStreamDecoder from the video at videoFilePath.
   explicit SingleStreamDecoder(
@@ -59,6 +58,12 @@ class SingleStreamDecoder {
 
   // Returns the metadata for the container.
   ContainerMetadata getContainerMetadata() const;
+
+  // Returns the seek mode of this decoder.
+  SeekMode getSeekMode() const;
+
+  // Returns the active stream index. Returns -2 if no stream is active.
+  int getActiveStreamIndex() const;
 
   // Returns the key frame indices as a tensor. The tensor is 1D and contains
   // int64 values, where each value is the frame index for a key frame.
@@ -273,19 +278,6 @@ class SingleStreamDecoder {
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
-  void convertAudioAVFrameToFrameOutputOnCPU(
-      UniqueAVFrame& srcAVFrame,
-      FrameOutput& frameOutput);
-
-  torch::Tensor convertAVFrameToTensorUsingFilterGraph(
-      const UniqueAVFrame& avFrame);
-
-  int convertAVFrameToTensorUsingSwsScale(
-      const UniqueAVFrame& avFrame,
-      torch::Tensor& outputTensor);
-
-  std::optional<torch::Tensor> maybeFlushSwrBuffers();
-
   // --------------------------------------------------------------------------
   // PTS <-> INDEX CONVERSIONS
   // --------------------------------------------------------------------------
@@ -325,10 +317,6 @@ class SingleStreamDecoder {
   // index. Note that this index may be truncated for some files.
   int getBestStreamIndex(AVMediaType mediaType);
 
-  std::optional<int64_t> getNumFrames(const StreamMetadata& streamMetadata);
-  double getMinSeconds(const StreamMetadata& streamMetadata);
-  std::optional<double> getMaxSeconds(const StreamMetadata& streamMetadata);
-
   // --------------------------------------------------------------------------
   // VALIDATION UTILS
   // --------------------------------------------------------------------------
@@ -358,11 +346,7 @@ class SingleStreamDecoder {
   bool cursorWasJustSet_ = false;
   int64_t lastDecodedAvFramePts_ = 0;
   int64_t lastDecodedAvFrameDuration_ = 0;
-
-  // Audio only. We cache it for performance. The video equivalents live in
-  // deviceInterface_. We store swrContext_ here because we only handle audio
-  // on the CPU.
-  UniqueSwrContext swrContext_;
+  int64_t lastDecodedFrameIndex_ = INT64_MIN;
 
   // Stores various internal decoding stats.
   DecodeStats decodeStats_;

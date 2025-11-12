@@ -4,7 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include "src/torchcodec/_core/SingleStreamDecoder.h"
+#include "SingleStreamDecoder.h"
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
@@ -377,6 +377,14 @@ ContainerMetadata SingleStreamDecoder::getContainerMetadata() const {
   return containerMetadata_;
 }
 
+SeekMode SingleStreamDecoder::getSeekMode() const {
+  return seekMode_;
+}
+
+int SingleStreamDecoder::getActiveStreamIndex() const {
+  return activeStreamIndex_;
+}
+
 torch::Tensor SingleStreamDecoder::getKeyFrameIndices() {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   validateScannedAllStreams("getKeyFrameIndices");
@@ -580,6 +588,9 @@ void SingleStreamDecoder::addAudioStream(
   // support that format, but it looks like it does nothing, so this probably
   // doesn't hurt.
   streamInfo.codecContext->request_sample_fmt = AV_SAMPLE_FMT_FLTP;
+
+  // Initialize device interface for audio
+  deviceInterface_->initializeAudio(audioStreamOptions);
 }
 
 // --------------------------------------------------------------------------
@@ -618,16 +629,24 @@ FrameOutput SingleStreamDecoder::getFrameAtIndexInternal(
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
 
-  std::optional<int64_t> numFrames = getNumFrames(streamMetadata);
+  std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
   if (numFrames.has_value()) {
     // If the frameIndex is negative, we convert it to a positive index
     frameIndex = frameIndex >= 0 ? frameIndex : frameIndex + numFrames.value();
   }
   validateFrameIndex(streamMetadata, frameIndex);
 
-  int64_t pts = getPts(frameIndex);
-  setCursorPtsInSeconds(ptsToSeconds(pts, streamInfo.timeBase));
-  return getNextFrameInternal(preAllocatedOutputTensor);
+  // Only set cursor if we're not decoding sequentially: when decoding
+  // sequentially, we don't need to seek anywhere, so by *not* setting the
+  // cursor we allow canWeAvoidSeeking() to return true early.
+  if (frameIndex != lastDecodedFrameIndex_ + 1) {
+    int64_t pts = getPts(frameIndex);
+    setCursorPtsInSeconds(ptsToSeconds(pts, streamInfo.timeBase));
+  }
+
+  auto result = getNextFrameInternal(preAllocatedOutputTensor);
+  lastDecodedFrameIndex_ = frameIndex;
+  return result;
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
@@ -712,7 +731,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
 
   // Note that if we do not have the number of frames available in our
   // metadata, then we assume that the upper part of the range is valid.
-  std::optional<int64_t> numFrames = getNumFrames(streamMetadata);
+  std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
   if (numFrames.has_value()) {
     TORCH_CHECK(
         stop <= numFrames.value(),
@@ -786,8 +805,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
 
-  double minSeconds = getMinSeconds(streamMetadata);
-  std::optional<double> maxSeconds = getMaxSeconds(streamMetadata);
+  double minSeconds = streamMetadata.getBeginStreamSeconds(seekMode_);
+  std::optional<double> maxSeconds =
+      streamMetadata.getEndStreamSeconds(seekMode_);
 
   // The frame played at timestamp t and the one played at timestamp `t +
   // eps` are probably the same frame, with the same index. The easiest way to
@@ -864,7 +884,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     return frameBatchOutput;
   }
 
-  double minSeconds = getMinSeconds(streamMetadata);
+  double minSeconds = streamMetadata.getBeginStreamSeconds(seekMode_);
   TORCH_CHECK(
       startSeconds >= minSeconds,
       "Start seconds is " + std::to_string(startSeconds) +
@@ -873,7 +893,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
 
   // Note that if we can't determine the maximum seconds from the metadata,
   // then we assume upper range is valid.
-  std::optional<double> maxSeconds = getMaxSeconds(streamMetadata);
+  std::optional<double> maxSeconds =
+      streamMetadata.getEndStreamSeconds(seekMode_);
   if (maxSeconds.has_value()) {
     TORCH_CHECK(
         startSeconds < maxSeconds.value(),
@@ -1035,7 +1056,7 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
         (stopPts <= lastDecodedAvFrameEnd);
   }
 
-  auto lastSamples = maybeFlushSwrBuffers();
+  auto lastSamples = deviceInterface_->maybeFlushAudioBuffers();
   if (lastSamples.has_value()) {
     frames.push_back(*lastSamples);
   }
@@ -1102,7 +1123,11 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
     // within getFramesPlayedInRangeAudio(), when setCursorPtsInSeconds() was
     // called. For more context, see [Audio Decoding Design]
     return !cursorWasJustSet_;
+  } else if (!cursorWasJustSet_) {
+    // For videos, when decoding consecutive frames, we don't need to seek.
+    return true;
   }
+
   if (cursor_ < lastDecodedAvFramePts_) {
     // We can never skip a seek if we are seeking backwards.
     return false;
@@ -1178,10 +1203,8 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
 
   resetDecodeStats();
 
-  if (cursorWasJustSet_) {
-    maybeSeekToBeforeDesiredPts();
-    cursorWasJustSet_ = false;
-  }
+  maybeSeekToBeforeDesiredPts();
+  cursorWasJustSet_ = false;
 
   UniqueAVFrame avFrame(av_frame_alloc());
   AutoAVPacket autoAVPacket;
@@ -1296,141 +1319,15 @@ FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
   // Convert the frame to tensor.
   FrameOutput frameOutput;
-  auto& streamInfo = streamInfos_[activeStreamIndex_];
   frameOutput.ptsSeconds = ptsToSeconds(
       getPtsOrDts(avFrame),
       formatContext_->streams[activeStreamIndex_]->time_base);
   frameOutput.durationSeconds = ptsToSeconds(
       getDuration(avFrame),
       formatContext_->streams[activeStreamIndex_]->time_base);
-  if (streamInfo.avMediaType == AVMEDIA_TYPE_AUDIO) {
-    convertAudioAVFrameToFrameOutputOnCPU(avFrame, frameOutput);
-  } else {
-    deviceInterface_->convertAVFrameToFrameOutput(
-        avFrame, frameOutput, preAllocatedOutputTensor);
-  }
+  deviceInterface_->convertAVFrameToFrameOutput(
+      avFrame, frameOutput, std::move(preAllocatedOutputTensor));
   return frameOutput;
-}
-
-void SingleStreamDecoder::convertAudioAVFrameToFrameOutputOnCPU(
-    UniqueAVFrame& srcAVFrame,
-    FrameOutput& frameOutput) {
-  AVSampleFormat srcSampleFormat =
-      static_cast<AVSampleFormat>(srcAVFrame->format);
-  AVSampleFormat outSampleFormat = AV_SAMPLE_FMT_FLTP;
-
-  StreamInfo& streamInfo = streamInfos_[activeStreamIndex_];
-  int srcSampleRate = srcAVFrame->sample_rate;
-  int outSampleRate =
-      streamInfo.audioStreamOptions.sampleRate.value_or(srcSampleRate);
-
-  int srcNumChannels = getNumChannels(streamInfo.codecContext);
-  TORCH_CHECK(
-      srcNumChannels == getNumChannels(srcAVFrame),
-      "The frame has ",
-      getNumChannels(srcAVFrame),
-      " channels, expected ",
-      srcNumChannels,
-      ". If you are hitting this, it may be because you are using "
-      "a buggy FFmpeg version. FFmpeg4 is known to fail here in some "
-      "valid scenarios. Try to upgrade FFmpeg?");
-  int outNumChannels =
-      streamInfo.audioStreamOptions.numChannels.value_or(srcNumChannels);
-
-  bool mustConvert =
-      (srcSampleFormat != outSampleFormat || srcSampleRate != outSampleRate ||
-       srcNumChannels != outNumChannels);
-
-  UniqueAVFrame convertedAVFrame;
-  if (mustConvert) {
-    if (!swrContext_) {
-      swrContext_.reset(createSwrContext(
-          srcSampleFormat,
-          outSampleFormat,
-          srcSampleRate,
-          outSampleRate,
-          srcAVFrame,
-          outNumChannels));
-    }
-
-    convertedAVFrame = convertAudioAVFrameSamples(
-        swrContext_,
-        srcAVFrame,
-        outSampleFormat,
-        outSampleRate,
-        outNumChannels);
-  }
-  const UniqueAVFrame& avFrame = mustConvert ? convertedAVFrame : srcAVFrame;
-
-  AVSampleFormat format = static_cast<AVSampleFormat>(avFrame->format);
-  TORCH_CHECK(
-      format == outSampleFormat,
-      "Something went wrong, the frame didn't get converted to the desired format. ",
-      "Desired format = ",
-      av_get_sample_fmt_name(outSampleFormat),
-      "source format = ",
-      av_get_sample_fmt_name(format));
-
-  int numChannels = getNumChannels(avFrame);
-  TORCH_CHECK(
-      numChannels == outNumChannels,
-      "Something went wrong, the frame didn't get converted to the desired ",
-      "number of channels = ",
-      outNumChannels,
-      ". Got ",
-      numChannels,
-      " instead.");
-
-  auto numSamples = avFrame->nb_samples; // per channel
-
-  frameOutput.data = torch::empty({numChannels, numSamples}, torch::kFloat32);
-
-  if (numSamples > 0) {
-    uint8_t* outputChannelData =
-        static_cast<uint8_t*>(frameOutput.data.data_ptr());
-    auto numBytesPerChannel = numSamples * av_get_bytes_per_sample(format);
-    for (auto channel = 0; channel < numChannels;
-         ++channel, outputChannelData += numBytesPerChannel) {
-      std::memcpy(
-          outputChannelData,
-          avFrame->extended_data[channel],
-          numBytesPerChannel);
-    }
-  }
-}
-
-std::optional<torch::Tensor> SingleStreamDecoder::maybeFlushSwrBuffers() {
-  // When sample rate conversion is involved, swresample buffers some of the
-  // samples in-between calls to swr_convert (see the libswresample docs).
-  // That's because the last few samples in a given frame require future
-  // samples from the next frame to be properly converted. This function
-  // flushes out the samples that are stored in swresample's buffers.
-  auto& streamInfo = streamInfos_[activeStreamIndex_];
-  if (!swrContext_) {
-    return std::nullopt;
-  }
-  auto numRemainingSamples = // this is an upper bound
-      swr_get_out_samples(swrContext_.get(), 0);
-
-  if (numRemainingSamples == 0) {
-    return std::nullopt;
-  }
-
-  int numChannels = streamInfo.audioStreamOptions.numChannels.value_or(
-      getNumChannels(streamInfo.codecContext));
-  torch::Tensor lastSamples =
-      torch::empty({numChannels, numRemainingSamples}, torch::kFloat32);
-
-  std::vector<uint8_t*> outputBuffers(numChannels);
-  for (auto i = 0; i < numChannels; i++) {
-    outputBuffers[i] = static_cast<uint8_t*>(lastSamples[i].data_ptr());
-  }
-
-  auto actualNumRemainingSamples = swr_convert(
-      swrContext_.get(), outputBuffers.data(), numRemainingSamples, nullptr, 0);
-
-  return lastSamples.narrow(
-      /*dim=*/1, /*start=*/0, /*length=*/actualNumRemainingSamples);
 }
 
 // --------------------------------------------------------------------------
@@ -1572,47 +1469,6 @@ int64_t SingleStreamDecoder::getPts(int64_t frameIndex) {
 // STREAM AND METADATA APIS
 // --------------------------------------------------------------------------
 
-std::optional<int64_t> SingleStreamDecoder::getNumFrames(
-    const StreamMetadata& streamMetadata) {
-  switch (seekMode_) {
-    case SeekMode::custom_frame_mappings:
-    case SeekMode::exact:
-      return streamMetadata.numFramesFromContent.value();
-    case SeekMode::approximate: {
-      return streamMetadata.numFramesFromHeader;
-    }
-    default:
-      TORCH_CHECK(false, "Unknown SeekMode");
-  }
-}
-
-double SingleStreamDecoder::getMinSeconds(
-    const StreamMetadata& streamMetadata) {
-  switch (seekMode_) {
-    case SeekMode::custom_frame_mappings:
-    case SeekMode::exact:
-      return streamMetadata.beginStreamPtsSecondsFromContent.value();
-    case SeekMode::approximate:
-      return 0;
-    default:
-      TORCH_CHECK(false, "Unknown SeekMode");
-  }
-}
-
-std::optional<double> SingleStreamDecoder::getMaxSeconds(
-    const StreamMetadata& streamMetadata) {
-  switch (seekMode_) {
-    case SeekMode::custom_frame_mappings:
-    case SeekMode::exact:
-      return streamMetadata.endStreamPtsSecondsFromContent.value();
-    case SeekMode::approximate: {
-      return streamMetadata.durationSecondsFromHeader;
-    }
-    default:
-      TORCH_CHECK(false, "Unknown SeekMode");
-  }
-}
-
 // --------------------------------------------------------------------------
 // VALIDATION UTILS
 // --------------------------------------------------------------------------
@@ -1662,7 +1518,7 @@ void SingleStreamDecoder::validateFrameIndex(
 
   // Note that if we do not have the number of frames available in our
   // metadata, then we assume that the frameIndex is valid.
-  std::optional<int64_t> numFrames = getNumFrames(streamMetadata);
+  std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
   if (numFrames.has_value()) {
     if (frameIndex >= numFrames.value()) {
       throw std::out_of_range(

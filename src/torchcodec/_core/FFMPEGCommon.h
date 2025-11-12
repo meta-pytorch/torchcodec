@@ -246,8 +246,35 @@ int64_t computeSafeDuration(
     const AVRational& frameRate,
     const AVRational& timeBase);
 
-AVFilterContext* createBuffersinkFilter(
+AVFilterContext* createAVFilterContextWithOptions(
     AVFilterGraph* filterGraph,
-    enum AVPixelFormat outputFormat);
+    const AVFilter* buffer,
+    const enum AVPixelFormat outputFormat);
+
+struct SwsFrameContext {
+  int inputWidth = 0;
+  int inputHeight = 0;
+  AVPixelFormat inputFormat = AV_PIX_FMT_NONE;
+  int outputWidth = 0;
+  int outputHeight = 0;
+
+  SwsFrameContext() = default;
+  SwsFrameContext(
+      int inputWidth,
+      int inputHeight,
+      AVPixelFormat inputFormat,
+      int outputWidth,
+      int outputHeight);
+
+  bool operator==(const SwsFrameContext& other) const;
+  bool operator!=(const SwsFrameContext& other) const;
+};
+
+// Utility functions for swscale context management
+UniqueSwsContext createSwsContext(
+    const SwsFrameContext& swsFrameContext,
+    AVColorSpace colorspace,
+    AVPixelFormat outputFormat,
+    int swsFlags);
 
 } // namespace facebook::torchcodec

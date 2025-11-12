@@ -12,9 +12,9 @@
 #include <stdexcept>
 #include <string>
 #include "FFMPEGCommon.h"
-#include "src/torchcodec/_core/Frame.h"
-#include "src/torchcodec/_core/StreamOptions.h"
-#include "src/torchcodec/_core/Transform.h"
+#include "Frame.h"
+#include "StreamOptions.h"
+#include "Transform.h"
 
 namespace facebook::torchcodec {
 
@@ -64,6 +64,21 @@ class DeviceInterface {
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
           transforms,
       [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {}
+
+  // Initialize the device with parameters specific to audio decoding. There is
+  // a default empty implementation.
+  virtual void initializeAudio(
+      [[maybe_unused]] const AudioStreamOptions& audioStreamOptions) {}
+
+  // Flush any remaining samples from the audio resampler buffer.
+  // When sample rate conversion is involved, some samples may be buffered
+  // between frames for proper interpolation. This function flushes those
+  // buffered samples.
+  // Returns an optional tensor containing the flushed samples, or std::nullopt
+  // if there are no buffered samples or audio is not supported.
+  virtual std::optional<torch::Tensor> maybeFlushAudioBuffers() {
+    return std::nullopt;
+  }
 
   // In order for decoding to actually happen on an FFmpeg managed hardware
   // device, we need to register the DeviceInterface managed
@@ -126,6 +141,7 @@ class DeviceInterface {
  protected:
   torch::Device device_;
   SharedAVCodecContext codecContext_;
+  AVMediaType avMediaType_;
 };
 
 using CreateDeviceInterfaceFn =

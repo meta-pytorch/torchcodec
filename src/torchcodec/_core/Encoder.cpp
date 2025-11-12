@@ -1,8 +1,12 @@
 #include <sstream>
 
-#include "src/torchcodec/_core/AVIOTensorContext.h"
-#include "src/torchcodec/_core/Encoder.h"
+#include "AVIOTensorContext.h"
+#include "Encoder.h"
 #include "torch/types.h"
+
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
 
 namespace facebook::torchcodec {
 
@@ -531,10 +535,39 @@ torch::Tensor validateFrames(const torch::Tensor& frames) {
       frames.sizes()[1] == 3,
       "frame must have 3 channels (R, G, B), got ",
       frames.sizes()[1]);
-  // TODO-VideoEncoder: Investigate if non-contiguous frames can be accepted
   return frames.contiguous();
 }
 
+AVPixelFormat validatePixelFormat(
+    const AVCodec& avCodec,
+    const std::string& targetPixelFormat) {
+  AVPixelFormat pixelFormat = av_get_pix_fmt(targetPixelFormat.c_str());
+
+  // Validate that the encoder supports this pixel format
+  const AVPixelFormat* supportedFormats = getSupportedPixelFormats(avCodec);
+  if (supportedFormats != nullptr) {
+    for (int i = 0; supportedFormats[i] != AV_PIX_FMT_NONE; ++i) {
+      if (supportedFormats[i] == pixelFormat) {
+        return pixelFormat;
+      }
+    }
+  }
+
+  std::stringstream errorMsg;
+  // av_get_pix_fmt failed to find a pix_fmt
+  if (pixelFormat == AV_PIX_FMT_NONE) {
+    errorMsg << "Unknown pixel format: " << targetPixelFormat;
+  } else {
+    errorMsg << "Specified pixel format " << targetPixelFormat
+             << " is not supported by the " << avCodec.name << " encoder.";
+  }
+  // Build error message, similar to FFmpeg's error log
+  errorMsg << "\nSupported pixel formats for " << avCodec.name << ":";
+  for (int i = 0; supportedFormats[i] != AV_PIX_FMT_NONE; ++i) {
+    errorMsg << " " << av_get_pix_fmt_name(supportedFormats[i]);
+  }
+  TORCH_CHECK(false, errorMsg.str());
+}
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
@@ -636,15 +669,19 @@ void VideoEncoder::initializeEncoder(
   outWidth_ = inWidth_;
   outHeight_ = inHeight_;
 
-  // TODO-VideoEncoder: Enable other pixel formats
-  // Let FFmpeg choose best pixel format to minimize loss
-  outPixelFormat_ = avcodec_find_best_pix_fmt_of_list(
-      getSupportedPixelFormats(*avCodec), // List of supported formats
-      AV_PIX_FMT_GBRP, // We reorder input to GBRP currently
-      0, // No alpha channel
-      nullptr // Discard conversion loss information
-  );
-  TORCH_CHECK(outPixelFormat_ != -1, "Failed to find best pix fmt")
+  if (videoStreamOptions.pixelFormat.has_value()) {
+    outPixelFormat_ =
+        validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
+  } else {
+    const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
+    // Use first listed pixel format as default (often yuv420p).
+    // This is similar to FFmpeg's logic:
+    // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
+    // If pixel formats are undefined for some reason, try yuv420p
+    outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
+        ? formats[0]
+        : AV_PIX_FMT_YUV420P;
+  }
 
   // Configure codec parameters
   avCodecContext_->codec_id = avCodec->id;

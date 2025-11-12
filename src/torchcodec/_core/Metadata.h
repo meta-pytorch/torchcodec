@@ -18,6 +18,8 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
+enum class SeekMode { exact, approximate, custom_frame_mappings };
+
 struct StreamMetadata {
   // Common (video and audio) fields derived from the AVStream.
   int streamIndex;
@@ -52,6 +54,13 @@ struct StreamMetadata {
   std::optional<int64_t> sampleRate;
   std::optional<int64_t> numChannels;
   std::optional<std::string> sampleFormat;
+
+  // Computed methods with fallback logic
+  std::optional<double> getDurationSeconds(SeekMode seekMode) const;
+  double getBeginStreamSeconds(SeekMode seekMode) const;
+  std::optional<double> getEndStreamSeconds(SeekMode seekMode) const;
+  std::optional<int64_t> getNumFrames(SeekMode seekMode) const;
+  std::optional<double> getAverageFps(SeekMode seekMode) const;
 };
 
 struct ContainerMetadata {

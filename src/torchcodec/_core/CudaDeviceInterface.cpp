@@ -3,9 +3,9 @@
 #include <torch/types.h>
 #include <mutex>
 
-#include "src/torchcodec/_core/Cache.h"
-#include "src/torchcodec/_core/CudaDeviceInterface.h"
-#include "src/torchcodec/_core/FFMPEGCommon.h"
+#include "Cache.h"
+#include "CudaDeviceInterface.h"
+#include "FFMPEGCommon.h"
 
 extern "C" {
 #include <libavutil/hwcontext_cuda.h>

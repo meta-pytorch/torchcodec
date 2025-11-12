@@ -4,7 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include "src/torchcodec/_core/CpuDeviceInterface.h"
+#include "CpuDeviceInterface.h"
 
 namespace facebook::torchcodec {
 namespace {
@@ -14,30 +14,6 @@ static bool g_cpu = registerDeviceInterface(
     [](const torch::Device& device) { return new CpuDeviceInterface(device); });
 
 } // namespace
-
-CpuDeviceInterface::SwsFrameContext::SwsFrameContext(
-    int inputWidth,
-    int inputHeight,
-    AVPixelFormat inputFormat,
-    int outputWidth,
-    int outputHeight)
-    : inputWidth(inputWidth),
-      inputHeight(inputHeight),
-      inputFormat(inputFormat),
-      outputWidth(outputWidth),
-      outputHeight(outputHeight) {}
-
-bool CpuDeviceInterface::SwsFrameContext::operator==(
-    const CpuDeviceInterface::SwsFrameContext& other) const {
-  return inputWidth == other.inputWidth && inputHeight == other.inputHeight &&
-      inputFormat == other.inputFormat && outputWidth == other.outputWidth &&
-      outputHeight == other.outputHeight;
-}
-
-bool CpuDeviceInterface::SwsFrameContext::operator!=(
-    const CpuDeviceInterface::SwsFrameContext& other) const {
-  return !(*this == other);
-}
 
 CpuDeviceInterface::CpuDeviceInterface(const torch::Device& device)
     : DeviceInterface(device) {
@@ -59,6 +35,7 @@ void CpuDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resizedOutputDims) {
+  avMediaType_ = AVMEDIA_TYPE_VIDEO;
   videoStreamOptions_ = videoStreamOptions;
   resizedOutputDims_ = resizedOutputDims;
 
@@ -70,8 +47,7 @@ void CpuDeviceInterface::initializeVideo(
   // We calculate this value during initilization but we don't refer to it until
   // getColorConversionLibrary() is called. Calculating this value during
   // initialization saves us from having to save all of the transforms.
-  areTransformsSwScaleCompatible_ = transforms.empty() ||
-      (transforms.size() == 1 && transforms[0]->isResize());
+  areTransformsSwScaleCompatible_ = transforms.empty();
 
   // Note that we do not expose this capability in the public API, only through
   // the core API.
@@ -80,16 +56,6 @@ void CpuDeviceInterface::initializeVideo(
   // it in getColorConversionLibrary().
   userRequestedSwScale_ = videoStreamOptions_.colorConversionLibrary ==
       ColorConversionLibrary::SWSCALE;
-
-  // We can only use swscale when we have a single resize transform. Note that
-  // we actually decide on whether or not to actually use swscale at the last
-  // possible moment, when we actually convert the frame. This is because we
-  // need to know the actual frame dimensions.
-  if (transforms.size() == 1 && transforms[0]->isResize()) {
-    auto resize = dynamic_cast<ResizeTransform*>(transforms[0].get());
-    TORCH_CHECK(resize != nullptr, "ResizeTransform expected but not found!")
-    swsFlags_ = resize->getSwsFlags();
-  }
 
   // If we have any transforms, replace filters_ with the filter strings from
   // the transforms. As noted above, we decide between swscale and filtergraph
@@ -104,9 +70,27 @@ void CpuDeviceInterface::initializeVideo(
     first = false;
   }
   if (!transforms.empty()) {
-    filters_ = filters.str();
+    // Note [Transform and Format Conversion Order]
+    // We have to ensure that all user filters happen AFTER the explicit format
+    // conversion. That is, we want the filters to be applied in RGB24, not the
+    // pixel format of the input frame.
+    //
+    // The ouput frame will always be in RGB24, as we specify the sink node with
+    // AV_PIX_FORMAT_RGB24. Filtergraph will automatically insert a filter
+    // conversion to ensure the output frame matches the pixel format
+    // specified in the sink. But by default, it will insert it after the user
+    // filters. We need an explicit format conversion to get the behavior we
+    // want.
+    filters_ = "format=rgb24," + filters.str();
   }
 
+  initialized_ = true;
+}
+
+void CpuDeviceInterface::initializeAudio(
+    const AudioStreamOptions& audioStreamOptions) {
+  avMediaType_ = AVMEDIA_TYPE_AUDIO;
+  audioStreamOptions_ = audioStreamOptions;
   initialized_ = true;
 }
 
@@ -138,6 +122,20 @@ ColorConversionLibrary CpuDeviceInterface::getColorConversionLibrary(
   }
 }
 
+void CpuDeviceInterface::convertAVFrameToFrameOutput(
+    UniqueAVFrame& avFrame,
+    FrameOutput& frameOutput,
+    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+  TORCH_CHECK(initialized_, "CpuDeviceInterface was not initialized.");
+
+  if (avMediaType_ == AVMEDIA_TYPE_AUDIO) {
+    convertAudioAVFrameToFrameOutput(avFrame, frameOutput);
+  } else {
+    convertVideoAVFrameToFrameOutput(
+        avFrame, frameOutput, preAllocatedOutputTensor);
+  }
+}
+
 // Note [preAllocatedOutputTensor with swscale and filtergraph]:
 // Callers may pass a pre-allocated tensor, where the output.data tensor will
 // be stored. This parameter is honored in any case, but it only leads to a
@@ -147,12 +145,10 @@ ColorConversionLibrary CpuDeviceInterface::getColorConversionLibrary(
 // TODO: Figure out whether that's possible!
 // Dimension order of the preAllocatedOutputTensor must be HWC, regardless of
 // `dimension_order` parameter. It's up to callers to re-shape it if needed.
-void CpuDeviceInterface::convertAVFrameToFrameOutput(
+void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
-  TORCH_CHECK(initialized_, "CpuDeviceInterface was not initialized.");
-
   // Note that we ignore the dimensions from the metadata; we don't even bother
   // storing them. The resized dimensions take priority. If we don't have any,
   // then we use the dimensions from the actual decoded frame. We use the actual
@@ -242,6 +238,11 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
   enum AVPixelFormat frameFormat =
       static_cast<enum AVPixelFormat>(avFrame->format);
 
+  TORCH_CHECK(
+      avFrame->height == outputDims.height &&
+          avFrame->width == outputDims.width,
+      "Input dimensions are not equal to output dimensions; resize for sws_scale() is not yet supported.");
+
   // We need to compare the current frame context with our previous frame
   // context. If they are different, then we need to re-create our colorspace
   // conversion objects. We create our colorspace conversion objects late so
@@ -257,7 +258,17 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
       outputDims.height);
 
   if (!swsContext_ || prevSwsFrameContext_ != swsFrameContext) {
-    createSwsContext(swsFrameContext, avFrame->colorspace);
+    swsContext_ = createSwsContext(
+        swsFrameContext,
+        avFrame->colorspace,
+
+        // See [Transform and Format Conversion Order] for more on the output
+        // pixel format.
+        /*outputFormat=*/AV_PIX_FMT_RGB24,
+
+        // We don't set any flags because we don't yet use sw_scale() for
+        // resizing.
+        /*swsFlags=*/0);
     prevSwsFrameContext_ = swsFrameContext;
   }
 
@@ -276,65 +287,20 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
   return resultHeight;
 }
 
-void CpuDeviceInterface::createSwsContext(
-    const SwsFrameContext& swsFrameContext,
-    const enum AVColorSpace colorspace) {
-  SwsContext* swsContext = sws_getContext(
-      swsFrameContext.inputWidth,
-      swsFrameContext.inputHeight,
-      swsFrameContext.inputFormat,
-      swsFrameContext.outputWidth,
-      swsFrameContext.outputHeight,
-      AV_PIX_FMT_RGB24,
-      swsFlags_,
-      nullptr,
-      nullptr,
-      nullptr);
-  TORCH_CHECK(swsContext, "sws_getContext() returned nullptr");
-
-  int* invTable = nullptr;
-  int* table = nullptr;
-  int srcRange, dstRange, brightness, contrast, saturation;
-  int ret = sws_getColorspaceDetails(
-      swsContext,
-      &invTable,
-      &srcRange,
-      &table,
-      &dstRange,
-      &brightness,
-      &contrast,
-      &saturation);
-  TORCH_CHECK(ret != -1, "sws_getColorspaceDetails returned -1");
-
-  const int* colorspaceTable = sws_getCoefficients(colorspace);
-  ret = sws_setColorspaceDetails(
-      swsContext,
-      colorspaceTable,
-      srcRange,
-      colorspaceTable,
-      dstRange,
-      brightness,
-      contrast,
-      saturation);
-  TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
-
-  swsContext_.reset(swsContext);
-}
-
 torch::Tensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
     const UniqueAVFrame& avFrame,
     const FrameDims& outputDims) {
-  enum AVPixelFormat frameFormat =
+  enum AVPixelFormat avFrameFormat =
       static_cast<enum AVPixelFormat>(avFrame->format);
 
   FiltersContext filtersContext(
       avFrame->width,
       avFrame->height,
-      frameFormat,
+      avFrameFormat,
       avFrame->sample_aspect_ratio,
       outputDims.width,
       outputDims.height,
-      AV_PIX_FMT_RGB24,
+      /*outputFormat=*/AV_PIX_FMT_RGB24,
       filters_,
       timeBase_);
 
@@ -344,6 +310,123 @@ torch::Tensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
     prevFiltersContext_ = std::move(filtersContext);
   }
   return rgbAVFrameToTensor(filterGraph_->convert(avFrame));
+}
+
+void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
+    UniqueAVFrame& srcAVFrame,
+    FrameOutput& frameOutput) {
+  AVSampleFormat srcSampleFormat =
+      static_cast<AVSampleFormat>(srcAVFrame->format);
+  AVSampleFormat outSampleFormat = AV_SAMPLE_FMT_FLTP;
+
+  int srcSampleRate = srcAVFrame->sample_rate;
+  int outSampleRate = audioStreamOptions_.sampleRate.value_or(srcSampleRate);
+
+  int srcNumChannels = getNumChannels(codecContext_);
+  TORCH_CHECK(
+      srcNumChannels == getNumChannels(srcAVFrame),
+      "The frame has ",
+      getNumChannels(srcAVFrame),
+      " channels, expected ",
+      srcNumChannels,
+      ". If you are hitting this, it may be because you are using "
+      "a buggy FFmpeg version. FFmpeg4 is known to fail here in some "
+      "valid scenarios. Try to upgrade FFmpeg?");
+  int outNumChannels = audioStreamOptions_.numChannels.value_or(srcNumChannels);
+
+  bool mustConvert =
+      (srcSampleFormat != outSampleFormat || srcSampleRate != outSampleRate ||
+       srcNumChannels != outNumChannels);
+
+  UniqueAVFrame convertedAVFrame;
+  if (mustConvert) {
+    if (!swrContext_) {
+      swrContext_.reset(createSwrContext(
+          srcSampleFormat,
+          outSampleFormat,
+          srcSampleRate,
+          outSampleRate,
+          srcAVFrame,
+          outNumChannels));
+    }
+
+    convertedAVFrame = convertAudioAVFrameSamples(
+        swrContext_,
+        srcAVFrame,
+        outSampleFormat,
+        outSampleRate,
+        outNumChannels);
+  }
+  const UniqueAVFrame& avFrame = mustConvert ? convertedAVFrame : srcAVFrame;
+
+  AVSampleFormat format = static_cast<AVSampleFormat>(avFrame->format);
+  TORCH_CHECK(
+      format == outSampleFormat,
+      "Something went wrong, the frame didn't get converted to the desired format. ",
+      "Desired format = ",
+      av_get_sample_fmt_name(outSampleFormat),
+      "source format = ",
+      av_get_sample_fmt_name(format));
+
+  int numChannels = getNumChannels(avFrame);
+  TORCH_CHECK(
+      numChannels == outNumChannels,
+      "Something went wrong, the frame didn't get converted to the desired ",
+      "number of channels = ",
+      outNumChannels,
+      ". Got ",
+      numChannels,
+      " instead.");
+
+  auto numSamples = avFrame->nb_samples;
+
+  frameOutput.data = torch::empty({numChannels, numSamples}, torch::kFloat32);
+
+  if (numSamples > 0) {
+    uint8_t* outputChannelData =
+        static_cast<uint8_t*>(frameOutput.data.data_ptr());
+    auto numBytesPerChannel = numSamples * av_get_bytes_per_sample(format);
+    for (auto channel = 0; channel < numChannels;
+         ++channel, outputChannelData += numBytesPerChannel) {
+      std::memcpy(
+          outputChannelData,
+          avFrame->extended_data[channel],
+          numBytesPerChannel);
+    }
+  }
+}
+
+std::optional<torch::Tensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
+  // When sample rate conversion is involved, swresample buffers some of the
+  // samples in-between calls to swr_convert (see the libswresample docs).
+  // That's because the last few samples in a given frame require future
+  // samples from the next frame to be properly converted. This function
+  // flushes out the samples that are stored in swresample's buffers.
+  if (!swrContext_) {
+    return std::nullopt;
+  }
+  auto numRemainingSamples = // this is an upper bound
+      swr_get_out_samples(swrContext_.get(), 0);
+
+  if (numRemainingSamples == 0) {
+    return std::nullopt;
+  }
+
+  int numChannels =
+      audioStreamOptions_.numChannels.value_or(getNumChannels(codecContext_));
+  torch::Tensor lastSamples =
+      torch::empty({numChannels, numRemainingSamples}, torch::kFloat32);
+
+  std::vector<uint8_t*> outputBuffers(numChannels);
+  for (auto i = 0; i < numChannels; i++) {
+    outputBuffers[i] = static_cast<uint8_t*>(lastSamples[i].data_ptr());
+  }
+
+  auto actualNumRemainingSamples = swr_convert(
+      swrContext_.get(), outputBuffers.data(), numRemainingSamples, nullptr, 0);
+
+  return lastSamples.narrow(
+      /*dim=*/1, /*start=*/0, /*length=*/actualNumRemainingSamples);
 }
 
 std::string CpuDeviceInterface::getDetails() {

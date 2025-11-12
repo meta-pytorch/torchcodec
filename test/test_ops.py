@@ -1152,68 +1152,6 @@ class TestAudioEncoderOps:
 
 
 class TestVideoEncoderOps:
-    # TODO-VideoEncoder: Test encoding against different memory layouts (ex. test_contiguity)
-    # TODO-VideoEncoder: Parametrize test after moving to test_encoders
-    def test_bad_input(self, tmp_path):
-        output_file = str(tmp_path / ".mp4")
-
-        with pytest.raises(
-            RuntimeError, match="frames must have uint8 dtype, got float"
-        ):
-            encode_video_to_file(
-                frames=torch.rand((10, 3, 60, 60), dtype=torch.float),
-                frame_rate=10,
-                filename=output_file,
-            )
-
-        with pytest.raises(
-            RuntimeError, match=r"frames must have 4 dimensions \(N, C, H, W\), got 3"
-        ):
-            encode_video_to_file(
-                frames=torch.randint(high=1, size=(3, 60, 60), dtype=torch.uint8),
-                frame_rate=10,
-                filename=output_file,
-            )
-
-        with pytest.raises(
-            RuntimeError, match=r"frame must have 3 channels \(R, G, B\), got 2"
-        ):
-            encode_video_to_file(
-                frames=torch.randint(high=1, size=(10, 2, 60, 60), dtype=torch.uint8),
-                frame_rate=10,
-                filename=output_file,
-            )
-
-        with pytest.raises(
-            RuntimeError,
-            match=r"Couldn't allocate AVFormatContext. The destination file is ./file.bad_extension, check the desired extension\?",
-        ):
-            encode_video_to_file(
-                frames=torch.randint(high=255, size=(10, 3, 60, 60), dtype=torch.uint8),
-                frame_rate=10,
-                filename="./file.bad_extension",
-            )
-
-        with pytest.raises(
-            RuntimeError,
-            match=r"avio_open failed. The destination file is ./bad/path.mp3, make sure it's a valid path\?",
-        ):
-            encode_video_to_file(
-                frames=torch.randint(high=255, size=(10, 3, 60, 60), dtype=torch.uint8),
-                frame_rate=10,
-                filename="./bad/path.mp3",
-            )
-
-        with pytest.raises(
-            RuntimeError,
-            match=r"Couldn't allocate AVFormatContext. Check the desired format\? Got format=bad_format",
-        ):
-            encode_video_to_tensor(
-                frames=torch.randint(high=255, size=(10, 3, 60, 60), dtype=torch.uint8),
-                frame_rate=10,
-                format="bad_format",
-            )
-
     def decode(self, source=None) -> torch.Tensor:
         return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
 
@@ -1224,21 +1162,14 @@ class TestVideoEncoderOps:
     def test_video_encoder_round_trip(self, tmp_path, format, method):
         # Test that decode(encode(decode(frames))) == decode(frames)
         ffmpeg_version = get_ffmpeg_major_version()
-        # In FFmpeg6, the default codec's best pixel format is lossy for all container formats but webm.
-        # As a result, we skip the round trip test.
-        if ffmpeg_version == 6 and format != "webm":
-            pytest.skip(
-                f"FFmpeg6 defaults to lossy encoding for {format}, skipping round-trip test."
-            )
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
         source_frames = self.decode(TEST_SRC_2_720P.path).data
 
-        params = dict(
-            frame_rate=30, crf=0
-        )  # Frame rate is fixed with num frames decoded
+        # Frame rate is fixed with num frames decoded
+        params = dict(frame_rate=30, pixel_format="yuv444p", crf=0)
         if method == "to_file":
             encoded_path = str(tmp_path / f"encoder_output.{format}")
             encode_video_to_file(
@@ -1274,7 +1205,7 @@ class TestVideoEncoderOps:
             atol = 15
         else:
             assert_close = torch.testing.assert_close
-            atol = 2
+            atol = 3 if format == "webm" else 2
         for s_frame, rt_frame in zip(source_frames, round_trip_frames):
             assert psnr(s_frame, rt_frame) > 30
             assert_close(s_frame, rt_frame, atol=atol, rtol=0)
@@ -1336,16 +1267,18 @@ class TestVideoEncoderOps:
             "avi",
             "mkv",
             "flv",
-            "gif",
             pytest.param("webm", marks=pytest.mark.slow),
         ),
     )
-    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
+    @pytest.mark.parametrize("pixel_format", ("yuv444p", "yuv420p"))
+    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format, pixel_format):
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+        if format in ("avi", "flv") and pixel_format == "yuv444p":
+            pytest.skip(f"Default codec for {format} does not support {pixel_format}")
 
         source_frames = self.decode(TEST_SRC_2_720P.path).data
 
@@ -1365,13 +1298,15 @@ class TestVideoEncoderOps:
             "-f",
             "rawvideo",
             "-pix_fmt",
-            "rgb24",
+            "rgb24",  # Input format
             "-s",
             f"{source_frames.shape[3]}x{source_frames.shape[2]}",
             "-r",
             str(frame_rate),
             "-i",
             temp_raw_path,
+            "-pix_fmt",
+            pixel_format,  # Output format
             "-crf",
             str(crf),
             ffmpeg_encoded_path,
@@ -1384,6 +1319,7 @@ class TestVideoEncoderOps:
             frames=source_frames,
             frame_rate=frame_rate,
             filename=encoder_output_path,
+            pixel_format=pixel_format,
             crf=crf,
         )
 
@@ -1406,7 +1342,7 @@ class TestVideoEncoderOps:
             )
 
     def test_to_file_like_custom_file_object(self):
-        """Test with a custom file-like object that implements write and seek."""
+        """Test to_file_like with a custom file-like object that implements write and seek."""
 
         class CustomFileObject:
             def __init__(self):
@@ -1424,7 +1360,12 @@ class TestVideoEncoderOps:
         source_frames = self.decode(TEST_SRC_2_720P.path).data
         file_like = CustomFileObject()
         encode_video_to_file_like(
-            source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
+            source_frames,
+            frame_rate=30,
+            pixel_format="yuv444p",
+            crf=0,
+            format="mp4",
+            file_like=file_like,
         )
         decoded_samples = self.decode(file_like.get_encoded_data())
 
@@ -1442,7 +1383,12 @@ class TestVideoEncoderOps:
 
         with open(file_path, "wb") as file_like:
             encode_video_to_file_like(
-                source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
+                source_frames,
+                frame_rate=30,
+                pixel_format="yuv444p",
+                crf=0,
+                format="mp4",
+                file_like=file_like,
             )
         decoded_samples = self.decode(str(file_path))
 

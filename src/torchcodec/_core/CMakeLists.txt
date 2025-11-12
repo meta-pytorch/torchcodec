@@ -96,6 +96,7 @@ function(make_torchcodec_libraries
         Encoder.cpp
         ValidationUtils.cpp
         Transform.cpp
+        Metadata.cpp
     )
 
     if(ENABLE_CUDA)
@@ -245,16 +246,16 @@ if(DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3})
         you still need a different FFmpeg to be installed for run time!"
     )
 
-    # This will expose the ffmpeg4, ffmpeg5, ffmpeg6, ffmpeg7, and ffmpeg8 targets
+    # This will expose the torchcodec::ffmpeg{N} (N=4,5,6,7,8) targets
     include(
         ${CMAKE_CURRENT_SOURCE_DIR}/fetch_and_expose_non_gpl_ffmpeg_libs.cmake
     )
 
-    make_torchcodec_libraries(8 ffmpeg8)
-    make_torchcodec_libraries(7 ffmpeg7)
-    make_torchcodec_libraries(6 ffmpeg6)
-    make_torchcodec_libraries(4 ffmpeg4)
-    make_torchcodec_libraries(5 ffmpeg5)
+    make_torchcodec_libraries(8 torchcodec::ffmpeg8)
+    make_torchcodec_libraries(7 torchcodec::ffmpeg7)
+    make_torchcodec_libraries(6 torchcodec::ffmpeg6)
+    make_torchcodec_libraries(4 torchcodec::ffmpeg4)
+    make_torchcodec_libraries(5 torchcodec::ffmpeg5)
 else()
     message(
         STATUS
@@ -263,40 +264,12 @@ else()
         installed FFmpeg from conda, make sure pkg-config is installed from
         conda as well."
     )
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(LIBAV REQUIRED IMPORTED_TARGET
-        libavdevice
-        libavfilter
-        libavformat
-        libavcodec
-        libavutil
-        libswresample
-        libswscale
-    )
 
-    # Split libavcodec's version string by '.' and convert it to a list
-    string(REPLACE "." ";" libavcodec_version_list ${LIBAV_libavcodec_VERSION})
-    # Get the first element of the list, which is the major version
-    list(GET libavcodec_version_list 0 libavcodec_major_version)
+    # This will expose `add_ffmpeg_target_with_pkg_config`
+    include("${CMAKE_CURRENT_SOURCE_DIR}/../share/cmake/TorchCodec/ffmpeg_versions.cmake")
 
-    if (${libavcodec_major_version} STREQUAL "58")
-        set(ffmpeg_major_version "4")
-    elseif (${libavcodec_major_version} STREQUAL "59")
-        set(ffmpeg_major_version "5")
-    elseif (${libavcodec_major_version} STREQUAL "60")
-        set(ffmpeg_major_version "6")
-    elseif (${libavcodec_major_version} STREQUAL "61")
-        set(ffmpeg_major_version "7")
-    elseif (${libavcodec_major_version} STREQUAL "62")
-        set(ffmpeg_major_version "8")
-    else()
-        message(
-            FATAL_ERROR
-            "Unsupported libavcodec version: ${libavcodec_major_version}"
-        )
-    endif()
-
-    make_torchcodec_libraries(${ffmpeg_major_version} PkgConfig::LIBAV)
+    add_ffmpeg_target_with_pkg_config(ffmpeg_major_version)
+    make_torchcodec_libraries(${ffmpeg_major_version} torchcodec::ffmpeg${ffmpeg_major_version})
 
     # Expose these values updwards so that the test compilation does not need
     # to re-figure it out. FIXME: it's not great that we just copy-paste the

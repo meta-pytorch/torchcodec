@@ -6,9 +6,9 @@
 
 #pragma once
 
-#include "src/torchcodec/_core/CUDACommon.h"
-#include "src/torchcodec/_core/DeviceInterface.h"
-#include "src/torchcodec/_core/FilterGraph.h"
+#include "CUDACommon.h"
+#include "DeviceInterface.h"
+#include "FilterGraph.h"
 
 namespace facebook::torchcodec {
 
@@ -37,8 +37,7 @@ class CudaDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor =
-          std::nullopt) override;
+      std::optional<torch::Tensor> preAllocatedOutputTensor) override;
 
   std::string getDetails() override;
 
