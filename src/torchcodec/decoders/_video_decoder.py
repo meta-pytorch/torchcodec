@@ -69,10 +69,10 @@ class VideoDecoder:
             :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py`
         transforms (sequence of transform objects, optional): Sequence of transforms to be
             applied to the decoded frames by the decoder itself, in order. Accepts both
-            :class:`torchcodec.transforms.DecoderTransform` and
-            :class:`torchvision.transforms.v2.Transform` objects. All transforms are applied
+            :class:`~torchcodec.transforms.DecoderTransform` and
+            `torchvision.transforms.v2.Transform` objects. All transforms are applied
             in the ouput pixel format and colorspace. Read more about this parameter in:
-            SCOTT_NEEDS_TO_WRITE_A_TUTORIAL.
+            TODO_DECODER_TRANSFORMS_TUTORIAL.
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
