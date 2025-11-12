@@ -610,7 +610,7 @@ class TestVideoEncoder:
             )
             getattr(encoder, method)(**valid_params)
 
-    def test_bad_input(self, tmp_path):
+    def test_bad_input(self):
         encoder = VideoEncoder(
             frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
             frame_rate=30,
@@ -633,6 +633,12 @@ class TestVideoEncoder:
             match=r"Couldn't allocate AVFormatContext. Check the desired format\? Got format=bad_format",
         ):
             encoder.to_tensor(format="bad_format")
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"avcodec_open2 failed: Invalid argument",
+        ):
+            encoder.to_tensor(format="mp4", preset="fake_preset")
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_pixel_format_errors(self, method, tmp_path):
