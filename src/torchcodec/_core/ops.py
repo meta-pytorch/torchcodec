@@ -214,8 +214,8 @@ def encode_video_to_file_like(
     format: str,
     file_like: Union[io.RawIOBase, io.BufferedIOBase],
     codec: Optional[str] = None,
-    crf: Optional[int] = None,
     pixel_format: Optional[str] = None,
+    crf: Optional[int] = None,
 ) -> None:
     """Encode video frames to a file-like object.
 
@@ -225,8 +225,8 @@ def encode_video_to_file_like(
         format: Video format (e.g., "mp4", "mov", "mkv")
         file_like: File-like object that supports write() and seek() methods
         codec: Optional codec name (e.g., "libx264", "h264")
-        crf: Optional constant rate factor for encoding quality
         pixel_format: Optional pixel format (e.g., "yuv420p", "yuv444p")
+        crf: Optional constant rate factor for encoding quality
     """
     assert _pybind_ops is not None
 
@@ -338,8 +338,8 @@ def encode_video_to_tensor_abstract(
     frame_rate: int,
     format: str,
     codec: Optional[str],
-    crf: Optional[int] = None,
     pixel_format: Optional[str] = None,
+    crf: Optional[int] = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
