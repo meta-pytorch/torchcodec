@@ -92,7 +92,6 @@ class VideoEncoder:
         Returns:
             Tensor: The raw encoded bytes as 4D uint8 Tensor.
         """
-        # Convert preset to string if it's an int
         preset_value = str(preset) if isinstance(preset, int) else preset
         return _core.encode_video_to_tensor(
             frames=self._frames,

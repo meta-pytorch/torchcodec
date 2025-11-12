@@ -48,7 +48,7 @@ struct VideoStreamOptions {
   // Optional pixel format for video encoding (e.g., "yuv420p", "yuv444p")
   // If not specified, uses codec's default format.
   std::optional<std::string> pixelFormat;
-  std::optional<int> crf;
+  std::optional<double> crf;
   std::optional<std::string> preset;
 };
 
