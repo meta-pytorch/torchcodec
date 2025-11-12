@@ -626,9 +626,17 @@ FrameOutput SingleStreamDecoder::getFrameAtIndexInternal(
   }
   validateFrameIndex(streamMetadata, frameIndex);
 
-  int64_t pts = getPts(frameIndex);
-  setCursorPtsInSeconds(ptsToSeconds(pts, streamInfo.timeBase));
-  return getNextFrameInternal(preAllocatedOutputTensor);
+  // Only set cursor if we're not decoding sequentially: when decoding
+  // sequentially, we don't need to seek anywhere, so by *not* setting the
+  // cursor we allow canWeAvoidSeeking() to return true early.
+  if (frameIndex != lastDecodedFrameIndex_ + 1) {
+    int64_t pts = getPts(frameIndex);
+    setCursorPtsInSeconds(ptsToSeconds(pts, streamInfo.timeBase));
+  }
+
+  auto result = getNextFrameInternal(preAllocatedOutputTensor);
+  lastDecodedFrameIndex_ = frameIndex;
+  return result;
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
@@ -1105,7 +1113,11 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
     // within getFramesPlayedInRangeAudio(), when setCursorPtsInSeconds() was
     // called. For more context, see [Audio Decoding Design]
     return !cursorWasJustSet_;
+  } else if (!cursorWasJustSet_) {
+    // For videos, when decoding consecutive frames, we don't need to seek.
+    return true;
   }
+
   if (cursor_ < lastDecodedAvFramePts_) {
     // We can never skip a seek if we are seeking backwards.
     return false;
@@ -1181,10 +1193,8 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
 
   resetDecodeStats();
 
-  if (cursorWasJustSet_) {
-    maybeSeekToBeforeDesiredPts();
-    cursorWasJustSet_ = false;
-  }
+  maybeSeekToBeforeDesiredPts();
+  cursorWasJustSet_ = false;
 
   UniqueAVFrame avFrame(av_frame_alloc());
   AutoAVPacket autoAVPacket;
