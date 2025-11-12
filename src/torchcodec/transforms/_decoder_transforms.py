@@ -13,29 +13,29 @@ from typing import Sequence
 class DecoderTransform(ABC):
     """Base class for all decoder transforms.
 
-    A DecoderTransform is a transform that is applied by the decoder before
-    returning the decoded frame.  Applying DecoderTransforms to frames
+    A *decoder transform* is a transform that is applied by the decoder before
+    returning the decoded frame.  Applying decoder transforms to frames
     should be both faster and more memory efficient than receiving normally
     decoded frames and applying the same kind of transform.
 
-    Most DecoderTransforms have a complementary transform in TorchVision,
-    specificially in torchvision.transforms.v2. For such transforms, we ensure
-    that:
+    Most `DecoderTransform` objects have a complementary transform in TorchVision,
+    specificially in :mod:`torchvision.transforms.v2`. For such transforms,
+    we ensure that:
 
       1. The names are the same.
       2. Default behaviors are the same.
-      3. The parameters for the DecoderTransform are a subset of the
-         TorchVision transform.
+      3. The parameters for the `DecoderTransform` object are a subset of the
+         TorchVision transform object.
       4. Parameters with the same name control the same behavior and accept a
          subset of the same types.
-      5. The difference between the frames returned by a DecoderTransform and
+      5. The difference between the frames returned by a decoder transform and
          the complementary TorchVision transform are small.
 
-    All DecoderTranforms are applied in the output pixel format and colorspace.
+    All decoder transforms are applied in the output pixel format and colorspace.
     """
 
     @abstractmethod
-    def make_params(self) -> str:
+    def _make_params(self) -> str:
         pass
 
 
@@ -43,7 +43,7 @@ class DecoderTransform(ABC):
 class Resize(DecoderTransform):
     """Resize the decoded frame to a given size.
 
-    Complementary TorchVision transform: torchvision.transforms.v2.Resize.
+    Complementary TorchVision transform: :class:`torchvision.transforms.v2.Resize`.
     Interpolation is always bilinear. Anti-aliasing is always on.
 
     Args:
@@ -53,6 +53,6 @@ class Resize(DecoderTransform):
 
     size: Sequence[int]
 
-    def make_params(self) -> str:
+    def _make_params(self) -> str:
         assert len(self.size) == 2
         return f"resize, {self.size[0]}, {self.size[1]}"
