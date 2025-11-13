@@ -7,6 +7,7 @@
 #pragma once
 
 #include <torch/types.h>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -50,6 +51,7 @@ struct VideoStreamOptions {
   std::optional<std::string> pixelFormat;
   std::optional<double> crf;
   std::optional<std::string> preset;
+  std::optional<std::map<std::string, std::string>> codecOptions;
 };
 
 struct AudioStreamOptions {

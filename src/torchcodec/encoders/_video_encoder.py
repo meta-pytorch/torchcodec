@@ -1,10 +1,29 @@
 from pathlib import Path
-from typing import Optional, Union
+from typing import Dict, Optional, Union
 
 import torch
 from torch import Tensor
 
 from torchcodec import _core
+
+
+def _flatten_codec_options(codec_options: Optional[Dict[str, str]]) -> Optional[list]:
+    """Convert codec_options dict to flattened list for torch op.
+
+    Args:
+        codec_options: A dictionary of codec-specific options, e.g.
+            {"preset": "slow", "tune": "film"}
+
+    Returns:
+        A flattened list of alternating keys and values, e.g.
+            ["preset", "slow", "tune", "film"], or None if input is None.
+    """
+    if codec_options is None:
+        return None
+    result = []
+    for key, value in codec_options.items():
+        result.extend([key, value])
+    return result
 
 
 class VideoEncoder:
@@ -35,6 +54,7 @@ class VideoEncoder:
     def to_file(
         self,
         dest: Union[str, Path],
+        codec_options: Optional[Dict[str, str]] = None,
         *,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
@@ -55,6 +75,8 @@ class VideoEncoder:
                 encoding speed and compression. Valid values depend on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
+            codec_options (dict[str, str], optional): A dictionary of codec-specific
+                options to pass to the encoder, e.g. ``{"preset": "slow", "tune": "film"}``.
         """
         preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file(
@@ -64,6 +86,7 @@ class VideoEncoder:
             pixel_format=pixel_format,
             crf=crf,
             preset=preset,
+            codec_options=_flatten_codec_options(codec_options),
         )
 
     def to_tensor(
@@ -73,6 +96,7 @@ class VideoEncoder:
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
+        codec_options: Optional[Dict[str, str]] = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
 
@@ -88,6 +112,8 @@ class VideoEncoder:
                 encoding speed and compression. Valid values depend on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
+            codec_options (dict[str, str], optional): A dictionary of codec-specific
+                options to pass to the encoder, e.g. ``{"preset": "slow", "tune": "film"}``.
 
         Returns:
             Tensor: The raw encoded bytes as 4D uint8 Tensor.
@@ -100,6 +126,7 @@ class VideoEncoder:
             pixel_format=pixel_format,
             crf=crf,
             preset=preset_value,
+            codec_options=_flatten_codec_options(codec_options),
         )
 
     def to_file_like(
@@ -110,6 +137,7 @@ class VideoEncoder:
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
+        codec_options: Optional[Dict[str, str]] = None,
     ) -> None:
         """Encode frames into a file-like object.
 
@@ -130,6 +158,8 @@ class VideoEncoder:
                 encoding speed and compression. Valid values depend on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
+            codec_options (dict[str, str], optional): A dictionary of codec-specific
+                options to pass to the encoder, e.g. ``{"preset": "slow", "tune": "film"}``.
         """
         preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file_like(
@@ -140,4 +170,5 @@ class VideoEncoder:
             pixel_format=pixel_format,
             crf=crf,
             preset=preset,
+            codec_options=_flatten_codec_options(codec_options),
         )

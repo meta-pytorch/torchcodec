@@ -689,6 +689,45 @@ class TestVideoEncoder:
         ):
             getattr(encoder, method)(**valid_params, pixel_format="rgb24")
 
+    @pytest.mark.parametrize(
+        "codec_options,error",
+        [
+            ({"qp": "-10"}, "qp=-10 is out of valid range"),
+            (
+                {"qp": ""},
+                "Option qp expects a numeric value but got",
+            ),
+            (
+                {"direct-pred": "a"},
+                "Option direct-pred expects a numeric value but got 'a'",
+            ),
+            ({"tune": "not_a_real_tune"}, "avcodec_open2 failed: Invalid argument"),
+            (
+                {"tune": "10"},
+                "avcodec_open2 failed: Invalid argument",
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    def test_codec_options_errors(self, method, tmp_path, codec_options, error):
+        frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
+        encoder = VideoEncoder(frames, frame_rate=30)
+
+        if method == "to_file":
+            valid_params = dict(dest=str(tmp_path / "output.mp4"))
+        elif method == "to_tensor":
+            valid_params = dict(format="mp4")
+        elif method == "to_file_like":
+            valid_params = dict(file_like=io.BytesIO(), format="mp4")
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        with pytest.raises(
+            RuntimeError,
+            match=error,
+        ):
+            getattr(encoder, method)(**valid_params, codec_options=codec_options)
+
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_contiguity(self, method, tmp_path):
         # Ensure that 2 sets of video frames with the same pixel values are encoded

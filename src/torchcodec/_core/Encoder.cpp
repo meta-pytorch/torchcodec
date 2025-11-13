@@ -570,10 +570,10 @@ AVPixelFormat validatePixelFormat(
   TORCH_CHECK(false, errorMsg.str());
 }
 
-void validateDoubleOption(
+void tryToValidateCodecOption(
     const AVCodec& avCodec,
     const char* optionName,
-    double value) {
+    const std::string& value) {
   if (!avCodec.priv_class) {
     return;
   }
@@ -586,24 +586,36 @@ void validateDoubleOption(
       0,
       AV_OPT_SEARCH_FAKE_OBJ,
       nullptr);
-  // If the option was not found, let FFmpeg handle it later
+  // If option is not found we cannot validate it, let FFmpeg handle it
   if (!option) {
     return;
   }
+  // Validate options defined as a numeric type
   if (option->type == AV_OPT_TYPE_INT || option->type == AV_OPT_TYPE_INT64 ||
       option->type == AV_OPT_TYPE_FLOAT || option->type == AV_OPT_TYPE_DOUBLE) {
-    TORCH_CHECK(
-        value >= option->min && value <= option->max,
-        optionName,
-        "=",
-        value,
-        " is out of valid range [",
-        option->min,
-        ", ",
-        option->max,
-        "] for this codec. For more details, run 'ffmpeg -h encoder=",
-        avCodec.name,
-        "'");
+    try {
+      double numericValue = std::stod(value);
+      TORCH_CHECK(
+          numericValue >= option->min && numericValue <= option->max,
+          optionName,
+          "=",
+          numericValue,
+          " is out of valid range [",
+          option->min,
+          ", ",
+          option->max,
+          "] for this codec. For more details, run 'ffmpeg -h encoder=",
+          avCodec.name,
+          "'");
+    } catch (const std::invalid_argument& e) {
+      TORCH_CHECK(
+          false,
+          "Option ",
+          optionName,
+          " expects a numeric value but got '",
+          value,
+          "'");
+    }
   }
 }
 } // namespace
@@ -685,6 +697,30 @@ VideoEncoder::VideoEncoder(
   initializeEncoder(videoStreamOptions);
 }
 
+void VideoEncoder::sortCodecOptions(
+    const std::map<std::string, std::string>& codecOptions,
+    AVDictionary** codecDict,
+    AVDictionary** formatDict) {
+  // Search AVFormatContext's AVClass for options
+  const AVClass* formatClass = avformat_get_class();
+  for (const auto& [key, value] : codecOptions) {
+    const AVOption* fmtOpt = av_opt_find2(
+        &formatClass,
+        key.c_str(),
+        nullptr,
+        0,
+        AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ,
+        nullptr);
+    if (fmtOpt) {
+      av_dict_set(formatDict, key.c_str(), value.c_str(), 0);
+    } else {
+      // Default to codec option (includes AVCodecContext + encoder-private)
+      // validateCodecOption(*avCodecContext_->codec, key.c_str(), value);
+      av_dict_set(codecDict, key.c_str(), value.c_str(), 0);
+    }
+  }
+}
+
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
   const AVCodec* avCodec =
@@ -737,13 +773,19 @@ void VideoEncoder::initializeEncoder(
 
   // Apply videoStreamOptions
   AVDictionary* options = nullptr;
+  if (videoStreamOptions.codecOptions.has_value()) {
+    // Validate all codec options before setting them
+    for (const auto& [key, value] : videoStreamOptions.codecOptions.value()) {
+      tryToValidateCodecOption(*avCodec, key.c_str(), value);
+    }
+    sortCodecOptions(
+        videoStreamOptions.codecOptions.value(), &options, &formatOptions_);
+  }
+
   if (videoStreamOptions.crf.has_value()) {
-    validateDoubleOption(*avCodec, "crf", videoStreamOptions.crf.value());
-    av_dict_set(
-        &options,
-        "crf",
-        std::to_string(videoStreamOptions.crf.value()).c_str(),
-        0);
+    std::string crfValue = std::to_string(videoStreamOptions.crf.value());
+    tryToValidateCodecOption(*avCodec, "crf", crfValue);
+    av_dict_set(&options, "crf", crfValue.c_str(), 0);
   }
   if (videoStreamOptions.preset.has_value()) {
     av_dict_set(
@@ -775,7 +817,8 @@ void VideoEncoder::encode() {
   TORCH_CHECK(!encodeWasCalled_, "Cannot call encode() twice.");
   encodeWasCalled_ = true;
 
-  int status = avformat_write_header(avFormatContext_.get(), nullptr);
+  int status = avformat_write_header(avFormatContext_.get(), &formatOptions_);
+  av_dict_free(&formatOptions_);
   TORCH_CHECK(
       status == AVSUCCESS,
       "Error in avformat_write_header: ",
