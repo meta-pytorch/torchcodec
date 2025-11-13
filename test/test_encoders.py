@@ -690,24 +690,6 @@ class TestVideoEncoder:
         ):
             encoder.to_tensor(format="bad_format")
 
-    # @pytest.mark.parametrize("method", ["to_file", "to_tensor", "to_file_like"])
-    # @pytest.mark.parametrize("codec", ["h264", "hevc", "av1", "libx264", None])
-    # def test_codec_valid_values(self, method, codec, tmp_path):
-    #     if method == "to_file":
-    #         valid_params = {"dest": str(tmp_path / "test.mp4")}
-    #     elif method == "to_tensor":
-    #         valid_params = {"format": "mp4"}
-    #     elif method == "to_file_like":
-    #         valid_params = dict(file_like=io.BytesIO(), format="mp4")
-    #     else:
-    #         raise ValueError(f"Unknown method: {method}")
-
-    #     encoder = VideoEncoder(
-    #         frames=torch.zeros((5, 3, 128, 128), dtype=torch.uint8),
-    #         frame_rate=30,
-    #     )
-    #     getattr(encoder, method)(**valid_params, codec=codec)
-
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_pixel_format_errors(self, method, tmp_path):
         frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
@@ -1022,7 +1004,13 @@ class TestVideoEncoder:
             ("mp4", "hevc"),
             ("mkv", "av1"),
             ("avi", "mpeg4"),
-            ("webm", "vp9"),
+            pytest.param(
+                "webm",
+                "vp9",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS, reason="vp9 codec not available on Windows"
+                ),
+            ),
         ],
     )
     def test_codec_parameter_utilized(self, tmp_path, format, codec_spec):
@@ -1043,7 +1031,13 @@ class TestVideoEncoder:
         [
             ("h264", "libx264"),
             ("av1", "libaom-av1"),
-            ("vp9", "libvpx-vp9"),
+            pytest.param(
+                "vp9",
+                "libvpx-vp9",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS, reason="vp9 codec not available on Windows"
+                ),
+            ),
         ],
     )
     def test_codec_spec_vs_impl_equivalence(self, tmp_path, codec_spec, codec_impl):

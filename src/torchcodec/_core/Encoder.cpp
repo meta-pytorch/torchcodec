@@ -706,7 +706,7 @@ void VideoEncoder::initializeEncoder(
         avCodec != nullptr,
         "Video codec ",
         codec,
-        " not found. Provide a codec name ('libx264', 'libx265') or a codec descriptor ('h264', 'hevc'), or do not specify a codec to use the default codec.");
+        " not found. To see available codecs, run: ffmpeg -encoders");
   } else {
     avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
     TORCH_CHECK(avCodec != nullptr, "Video codec not found");
