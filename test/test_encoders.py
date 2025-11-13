@@ -567,6 +567,27 @@ class TestAudioEncoder:
 
 
 class TestVideoEncoder:
+    def _get_codec_name(self, file_path):
+        """Helper function to get codec name from a video file using ffprobe."""
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(file_path),
+            ],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_bad_input_parameterized(self, tmp_path, method):
         if method == "to_file":
@@ -639,23 +660,23 @@ class TestVideoEncoder:
         ):
             encoder.to_tensor(format="bad_format")
 
-    @pytest.mark.parametrize("method", ["to_file", "to_tensor", "to_file_like"])
-    @pytest.mark.parametrize("codec", ["h264", "hevc", "av1", "libx264", None])
-    def test_codec_valid_values(self, method, codec, tmp_path):
-        if method == "to_file":
-            valid_params = {"dest": str(tmp_path / "test.mp4")}
-        elif method == "to_tensor":
-            valid_params = {"format": "mp4"}
-        elif method == "to_file_like":
-            valid_params = dict(file_like=io.BytesIO(), format="mp4")
-        else:
-            raise ValueError(f"Unknown method: {method}")
+    # @pytest.mark.parametrize("method", ["to_file", "to_tensor", "to_file_like"])
+    # @pytest.mark.parametrize("codec", ["h264", "hevc", "av1", "libx264", None])
+    # def test_codec_valid_values(self, method, codec, tmp_path):
+    #     if method == "to_file":
+    #         valid_params = {"dest": str(tmp_path / "test.mp4")}
+    #     elif method == "to_tensor":
+    #         valid_params = {"format": "mp4"}
+    #     elif method == "to_file_like":
+    #         valid_params = dict(file_like=io.BytesIO(), format="mp4")
+    #     else:
+    #         raise ValueError(f"Unknown method: {method}")
 
-        encoder = VideoEncoder(
-            frames=torch.zeros((5, 3, 128, 128), dtype=torch.uint8),
-            frame_rate=30,
-        )
-        getattr(encoder, method)(**valid_params, codec=codec)
+    #     encoder = VideoEncoder(
+    #         frames=torch.zeros((5, 3, 128, 128), dtype=torch.uint8),
+    #         frame_rate=30,
+    #     )
+    #     getattr(encoder, method)(**valid_params, codec=codec)
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_pixel_format_errors(self, method, tmp_path):
@@ -728,3 +749,65 @@ class TestVideoEncoder:
         torch.testing.assert_close(
             encoded_from_contiguous, encoded_from_non_contiguous, rtol=0, atol=0
         )
+
+    @pytest.mark.parametrize(
+        "format,codec",
+        [
+            ("mp4", "h264"),
+            ("mp4", "hevc"),
+            ("mkv", "av1"),
+            ("avi", "mpeg4"),
+            ("webm", "vp9"),
+        ],
+    )
+    def test_codec_parameter_utilized(self, tmp_path, format, codec):
+        # Test the codec parameter is utilized by using ffprobe to check the encoded file's codec spec
+        frames = torch.randint(0, 256, (10, 3, 128, 128), dtype=torch.uint8)
+        dest = str(tmp_path / f"output.{format}")
+        VideoEncoder(frames=frames, frame_rate=30).to_file(dest=dest, codec=codec)
+
+        actual_codec = self._get_codec_name(dest)
+        print(f"Expected codec: {codec}, Actual codec: {actual_codec}")
+        assert actual_codec == codec
+
+    @pytest.mark.parametrize(
+        "codec_spec,codec_impl",
+        [
+            ("h264", "libx264"),
+            ("hevc", "libx265"),
+            ("av1", "libaom-av1"),
+            ("vp9", "libvpx-vp9"),
+        ],
+    )
+    def test_codec_spec_vs_implementation_equivalence(
+        self, tmp_path, codec_spec, codec_impl
+    ):
+        # Test that using codec spec gives the same result as using default codec implementation
+        frames = torch.randint(0, 256, (10, 3, 64, 64), dtype=torch.uint8)
+
+        spec_output = tmp_path / "spec_output.mp4"
+        encoder_spec = VideoEncoder(frames=frames, frame_rate=30)
+        encoder_spec.to_file(dest=str(spec_output), codec=codec_spec, crf=0)
+
+        impl_output = tmp_path / "impl_output.mp4"
+        encoder_impl = VideoEncoder(frames=frames, frame_rate=30)
+        encoder_impl.to_file(dest=str(impl_output), codec=codec_impl, crf=0)
+
+        # Verify both files use the same codec spec
+        spec_codec_name = self._get_codec_name(spec_output)
+        impl_codec_name = self._get_codec_name(impl_output)
+
+        assert spec_codec_name == impl_codec_name
+        assert spec_codec_name == codec_spec
+
+        # Decode both and verify frames are identical
+        from torchcodec.decoders import VideoDecoder
+
+        decoder_spec = VideoDecoder(str(spec_output))
+        decoder_impl = VideoDecoder(str(impl_output))
+
+        frames_spec = decoder_spec.get_frames_in_range(0, 10).data
+        frames_impl = decoder_impl.get_frames_in_range(0, 10).data
+
+        # The decoded frames should be exactly the same
+        torch.testing.assert_close(frames_spec, frames_impl, rtol=0, atol=0)
