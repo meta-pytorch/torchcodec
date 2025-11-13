@@ -367,6 +367,14 @@ ContainerMetadata SingleStreamDecoder::getContainerMetadata() const {
   return containerMetadata_;
 }
 
+SeekMode SingleStreamDecoder::getSeekMode() const {
+  return seekMode_;
+}
+
+int SingleStreamDecoder::getActiveStreamIndex() const {
+  return activeStreamIndex_;
+}
+
 torch::Tensor SingleStreamDecoder::getKeyFrameIndices() {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   validateScannedAllStreams("getKeyFrameIndices");
@@ -611,16 +619,24 @@ FrameOutput SingleStreamDecoder::getFrameAtIndexInternal(
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
 
-  std::optional<int64_t> numFrames = getNumFrames(streamMetadata);
+  std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
   if (numFrames.has_value()) {
     // If the frameIndex is negative, we convert it to a positive index
     frameIndex = frameIndex >= 0 ? frameIndex : frameIndex + numFrames.value();
   }
   validateFrameIndex(streamMetadata, frameIndex);
 
-  int64_t pts = getPts(frameIndex);
-  setCursorPtsInSeconds(ptsToSeconds(pts, streamInfo.timeBase));
-  return getNextFrameInternal(preAllocatedOutputTensor);
+  // Only set cursor if we're not decoding sequentially: when decoding
+  // sequentially, we don't need to seek anywhere, so by *not* setting the
+  // cursor we allow canWeAvoidSeeking() to return true early.
+  if (frameIndex != lastDecodedFrameIndex_ + 1) {
+    int64_t pts = getPts(frameIndex);
+    setCursorPtsInSeconds(ptsToSeconds(pts, streamInfo.timeBase));
+  }
+
+  auto result = getNextFrameInternal(preAllocatedOutputTensor);
+  lastDecodedFrameIndex_ = frameIndex;
+  return result;
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
@@ -705,7 +721,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
 
   // Note that if we do not have the number of frames available in our
   // metadata, then we assume that the upper part of the range is valid.
-  std::optional<int64_t> numFrames = getNumFrames(streamMetadata);
+  std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
   if (numFrames.has_value()) {
     TORCH_CHECK(
         stop <= numFrames.value(),
@@ -779,8 +795,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
 
-  double minSeconds = getMinSeconds(streamMetadata);
-  std::optional<double> maxSeconds = getMaxSeconds(streamMetadata);
+  double minSeconds = streamMetadata.getBeginStreamSeconds(seekMode_);
+  std::optional<double> maxSeconds =
+      streamMetadata.getEndStreamSeconds(seekMode_);
 
   // The frame played at timestamp t and the one played at timestamp `t +
   // eps` are probably the same frame, with the same index. The easiest way to
@@ -857,7 +874,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     return frameBatchOutput;
   }
 
-  double minSeconds = getMinSeconds(streamMetadata);
+  double minSeconds = streamMetadata.getBeginStreamSeconds(seekMode_);
   TORCH_CHECK(
       startSeconds >= minSeconds,
       "Start seconds is " + std::to_string(startSeconds) +
@@ -866,7 +883,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
 
   // Note that if we can't determine the maximum seconds from the metadata,
   // then we assume upper range is valid.
-  std::optional<double> maxSeconds = getMaxSeconds(streamMetadata);
+  std::optional<double> maxSeconds =
+      streamMetadata.getEndStreamSeconds(seekMode_);
   if (maxSeconds.has_value()) {
     TORCH_CHECK(
         startSeconds < maxSeconds.value(),
@@ -1095,7 +1113,11 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
     // within getFramesPlayedInRangeAudio(), when setCursorPtsInSeconds() was
     // called. For more context, see [Audio Decoding Design]
     return !cursorWasJustSet_;
+  } else if (!cursorWasJustSet_) {
+    // For videos, when decoding consecutive frames, we don't need to seek.
+    return true;
   }
+
   if (cursor_ < lastDecodedAvFramePts_) {
     // We can never skip a seek if we are seeking backwards.
     return false;
@@ -1171,10 +1193,8 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
 
   resetDecodeStats();
 
-  if (cursorWasJustSet_) {
-    maybeSeekToBeforeDesiredPts();
-    cursorWasJustSet_ = false;
-  }
+  maybeSeekToBeforeDesiredPts();
+  cursorWasJustSet_ = false;
 
   UniqueAVFrame avFrame(av_frame_alloc());
   AutoAVPacket autoAVPacket;
@@ -1439,47 +1459,6 @@ int64_t SingleStreamDecoder::getPts(int64_t frameIndex) {
 // STREAM AND METADATA APIS
 // --------------------------------------------------------------------------
 
-std::optional<int64_t> SingleStreamDecoder::getNumFrames(
-    const StreamMetadata& streamMetadata) {
-  switch (seekMode_) {
-    case SeekMode::custom_frame_mappings:
-    case SeekMode::exact:
-      return streamMetadata.numFramesFromContent.value();
-    case SeekMode::approximate: {
-      return streamMetadata.numFramesFromHeader;
-    }
-    default:
-      TORCH_CHECK(false, "Unknown SeekMode");
-  }
-}
-
-double SingleStreamDecoder::getMinSeconds(
-    const StreamMetadata& streamMetadata) {
-  switch (seekMode_) {
-    case SeekMode::custom_frame_mappings:
-    case SeekMode::exact:
-      return streamMetadata.beginStreamPtsSecondsFromContent.value();
-    case SeekMode::approximate:
-      return 0;
-    default:
-      TORCH_CHECK(false, "Unknown SeekMode");
-  }
-}
-
-std::optional<double> SingleStreamDecoder::getMaxSeconds(
-    const StreamMetadata& streamMetadata) {
-  switch (seekMode_) {
-    case SeekMode::custom_frame_mappings:
-    case SeekMode::exact:
-      return streamMetadata.endStreamPtsSecondsFromContent.value();
-    case SeekMode::approximate: {
-      return streamMetadata.durationSecondsFromHeader;
-    }
-    default:
-      TORCH_CHECK(false, "Unknown SeekMode");
-  }
-}
-
 // --------------------------------------------------------------------------
 // VALIDATION UTILS
 // --------------------------------------------------------------------------
@@ -1529,7 +1508,7 @@ void SingleStreamDecoder::validateFrameIndex(
 
   // Note that if we do not have the number of frames available in our
   // metadata, then we assume that the frameIndex is valid.
-  std::optional<int64_t> numFrames = getNumFrames(streamMetadata);
+  std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
   if (numFrames.has_value()) {
     if (frameIndex >= numFrames.value()) {
       throw std::out_of_range(
