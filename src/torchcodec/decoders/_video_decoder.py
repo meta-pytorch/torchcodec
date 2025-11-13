@@ -70,10 +70,8 @@ class VideoDecoder:
         transforms (sequence of transform objects, optional): Sequence of transforms to be
             applied to the decoded frames by the decoder itself, in order. Accepts both
             :class:`~torchcodec.transforms.DecoderTransform` and
-            `torchvision.transforms.v2.Transform <https://docs.pytorch.org/vision/stable/transforms.html#v2-api-reference-recommended>`_
-            objects. All transforms are applied
-            in the ouput pixel format and colorspace. Read more about this parameter in:
-            TODO_DECODER_TRANSFORMS_TUTORIAL.
+            :class:`~torchvision.transforms.v2.Transform`
+            objects. Read more about this parameter in: TODO_DECODER_TRANSFORMS_TUTORIAL.
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
@@ -477,7 +475,7 @@ def _convert_to_decoder_transforms(
                     " DecoderTransform. TorchCodec also accept TorchVision "
                     "v2 transforms, but TorchVision is not installed."
                 )
-            if isinstance(transform, v2.Resize):
+            elif isinstance(transform, v2.Resize):
                 converted_transforms.append(Resize._from_torchvision(transform))
             else:
                 raise ValueError(
@@ -513,7 +511,7 @@ def _make_transform_specs(
         return ""
 
     transforms = _convert_to_decoder_transforms(transforms)
-    return ";".join([t._make_params() for t in transforms])
+    return ";".join([t._make_transform_spec() for t in transforms])
 
 
 def _read_custom_frame_mappings(

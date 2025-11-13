@@ -1,8 +1,8 @@
-.. _samplers:
+.. _transforms:
 
-===================
+=====================
 torchcodec.transforms
-===================
+=====================
 
 .. currentmodule:: torchcodec.transforms
 
