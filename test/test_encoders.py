@@ -708,17 +708,20 @@ class TestVideoEncoder:
         )
 
         def encode_to_tensor(frames):
+            common_params = dict(crf=0, pixel_format="yuv444p")
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
-                VideoEncoder(frames, frame_rate=30).to_file(dest=dest)
+                VideoEncoder(frames, frame_rate=30).to_file(dest=dest, **common_params)
                 with open(dest, "rb") as f:
                     return torch.frombuffer(f.read(), dtype=torch.uint8)
             elif method == "to_tensor":
-                return VideoEncoder(frames, frame_rate=30).to_tensor(format="mp4")
+                return VideoEncoder(frames, frame_rate=30).to_tensor(
+                    format="mp4", **common_params
+                )
             elif method == "to_file_like":
                 file_like = io.BytesIO()
                 VideoEncoder(frames, frame_rate=30).to_file_like(
-                    file_like, format="mp4"
+                    file_like, format="mp4", **common_params
                 )
                 return torch.frombuffer(file_like.getvalue(), dtype=torch.uint8)
             else:
