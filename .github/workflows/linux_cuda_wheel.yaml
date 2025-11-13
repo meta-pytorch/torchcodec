@@ -140,6 +140,7 @@ jobs:
           ls
       - name: Run Python tests
         run: |
+          ${CONDA_RUN} export LD_LIBRARY_PATH=${CONDA_PREFIX}/lib/:/usr/local/cuda/lib64
           ${CONDA_RUN} FAIL_WITHOUT_CUDA=1 pytest --override-ini="addopts=-v" test --tb=short
       - name: Run Python benchmark
         run: |
