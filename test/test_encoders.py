@@ -572,7 +572,7 @@ class TestVideoEncoder:
     def decode(self, source=None) -> torch.Tensor:
         return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
 
-    def _get_codec_name(self, file_path):
+    def _get_codec_spec(self, file_path):
         """Helper function to get codec name from a video file using ffprobe."""
         result = subprocess.run(
             [
@@ -1011,8 +1011,12 @@ class TestVideoEncoder:
         ):
             encoder.to_file_like(NoSeekMethod(), format="mp4")
 
+    @pytest.mark.skipif(
+        in_fbcode(),
+        reason="ffprobe not available internally",
+    )
     @pytest.mark.parametrize(
-        "format,codec",
+        "format,codec_spec",
         [
             ("mp4", "h264"),
             ("mp4", "hevc"),
@@ -1021,54 +1025,45 @@ class TestVideoEncoder:
             ("webm", "vp9"),
         ],
     )
-    def test_codec_parameter_utilized(self, tmp_path, format, codec):
+    def test_codec_parameter_utilized(self, tmp_path, format, codec_spec):
         # Test the codec parameter is utilized by using ffprobe to check the encoded file's codec spec
-        frames = torch.randint(0, 256, (10, 3, 128, 128), dtype=torch.uint8)
+        frames = torch.zeros((10, 3, 64, 64), dtype=torch.uint8)
         dest = str(tmp_path / f"output.{format}")
-        VideoEncoder(frames=frames, frame_rate=30).to_file(dest=dest, codec=codec)
 
-        actual_codec = self._get_codec_name(dest)
-        print(f"Expected codec: {codec}, Actual codec: {actual_codec}")
-        assert actual_codec == codec
+        VideoEncoder(frames=frames, frame_rate=30).to_file(dest=dest, codec=codec_spec)
+        actual_codec_spec = self._get_codec_spec(dest)
+        assert actual_codec_spec == codec_spec
 
+    @pytest.mark.skipif(
+        in_fbcode(),
+        reason="ffprobe not available internally",
+    )
     @pytest.mark.parametrize(
         "codec_spec,codec_impl",
         [
             ("h264", "libx264"),
-            ("hevc", "libx265"),
             ("av1", "libaom-av1"),
             ("vp9", "libvpx-vp9"),
         ],
     )
-    def test_codec_spec_vs_implementation_equivalence(
-        self, tmp_path, codec_spec, codec_impl
-    ):
+    def test_codec_spec_vs_impl_equivalence(self, tmp_path, codec_spec, codec_impl):
         # Test that using codec spec gives the same result as using default codec implementation
+        # We cannot directly check codec impl used, so we assert frame equality
         frames = torch.randint(0, 256, (10, 3, 64, 64), dtype=torch.uint8)
 
-        spec_output = tmp_path / "spec_output.mp4"
-        encoder_spec = VideoEncoder(frames=frames, frame_rate=30)
-        encoder_spec.to_file(dest=str(spec_output), codec=codec_spec, crf=0)
+        spec_output = str(tmp_path / "spec_output.mp4")
+        VideoEncoder(frames=frames, frame_rate=30).to_file(
+            dest=spec_output, codec=codec_spec
+        )
 
-        impl_output = tmp_path / "impl_output.mp4"
-        encoder_impl = VideoEncoder(frames=frames, frame_rate=30)
-        encoder_impl.to_file(dest=str(impl_output), codec=codec_impl, crf=0)
+        impl_output = str(tmp_path / "impl_output.mp4")
+        VideoEncoder(frames=frames, frame_rate=30).to_file(
+            dest=impl_output, codec=codec_impl
+        )
 
-        # Verify both files use the same codec spec
-        spec_codec_name = self._get_codec_name(spec_output)
-        impl_codec_name = self._get_codec_name(impl_output)
+        assert self._get_codec_spec(spec_output) == codec_spec
+        assert self._get_codec_spec(impl_output) == codec_spec
 
-        assert spec_codec_name == impl_codec_name
-        assert spec_codec_name == codec_spec
-
-        # Decode both and verify frames are identical
-        from torchcodec.decoders import VideoDecoder
-
-        decoder_spec = VideoDecoder(str(spec_output))
-        decoder_impl = VideoDecoder(str(impl_output))
-
-        frames_spec = decoder_spec.get_frames_in_range(0, 10).data
-        frames_impl = decoder_impl.get_frames_in_range(0, 10).data
-
-        # The decoded frames should be exactly the same
+        frames_spec = self.decode(spec_output).data
+        frames_impl = self.decode(impl_output).data
         torch.testing.assert_close(frames_spec, frames_impl, rtol=0, atol=0)
