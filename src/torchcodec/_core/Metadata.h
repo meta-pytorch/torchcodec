@@ -35,6 +35,9 @@ struct StreamMetadata {
   std::optional<double> averageFpsFromHeader;
   std::optional<double> bitRate;
 
+  // Used as fallback in approximate mode when stream duration is unavailable.
+  std::optional<double> durationSecondsFromContainer;
+
   // More accurate duration, obtained by scanning the file.
   // These presentation timestamps are in time base.
   std::optional<int64_t> beginStreamPtsFromContent;
