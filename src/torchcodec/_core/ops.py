@@ -215,7 +215,7 @@ def encode_video_to_file_like(
     file_like: Union[io.RawIOBase, io.BufferedIOBase],
     codec: Optional[str] = None,
     pixel_format: Optional[str] = None,
-    crf: Optional[int] = None,
+    crf: Optional[Union[int, float]] = None,
 ) -> None:
     """Encode video frames to a file-like object.
 
@@ -327,7 +327,7 @@ def encode_video_to_file_abstract(
     filename: str,
     codec: Optional[str],
     pixel_format: Optional[str] = None,
-    crf: Optional[int] = None,
+    crf: Optional[Union[int, float]] = None,
 ) -> None:
     return
 
@@ -339,7 +339,7 @@ def encode_video_to_tensor_abstract(
     format: str,
     codec: Optional[str],
     pixel_format: Optional[str] = None,
-    crf: Optional[int] = None,
+    crf: Optional[Union[int, float]] = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
@@ -352,7 +352,7 @@ def _encode_video_to_file_like_abstract(
     file_like_context: int,
     codec: Optional[str] = None,
     pixel_format: Optional[str] = None,
-    crf: Optional[int] = None,
+    crf: Optional[Union[int, float]] = None,
 ) -> None:
     return
 

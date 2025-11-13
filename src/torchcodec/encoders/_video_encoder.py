@@ -38,6 +38,7 @@ class VideoEncoder:
         *,
         codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
+        crf: Optional[Union[int, float]] = None,
     ) -> None:
         """Encode frames into a file.
 
@@ -50,6 +51,9 @@ class VideoEncoder:
                 for the container format will be used.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+            crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
+                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                Defaults to None (which will use encoder's default).
         """
         _core.encode_video_to_file(
             frames=self._frames,
@@ -57,6 +61,7 @@ class VideoEncoder:
             filename=str(dest),
             codec=codec,
             pixel_format=pixel_format,
+            crf=crf,
         )
 
     def to_tensor(
@@ -65,6 +70,7 @@ class VideoEncoder:
         *,
         codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
+        crf: Optional[Union[int, float]] = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
 
@@ -76,6 +82,9 @@ class VideoEncoder:
                 for the container format will be used.
             pixel_format (str, optional): The pixel format to encode frames into (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+            crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
+                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                Defaults to None (which will use encoder's default).
 
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor.
@@ -86,6 +95,7 @@ class VideoEncoder:
             format=format,
             codec=codec,
             pixel_format=pixel_format,
+            crf=crf,
         )
 
     def to_file_like(
@@ -95,6 +105,7 @@ class VideoEncoder:
         *,
         codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
+        crf: Optional[Union[int, float]] = None,
     ) -> None:
         """Encode frames into a file-like object.
 
@@ -111,6 +122,9 @@ class VideoEncoder:
                 for the container format will be used.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+            crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
+                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                Defaults to None (which will use encoder's default).
         """
         _core.encode_video_to_file_like(
             frames=self._frames,
@@ -119,4 +133,5 @@ class VideoEncoder:
             file_like=file_like,
             codec=codec,
             pixel_format=pixel_format,
+            crf=crf,
         )

@@ -5,6 +5,7 @@
 #include "torch/types.h"
 
 extern "C" {
+#include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 }
 
@@ -568,6 +569,43 @@ AVPixelFormat validatePixelFormat(
   }
   TORCH_CHECK(false, errorMsg.str());
 }
+
+void validateDoubleOption(
+    const AVCodec& avCodec,
+    const char* optionName,
+    double value) {
+  if (!avCodec.priv_class) {
+    return;
+  }
+  const AVOption* option = av_opt_find2(
+      // Convert obj arg from const AVClass* const* to non-const void*
+      // First cast to remove const, then cast to void*
+      const_cast<void*>(static_cast<const void*>(&avCodec.priv_class)),
+      optionName,
+      nullptr,
+      0,
+      AV_OPT_SEARCH_FAKE_OBJ,
+      nullptr);
+  // If the option was not found, let FFmpeg handle it later
+  if (!option) {
+    return;
+  }
+  if (option->type == AV_OPT_TYPE_INT || option->type == AV_OPT_TYPE_INT64 ||
+      option->type == AV_OPT_TYPE_FLOAT || option->type == AV_OPT_TYPE_DOUBLE) {
+    TORCH_CHECK(
+        value >= option->min && value <= option->max,
+        optionName,
+        "=",
+        value,
+        " is out of valid range [",
+        option->min,
+        ", ",
+        option->max,
+        "] for this codec. For more details, run 'ffmpeg -h encoder=",
+        avCodec.name,
+        "'");
+  }
+}
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
@@ -721,6 +759,7 @@ void VideoEncoder::initializeEncoder(
   // Apply videoStreamOptions
   AVDictionary* options = nullptr;
   if (videoStreamOptions.crf.has_value()) {
+    validateDoubleOption(*avCodec, "crf", videoStreamOptions.crf.value());
     av_dict_set(
         &options,
         "crf",
