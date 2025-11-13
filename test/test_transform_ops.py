@@ -260,7 +260,7 @@ class TestCoreVideoDecoderTransformOps:
             if get_ffmpeg_major_version() <= 4 and get_ffmpeg_minor_version() <= 1:
                 # FFmpeg version 4.1 and before appear to have a different
                 # resize implementation.
-                torch.testing.assert_close(frame_resize, frame_ref, rtol=0, atol=3)
+                torch.testing.assert_close(frame_resize, frame_ref, rtol=0, atol=2)
             else:
                 assert_frames_equal(frame_resize, frame_ref)
 
