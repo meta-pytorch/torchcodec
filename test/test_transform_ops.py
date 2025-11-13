@@ -109,6 +109,36 @@ class TestPublicVideoDecoderTransformOps:
     def test_resize_fails(self):
         with pytest.raises(
             ValueError,
+            match=r"must use bilinear interpolation",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[
+                    v2.Resize(
+                        size=(100, 100), interpolation=v2.InterpolationMode.BICUBIC
+                    )
+                ],
+            )
+
+        with pytest.raises(
+            ValueError,
+            match=r"must have antialias enabled",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[v2.Resize(size=(100, 100), antialias=False)],
+            )
+
+        with pytest.raises(
+            ValueError,
+            match=r"must have a size specified",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path, transforms=[v2.Resize(size=None, max_size=100)]
+            )
+
+        with pytest.raises(
+            ValueError,
             match=r"must have a \(height, width\) pair for the size",
         ):
             VideoDecoder(NASA_VIDEO.path, transforms=[v2.Resize(size=(100))])

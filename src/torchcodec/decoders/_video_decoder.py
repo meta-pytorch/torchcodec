@@ -478,12 +478,7 @@ def _convert_to_decoder_transforms(
                     "v2 transforms, but TorchVision is not installed."
                 )
             if isinstance(transform, v2.Resize):
-                if len(transform.size) != 2:
-                    raise ValueError(
-                        "TorchVision Resize transform must have a (height, width) "
-                        f"pair for the size, got {transform.size}."
-                    )
-                converted_transforms.append(Resize(size=transform.size))
+                converted_transforms.append(Resize._from_torchvision(transform))
             else:
                 raise ValueError(
                     f"Unsupported transform: {transform}. Transforms must be "

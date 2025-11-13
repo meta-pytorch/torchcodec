@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Sequence
 
+from torch import nn
+
 
 @dataclass
 class DecoderTransform(ABC):
@@ -58,3 +60,26 @@ class Resize(DecoderTransform):
     def _make_params(self) -> str:
         assert len(self.size) == 2
         return f"resize, {self.size[0]}, {self.size[1]}"
+
+    @classmethod
+    def _from_torchvision(cls, resize_tv: nn.Module):
+        from torchvision.transforms import v2
+
+        assert isinstance(resize_tv, v2.Resize)
+
+        if resize_tv.interpolation is not v2.InterpolationMode.BILINEAR:
+            raise ValueError(
+                "TorchVision Resize transform must use bilinear interpolation."
+            )
+        if resize_tv.antialias is False:
+            raise ValueError(
+                "TorchVision Resize transform must have antialias enabled."
+            )
+        if resize_tv.size is None:
+            raise ValueError("TorchVision Resize transform must have a size specified.")
+        if len(resize_tv.size) != 2:
+            raise ValueError(
+                "TorchVision Resize transform must have a (height, width) "
+                f"pair for the size, got {resize_tv.size}."
+            )
+        return cls(size=resize_tv.size)
