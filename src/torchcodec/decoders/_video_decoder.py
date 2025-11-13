@@ -454,9 +454,9 @@ def _convert_to_decoder_transforms(
         transforms: Squence of transform objects. The objects can be one of two
         types:
                 1. torchcodec.transforms.DecoderTransform
-                2. torchvision.transforms.v2.Transform
-            Our type annotation only mentions the first type so that we don't
-            have a hard dependency on TorchVision.
+                2. torchvision.transforms.v2.Transform, but our type annotation
+                   only mentions its base, nn.Module. We don't want to take a
+                   hard dependency on TorchVision.
 
     Returns:
         List of DecoderTransform objects.
@@ -501,9 +501,9 @@ def _make_transform_specs(
         transforms: Optional sequence of transform objects. The objects can be
             one of two types:
                 1. torchcodec.transforms.DecoderTransform
-                2. torchvision.transforms.v2.Transform
-            Our type annotation only mentions the first type so that we don't
-            have a hard dependency on TorchVision.
+                2. torchvision.transforms.v2.Transform, but our type annotation
+                   only mentions its base, nn.Module. We don't want to take a
+                   hard dependency on TorchVision.
 
     Returns:
         String of transforms in the format the core API expects: transform
