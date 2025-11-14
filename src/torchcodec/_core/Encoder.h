@@ -173,6 +173,7 @@ class VideoEncoder {
 
   const torch::Tensor frames_;
   int inFrameRate_;
+  int outFrameRate_ = -1;
 
   int inWidth_ = -1;
   int inHeight_ = -1;

@@ -218,12 +218,13 @@ def encode_video_to_file_like(
     crf: Optional[Union[int, float]] = None,
     preset: Optional[str] = None,
     extra_options: Optional[list[str]] = None,
+    desired_frame_rate: Optional[int] = None,
 ) -> None:
     """Encode video frames to a file-like object.
 
     Args:
         frames: Video frames tensor
-        frame_rate: Frame rate in frames per second
+        frame_rate: Frame rate in frames per second (input frame rate)
         format: Video format (e.g., "mp4", "mov", "mkv")
         file_like: File-like object that supports write() and seek() methods
         codec: Optional codec name (e.g., "libx264", "h264")
@@ -231,6 +232,8 @@ def encode_video_to_file_like(
         crf: Optional constant rate factor for encoding quality
         preset: Optional encoder preset as string (e.g., "ultrafast", "medium")
         extra_options: Optional list of extra options as flattened key-value pairs
+        desired_frame_rate: Optional desired output frame rate. If not specified,
+            uses the input frame_rate.
     """
     assert _pybind_ops is not None
 
@@ -244,6 +247,7 @@ def encode_video_to_file_like(
         crf,
         preset,
         extra_options,
+        desired_frame_rate,
     )
 
 
@@ -336,6 +340,7 @@ def encode_video_to_file_abstract(
     preset: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
     extra_options: Optional[list[str]] = None,
+    desired_frame_rate: Optional[int] = None,
 ) -> None:
     return
 
@@ -350,6 +355,7 @@ def encode_video_to_tensor_abstract(
     preset: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
     extra_options: Optional[list[str]] = None,
+    desired_frame_rate: Optional[int] = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
@@ -365,6 +371,7 @@ def _encode_video_to_file_like_abstract(
     preset: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
     extra_options: Optional[list[str]] = None,
+    desired_frame_rate: Optional[int] = None,
 ) -> None:
     return
 

@@ -659,6 +659,13 @@ class TestVideoEncoder:
         ):
             encoder.to_tensor(format="mp4", preset="fake_preset")
 
+        with pytest.raises(RuntimeError, match="Invalid frame_rate: "):
+            encoder = VideoEncoder(
+                frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
+                frame_rate=30,
+            )
+            getattr(encoder, method)(**valid_params, frame_rate=0)
+
     @pytest.mark.parametrize("method", ["to_file", "to_tensor", "to_file_like"])
     @pytest.mark.parametrize("crf", [23, 23.5, -0.9])
     def test_crf_valid_values(self, method, crf, tmp_path):
@@ -1175,3 +1182,51 @@ class TestVideoEncoder:
         assert metadata["profile"].lower() == expected_profile
         assert metadata["color_space"] == colorspace
         assert metadata["color_range"] == color_range
+
+    @pytest.mark.skipif(
+        in_fbcode(),
+        reason="ffprobe not available internally",
+    )
+    @pytest.mark.parametrize("method", ["to_file", "to_tensor", "to_file_like"])
+    @pytest.mark.parametrize("output_frame_rate", [10, 60, None])
+    def test_frame_rate_parameter(self, tmp_path, method, output_frame_rate):
+
+        frames = (
+            VideoDecoder(TEST_SRC_2_720P.path)
+            .get_frames_in_range(start=0, stop=60)
+            .data
+        )
+        input_frame_rate = 30
+        encoder = VideoEncoder(frames=frames, frame_rate=input_frame_rate)
+
+        if method == "to_file":
+            output_path = str(tmp_path / "output.mp4")
+            encoder.to_file(dest=output_path, frame_rate=output_frame_rate)
+        elif method == "to_tensor":
+            encoded_tensor = encoder.to_tensor(
+                format="mp4", frame_rate=output_frame_rate
+            )
+            # Write tensor to file to check with ffprobe
+            output_path = str(tmp_path / "output_from_tensor.mp4")
+            with open(output_path, "wb") as f:
+                f.write(encoded_tensor.numpy().tobytes())
+        elif method == "to_file_like":
+            file_like = io.BytesIO()
+            encoder.to_file_like(
+                file_like=file_like, format="mp4", frame_rate=output_frame_rate
+            )
+            # Write file_like to file to check with ffprobe
+            output_path = str(tmp_path / "output_from_file_like.mp4")
+            with open(output_path, "wb") as f:
+                f.write(file_like.getvalue())
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        metadata = self._get_video_metadata(output_path, ["r_frame_rate"])
+        # Frame rate is returned as a fraction like "60/1"
+        numerator, denominator = metadata["r_frame_rate"].split("/")
+        actual_frame_rate = int(numerator) / int(denominator)
+        # Ensure frame_rate=None uses the input_frame_rate
+        if output_frame_rate is None:
+            output_frame_rate = input_frame_rate
+        assert actual_frame_rate == output_frame_rate
