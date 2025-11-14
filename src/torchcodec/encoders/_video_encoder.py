@@ -57,7 +57,7 @@ class VideoEncoder:
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
             codec_options (dict[str, Any], optional): A dictionary of codec-specific
-                options to pass to the encoder, e.g. ``{"preset": "slow", "tune": "film"}``.
+                options to pass to the encoder, e.g. ``{"qp": 5, "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
         """
         preset = str(preset) if isinstance(preset, int) else preset

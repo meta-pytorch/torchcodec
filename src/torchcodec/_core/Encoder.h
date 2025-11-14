@@ -160,10 +160,6 @@ class VideoEncoder {
 
  private:
   void initializeEncoder(const VideoStreamOptions& videoStreamOptions);
-  void sortCodecOptions(
-      const std::map<std::string, std::string>& codecOptions,
-      AVDictionary** codecDict,
-      AVDictionary** formatDict);
   UniqueAVFrame convertTensorToAVFrame(
       const torch::Tensor& frame,
       int frameIndex);
@@ -189,7 +185,7 @@ class VideoEncoder {
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
 
   bool encodeWasCalled_ = false;
-  AVDictionary* formatOptions_ = nullptr;
+  AVDictionary* avFormatOptions_ = nullptr;
 };
 
 } // namespace facebook::torchcodec
