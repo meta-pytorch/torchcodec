@@ -74,7 +74,7 @@ class VideoEncoder:
             crf=crf,
             preset=preset,
             extra_options=[
-                x for k, v in (extra_options or {}).items() for x in (k, str(v))
+                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
             ],
         )
 
@@ -106,7 +106,7 @@ class VideoEncoder:
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
             extra_options (dict[str, Any], optional): A dictionary of additional
-                encoder options to pass, e.g. ``{"preset": "slow", "tune": "film"}``.
+                encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
 
         Returns:
@@ -122,7 +122,7 @@ class VideoEncoder:
             crf=crf,
             preset=preset_value,
             extra_options=[
-                x for k, v in (extra_options or {}).items() for x in (k, str(v))
+                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
             ],
         )
 
@@ -160,7 +160,7 @@ class VideoEncoder:
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
             extra_options (dict[str, Any], optional): A dictionary of additional
-                encoder options to pass, e.g. ``{"preset": "slow", "tune": "film"}``.
+                encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
         """
         preset = str(preset) if isinstance(preset, int) else preset
@@ -174,6 +174,6 @@ class VideoEncoder:
             crf=crf,
             preset=preset,
             extra_options=[
-                x for k, v in (extra_options or {}).items() for x in (k, str(v))
+                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
             ],
         )

@@ -1092,9 +1092,9 @@ class TestVideoEncoder:
         dest = str(tmp_path / f"output.{format}")
 
         VideoEncoder(frames=frames, frame_rate=30).to_file(dest=dest, codec=codec_spec)
-        actual_codec_spec = self._get_video_metadata(dest, fields=["codec_name"]).get(
+        actual_codec_spec = self._get_video_metadata(dest, fields=["codec_name"])[
             "codec_name"
-        )
+        ]
         assert actual_codec_spec == codec_spec
 
     @pytest.mark.skipif(
@@ -1131,15 +1131,11 @@ class TestVideoEncoder:
         )
 
         assert (
-            self._get_video_metadata(spec_output, fields=["codec_name"]).get(
-                "codec_name"
-            )
+            self._get_video_metadata(spec_output, fields=["codec_name"])["codec_name"]
             == codec_spec
         )
         assert (
-            self._get_video_metadata(impl_output, fields=["codec_name"]).get(
-                "codec_name"
-            )
+            self._get_video_metadata(impl_output, fields=["codec_name"])["codec_name"]
             == codec_spec
         )
 
@@ -1175,6 +1171,7 @@ class TestVideoEncoder:
             fields=["profile", "color_space", "color_range"],
         )
         # Validate profile (case-insensitive, baseline is reported as "Constrained Baseline")
-        assert profile in metadata.get("profile", "").lower()
-        assert metadata.get("color_space") == colorspace
-        assert metadata.get("color_range") == color_range
+        expected_profile = "constrained baseline" if profile == "baseline" else profile
+        assert metadata["profile"].lower() == expected_profile
+        assert metadata["color_space"] == colorspace
+        assert metadata["color_range"] == color_range
