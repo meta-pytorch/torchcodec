@@ -37,6 +37,8 @@ class VideoEncoder:
         dest: Union[str, Path],
         *,
         pixel_format: Optional[str] = None,
+        crf: Optional[Union[int, float]] = None,
+        preset: Optional[Union[str, int]] = None,
     ) -> None:
         """Encode frames into a file.
 
@@ -46,12 +48,22 @@ class VideoEncoder:
                 container format.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+            crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
+                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                Defaults to None (which will use encoder's default).
+            preset (str or int, optional): Encoder option that controls the tradeoff between
+                encoding speed and compression. Valid values depend on the encoder (commonly
+                a string: "fast", "medium", "slow"). Defaults to None
+                (which will use encoder's default).
         """
+        preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file(
             frames=self._frames,
             frame_rate=self._frame_rate,
             filename=str(dest),
             pixel_format=pixel_format,
+            crf=crf,
+            preset=preset,
         )
 
     def to_tensor(
@@ -59,23 +71,35 @@ class VideoEncoder:
         format: str,
         *,
         pixel_format: Optional[str] = None,
+        crf: Optional[Union[int, float]] = None,
+        preset: Optional[Union[str, int]] = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
 
         Args:
             format (str): The container format of the encoded frames, e.g. "mp4", "mov",
-            "mkv", "avi", "webm", "flv", or "gif"
+                "mkv", "avi", "webm", "flv", etc.
             pixel_format (str, optional): The pixel format to encode frames into (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+            crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
+                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                Defaults to None (which will use encoder's default).
+            preset (str or int, optional): Encoder option that controls the tradeoff between
+                encoding speed and compression. Valid values depend on the encoder (commonly
+                a string: "fast", "medium", "slow"). Defaults to None
+                (which will use encoder's default).
 
         Returns:
             Tensor: The raw encoded bytes as 4D uint8 Tensor.
         """
+        preset_value = str(preset) if isinstance(preset, int) else preset
         return _core.encode_video_to_tensor(
             frames=self._frames,
             frame_rate=self._frame_rate,
             format=format,
             pixel_format=pixel_format,
+            crf=crf,
+            preset=preset_value,
         )
 
     def to_file_like(
@@ -84,6 +108,8 @@ class VideoEncoder:
         format: str,
         *,
         pixel_format: Optional[str] = None,
+        crf: Optional[Union[int, float]] = None,
+        preset: Optional[Union[str, int]] = None,
     ) -> None:
         """Encode frames into a file-like object.
 
@@ -94,14 +120,24 @@ class VideoEncoder:
                 ``write(data: bytes) -> int`` and ``seek(offset: int, whence:
                 int = 0) -> int``.
             format (str): The container format of the encoded frames, e.g. "mp4", "mov",
-                "mkv", "avi", "webm", "flv", or "gif".
+                "mkv", "avi", "webm", "flv", etc.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+            crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
+                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                Defaults to None (which will use encoder's default).
+            preset (str or int, optional): Encoder option that controls the tradeoff between
+                encoding speed and compression. Valid values depend on the encoder (commonly
+                a string: "fast", "medium", "slow"). Defaults to None
+                (which will use encoder's default).
         """
+        preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file_like(
             frames=self._frames,
             frame_rate=self._frame_rate,
             format=format,
             file_like=file_like,
             pixel_format=pixel_format,
+            crf=crf,
+            preset=preset,
         )
