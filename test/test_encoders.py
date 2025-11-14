@@ -692,7 +692,7 @@ class TestVideoEncoder:
     @pytest.mark.parametrize(
         "codec_options,error",
         [
-            ({"qp": "-10"}, "qp=-10 is out of valid range"),
+            ({"qp": -10}, "qp=-10 is out of valid range"),
             (
                 {"qp": ""},
                 "Option qp expects a numeric value but got",
@@ -703,7 +703,7 @@ class TestVideoEncoder:
             ),
             ({"tune": "not_a_real_tune"}, "avcodec_open2 failed: Invalid argument"),
             (
-                {"tune": "10"},
+                {"tune": 10},
                 "avcodec_open2 failed: Invalid argument",
             ),
         ],
