@@ -37,11 +37,11 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_encode_audio_to_file_like(Tensor samples, int sample_rate, str format, int file_like_context, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
   m.def(
-      "encode_video_to_file(Tensor frames, int frame_rate, str filename, str? codec=None, str? pixel_format=None, float? crf=None) -> ()");
+      "encode_video_to_file(Tensor frames, int frame_rate, str filename, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None) -> ()");
   m.def(
-      "encode_video_to_tensor(Tensor frames, int frame_rate, str format, str? codec=None, str? pixel_format=None, float? crf=None) -> Tensor");
+      "encode_video_to_tensor(Tensor frames, int frame_rate, str format, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None) -> Tensor");
   m.def(
-      "_encode_video_to_file_like(Tensor frames, int frame_rate, str format, int file_like_context, str? codec=None, str? pixel_format=None, float? crf=None) -> ()");
+      "_encode_video_to_file_like(Tensor frames, int frame_rate, str format, int file_like_context, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None) -> ()");
   m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
   m.def(
@@ -604,12 +604,14 @@ void encode_video_to_file(
     int64_t frame_rate,
     std::string_view file_name,
     std::optional<std::string> codec = std::nullopt,
-    std::optional<std::string> pixel_format = std::nullopt,
-    std::optional<double> crf = std::nullopt) {
+    std::optional<std::string_view> pixel_format = std::nullopt,
+    std::optional<double> crf = std::nullopt,
+    std::optional<std::string_view> preset = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.codec = codec;
   videoStreamOptions.pixelFormat = pixel_format;
   videoStreamOptions.crf = crf;
+  videoStreamOptions.preset = preset;
   VideoEncoder(
       frames,
       validateInt64ToInt(frame_rate, "frame_rate"),
@@ -623,13 +625,15 @@ at::Tensor encode_video_to_tensor(
     int64_t frame_rate,
     std::string_view format,
     std::optional<std::string> codec = std::nullopt,
-    std::optional<std::string> pixel_format = std::nullopt,
-    std::optional<double> crf = std::nullopt) {
+    std::optional<std::string_view> pixel_format = std::nullopt,
+    std::optional<double> crf = std::nullopt,
+    std::optional<std::string_view> preset = std::nullopt) {
   auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.codec = codec;
   videoStreamOptions.pixelFormat = pixel_format;
   videoStreamOptions.crf = crf;
+  videoStreamOptions.preset = preset;
   return VideoEncoder(
              frames,
              validateInt64ToInt(frame_rate, "frame_rate"),
@@ -645,8 +649,9 @@ void _encode_video_to_file_like(
     std::string_view format,
     int64_t file_like_context,
     std::optional<std::string> codec = std::nullopt,
-    std::optional<std::string> pixel_format = std::nullopt,
-    std::optional<double> crf = std::nullopt) {
+    std::optional<std::string_view> pixel_format = std::nullopt,
+    std::optional<double> crf = std::nullopt,
+    std::optional<std::string_view> preset = std::nullopt) {
   auto fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
   TORCH_CHECK(
@@ -657,6 +662,7 @@ void _encode_video_to_file_like(
   videoStreamOptions.codec = codec;
   videoStreamOptions.pixelFormat = pixel_format;
   videoStreamOptions.crf = crf;
+  videoStreamOptions.preset = preset;
 
   VideoEncoder encoder(
       frames,

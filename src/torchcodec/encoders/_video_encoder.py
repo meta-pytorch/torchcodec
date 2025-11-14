@@ -39,6 +39,7 @@ class VideoEncoder:
         codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
+        preset: Optional[Union[str, int]] = None,
     ) -> None:
         """Encode frames into a file.
 
@@ -54,7 +55,12 @@ class VideoEncoder:
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
                 mean better quality. Valid range depends on the encoder (commonly 0-51).
                 Defaults to None (which will use encoder's default).
+            preset (str or int, optional): Encoder option that controls the tradeoff between
+                encoding speed and compression. Valid values depend on the encoder (commonly
+                a string: "fast", "medium", "slow"). Defaults to None
+                (which will use encoder's default).
         """
+        preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file(
             frames=self._frames,
             frame_rate=self._frame_rate,
@@ -62,6 +68,7 @@ class VideoEncoder:
             codec=codec,
             pixel_format=pixel_format,
             crf=crf,
+            preset=preset,
         )
 
     def to_tensor(
@@ -71,6 +78,7 @@ class VideoEncoder:
         codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
+        preset: Optional[Union[str, int]] = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
 
@@ -85,10 +93,15 @@ class VideoEncoder:
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
                 mean better quality. Valid range depends on the encoder (commonly 0-51).
                 Defaults to None (which will use encoder's default).
+            preset (str or int, optional): Encoder option that controls the tradeoff between
+                encoding speed and compression. Valid values depend on the encoder (commonly
+                a string: "fast", "medium", "slow"). Defaults to None
+                (which will use encoder's default).
 
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor.
         """
+        preset_value = str(preset) if isinstance(preset, int) else preset
         return _core.encode_video_to_tensor(
             frames=self._frames,
             frame_rate=self._frame_rate,
@@ -96,6 +109,7 @@ class VideoEncoder:
             codec=codec,
             pixel_format=pixel_format,
             crf=crf,
+            preset=preset_value,
         )
 
     def to_file_like(
@@ -106,6 +120,7 @@ class VideoEncoder:
         codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
+        preset: Optional[Union[str, int]] = None,
     ) -> None:
         """Encode frames into a file-like object.
 
@@ -125,7 +140,12 @@ class VideoEncoder:
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
                 mean better quality. Valid range depends on the encoder (commonly 0-51).
                 Defaults to None (which will use encoder's default).
+            preset (str or int, optional): Encoder option that controls the tradeoff between
+                encoding speed and compression. Valid values depend on the encoder (commonly
+                a string: "fast", "medium", "slow"). Defaults to None
+                (which will use encoder's default).
         """
+        preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file_like(
             frames=self._frames,
             frame_rate=self._frame_rate,
@@ -134,4 +154,5 @@ class VideoEncoder:
             codec=codec,
             pixel_format=pixel_format,
             crf=crf,
+            preset=preset,
         )

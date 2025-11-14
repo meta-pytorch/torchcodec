@@ -8,10 +8,10 @@ import io
 import json
 import numbers
 from pathlib import Path
-from typing import Literal, Optional, Tuple, Union
+from typing import List, Literal, Optional, Sequence, Tuple, Union
 
 import torch
-from torch import device as torch_device, Tensor
+from torch import device as torch_device, nn, Tensor
 
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec.decoders._decoder_utils import (
@@ -19,6 +19,7 @@ from torchcodec.decoders._decoder_utils import (
     create_decoder,
     ERROR_REPORTING_INSTRUCTIONS,
 )
+from torchcodec.transforms import DecoderTransform, Resize
 
 
 class VideoDecoder:
@@ -67,6 +68,11 @@ class VideoDecoder:
             probably is. Default: "exact".
             Read more about this parameter in:
             :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py`
+        transforms (sequence of transform objects, optional): Sequence of transforms to be
+            applied to the decoded frames by the decoder itself, in order. Accepts both
+            :class:`~torchcodec.transforms.DecoderTransform` and
+            :class:`~torchvision.transforms.v2.Transform`
+            objects. Read more about this parameter in: TODO_DECODER_TRANSFORMS_TUTORIAL.
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
@@ -105,6 +111,7 @@ class VideoDecoder:
         num_ffmpeg_threads: int = 1,
         device: Optional[Union[str, torch_device]] = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
+        transforms: Optional[Sequence[Union[DecoderTransform, nn.Module]]] = None,
         custom_frame_mappings: Optional[
             Union[str, bytes, io.RawIOBase, io.BufferedReader]
         ] = None,
@@ -151,6 +158,8 @@ class VideoDecoder:
 
         device_variant = _get_cuda_backend()
 
+        transform_specs = _make_transform_specs(transforms)
+
         core.add_video_stream(
             self._decoder,
             stream_index=stream_index,
@@ -158,6 +167,7 @@ class VideoDecoder:
             num_threads=num_ffmpeg_threads,
             device=device,
             device_variant=device_variant,
+            transform_specs=transform_specs,
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
@@ -433,6 +443,78 @@ def _get_and_validate_stream_metadata(
         end_stream_seconds,
         num_frames,
     )
+
+
+def _convert_to_decoder_transforms(
+    transforms: Sequence[Union[DecoderTransform, nn.Module]],
+) -> List[DecoderTransform]:
+    """Convert a sequence of transforms that may contain TorchVision transform
+    objects into a list of only TorchCodec transform objects.
+
+    Args:
+        transforms: Squence of transform objects. The objects can be one of two
+        types:
+                1. torchcodec.transforms.DecoderTransform
+                2. torchvision.transforms.v2.Transform, but our type annotation
+                   only mentions its base, nn.Module. We don't want to take a
+                   hard dependency on TorchVision.
+
+    Returns:
+        List of DecoderTransform objects.
+    """
+    try:
+        from torchvision.transforms import v2
+
+        tv_available = True
+    except ImportError:
+        tv_available = False
+
+    converted_transforms: list[DecoderTransform] = []
+    for transform in transforms:
+        if not isinstance(transform, DecoderTransform):
+            if not tv_available:
+                raise ValueError(
+                    f"The supplied transform, {transform}, is not a TorchCodec "
+                    " DecoderTransform. TorchCodec also accept TorchVision "
+                    "v2 transforms, but TorchVision is not installed."
+                )
+            elif isinstance(transform, v2.Resize):
+                converted_transforms.append(Resize._from_torchvision(transform))
+            else:
+                raise ValueError(
+                    f"Unsupported transform: {transform}. Transforms must be "
+                    "either a TorchCodec DecoderTransform or a TorchVision "
+                    "v2 transform."
+                )
+        else:
+            converted_transforms.append(transform)
+
+    return converted_transforms
+
+
+def _make_transform_specs(
+    transforms: Optional[Sequence[Union[DecoderTransform, nn.Module]]],
+) -> str:
+    """Given a sequence of transforms, turn those into the specification string
+       the core API expects.
+
+    Args:
+        transforms: Optional sequence of transform objects. The objects can be
+            one of two types:
+                1. torchcodec.transforms.DecoderTransform
+                2. torchvision.transforms.v2.Transform, but our type annotation
+                   only mentions its base, nn.Module. We don't want to take a
+                   hard dependency on TorchVision.
+
+    Returns:
+        String of transforms in the format the core API expects: transform
+        specifications separate by semicolons.
+    """
+    if transforms is None:
+        return ""
+
+    transforms = _convert_to_decoder_transforms(transforms)
+    return ";".join([t._make_transform_spec() for t in transforms])
 
 
 def _read_custom_frame_mappings(
