@@ -644,7 +644,11 @@ void sortCodecOptions(
 }
 
 void validateFrameRate(int frameRate) {
-  TORCH_CHECK(frameRate > 0, "frame_rate=", frameRate, " must be > 0.");
+  TORCH_CHECK(
+      frameRate > 0,
+      "Invalid frame_rate: ",
+      frameRate,
+      ". Frame rate must be a positive integer.");
 }
 } // namespace
 
@@ -796,7 +800,6 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_->width = outWidth_;
   avCodecContext_->height = outHeight_;
   avCodecContext_->pix_fmt = outPixelFormat_;
-  // TODO-VideoEncoder: Verify that frame_rate and time_base are correct
   avCodecContext_->time_base = {1, outFrameRate_};
   avCodecContext_->framerate = {outFrameRate_, 1};
 

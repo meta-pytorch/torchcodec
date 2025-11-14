@@ -659,7 +659,7 @@ class TestVideoEncoder:
         ):
             encoder.to_tensor(format="mp4", preset="fake_preset")
 
-        with pytest.raises(RuntimeError, match=r"frame_rate"):
+        with pytest.raises(RuntimeError, match="Invalid frame_rate: "):
             encoder = VideoEncoder(
                 frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
                 frame_rate=30,
@@ -1191,29 +1191,6 @@ class TestVideoEncoder:
     @pytest.mark.parametrize("output_frame_rate", [10, 60, None])
     def test_frame_rate_parameter(self, tmp_path, method, output_frame_rate):
 
-        # Use ffprobe to get frame rate
-        def get_frame_rate(file_path):
-            result = subprocess.run(
-                [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-select_streams",
-                    "v:0",
-                    "-show_entries",
-                    "stream=r_frame_rate",
-                    "-of",
-                    "default=noprint_wrappers=1:nokey=1",
-                    str(file_path),
-                ],
-                capture_output=True,
-                check=True,
-                text=True,
-            )
-            # Frame rate is returned as a fraction like "60/1"
-            numerator, denominator = result.stdout.strip().split("/")
-            return int(numerator) / int(denominator)
-
         frames = (
             VideoDecoder(TEST_SRC_2_720P.path)
             .get_frames_in_range(start=0, stop=60)
@@ -1245,7 +1222,10 @@ class TestVideoEncoder:
         else:
             raise ValueError(f"Unknown method: {method}")
 
-        actual_frame_rate = get_frame_rate(output_path)
+        metadata = self._get_video_metadata(output_path, ["r_frame_rate"])
+        # Frame rate is returned as a fraction like "60/1"
+        numerator, denominator = metadata["r_frame_rate"].split("/")
+        actual_frame_rate = int(numerator) / int(denominator)
         # Ensure frame_rate=None uses the input_frame_rate
         if output_frame_rate is None:
             output_frame_rate = input_frame_rate

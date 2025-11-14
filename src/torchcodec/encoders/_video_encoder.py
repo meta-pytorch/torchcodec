@@ -67,7 +67,7 @@ class VideoEncoder:
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
             frame_rate (int, optional): The frame rate of the output video. If not specified,
-                uses the frame rate provided to the VideoEncoder constructor.
+                uses the frame rate of the input ``frames``.
         """
         preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file(
@@ -116,7 +116,7 @@ class VideoEncoder:
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
             frame_rate (int, optional): The frame rate of the output video. If not specified,
-                uses the frame rate provided to the VideoEncoder constructor.
+                uses the frame rate of the input ``frames``.
 
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor.
@@ -174,7 +174,7 @@ class VideoEncoder:
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
             frame_rate (int, optional): The frame rate of the output video. If not specified,
-                uses the frame rate provided to the VideoEncoder constructor.
+                uses the frame rate of the input ``frames``.
         """
         preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file_like(
