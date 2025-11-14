@@ -84,7 +84,6 @@ jobs:
           echo cuda_version_without_periods=${cuda_version_without_periods} >> $GITHUB_ENV
           python_version_without_periods=$(echo "${{ matrix.python-version }}" | sed 's/\.//g')
           echo python_version_without_periods=${python_version_without_periods} >> $GITHUB_ENV
-          echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
       - uses: actions/download-artifact@v4
         with:
           name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cu${{ env.cuda_version_without_periods }}_x86_64
@@ -102,6 +101,7 @@ jobs:
           ${CONDA_RUN} conda info
           ${CONDA_RUN} nvidia-smi
           ${CONDA_RUN} conda list
+          echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
       - name: Assert ffmpeg exists
         run: |
           ${CONDA_RUN} ffmpeg -buildconf
@@ -123,7 +123,7 @@ jobs:
       - name: Install test dependencies
         run: |
           # Ideally we would find a way to get those dependencies from pyproject.toml
-          ${CONDA_RUN} python -m pip install numpy pytest==8.4.2 pillow
+          ${CONDA_RUN} python -m pip install numpy pytest pillow
 
       - name: Delete the src/ folder just for fun
         run: |
