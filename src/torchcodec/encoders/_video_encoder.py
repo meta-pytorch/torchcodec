@@ -37,6 +37,7 @@ class VideoEncoder:
         dest: Union[str, Path],
         codec_options: Optional[Dict[str, Any]] = None,
         *,
+        codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
@@ -47,6 +48,9 @@ class VideoEncoder:
             dest (str or ``pathlib.Path``): The path to the output file, e.g.
                 ``video.mp4``. The extension of the file determines the video
                 container format.
+            codec (str, optional): The codec to use for encoding (e.g., "libx264",
+                "h264"). If not specified, the default codec
+                for the container format will be used.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
@@ -65,6 +69,7 @@ class VideoEncoder:
             frames=self._frames,
             frame_rate=self._frame_rate,
             filename=str(dest),
+            codec=codec,
             pixel_format=pixel_format,
             crf=crf,
             preset=preset,
@@ -77,6 +82,7 @@ class VideoEncoder:
         self,
         format: str,
         *,
+        codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
@@ -86,7 +92,10 @@ class VideoEncoder:
 
         Args:
             format (str): The container format of the encoded frames, e.g. "mp4", "mov",
-                "mkv", "avi", "webm", "flv", etc.
+                    "mkv", "avi", "webm", "flv", etc.
+            codec (str, optional): The codec to use for encoding (e.g., "libx264",
+                "h264"). If not specified, the default codec
+                for the container format will be used.
             pixel_format (str, optional): The pixel format to encode frames into (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
@@ -101,13 +110,14 @@ class VideoEncoder:
                 Values will be converted to strings before passing to the encoder.
 
         Returns:
-            Tensor: The raw encoded bytes as 4D uint8 Tensor.
+            Tensor: The raw encoded bytes as 1D uint8 Tensor.
         """
         preset_value = str(preset) if isinstance(preset, int) else preset
         return _core.encode_video_to_tensor(
             frames=self._frames,
             frame_rate=self._frame_rate,
             format=format,
+            codec=codec,
             pixel_format=pixel_format,
             crf=crf,
             preset=preset_value,
@@ -121,6 +131,7 @@ class VideoEncoder:
         file_like,
         format: str,
         *,
+        codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
@@ -136,6 +147,9 @@ class VideoEncoder:
                 int = 0) -> int``.
             format (str): The container format of the encoded frames, e.g. "mp4", "mov",
                 "mkv", "avi", "webm", "flv", etc.
+            codec (str, optional): The codec to use for encoding (e.g., "libx264",
+                "h264"). If not specified, the default codec
+                for the container format will be used.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
@@ -155,6 +169,7 @@ class VideoEncoder:
             frame_rate=self._frame_rate,
             format=format,
             file_like=file_like,
+            codec=codec,
             pixel_format=pixel_format,
             crf=crf,
             preset=preset,

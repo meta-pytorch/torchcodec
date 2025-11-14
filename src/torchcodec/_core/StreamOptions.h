@@ -46,6 +46,7 @@ struct VideoStreamOptions {
   std::string_view deviceVariant = "ffmpeg";
 
   // Encoding options
+  std::optional<std::string> codec;
   // Optional pixel format for video encoding (e.g., "yuv420p", "yuv444p")
   // If not specified, uses codec's default format.
   std::optional<std::string> pixelFormat;

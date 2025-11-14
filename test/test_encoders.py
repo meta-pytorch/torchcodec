@@ -572,6 +572,27 @@ class TestVideoEncoder:
     def decode(self, source=None) -> torch.Tensor:
         return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
 
+    def _get_codec_spec(self, file_path):
+        """Helper function to get codec name from a video file using ffprobe."""
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(file_path),
+            ],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        return result.stdout.strip()
+
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_bad_input_parameterized(self, tmp_path, method):
         if method == "to_file":
@@ -609,6 +630,16 @@ class TestVideoEncoder:
                 frame_rate=30,
             )
             getattr(encoder, method)(**valid_params)
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"Video codec invalid_codec_name not found.",
+        ):
+            encoder = VideoEncoder(
+                frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
+                frame_rate=30,
+            )
+            encoder.to_file(str(tmp_path / "output.mp4"), codec="invalid_codec_name")
 
         with pytest.raises(RuntimeError, match=r"crf=-10 is out of valid range"):
             encoder = VideoEncoder(
@@ -1029,6 +1060,75 @@ class TestVideoEncoder:
             RuntimeError, match="File like object must implement a seek method"
         ):
             encoder.to_file_like(NoSeekMethod(), format="mp4")
+
+    @pytest.mark.skipif(
+        in_fbcode(),
+        reason="ffprobe not available internally",
+    )
+    @pytest.mark.parametrize(
+        "format,codec_spec",
+        [
+            ("mp4", "h264"),
+            ("mp4", "hevc"),
+            ("mkv", "av1"),
+            ("avi", "mpeg4"),
+            pytest.param(
+                "webm",
+                "vp9",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS, reason="vp9 codec not available on Windows"
+                ),
+            ),
+        ],
+    )
+    def test_codec_parameter_utilized(self, tmp_path, format, codec_spec):
+        # Test the codec parameter is utilized by using ffprobe to check the encoded file's codec spec
+        frames = torch.zeros((10, 3, 64, 64), dtype=torch.uint8)
+        dest = str(tmp_path / f"output.{format}")
+
+        VideoEncoder(frames=frames, frame_rate=30).to_file(dest=dest, codec=codec_spec)
+        actual_codec_spec = self._get_codec_spec(dest)
+        assert actual_codec_spec == codec_spec
+
+    @pytest.mark.skipif(
+        in_fbcode(),
+        reason="ffprobe not available internally",
+    )
+    @pytest.mark.parametrize(
+        "codec_spec,codec_impl",
+        [
+            ("h264", "libx264"),
+            ("av1", "libaom-av1"),
+            pytest.param(
+                "vp9",
+                "libvpx-vp9",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS, reason="vp9 codec not available on Windows"
+                ),
+            ),
+        ],
+    )
+    def test_codec_spec_vs_impl_equivalence(self, tmp_path, codec_spec, codec_impl):
+        # Test that using codec spec gives the same result as using default codec implementation
+        # We cannot directly check codec impl used, so we assert frame equality
+        frames = torch.randint(0, 256, (10, 3, 64, 64), dtype=torch.uint8)
+
+        spec_output = str(tmp_path / "spec_output.mp4")
+        VideoEncoder(frames=frames, frame_rate=30).to_file(
+            dest=spec_output, codec=codec_spec
+        )
+
+        impl_output = str(tmp_path / "impl_output.mp4")
+        VideoEncoder(frames=frames, frame_rate=30).to_file(
+            dest=impl_output, codec=codec_impl
+        )
+
+        assert self._get_codec_spec(spec_output) == codec_spec
+        assert self._get_codec_spec(impl_output) == codec_spec
+
+        frames_spec = self.decode(spec_output).data
+        frames_impl = self.decode(impl_output).data
+        torch.testing.assert_close(frames_spec, frames_impl, rtol=0, atol=0)
 
     def get_video_metadata_from_file(self, file_path):
         """Helper function to get video metadata from a file using ffprobe.

@@ -213,8 +213,9 @@ def encode_video_to_file_like(
     frame_rate: int,
     format: str,
     file_like: Union[io.RawIOBase, io.BufferedIOBase],
-    crf: Optional[Union[int, float]] = None,
+    codec: Optional[str] = None,
     pixel_format: Optional[str] = None,
+    crf: Optional[Union[int, float]] = None,
     preset: Optional[str] = None,
     codec_options: Optional[list[str]] = None,
 ) -> None:
@@ -225,8 +226,9 @@ def encode_video_to_file_like(
         frame_rate: Frame rate in frames per second
         format: Video format (e.g., "mp4", "mov", "mkv")
         file_like: File-like object that supports write() and seek() methods
-        crf: Optional constant rate factor for encoding quality
+        codec: Optional codec name (e.g., "libx264", "h264")
         pixel_format: Optional pixel format (e.g., "yuv420p", "yuv444p")
+        crf: Optional constant rate factor for encoding quality
         preset: Optional encoder preset as string (e.g., "ultrafast", "medium")
         codec_options: Optional list of codec options as flattened key-value pairs
     """
@@ -237,6 +239,7 @@ def encode_video_to_file_like(
         frame_rate,
         format,
         _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
+        codec,
         pixel_format,
         crf,
         preset,
@@ -328,6 +331,7 @@ def encode_video_to_file_abstract(
     frames: torch.Tensor,
     frame_rate: int,
     filename: str,
+    codec: Optional[str],
     pixel_format: Optional[str] = None,
     preset: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
@@ -341,6 +345,7 @@ def encode_video_to_tensor_abstract(
     frames: torch.Tensor,
     frame_rate: int,
     format: str,
+    codec: Optional[str],
     pixel_format: Optional[str] = None,
     preset: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
@@ -355,6 +360,7 @@ def _encode_video_to_file_like_abstract(
     frame_rate: int,
     format: str,
     file_like_context: int,
+    codec: Optional[str],
     pixel_format: Optional[str] = None,
     preset: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
