@@ -1029,3 +1029,55 @@ class TestVideoEncoder:
             RuntimeError, match="File like object must implement a seek method"
         ):
             encoder.to_file_like(NoSeekMethod(), format="mp4")
+
+    def get_video_metadata_from_file(self, file_path):
+        """Helper function to get video metadata from a file using ffprobe.
+
+        Returns a dict with codec_name, profile, pix_fmt, etc.
+        """
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name,profile,pix_fmt",
+                "-of",
+                "default=noprint_wrappers=1",
+                str(file_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        # Parse output like "codec_name=h264\nprofile=Baseline\npix_fmt=yuv420p"
+        metadata = {}
+        for line in result.stdout.strip().split("\n"):
+            if "=" in line:
+                key, value = line.split("=", 1)
+                metadata[key] = value
+        return metadata
+
+    @pytest.mark.skipif(in_fbcode(), reason="ffprobe not available")
+    def test_codec_options_profile(self, tmp_path):
+        # Test that we can set the H.264 profile via codec_options
+        # and validate it was used by checking with ffprobe.
+        source_frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=30)
+
+        # Encode with baseline profile (explicitly specified via codec_options)
+        output_path = tmp_path / "output_baseline.mp4"
+        encoder.to_file(
+            dest=str(output_path),
+            codec_options={"profile": "baseline"},
+        )
+
+        # Validate the profile was used
+        metadata = self.get_video_metadata_from_file(output_path)
+        assert metadata.get("codec_name") == "h264"
+        assert metadata.get("profile") in (
+            "Baseline",
+            "Constrained Baseline",
+        ), f"Expected Baseline profile, got {metadata.get('profile')}"
