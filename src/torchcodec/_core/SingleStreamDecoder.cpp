@@ -1081,32 +1081,17 @@ void SingleStreamDecoder::setCursor(int64_t pts) {
   cursor_ = pts;
 }
 
-/*
-Videos have I frames and non-I frames (P and B frames). Non-I frames need data
-from the previous I frame to be decoded.
-
-Imagine the cursor is at a random frame with PTS=lastDecodedAvFramePts (x for
-brevity) and we wish to seek to a user-specified PTS=y.
-
-If y < x, we don't have a choice but to seek backwards to the highest I frame
-before y.
-
-If y > x, we have two choices:
-
-1. We could keep decoding forward until we hit y. Illustrated below:
-
-I    P     P    P    I    P    P    P    I    P    P    I    P    P    I    P
-                          x         y
-
-2. We could try to jump to an I frame between x and y (indicated by j below).
-And then start decoding until we encounter y. Illustrated below:
-
-I    P     P    P    I    P    P    P    I    P    P    I    P    P    I    P
-                          x              j         y
-
-(2) is more efficient than (1) if there is an I frame between x and y.
-*/
 bool SingleStreamDecoder::canWeAvoidSeeking() const {
+  // Returns true if we can avoid seeking in the AVFormatContext based on
+  // heuristics that rely on the target cursor_ and the last decoded frame.
+  // Seeking is expensive, so we try to avoid it when possible.
+  // Note that this function itself isn't always that cheap to call: in
+  // particular the calls to getKeyFrameIndexForPts below in approximate mode
+  // are sometimes slow.
+  // TODO we should understand why (is it because it reads the file?) and
+  // potentially optimize it. E.g. we may not want to ever seek, or even *check*
+  // if we need to seek in some cases, like if we're going to decode 80% of the
+  // frames anyway.
   const StreamInfo& streamInfo = streamInfos_.at(activeStreamIndex_);
   if (streamInfo.avMediaType == AVMEDIA_TYPE_AUDIO) {
     // For audio, we only need to seek if a backwards seek was requested
@@ -1129,13 +1114,34 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
     // implement caching.
     return false;
   }
-  // We are seeking forwards.
-  // We can only skip a seek if both lastDecodedAvFramePts and
-  // cursor_ share the same keyframe.
-  int lastDecodedAvFrameIndex = getKeyFrameIndexForPts(lastDecodedAvFramePts_);
+  // We are seeking forwards. We can skip a seek if both the last decoded frame
+  // and cursor_ share the same keyframe:
+  // Videos have I frames and non-I frames (P and B frames). Non-I frames need
+  // data from the previous I frame to be decoded.
+  //
+  // Imagine the cursor is at a random frame with PTS=lastDecodedAvFramePts (x
+  // for brevity) and we wish to seek to a user-specified PTS=y.
+  //
+  // If y < x, we don't have a choice but to seek backwards to the highest I
+  // frame before y.
+  //
+  // If y > x, we have two choices:
+  //
+  // 1. We could keep decoding forward until we hit y. Illustrated below:
+  //
+  // I    P     P    P    I    P    P    P    I    P    P    I    P
+  //                           x         y
+  //
+  // 2. We could try to jump to an I frame between x and y (indicated by j
+  // below). And then start decoding until we encounter y. Illustrated below:
+  //
+  // I    P     P    P    I    P    P    P    I    P    P    I    P
+  //                           x              j         y
+  // (2) is only more efficient than (1) if there is an I frame between x and y.
+  int lastKeyFrameIndex = getKeyFrameIndexForPts(lastDecodedAvFramePts_);
   int targetKeyFrameIndex = getKeyFrameIndexForPts(cursor_);
-  return lastDecodedAvFrameIndex >= 0 && targetKeyFrameIndex >= 0 &&
-      lastDecodedAvFrameIndex == targetKeyFrameIndex;
+  return lastKeyFrameIndex >= 0 && targetKeyFrameIndex >= 0 &&
+      lastKeyFrameIndex == targetKeyFrameIndex;
 }
 
 // This method looks at currentPts and desiredPts and seeks in the
