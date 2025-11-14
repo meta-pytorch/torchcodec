@@ -642,6 +642,10 @@ void sortCodecOptions(
     }
   }
 }
+
+void validateFrameRate(int frameRate) {
+  TORCH_CHECK(frameRate > 0, "frame_rate=", frameRate, " must be > 0.");
+}
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
@@ -667,6 +671,7 @@ VideoEncoder::VideoEncoder(
     const VideoStreamOptions& videoStreamOptions)
     : frames_(validateFrames(frames)), inFrameRate_(frameRate) {
   setFFmpegLogLevel();
+  validateFrameRate(frameRate);
 
   // Allocate output format context
   AVFormatContext* avFormatContext = nullptr;
@@ -724,6 +729,10 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
+  // Set output frame rate and validate
+  outFrameRate_ = videoStreamOptions.frameRate.value_or(inFrameRate_);
+  validateFrameRate(outFrameRate_);
+
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
@@ -788,8 +797,8 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_->height = outHeight_;
   avCodecContext_->pix_fmt = outPixelFormat_;
   // TODO-VideoEncoder: Verify that frame_rate and time_base are correct
-  avCodecContext_->time_base = {1, inFrameRate_};
-  avCodecContext_->framerate = {inFrameRate_, 1};
+  avCodecContext_->time_base = {1, outFrameRate_};
+  avCodecContext_->framerate = {outFrameRate_, 1};
 
   // Set flag for containers that require extradata to be in the codec context
   if (avFormatContext_->oformat->flags & AVFMT_GLOBALHEADER) {
