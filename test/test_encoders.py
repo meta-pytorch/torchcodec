@@ -572,8 +572,8 @@ class TestVideoEncoder:
     def decode(self, source=None) -> torch.Tensor:
         return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
 
-    def _get_codec_spec(self, file_path):
-        """Helper function to get codec name from a video file using ffprobe."""
+    def _get_video_metadata(self, file_path, fields):
+        """Helper function to get video metadata from a file using ffprobe."""
         result = subprocess.run(
             [
                 "ffprobe",
@@ -582,16 +582,21 @@ class TestVideoEncoder:
                 "-select_streams",
                 "v:0",
                 "-show_entries",
-                "stream=codec_name",
+                f"stream={','.join(fields)}",
                 "-of",
-                "default=noprint_wrappers=1:nokey=1",
+                "default=noprint_wrappers=1",
                 str(file_path),
             ],
             capture_output=True,
             check=True,
             text=True,
         )
-        return result.stdout.strip()
+        metadata = {}
+        for line in result.stdout.strip().split("\n"):
+            if "=" in line:
+                key, value = line.split("=", 1)
+                metadata[key] = value
+        return metadata
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_bad_input_parameterized(self, tmp_path, method):
@@ -1087,7 +1092,9 @@ class TestVideoEncoder:
         dest = str(tmp_path / f"output.{format}")
 
         VideoEncoder(frames=frames, frame_rate=30).to_file(dest=dest, codec=codec_spec)
-        actual_codec_spec = self._get_codec_spec(dest)
+        actual_codec_spec = self._get_video_metadata(dest, fields=["codec_name"]).get(
+            "codec_name"
+        )
         assert actual_codec_spec == codec_spec
 
     @pytest.mark.skipif(
@@ -1123,61 +1130,51 @@ class TestVideoEncoder:
             dest=impl_output, codec=codec_impl
         )
 
-        assert self._get_codec_spec(spec_output) == codec_spec
-        assert self._get_codec_spec(impl_output) == codec_spec
+        assert (
+            self._get_video_metadata(spec_output, fields=["codec_name"]).get(
+                "codec_name"
+            )
+            == codec_spec
+        )
+        assert (
+            self._get_video_metadata(impl_output, fields=["codec_name"]).get(
+                "codec_name"
+            )
+            == codec_spec
+        )
 
         frames_spec = self.decode(spec_output).data
         frames_impl = self.decode(impl_output).data
         torch.testing.assert_close(frames_spec, frames_impl, rtol=0, atol=0)
 
-    def get_video_metadata_from_file(self, file_path):
-        """Helper function to get video metadata from a file using ffprobe.
-
-        Returns a dict with codec_name, profile, pix_fmt, etc.
-        """
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                "stream=codec_name,profile,pix_fmt",
-                "-of",
-                "default=noprint_wrappers=1",
-                str(file_path),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        # Parse output like "codec_name=h264\nprofile=Baseline\npix_fmt=yuv420p"
-        metadata = {}
-        for line in result.stdout.strip().split("\n"):
-            if "=" in line:
-                key, value = line.split("=", 1)
-                metadata[key] = value
-        return metadata
-
     @pytest.mark.skipif(in_fbcode(), reason="ffprobe not available")
-    def test_codec_options_profile(self, tmp_path):
-        # Test that we can set the H.264 profile via codec_options
-        # and validate it was used by checking with ffprobe.
+    @pytest.mark.parametrize(
+        "profile,colorspace,color_range",
+        [
+            ("baseline", "bt709", "tv"),
+            ("main", "bt470bg", "pc"),
+            ("high", "fcc", "pc"),
+        ],
+    )
+    def test_codec_options_utilized(self, tmp_path, profile, colorspace, color_range):
+        # Test setting profile, colorspace, and color_range via codec_options is utilized
         source_frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
         encoder = VideoEncoder(frames=source_frames, frame_rate=30)
 
-        # Encode with baseline profile (explicitly specified via codec_options)
-        output_path = tmp_path / "output_baseline.mp4"
+        output_path = str(tmp_path / "output.mp4")
         encoder.to_file(
-            dest=str(output_path),
-            codec_options={"profile": "baseline"},
+            dest=output_path,
+            codec_options={
+                "profile": profile,
+                "colorspace": colorspace,
+                "color_range": color_range,
+            },
         )
-
-        # Validate the profile was used
-        metadata = self.get_video_metadata_from_file(output_path)
-        assert metadata.get("codec_name") == "h264"
-        assert metadata.get("profile") in (
-            "Baseline",
-            "Constrained Baseline",
-        ), f"Expected Baseline profile, got {metadata.get('profile')}"
+        metadata = self._get_video_metadata(
+            output_path,
+            fields=["profile", "color_space", "color_range"],
+        )
+        # Validate profile (case-insensitive, baseline is reported as "Constrained Baseline")
+        assert profile in metadata.get("profile", "").lower()
+        assert metadata.get("color_space") == colorspace
+        assert metadata.get("color_range") == color_range
