@@ -37,11 +37,11 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_encode_audio_to_file_like(Tensor samples, int sample_rate, str format, int file_like_context, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
   m.def(
-      "encode_video_to_file(Tensor frames, int frame_rate, str filename, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? codec_options=None) -> ()");
+      "encode_video_to_file(Tensor frames, int frame_rate, str filename, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
   m.def(
-      "encode_video_to_tensor(Tensor frames, int frame_rate, str format, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? codec_options=None) -> Tensor");
+      "encode_video_to_tensor(Tensor frames, int frame_rate, str format, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> Tensor");
   m.def(
-      "_encode_video_to_file_like(Tensor frames, int frame_rate, str format, int file_like_context, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? codec_options=None) -> ()");
+      "_encode_video_to_file_like(Tensor frames, int frame_rate, str format, int file_like_context, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
   m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
   m.def(
@@ -158,8 +158,8 @@ std::string quoteValue(const std::string& value) {
   return "\"" + value + "\"";
 }
 
-// Helper function to unflatten codec_options, alternating keys and values
-std::map<std::string, std::string> unflattenCodecOptions(
+// Helper function to unflatten extra_options, alternating keys and values
+std::map<std::string, std::string> unflattenExtraOptions(
     const std::vector<std::string>& opts) {
   std::map<std::string, std::string> optionsMap;
   for (size_t i = 0; i < opts.size(); i += 2) {
@@ -617,16 +617,16 @@ void encode_video_to_file(
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
     std::optional<std::string_view> preset = std::nullopt,
-    std::optional<std::vector<std::string>> codec_options = std::nullopt) {
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.codec = codec;
   videoStreamOptions.pixelFormat = pixel_format;
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
 
-  if (codec_options.has_value()) {
-    videoStreamOptions.codecOptions =
-        unflattenCodecOptions(codec_options.value());
+  if (extra_options.has_value()) {
+    videoStreamOptions.extraOptions =
+        unflattenExtraOptions(extra_options.value());
   }
 
   VideoEncoder(
@@ -645,7 +645,7 @@ at::Tensor encode_video_to_tensor(
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
     std::optional<std::string_view> preset = std::nullopt,
-    std::optional<std::vector<std::string>> codec_options = std::nullopt) {
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.codec = codec;
@@ -653,9 +653,9 @@ at::Tensor encode_video_to_tensor(
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
 
-  if (codec_options.has_value()) {
-    videoStreamOptions.codecOptions =
-        unflattenCodecOptions(codec_options.value());
+  if (extra_options.has_value()) {
+    videoStreamOptions.extraOptions =
+        unflattenExtraOptions(extra_options.value());
   }
 
   return VideoEncoder(
@@ -676,7 +676,7 @@ void _encode_video_to_file_like(
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
     std::optional<std::string_view> preset = std::nullopt,
-    std::optional<std::vector<std::string>> codec_options = std::nullopt) {
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   auto fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
   TORCH_CHECK(
@@ -689,9 +689,9 @@ void _encode_video_to_file_like(
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
 
-  if (codec_options.has_value()) {
-    videoStreamOptions.codecOptions =
-        unflattenCodecOptions(codec_options.value());
+  if (extra_options.has_value()) {
+    videoStreamOptions.extraOptions =
+        unflattenExtraOptions(extra_options.value());
   }
 
   VideoEncoder encoder(

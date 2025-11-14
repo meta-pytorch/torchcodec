@@ -52,7 +52,7 @@ struct VideoStreamOptions {
   std::optional<std::string> pixelFormat;
   std::optional<double> crf;
   std::optional<std::string> preset;
-  std::optional<std::map<std::string, std::string>> codecOptions;
+  std::optional<std::map<std::string, std::string>> extraOptions;
 };
 
 struct AudioStreamOptions {

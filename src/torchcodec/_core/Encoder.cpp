@@ -620,13 +620,13 @@ void tryToValidateCodecOption(
 }
 
 void sortCodecOptions(
-    const std::map<std::string, std::string>& codecOptions,
+    const std::map<std::string, std::string>& extraOptions,
     AVDictionary** codecDict,
     AVDictionary** formatDict) {
   // Accepts a map of options as input, then sorts them into codec options and
   // format options. The sorted options are returned into two separate dicts.
   const AVClass* formatClass = avformat_get_class();
-  for (const auto& [key, value] : codecOptions) {
+  for (const auto& [key, value] : extraOptions) {
     const AVOption* fmtOpt = av_opt_find2(
         &formatClass,
         key.c_str(),
@@ -798,12 +798,12 @@ void VideoEncoder::initializeEncoder(
 
   // Apply videoStreamOptions
   AVDictionary* avCodecOptions = nullptr;
-  if (videoStreamOptions.codecOptions.has_value()) {
-    for (const auto& [key, value] : videoStreamOptions.codecOptions.value()) {
+  if (videoStreamOptions.extraOptions.has_value()) {
+    for (const auto& [key, value] : videoStreamOptions.extraOptions.value()) {
       tryToValidateCodecOption(*avCodec, key.c_str(), value);
     }
     sortCodecOptions(
-        videoStreamOptions.codecOptions.value(),
+        videoStreamOptions.extraOptions.value(),
         &avCodecOptions,
         &avFormatOptions_);
   }

@@ -35,7 +35,7 @@ class VideoEncoder:
     def to_file(
         self,
         dest: Union[str, Path],
-        codec_options: Optional[Dict[str, Any]] = None,
+        extra_options: Optional[Dict[str, Any]] = None,
         *,
         codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
@@ -60,8 +60,8 @@ class VideoEncoder:
                 encoding speed and compression. Valid values depend on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
-            codec_options (dict[str, Any], optional): A dictionary of codec-specific
-                options to pass to the encoder, e.g. ``{"qp": 5, "tune": "film"}``.
+            extra_options (dict[str, Any], optional): A dictionary of additional
+                encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
         """
         preset = str(preset) if isinstance(preset, int) else preset
@@ -73,8 +73,8 @@ class VideoEncoder:
             pixel_format=pixel_format,
             crf=crf,
             preset=preset,
-            codec_options=[
-                x for k, v in (codec_options or {}).items() for x in (k, str(v))
+            extra_options=[
+                x for k, v in (extra_options or {}).items() for x in (k, str(v))
             ],
         )
 
@@ -86,7 +86,7 @@ class VideoEncoder:
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
-        codec_options: Optional[Dict[str, Any]] = None,
+        extra_options: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
 
@@ -105,8 +105,8 @@ class VideoEncoder:
                 encoding speed and compression. Valid values depend on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
-            codec_options (dict[str, Any], optional): A dictionary of codec-specific
-                options to pass to the encoder, e.g. ``{"preset": "slow", "tune": "film"}``.
+            extra_options (dict[str, Any], optional): A dictionary of additional
+                encoder options to pass, e.g. ``{"preset": "slow", "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
 
         Returns:
@@ -121,8 +121,8 @@ class VideoEncoder:
             pixel_format=pixel_format,
             crf=crf,
             preset=preset_value,
-            codec_options=[
-                x for k, v in (codec_options or {}).items() for x in (k, str(v))
+            extra_options=[
+                x for k, v in (extra_options or {}).items() for x in (k, str(v))
             ],
         )
 
@@ -135,7 +135,7 @@ class VideoEncoder:
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
-        codec_options: Optional[Dict[str, Any]] = None,
+        extra_options: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Encode frames into a file-like object.
 
@@ -159,8 +159,8 @@ class VideoEncoder:
                 encoding speed and compression. Valid values depend on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
-            codec_options (dict[str, Any], optional): A dictionary of codec-specific
-                options to pass to the encoder, e.g. ``{"preset": "slow", "tune": "film"}``.
+            extra_options (dict[str, Any], optional): A dictionary of additional
+                encoder options to pass, e.g. ``{"preset": "slow", "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
         """
         preset = str(preset) if isinstance(preset, int) else preset
@@ -173,7 +173,7 @@ class VideoEncoder:
             pixel_format=pixel_format,
             crf=crf,
             preset=preset,
-            codec_options=[
-                x for k, v in (codec_options or {}).items() for x in (k, str(v))
+            extra_options=[
+                x for k, v in (extra_options or {}).items() for x in (k, str(v))
             ],
         )

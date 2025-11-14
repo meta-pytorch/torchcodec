@@ -726,7 +726,7 @@ class TestVideoEncoder:
             getattr(encoder, method)(**valid_params, pixel_format="rgb24")
 
     @pytest.mark.parametrize(
-        "codec_options,error",
+        "extra_options,error",
         [
             ({"qp": -10}, "qp=-10 is out of valid range"),
             (
@@ -745,7 +745,7 @@ class TestVideoEncoder:
         ],
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_codec_options_errors(self, method, tmp_path, codec_options, error):
+    def test_extra_options_errors(self, method, tmp_path, extra_options, error):
         frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
         encoder = VideoEncoder(frames, frame_rate=30)
 
@@ -762,7 +762,7 @@ class TestVideoEncoder:
             RuntimeError,
             match=error,
         ):
-            getattr(encoder, method)(**valid_params, codec_options=codec_options)
+            getattr(encoder, method)(**valid_params, extra_options=extra_options)
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_contiguity(self, method, tmp_path):
@@ -1156,15 +1156,15 @@ class TestVideoEncoder:
             ("high", "fcc", "pc"),
         ],
     )
-    def test_codec_options_utilized(self, tmp_path, profile, colorspace, color_range):
-        # Test setting profile, colorspace, and color_range via codec_options is utilized
+    def test_extra_options_utilized(self, tmp_path, profile, colorspace, color_range):
+        # Test setting profile, colorspace, and color_range via extra_options is utilized
         source_frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
         encoder = VideoEncoder(frames=source_frames, frame_rate=30)
 
         output_path = str(tmp_path / "output.mp4")
         encoder.to_file(
             dest=output_path,
-            codec_options={
+            extra_options={
                 "profile": profile,
                 "colorspace": colorspace,
                 "color_range": color_range,
