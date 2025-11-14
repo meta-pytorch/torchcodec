@@ -708,6 +708,9 @@ void VideoEncoder::initializeEncoder(
         codec,
         " not found. To see available codecs, run: ffmpeg -encoders");
   } else {
+    TORCH_CHECK(
+        avFormatContext_->oformat != nullptr,
+        "Output format is null, unable to find default codec.");
     avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
     TORCH_CHECK(avCodec != nullptr, "Video codec not found");
   }
