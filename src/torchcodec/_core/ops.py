@@ -7,6 +7,7 @@
 import io
 import json
 import warnings
+import traceback
 from types import ModuleType
 from typing import List, Optional, Tuple, Union
 
@@ -58,11 +59,9 @@ def load_torchcodec_shared_libraries():
             )
             return ffmpeg_major_version, core_library_path
         except Exception as e:
-            # TODO: recording and reporting exceptions this way is OK for now as  it's just for debugging,
-            # but we should probably handle that via a proper logging mechanism.
-            exceptions.append((ffmpeg_major_version, e))
+            exceptions.append((ffmpeg_major_version, traceback.format_exc()))
 
-    traceback = (
+    full_traceback = (
         "\n[start of libtorchcodec loading traceback]\n"
         + "\n".join(f"FFmpeg version {v}: {str(e)}" for v, e in exceptions)
         + "\n[end of libtorchcodec loading traceback]."
@@ -78,7 +77,7 @@ def load_torchcodec_shared_libraries():
           3. Another runtime dependency; see exceptions below.
         The following exceptions were raised as we tried to load libtorchcodec:
         """
-        f"{traceback}"
+        f"{full_traceback}"
     )
 
 
