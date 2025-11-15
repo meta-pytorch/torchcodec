@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <utility>
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
@@ -620,7 +621,7 @@ void encode_video_to_file(
     std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.codec = codec;
-  videoStreamOptions.pixelFormat = pixel_format;
+  videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
 
@@ -649,7 +650,7 @@ at::Tensor encode_video_to_tensor(
   auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.codec = codec;
-  videoStreamOptions.pixelFormat = pixel_format;
+  videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
 
@@ -685,7 +686,7 @@ void _encode_video_to_file_like(
 
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.codec = codec;
-  videoStreamOptions.pixelFormat = pixel_format;
+  videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
 
