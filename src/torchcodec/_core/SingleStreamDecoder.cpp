@@ -172,6 +172,13 @@ void SingleStreamDecoder::initializeDecoder() {
     containerMetadata_.bestAudioStreamIndex = bestAudioStream;
   }
 
+  if (containerMetadata_.durationSecondsFromHeader.has_value()) {
+    for (auto& streamMetadata : containerMetadata_.allStreamMetadata) {
+      streamMetadata.durationSecondsFromContainer =
+          containerMetadata_.durationSecondsFromHeader;
+    }
+  }
+
   if (seekMode_ == SeekMode::exact) {
     scanFileAndUpdateMetadataAndIndex();
   }
