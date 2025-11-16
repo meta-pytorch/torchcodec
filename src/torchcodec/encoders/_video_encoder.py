@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 from torch import Tensor
@@ -35,7 +35,9 @@ class VideoEncoder:
     def to_file(
         self,
         dest: Union[str, Path],
+        extra_options: Optional[Dict[str, Any]] = None,
         *,
+        codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
@@ -46,6 +48,9 @@ class VideoEncoder:
             dest (str or ``pathlib.Path``): The path to the output file, e.g.
                 ``video.mp4``. The extension of the file determines the video
                 container format.
+            codec (str, optional): The codec to use for encoding (e.g., "libx264",
+                "h264"). If not specified, the default codec
+                for the container format will be used.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
@@ -55,30 +60,42 @@ class VideoEncoder:
                 encoding speed and compression. Valid values depend on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
+            extra_options (dict[str, Any], optional): A dictionary of additional
+                encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
+                Values will be converted to strings before passing to the encoder.
         """
         preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file(
             frames=self._frames,
             frame_rate=self._frame_rate,
             filename=str(dest),
+            codec=codec,
             pixel_format=pixel_format,
             crf=crf,
             preset=preset,
+            extra_options=[
+                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
+            ],
         )
 
     def to_tensor(
         self,
         format: str,
         *,
+        codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
+        extra_options: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
 
         Args:
             format (str): The container format of the encoded frames, e.g. "mp4", "mov",
-                "mkv", "avi", "webm", "flv", etc.
+                    "mkv", "avi", "webm", "flv", etc.
+            codec (str, optional): The codec to use for encoding (e.g., "libx264",
+                "h264"). If not specified, the default codec
+                for the container format will be used.
             pixel_format (str, optional): The pixel format to encode frames into (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
@@ -88,18 +105,25 @@ class VideoEncoder:
                 encoding speed and compression. Valid values depend on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
+            extra_options (dict[str, Any], optional): A dictionary of additional
+                encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
+                Values will be converted to strings before passing to the encoder.
 
         Returns:
-            Tensor: The raw encoded bytes as 4D uint8 Tensor.
+            Tensor: The raw encoded bytes as 1D uint8 Tensor.
         """
         preset_value = str(preset) if isinstance(preset, int) else preset
         return _core.encode_video_to_tensor(
             frames=self._frames,
             frame_rate=self._frame_rate,
             format=format,
+            codec=codec,
             pixel_format=pixel_format,
             crf=crf,
             preset=preset_value,
+            extra_options=[
+                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
+            ],
         )
 
     def to_file_like(
@@ -107,9 +131,11 @@ class VideoEncoder:
         file_like,
         format: str,
         *,
+        codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
+        extra_options: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Encode frames into a file-like object.
 
@@ -121,6 +147,9 @@ class VideoEncoder:
                 int = 0) -> int``.
             format (str): The container format of the encoded frames, e.g. "mp4", "mov",
                 "mkv", "avi", "webm", "flv", etc.
+            codec (str, optional): The codec to use for encoding (e.g., "libx264",
+                "h264"). If not specified, the default codec
+                for the container format will be used.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
@@ -130,6 +159,9 @@ class VideoEncoder:
                 encoding speed and compression. Valid values depend on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
+            extra_options (dict[str, Any], optional): A dictionary of additional
+                encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
+                Values will be converted to strings before passing to the encoder.
         """
         preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file_like(
@@ -137,7 +169,11 @@ class VideoEncoder:
             frame_rate=self._frame_rate,
             format=format,
             file_like=file_like,
+            codec=codec,
             pixel_format=pixel_format,
             crf=crf,
             preset=preset,
+            extra_options=[
+                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
+            ],
         )
