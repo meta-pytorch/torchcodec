@@ -1,4 +1,4 @@
-[**Installation**](#installing-torchcodec) | [**Simple Example**](#using-torchcodec) | [**Detailed Example**](https://pytorch.org/torchcodec/stable/generated_examples/) | [**Documentation**](https://pytorch.org/torchcodec) | [**Contributing**](CONTRIBUTING.md) | [**License**](#license)
+[**Installation**](#installing-torchcodec) | [**Simple Example**](#using-torchcodec) | [**Detailed Example**](https://meta-pytorch.org/torchcodec/stable/generated_examples/) | [**Documentation**](https://meta-pytorch.org/torchcodec) | [**Contributing**](CONTRIBUTING.md) | [**License**](#license)
 
 # TorchCodec
 
@@ -23,7 +23,7 @@ We achieve these capabilities through:
 
 Here's a condensed summary of what you can do with TorchCodec. For more detailed
 examples, [check out our
-documentation](https://pytorch.org/torchcodec/stable/generated_examples/)!
+documentation](https://meta-pytorch.org/torchcodec/stable/generated_examples/)!
 
 #### Decoding
 
@@ -219,7 +219,7 @@ The bottom row is [promotional video from NASA](https://download.pytorch.org/tor
 that has a resolution of 960x540 at 29.7 fps and is 206 seconds long. Both videos were
 encoded with libx264 and yuv420p pixel format. All decoders, except for TorchVision, used FFmpeg 6.1.2. TorchVision used FFmpeg 4.2.2.
 
-For TorchCodec, the "approx" label means that it was using [approximate mode](https://pytorch.org/torchcodec/stable/generated_examples/approximate_mode.html)
+For TorchCodec, the "approx" label means that it was using [approximate mode](https://meta-pytorch.org/torchcodec/stable/generated_examples/approximate_mode.html)
 for seeking.
 
 ## Contributing
