@@ -992,6 +992,9 @@ class TestVideoEncoder:
                 preset=preset,
             )
             encoder_frames = self.decode(encoded_output).data
+            # Write tensor to file to check with ffprobe
+            with open(encoder_output_path, "wb") as f:
+                f.write(encoded_output.numpy().tobytes())
         elif method == "to_file_like":
             file_like = io.BytesIO()
             encoder.to_file_like(
@@ -1002,6 +1005,9 @@ class TestVideoEncoder:
                 preset=preset,
             )
             encoder_frames = self.decode(file_like.getvalue()).data
+            # Write file_like to file to check with ffprobe
+            with open(encoder_output_path, "wb") as f:
+                f.write(file_like.getvalue())
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -1019,18 +1025,17 @@ class TestVideoEncoder:
             )
 
         # Check that video metadata is the same
-        if method == "to_file":
-            fields = ["duration", "duration_ts", "r_frame_rate", "nb_frames"]
-            ffmpeg_metadata = self._get_video_metadata(
-                ffmpeg_encoded_path,
-                fields=fields,
-            )
-            encoder_metadata = self._get_video_metadata(
-                encoder_output_path,
-                fields=fields,
-            )
-            for key in ffmpeg_metadata:
-                assert ffmpeg_metadata[key] == encoder_metadata[key]
+        fields = ["duration", "duration_ts", "r_frame_rate", "nb_frames"]
+        ffmpeg_metadata = self._get_video_metadata(
+            ffmpeg_encoded_path,
+            fields=fields,
+        )
+        encoder_metadata = self._get_video_metadata(
+            encoder_output_path,
+            fields=fields,
+        )
+        for key in ffmpeg_metadata:
+            assert ffmpeg_metadata[key] == encoder_metadata[key]
 
     def test_to_file_like_custom_file_object(self):
         """Test to_file_like with a custom file-like object that implements write and seek."""
