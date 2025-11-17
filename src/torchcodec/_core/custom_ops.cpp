@@ -161,10 +161,10 @@ std::string quoteValue(const std::string& value) {
 
 // Helper function to unflatten extra_options, alternating keys and values
 std::map<std::string, std::string> unflattenExtraOptions(
-    const std::vector<std::string>& opts) {
+    const std::vector<std::string_view>& opts) {
   std::map<std::string, std::string> optionsMap;
   for (size_t i = 0; i < opts.size(); i += 2) {
-    optionsMap[opts[i]] = opts[i + 1];
+    optionsMap[opts[i].data()] = opts[i + 1].data();
   }
   return optionsMap;
 }
