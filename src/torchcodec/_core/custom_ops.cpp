@@ -161,10 +161,10 @@ std::string quoteValue(const std::string& value) {
 
 // Helper function to unflatten extra_options, alternating keys and values
 std::map<std::string, std::string> unflattenExtraOptions(
-    const std::vector<std::string_view>& opts) {
+    const std::vector<std::string>& opts) {
   std::map<std::string, std::string> optionsMap;
   for (size_t i = 0; i < opts.size(); i += 2) {
-    optionsMap[opts[i].data()] = opts[i + 1].data();
+    optionsMap[opts[i]] = opts[i + 1];
   }
   return optionsMap;
 }
@@ -618,7 +618,7 @@ void encode_video_to_file(
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
     std::optional<std::string_view> preset = std::nullopt,
-    std::optional<std::vector<std::string_view>> extra_options = std::nullopt) {
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.codec = std::move(codec);
   videoStreamOptions.pixelFormat = std::move(pixel_format);
@@ -646,7 +646,7 @@ at::Tensor encode_video_to_tensor(
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
     std::optional<std::string_view> preset = std::nullopt,
-    std::optional<std::vector<std::string_view>> extra_options = std::nullopt) {
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.codec = std::move(codec);
@@ -677,7 +677,7 @@ void _encode_video_to_file_like(
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
     std::optional<std::string_view> preset = std::nullopt,
-    std::optional<std::vector<std::string_view>> extra_options = std::nullopt) {
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   auto fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
   TORCH_CHECK(
