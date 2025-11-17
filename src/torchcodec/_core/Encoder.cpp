@@ -607,7 +607,7 @@ void tryToValidateCodecOption(
           "] for this codec. For more details, run 'ffmpeg -h encoder=",
           avCodec.name,
           "'");
-    } catch (const std::invalid_argument& e) {
+    } catch (const std::invalid_argument&) {
       TORCH_CHECK(
           false,
           "Option ",
