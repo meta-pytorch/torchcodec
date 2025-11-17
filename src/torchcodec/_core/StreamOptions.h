@@ -7,6 +7,7 @@
 #pragma once
 
 #include <torch/types.h>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -45,13 +46,13 @@ struct VideoStreamOptions {
   std::string_view deviceVariant = "ffmpeg";
 
   // Encoding options
-  // TODO-VideoEncoder: Consider adding other optional fields here
-  // (bit rate, gop size, max b frames, preset)
-  std::optional<double> crf;
-
+  std::optional<std::string> codec;
   // Optional pixel format for video encoding (e.g., "yuv420p", "yuv444p")
   // If not specified, uses codec's default format.
   std::optional<std::string> pixelFormat;
+  std::optional<double> crf;
+  std::optional<std::string> preset;
+  std::optional<std::map<std::string, std::string>> extraOptions;
 };
 
 struct AudioStreamOptions {

@@ -13,6 +13,7 @@ import subprocess
 import pytest
 
 import torch
+import torchcodec
 
 from torchcodec._core import (
     _add_video_stream,
@@ -21,6 +22,7 @@ from torchcodec._core import (
     get_frame_at_index,
     get_json_metadata,
 )
+from torchcodec.decoders import VideoDecoder
 
 from torchvision.transforms import v2
 
@@ -28,13 +30,127 @@ from .utils import (
     assert_frames_equal,
     assert_tensor_close_on_at_least,
     AV1_VIDEO,
+    get_ffmpeg_major_version,
+    get_ffmpeg_minor_version,
     H265_VIDEO,
     NASA_VIDEO,
     needs_cuda,
     TEST_SRC_2_720P,
 )
 
-torch._dynamo.config.capture_dynamic_output_shape_ops = True
+
+class TestPublicVideoDecoderTransformOps:
+    @pytest.mark.parametrize(
+        "height_scaling_factor, width_scaling_factor",
+        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
+    )
+    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
+    def test_resize_torchvision(
+        self, video, height_scaling_factor, width_scaling_factor
+    ):
+        height = int(video.get_height() * height_scaling_factor)
+        width = int(video.get_width() * width_scaling_factor)
+
+        # We're using both the TorchCodec object and the TorchVision object to
+        # ensure that they specify exactly the same thing.
+        decoder_resize = VideoDecoder(
+            video.path, transforms=[torchcodec.transforms.Resize(size=(height, width))]
+        )
+        decoder_resize_tv = VideoDecoder(
+            video.path, transforms=[v2.Resize(size=(height, width))]
+        )
+
+        decoder_full = VideoDecoder(video.path)
+
+        num_frames = len(decoder_resize)
+        assert num_frames == len(decoder_full)
+
+        for frame_index in [
+            0,
+            int(num_frames * 0.1),
+            int(num_frames * 0.2),
+            int(num_frames * 0.3),
+            int(num_frames * 0.4),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            int(num_frames * 0.90),
+            num_frames - 1,
+        ]:
+            frame_resize_tv = decoder_resize_tv[frame_index]
+            frame_resize = decoder_resize[frame_index]
+            assert_frames_equal(frame_resize_tv, frame_resize)
+
+            frame_full = decoder_full[frame_index]
+
+            frame_tv = v2.functional.resize(frame_full, size=(height, width))
+            frame_tv_no_antialias = v2.functional.resize(
+                frame_full, size=(height, width), antialias=False
+            )
+
+            expected_shape = (video.get_num_color_channels(), height, width)
+            assert frame_resize.shape == expected_shape
+            assert frame_tv.shape == expected_shape
+            assert frame_tv_no_antialias.shape == expected_shape
+
+            assert_tensor_close_on_at_least(
+                frame_resize, frame_tv, percentage=99.8, atol=1
+            )
+            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=6)
+
+            if height_scaling_factor < 1 or width_scaling_factor < 1:
+                # Antialias only relevant when down-scaling!
+                with pytest.raises(AssertionError, match="Expected at least"):
+                    assert_tensor_close_on_at_least(
+                        frame_resize, frame_tv_no_antialias, percentage=99, atol=1
+                    )
+                with pytest.raises(AssertionError, match="Tensor-likes are not close"):
+                    torch.testing.assert_close(
+                        frame_resize, frame_tv_no_antialias, rtol=0, atol=6
+                    )
+
+    def test_resize_fails(self):
+        with pytest.raises(
+            ValueError,
+            match=r"must use bilinear interpolation",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[
+                    v2.Resize(
+                        size=(100, 100), interpolation=v2.InterpolationMode.BICUBIC
+                    )
+                ],
+            )
+
+        with pytest.raises(
+            ValueError,
+            match=r"must have antialias enabled",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[v2.Resize(size=(100, 100), antialias=False)],
+            )
+
+        with pytest.raises(
+            ValueError,
+            match=r"must have a size specified",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path, transforms=[v2.Resize(size=None, max_size=100)]
+            )
+
+        with pytest.raises(
+            ValueError,
+            match=r"must have a \(height, width\) pair for the size",
+        ):
+            VideoDecoder(NASA_VIDEO.path, transforms=[v2.Resize(size=(100))])
+
+    def test_transform_fails(self):
+        with pytest.raises(
+            ValueError,
+            match="Unsupported transform",
+        ):
+            VideoDecoder(NASA_VIDEO.path, transforms=[v2.RandomHorizontalFlip(p=1.0)])
 
 
 class TestCoreVideoDecoderTransformOps:
@@ -172,68 +288,6 @@ class TestCoreVideoDecoderTransformOps:
         ):
             add_video_stream(decoder, transform_specs="invalid, 1, 2")
 
-    @pytest.mark.parametrize(
-        "height_scaling_factor, width_scaling_factor",
-        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
-    )
-    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
-    def test_resize_torchvision(
-        self, video, height_scaling_factor, width_scaling_factor
-    ):
-        num_frames = self.get_num_frames_core_ops(video)
-
-        height = int(video.get_height() * height_scaling_factor)
-        width = int(video.get_width() * width_scaling_factor)
-        resize_spec = f"resize, {height}, {width}"
-
-        decoder_resize = create_from_file(str(video.path))
-        add_video_stream(decoder_resize, transform_specs=resize_spec)
-
-        decoder_full = create_from_file(str(video.path))
-        add_video_stream(decoder_full)
-
-        for frame_index in [
-            0,
-            int(num_frames * 0.1),
-            int(num_frames * 0.2),
-            int(num_frames * 0.3),
-            int(num_frames * 0.4),
-            int(num_frames * 0.5),
-            int(num_frames * 0.75),
-            int(num_frames * 0.90),
-            num_frames - 1,
-        ]:
-            expected_shape = (video.get_num_color_channels(), height, width)
-            frame_resize, *_ = get_frame_at_index(
-                decoder_resize, frame_index=frame_index
-            )
-
-            frame_full, *_ = get_frame_at_index(decoder_full, frame_index=frame_index)
-            frame_tv = v2.functional.resize(frame_full, size=(height, width))
-            frame_tv_no_antialias = v2.functional.resize(
-                frame_full, size=(height, width), antialias=False
-            )
-
-            assert frame_resize.shape == expected_shape
-            assert frame_tv.shape == expected_shape
-            assert frame_tv_no_antialias.shape == expected_shape
-
-            assert_tensor_close_on_at_least(
-                frame_resize, frame_tv, percentage=99.8, atol=1
-            )
-            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=6)
-
-            if height_scaling_factor < 1 or width_scaling_factor < 1:
-                # Antialias only relevant when down-scaling!
-                with pytest.raises(AssertionError, match="Expected at least"):
-                    assert_tensor_close_on_at_least(
-                        frame_resize, frame_tv_no_antialias, percentage=99, atol=1
-                    )
-                with pytest.raises(AssertionError, match="Tensor-likes are not close"):
-                    torch.testing.assert_close(
-                        frame_resize, frame_tv_no_antialias, rtol=0, atol=6
-                    )
-
     def test_resize_ffmpeg(self):
         height = 135
         width = 240
@@ -254,7 +308,13 @@ class TestCoreVideoDecoderTransformOps:
 
             assert frame_resize.shape == expected_shape
             assert frame_ref.shape == expected_shape
-            assert_frames_equal(frame_resize, frame_ref)
+
+            if get_ffmpeg_major_version() <= 4 and get_ffmpeg_minor_version() <= 1:
+                # FFmpeg version 4.1 and before appear to have a different
+                # resize implementation.
+                torch.testing.assert_close(frame_resize, frame_ref, rtol=0, atol=2)
+            else:
+                assert_frames_equal(frame_resize, frame_ref)
 
     def test_resize_transform_fails(self):
         decoder = create_from_file(str(NASA_VIDEO.path))

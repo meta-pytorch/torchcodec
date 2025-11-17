@@ -572,6 +572,32 @@ class TestVideoEncoder:
     def decode(self, source=None) -> torch.Tensor:
         return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
 
+    def _get_video_metadata(self, file_path, fields):
+        """Helper function to get video metadata from a file using ffprobe."""
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                f"stream={','.join(fields)}",
+                "-of",
+                "default=noprint_wrappers=1",
+                str(file_path),
+            ],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        metadata = {}
+        for line in result.stdout.strip().split("\n"):
+            if "=" in line:
+                key, value = line.split("=", 1)
+                metadata[key] = value
+        return metadata
+
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_bad_input_parameterized(self, tmp_path, method):
         if method == "to_file":
@@ -610,12 +636,28 @@ class TestVideoEncoder:
             )
             getattr(encoder, method)(**valid_params)
 
+        with pytest.raises(
+            RuntimeError,
+            match=r"Video codec invalid_codec_name not found.",
+        ):
+            encoder = VideoEncoder(
+                frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
+                frame_rate=30,
+            )
+            encoder.to_file(str(tmp_path / "output.mp4"), codec="invalid_codec_name")
+
         with pytest.raises(RuntimeError, match=r"crf=-10 is out of valid range"):
             encoder = VideoEncoder(
                 frames=torch.zeros((5, 3, 64, 64), dtype=torch.uint8),
                 frame_rate=30,
             )
             getattr(encoder, method)(**valid_params, crf=-10)
+
+        with pytest.raises(
+            RuntimeError,
+            match=r"avcodec_open2 failed: Invalid argument",
+        ):
+            encoder.to_tensor(format="mp4", preset="fake_preset")
 
     @pytest.mark.parametrize("method", ["to_file", "to_tensor", "to_file_like"])
     @pytest.mark.parametrize("crf", [23, 23.5, -0.9])
@@ -683,6 +725,45 @@ class TestVideoEncoder:
         ):
             getattr(encoder, method)(**valid_params, pixel_format="rgb24")
 
+    @pytest.mark.parametrize(
+        "extra_options,error",
+        [
+            ({"qp": -10}, "qp=-10 is out of valid range"),
+            (
+                {"qp": ""},
+                "Option qp expects a numeric value but got",
+            ),
+            (
+                {"direct-pred": "a"},
+                "Option direct-pred expects a numeric value but got 'a'",
+            ),
+            ({"tune": "not_a_real_tune"}, "avcodec_open2 failed: Invalid argument"),
+            (
+                {"tune": 10},
+                "avcodec_open2 failed: Invalid argument",
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    def test_extra_options_errors(self, method, tmp_path, extra_options, error):
+        frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
+        encoder = VideoEncoder(frames, frame_rate=30)
+
+        if method == "to_file":
+            valid_params = dict(dest=str(tmp_path / "output.mp4"))
+        elif method == "to_tensor":
+            valid_params = dict(format="mp4")
+        elif method == "to_file_like":
+            valid_params = dict(file_like=io.BytesIO(), format="mp4")
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        with pytest.raises(
+            RuntimeError,
+            match=error,
+        ):
+            getattr(encoder, method)(**valid_params, extra_options=extra_options)
+
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_contiguity(self, method, tmp_path):
         # Ensure that 2 sets of video frames with the same pixel values are encoded
@@ -708,17 +789,20 @@ class TestVideoEncoder:
         )
 
         def encode_to_tensor(frames):
+            common_params = dict(crf=0, pixel_format="yuv444p")
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
-                VideoEncoder(frames, frame_rate=30).to_file(dest=dest)
+                VideoEncoder(frames, frame_rate=30).to_file(dest=dest, **common_params)
                 with open(dest, "rb") as f:
                     return torch.frombuffer(f.read(), dtype=torch.uint8)
             elif method == "to_tensor":
-                return VideoEncoder(frames, frame_rate=30).to_tensor(format="mp4")
+                return VideoEncoder(frames, frame_rate=30).to_tensor(
+                    format="mp4", **common_params
+                )
             elif method == "to_file_like":
                 file_like = io.BytesIO()
                 VideoEncoder(frames, frame_rate=30).to_file_like(
-                    file_like, format="mp4"
+                    file_like, format="mp4", **common_params
                 )
                 return torch.frombuffer(file_like.getvalue(), dtype=torch.uint8)
             else:
@@ -826,13 +910,26 @@ class TestVideoEncoder:
             pytest.param("webm", marks=pytest.mark.slow),
         ),
     )
-    @pytest.mark.parametrize("pixel_format", ("yuv444p", "yuv420p"))
-    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format, pixel_format):
+    @pytest.mark.parametrize(
+        "encode_params",
+        [
+            {"pixel_format": "yuv444p", "crf": 0, "preset": None},
+            {"pixel_format": "yuv420p", "crf": 30, "preset": None},
+            {"pixel_format": "yuv420p", "crf": None, "preset": "ultrafast"},
+            {"pixel_format": "yuv420p", "crf": None, "preset": None},
+        ],
+    )
+    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format, encode_params):
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+
+        pixel_format = encode_params["pixel_format"]
+        crf = encode_params["crf"]
+        preset = encode_params["preset"]
+
         if format in ("avi", "flv") and pixel_format == "yuv444p":
             pytest.skip(f"Default codec for {format} does not support {pixel_format}")
 
@@ -845,8 +942,7 @@ class TestVideoEncoder:
 
         ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
         frame_rate = 30
-        crf = 0
-        # Some codecs (ex. MPEG4) do not support CRF.
+        # Some codecs (ex. MPEG4) do not support CRF or preset.
         # Flags not supported by the selected codec will be ignored.
         ffmpeg_cmd = [
             "ffmpeg",
@@ -861,18 +957,26 @@ class TestVideoEncoder:
             str(frame_rate),
             "-i",
             temp_raw_path,
-            "-pix_fmt",
-            pixel_format,  # Output format
-            "-crf",
-            str(crf),
-            ffmpeg_encoded_path,
         ]
+        if pixel_format is not None:  # Output format
+            ffmpeg_cmd.extend(["-pix_fmt", pixel_format])
+        if preset is not None:
+            ffmpeg_cmd.extend(["-preset", preset])
+        if crf is not None:
+            ffmpeg_cmd.extend(["-crf", str(crf)])
+        # Output path must be last
+        ffmpeg_cmd.append(ffmpeg_encoded_path)
         subprocess.run(ffmpeg_cmd, check=True)
 
         # Encode with our video encoder
         encoder_output_path = str(tmp_path / f"encoder_output.{format}")
         encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
-        encoder.to_file(dest=encoder_output_path, pixel_format=pixel_format, crf=crf)
+        encoder.to_file(
+            dest=encoder_output_path,
+            pixel_format=pixel_format,
+            crf=crf,
+            preset=preset,
+        )
 
         ffmpeg_frames = self.decode(ffmpeg_encoded_path).data
         encoder_frames = self.decode(encoder_output_path).data
@@ -961,3 +1065,113 @@ class TestVideoEncoder:
             RuntimeError, match="File like object must implement a seek method"
         ):
             encoder.to_file_like(NoSeekMethod(), format="mp4")
+
+    @pytest.mark.skipif(
+        in_fbcode(),
+        reason="ffprobe not available internally",
+    )
+    @pytest.mark.parametrize(
+        "format,codec_spec",
+        [
+            ("mp4", "h264"),
+            ("mp4", "hevc"),
+            ("mkv", "av1"),
+            ("avi", "mpeg4"),
+            pytest.param(
+                "webm",
+                "vp9",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS, reason="vp9 codec not available on Windows"
+                ),
+            ),
+        ],
+    )
+    def test_codec_parameter_utilized(self, tmp_path, format, codec_spec):
+        # Test the codec parameter is utilized by using ffprobe to check the encoded file's codec spec
+        frames = torch.zeros((10, 3, 64, 64), dtype=torch.uint8)
+        dest = str(tmp_path / f"output.{format}")
+
+        VideoEncoder(frames=frames, frame_rate=30).to_file(dest=dest, codec=codec_spec)
+        actual_codec_spec = self._get_video_metadata(dest, fields=["codec_name"])[
+            "codec_name"
+        ]
+        assert actual_codec_spec == codec_spec
+
+    @pytest.mark.skipif(
+        in_fbcode(),
+        reason="ffprobe not available internally",
+    )
+    @pytest.mark.parametrize(
+        "codec_spec,codec_impl",
+        [
+            ("h264", "libx264"),
+            ("av1", "libaom-av1"),
+            pytest.param(
+                "vp9",
+                "libvpx-vp9",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS, reason="vp9 codec not available on Windows"
+                ),
+            ),
+        ],
+    )
+    def test_codec_spec_vs_impl_equivalence(self, tmp_path, codec_spec, codec_impl):
+        # Test that using codec spec gives the same result as using default codec implementation
+        # We cannot directly check codec impl used, so we assert frame equality
+        frames = torch.randint(0, 256, (10, 3, 64, 64), dtype=torch.uint8)
+
+        spec_output = str(tmp_path / "spec_output.mp4")
+        VideoEncoder(frames=frames, frame_rate=30).to_file(
+            dest=spec_output, codec=codec_spec
+        )
+
+        impl_output = str(tmp_path / "impl_output.mp4")
+        VideoEncoder(frames=frames, frame_rate=30).to_file(
+            dest=impl_output, codec=codec_impl
+        )
+
+        assert (
+            self._get_video_metadata(spec_output, fields=["codec_name"])["codec_name"]
+            == codec_spec
+        )
+        assert (
+            self._get_video_metadata(impl_output, fields=["codec_name"])["codec_name"]
+            == codec_spec
+        )
+
+        frames_spec = self.decode(spec_output).data
+        frames_impl = self.decode(impl_output).data
+        torch.testing.assert_close(frames_spec, frames_impl, rtol=0, atol=0)
+
+    @pytest.mark.skipif(in_fbcode(), reason="ffprobe not available")
+    @pytest.mark.parametrize(
+        "profile,colorspace,color_range",
+        [
+            ("baseline", "bt709", "tv"),
+            ("main", "bt470bg", "pc"),
+            ("high", "fcc", "pc"),
+        ],
+    )
+    def test_extra_options_utilized(self, tmp_path, profile, colorspace, color_range):
+        # Test setting profile, colorspace, and color_range via extra_options is utilized
+        source_frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=30)
+
+        output_path = str(tmp_path / "output.mp4")
+        encoder.to_file(
+            dest=output_path,
+            extra_options={
+                "profile": profile,
+                "colorspace": colorspace,
+                "color_range": color_range,
+            },
+        )
+        metadata = self._get_video_metadata(
+            output_path,
+            fields=["profile", "color_space", "color_range"],
+        )
+        # Validate profile (case-insensitive, baseline is reported as "Constrained Baseline")
+        expected_profile = "constrained baseline" if profile == "baseline" else profile
+        assert metadata["profile"].lower() == expected_profile
+        assert metadata["color_space"] == colorspace
+        assert metadata["color_range"] == color_range

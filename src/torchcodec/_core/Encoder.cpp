@@ -570,10 +570,10 @@ AVPixelFormat validatePixelFormat(
   TORCH_CHECK(false, errorMsg.str());
 }
 
-void validateDoubleOption(
+void tryToValidateCodecOption(
     const AVCodec& avCodec,
     const char* optionName,
-    double value) {
+    const std::string& value) {
   if (!avCodec.priv_class) {
     return;
   }
@@ -586,24 +586,60 @@ void validateDoubleOption(
       0,
       AV_OPT_SEARCH_FAKE_OBJ,
       nullptr);
-  // If the option was not found, let FFmpeg handle it later
+  // If option is not found we cannot validate it, let FFmpeg handle it
   if (!option) {
     return;
   }
+  // Validate if option is defined as a numeric type
   if (option->type == AV_OPT_TYPE_INT || option->type == AV_OPT_TYPE_INT64 ||
       option->type == AV_OPT_TYPE_FLOAT || option->type == AV_OPT_TYPE_DOUBLE) {
-    TORCH_CHECK(
-        value >= option->min && value <= option->max,
-        optionName,
-        "=",
-        value,
-        " is out of valid range [",
-        option->min,
-        ", ",
-        option->max,
-        "] for this codec. For more details, run 'ffmpeg -h encoder=",
-        avCodec.name,
-        "'");
+    try {
+      double numericValue = std::stod(value);
+      TORCH_CHECK(
+          numericValue >= option->min && numericValue <= option->max,
+          optionName,
+          "=",
+          numericValue,
+          " is out of valid range [",
+          option->min,
+          ", ",
+          option->max,
+          "] for this codec. For more details, run 'ffmpeg -h encoder=",
+          avCodec.name,
+          "'");
+    } catch (const std::invalid_argument& e) {
+      TORCH_CHECK(
+          false,
+          "Option ",
+          optionName,
+          " expects a numeric value but got '",
+          value,
+          "'");
+    }
+  }
+}
+
+void sortCodecOptions(
+    const std::map<std::string, std::string>& extraOptions,
+    AVDictionary** codecDict,
+    AVDictionary** formatDict) {
+  // Accepts a map of options as input, then sorts them into codec options and
+  // format options. The sorted options are returned into two separate dicts.
+  const AVClass* formatClass = avformat_get_class();
+  for (const auto& [key, value] : extraOptions) {
+    const AVOption* fmtOpt = av_opt_find2(
+        &formatClass,
+        key.c_str(),
+        nullptr,
+        0,
+        AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ,
+        nullptr);
+    if (fmtOpt) {
+      av_dict_set(formatDict, key.c_str(), value.c_str(), 0);
+    } else {
+      // Default to codec option (includes AVCodecContext + encoder-private)
+      av_dict_set(codecDict, key.c_str(), value.c_str(), 0);
+    }
   }
 }
 } // namespace
@@ -621,6 +657,7 @@ VideoEncoder::~VideoEncoder() {
       avFormatContext_->pb = nullptr;
     }
   }
+  av_dict_free(&avFormatOptions_);
 }
 
 VideoEncoder::VideoEncoder(
@@ -687,9 +724,33 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
-  const AVCodec* avCodec =
-      avcodec_find_encoder(avFormatContext_->oformat->video_codec);
-  TORCH_CHECK(avCodec != nullptr, "Video codec not found");
+  const AVCodec* avCodec = nullptr;
+  // If codec arg is provided, find codec using logic similar to FFmpeg:
+  // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
+  if (videoStreamOptions.codec.has_value()) {
+    const std::string& codec = videoStreamOptions.codec.value();
+    // Try to find codec by name ("libx264", "libsvtav1")
+    avCodec = avcodec_find_encoder_by_name(codec.c_str());
+    // Try to find by codec descriptor ("h264", "av1")
+    if (!avCodec) {
+      const AVCodecDescriptor* desc =
+          avcodec_descriptor_get_by_name(codec.c_str());
+      if (desc) {
+        avCodec = avcodec_find_encoder(desc->id);
+      }
+    }
+    TORCH_CHECK(
+        avCodec != nullptr,
+        "Video codec ",
+        codec,
+        " not found. To see available codecs, run: ffmpeg -encoders");
+  } else {
+    TORCH_CHECK(
+        avFormatContext_->oformat != nullptr,
+        "Output format is null, unable to find default codec.");
+    avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
+    TORCH_CHECK(avCodec != nullptr, "Video codec not found");
+  }
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
   TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
@@ -736,17 +797,31 @@ void VideoEncoder::initializeEncoder(
   }
 
   // Apply videoStreamOptions
-  AVDictionary* options = nullptr;
+  AVDictionary* avCodecOptions = nullptr;
+  if (videoStreamOptions.extraOptions.has_value()) {
+    for (const auto& [key, value] : videoStreamOptions.extraOptions.value()) {
+      tryToValidateCodecOption(*avCodec, key.c_str(), value);
+    }
+    sortCodecOptions(
+        videoStreamOptions.extraOptions.value(),
+        &avCodecOptions,
+        &avFormatOptions_);
+  }
+
   if (videoStreamOptions.crf.has_value()) {
-    validateDoubleOption(*avCodec, "crf", videoStreamOptions.crf.value());
+    std::string crfValue = std::to_string(videoStreamOptions.crf.value());
+    tryToValidateCodecOption(*avCodec, "crf", crfValue);
+    av_dict_set(&avCodecOptions, "crf", crfValue.c_str(), 0);
+  }
+  if (videoStreamOptions.preset.has_value()) {
     av_dict_set(
-        &options,
-        "crf",
-        std::to_string(videoStreamOptions.crf.value()).c_str(),
+        &avCodecOptions,
+        "preset",
+        videoStreamOptions.preset.value().c_str(),
         0);
   }
-  int status = avcodec_open2(avCodecContext_.get(), avCodec, &options);
-  av_dict_free(&options);
+  int status = avcodec_open2(avCodecContext_.get(), avCodec, &avCodecOptions);
+  av_dict_free(&avCodecOptions);
 
   TORCH_CHECK(
       status == AVSUCCESS,
@@ -771,7 +846,7 @@ void VideoEncoder::encode() {
   TORCH_CHECK(!encodeWasCalled_, "Cannot call encode() twice.");
   encodeWasCalled_ = true;
 
-  int status = avformat_write_header(avFormatContext_.get(), nullptr);
+  int status = avformat_write_header(avFormatContext_.get(), &avFormatOptions_);
   TORCH_CHECK(
       status == AVSUCCESS,
       "Error in avformat_write_header: ",
