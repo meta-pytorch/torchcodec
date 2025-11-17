@@ -219,7 +219,7 @@ The bottom row is [promotional video from NASA](https://download.pytorch.org/tor
 that has a resolution of 960x540 at 29.7 fps and is 206 seconds long. Both videos were
 encoded with libx264 and yuv420p pixel format. All decoders, except for TorchVision, used FFmpeg 6.1.2. TorchVision used FFmpeg 4.2.2.
 
-For TorchCodec, the "approx" label means that it was using [approximate mode](https://meta-pytorch.org/torchcodec/stable/generated_examples/approximate_mode.html)
+For TorchCodec, the "approx" label means that it was using [approximate mode](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/approximate_mode.html)
 for seeking.
 
 ## Contributing
