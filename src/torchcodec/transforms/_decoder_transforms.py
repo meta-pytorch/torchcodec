@@ -91,3 +91,42 @@ class Resize(DecoderTransform):
                 f"pair for the size, got {resize_tv.size}."
             )
         return cls(size=resize_tv.size)
+
+@dataclass
+class RandomCrop(DecoderTransform):
+
+    size: Sequence[int]
+    _top: Optional[int] = None
+    _left: Optional[int] = None
+
+    def _make_transform_spec(self) -> str:
+        assert len(self.size) == 2
+        return f"crop, {self.size[0]}, {self.size[1]}, {_left}, {_top}"
+
+    @classmethod
+    def _from_torchvision(cls, random_crop_tv: nn.Module):
+        v2 = import_torchvision_transforms_v2()
+
+        assert isinstance(random_crop_tv, v2.RandomCrop)
+
+        if random_crop_tv.padding is not None:
+            raise ValueError(
+                "TorchVision RandomCrop transform must not specify padding."
+            )
+        if random_crop_tv.pad_if_needed is True:
+            raise ValueError(
+                "TorchVision RandomCrop transform must not specify pad_if_needed."
+            )
+        if random_crop_tv.fill != 0:
+            raise ValueError("TorchVision RandomCrop must specify fill of 0.")
+        if random_crop_tv.padding_mode != "constant":
+            raise ValueError(
+                "TorchVision RandomCrop must specify padding_mode of constant."
+            )
+        if len(random_crop_tv.size) != 2:
+            raise ValueError(
+                "TorchVision RandcomCrop transform must have a (height, width) "
+                f"pair for the size, got {random_crop_tv.size}."
+            )
+        params = random_crop_tv.make_params([])
+        return cls(size=random_crop_tv.size)
