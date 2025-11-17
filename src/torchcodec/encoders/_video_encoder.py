@@ -35,12 +35,12 @@ class VideoEncoder:
     def to_file(
         self,
         dest: Union[str, Path],
-        extra_options: Optional[Dict[str, Any]] = None,
         *,
         codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
+        extra_options: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Encode frames into a file.
 
