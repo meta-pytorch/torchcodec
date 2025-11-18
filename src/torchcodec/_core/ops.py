@@ -217,6 +217,7 @@ def encode_video_to_file_like(
     pixel_format: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
     preset: Optional[str] = None,
+    extra_options: Optional[list[str]] = None,
 ) -> None:
     """Encode video frames to a file-like object.
 
@@ -229,6 +230,7 @@ def encode_video_to_file_like(
         pixel_format: Optional pixel format (e.g., "yuv420p", "yuv444p")
         crf: Optional constant rate factor for encoding quality
         preset: Optional encoder preset as string (e.g., "ultrafast", "medium")
+        extra_options: Optional list of extra options as flattened key-value pairs
     """
     assert _pybind_ops is not None
 
@@ -241,6 +243,7 @@ def encode_video_to_file_like(
         pixel_format,
         crf,
         preset,
+        extra_options,
     )
 
 
@@ -330,8 +333,9 @@ def encode_video_to_file_abstract(
     filename: str,
     codec: Optional[str],
     pixel_format: Optional[str] = None,
-    crf: Optional[Union[int, float]] = None,
     preset: Optional[str] = None,
+    crf: Optional[Union[int, float]] = None,
+    extra_options: Optional[list[str]] = None,
 ) -> None:
     return
 
@@ -343,8 +347,9 @@ def encode_video_to_tensor_abstract(
     format: str,
     codec: Optional[str],
     pixel_format: Optional[str] = None,
-    crf: Optional[Union[int, float]] = None,
     preset: Optional[str] = None,
+    crf: Optional[Union[int, float]] = None,
+    extra_options: Optional[list[str]] = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
@@ -357,8 +362,9 @@ def _encode_video_to_file_like_abstract(
     file_like_context: int,
     codec: Optional[str],
     pixel_format: Optional[str] = None,
-    crf: Optional[Union[int, float]] = None,
     preset: Optional[str] = None,
+    crf: Optional[Union[int, float]] = None,
+    extra_options: Optional[list[str]] = None,
 ) -> None:
     return
 

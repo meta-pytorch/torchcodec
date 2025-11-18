@@ -1,8 +1,14 @@
 #pragma once
 #include <torch/types.h>
+#include <map>
+#include <string>
 #include "AVIOContextHolder.h"
 #include "FFMPEGCommon.h"
 #include "StreamOptions.h"
+
+extern "C" {
+#include <libavutil/dict.h>
+}
 
 namespace facebook::torchcodec {
 class AudioEncoder {
@@ -179,6 +185,7 @@ class VideoEncoder {
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
 
   bool encodeWasCalled_ = false;
+  AVDictionary* avFormatOptions_ = nullptr;
 };
 
 } // namespace facebook::torchcodec
