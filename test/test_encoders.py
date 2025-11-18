@@ -17,9 +17,9 @@ from .utils import (
     assert_tensor_close_on_at_least,
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
-    in_fbcode,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
+    needs_ffmpeg_cli,
     psnr,
     SINE_MONO_S32,
     TEST_SRC_2_720P,
@@ -217,12 +217,21 @@ class TestAudioEncoder:
                 getattr(decoder, method)(**valid_params, num_channels=num_channels)
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    @pytest.mark.parametrize("format", ("wav", "flac"))
+    @pytest.mark.parametrize(
+        "format",
+        [
+            pytest.param(
+                "wav",
+                marks=pytest.mark.skipif(
+                    get_ffmpeg_major_version() == 4,
+                    reason="Swresample with FFmpeg 4 doesn't work on wav files",
+                ),
+            ),
+            "flac",
+        ],
+    )
     def test_round_trip(self, method, format, tmp_path):
         # Check that decode(encode(samples)) == samples on lossless formats
-
-        if get_ffmpeg_major_version() == 4 and format == "wav":
-            pytest.skip("Swresample with FFmpeg 4 doesn't work on wav files")
 
         asset = NASA_AUDIO_MP3
         source_samples = self.decode(asset).data
@@ -249,7 +258,7 @@ class TestAudioEncoder:
             self.decode(encoded_source).data, source_samples, rtol=rtol, atol=atol
         )
 
-    @pytest.mark.skipif(in_fbcode(), reason="TODO: enable ffmpeg CLI")
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize("asset", (NASA_AUDIO_MP3, SINE_MONO_S32))
     @pytest.mark.parametrize("bit_rate", (None, 0, 44_100, 999_999_999))
     @pytest.mark.parametrize("num_channels", (None, 1, 2))
@@ -356,17 +365,30 @@ class TestAudioEncoder:
     @pytest.mark.parametrize("asset", (NASA_AUDIO_MP3, SINE_MONO_S32))
     @pytest.mark.parametrize("bit_rate", (None, 0, 44_100, 999_999_999))
     @pytest.mark.parametrize("num_channels", (None, 1, 2))
-    @pytest.mark.parametrize("format", ("mp3", "wav", "flac"))
+    @pytest.mark.parametrize(
+        "format",
+        [
+            pytest.param(
+                "mp3",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and get_ffmpeg_major_version() <= 5,
+                    reason="Encoding mp3 on Windows is weirdly buggy",
+                ),
+            ),
+            pytest.param(
+                "wav",
+                marks=pytest.mark.skipif(
+                    get_ffmpeg_major_version() == 4,
+                    reason="Swresample with FFmpeg 4 doesn't work on wav files",
+                ),
+            ),
+            "flac",
+        ],
+    )
     @pytest.mark.parametrize("method", ("to_tensor", "to_file_like"))
     def test_against_to_file(
         self, asset, bit_rate, num_channels, format, tmp_path, method
     ):
-        if get_ffmpeg_major_version() == 4 and format == "wav":
-            pytest.skip("Swresample with FFmpeg 4 doesn't work on wav files")
-        if IS_WINDOWS and get_ffmpeg_major_version() <= 5 and format == "mp3":
-            # TODO: https://github.com/pytorch/torchcodec/issues/837
-            pytest.skip("Encoding mp3 on Windows is weirdly buggy")
-
         encoder = AudioEncoder(self.decode(asset).data, sample_rate=asset.sample_rate)
 
         params = dict(bit_rate=bit_rate, num_channels=num_channels)
@@ -816,16 +838,27 @@ class TestVideoEncoder:
         )
 
     @pytest.mark.parametrize(
-        "format", ("mov", "mp4", "mkv", pytest.param("webm", marks=pytest.mark.slow))
+        "format",
+        [
+            "mov",
+            "mp4",
+            "mkv",
+            pytest.param(
+                "webm",
+                marks=[
+                    pytest.mark.slow,
+                    pytest.mark.skipif(
+                        get_ffmpeg_major_version() == 4
+                        or (IS_WINDOWS and get_ffmpeg_major_version() in (6, 7)),
+                        reason="Codec for webm is not available in this FFmpeg installation.",
+                    ),
+                ],
+            ),
+        ],
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_round_trip(self, tmp_path, format, method):
         # Test that decode(encode(decode(frames))) == decode(frames)
-        ffmpeg_version = get_ffmpeg_major_version()
-        if format == "webm" and (
-            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
-        ):
-            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
         source_frames = self.decode(TEST_SRC_2_720P.path).data
 
         # Frame rate is fixed with num frames decoded
@@ -859,25 +892,29 @@ class TestVideoEncoder:
 
     @pytest.mark.parametrize(
         "format",
-        (
+        [
             "mov",
             "mp4",
             "avi",
             "mkv",
             "flv",
             "gif",
-            pytest.param("webm", marks=pytest.mark.slow),
-        ),
+            pytest.param(
+                "webm",
+                marks=[
+                    pytest.mark.slow,
+                    pytest.mark.skipif(
+                        get_ffmpeg_major_version() == 4
+                        or (IS_WINDOWS and get_ffmpeg_major_version() in (6, 7)),
+                        reason="Codec for webm is not available in this FFmpeg installation.",
+                    ),
+                ],
+            ),
+        ],
     )
     @pytest.mark.parametrize("method", ("to_tensor", "to_file_like"))
     def test_against_to_file(self, tmp_path, format, method):
         # Test that to_file, to_tensor, and to_file_like produce the same results
-        ffmpeg_version = get_ffmpeg_major_version()
-        if format == "webm" and (
-            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
-        ):
-            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
-
         source_frames = self.decode(TEST_SRC_2_720P.path).data
         encoder = VideoEncoder(frames=source_frames, frame_rate=30)
 
@@ -898,17 +935,26 @@ class TestVideoEncoder:
             rtol=0,
         )
 
-    @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
     @pytest.mark.parametrize(
         "format",
-        (
+        [
             "mov",
             "mp4",
             "avi",
             "mkv",
             "flv",
-            pytest.param("webm", marks=pytest.mark.slow),
-        ),
+            pytest.param(
+                "webm",
+                marks=[
+                    pytest.mark.slow,
+                    pytest.mark.skipif(
+                        get_ffmpeg_major_version() == 4
+                        or (IS_WINDOWS and get_ffmpeg_major_version() in (6, 7)),
+                        reason="Codec for webm is not available in this FFmpeg installation.",
+                    ),
+                ],
+            ),
+        ],
     )
     @pytest.mark.parametrize(
         "encode_params",
@@ -923,12 +969,6 @@ class TestVideoEncoder:
     def test_video_encoder_against_ffmpeg_cli(
         self, tmp_path, format, encode_params, method
     ):
-        ffmpeg_version = get_ffmpeg_major_version()
-        if format == "webm" and (
-            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
-        ):
-            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
-
         pixel_format = encode_params["pixel_format"]
         crf = encode_params["crf"]
         preset = encode_params["preset"]
@@ -1101,10 +1141,7 @@ class TestVideoEncoder:
         ):
             encoder.to_file_like(NoSeekMethod(), format="mp4")
 
-    @pytest.mark.skipif(
-        in_fbcode(),
-        reason="ffprobe not available internally",
-    )
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize(
         "format,codec_spec",
         [
@@ -1132,10 +1169,7 @@ class TestVideoEncoder:
         ]
         assert actual_codec_spec == codec_spec
 
-    @pytest.mark.skipif(
-        in_fbcode(),
-        reason="ffprobe not available internally",
-    )
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize(
         "codec_spec,codec_impl",
         [
@@ -1178,7 +1212,7 @@ class TestVideoEncoder:
         frames_impl = self.decode(impl_output).data
         torch.testing.assert_close(frames_spec, frames_impl, rtol=0, atol=0)
 
-    @pytest.mark.skipif(in_fbcode(), reason="ffprobe not available")
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize(
         "profile,colorspace,color_range",
         [
