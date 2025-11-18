@@ -158,6 +158,16 @@ int getNumChannels(const SharedAVCodecContext& avCodecContext) {
 #endif
 }
 
+int getNumChannels(const AVCodecParameters* codecpar) {
+  TORCH_CHECK(codecpar != nullptr, "codecpar is null")
+#if LIBAVFILTER_VERSION_MAJOR > 8 || \
+    (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44)
+  return codecpar->ch_layout.nb_channels;
+#else
+  return codecpar->channels;
+#endif
+}
+
 void setDefaultChannelLayout(
     UniqueAVCodecContext& avCodecContext,
     int numChannels) {

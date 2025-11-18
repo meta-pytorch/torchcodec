@@ -110,8 +110,8 @@ void SingleStreamDecoder::initializeDecoder() {
             ", does not match AVStream's index, " +
             std::to_string(avStream->index) + ".");
     streamMetadata.streamIndex = i;
-    streamMetadata.mediaType = avStream->codecpar->codec_type;
     streamMetadata.codecName = avcodec_get_name(avStream->codecpar->codec_id);
+    streamMetadata.mediaType = avStream->codecpar->codec_type;
     streamMetadata.bitRate = avStream->codecpar->bit_rate;
 
     int64_t frameCount = avStream->nb_frames;
@@ -133,10 +133,18 @@ void SingleStreamDecoder::initializeDecoder() {
       if (fps > 0) {
         streamMetadata.averageFpsFromHeader = fps;
       }
+      streamMetadata.width = avStream->codecpar->width;
+      streamMetadata.height = avStream->codecpar->height;
+      streamMetadata.sampleAspectRatio =
+          avStream->codecpar->sample_aspect_ratio;
       containerMetadata_.numVideoStreams++;
     } else if (avStream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
       AVSampleFormat format =
           static_cast<AVSampleFormat>(avStream->codecpar->format);
+      streamMetadata.sampleRate =
+          static_cast<int64_t>(avStream->codecpar->sample_rate);
+      streamMetadata.numChannels =
+          static_cast<int64_t>(getNumChannels(avStream->codecpar));
 
       // If the AVSampleFormat is not recognized, we get back nullptr. We have
       // to make sure we don't initialize a std::string with nullptr. There's
@@ -516,6 +524,10 @@ void SingleStreamDecoder::addVideoStream(
   auto& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.videoStreamOptions = videoStreamOptions;
 
+  // This metadata was already set in initializeDecoder() from the
+  // AVCodecParameters that are part of the AVStream. But we consider the
+  // AVCodecContext to be more authoritative, so we use that for our decoding
+  // stream.
   streamMetadata.width = streamInfo.codecContext->width;
   streamMetadata.height = streamInfo.codecContext->height;
   streamMetadata.sampleAspectRatio =
@@ -568,6 +580,11 @@ void SingleStreamDecoder::addAudioStream(
 
   auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
+
+  // This metadata was already set in initializeDecoder() from the
+  // AVCodecParameters that are part of the AVStream. But we consider the
+  // AVCodecContext to be more authoritative, so we use that for our decoding
+  // stream.
   streamMetadata.sampleRate =
       static_cast<int64_t>(streamInfo.codecContext->sample_rate);
   streamMetadata.numChannels =
