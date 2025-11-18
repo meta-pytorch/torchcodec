@@ -524,15 +524,6 @@ void SingleStreamDecoder::addVideoStream(
   auto& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.videoStreamOptions = videoStreamOptions;
 
-  // This metadata was already set in initializeDecoder() from the
-  // AVCodecParameters that are part of the AVStream. But we consider the
-  // AVCodecContext to be more authoritative, so we use that for our decoding
-  // stream.
-  streamMetadata.width = streamInfo.codecContext->width;
-  streamMetadata.height = streamInfo.codecContext->height;
-  streamMetadata.sampleAspectRatio =
-      streamInfo.codecContext->sample_aspect_ratio;
-
   if (seekMode_ == SeekMode::custom_frame_mappings) {
     TORCH_CHECK(
         customFrameMappings.has_value(),
@@ -577,18 +568,6 @@ void SingleStreamDecoder::addAudioStream(
 
   auto& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.audioStreamOptions = audioStreamOptions;
-
-  auto& streamMetadata =
-      containerMetadata_.allStreamMetadata[activeStreamIndex_];
-
-  // This metadata was already set in initializeDecoder() from the
-  // AVCodecParameters that are part of the AVStream. But we consider the
-  // AVCodecContext to be more authoritative, so we use that for our decoding
-  // stream.
-  streamMetadata.sampleRate =
-      static_cast<int64_t>(streamInfo.codecContext->sample_rate);
-  streamMetadata.numChannels =
-      static_cast<int64_t>(getNumChannels(streamInfo.codecContext));
 
   // FFmpeg docs say that the decoder will try to decode natively in this
   // format, if it can. Docs don't say what the decoder does when it doesn't
