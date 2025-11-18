@@ -570,7 +570,13 @@ class TestAudioEncoder:
 
 class TestVideoEncoder:
     def decode(self, source=None) -> torch.Tensor:
-        return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
+        return VideoDecoder(source).get_frames_in_range(start=0, stop=60).data
+
+    def decode_and_get_frame_rate(self, source=None):
+        decoder = VideoDecoder(source)
+        frames = decoder.get_frames_in_range(start=0, stop=60).data
+        frame_rate = decoder.metadata.average_fps
+        return frames, frame_rate
 
     def _get_video_metadata(self, file_path, fields):
         """Helper function to get video metadata from a file using ffprobe."""
@@ -826,26 +832,25 @@ class TestVideoEncoder:
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
+        source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
 
-        # Frame rate is fixed with num frames decoded
-        encoder = VideoEncoder(frames=source_frames, frame_rate=30)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
         if method == "to_file":
             encoded_path = str(tmp_path / f"encoder_output.{format}")
             encoder.to_file(dest=encoded_path, pixel_format="yuv444p", crf=0)
-            round_trip_frames = self.decode(encoded_path).data
+            round_trip_frames = self.decode(encoded_path)
         elif method == "to_tensor":
             encoded_tensor = encoder.to_tensor(
                 format=format, pixel_format="yuv444p", crf=0
             )
-            round_trip_frames = self.decode(encoded_tensor).data
+            round_trip_frames = self.decode(encoded_tensor)
         elif method == "to_file_like":
             file_like = io.BytesIO()
             encoder.to_file_like(
                 file_like=file_like, format=format, pixel_format="yuv444p", crf=0
             )
-            round_trip_frames = self.decode(file_like.getvalue()).data
+            round_trip_frames = self.decode(file_like.getvalue())
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -878,8 +883,8 @@ class TestVideoEncoder:
         ):
             pytest.skip("Codec for webm is not available in this FFmpeg installation.")
 
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
-        encoder = VideoEncoder(frames=source_frames, frame_rate=30)
+        source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
         encoded_file = tmp_path / f"output.{format}"
         encoder.to_file(dest=encoded_file, crf=0)
@@ -892,8 +897,8 @@ class TestVideoEncoder:
             encoded_output = file_like.getvalue()
 
         torch.testing.assert_close(
-            self.decode(encoded_file).data,
-            self.decode(encoded_output).data,
+            self.decode(encoded_file),
+            self.decode(encoded_output),
             atol=0,
             rtol=0,
         )
@@ -936,7 +941,7 @@ class TestVideoEncoder:
         if format in ("avi", "flv") and pixel_format == "yuv444p":
             pytest.skip(f"Default codec for {format} does not support {pixel_format}")
 
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
+        source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
 
         # Encode with FFmpeg CLI
         temp_raw_path = str(tmp_path / "temp_input.raw")
@@ -944,7 +949,6 @@ class TestVideoEncoder:
             f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
 
         ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
-        frame_rate = 30
         # Some codecs (ex. MPEG4) do not support CRF or preset.
         # Flags not supported by the selected codec will be ignored.
         ffmpeg_cmd = [
@@ -983,7 +987,7 @@ class TestVideoEncoder:
                 crf=crf,
                 preset=preset,
             )
-            encoder_frames = self.decode(encoder_output_path).data
+            encoder_frames = self.decode(encoder_output_path)
         elif method == "to_tensor":
             encoded_output = encoder.to_tensor(
                 format=format,
@@ -991,7 +995,7 @@ class TestVideoEncoder:
                 crf=crf,
                 preset=preset,
             )
-            encoder_frames = self.decode(encoded_output).data
+            encoder_frames = self.decode(encoded_output)
         elif method == "to_file_like":
             file_like = io.BytesIO()
             encoder.to_file_like(
@@ -1001,7 +1005,7 @@ class TestVideoEncoder:
                 crf=crf,
                 preset=preset,
             )
-            encoder_frames = self.decode(file_like.getvalue()).data
+            encoder_frames = self.decode(file_like.getvalue())
         else:
             raise ValueError(f"Unknown method: {method}")
 
@@ -1047,15 +1051,15 @@ class TestVideoEncoder:
             def get_encoded_data(self):
                 return self._file.getvalue()
 
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
-        encoder = VideoEncoder(frames=source_frames, frame_rate=30)
+        source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
         file_like = CustomFileObject()
         encoder.to_file_like(file_like, format="mp4", pixel_format="yuv444p", crf=0)
         decoded_frames = self.decode(file_like.get_encoded_data())
 
         torch.testing.assert_close(
-            decoded_frames.data,
+            decoded_frames,
             source_frames,
             atol=2,
             rtol=0,
@@ -1063,8 +1067,8 @@ class TestVideoEncoder:
 
     def test_to_file_like_real_file(self, tmp_path):
         """Test to_file_like with a real file opened in binary write mode."""
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
-        encoder = VideoEncoder(frames=source_frames, frame_rate=30)
+        source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
         file_path = tmp_path / "test_file_like.mp4"
 
@@ -1073,15 +1077,15 @@ class TestVideoEncoder:
         decoded_frames = self.decode(str(file_path))
 
         torch.testing.assert_close(
-            decoded_frames.data,
+            decoded_frames,
             source_frames,
             atol=2,
             rtol=0,
         )
 
     def test_to_file_like_bad_methods(self):
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
-        encoder = VideoEncoder(frames=source_frames, frame_rate=30)
+        source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
         class NoWriteMethod:
             def seek(self, offset, whence=0):
@@ -1174,8 +1178,8 @@ class TestVideoEncoder:
             == codec_spec
         )
 
-        frames_spec = self.decode(spec_output).data
-        frames_impl = self.decode(impl_output).data
+        frames_spec = self.decode(spec_output)
+        frames_impl = self.decode(impl_output)
         torch.testing.assert_close(frames_spec, frames_impl, rtol=0, atol=0)
 
     @pytest.mark.skipif(in_fbcode(), reason="ffprobe not available")
@@ -1210,3 +1214,20 @@ class TestVideoEncoder:
         assert metadata["profile"].lower() == expected_profile
         assert metadata["color_space"] == colorspace
         assert metadata["color_range"] == color_range
+
+    @pytest.mark.parametrize("frame_rate", [29.97, 59.94, 5.001])
+    def test_fractional_frame_rate(self, tmp_path, frame_rate):
+        source_frames = torch.zeros((10, 3, 64, 64), dtype=torch.uint8)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
+        output_path = str(tmp_path / "output.mp4")
+        encoder.to_file(dest=output_path)
+        # Assert the encoded frame rate via file metadata
+        metadata = self._get_video_metadata(output_path, fields=["r_frame_rate"])
+        num, den = metadata["r_frame_rate"].split("/")
+        encoded_frame_rate = int(num) / int(den)
+        assert encoded_frame_rate == frame_rate
+        # Assert the decoded frame rate matches the input frame rate
+        _decoded_frames, decoded_frame_rate = self.decode_and_get_frame_rate(
+            output_path
+        )
+        assert decoded_frame_rate == frame_rate

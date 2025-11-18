@@ -662,7 +662,7 @@ VideoEncoder::~VideoEncoder() {
 
 VideoEncoder::VideoEncoder(
     const torch::Tensor& frames,
-    int frameRate,
+    double frameRate,
     std::string_view fileName,
     const VideoStreamOptions& videoStreamOptions)
     : frames_(validateFrames(frames)), inFrameRate_(frameRate) {
@@ -694,7 +694,7 @@ VideoEncoder::VideoEncoder(
 
 VideoEncoder::VideoEncoder(
     const torch::Tensor& frames,
-    int frameRate,
+    double frameRate,
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
     const VideoStreamOptions& videoStreamOptions)
@@ -787,9 +787,10 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_->width = outWidth_;
   avCodecContext_->height = outHeight_;
   avCodecContext_->pix_fmt = outPixelFormat_;
-  // TODO-VideoEncoder: Verify that frame_rate and time_base are correct
-  avCodecContext_->time_base = {1, inFrameRate_};
-  avCodecContext_->framerate = {inFrameRate_, 1};
+  // TODO-VideoEncoder: Add and utilize output frame_rate option
+  AVRational frameRate = av_d2q(inFrameRate_, INT_MAX);
+  avCodecContext_->time_base = av_inv_q(frameRate);
+  avCodecContext_->framerate = frameRate;
 
   // Set flag for containers that require extradata to be in the codec context
   if (avFormatContext_->oformat->flags & AVFMT_GLOBALHEADER) {
