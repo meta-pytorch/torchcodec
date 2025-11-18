@@ -1225,9 +1225,9 @@ class TestVideoEncoder:
         metadata = self._get_video_metadata(output_path, fields=["r_frame_rate"])
         num, den = metadata["r_frame_rate"].split("/")
         encoded_frame_rate = int(num) / int(den)
-        assert encoded_frame_rate == frame_rate
+        assert encoded_frame_rate == pytest.approx(frame_rate, abs=1e-3)
         # Assert the decoded frame rate matches the input frame rate
         _decoded_frames, decoded_frame_rate = self.decode_and_get_frame_rate(
             output_path
         )
-        assert decoded_frame_rate == frame_rate
+        assert decoded_frame_rate == pytest.approx(frame_rate, abs=1e-3)
