@@ -53,6 +53,7 @@ struct VideoStreamOptions {
   std::optional<double> crf;
   std::optional<std::string> preset;
   std::optional<std::map<std::string, std::string>> extraOptions;
+  std::optional<int> frameRate;
 };
 
 struct AudioStreamOptions {

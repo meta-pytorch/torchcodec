@@ -15,7 +15,9 @@ class VideoEncoder:
             tensor of shape ``(N, C, H, W)`` where N is the number of frames,
             C is 3 channels (RGB), H is height, and W is width.
             Values must be uint8 in the range ``[0, 255]``.
-        frame_rate (int): The frame rate of the **input** ``frames``. Also defines the encoded **output** frame rate.
+        frame_rate (int): The frame rate of the **input** ``frames``. The
+            frame rate of the encoded output can be specified using the
+            encoding methods (``to_file``, etc.).
     """
 
     def __init__(self, frames: Tensor, *, frame_rate: int):
@@ -41,6 +43,7 @@ class VideoEncoder:
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
+        frame_rate: Optional[int] = None,
     ) -> None:
         """Encode frames into a file.
 
@@ -63,6 +66,8 @@ class VideoEncoder:
             extra_options (dict[str, Any], optional): A dictionary of additional
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
+            frame_rate (int, optional): The frame rate of the output video. If not specified,
+                uses the frame rate of the input ``frames``.
         """
         preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file(
@@ -76,6 +81,7 @@ class VideoEncoder:
             extra_options=[
                 str(x) for k, v in (extra_options or {}).items() for x in (k, v)
             ],
+            desired_frame_rate=frame_rate,
         )
 
     def to_tensor(
@@ -87,6 +93,7 @@ class VideoEncoder:
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
         extra_options: Optional[Dict[str, Any]] = None,
+        frame_rate: Optional[int] = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
 
@@ -108,6 +115,8 @@ class VideoEncoder:
             extra_options (dict[str, Any], optional): A dictionary of additional
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
+            frame_rate (int, optional): The frame rate of the output video. If not specified,
+                uses the frame rate of the input ``frames``.
 
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor.
@@ -124,6 +133,7 @@ class VideoEncoder:
             extra_options=[
                 str(x) for k, v in (extra_options or {}).items() for x in (k, v)
             ],
+            desired_frame_rate=frame_rate,
         )
 
     def to_file_like(
@@ -136,6 +146,7 @@ class VideoEncoder:
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
         extra_options: Optional[Dict[str, Any]] = None,
+        frame_rate: Optional[int] = None,
     ) -> None:
         """Encode frames into a file-like object.
 
@@ -162,6 +173,8 @@ class VideoEncoder:
             extra_options (dict[str, Any], optional): A dictionary of additional
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 Values will be converted to strings before passing to the encoder.
+            frame_rate (int, optional): The frame rate of the output video. If not specified,
+                uses the frame rate of the input ``frames``.
         """
         preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file_like(
@@ -176,4 +189,5 @@ class VideoEncoder:
             extra_options=[
                 str(x) for k, v in (extra_options or {}).items() for x in (k, v)
             ],
+            desired_frame_rate=frame_rate,
         )
