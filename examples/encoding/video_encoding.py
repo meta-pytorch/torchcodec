@@ -109,7 +109,7 @@ print(f"Original frames: {frames.shape = }")
 # :meth:`~torchcodec.encoders.VideoEncoder.to_file_like` and
 # :meth:`~torchcodec.encoders.VideoEncoder.to_tensor` methods.
 #
-# - For example, when encoding to MP4 format, the default codec used is ``H.264``.
+# For example, when encoding to MP4 format, the default codec is typically ``H.264``.
 #
 # The ``codec`` parameter specifies which video codec to use for encoding.
 # You can specify either a specific codec implementation (e.g., ``"libx264"``)
