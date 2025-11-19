@@ -935,26 +935,17 @@ class TestVideoEncoder:
             rtol=0,
         )
 
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize(
         "format",
-        [
+        (
             "mov",
             "mp4",
             "avi",
             "mkv",
             "flv",
-            pytest.param(
-                "webm",
-                marks=[
-                    pytest.mark.slow,
-                    pytest.mark.skipif(
-                        get_ffmpeg_major_version() == 4
-                        or (IS_WINDOWS and get_ffmpeg_major_version() in (6, 7)),
-                        reason="Codec for webm is not available in this FFmpeg installation.",
-                    ),
-                ],
-            ),
-        ],
+            pytest.param("webm", marks=pytest.mark.slow),
+        ),
     )
     @pytest.mark.parametrize(
         "encode_params",
@@ -969,6 +960,12 @@ class TestVideoEncoder:
     def test_video_encoder_against_ffmpeg_cli(
         self, tmp_path, format, encode_params, method
     ):
+        ffmpeg_version = get_ffmpeg_major_version()
+        if format == "webm" and (
+            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
+        ):
+            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+
         pixel_format = encode_params["pixel_format"]
         crf = encode_params["crf"]
         preset = encode_params["preset"]
