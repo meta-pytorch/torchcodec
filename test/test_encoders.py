@@ -919,7 +919,10 @@ class TestVideoEncoder:
             {"pixel_format": "yuv420p", "crf": None, "preset": None},
         ],
     )
-    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format, encode_params):
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    def test_video_encoder_against_ffmpeg_cli(
+        self, tmp_path, format, encode_params, method
+    ):
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
@@ -967,26 +970,45 @@ class TestVideoEncoder:
         # Output path must be last
         ffmpeg_cmd.append(ffmpeg_encoded_path)
         subprocess.run(ffmpeg_cmd, check=True)
+        ffmpeg_frames = self.decode(ffmpeg_encoded_path).data
 
         # Encode with our video encoder
-        encoder_output_path = str(tmp_path / f"encoder_output.{format}")
         encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
-        encoder.to_file(
-            dest=encoder_output_path,
-            pixel_format=pixel_format,
-            crf=crf,
-            preset=preset,
-        )
+        encoder_output_path = str(tmp_path / f"encoder_output.{format}")
 
-        ffmpeg_frames = self.decode(ffmpeg_encoded_path).data
-        encoder_frames = self.decode(encoder_output_path).data
+        if method == "to_file":
+            encoder.to_file(
+                dest=encoder_output_path,
+                pixel_format=pixel_format,
+                crf=crf,
+                preset=preset,
+            )
+            encoder_frames = self.decode(encoder_output_path).data
+        elif method == "to_tensor":
+            encoded_output = encoder.to_tensor(
+                format=format,
+                pixel_format=pixel_format,
+                crf=crf,
+                preset=preset,
+            )
+            encoder_frames = self.decode(encoded_output).data
+        elif method == "to_file_like":
+            file_like = io.BytesIO()
+            encoder.to_file_like(
+                file_like=file_like,
+                format=format,
+                pixel_format=pixel_format,
+                crf=crf,
+                preset=preset,
+            )
+            encoder_frames = self.decode(file_like.getvalue()).data
+        else:
+            raise ValueError(f"Unknown method: {method}")
 
         assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
 
-        # If FFmpeg selects a codec or pixel format that uses qscale (not crf),
-        # the VideoEncoder outputs *slightly* different frames.
-        # There may be additional subtle differences in the encoder.
-        percentage = 94 if ffmpeg_version == 6 or format == "avi" else 99
+        # MPEG codec used for avi format does not accept CRF
+        percentage = 94 if format == "avi" else 99
 
         # Check that PSNR between both encoded versions is high
         for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
@@ -995,6 +1017,19 @@ class TestVideoEncoder:
             assert_tensor_close_on_at_least(
                 ff_frame, enc_frame, percentage=percentage, atol=2
             )
+
+        # Check that video metadata is the same
+        if method == "to_file":
+            fields = ["duration", "duration_ts", "r_frame_rate", "nb_frames"]
+            ffmpeg_metadata = self._get_video_metadata(
+                ffmpeg_encoded_path,
+                fields=fields,
+            )
+            encoder_metadata = self._get_video_metadata(
+                encoder_output_path,
+                fields=fields,
+            )
+            assert ffmpeg_metadata == encoder_metadata
 
     def test_to_file_like_custom_file_object(self):
         """Test to_file_like with a custom file-like object that implements write and seek."""

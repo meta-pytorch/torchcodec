@@ -295,6 +295,14 @@ void SingleStreamDecoder::scanFileAndUpdateMetadataAndIndex() {
     streamMetadata.numFramesFromContent =
         streamInfos_[streamIndex].allFrames.size();
 
+    // This ensures that we are robust in handling cases where
+    // we are decoding in exact mode and numFrames is 0. The current metadata
+    // validation logic assumes that these values should not be None
+    if (streamMetadata.numFramesFromContent.value() == 0) {
+      streamMetadata.beginStreamPtsFromContent = 0;
+      streamMetadata.endStreamPtsFromContent = 0;
+    }
+
     if (streamMetadata.beginStreamPtsFromContent.has_value()) {
       streamMetadata.beginStreamPtsSecondsFromContent = ptsToSeconds(
           *streamMetadata.beginStreamPtsFromContent, avStream->time_base);
