@@ -15,7 +15,7 @@ bytes using the :class:`~torchcodec.encoders.VideoEncoder` class.
 
 # %%
 # First, we'll download a video and decode some frames to tensors.
-# These will be the input to the VideoEncoder. For more details on decoding,
+# These will be the input to the :class:`~torchcodec.encoders.VideoEncoder`. For more details on decoding,
 # see :ref:`sphx_glr_generated_examples_decoding_basic_example.py`.
 # Otherwise, skip ahead to :ref:`creating_encoder`.
 
@@ -35,7 +35,7 @@ def play_video(encoded_bytes):
 
 
 # Video source: https://www.pexels.com/video/adorable-cats-on-the-lawn-4977395/
-# License: CC0. Author: Altaf Shah.
+# Author: Altaf Shah.
 url = "https://videos.pexels.com/video-files/4977395/4977395-hd_1920_1080_24fps.mp4"
 
 response = requests.get(url, headers={"User-Agent": ""})
@@ -45,7 +45,7 @@ if response.status_code != 200:
 raw_video_bytes = response.content
 
 decoder = VideoDecoder(raw_video_bytes)
-frames = decoder[:60]  # Get first 60 frames
+frames = decoder.get_frames_in_range(0, 60).data  # Get first 60 frames
 # TODO: use float once other PR lands
 frame_rate = int(decoder.metadata.average_fps)
 
@@ -78,7 +78,7 @@ encoder = VideoEncoder(frames=frames, frame_rate=frame_rate)
 #
 # :class:`~torchcodec.encoders.VideoEncoder` supports encoding frames into a
 # file via the :meth:`~torchcodec.encoders.VideoEncoder.to_file` method, to
-# file-like objects via the :meth:`~torchcodec.encoders.VideoEncoder.to_filelike`
+# file-like objects via the :meth:`~torchcodec.encoders.VideoEncoder.to_file_like`
 # method, or to raw bytes via :meth:`~torchcodec.encoders.VideoEncoder.to_tensor`.
 # For now we will use :meth:`~torchcodec.encoders.VideoEncoder.to_tensor`, so we
 # can easily inspect and display the encoded video.
@@ -92,14 +92,24 @@ play_video(encoded_frames)
 # round-trip encode/decode process works as expected:
 
 decoder_verify = VideoDecoder(encoded_frames)
-decoded_frames = decoder_verify[:]
+decoded_frames = decoder_verify.get_frames_in_range(0, 60).data
 
 print(f"Re-decoded video: {decoded_frames.shape = }")
 print(f"Original frames: {frames.shape = }")
 
 # %%
+# .. _codec_selection:
+#
 # Codec Selection
 # ---------------
+#
+# By default, the codec used is selected automatically using the file extension provided
+# in the ``dest`` parameter for the :meth:`~torchcodec.encoders.VideoEncoder.to_file` method,
+# or using the ``format`` parameter for the
+# :meth:`~torchcodec.encoders.VideoEncoder.to_file_like` and
+# :meth:`~torchcodec.encoders.VideoEncoder.to_tensor` methods.
+#
+# - For example, when encoding to MP4 format, the default codec used is ``H.264``.
 #
 # The ``codec`` parameter specifies which video codec to use for encoding.
 # You can specify either a specific codec implementation (e.g., ``"libx264"``)
@@ -112,18 +122,21 @@ print(f"Original frames: {frames.shape = }")
 #
 # Let's encode the same frames using different codecs:
 
+import tempfile
+from pathlib import Path
+
 # H.264 encoding
-h264_output = "libx264_encoded.mp4"
+h264_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
 encoder.to_file(h264_output, codec="libx264")
 
 # H.265 encoding
-hevc_output = "hevc_encoded.mp4"
+hevc_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
 encoder.to_file(hevc_output, codec="hevc")
 
 # Now let's use ffprobe to verify the codec used in the output files
 import subprocess
 
-for output in [h264_output, hevc_output]:
+for output, name in [(h264_output, "h264_output"), (hevc_output, "hevc_output")]:
     result = subprocess.run(
         [
             "ffprobe",
@@ -140,9 +153,16 @@ for output in [h264_output, hevc_output]:
         capture_output=True,
         text=True,
     )
-    print(f"Codec used in {output}: {result.stdout.strip()}")
+    print(f"Codec used in {name}: {result.stdout.strip()}")
 
 # %%
+# For most cases, you can simply specify the format parameter and let the FFmpeg select the default codec.
+# However, specifying the codec parameter is useful to select a particular codec implementation
+# (``libx264`` vs ``libx265``) or to have more control over the encoding behavior.
+
+# %%
+# .. _pixel_format:
+#
 # Pixel Format
 # ------------
 #
@@ -169,6 +189,8 @@ yuv420_encoded_frames = encoder.to_tensor(
 play_video(yuv420_encoded_frames)
 
 # %%
+# .. _crf:
+#
 # CRF (Constant Rate Factor)
 # --------------------------
 #
@@ -197,6 +219,8 @@ play_video(low_quality_output)
 
 
 # %%
+# .. _preset:
+#
 # Preset
 # ------
 #
@@ -207,6 +231,7 @@ play_video(low_quality_output)
 # For example, with the commonly used H.264 codec, ``libx264`` presets include:
 #
 # - ``"ultrafast"`` (fastest), ``"fast"``, ``"medium"`` (default), ``"slow"``, ``"veryslow"`` (slowest, best compression).
+# - See additional details in the `H.264 Video Encoding Guide <https://trac.ffmpeg.org/wiki/Encode/H.264#a2.Chooseapresetandtune>`_.
 #
 # .. note::
 #
@@ -214,18 +239,19 @@ play_video(low_quality_output)
 #     to check available options for your selected codec.
 #
 
-import os
 # Fast encoding with a larger file size
-fast_output = "fast_encoded.mp4"
+fast_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
 encoder.to_file(fast_output, codec="libx264", preset="ultrafast")
-print(f"Size of fast encoded file: {os.path.getsize(fast_output)} bytes")
+print(f"Size of fast encoded file: {Path(fast_output).stat().st_size} bytes")
 
 # Slow encoding for a smaller file size
-slow_output = "slow_encoded.mp4"
+slow_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
 encoder.to_file(slow_output, codec="libx264", preset="veryslow")
-print(f"Size of slow encoded file: {os.path.getsize(slow_output)} bytes")
+print(f"Size of slow encoded file: {Path(slow_output).stat().st_size} bytes")
 
 # %%
+# .. _extra_options:
+#
 # Extra Options
 # -------------
 #
@@ -234,7 +260,6 @@ print(f"Size of slow encoded file: {os.path.getsize(slow_output)} bytes")
 # control of encoding settings beyond the common parameters.
 #
 # For example, some potential extra options for the commonly used H.264 codec, ``libx264`` include:
-# For example, with , ``libx264``:
 #
 # - ``"g"`` - GOP (Group of Pictures) size / keyframe interval
 # - ``"max_b_frames"`` - Maximum number of B-frames between I and P frames
@@ -248,7 +273,7 @@ print(f"Size of slow encoded file: {os.path.getsize(slow_output)} bytes")
 
 
 # Custom GOP size and tuning
-custom_output = "custom_encoded.mp4"
+custom_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
 encoder.to_file(
     custom_output,
     codec="libx264",
