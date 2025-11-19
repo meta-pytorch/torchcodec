@@ -44,7 +44,6 @@ from .utils import (
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
-    supports_approximate_mode,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
     TEST_SRC_2_720P_MPEG4,
@@ -116,11 +115,11 @@ class TestDecoder:
             Decoder(123)
 
         # stream index that does not exist
-        with pytest.raises(ValueError, match="No valid stream found"):
+        with pytest.raises(ValueError, match="40 is not a valid stream"):
             Decoder(NASA_VIDEO.path, stream_index=40)
 
         # stream index that does exist, but it's not audio or video
-        with pytest.raises(ValueError, match="No valid stream found"):
+        with pytest.raises(ValueError, match=r"not (a|an) (video|audio) stream"):
             Decoder(NASA_VIDEO.path, stream_index=2)
 
         # user mistakenly forgets to specify binary reading when creating a file
@@ -1465,8 +1464,6 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_get_frame_at(
         self, asset, contiguous_indices, seek_mode
     ):
-        if seek_mode == "approximate" and not supports_approximate_mode(asset):
-            pytest.skip("asset doesn't work with approximate mode")
 
         if in_fbcode() and asset is AV1_VIDEO:
             pytest.skip("AV1 CUDA not supported internally")
@@ -1513,8 +1510,6 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_get_frames_at(
         self, asset, contiguous_indices, seek_mode
     ):
-        if seek_mode == "approximate" and not supports_approximate_mode(asset):
-            pytest.skip("asset doesn't work with approximate mode")
         if in_fbcode() and asset is AV1_VIDEO:
             pytest.skip("AV1 CUDA not supported internally")
 
@@ -1558,8 +1553,6 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frame_played_at(self, asset, seek_mode):
-        if seek_mode == "approximate" and not supports_approximate_mode(asset):
-            pytest.skip("asset doesn't work with approximate mode")
         if in_fbcode() and asset is AV1_VIDEO:
             pytest.skip("AV1 CUDA not supported internally")
 
@@ -1600,8 +1593,6 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frames_played_at(self, asset, seek_mode):
-        if seek_mode == "approximate" and not supports_approximate_mode(asset):
-            pytest.skip("asset doesn't work with approximate mode")
         if in_fbcode() and asset is AV1_VIDEO:
             pytest.skip("AV1 CUDA not supported internally")
 
@@ -1643,8 +1634,6 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_backwards(self, asset, seek_mode):
-        if seek_mode == "approximate" and not supports_approximate_mode(asset):
-            pytest.skip("asset doesn't work with approximate mode")
         if in_fbcode() and asset is AV1_VIDEO:
             pytest.skip("AV1 CUDA not supported internally")
 

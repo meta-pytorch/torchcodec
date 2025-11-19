@@ -100,6 +100,26 @@ void SingleStreamDecoder::initializeDecoder() {
       "Failed to find stream info: ",
       getFFMPEGErrorStringFromErrorCode(status));
 
+  if (formatContext_->duration > 0) {
+    AVRational defaultTimeBase{1, AV_TIME_BASE};
+    containerMetadata_.durationSecondsFromHeader =
+        ptsToSeconds(formatContext_->duration, defaultTimeBase);
+  }
+
+  if (formatContext_->bit_rate > 0) {
+    containerMetadata_.bitRate = formatContext_->bit_rate;
+  }
+
+  int bestVideoStream = getBestStreamIndex(AVMEDIA_TYPE_VIDEO);
+  if (bestVideoStream >= 0) {
+    containerMetadata_.bestVideoStreamIndex = bestVideoStream;
+  }
+
+  int bestAudioStream = getBestStreamIndex(AVMEDIA_TYPE_AUDIO);
+  if (bestAudioStream >= 0) {
+    containerMetadata_.bestAudioStreamIndex = bestAudioStream;
+  }
+
   for (unsigned int i = 0; i < formatContext_->nb_streams; i++) {
     AVStream* avStream = formatContext_->streams[i];
     StreamMetadata streamMetadata;
@@ -110,8 +130,8 @@ void SingleStreamDecoder::initializeDecoder() {
             ", does not match AVStream's index, " +
             std::to_string(avStream->index) + ".");
     streamMetadata.streamIndex = i;
-    streamMetadata.mediaType = avStream->codecpar->codec_type;
     streamMetadata.codecName = avcodec_get_name(avStream->codecpar->codec_id);
+    streamMetadata.mediaType = avStream->codecpar->codec_type;
     streamMetadata.bitRate = avStream->codecpar->bit_rate;
 
     int64_t frameCount = avStream->nb_frames;
@@ -133,10 +153,18 @@ void SingleStreamDecoder::initializeDecoder() {
       if (fps > 0) {
         streamMetadata.averageFpsFromHeader = fps;
       }
+      streamMetadata.width = avStream->codecpar->width;
+      streamMetadata.height = avStream->codecpar->height;
+      streamMetadata.sampleAspectRatio =
+          avStream->codecpar->sample_aspect_ratio;
       containerMetadata_.numVideoStreams++;
     } else if (avStream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
       AVSampleFormat format =
           static_cast<AVSampleFormat>(avStream->codecpar->format);
+      streamMetadata.sampleRate =
+          static_cast<int64_t>(avStream->codecpar->sample_rate);
+      streamMetadata.numChannels =
+          static_cast<int64_t>(getNumChannels(avStream->codecpar));
 
       // If the AVSampleFormat is not recognized, we get back nullptr. We have
       // to make sure we don't initialize a std::string with nullptr. There's
@@ -149,27 +177,10 @@ void SingleStreamDecoder::initializeDecoder() {
       containerMetadata_.numAudioStreams++;
     }
 
+    streamMetadata.durationSecondsFromContainer =
+        containerMetadata_.durationSecondsFromHeader;
+
     containerMetadata_.allStreamMetadata.push_back(streamMetadata);
-  }
-
-  if (formatContext_->duration > 0) {
-    AVRational defaultTimeBase{1, AV_TIME_BASE};
-    containerMetadata_.durationSecondsFromHeader =
-        ptsToSeconds(formatContext_->duration, defaultTimeBase);
-  }
-
-  if (formatContext_->bit_rate > 0) {
-    containerMetadata_.bitRate = formatContext_->bit_rate;
-  }
-
-  int bestVideoStream = getBestStreamIndex(AVMEDIA_TYPE_VIDEO);
-  if (bestVideoStream >= 0) {
-    containerMetadata_.bestVideoStreamIndex = bestVideoStream;
-  }
-
-  int bestAudioStream = getBestStreamIndex(AVMEDIA_TYPE_AUDIO);
-  if (bestAudioStream >= 0) {
-    containerMetadata_.bestAudioStreamIndex = bestAudioStream;
   }
 
   if (seekMode_ == SeekMode::exact) {
@@ -287,6 +298,14 @@ void SingleStreamDecoder::scanFileAndUpdateMetadataAndIndex() {
 
     streamMetadata.numFramesFromContent =
         streamInfos_[streamIndex].allFrames.size();
+
+    // This ensures that we are robust in handling cases where
+    // we are decoding in exact mode and numFrames is 0. The current metadata
+    // validation logic assumes that these values should not be None
+    if (streamMetadata.numFramesFromContent.value() == 0) {
+      streamMetadata.beginStreamPtsFromContent = 0;
+      streamMetadata.endStreamPtsFromContent = 0;
+    }
 
     if (streamMetadata.beginStreamPtsFromContent.has_value()) {
       streamMetadata.beginStreamPtsSecondsFromContent = ptsToSeconds(
@@ -516,11 +535,6 @@ void SingleStreamDecoder::addVideoStream(
   auto& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.videoStreamOptions = videoStreamOptions;
 
-  streamMetadata.width = streamInfo.codecContext->width;
-  streamMetadata.height = streamInfo.codecContext->height;
-  streamMetadata.sampleAspectRatio =
-      streamInfo.codecContext->sample_aspect_ratio;
-
   if (seekMode_ == SeekMode::custom_frame_mappings) {
     TORCH_CHECK(
         customFrameMappings.has_value(),
@@ -565,13 +579,6 @@ void SingleStreamDecoder::addAudioStream(
 
   auto& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.audioStreamOptions = audioStreamOptions;
-
-  auto& streamMetadata =
-      containerMetadata_.allStreamMetadata[activeStreamIndex_];
-  streamMetadata.sampleRate =
-      static_cast<int64_t>(streamInfo.codecContext->sample_rate);
-  streamMetadata.numChannels =
-      static_cast<int64_t>(getNumChannels(streamInfo.codecContext));
 
   // FFmpeg docs say that the decoder will try to decode natively in this
   // format, if it can. Docs don't say what the decoder does when it doesn't

@@ -37,11 +37,11 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_encode_audio_to_file_like(Tensor samples, int sample_rate, str format, int file_like_context, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
   m.def(
-      "encode_video_to_file(Tensor frames, int frame_rate, str filename, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None) -> ()");
+      "encode_video_to_file(Tensor frames, int frame_rate, str filename, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
   m.def(
-      "encode_video_to_tensor(Tensor frames, int frame_rate, str format, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None) -> Tensor");
+      "encode_video_to_tensor(Tensor frames, int frame_rate, str format, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> Tensor");
   m.def(
-      "_encode_video_to_file_like(Tensor frames, int frame_rate, str format, int file_like_context, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None) -> ()");
+      "_encode_video_to_file_like(Tensor frames, int frame_rate, str format, int file_like_context, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
   m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
   m.def(
@@ -158,6 +158,16 @@ std::string quoteValue(const std::string& value) {
   return "\"" + value + "\"";
 }
 
+// Helper function to unflatten extra_options, alternating keys and values
+std::map<std::string, std::string> unflattenExtraOptions(
+    const std::vector<std::string>& opts) {
+  std::map<std::string, std::string> optionsMap;
+  for (size_t i = 0; i < opts.size(); i += 2) {
+    optionsMap[opts[i]] = opts[i + 1];
+  }
+  return optionsMap;
+}
+
 std::string mapToJson(const std::map<std::string, std::string>& metadataMap) {
   std::stringstream ss;
   ss << "{\n";
@@ -185,6 +195,34 @@ SeekMode seekModeFromString(std::string_view seekMode) {
     return SeekMode::custom_frame_mappings;
   } else {
     TORCH_CHECK(false, "Invalid seek mode: " + std::string(seekMode));
+  }
+}
+
+void writeFallbackBasedMetadata(
+    std::map<std::string, std::string>& map,
+    const StreamMetadata& streamMetadata,
+    SeekMode seekMode) {
+  auto durationSeconds = streamMetadata.getDurationSeconds(seekMode);
+  if (durationSeconds.has_value()) {
+    map["durationSeconds"] = std::to_string(durationSeconds.value());
+  }
+
+  auto numFrames = streamMetadata.getNumFrames(seekMode);
+  if (numFrames.has_value()) {
+    map["numFrames"] = std::to_string(numFrames.value());
+  }
+
+  double beginStreamSeconds = streamMetadata.getBeginStreamSeconds(seekMode);
+  map["beginStreamSeconds"] = std::to_string(beginStreamSeconds);
+
+  auto endStreamSeconds = streamMetadata.getEndStreamSeconds(seekMode);
+  if (endStreamSeconds.has_value()) {
+    map["endStreamSeconds"] = std::to_string(endStreamSeconds.value());
+  }
+
+  auto averageFps = streamMetadata.getAverageFps(seekMode);
+  if (averageFps.has_value()) {
+    map["averageFps"] = std::to_string(averageFps.value());
   }
 }
 
@@ -603,15 +641,22 @@ void encode_video_to_file(
     const at::Tensor& frames,
     int64_t frame_rate,
     std::string_view file_name,
-    std::optional<std::string> codec = std::nullopt,
+    std::optional<std::string_view> codec = std::nullopt,
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
-    std::optional<std::string_view> preset = std::nullopt) {
+    std::optional<std::string_view> preset = std::nullopt,
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.codec = codec;
-  videoStreamOptions.pixelFormat = pixel_format;
+  videoStreamOptions.codec = std::move(codec);
+  videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
+
+  if (extra_options.has_value()) {
+    videoStreamOptions.extraOptions =
+        unflattenExtraOptions(extra_options.value());
+  }
+
   VideoEncoder(
       frames,
       validateInt64ToInt(frame_rate, "frame_rate"),
@@ -624,16 +669,23 @@ at::Tensor encode_video_to_tensor(
     const at::Tensor& frames,
     int64_t frame_rate,
     std::string_view format,
-    std::optional<std::string> codec = std::nullopt,
+    std::optional<std::string_view> codec = std::nullopt,
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
-    std::optional<std::string_view> preset = std::nullopt) {
+    std::optional<std::string_view> preset = std::nullopt,
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
   VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.codec = codec;
-  videoStreamOptions.pixelFormat = pixel_format;
+  videoStreamOptions.codec = std::move(codec);
+  videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
+
+  if (extra_options.has_value()) {
+    videoStreamOptions.extraOptions =
+        unflattenExtraOptions(extra_options.value());
+  }
+
   return VideoEncoder(
              frames,
              validateInt64ToInt(frame_rate, "frame_rate"),
@@ -648,10 +700,11 @@ void _encode_video_to_file_like(
     int64_t frame_rate,
     std::string_view format,
     int64_t file_like_context,
-    std::optional<std::string> codec = std::nullopt,
+    std::optional<std::string_view> codec = std::nullopt,
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
-    std::optional<std::string_view> preset = std::nullopt) {
+    std::optional<std::string_view> preset = std::nullopt,
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   auto fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
   TORCH_CHECK(
@@ -659,10 +712,15 @@ void _encode_video_to_file_like(
   std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
 
   VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.codec = codec;
-  videoStreamOptions.pixelFormat = pixel_format;
+  videoStreamOptions.codec = std::move(codec);
+  videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
+
+  if (extra_options.has_value()) {
+    videoStreamOptions.extraOptions =
+        unflattenExtraOptions(extra_options.value());
+  }
 
   VideoEncoder encoder(
       frames,
@@ -887,30 +945,28 @@ std::string get_stream_json_metadata(
   // In approximate mode: content-based metadata does not exist for any stream.
   // In custom_frame_mappings: content-based metadata exists only for the active
   // stream.
+  //
   // Our fallback logic assumes content-based metadata is available.
   // It is available for decoding on the active stream, but would break
   // when getting metadata from non-active streams.
   if ((seekMode != SeekMode::custom_frame_mappings) ||
       (seekMode == SeekMode::custom_frame_mappings &&
        stream_index == activeStreamIndex)) {
-    if (streamMetadata.getDurationSeconds(seekMode).has_value()) {
-      map["durationSeconds"] =
-          std::to_string(streamMetadata.getDurationSeconds(seekMode).value());
-    }
-    if (streamMetadata.getNumFrames(seekMode).has_value()) {
-      map["numFrames"] =
-          std::to_string(streamMetadata.getNumFrames(seekMode).value());
-    }
-    map["beginStreamSeconds"] =
-        std::to_string(streamMetadata.getBeginStreamSeconds(seekMode));
-    if (streamMetadata.getEndStreamSeconds(seekMode).has_value()) {
-      map["endStreamSeconds"] =
-          std::to_string(streamMetadata.getEndStreamSeconds(seekMode).value());
-    }
-    if (streamMetadata.getAverageFps(seekMode).has_value()) {
-      map["averageFps"] =
-          std::to_string(streamMetadata.getAverageFps(seekMode).value());
-    }
+    writeFallbackBasedMetadata(map, streamMetadata, seekMode);
+  } else if (seekMode == SeekMode::custom_frame_mappings) {
+    // If this is not the active stream, then we don't have content-based
+    // metadata for custom frame mappings. In that case, we want the same
+    // behavior as we would get with approximate mode. Encoding this behavior in
+    // the fallback logic itself is tricky and not worth it for this corner
+    // case. So we hardcode in approximate mode.
+    //
+    // TODO: This hacky behavior is only necessary because the custom frame
+    //       mapping is supplied in SingleStreamDecoder::addVideoStream() rather
+    //       than in the constructor. And it's supplied to addVideoStream() and
+    //       not the constructor because we need to know the stream index. If we
+    //       can encode the relevant stream indices into custom frame mappings
+    //       itself, then we can put it in the constructor.
+    writeFallbackBasedMetadata(map, streamMetadata, SeekMode::approximate);
   }
 
   return mapToJson(map);

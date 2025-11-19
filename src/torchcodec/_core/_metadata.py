@@ -44,7 +44,8 @@ class StreamMetadata:
     from the actual frames if a :term:`scan` was performed. Otherwise we
     fall back to ``duration_seconds_from_header``. If that value is also None,
     we instead calculate the duration from ``num_frames_from_header`` and
-    ``average_fps_from_header``.
+    ``average_fps_from_header``. If all of those are unavailable, we fall back
+    to the container-level ``duration_seconds_from_header``.
     """
     begin_stream_seconds: Optional[float]
     """Beginning of the stream, in seconds (float). Conceptually, this

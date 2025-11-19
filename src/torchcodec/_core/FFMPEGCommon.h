@@ -180,6 +180,7 @@ const AVPixelFormat* getSupportedPixelFormats(const AVCodec& avCodec);
 
 int getNumChannels(const UniqueAVFrame& avFrame);
 int getNumChannels(const SharedAVCodecContext& avCodecContext);
+int getNumChannels(const AVCodecParameters* codecpar);
 
 void setDefaultChannelLayout(
     UniqueAVCodecContext& avCodecContext,
