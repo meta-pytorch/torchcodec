@@ -198,6 +198,34 @@ SeekMode seekModeFromString(std::string_view seekMode) {
   }
 }
 
+void writeFallbackBasedMetadata(
+    std::map<std::string, std::string>& map,
+    const StreamMetadata& streamMetadata,
+    SeekMode seekMode) {
+  auto durationSeconds = streamMetadata.getDurationSeconds(seekMode);
+  if (durationSeconds.has_value()) {
+    map["durationSeconds"] = std::to_string(durationSeconds.value());
+  }
+
+  auto numFrames = streamMetadata.getNumFrames(seekMode);
+  if (numFrames.has_value()) {
+    map["numFrames"] = std::to_string(numFrames.value());
+  }
+
+  double beginStreamSeconds = streamMetadata.getBeginStreamSeconds(seekMode);
+  map["beginStreamSeconds"] = std::to_string(beginStreamSeconds);
+
+  auto endStreamSeconds = streamMetadata.getEndStreamSeconds(seekMode);
+  if (endStreamSeconds.has_value()) {
+    map["endStreamSeconds"] = std::to_string(endStreamSeconds.value());
+  }
+
+  auto averageFps = streamMetadata.getAverageFps(seekMode);
+  if (averageFps.has_value()) {
+    map["averageFps"] = std::to_string(averageFps.value());
+  }
+}
+
 int checkedToPositiveInt(const std::string& str) {
   int ret = 0;
   try {
@@ -917,30 +945,28 @@ std::string get_stream_json_metadata(
   // In approximate mode: content-based metadata does not exist for any stream.
   // In custom_frame_mappings: content-based metadata exists only for the active
   // stream.
+  //
   // Our fallback logic assumes content-based metadata is available.
   // It is available for decoding on the active stream, but would break
   // when getting metadata from non-active streams.
   if ((seekMode != SeekMode::custom_frame_mappings) ||
       (seekMode == SeekMode::custom_frame_mappings &&
        stream_index == activeStreamIndex)) {
-    if (streamMetadata.getDurationSeconds(seekMode).has_value()) {
-      map["durationSeconds"] =
-          std::to_string(streamMetadata.getDurationSeconds(seekMode).value());
-    }
-    if (streamMetadata.getNumFrames(seekMode).has_value()) {
-      map["numFrames"] =
-          std::to_string(streamMetadata.getNumFrames(seekMode).value());
-    }
-    map["beginStreamSeconds"] =
-        std::to_string(streamMetadata.getBeginStreamSeconds(seekMode));
-    if (streamMetadata.getEndStreamSeconds(seekMode).has_value()) {
-      map["endStreamSeconds"] =
-          std::to_string(streamMetadata.getEndStreamSeconds(seekMode).value());
-    }
-    if (streamMetadata.getAverageFps(seekMode).has_value()) {
-      map["averageFps"] =
-          std::to_string(streamMetadata.getAverageFps(seekMode).value());
-    }
+    writeFallbackBasedMetadata(map, streamMetadata, seekMode);
+  } else if (seekMode == SeekMode::custom_frame_mappings) {
+    // If this is not the active stream, then we don't have content-based
+    // metadata for custom frame mappings. In that case, we want the same
+    // behavior as we would get with approximate mode. Encoding this behavior in
+    // the fallback logic itself is tricky and not worth it for this corner
+    // case. So we hardcode in approximate mode.
+    //
+    // TODO: This hacky behavior is only necessary because the custom frame
+    //       mapping is supplied in SingleStreamDecoder::addVideoStream() rather
+    //       than in the constructor. And it's supplied to addVideoStream() and
+    //       not the constructor because we need to know the stream index. If we
+    //       can encode the relevant stream indices into custom frame mappings
+    //       itself, then we can put it in the constructor.
+    writeFallbackBasedMetadata(map, streamMetadata, SeekMode::approximate);
   }
 
   return mapToJson(map);
