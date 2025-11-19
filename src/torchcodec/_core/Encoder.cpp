@@ -788,9 +788,8 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_->height = outHeight_;
   avCodecContext_->pix_fmt = outPixelFormat_;
   // TODO-VideoEncoder: Add and utilize output frame_rate option
-  AVRational frameRate = av_d2q(inFrameRate_, INT_MAX);
-  avCodecContext_->time_base = av_inv_q(frameRate);
-  avCodecContext_->framerate = frameRate;
+  avCodecContext_->framerate = av_d2q(inFrameRate_, INT_MAX);
+  avCodecContext_->time_base = av_inv_q(avCodecContext_->framerate);
 
   // Set flag for containers that require extradata to be in the codec context
   if (avFormatContext_->oformat->flags & AVFMT_GLOBALHEADER) {

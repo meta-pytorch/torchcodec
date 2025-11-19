@@ -572,6 +572,7 @@ class TestVideoEncoder:
     def decode(self, source=None) -> torch.Tensor:
         return VideoDecoder(source).get_frames_in_range(start=0, stop=60).data
 
+    # TODO: add average_fps field to TestVideo asset
     def decode_and_get_frame_rate(self, source=None):
         decoder = VideoDecoder(source)
         frames = decoder.get_frames_in_range(start=0, stop=60).data
@@ -603,6 +604,27 @@ class TestVideoEncoder:
                 key, value = line.split("=", 1)
                 metadata[key] = value
         return metadata
+
+    def _get_frames_info(self, file_path):
+        """Helper function to get frame info (pts, dts, etc.) using ffprobe."""
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "frame=pts,pkt_pts,dts,pkt_duration,duration",
+                "-of",
+                "json",
+                str(file_path),
+            ],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        return json.loads(result.stdout)["frames"]
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_bad_input_parameterized(self, tmp_path, method):
@@ -925,8 +947,9 @@ class TestVideoEncoder:
         ],
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    @pytest.mark.parametrize("frame_rate", [30, 29.97])
     def test_video_encoder_against_ffmpeg_cli(
-        self, tmp_path, format, encode_params, method
+        self, tmp_path, format, encode_params, method, frame_rate
     ):
         ffmpeg_version = get_ffmpeg_major_version()
         if format == "webm" and (
@@ -941,7 +964,7 @@ class TestVideoEncoder:
         if format in ("avi", "flv") and pixel_format == "yuv444p":
             pytest.skip(f"Default codec for {format} does not support {pixel_format}")
 
-        source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
+        source_frames = self.decode(TEST_SRC_2_720P.path)
 
         # Encode with FFmpeg CLI
         temp_raw_path = str(tmp_path / "temp_input.raw")
@@ -1024,16 +1047,30 @@ class TestVideoEncoder:
 
         # Check that video metadata is the same
         if method == "to_file":
-            fields = ["duration", "duration_ts", "r_frame_rate", "nb_frames"]
-            ffmpeg_metadata = self._get_video_metadata(
-                ffmpeg_encoded_path,
-                fields=fields,
-            )
-            encoder_metadata = self._get_video_metadata(
-                encoder_output_path,
-                fields=fields,
-            )
-            assert ffmpeg_metadata == encoder_metadata
+            # mkv container format handles frame_rate differently, so we skip it here
+            if format != "mkv":
+                fields = ["duration", "duration_ts", "r_frame_rate", "nb_frames"]
+                ffmpeg_metadata = self._get_video_metadata(
+                    ffmpeg_encoded_path,
+                    fields=fields,
+                )
+                encoder_metadata = self._get_video_metadata(
+                    encoder_output_path,
+                    fields=fields,
+                )
+                assert ffmpeg_metadata == encoder_metadata
+
+            # Check that frame timestamps and duration are the same
+            ffmpeg_frames_info = self._get_frames_info(ffmpeg_encoded_path)
+            encoder_frames_info = self._get_frames_info(encoder_output_path)
+
+            assert len(ffmpeg_frames_info) == len(encoder_frames_info)
+            for ffmpeg_frame, encoder_frame in zip(
+                ffmpeg_frames_info, encoder_frames_info
+            ):
+                for key in ffmpeg_frame.keys():
+                    assert key in encoder_frame
+                    assert ffmpeg_frame[key] == encoder_frame[key]
 
     def test_to_file_like_custom_file_object(self):
         """Test to_file_like with a custom file-like object that implements write and seek."""
@@ -1214,20 +1251,3 @@ class TestVideoEncoder:
         assert metadata["profile"].lower() == expected_profile
         assert metadata["color_space"] == colorspace
         assert metadata["color_range"] == color_range
-
-    @pytest.mark.parametrize("frame_rate", [29.97, 59.94, 5.001])
-    def test_fractional_frame_rate(self, tmp_path, frame_rate):
-        source_frames = torch.zeros((10, 3, 64, 64), dtype=torch.uint8)
-        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
-        output_path = str(tmp_path / "output.mp4")
-        encoder.to_file(dest=output_path)
-        # Assert the encoded frame rate via file metadata
-        metadata = self._get_video_metadata(output_path, fields=["r_frame_rate"])
-        num, den = metadata["r_frame_rate"].split("/")
-        encoded_frame_rate = int(num) / int(den)
-        assert encoded_frame_rate == pytest.approx(frame_rate, abs=1e-3)
-        # Assert the decoded frame rate matches the input frame rate
-        _decoded_frames, decoded_frame_rate = self.decode_and_get_frame_rate(
-            output_path
-        )
-        assert decoded_frame_rate == pytest.approx(frame_rate, abs=1e-3)
