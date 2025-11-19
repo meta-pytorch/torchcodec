@@ -1047,18 +1047,16 @@ class TestVideoEncoder:
 
         # Check that video metadata is the same
         if method == "to_file":
-            # mkv container format handles frame_rate differently, so we skip it here
-            if format != "mkv":
-                fields = ["duration", "duration_ts", "r_frame_rate", "nb_frames"]
-                ffmpeg_metadata = self._get_video_metadata(
-                    ffmpeg_encoded_path,
-                    fields=fields,
-                )
-                encoder_metadata = self._get_video_metadata(
-                    encoder_output_path,
-                    fields=fields,
-                )
-                assert ffmpeg_metadata == encoder_metadata
+            fields = ["duration", "duration_ts", "r_frame_rate", "nb_frames"]
+            ffmpeg_metadata = self._get_video_metadata(
+                ffmpeg_encoded_path,
+                fields=fields,
+            )
+            encoder_metadata = self._get_video_metadata(
+                encoder_output_path,
+                fields=fields,
+            )
+            assert ffmpeg_metadata == encoder_metadata
 
             # Check that frame timestamps and duration are the same
             ffmpeg_frames_info = self._get_frames_info(ffmpeg_encoded_path)

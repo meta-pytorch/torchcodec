@@ -833,6 +833,10 @@ void VideoEncoder::initializeEncoder(
 
   // Set the stream time base to encode correct frame timestamps
   avStream_->time_base = avCodecContext_->time_base;
+  // Set the stream frame rate to store correct frame durations for some
+  // containers (webm, mkv)
+  avStream_->r_frame_rate = avCodecContext_->framerate;
+
   status = avcodec_parameters_from_context(
       avStream_->codecpar, avCodecContext_.get());
   TORCH_CHECK(
