@@ -613,14 +613,14 @@ void encode_video_to_file(
     const at::Tensor& frames,
     int64_t frame_rate,
     std::string_view file_name,
-    std::optional<std::string> codec = std::nullopt,
+    std::optional<std::string_view> codec = std::nullopt,
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
     std::optional<std::string_view> preset = std::nullopt,
     std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.codec = codec;
-  videoStreamOptions.pixelFormat = pixel_format;
+  videoStreamOptions.codec = std::move(codec);
+  videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
 
@@ -641,15 +641,15 @@ at::Tensor encode_video_to_tensor(
     const at::Tensor& frames,
     int64_t frame_rate,
     std::string_view format,
-    std::optional<std::string> codec = std::nullopt,
+    std::optional<std::string_view> codec = std::nullopt,
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
     std::optional<std::string_view> preset = std::nullopt,
     std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
   VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.codec = codec;
-  videoStreamOptions.pixelFormat = pixel_format;
+  videoStreamOptions.codec = std::move(codec);
+  videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
 
@@ -672,7 +672,7 @@ void _encode_video_to_file_like(
     int64_t frame_rate,
     std::string_view format,
     int64_t file_like_context,
-    std::optional<std::string> codec = std::nullopt,
+    std::optional<std::string_view> codec = std::nullopt,
     std::optional<std::string_view> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
     std::optional<std::string_view> preset = std::nullopt,
@@ -684,8 +684,8 @@ void _encode_video_to_file_like(
   std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
 
   VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.codec = codec;
-  videoStreamOptions.pixelFormat = pixel_format;
+  videoStreamOptions.codec = std::move(codec);
+  videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
   videoStreamOptions.preset = preset;
 
