@@ -15,7 +15,7 @@ class VideoEncoder:
             tensor of shape ``(N, C, H, W)`` where N is the number of frames,
             C is 3 channels (RGB), H is height, and W is width.
             Values must be uint8 in the range ``[0, 255]``.
-        frame_rate (int): The frame rate of the **input** ``frames``. Also defines the encoded **output** frame rate.
+        frame_rate (float): The frame rate of the **input** ``frames``. Also defines the encoded **output** frame rate.
         device (str or torch.device, optional): The device to use for encoding. Default: "cpu".
             If you pass a CUDA device, frames will be encoded on GPU.
             Note: The "beta" CUDA backend is not supported for encoding.
@@ -25,7 +25,7 @@ class VideoEncoder:
         self,
         frames: Tensor,
         *,
-        frame_rate: int,
+        frame_rate: float,
         device: Optional[Union[str, torch_device]] = "cpu",
     ):
         torch._C._log_api_usage_once("torchcodec.encoders.VideoEncoder")

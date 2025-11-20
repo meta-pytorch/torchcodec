@@ -144,13 +144,13 @@ class VideoEncoder {
 
   VideoEncoder(
       const torch::Tensor& frames,
-      int frameRate,
+      double frameRate,
       std::string_view fileName,
       const VideoStreamOptions& videoStreamOptions);
 
   VideoEncoder(
       const torch::Tensor& frames,
-      int frameRate,
+      double frameRate,
       std::string_view formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder,
       const VideoStreamOptions& videoStreamOptions);
@@ -170,7 +170,7 @@ class VideoEncoder {
   UniqueSwsContext swsContext_;
 
   const torch::Tensor frames_;
-  int inFrameRate_;
+  double inFrameRate_;
 
   int inWidth_ = -1;
   int inHeight_ = -1;
