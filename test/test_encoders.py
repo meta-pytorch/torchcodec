@@ -603,9 +603,10 @@ class TestVideoEncoder:
             if "=" in line:
                 key, value = line.split("=", 1)
                 metadata[key] = value
+        assert all(field in metadata for field in fields)
         return metadata
 
-    def _get_frames_info(self, file_path):
+    def _get_frames_info(self, file_path, fields):
         """Helper function to get frame info (pts, dts, etc.) using ffprobe."""
         result = subprocess.run(
             [
@@ -615,7 +616,7 @@ class TestVideoEncoder:
                 "-select_streams",
                 "v:0",
                 "-show_entries",
-                "frame=pts,pkt_pts,dts,pkt_duration,duration",
+                f"frame={','.join(fields)}",
                 "-of",
                 "json",
                 str(file_path),
@@ -624,7 +625,9 @@ class TestVideoEncoder:
             check=True,
             text=True,
         )
-        return json.loads(result.stdout)["frames"]
+        frames = json.loads(result.stdout)["frames"]
+        assert all(field in frame for field in fields for frame in frames)
+        return frames
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_bad_input_parameterized(self, tmp_path, method):
@@ -1047,7 +1050,13 @@ class TestVideoEncoder:
 
         # Check that video metadata is the same
         if method == "to_file":
-            fields = ["duration", "duration_ts", "r_frame_rate", "nb_frames"]
+            fields = [
+                "duration",
+                "duration_ts",
+                "r_frame_rate",
+                "time_base",
+                "nb_frames",
+            ]
             ffmpeg_metadata = self._get_video_metadata(
                 ffmpeg_encoded_path,
                 fields=fields,
@@ -1059,16 +1068,16 @@ class TestVideoEncoder:
             assert ffmpeg_metadata == encoder_metadata
 
             # Check that frame timestamps and duration are the same
-            ffmpeg_frames_info = self._get_frames_info(ffmpeg_encoded_path)
-            encoder_frames_info = self._get_frames_info(encoder_output_path)
-
-            assert len(ffmpeg_frames_info) == len(encoder_frames_info)
-            for ffmpeg_frame, encoder_frame in zip(
-                ffmpeg_frames_info, encoder_frames_info
-            ):
-                for key in ffmpeg_frame.keys():
-                    assert key in encoder_frame
-                    assert ffmpeg_frame[key] == encoder_frame[key]
+            fields = ("pts", "pts_time")
+            if format != "flv":
+                fields += ("duration", "duration_time")
+            ffmpeg_frames_info = self._get_frames_info(
+                ffmpeg_encoded_path, fields=fields
+            )
+            encoder_frames_info = self._get_frames_info(
+                encoder_output_path, fields=fields
+            )
+            assert ffmpeg_frames_info == encoder_frames_info
 
     def test_to_file_like_custom_file_object(self):
         """Test to_file_like with a custom file-like object that implements write and seek."""
