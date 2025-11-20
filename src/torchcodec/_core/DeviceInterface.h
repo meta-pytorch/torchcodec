@@ -97,6 +97,14 @@ class DeviceInterface {
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt) = 0;
 
+  // Convert tensor to AVFrame, implemented per device interface.
+  // This is similar to convertAVFrameToFrameOutput for encoding
+  virtual UniqueAVFrame convertTensorToAVFrame(
+      const torch::Tensor& tensor,
+      AVPixelFormat targetFormat,
+      int frameIndex,
+      AVCodecContext* codecContext) = 0;
+
   // ------------------------------------------
   // Extension points for custom decoding paths
   // ------------------------------------------

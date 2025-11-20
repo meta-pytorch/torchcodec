@@ -10,8 +10,6 @@ from pathlib import Path
 import pytest
 import torch
 from torchcodec.decoders import AudioDecoder, VideoDecoder
-
-from torchcodec.decoders._video_decoder import VideoDecoder
 from torchcodec.encoders import AudioEncoder, VideoEncoder
 
 from .utils import (
@@ -766,72 +764,6 @@ class TestVideoEncoder:
             getattr(encoder, method)(**valid_params, extra_options=extra_options)
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-        @pytest.mark.parametrize(
-        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
-    )
-    def test_pixel_format_errors(self, method, tmp_path):
-        frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
-        encoder = VideoEncoder(frames, frame_rate=30)
-
-        if method == "to_file":
-            valid_params = dict(dest=str(tmp_path / "output.mp4"))
-        elif method == "to_tensor":
-            valid_params = dict(format="mp4")
-        elif method == "to_file_like":
-            valid_params = dict(file_like=io.BytesIO(), format="mp4")
-
-        with pytest.raises(
-            RuntimeError,
-            match=r"Unknown pixel format: invalid_pix_fmt[\s\S]*Supported pixel formats.*yuv420p",
-        ):
-            getattr(encoder, method)(**valid_params, pixel_format="invalid_pix_fmt")
-
-        with pytest.raises(
-            RuntimeError,
-            match=r"Specified pixel format rgb24 is not supported[\s\S]*Supported pixel formats.*yuv420p",
-        ):
-            getattr(encoder, method)(**valid_params, pixel_format="rgb24")
-
-    @pytest.mark.parametrize(
-        "extra_options,error",
-        [
-            ({"qp": -10}, "qp=-10 is out of valid range"),
-            (
-                {"qp": ""},
-                "Option qp expects a numeric value but got",
-            ),
-            (
-                {"direct-pred": "a"},
-                "Option direct-pred expects a numeric value but got 'a'",
-            ),
-            ({"tune": "not_a_real_tune"}, "avcodec_open2 failed: Invalid argument"),
-            (
-                {"tune": 10},
-                "avcodec_open2 failed: Invalid argument",
-            ),
-        ],
-    )
-    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_extra_options_errors(self, method, tmp_path, extra_options, error):
-        frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
-        encoder = VideoEncoder(frames, frame_rate=30)
-
-        if method == "to_file":
-            valid_params = dict(dest=str(tmp_path / "output.mp4"))
-        elif method == "to_tensor":
-            valid_params = dict(format="mp4")
-        elif method == "to_file_like":
-            valid_params = dict(file_like=io.BytesIO(), format="mp4")
-        else:
-            raise ValueError(f"Unknown method: {method}")
-
-        with pytest.raises(
-            RuntimeError,
-            match=error,
-        ):
-            getattr(encoder, method)(**valid_params, extra_options=extra_options)
-
-    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     @pytest.mark.parametrize(
         "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
     )
@@ -862,14 +794,14 @@ class TestVideoEncoder:
             common_params = dict(crf=0, pixel_format="yuv444p")
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
-                VideoEncoder(frames, frame_rate=30, device=device).to_file(dest=dest, **common_params)
+                VideoEncoder(frames, frame_rate=30, device=device).to_file(
+                    dest=dest, **common_params
+                )
                 with open(dest, "rb") as f:
                     return torch.frombuffer(f.read(), dtype=torch.uint8).clone()
             elif method == "to_tensor":
                 return VideoEncoder(frames, frame_rate=30, device=device).to_tensor(
-                    
-                    format="mp4"
-                , **common_params
+                    format="mp4", **common_params
                 )
             elif method == "to_file_like":
                 file_like = io.BytesIO()
@@ -1282,3 +1214,100 @@ class TestVideoEncoder:
         assert metadata["profile"].lower() == expected_profile
         assert metadata["color_space"] == colorspace
         assert metadata["color_range"] == color_range
+
+    @pytest.mark.needs_cuda
+    @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
+    @pytest.mark.parametrize("preset", ("slow", "fast"))
+    @pytest.mark.parametrize("pixel_format", ("nv12", "yuv420p"))
+    @pytest.mark.parametrize("format", ("mov", "mp4", "avi", "mkv", "flv"))
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    def test_nvenc_against_ffmpeg_cli(
+        self, tmp_path, preset, pixel_format, format, method
+    ):
+        # Encode with FFmpeg CLI using h264_nvenc
+        device = "cuda"
+        source_frames = self.decode(TEST_SRC_2_720P.path).data.to(device)
+
+        temp_raw_path = str(tmp_path / "temp_input.raw")
+        with open(temp_raw_path, "wb") as f:
+            f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
+
+        ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_nvenc_output.{format}")
+        frame_rate = 30
+
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",  # Input format
+            "-s",
+            f"{source_frames.shape[3]}x{source_frames.shape[2]}",
+            "-r",
+            str(frame_rate),
+            "-i",
+            temp_raw_path,
+            "-c:v",
+            "h264_nvenc",  # Use NVENC hardware encoder
+        ]
+
+        ffmpeg_cmd.extend(["-pix_fmt", pixel_format])  # Output format
+        ffmpeg_cmd.extend(["-preset", preset])  # Use parametrized preset
+        ffmpeg_cmd.extend(["-qp", "0"])  # Use lossless qp for consistency
+        ffmpeg_cmd.extend([ffmpeg_encoded_path])
+
+        # Will this prevent CI from treating test as failed if NVENC is not available?
+        try:
+            subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+        except subprocess.CalledProcessError as e:
+            if b"No NVENC capable devices found" in e.stderr:
+                pytest.skip("NVENC not available on this system")
+            else:
+                raise
+
+        encoder = VideoEncoder(
+            frames=source_frames, frame_rate=frame_rate, device=device
+        )
+
+        encoder_extra_options = {"qp": 0}
+        if method == "to_file":
+            encoder_output_path = str(tmp_path / f"nvenc_output.{format}")
+            encoder.to_file(
+                dest=encoder_output_path,
+                codec="h264_nvenc",
+                pixel_format=pixel_format,
+                preset=preset,
+                extra_options=encoder_extra_options,
+            )
+            encoder_output = encoder_output_path
+        elif method == "to_tensor":
+            encoder_output = encoder.to_tensor(
+                format=format,
+                codec="h264_nvenc",
+                pixel_format=pixel_format,
+                preset=preset,
+                extra_options=encoder_extra_options,
+            )
+        elif method == "to_file_like":
+            file_like = io.BytesIO()
+            encoder.to_file_like(
+                file_like=file_like,
+                format=format,
+                codec="h264_nvenc",
+                pixel_format=pixel_format,
+                preset=preset,
+                extra_options=encoder_extra_options,
+            )
+            encoder_output = file_like.getvalue()
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        ffmpeg_frames = self.decode(ffmpeg_encoded_path).data
+        encoder_frames = self.decode(encoder_output).data
+
+        assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
+        for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
+            assert psnr(ff_frame, enc_frame) > 25
+            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=99, atol=10)
+            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=95, atol=2)

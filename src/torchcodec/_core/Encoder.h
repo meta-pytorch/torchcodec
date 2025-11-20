@@ -161,9 +161,6 @@ class VideoEncoder {
 
  private:
   void initializeEncoder(const VideoStreamOptions& videoStreamOptions);
-  UniqueAVFrame convertTensorToAVFrame(
-      const torch::Tensor& frame,
-      int frameIndex);
   void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
   void flushBuffers();
 

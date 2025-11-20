@@ -1032,6 +1032,9 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("_create_from_file_like", &_create_from_file_like);
   m.impl(
       "_get_json_ffmpeg_library_versions", &_get_json_ffmpeg_library_versions);
+  m.impl("encode_video_to_file", &encode_video_to_file);
+  m.impl("encode_video_to_tensor", &encode_video_to_tensor);
+  m.impl("_encode_video_to_file_like", &_encode_video_to_file_like);
 }
 
 TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, Optional, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 from torch import device as torch_device, Tensor

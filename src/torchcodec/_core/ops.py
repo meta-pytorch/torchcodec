@@ -339,7 +339,7 @@ def encode_video_to_file_abstract(
     pixel_format: Optional[str] = None,
     preset: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
-    extra_options: Optional[list[str]] = None = None,
+    extra_options: Optional[list[str]] = None,
 ) -> None:
     return
 
@@ -354,7 +354,7 @@ def encode_video_to_tensor_abstract(
     pixel_format: Optional[str] = None,
     preset: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
-    extra_options: Optional[list[str]] = None = None,
+    extra_options: Optional[list[str]] = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
