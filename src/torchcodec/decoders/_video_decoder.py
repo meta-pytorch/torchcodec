@@ -141,6 +141,16 @@ class VideoDecoder:
 
         self._decoder = create_decoder(source=source, seek_mode=seek_mode)
 
+        (
+            self.metadata,
+            self.stream_index,
+            self._begin_stream_seconds,
+            self._end_stream_seconds,
+            self._num_frames,
+        ) = _get_and_validate_stream_metadata(
+            decoder=self._decoder, stream_index=stream_index
+        )
+
         allowed_dimension_orders = ("NCHW", "NHWC")
         if dimension_order not in allowed_dimension_orders:
             raise ValueError(
@@ -157,28 +167,17 @@ class VideoDecoder:
             device = str(device)
 
         device_variant = _get_cuda_backend()
-
         transform_specs = _make_transform_specs(transforms)
 
         core.add_video_stream(
             self._decoder,
-            stream_index=stream_index,
+            stream_index=self.stream_index,
             dimension_order=dimension_order,
             num_threads=num_ffmpeg_threads,
             device=device,
             device_variant=device_variant,
             transform_specs=transform_specs,
             custom_frame_mappings=custom_frame_mappings_data,
-        )
-
-        (
-            self.metadata,
-            self.stream_index,
-            self._begin_stream_seconds,
-            self._end_stream_seconds,
-            self._num_frames,
-        ) = _get_and_validate_stream_metadata(
-            decoder=self._decoder, stream_index=stream_index
         )
 
     def __len__(self) -> int:
@@ -413,8 +412,12 @@ def _get_and_validate_stream_metadata(
                 + ERROR_REPORTING_INSTRUCTIONS
             )
 
+    if stream_index >= len(container_metadata.streams):
+        raise ValueError(f"The stream index {stream_index} is not a valid stream.")
+
     metadata = container_metadata.streams[stream_index]
-    assert isinstance(metadata, core._metadata.VideoStreamMetadata)  # mypy
+    if not isinstance(metadata, core._metadata.VideoStreamMetadata):
+        raise ValueError(f"The stream at index {stream_index} is not a video stream. ")
 
     if metadata.begin_stream_seconds is None:
         raise ValueError(

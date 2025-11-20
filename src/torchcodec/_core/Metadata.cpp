@@ -29,6 +29,9 @@ std::optional<double> StreamMetadata::getDurationSeconds(
         return static_cast<double>(numFramesFromHeader.value()) /
             averageFpsFromHeader.value();
       }
+      if (durationSecondsFromContainer.has_value()) {
+        return durationSecondsFromContainer.value();
+      }
       return std::nullopt;
     default:
       TORCH_CHECK(false, "Unknown SeekMode");
@@ -80,13 +83,13 @@ std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
           numFramesFromContent.has_value(), "Missing numFramesFromContent");
       return numFramesFromContent.value();
     case SeekMode::approximate: {
+      auto durationSeconds = getDurationSeconds(seekMode);
       if (numFramesFromHeader.has_value()) {
         return numFramesFromHeader.value();
       }
-      if (averageFpsFromHeader.has_value() &&
-          durationSecondsFromHeader.has_value()) {
+      if (averageFpsFromHeader.has_value() && durationSeconds.has_value()) {
         return static_cast<int64_t>(
-            averageFpsFromHeader.value() * durationSecondsFromHeader.value());
+            averageFpsFromHeader.value() * durationSeconds.value());
       }
       return std::nullopt;
     }
