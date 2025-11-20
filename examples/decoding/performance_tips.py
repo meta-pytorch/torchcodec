@@ -111,11 +111,11 @@ to increase performance.
 # 3. Multi-threading for Parallel Decoding
 # -----------------------------------------
 #
-# For video decoding of a large number of frames from a single video, there are a few parallelization strategies to speed up the decoding process:
+# When decoding multiple videos or decoding a large number of frames from a single video, there are a few parallelization strategies to speed up the decoding process:
 #
-# - FFmpeg-based parallelism: Using FFmpeg's internal threading capabilities
-# - Multiprocessing: Distributing work across multiple processes
-# - Multithreading: Using multiple threads within a single process
+# - **FFmpeg-based parallelism** - Using FFmpeg's internal threading capabilities
+# - **Multiprocessing** - Distributing work across multiple processes
+# - **Multithreading** - Using multiple threads within a single process
 
 # %%
 # .. note::
