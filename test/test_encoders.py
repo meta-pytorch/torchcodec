@@ -1048,8 +1048,9 @@ class TestVideoEncoder:
                 ff_frame, enc_frame, percentage=percentage, atol=2
             )
 
-        # Check that video metadata is the same
-        if method == "to_file":
+        # Only compare video metadata on ffmpeg versions >= 6, as older versions
+        # are often missing metadata
+        if ffmpeg_version >= 6 and method == "to_file":
             fields = [
                 "duration",
                 "duration_ts",
