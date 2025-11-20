@@ -111,7 +111,7 @@ print(f"Original frames: {frames.shape = }")
 #
 # For example, when encoding to MP4 format, the default codec is typically ``H.264``.
 #
-# The ``codec`` parameter specifies which video codec to use for encoding.
+# To use a codec other than the default, use the ``codec`` parameter.
 # You can specify either a specific codec implementation (e.g., ``"libx264"``)
 # or a codec specification (e.g., ``"h264"``). Different codecs offer
 # different tradeoffs between quality, file size, and encoding speed.
