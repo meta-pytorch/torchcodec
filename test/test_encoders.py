@@ -946,7 +946,7 @@ class TestVideoEncoder:
     def test_against_to_file(self, tmp_path, format, method):
         # Test that to_file, to_tensor, and to_file_like produce the same results
         source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
-        encoder = VideoEncoder(frames=source_frames, frame_rate=30)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
         encoded_file = tmp_path / f"output.{format}"
         encoder.to_file(dest=encoded_file, crf=0)
