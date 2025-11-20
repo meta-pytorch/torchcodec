@@ -46,8 +46,7 @@ raw_video_bytes = response.content
 
 decoder = VideoDecoder(raw_video_bytes)
 frames = decoder.get_frames_in_range(0, 60).data  # Get first 60 frames
-# TODO: use float once other PR lands
-frame_rate = int(decoder.metadata.average_fps)
+frame_rate = decoder.metadata.average_fps
 
 # %%
 # .. _creating_encoder:
