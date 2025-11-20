@@ -570,12 +570,12 @@ class TestAudioEncoder:
 
 class TestVideoEncoder:
     def decode(self, source=None) -> torch.Tensor:
-        return VideoDecoder(source).get_frames_in_range(start=0, stop=60).data
+        return VideoDecoder(source).get_frames_in_range(start=0, stop=30).data
 
     # TODO: add average_fps field to TestVideo asset
     def decode_and_get_frame_rate(self, source=None):
         decoder = VideoDecoder(source)
-        frames = decoder.get_frames_in_range(start=0, stop=60).data
+        frames = decoder.get_frames_in_range(start=0, stop=30).data
         frame_rate = decoder.metadata.average_fps
         return frames, frame_rate
 
