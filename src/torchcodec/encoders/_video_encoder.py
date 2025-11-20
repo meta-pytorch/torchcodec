@@ -56,17 +56,16 @@ class VideoEncoder:
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
                 See :ref:`pixel_format` for details.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
-                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                mean better quality. Valid range depends on the encoder (e.g.  0-51 for libx264).
                 Defaults to None (which will use encoder's default).
                 See :ref:`crf` for details.
             preset (str or int, optional): Encoder option that controls the tradeoff between
-                encoding speed and compression. Valid values depend on the encoder (commonly
+                encoding encoding speed and compression (output size). Valid on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
                 See :ref:`preset` for details.
             extra_options (dict[str, Any], optional): A dictionary of additional
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
-                Values will be converted to strings before passing to the encoder.
                 See :ref:`extra_options` for details.
         """
         preset = str(preset) if isinstance(preset, int) else preset
@@ -106,17 +105,16 @@ class VideoEncoder:
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
                 See :ref:`pixel_format` for details.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
-                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                mean better quality. Valid range depends on the encoder (e.g.  0-51 for libx264).
                 Defaults to None (which will use encoder's default).
                 See :ref:`crf` for details.
             preset (str or int, optional): Encoder option that controls the tradeoff between
-                encoding speed and compression. Valid values depend on the encoder (commonly
+                encoding encoding speed and compression (output size). Valid on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
                 See :ref:`preset` for details.
             extra_options (dict[str, Any], optional): A dictionary of additional
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
-                Values will be converted to strings before passing to the encoder.
                 See :ref:`extra_options` for details.
 
         Returns:
@@ -165,17 +163,16 @@ class VideoEncoder:
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
                 See :ref:`pixel_format` for details.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
-                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                mean better quality. Valid range depends on the encoder (e.g.  0-51 for libx264).
                 Defaults to None (which will use encoder's default).
                 See :ref:`crf` for details.
             preset (str or int, optional): Encoder option that controls the tradeoff between
-                encoding speed and compression. Valid values depend on the encoder (commonly
+                encoding encoding speed and compression (output size). Valid on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
                 See :ref:`preset` for details.
             extra_options (dict[str, Any], optional): A dictionary of additional
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
-                Values will be converted to strings before passing to the encoder.
                 See :ref:`extra_options` for details.
         """
         preset = str(preset) if isinstance(preset, int) else preset

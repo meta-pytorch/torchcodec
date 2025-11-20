@@ -155,10 +155,6 @@ for output, name in [(h264_output, "h264_output"), (hevc_output, "hevc_output")]
     )
     print(f"Codec used in {name}: {result.stdout.strip()}")
 
-# %%
-# For most cases, you can simply specify the format parameter and let the FFmpeg select the default codec.
-# However, specifying the codec parameter is useful to select a particular codec implementation
-# (``libx264`` vs ``libx265``) or to have more control over the encoding behavior.
 
 # %%
 # .. _pixel_format:
@@ -199,7 +195,7 @@ play_video(yuv420_encoded_frames)
 # For example, with the commonly used H.264 codec, ``libx264``:
 #
 # - Values range from 0 (lossless) to 51 (worst quality)
-# - Values 17 or 18 are conisdered visually lossless, and the default is 23.
+# - Values 17 or 18 are considered visually lossless, and the default is 23.
 #
 # .. note::
 #
@@ -228,10 +224,11 @@ play_video(low_quality_output)
 # Faster presets encode faster but produce larger files, while slower
 # presets take more time to encode but result in better compression.
 #
-# For example, with the commonly used H.264 codec, ``libx264`` presets include:
-#
-# - ``"ultrafast"`` (fastest), ``"fast"``, ``"medium"`` (default), ``"slow"``, ``"veryslow"`` (slowest, best compression).
-# - See additional details in the `H.264 Video Encoding Guide <https://trac.ffmpeg.org/wiki/Encode/H.264#a2.Chooseapresetandtune>`_.
+# For example, with the commonly used H.264 codec, ``libx264`` presets include
+# ``"ultrafast"`` (fastest), ``"fast"``, ``"medium"`` (default), ``"slow"``, and
+# ``"veryslow"`` (slowest, best compression). See the
+# `H.264 Video Encoding Guide <https://trac.ffmpeg.org/wiki/Encode/H.264#a2.Chooseapresetandtune>`_
+# for additional details.
 #
 # .. note::
 #
@@ -272,13 +269,12 @@ print(f"Size of slow encoded file: {Path(slow_output).stat().st_size} bytes")
 #
 
 
-# Custom GOP size and tuning
 custom_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
 encoder.to_file(
     custom_output,
     codec="libx264",
     extra_options={
-        "g": 50,               # Keyframe every 50 frames
+        "g": 50,                # Keyframe every 50 frames
         "max_b_frames": 0,      # Disable B-frames for faster decoding
         "tune": "fastdecode",   # Optimize for fast decoding
     }
