@@ -890,7 +890,7 @@ class TestVideoEncoder:
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_round_trip(self, tmp_path, format, method):
         # Test that decode(encode(decode(frames))) == decode(frames)
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
+        source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
 
         encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
@@ -945,7 +945,7 @@ class TestVideoEncoder:
     @pytest.mark.parametrize("method", ("to_tensor", "to_file_like"))
     def test_against_to_file(self, tmp_path, format, method):
         # Test that to_file, to_tensor, and to_file_like produce the same results
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
+        source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
         encoder = VideoEncoder(frames=source_frames, frame_rate=30)
 
         encoded_file = tmp_path / f"output.{format}"
