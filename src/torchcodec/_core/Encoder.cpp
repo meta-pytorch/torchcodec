@@ -607,7 +607,7 @@ void tryToValidateCodecOption(
           "] for this codec. For more details, run 'ffmpeg -h encoder=",
           avCodec.name,
           "'");
-    } catch (const std::invalid_argument& e) {
+    } catch (const std::invalid_argument&) {
       TORCH_CHECK(
           false,
           "Option ",
@@ -662,7 +662,7 @@ VideoEncoder::~VideoEncoder() {
 
 VideoEncoder::VideoEncoder(
     const torch::Tensor& frames,
-    int frameRate,
+    double frameRate,
     std::string_view fileName,
     const VideoStreamOptions& videoStreamOptions)
     : frames_(validateFrames(frames)), inFrameRate_(frameRate) {
@@ -694,7 +694,7 @@ VideoEncoder::VideoEncoder(
 
 VideoEncoder::VideoEncoder(
     const torch::Tensor& frames,
-    int frameRate,
+    double frameRate,
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
     const VideoStreamOptions& videoStreamOptions)
@@ -787,9 +787,9 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_->width = outWidth_;
   avCodecContext_->height = outHeight_;
   avCodecContext_->pix_fmt = outPixelFormat_;
-  // TODO-VideoEncoder: Verify that frame_rate and time_base are correct
-  avCodecContext_->time_base = {1, inFrameRate_};
-  avCodecContext_->framerate = {inFrameRate_, 1};
+  // TODO-VideoEncoder: Add and utilize output frame_rate option
+  avCodecContext_->framerate = av_d2q(inFrameRate_, INT_MAX);
+  avCodecContext_->time_base = av_inv_q(avCodecContext_->framerate);
 
   // Set flag for containers that require extradata to be in the codec context
   if (avFormatContext_->oformat->flags & AVFMT_GLOBALHEADER) {
@@ -833,6 +833,10 @@ void VideoEncoder::initializeEncoder(
 
   // Set the stream time base to encode correct frame timestamps
   avStream_->time_base = avCodecContext_->time_base;
+  // Set the stream frame rate to store correct frame durations for some
+  // containers (webm, mkv)
+  avStream_->r_frame_rate = avCodecContext_->framerate;
+
   status = avcodec_parameters_from_context(
       avStream_->codecpar, avCodecContext_.get());
   TORCH_CHECK(

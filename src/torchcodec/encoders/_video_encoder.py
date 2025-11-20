@@ -15,10 +15,10 @@ class VideoEncoder:
             tensor of shape ``(N, C, H, W)`` where N is the number of frames,
             C is 3 channels (RGB), H is height, and W is width.
             Values must be uint8 in the range ``[0, 255]``.
-        frame_rate (int): The frame rate of the **input** ``frames``. Also defines the encoded **output** frame rate.
+        frame_rate (float): The frame rate of the **input** ``frames``. Also defines the encoded **output** frame rate.
     """
 
-    def __init__(self, frames: Tensor, *, frame_rate: int):
+    def __init__(self, frames: Tensor, *, frame_rate: float):
         torch._C._log_api_usage_once("torchcodec.encoders.VideoEncoder")
         if not isinstance(frames, Tensor):
             raise ValueError(f"Expected frames to be a Tensor, got {type(frames) = }.")
@@ -35,12 +35,12 @@ class VideoEncoder:
     def to_file(
         self,
         dest: Union[str, Path],
-        extra_options: Optional[Dict[str, Any]] = None,
         *,
         codec: Optional[str] = None,
         pixel_format: Optional[str] = None,
         crf: Optional[Union[int, float]] = None,
         preset: Optional[Union[str, int]] = None,
+        extra_options: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Encode frames into a file.
 

@@ -210,7 +210,7 @@ def encode_audio_to_file_like(
 
 def encode_video_to_file_like(
     frames: torch.Tensor,
-    frame_rate: int,
+    frame_rate: float,
     format: str,
     file_like: Union[io.RawIOBase, io.BufferedIOBase],
     codec: Optional[str] = None,
@@ -329,9 +329,9 @@ def _encode_audio_to_file_like_abstract(
 @register_fake("torchcodec_ns::encode_video_to_file")
 def encode_video_to_file_abstract(
     frames: torch.Tensor,
-    frame_rate: int,
+    frame_rate: float,
     filename: str,
-    codec: Optional[str],
+    codec: Optional[str] = None,
     pixel_format: Optional[str] = None,
     preset: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
@@ -343,9 +343,9 @@ def encode_video_to_file_abstract(
 @register_fake("torchcodec_ns::encode_video_to_tensor")
 def encode_video_to_tensor_abstract(
     frames: torch.Tensor,
-    frame_rate: int,
+    frame_rate: float,
     format: str,
-    codec: Optional[str],
+    codec: Optional[str] = None,
     pixel_format: Optional[str] = None,
     preset: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
@@ -357,10 +357,10 @@ def encode_video_to_tensor_abstract(
 @register_fake("torchcodec_ns::_encode_video_to_file_like")
 def _encode_video_to_file_like_abstract(
     frames: torch.Tensor,
-    frame_rate: int,
+    frame_rate: float,
     format: str,
     file_like_context: int,
-    codec: Optional[str],
+    codec: Optional[str] = None,
     pixel_format: Optional[str] = None,
     preset: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
