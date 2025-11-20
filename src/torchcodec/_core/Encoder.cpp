@@ -6,7 +6,6 @@
 
 extern "C" {
 #include <libavutil/hwcontext.h>
-#include <libavutil/hwcontext_cuda.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 }
