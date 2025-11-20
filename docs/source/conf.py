@@ -88,6 +88,7 @@ class CustomGalleryExampleSortKey:
             assert "examples/encoding" in self.src_dir
             order = [
                 "audio_encoding.py",
+                "video_encoding.py",
             ]
 
         try:
