@@ -144,6 +144,12 @@ void CudaDeviceInterface::registerHardwareDeviceWithCodec(
       hardwareDeviceCtx_, "Hardware device context has not been initialized");
   TORCH_CHECK(codecContext != nullptr, "codecContext is null");
   codecContext->hw_device_ctx = av_buffer_ref(hardwareDeviceCtx_.get());
+}
+
+void CudaDeviceInterface::setupEncodingContext(AVCodecContext* codecContext) {
+  TORCH_CHECK(
+      hardwareDeviceCtx_, "Hardware device context has not been initialized");
+  TORCH_CHECK(codecContext != nullptr, "codecContext is null");
   // is there any way to preserve actual desired format?
   // codecContext->sw_pix_fmt = codecContext->pix_fmt;
   // Should we always produce AV_PIX_FMT_NV12?

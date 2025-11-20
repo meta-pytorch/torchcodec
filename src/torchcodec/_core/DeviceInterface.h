@@ -92,6 +92,12 @@ class DeviceInterface {
   virtual void registerHardwareDeviceWithCodec(
       [[maybe_unused]] AVCodecContext* codecContext) {}
 
+  // Setup device-specific encoding context (e.g., hardware frame contexts).
+  // Called after registerHardwareDeviceWithCodec for encoders.
+  // Default implementation does nothing (suitable for CPU and basic cases).
+  virtual void setupEncodingContext(
+      [[maybe_unused]] AVCodecContext* codecContext) {}
+
   virtual void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,

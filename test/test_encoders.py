@@ -775,7 +775,7 @@ class TestVideoEncoder:
         num_frames, channels, height, width = 5, 3, 256, 256
         contiguous_frames = torch.randint(
             0, 256, size=(num_frames, channels, height, width), dtype=torch.uint8
-        ).contiguous()
+        ).contiguous().to(device)
         assert contiguous_frames.is_contiguous()
 
         # Permute NCHW to NHWC, then update the memory layout, then permute back

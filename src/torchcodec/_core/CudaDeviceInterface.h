@@ -35,6 +35,8 @@ class CudaDeviceInterface : public DeviceInterface {
 
   void registerHardwareDeviceWithCodec(AVCodecContext* codecContext) override;
 
+  void setupEncodingContext(AVCodecContext* codecContext) override;
+
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,

@@ -850,6 +850,9 @@ void VideoEncoder::initializeEncoder(
   // context before calling avcodec_open2().
   deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
 
+  // Setup device-specific encoding context (e.g., hardware frame contexts)
+  deviceInterface_->setupEncodingContext(avCodecContext_.get());
+
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &avCodecOptions);
   av_dict_free(&avCodecOptions);
 
