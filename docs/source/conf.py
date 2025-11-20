@@ -81,6 +81,7 @@ class CustomGalleryExampleSortKey:
                 "approximate_mode.py",
                 "sampling.py",
                 "parallel_decoding.py",
+                "performance_tips.py",
                 "custom_frame_mappings.py",
             ]
         else:
