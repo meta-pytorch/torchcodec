@@ -4,11 +4,16 @@ import random
 import pytest
 import torch
 
+from .utils import in_fbcode
+
 
 def pytest_configure(config):
     # register an additional marker (see pytest_collection_modifyitems)
     config.addinivalue_line(
         "markers", "needs_cuda: mark for tests that rely on a CUDA device"
+    )
+    config.addinivalue_line(
+        "markers", "needs_ffmpeg_cli: mark for tests that rely on ffmpeg"
     )
 
 
@@ -28,6 +33,15 @@ def pytest_collection_modifyitems(items):
         # 'needs_cuda' mark, and the ones with device == 'cpu' won't have the
         # mark.
         needs_cuda = item.get_closest_marker("needs_cuda") is not None
+        needs_ffmpeg_cli = item.get_closest_marker("needs_ffmpeg_cli") is not None
+        has_skip_marker = item.get_closest_marker("skip") is not None
+        has_skipif_marker = item.get_closest_marker("skipif") is not None
+
+        if in_fbcode():
+            # fbcode doesn't like skipping tests, so instead we  just don't collect the test
+            # so that they don't even "exist", hence the continue statements.
+            if needs_ffmpeg_cli or has_skip_marker or has_skipif_marker:
+                continue
 
         if (
             needs_cuda

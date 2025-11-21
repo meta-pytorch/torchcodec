@@ -39,6 +39,7 @@ from .utils import (
     NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
     needs_cuda,
+    needs_ffmpeg_cli,
     psnr,
     SINE_MONO_S16,
     SINE_MONO_S32,
@@ -1311,10 +1312,7 @@ class TestVideoDecoder:
             # Return the custom frame mappings as a JSON string
             return custom_frame_mappings
 
-    @pytest.mark.skipif(
-        in_fbcode(),
-        reason="ffprobe not available internally",
-    )
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("stream_index", [0, 3])
     @pytest.mark.parametrize(
@@ -1361,10 +1359,7 @@ class TestVideoDecoder:
             ),
         )
 
-    @pytest.mark.skipif(
-        in_fbcode(),
-        reason="ffprobe not available internally",
-    )
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize(
         "custom_frame_mappings,expected_match",
