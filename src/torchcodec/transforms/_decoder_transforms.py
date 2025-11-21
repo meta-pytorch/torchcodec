@@ -7,8 +7,9 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from types import ModuleType
-from typing import Sequence
+from typing import Optional, Sequence, Tuple
 
+import torch
 from torch import nn
 
 
@@ -40,6 +41,9 @@ class DecoderTransform(ABC):
     def _make_transform_spec(self) -> str:
         pass
 
+    def _get_output_dims(self, input_dims: Tuple[int, int]) -> Tuple[int, int]:
+        return input_dims
+
 
 def import_torchvision_transforms_v2() -> ModuleType:
     try:
@@ -69,6 +73,9 @@ class Resize(DecoderTransform):
         assert len(self.size) == 2
         return f"resize, {self.size[0]}, {self.size[1]}"
 
+    def _get_output_dims(self, input_dims: Tuple[int, int]) -> Tuple[int, int]:
+        return self.size
+
     @classmethod
     def _from_torchvision(cls, resize_tv: nn.Module):
         v2 = import_torchvision_transforms_v2()
@@ -92,19 +99,38 @@ class Resize(DecoderTransform):
             )
         return cls(size=resize_tv.size)
 
+
 @dataclass
 class RandomCrop(DecoderTransform):
 
     size: Sequence[int]
     _top: Optional[int] = None
     _left: Optional[int] = None
+    _input_dims: Optional[Tuple[int, int]] = None
 
     def _make_transform_spec(self) -> str:
         assert len(self.size) == 2
-        return f"crop, {self.size[0]}, {self.size[1]}, {_left}, {_top}"
+        if self._top is None or self._left is None:
+            assert self._input_dims is not None
+            if self._input_dims[0] < self.size[0] or self._input_dims[1] < self.size[1]:
+                raise ValueError(
+                    f"Input dimensions {input_dims} are smaller than the crop size {self.size}."
+                )
+            self._top = torch.randint(
+                0, self._input_dims[0] - self.size[0] + 1, size=()
+            )
+            self._left = torch.randint(
+                0, self._input_dims[1] - self.size[1] + 1, size=()
+            )
+
+        return f"crop, {self.size[0]}, {self.size[1]}, {self._left}, {self._top}"
+
+    def _get_output_dims(self, input_dims: Tuple[int, int]) -> Tuple[int, int]:
+        self._input_dims = input_dims
+        return self.size
 
     @classmethod
-    def _from_torchvision(cls, random_crop_tv: nn.Module):
+    def _from_torchvision(cls, random_crop_tv: nn.Module, input_dims: Tuple[int, int]):
         v2 = import_torchvision_transforms_v2()
 
         assert isinstance(random_crop_tv, v2.RandomCrop)
@@ -128,5 +154,8 @@ class RandomCrop(DecoderTransform):
                 "TorchVision RandcomCrop transform must have a (height, width) "
                 f"pair for the size, got {random_crop_tv.size}."
             )
-        params = random_crop_tv.make_params([])
-        return cls(size=random_crop_tv.size)
+        params = random_crop_tv.make_params(
+            torch.empty(size=(3, *input_dims), dtype=torch.uint8)
+        )
+        assert random_crop_tv.size == (params["height"], params["width"])
+        return cls(size=random_crop_tv.size, _top=params["top"], _left=params["left"])
