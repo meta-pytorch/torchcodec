@@ -147,7 +147,7 @@ class TestPublicVideoDecoderTransformOps:
 
     @pytest.mark.parametrize(
         "height_scaling_factor, width_scaling_factor",
-        ((0.5, 0.5), (0.25, 0.1)),
+        ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.25, 0.25)),
     )
     @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
     def test_random_crop_torchvision(
@@ -156,6 +156,9 @@ class TestPublicVideoDecoderTransformOps:
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
 
+        # We want both kinds of RandomCrop objects to get arrive at the same
+        # locations to crop, so we need to make sure they get the same random
+        # seed.
         torch.manual_seed(0)
         tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
         decoder_random_crop = VideoDecoder(video.path, transforms=[tc_random_crop])
@@ -187,6 +190,73 @@ class TestPublicVideoDecoderTransformOps:
 
             expected_shape = (video.get_num_color_channels(), height, width)
             assert frame_random_crop_tv.shape == expected_shape
+
+            frame_full = decoder_full[frame_index]
+            frame_tv = v2.functional.crop(
+                frame_full,
+                top=tc_random_crop._top,
+                left=tc_random_crop._left,
+                height=tc_random_crop.size[0],
+                width=tc_random_crop.size[1],
+            )
+            assert_frames_equal(frame_random_crop, frame_tv)
+
+    def test_crop_fails(self):
+        with pytest.raises(
+            ValueError,
+            match="must not specify padding",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[
+                    v2.RandomCrop(
+                        size=(100, 100),
+                        padding=255,
+                    )
+                ],
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="must not specify pad_if_needed",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[
+                    v2.RandomCrop(
+                        size=(100, 100),
+                        pad_if_needed=True,
+                    )
+                ],
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="fill must be 0",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[
+                    v2.RandomCrop(
+                        size=(100, 100),
+                        fill=255,
+                    )
+                ],
+            )
+
+        with pytest.raises(
+            ValueError,
+            match="padding_mode must be constant",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[
+                    v2.RandomCrop(
+                        size=(100, 100),
+                        padding_mode="edge",
+                    )
+                ],
+            )
 
     def test_transform_fails(self):
         with pytest.raises(

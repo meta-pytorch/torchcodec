@@ -23,8 +23,8 @@ class DecoderTransform(ABC):
     decoded frames and applying the same kind of transform.
 
     Most ``DecoderTransform`` objects have a complementary transform in TorchVision,
-    specificially in `torchvision.transforms.v2 <https://docs.pytorch.org/vision/stable/transforms.html>`_. For such transforms, we
-    ensure that:
+    specificially in `torchvision.transforms.v2 <https://docs.pytorch.org/vision/stable/transforms.html>`_.
+    For such transforms, we ensure that:
 
       1. The names are the same.
       2. Default behaviors are the same.
@@ -74,7 +74,7 @@ class Resize(DecoderTransform):
         return f"resize, {self.size[0]}, {self.size[1]}"
 
     def _get_output_dims(self, input_dims: Tuple[int, int]) -> Tuple[int, int]:
-        return self.size
+        return (*self.size,)
 
     @classmethod
     def _from_torchvision(cls, resize_tv: nn.Module):
@@ -102,6 +102,20 @@ class Resize(DecoderTransform):
 
 @dataclass
 class RandomCrop(DecoderTransform):
+    """Crop the decoded frame to a given size at a random location in the frame.
+
+    Complementary TorchVision transform: :class:`~torchvision.transforms.v2.RandomCrop`.
+    Padding of all kinds is disabled. The random location within the frame is
+    determined during the initialization of the
+    :class:~`torchcodec.decoders.VideoDecoder` object that owns this transform.
+    As a consequence, each decoded frame in the video will be cropped at the
+    same location. Videos with variable resolution may result in undefined
+    behavior.
+
+    Args:
+        size: (sequence of int): Desired output size. Must be a sequence of
+            the form (height, width).
+    """
 
     size: Sequence[int]
     _top: Optional[int] = None
@@ -109,13 +123,30 @@ class RandomCrop(DecoderTransform):
     _input_dims: Optional[Tuple[int, int]] = None
 
     def _make_transform_spec(self) -> str:
-        assert len(self.size) == 2
+        if len(self.size) != 2:
+            raise ValueError(
+                f"RandomCrop's size must be a sequence of length 2, got {self.size}. "
+                "This should never happen, please report a bug."
+            )
+
         if self._top is None or self._left is None:
-            assert self._input_dims is not None
+            # TODO: It would be very strange if only ONE of those is None. But should we
+            #       make it an error? We can continue, but it would probably mean
+            #       something bad happened. Dear reviewer, please register an opinion here:
+            if self._input_dims is None:
+                raise ValueError(
+                    "RandomCrop's input_dims must be set before calling _make_transform_spec(). "
+                    "This should never happen, please report a bug."
+                )
             if self._input_dims[0] < self.size[0] or self._input_dims[1] < self.size[1]:
                 raise ValueError(
                     f"Input dimensions {input_dims} are smaller than the crop size {self.size}."
                 )
+
+            # Note: This logic must match the logic in
+            #       torchvision.transforms.v2.RandomCrop.make_params(). Given
+            #       the same seed, they should get the same result. This is an
+            #       API guarantee with our users.
             self._top = torch.randint(
                 0, self._input_dims[0] - self.size[0] + 1, size=()
             )
@@ -144,17 +175,16 @@ class RandomCrop(DecoderTransform):
                 "TorchVision RandomCrop transform must not specify pad_if_needed."
             )
         if random_crop_tv.fill != 0:
-            raise ValueError("TorchVision RandomCrop must specify fill of 0.")
+            raise ValueError("TorchVision RandomCrop fill must be 0.")
         if random_crop_tv.padding_mode != "constant":
-            raise ValueError(
-                "TorchVision RandomCrop must specify padding_mode of constant."
-            )
+            raise ValueError("TorchVision RandomCrop padding_mode must be constant.")
         if len(random_crop_tv.size) != 2:
             raise ValueError(
                 "TorchVision RandcomCrop transform must have a (height, width) "
                 f"pair for the size, got {random_crop_tv.size}."
             )
         params = random_crop_tv.make_params(
+            # TODO: deal with NCHW versus NHWC; video decoder knows
             torch.empty(size=(3, *input_dims), dtype=torch.uint8)
         )
         assert random_crop_tv.size == (params["height"], params["width"])
