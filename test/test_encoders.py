@@ -368,6 +368,7 @@ class TestAudioEncoder:
     @pytest.mark.parametrize(
         "format",
         [
+            # TODO: https://github.com/pytorch/torchcodec/issues/837
             pytest.param(
                 "mp3",
                 marks=pytest.mark.skipif(
