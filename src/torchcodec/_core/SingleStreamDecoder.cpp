@@ -1039,7 +1039,7 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
         firstFramePtsSeconds = frameOutput.ptsSeconds;
       }
       frames.push_back(frameOutput.data);
-    } catch (const EndOfFileException& e) {
+    } catch (const EndOfFileException&) {
       finished = true;
     }
 
