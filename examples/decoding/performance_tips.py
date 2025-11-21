@@ -25,7 +25,7 @@ to increase performance.
 # 1. **Batch APIs** - Decode multiple frames at once
 # 2. **Approximate Mode & Keyframe Mappings** - Trade accuracy for speed
 # 3. **Multi-threading** - Parallelize decoding across videos or chunks
-# 4. **CUDA Acceleration (BETA)** - Use GPU decoding for supported formats
+# 4. **CUDA Acceleration** - Use GPU decoding for supported formats
 #
 # We'll explore each technique and when to use it.
 
@@ -33,8 +33,9 @@ to increase performance.
 # 1. Use Batch APIs When Possible
 # --------------------------------
 #
-# If you need to decode multiple frames at once, it is faster when using the batch methods. TorchCodec's batch APIs reduce overhead and can leverage
-# internal optimizations.
+# If you need to decode multiple frames at once, the batch methods are faster than calling single-frame decoding methods multiple times.
+# For example, :meth:`~torchcodec.decoders.VideoDecoder.get_frames_at` is faster than calling :meth:`~torchcodec.decoders.VideoDecoder.get_frame_at` multiple times.
+# TorchCodec's batch APIs reduce overhead and can leverage internal optimizations.
 #
 # **Key Methods:**
 #
@@ -59,7 +60,7 @@ to increase performance.
 # 2. Approximate Mode & Keyframe Mappings
 # ----------------------------------------
 #
-# By default, TorchCodec uses ``seek_mode="exact"``, which performs a scan when
+# By default, TorchCodec uses ``seek_mode="exact"``, which performs a :term:`scan` when
 # the decoder is created to build an accurate internal index of frames. This
 # ensures frame-accurate seeking but takes longer for decoder initialization,
 # especially on long videos.
@@ -68,7 +69,7 @@ to increase performance.
 # **Approximate Mode**
 # ~~~~~~~~~~~~~~~~~~~~
 #
-# Setting ``seek_mode="approximate"`` skips the initial scan and relies on the
+# Setting ``seek_mode="approximate"`` skips the initial :term:`scan` and relies on the
 # video file's metadata headers. This dramatically speeds up
 # :class:`~torchcodec.decoders.VideoDecoder` creation, particularly for long
 # videos, but may result in slightly less accurate seeking in some cases.
@@ -77,9 +78,7 @@ to increase performance.
 # **Which mode should you use:**
 #
 # - If you care about exactness of frame seeking, use “exact”.
-# - If you can sacrifice exactness of seeking for speed, which is usually the case when doing clip sampling, use “approximate”.
-# - If your videos don’t have variable framerate and their metadata is correct, then “approximate” mode is a net win: it will be just as accurate as the “exact” mode while still being significantly faster.
-# - If your size is small enough and we’re decoding a lot of frames, there’s a chance exact mode is actually faster.
+# - If the video is long and you're only decoding a small amount of frames, approximate mode should be faster.
 
 # %%
 # **Custom Frame Mappings**
@@ -113,9 +112,11 @@ to increase performance.
 #
 # When decoding multiple videos or decoding a large number of frames from a single video, there are a few parallelization strategies to speed up the decoding process:
 #
-# - **FFmpeg-based parallelism** - Using FFmpeg's internal threading capabilities
+# - **FFmpeg-based parallelism** - Using FFmpeg's internal threading capabilities for intra-frame parallelism, where parallelization happens within individual frames rather than across frames
 # - **Multiprocessing** - Distributing work across multiple processes
 # - **Multithreading** - Using multiple threads within a single process
+#
+# Both multiprocessing and multithreading can be used to decode multiple videos in parallel, or to decode a single long video in parallel by splitting it into chunks.
 
 # %%
 # .. note::
@@ -126,8 +127,8 @@ to increase performance.
 #     - :ref:`sphx_glr_generated_examples_decoding_parallel_decoding.py`
 
 # %%
-# 4. BETA: CUDA Acceleration
-# ---------------------------
+# 4. CUDA Acceleration
+# --------------------
 #
 # TorchCodec supports GPU-accelerated decoding using NVIDIA's hardware decoder
 # (NVDEC) on supported hardware. This keeps decoded tensors in GPU memory,
@@ -149,6 +150,16 @@ to increase performance.
 # **Performance impact:** CUDA decoding can significantly outperform CPU decoding,
 # especially for high-resolution videos and when combined with GPU-based transforms.
 # Actual speedup varies by hardware, resolution, and codec.
+
+# %%
+# **Recommended Usage for Beta Interface**
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+# .. code-block:: python
+#
+#     with set_cuda_backend("beta"):
+#         decoder = VideoDecoder("file.mp4", device="cuda")
+#
 
 # %%
 # .. note::
