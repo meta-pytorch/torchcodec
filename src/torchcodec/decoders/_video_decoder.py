@@ -499,7 +499,7 @@ def _convert_to_decoder_transforms(
                     "v2 transform."
                 )
         else:
-            intput_dims = transform._get_output_dims(input_dims)
+            input_dims = transform._get_output_dims(input_dims)
             converted_transforms.append(transform)
 
     return converted_transforms
