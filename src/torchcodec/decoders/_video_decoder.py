@@ -19,7 +19,7 @@ from torchcodec.decoders._decoder_utils import (
     create_decoder,
     ERROR_REPORTING_INSTRUCTIONS,
 )
-from torchcodec.transforms import DecoderTransform, Resize
+from torchcodec.transforms import DecoderTransform, RandomCrop, Resize
 
 
 class VideoDecoder:
@@ -167,7 +167,11 @@ class VideoDecoder:
             device = str(device)
 
         device_variant = _get_cuda_backend()
-        transform_specs = _make_transform_specs(transforms)
+        transform_specs = _make_transform_specs(
+            transforms,
+            input_dims=(self.metadata.height, self.metadata.width),
+            dimension_order=dimension_order,
+        )
 
         core.add_video_stream(
             self._decoder,
@@ -450,6 +454,8 @@ def _get_and_validate_stream_metadata(
 
 def _convert_to_decoder_transforms(
     transforms: Sequence[Union[DecoderTransform, nn.Module]],
+    input_dims: Tuple[Optional[int], Optional[int]],
+    dimension_order: Literal["NCHW", "NHWC"],
 ) -> List[DecoderTransform]:
     """Convert a sequence of transforms that may contain TorchVision transform
     objects into a list of only TorchCodec transform objects.
@@ -482,7 +488,22 @@ def _convert_to_decoder_transforms(
                     "v2 transforms, but TorchVision is not installed."
                 )
             elif isinstance(transform, v2.Resize):
-                converted_transforms.append(Resize._from_torchvision(transform))
+                transform_tc = Resize._from_torchvision(transform)
+                input_dims = transform_tc._get_output_dims(input_dims)
+                converted_transforms.append(transform_tc)
+            elif isinstance(transform, v2.RandomCrop):
+                if dimension_order != "NCHW":
+                    raise ValueError(
+                        "TorchVision v2 RandomCrop is only supported for NCHW "
+                        "dimension order. Please use the TorchCodec RandomCrop "
+                        "transform instead."
+                    )
+                transform_tc = RandomCrop._from_torchvision(
+                    transform,
+                    input_dims,
+                )
+                input_dims = transform_tc._get_output_dims(input_dims)
+                converted_transforms.append(transform_tc)
             else:
                 raise ValueError(
                     f"Unsupported transform: {transform}. Transforms must be "
@@ -490,6 +511,7 @@ def _convert_to_decoder_transforms(
                     "v2 transform."
                 )
         else:
+            input_dims = transform._get_output_dims(input_dims)
             converted_transforms.append(transform)
 
     return converted_transforms
@@ -497,6 +519,8 @@ def _convert_to_decoder_transforms(
 
 def _make_transform_specs(
     transforms: Optional[Sequence[Union[DecoderTransform, nn.Module]]],
+    input_dims: Tuple[Optional[int], Optional[int]],
+    dimension_order: Literal["NCHW", "NHWC"],
 ) -> str:
     """Given a sequence of transforms, turn those into the specification string
        the core API expects.
@@ -516,7 +540,7 @@ def _make_transform_specs(
     if transforms is None:
         return ""
 
-    transforms = _convert_to_decoder_transforms(transforms)
+    transforms = _convert_to_decoder_transforms(transforms, input_dims, dimension_order)
     return ";".join([t._make_transform_spec() for t in transforms])
 
 

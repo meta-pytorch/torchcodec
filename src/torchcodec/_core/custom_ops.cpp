@@ -239,6 +239,19 @@ int checkedToPositiveInt(const std::string& str) {
   return ret;
 }
 
+int checkedToNonNegativeInt(const std::string& str) {
+  int ret = 0;
+  try {
+    ret = std::stoi(str);
+  } catch (const std::invalid_argument&) {
+    TORCH_CHECK(false, "String cannot be converted to an int:" + str);
+  } catch (const std::out_of_range&) {
+    TORCH_CHECK(false, "String would become integer out of range:" + str);
+  }
+  TORCH_CHECK(ret >= 0, "String must be a non-negative integer:" + str);
+  return ret;
+}
+
 // Resize transform specs take the form:
 //
 //   "resize, <height>, <width>"
@@ -270,8 +283,8 @@ Transform* makeCropTransform(
       "cropTransformSpec must have 5 elements including its name");
   int height = checkedToPositiveInt(cropTransformSpec[1]);
   int width = checkedToPositiveInt(cropTransformSpec[2]);
-  int x = checkedToPositiveInt(cropTransformSpec[3]);
-  int y = checkedToPositiveInt(cropTransformSpec[4]);
+  int x = checkedToNonNegativeInt(cropTransformSpec[3]);
+  int y = checkedToNonNegativeInt(cropTransformSpec[4]);
   return new CropTransform(FrameDims(height, width), x, y);
 }
 
