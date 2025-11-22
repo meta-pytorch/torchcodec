@@ -41,7 +41,9 @@ class DecoderTransform(ABC):
     def _make_transform_spec(self) -> str:
         pass
 
-    def _get_output_dims(self, input_dims: Tuple[int, int]) -> Tuple[int, int]:
+    def _get_output_dims(
+        self, input_dims: Tuple[Optional[int], Optional[int]]
+    ) -> Tuple[Optional[int], Optional[int]]:
         return input_dims
 
 
@@ -70,34 +72,39 @@ class Resize(DecoderTransform):
     size: Sequence[int]
 
     def _make_transform_spec(self) -> str:
+        # TODO: establish this invariant in the constructor during refactor
         assert len(self.size) == 2
         return f"resize, {self.size[0]}, {self.size[1]}"
 
-    def _get_output_dims(self, input_dims: Tuple[int, int]) -> Tuple[int, int]:
-        return (*self.size,)
+    def _get_output_dims(
+        self, input_dims: Tuple[Optional[int], Optional[int]]
+    ) -> Tuple[Optional[int], Optional[int]]:
+        # TODO: establish this invariant in the constructor during refactor
+        assert len(self.size) == 2
+        return (self.size[0], self.size[1])
 
     @classmethod
-    def _from_torchvision(cls, resize_tv: nn.Module):
+    def _from_torchvision(cls, tv_resize: nn.Module):
         v2 = import_torchvision_transforms_v2()
 
-        assert isinstance(resize_tv, v2.Resize)
+        assert isinstance(tv_resize, v2.Resize)
 
-        if resize_tv.interpolation is not v2.InterpolationMode.BILINEAR:
+        if tv_resize.interpolation is not v2.InterpolationMode.BILINEAR:
             raise ValueError(
                 "TorchVision Resize transform must use bilinear interpolation."
             )
-        if resize_tv.antialias is False:
+        if tv_resize.antialias is False:
             raise ValueError(
                 "TorchVision Resize transform must have antialias enabled."
             )
-        if resize_tv.size is None:
+        if tv_resize.size is None:
             raise ValueError("TorchVision Resize transform must have a size specified.")
-        if len(resize_tv.size) != 2:
+        if len(tv_resize.size) != 2:
             raise ValueError(
                 "TorchVision Resize transform must have a (height, width) "
-                f"pair for the size, got {resize_tv.size}."
+                f"pair for the size, got {tv_resize.size}."
             )
-        return cls(size=resize_tv.size)
+        return cls(size=tv_resize.size)
 
 
 @dataclass
@@ -140,52 +147,92 @@ class RandomCrop(DecoderTransform):
                 )
             if self._input_dims[0] < self.size[0] or self._input_dims[1] < self.size[1]:
                 raise ValueError(
-                    f"Input dimensions {input_dims} are smaller than the crop size {self.size}."
+                    f"Input dimensions {self._input_dims} are smaller than the crop size {self.size}."
                 )
 
             # Note: This logic must match the logic in
             #       torchvision.transforms.v2.RandomCrop.make_params(). Given
             #       the same seed, they should get the same result. This is an
             #       API guarantee with our users.
-            self._top = torch.randint(
-                0, self._input_dims[0] - self.size[0] + 1, size=()
+            self._top = int(
+                torch.randint(0, self._input_dims[0] - self.size[0] + 1, size=()).item()
             )
-            self._left = torch.randint(
-                0, self._input_dims[1] - self.size[1] + 1, size=()
+            self._left = int(
+                torch.randint(0, self._input_dims[1] - self.size[1] + 1, size=()).item()
             )
 
         return f"crop, {self.size[0]}, {self.size[1]}, {self._left}, {self._top}"
 
-    def _get_output_dims(self, input_dims: Tuple[int, int]) -> Tuple[int, int]:
-        self._input_dims = input_dims
-        return self.size
+    def _get_output_dims(
+        self, input_dims: Tuple[Optional[int], Optional[int]]
+    ) -> Tuple[Optional[int], Optional[int]]:
+        # TODO: establish this invariant in the constructor during refactor
+        assert len(self.size) == 2
+
+        height, width = input_dims
+        if height is None:
+            raise ValueError(
+                "Video metadata has no height. RandomCrop can only be used when input frame dimensions are known."
+            )
+        if width is None:
+            raise ValueError(
+                "Video metadata has no width. RandomCrop can only be used when input frame dimensions are known."
+            )
+
+        self._input_dims = (height, width)
+        return (self.size[0], self.size[1])
 
     @classmethod
-    def _from_torchvision(cls, random_crop_tv: nn.Module, input_dims: Tuple[int, int]):
+    def _from_torchvision(
+        cls,
+        tv_random_crop: nn.Module,
+        input_dims: Tuple[Optional[int], Optional[int]],
+    ):
         v2 = import_torchvision_transforms_v2()
 
-        assert isinstance(random_crop_tv, v2.RandomCrop)
+        assert isinstance(tv_random_crop, v2.RandomCrop)
 
-        if random_crop_tv.padding is not None:
+        if tv_random_crop.padding is not None:
             raise ValueError(
                 "TorchVision RandomCrop transform must not specify padding."
             )
-        if random_crop_tv.pad_if_needed is True:
+
+        if tv_random_crop.pad_if_needed is True:
             raise ValueError(
                 "TorchVision RandomCrop transform must not specify pad_if_needed."
             )
-        if random_crop_tv.fill != 0:
+
+        if tv_random_crop.fill != 0:
             raise ValueError("TorchVision RandomCrop fill must be 0.")
-        if random_crop_tv.padding_mode != "constant":
+
+        if tv_random_crop.padding_mode != "constant":
             raise ValueError("TorchVision RandomCrop padding_mode must be constant.")
-        if len(random_crop_tv.size) != 2:
+
+        if len(tv_random_crop.size) != 2:
             raise ValueError(
                 "TorchVision RandcomCrop transform must have a (height, width) "
-                f"pair for the size, got {random_crop_tv.size}."
+                f"pair for the size, got {tv_random_crop.size}."
             )
-        params = random_crop_tv.make_params(
-            # TODO: deal with NCHW versus NHWC; video decoder knows
-            torch.empty(size=(3, *input_dims), dtype=torch.uint8)
+
+        height, width = input_dims
+        if height is None:
+            raise ValueError(
+                "Video metadata has no height. RandomCrop can only be used when input frame dimensions are known."
+            )
+        if width is None:
+            raise ValueError(
+                "Video metadata has no width. RandomCrop can only be used when input frame dimensions are known."
+            )
+
+        # Note that TorchVision v2 transforms only accept NCHW tensors.
+        params = tv_random_crop.make_params(
+            torch.empty(size=(3, height, width), dtype=torch.uint8)
         )
-        assert random_crop_tv.size == (params["height"], params["width"])
-        return cls(size=random_crop_tv.size, _top=params["top"], _left=params["left"])
+
+        if tv_random_crop.size != (params["height"], params["width"]):
+            raise ValueError(
+                f"TorchVision RandomCrop's provided size, {tv_random_crop.size} "
+                f"must match the computed size, {params['height'], params['width']}."
+            )
+
+        return cls(size=tv_random_crop.size, _top=params["top"], _left=params["left"])
