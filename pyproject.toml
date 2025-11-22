@@ -3,7 +3,7 @@ name = "torchcodec"
 description = "A video decoder for PyTorch"
 readme = "README.md"
 requires-python = ">=3.8"
-license-files = ["LICENSE"]
+license = {file = "LICENSE"}
 authors = [
     { name = "PyTorch Team", email = "packages@pytorch.org" },
 ]
@@ -17,7 +17,7 @@ Documentation = "https://pytorch.org/torchcodec/stable/index.html"
 version = {file = "version.txt"}
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=69.0"]
 build-backend = "setuptools.build_meta"
 
 [project.optional-dependencies]
