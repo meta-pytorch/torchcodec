@@ -1270,15 +1270,28 @@ class TestVideoEncoder:
 
     @pytest.mark.needs_cuda
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
-    @pytest.mark.parametrize("preset", ("slow", "fast"))
     @pytest.mark.parametrize("pixel_format", ("nv12", "yuv420p"))
-    @pytest.mark.parametrize("format", ("mov", "mp4", "avi", "mkv", "flv"))
+    @pytest.mark.parametrize("format_codec", [
+        ("mov", "h264_nvenc"),
+        ("mp4", "hevc_nvenc"),
+        ("avi", "h264_nvenc"),
+        pytest.param(
+            ("mkv", "av1_nvenc"),
+            marks=pytest.mark.skipif(
+                get_ffmpeg_major_version() <= 5,
+                reason="av1_nvenc not supported in FFmpeg 4 and 5"
+            )
+        ),
+        ("flv", "h264_nvenc")
+    ])
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_nvenc_against_ffmpeg_cli(
-        self, tmp_path, preset, pixel_format, format, method
+        self, tmp_path, pixel_format, format_codec, method
     ):
-        # Encode with FFmpeg CLI using h264_nvenc
+        # Encode with FFmpeg CLI using nvenc codecs
+        format, codec = format_codec
         device = "cuda"
+        qp = 1 # Lossless (qp=0) is not supported on av1_nvenc, so we use 1
         source_frames = self.decode(TEST_SRC_2_720P.path).data.to(device)
 
         temp_raw_path = str(tmp_path / "temp_input.raw")
@@ -1302,12 +1315,13 @@ class TestVideoEncoder:
             "-i",
             temp_raw_path,
             "-c:v",
-            "h264_nvenc",  # Use NVENC hardware encoder
+            codec,  # Use specified NVENC hardware encoder
         ]
 
         ffmpeg_cmd.extend(["-pix_fmt", pixel_format])  # Output format
-        ffmpeg_cmd.extend(["-preset", preset])  # Use parametrized preset
-        ffmpeg_cmd.extend(["-qp", "0"])  # Use lossless qp for consistency
+        if codec == "av1_nvenc":
+            ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1        else:
+        ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
         ffmpeg_cmd.extend([ffmpeg_encoded_path])
 
         # Will this prevent CI from treating test as failed if NVENC is not available?
@@ -1323,23 +1337,23 @@ class TestVideoEncoder:
             frames=source_frames, frame_rate=frame_rate, device=device
         )
 
-        encoder_extra_options = {"qp": 0}
+        encoder_extra_options = {"qp": qp}
+        if codec == "av1_nvenc":
+            encoder_extra_options["rc"] = 0  # constqp mode
         if method == "to_file":
             encoder_output_path = str(tmp_path / f"nvenc_output.{format}")
             encoder.to_file(
                 dest=encoder_output_path,
-                codec="h264_nvenc",
+                codec=codec,
                 pixel_format=pixel_format,
-                preset=preset,
                 extra_options=encoder_extra_options,
             )
             encoder_output = encoder_output_path
         elif method == "to_tensor":
             encoder_output = encoder.to_tensor(
                 format=format,
-                codec="h264_nvenc",
+                codec=codec,
                 pixel_format=pixel_format,
-                preset=preset,
                 extra_options=encoder_extra_options,
             )
         elif method == "to_file_like":
@@ -1347,9 +1361,8 @@ class TestVideoEncoder:
             encoder.to_file_like(
                 file_like=file_like,
                 format=format,
-                codec="h264_nvenc",
+                codec=codec,
                 pixel_format=pixel_format,
-                preset=preset,
                 extra_options=encoder_extra_options,
             )
             encoder_output = file_like.getvalue()
