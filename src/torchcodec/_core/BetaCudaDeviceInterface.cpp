@@ -833,6 +833,16 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
 }
 
+UniqueAVFrame BetaCudaDeviceInterface::convertTensorToAVFrame(
+    [[maybe_unused]] const torch::Tensor& tensor,
+    [[maybe_unused]] AVPixelFormat targetFormat,
+    [[maybe_unused]] int frameIndex,
+    [[maybe_unused]] AVCodecContext* codecContext) {
+  TORCH_CHECK(
+      false,
+      "Beta CUDA device interface does not support video encoding currently.");
+}
+
 std::string BetaCudaDeviceInterface::getDetails() {
   std::string details = "Beta CUDA Device Interface.";
   if (cpuFallback_) {

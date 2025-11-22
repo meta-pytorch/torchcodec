@@ -37,6 +37,13 @@ torch::Tensor convertNV12FrameToRGB(
     at::cuda::CUDAStream nvdecStream,
     std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
+void convertRGBTensorToNV12Frame(
+    const torch::Tensor& rgbTensor,
+    UniqueAVFrame& nv12Frame,
+    const torch::Device& device,
+    const UniqueNppContext& nppCtx,
+    at::cuda::CUDAStream inputStream);
+
 UniqueNppContext getNppStreamContext(const torch::Device& device);
 void returnNppStreamContextToCache(
     const torch::Device& device,

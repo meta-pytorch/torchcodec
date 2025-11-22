@@ -213,6 +213,7 @@ def encode_video_to_file_like(
     frame_rate: float,
     format: str,
     file_like: Union[io.RawIOBase, io.BufferedIOBase],
+    device: Optional[str] = "cpu",
     codec: Optional[str] = None,
     pixel_format: Optional[str] = None,
     crf: Optional[Union[int, float]] = None,
@@ -226,6 +227,7 @@ def encode_video_to_file_like(
         frame_rate: Frame rate in frames per second
         format: Video format (e.g., "mp4", "mov", "mkv")
         file_like: File-like object that supports write() and seek() methods
+        device: Device to use for encoding (default: "cpu")
         codec: Optional codec name (e.g., "libx264", "h264")
         pixel_format: Optional pixel format (e.g., "yuv420p", "yuv444p")
         crf: Optional constant rate factor for encoding quality
@@ -239,6 +241,7 @@ def encode_video_to_file_like(
         frame_rate,
         format,
         _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
+        device,
         codec,
         pixel_format,
         crf,
@@ -331,6 +334,7 @@ def encode_video_to_file_abstract(
     frames: torch.Tensor,
     frame_rate: float,
     filename: str,
+    device: str = "cpu",
     codec: Optional[str] = None,
     pixel_format: Optional[str] = None,
     preset: Optional[str] = None,
@@ -345,6 +349,7 @@ def encode_video_to_tensor_abstract(
     frames: torch.Tensor,
     frame_rate: float,
     format: str,
+    device: str = "cpu",
     codec: Optional[str] = None,
     pixel_format: Optional[str] = None,
     preset: Optional[str] = None,
@@ -360,6 +365,7 @@ def _encode_video_to_file_like_abstract(
     frame_rate: float,
     format: str,
     file_like_context: int,
+    device: str = "cpu",
     codec: Optional[str] = None,
     pixel_format: Optional[str] = None,
     preset: Optional[str] = None,

@@ -18,11 +18,6 @@ class CpuDeviceInterface : public DeviceInterface {
 
   virtual ~CpuDeviceInterface() {}
 
-  std::optional<const AVCodec*> findCodec(
-      [[maybe_unused]] const AVCodecID& codecId) override {
-    return std::nullopt;
-  }
-
   virtual void initialize(
       const AVStream* avStream,
       const UniqueDecodingAVFormatContext& avFormatCtx,
@@ -42,6 +37,12 @@ class CpuDeviceInterface : public DeviceInterface {
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor) override;
+
+  UniqueAVFrame convertTensorToAVFrame(
+      const torch::Tensor& tensor,
+      AVPixelFormat targetFormat,
+      int frameIndex,
+      AVCodecContext* codecContext) override;
 
   std::string getDetails() override;
 
