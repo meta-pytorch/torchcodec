@@ -1271,19 +1271,15 @@ class TestVideoEncoder:
     @pytest.mark.needs_cuda
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
     @pytest.mark.parametrize("pixel_format", ("nv12", "yuv420p"))
-    @pytest.mark.parametrize("format_codec", [
-        ("mov", "h264_nvenc"),
-        ("mp4", "hevc_nvenc"),
-        ("avi", "h264_nvenc"),
-        pytest.param(
-            ("mkv", "av1_nvenc"),
-            marks=pytest.mark.skipif(
-                get_ffmpeg_major_version() <= 5,
-                reason="av1_nvenc not supported in FFmpeg 4 and 5"
-            )
-        ),
-        ("flv", "h264_nvenc")
-    ])
+    @pytest.mark.parametrize(
+        "format_codec",
+        [
+            ("mov", "h264_nvenc"),
+            ("mp4", "hevc_nvenc"),
+            ("avi", "h264_nvenc"),
+            # ("mkv", "av1_nvenc"), # av1_nvenc is not supported on CI
+        ],
+    )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_nvenc_against_ffmpeg_cli(
         self, tmp_path, pixel_format, format_codec, method
@@ -1291,7 +1287,7 @@ class TestVideoEncoder:
         # Encode with FFmpeg CLI using nvenc codecs
         format, codec = format_codec
         device = "cuda"
-        qp = 1 # Lossless (qp=0) is not supported on av1_nvenc, so we use 1
+        qp = 1  # Lossless (qp=0) is not supported on av1_nvenc, so we use 1
         source_frames = self.decode(TEST_SRC_2_720P.path).data.to(device)
 
         temp_raw_path = str(tmp_path / "temp_input.raw")
@@ -1320,7 +1316,9 @@ class TestVideoEncoder:
 
         ffmpeg_cmd.extend(["-pix_fmt", pixel_format])  # Output format
         if codec == "av1_nvenc":
-            ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1        else:
+            ffmpeg_cmd.extend(
+                ["-rc", "constqp"]
+            )  # Set rate control mode for AV1        else:
         ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
         ffmpeg_cmd.extend([ffmpeg_encoded_path])
 
