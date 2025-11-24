@@ -29,6 +29,7 @@ from .utils import (
     BT709_FULL_RANGE,
     cuda_version_used_for_building_torch,
     get_ffmpeg_major_version,
+    get_python_version,
     H264_10BITS,
     H265_10BITS,
     H265_VIDEO,
@@ -1146,6 +1147,10 @@ class TestVideoDecoder:
 
     # TODO investigate why this fails internally.
     @pytest.mark.skipif(in_fbcode(), reason="Compile test fails internally.")
+    @pytest.mark.skipif(
+        get_python_version() >= (3, 14),
+        reason="torch.compile is not supported on Python 3.14+",
+    )
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_compile(self, device):
         decoder, device = make_video_decoder(NASA_VIDEO.path, device=device)

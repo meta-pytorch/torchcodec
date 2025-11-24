@@ -42,6 +42,7 @@ from torchcodec._core import (
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    get_python_version,
     in_fbcode,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
@@ -368,6 +369,10 @@ class TestVideoDecoderOps:
         with pytest.raises(IndexError, match="no more frames"):
             get_next_frame(decoder)
 
+    @pytest.mark.skipif(
+        get_python_version() >= (3, 14),
+        reason="torch.compile is not supported on Python 3.14+",
+    )
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_compile_seek_and_next(self, device):
         # TODO_OPEN_ISSUE Scott (T180277797): Get this to work with the inductor stack. Right now

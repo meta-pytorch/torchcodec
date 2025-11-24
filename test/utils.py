@@ -97,6 +97,10 @@ def get_ffmpeg_minor_version():
     return int(ffmpeg_version.split(".")[1])
 
 
+def get_python_version() -> tuple[int, int]:
+    return (sys.version_info.major, sys.version_info.minor)
+
+
 def cuda_version_used_for_building_torch() -> Optional[tuple[int, int]]:
     # Return the CUDA version that was used to build PyTorch. That's not always
     # the same as the CUDA version that is currently installed on the running
