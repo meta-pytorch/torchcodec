@@ -65,18 +65,22 @@ class VideoEncoder:
             codec (str, optional): The codec to use for encoding (e.g., "libx264",
                 "h264"). If not specified, the default codec
                 for the container format will be used.
+                See :ref:`codec_selection` for details.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+                See :ref:`pixel_format` for details.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
-                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                mean better quality. Valid range depends on the encoder (e.g.  0-51 for libx264).
                 Defaults to None (which will use encoder's default).
+                See :ref:`crf` for details.
             preset (str or int, optional): Encoder option that controls the tradeoff between
-                encoding speed and compression. Valid values depend on the encoder (commonly
+                encoding encoding speed and compression (output size). Valid on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
+                See :ref:`preset` for details.
             extra_options (dict[str, Any], optional): A dictionary of additional
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
-                Values will be converted to strings before passing to the encoder.
+                See :ref:`extra_options` for details.
         """
         preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file(
@@ -111,18 +115,22 @@ class VideoEncoder:
             codec (str, optional): The codec to use for encoding (e.g., "libx264",
                 "h264"). If not specified, the default codec
                 for the container format will be used.
+                See :ref:`codec_selection` for details.
             pixel_format (str, optional): The pixel format to encode frames into (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+                See :ref:`pixel_format` for details.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
-                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                mean better quality. Valid range depends on the encoder (e.g.  0-51 for libx264).
                 Defaults to None (which will use encoder's default).
+                See :ref:`crf` for details.
             preset (str or int, optional): Encoder option that controls the tradeoff between
-                encoding speed and compression. Valid values depend on the encoder (commonly
+                encoding encoding speed and compression (output size). Valid on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
+                See :ref:`preset` for details.
             extra_options (dict[str, Any], optional): A dictionary of additional
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
-                Values will be converted to strings before passing to the encoder.
+                See :ref:`extra_options` for details.
 
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor.
@@ -166,18 +174,22 @@ class VideoEncoder:
             codec (str, optional): The codec to use for encoding (e.g., "libx264",
                 "h264"). If not specified, the default codec
                 for the container format will be used.
+                See :ref:`codec_selection` for details.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+                See :ref:`pixel_format` for details.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
-                mean better quality. Valid range depends on the encoder (commonly 0-51).
+                mean better quality. Valid range depends on the encoder (e.g.  0-51 for libx264).
                 Defaults to None (which will use encoder's default).
+                See :ref:`crf` for details.
             preset (str or int, optional): Encoder option that controls the tradeoff between
-                encoding speed and compression. Valid values depend on the encoder (commonly
+                encoding encoding speed and compression (output size). Valid on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
+                See :ref:`preset` for details.
             extra_options (dict[str, Any], optional): A dictionary of additional
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
-                Values will be converted to strings before passing to the encoder.
+                See :ref:`extra_options` for details.
         """
         preset = str(preset) if isinstance(preset, int) else preset
         _core.encode_video_to_file_like(
