@@ -39,8 +39,13 @@ to increase performance.
 #
 # **Key Methods:**
 #
+# For index-based frame retrieval:
+#
 # - :meth:`~torchcodec.decoders.VideoDecoder.get_frames_at` for specific indices
 # - :meth:`~torchcodec.decoders.VideoDecoder.get_frames_in_range` for ranges
+#
+# For timestamp-based frame retrieval:
+#
 # - :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_at` for timestamps
 # - :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range` for time ranges
 #
@@ -61,7 +66,7 @@ to increase performance.
 # ----------------------------------------
 #
 # By default, TorchCodec uses ``seek_mode="exact"``, which performs a :term:`scan` when
-# the decoder is created to build an accurate internal index of frames. This
+# you create the decoder to build an accurate internal index of frames. This
 # ensures frame-accurate seeking but takes longer for decoder initialization,
 # especially on long videos.
 
@@ -90,8 +95,8 @@ to increase performance.
 #
 # **When to use:**
 #
-# - Frame accuracy is critical, so approximate mode cannot be used
-# - Videos can be preprocessed once and then decoded many times
+# - Frame accuracy is critical, so you cannot use approximate mode
+# - You can preprocess videos once and then decode them many times
 #
 # **Performance impact:** Enables consistent, predictable performance for repeated
 # random access without the overhead of exact mode's scanning.
@@ -116,7 +121,7 @@ to increase performance.
 # - **Multiprocessing** - Distributing work across multiple processes
 # - **Multithreading** - Using multiple threads within a single process
 #
-# Both multiprocessing and multithreading can be used to decode multiple videos in parallel, or to decode a single long video in parallel by splitting it into chunks.
+# You can use both multiprocessing and multithreading to decode multiple videos in parallel, or to decode a single long video in parallel by splitting it into chunks.
 
 # %%
 # .. note::
