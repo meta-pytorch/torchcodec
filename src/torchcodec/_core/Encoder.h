@@ -168,7 +168,6 @@ class VideoEncoder {
   // CPU tensor-to-frame conversion for CPU encoding
   UniqueAVFrame convertCpuTensorToAVFrame(
       const torch::Tensor& tensor,
-      AVPixelFormat targetFormat,
       int frameIndex);
 
   UniqueEncodingAVFormatContext avFormatContext_;

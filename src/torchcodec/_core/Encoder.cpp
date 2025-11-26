@@ -895,7 +895,7 @@ void VideoEncoder::encode() {
           currFrame, outPixelFormat_, i, avCodecContext_.get());
     } else {
       // Use direct CPU conversion for CPU devices
-      avFrame = convertCpuTensorToAVFrame(currFrame, outPixelFormat_, i);
+      avFrame = convertCpuTensorToAVFrame(currFrame, i);
     }
     encodeFrame(autoAVPacket, avFrame);
   }
@@ -911,7 +911,6 @@ void VideoEncoder::encode() {
 
 UniqueAVFrame VideoEncoder::convertCpuTensorToAVFrame(
     const torch::Tensor& tensor,
-    AVPixelFormat targetFormat,
     int frameIndex) {
   TORCH_CHECK(tensor.is_cpu(), "CPU encoder requires CPU tensors");
   TORCH_CHECK(
@@ -919,25 +918,25 @@ UniqueAVFrame VideoEncoder::convertCpuTensorToAVFrame(
       "Expected 3D RGB tensor (CHW format), got shape: ",
       tensor.sizes());
 
-  int inHeight = static_cast<int>(tensor.sizes()[1]);
-  int inWidth = static_cast<int>(tensor.sizes()[2]);
+  inHeight_ = static_cast<int>(tensor.sizes()[1]);
+  inWidth_ = static_cast<int>(tensor.sizes()[2]);
 
   // For now, reuse input dimensions as output dimensions
-  int outWidth = inWidth;
-  int outHeight = inHeight;
+  outWidth_ = inWidth_;
+  outHeight_ = inHeight_;
 
   // Input format is RGB planar (AV_PIX_FMT_GBRP after channel reordering)
-  AVPixelFormat inPixelFormat = AV_PIX_FMT_GBRP;
+  inPixelFormat_ = AV_PIX_FMT_GBRP;
 
   // Initialize and cache scaling context if it does not exist
   if (!swsContext_) {
     swsContext_.reset(sws_getContext(
-        inWidth,
-        inHeight,
-        inPixelFormat,
-        outWidth,
-        outHeight,
-        targetFormat,
+        inWidth_,
+        inHeight_,
+        inPixelFormat_,
+        outWidth_,
+        outHeight_,
+        outPixelFormat_,
         SWS_BICUBIC, // Used by FFmpeg CLI
         nullptr,
         nullptr,
@@ -949,9 +948,9 @@ UniqueAVFrame VideoEncoder::convertCpuTensorToAVFrame(
   TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
 
   // Set output frame properties
-  avFrame->format = targetFormat;
-  avFrame->width = outWidth;
-  avFrame->height = outHeight;
+  avFrame->format = outPixelFormat_;
+  avFrame->width = outWidth_;
+  avFrame->height = outHeight_;
   avFrame->pts = frameIndex;
 
   int status = av_frame_get_buffer(avFrame.get(), 0);
@@ -962,23 +961,23 @@ UniqueAVFrame VideoEncoder::convertCpuTensorToAVFrame(
   UniqueAVFrame inputFrame(av_frame_alloc());
   TORCH_CHECK(inputFrame != nullptr, "Failed to allocate input AVFrame");
 
-  inputFrame->format = inPixelFormat;
-  inputFrame->width = inWidth;
-  inputFrame->height = inHeight;
+  inputFrame->format = inPixelFormat_;
+  inputFrame->width = inWidth_;
+  inputFrame->height = inHeight_;
 
   uint8_t* tensorData = static_cast<uint8_t*>(tensor.data_ptr());
 
   // TODO-VideoEncoder: Reorder tensor if in NHWC format
-  int channelSize = inHeight * inWidth;
+  int channelSize = inHeight_ * inWidth_;
   // Reorder RGB -> GBR for AV_PIX_FMT_GBRP format
   // TODO-VideoEncoder: Determine if FFmpeg supports planar RGB input format
   inputFrame->data[0] = tensorData + channelSize; // G channel
   inputFrame->data[1] = tensorData + (2 * channelSize); // B channel
   inputFrame->data[2] = tensorData; // R channel
 
-  inputFrame->linesize[0] = inWidth;
-  inputFrame->linesize[1] = inWidth;
-  inputFrame->linesize[2] = inWidth;
+  inputFrame->linesize[0] = inWidth_;
+  inputFrame->linesize[1] = inWidth_;
+  inputFrame->linesize[2] = inWidth_;
 
   status = sws_scale(
       swsContext_.get(),
@@ -988,7 +987,7 @@ UniqueAVFrame VideoEncoder::convertCpuTensorToAVFrame(
       inputFrame->height,
       avFrame->data,
       avFrame->linesize);
-  TORCH_CHECK(status == outHeight, "sws_scale failed");
+  TORCH_CHECK(status == outHeight_, "sws_scale failed");
 
   return avFrame;
 }
