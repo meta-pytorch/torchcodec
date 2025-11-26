@@ -18,7 +18,6 @@ class CudaDeviceInterface : public DeviceInterface {
 
   virtual ~CudaDeviceInterface();
 
-  std::optional<const AVCodec*> findEncoder(const AVCodecID& codecId) override;
   std::optional<const AVCodec*> findDecoder(const AVCodecID& codecId) override;
 
   void initialize(
@@ -35,18 +34,10 @@ class CudaDeviceInterface : public DeviceInterface {
 
   void registerHardwareDeviceWithCodec(AVCodecContext* codecContext) override;
 
-  void setupEncodingContext(AVCodecContext* codecContext) override;
-
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor) override;
-
-  UniqueAVFrame convertTensorToAVFrame(
-      const torch::Tensor& tensor,
-      AVPixelFormat targetFormat,
-      int frameIndex,
-      AVCodecContext* codecContext) override;
 
   std::string getDetails() override;
 

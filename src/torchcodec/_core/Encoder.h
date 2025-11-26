@@ -5,6 +5,7 @@
 #include "AVIOContextHolder.h"
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
+#include "GpuEncoder.h"
 #include "StreamOptions.h"
 
 extern "C" {
@@ -164,6 +165,12 @@ class VideoEncoder {
   void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
   void flushBuffers();
 
+  // CPU tensor-to-frame conversion for CPU encoding
+  UniqueAVFrame convertCpuTensorToAVFrame(
+      const torch::Tensor& tensor,
+      AVPixelFormat targetFormat,
+      int frameIndex);
+
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;
   AVStream* avStream_ = nullptr;
@@ -182,6 +189,7 @@ class VideoEncoder {
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
   std::unique_ptr<DeviceInterface> deviceInterface_;
+  std::unique_ptr<GpuEncoder> gpuEncoder_;
 
   bool encodeWasCalled_ = false;
   AVDictionary* avFormatOptions_ = nullptr;

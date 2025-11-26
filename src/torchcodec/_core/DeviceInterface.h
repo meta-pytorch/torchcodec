@@ -46,11 +46,6 @@ class DeviceInterface {
     return device_;
   };
 
-  virtual std::optional<const AVCodec*> findEncoder(
-      [[maybe_unused]] const AVCodecID& codecId) {
-    return std::nullopt;
-  };
-
   virtual std::optional<const AVCodec*> findDecoder(
       [[maybe_unused]] const AVCodecID& codecId) {
     return std::nullopt;
@@ -92,24 +87,10 @@ class DeviceInterface {
   virtual void registerHardwareDeviceWithCodec(
       [[maybe_unused]] AVCodecContext* codecContext) {}
 
-  // Setup device-specific encoding context (e.g., hardware frame contexts).
-  // Called after registerHardwareDeviceWithCodec for encoders.
-  // Default implementation does nothing (suitable for CPU and basic cases).
-  virtual void setupEncodingContext(
-      [[maybe_unused]] AVCodecContext* codecContext) {}
-
   virtual void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt) = 0;
-
-  // Convert tensor to AVFrame, implemented per device interface.
-  // This is similar to convertAVFrameToFrameOutput for encoding
-  virtual UniqueAVFrame convertTensorToAVFrame(
-      const torch::Tensor& tensor,
-      AVPixelFormat targetFormat,
-      int frameIndex,
-      AVCodecContext* codecContext) = 0;
 
   // ------------------------------------------
   // Extension points for custom decoding paths
