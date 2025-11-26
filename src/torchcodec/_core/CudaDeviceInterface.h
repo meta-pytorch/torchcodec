@@ -18,7 +18,7 @@ class CudaDeviceInterface : public DeviceInterface {
 
   virtual ~CudaDeviceInterface();
 
-  std::optional<const AVCodec*> findDecoder(const AVCodecID& codecId) override;
+  std::optional<const AVCodec*> findCodec(const AVCodecID& codecId) override;
 
   void initialize(
       const AVStream* avStream,

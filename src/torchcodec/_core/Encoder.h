@@ -162,13 +162,11 @@ class VideoEncoder {
 
  private:
   void initializeEncoder(const VideoStreamOptions& videoStreamOptions);
+  UniqueAVFrame convertTensorToAVFrame(
+      const torch::Tensor& frame,
+      int frameIndex);
   void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
   void flushBuffers();
-
-  // CPU tensor-to-frame conversion for CPU encoding
-  UniqueAVFrame convertCpuTensorToAVFrame(
-      const torch::Tensor& tensor,
-      int frameIndex);
 
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;
@@ -187,7 +185,6 @@ class VideoEncoder {
   AVPixelFormat outPixelFormat_ = AV_PIX_FMT_NONE;
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
-  std::unique_ptr<DeviceInterface> deviceInterface_;
   std::unique_ptr<GpuEncoder> gpuEncoder_;
 
   bool encodeWasCalled_ = false;

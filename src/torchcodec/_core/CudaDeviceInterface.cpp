@@ -335,7 +335,7 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
 // we have to do this because of an FFmpeg bug where hardware decoding is not
 // appropriately set, so we just go off and find the matching codec for the CUDA
 // device
-std::optional<const AVCodec*> CudaDeviceInterface::findDecoder(
+std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
     const AVCodecID& codecId) {
   void* i = nullptr;
   const AVCodec* codec = nullptr;

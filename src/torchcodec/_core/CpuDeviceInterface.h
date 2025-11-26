@@ -18,6 +18,11 @@ class CpuDeviceInterface : public DeviceInterface {
 
   virtual ~CpuDeviceInterface() {}
 
+  std::optional<const AVCodec*> findCodec(
+      [[maybe_unused]] const AVCodecID& codecId) override {
+    return std::nullopt;
+  }
+
   virtual void initialize(
       const AVStream* avStream,
       const UniqueDecodingAVFormatContext& avFormatCtx,

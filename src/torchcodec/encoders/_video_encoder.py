@@ -18,7 +18,6 @@ class VideoEncoder:
         frame_rate (float): The frame rate of the **input** ``frames``. Also defines the encoded **output** frame rate.
         device (str or torch.device, optional): The device to use for encoding. Default: "cpu".
             If you pass a CUDA device, frames will be encoded on GPU.
-            Note: The "beta" CUDA backend is not supported for encoding.
     """
 
     def __init__(

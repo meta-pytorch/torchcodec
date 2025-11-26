@@ -47,12 +47,6 @@ class GpuEncoder {
   UniqueNppContext nppCtx_;
 
   void initializeHardwareContext();
-  void setupHardwareFrameContext(AVCodecContext* codecContext);
-
-  UniqueAVFrame convertRGBTensorToNV12Frame(
-      const torch::Tensor& tensor,
-      int frameIndex,
-      AVCodecContext* codecContext);
 };
 
 } // namespace facebook::torchcodec

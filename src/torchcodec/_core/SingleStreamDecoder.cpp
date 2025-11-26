@@ -462,7 +462,7 @@ void SingleStreamDecoder::addStream(
   // addStream() which is supposed to be generic
   if (mediaType == AVMEDIA_TYPE_VIDEO) {
     avCodec = makeAVCodecOnlyUseForCallingAVFindBestStream(
-        deviceInterface_->findDecoder(streamInfo.stream->codecpar->codec_id)
+        deviceInterface_->findCodec(streamInfo.stream->codecpar->codec_id)
             .value_or(avCodec));
   }
 

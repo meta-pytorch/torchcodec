@@ -69,6 +69,20 @@ UniqueAVBufferRef createHardwareDeviceContext(const torch::Device& device) {
   return UniqueAVBufferRef(hardwareDeviceCtxRaw);
 }
 
+// RGB to NV12 color conversion matrices (inverse of YUV to RGB)
+// Note: NPP's ColorTwist function apparently expects "limited range"
+// coefficient format even when producing full range output. All matrices below
+// use the limited range coefficient format (Y with +16 offset) for NPP
+// compatibility.
+
+// BT.601 limited range (matches FFmpeg default behavior)
+const Npp32f defaultLimitedRangeRgbToNv12[3][4] = {
+    // Y = 16 + 0.859 * (0.299*R + 0.587*G + 0.114*B)
+    {0.257f, 0.504f, 0.098f, 16.0f},
+    // U = -0.148*R - 0.291*G + 0.439*B + 128 (BT.601 coefficients)
+    {-0.148f, -0.291f, 0.439f, 128.0f},
+    // V = 0.439*R - 0.368*G - 0.071*B + 128 (BT.601 coefficients)
+    {0.439f, -0.368f, -0.071f, 128.0f}};
 } // anonymous namespace
 
 GpuEncoder::GpuEncoder(const torch::Device& device) : device_(device) {
@@ -155,14 +169,6 @@ UniqueAVFrame GpuEncoder::convertTensorToAVFrame(
       tensor.dim() == 3 && tensor.size(0) == 3,
       "Expected 3D RGB tensor (CHW format), got shape: ",
       tensor.sizes());
-
-  return convertRGBTensorToNV12Frame(tensor, frameIndex, codecContext);
-}
-
-UniqueAVFrame GpuEncoder::convertRGBTensorToNV12Frame(
-    const torch::Tensor& tensor,
-    int frameIndex,
-    AVCodecContext* codecContext) {
   UniqueAVFrame avFrame(av_frame_alloc());
   TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
 
@@ -178,13 +184,55 @@ UniqueAVFrame GpuEncoder::convertRGBTensorToNV12Frame(
       "Failed to allocate hardware frame: ",
       getFFMPEGErrorStringFromErrorCode(ret));
 
+  // Validate that avFrame was properly allocated with CUDA memory
+  TORCH_CHECK(
+      avFrame != nullptr && avFrame->data[0] != nullptr,
+      "avFrame must be pre-allocated with CUDA memory");
+
+  // Convert CHW to HWC for NPP processing
+  int height = static_cast<int>(tensor.size(1));
+  int width = static_cast<int>(tensor.size(2));
+  torch::Tensor hwcFrame = tensor.permute({1, 2, 0}).contiguous();
+
+  // Get current CUDA stream for NPP operations
   at::cuda::CUDAStream currentStream =
       at::cuda::getCurrentCUDAStream(device_.index());
 
-  facebook::torchcodec::convertRGBTensorToNV12Frame(
-      tensor, avFrame, device_, nppCtx_, currentStream);
+  // Setup NPP context with current stream
+  nppCtx_->hStream = currentStream.stream();
+  cudaError_t cudaErr =
+      cudaStreamGetFlags(nppCtx_->hStream, &nppCtx_->nStreamFlags);
+  TORCH_CHECK(
+      cudaErr == cudaSuccess,
+      "cudaStreamGetFlags failed: ",
+      cudaGetErrorString(cudaErr));
 
-  // Set color properties to FFmpeg defaults
+  // Always use FFmpeg's default behavior: BT.601 limited range
+  NppiSize oSizeROI = {width, height};
+
+  NppStatus status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
+      static_cast<const Npp8u*>(hwcFrame.data_ptr()),
+      hwcFrame.stride(0) * hwcFrame.element_size(),
+      avFrame->data,
+      avFrame->linesize,
+      oSizeROI,
+      defaultLimitedRangeRgbToNv12,
+      *nppCtx_);
+
+  TORCH_CHECK(
+      status == NPP_SUCCESS,
+      "Failed to convert RGB to NV12: NPP error code ",
+      status);
+
+  // Validate CUDA operations completed successfully
+  cudaError_t memCheck = cudaGetLastError();
+  TORCH_CHECK(
+      memCheck == cudaSuccess,
+      "CUDA error detected: ",
+      cudaGetErrorString(memCheck));
+
+  // TODO-VideoEncoder: Enable configuration of color properties, similar to
+  // FFmpeg Set color properties to FFmpeg defaults
   avFrame->colorspace = AVCOL_SPC_SMPTE170M; // BT.601
   avFrame->color_range = AVCOL_RANGE_MPEG; // Limited range
 
