@@ -917,17 +917,6 @@ UniqueAVFrame VideoEncoder::convertTensorToAVFrame(
       "Expected 3D RGB tensor (CHW format), got shape: ",
       frame.sizes());
 
-  // These are all already set in initializeEncoder?
-  // inHeight_ = static_cast<int>(tensor.sizes()[1]);
-  // inWidth_ = static_cast<int>(tensor.sizes()[2]);
-
-  // // For now, reuse input dimensions as output dimensions
-  // outWidth_ = inWidth_;
-  // outHeight_ = inHeight_;
-
-  // // Input format is RGB planar (AV_PIX_FMT_GBRP after channel reordering)
-  // inPixelFormat_ = AV_PIX_FMT_GBRP;
-
   // Initialize and cache scaling context if it does not exist
   if (!swsContext_) {
     swsContext_.reset(sws_getContext(

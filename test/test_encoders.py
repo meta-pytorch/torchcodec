@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import torch
 from torchcodec.decoders import AudioDecoder, VideoDecoder
+
 from torchcodec.encoders import AudioEncoder, VideoEncoder
 
 from .utils import (

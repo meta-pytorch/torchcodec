@@ -19,12 +19,7 @@ class VideoEncoder:
         frame_rate (float): The frame rate of the **input** ``frames``. Also defines the encoded **output** frame rate.
     """
 
-    def __init__(
-        self,
-        frames: Tensor,
-        *,
-        frame_rate: float,
-    ):
+    def __init__(self, frames: Tensor, *, frame_rate: float):
         torch._C._log_api_usage_once("torchcodec.encoders.VideoEncoder")
         if not isinstance(frames, Tensor):
             raise ValueError(f"Expected frames to be a Tensor, got {type(frames) = }.")
