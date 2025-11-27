@@ -912,11 +912,6 @@ UniqueAVFrame VideoEncoder::convertTensorToAVFrame(
     const torch::Tensor& frame,
     int frameIndex) {
   TORCH_CHECK(frame.is_cpu(), "CPU encoder requires CPU tensors");
-  TORCH_CHECK(
-      frame.dim() == 3 && frame.size(0) == 3,
-      "Expected 3D RGB tensor (CHW format), got shape: ",
-      frame.sizes());
-
   // Initialize and cache scaling context if it does not exist
   if (!swsContext_) {
     swsContext_.reset(sws_getContext(
