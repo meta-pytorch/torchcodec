@@ -1,10 +1,8 @@
 #include <ATen/cuda/CUDAEvent.h>
 #include <c10/cuda/CUDAStream.h>
-#include <cuda_runtime.h>
 #include <torch/types.h>
 #include <mutex>
 
-#include "CUDACommon.h"
 #include "Cache.h"
 #include "CudaDeviceInterface.h"
 #include "FFMPEGCommon.h"

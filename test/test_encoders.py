@@ -829,18 +829,16 @@ class TestVideoEncoder:
             common_params = dict(crf=0, pixel_format="yuv444p")
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
-                VideoEncoder(frames, frame_rate=30, device=device).to_file(
-                    dest=dest, **common_params
-                )
+                VideoEncoder(frames, frame_rate=30).to_file(dest=dest, **common_params)
                 with open(dest, "rb") as f:
                     return torch.frombuffer(f.read(), dtype=torch.uint8).clone()
             elif method == "to_tensor":
-                return VideoEncoder(frames, frame_rate=30, device=device).to_tensor(
+                return VideoEncoder(frames, frame_rate=30).to_tensor(
                     format="mp4", **common_params
                 )
             elif method == "to_file_like":
                 file_like = io.BytesIO()
-                VideoEncoder(frames, frame_rate=30, device=device).to_file_like(
+                VideoEncoder(frames, frame_rate=30).to_file_like(
                     file_like, format="mp4", **common_params
                 )
                 return torch.frombuffer(file_like.getvalue(), dtype=torch.uint8)
@@ -1331,9 +1329,7 @@ class TestVideoEncoder:
             else:
                 raise
 
-        encoder = VideoEncoder(
-            frames=source_frames, frame_rate=frame_rate, device=device
-        )
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
         encoder_extra_options = {"qp": qp}
         if codec == "av1_nvenc":
