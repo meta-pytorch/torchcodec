@@ -1092,13 +1092,6 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
   // Returns true if we can avoid seeking in the AVFormatContext based on
   // heuristics that rely on the target cursor_ and the last decoded frame.
   // Seeking is expensive, so we try to avoid it when possible.
-  // Note that this function itself isn't always that cheap to call: in
-  // particular the calls to getKeyFrameIndexForPts below in approximate mode
-  // are sometimes slow.
-  // TODO we should understand why (is it because it reads the file?) and
-  // potentially optimize it. E.g. we may not want to ever seek, or even *check*
-  // if we need to seek in some cases, like if we're going to decode 80% of the
-  // frames anyway.
   const StreamInfo& streamInfo = streamInfos_.at(activeStreamIndex_);
   if (streamInfo.avMediaType == AVMEDIA_TYPE_AUDIO) {
     // For audio, we only need to seek if a backwards seek was requested
@@ -1145,10 +1138,10 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
   // I    P     P    P    I    P    P    P    I    P    P    I    P
   //                           x              j         y
   // (2) is only more efficient than (1) if there is an I frame between x and y.
-  int lastKeyFrameIndex = getKeyFrameIndexForPts(lastDecodedAvFramePts_);
-  int targetKeyFrameIndex = getKeyFrameIndexForPts(cursor_);
-  return lastKeyFrameIndex >= 0 && targetKeyFrameIndex >= 0 &&
-      lastKeyFrameIndex == targetKeyFrameIndex;
+  int lastKeyFrame = getKeyFrameIdentifier(lastDecodedAvFramePts_);
+  int targetKeyFrame = getKeyFrameIdentifier(cursor_);
+  return lastKeyFrame >= 0 && targetKeyFrame >= 0 &&
+      lastKeyFrame == targetKeyFrame;
 }
 
 // This method looks at currentPts and desiredPts and seeks in the
