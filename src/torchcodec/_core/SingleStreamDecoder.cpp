@@ -1366,8 +1366,8 @@ int SingleStreamDecoder::getKeyFrameIdentifier(int64_t pts) const {
   //   scanned key-frame vector (streamInfo.keyFrames). So the returned value is
   //   in [0, num_key_frames).
   // - If seek_mode is approximate, we use av_index_search_timestamp() which
-  //   may return a value in [0, num_frames) like for mkv, but also a value in
-  //   [0, num_frames) like for mp4. It really depends on the container.
+  //   may return a value in [0, num_key_frames) like for mkv, but also a value
+  //   in [0, num_frames) like for mp4. It really depends on the container.
   //
   //  The range of the "identifier" doesn't matter that much, for now we only
   //  use it to uniquely identify a key frame in canWeAvoidSeeking().
