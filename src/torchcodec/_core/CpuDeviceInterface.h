@@ -6,6 +6,10 @@
 
 #pragma once
 
+#include <condition_variable>
+#include <mutex>
+#include <queue>
+#include <thread>
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
 #include "FilterGraph.h"
@@ -16,7 +20,7 @@ class CpuDeviceInterface : public DeviceInterface {
  public:
   CpuDeviceInterface(const torch::Device& device);
 
-  virtual ~CpuDeviceInterface() {}
+  virtual ~CpuDeviceInterface();
 
   std::optional<const AVCodec*> findCodec(
       [[maybe_unused]] const AVCodecID& codecId) override {
@@ -45,7 +49,32 @@ class CpuDeviceInterface : public DeviceInterface {
 
   std::string getDetails() override;
 
+  // Async color conversion API
+  void enqueueConversion(
+      UniqueAVFrame avFrame,
+      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+  FrameOutput dequeueConversionResult();
+  void flushConversionQueue();
+
  private:
+  // Worker thread for async color conversion
+  struct ConversionWorkItem {
+    UniqueAVFrame avFrame;
+    std::optional<torch::Tensor> preAllocatedOutputTensor;
+  };
+
+  void colorConversionWorker();
+  void startWorkerThread();
+  void stopWorkerThread();
+
+  std::thread workerThread_;
+  std::mutex queueMutex_;
+  std::condition_variable workAvailable_;
+  std::condition_variable resultAvailable_;
+  std::queue<ConversionWorkItem> workQueue_;
+  std::queue<FrameOutput> resultQueue_;
+  bool workerShouldExit_ = false;
+  static constexpr size_t kMaxQueueDepth = 2;
   void convertAudioAVFrameToFrameOutput(
       UniqueAVFrame& srcAVFrame,
       FrameOutput& frameOutput);

@@ -700,14 +700,47 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
       frameBatchOutput.durationSeconds[indexInOutput] =
           frameBatchOutput.durationSeconds[previousIndexInOutput];
     } else {
-      FrameOutput frameOutput = getFrameAtIndexInternal(
-          indexInVideo, frameBatchOutput.data[indexInOutput]);
-      frameBatchOutput.ptsSeconds[indexInOutput] = frameOutput.ptsSeconds;
-      frameBatchOutput.durationSeconds[indexInOutput] =
-          frameOutput.durationSeconds;
+      // Async conversion path: decode + enqueue conversion
+      // Then dequeue previous result
+      if (indexInVideo != lastDecodedFrameIndex_ + 1) {
+        int64_t pts = getPts(indexInVideo);
+        setCursorPtsInSeconds(ptsToSeconds(pts, streamInfo.timeBase));
+      }
+
+      UniqueAVFrame avFrame = decodeAVFrame([this](const UniqueAVFrame& avFrame) {
+        return getPtsOrDts(avFrame) >= cursor_;
+      });
+
+      // Enqueue conversion for current frame
+      deviceInterface_->enqueueConversion(
+          std::move(avFrame), frameBatchOutput.data[indexInOutput]);
+
+      // Dequeue result from previous frame (if exists)
+      if (f > 0) {
+        auto prevIndexInOutput = indicesAreSorted ? f - 1 : argsort[f - 1];
+        FrameOutput result = deviceInterface_->dequeueConversionResult();
+        // Data is already in frameBatchOutput.data[prevIndexInOutput]
+        frameBatchOutput.ptsSeconds[prevIndexInOutput] = result.ptsSeconds;
+        frameBatchOutput.durationSeconds[prevIndexInOutput] =
+            result.durationSeconds;
+      }
+
+      lastDecodedFrameIndex_ = indexInVideo;
     }
     previousIndexInVideo = indexInVideo;
   }
+
+  // Dequeue the last frame's result
+  if (frameIndices.numel() > 0) {
+    auto lastIndexInOutput =
+        indicesAreSorted ? frameIndices.numel() - 1 : argsort[frameIndices.numel() - 1];
+    FrameOutput lastResult = deviceInterface_->dequeueConversionResult();
+    // Data is already in the right place
+    frameBatchOutput.ptsSeconds[lastIndexInOutput] = lastResult.ptsSeconds;
+    frameBatchOutput.durationSeconds[lastIndexInOutput] =
+        lastResult.durationSeconds;
+  }
+
   frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
   return frameBatchOutput;
 }
@@ -1194,6 +1227,7 @@ void SingleStreamDecoder::maybeSeekToBeforeDesiredPts() {
 
   decodeStats_.numFlushes++;
   deviceInterface_->flush();
+  deviceInterface_->flushConversionQueue();
 }
 
 // --------------------------------------------------------------------------

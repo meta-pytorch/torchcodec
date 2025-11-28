@@ -20,6 +20,11 @@ CpuDeviceInterface::CpuDeviceInterface(const torch::Device& device)
   TORCH_CHECK(g_cpu, "CpuDeviceInterface was not registered!");
   TORCH_CHECK(
       device_.type() == torch::kCPU, "Unsupported device: ", device_.str());
+  startWorkerThread();
+}
+
+CpuDeviceInterface::~CpuDeviceInterface() {
+  stopWorkerThread();
 }
 
 void CpuDeviceInterface::initialize(
@@ -431,6 +436,114 @@ std::optional<torch::Tensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
 
 std::string CpuDeviceInterface::getDetails() {
   return std::string("CPU Device Interface.");
+}
+
+// --------------------------------------------------------------------------
+// ASYNC COLOR CONVERSION THREADING
+// --------------------------------------------------------------------------
+
+void CpuDeviceInterface::startWorkerThread() {
+  workerShouldExit_ = false;
+  workerThread_ = std::thread(&CpuDeviceInterface::colorConversionWorker, this);
+}
+
+void CpuDeviceInterface::stopWorkerThread() {
+  {
+    std::lock_guard<std::mutex> lock(queueMutex_);
+    workerShouldExit_ = true;
+  }
+  workAvailable_.notify_one();
+  if (workerThread_.joinable()) {
+    workerThread_.join();
+  }
+}
+
+void CpuDeviceInterface::colorConversionWorker() {
+  while (true) {
+    ConversionWorkItem workItem;
+
+    // Wait for work or exit signal
+    {
+      std::unique_lock<std::mutex> lock(queueMutex_);
+      workAvailable_.wait(lock, [this] {
+        return !workQueue_.empty() || workerShouldExit_;
+      });
+
+      if (workerShouldExit_ && workQueue_.empty()) {
+        return; // Exit thread
+      }
+
+      workItem = std::move(workQueue_.front());
+      workQueue_.pop();
+    }
+
+    // Do the color conversion (outside the lock)
+    FrameOutput frameOutput;
+    if (avMediaType_ == AVMEDIA_TYPE_AUDIO) {
+      convertAudioAVFrameToFrameOutput(workItem.avFrame, frameOutput);
+    } else {
+      convertVideoAVFrameToFrameOutput(
+          workItem.avFrame,
+          frameOutput,
+          workItem.preAllocatedOutputTensor);
+    }
+
+    // Push result
+    {
+      std::lock_guard<std::mutex> lock(queueMutex_);
+      resultQueue_.push(std::move(frameOutput));
+    }
+    resultAvailable_.notify_one();
+  }
+}
+
+void CpuDeviceInterface::enqueueConversion(
+    UniqueAVFrame avFrame,
+    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+  std::unique_lock<std::mutex> lock(queueMutex_);
+
+  // Block if queue is full (backpressure)
+  workAvailable_.wait(lock, [this] {
+    return workQueue_.size() < kMaxQueueDepth;
+  });
+
+  ConversionWorkItem workItem{
+      std::move(avFrame), std::move(preAllocatedOutputTensor)};
+  workQueue_.push(std::move(workItem));
+
+  workAvailable_.notify_one();
+}
+
+FrameOutput CpuDeviceInterface::dequeueConversionResult() {
+  std::unique_lock<std::mutex> lock(queueMutex_);
+
+  resultAvailable_.wait(lock, [this] {
+    return !resultQueue_.empty();
+  });
+
+  FrameOutput result = std::move(resultQueue_.front());
+  resultQueue_.pop();
+
+  // Notify enqueue that there's space (for backpressure)
+  workAvailable_.notify_one();
+
+  return result;
+}
+
+void CpuDeviceInterface::flushConversionQueue() {
+  std::lock_guard<std::mutex> lock(queueMutex_);
+
+  // Clear both queues
+  while (!workQueue_.empty()) {
+    workQueue_.pop();
+  }
+  while (!resultQueue_.empty()) {
+    resultQueue_.pop();
+  }
+
+  // Notify waiting threads
+  workAvailable_.notify_all();
+  resultAvailable_.notify_all();
 }
 
 } // namespace facebook::torchcodec
