@@ -1139,8 +1139,8 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
   // We are seeking forwards.
   // We can only skip a seek if both lastDecodedAvFramePts and
   // cursor_ share the same keyframe.
-  int lastDecodedAvFrameIndex = getKeyFrameIndexForPts(lastDecodedAvFramePts_);
-  int targetKeyFrameIndex = getKeyFrameIndexForPts(cursor_);
+  int lastDecodedAvFrameIndex = getKeyFrameIdentifier(lastDecodedAvFramePts_);
+  int targetKeyFrameIndex = getKeyFrameIdentifier(cursor_);
   return lastDecodedAvFrameIndex >= 0 && targetKeyFrameIndex >= 0 &&
       lastDecodedAvFrameIndex == targetKeyFrameIndex;
 }
@@ -1359,7 +1359,19 @@ torch::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
 // PTS <-> INDEX CONVERSIONS
 // --------------------------------------------------------------------------
 
-int SingleStreamDecoder::getKeyFrameIndexForPts(int64_t pts) const {
+int SingleStreamDecoder::getKeyFrameIdentifier(int64_t pts) const {
+  // This function "identifies" a key frame for a given pts value.
+  // We use the term "identifier" rather than "index" because the nature of the
+  // index that is returned depends on various factors:
+  // - If seek_mode is exact, we return the index of the key frame in the
+  //   scanned key-frame vector (streamInfo.keyFrames). So the returned value is
+  //   in [0, num_key_frames).
+  // - If seek_mode is approximate, we use av_index_search_timestamp() which
+  //   may return a value in [0, num_frames) like for mkv, but also a value in
+  //   [0, num_frames) like for mp4. It really depends on the container.
+  //
+  //  The range of the "identifier" doesn't matter that much, for now we only
+  //  use it to uniquely identify a key frame in canWeAvoidSeeking().
   const StreamInfo& streamInfo = streamInfos_.at(activeStreamIndex_);
   if (streamInfo.keyFrames.empty()) {
     return av_index_search_timestamp(
