@@ -27,6 +27,13 @@ def needs_cuda(test_item):
     return pytest.mark.needs_cuda(test_item)
 
 
+# Decorator for skipping ffmpeg tests when ffmpeg cli isn't available. The tests are
+# effectively marked to be skipped in pytest_collection_modifyitems() of
+# conftest.py
+def needs_ffmpeg_cli(test_item):
+    return pytest.mark.needs_ffmpeg_cli(test_item)
+
+
 # This is a special device string that we use to test the "beta" CUDA backend.
 # It only exists here, in this test utils file. Public and core APIs have no
 # idea that this is how we're tesing them. That is, that's not a supported
@@ -95,6 +102,10 @@ def get_ffmpeg_major_version():
 def get_ffmpeg_minor_version():
     ffmpeg_version = _get_ffmpeg_version_string()
     return int(ffmpeg_version.split(".")[1])
+
+
+def get_python_version() -> tuple[int, int]:
+    return (sys.version_info.major, sys.version_info.minor)
 
 
 def cuda_version_used_for_building_torch() -> Optional[tuple[int, int]]:

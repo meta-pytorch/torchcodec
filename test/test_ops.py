@@ -42,11 +42,12 @@ from torchcodec._core import (
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
-    in_fbcode,
+    get_python_version,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
     needs_cuda,
+    needs_ffmpeg_cli,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
@@ -368,6 +369,10 @@ class TestVideoDecoderOps:
         with pytest.raises(IndexError, match="no more frames"):
             get_next_frame(decoder)
 
+    @pytest.mark.skipif(
+        get_python_version() >= (3, 14),
+        reason="torch.compile is not supported on Python 3.14+",
+    )
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_compile_seek_and_next(self, device):
         # TODO_OPEN_ISSUE Scott (T180277797): Get this to work with the inductor stack. Right now
@@ -495,10 +500,7 @@ class TestVideoDecoderOps:
             )
             assert pts_is_equal
 
-    @pytest.mark.skipif(
-        in_fbcode(),
-        reason="ffprobe not available internally",
-    )
+    @needs_ffmpeg_cli
     def test_seek_mode_custom_frame_mappings_fails(self):
         with pytest.raises(
             RuntimeError,
@@ -539,10 +541,7 @@ class TestVideoDecoderOps:
                 decoder, stream_index=0, custom_frame_mappings=different_lengths
             )
 
-    @pytest.mark.skipif(
-        in_fbcode(),
-        reason="ffprobe not available internally",
-    )
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_seek_mode_custom_frame_mappings(self, device):
         stream_index = 3  # custom_frame_index seek mode requires a stream index

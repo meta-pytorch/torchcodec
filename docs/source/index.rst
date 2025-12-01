@@ -98,6 +98,14 @@ Encoding
 
         How encode audio samples
 
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Video Encoding
+        :img-top: _static/img/card-background.svg
+        :link: generated_examples/encoding/video_encoding.html
+        :link-type: url
+
+        How to encode video frames
+
 .. toctree::
    :maxdepth: 1
    :caption: TorchCodec documentation

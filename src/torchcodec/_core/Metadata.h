@@ -22,11 +22,11 @@ enum class SeekMode { exact, approximate, custom_frame_mappings };
 
 struct StreamMetadata {
   // Common (video and audio) fields derived from the AVStream.
-  int streamIndex;
+  int streamIndex = -1;
 
   // See this link for what various values are available:
   // https://ffmpeg.org/doxygen/trunk/group__lavu__misc.html#ga9a84bba4713dfced21a1a56163be1f48
-  AVMediaType mediaType;
+  AVMediaType mediaType = AVMEDIA_TYPE_UNKNOWN;
 
   std::optional<AVCodecID> codecId;
   std::optional<std::string> codecName;
