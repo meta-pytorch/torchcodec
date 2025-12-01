@@ -147,14 +147,16 @@ class TestPublicVideoDecoderTransformOps:
 
     @pytest.mark.parametrize(
         "height_scaling_factor, width_scaling_factor",
-        ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.25, 0.25)),
+        ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.15, 0.75)),
     )
     @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
+    @pytest.mark.parametrize("seed", [0, 1234])
     def test_random_crop_torchvision(
         self,
         height_scaling_factor,
         width_scaling_factor,
         video,
+        seed,
     ):
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
@@ -162,11 +164,11 @@ class TestPublicVideoDecoderTransformOps:
         # We want both kinds of RandomCrop objects to get arrive at the same
         # locations to crop, so we need to make sure they get the same random
         # seed.
-        torch.manual_seed(0)
+        torch.manual_seed(seed)
         tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
         decoder_random_crop = VideoDecoder(video.path, transforms=[tc_random_crop])
 
-        torch.manual_seed(0)
+        torch.manual_seed(seed)
         decoder_random_crop_tv = VideoDecoder(
             video.path,
             transforms=[v2.RandomCrop(size=(height, width))],
@@ -179,13 +181,9 @@ class TestPublicVideoDecoderTransformOps:
 
         for frame_index in [
             0,
-            int(num_frames * 0.1),
-            int(num_frames * 0.2),
-            int(num_frames * 0.3),
-            int(num_frames * 0.4),
+            int(num_frames * 0.25),
             int(num_frames * 0.5),
             int(num_frames * 0.75),
-            int(num_frames * 0.90),
             num_frames - 1,
         ]:
             frame_random_crop = decoder_random_crop[frame_index]
@@ -257,17 +255,6 @@ class TestPublicVideoDecoderTransformOps:
             VideoDecoder(
                 NASA_VIDEO.path,
                 transforms=[v2.RandomCrop(**params)],
-            )
-
-    def test_tv_random_crop_nhwc_fails(self):
-        with pytest.raises(
-            ValueError,
-            match="TorchVision v2 RandomCrop is only supported for NCHW",
-        ):
-            VideoDecoder(
-                NASA_VIDEO.path,
-                transforms=[v2.RandomCrop(size=(100, 100))],
-                dimension_order="NHWC",
             )
 
     def test_transform_fails(self):

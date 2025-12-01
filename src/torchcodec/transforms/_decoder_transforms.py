@@ -38,10 +38,10 @@ class DecoderTransform(ABC):
     """
 
     @abstractmethod
-    def _make_transform_spec(self) -> str:
+    def _make_transform_spec(self, input_dims: Tuple[int, int]) -> str:
         pass
 
-    def _get_output_dims(
+    def _calculate_output_dims(
         self, input_dims: Tuple[Optional[int], Optional[int]]
     ) -> Tuple[Optional[int], Optional[int]]:
         return input_dims
@@ -71,12 +71,12 @@ class Resize(DecoderTransform):
 
     size: Sequence[int]
 
-    def _make_transform_spec(self) -> str:
+    def _make_transform_spec(self, input_dims: Tuple[int, int]) -> str:
         # TODO: establish this invariant in the constructor during refactor
         assert len(self.size) == 2
         return f"resize, {self.size[0]}, {self.size[1]}"
 
-    def _get_output_dims(
+    def _calculate_output_dims(
         self, input_dims: Tuple[Optional[int], Optional[int]]
     ) -> Tuple[Optional[int], Optional[int]]:
         # TODO: establish this invariant in the constructor during refactor
@@ -125,45 +125,37 @@ class RandomCrop(DecoderTransform):
     """
 
     size: Sequence[int]
+
+    # Note that these values are never read by this object or the decoder. We
+    # record them for testing purposes only.
     _top: Optional[int] = None
     _left: Optional[int] = None
-    _input_dims: Optional[Tuple[int, int]] = None
 
-    def _make_transform_spec(self) -> str:
+    def _make_transform_spec(self, input_dims: Tuple[int, int]) -> str:
         if len(self.size) != 2:
             raise ValueError(
                 f"RandomCrop's size must be a sequence of length 2, got {self.size}. "
                 "This should never happen, please report a bug."
             )
 
-        if self._top is None or self._left is None:
-            # TODO: It would be very strange if only ONE of those is None. But should we
-            #       make it an error? We can continue, but it would probably mean
-            #       something bad happened. Dear reviewer, please register an opinion here:
-            if self._input_dims is None:
-                raise ValueError(
-                    "RandomCrop's input_dims must be set before calling _make_transform_spec(). "
-                    "This should never happen, please report a bug."
-                )
-            if self._input_dims[0] < self.size[0] or self._input_dims[1] < self.size[1]:
-                raise ValueError(
-                    f"Input dimensions {self._input_dims} are smaller than the crop size {self.size}."
-                )
-
-            # Note: This logic must match the logic in
-            #       torchvision.transforms.v2.RandomCrop.make_params(). Given
-            #       the same seed, they should get the same result. This is an
-            #       API guarantee with our users.
-            self._top = int(
-                torch.randint(0, self._input_dims[0] - self.size[0] + 1, size=()).item()
-            )
-            self._left = int(
-                torch.randint(0, self._input_dims[1] - self.size[1] + 1, size=()).item()
+        # Note: This logic below must match the logic in
+        #       torchvision.transforms.v2.RandomCrop.make_params(). Given
+        #       the same seed, they should get the same result. This is an
+        #       API guarantee with our users.
+        if input_dims[0] < self.size[0] or input_dims[1] < self.size[1]:
+            raise ValueError(
+                f"Input dimensions {input_dims} are smaller than the crop size {self.size}."
             )
 
-        return f"crop, {self.size[0]}, {self.size[1]}, {self._left}, {self._top}"
+        top = int(torch.randint(0, input_dims[0] - self.size[0] + 1, size=()).item())
+        self._top = top
 
-    def _get_output_dims(
+        left = int(torch.randint(0, input_dims[1] - self.size[1] + 1, size=()).item())
+        self._left = left
+
+        return f"crop, {self.size[0]}, {self.size[1]}, {left}, {top}"
+
+    def _calculate_output_dims(
         self, input_dims: Tuple[Optional[int], Optional[int]]
     ) -> Tuple[Optional[int], Optional[int]]:
         # TODO: establish this invariant in the constructor during refactor
@@ -172,25 +164,30 @@ class RandomCrop(DecoderTransform):
         height, width = input_dims
         if height is None:
             raise ValueError(
-                "Video metadata has no height. RandomCrop can only be used when input frame dimensions are known."
+                "Video metadata has no height. "
+                "RandomCrop can only be used when input frame dimensions are known."
             )
         if width is None:
             raise ValueError(
-                "Video metadata has no width. RandomCrop can only be used when input frame dimensions are known."
+                "Video metadata has no width. "
+                "RandomCrop can only be used when input frame dimensions are known."
             )
 
-        self._input_dims = (height, width)
         return (self.size[0], self.size[1])
 
     @classmethod
     def _from_torchvision(
         cls,
         tv_random_crop: nn.Module,
-        input_dims: Tuple[Optional[int], Optional[int]],
     ):
         v2 = import_torchvision_transforms_v2()
 
-        assert isinstance(tv_random_crop, v2.RandomCrop)
+        if not isinstance(tv_random_crop, v2.RandomCrop):
+            raise ValueError(
+                "Transform must be TorchVision's RandomCrop, "
+                f"it is instead {type(tv_random_crop).__name__}. "
+                "This should never happen, please report a bug."
+            )
 
         if tv_random_crop.padding is not None:
             raise ValueError(
@@ -214,25 +211,4 @@ class RandomCrop(DecoderTransform):
                 f"pair for the size, got {tv_random_crop.size}."
             )
 
-        height, width = input_dims
-        if height is None:
-            raise ValueError(
-                "Video metadata has no height. RandomCrop can only be used when input frame dimensions are known."
-            )
-        if width is None:
-            raise ValueError(
-                "Video metadata has no width. RandomCrop can only be used when input frame dimensions are known."
-            )
-
-        # Note that TorchVision v2 transforms only accept NCHW tensors.
-        params = tv_random_crop.make_params(
-            torch.empty(size=(3, height, width), dtype=torch.uint8)
-        )
-
-        if tv_random_crop.size != (params["height"], params["width"]):
-            raise ValueError(
-                f"TorchVision RandomCrop's provided size, {tv_random_crop.size} "
-                f"must match the computed size, {params['height'], params['width']}."
-            )
-
-        return cls(size=tv_random_crop.size, _top=params["top"], _left=params["left"])
+        return cls(size=tv_random_crop.size)
