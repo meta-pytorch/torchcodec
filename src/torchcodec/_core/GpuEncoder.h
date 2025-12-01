@@ -27,9 +27,8 @@ class GpuEncoder {
   explicit GpuEncoder(const torch::Device& device);
   ~GpuEncoder();
 
-  std::optional<const AVCodec*> findEncoder(const AVCodecID& codecId);
   void registerHardwareDeviceWithCodec(AVCodecContext* codecContext);
-  void setupEncodingContext(AVCodecContext* codecContext);
+  void setupHardwareFrameContext(AVCodecContext* codecContext);
 
   UniqueAVFrame convertTensorToAVFrame(
       const torch::Tensor& tensor,

@@ -100,26 +100,6 @@ void GpuEncoder::initializeHardwareContext() {
   nppCtx_ = getNppStreamContext(device_);
 }
 
-std::optional<const AVCodec*> GpuEncoder::findEncoder(
-    const AVCodecID& codecId) {
-  void* i = nullptr;
-  const AVCodec* codec = nullptr;
-  while ((codec = av_codec_iterate(&i)) != nullptr) {
-    if (codec->id != codecId || !av_codec_is_encoder(codec)) {
-      continue;
-    }
-
-    const AVCodecHWConfig* config = nullptr;
-    for (int j = 0; (config = avcodec_get_hw_config(codec, j)) != nullptr;
-         ++j) {
-      if (config->device_type == AV_HWDEVICE_TYPE_CUDA) {
-        return codec;
-      }
-    }
-  }
-  return std::nullopt;
-}
-
 void GpuEncoder::registerHardwareDeviceWithCodec(AVCodecContext* codecContext) {
   TORCH_CHECK(
       hardwareDeviceCtx_, "Hardware device context has not been initialized");
@@ -127,18 +107,24 @@ void GpuEncoder::registerHardwareDeviceWithCodec(AVCodecContext* codecContext) {
   codecContext->hw_device_ctx = av_buffer_ref(hardwareDeviceCtx_.get());
 }
 
-void GpuEncoder::setupEncodingContext(AVCodecContext* codecContext) {
+// Allocates and initializes AVHWFramesContext, and sets pixel format fields
+// to enable encoding with CUDA device. The hw_frames_ctx field is needed by
+// FFmpeg to allocate frames on GPU's memory.
+void GpuEncoder::setupHardwareFrameContext(AVCodecContext* codecContext) {
   TORCH_CHECK(
       hardwareDeviceCtx_, "Hardware device context has not been initialized");
   TORCH_CHECK(codecContext != nullptr, "codecContext is null");
-
-  codecContext->sw_pix_fmt = AV_PIX_FMT_NV12;
-  codecContext->pix_fmt = AV_PIX_FMT_CUDA;
 
   AVBufferRef* hwFramesCtxRef = av_hwframe_ctx_alloc(hardwareDeviceCtx_.get());
   TORCH_CHECK(
       hwFramesCtxRef != nullptr,
       "Failed to allocate hardware frames context for codec");
+
+  // Always set pixel formats to options that support CUDA encoding.
+  // TODO-VideoEncoder: Enable user set pixel formats to be set and properly
+  // converted with npp functions below
+  codecContext->sw_pix_fmt = AV_PIX_FMT_NV12;
+  codecContext->pix_fmt = AV_PIX_FMT_CUDA;
 
   AVHWFramesContext* hwFramesCtx =
       reinterpret_cast<AVHWFramesContext*>(hwFramesCtxRef->data);
@@ -164,41 +150,44 @@ UniqueAVFrame GpuEncoder::convertTensorToAVFrame(
     [[maybe_unused]] AVPixelFormat targetFormat,
     int frameIndex,
     AVCodecContext* codecContext) {
-  TORCH_CHECK(tensor.is_cuda(), "GpuEncoder requires CUDA tensors");
+  TORCH_CHECK(
+      tensor.is_cuda(),
+      "Frame tensor is not stored on GPU, but the GPU method convertTensorToAVFrame was called.");
   TORCH_CHECK(
       tensor.dim() == 3 && tensor.size(0) == 3,
       "Expected 3D RGB tensor (CHW format), got shape: ",
       tensor.sizes());
+
+  // TODO-VideoEncoder: Unify AVFrame creation with CPU version of this method
   UniqueAVFrame avFrame(av_frame_alloc());
   TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
+  int height = static_cast<int>(tensor.size(1));
+  int width = static_cast<int>(tensor.size(2));
 
   avFrame->format = AV_PIX_FMT_CUDA;
-  avFrame->width = static_cast<int>(tensor.size(2));
-  avFrame->height = static_cast<int>(tensor.size(1));
+  avFrame->height = height;
+  avFrame->width = width;
   avFrame->pts = frameIndex;
 
-  int ret = av_hwframe_get_buffer(
-      codecContext ? codecContext->hw_frames_ctx : nullptr, avFrame.get(), 0);
+  // FFmpeg's av_hwframe_get_buffer is used to allocate memory on CUDA device.
+  // TODO-VideoEncoder: Consider using pytorch to allocate CUDA memory for
+  // efficiency
+  int ret =
+      av_hwframe_get_buffer(codecContext->hw_frames_ctx, avFrame.get(), 0);
   TORCH_CHECK(
       ret >= 0,
       "Failed to allocate hardware frame: ",
       getFFMPEGErrorStringFromErrorCode(ret));
 
-  // Validate that avFrame was properly allocated with CUDA memory
   TORCH_CHECK(
       avFrame != nullptr && avFrame->data[0] != nullptr,
       "avFrame must be pre-allocated with CUDA memory");
 
-  // Convert CHW to HWC for NPP processing
-  int height = static_cast<int>(tensor.size(1));
-  int width = static_cast<int>(tensor.size(2));
   torch::Tensor hwcFrame = tensor.permute({1, 2, 0}).contiguous();
 
-  // Get current CUDA stream for NPP operations
   at::cuda::CUDAStream currentStream =
       at::cuda::getCurrentCUDAStream(device_.index());
 
-  // Setup NPP context with current stream
   nppCtx_->hStream = currentStream.stream();
   cudaError_t cudaErr =
       cudaStreamGetFlags(nppCtx_->hStream, &nppCtx_->nStreamFlags);
@@ -207,9 +196,7 @@ UniqueAVFrame GpuEncoder::convertTensorToAVFrame(
       "cudaStreamGetFlags failed: ",
       cudaGetErrorString(cudaErr));
 
-  // Always use FFmpeg's default behavior: BT.601 limited range
   NppiSize oSizeROI = {width, height};
-
   NppStatus status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
       static_cast<const Npp8u*>(hwcFrame.data_ptr()),
       hwcFrame.stride(0) * hwcFrame.element_size(),
@@ -224,15 +211,8 @@ UniqueAVFrame GpuEncoder::convertTensorToAVFrame(
       "Failed to convert RGB to NV12: NPP error code ",
       status);
 
-  // Validate CUDA operations completed successfully
-  cudaError_t memCheck = cudaGetLastError();
-  TORCH_CHECK(
-      memCheck == cudaSuccess,
-      "CUDA error detected: ",
-      cudaGetErrorString(memCheck));
-
   // TODO-VideoEncoder: Enable configuration of color properties, similar to
-  // FFmpeg Set color properties to FFmpeg defaults
+  // FFmpeg. Below are the default color properties used by FFmpeg.
   avFrame->colorspace = AVCOL_SPC_SMPTE170M; // BT.601
   avFrame->color_range = AVCOL_RANGE_MPEG; // Limited range
 

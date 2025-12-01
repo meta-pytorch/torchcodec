@@ -523,9 +523,7 @@ void AudioEncoder::flushBuffers() {
 
 namespace {
 
-torch::Tensor validateFrames(
-    const torch::Tensor& frames,
-    const torch::Device& device) {
+torch::Tensor validateFrames(const torch::Tensor& frames) {
   TORCH_CHECK(
       frames.dtype() == torch::kUInt8,
       "frames must have uint8 dtype, got ",
@@ -538,15 +536,6 @@ torch::Tensor validateFrames(
       frames.sizes()[1] == 3,
       "frame must have 3 channels (R, G, B), got ",
       frames.sizes()[1]);
-  if (device.type() != torch::kCPU) {
-    TORCH_CHECK(
-        frames.is_cuda(),
-        "When using CUDA encoding (device=",
-        device.str(),
-        "), frames must be on a CUDA device. Got frames on ",
-        frames.device().str(),
-        ". Please move frames to a CUDA device: frames.to('cuda')");
-  }
   return frames.contiguous();
 }
 
@@ -676,8 +665,7 @@ VideoEncoder::VideoEncoder(
     double frameRate,
     std::string_view fileName,
     const VideoStreamOptions& videoStreamOptions)
-    : frames_(validateFrames(frames, videoStreamOptions.device)),
-      inFrameRate_(frameRate) {
+    : frames_(validateFrames(frames)), inFrameRate_(frameRate) {
   setFFmpegLogLevel();
 
   // Allocate output format context
@@ -710,7 +698,7 @@ VideoEncoder::VideoEncoder(
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
     const VideoStreamOptions& videoStreamOptions)
-    : frames_(validateFrames(frames, videoStreamOptions.device)),
+    : frames_(validateFrames(frames)),
       inFrameRate_(frameRate),
       avioContextHolder_(std::move(avioContextHolder)) {
   setFFmpegLogLevel();
@@ -736,8 +724,8 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
-  if (videoStreamOptions.device.is_cuda()) {
-    gpuEncoder_ = std::make_unique<GpuEncoder>(videoStreamOptions.device);
+  if (frames_.device().is_cuda()) {
+    gpuEncoder_ = std::make_unique<GpuEncoder>(frames_.device());
   }
 
   const AVCodec* avCodec = nullptr;
@@ -764,12 +752,7 @@ void VideoEncoder::initializeEncoder(
     TORCH_CHECK(
         avFormatContext_->oformat != nullptr,
         "Output format is null, unable to find default codec.");
-    // Try to find a hardware-accelerated encoder if not using CPU
     avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
-    if (gpuEncoder_) {
-      avCodec = gpuEncoder_->findEncoder(avFormatContext_->oformat->video_codec)
-                    .value_or(avCodec);
-    }
     TORCH_CHECK(avCodec != nullptr, "Video codec not found");
   }
 
@@ -842,11 +825,9 @@ void VideoEncoder::initializeEncoder(
         0);
   }
 
-  // Register the hardware device context with the codec
-  // context before calling avcodec_open2().
   if (gpuEncoder_) {
     gpuEncoder_->registerHardwareDeviceWithCodec(avCodecContext_.get());
-    gpuEncoder_->setupEncodingContext(avCodecContext_.get());
+    gpuEncoder_->setupHardwareFrameContext(avCodecContext_.get());
   }
 
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &avCodecOptions);

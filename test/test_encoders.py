@@ -827,12 +827,16 @@ class TestVideoEncoder:
         )
 
         def encode_to_tensor(frames):
-            common_params = dict(crf=0, pixel_format="yuv444p")
+            common_params = dict(
+                crf=0,
+                pixel_format="yuv444p",
+                codec="h264_nvenc" if device != "cpu" else None,
+            )
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
                 VideoEncoder(frames, frame_rate=30).to_file(dest=dest, **common_params)
                 with open(dest, "rb") as f:
-                    return torch.frombuffer(f.read(), dtype=torch.uint8).clone()
+                    return torch.frombuffer(f.read(), dtype=torch.uint8)
             elif method == "to_tensor":
                 return VideoEncoder(frames, frame_rate=30).to_tensor(
                     format="mp4", **common_params
@@ -1269,7 +1273,6 @@ class TestVideoEncoder:
 
     @pytest.mark.needs_cuda
     @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
-    @pytest.mark.parametrize("pixel_format", ("nv12", "yuv420p"))
     @pytest.mark.parametrize(
         "format_codec",
         [
@@ -1280,12 +1283,12 @@ class TestVideoEncoder:
         ],
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_nvenc_against_ffmpeg_cli(
-        self, tmp_path, pixel_format, format_codec, method
-    ):
+    # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
+    def test_nvenc_against_ffmpeg_cli(self, tmp_path, format_codec, method):
         # Encode with FFmpeg CLI using nvenc codecs
         format, codec = format_codec
         device = "cuda"
+        pixel_format = "nv12"
         qp = 1  # Lossless (qp=0) is not supported on av1_nvenc, so we use 1
         source_frames = self.decode(TEST_SRC_2_720P.path).data.to(device)
 
@@ -1315,13 +1318,11 @@ class TestVideoEncoder:
 
         ffmpeg_cmd.extend(["-pix_fmt", pixel_format])  # Output format
         if codec == "av1_nvenc":
-            ffmpeg_cmd.extend(
-                ["-rc", "constqp"]
-            )  # Set rate control mode for AV1        else:
+            ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1
         ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
         ffmpeg_cmd.extend([ffmpeg_encoded_path])
 
-        # Will this prevent CI from treating test as failed if NVENC is not available?
+        # TODO-VideoEncoder: Ensure CI does not skip this test, as we know NVENC is available.
         try:
             subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
         except subprocess.CalledProcessError as e:

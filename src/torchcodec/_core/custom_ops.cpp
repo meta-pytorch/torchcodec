@@ -647,7 +647,6 @@ void encode_video_to_file(
     std::optional<std::string_view> preset = std::nullopt,
     std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.device = frames.device();
   videoStreamOptions.codec = std::move(codec);
   videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
@@ -672,7 +671,6 @@ at::Tensor encode_video_to_tensor(
     std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
   VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.device = frames.device();
   videoStreamOptions.codec = std::move(codec);
   videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
@@ -709,7 +707,6 @@ void _encode_video_to_file_like(
   std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
 
   VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.device = frames.device();
   videoStreamOptions.codec = std::move(codec);
   videoStreamOptions.pixelFormat = std::move(pixel_format);
   videoStreamOptions.crf = crf;
