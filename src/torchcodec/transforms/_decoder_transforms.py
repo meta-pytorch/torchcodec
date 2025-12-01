@@ -5,7 +5,6 @@
 # LICENSE file in the root directory of this source tree.
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from types import ModuleType
 from typing import Optional, Sequence, Tuple
 
@@ -13,7 +12,6 @@ import torch
 from torch import nn
 
 
-@dataclass
 class DecoderTransform(ABC):
     """Base class for all decoder transforms.
 
@@ -59,7 +57,6 @@ def import_torchvision_transforms_v2() -> ModuleType:
     return v2
 
 
-@dataclass
 class Resize(DecoderTransform):
     """Resize the decoded frame to a given size.
 
@@ -71,20 +68,22 @@ class Resize(DecoderTransform):
             the form (height, width).
     """
 
-    size: Sequence[int]
+    def __init__(self, size: Sequence[int]):
+        if len(size) != 2:
+            raise ValueError(
+                "Resize transform must have a (height, width) "
+                f"pair for the size, got {size}."
+            )
+        self.size = size
 
     def _make_transform_spec(
         self, input_dims: Tuple[Optional[int], Optional[int]]
     ) -> str:
-        # TODO: establish this invariant in the constructor during refactor
-        assert len(self.size) == 2
         return f"resize, {self.size[0]}, {self.size[1]}"
 
     def _calculate_output_dims(
         self, input_dims: Tuple[Optional[int], Optional[int]]
     ) -> Tuple[Optional[int], Optional[int]]:
-        # TODO: establish this invariant in the constructor during refactor
-        assert len(self.size) == 2
         return (self.size[0], self.size[1])
 
     @classmethod
@@ -111,7 +110,6 @@ class Resize(DecoderTransform):
         return cls(size=tv_resize.size)
 
 
-@dataclass
 class RandomCrop(DecoderTransform):
     """Crop the decoded frame to a given size at a random location in the frame.
 
@@ -128,22 +126,17 @@ class RandomCrop(DecoderTransform):
             the form (height, width).
     """
 
-    size: Sequence[int]
-
-    # Note that these values are never read by this object or the decoder. We
-    # record them for testing purposes only.
-    _top: Optional[int] = None
-    _left: Optional[int] = None
+    def __init__(self, size: Sequence[int]):
+        if len(size) != 2:
+            raise ValueError(
+                "RandomCrop transform must have a (height, width) "
+                f"pair for the size, got {size}."
+            )
+        self.size = size
 
     def _make_transform_spec(
         self, input_dims: Tuple[Optional[int], Optional[int]]
     ) -> str:
-        if len(self.size) != 2:
-            raise ValueError(
-                f"RandomCrop's size must be a sequence of length 2, got {self.size}. "
-                "This should never happen, please report a bug."
-            )
-
         height, width = input_dims
         if height is None:
             raise ValueError(
@@ -176,9 +169,6 @@ class RandomCrop(DecoderTransform):
     def _calculate_output_dims(
         self, input_dims: Tuple[Optional[int], Optional[int]]
     ) -> Tuple[Optional[int], Optional[int]]:
-        # TODO: establish this invariant in the constructor during refactor
-        assert len(self.size) == 2
-
         height, width = input_dims
         if height is None:
             raise ValueError(

@@ -145,6 +145,15 @@ class TestPublicVideoDecoderTransformOps:
         ):
             VideoDecoder(NASA_VIDEO.path, transforms=[v2.Resize(size=(100))])
 
+        with pytest.raises(
+            ValueError,
+            match=r"must have a \(height, width\) pair for the size",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[torchcodec.transforms.Resize(size=(100, 100, 100))],
+            )
+
     @pytest.mark.parametrize(
         "height_scaling_factor, width_scaling_factor",
         ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.15, 0.75)),
