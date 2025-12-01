@@ -496,7 +496,9 @@ def _make_transform_specs(
     # actually have a pipeline where the output of one transform is the input to
     # the next. For example, if we have the transforms list [A, B, C, D], then
     # we should understand that as:
+    #
     #     A -> B -> C -> D
+    #
     # Where the frame produced by A is the input to B, the frame produced by B
     # is the input to C, etc. This particularly matters for frame dimensions.
     # Transforms can both:
