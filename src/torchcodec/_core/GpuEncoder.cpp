@@ -71,8 +71,8 @@ UniqueAVBufferRef createHardwareDeviceContext(const torch::Device& device) {
 
 // RGB to NV12 color conversion matrices (inverse of YUV to RGB)
 // Note: NPP's ColorTwist function apparently expects "limited range"
-// coefficient format even when producing full range output. All matrices below
-// use the limited range coefficient format (Y with +16 offset) for NPP
+// coefficient format even when producing full range output. The matrix below
+// uses the limited range coefficient format (Y with +16 offset) for NPP
 // compatibility.
 
 // BT.601 limited range (matches FFmpeg default behavior)
@@ -83,7 +83,7 @@ const Npp32f defaultLimitedRangeRgbToNv12[3][4] = {
     {-0.148f, -0.291f, 0.439f, 128.0f},
     // V = 0.439*R - 0.368*G - 0.071*B + 128 (BT.601 coefficients)
     {0.439f, -0.368f, -0.071f, 128.0f}};
-} // anonymous namespace
+} // namespace
 
 GpuEncoder::GpuEncoder(const torch::Device& device) : device_(device) {
   TORCH_CHECK(
@@ -122,7 +122,7 @@ void GpuEncoder::setupHardwareFrameContext(AVCodecContext* codecContext) {
 
   // Always set pixel formats to options that support CUDA encoding.
   // TODO-VideoEncoder: Enable user set pixel formats to be set and properly
-  // converted with npp functions below
+  // handled with NPP functions below
   codecContext->sw_pix_fmt = AV_PIX_FMT_NV12;
   codecContext->pix_fmt = AV_PIX_FMT_CUDA;
 
@@ -151,19 +151,16 @@ UniqueAVFrame GpuEncoder::convertTensorToAVFrame(
     int frameIndex,
     AVCodecContext* codecContext) {
   TORCH_CHECK(
-      tensor.is_cuda(),
-      "Frame tensor is not stored on GPU, but the GPU method convertTensorToAVFrame was called.");
-  TORCH_CHECK(
       tensor.dim() == 3 && tensor.size(0) == 3,
       "Expected 3D RGB tensor (CHW format), got shape: ",
       tensor.sizes());
 
-  // TODO-VideoEncoder: Unify AVFrame creation with CPU version of this method
   UniqueAVFrame avFrame(av_frame_alloc());
   TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
   int height = static_cast<int>(tensor.size(1));
   int width = static_cast<int>(tensor.size(2));
 
+  // TODO-VideoEncoder: Unify AVFrame creation with CPU version of this method
   avFrame->format = AV_PIX_FMT_CUDA;
   avFrame->height = height;
   avFrame->width = width;

@@ -727,7 +727,6 @@ void VideoEncoder::initializeEncoder(
   if (frames_.device().is_cuda()) {
     gpuEncoder_ = std::make_unique<GpuEncoder>(frames_.device());
   }
-
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
@@ -892,7 +891,6 @@ void VideoEncoder::encode() {
 UniqueAVFrame VideoEncoder::convertTensorToAVFrame(
     const torch::Tensor& frame,
     int frameIndex) {
-  TORCH_CHECK(frame.is_cpu(), "CPU encoder requires CPU tensors");
   // Initialize and cache scaling context if it does not exist
   if (!swsContext_) {
     swsContext_.reset(sws_getContext(

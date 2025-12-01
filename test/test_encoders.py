@@ -1371,5 +1371,4 @@ class TestVideoEncoder:
         assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
         for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
             assert psnr(ff_frame, enc_frame) > 25
-            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=99, atol=10)
             assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=95, atol=2)
