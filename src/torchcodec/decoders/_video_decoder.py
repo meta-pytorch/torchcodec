@@ -513,7 +513,9 @@ def _make_transform_specs(
     # our metadata. For each transform, we always calculate its output
     # dimensions from its input dimensions. We store these with the converted
     # transform, to be all used together when we generate the specs.
-    converted_transforms: list[(DecoderTransform, Tuple[int, int])] = []
+    converted_transforms: list[
+        Tuple[DecoderTransform, Tuple[Optional[int], Optional[int]]]
+    ] = []
     curr_input_dims = input_dims
     for transform in transforms:
         if isinstance(transform, DecoderTransform):

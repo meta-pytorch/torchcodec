@@ -38,7 +38,9 @@ class DecoderTransform(ABC):
     """
 
     @abstractmethod
-    def _make_transform_spec(self, input_dims: Tuple[int, int]) -> str:
+    def _make_transform_spec(
+        self, input_dims: Tuple[Optional[int], Optional[int]]
+    ) -> str:
         pass
 
     def _calculate_output_dims(
@@ -71,7 +73,9 @@ class Resize(DecoderTransform):
 
     size: Sequence[int]
 
-    def _make_transform_spec(self, input_dims: Tuple[int, int]) -> str:
+    def _make_transform_spec(
+        self, input_dims: Tuple[Optional[int], Optional[int]]
+    ) -> str:
         # TODO: establish this invariant in the constructor during refactor
         assert len(self.size) == 2
         return f"resize, {self.size[0]}, {self.size[1]}"
@@ -131,26 +135,40 @@ class RandomCrop(DecoderTransform):
     _top: Optional[int] = None
     _left: Optional[int] = None
 
-    def _make_transform_spec(self, input_dims: Tuple[int, int]) -> str:
+    def _make_transform_spec(
+        self, input_dims: Tuple[Optional[int], Optional[int]]
+    ) -> str:
         if len(self.size) != 2:
             raise ValueError(
                 f"RandomCrop's size must be a sequence of length 2, got {self.size}. "
                 "This should never happen, please report a bug."
             )
 
+        height, width = input_dims
+        if height is None:
+            raise ValueError(
+                "Video metadata has no height. "
+                "RandomCrop can only be used when input frame dimensions are known."
+            )
+        if width is None:
+            raise ValueError(
+                "Video metadata has no width. "
+                "RandomCrop can only be used when input frame dimensions are known."
+            )
+
         # Note: This logic below must match the logic in
         #       torchvision.transforms.v2.RandomCrop.make_params(). Given
         #       the same seed, they should get the same result. This is an
         #       API guarantee with our users.
-        if input_dims[0] < self.size[0] or input_dims[1] < self.size[1]:
+        if height < self.size[0] or width < self.size[1]:
             raise ValueError(
                 f"Input dimensions {input_dims} are smaller than the crop size {self.size}."
             )
 
-        top = int(torch.randint(0, input_dims[0] - self.size[0] + 1, size=()).item())
+        top = int(torch.randint(0, height - self.size[0] + 1, size=()).item())
         self._top = top
 
-        left = int(torch.randint(0, input_dims[1] - self.size[1] + 1, size=()).item())
+        left = int(torch.randint(0, width - self.size[1] + 1, size=()).item())
         self._left = left
 
         return f"crop, {self.size[0]}, {self.size[1]}, {left}, {top}"
