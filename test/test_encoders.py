@@ -17,6 +17,7 @@ from .utils import (
     assert_tensor_close_on_at_least,
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
+    in_fbcode,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
     needs_ffmpeg_cli,
