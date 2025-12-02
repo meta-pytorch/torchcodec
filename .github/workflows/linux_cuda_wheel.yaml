@@ -127,7 +127,7 @@ jobs:
         run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh
       - name: Run Python tests
         run: |
-          ${CONDA_RUN} FAIL_WITHOUT_CUDA=1 pytest --override-ini="addopts=-v" test --tb=short
+          ${CONDA_RUN} FAIL_WITHOUT_CUDA=1 pytest --override-ini="addopts=-v -m 'not devel'" test --tb=short
       - name: Run Python benchmark
         run: |
           ${CONDA_RUN} time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none

@@ -109,4 +109,4 @@ jobs:
         run: bash packaging/install_test_dependencies.sh
       - name: Run Python tests
         run: |
-          pytest --override-ini="addopts=-v" test
+          pytest --override-ini="addopts=-v -m 'not devel'" test

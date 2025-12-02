@@ -43,11 +43,14 @@ excludes = [
 [tool.pytest.ini_options]
 markers = [
     # defines a 'slow' mark to mark slow tests with `@pytest.mark.slow`
-    "slow: mark test as slow"
+    "slow: mark test as slow",
+    # defines a 'devel' mark to mark tests requiring development environment
+    # (cmake, pkg-config, nvcc, etc.) with '@pytest.mark.devel'
+    "devel: mark test as requiring development environment"
 ]
 
 # We don't want to run the slow tests by default. These options are ignored in
 # the CI, where we definitely want the 'slow' tests to run.
-addopts = "-v -m 'not slow'"
+addopts = "-v -m 'not slow and not devel'"
 
 testpaths = ["test"]
