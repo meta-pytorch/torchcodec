@@ -84,45 +84,41 @@ def report_stats(
     min_time = unit_times.min().item()
     max_time = unit_times.max().item()
     print(
-        f"\n{prefix}: {med = :.2f}, {mean = :.2f} +- {std:.2f}, {min_time = :.2f}, {max_time = :.2f} - in {unit}"
+        f"\n{prefix}   {med = :.2f}, {mean = :.2f} +- {std:.2f}, {min_time = :.2f}, {max_time = :.2f} - in {unit}"
     )
-    fps = num_frames / (times * 1e-9)
-    std = fps.std().item()
-    med = fps.median().item()
-    max_fps = fps.max().item()
-    print(f"{med = :.1f} fps +- {std:.1f}, {max_fps = :.1f}")
-
     if cpu_utils is not None:
         cpu_avg = cpu_utils.mean().item()
         cpu_peak = cpu_utils.max().item()
-        print(f"CPU utilization: avg = {cpu_avg:.1f}%, peak = {cpu_peak:.1f}%")
+        print(f"CPU utilization:      avg = {cpu_avg:.1f}%, peak = {cpu_peak:.1f}%")
 
     if gpu_utils is not None and gpu_utils.numel() > 0:
         gpu_avg = gpu_utils.mean().item()
         gpu_peak = gpu_utils.max().item()
-        print(f"GPU utilization: avg = {gpu_avg:.1f}%, peak = {gpu_peak:.1f}%")
+        print(f"GPU utilization:      avg = {gpu_avg:.1f}%, peak = {gpu_peak:.1f}%")
 
 
 def encode_torchcodec(frames, output_path, device="cpu"):
+    encoder = VideoEncoder(frames=frames, frame_rate=30)
     if device == "cuda":
-        # Move frames to GPU
-        gpu_frames = frames.cuda() if frames.device.type == "cpu" else frames
-        encoder = VideoEncoder(frames=gpu_frames, frame_rate=30, device="cuda")
         encoder.to_file(dest=output_path, codec="h264_nvenc", extra_options={"qp": 1})
     else:
-        encoder = VideoEncoder(frames=frames, frame_rate=30, device="cpu")
         encoder.to_file(dest=output_path, codec="libx264", crf=0)
 
 
-def write_raw_frames(frames, raw_path):
+def write_raw_frames(frames, num_frames, raw_path):
     # Convert NCHW to NHWC for raw video format
-    raw_frames = frames.permute(0, 2, 3, 1).contiguous()
+    raw_frames = frames.permute(0, 2, 3, 1).contiguous()[:num_frames]
     with open(raw_path, "wb") as f:
         f.write(raw_frames.cpu().numpy().tobytes())
 
 
-def encode_ffmpeg_cli(raw_path, frames_shape, output_path, device="cpu", codec=None):
-    height, width = frames_shape[2], frames_shape[3]
+def write_and_encode_ffmpeg_cli(
+    frames, num_frames, raw_path, output_path, device="cpu", write_frames=False
+):
+    # Rewrite frames during benchmarking function if write_frames flag used
+    if write_frames:
+        write_raw_frames(frames, num_frames, raw_path)
+    height, width = frames.shape[2], frames.shape[3]
 
     if device == "cuda":
         codec = "h264_nvenc"
@@ -152,6 +148,7 @@ def encode_ffmpeg_cli(raw_path, frames_shape, output_path, device="cpu", codec=N
     ffmpeg_cmd.extend(quality_params)
     # By not setting threads, allow FFmpeg to choose.
     # ffmpeg_cmd.extend(["-threads", "1"])
+    # try setting threads on VideoEncoder too?
     ffmpeg_cmd.extend([str(output_path)])
 
     subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
@@ -174,6 +171,11 @@ def main():
         default=DEFAULT_MAX_FRAMES,
         help="Maximum number of frames to decode for benchmarking",
     )
+    parser.add_argument(
+        "--write-frames",
+        action="store_true",
+        help="Include raw frame writing time in FFmpeg CLI benchmarks for fairer comparison with tensor-based workflows",
+    )
 
     args = parser.parse_args()
 
@@ -189,6 +191,7 @@ def main():
     frames = decoder.get_frames_in_range(
         start=0, stop=min(args.max_frames, len(decoder))
     ).data
+    gpu_frames = frames.cuda()
     print(
         f"Loaded {frames.shape[0]} frames of size {frames.shape[2]}x{frames.shape[3]}"
     )
@@ -196,14 +199,14 @@ def main():
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_dir = Path(temp_dir)
         raw_frames_path = temp_dir / "input_frames.raw"
-        write_raw_frames(frames, str(raw_frames_path))
+        write_raw_frames(frames, args.max_frames, str(raw_frames_path))
 
         # Benchmark torchcodec on GPU
         if cuda_available:
             gpu_output = temp_dir / "torchcodec_gpu.mp4"
             times, _cpu_utils, gpu_utils = bench(
                 encode_torchcodec,
-                frames=frames,
+                frames=gpu_frames,
                 output_path=str(gpu_output),
                 device="cuda",
                 average_over=args.average_over,
@@ -219,17 +222,18 @@ def main():
         if cuda_available:
             ffmpeg_gpu_output = temp_dir / "ffmpeg_gpu.mp4"
             times, _cpu_utils, gpu_utils = bench(
-                encode_ffmpeg_cli,
+                write_and_encode_ffmpeg_cli,
+                frames=gpu_frames,
+                num_frames=args.max_frames,
                 raw_path=str(raw_frames_path),
-                frames_shape=frames.shape,
                 output_path=str(ffmpeg_gpu_output),
                 device="cuda",
+                write_frames=args.write_frames,
                 average_over=args.average_over,
                 warmup=1,
             )
-            report_stats(
-                times, frames.shape[0], None, gpu_utils, prefix="FFmpeg CLI on GPU"
-            )
+            prefix = "FFmpeg CLI on GPU  "
+            report_stats(times, frames.shape[0], None, gpu_utils, prefix=prefix)
         else:
             print("Skipping FFmpeg CLI GPU benchmark (CUDA not available)")
 
@@ -250,17 +254,18 @@ def main():
         # Benchmark FFmpeg CLI on CPU
         ffmpeg_cpu_output = temp_dir / "ffmpeg_cpu.mp4"
         times, cpu_utils, _gpu_utils = bench(
-            encode_ffmpeg_cli,
+            write_and_encode_ffmpeg_cli,
+            frames=frames,
+            num_frames=args.max_frames,
             raw_path=str(raw_frames_path),
-            frames_shape=frames.shape,
             output_path=str(ffmpeg_cpu_output),
             device="cpu",
+            write_frames=args.write_frames,
             average_over=args.average_over,
             warmup=1,
         )
-        report_stats(
-            times, frames.shape[0], cpu_utils, None, prefix="FFmpeg CLI on CPU"
-        )
+        prefix = "FFmpeg CLI on CPU  "
+        report_stats(times, frames.shape[0], cpu_utils, None, prefix=prefix)
 
 
 if __name__ == "__main__":
