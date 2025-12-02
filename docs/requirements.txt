@@ -3,6 +3,7 @@ sphinx==5.0.0
 sphinx_design
 sphinx_copybutton
 sphinx-tabs
+sphinx-sitemap
 matplotlib
 torchvision
 ipython
