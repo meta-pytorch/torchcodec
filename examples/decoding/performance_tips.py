@@ -5,9 +5,12 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-====================================
-Performance Tips and Best Practices
-====================================
+.. meta::
+   :description: Learn how to optimize TorchCodec video decoding performance with batch APIs, approximate seeking, multi-threading, and CUDA acceleration.
+
+==============================================
+TorchCodec Performance Tips and Best Practices
+==============================================
 
 This tutorial consolidates performance optimization techniques for video
 decoding with TorchCodec. Learn when and how to apply various strategies
@@ -173,3 +176,25 @@ to increase performance.
 #     between CPU and CUDA decoding, see:
 #
 #     - :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py`
+
+# %%
+# Conclusion
+# ----------
+#
+# TorchCodec offers multiple performance optimization strategies, each suited to
+# different scenarios. Use batch APIs for multi-frame decoding, approximate mode
+# for faster initialization, parallel processing for high throughput, and CUDA
+# acceleration for GPU-intensive workflows.
+#
+# The best results often come from combining techniques. Profile your specific
+# use case and apply optimizations incrementally, using the benchmarks in the
+# linked examples as a guide.
+#
+# For more information, see:
+#
+# - :ref:`sphx_glr_generated_examples_decoding_basic_example.py` - Basic decoding examples
+# - :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py` - Approximate mode benchmarks
+# - :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py` - Custom frame mappings
+# - :ref:`sphx_glr_generated_examples_decoding_parallel_decoding.py` - Parallel decoding strategies
+# - :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py` - CUDA acceleration guide
+# - :class:`torchcodec.decoders.VideoDecoder` - Full API reference
