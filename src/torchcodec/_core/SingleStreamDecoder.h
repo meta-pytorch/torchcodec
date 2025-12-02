@@ -282,7 +282,7 @@ class SingleStreamDecoder {
   // PTS <-> INDEX CONVERSIONS
   // --------------------------------------------------------------------------
 
-  int getKeyFrameIndexForPts(int64_t pts) const;
+  int getKeyFrameIdentifier(int64_t pts) const;
 
   // Returns the key frame index of the presentation timestamp using our index.
   // We build this index by scanning the file in

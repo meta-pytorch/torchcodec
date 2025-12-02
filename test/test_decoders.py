@@ -29,6 +29,7 @@ from .utils import (
     BT709_FULL_RANGE,
     cuda_version_used_for_building_torch,
     get_ffmpeg_major_version,
+    get_python_version,
     H264_10BITS,
     H265_10BITS,
     H265_VIDEO,
@@ -39,6 +40,7 @@ from .utils import (
     NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
     needs_cuda,
+    needs_ffmpeg_cli,
     psnr,
     SINE_MONO_S16,
     SINE_MONO_S32,
@@ -1146,6 +1148,10 @@ class TestVideoDecoder:
 
     # TODO investigate why this fails internally.
     @pytest.mark.skipif(in_fbcode(), reason="Compile test fails internally.")
+    @pytest.mark.skipif(
+        get_python_version() >= (3, 14),
+        reason="torch.compile is not supported on Python 3.14+",
+    )
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_compile(self, device):
         decoder, device = make_video_decoder(NASA_VIDEO.path, device=device)
@@ -1311,10 +1317,7 @@ class TestVideoDecoder:
             # Return the custom frame mappings as a JSON string
             return custom_frame_mappings
 
-    @pytest.mark.skipif(
-        in_fbcode(),
-        reason="ffprobe not available internally",
-    )
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("stream_index", [0, 3])
     @pytest.mark.parametrize(
@@ -1361,10 +1364,7 @@ class TestVideoDecoder:
             ),
         )
 
-    @pytest.mark.skipif(
-        in_fbcode(),
-        reason="ffprobe not available internally",
-    )
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize(
         "custom_frame_mappings,expected_match",
