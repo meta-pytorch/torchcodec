@@ -103,7 +103,7 @@ jobs:
           source packaging/helpers.sh
           assert_ffmpeg_not_installed
 
-          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" -c conda-forge
+          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" pkg-config -c conda-forge
           ffmpeg -version
 
       - name: Install test dependencies

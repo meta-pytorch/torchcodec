@@ -99,7 +99,7 @@ jobs:
 
       - name: Install ffmpeg
         run: |
-          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" -c conda-forge
+          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" pkg-config -c conda-forge
           ffmpeg -version
 
       - name: Install test dependencies
