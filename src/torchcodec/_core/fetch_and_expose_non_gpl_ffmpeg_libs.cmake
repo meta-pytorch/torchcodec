@@ -15,31 +15,59 @@ set(
 )
 
 if (LINUX)
-    set(
-        platform_url
-        ${base_url}/linux_x86_64
-    )
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+        set(
+            platform_url
+            ${base_url}/linux_aarch64
+        )
 
-    set(
-        f4_sha256
-        1a083f1922443bedb5243d04896383b8c606778a7ddb9d886c8303e55339fe0c
-    )
-    set(
-        f5_sha256
-        65d6ad54082d94dcb3f801d73df2265e0e1bb303c7afbce7723e3b77ccd0e207
-    )
-    set(
-        f6_sha256
-        8bd5939c2f4a4b072e837e7870c13fe7d13824e5ff087ab534e4db4e90b7be9c
-    )
-    set(
-        f7_sha256
-        1cb946d8b7c6393c2c3ebe1f900b8de7a2885fe614c45d4ec32c9833084f2f26
-    )
-    set(
-        f8_sha256
-        c55b3c1a4b5e4d5fdd7c632bea3ab6f45b4e37cc8e0999dda3f84a8ed8defad8
-    )
+        set(
+            f4_sha256
+            a310a2ed9ffe555fd3278dae15065541098dd35e124564671dcda6a6620ac842
+        )
+        set(
+            f5_sha256
+            89ca7996bccbc2db49adaa401d20fdbabffe0e1b4e07a0f81d6b143e858b7c8d
+        )
+        set(
+            f6_sha256
+            ae44c67b4587d061b8e9cc8990ca891ee013fe52ad79e5016ba29871562621da
+        )
+        set(
+            f7_sha256
+            948e2cac66ca6f68ff526d5e84138e94bce0f1a7c83f502d15d85d0bd3ddc112
+        )
+        set(
+            f8_sha256
+            b9cfd99ae75a14e58300854967d4dc49de0b3daa551df51ea1f52a3f08d2c8af
+        )
+    elseif (LINUX)  # assume x86_64
+        set(
+            platform_url
+            ${base_url}/linux_x86_64
+        )
+
+        set(
+            f4_sha256
+            1a083f1922443bedb5243d04896383b8c606778a7ddb9d886c8303e55339fe0c
+        )
+        set(
+            f5_sha256
+            65d6ad54082d94dcb3f801d73df2265e0e1bb303c7afbce7723e3b77ccd0e207
+        )
+        set(
+            f6_sha256
+            8bd5939c2f4a4b072e837e7870c13fe7d13824e5ff087ab534e4db4e90b7be9c
+        )
+        set(
+            f7_sha256
+            1cb946d8b7c6393c2c3ebe1f900b8de7a2885fe614c45d4ec32c9833084f2f26
+        )
+        set(
+            f8_sha256
+            c55b3c1a4b5e4d5fdd7c632bea3ab6f45b4e37cc8e0999dda3f84a8ed8defad8
+        )
+  endif()
 elseif (APPLE)
     set(
         platform_url
