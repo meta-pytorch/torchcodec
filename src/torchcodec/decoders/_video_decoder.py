@@ -223,23 +223,26 @@ class VideoDecoder:
         )
 
         self._fallback_info = FallbackInfo()
+        self._has_decoded_frame = False
 
     def __len__(self) -> int:
         return self._num_frames
 
     @property
     def cpu_fallback(self) -> FallbackInfo:
-        # We can only determine whether fallback to CPU is happening after
-        # the first frame access. Before that, the status will be "Unknown".
+        # We can only determine whether fallback to CPU is happening when this
+        # property is accessed and requires that at least one frame has been decoded.
+        self._update_cpu_fallback()
         return self._fallback_info
 
     def _update_cpu_fallback(self):
         """Update the fallback status if it hasn't been determined yet.
 
-        This method should be called after any frame decoding operation to determine
-        if fallback to software decoding occurred.
+        This method queries the C++ backend to determine if fallback to CPU
+        decoding occurred. The query is only performed after at least one frame
+        has been decoded.
         """
-        if not self._fallback_info.status_known:
+        if not self._fallback_info.status_known and self._has_decoded_frame:
             backend_details = core._get_backend_details(self._decoder)
 
             self._fallback_info.status_known = True
@@ -254,7 +257,7 @@ class VideoDecoder:
         assert isinstance(key, int)
 
         frame_data, *_ = core.get_frame_at_index(self._decoder, frame_index=key)
-        self._update_cpu_fallback()
+        self._has_decoded_frame = True
         return frame_data
 
     def _getitem_slice(self, key: slice) -> Tensor:
@@ -267,7 +270,7 @@ class VideoDecoder:
             stop=stop,
             step=step,
         )
-        self._update_cpu_fallback()
+        self._has_decoded_frame = True
         return frame_data
 
     def __getitem__(self, key: Union[numbers.Integral, slice]) -> Tensor:
@@ -321,7 +324,7 @@ class VideoDecoder:
         data, pts_seconds, duration_seconds = core.get_frame_at_index(
             self._decoder, frame_index=index
         )
-        self._update_cpu_fallback()
+        self._has_decoded_frame = True
         return Frame(
             data=data,
             pts_seconds=pts_seconds.item(),
@@ -341,7 +344,7 @@ class VideoDecoder:
         data, pts_seconds, duration_seconds = core.get_frames_at_indices(
             self._decoder, frame_indices=indices
         )
-        self._update_cpu_fallback()
+        self._has_decoded_frame = True
 
         return FrameBatch(
             data=data,
@@ -371,7 +374,7 @@ class VideoDecoder:
             stop=stop,
             step=step,
         )
-        self._update_cpu_fallback()
+        self._has_decoded_frame = True
         return FrameBatch(*frames)
 
     def get_frame_played_at(self, seconds: float) -> Frame:
@@ -401,7 +404,7 @@ class VideoDecoder:
         data, pts_seconds, duration_seconds = core.get_frame_at_pts(
             self._decoder, seconds
         )
-        self._update_cpu_fallback()
+        self._has_decoded_frame = True
         return Frame(
             data=data,
             pts_seconds=pts_seconds.item(),
@@ -423,7 +426,7 @@ class VideoDecoder:
         data, pts_seconds, duration_seconds = core.get_frames_by_pts(
             self._decoder, timestamps=seconds
         )
-        self._update_cpu_fallback()
+        self._has_decoded_frame = True
         return FrameBatch(
             data=data,
             pts_seconds=pts_seconds,
@@ -468,7 +471,7 @@ class VideoDecoder:
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
         )
-        self._update_cpu_fallback()
+        self._has_decoded_frame = True
         return FrameBatch(*frames)
 
 
