@@ -519,7 +519,7 @@ def _make_transform_specs(
     curr_input_dims = input_dims
     for transform in transforms:
         if isinstance(transform, DecoderTransform):
-            output_dims = transform._calculate_output_dims(curr_input_dims)
+            output_dims = transform._get_output_dims()
             converted_transforms.append((transform, curr_input_dims))
         else:
             if not tv_available:
@@ -530,11 +530,11 @@ def _make_transform_specs(
                 )
             elif isinstance(transform, v2.Resize):
                 tc_transform = Resize._from_torchvision(transform)
-                output_dims = tc_transform._calculate_output_dims(curr_input_dims)
+                output_dims = tc_transform._get_output_dims()
                 converted_transforms.append((tc_transform, curr_input_dims))
             elif isinstance(transform, v2.RandomCrop):
                 tc_transform = RandomCrop._from_torchvision(transform)
-                output_dims = tc_transform._calculate_output_dims(curr_input_dims)
+                output_dims = tc_transform._get_output_dims()
                 converted_transforms.append((tc_transform, curr_input_dims))
             else:
                 raise ValueError(
@@ -543,7 +543,7 @@ def _make_transform_specs(
                     "v2 transform."
                 )
 
-        curr_input_dims = output_dims
+        curr_input_dims = output_dims if output_dims is not None else curr_input_dims
 
     return ";".join([t._make_transform_spec(dims) for t, dims in converted_transforms])
 

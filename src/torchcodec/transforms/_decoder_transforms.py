@@ -43,10 +43,11 @@ class DecoderTransform(ABC):
     ) -> str:
         pass
 
-    def _calculate_output_dims(
-        self, input_dims: Tuple[Optional[int], Optional[int]]
-    ) -> Tuple[Optional[int], Optional[int]]:
-        return input_dims
+    # Transforms that change the dimensions of their input frame return a value.
+    # Transforms that don't return None; they can rely on this default
+    # implementation.
+    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
+        return None
 
 
 def import_torchvision_transforms_v2() -> ModuleType:
@@ -80,9 +81,7 @@ class Resize(DecoderTransform):
         assert len(self.size) == 2
         return f"resize, {self.size[0]}, {self.size[1]}"
 
-    def _calculate_output_dims(
-        self, input_dims: Tuple[Optional[int], Optional[int]]
-    ) -> Tuple[Optional[int], Optional[int]]:
+    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
         # TODO: establish this invariant in the constructor during refactor
         assert len(self.size) == 2
         return (self.size[0], self.size[1])
@@ -173,24 +172,9 @@ class RandomCrop(DecoderTransform):
 
         return f"crop, {self.size[0]}, {self.size[1]}, {left}, {top}"
 
-    def _calculate_output_dims(
-        self, input_dims: Tuple[Optional[int], Optional[int]]
-    ) -> Tuple[Optional[int], Optional[int]]:
+    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
         # TODO: establish this invariant in the constructor during refactor
         assert len(self.size) == 2
-
-        height, width = input_dims
-        if height is None:
-            raise ValueError(
-                "Video metadata has no height. "
-                "RandomCrop can only be used when input frame dimensions are known."
-            )
-        if width is None:
-            raise ValueError(
-                "Video metadata has no width. "
-                "RandomCrop can only be used when input frame dimensions are known."
-            )
-
         return (self.size[0], self.size[1])
 
     @classmethod

@@ -257,6 +257,51 @@ class TestPublicVideoDecoderTransformOps:
                 transforms=[v2.RandomCrop(**params)],
             )
 
+    @pytest.mark.parametrize("seed", [0, 314])
+    def test_random_crop_reusable_objects(self, seed):
+        torch.manual_seed(seed)
+        random_crop = torchcodec.transforms.RandomCrop(size=(100, 100))
+
+        # Create a spec which causes us to calculate the random crop location.
+        _ = random_crop._make_transform_spec((1000, 1000))
+        first_top = random_crop._top
+        first_left = random_crop._left
+
+        # Create a spec again, which should calculate a different random crop
+        # location.
+        _ = random_crop._make_transform_spec((1000, 1000))
+        assert first_top != random_crop._top
+        assert first_left != random_crop._left
+
+    @pytest.mark.parametrize(
+        "resize, random_crop",
+        [
+            (torchcodec.transforms.Resize, torchcodec.transforms.RandomCrop),
+            (v2.Resize, v2.RandomCrop),
+        ],
+    )
+    def test_transform_pipeline(self, resize, random_crop):
+        decoder = VideoDecoder(
+            TEST_SRC_2_720P.path,
+            transforms=[
+                # resized to bigger than original
+                resize(size=(2160, 3840)),
+                # crop to smaller than the resize, but still bigger than original
+                random_crop(size=(1080, 1920)),
+            ],
+        )
+
+        num_frames = len(decoder)
+        for frame_index in [
+            0,
+            int(num_frames * 0.25),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            num_frames - 1,
+        ]:
+            frame = decoder[frame_index]
+            assert frame.shape == (TEST_SRC_2_720P.get_num_color_channels(), 1080, 1920)
+
     def test_transform_fails(self):
         with pytest.raises(
             ValueError,
@@ -519,14 +564,14 @@ class TestCoreVideoDecoderTransformOps:
 
         with pytest.raises(
             RuntimeError,
-            match="x position out of bounds",
+            match="x start position, 9999, out of bounds",
         ):
             decoder = create_from_file(str(NASA_VIDEO.path))
             add_video_stream(decoder, transform_specs="crop, 100, 100, 9999, 100")
 
         with pytest.raises(
             RuntimeError,
-            match="y position out of bounds",
+            match=r"Crop output height \(999\) is greater than input height \(270\)",
         ):
             decoder = create_from_file(str(NASA_VIDEO.path))
             add_video_stream(decoder, transform_specs="crop, 999, 100, 100, 100")
