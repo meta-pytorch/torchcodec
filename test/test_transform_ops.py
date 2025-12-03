@@ -163,11 +163,15 @@ class TestPublicVideoDecoderTransformOps:
 
         # We want both kinds of RandomCrop objects to get arrive at the same
         # locations to crop, so we need to make sure they get the same random
-        # seed.
+        # seed. It's used in RandomCrop's _make_transform_spec() method, called
+        # by the VideoDecoder.
         torch.manual_seed(seed)
         tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
         decoder_random_crop = VideoDecoder(video.path, transforms=[tc_random_crop])
 
+        # Resetting manual seed for when TorchCodec's RandomCrop, created from
+        # the TorchVision RandomCrop, is used inside of the VideoDecoder. It
+        # needs to match the call above.
         torch.manual_seed(seed)
         decoder_random_crop_tv = VideoDecoder(
             video.path,
@@ -193,14 +197,11 @@ class TestPublicVideoDecoderTransformOps:
             expected_shape = (video.get_num_color_channels(), height, width)
             assert frame_random_crop_tv.shape == expected_shape
 
+            # Resetting manual seed to make sure the invocation of the
+            # TorchVision RandomCrop matches the two calls above.
+            torch.manual_seed(seed)
             frame_full = decoder_full[frame_index]
-            frame_tv = v2.functional.crop(
-                frame_full,
-                top=tc_random_crop._top,
-                left=tc_random_crop._left,
-                height=tc_random_crop.size[0],
-                width=tc_random_crop.size[1],
-            )
+            frame_tv = v2.RandomCrop(size=(height, width))(frame_full)
             assert_frames_equal(frame_random_crop, frame_tv)
 
     @pytest.mark.parametrize(
@@ -260,18 +261,23 @@ class TestPublicVideoDecoderTransformOps:
     @pytest.mark.parametrize("seed", [0, 314])
     def test_random_crop_reusable_objects(self, seed):
         torch.manual_seed(seed)
-        random_crop = torchcodec.transforms.RandomCrop(size=(100, 100))
+        random_crop = torchcodec.transforms.RandomCrop(size=(99, 99))
 
         # Create a spec which causes us to calculate the random crop location.
-        _ = random_crop._make_transform_spec((1000, 1000))
-        first_top = random_crop._top
-        first_left = random_crop._left
+        first_spec = random_crop._make_transform_spec((888, 888))
 
         # Create a spec again, which should calculate a different random crop
-        # location.
-        _ = random_crop._make_transform_spec((1000, 1000))
-        assert first_top != random_crop._top
-        assert first_left != random_crop._left
+        # location. Despite having the same image size, the specs should be
+        # different because the crop should be at a different location
+        second_spec = random_crop._make_transform_spec((888, 888))
+        assert first_spec != second_spec
+
+        # Create a spec again, but with a different image size. The specs should
+        # obviously be different, but the original image size should not be in
+        # the spec at all.
+        third_spec = random_crop._make_transform_spec((777, 777))
+        assert third_spec != first_spec
+        assert "888" not in third_spec
 
     @pytest.mark.parametrize(
         "resize, random_crop",

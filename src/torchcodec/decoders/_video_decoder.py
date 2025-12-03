@@ -518,10 +518,7 @@ def _make_transform_specs(
     ] = []
     curr_input_dims = input_dims
     for transform in transforms:
-        if isinstance(transform, DecoderTransform):
-            output_dims = transform._get_output_dims()
-            converted_transforms.append((transform, curr_input_dims))
-        else:
+        if not isinstance(transform, DecoderTransform):
             if not tv_available:
                 raise ValueError(
                     f"The supplied transform, {transform}, is not a TorchCodec "
@@ -529,13 +526,9 @@ def _make_transform_specs(
                     "v2 transforms, but TorchVision is not installed."
                 )
             elif isinstance(transform, v2.Resize):
-                tc_transform = Resize._from_torchvision(transform)
-                output_dims = tc_transform._get_output_dims()
-                converted_transforms.append((tc_transform, curr_input_dims))
+                transform = Resize._from_torchvision(transform)
             elif isinstance(transform, v2.RandomCrop):
-                tc_transform = RandomCrop._from_torchvision(transform)
-                output_dims = tc_transform._get_output_dims()
-                converted_transforms.append((tc_transform, curr_input_dims))
+                transform = RandomCrop._from_torchvision(transform)
             else:
                 raise ValueError(
                     f"Unsupported transform: {transform}. Transforms must be "
@@ -543,6 +536,8 @@ def _make_transform_specs(
                     "v2 transform."
                 )
 
+        converted_transforms.append((transform, curr_input_dims))
+        output_dims = transform._get_output_dims()
         curr_input_dims = output_dims if output_dims is not None else curr_input_dims
 
     return ";".join([t._make_transform_spec(dims) for t, dims in converted_transforms])

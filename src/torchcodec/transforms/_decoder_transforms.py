@@ -129,11 +129,6 @@ class RandomCrop(DecoderTransform):
 
     size: Sequence[int]
 
-    # Note that these values are never read by this object or the decoder. We
-    # record them for testing purposes only.
-    _top: Optional[int] = None
-    _left: Optional[int] = None
-
     def _make_transform_spec(
         self, input_dims: Tuple[Optional[int], Optional[int]]
     ) -> str:
@@ -165,10 +160,7 @@ class RandomCrop(DecoderTransform):
             )
 
         top = int(torch.randint(0, height - self.size[0] + 1, size=()).item())
-        self._top = top
-
         left = int(torch.randint(0, width - self.size[1] + 1, size=()).item())
-        self._left = left
 
         return f"crop, {self.size[0]}, {self.size[1]}, {left}, {top}"
 
