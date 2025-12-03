@@ -58,7 +58,7 @@ class DecoderTransform(ABC):
                 we want that to still work.
 
                 Note: This method is the moral equivalent of TorchVision's
-                `Transformer.make_params()`.
+                `Transform.make_params()`.
 
         Returns:
             str: A string which contains the spec for the transform that the
