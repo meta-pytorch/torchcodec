@@ -1790,10 +1790,10 @@ class TestVideoDecoder:
         """Test that supported videos don't trigger fallback on CUDA."""
         decoder = VideoDecoder(NASA_VIDEO.path, device="cuda")
 
-        # Access a frame to determine status
         _ = decoder[0]
 
         assert not bool(decoder.cpu_fallback)
+        assert "No fallback required" in str(decoder.cpu_fallback)
 
     def test_cpu_fallback_status_cached(self):
         """Test that cpu_fallback status is determined once and then cached."""

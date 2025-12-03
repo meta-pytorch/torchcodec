@@ -27,11 +27,10 @@ from torchcodec.transforms import DecoderTransform, Resize
 class FallbackInfo:
     """Information about decoder fallback status.
 
-    This class tracks whether hardware-accelerated decoding failed and the decoder
-    fell back to software decoding.
+    This class tracks whether the decoder fell back to CPU decoding.
 
     Usage:
-        - Use ``str(fallback_info)`` or ``print(fallback_info)`` to see the fallback status
+        - Use ``str(fallback_info)`` or ``print(fallback_info)`` to see the cpu fallback status
         - Use ``bool(fallback_info)`` to check if any fallback occurred
 
     Attributes:
@@ -44,13 +43,13 @@ class FallbackInfo:
         self.__video_not_supported = False
 
     def __bool__(self):
-        """Returns True if fallback occurred (and status is known)."""
+        """Returns True if fallback occurred."""
         return self.status_known and (
             self.__nvcuvid_unavailable or self.__video_not_supported
         )
 
     def __str__(self):
-        """Returns a human-readable string representation of the fallback status."""
+        """Returns a human-readable string representation of the cpu fallback status."""
         if not self.status_known:
             return "Fallback status: Unknown"
 
@@ -223,7 +222,6 @@ class VideoDecoder:
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
-        # Initialize fallback info
         self._fallback_info = FallbackInfo()
 
     def __len__(self) -> int:
@@ -231,16 +229,8 @@ class VideoDecoder:
 
     @property
     def cpu_fallback(self) -> FallbackInfo:
-        """Get information about decoder fallback status.
-
-        Returns:
-            FallbackInfo: Information about whether hardware-accelerated decoding
-                         failed and the decoder fell back to software decoding.
-
-        Note:
-            The fallback status is only determined after the first frame access.
-            Before that, the status will be "Unknown".
-        """
+        # We can only determine whether fallback to CPU is happening after
+        # the first frame access. Before that, the status will be "Unknown".
         return self._fallback_info
 
     def _update_cpu_fallback(self):
