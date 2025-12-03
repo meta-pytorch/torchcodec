@@ -55,6 +55,7 @@ extensions = [
     "sphinx_tabs.tabs",
     "sphinx_design",
     "sphinx_copybutton",
+    "sphinx_sitemap",
 ]
 
 
@@ -215,6 +216,15 @@ intersphinx_mapping = {
     "PIL": ("https://pillow.readthedocs.io/en/stable/", None),
     "matplotlib": ("https://matplotlib.org/stable/", None),
 }
+
+# sitemap config
+html_baseurl = "https://meta-pytorch.org/torchcodec/stable/"
+sitemap_locales = [None]
+sitemap_excludes = [
+    "search.html",
+    "genindex.html",
+]
+sitemap_url_scheme = "{link}"
 
 
 def inject_minigalleries(app, what, name, obj, options, lines):
