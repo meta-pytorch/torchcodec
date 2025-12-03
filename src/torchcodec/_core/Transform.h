@@ -36,8 +36,7 @@ class Transform {
   //
   // Note that the validation function does not return anything. We expect
   // invalid configurations to throw an exception.
-  virtual void validate(
-      [[maybe_unused]] const StreamMetadata& streamMetadata) const {}
+  virtual void validate([[maybe_unused]] const FrameDims& inputDims) const {}
 };
 
 class ResizeTransform : public Transform {
@@ -64,7 +63,7 @@ class CropTransform : public Transform {
 
   std::string getFilterGraphCpu() const override;
   std::optional<FrameDims> getOutputFrameDims() const override;
-  void validate(const StreamMetadata& streamMetadata) const override;
+  void validate(const FrameDims& inputDims) const override;
 
  private:
   FrameDims outputDims_;

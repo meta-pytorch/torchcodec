@@ -39,12 +39,44 @@ class DecoderTransform(ABC):
     def _make_transform_spec(
         self, input_dims: Tuple[Optional[int], Optional[int]]
     ) -> str:
+        """Makes the transform spec that is used by the `VideoDecoder`.
+
+        Args:
+            input_dims (Tuple[Optional[int], Optional[int]]): The dimensions of
+                the input frame in the form (height, width). We cannot know the
+                dimensions at object construction time because it's dependent on
+                the video being decoded and upstream transforms in the same
+                transform pipeline. Not all transforms need to know this; those
+                that don't will ignore it. The individual values in the tuple are
+                optional because the original values come from file metadata which
+                may be missing. We maintain the optionality throughout the APIs so
+                that we can decide as late as possible that it's necessary for the
+                values to exist. That is, if the values are missing from the
+                metadata and we have transforms which ignore the input dimensions,
+                we want that to still work.
+
+                Note: This method is the moral equivalent of TorchVision's
+                `Transform.make_params()`.
+
+        Returns:
+            str: A string which contains the spec for the transform that the
+                `VideoDecoder` knows what to do with.
+        """
         pass
 
-    def _calculate_output_dims(
-        self, input_dims: Tuple[Optional[int], Optional[int]]
-    ) -> Tuple[Optional[int], Optional[int]]:
-        return input_dims
+    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
+        """Get the dimensions of the output frame.
+
+        Transforms that change the frame dimensions need to override this
+        method. Transforms that don't change the frame dimensions can rely on
+        this default implementation.
+
+        Returns:
+            Optional[Tuple[Optional[int], Optional[int]]]: The output dimensions.
+                - None: The output dimensions are the same as the input dimensions.
+                - (int, int): The (height, width) of the output frame.
+        """
+        return None
 
 
 def import_torchvision_transforms_v2() -> ModuleType:
@@ -64,7 +96,7 @@ class Resize(DecoderTransform):
     Interpolation is always bilinear. Anti-aliasing is always on.
 
     Args:
-        size: (sequence of int): Desired output size. Must be a sequence of
+        size (Sequence[int]): Desired output size. Must be a sequence of
             the form (height, width).
     """
 
@@ -81,9 +113,7 @@ class Resize(DecoderTransform):
     ) -> str:
         return f"resize, {self.size[0]}, {self.size[1]}"
 
-    def _calculate_output_dims(
-        self, input_dims: Tuple[Optional[int], Optional[int]]
-    ) -> Tuple[Optional[int], Optional[int]]:
+    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
         return (self.size[0], self.size[1])
 
     @classmethod
@@ -116,13 +146,13 @@ class RandomCrop(DecoderTransform):
     Complementary TorchVision transform: :class:`~torchvision.transforms.v2.RandomCrop`.
     Padding of all kinds is disabled. The random location within the frame is
     determined during the initialization of the
-    :class:~`torchcodec.decoders.VideoDecoder` object that owns this transform.
+    :class:`~torchcodec.decoders.VideoDecoder` object that owns this transform.
     As a consequence, each decoded frame in the video will be cropped at the
     same location. Videos with variable resolution may result in undefined
     behavior.
 
     Args:
-        size: (sequence of int): Desired output size. Must be a sequence of
+        size (Sequence[int]): Desired output size. Must be a sequence of
             the form (height, width).
     """
 
@@ -159,28 +189,11 @@ class RandomCrop(DecoderTransform):
             )
 
         top = int(torch.randint(0, height - self.size[0] + 1, size=()).item())
-        self._top = top
-
         left = int(torch.randint(0, width - self.size[1] + 1, size=()).item())
-        self._left = left
 
         return f"crop, {self.size[0]}, {self.size[1]}, {left}, {top}"
 
-    def _calculate_output_dims(
-        self, input_dims: Tuple[Optional[int], Optional[int]]
-    ) -> Tuple[Optional[int], Optional[int]]:
-        height, width = input_dims
-        if height is None:
-            raise ValueError(
-                "Video metadata has no height. "
-                "RandomCrop can only be used when input frame dimensions are known."
-            )
-        if width is None:
-            raise ValueError(
-                "Video metadata has no width. "
-                "RandomCrop can only be used when input frame dimensions are known."
-            )
-
+    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
         return (self.size[0], self.size[1])
 
     @classmethod

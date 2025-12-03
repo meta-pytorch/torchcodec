@@ -172,11 +172,15 @@ class TestPublicVideoDecoderTransformOps:
 
         # We want both kinds of RandomCrop objects to get arrive at the same
         # locations to crop, so we need to make sure they get the same random
-        # seed.
+        # seed. It's used in RandomCrop's _make_transform_spec() method, called
+        # by the VideoDecoder.
         torch.manual_seed(seed)
         tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
         decoder_random_crop = VideoDecoder(video.path, transforms=[tc_random_crop])
 
+        # Resetting manual seed for when TorchCodec's RandomCrop, created from
+        # the TorchVision RandomCrop, is used inside of the VideoDecoder. It
+        # needs to match the call above.
         torch.manual_seed(seed)
         decoder_random_crop_tv = VideoDecoder(
             video.path,
@@ -202,14 +206,11 @@ class TestPublicVideoDecoderTransformOps:
             expected_shape = (video.get_num_color_channels(), height, width)
             assert frame_random_crop_tv.shape == expected_shape
 
+            # Resetting manual seed to make sure the invocation of the
+            # TorchVision RandomCrop matches the two calls above.
+            torch.manual_seed(seed)
             frame_full = decoder_full[frame_index]
-            frame_tv = v2.functional.crop(
-                frame_full,
-                top=tc_random_crop._top,
-                left=tc_random_crop._left,
-                height=tc_random_crop.size[0],
-                width=tc_random_crop.size[1],
-            )
+            frame_tv = v2.RandomCrop(size=(height, width))(frame_full)
             assert_frames_equal(frame_random_crop, frame_tv)
 
     @pytest.mark.parametrize(
@@ -265,6 +266,56 @@ class TestPublicVideoDecoderTransformOps:
                 NASA_VIDEO.path,
                 transforms=[v2.RandomCrop(**params)],
             )
+
+    @pytest.mark.parametrize("seed", [0, 314])
+    def test_random_crop_reusable_objects(self, seed):
+        torch.manual_seed(seed)
+        random_crop = torchcodec.transforms.RandomCrop(size=(99, 99))
+
+        # Create a spec which causes us to calculate the random crop location.
+        first_spec = random_crop._make_transform_spec((888, 888))
+
+        # Create a spec again, which should calculate a different random crop
+        # location. Despite having the same image size, the specs should be
+        # different because the crop should be at a different location
+        second_spec = random_crop._make_transform_spec((888, 888))
+        assert first_spec != second_spec
+
+        # Create a spec again, but with a different image size. The specs should
+        # obviously be different, but the original image size should not be in
+        # the spec at all.
+        third_spec = random_crop._make_transform_spec((777, 777))
+        assert third_spec != first_spec
+        assert "888" not in third_spec
+
+    @pytest.mark.parametrize(
+        "resize, random_crop",
+        [
+            (torchcodec.transforms.Resize, torchcodec.transforms.RandomCrop),
+            (v2.Resize, v2.RandomCrop),
+        ],
+    )
+    def test_transform_pipeline(self, resize, random_crop):
+        decoder = VideoDecoder(
+            TEST_SRC_2_720P.path,
+            transforms=[
+                # resized to bigger than original
+                resize(size=(2160, 3840)),
+                # crop to smaller than the resize, but still bigger than original
+                random_crop(size=(1080, 1920)),
+            ],
+        )
+
+        num_frames = len(decoder)
+        for frame_index in [
+            0,
+            int(num_frames * 0.25),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            num_frames - 1,
+        ]:
+            frame = decoder[frame_index]
+            assert frame.shape == (TEST_SRC_2_720P.get_num_color_channels(), 1080, 1920)
 
     def test_transform_fails(self):
         with pytest.raises(
@@ -528,14 +579,14 @@ class TestCoreVideoDecoderTransformOps:
 
         with pytest.raises(
             RuntimeError,
-            match="x position out of bounds",
+            match="x start position, 9999, out of bounds",
         ):
             decoder = create_from_file(str(NASA_VIDEO.path))
             add_video_stream(decoder, transform_specs="crop, 100, 100, 9999, 100")
 
         with pytest.raises(
             RuntimeError,
-            match="y position out of bounds",
+            match=r"Crop output height \(999\) is greater than input height \(270\)",
         ):
             decoder = create_from_file(str(NASA_VIDEO.path))
             add_video_stream(decoder, transform_specs="crop, 999, 100, 100, 100")
