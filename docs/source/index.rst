@@ -133,4 +133,3 @@ Encoding
    api_ref_decoders
    api_ref_encoders
    api_ref_samplers
-   api_ref_transforms

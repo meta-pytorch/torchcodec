@@ -9,7 +9,7 @@ from pathlib import Path
 # Note: usort wants to put Frame and FrameBatch after decoders and samplers,
 # but that results in circular import.
 from ._frame import AudioSamples, Frame, FrameBatch  # usort:skip # noqa
-from . import decoders, encoders, samplers, transforms  # noqa
+from . import decoders, encoders, samplers  # noqa
 
 try:
     # Note that version.py is generated during install.
