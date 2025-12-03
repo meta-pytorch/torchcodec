@@ -5,7 +5,6 @@
 #include "AVIOContextHolder.h"
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
-#include "GpuEncoder.h"
 #include "StreamOptions.h"
 
 extern "C" {
@@ -185,7 +184,7 @@ class VideoEncoder {
   AVPixelFormat outPixelFormat_ = AV_PIX_FMT_NONE;
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
-  std::unique_ptr<GpuEncoder> gpuEncoder_;
+  std::unique_ptr<DeviceInterface> deviceInterface_;
 
   bool encodeWasCalled_ = false;
   AVDictionary* avFormatOptions_ = nullptr;

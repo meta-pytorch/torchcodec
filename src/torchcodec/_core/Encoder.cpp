@@ -5,6 +5,7 @@
 #include "torch/types.h"
 
 extern "C" {
+#include <libavutil/hwcontext.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 }
@@ -724,8 +725,10 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
+  // Only create device interface when frames are on a CUDA device.
+  // Encoding on CPU is implemented in this file.
   if (frames_.device().is_cuda()) {
-    gpuEncoder_ = std::make_unique<GpuEncoder>(frames_.device());
+    deviceInterface_ = createDeviceInterface(frames_.device());
   }
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
@@ -824,9 +827,9 @@ void VideoEncoder::initializeEncoder(
         0);
   }
 
-  if (gpuEncoder_) {
-    gpuEncoder_->registerHardwareDeviceWithCodec(avCodecContext_.get());
-    gpuEncoder_->setupHardwareFrameContext(avCodecContext_.get());
+  if (frames_.device().is_cuda()) {
+    deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
+    deviceInterface_->setupHardwareFrameContext(avCodecContext_.get());
   }
 
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &avCodecOptions);
@@ -870,9 +873,16 @@ void VideoEncoder::encode() {
   for (int i = 0; i < numFrames; ++i) {
     torch::Tensor currFrame = frames_[i];
     UniqueAVFrame avFrame;
-    if (gpuEncoder_) {
-      avFrame = gpuEncoder_->convertTensorToAVFrame(
+    if (deviceInterface_) {
+      auto cudaFrame = deviceInterface_->convertTensorToAVFrame(
           currFrame, outPixelFormat_, i, avCodecContext_.get());
+      TORCH_CHECK(
+          cudaFrame.has_value(),
+          "convertTensorToAVFrame failed for frame ",
+          i,
+          "on device: ",
+          frames_.device());
+      avFrame = std::move(*cudaFrame);
     } else {
       avFrame = convertTensorToAVFrame(currFrame, i);
     }

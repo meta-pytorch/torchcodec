@@ -362,4 +362,125 @@ std::string CudaDeviceInterface::getDetails() {
       (usingCPUFallback_ ? "CPU fallback." : "NVDEC.");
 }
 
+// Below are methods for video encoding:
+namespace {
+// RGB to NV12 color conversion matrix for BT.601 limited range.
+// NPP ColorTwist function used below expects the limited range
+// color conversion matrix, and this matches FFmpeg's default behavior.
+const Npp32f defaultLimitedRangeRgbToNv12[3][4] = {
+    // Y = 16 + 0.859 * (0.299*R + 0.587*G + 0.114*B)
+    {0.257f, 0.504f, 0.098f, 16.0f},
+    // U = -0.148*R - 0.291*G + 0.439*B + 128 (BT.601 coefficients)
+    {-0.148f, -0.291f, 0.439f, 128.0f},
+    // V = 0.439*R - 0.368*G - 0.071*B + 128 (BT.601 coefficients)
+    {0.439f, -0.368f, -0.071f, 128.0f}};
+} // namespace
+
+std::optional<UniqueAVFrame> CudaDeviceInterface::convertTensorToAVFrame(
+    const torch::Tensor& tensor,
+    [[maybe_unused]] AVPixelFormat targetFormat,
+    int frameIndex,
+    AVCodecContext* codecContext) {
+  TORCH_CHECK(
+      tensor.dim() == 3 && tensor.size(0) == 3,
+      "Expected 3D RGB tensor (CHW format), got shape: ",
+      tensor.sizes());
+
+  UniqueAVFrame avFrame(av_frame_alloc());
+  TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
+  int height = static_cast<int>(tensor.size(1));
+  int width = static_cast<int>(tensor.size(2));
+
+  // TODO-VideoEncoder: Unify AVFrame creation with CPU version of this method
+  avFrame->format = AV_PIX_FMT_CUDA;
+  avFrame->height = height;
+  avFrame->width = width;
+  avFrame->pts = frameIndex;
+
+  // FFmpeg's av_hwframe_get_buffer is used to allocate memory on CUDA device.
+  // TODO-VideoEncoder: Consider using pytorch to allocate CUDA memory for
+  // efficiency
+  int ret =
+      av_hwframe_get_buffer(codecContext->hw_frames_ctx, avFrame.get(), 0);
+  TORCH_CHECK(
+      ret >= 0,
+      "Failed to allocate hardware frame: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
+
+  TORCH_CHECK(
+      avFrame != nullptr && avFrame->data[0] != nullptr,
+      "avFrame must be pre-allocated with CUDA memory");
+
+  torch::Tensor hwcFrame = tensor.permute({1, 2, 0}).contiguous();
+
+  at::cuda::CUDAStream currentStream =
+      at::cuda::getCurrentCUDAStream(device_.index());
+
+  nppCtx_->hStream = currentStream.stream();
+  cudaError_t cudaErr =
+      cudaStreamGetFlags(nppCtx_->hStream, &nppCtx_->nStreamFlags);
+  TORCH_CHECK(
+      cudaErr == cudaSuccess,
+      "cudaStreamGetFlags failed: ",
+      cudaGetErrorString(cudaErr));
+
+  NppiSize oSizeROI = {width, height};
+  NppStatus status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
+      static_cast<const Npp8u*>(hwcFrame.data_ptr()),
+      hwcFrame.stride(0) * hwcFrame.element_size(),
+      avFrame->data,
+      avFrame->linesize,
+      oSizeROI,
+      defaultLimitedRangeRgbToNv12,
+      *nppCtx_);
+
+  TORCH_CHECK(
+      status == NPP_SUCCESS,
+      "Failed to convert RGB to NV12: NPP error code ",
+      status);
+
+  // TODO-VideoEncoder: Enable configuration of color properties, similar to
+  // FFmpeg. Below are the default color properties used by FFmpeg.
+  avFrame->colorspace = AVCOL_SPC_SMPTE170M; // BT.601
+  avFrame->color_range = AVCOL_RANGE_MPEG; // Limited range
+
+  return avFrame;
+}
+
+void CudaDeviceInterface::setupHardwareFrameContext(
+    AVCodecContext* codecContext) {
+  TORCH_CHECK(codecContext != nullptr, "codecContext is null");
+  TORCH_CHECK(
+      hardwareDeviceCtx_, "Hardware device context has not been initialized");
+
+  AVBufferRef* hwFramesCtxRef = av_hwframe_ctx_alloc(hardwareDeviceCtx_.get());
+  TORCH_CHECK(
+      hwFramesCtxRef != nullptr,
+      "Failed to allocate hardware frames context for codec");
+
+  // Always set pixel formats to options that support CUDA encoding.
+  // TODO-VideoEncoder: Enable user set pixel formats to be set and properly
+  // handled with NPP functions below
+  codecContext->sw_pix_fmt = AV_PIX_FMT_NV12;
+  codecContext->pix_fmt = AV_PIX_FMT_CUDA;
+
+  AVHWFramesContext* hwFramesCtx =
+      reinterpret_cast<AVHWFramesContext*>(hwFramesCtxRef->data);
+  hwFramesCtx->format = codecContext->pix_fmt;
+  hwFramesCtx->sw_format = codecContext->sw_pix_fmt;
+  hwFramesCtx->width = codecContext->width;
+  hwFramesCtx->height = codecContext->height;
+
+  int ret = av_hwframe_ctx_init(hwFramesCtxRef);
+  if (ret < 0) {
+    av_buffer_unref(&hwFramesCtxRef);
+    TORCH_CHECK(
+        false,
+        "Failed to initialize CUDA frames context for codec: ",
+        getFFMPEGErrorStringFromErrorCode(ret));
+  }
+
+  codecContext->hw_frames_ctx = hwFramesCtxRef;
+}
+
 } // namespace facebook::torchcodec
