@@ -7,6 +7,7 @@
 import io
 import json
 import numbers
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Literal, Optional, Sequence, Tuple, Union
 
@@ -20,6 +21,48 @@ from torchcodec.decoders._decoder_utils import (
     ERROR_REPORTING_INSTRUCTIONS,
 )
 from torchcodec.transforms import DecoderTransform, Resize
+
+
+@dataclass
+class FallbackInfo:
+    """Information about decoder fallback status.
+
+    This class tracks whether hardware-accelerated decoding failed and the decoder
+    fell back to software decoding.
+
+    Usage:
+        - Use ``str(fallback_info)`` or ``print(fallback_info)`` to see the fallback status
+        - Use ``bool(fallback_info)`` to check if any fallback occurred
+
+    Attributes:
+        status_known (bool): Whether the fallback status has been determined.
+    """
+
+    def __init__(self):
+        self.status_known = False
+        self.__nvcuvid_unavailable = False
+        self.__video_not_supported = False
+
+    def __bool__(self):
+        """Returns True if fallback occurred (and status is known)."""
+        return self.status_known and (
+            self.__nvcuvid_unavailable or self.__video_not_supported
+        )
+
+    def __str__(self):
+        """Returns a human-readable string representation of the fallback status."""
+        if not self.status_known:
+            return "Fallback status: Unknown"
+
+        reasons = []
+        if self.__nvcuvid_unavailable:
+            reasons.append("NVcuvid unavailable")
+        if self.__video_not_supported:
+            reasons.append("Video not supported")
+
+        if reasons:
+            return "Fallback status: Falling back due to: " + ", ".join(reasons)
+        return "Fallback status: No fallback required"
 
 
 class VideoDecoder:
@@ -180,13 +223,48 @@ class VideoDecoder:
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
+        # Initialize fallback info
+        self._fallback_info = FallbackInfo()
+
     def __len__(self) -> int:
         return self._num_frames
+
+    @property
+    def cpu_fallback(self) -> FallbackInfo:
+        """Get information about decoder fallback status.
+
+        Returns:
+            FallbackInfo: Information about whether hardware-accelerated decoding
+                         failed and the decoder fell back to software decoding.
+
+        Note:
+            The fallback status is only determined after the first frame access.
+            Before that, the status will be "Unknown".
+        """
+        return self._fallback_info
+
+    def _update_cpu_fallback(self):
+        """Update the fallback status if it hasn't been determined yet.
+
+        This method should be called after any frame decoding operation to determine
+        if fallback to software decoding occurred.
+        """
+        if not self._fallback_info.status_known:
+            backend_details = core._get_backend_details(self._decoder)
+
+            self._fallback_info.status_known = True
+
+            if "CPU fallback" in backend_details:
+                if "NVCUVID not available" in backend_details:
+                    self._fallback_info._FallbackInfo__nvcuvid_unavailable = True
+                else:
+                    self._fallback_info._FallbackInfo__video_not_supported = True
 
     def _getitem_int(self, key: int) -> Tensor:
         assert isinstance(key, int)
 
         frame_data, *_ = core.get_frame_at_index(self._decoder, frame_index=key)
+        self._update_cpu_fallback()
         return frame_data
 
     def _getitem_slice(self, key: slice) -> Tensor:
@@ -199,6 +277,7 @@ class VideoDecoder:
             stop=stop,
             step=step,
         )
+        self._update_cpu_fallback()
         return frame_data
 
     def __getitem__(self, key: Union[numbers.Integral, slice]) -> Tensor:
@@ -252,6 +331,7 @@ class VideoDecoder:
         data, pts_seconds, duration_seconds = core.get_frame_at_index(
             self._decoder, frame_index=index
         )
+        self._update_cpu_fallback()
         return Frame(
             data=data,
             pts_seconds=pts_seconds.item(),
@@ -271,6 +351,7 @@ class VideoDecoder:
         data, pts_seconds, duration_seconds = core.get_frames_at_indices(
             self._decoder, frame_indices=indices
         )
+        self._update_cpu_fallback()
 
         return FrameBatch(
             data=data,
@@ -300,6 +381,7 @@ class VideoDecoder:
             stop=stop,
             step=step,
         )
+        self._update_cpu_fallback()
         return FrameBatch(*frames)
 
     def get_frame_played_at(self, seconds: float) -> Frame:
@@ -329,6 +411,7 @@ class VideoDecoder:
         data, pts_seconds, duration_seconds = core.get_frame_at_pts(
             self._decoder, seconds
         )
+        self._update_cpu_fallback()
         return Frame(
             data=data,
             pts_seconds=pts_seconds.item(),
@@ -350,6 +433,7 @@ class VideoDecoder:
         data, pts_seconds, duration_seconds = core.get_frames_by_pts(
             self._decoder, timestamps=seconds
         )
+        self._update_cpu_fallback()
         return FrameBatch(
             data=data,
             pts_seconds=pts_seconds,
@@ -394,6 +478,7 @@ class VideoDecoder:
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
         )
+        self._update_cpu_fallback()
         return FrameBatch(*frames)
 
 
