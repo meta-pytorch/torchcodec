@@ -26,12 +26,12 @@ defaults:
 jobs:
 
   generate-matrix:
-    uses: pytorch/test-infra/.github/workflows/generate_binary_build_matrix.yml@release/2.9
+    uses: pytorch/test-infra/.github/workflows/generate_binary_build_matrix.yml@main
     with:
       package-type: wheel
       os: linux
       test-infra-repository: pytorch/test-infra
-      test-infra-ref: release/2.9
+      test-infra-ref: main
       with-xpu: disable
       with-rocm: disable
       with-cuda: disable
@@ -42,12 +42,12 @@ jobs:
     strategy:
       fail-fast: false
     name: Build and Upload Linux wheel
-    uses: pytorch/test-infra/.github/workflows/build_wheels_linux.yml@release/2.9
+    uses: pytorch/test-infra/.github/workflows/build_wheels_linux.yml@main
     with:
       repository: meta-pytorch/torchcodec
       ref: ""
       test-infra-repository: pytorch/test-infra
-      test-infra-ref: release/2.9
+      test-infra-ref: main
       build-matrix: ${{ needs.generate-matrix.outputs.matrix }}
       pre-script: packaging/pre_build_script.sh
       post-script: packaging/post_build_script.sh
