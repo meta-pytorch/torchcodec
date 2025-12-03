@@ -55,7 +55,7 @@ jobs:
       trigger-event: ${{ github.event_name }}
       architecture: aarch64
       build-platform: "python-build-package"
-      build-command: "BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1 ENABLE_CUDA=1 python -m build --wheel -vvv --no-isolation"
+      build-command: "BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1 python -m build --wheel -vvv --no-isolation"
 
   install-and-test:
     runs-on: linux.arm64.2xlarge
