@@ -114,9 +114,6 @@ class Resize(DecoderTransform):
         return f"resize, {self.size[0]}, {self.size[1]}"
 
     def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
-        return f"resize, {self.size[0]}, {self.size[1]}"
-
-    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
         return (self.size[0], self.size[1])
 
     @classmethod
