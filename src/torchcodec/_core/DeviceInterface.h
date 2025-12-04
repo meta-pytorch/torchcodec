@@ -141,7 +141,6 @@ class DeviceInterface {
   // Function used for video encoding, only implemented in CudaDeviceInterface.
   virtual std::optional<UniqueAVFrame> convertTensorToAVFrame(
       [[maybe_unused]] const torch::Tensor& tensor,
-      [[maybe_unused]] AVPixelFormat targetFormat,
       [[maybe_unused]] int frameIndex,
       [[maybe_unused]] AVCodecContext* codecContext) {
     return std::nullopt;
