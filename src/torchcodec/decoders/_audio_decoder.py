@@ -4,9 +4,10 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import io
 from pathlib import Path
-from typing import Optional, Union
 
 import torch
 from torch import Tensor
@@ -54,11 +55,11 @@ class AudioDecoder:
 
     def __init__(
         self,
-        source: Union[str, Path, io.RawIOBase, io.BufferedReader, bytes, Tensor],
+        source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
         *,
-        stream_index: Optional[int] = None,
-        sample_rate: Optional[int] = None,
-        num_channels: Optional[int] = None,
+        stream_index: int | None = None,
+        sample_rate: int | None = None,
+        num_channels: int | None = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.AudioDecoder")
         self._decoder = create_decoder(source=source, seek_mode="approximate")
@@ -108,7 +109,7 @@ class AudioDecoder:
         return self.get_samples_played_in_range()
 
     def get_samples_played_in_range(
-        self, start_seconds: float = 0.0, stop_seconds: Optional[float] = None
+        self, start_seconds: float = 0.0, stop_seconds: float | None = None
     ) -> AudioSamples:
         """Returns audio samples in the given range.
 

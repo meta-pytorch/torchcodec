@@ -1,4 +1,6 @@
-from typing import Literal, Optional
+from __future__ import annotations
+
+from typing import Literal
 
 import torch
 
@@ -125,7 +127,7 @@ def _generic_index_based_sampler(
     num_frames_per_clip: int,
     num_indices_between_frames: int,
     sampling_range_start: int,
-    sampling_range_end: Optional[int],  # interval is [start, end).
+    sampling_range_end: int | None,  # interval is [start, end).
     # Important note: sampling_range_end defines the upper bound of where a clip
     # can *start*, not where a clip can end.
     policy: Literal["repeat_last", "wrap", "error"],
@@ -192,7 +194,7 @@ def clips_at_random_indices(
     num_frames_per_clip: int = 1,
     num_indices_between_frames: int = 1,
     sampling_range_start: int = 0,
-    sampling_range_end: Optional[int] = None,  # interval is [start, end).
+    sampling_range_end: int | None = None,  # interval is [start, end).
     policy: Literal["repeat_last", "wrap", "error"] = "repeat_last",
 ) -> FrameBatch:
     # See docstring below
@@ -216,7 +218,7 @@ def clips_at_regular_indices(
     num_frames_per_clip: int = 1,
     num_indices_between_frames: int = 1,
     sampling_range_start: int = 0,
-    sampling_range_end: Optional[int] = None,  # interval is [start, end).
+    sampling_range_end: int | None = None,  # interval is [start, end).
     policy: Literal["repeat_last", "wrap", "error"] = "repeat_last",
 ) -> FrameBatch:
     # See docstring below

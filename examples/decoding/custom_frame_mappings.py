@@ -41,21 +41,25 @@ if response.status_code != 200:
 
 temp_dir = tempfile.mkdtemp()
 short_video_path = Path(temp_dir) / "short_video.mp4"
-with open(short_video_path, 'wb') as f:
+with open(short_video_path, "wb") as f:
     for chunk in response.iter_content():
         f.write(chunk)
 
 long_video_path = Path(temp_dir) / "long_video.mp4"
 ffmpeg_command = [
     "ffmpeg",
-    "-stream_loop", "50",  # repeat video 50 times to get a ~12 min video
-    "-i", f"{short_video_path}",
-    "-c", "copy",
-    f"{long_video_path}"
+    "-stream_loop",
+    "50",  # repeat video 50 times to get a ~12 min video
+    "-i",
+    f"{short_video_path}",
+    "-c",
+    "copy",
+    f"{long_video_path}",
 ]
 subprocess.run(ffmpeg_command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 from torchcodec.decoders import VideoDecoder
+
 print(f"Short video duration: {VideoDecoder(short_video_path).metadata.duration_seconds} seconds")
 print(f"Long video duration: {VideoDecoder(long_video_path).metadata.duration_seconds / 60} minutes")
 
@@ -82,7 +86,18 @@ import json
 
 # Lets define a simple function to run ffprobe on a video's first stream index, then writes the results in output_json_path.
 def generate_frame_mappings(video_path, output_json_path, stream_index):
-    ffprobe_cmd = ["ffprobe", "-i", f"{video_path}", "-select_streams", f"{stream_index}", "-show_frames", "-show_entries", "frame=pts,duration,key_frame", "-of", "json"]
+    ffprobe_cmd = [
+        "ffprobe",
+        "-i",
+        f"{video_path}",
+        "-select_streams",
+        f"{stream_index}",
+        "-show_frames",
+        "-show_entries",
+        "frame=pts,duration,key_frame",
+        "-of",
+        "json",
+    ]
     print(f"Running ffprobe:\n{' '.join(ffprobe_cmd)}\n")
     ffprobe_result = subprocess.run(ffprobe_cmd, check=True, capture_output=True, text=True)
     with open(output_json_path, "w") as f:
@@ -157,12 +172,8 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 # so the performance benefits are realized.
 
 
-def decode_frames(video_path, seek_mode = "exact", custom_frame_mappings = None):
-    decoder = VideoDecoder(
-        source=video_path,
-        seek_mode=seek_mode,
-        custom_frame_mappings=custom_frame_mappings
-    )
+def decode_frames(video_path, seek_mode="exact", custom_frame_mappings=None):
+    decoder = VideoDecoder(source=video_path, seek_mode=seek_mode, custom_frame_mappings=custom_frame_mappings)
     decoder.get_frames_in_range(start=0, stop=10)
 
 
@@ -196,7 +207,8 @@ for i in range(len(exact_decoder)):
     torch.testing.assert_close(
         exact_decoder.get_frame_at(i).data,
         custom_frame_mappings_decoder.get_frame_at(i).data,
-        atol=0, rtol=0,
+        atol=0,
+        rtol=0,
     )
 print("Frame seeking is the same for this video!")
 

@@ -4,9 +4,11 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import dataclasses
 from dataclasses import dataclass
-from typing import Iterable, Iterator, Union
+from typing import Iterable, Iterator
 
 from torch import Tensor
 
@@ -46,7 +48,7 @@ class Frame(Iterable):
         self.pts_seconds = float(self.pts_seconds)
         self.duration_seconds = float(self.duration_seconds)
 
-    def __iter__(self) -> Iterator[Union[Tensor, float]]:
+    def __iter__(self) -> Iterator[Tensor | float]:
         for field in dataclasses.fields(self):
             yield getattr(self, field.name)
 
@@ -137,7 +139,7 @@ class AudioSamples(Iterable):
         self.pts_seconds = float(self.pts_seconds)
         self.sample_rate = int(self.sample_rate)
 
-    def __iter__(self) -> Iterator[Union[Tensor, float]]:
+    def __iter__(self) -> Iterator[Tensor | float]:
         for field in dataclasses.fields(self):
             yield getattr(self, field.name)
 

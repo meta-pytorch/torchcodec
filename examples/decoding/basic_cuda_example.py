@@ -154,9 +154,7 @@ plot_cpu_and_cuda_frames(cpu_frames, cuda_frames)
 # differences because CUDA math is not bit-exact with respect to CPU math.
 #
 frames_equal = torch.equal(cpu_frames.to("cuda"), cuda_frames)
-mean_abs_diff = torch.mean(
-    torch.abs(cpu_frames.float().to("cuda") - cuda_frames.float())
-)
+mean_abs_diff = torch.mean(torch.abs(cpu_frames.float().to("cuda") - cuda_frames.float()))
 max_abs_diff = torch.max(torch.abs(cpu_frames.to("cuda").float() - cuda_frames.float()))
 print(f"{frames_equal=}")
 print(f"{mean_abs_diff=}")

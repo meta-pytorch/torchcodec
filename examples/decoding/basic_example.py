@@ -13,12 +13,13 @@ In this example, we'll learn how to decode a video using the
 :class:`~torchcodec.decoders.VideoDecoder` class.
 """
 
+from __future__ import annotations
+
 # %%
 # First, a bit of boilerplate: we'll download a video from the web, and define a
 # plotting utility. You can ignore that part and jump right below to
 # :ref:`creating_decoder`.
 
-from typing import Optional
 import torch
 import requests
 
@@ -33,7 +34,7 @@ if response.status_code != 200:
 raw_video_bytes = response.content
 
 
-def plot(frames: torch.Tensor, title : Optional[str] = None):
+def plot(frames: torch.Tensor, title: str | None = None):
     try:
         from torchvision.utils import make_grid
         from torchvision.transforms.v2.functional import to_pil_image
@@ -42,7 +43,7 @@ def plot(frames: torch.Tensor, title : Optional[str] = None):
         print("Cannot plot, please run `pip install torchvision matplotlib`")
         return
 
-    plt.rcParams["savefig.bbox"] = 'tight'
+    plt.rcParams["savefig.bbox"] = "tight"
     fig, ax = plt.subplots()
     ax.imshow(to_pil_image(make_grid(frames)))
     ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
@@ -76,7 +77,7 @@ print(decoder.metadata)
 # ---------------------------------------
 
 first_frame = decoder[0]  # using a single int index
-every_twenty_frame = decoder[0 : -1 : 20]  # using slices
+every_twenty_frame = decoder[0:-1:20]  # using slices
 
 print(f"{first_frame.shape = }")
 print(f"{first_frame.dtype = }")
@@ -116,10 +117,7 @@ plot(every_twenty_frame, "Every 20 frame")
 # The decoder is a normal iterable object and can be iterated over like so:
 
 for frame in decoder:
-    assert (
-        isinstance(frame, torch.Tensor)
-        and frame.shape == (3, decoder.metadata.height, decoder.metadata.width)
-    )
+    assert isinstance(frame, torch.Tensor) and frame.shape == (3, decoder.metadata.height, decoder.metadata.width)
 
 # %%
 # Retrieving pts and duration of frames

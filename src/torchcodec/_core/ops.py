@@ -4,11 +4,12 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+from __future__ import annotations
+
 import io
 import json
 import warnings
 from types import ModuleType
-from typing import List, Optional, Tuple, Union
 
 import torch
 from torch.library import get_ctx, register_fake
@@ -19,7 +20,7 @@ from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchco
     _load_pybind11_module,
 )
 
-_pybind_ops: Optional[ModuleType] = None
+_pybind_ops: ModuleType | None = None
 
 
 def load_torchcodec_shared_libraries():
@@ -149,9 +150,7 @@ _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
 # =============================
 # Functions not related to custom ops, but similar implementation to c++ ops
 # =============================
-def create_from_bytes(
-    video_bytes: bytes, seek_mode: Optional[str] = None
-) -> torch.Tensor:
+def create_from_bytes(video_bytes: bytes, seek_mode: str | None = None) -> torch.Tensor:
     with warnings.catch_warnings():
         # Ignore warning stating that the underlying video_bytes buffer is
         # non-writable.
@@ -161,13 +160,13 @@ def create_from_bytes(
 
 
 def create_from_file_like(
-    file_like: Union[io.RawIOBase, io.BufferedReader], seek_mode: Optional[str] = None
+    file_like: io.RawIOBase | io.BufferedReader, seek_mode: str | None = None
 ) -> torch.Tensor:
     assert _pybind_ops is not None
     return _create_from_file_like(
         _pybind_ops.create_file_like_context(
-            file_like, False  # False means not for writing
-        ),
+            file_like, False
+        ),  # False means not for writing
         seek_mode,
     )
 
@@ -176,10 +175,10 @@ def encode_audio_to_file_like(
     samples: torch.Tensor,
     sample_rate: int,
     format: str,
-    file_like: Union[io.RawIOBase, io.BufferedIOBase],
-    bit_rate: Optional[int] = None,
-    num_channels: Optional[int] = None,
-    desired_sample_rate: Optional[int] = None,
+    file_like: io.RawIOBase | io.BufferedIOBase,
+    bit_rate: int | None = None,
+    num_channels: int | None = None,
+    desired_sample_rate: int | None = None,
 ) -> None:
     """Encode audio samples to a file-like object.
 
@@ -212,12 +211,12 @@ def encode_video_to_file_like(
     frames: torch.Tensor,
     frame_rate: float,
     format: str,
-    file_like: Union[io.RawIOBase, io.BufferedIOBase],
-    codec: Optional[str] = None,
-    pixel_format: Optional[str] = None,
-    crf: Optional[Union[int, float]] = None,
-    preset: Optional[str] = None,
-    extra_options: Optional[list[str]] = None,
+    file_like: io.RawIOBase | io.BufferedIOBase,
+    codec: str | None = None,
+    pixel_format: str | None = None,
+    crf: int | float | None = None,
+    preset: str | None = None,
+    extra_options: list[str] | None = None,
 ) -> None:
     """Encode video frames to a file-like object.
 
@@ -248,8 +247,8 @@ def encode_video_to_file_like(
 
 
 def get_frames_at_indices(
-    decoder: torch.Tensor, *, frame_indices: Union[torch.Tensor, list[int]]
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    decoder: torch.Tensor, *, frame_indices: torch.Tensor | list[int]
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if isinstance(frame_indices, torch.Tensor):
         # Ensure indices is the correct dtype (int64)
         frame_indices = frame_indices.to(torch.int64)
@@ -260,8 +259,8 @@ def get_frames_at_indices(
 
 
 def get_frames_by_pts(
-    decoder: torch.Tensor, *, timestamps: Union[torch.Tensor, list[float]]
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    decoder: torch.Tensor, *, timestamps: torch.Tensor | list[float]
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     if isinstance(timestamps, torch.Tensor):
         # Ensure indices is the correct dtype (float64)
         timestamps = timestamps.to(torch.float64)
@@ -278,13 +277,13 @@ def get_frames_by_pts(
 # Abstract impl for the operators. Needed by torch.compile.
 # ==============================
 @register_fake("torchcodec_ns::create_from_file")
-def create_from_file_abstract(filename: str, seek_mode: Optional[str]) -> torch.Tensor:
+def create_from_file_abstract(filename: str, seek_mode: str | None) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
 
 @register_fake("torchcodec_ns::_create_from_file_like")
 def _create_from_file_like_abstract(
-    file_like: int, seek_mode: Optional[str]
+    file_like: int, seek_mode: str | None
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
@@ -294,9 +293,9 @@ def encode_audio_to_file_abstract(
     samples: torch.Tensor,
     sample_rate: int,
     filename: str,
-    bit_rate: Optional[int] = None,
-    num_channels: Optional[int] = None,
-    desired_sample_rate: Optional[int] = None,
+    bit_rate: int | None = None,
+    num_channels: int | None = None,
+    desired_sample_rate: int | None = None,
 ) -> None:
     return
 
@@ -306,9 +305,9 @@ def encode_audio_to_tensor_abstract(
     samples: torch.Tensor,
     sample_rate: int,
     format: str,
-    bit_rate: Optional[int] = None,
-    num_channels: Optional[int] = None,
-    desired_sample_rate: Optional[int] = None,
+    bit_rate: int | None = None,
+    num_channels: int | None = None,
+    desired_sample_rate: int | None = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
@@ -319,9 +318,9 @@ def _encode_audio_to_file_like_abstract(
     sample_rate: int,
     format: str,
     file_like_context: int,
-    bit_rate: Optional[int] = None,
-    num_channels: Optional[int] = None,
-    desired_sample_rate: Optional[int] = None,
+    bit_rate: int | None = None,
+    num_channels: int | None = None,
+    desired_sample_rate: int | None = None,
 ) -> None:
     return
 
@@ -331,11 +330,11 @@ def encode_video_to_file_abstract(
     frames: torch.Tensor,
     frame_rate: float,
     filename: str,
-    codec: Optional[str] = None,
-    pixel_format: Optional[str] = None,
-    preset: Optional[str] = None,
-    crf: Optional[Union[int, float]] = None,
-    extra_options: Optional[list[str]] = None,
+    codec: str | None = None,
+    pixel_format: str | None = None,
+    preset: str | None = None,
+    crf: int | float | None = None,
+    extra_options: list[str] | None = None,
 ) -> None:
     return
 
@@ -345,11 +344,11 @@ def encode_video_to_tensor_abstract(
     frames: torch.Tensor,
     frame_rate: float,
     format: str,
-    codec: Optional[str] = None,
-    pixel_format: Optional[str] = None,
-    preset: Optional[str] = None,
-    crf: Optional[Union[int, float]] = None,
-    extra_options: Optional[list[str]] = None,
+    codec: str | None = None,
+    pixel_format: str | None = None,
+    preset: str | None = None,
+    crf: int | float | None = None,
+    extra_options: list[str] | None = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
@@ -360,18 +359,18 @@ def _encode_video_to_file_like_abstract(
     frame_rate: float,
     format: str,
     file_like_context: int,
-    codec: Optional[str] = None,
-    pixel_format: Optional[str] = None,
-    preset: Optional[str] = None,
-    crf: Optional[Union[int, float]] = None,
-    extra_options: Optional[list[str]] = None,
+    codec: str | None = None,
+    pixel_format: str | None = None,
+    preset: str | None = None,
+    crf: int | float | None = None,
+    extra_options: list[str] | None = None,
 ) -> None:
     return
 
 
 @register_fake("torchcodec_ns::create_from_tensor")
 def create_from_tensor_abstract(
-    video_tensor: torch.Tensor, seek_mode: Optional[str]
+    video_tensor: torch.Tensor, seek_mode: str | None
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
@@ -380,16 +379,16 @@ def create_from_tensor_abstract(
 def _add_video_stream_abstract(
     decoder: torch.Tensor,
     *,
-    num_threads: Optional[int] = None,
-    dimension_order: Optional[str] = None,
-    stream_index: Optional[int] = None,
+    num_threads: int | None = None,
+    dimension_order: str | None = None,
+    stream_index: int | None = None,
     device: str = "cpu",
     device_variant: str = "ffmpeg",
     transform_specs: str = "",
-    custom_frame_mappings: Optional[
-        tuple[torch.Tensor, torch.Tensor, torch.Tensor]
-    ] = None,
-    color_conversion_library: Optional[str] = None,
+    custom_frame_mappings: (
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
+    ) = None,
+    color_conversion_library: str | None = None,
 ) -> None:
     return
 
@@ -398,15 +397,15 @@ def _add_video_stream_abstract(
 def add_video_stream_abstract(
     decoder: torch.Tensor,
     *,
-    num_threads: Optional[int] = None,
-    dimension_order: Optional[str] = None,
-    stream_index: Optional[int] = None,
+    num_threads: int | None = None,
+    dimension_order: str | None = None,
+    stream_index: int | None = None,
     device: str = "cpu",
     device_variant: str = "ffmpeg",
     transform_specs: str = "",
-    custom_frame_mappings: Optional[
-        tuple[torch.Tensor, torch.Tensor, torch.Tensor]
-    ] = None,
+    custom_frame_mappings: (
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
+    ) = None,
 ) -> None:
     return
 
@@ -415,9 +414,9 @@ def add_video_stream_abstract(
 def add_audio_stream_abstract(
     decoder: torch.Tensor,
     *,
-    stream_index: Optional[int] = None,
-    sample_rate: Optional[int] = None,
-    num_channels: Optional[int] = None,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
 ) -> None:
     return
 
@@ -430,7 +429,7 @@ def seek_abstract(decoder: torch.Tensor, seconds: float) -> None:
 @register_fake("torchcodec_ns::get_next_frame")
 def get_next_frame_abstract(
     decoder: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     # Images are 3 dimensions: height, width, channels.
     # The exact permutation depends on the constructor options passed in.
     image_size = [get_ctx().new_dynamic_size() for _ in range(3)]
@@ -444,7 +443,7 @@ def get_next_frame_abstract(
 @register_fake("torchcodec_ns::get_frame_at_pts")
 def get_frame_at_pts_abstract(
     decoder: torch.Tensor, seconds: float
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(3)]
     return (
         torch.empty(image_size),
@@ -457,8 +456,8 @@ def get_frame_at_pts_abstract(
 def get_frames_by_pts_abstract(
     decoder: torch.Tensor,
     *,
-    timestamps: Union[torch.Tensor, List[float]],
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    timestamps: torch.Tensor | list[float],
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (
         torch.empty(image_size),
@@ -470,7 +469,7 @@ def get_frames_by_pts_abstract(
 @register_fake("torchcodec_ns::get_frame_at_index")
 def get_frame_at_index_abstract(
     decoder: torch.Tensor, *, frame_index: int
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(3)]
     return (
         torch.empty(image_size),
@@ -481,8 +480,8 @@ def get_frame_at_index_abstract(
 
 @register_fake("torchcodec_ns::get_frames_at_indices")
 def get_frames_at_indices_abstract(
-    decoder: torch.Tensor, *, frame_indices: Union[torch.Tensor, List[int]]
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    decoder: torch.Tensor, *, frame_indices: torch.Tensor | list[int]
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (
         torch.empty(image_size),
@@ -497,8 +496,8 @@ def get_frames_in_range_abstract(
     *,
     start: int,
     stop: int,
-    step: Optional[int] = None,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    step: int | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (
         torch.empty(image_size),
@@ -513,7 +512,7 @@ def get_frames_by_pts_in_range_abstract(
     *,
     start_seconds: float,
     stop_seconds: float,
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (
         torch.empty(image_size),
@@ -527,8 +526,8 @@ def get_frames_by_pts_in_range_audio_abstract(
     decoder: torch.Tensor,
     *,
     start_seconds: float,
-    stop_seconds: Optional[float] = None,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+    stop_seconds: float | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (torch.empty(image_size), torch.empty([], dtype=torch.float))
 
