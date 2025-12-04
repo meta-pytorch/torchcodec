@@ -14,5 +14,6 @@ For a tutorial, see: TODO_DECODER_TRANSFORMS_TUTORIAL.
     :template: dataclass.rst
 
     DecoderTransform
+    CenterCrop
     RandomCrop
     Resize

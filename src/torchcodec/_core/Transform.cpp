@@ -46,6 +46,8 @@ CropTransform::CropTransform(const FrameDims& dims, int x, int y)
 }
 
 std::string CropTransform::getFilterGraphCpu() const {
+  // For the FFmpeg filter crop, if the x and y coordinates are left
+  // unspecified, it defaults to a center crop.
   std::string coordinates = x_.has_value()
       ? (":" + std::to_string(x_.value()) + ":" + std::to_string(y_.value()))
       : "";
