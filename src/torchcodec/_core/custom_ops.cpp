@@ -288,6 +288,23 @@ Transform* makeCropTransform(
   return new CropTransform(FrameDims(height, width), x, y);
 }
 
+// CenterCrop transform specs take the form:
+//
+//   "center_crop, <height>, <width>>"
+//
+// Where "center_crop" is the string literal and <height>, <width> are
+// positive integers. Note that we follow the PyTorch convention of (height,
+// width) for specifying image dimensions; FFmpeg uses (width, height).
+Transform* makeCenterCropTransform(
+    const std::vector<std::string>& cropTransformSpec) {
+  TORCH_CHECK(
+      cropTransformSpec.size() == 3,
+      "cropTransformSpec must have 3 elements including its name");
+  int height = checkedToPositiveInt(cropTransformSpec[1]);
+  int width = checkedToPositiveInt(cropTransformSpec[2]);
+  return new CropTransform(FrameDims(height, width));
+}
+
 std::vector<std::string> split(const std::string& str, char delimiter) {
   std::vector<std::string> tokens;
   std::string token;
@@ -317,6 +334,8 @@ std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
       transforms.push_back(makeResizeTransform(transformSpec));
     } else if (name == "crop") {
       transforms.push_back(makeCropTransform(transformSpec));
+    } else if (name == "center_crop") {
+      transforms.push_back(makeCenterCropTransform(transformSpec));
     } else {
       TORCH_CHECK(false, "Invalid transform name: " + name);
     }

@@ -19,7 +19,7 @@ from torchcodec.decoders._decoder_utils import (
     create_decoder,
     ERROR_REPORTING_INSTRUCTIONS,
 )
-from torchcodec.transforms import DecoderTransform, RandomCrop, Resize
+from torchcodec.transforms import CenterCrop, DecoderTransform, RandomCrop, Resize
 
 
 class VideoDecoder:
@@ -531,6 +531,8 @@ def _make_transform_specs(
                 )
             elif isinstance(transform, v2.Resize):
                 transform = Resize._from_torchvision(transform)
+            elif isinstance(transform, v2.CenterCrop):
+                transform = CenterCrop._from_torchvision(transform)
             elif isinstance(transform, v2.RandomCrop):
                 transform = RandomCrop._from_torchvision(transform)
             else:

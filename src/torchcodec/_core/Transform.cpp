@@ -37,6 +37,8 @@ std::optional<FrameDims> ResizeTransform::getOutputFrameDims() const {
   return outputDims_;
 }
 
+CropTransform::CropTransform(const FrameDims& dims) : outputDims_(dims) {}
+
 CropTransform::CropTransform(const FrameDims& dims, int x, int y)
     : outputDims_(dims), x_(x), y_(y) {
   TORCH_CHECK(x_ >= 0, "Crop x position must be >= 0, got: ", x_);
@@ -44,9 +46,11 @@ CropTransform::CropTransform(const FrameDims& dims, int x, int y)
 }
 
 std::string CropTransform::getFilterGraphCpu() const {
+  std::string coordinates = x_.has_value()
+      ? (":" + std::to_string(x_.value()) + ":" + std::to_string(y_.value()))
+      : "";
   return "crop=" + std::to_string(outputDims_.width) + ":" +
-      std::to_string(outputDims_.height) + ":" + std::to_string(x_) + ":" +
-      std::to_string(y_) + ":exact=1";
+      std::to_string(outputDims_.height) + coordinates + ":exact=1";
 }
 
 std::optional<FrameDims> CropTransform::getOutputFrameDims() const {
@@ -69,29 +73,34 @@ void CropTransform::validate(const FrameDims& inputDims) const {
       inputDims.width,
       ")");
   TORCH_CHECK(
-      x_ <= inputDims.width,
-      "Crop x start position, ",
-      x_,
-      ", out of bounds of input width, ",
-      inputDims.width);
-  TORCH_CHECK(
-      x_ + outputDims_.width <= inputDims.width,
-      "Crop x end position, ",
-      x_ + outputDims_.width,
-      ", out of bounds of input width ",
-      inputDims.width);
-  TORCH_CHECK(
-      y_ <= inputDims.height,
-      "Crop y start position, ",
-      y_,
-      ", out of bounds of input height, ",
-      inputDims.height);
-  TORCH_CHECK(
-      y_ + outputDims_.height <= inputDims.height,
-      "Crop y end position, ",
-      y_ + outputDims_.height,
-      ", out of bounds of input height ",
-      inputDims.height);
+      x_.has_value() == y_.has_value(),
+      "Crop x and y values must be both set or both unset");
+  if (x_.has_value()) {
+    TORCH_CHECK(
+        x_.value() <= inputDims.width,
+        "Crop x start position, ",
+        x_.value(),
+        ", out of bounds of input width, ",
+        inputDims.width);
+    TORCH_CHECK(
+        x_.value() + outputDims_.width <= inputDims.width,
+        "Crop x end position, ",
+        x_.value() + outputDims_.width,
+        ", out of bounds of input width ",
+        inputDims.width);
+    TORCH_CHECK(
+        y_.value() <= inputDims.height,
+        "Crop y start position, ",
+        y_.value(),
+        ", out of bounds of input height, ",
+        inputDims.height);
+    TORCH_CHECK(
+        y_.value() + outputDims_.height <= inputDims.height,
+        "Crop y end position, ",
+        y_.value() + outputDims_.height,
+        ", out of bounds of input height ",
+        inputDims.height);
+  }
 }
 
 } // namespace facebook::torchcodec

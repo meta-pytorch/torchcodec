@@ -140,6 +140,55 @@ class Resize(DecoderTransform):
         return cls(size=tv_resize.size)
 
 
+class CenterCrop(DecoderTransform):
+    """Crop the decoded frame to a given size in the center of the frame.
+
+    Complementary TorchVision transform: :class:`~torchvision.transforms.v2.CenterCrop`.
+
+    Args:
+        size (Sequence[int]): Desired output size. Must be a sequence of
+            the form (height, width).
+    """
+
+    def __init__(self, size: Sequence[int]):
+        if len(size) != 2:
+            raise ValueError(
+                "CenterCrop transform must have a (height, width) "
+                f"pair for the size, got {size}."
+            )
+        self.size = size
+
+    def _make_transform_spec(
+        self, input_dims: Tuple[Optional[int], Optional[int]]
+    ) -> str:
+        return f"center_crop, {self.size[0]}, {self.size[1]}"
+
+    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
+        return (self.size[0], self.size[1])
+
+    @classmethod
+    def _from_torchvision(
+        cls,
+        tv_center_crop: nn.Module,
+    ):
+        v2 = import_torchvision_transforms_v2()
+
+        if not isinstance(tv_center_crop, v2.CenterCrop):
+            raise ValueError(
+                "Transform must be TorchVision's CenterCrop, "
+                f"it is instead {type(tv_center_crop).__name__}. "
+                "This should never happen, please report a bug."
+            )
+
+        if len(tv_center_crop.size) != 2:
+            raise ValueError(
+                "TorchVision CenterCrop transform must have a (height, width) "
+                f"pair for the size, got {tv_center_crop.size}."
+            )
+
+        return cls(size=tv_center_crop.size)
+
+
 class RandomCrop(DecoderTransform):
     """Crop the decoded frame to a given size at a random location in the frame.
 
