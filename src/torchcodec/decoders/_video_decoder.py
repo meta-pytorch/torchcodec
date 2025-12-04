@@ -41,6 +41,7 @@ class CpuFallbackStatus:
         self.status_known = False
         self._nvcuvid_unavailable = False
         self._video_not_supported = False
+        self._backend = ""
 
     def __bool__(self):
         """Returns True if fallback occurred."""
@@ -60,8 +61,11 @@ class CpuFallbackStatus:
             reasons.append("Video not supported")
 
         if reasons:
-            return "Fallback status: Falling back due to: " + ", ".join(reasons)
-        return "Fallback status: No fallback required"
+            return (
+                f"[{self._backend}] Fallback status: Falling back due to: "
+                + ", ".join(reasons)
+            )
+        return f"[{self._backend}] Fallback status: No fallback required"
 
 
 class VideoDecoder:
@@ -240,6 +244,11 @@ class VideoDecoder:
 
             if "status unknown" not in backend_details:
                 self._cpu_fallback.status_known = True
+
+                for backend in ("FFmpeg CUDA", "Beta CUDA", "CPU"):
+                    if backend_details.startswith(backend):
+                        self._cpu_fallback._backend = backend
+                        break
 
                 if "CPU fallback" in backend_details:
                     if "NVCUVID not available" in backend_details:

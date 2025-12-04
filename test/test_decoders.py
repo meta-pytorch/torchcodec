@@ -1672,22 +1672,27 @@ class TestVideoDecoder:
         # to the CPU path, too.
 
         ref_dec = VideoDecoder(H265_VIDEO.path, device="cuda")
-        ref_frames = ref_dec.get_frame_at(0)
-        assert (
-            _core._get_backend_details(ref_dec._decoder)
-            == "FFmpeg CUDA Device Interface. Using CPU fallback."
-        )
+
+        # Before accessing any frames, status should be unknown
+        assert not ref_dec.cpu_fallback.status_known
+
+        ref_frame = ref_dec.get_frame_at(0)
+
+        assert "FFmpeg CUDA" in str(ref_dec.cpu_fallback)
+        assert ref_dec.cpu_fallback.status_known
+        assert bool(ref_dec.cpu_fallback)
 
         with set_cuda_backend("beta"):
             beta_dec = VideoDecoder(H265_VIDEO.path, device="cuda")
 
-        assert (
-            _core._get_backend_details(beta_dec._decoder)
-            == "Beta CUDA Device Interface. Using CPU fallback."
-        )
+        assert "Beta CUDA" in str(beta_dec.cpu_fallback)
+        # For beta interface, status is known immediately
+        assert beta_dec.cpu_fallback.status_known
+        assert bool(beta_dec.cpu_fallback)
+
         beta_frame = beta_dec.get_frame_at(0)
 
-        assert psnr(ref_frames.data, beta_frame.data) > 25
+        assert psnr(ref_frame.data, beta_frame.data) > 25
 
     @needs_cuda
     def test_beta_cuda_interface_error(self):
@@ -1715,7 +1720,8 @@ class TestVideoDecoder:
         # Check that the default is the ffmpeg backend
         assert _get_cuda_backend() == "ffmpeg"
         dec = VideoDecoder(H265_VIDEO.path, device="cuda")
-        assert _core._get_backend_details(dec._decoder).startswith("FFmpeg CUDA")
+        _ = dec.get_frame_at(0)
+        assert "FFmpeg CUDA" in str(dec.cpu_fallback)
 
         # Check the setting "beta" effectively uses the BETA backend.
         # We also show that the affects decoder creation only. When the decoder
@@ -1724,9 +1730,9 @@ class TestVideoDecoder:
         with set_cuda_backend("beta"):
             dec = VideoDecoder(H265_VIDEO.path, device="cuda")
         assert _get_cuda_backend() == "ffmpeg"
-        assert _core._get_backend_details(dec._decoder).startswith("Beta CUDA")
+        assert "Beta CUDA" in str(dec.cpu_fallback)
         with set_cuda_backend("ffmpeg"):
-            assert _core._get_backend_details(dec._decoder).startswith("Beta CUDA")
+            assert "Beta CUDA" in str(dec.cpu_fallback)
 
         # Hacky way to ensure passing "cuda:1" is supported by both backends. We
         # just check that there's an error when passing cuda:N where N is too
@@ -1759,23 +1765,6 @@ class TestVideoDecoder:
         _ = decoder.get_frame_at(0)
 
         assert decoder.cpu_fallback.status_known
-        assert bool(decoder.cpu_fallback)
-        assert "Fallback status: Falling back due to:" in str(decoder.cpu_fallback)
-
-    @needs_cuda
-    def test_cpu_fallback_h265_video_beta_cuda(self):
-        """Test that H265 video triggers CPU fallback on Beta CUDA interface."""
-        with set_cuda_backend("beta"):
-            decoder = VideoDecoder(H265_VIDEO.path, device="cuda")
-
-        # Before accessing any frames, status should be unknown
-        assert decoder.cpu_fallback.status_known
-
-        _ = decoder.get_frame_at(0)
-
-        # After accessing frames, status should be known
-        assert decoder.cpu_fallback.status_known
-
         assert bool(decoder.cpu_fallback)
         assert "Fallback status: Falling back due to:" in str(decoder.cpu_fallback)
 
