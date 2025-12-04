@@ -43,7 +43,6 @@ class CudaDeviceInterface : public DeviceInterface {
 
   std::optional<UniqueAVFrame> convertTensorToAVFrame(
       const torch::Tensor& tensor,
-      AVPixelFormat targetFormat,
       int frameIndex,
       AVCodecContext* codecContext) override;
 

@@ -362,7 +362,9 @@ std::string CudaDeviceInterface::getDetails() {
       (usingCPUFallback_ ? "CPU fallback." : "NVDEC.");
 }
 
-// Below are methods for video encoding:
+// --------------------------------------------------------------------------
+// Below are methods exclusive to video encoding:
+// --------------------------------------------------------------------------
 namespace {
 // RGB to NV12 color conversion matrix for BT.601 limited range.
 // NPP ColorTwist function used below expects the limited range
@@ -378,7 +380,6 @@ const Npp32f defaultLimitedRangeRgbToNv12[3][4] = {
 
 std::optional<UniqueAVFrame> CudaDeviceInterface::convertTensorToAVFrame(
     const torch::Tensor& tensor,
-    [[maybe_unused]] AVPixelFormat targetFormat,
     int frameIndex,
     AVCodecContext* codecContext) {
   TORCH_CHECK(
@@ -413,17 +414,6 @@ std::optional<UniqueAVFrame> CudaDeviceInterface::convertTensorToAVFrame(
 
   torch::Tensor hwcFrame = tensor.permute({1, 2, 0}).contiguous();
 
-  at::cuda::CUDAStream currentStream =
-      at::cuda::getCurrentCUDAStream(device_.index());
-
-  nppCtx_->hStream = currentStream.stream();
-  cudaError_t cudaErr =
-      cudaStreamGetFlags(nppCtx_->hStream, &nppCtx_->nStreamFlags);
-  TORCH_CHECK(
-      cudaErr == cudaSuccess,
-      "cudaStreamGetFlags failed: ",
-      cudaGetErrorString(cudaErr));
-
   NppiSize oSizeROI = {width, height};
   NppStatus status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
       static_cast<const Npp8u*>(hwcFrame.data_ptr()),
@@ -447,6 +437,9 @@ std::optional<UniqueAVFrame> CudaDeviceInterface::convertTensorToAVFrame(
   return avFrame;
 }
 
+// Allocates and initializes AVHWFramesContext, and sets pixel format fields
+// to enable encoding with CUDA device. The hw_frames_ctx field is needed by
+// FFmpeg to allocate frames on GPU's memory.
 void CudaDeviceInterface::setupHardwareFrameContext(
     AVCodecContext* codecContext) {
   TORCH_CHECK(codecContext != nullptr, "codecContext is null");
@@ -458,10 +451,10 @@ void CudaDeviceInterface::setupHardwareFrameContext(
       hwFramesCtxRef != nullptr,
       "Failed to allocate hardware frames context for codec");
 
-  // Always set pixel formats to options that support CUDA encoding.
-  // TODO-VideoEncoder: Enable user set pixel formats to be set and properly
-  // handled with NPP functions below
+  // TODO-VideoEncoder: Enable user set pixel formats to be set
+  // (outPixelFormat_) and handled with the appropriate NPP function
   codecContext->sw_pix_fmt = AV_PIX_FMT_NV12;
+  // Always set pixel format to support CUDA encoding.
   codecContext->pix_fmt = AV_PIX_FMT_CUDA;
 
   AVHWFramesContext* hwFramesCtx =
@@ -479,7 +472,6 @@ void CudaDeviceInterface::setupHardwareFrameContext(
         "Failed to initialize CUDA frames context for codec: ",
         getFFMPEGErrorStringFromErrorCode(ret));
   }
-
   codecContext->hw_frames_ctx = hwFramesCtxRef;
 }
 
