@@ -290,7 +290,7 @@ Transform* makeCropTransform(
 
 // CenterCrop transform specs take the form:
 //
-//   "center_crop, <height>, <width>>"
+//   "center_crop, <height>, <width>"
 //
 // Where "center_crop" is the string literal and <height>, <width> are
 // positive integers. Note that we follow the PyTorch convention of (height,
