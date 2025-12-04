@@ -199,6 +199,16 @@ class TestPublicVideoDecoderTransformOps:
             frame_tv = v2.CenterCrop(size=(height, width))(frame_full)
             assert_frames_equal(frame_center_crop, frame_tv)
 
+    def test_center_crop_fails(self):
+        with pytest.raises(
+            ValueError,
+            match=r"must have a \(height, width\) pair for the size",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[torchcodec.transforms.CenterCrop(size=(100,))],
+            )
+
     @pytest.mark.parametrize(
         "height_scaling_factor, width_scaling_factor",
         ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.15, 0.75)),
@@ -302,7 +312,7 @@ class TestPublicVideoDecoderTransformOps:
             ),
         ),
     )
-    def test_crop_fails(self, error_message, params):
+    def test_random_crop_fails(self, error_message, params):
         with pytest.raises(
             ValueError,
             match=error_message,
