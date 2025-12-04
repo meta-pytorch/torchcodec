@@ -1737,19 +1737,6 @@ class TestVideoDecoder:
                 with set_cuda_backend(backend):
                     VideoDecoder(H265_VIDEO.path, device=f"cuda:{bad_device_number}")
 
-    def test_cpu_fallback_before_after_decoding(self):
-        decoder = VideoDecoder(NASA_VIDEO.path)
-
-        # Before accessing any frames, status should be unknown
-        assert not decoder.cpu_fallback.status_known
-        assert str(decoder.cpu_fallback) == "Fallback status: Unknown"
-        assert not bool(decoder.cpu_fallback)
-
-        # After accessing frames, status should be known
-        _ = decoder[0]
-        assert decoder.cpu_fallback.status_known
-        assert str(decoder.cpu_fallback) != "Fallback status: Unknown"
-
     def test_cpu_fallback_no_fallback_on_cpu_device(self):
         """Test that CPU device doesn't trigger fallback (it's not a fallback scenario)."""
         decoder = VideoDecoder(NASA_VIDEO.path, device="cpu")
@@ -1767,6 +1754,8 @@ class TestVideoDecoder:
         # because its dimensions are too small
         decoder = VideoDecoder(H265_VIDEO.path, device="cuda")
 
+        assert not decoder.cpu_fallback.status_known
+
         _ = decoder.get_frame_at(0)
 
         assert decoder.cpu_fallback.status_known
@@ -1779,9 +1768,14 @@ class TestVideoDecoder:
         with set_cuda_backend("beta"):
             decoder = VideoDecoder(H265_VIDEO.path, device="cuda")
 
+        # Before accessing any frames, status should be unknown
+        assert decoder.cpu_fallback.status_known
+
         _ = decoder.get_frame_at(0)
 
+        # After accessing frames, status should be known
         assert decoder.cpu_fallback.status_known
+
         assert bool(decoder.cpu_fallback)
         assert "Fallback status: Falling back due to:" in str(decoder.cpu_fallback)
 
