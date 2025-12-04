@@ -3,8 +3,8 @@
 # TorchCodec
 
 TorchCodec is a Python library for decoding video and audio data into PyTorch
-tensors, on CPU and CUDA GPU. It also supports audio encoding, and video
-encoding will come soon!  It aims to be fast, easy to use, and well integrated
+tensors, on CPU and CUDA GPU. It also supports video and audio encoding on CPU!
+It aims to be fast, easy to use, and well integrated
 into the PyTorch ecosystem.  If you want to use PyTorch to train ML models on
 videos and audio, TorchCodec is how you turn these into data.
 
@@ -130,7 +130,7 @@ The following table indicates the compatibility between versions of
 
 | `torchcodec`       | `torch`            | Python              |
 | ------------------ | ------------------ | ------------------- |
-| `main` / `nightly` | `main` / `nightly` | `>=3.10`, `<=3.13`   |
+| `main` / `nightly` | `main` / `nightly` | `>=3.10`, `<=3.14`   |
 | `0.9`              | `2.9`              | `>=3.10`, `<=3.13`   |
 | `0.8`              | `2.9`              | `>=3.10`, `<=3.13`   |
 | `0.7`              | `2.8`              | `>=3.9`, `<=3.13`   |
