@@ -154,6 +154,7 @@ class TestPublicVideoDecoderTransformOps:
                 transforms=[torchcodec.transforms.Resize(size=(100, 100, 100))],
             )
 
+<<<<<<< HEAD
     @pytest.mark.parametrize(
         "height_scaling_factor, width_scaling_factor",
         ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.15, 0.75)),
@@ -209,6 +210,8 @@ class TestPublicVideoDecoderTransformOps:
                 transforms=[torchcodec.transforms.CenterCrop(size=(100,))],
             )
 
+=======
+>>>>>>> 1b13e58cf75033a8e7bd3a8974cf126af603f226
     @pytest.mark.parametrize(
         "height_scaling_factor, width_scaling_factor",
         ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.15, 0.75)),
