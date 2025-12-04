@@ -1,0 +1,62 @@
+
+
+.. _sphx_glr_generated_examples_encoding:
+
+Encoding
+--------
+
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbnails">
+
+.. thumbnail-parent-div-open
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode audio samples to a file or to raw bytes using the AudioEncoder class.">
+
+.. only:: html
+
+  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_audio_encoding_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/encoding/audio_encoding`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Encoding audio samples with AudioEncoder</div>
+    </div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode video frames to a file or to raw bytes using the VideoEncoder class.">
+
+.. only:: html
+
+  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_video_encoding_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/encoding/video_encoding`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Encoding video frames with VideoEncoder</div>
+    </div>
+
+
+.. thumbnail-parent-div-close
+
+.. raw:: html
+
+    </div>
+
+
+.. toctree::
+   :hidden:
+
+   /generated_examples/encoding/audio_encoding
+   /generated_examples/encoding/video_encoding
+
