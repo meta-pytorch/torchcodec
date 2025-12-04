@@ -414,17 +414,6 @@ std::optional<UniqueAVFrame> CudaDeviceInterface::convertTensorToAVFrame(
 
   torch::Tensor hwcFrame = tensor.permute({1, 2, 0}).contiguous();
 
-  at::cuda::CUDAStream currentStream =
-      at::cuda::getCurrentCUDAStream(device_.index());
-
-  nppCtx_->hStream = currentStream.stream();
-  cudaError_t cudaErr =
-      cudaStreamGetFlags(nppCtx_->hStream, &nppCtx_->nStreamFlags);
-  TORCH_CHECK(
-      cudaErr == cudaSuccess,
-      "cudaStreamGetFlags failed: ",
-      cudaGetErrorString(cudaErr));
-
   NppiSize oSizeROI = {width, height};
   NppStatus status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
       static_cast<const Npp8u*>(hwcFrame.data_ptr()),
