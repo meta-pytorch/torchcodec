@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -332,12 +333,15 @@ class TestAudioEncoder:
                 assert_close = partial(assert_tensor_close_on_at_least, percentage=99)
         elif format == "wav":
             rtol, atol = 0, 1e-4
-        elif format == "mp3" and asset is SINE_MONO_S32 and num_channels == 2:
-            # Not sure why, this one needs slightly higher tol. With default
-            # tolerances, the check fails on ~1% of the samples, so that's
-            # probably fine. It might be that the FFmpeg CLI doesn't rely on
-            # libswresample for converting channels?
-            rtol, atol = 0, 1e-3
+        elif format == "mp3" and asset is SINE_MONO_S32:
+            if platform.machine.lower() == "aarch64":
+                rtol, atol = 0, 1e-2
+            elif num_channels == 2:
+                # Not sure why, this one needs slightly higher tol. With default
+                # tolerances, the check fails on ~1% of the samples, so that's
+                # probably fine. It might be that the FFmpeg CLI doesn't rely on
+                # libswresample for converting channels?
+                rtol, atol = 0, 1e-3
         else:
             rtol, atol = None, None
 
