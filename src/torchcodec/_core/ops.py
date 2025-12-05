@@ -164,8 +164,8 @@ def create_from_file_like(
     assert _pybind_ops is not None
     return _create_from_file_like(
         _pybind_ops.create_file_like_context(
-            file_like, False
-        ),  # False means not for writing
+            file_like, False  # False means not for writing
+        ),
         seek_mode,
     )
 
