@@ -43,7 +43,7 @@ class ResizeTransform : public Transform {
  public:
   enum class InterpolationMode { BILINEAR };
 
-  ResizeTransform(const FrameDims& dims)
+  explicit ResizeTransform(const FrameDims& dims)
       : outputDims_(dims), interpolationMode_(InterpolationMode::BILINEAR) {}
 
   ResizeTransform(const FrameDims& dims, InterpolationMode interpolationMode)
