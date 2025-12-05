@@ -138,6 +138,28 @@ class DeviceInterface {
     return "";
   }
 
+  // Async color conversion API (optional)
+  // Default implementations fall back to synchronous conversion
+  virtual void enqueueConversion(
+      UniqueAVFrame avFrame,
+      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt) {
+    // Default: synchronous conversion (no pipelining)
+    FrameOutput output;
+    convertAVFrameToFrameOutput(avFrame, output, preAllocatedOutputTensor);
+    // Store the result for dequeue
+    throw std::runtime_error(
+        "Async conversion not implemented for this device interface");
+  }
+
+  virtual FrameOutput dequeueConversionResult() {
+    throw std::runtime_error(
+        "Async conversion not implemented for this device interface");
+  }
+
+  virtual void flushConversionQueue() {
+    // Default: no-op
+  }
+
  protected:
   torch::Device device_;
   SharedAVCodecContext codecContext_;
