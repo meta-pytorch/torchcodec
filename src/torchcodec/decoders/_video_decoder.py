@@ -8,8 +8,9 @@
 import io
 import json
 import numbers
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Literal
 
 import torch
 from torch import device as torch_device, nn, Tensor

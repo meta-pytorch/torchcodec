@@ -7,10 +7,10 @@
 
 import contextvars
 import io
+
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-
-from typing import Generator
 
 from torch import Tensor
 from torchcodec import _core as core

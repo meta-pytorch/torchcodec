@@ -262,7 +262,7 @@ class TestContainerFile:
                     "You need to submit this file, or specify the `frames` field manually."
                 )
 
-            with open(frames_info_path, "r") as f:
+            with open(frames_info_path) as f:
                 frames_info = json.loads(f.read())
             self.frames[stream_index] = {
                 frame_index: TestFrameInfo(

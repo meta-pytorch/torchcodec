@@ -6,8 +6,8 @@
 
 
 import dataclasses
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import Iterable, Iterator
 
 from torch import Tensor
 

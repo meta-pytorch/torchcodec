@@ -6,8 +6,8 @@
 
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from types import ModuleType
-from typing import Sequence
 
 import torch
 from torch import nn
