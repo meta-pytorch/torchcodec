@@ -61,14 +61,17 @@ class CropTransform : public Transform {
  public:
   CropTransform(const FrameDims& dims, int x, int y);
 
+  // Becomes a center crop if x and y are not specified.
+  CropTransform(const FrameDims& dims);
+
   std::string getFilterGraphCpu() const override;
   std::optional<FrameDims> getOutputFrameDims() const override;
   void validate(const FrameDims& inputDims) const override;
 
  private:
   FrameDims outputDims_;
-  int x_;
-  int y_;
+  std::optional<int> x_;
+  std::optional<int> y_;
 };
 
 } // namespace facebook::torchcodec

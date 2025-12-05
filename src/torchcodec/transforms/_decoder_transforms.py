@@ -5,15 +5,13 @@
 # LICENSE file in the root directory of this source tree.
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from types import ModuleType
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple, Union
 
 import torch
 from torch import nn
 
 
-@dataclass
 class DecoderTransform(ABC):
     """Base class for all decoder transforms.
 
@@ -91,7 +89,6 @@ def import_torchvision_transforms_v2() -> ModuleType:
     return v2
 
 
-@dataclass
 class Resize(DecoderTransform):
     """Resize the decoded frame to a given size.
 
@@ -103,18 +100,20 @@ class Resize(DecoderTransform):
             the form (height, width).
     """
 
-    size: Sequence[int]
+    def __init__(self, size: Sequence[int]):
+        if len(size) != 2:
+            raise ValueError(
+                "Resize transform must have a (height, width) "
+                f"pair for the size, got {size}."
+            )
+        self.size = size
 
     def _make_transform_spec(
         self, input_dims: Tuple[Optional[int], Optional[int]]
     ) -> str:
-        # TODO: establish this invariant in the constructor during refactor
-        assert len(self.size) == 2
         return f"resize, {self.size[0]}, {self.size[1]}"
 
     def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
-        # TODO: establish this invariant in the constructor during refactor
-        assert len(self.size) == 2
         return (self.size[0], self.size[1])
 
     @classmethod
@@ -141,7 +140,55 @@ class Resize(DecoderTransform):
         return cls(size=tv_resize.size)
 
 
-@dataclass
+class CenterCrop(DecoderTransform):
+    """Crop the decoded frame to a given size in the center of the frame.
+
+    Complementary TorchVision transform: :class:`~torchvision.transforms.v2.CenterCrop`.
+
+    Args:
+        size (Sequence[int]): Desired output size. Must be a sequence of
+            the form (height, width).
+    """
+
+    def __init__(self, size: Sequence[int]):
+        if len(size) != 2:
+            raise ValueError(
+                "CenterCrop transform must have a (height, width) "
+                f"pair for the size, got {size}."
+            )
+        self.size = size
+
+    def _make_transform_spec(
+        self, input_dims: Tuple[Optional[int], Optional[int]]
+    ) -> str:
+        return f"center_crop, {self.size[0]}, {self.size[1]}"
+
+    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
+        return (self.size[0], self.size[1])
+
+    @classmethod
+    def _from_torchvision(
+        cls,
+        tv_center_crop: nn.Module,
+    ):
+        v2 = import_torchvision_transforms_v2()
+
+        if not isinstance(tv_center_crop, v2.CenterCrop):
+            raise ValueError(
+                "Transform must be TorchVision's CenterCrop, "
+                f"it is instead {type(tv_center_crop).__name__}. "
+                "This should never happen, please report a bug."
+            )
+
+        if len(tv_center_crop.size) != 2:
+            raise ValueError(
+                "TorchVision CenterCrop transform must have a (height, width) "
+                f"pair for the size, got {tv_center_crop.size}."
+            )
+
+        return cls(size=tv_center_crop.size)
+
+
 class RandomCrop(DecoderTransform):
     """Crop the decoded frame to a given size at a random location in the frame.
 
@@ -158,17 +205,17 @@ class RandomCrop(DecoderTransform):
             the form (height, width).
     """
 
-    size: Sequence[int]
+    def __init__(self, size: Sequence[int]):
+        if len(size) != 2:
+            raise ValueError(
+                "RandomCrop transform must have a (height, width) "
+                f"pair for the size, got {size}."
+            )
+        self.size = size
 
     def _make_transform_spec(
         self, input_dims: Tuple[Optional[int], Optional[int]]
     ) -> str:
-        if len(self.size) != 2:
-            raise ValueError(
-                f"RandomCrop's size must be a sequence of length 2, got {self.size}. "
-                "This should never happen, please report a bug."
-            )
-
         height, width = input_dims
         if height is None:
             raise ValueError(
@@ -196,8 +243,6 @@ class RandomCrop(DecoderTransform):
         return f"crop, {self.size[0]}, {self.size[1]}, {left}, {top}"
 
     def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
-        # TODO: establish this invariant in the constructor during refactor
-        assert len(self.size) == 2
         return (self.size[0], self.size[1])
 
     @classmethod
@@ -237,3 +282,101 @@ class RandomCrop(DecoderTransform):
             )
 
         return cls(size=tv_random_crop.size)
+
+
+def _make_transform_specs(
+    transforms: Optional[Sequence[Union[DecoderTransform, nn.Module]]],
+    input_dims: Tuple[Optional[int], Optional[int]],
+) -> str:
+    """Given a sequence of transforms, turn those into the specification string
+       the core API expects.
+
+    Args:
+        transforms: Optional sequence of transform objects. The objects can be
+            one of two types:
+                1. torchcodec.transforms.DecoderTransform
+                2. torchvision.transforms.v2.Transform, but our type annotation
+                   only mentions its base, nn.Module. We don't want to take a
+                   hard dependency on TorchVision.
+        input_dims: Optional (height, width) pair. Note that only some
+            transforms need to know the dimensions. If the user provides
+            transforms that don't need to know the dimensions, and that metadata
+            is missing, everything should still work. That means we assert their
+            existence as late as possible.
+
+    Returns:
+        String of transforms in the format the core API expects: transform
+        specifications separate by semicolons.
+    """
+    if transforms is None:
+        return ""
+
+    try:
+        from torchvision.transforms import v2
+
+        tv_available = True
+    except ImportError:
+        tv_available = False
+
+    # The following loop accomplishes two tasks:
+    #
+    #     1. Converts the transform to a DecoderTransform, if necessary. We
+    #        accept TorchVision transform objects and they must be converted
+    #        to their matching DecoderTransform.
+    #     2. Calculates what the input dimensions are to each transform.
+    #
+    # The order in our transforms list is semantically meaningful, as we
+    # actually have a pipeline where the output of one transform is the input to
+    # the next. For example, if we have the transforms list [A, B, C, D], then
+    # we should understand that as:
+    #
+    #     A -> B -> C -> D
+    #
+    # Where the frame produced by A is the input to B, the frame produced by B
+    # is the input to C, etc. This particularly matters for frame dimensions.
+    # Transforms can both:
+    #
+    #     1. Produce frames with arbitrary dimensions.
+    #     2. Rely on their input frame's dimensions to calculate ahead-of-time
+    #        what their runtime behavior will be.
+    #
+    # The consequence of the above facts is that we need to statically track
+    # frame dimensions in the pipeline while we pre-process it. The input
+    # frame's dimensions to A, our first transform, is always what we know from
+    # our metadata. For each transform, we always calculate its output
+    # dimensions from its input dimensions. We store these with the converted
+    # transform, to be all used together when we generate the specs.
+    converted_transforms: list[
+        Tuple[
+            DecoderTransform,
+            # A (height, width) pair where the values may be missing.
+            Tuple[Optional[int], Optional[int]],
+        ]
+    ] = []
+    curr_input_dims = input_dims
+    for transform in transforms:
+        if not isinstance(transform, DecoderTransform):
+            if not tv_available:
+                raise ValueError(
+                    f"The supplied transform, {transform}, is not a TorchCodec "
+                    " DecoderTransform. TorchCodec also accepts TorchVision "
+                    "v2 transforms, but TorchVision is not installed."
+                )
+            elif isinstance(transform, v2.Resize):
+                transform = Resize._from_torchvision(transform)
+            elif isinstance(transform, v2.CenterCrop):
+                transform = CenterCrop._from_torchvision(transform)
+            elif isinstance(transform, v2.RandomCrop):
+                transform = RandomCrop._from_torchvision(transform)
+            else:
+                raise ValueError(
+                    f"Unsupported transform: {transform}. Transforms must be "
+                    "either a TorchCodec DecoderTransform or a TorchVision "
+                    "v2 transform."
+                )
+
+        converted_transforms.append((transform, curr_input_dims))
+        output_dims = transform._get_output_dims()
+        curr_input_dims = output_dims if output_dims is not None else curr_input_dims
+
+    return ";".join([t._make_transform_spec(dims) for t, dims in converted_transforms])
