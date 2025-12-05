@@ -220,7 +220,7 @@ def encode_video_to_file_like(
     """Encode video frames to a file-like object.
 
     Args:
-        frames: Video frames tensor
+        frames: Video frames tensor. The device of the frames tensor will be used for encoding.
         frame_rate: Frame rate in frames per second
         format: Video format (e.g., "mp4", "mov", "mkv")
         file_like: File-like object that supports write() and seek() methods

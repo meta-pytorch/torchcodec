@@ -41,6 +41,8 @@ struct VideoStreamOptions {
       ColorConversionLibrary::FILTERGRAPH;
 
   // By default we use CPU for decoding for both C++ and python users.
+  // Note: This is not used for video encoding, because device is determined by
+  // the device of the input frame tensor.
   torch::Device device = torch::kCPU;
   // Device variant (e.g., "ffmpeg", "beta", etc.)
   std::string_view deviceVariant = "ffmpeg";

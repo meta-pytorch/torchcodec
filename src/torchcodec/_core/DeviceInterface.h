@@ -138,6 +138,24 @@ class DeviceInterface {
     return "";
   }
 
+  // Function used for video encoding, only implemented in CudaDeviceInterface.
+  // It is here to isolate CUDA dependencies from CPU builds
+  // TODO Video-Encoder: Reconsider using video encoding functions in device
+  // interface
+  virtual UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
+      [[maybe_unused]] const torch::Tensor& tensor,
+      [[maybe_unused]] int frameIndex,
+      [[maybe_unused]] AVCodecContext* codecContext) {
+    TORCH_CHECK(false);
+  }
+
+  // Function used for video encoding, only implemented in CudaDeviceInterface.
+  // It is here to isolate CUDA dependencies from CPU builds
+  virtual void setupHardwareFrameContextForEncoding(
+      [[maybe_unused]] AVCodecContext* codecContext) {
+    TORCH_CHECK(false);
+  }
+
  protected:
   torch::Device device_;
   SharedAVCodecContext codecContext_;
