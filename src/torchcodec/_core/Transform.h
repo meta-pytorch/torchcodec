@@ -62,7 +62,7 @@ class CropTransform : public Transform {
   CropTransform(const FrameDims& dims, int x, int y);
 
   // Becomes a center crop if x and y are not specified.
-  CropTransform(const FrameDims& dims);
+  explicit CropTransform(const FrameDims& dims);
 
   std::string getFilterGraphCpu() const override;
   std::optional<FrameDims> getOutputFrameDims() const override;
