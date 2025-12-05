@@ -24,7 +24,6 @@ parallelize work in Python. You can absolutely use a different thread or process
 pool manager.
 """
 
-from __future__ import annotations
 
 # %%
 # Let's first define some utility functions for benchmarking and data
@@ -97,21 +96,17 @@ def generate_long_video(temp_dir: str):
         raise RuntimeError(f"Failed to download video. {response.status_code = }.")
 
     short_video_path = Path(temp_dir) / "short_video.mp4"
-    with open(short_video_path, "wb") as f:
+    with open(short_video_path, 'wb') as f:
         for chunk in response.iter_content():
             f.write(chunk)
 
     # Create a longer video by repeating the short one 50 times
     long_video_path = Path(temp_dir) / "long_video.mp4"
     ffmpeg_command = [
-        "ffmpeg",
-        "-y",
-        "-stream_loop",
-        "49",  # repeat video 50 times
-        "-i",
-        str(short_video_path),
-        "-c",
-        "copy",
+        "ffmpeg", "-y",
+        "-stream_loop", "49",  # repeat video 50 times
+        "-i", str(short_video_path),
+        "-c", "copy",
         str(long_video_path),
     ]
     subprocess.run(ffmpeg_command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -127,9 +122,7 @@ metadata = decoder.metadata
 
 short_duration = timedelta(seconds=VideoDecoder(short_video_path).metadata.duration_seconds)
 long_duration = timedelta(seconds=metadata.duration_seconds)
-print(
-    f"Original video duration: {int(short_duration.total_seconds() // 60)}m{int(short_duration.total_seconds() % 60):02d}s"
-)
+print(f"Original video duration: {int(short_duration.total_seconds() // 60)}m{int(short_duration.total_seconds() % 60):02d}s")
 print(f"Long video duration: {int(long_duration.total_seconds() // 60)}m{int(long_duration.total_seconds() % 60):02d}s")
 print(f"Video resolution: {metadata.width}x{metadata.height}")
 print(f"Average FPS: {metadata.average_fps:.1f}")
@@ -182,7 +175,11 @@ sequential_time = report_stats(times, unit="s")
 # threads within FFmpeg itself to accelerate decoding operations.
 
 
-def decode_with_ffmpeg_parallelism(indices: list[int], num_threads: int, video_path=long_video_path):
+def decode_with_ffmpeg_parallelism(
+    indices: list[int],
+    num_threads: int,
+    video_path=long_video_path,
+):
     """Decode frames using FFmpeg's internal threading."""
     decoder = VideoDecoder(video_path, num_ffmpeg_threads=num_threads, seek_mode="approximate")
     return decoder.get_frames_at(indices)
@@ -203,7 +200,11 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} FFmpeg th
 # Process-based parallelism distributes work across multiple Python processes.
 
 
-def decode_with_multiprocessing(indices: list[int], num_processes: int, video_path=long_video_path):
+def decode_with_multiprocessing(
+    indices: list[int],
+    num_processes: int,
+    video_path=long_video_path,
+):
     """Decode frames using multiple processes with joblib."""
     chunks = split_indices(indices, num_chunks=num_processes)
 
@@ -229,7 +230,11 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} processes
 # TorchCodec releases the GIL, so this can be very effective.
 
 
-def decode_with_multithreading(indices: list[int], num_threads: int, video_path=long_video_path):
+def decode_with_multithreading(
+    indices: list[int],
+    num_threads: int,
+    video_path=long_video_path
+):
     """Decode frames using multiple threads with joblib."""
     chunks = split_indices(indices, num_chunks=num_threads)
 
@@ -260,5 +265,4 @@ print("All good!")
 
 # %%
 import shutil
-
 shutil.rmtree(temp_dir)

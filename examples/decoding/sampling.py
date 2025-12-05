@@ -14,7 +14,6 @@ clip generally denotes a sequence or batch of frames, and is typically passed as
 input to video models.
 """
 
-from __future__ import annotations
 
 # %%
 # First, a bit of boilerplate: we'll download a video from the web, and define a

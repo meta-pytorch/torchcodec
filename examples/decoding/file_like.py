@@ -158,7 +158,7 @@ def stream_while_decode():
     # session; we need to indicate that we need to trust the environment
     # settings for proxy configuration. Depending on your environment, you may
     # not need this setting.
-    with fsspec.open(nasa_url, client_kwargs={"trust_env": True}) as file_like:
+    with fsspec.open(nasa_url, client_kwargs={'trust_env': True}) as file_like:
         decoder = VideoDecoder(file_like, seek_mode="approximate")
         return decoder[0]
 
@@ -226,20 +226,18 @@ class FileOpCounter:
 file_op_counter = FileOpCounter(open(nasa_video_path, "rb"))
 counter_decoder = VideoDecoder(file_op_counter, seek_mode="approximate")
 
-print(
-    "Decoder initialization required " f"{file_op_counter.num_reads} reads and " f"{file_op_counter.num_seeks} seeks."
-)
+print("Decoder initialization required "
+      f"{file_op_counter.num_reads} reads and "
+      f"{file_op_counter.num_seeks} seeks.")
 
 init_reads = file_op_counter.num_reads
 init_seeks = file_op_counter.num_seeks
 
 first_frame = counter_decoder[0]
 
-print(
-    "Decoding the first frame required "
-    f"{file_op_counter.num_reads - init_reads} additional reads and "
-    f"{file_op_counter.num_seeks - init_seeks} additional seeks."
-)
+print("Decoding the first frame required "
+      f"{file_op_counter.num_reads - init_reads} additional reads and "
+      f"{file_op_counter.num_seeks - init_seeks} additional seeks.")
 
 # %%
 # While we defined a simple class primarily for demonstration, it's actually
@@ -301,6 +299,5 @@ bench(decode_from_existing_open_file_object)
 # %%
 # Finally, let's clean up the local resources we created.
 import shutil
-
 shutil.rmtree(temp_dir)
 # %%

@@ -13,7 +13,6 @@ In this example, we'll learn how to decode a video using the
 :class:`~torchcodec.decoders.VideoDecoder` class.
 """
 
-from __future__ import annotations
 
 # %%
 # First, a bit of boilerplate: we'll download a video from the web, and define a

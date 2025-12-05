@@ -42,25 +42,21 @@ if response.status_code != 200:
 
 temp_dir = tempfile.mkdtemp()
 short_video_path = Path(temp_dir) / "short_video.mp4"
-with open(short_video_path, "wb") as f:
+with open(short_video_path, 'wb') as f:
     for chunk in response.iter_content():
         f.write(chunk)
 
 long_video_path = Path(temp_dir) / "long_video.mp4"
 ffmpeg_command = [
     "ffmpeg",
-    "-stream_loop",
-    "99",  # repeat video 100 times
-    "-i",
-    f"{short_video_path}",
-    "-c",
-    "copy",
+    "-stream_loop", "99",  # repeat video 100 times
+    "-i", f"{short_video_path}",
+    "-c", "copy",
     f"{long_video_path}",
 ]
 subprocess.run(ffmpeg_command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
 from torchcodec.decoders import VideoDecoder
-
 print(f"Short video duration: {VideoDecoder(short_video_path).metadata.duration_seconds} seconds")
 print(f"Long video duration: {VideoDecoder(long_video_path).metadata.duration_seconds / 60} minutes")
 
@@ -120,7 +116,10 @@ from torchcodec import samplers
 
 def sample_clips(seek_mode):
     return samplers.clips_at_random_indices(
-        decoder=VideoDecoder(source=long_video_path, seek_mode=seek_mode),
+        decoder=VideoDecoder(
+            source=long_video_path,
+            seek_mode=seek_mode
+        ),
         num_clips=5,
         num_frames_per_clip=2,
     )
@@ -155,8 +154,7 @@ for i in range(len(exact_decoder)):
     torch.testing.assert_close(
         exact_decoder.get_frame_at(i).data,
         approx_decoder.get_frame_at(i).data,
-        atol=0,
-        rtol=0,
+        atol=0, rtol=0,
     )
 print("Frame seeking is the same for this video!")
 
