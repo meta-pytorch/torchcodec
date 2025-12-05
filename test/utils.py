@@ -2,6 +2,7 @@ import importlib
 import json
 import os
 import pathlib
+import platform
 import subprocess
 import sys
 
@@ -138,7 +139,7 @@ def psnr(a, b, max_val=255) -> float:
 # not guarantee bit-for-bit equality across systems and architectures, so we
 # also cannot. We currently use Linux on x86_64 as our reference system.
 def assert_frames_equal(*args, **kwargs):
-    if sys.platform == "linux":
+    if sys.platform == "linux" and "x86" in platform.machine():
         if args[0].device.type == "cuda":
             atol = 3 if cuda_version_used_for_building_torch() >= (13, 0) else 2
             if get_ffmpeg_major_version() == 4:
@@ -150,6 +151,7 @@ def assert_frames_equal(*args, **kwargs):
         else:
             torch.testing.assert_close(*args, **kwargs, atol=0, rtol=0)
     else:
+        # Here: Windows, MacOS, and Linux for non-x86 architectures like aarch64
         torch.testing.assert_close(*args, **kwargs, atol=3, rtol=0)
 
 
