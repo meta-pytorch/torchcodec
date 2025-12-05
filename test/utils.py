@@ -17,6 +17,7 @@ from torchcodec.decoders import set_cuda_backend, VideoDecoder
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
+IN_GIT_CI = os.getenv("GITHUB_ACTIONS")
 
 
 # Decorator for skipping CUDA tests when CUDA isn't available. The tests are

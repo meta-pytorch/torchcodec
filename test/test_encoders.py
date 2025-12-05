@@ -17,6 +17,7 @@ from .utils import (
     assert_tensor_close_on_at_least,
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
+    IN_GIT_CI,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
     needs_ffmpeg_cli,
@@ -1291,3 +1292,8 @@ class TestVideoEncoder:
         assert metadata["profile"].lower() == expected_profile
         assert metadata["color_space"] == colorspace
         assert metadata["color_range"] == color_range
+
+
+@pytest.mark.skipif(IN_GIT_CI, reason="Skipping test in GitHub Actions CI")
+def test_always_fails():
+    assert False
