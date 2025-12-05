@@ -378,7 +378,7 @@ const Npp32f defaultLimitedRangeRgbToNv12[3][4] = {
     {0.439f, -0.368f, -0.071f, 128.0f}};
 } // namespace
 
-std::optional<UniqueAVFrame> CudaDeviceInterface::convertTensorToAVFrame(
+UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
     const torch::Tensor& tensor,
     int frameIndex,
     AVCodecContext* codecContext) {
@@ -440,7 +440,7 @@ std::optional<UniqueAVFrame> CudaDeviceInterface::convertTensorToAVFrame(
 // Allocates and initializes AVHWFramesContext, and sets pixel format fields
 // to enable encoding with CUDA device. The hw_frames_ctx field is needed by
 // FFmpeg to allocate frames on GPU's memory.
-void CudaDeviceInterface::setupHardwareFrameContext(
+void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
     AVCodecContext* codecContext) {
   TORCH_CHECK(codecContext != nullptr, "codecContext is null");
   TORCH_CHECK(

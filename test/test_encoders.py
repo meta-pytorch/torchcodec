@@ -17,7 +17,6 @@ from .utils import (
     assert_tensor_close_on_at_least,
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
-    in_fbcode,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
     needs_ffmpeg_cli,
@@ -1304,14 +1303,16 @@ class TestVideoEncoder:
         assert metadata["color_space"] == colorspace
         assert metadata["color_range"] == color_range
 
+    @needs_ffmpeg_cli
     @pytest.mark.needs_cuda
-    @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
+    # TODO-VideoEncoder: Auto-select codec for GPU encoding
     @pytest.mark.parametrize(
         "format_codec",
         [
             ("mov", "h264_nvenc"),
             ("mp4", "hevc_nvenc"),
             ("avi", "h264_nvenc"),
+            # TODO-VideoEncoder: add in_CI mark, similar to in_fbcode
             # ("mkv", "av1_nvenc"), # av1_nvenc is not supported on CI
         ],
     )
@@ -1354,16 +1355,7 @@ class TestVideoEncoder:
             ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1
         ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
         ffmpeg_cmd.extend([ffmpeg_encoded_path])
-
-        # TODO-VideoEncoder: Ensure CI does not skip this test, as we know NVENC is available.
-        try:
-            subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-        except subprocess.CalledProcessError as e:
-            if b"No NVENC capable devices found" in e.stderr:
-                pytest.skip("NVENC not available on this system")
-            else:
-                raise
-
+        subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
         encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
         encoder_extra_options = {"qp": qp}
@@ -1404,4 +1396,11 @@ class TestVideoEncoder:
         assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
         for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
             assert psnr(ff_frame, enc_frame) > 25
-            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=95, atol=2)
+            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=96, atol=2)
+
+        if method == "to_file":
+            ffmpeg_metadata = self._get_video_metadata(ffmpeg_encoded_path, ["pix_fmt"])
+            encoder_metadata = self._get_video_metadata(encoder_output, ["pix_fmt"])
+            # pix_fmt nv12 is stored as yuv420p in metadata
+            assert encoder_metadata["pix_fmt"] == "yuv420p"
+            assert ffmpeg_metadata["pix_fmt"] == "yuv420p"

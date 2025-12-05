@@ -830,7 +830,8 @@ void VideoEncoder::initializeEncoder(
   // When frames are on a CUDA device, deviceInterface_ will be defined.
   if (frames_.device().is_cuda() && deviceInterface_) {
     deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
-    deviceInterface_->setupHardwareFrameContext(avCodecContext_.get());
+    deviceInterface_->setupHardwareFrameContextForEncoding(
+        avCodecContext_.get());
   }
 
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &avCodecOptions);
@@ -875,15 +876,15 @@ void VideoEncoder::encode() {
     torch::Tensor currFrame = frames_[i];
     UniqueAVFrame avFrame;
     if (frames_.device().is_cuda() && deviceInterface_) {
-      auto cudaFrame = deviceInterface_->convertTensorToAVFrame(
+      auto cudaFrame = deviceInterface_->convertCUDATensorToAVFrameForEncoding(
           currFrame, i, avCodecContext_.get());
       TORCH_CHECK(
-          cudaFrame.has_value(),
-          "convertTensorToAVFrame failed for frame ",
+          cudaFrame != nullptr,
+          "convertCUDATensorToAVFrameForEncoding failed for frame ",
           i,
-          "on device: ",
+          " on device: ",
           frames_.device());
-      avFrame = std::move(*cudaFrame);
+      avFrame = std::move(cudaFrame);
     } else {
       avFrame = convertTensorToAVFrame(currFrame, i);
     }

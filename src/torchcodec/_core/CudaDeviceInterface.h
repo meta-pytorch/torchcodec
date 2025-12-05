@@ -41,12 +41,13 @@ class CudaDeviceInterface : public DeviceInterface {
 
   std::string getDetails() override;
 
-  std::optional<UniqueAVFrame> convertTensorToAVFrame(
+  UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
       const torch::Tensor& tensor,
       int frameIndex,
       AVCodecContext* codecContext) override;
 
-  void setupHardwareFrameContext(AVCodecContext* codecContext) override;
+  void setupHardwareFrameContextForEncoding(
+      AVCodecContext* codecContext) override;
 
  private:
   // Our CUDA decoding code assumes NV12 format. In order to handle other
