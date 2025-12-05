@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import shutil
 import subprocess
 import tempfile
 from argparse import ArgumentParser
@@ -196,76 +197,82 @@ def main():
         f"Loaded {frames.shape[0]} frames of size {frames.shape[2]}x{frames.shape[3]}"
     )
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_dir = Path(temp_dir)
-        raw_frames_path = temp_dir / "input_frames.raw"
+    temp_dir = Path(tempfile.mkdtemp())
+    raw_frames_path = temp_dir / "input_frames.raw"
+
+    # Write frames once outside benchmarking when --write-frames is False
+    # When --write-frames is True, frames will be written inside the benchmark function
+    if not args.write_frames:
         write_raw_frames(frames, args.max_frames, str(raw_frames_path))
 
-        # Benchmark torchcodec on GPU
-        if cuda_available:
-            gpu_output = temp_dir / "torchcodec_gpu.mp4"
-            times, _cpu_utils, gpu_utils = bench(
-                encode_torchcodec,
-                frames=gpu_frames,
-                output_path=str(gpu_output),
-                device="cuda",
-                average_over=args.average_over,
-                warmup=1,
-            )
-            report_stats(
-                times, frames.shape[0], None, gpu_utils, prefix="VideoEncoder on GPU"
-            )
-        else:
-            print("Skipping VideoEncoder GPU benchmark (CUDA not available)")
-
-        # Benchmark FFmpeg CLI on GPU
-        if cuda_available:
-            ffmpeg_gpu_output = temp_dir / "ffmpeg_gpu.mp4"
-            times, _cpu_utils, gpu_utils = bench(
-                write_and_encode_ffmpeg_cli,
-                frames=gpu_frames,
-                num_frames=args.max_frames,
-                raw_path=str(raw_frames_path),
-                output_path=str(ffmpeg_gpu_output),
-                device="cuda",
-                write_frames=args.write_frames,
-                average_over=args.average_over,
-                warmup=1,
-            )
-            prefix = "FFmpeg CLI on GPU  "
-            report_stats(times, frames.shape[0], None, gpu_utils, prefix=prefix)
-        else:
-            print("Skipping FFmpeg CLI GPU benchmark (CUDA not available)")
-
-        # Benchmark torchcodec on CPU
-        cpu_output = temp_dir / "torchcodec_cpu.mp4"
-        times, cpu_utils, _gpu_utils = bench(
+    # Benchmark torchcodec on GPU
+    if cuda_available:
+        gpu_output = temp_dir / "torchcodec_gpu.mp4"
+        times, _cpu_utils, gpu_utils = bench(
             encode_torchcodec,
-            frames=frames,
-            output_path=str(cpu_output),
-            device="cpu",
+            frames=gpu_frames,
+            output_path=str(gpu_output),
+            device="cuda",
             average_over=args.average_over,
             warmup=1,
         )
         report_stats(
-            times, frames.shape[0], cpu_utils, None, prefix="VideoEncoder on CPU"
+            times, frames.shape[0], None, gpu_utils, prefix="VideoEncoder on GPU"
         )
+    else:
+        print("Skipping VideoEncoder GPU benchmark (CUDA not available)")
 
-        # Benchmark FFmpeg CLI on CPU
-        ffmpeg_cpu_output = temp_dir / "ffmpeg_cpu.mp4"
-        times, cpu_utils, _gpu_utils = bench(
+    # Benchmark FFmpeg CLI on GPU
+    if cuda_available:
+        ffmpeg_gpu_output = temp_dir / "ffmpeg_gpu.mp4"
+        times, _cpu_utils, gpu_utils = bench(
             write_and_encode_ffmpeg_cli,
-            frames=frames,
+            frames=gpu_frames,
             num_frames=args.max_frames,
             raw_path=str(raw_frames_path),
-            output_path=str(ffmpeg_cpu_output),
-            device="cpu",
+            output_path=str(ffmpeg_gpu_output),
+            device="cuda",
             write_frames=args.write_frames,
             average_over=args.average_over,
             warmup=1,
         )
-        prefix = "FFmpeg CLI on CPU  "
-        report_stats(times, frames.shape[0], cpu_utils, None, prefix=prefix)
+        prefix = "FFmpeg CLI on GPU  "
+        report_stats(times, frames.shape[0], None, gpu_utils, prefix=prefix)
+    else:
+        print("Skipping FFmpeg CLI GPU benchmark (CUDA not available)")
+
+    # Benchmark torchcodec on CPU
+    cpu_output = temp_dir / "torchcodec_cpu.mp4"
+    times, cpu_utils, _gpu_utils = bench(
+        encode_torchcodec,
+        frames=frames,
+        output_path=str(cpu_output),
+        device="cpu",
+        average_over=args.average_over,
+        warmup=1,
+    )
+    report_stats(times, frames.shape[0], cpu_utils, None, prefix="VideoEncoder on CPU")
+
+    # Benchmark FFmpeg CLI on CPU
+    ffmpeg_cpu_output = temp_dir / "ffmpeg_cpu.mp4"
+    times, cpu_utils, _gpu_utils = bench(
+        write_and_encode_ffmpeg_cli,
+        frames=frames,
+        num_frames=args.max_frames,
+        raw_path=str(raw_frames_path),
+        output_path=str(ffmpeg_cpu_output),
+        device="cpu",
+        write_frames=args.write_frames,
+        average_over=args.average_over,
+        warmup=1,
+    )
+    prefix = "FFmpeg CLI on CPU  "
+    report_stats(times, frames.shape[0], cpu_utils, None, prefix=prefix)
+
+    try:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
