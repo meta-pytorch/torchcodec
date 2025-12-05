@@ -273,9 +273,9 @@ encoder.to_file(
     custom_output,
     codec="libx264",
     extra_options={
-        "g": 50,               # Keyframe every 50 frames
-        "max_b_frames": 0,     # Disable B-frames for faster decoding
-        "tune": "fastdecode",  # Optimize for fast decoding
+        "g": 50,                # Keyframe every 50 frames
+        "max_b_frames": 0,      # Disable B-frames for faster decoding
+        "tune": "fastdecode",   # Optimize for fast decoding
     },
 )
 
