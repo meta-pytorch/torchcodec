@@ -14,7 +14,6 @@ clip generally denotes a sequence or batch of frames, and is typically passed as
 input to video models.
 """
 
-
 # %%
 # First, a bit of boilerplate: we'll download a video from the web, and define a
 # plotting utility. You can ignore that part and jump right below to
@@ -43,7 +42,7 @@ def plot(frames: torch.Tensor, title: str | None = None):
         print("Cannot plot, please run `pip install torchvision matplotlib`")
         return
 
-    plt.rcParams["savefig.bbox"] = "tight"
+    plt.rcParams['savefig.bbox'] = 'tight'
     fig, ax = plt.subplots()
     ax.imshow(to_pil_image(make_grid(frames)))
     ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
@@ -191,7 +190,7 @@ clips = clips_at_regular_timestamps(
     num_frames_per_clip=4,
     seconds_between_frames=0.5,
     sampling_range_start=2,
-    sampling_range_end=5,
+    sampling_range_end=5
 )
 clips
 

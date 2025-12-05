@@ -178,7 +178,9 @@ for output, name in [(h264_output, "h264_output"), (hevc_output, "hevc_output")]
 #     to check available options for your selected codec.
 
 # Standard pixel format
-yuv420_encoded_frames = encoder.to_tensor(format="mp4", codec="libx264", pixel_format="yuv420p")
+yuv420_encoded_frames = encoder.to_tensor(
+    format="mp4", codec="libx264", pixel_format="yuv420p"
+)
 play_video(yuv420_encoded_frames)
 
 # %%
@@ -271,8 +273,8 @@ encoder.to_file(
     custom_output,
     codec="libx264",
     extra_options={
-        "g": 50,  # Keyframe every 50 frames
-        "max_b_frames": 0,  # Disable B-frames for faster decoding
+        "g": 50,               # Keyframe every 50 frames
+        "max_b_frames": 0,     # Disable B-frames for faster decoding
         "tune": "fastdecode",  # Optimize for fast decoding
     },
 )

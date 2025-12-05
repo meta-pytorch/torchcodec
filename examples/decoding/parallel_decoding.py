@@ -24,7 +24,6 @@ parallelize work in Python. You can absolutely use a different thread or process
 pool manager.
 """
 
-
 # %%
 # Let's first define some utility functions for benchmarking and data
 # processing.  We'll also download a video and create a longer version by
@@ -80,10 +79,10 @@ def split_indices(indices: list[int], num_chunks: int) -> list[list[int]]:
     chunks = []
 
     for i in range(num_chunks - 1):
-        chunks.append(indices[i * chunk_size : (i + 1) * chunk_size])
+        chunks.append(indices[i * chunk_size:(i + 1) * chunk_size])
 
     # Last chunk may be slightly larger
-    chunks.append(indices[(num_chunks - 1) * chunk_size :])
+    chunks.append(indices[(num_chunks - 1) * chunk_size:])
     return chunks
 
 
@@ -107,7 +106,7 @@ def generate_long_video(temp_dir: str):
         "-stream_loop", "49",  # repeat video 50 times
         "-i", str(short_video_path),
         "-c", "copy",
-        str(long_video_path),
+        str(long_video_path)
     ]
     subprocess.run(ffmpeg_command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -178,7 +177,7 @@ sequential_time = report_stats(times, unit="s")
 def decode_with_ffmpeg_parallelism(
     indices: list[int],
     num_threads: int,
-    video_path=long_video_path,
+    video_path=long_video_path
 ):
     """Decode frames using FFmpeg's internal threading."""
     decoder = VideoDecoder(video_path, num_ffmpeg_threads=num_threads, seek_mode="approximate")

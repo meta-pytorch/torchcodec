@@ -52,7 +52,7 @@ ffmpeg_command = [
     "-stream_loop", "99",  # repeat video 100 times
     "-i", f"{short_video_path}",
     "-c", "copy",
-    f"{long_video_path}",
+    f"{long_video_path}"
 ]
 subprocess.run(ffmpeg_command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
