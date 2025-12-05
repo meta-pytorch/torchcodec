@@ -819,15 +819,22 @@ class TestVideoEncoder:
             getattr(encoder, method)(**valid_params, extra_options=extra_options)
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_contiguity(self, method, tmp_path):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_contiguity(self, method, tmp_path, device):
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal
         # frame tensors, one is contiguous while the other is non-contiguous.
 
-        num_frames, channels, height, width = 5, 3, 64, 64
-        contiguous_frames = torch.randint(
-            0, 256, size=(num_frames, channels, height, width), dtype=torch.uint8
-        ).contiguous()
+        num_frames, channels, height, width = 5, 3, 256, 256
+        contiguous_frames = (
+            torch.randint(
+                0, 256, size=(num_frames, channels, height, width), dtype=torch.uint8
+            )
+            .contiguous()
+            .to(device)
+        )
         assert contiguous_frames.is_contiguous()
 
         # Permute NCHW to NHWC, then update the memory layout, then permute back
@@ -843,7 +850,11 @@ class TestVideoEncoder:
         )
 
         def encode_to_tensor(frames):
-            common_params = dict(crf=0, pixel_format="yuv444p")
+            common_params = dict(
+                crf=0,
+                pixel_format="yuv444p",
+                codec="h264_nvenc" if device != "cpu" else None,
+            )
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
                 VideoEncoder(frames, frame_rate=30).to_file(dest=dest, **common_params)
@@ -1291,3 +1302,105 @@ class TestVideoEncoder:
         assert metadata["profile"].lower() == expected_profile
         assert metadata["color_space"] == colorspace
         assert metadata["color_range"] == color_range
+
+    @pytest.mark.needs_cuda
+    @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
+    @pytest.mark.parametrize(
+        "format_codec",
+        [
+            ("mov", "h264_nvenc"),
+            ("mp4", "hevc_nvenc"),
+            ("avi", "h264_nvenc"),
+            # ("mkv", "av1_nvenc"), # av1_nvenc is not supported on CI
+        ],
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
+    def test_nvenc_against_ffmpeg_cli(self, tmp_path, format_codec, method):
+        # Encode with FFmpeg CLI using nvenc codecs
+        format, codec = format_codec
+        device = "cuda"
+        pixel_format = "nv12"
+        qp = 1  # Lossless (qp=0) is not supported on av1_nvenc, so we use 1
+        source_frames = self.decode(TEST_SRC_2_720P.path).data.to(device)
+
+        temp_raw_path = str(tmp_path / "temp_input.raw")
+        with open(temp_raw_path, "wb") as f:
+            f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
+
+        ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_nvenc_output.{format}")
+        frame_rate = 30
+
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",  # Input format
+            "-s",
+            f"{source_frames.shape[3]}x{source_frames.shape[2]}",
+            "-r",
+            str(frame_rate),
+            "-i",
+            temp_raw_path,
+            "-c:v",
+            codec,  # Use specified NVENC hardware encoder
+        ]
+
+        ffmpeg_cmd.extend(["-pix_fmt", pixel_format])  # Output format
+        if codec == "av1_nvenc":
+            ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1
+        ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
+        ffmpeg_cmd.extend([ffmpeg_encoded_path])
+
+        # TODO-VideoEncoder: Ensure CI does not skip this test, as we know NVENC is available.
+        try:
+            subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+        except subprocess.CalledProcessError as e:
+            if b"No NVENC capable devices found" in e.stderr:
+                pytest.skip("NVENC not available on this system")
+            else:
+                raise
+
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
+
+        encoder_extra_options = {"qp": qp}
+        if codec == "av1_nvenc":
+            encoder_extra_options["rc"] = 0  # constqp mode
+        if method == "to_file":
+            encoder_output_path = str(tmp_path / f"nvenc_output.{format}")
+            encoder.to_file(
+                dest=encoder_output_path,
+                codec=codec,
+                pixel_format=pixel_format,
+                extra_options=encoder_extra_options,
+            )
+            encoder_output = encoder_output_path
+        elif method == "to_tensor":
+            encoder_output = encoder.to_tensor(
+                format=format,
+                codec=codec,
+                pixel_format=pixel_format,
+                extra_options=encoder_extra_options,
+            )
+        elif method == "to_file_like":
+            file_like = io.BytesIO()
+            encoder.to_file_like(
+                file_like=file_like,
+                format=format,
+                codec=codec,
+                pixel_format=pixel_format,
+                extra_options=encoder_extra_options,
+            )
+            encoder_output = file_like.getvalue()
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        ffmpeg_frames = self.decode(ffmpeg_encoded_path).data
+        encoder_frames = self.decode(encoder_output).data
+
+        assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
+        for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
+            assert psnr(ff_frame, enc_frame) > 25
+            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=95, atol=2)

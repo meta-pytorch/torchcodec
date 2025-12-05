@@ -724,6 +724,9 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
+  if (frames_.device().is_cuda()) {
+    gpuEncoder_ = std::make_unique<GpuEncoder>(frames_.device());
+  }
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
@@ -820,6 +823,12 @@ void VideoEncoder::initializeEncoder(
         videoStreamOptions.preset.value().c_str(),
         0);
   }
+
+  if (gpuEncoder_) {
+    gpuEncoder_->registerHardwareDeviceWithCodec(avCodecContext_.get());
+    gpuEncoder_->setupHardwareFrameContext(avCodecContext_.get());
+  }
+
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &avCodecOptions);
   av_dict_free(&avCodecOptions);
 
@@ -860,7 +869,13 @@ void VideoEncoder::encode() {
   int numFrames = static_cast<int>(frames_.sizes()[0]);
   for (int i = 0; i < numFrames; ++i) {
     torch::Tensor currFrame = frames_[i];
-    UniqueAVFrame avFrame = convertTensorToAVFrame(currFrame, i);
+    UniqueAVFrame avFrame;
+    if (gpuEncoder_) {
+      avFrame = gpuEncoder_->convertTensorToAVFrame(
+          currFrame, outPixelFormat_, i, avCodecContext_.get());
+    } else {
+      avFrame = convertTensorToAVFrame(currFrame, i);
+    }
     encodeFrame(autoAVPacket, avFrame);
   }
 
