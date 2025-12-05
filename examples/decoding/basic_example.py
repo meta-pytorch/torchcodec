@@ -41,7 +41,7 @@ def plot(frames: torch.Tensor, title: str | None = None):
         print("Cannot plot, please run `pip install torchvision matplotlib`")
         return
 
-    plt.rcParams['savefig.bbox'] = 'tight'
+    plt.rcParams["savefig.bbox"] = 'tight'
     fig, ax = plt.subplots()
     ax.imshow(to_pil_image(make_grid(frames)))
     ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
