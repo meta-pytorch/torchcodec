@@ -4,11 +4,13 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+
 import io
 import json
 import numbers
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Literal, Optional, Sequence, Tuple, Union
+from typing import Literal
 
 import torch
 from torch import device as torch_device, nn, Tensor
@@ -105,17 +107,17 @@ class VideoDecoder:
 
     def __init__(
         self,
-        source: Union[str, Path, io.RawIOBase, io.BufferedReader, bytes, Tensor],
+        source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
         dimension_order: Literal["NCHW", "NHWC"] = "NCHW",
         num_ffmpeg_threads: int = 1,
-        device: Optional[Union[str, torch_device]] = None,
+        device: str | torch_device | None = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
-        transforms: Optional[Sequence[Union[DecoderTransform, nn.Module]]] = None,
-        custom_frame_mappings: Optional[
-            Union[str, bytes, io.RawIOBase, io.BufferedReader]
-        ] = None,
+        transforms: Sequence[DecoderTransform | nn.Module] | None = None,
+        custom_frame_mappings: (
+            str | bytes | io.RawIOBase | io.BufferedReader | None
+        ) = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
@@ -205,7 +207,7 @@ class VideoDecoder:
         )
         return frame_data
 
-    def __getitem__(self, key: Union[numbers.Integral, slice]) -> Tensor:
+    def __getitem__(self, key: numbers.Integral | slice) -> Tensor:
         """Return frame or frames as tensors, at the given index or range.
 
         .. note::
@@ -262,7 +264,7 @@ class VideoDecoder:
             duration_seconds=duration_seconds.item(),
         )
 
-    def get_frames_at(self, indices: Union[torch.Tensor, list[int]]) -> FrameBatch:
+    def get_frames_at(self, indices: torch.Tensor | list[int]) -> FrameBatch:
         """Return frames at the given indices.
 
         Args:
@@ -339,9 +341,7 @@ class VideoDecoder:
             duration_seconds=duration_seconds.item(),
         )
 
-    def get_frames_played_at(
-        self, seconds: Union[torch.Tensor, list[float]]
-    ) -> FrameBatch:
+    def get_frames_played_at(self, seconds: torch.Tensor | list[float]) -> FrameBatch:
         """Return frames played at the given timestamps in seconds.
 
         Args:
@@ -404,8 +404,8 @@ class VideoDecoder:
 def _get_and_validate_stream_metadata(
     *,
     decoder: Tensor,
-    stream_index: Optional[int] = None,
-) -> Tuple[core._metadata.VideoStreamMetadata, int, float, float, int]:
+    stream_index: int | None = None,
+) -> tuple[core._metadata.VideoStreamMetadata, int, float, float, int]:
 
     container_metadata = core.get_container_metadata(decoder)
 
@@ -453,7 +453,7 @@ def _get_and_validate_stream_metadata(
 
 
 def _read_custom_frame_mappings(
-    custom_frame_mappings: Union[str, bytes, io.RawIOBase, io.BufferedReader]
+    custom_frame_mappings: str | bytes | io.RawIOBase | io.BufferedReader,
 ) -> tuple[Tensor, Tensor, Tensor]:
     """Parse custom frame mappings from JSON data and extract frame metadata.
 

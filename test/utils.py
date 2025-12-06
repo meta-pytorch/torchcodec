@@ -6,7 +6,6 @@ import subprocess
 import sys
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pytest
@@ -108,7 +107,7 @@ def get_python_version() -> tuple[int, int]:
     return (sys.version_info.major, sys.version_info.minor)
 
 
-def cuda_version_used_for_building_torch() -> Optional[tuple[int, int]]:
+def cuda_version_used_for_building_torch() -> tuple[int, int | None]:
     # Return the CUDA version that was used to build PyTorch. That's not always
     # the same as the CUDA version that is currently installed on the running
     # machine, which is what we actually want. On the CI though, these are the
@@ -230,10 +229,10 @@ class TestContainerFile:
     filename: str
 
     default_stream_index: int
-    stream_infos: Dict[int, Union[TestVideoStreamInfo, TestAudioStreamInfo]]
-    frames: Dict[int, Dict[int, TestFrameInfo]]
-    _custom_frame_mappings_data: Dict[
-        int, Optional[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]
+    stream_infos: dict[int, TestVideoStreamInfo | TestAudioStreamInfo]
+    frames: dict[int, dict[int, TestFrameInfo]]
+    _custom_frame_mappings_data: dict[
+        int, tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]
     ] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -263,7 +262,7 @@ class TestContainerFile:
                     "You need to submit this file, or specify the `frames` field manually."
                 )
 
-            with open(frames_info_path, "r") as f:
+            with open(frames_info_path) as f:
                 frames_info = json.loads(f.read())
             self.frames[stream_index] = {
                 frame_index: TestFrameInfo(
@@ -282,7 +281,7 @@ class TestContainerFile:
         return torch.from_numpy(arr)
 
     def get_frame_data_by_index(
-        self, idx: int, *, stream_index: Optional[int] = None
+        self, idx: int, *, stream_index: int | None = None
     ) -> torch.Tensor:
         raise NotImplementedError("Override in child classes")
 
@@ -292,7 +291,7 @@ class TestContainerFile:
         stop: int,
         step: int = 1,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
     ) -> torch.Tensor:
         raise NotImplementedError("Override in child classes")
 
@@ -302,7 +301,7 @@ class TestContainerFile:
         stop: int,
         step: int = 1,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -318,7 +317,7 @@ class TestContainerFile:
         stop: int,
         step: int = 1,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -330,7 +329,7 @@ class TestContainerFile:
         return torch.tensor(all_durations, dtype=torch.float64)
 
     def get_frame_info(
-        self, idx: int, *, stream_index: Optional[int] = None
+        self, idx: int, *, stream_index: int | None = None
     ) -> TestFrameInfo:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -339,7 +338,7 @@ class TestContainerFile:
 
     # This function is used to get the frame mappings for the custom_frame_mappings seek mode.
     def get_custom_frame_mappings(
-        self, stream_index: Optional[int] = None
+        self, stream_index: int | None = None
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -383,7 +382,7 @@ class TestVideo(TestContainerFile):
     """Base class for the *video* streams of a video container"""
 
     def get_base_path_by_index(
-        self, idx: int, *, stream_index: int, filters: Optional[str] = None
+        self, idx: int, *, stream_index: int, filters: str | None = None
     ) -> pathlib.Path:
         stream_and_frame = f"stream{stream_index}.frame{idx:06d}"
         if filters is not None:
@@ -397,8 +396,8 @@ class TestVideo(TestContainerFile):
         self,
         idx: int,
         *,
-        stream_index: Optional[int] = None,
-        filters: Optional[str] = None,
+        stream_index: int | None = None,
+        filters: str | None = None,
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -415,7 +414,7 @@ class TestVideo(TestContainerFile):
         stop: int,
         step: int = 1,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
     ) -> torch.Tensor:
         tensors = [
             self.get_frame_data_by_index(i, stream_index=stream_index)
@@ -441,19 +440,19 @@ class TestVideo(TestContainerFile):
             [0, self.num_color_channels, self.height, self.width], dtype=torch.uint8
         )
 
-    def get_width(self, *, stream_index: Optional[int] = None) -> int:
+    def get_width(self, *, stream_index: int | None = None) -> int:
         if stream_index is None:
             stream_index = self.default_stream_index
 
         return self.stream_infos[stream_index].width
 
-    def get_height(self, *, stream_index: Optional[int] = None) -> int:
+    def get_height(self, *, stream_index: int | None = None) -> int:
         if stream_index is None:
             stream_index = self.default_stream_index
 
         return self.stream_infos[stream_index].height
 
-    def get_num_color_channels(self, *, stream_index: Optional[int] = None) -> int:
+    def get_num_color_channels(self, *, stream_index: int | None = None) -> int:
         if stream_index is None:
             stream_index = self.default_stream_index
 
@@ -617,10 +616,10 @@ class TestAudio(TestContainerFile):
     """Base class for the *audio* streams of a container (potentially a video),
     or a pure audio file"""
 
-    stream_infos: Dict[int, TestAudioStreamInfo]
+    stream_infos: dict[int, TestAudioStreamInfo]
     # stream_index -> list of 2D frame tensors of shape (num_channels, num_samples_in_that_frame)
     # num_samples_in_that_frame isn't necessarily constant for a given stream.
-    _reference_frames: Dict[int, List[torch.Tensor]] = field(default_factory=dict)
+    _reference_frames: dict[int, list[torch.Tensor]] = field(default_factory=dict)
 
     # Storing each individual frame is too expensive for audio, because there's
     # a massive overhead in the binary format saved by pytorch. Saving all the
@@ -644,7 +643,7 @@ class TestAudio(TestContainerFile):
                 )
 
     def get_frame_data_by_index(
-        self, idx: int, *, stream_index: Optional[int] = None
+        self, idx: int, *, stream_index: int | None = None
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -657,7 +656,7 @@ class TestAudio(TestContainerFile):
         stop: int,
         step: int = 1,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
     ) -> torch.Tensor:
         tensors = [
             self.get_frame_data_by_index(i, stream_index=stream_index)
@@ -666,7 +665,7 @@ class TestAudio(TestContainerFile):
         return torch.cat(tensors, dim=-1)
 
     def get_frame_index(
-        self, *, pts_seconds: float, stream_index: Optional[int] = None
+        self, *, pts_seconds: float, stream_index: int | None = None
     ) -> int:
         if stream_index is None:
             stream_index = self.default_stream_index
