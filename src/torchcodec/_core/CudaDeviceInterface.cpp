@@ -6,6 +6,7 @@
 #include "Cache.h"
 #include "CudaDeviceInterface.h"
 #include "FFMPEGCommon.h"
+#include "ValidationUtils.h"
 
 extern "C" {
 #include <libavutil/hwcontext_cuda.h>
@@ -422,7 +423,8 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
   NppiSize oSizeROI = {width, height};
   NppStatus status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
       static_cast<const Npp8u*>(hwcFrame.data_ptr()),
-      hwcFrame.stride(0) * hwcFrame.element_size(),
+      validateInt64ToInt(
+          hwcFrame.stride(0) * hwcFrame.element_size(), "nSrcStep"),
       avFrame->data,
       avFrame->linesize,
       oSizeROI,
