@@ -756,8 +756,11 @@ class TestVideoEncoder:
             encoder.to_tensor(format="bad_format")
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_pixel_format_errors(self, method, tmp_path):
-        frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_pixel_format_errors(self, method, device, tmp_path):
+        frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8).to(device)
         encoder = VideoEncoder(frames, frame_rate=30)
 
         if method == "to_file":
@@ -766,6 +769,14 @@ class TestVideoEncoder:
             valid_params = dict(format="mp4")
         elif method == "to_file_like":
             valid_params = dict(file_like=io.BytesIO(), format="mp4")
+
+        if device == "cuda":
+            with pytest.raises(
+                RuntimeError,
+                match="GPU Video encoding currently only supports the NV12 pixel format. Do not set pixel_format to use NV12",
+            ):
+                getattr(encoder, method)(**valid_params, pixel_format="yuv420p")
+            return
 
         with pytest.raises(
             RuntimeError,
@@ -852,7 +863,7 @@ class TestVideoEncoder:
         def encode_to_tensor(frames):
             common_params = dict(
                 crf=0,
-                pixel_format="yuv444p",
+                pixel_format="yuv444p" if device == "cpu" else None,
                 codec="h264_nvenc" if device != "cpu" else None,
             )
             if method == "to_file":
@@ -1322,7 +1333,6 @@ class TestVideoEncoder:
         # Encode with FFmpeg CLI using nvenc codecs
         format, codec = format_codec
         device = "cuda"
-        pixel_format = "nv12"
         qp = 1  # Lossless (qp=0) is not supported on av1_nvenc, so we use 1
         source_frames = self.decode(TEST_SRC_2_720P.path).data.to(device)
 
@@ -1350,7 +1360,7 @@ class TestVideoEncoder:
             codec,  # Use specified NVENC hardware encoder
         ]
 
-        ffmpeg_cmd.extend(["-pix_fmt", pixel_format])  # Output format
+        ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # Output format is always NV12
         if codec == "av1_nvenc":
             ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1
         ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
@@ -1366,7 +1376,6 @@ class TestVideoEncoder:
             encoder.to_file(
                 dest=encoder_output_path,
                 codec=codec,
-                pixel_format=pixel_format,
                 extra_options=encoder_extra_options,
             )
             encoder_output = encoder_output_path
@@ -1374,7 +1383,6 @@ class TestVideoEncoder:
             encoder_output = encoder.to_tensor(
                 format=format,
                 codec=codec,
-                pixel_format=pixel_format,
                 extra_options=encoder_extra_options,
             )
         elif method == "to_file_like":
@@ -1383,7 +1391,6 @@ class TestVideoEncoder:
                 file_like=file_like,
                 format=format,
                 codec=codec,
-                pixel_format=pixel_format,
                 extra_options=encoder_extra_options,
             )
             encoder_output = file_like.getvalue()

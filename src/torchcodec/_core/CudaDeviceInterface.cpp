@@ -386,6 +386,10 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
       tensor.dim() == 3 && tensor.size(0) == 3,
       "Expected 3D RGB tensor (CHW format), got shape: ",
       tensor.sizes());
+  TORCH_CHECK(
+      tensor.device().type() == torch::kCUDA,
+      "Expected tensor on CUDA device, got: ",
+      tensor.device().str());
 
   UniqueAVFrame avFrame(av_frame_alloc());
   TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
@@ -412,6 +416,7 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
       avFrame != nullptr && avFrame->data[0] != nullptr,
       "avFrame must be pre-allocated with CUDA memory");
 
+  // TODO VideoEncoder: Investigate ways to avoid this copy
   torch::Tensor hwcFrame = tensor.permute({1, 2, 0}).contiguous();
 
   NppiSize oSizeROI = {width, height};

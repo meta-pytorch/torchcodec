@@ -775,6 +775,12 @@ void VideoEncoder::initializeEncoder(
   outHeight_ = inHeight_;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
+    if (frames_.device().is_cuda()) {
+      TORCH_CHECK(
+          false,
+          "GPU Video encoding currently only supports the NV12 pixel format. "
+          "Do not set pixel_format to use NV12.");
+    }
     outPixelFormat_ =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
