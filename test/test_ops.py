@@ -1005,7 +1005,7 @@ class TestAudioDecoderOps:
 
         class SeekMethodMissing:
             def read(self, size: int) -> bytes:
-                return bytes()
+                return b""
 
         with pytest.raises(RuntimeError, match="must implement a seek method"):
             create_from_file_like(SeekMethodMissing(), "approximate")
@@ -1016,7 +1016,7 @@ class TestAudioDecoderOps:
 
             # io.RawIOBase says we should accept a single int; wrong signature on purpose
             def read(self) -> bytes:
-                return bytes()
+                return b""
 
             def seek(self, offset: int, whence: int) -> int:
                 return self._file.seeK(offset, whence)

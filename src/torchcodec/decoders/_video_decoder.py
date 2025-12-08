@@ -4,11 +4,14 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+
 import io
 import json
 import numbers
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Literal, Optional, Sequence, Tuple, Union
+from typing import Literal
 
 import torch
 from torch import device as torch_device, nn, Tensor
@@ -19,7 +22,58 @@ from torchcodec.decoders._decoder_utils import (
     create_decoder,
     ERROR_REPORTING_INSTRUCTIONS,
 )
-from torchcodec.transforms import DecoderTransform, Resize
+from torchcodec.transforms import DecoderTransform
+from torchcodec.transforms._decoder_transforms import _make_transform_specs
+
+
+@dataclass
+class CpuFallbackStatus:
+    """Information about CPU fallback status.
+
+    This class tracks whether the decoder fell back to CPU decoding.
+    Users should not instantiate this class directly; instead, access it
+    via the :attr:`VideoDecoder.cpu_fallback` attribute.
+
+    Usage:
+
+    - Use ``str(cpu_fallback_status)`` or ``print(cpu_fallback_status)`` to see the cpu fallback status
+    - Use ``if cpu_fallback_status:`` to check if any fallback occurred
+    """
+
+    status_known: bool = False
+    """Whether the fallback status has been determined.
+    For the Beta CUDA backend (see :func:`~torchcodec.decoders.set_cuda_backend`),
+    this is always ``True`` immediately after decoder creation.
+    For the FFmpeg CUDA backend, this becomes ``True`` after decoding
+    the first frame."""
+    _nvcuvid_unavailable: bool = field(default=False, init=False)
+    _video_not_supported: bool = field(default=False, init=False)
+    _is_fallback: bool = field(default=False, init=False)
+    _backend: str = field(default="", init=False)
+
+    def __bool__(self):
+        """Returns True if fallback occurred."""
+        return self.status_known and self._is_fallback
+
+    def __str__(self):
+        """Returns a human-readable string representation of the cpu fallback status."""
+        if not self.status_known:
+            return f"[{self._backend}] Fallback status: Unknown"
+
+        reasons = []
+        if self._nvcuvid_unavailable:
+            reasons.append("NVcuvid unavailable")
+        elif self._video_not_supported:
+            reasons.append("Video not supported")
+        elif self._is_fallback:
+            reasons.append("Unknown reason - try the Beta interface to know more!")
+
+        if reasons:
+            return (
+                f"[{self._backend}] Fallback status: Falling back due to: "
+                + ", ".join(reasons)
+            )
+        return f"[{self._backend}] Fallback status: No fallback required"
 
 
 class VideoDecoder:
@@ -100,21 +154,25 @@ class VideoDecoder:
         stream_index (int): The stream index that this decoder is retrieving frames from. If a
             stream index was provided at initialization, this is the same value. If it was left
             unspecified, this is the :term:`best stream`.
+        cpu_fallback (CpuFallbackStatus): Information about whether the decoder fell back to CPU
+            decoding. Use ``bool(cpu_fallback)`` to check if fallback occurred, or
+            ``str(cpu_fallback)`` to get a human-readable status message. The status is only
+            determined after at least one frame has been decoded.
     """
 
     def __init__(
         self,
-        source: Union[str, Path, io.RawIOBase, io.BufferedReader, bytes, Tensor],
+        source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
         dimension_order: Literal["NCHW", "NHWC"] = "NCHW",
         num_ffmpeg_threads: int = 1,
-        device: Optional[Union[str, torch_device]] = None,
+        device: str | torch_device | None = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
-        transforms: Optional[Sequence[Union[DecoderTransform, nn.Module]]] = None,
-        custom_frame_mappings: Optional[
-            Union[str, bytes, io.RawIOBase, io.BufferedReader]
-        ] = None,
+        transforms: Sequence[DecoderTransform | nn.Module] | None = None,
+        custom_frame_mappings: (
+            str | bytes | io.RawIOBase | io.BufferedReader | None
+        ) = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
@@ -167,7 +225,10 @@ class VideoDecoder:
             device = str(device)
 
         device_variant = _get_cuda_backend()
-        transform_specs = _make_transform_specs(transforms)
+        transform_specs = _make_transform_specs(
+            transforms,
+            input_dims=(self.metadata.height, self.metadata.width),
+        )
 
         core.add_video_stream(
             self._decoder,
@@ -180,8 +241,41 @@ class VideoDecoder:
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
+        self._cpu_fallback = CpuFallbackStatus()
+        if device.startswith("cuda"):
+            if device_variant == "beta":
+                self._cpu_fallback._backend = "Beta CUDA"
+            else:
+                self._cpu_fallback._backend = "FFmpeg CUDA"
+        else:
+            self._cpu_fallback._backend = "CPU"
+
     def __len__(self) -> int:
         return self._num_frames
+
+    @property
+    def cpu_fallback(self) -> CpuFallbackStatus:
+        # We only query the CPU fallback info if status is unknown. That happens
+        # either when:
+        # - this @property has never been called before
+        # - no frame has been decoded yet on the FFmpeg interface.
+        # Note that for the beta interface, we're able to know the fallback status
+        # right when the VideoDecoder is instantiated, but the status_known
+        # attribute is initialized to False.
+        if not self._cpu_fallback.status_known:
+            backend_details = core._get_backend_details(self._decoder)
+
+            if "status unknown" not in backend_details:
+                self._cpu_fallback.status_known = True
+
+                if "CPU fallback" in backend_details:
+                    self._cpu_fallback._is_fallback = True
+                    if "NVCUVID not available" in backend_details:
+                        self._cpu_fallback._nvcuvid_unavailable = True
+                    elif self._cpu_fallback._backend == "Beta CUDA":
+                        self._cpu_fallback._video_not_supported = True
+
+        return self._cpu_fallback
 
     def _getitem_int(self, key: int) -> Tensor:
         assert isinstance(key, int)
@@ -201,7 +295,7 @@ class VideoDecoder:
         )
         return frame_data
 
-    def __getitem__(self, key: Union[numbers.Integral, slice]) -> Tensor:
+    def __getitem__(self, key: numbers.Integral | slice) -> Tensor:
         """Return frame or frames as tensors, at the given index or range.
 
         .. note::
@@ -258,7 +352,7 @@ class VideoDecoder:
             duration_seconds=duration_seconds.item(),
         )
 
-    def get_frames_at(self, indices: Union[torch.Tensor, list[int]]) -> FrameBatch:
+    def get_frames_at(self, indices: torch.Tensor | list[int]) -> FrameBatch:
         """Return frames at the given indices.
 
         Args:
@@ -335,9 +429,7 @@ class VideoDecoder:
             duration_seconds=duration_seconds.item(),
         )
 
-    def get_frames_played_at(
-        self, seconds: Union[torch.Tensor, list[float]]
-    ) -> FrameBatch:
+    def get_frames_played_at(self, seconds: torch.Tensor | list[float]) -> FrameBatch:
         """Return frames played at the given timestamps in seconds.
 
         Args:
@@ -400,8 +492,8 @@ class VideoDecoder:
 def _get_and_validate_stream_metadata(
     *,
     decoder: Tensor,
-    stream_index: Optional[int] = None,
-) -> Tuple[core._metadata.VideoStreamMetadata, int, float, float, int]:
+    stream_index: int | None = None,
+) -> tuple[core._metadata.VideoStreamMetadata, int, float, float, int]:
 
     container_metadata = core.get_container_metadata(decoder)
 
@@ -448,80 +540,8 @@ def _get_and_validate_stream_metadata(
     )
 
 
-def _convert_to_decoder_transforms(
-    transforms: Sequence[Union[DecoderTransform, nn.Module]],
-) -> List[DecoderTransform]:
-    """Convert a sequence of transforms that may contain TorchVision transform
-    objects into a list of only TorchCodec transform objects.
-
-    Args:
-        transforms: Squence of transform objects. The objects can be one of two
-        types:
-                1. torchcodec.transforms.DecoderTransform
-                2. torchvision.transforms.v2.Transform, but our type annotation
-                   only mentions its base, nn.Module. We don't want to take a
-                   hard dependency on TorchVision.
-
-    Returns:
-        List of DecoderTransform objects.
-    """
-    try:
-        from torchvision.transforms import v2
-
-        tv_available = True
-    except ImportError:
-        tv_available = False
-
-    converted_transforms: list[DecoderTransform] = []
-    for transform in transforms:
-        if not isinstance(transform, DecoderTransform):
-            if not tv_available:
-                raise ValueError(
-                    f"The supplied transform, {transform}, is not a TorchCodec "
-                    " DecoderTransform. TorchCodec also accept TorchVision "
-                    "v2 transforms, but TorchVision is not installed."
-                )
-            elif isinstance(transform, v2.Resize):
-                converted_transforms.append(Resize._from_torchvision(transform))
-            else:
-                raise ValueError(
-                    f"Unsupported transform: {transform}. Transforms must be "
-                    "either a TorchCodec DecoderTransform or a TorchVision "
-                    "v2 transform."
-                )
-        else:
-            converted_transforms.append(transform)
-
-    return converted_transforms
-
-
-def _make_transform_specs(
-    transforms: Optional[Sequence[Union[DecoderTransform, nn.Module]]],
-) -> str:
-    """Given a sequence of transforms, turn those into the specification string
-       the core API expects.
-
-    Args:
-        transforms: Optional sequence of transform objects. The objects can be
-            one of two types:
-                1. torchcodec.transforms.DecoderTransform
-                2. torchvision.transforms.v2.Transform, but our type annotation
-                   only mentions its base, nn.Module. We don't want to take a
-                   hard dependency on TorchVision.
-
-    Returns:
-        String of transforms in the format the core API expects: transform
-        specifications separate by semicolons.
-    """
-    if transforms is None:
-        return ""
-
-    transforms = _convert_to_decoder_transforms(transforms)
-    return ";".join([t._make_transform_spec() for t in transforms])
-
-
 def _read_custom_frame_mappings(
-    custom_frame_mappings: Union[str, bytes, io.RawIOBase, io.BufferedReader]
+    custom_frame_mappings: str | bytes | io.RawIOBase | io.BufferedReader,
 ) -> tuple[Tensor, Tensor, Tensor]:
     """Parse custom frame mappings from JSON data and extract frame metadata.
 
