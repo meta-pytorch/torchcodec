@@ -48,13 +48,12 @@ class CpuFallbackStatus:
     the first frame."""
     _nvcuvid_unavailable: bool = field(default=False, init=False)
     _video_not_supported: bool = field(default=False, init=False)
+    _is_fallback: bool = field(default=False, init=False)
     _backend: str = field(default="", init=False)
 
     def __bool__(self):
         """Returns True if fallback occurred."""
-        return self.status_known and (
-            self._nvcuvid_unavailable or self._video_not_supported
-        )
+        return self.status_known and self._is_fallback
 
     def __str__(self):
         """Returns a human-readable string representation of the cpu fallback status."""
@@ -64,8 +63,10 @@ class CpuFallbackStatus:
         reasons = []
         if self._nvcuvid_unavailable:
             reasons.append("NVcuvid unavailable")
-        if self._video_not_supported:
+        elif self._video_not_supported:
             reasons.append("Video not supported")
+        elif self._is_fallback:
+            reasons.append("Unknown reason - try the Beta interface to know more!")
 
         if reasons:
             return (
@@ -268,9 +269,10 @@ class VideoDecoder:
                 self._cpu_fallback.status_known = True
 
                 if "CPU fallback" in backend_details:
+                    self._cpu_fallback._is_fallback = True
                     if "NVCUVID not available" in backend_details:
                         self._cpu_fallback._nvcuvid_unavailable = True
-                    else:
+                    elif self._cpu_fallback._backend == "Beta CUDA":
                         self._cpu_fallback._video_not_supported = True
 
         return self._cpu_fallback
