@@ -52,6 +52,13 @@ def all_supported_devices():
     )
 
 
+def cuda_devices():
+    return (
+        pytest.param("cuda", marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
+    )
+
+
 def unsplit_device_str(device_str: str) -> str:
     # helper meant to be used as
     # device, device_variant = unsplit_device_str(device)

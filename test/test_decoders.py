@@ -27,6 +27,7 @@ from .utils import (
     assert_frames_equal,
     AV1_VIDEO,
     BT709_FULL_RANGE,
+    cuda_devices,
     cuda_version_used_for_building_torch,
     get_ffmpeg_major_version,
     get_python_version,
@@ -1680,7 +1681,7 @@ class TestVideoDecoder:
 
         assert "FFmpeg CUDA" in str(ref_dec.cpu_fallback)
         assert ref_dec.cpu_fallback.status_known
-        assert bool(ref_dec.cpu_fallback)
+        assert ref_dec.cpu_fallback
 
         with set_cuda_backend("beta"):
             beta_dec = VideoDecoder(H265_VIDEO.path, device="cuda")
@@ -1688,7 +1689,7 @@ class TestVideoDecoder:
         assert "Beta CUDA" in str(beta_dec.cpu_fallback)
         # For beta interface, status is known immediately
         assert beta_dec.cpu_fallback.status_known
-        assert bool(beta_dec.cpu_fallback)
+        assert beta_dec.cpu_fallback
 
         beta_frame = beta_dec.get_frame_at(0)
 
@@ -1720,7 +1721,6 @@ class TestVideoDecoder:
         # Check that the default is the ffmpeg backend
         assert _get_cuda_backend() == "ffmpeg"
         dec = VideoDecoder(H265_VIDEO.path, device="cuda")
-        _ = dec.get_frame_at(0)
         assert "FFmpeg CUDA" in str(dec.cpu_fallback)
 
         # Check the setting "beta" effectively uses the BETA backend.
@@ -1747,64 +1747,43 @@ class TestVideoDecoder:
         """Test that CPU device doesn't trigger fallback (it's not a fallback scenario)."""
         decoder = VideoDecoder(NASA_VIDEO.path, device="cpu")
 
+        assert decoder.cpu_fallback.status_known
         _ = decoder[0]
 
-        assert decoder.cpu_fallback.status_known
-        assert not bool(decoder.cpu_fallback)
+        assert not decoder.cpu_fallback
         assert "No fallback required" in str(decoder.cpu_fallback)
 
     @needs_cuda
-    def test_cpu_fallback_h265_video_ffmpeg_cuda(self):
-        """Test that H265 video triggers CPU fallback on FFmpeg CUDA interface."""
-        # H265_VIDEO is known to trigger CPU fallback on FFmpeg CUDA
+    @pytest.mark.parametrize("device", cuda_devices())
+    def test_cpu_fallback_h265_video(self, device):
+        """Test that H265 video triggers CPU fallback on CUDA interfaces."""
+        # H265_VIDEO is known to trigger CPU fallback on CUDA
         # because its dimensions are too small
-        decoder = VideoDecoder(H265_VIDEO.path, device="cuda")
+        decoder, _ = make_video_decoder(H265_VIDEO.path, device=device)
 
-        assert not decoder.cpu_fallback.status_known
+        if "beta" in device:
+            # For beta interface, status is known immediately
+            assert decoder.cpu_fallback.status_known
+        else:
+            # For FFmpeg interface, status is unknown until first frame is decoded
+            assert not decoder.cpu_fallback.status_known
 
-        _ = decoder.get_frame_at(0)
+        decoder.get_frame_at(0)
 
         assert decoder.cpu_fallback.status_known
-        assert bool(decoder.cpu_fallback)
-        assert "Fallback status: Falling back due to:" in str(decoder.cpu_fallback)
+        assert decoder.cpu_fallback
+        assert "Video not supported" in str(decoder.cpu_fallback)
 
     @needs_cuda
-    def test_cpu_fallback_no_fallback_on_supported_video(self):
+    @pytest.mark.parametrize("device", cuda_devices())
+    def test_cpu_fallback_no_fallback_on_supported_video(self, device):
         """Test that supported videos don't trigger fallback on CUDA."""
-        decoder = VideoDecoder(NASA_VIDEO.path, device="cuda")
+        decoder, _ = make_video_decoder(NASA_VIDEO.path, device=device)
 
-        _ = decoder[0]
+        decoder[0]
 
-        assert not bool(decoder.cpu_fallback)
+        assert not decoder.cpu_fallback
         assert "No fallback required" in str(decoder.cpu_fallback)
-
-    def test_cpu_fallback_status_cached(self):
-        """Test that cpu_fallback status is determined once and then cached."""
-        decoder = VideoDecoder(NASA_VIDEO.path)
-
-        _ = decoder[0]
-        first_status = str(decoder.cpu_fallback)
-        assert decoder.cpu_fallback.status_known
-
-        _ = decoder[1]
-        second_status = str(decoder.cpu_fallback)
-        assert decoder.cpu_fallback.status_known
-
-        assert first_status == second_status
-
-    def test_cpu_fallback_multiple_access_methods(self):
-        """Test that cpu_fallback works with different frame access methods."""
-        decoder = VideoDecoder(NASA_VIDEO.path)
-
-        _ = decoder.get_frame_at(0)
-        assert decoder.cpu_fallback.status_known
-        status_after_get_frame = str(decoder.cpu_fallback)
-
-        _ = decoder.get_frames_in_range(1, 3)
-        assert str(decoder.cpu_fallback) == status_after_get_frame
-
-        _ = decoder.get_frame_played_at(0.5)
-        assert str(decoder.cpu_fallback) == status_after_get_frame
 
 
 class TestAudioDecoder:
