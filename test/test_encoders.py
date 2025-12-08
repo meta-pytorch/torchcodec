@@ -17,6 +17,7 @@ from .utils import (
     assert_tensor_close_on_at_least,
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
+    in_fbcode,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
     needs_ffmpeg_cli,
@@ -831,7 +832,19 @@ class TestVideoEncoder:
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     @pytest.mark.parametrize(
-        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                ],
+            ),
+        ),
     )
     def test_contiguity(self, method, tmp_path, device):
         # Ensure that 2 sets of video frames with the same pixel values are encoded
