@@ -208,6 +208,7 @@ high_quality_output = encoder.to_tensor(format="mp4", codec="libx264", crf=0)
 play_video(high_quality_output)
 
 # %%
+
 # Low quality (high CRF)
 low_quality_output = encoder.to_tensor(format="mp4", codec="libx264", crf=50)
 play_video(low_quality_output)

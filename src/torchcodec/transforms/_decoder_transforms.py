@@ -4,9 +4,10 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from types import ModuleType
-from typing import Optional, Sequence, Tuple, Union
 
 import torch
 from torch import nn
@@ -36,13 +37,11 @@ class DecoderTransform(ABC):
     """
 
     @abstractmethod
-    def _make_transform_spec(
-        self, input_dims: Tuple[Optional[int], Optional[int]]
-    ) -> str:
+    def _make_transform_spec(self, input_dims: tuple[int | None, int | None]) -> str:
         """Makes the transform spec that is used by the `VideoDecoder`.
 
         Args:
-            input_dims (Tuple[Optional[int], Optional[int]]): The dimensions of
+            input_dims (tuple[int | None, int | None]): The dimensions of
                 the input frame in the form (height, width). We cannot know the
                 dimensions at object construction time because it's dependent on
                 the video being decoded and upstream transforms in the same
@@ -64,7 +63,7 @@ class DecoderTransform(ABC):
         """
         pass
 
-    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
+    def _get_output_dims(self) -> tuple[int | None, int | None] | None:
         """Get the dimensions of the output frame.
 
         Transforms that change the frame dimensions need to override this
@@ -72,7 +71,7 @@ class DecoderTransform(ABC):
         this default implementation.
 
         Returns:
-            Optional[Tuple[Optional[int], Optional[int]]]: The output dimensions.
+            tuple[int | None, int | None] | None: The output dimensions.
                 - None: The output dimensions are the same as the input dimensions.
                 - (int, int): The (height, width) of the output frame.
         """
@@ -108,12 +107,10 @@ class Resize(DecoderTransform):
             )
         self.size = size
 
-    def _make_transform_spec(
-        self, input_dims: Tuple[Optional[int], Optional[int]]
-    ) -> str:
+    def _make_transform_spec(self, input_dims: tuple[int | None, int | None]) -> str:
         return f"resize, {self.size[0]}, {self.size[1]}"
 
-    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
+    def _get_output_dims(self) -> tuple[int | None, int | None] | None:
         return (self.size[0], self.size[1])
 
     @classmethod
@@ -158,12 +155,10 @@ class CenterCrop(DecoderTransform):
             )
         self.size = size
 
-    def _make_transform_spec(
-        self, input_dims: Tuple[Optional[int], Optional[int]]
-    ) -> str:
+    def _make_transform_spec(self, input_dims: tuple[int | None, int | None]) -> str:
         return f"center_crop, {self.size[0]}, {self.size[1]}"
 
-    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
+    def _get_output_dims(self) -> tuple[int | None, int | None] | None:
         return (self.size[0], self.size[1])
 
     @classmethod
@@ -213,9 +208,7 @@ class RandomCrop(DecoderTransform):
             )
         self.size = size
 
-    def _make_transform_spec(
-        self, input_dims: Tuple[Optional[int], Optional[int]]
-    ) -> str:
+    def _make_transform_spec(self, input_dims: tuple[int | None, int | None]) -> str:
         height, width = input_dims
         if height is None:
             raise ValueError(
@@ -242,7 +235,7 @@ class RandomCrop(DecoderTransform):
 
         return f"crop, {self.size[0]}, {self.size[1]}, {left}, {top}"
 
-    def _get_output_dims(self) -> Optional[Tuple[Optional[int], Optional[int]]]:
+    def _get_output_dims(self) -> tuple[int | None, int | None] | None:
         return (self.size[0], self.size[1])
 
     @classmethod
@@ -285,8 +278,8 @@ class RandomCrop(DecoderTransform):
 
 
 def _make_transform_specs(
-    transforms: Optional[Sequence[Union[DecoderTransform, nn.Module]]],
-    input_dims: Tuple[Optional[int], Optional[int]],
+    transforms: Sequence[DecoderTransform | nn.Module] | None,
+    input_dims: tuple[int | None, int | None],
 ) -> str:
     """Given a sequence of transforms, turn those into the specification string
        the core API expects.
@@ -347,10 +340,10 @@ def _make_transform_specs(
     # dimensions from its input dimensions. We store these with the converted
     # transform, to be all used together when we generate the specs.
     converted_transforms: list[
-        Tuple[
+        tuple[
             DecoderTransform,
             # A (height, width) pair where the values may be missing.
-            Tuple[Optional[int], Optional[int]],
+            tuple[int | None, int | None],
         ]
     ] = []
     curr_input_dims = input_dims

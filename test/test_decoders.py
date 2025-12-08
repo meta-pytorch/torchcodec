@@ -128,7 +128,7 @@ class TestDecoder:
         # user mistakenly forgets to specify binary reading when creating a file
         # like object from open()
         with pytest.raises(TypeError, match="binary reading?"):
-            Decoder(open(NASA_VIDEO.path, "r"))
+            Decoder(open(NASA_VIDEO.path))
 
 
 class TestVideoDecoder:
@@ -1335,7 +1335,7 @@ class TestVideoDecoder:
         # Optionally open the custom frame mappings file if it is a file path
         # or use a null context if it is a string.
         with (
-            open(custom_frame_mappings, "r")
+            open(custom_frame_mappings)
             if hasattr(custom_frame_mappings, "read")
             else contextlib.nullcontext()
         ) as custom_frame_mappings:
@@ -1407,7 +1407,7 @@ class TestVideoDecoder:
             f.write("invalid input")
 
         # Test both file object and string
-        with open(invalid_json_path, "r") as file_obj:
+        with open(invalid_json_path) as file_obj:
             for custom_frame_mappings in [
                 file_obj,
                 file_obj.read(),

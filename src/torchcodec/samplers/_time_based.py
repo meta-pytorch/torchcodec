@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Literal
 
 import torch
 
@@ -151,13 +151,13 @@ def _generic_time_based_sampler(
     kind: Literal["random", "regular"],
     decoder,
     *,
-    num_clips: Optional[int],  # mutually exclusive with seconds_between_clip_starts
-    seconds_between_clip_starts: Optional[float],
+    num_clips: int | None,  # mutually exclusive with seconds_between_clip_starts
+    seconds_between_clip_starts: float | None,
     num_frames_per_clip: int,
-    seconds_between_frames: Optional[float],
+    seconds_between_frames: float | None,
     # None means "begining", which may not always be 0
-    sampling_range_start: Optional[float],
-    sampling_range_end: Optional[float],  # interval is [start, end).
+    sampling_range_start: float | None,
+    sampling_range_end: float | None,  # interval is [start, end).
     policy: Literal["repeat_last", "wrap", "error"] = "repeat_last",
 ) -> FrameBatch:
     # Note: *everywhere*, sampling_range_end denotes the upper bound of where a
@@ -232,10 +232,10 @@ def clips_at_random_timestamps(
     *,
     num_clips: int = 1,
     num_frames_per_clip: int = 1,
-    seconds_between_frames: Optional[float] = None,
+    seconds_between_frames: float | None = None,
     # None means "begining", which may not always be 0
-    sampling_range_start: Optional[float] = None,
-    sampling_range_end: Optional[float] = None,  # interval is [start, end).
+    sampling_range_start: float | None = None,
+    sampling_range_end: float | None = None,  # interval is [start, end).
     policy: Literal["repeat_last", "wrap", "error"] = "repeat_last",
 ) -> FrameBatch:
     # See docstring below
@@ -258,10 +258,10 @@ def clips_at_regular_timestamps(
     *,
     seconds_between_clip_starts: float,
     num_frames_per_clip: int = 1,
-    seconds_between_frames: Optional[float] = None,
+    seconds_between_frames: float | None = None,
     # None means "begining", which may not always be 0
-    sampling_range_start: Optional[float] = None,
-    sampling_range_end: Optional[float] = None,  # interval is [start, end).
+    sampling_range_start: float | None = None,
+    sampling_range_end: float | None = None,  # interval is [start, end).
     policy: Literal["repeat_last", "wrap", "error"] = "repeat_last",
 ) -> FrameBatch:
     # See docstring below
