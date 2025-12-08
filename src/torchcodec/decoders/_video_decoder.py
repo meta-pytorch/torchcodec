@@ -8,8 +8,8 @@
 import io
 import json
 import numbers
-from dataclasses import dataclass, field
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
