@@ -170,7 +170,29 @@ to increase performance.
 #
 
 # %%
+# **Checking for CPU Fallback**
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+# In some cases, CUDA decoding may silently fall back to CPU decoding when the
+# video codec or format is not supported by NVDEC. You can detect this using
+# the :attr:`~torchcodec.decoders.VideoDecoder.cpu_fallback` attribute:
+#
+# .. code-block:: python
+#
+#     decoder = VideoDecoder("file.mp4", device="cuda")
+#     decoder[0]  # Decode at least one frame first (for FFmpeg backend)
+#
+#     # Print detailed fallback status
+#     print(decoder.cpu_fallback)
+#
 # .. note::
+#
+#     The timing of when you can detect CPU fallback differs between backends:
+#
+#     - **FFmpeg backend**: You can only check fallback status after decoding at
+#       least one frame, because FFmpeg determines codec support lazily during decoding.
+#     - **BETA backend**: You can check fallback status immediately after
+#       decoder creation, as the backend checks codec support upfront.
 #
 #     For installation instructions, detailed examples, and visual comparisons
 #     between CPU and CUDA decoding, see:
