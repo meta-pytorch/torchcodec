@@ -1147,7 +1147,7 @@ class TestVideoDecoder:
         )
 
     # TODO investigate why this is failing from the nightlies of Dec 09 2025.
-    @pytest.skip(reason="TODO investigate")
+    @pytest.mark.skip(reason="TODO investigate")
     # TODO investigate why this fails internally.
     @pytest.mark.skipif(in_fbcode(), reason="Compile test fails internally.")
     @pytest.mark.skipif(
