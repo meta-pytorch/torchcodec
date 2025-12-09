@@ -59,15 +59,15 @@ def test_cppapi_with_prefix(tmp_path):
     # of its libavcodec.pc file. Potentially, on the custom ffmpeg install with custom layout
     # our calculation can be wrong and test might fail.
     result = subprocess.run(
-        ["pkg-config", "--path", "libavcodec"], capture_output=True, text=True
+        ["pkg-config", "--variable=prefix", "libavcodec"],
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0
 
     ver = f"{torchcodec.ffmpeg_major_version}"
     my_env = os.environ.copy()
-    my_env[f"TORCHCODEC_FFMPEG{ver}_INSTALL_PREFIX"] = Path(
-        f"{result.stdout}"
-    ).parent.parent.parent
+    my_env[f"TORCHCODEC_FFMPEG{ver}_INSTALL_PREFIX"] = Path(f"{result.stdout.strip()}")
 
     result = subprocess.run(cmake_args, cwd=tmp_path, env=my_env)
     assert result.returncode == 0

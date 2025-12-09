@@ -102,6 +102,7 @@ jobs:
           ${CONDA_RUN} nvidia-smi
           ${CONDA_RUN} conda list
           echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
+          echo PATH=/usr/local/cuda/bin:${PATH} >> $GITHUB_ENV
       - name: Assert ffmpeg exists
         run: |
           ${CONDA_RUN} ffmpeg -buildconf
