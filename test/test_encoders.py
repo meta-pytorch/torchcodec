@@ -329,7 +329,7 @@ class TestAudioEncoder:
 
         assert_close = torch.testing.assert_close
         if sample_rate != asset.sample_rate:
-            if platform.machine.lower() == "aarch64":
+            if platform.machine().lower() == "aarch64":
                 rtol, atol = 0, 1e-2
             else:
                 rtol, atol = 0, 1e-3
