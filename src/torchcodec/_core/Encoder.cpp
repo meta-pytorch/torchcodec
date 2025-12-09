@@ -5,6 +5,7 @@
 #include "torch/types.h"
 
 extern "C" {
+#include <libavutil/hwcontext.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 }
@@ -724,6 +725,11 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
+  // Only create device interface when frames are on a CUDA device.
+  // Encoding on CPU is implemented in this file.
+  if (frames_.device().is_cuda()) {
+    deviceInterface_ = createDeviceInterface(frames_.device());
+  }
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
@@ -769,6 +775,12 @@ void VideoEncoder::initializeEncoder(
   outHeight_ = inHeight_;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
+    if (frames_.device().is_cuda()) {
+      TORCH_CHECK(
+          false,
+          "GPU Video encoding currently only supports the NV12 pixel format. "
+          "Do not set pixel_format to use NV12.");
+    }
     outPixelFormat_ =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
@@ -820,6 +832,14 @@ void VideoEncoder::initializeEncoder(
         videoStreamOptions.preset.value().c_str(),
         0);
   }
+
+  // When frames are on a CUDA device, deviceInterface_ will be defined.
+  if (frames_.device().is_cuda() && deviceInterface_) {
+    deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
+    deviceInterface_->setupHardwareFrameContextForEncoding(
+        avCodecContext_.get());
+  }
+
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &avCodecOptions);
   av_dict_free(&avCodecOptions);
 
@@ -860,7 +880,20 @@ void VideoEncoder::encode() {
   int numFrames = static_cast<int>(frames_.sizes()[0]);
   for (int i = 0; i < numFrames; ++i) {
     torch::Tensor currFrame = frames_[i];
-    UniqueAVFrame avFrame = convertTensorToAVFrame(currFrame, i);
+    UniqueAVFrame avFrame;
+    if (frames_.device().is_cuda() && deviceInterface_) {
+      auto cudaFrame = deviceInterface_->convertCUDATensorToAVFrameForEncoding(
+          currFrame, i, avCodecContext_.get());
+      TORCH_CHECK(
+          cudaFrame != nullptr,
+          "convertCUDATensorToAVFrameForEncoding failed for frame ",
+          i,
+          " on device: ",
+          frames_.device());
+      avFrame = std::move(cudaFrame);
+    } else {
+      avFrame = convertTensorToAVFrame(currFrame, i);
+    }
     encodeFrame(autoAVPacket, avFrame);
   }
 

@@ -15,6 +15,7 @@ class VideoEncoder:
             tensor of shape ``(N, C, H, W)`` where N is the number of frames,
             C is 3 channels (RGB), H is height, and W is width.
             Values must be uint8 in the range ``[0, 255]``.
+            The device of the frames tensor will be used for encoding.
         frame_rate (float): The frame rate of the **input** ``frames``. Also defines the encoded **output** frame rate.
     """
 
