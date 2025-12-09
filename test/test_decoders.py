@@ -1766,7 +1766,6 @@ class TestVideoDecoder:
         if "beta" in device:
             # For beta interface, status is known immediately
             assert decoder.cpu_fallback.status_known
-            decoder.get_frame_at(0)
             assert decoder.cpu_fallback
             # Beta interface provides the specific reason for fallback
             assert "Video not supported" in str(decoder.cpu_fallback)
