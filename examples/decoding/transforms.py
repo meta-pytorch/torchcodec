@@ -24,7 +24,6 @@ from pathlib import Path
 import shutil
 import subprocess
 from time import perf_counter_ns
-from IPython.display import Video
 
 def store_video_to(url: str, local_video_path: Path):
     response = requests.get(url, headers={"User-Agent": ""})
@@ -86,19 +85,19 @@ from torchvision.transforms import v2
 
 full_decoder = VideoDecoder(penguin_video_path)
 full_mid_frame = full_decoder[465] # mid-point of the video
-resized_post_mid_frame = v2.Resize(size=(360, 640))(full_mid_frame)
+resized_post_mid_frame = v2.Resize(size=(480, 640))(full_mid_frame)
 
-plot(resized_post_mid_frame, title="Resized to 360x640 after decoding")
+plot(resized_post_mid_frame, title="Resized to 480x640 after decoding")
 
 # %%
 # But we can now do it:
 resize_decoder = VideoDecoder(
     penguin_video_path,
-    transforms=[v2.Resize(size=(360, 640))]
+    transforms=[v2.Resize(size=(480, 640))]
 )
 resized_during_mid_frame = resize_decoder[465]
 
-plot(resized_during_mid_frame, title="Resized to 360x640 during decoding")
+plot(resized_during_mid_frame, title="Resized to 480x640 during decoding")
 
 # %%
 # TorchCodec's relationship with TorchVision transforms
@@ -120,12 +119,12 @@ abs_diff = (resized_post_mid_frame.float() - resized_during_mid_frame.float()).a
 crop_resize_decoder = VideoDecoder(
     penguin_video_path,
     transforms = [
-        v2.Resize(size=(360, 640)),
+        v2.Resize(size=(480, 640)),
         v2.CenterCrop(size=(300, 200))
     ]
 )
 crop_resized_during_mid_frame = crop_resize_decoder[465]
-plot(crop_resized_during_mid_frame, title="Resized to 360x640 during decoding then center cropped")
+plot(crop_resized_during_mid_frame, title="Resized to 480x640 during decoding then center cropped")
 
 # %%
 # We also support `RandomCrop`. Reach out if there are particular transforms you want!
@@ -135,6 +134,73 @@ plot(crop_resized_during_mid_frame, title="Resized to 360x640 during decoding th
 # -----------
 #
 # The main motivation for doing this is performance.
+
+import os
+import psutil
+
+def bench(f, average_over=5, warmup=2, **f_kwargs):
+
+    for _ in range(warmup):
+        f(**f_kwargs)
+
+    process = psutil.Process(os.getpid())
+    times = []
+    memory = []
+    for _ in range(average_over):
+        #start_rss = process.memory_info().rss / 1024 / 1024
+        start_time = perf_counter_ns()
+        f(**f_kwargs)
+        end_time = perf_counter_ns()
+        #end_rss = process.memory_info().rss / 1024 / 1024
+        times.append(end_time - start_time)
+        #memory.append(end_rss - start_rss)
+
+    times = torch.tensor(times) * 1e-6  # ns to ms
+    times_std = times.std().item()
+    times_med = times.median().item()
+    #memory = torch.tensor(memory)
+    #memory_std = memory.std().item()
+    #memory_med = memory.median().item()
+    print(f"{times_med = :.2f}ms +- {times_std:.2f}")
+    #print(f"{memory_med = :.2f}MB +- {memory_std:.2f}")
+
+from torchcodec import samplers
+
+def sample_decoder_transforms():
+    decoder = VideoDecoder(
+        penguin_video_path,
+        transforms = [
+            #v2.Resize(size=(480, 640)),
+            v2.CenterCrop(size=(300, 200))
+        ],
+        seek_mode="approximate",
+    )
+    transformed_frames = samplers.clips_at_regular_indices(
+        decoder,
+        num_clips=1,
+        num_frames_per_clip=200
+    )
+    assert len(transformed_frames.data[0]) == 200
+
+def sample_torchvision_transforms():
+    decoder = VideoDecoder(
+        penguin_video_path,
+        seek_mode="approximate"
+    )
+    frames = samplers.clips_at_regular_indices(
+        decoder,
+        num_clips=1,
+        num_frames_per_clip=200
+    )
+    transformed_frames = []
+    for frame in frames.data[0]:
+        #frame = v2.Resize(size=(480, 640))(frame)
+        frame = v2.CenterCrop(size=(300, 200))(frame)
+        transformed_frames.append(frame)
+    assert len(transformed_frames) == 200
+
+bench(sample_decoder_transforms)
+bench(sample_torchvision_transforms)
 
 # %%
 shutil.rmtree(temp_dir)
