@@ -1149,6 +1149,9 @@ class TestVideoDecoder:
     # TODO investigate why this fails internally.
     @pytest.mark.skipif(in_fbcode(), reason="Compile test fails internally.")
     @pytest.mark.skipif(
+        sys.platform != "linux", reason="We only care about linux support for compile"
+    )
+    @pytest.mark.skipif(
         get_python_version() >= (3, 14),
         reason="torch.compile is not supported on Python 3.14+",
     )
