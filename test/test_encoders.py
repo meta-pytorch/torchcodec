@@ -18,7 +18,7 @@ from .utils import (
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
     in_fbcode,
-    IN_GIT_CI,
+    IN_GITHUB_CI,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
     needs_ffmpeg_cli,
@@ -1328,11 +1328,6 @@ class TestVideoEncoder:
         assert metadata["color_space"] == colorspace
         assert metadata["color_range"] == color_range
 
-
-@pytest.mark.skipif(IN_GIT_CI, reason="Skipping test in GitHub Actions CI")
-def test_always_fails():
-    assert False
-
     @needs_ffmpeg_cli
     @pytest.mark.needs_cuda
     # TODO-VideoEncoder: Auto-select codec for GPU encoding
@@ -1342,8 +1337,12 @@ def test_always_fails():
             ("mov", "h264_nvenc"),
             ("mp4", "hevc_nvenc"),
             ("avi", "h264_nvenc"),
-            # TODO-VideoEncoder: add in_CI mark, similar to in_fbcode
-            # ("mkv", "av1_nvenc"), # av1_nvenc is not supported on CI
+            pytest.param(
+                ("mkv", "av1_nvenc"),
+                marks=pytest.mark.skipif(
+                    IN_GITHUB_CI, reason="av1_nvenc is not supported on CI"
+                ),
+            ),
         ],
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
