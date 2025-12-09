@@ -1764,20 +1764,20 @@ class TestVideoDecoder:
         if "beta" in device:
             # For beta interface, status is known immediately
             assert decoder.cpu_fallback.status_known
-        else:
-            # For FFmpeg interface, status is unknown until first frame is decoded
-            assert not decoder.cpu_fallback.status_known
-
-        decoder.get_frame_at(0)
-
-        assert decoder.cpu_fallback.status_known
-        assert decoder.cpu_fallback
-        if "beta" in device:
+            decoder.get_frame_at(0)
+            assert decoder.cpu_fallback
             # Beta interface provides the specific reason for fallback
             assert "Video not supported" in str(decoder.cpu_fallback)
         else:
+            # For FFmpeg interface, status is unknown until first frame is decoded
+            assert not decoder.cpu_fallback.status_known
+            decoder.get_frame_at(0)
+            assert decoder.cpu_fallback.status_known
+            assert decoder.cpu_fallback
             # FFmpeg interface doesn't know the specific reason
-            assert "Unknown reason" in str(decoder.cpu_fallback)
+            assert "Unknown reason - try the Beta interface to know more" in str(
+                decoder.cpu_fallback
+            )
 
     @needs_cuda
     @pytest.mark.parametrize("device", cuda_devices())
