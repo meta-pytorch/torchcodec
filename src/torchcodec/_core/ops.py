@@ -89,12 +89,10 @@ def load_torchcodec_shared_libraries() -> tuple[int, str]:
 
 
 if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
-    # We need to locate the directory containing FFmpeg DLLs
-    # and temporarily add it to the DLL search path.
-    # This seems to be needed on some users machine, but not on our CI. We don't
-    # know why.
-    ffmpeg_path = shutil.which("ffmpeg")
-    if ffmpeg_path:
+    # On windows we try to locate the FFmpeg DLLs and temporarily add them to
+    # the DLL search path. This seems to be needed on some users machine, but
+    # not on our CI. We don't know why.
+    if ffmpeg_path := shutil.which("ffmpeg"):
 
         def cm():  # noqa: F811
             ffmpeg_dir = Path(ffmpeg_path).parent
