@@ -7,8 +7,12 @@
 
 import io
 import json
+import os
+from pathlib import Path
+import shutil
+import sys
 import warnings
-from types import ModuleType
+from types import ModuleType, Tuple
 
 import torch
 from torch.library import get_ctx, register_fake
@@ -22,7 +26,7 @@ from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchco
 _pybind_ops: ModuleType | None = None
 
 
-def load_torchcodec_shared_libraries():
+def load_torchcodec_shared_libraries() -> Tuple[int, str]:
     # Successively try to load the shared libraries for each version of FFmpeg
     # that we support. We always start with the highest version, working our way
     # down to the lowest version. Once we can load ALL shared libraries for a
@@ -70,7 +74,8 @@ def load_torchcodec_shared_libraries():
     raise RuntimeError(
         f"""Could not load libtorchcodec. Likely causes:
           1. FFmpeg is not properly installed in your environment. We support
-             versions 4, 5, 6, 7, and 8.
+             versions 4, 5, 6, 7, and 8. On Windows, ensure you've installed
+             the "full-shared" version.
           2. The PyTorch version ({torch.__version__}) is not compatible with
              this version of TorchCodec. Refer to the version compatibility
              table:
@@ -82,7 +87,16 @@ def load_torchcodec_shared_libraries():
     )
 
 
-ffmpeg_major_version, core_library_path = load_torchcodec_shared_libraries()
+if sys.platform == "win32" and hasattr(os, 'add_dll_directory'):  # If on Windows and Python 3.8+
+    # We need to locate the directory containing FFmpeg DLLs
+    ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        raise RuntimeError("Could not locate FFmpeg. Ensure FFmpeg is properly installed and added to PATH.")
+    # Temporarily add that path
+    with os.add_dll_directory(str(Path(ffmpeg_path).parent.resolve())):
+        ffmpeg_major_version, core_library_path = load_torchcodec_shared_libraries()
+else:
+    ffmpeg_major_version, core_library_path = load_torchcodec_shared_libraries()
 
 
 # Note: We use disallow_in_graph because PyTorch does constant propagation of
