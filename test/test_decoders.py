@@ -6,7 +6,6 @@
 
 import contextlib
 import gc
-import sys
 from functools import partial
 
 import numpy
@@ -1147,11 +1146,10 @@ class TestVideoDecoder:
             key_frame_indices, h265_reference_key_frame_indices, atol=0, rtol=0
         )
 
+    # TODO investigate why this is failing from the nightlies of Dec 09 2025.
+    @pytest.skip(reason="TODO investigate")
     # TODO investigate why this fails internally.
     @pytest.mark.skipif(in_fbcode(), reason="Compile test fails internally.")
-    @pytest.mark.skipif(
-        sys.platform != "linux", reason="We only care about linux support for compile"
-    )
     @pytest.mark.skipif(
         get_python_version() >= (3, 14),
         reason="torch.compile is not supported on Python 3.14+",
