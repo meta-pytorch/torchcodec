@@ -52,6 +52,7 @@ to increase performance.
 # - :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_at` for timestamps
 # - :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range` for time ranges
 #
+# %%
 # **When to use:**
 #
 # - Decoding multiple frames
@@ -60,9 +61,7 @@ to increase performance.
 # .. note::
 #
 #     For complete examples with runnable code demonstrating batch decoding,
-#     iteration, and frame retrieval, see:
-#
-#     - :ref:`sphx_glr_generated_examples_decoding_basic_example.py`
+#     iteration, and frame retrieval, see :ref:`sphx_glr_generated_examples_decoding_basic_example.py`
 
 # %%
 # 2. Approximate Mode & Keyframe Mappings
@@ -101,18 +100,14 @@ to increase performance.
 # - Frame accuracy is critical, so you cannot use approximate mode
 # - You can preprocess videos once and then decode them many times
 #
-# **Performance impact:** Enables consistent, predictable performance for repeated
-# random access without the overhead of exact mode's scanning.
+# **Performance impact:** speeds up decoder instantiation, similarly to ``seek_mode="approximate"``.
 
 # %%
 # .. note::
 #
 #     For complete benchmarks showing actual speedup numbers, accuracy comparisons,
-#     and implementation examples, see:
-#
-#     - :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py`
-#
-#     - :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py`
+#     and implementation examples, see :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py`
+#     and :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py`
 
 # %%
 # 3. Multi-threading for Parallel Decoding
@@ -120,7 +115,7 @@ to increase performance.
 #
 # When decoding multiple videos or decoding a large number of frames from a single video, there are a few parallelization strategies to speed up the decoding process:
 #
-# - **FFmpeg-based parallelism** - Using FFmpeg's internal threading capabilities for intra-frame parallelism, where parallelization happens within individual frames rather than across frames
+# - **FFmpeg-based parallelism** - Using FFmpeg's internal threading capabilities for intra-frame parallelism, where parallelization happens within individual frames rather than across frames. For that, use the `num_ffmpeg_threads` parameter of the :class:`~torchcodec.decoders.VideoDecoder`
 # - **Multiprocessing** - Distributing work across multiple processes
 # - **Multithreading** - Using multiple threads within a single process
 #
@@ -130,9 +125,8 @@ to increase performance.
 # .. note::
 #
 #     For complete examples comparing
-#     sequential, ffmpeg-based parallelism, multi-process, and multi-threaded approaches, see:
-#
-#     - :ref:`sphx_glr_generated_examples_decoding_parallel_decoding.py`
+#     sequential, ffmpeg-based parallelism, multi-process, and multi-threaded approaches, see
+#     :ref:`sphx_glr_generated_examples_decoding_parallel_decoding.py`
 
 # %%
 # 4. CUDA Acceleration
@@ -142,32 +136,32 @@ to increase performance.
 # (NVDEC) on supported hardware. This keeps decoded tensors in GPU memory,
 # avoiding expensive CPU-GPU transfers for downstream GPU operations.
 #
-# **When to use:**
-#
-# - Decoding large resolution videos
-# - Large batch of videos saturating the CPU
-# - GPU-intensive pipelines with transforms like scaling and cropping
-# - CPU is saturated and you want to free it up for other work
-#
-# **When NOT to use:**
-#
-# - You need bit-exact results
-# - Small resolution videos and the PCI-e transfer latency is large
-# - GPU is already busy and CPU is idle
-#
-# **Performance impact:** CUDA decoding can significantly outperform CPU decoding,
-# especially for high-resolution videos and when combined with GPU-based transforms.
-# Actual speedup varies by hardware, resolution, and codec.
-
 # %%
-# **Recommended Usage for Beta Interface**
+# **Recommended:  use the Beta Interface!!**
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+# We recommend you use the new "beta" CUDA interface which is significantly faster than the previous one, and supports the same features:
 #
 # .. code-block:: python
 #
 #     with set_cuda_backend("beta"):
 #         decoder = VideoDecoder("file.mp4", device="cuda")
 #
+# %%
+# **When to use:**
+#
+# - Decoding large resolution videos
+# - Large batch of videos saturating the CPU
+#
+# **When NOT to use:**
+#
+# - You need bit-exact results with CPU decoding
+# - Small resolution videos and the PCI-e transfer latency is large
+# - GPU is already busy and CPU is idle
+#
+# **Performance impact:** CUDA decoding can significantly outperform CPU decoding,
+# especially for high-resolution videos and when decoding a lot of frames.
+# Actual speedup varies by hardware, resolution, and codec.
 
 # %%
 # **Checking for CPU Fallback**
@@ -179,8 +173,8 @@ to increase performance.
 #
 # .. code-block:: python
 #
-#     decoder = VideoDecoder("file.mp4", device="cuda")
-#     decoder[0]  # Decode at least one frame first (for FFmpeg backend)
+#     with set_cuda_backend("beta"):
+#         decoder = VideoDecoder("file.mp4", device="cuda")
 #
 #     # Print detailed fallback status
 #     print(decoder.cpu_fallback)
@@ -188,16 +182,13 @@ to increase performance.
 # .. note::
 #
 #     The timing of when you can detect CPU fallback differs between backends:
-#
-#     - **FFmpeg backend**: You can only check fallback status after decoding at
-#       least one frame, because FFmpeg determines codec support lazily during decoding.
-#     - **BETA backend**: You can check fallback status immediately after
-#       decoder creation, as the backend checks codec support upfront.
+#     with the **FFmpeg backend**, you can only check fallback status after decoding at
+#     least one frame, because FFmpeg determines codec support lazily during decoding;
+#     with the **BETA backend**, you can check fallback status immediately after
+#     decoder creation, as the backend checks codec support upfront.
 #
 #     For installation instructions, detailed examples, and visual comparisons
-#     between CPU and CUDA decoding, see:
-#
-#     - :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py`
+#     between CPU and CUDA decoding, see :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py`
 
 # %%
 # Conclusion
@@ -206,7 +197,7 @@ to increase performance.
 # TorchCodec offers multiple performance optimization strategies, each suited to
 # different scenarios. Use batch APIs for multi-frame decoding, approximate mode
 # for faster initialization, parallel processing for high throughput, and CUDA
-# acceleration for GPU-intensive workflows.
+# acceleration to offload the CPU.
 #
 # The best results often come from combining techniques. Profile your specific
 # use case and apply optimizations incrementally, using the benchmarks in the

@@ -92,6 +92,25 @@ print(frame.data.device)
 
 
 # %%
+# Checking for CPU Fallback
+# -------------------------------------
+#
+# In some cases, CUDA decoding may fall back to CPU decoding. This can happen
+# when the video codec or format is not supported by the NVDEC hardware decoder, or when NVCUVID wasn't found.
+# TorchCodec provides the :class:`~torchcodec.decoders.CpuFallbackStatus` class
+# to help you detect when this fallback occurs.
+#
+# You can access the fallback status via the
+# :attr:`~torchcodec.decoders.VideoDecoder.cpu_fallback` attribute:
+
+with set_cuda_backend("beta"):
+    decoder = VideoDecoder(video_file, device="cuda")
+
+# Check and print the CPU fallback status
+print(decoder.cpu_fallback)
+
+
+# %%
 # Visualizing Frames
 # -------------------------------------
 #
@@ -139,22 +158,3 @@ max_abs_diff = torch.max(torch.abs(cpu_frames.to("cuda").float() - cuda_frames.f
 print(f"{frames_equal=}")
 print(f"{mean_abs_diff=}")
 print(f"{max_abs_diff=}")
-
-
-# %%
-# Checking for CPU Fallback
-# -------------------------------------
-#
-# In some cases, CUDA decoding may fall back to CPU decoding. This can happen
-# when the video codec or format is not supported by the NVDEC hardware decoder.
-# TorchCodec provides the :class:`~torchcodec.decoders.CpuFallbackStatus` class
-# to help you detect when this fallback occurs.
-#
-# You can access the fallback status via the
-# :attr:`~torchcodec.decoders.VideoDecoder.cpu_fallback` attribute:
-
-with set_cuda_backend("beta"):
-    decoder = VideoDecoder(video_file, device="cuda")
-
-# Check and print the CPU fallback status
-print(decoder.cpu_fallback)
