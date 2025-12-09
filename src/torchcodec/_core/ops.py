@@ -11,6 +11,7 @@ import os
 import shutil
 import sys
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 from types import ModuleType
 
@@ -93,13 +94,16 @@ if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
     # This seems to be needed on some users machine, but not on our CI. We don't
     # know why.
     ffmpeg_path = shutil.which("ffmpeg")
-    if not ffmpeg_path:
-        raise RuntimeError(
-            "Could not locate FFmpeg. Ensure FFmpeg is properly installed and added to PATH."
-        )
-    with os.add_dll_directory(str(Path(ffmpeg_path).parent.resolve())):
-        ffmpeg_major_version, core_library_path = load_torchcodec_shared_libraries()
+    if ffmpeg_path:
+
+        def cm():  # noqa: F811
+            ffmpeg_dir = Path(ffmpeg_path).parent
+            return os.add_dll_directory(str(ffmpeg_dir))  # that's the actual CM
+
 else:
+    cm = nullcontext
+
+with cm():
     ffmpeg_major_version, core_library_path = load_torchcodec_shared_libraries()
 
 
