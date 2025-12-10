@@ -53,6 +53,21 @@ function(make_torchcodec_sublibrary
     # Avoid adding the "lib" prefix which we already add explicitly.
     set_target_properties(${library_name} PROPERTIES PREFIX "")
 
+    # Set RPATH to find sibling libraries and PyTorch libs at runtime.
+    # $ORIGIN refers to the directory containing this library (site-packages/torchcodec/)
+    # $ORIGIN/../torch/lib points to PyTorch's lib directory (site-packages/torch/lib/)
+    if(LINUX)
+        set_target_properties(${library_name} PROPERTIES
+            INSTALL_RPATH "$ORIGIN:$ORIGIN/../torch/lib"
+            BUILD_WITH_INSTALL_RPATH TRUE
+        )
+    elseif(APPLE)
+        set_target_properties(${library_name} PROPERTIES
+            INSTALL_RPATH "@loader_path:@loader_path/../torch/lib"
+            BUILD_WITH_INSTALL_RPATH TRUE
+        )
+    endif()
+
     target_link_libraries(
         ${library_name}
         PUBLIC
@@ -128,16 +143,31 @@ function(make_torchcodec_libraries
         AVIOTensorContext.cpp
         custom_ops.cpp
     )
-    set(custom_ops_dependencies
-        ${core_library_name}
-        ${Python3_LIBRARIES}
-    )
+    # On Linux, we avoid linking directly against libpython because:
+    # 1. It couples the wheel to a specific Python installation path (e.g., conda)
+    # 2. The library is always loaded from within Python, so libpython symbols
+    #    are already available at runtime
+    # On Mac and Windows, we need the explicit link.
+    if(LINUX)
+        set(custom_ops_dependencies
+            ${core_library_name}
+        )
+    else()
+        set(custom_ops_dependencies
+            ${core_library_name}
+            ${Python3_LIBRARIES}
+        )
+    endif()
     make_torchcodec_sublibrary(
         "${custom_ops_library_name}"
         SHARED
         "${custom_ops_sources}"
         "${custom_ops_dependencies}"
     )
+    # On Linux, allow undefined symbols (Python symbols resolved at runtime)
+    if(LINUX)
+        target_link_options(${custom_ops_library_name} PRIVATE "-Wl,--allow-shlib-undefined")
+    endif()
 
     # 3. Create libtorchcodec_pybind_opsN.so.
     set(pybind_ops_library_name "libtorchcodec_pybind_ops${ffmpeg_major_version}")
