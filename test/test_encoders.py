@@ -884,7 +884,6 @@ class TestVideoEncoder:
             common_params = dict(
                 crf=0,
                 pixel_format="yuv444p" if device == "cpu" else None,
-                codec="h264_nvenc" if device != "cpu" else None,
             )
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
@@ -1336,24 +1335,13 @@ class TestVideoEncoder:
 
     @needs_ffmpeg_cli
     @pytest.mark.needs_cuda
-    # TODO-VideoEncoder: Auto-select codec for GPU encoding
-    @pytest.mark.parametrize(
-        "format_codec",
-        [
-            ("mov", "h264_nvenc"),
-            ("mp4", "hevc_nvenc"),
-            ("avi", "h264_nvenc"),
-            # TODO-VideoEncoder: add in_CI mark, similar to in_fbcode
-            # ("mkv", "av1_nvenc"), # av1_nvenc is not supported on CI
-        ],
-    )
+    @pytest.mark.parametrize("format", ("mov", "mp4", "mkv"))
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
-    def test_nvenc_against_ffmpeg_cli(self, tmp_path, format_codec, method):
+    def test_nvenc_against_ffmpeg_cli(self, tmp_path, format, method):
         # Encode with FFmpeg CLI using nvenc codecs
-        format, codec = format_codec
         device = "cuda"
-        qp = 1  # Lossless (qp=0) is not supported on av1_nvenc, so we use 1
+        qp = 0  # Use lossless encoding to reduce noise in frame comparison
         source_frames = self.decode(TEST_SRC_2_720P.path).data.to(device)
 
         temp_raw_path = str(tmp_path / "temp_input.raw")
@@ -1377,32 +1365,27 @@ class TestVideoEncoder:
             "-i",
             temp_raw_path,
             "-c:v",
-            codec,  # Use specified NVENC hardware encoder
+            "h264_nvenc",
         ]
+        # VideoEncoder will select an NVENC encoder by default since the frames are on GPU.
 
         ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # Output format is always NV12
-        if codec == "av1_nvenc":
-            ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1
-        ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
+        ffmpeg_cmd.extend(["-qp", str(qp)])
         ffmpeg_cmd.extend([ffmpeg_encoded_path])
         subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
         encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
         encoder_extra_options = {"qp": qp}
-        if codec == "av1_nvenc":
-            encoder_extra_options["rc"] = 0  # constqp mode
         if method == "to_file":
             encoder_output_path = str(tmp_path / f"nvenc_output.{format}")
             encoder.to_file(
                 dest=encoder_output_path,
-                codec=codec,
                 extra_options=encoder_extra_options,
             )
             encoder_output = encoder_output_path
         elif method == "to_tensor":
             encoder_output = encoder.to_tensor(
                 format=format,
-                codec=codec,
                 extra_options=encoder_extra_options,
             )
         elif method == "to_file_like":
@@ -1410,7 +1393,6 @@ class TestVideoEncoder:
             encoder.to_file_like(
                 file_like=file_like,
                 format=format,
-                codec=codec,
                 extra_options=encoder_extra_options,
             )
             encoder_output = file_like.getvalue()

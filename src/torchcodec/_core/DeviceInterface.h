@@ -156,6 +156,11 @@ class DeviceInterface {
     TORCH_CHECK(false);
   }
 
+  virtual std::optional<const AVCodec*> findHardwareEncoder(
+      [[maybe_unused]] const AVCodecID& codecId) {
+    TORCH_CHECK(false);
+  };
+
  protected:
   torch::Device device_;
   SharedAVCodecContext codecContext_;

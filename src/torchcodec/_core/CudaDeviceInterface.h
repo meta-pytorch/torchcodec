@@ -49,6 +49,9 @@ class CudaDeviceInterface : public DeviceInterface {
   void setupHardwareFrameContextForEncoding(
       AVCodecContext* codecContext) override;
 
+  std::optional<const AVCodec*> findHardwareEncoder(
+      const AVCodecID& codecId) override;
+
  private:
   // Our CUDA decoding code assumes NV12 format. In order to handle other
   // kinds of input, we need to convert them to NV12. Our current implementation
