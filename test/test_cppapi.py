@@ -76,5 +76,9 @@ def test_cppapi_with_prefix(tmp_path):
     assert result.returncode == 0
 
     ver = f"{torchcodec.ffmpeg_major_version}"
+
+    result = subprocess.run(["ldd", f"./torchcodec_cppapitest{ver}"], cwd=tmp_path)
+    assert result.returncode == 0
+
     result = subprocess.run([f"./torchcodec_cppapitest{ver}"], cwd=tmp_path)
     assert result.returncode == 0
