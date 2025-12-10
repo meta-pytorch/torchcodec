@@ -1,3 +1,4 @@
+import tracemalloc
 import math
 from argparse import ArgumentParser
 from pathlib import Path
@@ -9,7 +10,7 @@ from torchcodec.decoders import VideoDecoder
 from torchvision.transforms import v2
 
 
-def bench(f, *args, num_exp=DEFAULT_NUM_EXP, warmup=1) -> Tensor:
+def bench(f, *args, num_exp, warmup=1) -> Tensor:
 
     for _ in range(warmup):
         f(*args)
