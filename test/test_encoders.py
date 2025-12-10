@@ -852,6 +852,8 @@ class TestVideoEncoder:
         ),
     )
     def test_contiguity(self, method, tmp_path, device):
+        if get_ffmpeg_major_version() == 4 and device == "cuda":
+            pytest.skip("CUDA + FFmpeg 4 test is flaky")
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal
         # frame tensors, one is contiguous while the other is non-contiguous.
