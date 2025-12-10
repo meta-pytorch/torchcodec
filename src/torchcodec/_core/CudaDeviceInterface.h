@@ -71,6 +71,7 @@ class CudaDeviceInterface : public DeviceInterface {
   std::unique_ptr<FilterGraph> nv12Conversion_;
 
   bool usingCPUFallback_ = false;
+  bool hasDecodedFrame_ = false;
 };
 
 } // namespace facebook::torchcodec
