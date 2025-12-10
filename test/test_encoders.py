@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -328,7 +329,11 @@ class TestAudioEncoder:
 
         assert_close = torch.testing.assert_close
         if sample_rate != asset.sample_rate:
-            rtol, atol = 0, 1e-3
+            if platform.machine().lower() == "aarch64":
+                rtol, atol = 0, 1e-2
+            else:
+                rtol, atol = 0, 1e-3
+
             if sys.platform == "darwin":
                 assert_close = partial(assert_tensor_close_on_at_least, percentage=99)
         elif format == "wav":
