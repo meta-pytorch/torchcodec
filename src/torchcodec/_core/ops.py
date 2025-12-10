@@ -6,7 +6,12 @@
 
 import io
 import json
+import os
+import shutil
+import sys
 import warnings
+from contextlib import nullcontext
+from pathlib import Path
 from types import ModuleType
 from typing import List, Optional, Tuple, Union
 
@@ -22,7 +27,7 @@ from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchco
 _pybind_ops: Optional[ModuleType] = None
 
 
-def load_torchcodec_shared_libraries():
+def load_torchcodec_shared_libraries() -> tuple[int, str]:
     # Successively try to load the shared libraries for each version of FFmpeg
     # that we support. We always start with the highest version, working our way
     # down to the lowest version. Once we can load ALL shared libraries for a
@@ -70,7 +75,8 @@ def load_torchcodec_shared_libraries():
     raise RuntimeError(
         f"""Could not load libtorchcodec. Likely causes:
           1. FFmpeg is not properly installed in your environment. We support
-             versions 4, 5, 6, 7, and 8.
+             versions 4, 5, 6, 7, and 8. On Windows, ensure you've installed
+             the "full-shared" version which ships DLLs.
           2. The PyTorch version ({torch.__version__}) is not compatible with
              this version of TorchCodec. Refer to the version compatibility
              table:
@@ -82,7 +88,20 @@ def load_torchcodec_shared_libraries():
     )
 
 
-ffmpeg_major_version, core_library_path = load_torchcodec_shared_libraries()
+expose_ffmpeg_dlls = nullcontext
+if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+    # On windows we try to locate the FFmpeg DLLs and temporarily add them to
+    # the DLL search path. This seems to be needed on some users machine, but
+    # not on our CI. We don't know why.
+    if ffmpeg_path := shutil.which("ffmpeg"):
+
+        def expose_ffmpeg_dlls():  # noqa: F811
+            ffmpeg_dir = Path(ffmpeg_path).parent
+            return os.add_dll_directory(str(ffmpeg_dir))  # that's the actual CM
+
+
+with expose_ffmpeg_dlls():
+    ffmpeg_major_version, core_library_path = load_torchcodec_shared_libraries()
 
 
 # Note: We use disallow_in_graph because PyTorch does constant propagation of
