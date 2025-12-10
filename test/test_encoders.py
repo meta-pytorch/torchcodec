@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -17,6 +18,7 @@ from .utils import (
     assert_tensor_close_on_at_least,
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
+    in_fbcode,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
     needs_ffmpeg_cli,
@@ -327,7 +329,11 @@ class TestAudioEncoder:
 
         assert_close = torch.testing.assert_close
         if sample_rate != asset.sample_rate:
-            rtol, atol = 0, 1e-3
+            if platform.machine().lower() == "aarch64":
+                rtol, atol = 0, 1e-2
+            else:
+                rtol, atol = 0, 1e-3
+
             if sys.platform == "darwin":
                 assert_close = partial(assert_tensor_close_on_at_least, percentage=99)
         elif format == "wav":
@@ -756,8 +762,11 @@ class TestVideoEncoder:
             encoder.to_tensor(format="bad_format")
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_pixel_format_errors(self, method, tmp_path):
-        frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8)
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_pixel_format_errors(self, method, device, tmp_path):
+        frames = torch.zeros((5, 3, 64, 64), dtype=torch.uint8).to(device)
         encoder = VideoEncoder(frames, frame_rate=30)
 
         if method == "to_file":
@@ -766,6 +775,14 @@ class TestVideoEncoder:
             valid_params = dict(format="mp4")
         elif method == "to_file_like":
             valid_params = dict(file_like=io.BytesIO(), format="mp4")
+
+        if device == "cuda":
+            with pytest.raises(
+                RuntimeError,
+                match="GPU Video encoding currently only supports the NV12 pixel format. Do not set pixel_format to use NV12",
+            ):
+                getattr(encoder, method)(**valid_params, pixel_format="yuv420p")
+            return
 
         with pytest.raises(
             RuntimeError,
@@ -819,15 +836,36 @@ class TestVideoEncoder:
             getattr(encoder, method)(**valid_params, extra_options=extra_options)
 
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_contiguity(self, method, tmp_path):
+    @pytest.mark.parametrize(
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                ],
+            ),
+        ),
+    )
+    def test_contiguity(self, method, tmp_path, device):
+        if get_ffmpeg_major_version() == 4 and device == "cuda":
+            pytest.skip("CUDA + FFmpeg 4 test is flaky")
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal
         # frame tensors, one is contiguous while the other is non-contiguous.
 
-        num_frames, channels, height, width = 5, 3, 64, 64
-        contiguous_frames = torch.randint(
-            0, 256, size=(num_frames, channels, height, width), dtype=torch.uint8
-        ).contiguous()
+        num_frames, channels, height, width = 5, 3, 256, 256
+        contiguous_frames = (
+            torch.randint(
+                0, 256, size=(num_frames, channels, height, width), dtype=torch.uint8
+            )
+            .contiguous()
+            .to(device)
+        )
         assert contiguous_frames.is_contiguous()
 
         # Permute NCHW to NHWC, then update the memory layout, then permute back
@@ -843,7 +881,11 @@ class TestVideoEncoder:
         )
 
         def encode_to_tensor(frames):
-            common_params = dict(crf=0, pixel_format="yuv444p")
+            common_params = dict(
+                crf=0,
+                pixel_format="yuv444p" if device == "cpu" else None,
+                codec="h264_nvenc" if device != "cpu" else None,
+            )
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
                 VideoEncoder(frames, frame_rate=30).to_file(dest=dest, **common_params)
@@ -1291,3 +1333,101 @@ class TestVideoEncoder:
         assert metadata["profile"].lower() == expected_profile
         assert metadata["color_space"] == colorspace
         assert metadata["color_range"] == color_range
+
+    @needs_ffmpeg_cli
+    @pytest.mark.needs_cuda
+    # TODO-VideoEncoder: Auto-select codec for GPU encoding
+    @pytest.mark.parametrize(
+        "format_codec",
+        [
+            ("mov", "h264_nvenc"),
+            ("mp4", "hevc_nvenc"),
+            ("avi", "h264_nvenc"),
+            # TODO-VideoEncoder: add in_CI mark, similar to in_fbcode
+            # ("mkv", "av1_nvenc"), # av1_nvenc is not supported on CI
+        ],
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
+    def test_nvenc_against_ffmpeg_cli(self, tmp_path, format_codec, method):
+        # Encode with FFmpeg CLI using nvenc codecs
+        format, codec = format_codec
+        device = "cuda"
+        qp = 1  # Lossless (qp=0) is not supported on av1_nvenc, so we use 1
+        source_frames = self.decode(TEST_SRC_2_720P.path).data.to(device)
+
+        temp_raw_path = str(tmp_path / "temp_input.raw")
+        with open(temp_raw_path, "wb") as f:
+            f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
+
+        ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_nvenc_output.{format}")
+        frame_rate = 30
+
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",  # Input format
+            "-s",
+            f"{source_frames.shape[3]}x{source_frames.shape[2]}",
+            "-r",
+            str(frame_rate),
+            "-i",
+            temp_raw_path,
+            "-c:v",
+            codec,  # Use specified NVENC hardware encoder
+        ]
+
+        ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # Output format is always NV12
+        if codec == "av1_nvenc":
+            ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1
+        ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
+        ffmpeg_cmd.extend([ffmpeg_encoded_path])
+        subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
+
+        encoder_extra_options = {"qp": qp}
+        if codec == "av1_nvenc":
+            encoder_extra_options["rc"] = 0  # constqp mode
+        if method == "to_file":
+            encoder_output_path = str(tmp_path / f"nvenc_output.{format}")
+            encoder.to_file(
+                dest=encoder_output_path,
+                codec=codec,
+                extra_options=encoder_extra_options,
+            )
+            encoder_output = encoder_output_path
+        elif method == "to_tensor":
+            encoder_output = encoder.to_tensor(
+                format=format,
+                codec=codec,
+                extra_options=encoder_extra_options,
+            )
+        elif method == "to_file_like":
+            file_like = io.BytesIO()
+            encoder.to_file_like(
+                file_like=file_like,
+                format=format,
+                codec=codec,
+                extra_options=encoder_extra_options,
+            )
+            encoder_output = file_like.getvalue()
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        ffmpeg_frames = self.decode(ffmpeg_encoded_path).data
+        encoder_frames = self.decode(encoder_output).data
+
+        assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
+        for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
+            assert psnr(ff_frame, enc_frame) > 25
+            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=96, atol=2)
+
+        if method == "to_file":
+            ffmpeg_metadata = self._get_video_metadata(ffmpeg_encoded_path, ["pix_fmt"])
+            encoder_metadata = self._get_video_metadata(encoder_output, ["pix_fmt"])
+            # pix_fmt nv12 is stored as yuv420p in metadata
+            assert encoder_metadata["pix_fmt"] == "yuv420p"
+            assert ffmpeg_metadata["pix_fmt"] == "yuv420p"

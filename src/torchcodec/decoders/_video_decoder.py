@@ -270,10 +270,13 @@ class VideoDecoder:
 
                 if "CPU fallback" in backend_details:
                     self._cpu_fallback._is_fallback = True
-                    if "NVCUVID not available" in backend_details:
-                        self._cpu_fallback._nvcuvid_unavailable = True
-                    elif self._cpu_fallback._backend == "Beta CUDA":
-                        self._cpu_fallback._video_not_supported = True
+                    if self._cpu_fallback._backend == "Beta CUDA":
+                        # Only the beta interface can provide details.
+                        # if it's not that nvcuvid is missing, it must be video-specific
+                        if "NVCUVID not available" in backend_details:
+                            self._cpu_fallback._nvcuvid_unavailable = True
+                        else:
+                            self._cpu_fallback._video_not_supported = True
 
         return self._cpu_fallback
 
