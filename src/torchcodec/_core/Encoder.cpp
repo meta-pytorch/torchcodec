@@ -745,27 +745,33 @@ void VideoEncoder::initializeEncoder(
         avCodec = avcodec_find_encoder(desc->id);
       }
     }
-    TORCH_CHECK(
-        avCodec != nullptr,
-        "Video codec ",
-        codec,
-        " not found. To see available codecs, run: ffmpeg -encoders");
   } else {
     TORCH_CHECK(
         avFormatContext_->oformat != nullptr,
         "Output format is null, unable to find default codec.");
-    avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
     // If frames are on a CUDA device, try to substitute the default codec
     // with its hardware equivalent
-    if (frames_.device().is_cuda() && deviceInterface_) {
+    if (frames_.device().is_cuda()) {
+      TORCH_CHECK(
+          deviceInterface_ != nullptr,
+          "Device interface is undefined when input frames are on a CUDA device. This should never happen, please report this to the TorchCodec repo.");
       auto hwCodec = deviceInterface_->findCodec(
           avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
       if (hwCodec.has_value()) {
         avCodec = hwCodec.value();
       }
     }
-    TORCH_CHECK(avCodec != nullptr, "Video codec not found");
+    if (!avCodec) {
+      avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
+    }
   }
+  TORCH_CHECK(
+      avCodec != nullptr,
+      "Video codec ",
+      videoStreamOptions.codec.has_value()
+          ? videoStreamOptions.codec.value() + " "
+          : "",
+      "not found. To see available codecs, run: ffmpeg -encoders");
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
   TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
