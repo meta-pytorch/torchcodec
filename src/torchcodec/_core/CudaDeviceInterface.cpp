@@ -373,22 +373,74 @@ std::string CudaDeviceInterface::getDetails() {
 // Below are methods exclusive to video encoding:
 // --------------------------------------------------------------------------
 namespace {
-// RGB to NV12 color conversion matrix for BT.601 limited range.
-// NPP ColorTwist function used below expects the limited range
-// color conversion matrix, and this matches FFmpeg's default behavior.
-const Npp32f defaultLimitedRangeRgbToNv12[3][4] = {
-    // Y = 16 + 0.859 * (0.299*R + 0.587*G + 0.114*B)
-    {0.257f, 0.504f, 0.098f, 16.0f},
-    // U = -0.148*R - 0.291*G + 0.439*B + 128 (BT.601 coefficients)
-    {-0.148f, -0.291f, 0.439f, 128.0f},
-    // V = 0.439*R - 0.368*G - 0.071*B + 128 (BT.601 coefficients)
-    {0.439f, -0.368f, -0.071f, 128.0f}};
+// RGB to YUV conversion matrices organized by color range and color space
+struct ColorConversionMatrices {
+  static constexpr Npp32f BT601_LIMITED[3][4] = {
+      {0.257f, 0.504f, 0.098f, 16.0f},
+      {-0.148f, -0.291f, 0.439f, 128.0f},
+      {0.439f, -0.368f, -0.071f, 128.0f}};
+
+  static constexpr Npp32f BT601_FULL[3][4] = {
+      {0.299f, 0.587f, 0.114f, 0.0f},
+      {-0.168736f, -0.331264f, 0.5f, 128.0f},
+      {0.5f, -0.418688f, -0.081312f, 128.0f}};
+
+  static constexpr Npp32f BT709_LIMITED[3][4] = {
+      {0.183f, 0.614f, 0.062f, 16.0f},
+      {-0.101f, -0.338f, 0.439f, 128.0f},
+      {0.439f, -0.399f, -0.040f, 128.0f}};
+
+  static constexpr Npp32f BT709_FULL[3][4] = {
+      {0.2126f, 0.7152f, 0.0722f, 0.0f},
+      {-0.114572f, -0.385428f, 0.5f, 128.0f},
+      {0.5f, -0.454153f, -0.045847f, 128.0f}};
+
+  static constexpr Npp32f BT2020_LIMITED[3][4] = {
+      {0.2256f, 0.5823f, 0.0509f, 16.0f},
+      {-0.122f, -0.315f, 0.439f, 128.0f},
+      {0.439f, -0.403f, -0.036f, 128.0f}};
+
+  static constexpr Npp32f BT2020_FULL[3][4] = {
+      {0.2627f, 0.6780f, 0.0593f, 0.0f},
+      {-0.139630f, -0.360370f, 0.5f, 128.0f},
+      {0.5f, -0.459786f, -0.040214f, 128.0f}};
+};
+
+// Returns the appropriate conversion matrix based on codec context color space
+// and range
+const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
+  // Limited range (TV/Video range 16-235) - default if unspecified
+  if (codecContext->color_range == AVCOL_RANGE_MPEG ||
+      codecContext->color_range == AVCOL_RANGE_UNSPECIFIED) {
+    if (codecContext->colorspace == AVCOL_SPC_BT470BG) {
+      return ColorConversionMatrices::BT601_LIMITED;
+    } else if (codecContext->colorspace == AVCOL_SPC_BT709) {
+      return ColorConversionMatrices::BT709_LIMITED;
+    } else if (codecContext->colorspace == AVCOL_SPC_BT2020_NCL) {
+      return ColorConversionMatrices::BT2020_LIMITED;
+    } else { // AVCOL_SPC_UNSPECIFIED or unknown - default to BT.601
+      return ColorConversionMatrices::BT601_LIMITED;
+    }
+  } else if (codecContext->color_range == AVCOL_RANGE_JPEG) { // full range
+    if (codecContext->colorspace == AVCOL_SPC_BT470BG) {
+      return ColorConversionMatrices::BT601_FULL;
+    } else if (codecContext->colorspace == AVCOL_SPC_BT709) {
+      return ColorConversionMatrices::BT709_FULL;
+    } else if (codecContext->colorspace == AVCOL_SPC_BT2020_NCL) {
+      return ColorConversionMatrices::BT2020_FULL;
+    } else { // AVCOL_SPC_UNSPECIFIED or unknown - default to BT.601
+      return ColorConversionMatrices::BT601_FULL;
+    }
+  }
+  return ColorConversionMatrices::BT601_LIMITED;
+}
 } // namespace
 
 UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
     const torch::Tensor& tensor,
     int frameIndex,
-    AVCodecContext* codecContext) {
+    AVCodecContext* codecContext,
+    AVPixelFormat targetPixelFormat) {
   TORCH_CHECK(
       tensor.dim() == 3 && tensor.size(0) == 3,
       "Expected 3D RGB tensor (CHW format), got shape: ",
@@ -427,25 +479,48 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
   torch::Tensor hwcFrame = tensor.permute({1, 2, 0}).contiguous();
 
   NppiSize oSizeROI = {width, height};
-  NppStatus status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
-      static_cast<const Npp8u*>(hwcFrame.data_ptr()),
-      validateInt64ToInt(
-          hwcFrame.stride(0) * hwcFrame.element_size(), "nSrcStep"),
-      avFrame->data,
-      avFrame->linesize,
-      oSizeROI,
-      defaultLimitedRangeRgbToNv12,
-      *nppCtx_);
+  NppStatus status;
+  switch (targetPixelFormat) {
+    case AV_PIX_FMT_NV12:
+      status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
+          static_cast<const Npp8u*>(hwcFrame.data_ptr()),
+          hwcFrame.stride(0) * hwcFrame.element_size(),
+          avFrame->data,
+          avFrame->linesize,
+          oSizeROI,
+          getConversionMatrix(codecContext),
+          *nppCtx_);
+      break;
+    case AV_PIX_FMT_YUV420P:
+      status = nppiRGBToYUV420_8u_ColorTwist32f_C3P3R_Ctx(
+          static_cast<const Npp8u*>(hwcFrame.data_ptr()),
+          hwcFrame.stride(0) * hwcFrame.element_size(),
+          avFrame->data,
+          avFrame->linesize,
+          oSizeROI,
+          getConversionMatrix(codecContext),
+          *nppCtx_);
+      break;
+    default:
+      TORCH_CHECK(
+          false,
+          "CUDA encoding only supports NV12 and YUV420P formats, got ",
+          av_get_pix_fmt_name(targetPixelFormat));
+  }
 
   TORCH_CHECK(
       status == NPP_SUCCESS,
-      "Failed to convert RGB to NV12: NPP error code ",
+      "Failed to convert RGB to ",
+      av_get_pix_fmt_name(targetPixelFormat),
+      ": NPP error code ",
       status);
 
-  // TODO-VideoEncoder: Enable configuration of color properties, similar to
-  // FFmpeg. Below are the default color properties used by FFmpeg.
-  avFrame->colorspace = AVCOL_SPC_SMPTE170M; // BT.601
-  avFrame->color_range = AVCOL_RANGE_MPEG; // Limited range
+  avFrame->colorspace = codecContext->colorspace != AVCOL_SPC_UNSPECIFIED
+      ? codecContext->colorspace
+      : AVCOL_SPC_BT470BG; // BT.601
+  avFrame->color_range = codecContext->color_range != AVCOL_RANGE_UNSPECIFIED
+      ? codecContext->color_range
+      : AVCOL_RANGE_MPEG; // limited range
 
   return avFrame;
 }
@@ -454,7 +529,8 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
 // to enable encoding with CUDA device. The hw_frames_ctx field is needed by
 // FFmpeg to allocate frames on GPU's memory.
 void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
-    AVCodecContext* codecContext) {
+    AVCodecContext* codecContext,
+    AVPixelFormat targetPixelFormat) {
   TORCH_CHECK(codecContext != nullptr, "codecContext is null");
   TORCH_CHECK(
       hardwareDeviceCtx_, "Hardware device context has not been initialized");
@@ -464,9 +540,7 @@ void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
       hwFramesCtxRef != nullptr,
       "Failed to allocate hardware frames context for codec");
 
-  // TODO-VideoEncoder: Enable user set pixel formats to be set
-  // (outPixelFormat_) and handled with the appropriate NPP function
-  codecContext->sw_pix_fmt = AV_PIX_FMT_NV12;
+  codecContext->sw_pix_fmt = targetPixelFormat;
   // Always set pixel format to support CUDA encoding.
   codecContext->pix_fmt = AV_PIX_FMT_CUDA;
 

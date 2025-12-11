@@ -779,9 +779,9 @@ class TestVideoEncoder:
         if device == "cuda":
             with pytest.raises(
                 RuntimeError,
-                match="GPU Video encoding currently only supports the NV12 pixel format. Do not set pixel_format to use NV12",
+                match="GPU encoding currently only supports NV12 and YUV420P pixel formats, got yuv444p",
             ):
-                getattr(encoder, method)(**valid_params, pixel_format="yuv420p")
+                getattr(encoder, method)(**valid_params, pixel_format="yuv444p")
             return
 
         with pytest.raises(
@@ -1348,8 +1348,14 @@ class TestVideoEncoder:
         ],
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
-    def test_nvenc_against_ffmpeg_cli(self, tmp_path, format_codec, method):
+    @pytest.mark.parametrize("pixel_format", ("nv12", "yuv420p", None))
+    # BT.601, BT.709, BT.2020
+    @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc"))
+    # Full/PC range, Limited/TV range
+    @pytest.mark.parametrize("color_range", ("pc", "tv"))
+    def test_nvenc_against_ffmpeg_cli(
+        self, tmp_path, format_codec, method, pixel_format, color_space, color_range
+    ):
         # Encode with FFmpeg CLI using nvenc codecs
         format, codec = format_codec
         device = "cuda"
@@ -1380,7 +1386,14 @@ class TestVideoEncoder:
             codec,  # Use specified NVENC hardware encoder
         ]
 
-        ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # Output format is always NV12
+        if color_space:
+            ffmpeg_cmd.extend(["-colorspace", color_space])
+        if color_range:
+            ffmpeg_cmd.extend(["-color_range", color_range])
+        if pixel_format:
+            ffmpeg_cmd.extend(["-pix_fmt", pixel_format])
+        else:  # VideoEncoder will default to yuv420p for nvenc codecs
+            ffmpeg_cmd.extend(["-pix_fmt", "yuv420p"])
         if codec == "av1_nvenc":
             ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1
         ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
@@ -1391,11 +1404,16 @@ class TestVideoEncoder:
         encoder_extra_options = {"qp": qp}
         if codec == "av1_nvenc":
             encoder_extra_options["rc"] = 0  # constqp mode
+        if color_space:
+            encoder_extra_options["colorspace"] = color_space
+        if color_range:
+            encoder_extra_options["color_range"] = color_range
         if method == "to_file":
             encoder_output_path = str(tmp_path / f"nvenc_output.{format}")
             encoder.to_file(
                 dest=encoder_output_path,
                 codec=codec,
+                pixel_format=pixel_format,
                 extra_options=encoder_extra_options,
             )
             encoder_output = encoder_output_path
@@ -1403,6 +1421,7 @@ class TestVideoEncoder:
             encoder_output = encoder.to_tensor(
                 format=format,
                 codec=codec,
+                pixel_format=pixel_format,
                 extra_options=encoder_extra_options,
             )
         elif method == "to_file_like":
@@ -1411,6 +1430,7 @@ class TestVideoEncoder:
                 file_like=file_like,
                 format=format,
                 codec=codec,
+                pixel_format=pixel_format,
                 extra_options=encoder_extra_options,
             )
             encoder_output = file_like.getvalue()
@@ -1421,13 +1441,26 @@ class TestVideoEncoder:
         encoder_frames = self.decode(encoder_output).data
 
         assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
+        # The combination of full range + bt709 results in worse accuracy
+        percentage = 91 if color_range == "full" and color_space == "bt709" else 96
         for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
             assert psnr(ff_frame, enc_frame) > 25
-            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=96, atol=2)
+            assert_tensor_close_on_at_least(
+                ff_frame, enc_frame, percentage=percentage, atol=2
+            )
 
         if method == "to_file":
-            ffmpeg_metadata = self._get_video_metadata(ffmpeg_encoded_path, ["pix_fmt"])
-            encoder_metadata = self._get_video_metadata(encoder_output, ["pix_fmt"])
-            # pix_fmt nv12 is stored as yuv420p in metadata
-            assert encoder_metadata["pix_fmt"] == "yuv420p"
-            assert ffmpeg_metadata["pix_fmt"] == "yuv420p"
+            metadata_fields = ["pix_fmt", "color_range", "color_space"]
+            ffmpeg_metadata = self._get_video_metadata(
+                ffmpeg_encoded_path, metadata_fields
+            )
+            encoder_metadata = self._get_video_metadata(encoder_output, metadata_fields)
+            assert encoder_metadata["color_range"] == ffmpeg_metadata["color_range"]
+            assert encoder_metadata["color_space"] == ffmpeg_metadata["color_space"]
+
+            encoder_fmt = encoder_metadata["pix_fmt"]
+            ffmpeg_fmt = ffmpeg_metadata["pix_fmt"]
+            # Accept yuv420p (modern) as equivalent to yuvj420p (deprecated full range)
+            assert (encoder_fmt == ffmpeg_fmt) or (
+                encoder_fmt == "yuv420p" and ffmpeg_fmt == "yuvj420p"
+            )

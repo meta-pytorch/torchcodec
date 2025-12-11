@@ -145,14 +145,16 @@ class DeviceInterface {
   virtual UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
       [[maybe_unused]] const torch::Tensor& tensor,
       [[maybe_unused]] int frameIndex,
-      [[maybe_unused]] AVCodecContext* codecContext) {
+      [[maybe_unused]] AVCodecContext* codecContext,
+      [[maybe_unused]] AVPixelFormat targetPixelFormat) {
     TORCH_CHECK(false);
   }
 
   // Function used for video encoding, only implemented in CudaDeviceInterface.
   // It is here to isolate CUDA dependencies from CPU builds
   virtual void setupHardwareFrameContextForEncoding(
-      [[maybe_unused]] AVCodecContext* codecContext) {
+      [[maybe_unused]] AVCodecContext* codecContext,
+      [[maybe_unused]] AVPixelFormat targetPixelFormat) {
     TORCH_CHECK(false);
   }
 
