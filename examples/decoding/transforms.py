@@ -26,8 +26,8 @@ import requests
 import tempfile
 from pathlib import Path
 import shutil
-import subprocess
 from time import perf_counter_ns
+
 
 def store_video_to(url: str, local_video_path: Path):
     response = requests.get(url, headers={"User-Agent": ""})
@@ -37,6 +37,7 @@ def store_video_to(url: str, local_video_path: Path):
     with open(local_video_path, 'wb') as f:
         for chunk in response.iter_content():
             f.write(chunk)
+
 
 def plot(frames: torch.Tensor, title : str | None = None):
     try:
@@ -49,7 +50,7 @@ def plot(frames: torch.Tensor, title : str | None = None):
 
     plt.rcParams["savefig.bbox"] = "tight"
     dpi = 300
-    fig, ax = plt.subplots(figsize=(800/dpi, 600/dpi), dpi=dpi)
+    fig, ax = plt.subplots(figsize=(800 / dpi, 600 / dpi), dpi=dpi)
     ax.imshow(to_pil_image(make_grid(frames)))
     ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
     if title is not None:
@@ -63,6 +64,7 @@ def plot(frames: torch.Tensor, title : str | None = None):
 # We'll download a video from the internet and store it locally. We're
 # purposefully retrieving a high resolution video to demonstrate using
 # transforms to reduce the dimensions.
+
 
 # Video source: https://www.pexels.com/video/an-african-penguin-at-the-beach-9140346/
 # Author: Taryn Elliott.
@@ -224,12 +226,12 @@ plot(crop_resized_during, title="Resized to 480x640 during decoding then center 
 # to use. We define the following benchmark function, as well as the functions
 # to benchmark:
 
+
 def bench(f, average_over=3, warmup=1, **f_kwargs):
     for _ in range(warmup):
         f(**f_kwargs)
 
     times = []
-    memory = []
     for _ in range(average_over):
         start_time = perf_counter_ns()
         f(**f_kwargs)
@@ -241,7 +243,9 @@ def bench(f, average_over=3, warmup=1, **f_kwargs):
     times_med = times.median().item()
     return f"{times_med = :.2f}ms +- {times_std:.2f}"
 
+
 from torchcodec import samplers
+
 
 def sample_decoder_transforms(num_threads: int):
     decoder = VideoDecoder(
@@ -259,6 +263,7 @@ def sample_decoder_transforms(num_threads: int):
         num_frames_per_clip=200
     )
     assert len(transformed_frames.data[0]) == 200
+
 
 def sample_torchvision_transforms(num_threads: int):
     decoder = VideoDecoder(
@@ -284,6 +289,7 @@ def sample_torchvision_transforms(num_threads: int):
 # based on what is available on the current system. In such cases, decoder transforms
 # will tend to outperform getting back a full frame and applying TorchVision transforms
 # sequentially:
+
 
 print(f"decoder transforms:    {bench(sample_decoder_transforms, num_threads=0)}")
 print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads=0)}")
