@@ -19,6 +19,7 @@ from .utils import (
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
     in_fbcode,
+    IN_GITHUB_CI,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
     needs_ffmpeg_cli,
@@ -1335,13 +1336,29 @@ class TestVideoEncoder:
 
     @needs_ffmpeg_cli
     @pytest.mark.needs_cuda
-    @pytest.mark.parametrize("format", ("mov", "mp4", "mkv"))
+    # @pytest.mark.parametrize("format", ("mov", "mp4", "mkv"))
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
-    def test_nvenc_against_ffmpeg_cli(self, tmp_path, format, method):
+    @pytest.mark.parametrize(
+        ("format", "codec"),
+        [
+            ("mov", None),  # will default to h264_nvenc
+            ("mov", "h264_nvenc"),
+            ("avi", "h264_nvenc"),
+            ("mp4", "hevc_nvenc"),  # use non-default codec
+            pytest.param(
+                "mkv",
+                "av1_nvenc",
+                marks=pytest.mark.skipif(
+                    IN_GITHUB_CI, reason="av1_nvenc is not supported on CI"
+                ),
+            ),
+        ],
+    )
+    def test_nvenc_against_ffmpeg_cli(self, tmp_path, method, format, codec):
         # Encode with FFmpeg CLI using nvenc codecs
         device = "cuda"
-        qp = 0  # Use lossless encoding to reduce noise in frame comparison
+        qp = 1  # Use near lossless encoding to reduce noise and support av1_nvenc
         source_frames = self.decode(TEST_SRC_2_720P.path).data.to(device)
 
         temp_raw_path = str(tmp_path / "temp_input.raw")
@@ -1364,9 +1381,9 @@ class TestVideoEncoder:
             str(frame_rate),
             "-i",
             temp_raw_path,
-            "-c:v",
-            "h264_nvenc",
         ]
+        # CLI requires explicit codec for nvenc
+        ffmpeg_cmd.extend(["-c:v", codec if codec is not None else "h264_nvenc"])
         # VideoEncoder will select an NVENC encoder by default since the frames are on GPU.
 
         ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # Output format is always NV12
@@ -1380,12 +1397,14 @@ class TestVideoEncoder:
             encoder_output_path = str(tmp_path / f"nvenc_output.{format}")
             encoder.to_file(
                 dest=encoder_output_path,
+                codec=codec,
                 extra_options=encoder_extra_options,
             )
             encoder_output = encoder_output_path
         elif method == "to_tensor":
             encoder_output = encoder.to_tensor(
                 format=format,
+                codec=codec,
                 extra_options=encoder_extra_options,
             )
         elif method == "to_file_like":
@@ -1393,6 +1412,7 @@ class TestVideoEncoder:
             encoder.to_file_like(
                 file_like=file_like,
                 format=format,
+                codec=codec,
                 extra_options=encoder_extra_options,
             )
             encoder_output = file_like.getvalue()
