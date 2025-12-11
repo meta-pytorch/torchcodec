@@ -18,7 +18,9 @@ class CudaDeviceInterface : public DeviceInterface {
 
   virtual ~CudaDeviceInterface();
 
-  std::optional<const AVCodec*> findCodec(const AVCodecID& codecId) override;
+  std::optional<const AVCodec*> findCodec(
+      const AVCodecID& codecId,
+      bool isDecoder = true) override;
 
   void initialize(
       const AVStream* avStream,
@@ -48,9 +50,6 @@ class CudaDeviceInterface : public DeviceInterface {
 
   void setupHardwareFrameContextForEncoding(
       AVCodecContext* codecContext) override;
-
-  std::optional<const AVCodec*> findHardwareEncoder(
-      const AVCodecID& codecId) override;
 
  private:
   // Our CUDA decoding code assumes NV12 format. In order to handle other

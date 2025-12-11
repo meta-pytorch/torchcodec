@@ -758,8 +758,8 @@ void VideoEncoder::initializeEncoder(
     // If frames are on a CUDA device, try to substitute the default codec
     // with its hardware equivalent
     if (frames_.device().is_cuda() && deviceInterface_) {
-      auto hwCodec = deviceInterface_->findHardwareEncoder(
-          avFormatContext_->oformat->video_codec);
+      auto hwCodec = deviceInterface_->findCodec(
+          avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
       if (hwCodec.has_value()) {
         avCodec = hwCodec.value();
       }

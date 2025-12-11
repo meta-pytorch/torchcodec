@@ -337,12 +337,19 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
 // appropriately set, so we just go off and find the matching codec for the CUDA
 // device
 std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
-    const AVCodecID& codecId) {
+    const AVCodecID& codecId,
+    bool isDecoder) {
   void* i = nullptr;
   const AVCodec* codec = nullptr;
   while ((codec = av_codec_iterate(&i)) != nullptr) {
-    if (codec->id != codecId || !av_codec_is_decoder(codec)) {
-      continue;
+    if (isDecoder) {
+      if (codec->id != codecId || !av_codec_is_decoder(codec)) {
+        continue;
+      }
+    } else {
+      if (codec->id != codecId || !av_codec_is_encoder(codec)) {
+        continue;
+      }
     }
 
     const AVCodecHWConfig* config = nullptr;
@@ -486,27 +493,5 @@ void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
         getFFMPEGErrorStringFromErrorCode(ret));
   }
   codecContext->hw_frames_ctx = hwFramesCtxRef;
-}
-
-// Similar to CudaDeviceInterface::findCodec, but for encoders
-std::optional<const AVCodec*> CudaDeviceInterface::findHardwareEncoder(
-    const AVCodecID& codecId) {
-  void* i = nullptr;
-  const AVCodec* codec = nullptr;
-  while ((codec = av_codec_iterate(&i)) != nullptr) {
-    if (codec->id != codecId || !av_codec_is_encoder(codec)) {
-      continue;
-    }
-
-    const AVCodecHWConfig* config = nullptr;
-    for (int j = 0; (config = avcodec_get_hw_config(codec, j)) != nullptr;
-         ++j) {
-      if (config->device_type == AV_HWDEVICE_TYPE_CUDA) {
-        return codec;
-      }
-    }
-  }
-
-  return std::nullopt;
 }
 } // namespace facebook::torchcodec
