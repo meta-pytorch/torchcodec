@@ -18,6 +18,7 @@ from torchcodec.decoders import set_cuda_backend, VideoDecoder
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
+IN_GITHUB_CI = bool(os.getenv("GITHUB_ACTIONS"))
 
 
 # Decorator for skipping CUDA tests when CUDA isn't available. The tests are
@@ -47,6 +48,13 @@ _CUDA_BETA_DEVICE_STR = "cuda:beta"
 def all_supported_devices():
     return (
         "cpu",
+        pytest.param("cuda", marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
+    )
+
+
+def cuda_devices():
+    return (
         pytest.param("cuda", marks=pytest.mark.needs_cuda),
         pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
     )

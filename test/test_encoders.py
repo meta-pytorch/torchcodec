@@ -19,6 +19,7 @@ from .utils import (
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
     in_fbcode,
+    IN_GITHUB_CI,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
     needs_ffmpeg_cli,
@@ -852,6 +853,8 @@ class TestVideoEncoder:
         ),
     )
     def test_contiguity(self, method, tmp_path, device):
+        if get_ffmpeg_major_version() == 4 and device == "cuda":
+            pytest.skip("CUDA + FFmpeg 4 test is flaky")
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal
         # frame tensors, one is contiguous while the other is non-contiguous.
@@ -1341,8 +1344,12 @@ class TestVideoEncoder:
             ("mov", "h264_nvenc"),
             ("mp4", "hevc_nvenc"),
             ("avi", "h264_nvenc"),
-            # TODO-VideoEncoder: add in_CI mark, similar to in_fbcode
-            # ("mkv", "av1_nvenc"), # av1_nvenc is not supported on CI
+            pytest.param(
+                ("mkv", "av1_nvenc"),
+                marks=pytest.mark.skipif(
+                    IN_GITHUB_CI, reason="av1_nvenc is not supported on CI"
+                ),
+            ),
         ],
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
