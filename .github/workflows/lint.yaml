@@ -62,7 +62,16 @@ jobs:
         run: python -m pip install --upgrade pip
       - name: Install dependencies and FFmpeg
         run: |
-          python -m pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/nightly/cpu
+          # If we're in a release branch or in a PR against a release branch,
+          # we install the PyTorch RCs from the test channel. Otherwise, e.g. in
+          # `main` or in PRs against `main`, we install the nightly builds.
+          # Note that the `test` RCs are 
+          if [[ (${GITHUB_EVENT_NAME} = 'pull_request' && (${GITHUB_BASE_REF} = 'release'*)) || (${GITHUB_REF} = 'refs/heads/release'*) ]]; then
+            CHANNEL=test
+          else
+            CHANNEL=nightly
+          fi
+          python -m pip install --pre torch torchvision --index-url https://download.pytorch.org/whl/${CHANNEL}/cpu
           conda install "ffmpeg=7.0.1" pkg-config pybind11 -c conda-forge
           ffmpeg -version
       - name: Build and install torchcodec
