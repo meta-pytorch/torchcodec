@@ -373,7 +373,7 @@ std::string CudaDeviceInterface::getDetails() {
 // Below are methods exclusive to video encoding:
 // --------------------------------------------------------------------------
 namespace {
-// RGB to YUV conversion matrices organized by color range and color space
+// RGB to YUV conversion matrices to use in NPP color conversion functions
 struct ColorConversionMatrices {
   static constexpr Npp32f BT601_LIMITED[3][4] = {
       {0.257f, 0.504f, 0.098f, 16.0f},
@@ -406,11 +406,9 @@ struct ColorConversionMatrices {
       {0.5f, -0.459786f, -0.040214f, 128.0f}};
 };
 
-// Returns the appropriate conversion matrix based on codec context color space
-// and range
+// Returns conversion matrix based on codec context color space and range
 const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
-  // Limited range (TV/Video range 16-235) - default if unspecified
-  if (codecContext->color_range == AVCOL_RANGE_MPEG ||
+  if (codecContext->color_range == AVCOL_RANGE_MPEG || // limited range
       codecContext->color_range == AVCOL_RANGE_UNSPECIFIED) {
     if (codecContext->colorspace == AVCOL_SPC_BT470BG) {
       return ColorConversionMatrices::BT601_LIMITED;
@@ -418,7 +416,7 @@ const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
       return ColorConversionMatrices::BT709_LIMITED;
     } else if (codecContext->colorspace == AVCOL_SPC_BT2020_NCL) {
       return ColorConversionMatrices::BT2020_LIMITED;
-    } else { // AVCOL_SPC_UNSPECIFIED or unknown - default to BT.601
+    } else { // default to BT.601
       return ColorConversionMatrices::BT601_LIMITED;
     }
   } else if (codecContext->color_range == AVCOL_RANGE_JPEG) { // full range
@@ -428,7 +426,7 @@ const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
       return ColorConversionMatrices::BT709_FULL;
     } else if (codecContext->colorspace == AVCOL_SPC_BT2020_NCL) {
       return ColorConversionMatrices::BT2020_FULL;
-    } else { // AVCOL_SPC_UNSPECIFIED or unknown - default to BT.601
+    } else { // default to BT.601
       return ColorConversionMatrices::BT601_FULL;
     }
   }

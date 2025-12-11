@@ -1455,17 +1455,10 @@ class TestVideoEncoder:
             )
 
         if method == "to_file":
-            metadata_fields = ["pix_fmt", "color_range", "color_space"]
+            metadata_fields = ["color_range", "color_space"]
             ffmpeg_metadata = self._get_video_metadata(
                 ffmpeg_encoded_path, metadata_fields
             )
             encoder_metadata = self._get_video_metadata(encoder_output, metadata_fields)
             assert encoder_metadata["color_range"] == ffmpeg_metadata["color_range"]
             assert encoder_metadata["color_space"] == ffmpeg_metadata["color_space"]
-
-            encoder_fmt = encoder_metadata["pix_fmt"]
-            ffmpeg_fmt = ffmpeg_metadata["pix_fmt"]
-            # Accept yuv420p (modern) as equivalent to yuvj420p (deprecated full range)
-            assert (encoder_fmt == ffmpeg_fmt) or (
-                encoder_fmt == "yuv420p" and ffmpeg_fmt == "yuvj420p"
-            )

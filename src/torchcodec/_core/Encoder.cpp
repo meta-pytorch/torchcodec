@@ -787,6 +787,7 @@ void VideoEncoder::initializeEncoder(
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
     if (frames_.device().is_cuda()) {
+      // Default to YUV420P for CUDA encoding if unset.
       outPixelFormat_ = AV_PIX_FMT_YUV420P;
     } else {
       const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
