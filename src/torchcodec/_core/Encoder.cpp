@@ -780,7 +780,7 @@ void VideoEncoder::initializeEncoder(
           outPixelFormat_ != AV_PIX_FMT_YUV420P)) {
       TORCH_CHECK(
           false,
-          "CUDA encoding only supports NV12 and YUV420P formats, got ",
+          "GPU encoding only supports NV12 and YUV420P formats, got ",
           av_get_pix_fmt_name(outPixelFormat_));
     }
     outPixelFormat_ =
