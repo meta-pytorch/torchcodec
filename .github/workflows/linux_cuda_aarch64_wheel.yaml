@@ -92,7 +92,7 @@ jobs:
           # If we're in a release branch or in a PR against a release branch,
           # we install the PyTorch RCs from the test channel. Otherwise, e.g. in
           # `main` or in PRs against `main`, we install the nightly builds.
-          # Note that the `test` RCs are 
+          # Note that the `test` RCs are
           if [[ (${GITHUB_EVENT_NAME} = 'pull_request' && (${GITHUB_BASE_REF} = 'release'*)) || (${GITHUB_REF} = 'refs/heads/release'*) ]]; then
             CHANNEL=test
           else
