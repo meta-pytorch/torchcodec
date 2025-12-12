@@ -13,12 +13,13 @@ In this example, we will demonstrate how to use the ``transforms`` parameter of
 the :class:`~torchcodec.decoders.VideoDecoder` class. This parameter allows us
 to specify a list of :class:`torchcodec.transforms.DecoderTransform` or
 :class:`torchvision.transforms.v2.Transform` objects. These objects serve as
-transform specificiations that the :class:`~torchcodec.decoders.VideoDecoder`
+transform specifications that the :class:`~torchcodec.decoders.VideoDecoder`
 will apply during the decoding process.
 """
 
 # %%
-# First, a bit of boilerplate and definitions that we will use later:
+# First, a bit of boilerplate, definitions that we will use later. You can skip
+# ahead to our :ref:`example_video` or :ref:`applying_transforms`.
 
 
 import torch
@@ -58,6 +59,8 @@ def plot(frames: torch.Tensor, title : str | None = None):
     plt.tight_layout()
 
 # %%
+# .. _example_video:
+#
 # Our example video
 # -----------------
 #
@@ -90,6 +93,8 @@ print(f"Penguin video metadata: {VideoDecoder(penguin_video_path).metadata}")
 #     specify image dimensions.
 
 # %%
+# .. _applying_transforms:
+#
 # Applying transforms during pre-processing
 # -----------------------------------------
 #
