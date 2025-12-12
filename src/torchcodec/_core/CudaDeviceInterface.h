@@ -44,10 +44,12 @@ class CudaDeviceInterface : public DeviceInterface {
   UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
       const torch::Tensor& tensor,
       int frameIndex,
-      AVCodecContext* codecContext) override;
+      AVCodecContext* codecContext,
+      AVPixelFormat targetPixelFormat) override;
 
   void setupHardwareFrameContextForEncoding(
-      AVCodecContext* codecContext) override;
+      AVCodecContext* codecContext,
+      AVPixelFormat targetPixelFormat) override;
 
  private:
   // Our CUDA decoding code assumes NV12 format. In order to handle other
