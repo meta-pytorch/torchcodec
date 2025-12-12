@@ -775,16 +775,16 @@ void VideoEncoder::initializeEncoder(
   outHeight_ = inHeight_;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
-    if (frames_.device().is_cuda() &&
-        !(outPixelFormat_ == AV_PIX_FMT_NV12 ||
-          outPixelFormat_ != AV_PIX_FMT_YUV420P)) {
-      TORCH_CHECK(
-          false,
-          "GPU encoding only supports NV12 and YUV420P formats, got ",
-          av_get_pix_fmt_name(outPixelFormat_));
-    }
     outPixelFormat_ =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
+    if (frames_.device().is_cuda() &&
+        !(outPixelFormat_ == AV_PIX_FMT_NV12 ||
+          outPixelFormat_ == AV_PIX_FMT_YUV420P)) {
+      TORCH_CHECK(
+          false,
+          "GPU encoding only supports nv12 and yuv420p pixel formats, got ",
+          av_get_pix_fmt_name(outPixelFormat_));
+    }
   } else {
     if (frames_.device().is_cuda()) {
       // Default to YUV420P for CUDA encoding if unset.

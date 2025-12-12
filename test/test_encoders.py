@@ -780,7 +780,7 @@ class TestVideoEncoder:
         if device == "cuda":
             with pytest.raises(
                 RuntimeError,
-                match="GPU encoding currently only supports NV12 and YUV420P pixel formats, got yuv444p",
+                match="GPU encoding only supports nv12 and yuv420p pixel formats, got yuv444p",
             ):
                 getattr(encoder, method)(**valid_params, pixel_format="yuv444p")
             return
@@ -1455,10 +1455,30 @@ class TestVideoEncoder:
             )
 
         if method == "to_file":
-            metadata_fields = ["color_range", "color_space"]
+            metadata_fields = ["pix_fmt", "color_range", "color_space"]
             ffmpeg_metadata = self._get_video_metadata(
                 ffmpeg_encoded_path, metadata_fields
             )
             encoder_metadata = self._get_video_metadata(encoder_output, metadata_fields)
-            assert encoder_metadata["color_range"] == ffmpeg_metadata["color_range"]
-            assert encoder_metadata["color_space"] == ffmpeg_metadata["color_space"]
+            assert (
+                encoder_metadata["color_range"]
+                == ffmpeg_metadata["color_range"]
+                == color_range
+            )
+            assert (
+                encoder_metadata["color_space"]
+                == ffmpeg_metadata["color_space"]
+                == color_space
+            )
+            if color_range == "pc" and codec != "av1_nvenc":
+                # This format represents full range (pc) with yuv420p pixel format
+                # It's deprecated, but is set automatically in h264 and hevc NVENC codecs
+                expected_pix_fmt = "yuvj420p"
+            else:
+                # av1_nvenc does not utilize the yuvj420p pixel format
+                expected_pix_fmt = "yuv420p"
+            assert (
+                encoder_metadata["pix_fmt"]
+                == ffmpeg_metadata["pix_fmt"]
+                == expected_pix_fmt
+            )
