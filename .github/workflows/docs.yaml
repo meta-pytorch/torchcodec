@@ -95,10 +95,7 @@ jobs:
           ${CONDA_RUN} bash packaging/install_pytorch.sh cu${{ env.cuda_version_without_periods }} "torch torchvision"
           ${CONDA_RUN} python -c 'import torch; print(f"{torch.__version__}"); print(f"{torch.__file__}"); print(f"{torch.cuda.is_available()=}")'
       - name: Install torchcodec from the wheel
-        run: |
-          wheel_path=`find pytorch/torchcodec/dist -type f -name "*cu${{ env.cuda_version_without_periods }}-cp${{ env.python_version_without_periods }}*.whl"`
-          echo Installing $wheel_path
-          ${CONDA_RUN} python -m pip install $wheel_path -vvv
+        run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}-cp${{ env.python_version_without_periods }}*.whl"
 
       - name: Check out repo
         uses: actions/checkout@v3

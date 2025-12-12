@@ -83,30 +83,22 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Update pip
         run: python -m pip install --upgrade pip
+
       - name: Install PyTorch
         run: bash packaging/install_pytorch.sh cpu "torch torchvision"
+
       - name: Install torchcodec from the wheel
-        run: |
-          wheel_path=`find pytorch/torchcodec/dist -type f -name "*.whl"`
-          echo Installing $wheel_path
-          python -m pip install $wheel_path -vvv
+        run: bash packaging/install_torchcodec_wheel.sh
 
       - name: Check out repo
         uses: actions/checkout@v3
-      - name: Install ffmpeg, post build
-        run: |
-          # Ideally we would have checked for that before installing the wheel,
-          # but we need to checkout the repo to access this file, and we don't
-          # want to checkout the repo before installing the wheel to avoid any
-          # side-effect. It's OK.
-          source packaging/helpers.sh
-          assert_ffmpeg_not_installed
 
-          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" -c conda-forge
-          ffmpeg -version
+      - name: Install ffmpeg, post build
+        run: bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
 
       - name: Install test dependencies and setup test environment
         run: bash packaging/setup_test_env.sh
+
       - name: Run Python tests
         run: |
           pytest --override-ini="addopts=-v" test

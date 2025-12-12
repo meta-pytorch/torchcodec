@@ -90,24 +90,13 @@ jobs:
       - name: Install PyTorch
         run: ${CONDA_RUN} bash packaging/install_pytorch.sh cu${{ env.cuda_version_without_periods }} "torch torchvision"
       - name: Install torchcodec from the wheel
-        run: |
-          wheel_path=`find pytorch/torchcodec/dist -type f -name "*.whl"`
-          echo Installing $wheel_path
-          python -m pip install $wheel_path -vvv
+        run: bash packaging/install_torchcodec_wheel.sh
 
       - name: Check out repo
         uses: actions/checkout@v3
       - name: Install ffmpeg, post build
         run: |
-          # Ideally we would have checked for that before installing the wheel,
-          # but we need to checkout the repo to access this file, and we don't
-          # want to checkout the repo before installing the wheel to avoid any
-          # side-effect. It's OK.
-          source packaging/helpers.sh
-          assert_ffmpeg_not_installed
-
-          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" -c conda-forge
-          ffmpeg -version
+          bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
           echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
 
       - name: Install test dependencies and setup test environment
