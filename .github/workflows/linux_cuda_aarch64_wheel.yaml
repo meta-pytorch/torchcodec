@@ -110,25 +110,8 @@ jobs:
           ffmpeg -version
           echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
 
-      - name: Install test dependencies
-        run: |
-          # Ideally we would find a way to get those dependencies from pyproject.toml
-          python -m pip install numpy pytest pillow
-
-      - name: Delete the src/ folder just for fun
-        run: |
-          # The only reason we checked-out the repo is to get access to the
-          # tests. We don't care about the rest. Out of precaution, we delete
-          # the src/ folder to be extra sure that we're running the code from
-          # the installed wheel rather than from the source.
-          # This is just to be extra cautious and very overkill because a)
-          # there's no way the `torchcodec` package from src/ can be found from
-          # the PythonPath: the main point of `src/` is precisely to protect
-          # against that and b) if we ever were to execute code from
-          # `src/torchcodec`, it would fail loudly because the built .so files
-          # aren't present there.
-          rm -r src/
-          ls
+      - name: Install test dependencies and setup test environment
+        run: bash packaging/setup_test_env.sh
       - name: Run Python tests
         run: |
           pytest --override-ini="addopts=-v" test
