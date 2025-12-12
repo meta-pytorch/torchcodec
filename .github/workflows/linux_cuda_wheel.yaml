@@ -84,14 +84,13 @@ jobs:
           echo cuda_version_without_periods=${cuda_version_without_periods} >> $GITHUB_ENV
           python_version_without_periods=$(echo "${{ matrix.python-version }}" | sed 's/\.//g')
           echo python_version_without_periods=${python_version_without_periods} >> $GITHUB_ENV
-      - uses: actions/download-artifact@v4
-        with:
-          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cu${{ env.cuda_version_without_periods }}_x86_64
-          path: pytorch/torchcodec/dist/
+
       - name: Check out repo
         uses: actions/checkout@v3
+
       - name: Remove src/ folder
         run: bash packaging/remove_src.sh
+
       - name: Setup miniconda using test-infra
         uses: pytorch/test-infra/.github/actions/setup-miniconda@main
         with:
@@ -115,6 +114,12 @@ jobs:
         run: |
           ${CONDA_RUN} bash packaging/install_pytorch.sh cu${{ env.cuda_version_without_periods }} "torch torchvision"
           ${CONDA_RUN} python -c 'import torch; print(f"{torch.__version__}"); print(f"{torch.__file__}"); print(f"{torch.cuda.is_available()=}")'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cu${{ env.cuda_version_without_periods }}_x86_64
+          path: dist/
+
       - name: Install torchcodec from the wheel
         run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}-cp${{ env.python_version_without_periods }}*.whl"
 
@@ -144,14 +149,13 @@ jobs:
           echo cuda_version_without_periods=${cuda_version_without_periods} >> $GITHUB_ENV
           python_version_without_periods=$(echo "${{ env.PYTHON_VERSION }}" | sed 's/\.//g')
           echo python_version_without_periods=${python_version_without_periods} >> $GITHUB_ENV
-      - uses: actions/download-artifact@v4
-        with:
-          name: meta-pytorch_torchcodec__${{ env.PYTHON_VERSION }}_cu${{ env.cuda_version_without_periods }}_x86_64
-          path: pytorch/torchcodec/dist/
+
       - name: Check out repo
         uses: actions/checkout@v3
+
       - name: Remove src/ folder
         run: bash packaging/remove_src.sh
+
       - name: Setup miniconda using test-infra
         uses: pytorch/test-infra/.github/actions/setup-miniconda@main
         with:
@@ -174,6 +178,12 @@ jobs:
         run: |
           ${CONDA_RUN} bash packaging/install_pytorch.sh cu${{ env.cuda_version_without_periods }} "torch torchvision"
           ${CONDA_RUN} python -c 'import torch; print(f"{torch.__version__}"); print(f"{torch.__file__}"); print(f"{torch.cuda.is_available()=}")'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: meta-pytorch_torchcodec__${{ env.PYTHON_VERSION }}_cu${{ env.cuda_version_without_periods }}_x86_64
+          path: dist/
+
       - name: Install torchcodec from the wheel
         run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}-cp${{ env.python_version_without_periods }}*.whl"
 

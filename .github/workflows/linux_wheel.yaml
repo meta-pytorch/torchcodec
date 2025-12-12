@@ -66,11 +66,6 @@ jobs:
         ffmpeg-version-for-tests: ['4.4.2', '5.1.2', '6.1.1', '7.0.1', '8.0']
     needs: build
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cpu_x86_64
-          path: pytorch/torchcodec/dist/
-
       - name: Check out repo
         uses: actions/checkout@v3
 
@@ -94,6 +89,11 @@ jobs:
 
       - name: Install PyTorch
         run: bash packaging/install_pytorch.sh cpu "torch torchvision"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cpu_x86_64
+          path: dist/
 
       - name: Install torchcodec from the wheel
         run: bash packaging/install_torchcodec_wheel.sh
