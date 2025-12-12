@@ -5,6 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 """
+.. meta::
+   :description: Learn how to apply transforms during video decoding for improved memory efficiency and performance.
+
 =======================================================
 Decoder Transforms: Applying transforms during decoding
 =======================================================
@@ -167,8 +170,9 @@ assert (abs_diff <= 1).float().mean() >= 0.998
 #
 #      1. The names are the same.
 #      2. Default behaviors are the same.
-#      3. The parameters for the :class:`~torchcodec.transforms.DecoderTransform` object are a subset of the
-#         TorchVision :class:`~torchvision.transforms.v2.Transform` object.
+#      3. The parameters for the :class:`~torchcodec.transforms.DecoderTransform`
+#         object are a subset of the TorchVision :class:`~torchvision.transforms.v2.Transform`
+#         object.
 #      4. Parameters with the same name control the same behavior and accept a
 #         subset of the same types.
 #      5. The difference between the frames returned by a decoder transform and
@@ -177,13 +181,20 @@ assert (abs_diff <= 1).float().mean() >= 0.998
 #
 # .. note::
 #
-#     We do not encourage *intentionally* mixing usage of TorchCodec's decoder
-#     transforms and TorchVision transforms. That is, if you use TorchCodec's
-#     decoder transforms during training, you should also use them during
-#     inference. And if you decode full frames and apply TorchVision's
-#     transforms to those fully decoded frames during training, you should also
-#     do the same during inference. We provide the similarity guarantees to mitigate
-#     the harm when the two techniques are *unintentionally* mixed.
+#     Applying the exact same transforms during training and inference is
+#     important for model perforamnce. For example, if you use decoder
+#     transforms to resize frames during training, you should also use decoder
+#     transforms to resize frames during inference. We provide the similarity
+#     guarantees to mitigate the harm when the two techniques are
+#     *unintentionally* mixed. That is, if you use decoder transforms to resize
+#     frames during training, but use TorchVisions's
+#     :class:`~torchvision.transforms.v2.Resize` during inference, our guarantees
+#     mitigate the harm to model performance. But we **reccommend against** this kind of
+#     mixing.
+#
+#     It is appropriate and expected to use some decoder transforms and some TorchVision
+#     transforms, as long as the exact same pre-processing operations are performed during
+#     training and inference.
 
 # %%
 # Decoder transform pipelines
