@@ -139,7 +139,7 @@ jobs:
       CUDA_VERSION: '12.6'
       FFMPEG_VERSION: '7'
     container:
-      image: "pytorch/manylinux2_28-builder:cuda${{ env.CUDA_VERSION }}"
+      image: "pytorch/manylinux2_28-builder:cuda12.6"  # must be same as env!!
       options: "--gpus all -e NVIDIA_DRIVER_CAPABILITIES=video,compute,utility"
     needs: build
     steps:
