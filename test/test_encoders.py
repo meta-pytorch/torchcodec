@@ -780,7 +780,7 @@ class TestVideoEncoder:
         if device == "cuda":
             with pytest.raises(
                 RuntimeError,
-                match="GPU encoding only supports nv12 and yuv420p pixel formats, got yuv444p",
+                match="GPU Video encoding currently only supports the nv12 pixel format. Do not set pixel_format to use nv12 by default.",
             ):
                 getattr(encoder, method)(**valid_params, pixel_format="yuv444p")
             return
@@ -1353,13 +1353,13 @@ class TestVideoEncoder:
         ],
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    @pytest.mark.parametrize("pixel_format", ("nv12", "yuv420p", None))
+    # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
     # BT.601, BT.709, BT.2020
     @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc"))
     # Full/PC range, Limited/TV range
     @pytest.mark.parametrize("color_range", ("pc", "tv"))
     def test_nvenc_against_ffmpeg_cli(
-        self, tmp_path, format_codec, method, pixel_format, color_space, color_range
+        self, tmp_path, format_codec, method, color_space, color_range
     ):
         # Encode with FFmpeg CLI using nvenc codecs
         format, codec = format_codec
@@ -1395,10 +1395,7 @@ class TestVideoEncoder:
             ffmpeg_cmd.extend(["-colorspace", color_space])
         if color_range:
             ffmpeg_cmd.extend(["-color_range", color_range])
-        if pixel_format:
-            ffmpeg_cmd.extend(["-pix_fmt", pixel_format])
-        else:  # VideoEncoder will default to yuv420p for nvenc codecs
-            ffmpeg_cmd.extend(["-pix_fmt", "yuv420p"])
+        ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # torchcodec uses nv12 by default
         if codec == "av1_nvenc":
             ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1
         ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
@@ -1418,7 +1415,6 @@ class TestVideoEncoder:
             encoder.to_file(
                 dest=encoder_output_path,
                 codec=codec,
-                pixel_format=pixel_format,
                 extra_options=encoder_extra_options,
             )
             encoder_output = encoder_output_path
@@ -1426,7 +1422,6 @@ class TestVideoEncoder:
             encoder_output = encoder.to_tensor(
                 format=format,
                 codec=codec,
-                pixel_format=pixel_format,
                 extra_options=encoder_extra_options,
             )
         elif method == "to_file_like":
@@ -1435,7 +1430,6 @@ class TestVideoEncoder:
                 file_like=file_like,
                 format=format,
                 codec=codec,
-                pixel_format=pixel_format,
                 extra_options=encoder_extra_options,
             )
             encoder_output = file_like.getvalue()

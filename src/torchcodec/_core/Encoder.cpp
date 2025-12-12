@@ -777,18 +777,19 @@ void VideoEncoder::initializeEncoder(
   if (videoStreamOptions.pixelFormat.has_value()) {
     outPixelFormat_ =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
-    if (frames_.device().is_cuda() &&
-        !(outPixelFormat_ == AV_PIX_FMT_NV12 ||
-          outPixelFormat_ == AV_PIX_FMT_YUV420P)) {
+    // TODO-VideoEncoder: Enable more pixel formats to be set by user
+    // and handled with the appropriate NPP function.
+    // Currently, we only accept nv12 pixel format when encoding on GPU.
+    if (frames_.device().is_cuda() && outPixelFormat_ != AV_PIX_FMT_NV12) {
       TORCH_CHECK(
           false,
-          "GPU encoding only supports nv12 and yuv420p pixel formats, got ",
-          av_get_pix_fmt_name(outPixelFormat_));
+          "GPU Video encoding currently only supports the nv12 pixel format. "
+          "Do not set pixel_format to use nv12 by default.");
     }
   } else {
     if (frames_.device().is_cuda()) {
-      // Default to YUV420P for CUDA encoding if unset.
-      outPixelFormat_ = AV_PIX_FMT_YUV420P;
+      // Default to nv12 pixel format when encoding on GPU.
+      outPixelFormat_ = AV_PIX_FMT_NV12;
     } else {
       const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
       // Use first listed pixel format as default (often yuv420p).

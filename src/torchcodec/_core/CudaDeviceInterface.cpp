@@ -373,6 +373,10 @@ std::string CudaDeviceInterface::getDetails() {
 // Below are methods exclusive to video encoding:
 // --------------------------------------------------------------------------
 namespace {
+// For background on these matrices, see the note:
+// [YUV -> RGB Color Conversion, color space and color range]
+// https://github.com/meta-pytorch/torchcodec/blob/main/src/torchcodec/_core/CUDACommon.cpp#L63-L65
+// TODO Video-Encoder: Extend note to explain limited vs full range
 // RGB to YUV conversion matrices to use in NPP color conversion functions
 struct ColorConversionMatrices {
   static constexpr Npp32f BT601_LIMITED[3][4] = {
@@ -489,21 +493,12 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
           getConversionMatrix(codecContext),
           *nppCtx_);
       break;
-    case AV_PIX_FMT_YUV420P:
-      status = nppiRGBToYUV420_8u_ColorTwist32f_C3P3R_Ctx(
-          static_cast<const Npp8u*>(hwcFrame.data_ptr()),
-          hwcFrame.stride(0) * hwcFrame.element_size(),
-          avFrame->data,
-          avFrame->linesize,
-          oSizeROI,
-          getConversionMatrix(codecContext),
-          *nppCtx_);
-      break;
     default:
       TORCH_CHECK(
           false,
-          "CUDA encoding only supports NV12 and YUV420P formats, got ",
-          av_get_pix_fmt_name(targetPixelFormat));
+          "GPU encoding expected to encode into nv12 pixel format, but got ",
+          av_get_pix_fmt_name(targetPixelFormat),
+          ". This should not happen, please report this to the TorchCodec repo");
   }
 
   TORCH_CHECK(
