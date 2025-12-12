@@ -11,8 +11,8 @@ Decoder Transforms: Applying transforms during decoding
 
 In this example, we will demonstrate how to use the ``transforms`` parameter of
 the :class:`~torchcodec.decoders.VideoDecoder` class. This parameter allows us
-to specify a list of :class:`~torchcodec.transforms.DecoderTransform` or
-:class:`~torchvision.transforms.v2.Transform` objects. These objects serve as
+to specify a list of :class:`torchcodec.transforms.DecoderTransform` or
+:class:`torchvision.transforms.v2.Transform` objects. These objects serve as
 transform specificiations that the :class:`~torchcodec.decoders.VideoDecoder`
 will apply during the decoding process.
 """
@@ -94,20 +94,9 @@ print(f"Penguin video metadata: {VideoDecoder(penguin_video_path).metadata}")
 # -----------------------------------------
 #
 # A pre-processing pipeline for videos during training will typically apply a
-# set of transforms for three main reasons:
-#
-#   1. **Normalization**: Videos can have many different lengths, resolutions,
-#      and frame rates. Normalizing all videos to the same characteristics
-#      leads to better model performance.
-#   2. **Data reduction**: Training on higher resolution frames may lead to better
-#      model performance, but it will be more expensive both at training and
-#      inference time. As a consequence, many video pre-processing pipelines reduce
-#      frame dimensions through resizing and cropping.
-#   3. **Variety**: Applying random transforms (flips, crops, perspective shifts)
-#      to the same frames during training can improve model performance.
-#
-# Below is a simple example of applying the
-# :class:`~torchvision.transforms.v2.Resize` transform to a single frame:
+# set of transforms for a variety of reasons. Below is a simple example of
+# applying TorchVision's :class:`~torchvision.transforms.v2.Resize` transform to a single
+# frame **after** the decoder returns it:
 
 from torchvision.transforms import v2
 
@@ -121,7 +110,7 @@ plot(resized_after, title="Resized to 480x640 after decoding")
 # In the example above, ``full_decoder`` returns a video frame that has the
 # dimensions (2160, 3840) which is then resized down to (480, 640). But with the
 # ``transforms`` parameter of :class:`~torchcodec.decoders.VideoDecoder` we can
-# specify for the resize to  happen during decoding:
+# specify for the resize to  happen **during** decoding!
 
 resize_decoder = VideoDecoder(
     penguin_video_path,
@@ -135,9 +124,15 @@ plot(resized_during, title="Resized to 480x640 during decoding")
 # TorchCodec's relationship to TorchVision transforms
 # -----------------------------------------------------
 # Notably, in our examples we are passing in TorchVision
-# :class:`~torchvision.transforms.v2.Transform` objects as our transforms. We
+# :class:`~torchvision.transforms.v2.Transform` objects as our transforms.
+# However, :class:`~torchcodec.decoders.VideoDecoder` accepts TorchVision
+# transforms as a matter of convenience. TorchVision is **not required** to use
+# decoder transforms.
+#
+# Every TorchVision transform that :class:`~torchcodec.decoders.VideoDecoder` accepts
+# has a complementary transform defined in :mod:`torchcodec.transforms`. We
 # would have gotten equivalent behavior if we had passed in the
-# :class:`~torchcodec.transforms.Resize` object that is a part of TorchCodec.
+# :class:`torchcodec.transforms.Resize` object that is a part of TorchCodec.
 # :class:`~torchcodec.decoders.VideoDecoder` accepts both objects as a matter of
 # convenience and to clarify the relationship between the transforms that TorchCodec
 # applies and the transforms that TorchVision offers.
@@ -150,16 +145,16 @@ abs_diff = (resized_after.float() - resized_during.float()).abs()
 
 # %%
 # But they're close enough that models won't be able to tell a difference:
-(abs_diff <= 1).float().mean() >= 0.998
+assert (abs_diff <= 1).float().mean() >= 0.998
 
 # %%
 # While :class:`~torchcodec.decoders.VideoDecoder` accepts TorchVision transforms as
 # *specifications*, it is not actually using the TorchVision implementation of these
 # transforms. Instead, it is mapping them to equivalent
 # `FFmpeg filters <https://ffmpeg.org/ffmpeg-filters.html>`_. That is,
-# :class:`torchvision.transforms.v2.Resize` is mapped to
-# `scale <https://ffmpeg.org/ffmpeg-filters.html#scale-1>`_ and
-# :class:`torchvision.transforms.v2.CenterCrop` is mapped to
+# :class:`torchvision.transforms.v2.Resize` and :class:`torchcodec.transforms.Resize` are mapped to
+# `scale <https://ffmpeg.org/ffmpeg-filters.html#scale-1>`_; and
+# :class:`torchvision.transforms.v2.CenterCrop` and :class:`torchcodec.transforms.CenterCrop` are mapped to
 # `crop <https://ffmpeg.org/ffmpeg-filters.html#crop>`_.
 #
 # The relationships we ensure between TorchCodec :class:`~torchcodec.transforms.DecoderTransform` objects
@@ -188,7 +183,7 @@ abs_diff = (resized_after.float() - resized_during.float()).abs()
 # %%
 # Decoder transform pipelines
 # ---------------------------
-# So far, we've only provided a single transform to the `transform` parameter to
+# So far, we've only provided a single transform to the ``transform`` parameter to
 # :class:`~torchcodec.decoders.VideoDecoder`. But it
 # actually accepts a list of transforms, which become a pipeline of transforms.
 # The order of the list matters: the first transform in the list will receive
@@ -200,12 +195,12 @@ abs_diff = (resized_after.float() - resized_during.float()).abs()
 crop_resize_decoder = VideoDecoder(
     penguin_video_path,
     transforms = [
+        v2.CenterCrop(size=(1280, 1664)),
         v2.Resize(size=(480, 640)),
-        v2.CenterCrop(size=(315, 220))
     ]
 )
 crop_resized_during = crop_resize_decoder[5]
-plot(crop_resized_during, title="Resized to 480x640 during decoding then center cropped")
+plot(crop_resized_during, title="Center cropped then resized to 480x640")
 
 # %%
 # Performance: memory efficiency and speed
@@ -213,13 +208,15 @@ plot(crop_resized_during, title="Resized to 480x640 during decoding then center 
 #
 # The main motivation for decoder transforms is *memory efficiency*,
 # particularly when applying transforms that reduce the size of a frame, such
-# as resize and crop. Because the transforms are applied during decoding, the
-# full frame is never returned to the Python layer. As a result, there is
-# significantly less pressure on the Python gargabe collector.
+# as resize and crop. Because the FFmpeg layer knows all of the transforms it
+# needs to apply during decoding, it's able to efficiently reuse memory.
+# Further, full resolution frames are never returned to the Python layer.  As a
+# result, there is significantly less total memory needed and less pressure on
+# the Python garbage collector.
 #
 # In `benchmarks <https://github.com/meta-pytorch/torchcodec/blob/f6a816190cbcac417338c29d5e6fac99311d054f/benchmarks/decoders/benchmark_transforms.py>`_
 # reducing frames from (1080, 1920) down to (135, 240), we have observed a
-# reduction in peak resident set size from 4.3 GB to 0.4 MB.
+# reduction in peak resident set size from 4.3 GB to 0.4 GB.
 #
 # There is sometimes a runtime benefit, but it is dependent on the number of
 # threads that the :class:`~torchcodec.decoders.VideoDecoder` tells FFmpeg
@@ -251,8 +248,8 @@ def sample_decoder_transforms(num_threads: int):
     decoder = VideoDecoder(
         penguin_video_path,
         transforms = [
+            v2.CenterCrop(size=(1280, 1664)),
             v2.Resize(size=(480, 640)),
-            v2.CenterCrop(size=(315, 220))
         ],
         seek_mode="approximate",
         num_ffmpeg_threads=num_threads,
@@ -266,6 +263,8 @@ def sample_decoder_transforms(num_threads: int):
 
 
 def sample_torchvision_transforms(num_threads: int):
+    if num_threads > 0:
+        torch.set_num_threads(num_threads)
     decoder = VideoDecoder(
         penguin_video_path,
         seek_mode="approximate",
@@ -276,12 +275,14 @@ def sample_torchvision_transforms(num_threads: int):
         num_clips=1,
         num_frames_per_clip=200
     )
-    transformed_frames = []
-    for frame in frames.data[0]:
-        frame = v2.Resize(size=(480, 640))(frame)
-        frame = v2.CenterCrop(size=(315, 220))(frame)
-        transformed_frames.append(frame)
-    assert len(transformed_frames) == 200
+    transforms = v2.Compose(
+        [
+            v2.CenterCrop(size=(1280, 1664)),
+            v2.Resize(size=(480, 640)),
+        ]
+    )
+    transformed_frames = transforms(frames.data)
+    assert transformed_frames.shape[1] == 200
 
 # %%
 # When the :class:`~torchcodec.decoders.VideoDecoder` object sets the number of
@@ -296,8 +297,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 
 # %%
 # The reason is that FFmpeg is applying the decoder transforms in parallel.
-# However, if the number of threads is 1 (as is the default), then there often is no
-# runtime benefit to using decoder transforms. Using the TorchVision transforms may
+# However, if the number of threads is 1 (as is the default), then there is often
+# less benefit to using decoder transforms. Using the TorchVision transforms may
 # even be faster!
 
 print(f"decoder transforms:    {bench(sample_decoder_transforms, num_threads=1)}")

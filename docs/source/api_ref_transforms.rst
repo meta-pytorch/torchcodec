@@ -4,9 +4,11 @@
 torchcodec.transforms
 =====================
 
+.. automodule:: torchcodec.transforms
+
 .. currentmodule:: torchcodec.transforms
 
-For a tutorial, see: TODO_DECODER_TRANSFORMS_TUTORIAL.
+For a tutorial, see: :ref:`sphx_glr_generated_examples_decoding_transforms.py`.
 
 .. autosummary::
     :toctree: generated/
