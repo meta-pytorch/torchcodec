@@ -20,10 +20,10 @@ set -euo pipefail
 
 WHEEL_PATTERN="${1:-*.whl}"
 
-wheel_path=$(find pytorch/torchcodec/dist -type f -name "$WHEEL_PATTERN")
+wheel_path=$(find dist -type f -name "$WHEEL_PATTERN")
 
 if [ -z "$wheel_path" ]; then
-  echo "Error: No wheel found matching pattern '$WHEEL_PATTERN' in pytorch/torchcodec/dist/"
+  echo "Error: No wheel found matching pattern '$WHEEL_PATTERN' in dist/"
   exit 1
 fi
 
