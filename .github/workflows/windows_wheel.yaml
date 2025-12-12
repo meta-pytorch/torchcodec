@@ -106,7 +106,8 @@ jobs:
         run: bash packaging/install_torchcodec_wheel.sh
 
       - name: Install ffmpeg, post build
-        run: bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
+        # need -l for conda to be exposed
+        run: bash -l packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
 
       - name: Install test dependencies
         run: bash packaging/install_test_dependencies.sh
