@@ -1336,7 +1336,6 @@ class TestVideoEncoder:
 
     @needs_ffmpeg_cli
     @pytest.mark.needs_cuda
-    # @pytest.mark.parametrize("format", ("mov", "mp4", "mkv"))
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
     @pytest.mark.parametrize(
@@ -1390,8 +1389,8 @@ class TestVideoEncoder:
         ffmpeg_cmd.extend(["-qp", str(qp)])
         ffmpeg_cmd.extend([ffmpeg_encoded_path])
         subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
         encoder_extra_options = {"qp": qp}
         if method == "to_file":
             encoder_output_path = str(tmp_path / f"nvenc_output.{format}")
