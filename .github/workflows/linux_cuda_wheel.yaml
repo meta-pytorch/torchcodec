@@ -1,4 +1,4 @@
-name: Build and test Linux CUDA wheels
+name: Build and test Linux CUDA wheels and docs
 
 on:
   pull_request:
@@ -126,3 +126,66 @@ jobs:
       - name: Run Python benchmark
         run: |
           ${CONDA_RUN} time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none
+
+  build-docs:
+    runs-on: linux.4xlarge.nvidia.gpu
+    env:
+      PYTHON_VERSION: '3.10'
+      CUDA_VERSION: '12.6'
+      FFMPEG_VERSION: '7'
+    container:
+      image: "pytorch/manylinux2_28-builder:cuda${{ env.CUDA_VERSION }}"
+      options: "--gpus all -e NVIDIA_DRIVER_CAPABILITIES=video,compute,utility"
+    needs: build
+    steps:
+      - name: Setup env vars
+        run: |
+          cuda_version_without_periods=$(echo "${{ env.CUDA_VERSION }}" | sed 's/\.//g')
+          echo cuda_version_without_periods=${cuda_version_without_periods} >> $GITHUB_ENV
+          python_version_without_periods=$(echo "${{ env.PYTHON_VERSION }}" | sed 's/\.//g')
+          echo python_version_without_periods=${python_version_without_periods} >> $GITHUB_ENV
+      - uses: actions/download-artifact@v4
+        with:
+          name: meta-pytorch_torchcodec__${{ env.PYTHON_VERSION }}_cu${{ env.cuda_version_without_periods }}_x86_64
+          path: pytorch/torchcodec/dist/
+      - name: Check out repo
+        uses: actions/checkout@v3
+      - name: Remove src/ folder
+        run: bash packaging/remove_src.sh
+      - name: Setup miniconda using test-infra
+        uses: pytorch/test-infra/.github/actions/setup-miniconda@main
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          # We install conda packages at the start because otherwise conda may have conflicts with dependencies.
+          default-packages: "nvidia/label/cuda-${{ env.CUDA_VERSION }}.0::libnpp nvidia::cuda-nvrtc=${{ env.CUDA_VERSION }} nvidia::cuda-toolkit=${{ env.CUDA_VERSION }} nvidia::cuda-cudart=${{ env.CUDA_VERSION }} nvidia::cuda-driver-dev=${{ env.CUDA_VERSION }} conda-forge::ffmpeg=${{ env.FFMPEG_VERSION }}"
+      - name: Check env, set LD_LIBRARY_PATH
+        run: |
+          ${CONDA_RUN} env
+          ${CONDA_RUN} conda info
+          ${CONDA_RUN} nvidia-smi
+          ${CONDA_RUN} conda list
+          echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
+      - name: Assert ffmpeg exists
+        run: |
+          ${CONDA_RUN} ffmpeg -buildconf
+      - name: Update pip
+        run: ${CONDA_RUN} python -m pip install --upgrade pip
+      - name: Install PyTorch
+        run: |
+          ${CONDA_RUN} bash packaging/install_pytorch.sh cu${{ env.cuda_version_without_periods }} "torch torchvision"
+          ${CONDA_RUN} python -c 'import torch; print(f"{torch.__version__}"); print(f"{torch.__file__}"); print(f"{torch.cuda.is_available()=}")'
+      - name: Install torchcodec from the wheel
+        run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}-cp${{ env.python_version_without_periods }}*.whl"
+
+      - name: Install doc dependencies
+        run: |
+          cd docs
+          ${CONDA_RUN} python -m pip install -r requirements.txt
+      - name: Build docs
+        run: |
+          cd docs
+          ${CONDA_RUN} make html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Built-Docs
+          path: docs/build/html/
