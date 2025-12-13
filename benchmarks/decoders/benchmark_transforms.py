@@ -167,12 +167,10 @@ def main():
                 f"\nSampling {num_fraction * 100}%, {num_frames_to_sample}, of {metadata.num_frames} frames"
             )
 
-            # Generate timestamps for decoder API
             uniform_timestamps = [
                 i * duration / num_frames_to_sample for i in range(num_frames_to_sample)
             ]
 
-            # Resize at different dimensions
             for dims_fraction in args.input_dimension_fractions:
                 dims = (
                     int(input_height * dims_fraction),
