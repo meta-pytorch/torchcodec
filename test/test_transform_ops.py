@@ -543,6 +543,57 @@ class TestCoreVideoDecoderTransformOps:
             else:
                 assert_frames_equal(frame_resize, frame_ref)
 
+    @pytest.mark.parametrize(
+        "height_scaling_factor, width_scaling_factor",
+        ((0.5, 0.5), (0.25, 0.25), (1.5, 1.5)),
+    )
+    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
+    def test_resize_swscale_vs_default(
+        self, video, height_scaling_factor, width_scaling_factor
+    ):
+        """Test that swscale resize produces the same results as the default behavior.
+
+        This test ensures that the double swscale path (color conversion + resize)
+        produces equivalent results to the default/implicit path (VideoDecoder).
+        """
+        height = int(video.get_height() * height_scaling_factor)
+        width = int(video.get_width() * width_scaling_factor)
+
+        default_decoder = VideoDecoder(
+            video.path,
+            transforms=[v2.Resize(size=(height, width))],
+            seek_mode="approximate",
+            num_ffmpeg_threads=1,
+        )
+
+        swscale_decoder = create_from_file(str(video.path))
+        _add_video_stream(
+            swscale_decoder,
+            stream_index=None,
+            num_threads=1,
+            transform_specs=f"resize, {height}, {width}",
+            color_conversion_library="swscale",
+        )
+
+        num_frames = default_decoder.metadata.num_frames
+        for frame_index in [
+            0,
+            int(num_frames * 0.25),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            num_frames - 1,
+        ]:
+            default_frame = default_decoder[frame_index].data
+            swscale_frame, *_ = get_frame_at_index(
+                swscale_decoder, frame_index=frame_index
+            )
+
+            expected_shape = (video.get_num_color_channels(), height, width)
+            assert default_frame.shape == expected_shape
+            assert swscale_frame.shape == expected_shape
+
+            assert_frames_equal(default_frame, swscale_frame)
+
     def test_resize_transform_fails(self):
         decoder = create_from_file(str(NASA_VIDEO.path))
         with pytest.raises(

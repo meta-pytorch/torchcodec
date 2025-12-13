@@ -100,6 +100,12 @@ class CpuDeviceInterface : public DeviceInterface {
   UniqueSwsContext swsContext_;
   SwsFrameContext prevSwsFrameContext_;
 
+  // Cached swscale context for resizing in RGB24 space (used in double swscale
+  // path). Like the color conversion context above, we cache this to avoid
+  // recreating it for every frame.
+  UniqueSwsContext resizeSwsContext_;
+  SwsFrameContext prevResizeSwsFrameContext_;
+
   // We pass these filters to FFmpeg's filtergraph API. It is a simple pipeline
   // of what FFmpeg calls "filters" to apply to decoded frames before returning
   // them. In the PyTorch ecosystem, we call these "transforms". During
@@ -118,6 +124,11 @@ class CpuDeviceInterface : public DeviceInterface {
   // getColorConversionLibrary().
   bool areTransformsSwScaleCompatible_;
   bool userRequestedSwScale_;
+
+  // The flags we supply to the resize swscale context. The flags control the
+  // resizing algorithm. We default to bilinear. Users can override this with a
+  // ResizeTransform that specifies a different interpolation mode.
+  int swsFlags_ = SWS_BILINEAR;
 
   bool initialized_ = false;
 

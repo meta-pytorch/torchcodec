@@ -5,6 +5,7 @@ from time import perf_counter_ns
 
 import torch
 from torch import Tensor
+from torchcodec._core import _add_video_stream, create_from_file, get_frames_by_pts
 from torchcodec.decoders import VideoDecoder
 from torchvision.transforms import v2
 
@@ -93,6 +94,22 @@ def decoder_crop(
     return transformed_frames
 
 
+def decoder_resize_swscale(
+    path: Path, pts_seconds: list[float], dims: tuple[int, int], num_threads: int
+) -> Tensor:
+    height, width = dims
+    decoder = create_from_file(str(path), seek_mode="approximate")
+    _add_video_stream(
+        decoder,
+        stream_index=None,
+        num_threads=num_threads,
+        transform_specs=f"resize, {height}, {width}",
+        color_conversion_library="swscale",
+    )
+    frames, *_ = get_frames_by_pts(decoder, timestamps=pts_seconds)
+    return frames
+
+
 def main():
     parser = ArgumentParser()
     parser.add_argument("--path", type=str, help="path to file", required=True)
@@ -120,6 +137,11 @@ def main():
         type=float,
         default=[0.5, 0.25, 0.125],
     )
+    parser.add_argument(
+        "--benchmark-swscale-vs-filtergraph",
+        action="store_true",
+        help="Run swscale vs filtergraph benchmarks",
+    )
 
     args = parser.parse_args()
     path = Path(args.path)
@@ -133,6 +155,53 @@ def main():
 
     input_height = metadata.height
     input_width = metadata.width
+
+    if args.benchmark_swscale_vs_filtergraph:
+        print("\n" + "=" * 70)
+        print("SWSCALE VS FILTERGRAPH BENCHMARKS")
+        print("=" * 70)
+
+        for num_fraction in args.total_frame_fractions:
+            num_frames_to_sample = math.ceil(metadata.num_frames * num_fraction)
+            print(
+                f"\nSampling {num_fraction * 100}%, {num_frames_to_sample}, of {metadata.num_frames} frames"
+            )
+
+            # Generate timestamps for decoder API
+            uniform_timestamps = [
+                i * duration / num_frames_to_sample for i in range(num_frames_to_sample)
+            ]
+
+            # Resize at different dimensions
+            for dims_fraction in args.input_dimension_fractions:
+                dims = (
+                    int(input_height * dims_fraction),
+                    int(input_width * dims_fraction),
+                )
+
+                print(f"\n--- Resize to {dims} ---")
+                times = bench(
+                    decoder_resize_swscale,
+                    path,
+                    uniform_timestamps,
+                    dims,
+                    args.num_threads,
+                    num_exp=args.num_exp,
+                )
+                report_stats(times, prefix=f"swscale resize{dims}")
+
+                times = bench(
+                    decoder_resize,
+                    path,
+                    uniform_timestamps,
+                    dims,
+                    args.num_threads,
+                    num_exp=args.num_exp,
+                )
+                report_stats(times, prefix=f"filtergraph resize{dims}")
+
+        return
+
     for num_fraction in args.total_frame_fractions:
         num_frames_to_sample = math.ceil(metadata.num_frames * num_fraction)
         print(
