@@ -337,12 +337,19 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
 // appropriately set, so we just go off and find the matching codec for the CUDA
 // device
 std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
-    const AVCodecID& codecId) {
+    const AVCodecID& codecId,
+    bool isDecoder) {
   void* i = nullptr;
   const AVCodec* codec = nullptr;
   while ((codec = av_codec_iterate(&i)) != nullptr) {
-    if (codec->id != codecId || !av_codec_is_decoder(codec)) {
-      continue;
+    if (isDecoder) {
+      if (codec->id != codecId || !av_codec_is_decoder(codec)) {
+        continue;
+      }
+    } else {
+      if (codec->id != codecId || !av_codec_is_encoder(codec)) {
+        continue;
+      }
     }
 
     const AVCodecHWConfig* config = nullptr;
@@ -487,5 +494,4 @@ void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
   }
   codecContext->hw_frames_ctx = hwFramesCtxRef;
 }
-
 } // namespace facebook::torchcodec
