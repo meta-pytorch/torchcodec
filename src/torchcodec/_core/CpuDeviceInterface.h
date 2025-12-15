@@ -19,7 +19,8 @@ class CpuDeviceInterface : public DeviceInterface {
   virtual ~CpuDeviceInterface() {}
 
   std::optional<const AVCodec*> findCodec(
-      [[maybe_unused]] const AVCodecID& codecId) override {
+      [[maybe_unused]] const AVCodecID& codecId,
+      [[maybe_unused]] bool isDecoder = true) override {
     return std::nullopt;
   }
 
