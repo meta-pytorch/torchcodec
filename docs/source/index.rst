@@ -92,6 +92,14 @@ Decoding
 
         How to apply transforms while decoding
 
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Performance Tips
+        :img-top: _static/img/card-background.svg
+        :link: generated_examples/decoding/performance_tips.html
+        :link-type: url
+
+        Tips for optimizing video decoding performance
+
 
 Encoding
 ^^^^^^^^

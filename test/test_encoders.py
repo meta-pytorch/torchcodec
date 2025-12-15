@@ -19,6 +19,7 @@ from .utils import (
     get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
     in_fbcode,
+    IN_GITHUB_CI,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
     needs_ffmpeg_cli,
@@ -852,6 +853,8 @@ class TestVideoEncoder:
         ),
     )
     def test_contiguity(self, method, tmp_path, device):
+        if get_ffmpeg_major_version() == 4 and device == "cuda":
+            pytest.skip("CUDA + FFmpeg 4 test is flaky")
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal
         # frame tensors, one is contiguous while the other is non-contiguous.
@@ -882,7 +885,6 @@ class TestVideoEncoder:
             common_params = dict(
                 crf=0,
                 pixel_format="yuv444p" if device == "cpu" else None,
-                codec="h264_nvenc" if device != "cpu" else None,
             )
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
@@ -1334,24 +1336,28 @@ class TestVideoEncoder:
 
     @needs_ffmpeg_cli
     @pytest.mark.needs_cuda
-    # TODO-VideoEncoder: Auto-select codec for GPU encoding
-    @pytest.mark.parametrize(
-        "format_codec",
-        [
-            ("mov", "h264_nvenc"),
-            ("mp4", "hevc_nvenc"),
-            ("avi", "h264_nvenc"),
-            # TODO-VideoEncoder: add in_CI mark, similar to in_fbcode
-            # ("mkv", "av1_nvenc"), # av1_nvenc is not supported on CI
-        ],
-    )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
-    def test_nvenc_against_ffmpeg_cli(self, tmp_path, format_codec, method):
+    @pytest.mark.parametrize(
+        ("format", "codec"),
+        [
+            ("mov", None),  # will default to h264_nvenc
+            ("mov", "h264_nvenc"),
+            ("avi", "h264_nvenc"),
+            ("mp4", "hevc_nvenc"),  # use non-default codec
+            pytest.param(
+                "mkv",
+                "av1_nvenc",
+                marks=pytest.mark.skipif(
+                    IN_GITHUB_CI, reason="av1_nvenc is not supported on CI"
+                ),
+            ),
+        ],
+    )
+    def test_nvenc_against_ffmpeg_cli(self, tmp_path, method, format, codec):
         # Encode with FFmpeg CLI using nvenc codecs
-        format, codec = format_codec
         device = "cuda"
-        qp = 1  # Lossless (qp=0) is not supported on av1_nvenc, so we use 1
+        qp = 1  # Use near lossless encoding to reduce noise and support av1_nvenc
         source_frames = self.decode(TEST_SRC_2_720P.path).data.to(device)
 
         temp_raw_path = str(tmp_path / "temp_input.raw")
@@ -1374,21 +1380,18 @@ class TestVideoEncoder:
             str(frame_rate),
             "-i",
             temp_raw_path,
-            "-c:v",
-            codec,  # Use specified NVENC hardware encoder
         ]
+        # CLI requires explicit codec for nvenc
+        ffmpeg_cmd.extend(["-c:v", codec if codec is not None else "h264_nvenc"])
+        # VideoEncoder will select an NVENC encoder by default since the frames are on GPU.
 
         ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # Output format is always NV12
-        if codec == "av1_nvenc":
-            ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1
-        ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
+        ffmpeg_cmd.extend(["-qp", str(qp)])
         ffmpeg_cmd.extend([ffmpeg_encoded_path])
         subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
         encoder_extra_options = {"qp": qp}
-        if codec == "av1_nvenc":
-            encoder_extra_options["rc"] = 0  # constqp mode
         if method == "to_file":
             encoder_output_path = str(tmp_path / f"nvenc_output.{format}")
             encoder.to_file(

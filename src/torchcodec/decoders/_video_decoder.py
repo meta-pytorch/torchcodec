@@ -9,6 +9,7 @@ import io
 import json
 import numbers
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -23,6 +24,56 @@ from torchcodec.decoders._decoder_utils import (
 )
 from torchcodec.transforms import DecoderTransform
 from torchcodec.transforms._decoder_transforms import _make_transform_specs
+
+
+@dataclass
+class CpuFallbackStatus:
+    """Information about CPU fallback status.
+
+    This class tracks whether the decoder fell back to CPU decoding.
+    Users should not instantiate this class directly; instead, access it
+    via the :attr:`VideoDecoder.cpu_fallback` attribute.
+
+    Usage:
+
+    - Use ``str(cpu_fallback_status)`` or ``print(cpu_fallback_status)`` to see the cpu fallback status
+    - Use ``if cpu_fallback_status:`` to check if any fallback occurred
+    """
+
+    status_known: bool = False
+    """Whether the fallback status has been determined.
+    For the Beta CUDA backend (see :func:`~torchcodec.decoders.set_cuda_backend`),
+    this is always ``True`` immediately after decoder creation.
+    For the FFmpeg CUDA backend, this becomes ``True`` after decoding
+    the first frame."""
+    _nvcuvid_unavailable: bool = field(default=False, init=False)
+    _video_not_supported: bool = field(default=False, init=False)
+    _is_fallback: bool = field(default=False, init=False)
+    _backend: str = field(default="", init=False)
+
+    def __bool__(self):
+        """Returns True if fallback occurred."""
+        return self.status_known and self._is_fallback
+
+    def __str__(self):
+        """Returns a human-readable string representation of the cpu fallback status."""
+        if not self.status_known:
+            return f"[{self._backend}] Fallback status: Unknown"
+
+        reasons = []
+        if self._nvcuvid_unavailable:
+            reasons.append("NVcuvid unavailable")
+        elif self._video_not_supported:
+            reasons.append("Video not supported")
+        elif self._is_fallback:
+            reasons.append("Unknown reason - try the Beta interface to know more!")
+
+        if reasons:
+            return (
+                f"[{self._backend}] Fallback status: Falling back due to: "
+                + ", ".join(reasons)
+            )
+        return f"[{self._backend}] Fallback status: No fallback required"
 
 
 class VideoDecoder:
@@ -103,6 +154,10 @@ class VideoDecoder:
         stream_index (int): The stream index that this decoder is retrieving frames from. If a
             stream index was provided at initialization, this is the same value. If it was left
             unspecified, this is the :term:`best stream`.
+        cpu_fallback (CpuFallbackStatus): Information about whether the decoder fell back to CPU
+            decoding. Use ``bool(cpu_fallback)`` to check if fallback occurred, or
+            ``str(cpu_fallback)`` to get a human-readable status message. The status is only
+            determined after at least one frame has been decoded.
     """
 
     def __init__(
@@ -186,8 +241,44 @@ class VideoDecoder:
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
+        self._cpu_fallback = CpuFallbackStatus()
+        if device.startswith("cuda"):
+            if device_variant == "beta":
+                self._cpu_fallback._backend = "Beta CUDA"
+            else:
+                self._cpu_fallback._backend = "FFmpeg CUDA"
+        else:
+            self._cpu_fallback._backend = "CPU"
+
     def __len__(self) -> int:
         return self._num_frames
+
+    @property
+    def cpu_fallback(self) -> CpuFallbackStatus:
+        # We only query the CPU fallback info if status is unknown. That happens
+        # either when:
+        # - this @property has never been called before
+        # - no frame has been decoded yet on the FFmpeg interface.
+        # Note that for the beta interface, we're able to know the fallback status
+        # right when the VideoDecoder is instantiated, but the status_known
+        # attribute is initialized to False.
+        if not self._cpu_fallback.status_known:
+            backend_details = core._get_backend_details(self._decoder)
+
+            if "status unknown" not in backend_details:
+                self._cpu_fallback.status_known = True
+
+                if "CPU fallback" in backend_details:
+                    self._cpu_fallback._is_fallback = True
+                    if self._cpu_fallback._backend == "Beta CUDA":
+                        # Only the beta interface can provide details.
+                        # if it's not that nvcuvid is missing, it must be video-specific
+                        if "NVCUVID not available" in backend_details:
+                            self._cpu_fallback._nvcuvid_unavailable = True
+                        else:
+                            self._cpu_fallback._video_not_supported = True
+
+        return self._cpu_fallback
 
     def _getitem_int(self, key: int) -> Tensor:
         assert isinstance(key, int)

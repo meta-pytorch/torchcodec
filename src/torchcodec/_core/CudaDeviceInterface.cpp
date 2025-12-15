@@ -242,6 +242,8 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
   validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
 
+  hasDecodedFrame_ = true;
+
   // All of our CUDA decoding assumes NV12 format. We handle non-NV12 formats by
   // converting them to NV12.
   avFrame = maybeConvertAVFrameToNV12OrRGB24(avFrame);
@@ -335,12 +337,19 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
 // appropriately set, so we just go off and find the matching codec for the CUDA
 // device
 std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
-    const AVCodecID& codecId) {
+    const AVCodecID& codecId,
+    bool isDecoder) {
   void* i = nullptr;
   const AVCodec* codec = nullptr;
   while ((codec = av_codec_iterate(&i)) != nullptr) {
-    if (codec->id != codecId || !av_codec_is_decoder(codec)) {
-      continue;
+    if (isDecoder) {
+      if (codec->id != codecId || !av_codec_is_decoder(codec)) {
+        continue;
+      }
+    } else {
+      if (codec->id != codecId || !av_codec_is_encoder(codec)) {
+        continue;
+      }
     }
 
     const AVCodecHWConfig* config = nullptr;
@@ -359,6 +368,10 @@ std::string CudaDeviceInterface::getDetails() {
   // Note: for this interface specifically the fallback is only known after a
   // frame has been decoded, not before: that's when FFmpeg decides to fallback,
   // so we can't know earlier.
+  if (!hasDecodedFrame_) {
+    return std::string(
+        "FFmpeg CUDA Device Interface. Fallback status unknown (no frames decoded).");
+  }
   return std::string("FFmpeg CUDA Device Interface. Using ") +
       (usingCPUFallback_ ? "CPU fallback." : "NVDEC.");
 }
@@ -481,5 +494,4 @@ void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
   }
   codecContext->hw_frames_ctx = hwFramesCtxRef;
 }
-
 } // namespace facebook::torchcodec
