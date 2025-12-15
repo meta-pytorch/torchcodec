@@ -187,7 +187,7 @@ class VideoEncoder {
   std::unique_ptr<DeviceInterface> deviceInterface_;
 
   bool encodeWasCalled_ = false;
-  AVDictionary* avFormatOptions_ = nullptr;
+  UniqueAVDictionary avFormatOptions_;
 };
 
 } // namespace facebook::torchcodec
