@@ -1361,6 +1361,14 @@ class TestVideoEncoder:
     def test_nvenc_against_ffmpeg_cli(
         self, tmp_path, format_codec, method, color_space, color_range
     ):
+        if get_ffmpeg_major_version() in (4, 6) and not (
+            color_space == "bt470bg" and color_range == "tv"
+        ):
+            pytest.skip(
+                "Non-default color space and range have lower accuracy on FFmpeg 4 and 6"
+            )
+        if get_ffmpeg_major_version() == 4 and codec == "av1_nvenc":
+            pytest.skip("av1_nvenc is not supported on FFmpeg 4")
         # Encode with FFmpeg CLI using nvenc codecs
         format, codec = format_codec
         device = "cuda"
