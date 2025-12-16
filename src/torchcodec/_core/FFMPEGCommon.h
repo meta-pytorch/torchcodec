@@ -103,8 +103,8 @@ using UniqueAVBufferSrcParameters = std::unique_ptr<
     AVBufferSrcParameters,
     Deleterv<AVBufferSrcParameters, void, av_freep>>;
 
-// Wrapper class for AVDictionary to support FFmpeg's double-pointer functions
-// such as av_dict_set.
+// Wrapper class for AVDictionary, similar to unique_ptr, to support FFmpeg's
+// functions that require a double-pointer to AVDictionary, such as av_dict_set.
 // https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html#ga8d9c2de72b310cef8e6a28c9cd3acbbe
 class UniqueAVDictionary {
  private:
@@ -118,6 +118,13 @@ class UniqueAVDictionary {
       av_dict_free(&dict_);
     }
   }
+
+  // Explicitly delete copy operator similar to unique_ptr
+  UniqueAVDictionary(const UniqueAVDictionary&) = delete;
+  UniqueAVDictionary& operator=(const UniqueAVDictionary&) = delete;
+  // Explicitly delete move operator, as it is not needed at this time.
+  UniqueAVDictionary(UniqueAVDictionary&&) = delete;
+  UniqueAVDictionary& operator=(UniqueAVDictionary&&) = delete;
 
   // FFmpeg's AVDictionary functions require a AVDictionary** argument.
   // However, unique_ptr's get() function returns a **temporary** pointer to the
