@@ -284,37 +284,41 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
     prevSwsFrameContext_ = swsFrameContext;
   }
 
+  // When resizing is needed, we do sws_scale twice: first convert to RGB24 at
+  // original resolution, then resize in RGB24 space. This ensures transforms
+  // happen in the output color space (RGB24) rather than the input color space
+  // (YUV).
+  //
+  // When no resize is needed, we do color conversion directly into the output
+  // tensor.
+
+  torch::Tensor colorConvertedTensor = needsResize
+      ? allocateEmptyHWCTensor(
+            FrameDims(avFrame->height, avFrame->width), torch::kCPU)
+      : outputTensor;
+
+  uint8_t* colorConvertedPointers[4] = {
+      colorConvertedTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
+  int colorConvertedWidth = colorConvertedTensor.sizes()[1];
+  int colorConvertedLinesizes[4] = {colorConvertedWidth * 3, 0, 0, 0};
+
+  int colorConvertedHeight = sws_scale(
+      swsContext_.get(),
+      avFrame->data,
+      avFrame->linesize,
+      0,
+      avFrame->height,
+      colorConvertedPointers,
+      colorConvertedLinesizes);
+
+  TORCH_CHECK(
+      colorConvertedHeight == avFrame->height,
+      "Color conversion swscale pass failed: colorConvertedHeight != avFrame->height: ",
+      colorConvertedHeight,
+      " != ",
+      avFrame->height);
+
   if (needsResize) {
-    // Double swscale path: first convert to RGB24 at original resolution,
-    // then resize in RGB24 space. This ensures transforms happen in the
-    // output color space (RGB24) rather than the input color space (YUV).
-
-    // First pass: color conversion (YUV -> RGB24) at original resolution
-    torch::Tensor intermediateTensor = allocateEmptyHWCTensor(
-        FrameDims(avFrame->height, avFrame->width), torch::kCPU);
-
-    uint8_t* intermediatePointers[4] = {
-        intermediateTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
-    int intermediateWidth = avFrame->width;
-    int intermediateLinesizes[4] = {intermediateWidth * 3, 0, 0, 0};
-
-    int intermediateHeight = sws_scale(
-        swsContext_.get(),
-        avFrame->data,
-        avFrame->linesize,
-        0,
-        avFrame->height,
-        intermediatePointers,
-        intermediateLinesizes);
-
-    TORCH_CHECK(
-        intermediateHeight == avFrame->height,
-        "First swscale pass failed: intermediateHeight != avFrame->height: ",
-        intermediateHeight,
-        " != ",
-        avFrame->height);
-
-    // Second pass: resize in RGB24 space
     // Use cached swscale context for resizing, similar to the color conversion
     // context caching above.
     SwsFrameContext resizeSwsFrameContext(
@@ -335,7 +339,7 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
     }
 
     uint8_t* srcPointers[4] = {
-        intermediateTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
+        colorConvertedTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
     int srcLinesizes[4] = {avFrame->width * 3, 0, 0, 0};
 
     uint8_t* dstPointers[4] = {
@@ -343,7 +347,7 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
     int expectedOutputWidth = outputTensor.sizes()[1];
     int dstLinesizes[4] = {expectedOutputWidth * 3, 0, 0, 0};
 
-    int resultHeight = sws_scale(
+    colorConvertedHeight = sws_scale(
         resizeSwsContext_.get(),
         srcPointers,
         srcLinesizes,
@@ -351,24 +355,9 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
         avFrame->height,
         dstPointers,
         dstLinesizes);
-
-    return resultHeight;
-  } else {
-    // No resize needed, just color conversion
-    uint8_t* pointers[4] = {
-        outputTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
-    int expectedOutputWidth = outputTensor.sizes()[1];
-    int linesizes[4] = {expectedOutputWidth * 3, 0, 0, 0};
-    int resultHeight = sws_scale(
-        swsContext_.get(),
-        avFrame->data,
-        avFrame->linesize,
-        0,
-        avFrame->height,
-        pointers,
-        linesizes);
-    return resultHeight;
   }
+
+  return colorConvertedHeight;
 }
 
 torch::Tensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
