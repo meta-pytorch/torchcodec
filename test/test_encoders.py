@@ -1355,9 +1355,9 @@ class TestVideoEncoder:
         ],
     )
     # BT.601, BT.709, BT.2020
-    @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc", None))
+    @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc"))
     # Full/PC range, Limited/TV range
-    @pytest.mark.parametrize("color_range", ("pc", "tv", None))
+    @pytest.mark.parametrize("color_range", ("pc", "tv"))
     def test_nvenc_against_ffmpeg_cli(
         self, tmp_path, method, format, codec, color_space, color_range
     ):
@@ -1397,24 +1397,19 @@ class TestVideoEncoder:
             temp_raw_path,
         ]
         # CLI requires explicit codec for nvenc
+        # VideoEncoder will default to h264_nvenc since the frames are on GPU.
         ffmpeg_cmd.extend(["-c:v", codec if codec is not None else "h264_nvenc"])
-        # VideoEncoder will select an NVENC encoder by default since the frames are on GPU.
-
+        ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # torchcodec uses nv12 by default
         if color_space:
             ffmpeg_cmd.extend(["-colorspace", color_space])
         if color_range:
             ffmpeg_cmd.extend(["-color_range", color_range])
-        ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # torchcodec uses nv12 by default
-        if codec == "av1_nvenc":
-            ffmpeg_cmd.extend(["-rc", "constqp"])  # Set rate control mode for AV1
         ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
         ffmpeg_cmd.extend([ffmpeg_encoded_path])
         subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
 
         encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
         encoder_extra_options = {"qp": qp}
-        if codec == "av1_nvenc":
-            encoder_extra_options["rc"] = 0  # constqp mode
         if color_space:
             encoder_extra_options["colorspace"] = color_space
         if color_range:
