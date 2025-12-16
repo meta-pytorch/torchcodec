@@ -775,17 +775,16 @@ void VideoEncoder::initializeEncoder(
   outHeight_ = inHeight_;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
-    outPixelFormat_ =
-        validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
-    // TODO-VideoEncoder: Enable more pixel formats to be set by user
-    // and handled with the appropriate NPP function.
-    // Currently, we only accept nv12 pixel format when encoding on GPU.
-    if (frames_.device().is_cuda() && outPixelFormat_ != AV_PIX_FMT_NV12) {
+    // TODO-VideoEncoder: Enable pixel formats to be set by user
+    // and handled with the appropriate NPP function on GPU.
+    if (frames_.device().is_cuda()) {
       TORCH_CHECK(
           false,
-          "GPU Video encoding currently only supports the nv12 pixel format. "
+          "Video encoding on GPU currently only supports the nv12 pixel format. "
           "Do not set pixel_format to use nv12 by default.");
     }
+    outPixelFormat_ =
+        validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
     if (frames_.device().is_cuda()) {
       // Default to nv12 pixel format when encoding on GPU.

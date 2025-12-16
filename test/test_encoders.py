@@ -780,7 +780,7 @@ class TestVideoEncoder:
         if device == "cuda":
             with pytest.raises(
                 RuntimeError,
-                match="GPU Video encoding currently only supports the nv12 pixel format. Do not set pixel_format to use nv12 by default.",
+                match="Video encoding on GPU currently only supports the nv12 pixel format. Do not set pixel_format to use nv12 by default.",
             ):
                 getattr(encoder, method)(**valid_params, pixel_format="yuv444p")
             return
@@ -1401,8 +1401,8 @@ class TestVideoEncoder:
         ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
         ffmpeg_cmd.extend([ffmpeg_encoded_path])
         subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
-        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
 
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
         encoder_extra_options = {"qp": qp}
         if codec == "av1_nvenc":
             encoder_extra_options["rc"] = 0  # constqp mode
