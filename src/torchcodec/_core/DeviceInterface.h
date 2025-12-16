@@ -47,7 +47,8 @@ class DeviceInterface {
   };
 
   virtual std::optional<const AVCodec*> findCodec(
-      [[maybe_unused]] const AVCodecID& codecId) {
+      [[maybe_unused]] const AVCodecID& codecId,
+      [[maybe_unused]] bool isDecoder = true) {
     return std::nullopt;
   };
 
@@ -157,6 +158,11 @@ class DeviceInterface {
       [[maybe_unused]] AVPixelFormat targetPixelFormat) {
     TORCH_CHECK(false);
   }
+
+  virtual std::optional<const AVCodec*> findHardwareEncoder(
+      [[maybe_unused]] const AVCodecID& codecId) {
+    TORCH_CHECK(false);
+  };
 
  protected:
   torch::Device device_;

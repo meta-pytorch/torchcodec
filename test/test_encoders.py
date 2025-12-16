@@ -885,7 +885,6 @@ class TestVideoEncoder:
             common_params = dict(
                 crf=0,
                 pixel_format="yuv444p" if device == "cpu" else None,
-                codec="h264_nvenc" if device != "cpu" else None,
             )
             if method == "to_file":
                 dest = str(tmp_path / "output.mp4")
@@ -1337,42 +1336,43 @@ class TestVideoEncoder:
 
     @needs_ffmpeg_cli
     @pytest.mark.needs_cuda
-    # TODO-VideoEncoder: Auto-select codec for GPU encoding
+    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
     @pytest.mark.parametrize(
-        "format_codec",
+        ("format", "codec"),
         [
+            ("mov", None),  # will default to h264_nvenc
             ("mov", "h264_nvenc"),
-            ("mp4", "hevc_nvenc"),
             ("avi", "h264_nvenc"),
+            ("mp4", "hevc_nvenc"),  # use non-default codec
             pytest.param(
-                ("mkv", "av1_nvenc"),
+                "mkv",
+                "av1_nvenc",
                 marks=pytest.mark.skipif(
                     IN_GITHUB_CI, reason="av1_nvenc is not supported on CI"
                 ),
             ),
         ],
     )
-    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
     # BT.601, BT.709, BT.2020
-    @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc"))
+    @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc", None))
     # Full/PC range, Limited/TV range
-    @pytest.mark.parametrize("color_range", ("pc", "tv"))
+    @pytest.mark.parametrize("color_range", ("pc", "tv", None))
     def test_nvenc_against_ffmpeg_cli(
-        self, tmp_path, format_codec, method, color_space, color_range
+        self, tmp_path, method, format, codec, color_space, color_range
     ):
-        if get_ffmpeg_major_version() in (4, 6) and not (
+        ffmpeg_version = get_ffmpeg_major_version()
+        if ffmpeg_version in (4, 6) and not (
             color_space == "bt470bg" and color_range == "tv"
         ):
             pytest.skip(
                 "Non-default color space and range have lower accuracy on FFmpeg 4 and 6"
             )
-        if get_ffmpeg_major_version() == 4 and codec == "av1_nvenc":
+        if ffmpeg_version == 4 and codec == "av1_nvenc":
             pytest.skip("av1_nvenc is not supported on FFmpeg 4")
         # Encode with FFmpeg CLI using nvenc codecs
-        format, codec = format_codec
         device = "cuda"
-        qp = 1  # Lossless (qp=0) is not supported on av1_nvenc, so we use 1
+        qp = 1  # Use near lossless encoding to reduce noise and support av1_nvenc
         source_frames = self.decode(TEST_SRC_2_720P.path).data.to(device)
 
         temp_raw_path = str(tmp_path / "temp_input.raw")
@@ -1395,9 +1395,10 @@ class TestVideoEncoder:
             str(frame_rate),
             "-i",
             temp_raw_path,
-            "-c:v",
-            codec,  # Use specified NVENC hardware encoder
         ]
+        # CLI requires explicit codec for nvenc
+        ffmpeg_cmd.extend(["-c:v", codec if codec is not None else "h264_nvenc"])
+        # VideoEncoder will select an NVENC encoder by default since the frames are on GPU.
 
         if color_space:
             ffmpeg_cmd.extend(["-colorspace", color_space])
