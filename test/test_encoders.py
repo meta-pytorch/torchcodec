@@ -1399,12 +1399,12 @@ class TestVideoEncoder:
         # CLI requires explicit codec for nvenc
         # VideoEncoder will default to h264_nvenc since the frames are on GPU.
         ffmpeg_cmd.extend(["-c:v", codec if codec is not None else "h264_nvenc"])
-        ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # torchcodec uses nv12 by default
+        ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # Output format is always NV12
+        ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
         if color_space:
             ffmpeg_cmd.extend(["-colorspace", color_space])
         if color_range:
             ffmpeg_cmd.extend(["-color_range", color_range])
-        ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
         ffmpeg_cmd.extend([ffmpeg_encoded_path])
         subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
 
@@ -1458,6 +1458,18 @@ class TestVideoEncoder:
                 ffmpeg_encoded_path, metadata_fields
             )
             encoder_metadata = self._get_video_metadata(encoder_output, metadata_fields)
+            # pix_fmt nv12 is stored as yuv420p in metadata, unless full range (pc)is used
+            # In that case, h264 and hevc NVENC codecs will use yuvj420p automatically.
+            if color_range == "pc" and codec != "av1_nvenc":
+                expected_pix_fmt = "yuvj420p"
+            else:
+                # av1_nvenc does not utilize the yuvj420p pixel format
+                expected_pix_fmt = "yuv420p"
+            assert (
+                encoder_metadata["pix_fmt"]
+                == ffmpeg_metadata["pix_fmt"]
+                == expected_pix_fmt
+            )
             assert (
                 encoder_metadata["color_range"]
                 == ffmpeg_metadata["color_range"]
@@ -1467,16 +1479,4 @@ class TestVideoEncoder:
                 encoder_metadata["color_space"]
                 == ffmpeg_metadata["color_space"]
                 == color_space
-            )
-            if color_range == "pc" and codec != "av1_nvenc":
-                # This format represents full range (pc) with yuv420p pixel format
-                # It's deprecated, but is set automatically in h264 and hevc NVENC codecs
-                expected_pix_fmt = "yuvj420p"
-            else:
-                # av1_nvenc does not utilize the yuvj420p pixel format
-                expected_pix_fmt = "yuv420p"
-            assert (
-                encoder_metadata["pix_fmt"]
-                == ffmpeg_metadata["pix_fmt"]
-                == expected_pix_fmt
             )
