@@ -138,8 +138,8 @@ class VideoEncoder {
   VideoEncoder(const VideoEncoder&) = delete;
   VideoEncoder& operator=(const VideoEncoder&) = delete;
 
-  // Move assignment operator deleted since we have a const member
-  VideoEncoder(VideoEncoder&&) = default;
+  // Move operators deleted since UniqueAVDictionary member is not movable
+  VideoEncoder(VideoEncoder&&) = delete;
   VideoEncoder& operator=(VideoEncoder&&) = delete;
 
   VideoEncoder(
@@ -187,7 +187,7 @@ class VideoEncoder {
   std::unique_ptr<DeviceInterface> deviceInterface_;
 
   bool encodeWasCalled_ = false;
-  AVDictionary* avFormatOptions_ = nullptr;
+  UniqueAVDictionary avFormatOptions_;
 };
 
 } // namespace facebook::torchcodec
