@@ -77,10 +77,10 @@ def load_torchcodec_shared_libraries() -> tuple[int, str]:
         f"""Could not load libtorchcodec. Likely causes:
           1. FFmpeg is not properly installed in your environment. We support
              versions 4, 5, 6, 7, and 8, and we attempt to load libtorchcodec
-             for each of those versions. Errors for
-             versions not installed on your system are expected; only the error
-             for your installed FFmpeg version is relevant. On Windows, ensure
-             you've installed the "full-shared" version which ships DLLs.
+             for each of those versions. Errors for versions not installed on
+             your system are expected; only the error for your installed FFmpeg
+             version is relevant. On Windows, ensure you've installed the
+             "full-shared" version which ships DLLs.
           2. The PyTorch version ({torch.__version__}) is not compatible with
              this version of TorchCodec. Refer to the version compatibility
              table:
