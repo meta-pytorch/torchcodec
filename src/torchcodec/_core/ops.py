@@ -82,6 +82,11 @@ def load_torchcodec_shared_libraries() -> tuple[int, str]:
              table:
              https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec.
           3. Another runtime dependency; see exceptions below.
+
+        Note: We attempt to load libtorchcodec for FFmpeg versions 8 down to 5.
+        Errors for versions not installed on your system are expected; only the
+        error for your installed FFmpeg version is relevant.
+
         The following exceptions were raised as we tried to load libtorchcodec:
         """
         f"{traceback}"
