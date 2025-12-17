@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import sys
+import traceback
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
@@ -62,15 +63,15 @@ def load_torchcodec_shared_libraries() -> tuple[int, str]:
                 pybind_ops_module_name, pybind_ops_library_path
             )
             return ffmpeg_major_version, core_library_path
-        except Exception as e:
-            # TODO: recording and reporting exceptions this way is OK for now as  it's just for debugging,
-            # but we should probably handle that via a proper logging mechanism.
-            exceptions.append((ffmpeg_major_version, e))
+        except Exception:
+            # Capture the full traceback for this exception
+            exc_traceback = traceback.format_exc()
+            exceptions.append((ffmpeg_major_version, exc_traceback))
 
-    traceback = (
+    traceback_info = (
         "\n[start of libtorchcodec loading traceback]\n"
-        + "\n".join(f"FFmpeg version {v}: {str(e)}" for v, e in exceptions)
-        + "\n[end of libtorchcodec loading traceback]."
+        + "\n".join(f"FFmpeg version {v}:\n{tb}" for v, tb in exceptions)
+        + "[end of libtorchcodec loading traceback]."
     )
     raise RuntimeError(
         f"""Could not load libtorchcodec. Likely causes:
@@ -84,7 +85,7 @@ def load_torchcodec_shared_libraries() -> tuple[int, str]:
           3. Another runtime dependency; see exceptions below.
         The following exceptions were raised as we tried to load libtorchcodec:
         """
-        f"{traceback}"
+        f"{traceback_info}"
     )
 
 
