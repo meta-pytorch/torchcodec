@@ -18,28 +18,6 @@ the decoded tensor in GPU memory so the GPU doesn't have to fetch from main memo
 running the transform steps. Encoded packets are often much smaller than decoded frames so
 CUDA decoding also uses less PCI-e bandwidth.
 
-When to and when not to use CUDA Decoding
------------------------------------------
-
-CUDA Decoding can offer speed-up over CPU Decoding in a few scenarios:
-
-#. You are decoding a large resolution video
-#. You are decoding a large batch of videos that's saturating the CPU
-#. You want to do whole-image transforms like scaling or convolutions on the decoded tensors
-   after decoding
-#. Your CPU is saturated and you want to free it up for other work
-
-
-Here are situations where CUDA Decoding may not make sense:
-
-#. You want bit-exact results compared to CPU Decoding
-#. You have small resolution videos and the PCI-e transfer latency is large
-#. Your GPU is already busy and CPU is not
-
-It's best to experiment with CUDA Decoding to see if it improves your use-case. With
-TorchCodec you can simply pass in a device parameter to the
-:class:`~torchcodec.decoders.VideoDecoder` class to use CUDA Decoding.
-
 Installing TorchCodec with CUDA Enabled
 ---------------------------------------
 
@@ -111,6 +89,25 @@ print(frame.shape, frame.dtype)
 # The video frames are left on the GPU memory.
 
 print(frame.data.device)
+
+
+# %%
+# Checking for CPU Fallback
+# -------------------------------------
+#
+# In some cases, CUDA decoding may fall back to CPU decoding. This can happen
+# when the video codec or format is not supported by the NVDEC hardware decoder, or when NVCUVID wasn't found.
+# TorchCodec provides the :class:`~torchcodec.decoders.CpuFallbackStatus` class
+# to help you detect when this fallback occurs.
+#
+# You can access the fallback status via the
+# :attr:`~torchcodec.decoders.VideoDecoder.cpu_fallback` attribute:
+
+with set_cuda_backend("beta"):
+    decoder = VideoDecoder(video_file, device="cuda")
+
+# Check and print the CPU fallback status
+print(decoder.cpu_fallback)
 
 
 # %%

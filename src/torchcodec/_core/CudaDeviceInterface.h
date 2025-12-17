@@ -18,7 +18,9 @@ class CudaDeviceInterface : public DeviceInterface {
 
   virtual ~CudaDeviceInterface();
 
-  std::optional<const AVCodec*> findCodec(const AVCodecID& codecId) override;
+  std::optional<const AVCodec*> findCodec(
+      const AVCodecID& codecId,
+      bool isDecoder = true) override;
 
   void initialize(
       const AVStream* avStream,
@@ -41,12 +43,13 @@ class CudaDeviceInterface : public DeviceInterface {
 
   std::string getDetails() override;
 
-  std::optional<UniqueAVFrame> convertTensorToAVFrame(
+  UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
       const torch::Tensor& tensor,
       int frameIndex,
       AVCodecContext* codecContext) override;
 
-  void setupHardwareFrameContext(AVCodecContext* codecContext) override;
+  void setupHardwareFrameContextForEncoding(
+      AVCodecContext* codecContext) override;
 
  private:
   // Our CUDA decoding code assumes NV12 format. In order to handle other
@@ -70,6 +73,7 @@ class CudaDeviceInterface : public DeviceInterface {
   std::unique_ptr<FilterGraph> nv12Conversion_;
 
   bool usingCPUFallback_ = false;
+  bool hasDecodedFrame_ = false;
 };
 
 } // namespace facebook::torchcodec

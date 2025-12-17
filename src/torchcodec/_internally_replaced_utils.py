@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import importlib
+import importlib.util
 import sys
 from pathlib import Path
 from types import ModuleType

@@ -239,6 +239,19 @@ int checkedToPositiveInt(const std::string& str) {
   return ret;
 }
 
+int checkedToNonNegativeInt(const std::string& str) {
+  int ret = 0;
+  try {
+    ret = std::stoi(str);
+  } catch (const std::invalid_argument&) {
+    TORCH_CHECK(false, "String cannot be converted to an int:" + str);
+  } catch (const std::out_of_range&) {
+    TORCH_CHECK(false, "String would become integer out of range:" + str);
+  }
+  TORCH_CHECK(ret >= 0, "String must be a non-negative integer:" + str);
+  return ret;
+}
+
 // Resize transform specs take the form:
 //
 //   "resize, <height>, <width>"
@@ -270,9 +283,26 @@ Transform* makeCropTransform(
       "cropTransformSpec must have 5 elements including its name");
   int height = checkedToPositiveInt(cropTransformSpec[1]);
   int width = checkedToPositiveInt(cropTransformSpec[2]);
-  int x = checkedToPositiveInt(cropTransformSpec[3]);
-  int y = checkedToPositiveInt(cropTransformSpec[4]);
+  int x = checkedToNonNegativeInt(cropTransformSpec[3]);
+  int y = checkedToNonNegativeInt(cropTransformSpec[4]);
   return new CropTransform(FrameDims(height, width), x, y);
+}
+
+// CenterCrop transform specs take the form:
+//
+//   "center_crop, <height>, <width>"
+//
+// Where "center_crop" is the string literal and <height>, <width> are
+// positive integers. Note that we follow the PyTorch convention of (height,
+// width) for specifying image dimensions; FFmpeg uses (width, height).
+Transform* makeCenterCropTransform(
+    const std::vector<std::string>& cropTransformSpec) {
+  TORCH_CHECK(
+      cropTransformSpec.size() == 3,
+      "cropTransformSpec must have 3 elements including its name");
+  int height = checkedToPositiveInt(cropTransformSpec[1]);
+  int width = checkedToPositiveInt(cropTransformSpec[2]);
+  return new CropTransform(FrameDims(height, width));
 }
 
 std::vector<std::string> split(const std::string& str, char delimiter) {
@@ -304,6 +334,8 @@ std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
       transforms.push_back(makeResizeTransform(transformSpec));
     } else if (name == "crop") {
       transforms.push_back(makeCropTransform(transformSpec));
+    } else if (name == "center_crop") {
+      transforms.push_back(makeCenterCropTransform(transformSpec));
     } else {
       TORCH_CHECK(false, "Invalid transform name: " + name);
     }

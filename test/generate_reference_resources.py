@@ -6,7 +6,6 @@
 
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -39,7 +38,7 @@ def generate_frame_by_index(
     *,
     frame_index: int,
     stream_index: int,
-    filters: Optional[str] = None,
+    filters: str | None = None,
 ) -> None:
     # Note that we are using 0-based index naming. As a result, we are
     # generating files one-by-one, giving the actual file name that we want.

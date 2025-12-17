@@ -47,7 +47,8 @@ class DeviceInterface {
   };
 
   virtual std::optional<const AVCodec*> findCodec(
-      [[maybe_unused]] const AVCodecID& codecId) {
+      [[maybe_unused]] const AVCodecID& codecId,
+      [[maybe_unused]] bool isDecoder = true) {
     return std::nullopt;
   };
 
@@ -139,16 +140,27 @@ class DeviceInterface {
   }
 
   // Function used for video encoding, only implemented in CudaDeviceInterface.
-  virtual std::optional<UniqueAVFrame> convertTensorToAVFrame(
+  // It is here to isolate CUDA dependencies from CPU builds
+  // TODO Video-Encoder: Reconsider using video encoding functions in device
+  // interface
+  virtual UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
       [[maybe_unused]] const torch::Tensor& tensor,
       [[maybe_unused]] int frameIndex,
       [[maybe_unused]] AVCodecContext* codecContext) {
-    return std::nullopt;
+    TORCH_CHECK(false);
   }
 
   // Function used for video encoding, only implemented in CudaDeviceInterface.
-  virtual void setupHardwareFrameContext(
-      [[maybe_unused]] AVCodecContext* codecContext) {}
+  // It is here to isolate CUDA dependencies from CPU builds
+  virtual void setupHardwareFrameContextForEncoding(
+      [[maybe_unused]] AVCodecContext* codecContext) {
+    TORCH_CHECK(false);
+  }
+
+  virtual std::optional<const AVCodec*> findHardwareEncoder(
+      [[maybe_unused]] const AVCodecID& codecId) {
+    TORCH_CHECK(false);
+  }
 
  protected:
   torch::Device device_;

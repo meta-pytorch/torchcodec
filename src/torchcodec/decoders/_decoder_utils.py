@@ -4,12 +4,13 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+
 import contextvars
 import io
+
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-
-from typing import Generator, Union
 
 from torch import Tensor
 from torchcodec import _core as core
@@ -22,7 +23,7 @@ https://github.com/pytorch/torchcodec/issues/new?assignees=&labels=&projects=&te
 
 def create_decoder(
     *,
-    source: Union[str, Path, io.RawIOBase, io.BufferedReader, bytes, Tensor],
+    source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
     seek_mode: str,
 ) -> Tensor:
     if isinstance(source, str):

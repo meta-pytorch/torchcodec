@@ -545,12 +545,14 @@ void SingleStreamDecoder::addVideoStream(
 
   metadataDims_ =
       FrameDims(streamMetadata.height.value(), streamMetadata.width.value());
+  FrameDims currInputDims = metadataDims_;
   for (auto& transform : transforms) {
     TORCH_CHECK(transform != nullptr, "Transforms should never be nullptr!");
     if (transform->getOutputFrameDims().has_value()) {
       resizedOutputDims_ = transform->getOutputFrameDims().value();
     }
-    transform->validate(streamMetadata);
+    transform->validate(currInputDims);
+    currInputDims = resizedOutputDims_.value_or(metadataDims_);
 
     // Note that we are claiming ownership of the transform objects passed in to
     // us.

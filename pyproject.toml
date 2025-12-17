@@ -2,7 +2,7 @@
 name = "torchcodec"
 description = "A video decoder for PyTorch"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license-files = ["LICENSE"]
 authors = [
     { name = "PyTorch Team", email = "packages@pytorch.org" },
@@ -32,7 +32,7 @@ dev = [
 first_party_detection = false
 
 [tool.black]
-target-version = ["py38"]
+target-version = ["py310"]
 
 [tool.ufmt]
 

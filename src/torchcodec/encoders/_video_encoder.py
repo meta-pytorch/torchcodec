@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -35,13 +35,13 @@ class VideoEncoder:
 
     def to_file(
         self,
-        dest: Union[str, Path],
+        dest: str | Path,
         *,
-        codec: Optional[str] = None,
-        pixel_format: Optional[str] = None,
-        crf: Optional[Union[int, float]] = None,
-        preset: Optional[Union[str, int]] = None,
-        extra_options: Optional[Dict[str, Any]] = None,
+        codec: str | None = None,
+        pixel_format: str | None = None,
+        crf: int | float | None = None,
+        preset: str | int | None = None,
+        extra_options: dict[str, Any] | None = None,
     ) -> None:
         """Encode frames into a file.
 
@@ -87,11 +87,11 @@ class VideoEncoder:
         self,
         format: str,
         *,
-        codec: Optional[str] = None,
-        pixel_format: Optional[str] = None,
-        crf: Optional[Union[int, float]] = None,
-        preset: Optional[Union[str, int]] = None,
-        extra_options: Optional[Dict[str, Any]] = None,
+        codec: str | None = None,
+        pixel_format: str | None = None,
+        crf: int | float | None = None,
+        preset: str | int | None = None,
+        extra_options: dict[str, Any] | None = None,
     ) -> Tensor:
         """Encode frames into raw bytes, as a 1D uint8 Tensor.
 
@@ -140,11 +140,11 @@ class VideoEncoder:
         file_like,
         format: str,
         *,
-        codec: Optional[str] = None,
-        pixel_format: Optional[str] = None,
-        crf: Optional[Union[int, float]] = None,
-        preset: Optional[Union[str, int]] = None,
-        extra_options: Optional[Dict[str, Any]] = None,
+        codec: str | None = None,
+        pixel_format: str | None = None,
+        crf: int | float | None = None,
+        preset: str | int | None = None,
+        extra_options: dict[str, Any] | None = None,
     ) -> None:
         """Encode frames into a file-like object.
 
