@@ -284,10 +284,10 @@ class TestAudioEncoder:
         # that both decoded outputs are equal
 
         if get_ffmpeg_major_version() == 4 and format == "wav":
-            pytest.skip("Swresample with FFmpeg 4 doesn't work on wav files")
+            pytest.mark.skip("Swresample with FFmpeg 4 doesn't work on wav files")
         if IS_WINDOWS and get_ffmpeg_major_version() <= 5 and format == "mp3":
             # TODO: https://github.com/pytorch/torchcodec/issues/837
-            pytest.skip("Encoding mp3 on Windows is weirdly buggy")
+            pytest.mark.skip("Encoding mp3 on Windows is weirdly buggy")
 
         encoded_by_ffmpeg = tmp_path / f"ffmpeg_output.{format}"
         subprocess.run(
@@ -854,7 +854,7 @@ class TestVideoEncoder:
     )
     def test_contiguity(self, method, tmp_path, device):
         if get_ffmpeg_major_version() == 4 and device == "cuda":
-            pytest.skip("CUDA + FFmpeg 4 test is flaky")
+            pytest.mark.skip("CUDA + FFmpeg 4 test is flaky")
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal
         # frame tensors, one is contiguous while the other is non-contiguous.
@@ -1038,14 +1038,18 @@ class TestVideoEncoder:
         if format == "webm" and (
             ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
         ):
-            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
+            pytest.mark.skip(
+                "Codec for webm is not available in this FFmpeg installation."
+            )
 
         pixel_format = encode_params["pixel_format"]
         crf = encode_params["crf"]
         preset = encode_params["preset"]
 
         if format in ("avi", "flv") and pixel_format == "yuv444p":
-            pytest.skip(f"Default codec for {format} does not support {pixel_format}")
+            pytest.mark.skip(
+                f"Default codec for {format} does not support {pixel_format}"
+            )
 
         source_frames = self.decode(TEST_SRC_2_720P.path)
 

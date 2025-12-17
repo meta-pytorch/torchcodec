@@ -58,7 +58,7 @@ def test_get_metadata(metadata_getter):
         else None
     )
     if (seek_mode == "custom_frame_mappings") and get_ffmpeg_major_version() in (4, 5):
-        pytest.skip(reason="ffprobe isn't accurate on ffmpeg 4 and 5")
+        pytest.mark.skip(reason="ffprobe isn't accurate on ffmpeg 4 and 5")
     metadata = metadata_getter(NASA_VIDEO.path)
 
     with_scan = (
