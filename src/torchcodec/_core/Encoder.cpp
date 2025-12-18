@@ -789,23 +789,30 @@ void VideoEncoder::initializeEncoder(
   outHeight_ = inHeight_;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
+    // TODO-VideoEncoder: Enable pixel formats to be set by user
+    // and handled with the appropriate NPP function on GPU.
     if (frames_.device().is_cuda()) {
       TORCH_CHECK(
           false,
-          "GPU Video encoding currently only supports the NV12 pixel format. "
-          "Do not set pixel_format to use NV12.");
+          "Video encoding on GPU currently only supports the nv12 pixel format. "
+          "Do not set pixel_format to use nv12 by default.");
     }
     outPixelFormat_ =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
-    const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
-    // Use first listed pixel format as default (often yuv420p).
-    // This is similar to FFmpeg's logic:
-    // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
-    // If pixel formats are undefined for some reason, try yuv420p
-    outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
-        ? formats[0]
-        : AV_PIX_FMT_YUV420P;
+    if (frames_.device().is_cuda()) {
+      // Default to nv12 pixel format when encoding on GPU.
+      outPixelFormat_ = AV_PIX_FMT_NV12;
+    } else {
+      const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
+      // Use first listed pixel format as default (often yuv420p).
+      // This is similar to FFmpeg's logic:
+      // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
+      // If pixel formats are undefined for some reason, try yuv420p
+      outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
+          ? formats[0]
+          : AV_PIX_FMT_YUV420P;
+    }
   }
 
   // Configure codec parameters
@@ -851,7 +858,7 @@ void VideoEncoder::initializeEncoder(
   if (frames_.device().is_cuda() && deviceInterface_) {
     deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
     deviceInterface_->setupHardwareFrameContextForEncoding(
-        avCodecContext_.get());
+        avCodecContext_.get(), outPixelFormat_);
   }
 
   int status = avcodec_open2(
@@ -898,7 +905,7 @@ void VideoEncoder::encode() {
     UniqueAVFrame avFrame;
     if (frames_.device().is_cuda() && deviceInterface_) {
       auto cudaFrame = deviceInterface_->convertCUDATensorToAVFrameForEncoding(
-          currFrame, i, avCodecContext_.get());
+          currFrame, i, avCodecContext_.get(), outPixelFormat_);
       TORCH_CHECK(
           cudaFrame != nullptr,
           "convertCUDATensorToAVFrameForEncoding failed for frame ",
