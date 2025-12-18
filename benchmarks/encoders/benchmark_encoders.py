@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import tempfile
 from argparse import ArgumentParser
+from contextlib import nullcontext
 from pathlib import Path
 from time import perf_counter_ns
 
@@ -51,27 +52,28 @@ class NVENCMonitor:
         }
 
 
-def bench(f, average_over=50, warmup=2, **f_kwargs):
+def bench(f, average_over=50, warmup=2, gpu_monitoring=False, **f_kwargs):
     for _ in range(warmup):
         f(**f_kwargs)
 
     times = []
-
-    with NVENCMonitor() as monitor:
+    cm = NVENCMonitor if gpu_monitoring else nullcontext
+    with cm() as monitor:
         for _ in range(average_over):
             start = perf_counter_ns()
             f(**f_kwargs)
             end = perf_counter_ns()
             times.append(end - start)
-    nvenc_metrics = monitor.metrics
 
     times_tensor = torch.tensor(times).float()
-    nvenc_tensor = torch.tensor(nvenc_metrics["utilization"]).float()
-    nvenc_memory_used_tensor = torch.tensor(nvenc_metrics["memory_used"]).float()
+    if gpu_monitoring:
+        nvenc_metrics = monitor.metrics
+        nvenc_tensor = torch.tensor(nvenc_metrics["utilization"]).float()
+        nvenc_memory_used_tensor = torch.tensor(nvenc_metrics["memory_used"]).float()
 
     return times_tensor, {
-        "utilization": nvenc_tensor,
-        "memory_used": nvenc_memory_used_tensor,
+        "utilization": nvenc_tensor if gpu_monitoring else None,
+        "memory_used": nvenc_memory_used_tensor if gpu_monitoring else None,
     }
 
 
@@ -189,7 +191,7 @@ def main():
     decoder = VideoDecoder(str(args.path))
     valid_max_frames = min(args.max_frames, len(decoder))
     frames = decoder.get_frames_in_range(start=0, stop=valid_max_frames).data
-    gpu_frames = frames.cuda()
+    gpu_frames = frames.cuda() if cuda_available else None
     print(
         f"Decoded {frames.shape[0]} frames of size {frames.shape[2]}x{frames.shape[3]}"
     )
@@ -197,10 +199,9 @@ def main():
     temp_dir = Path(tempfile.mkdtemp())
     raw_frames_path = temp_dir / "input_frames.raw"
 
-    # Write frames once outside benchmarking when --write-frames is False
+    # Always write frames outside benchmarking.
     # When --write-frames is True, frames will also be written inside the benchmark function
-    if not args.write_frames:
-        write_raw_frames(frames, valid_max_frames, str(raw_frames_path))
+    write_raw_frames(frames, valid_max_frames, str(raw_frames_path))
 
     # Benchmark torchcodec on GPU
     if cuda_available:
@@ -210,6 +211,7 @@ def main():
             frames=gpu_frames,
             output_path=str(gpu_output),
             device="cuda",
+            gpu_monitoring=True,
             average_over=args.average_over,
         )
         report_stats(
@@ -228,6 +230,7 @@ def main():
             raw_path=str(raw_frames_path),
             output_path=str(ffmpeg_gpu_output),
             device="cuda",
+            gpu_monitoring=True,
             write_frames=args.write_frames,
             average_over=args.average_over,
         )
