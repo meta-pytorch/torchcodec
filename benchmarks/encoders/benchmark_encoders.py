@@ -115,7 +115,7 @@ def report_stats(times, num_frames, nvenc_metrics=None, prefix="", unit="ms"):
 def encode_torchcodec(frames, output_path, device="cpu"):
     encoder = VideoEncoder(frames=frames, frame_rate=30)
     if device == "cuda":
-        encoder.to_file(dest=output_path, codec="h264_nvenc", extra_options={"qp": 1})
+        encoder.to_file(dest=output_path, codec="h264_nvenc", extra_options={"qp": 0})
     else:
         encoder.to_file(dest=output_path, codec="libx264", crf=0)
 
