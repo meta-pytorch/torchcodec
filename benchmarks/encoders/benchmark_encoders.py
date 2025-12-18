@@ -45,9 +45,6 @@ class NVENCMonitor:
                 res = [float(x.strip()) for x in line.split(",")]
                 samples.append({"utilization": res[0], "memory_used": res[1]})
 
-        # max_util = max((s["utilization"] for s in samples), default=0.0)
-        # max_memory = max((s["memory_used"] for s in samples), default=0.0)
-
         self.metrics = {
             "utilization": [s["utilization"] for s in samples],
             "memory_used": [s["memory_used"] for s in samples],
@@ -153,7 +150,6 @@ def write_and_encode_ffmpeg_cli(
         "-pix_fmt",
         "yuv420p",
     ]
-    # quality_params = ["-qp", "0"] if device == "cuda" else ["-crf", "0"]
     ffmpeg_cmd.extend(["-qp", "0"] if device == "cuda" else ["-crf", "0"])
     ffmpeg_cmd.extend([str(output_path)])
     subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
@@ -190,7 +186,6 @@ def main():
     if not cuda_available:
         print("CUDA not available. GPU benchmarks will be skipped.")
 
-    #  Load up to max_frames frames
     decoder = VideoDecoder(str(args.path))
     valid_max_frames = min(args.max_frames, len(decoder))
     frames = decoder.get_frames_in_range(start=0, stop=valid_max_frames).data
@@ -203,7 +198,7 @@ def main():
     raw_frames_path = temp_dir / "input_frames.raw"
 
     # Write frames once outside benchmarking when --write-frames is False
-    # When --write-frames is True, frames will be written inside the benchmark function
+    # When --write-frames is True, frames will also be written inside the benchmark function
     if not args.write_frames:
         write_raw_frames(frames, valid_max_frames, str(raw_frames_path))
 
