@@ -62,6 +62,13 @@ def _get_container_metadata(path, seek_mode):
 def test_get_metadata(metadata_getter):
     metadata = metadata_getter(NASA_VIDEO.path)
 
+    seek_mode = (
+        metadata_getter.keywords["seek_mode"]
+        if isinstance(metadata_getter, functools.partial)
+        else None
+    )
+    metadata = metadata_getter(NASA_VIDEO.path)
+
     with_scan = (
         (seek_mode == "exact" or seek_mode == "custom_frame_mappings")
         if isinstance(metadata_getter, functools.partial)
