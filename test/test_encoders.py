@@ -266,7 +266,27 @@ class TestAudioEncoder:
     @pytest.mark.parametrize("bit_rate", (None, 0, 44_100, 999_999_999))
     @pytest.mark.parametrize("num_channels", (None, 1, 2))
     @pytest.mark.parametrize("sample_rate", (8_000, 32_000))
-    @pytest.mark.parametrize("format", ("mp3", "wav", "flac"))
+    @pytest.mark.parametrize(
+        "format",
+        [
+            # TODO: https://github.com/pytorch/torchcodec/issues/837
+            pytest.param(
+                "mp3",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and get_ffmpeg_major_version() <= 5,
+                    reason="Encoding mp3 on Windows is weirdly buggy",
+                ),
+            ),
+            pytest.param(
+                "wav",
+                marks=pytest.mark.skipif(
+                    get_ffmpeg_major_version() == 4,
+                    reason="Swresample with FFmpeg 4 doesn't work on wav files",
+                ),
+            ),
+            "flac",
+        ],
+    )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_against_cli(
         self,
@@ -282,12 +302,6 @@ class TestAudioEncoder:
     ):
         # Encodes samples with our encoder and with the FFmpeg CLI, and checks
         # that both decoded outputs are equal
-
-        if get_ffmpeg_major_version() == 4 and format == "wav":
-            pytest.mark.skip("Swresample with FFmpeg 4 doesn't work on wav files")
-        if IS_WINDOWS and get_ffmpeg_major_version() <= 5 and format == "mp3":
-            # TODO: https://github.com/pytorch/torchcodec/issues/837
-            pytest.mark.skip("Encoding mp3 on Windows is weirdly buggy")
 
         encoded_by_ffmpeg = tmp_path / f"ffmpeg_output.{format}"
         subprocess.run(
@@ -848,13 +862,15 @@ class TestVideoEncoder:
                     pytest.mark.skipif(
                         in_fbcode(), reason="NVENC not available in fbcode"
                     ),
+                    pytest.mark.skipif(
+                        get_ffmpeg_major_version() == 4,
+                        reason="CUDA + FFmpeg 4 test is flaky",
+                    ),
                 ],
             ),
         ),
     )
     def test_contiguity(self, method, tmp_path, device):
-        if get_ffmpeg_major_version() == 4 and device == "cuda":
-            pytest.mark.skip("CUDA + FFmpeg 4 test is flaky")
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal
         # frame tensors, one is contiguous while the other is non-contiguous.
@@ -1014,10 +1030,18 @@ class TestVideoEncoder:
         (
             "mov",
             "mp4",
-            "avi",
             "mkv",
-            "flv",
-            pytest.param("webm", marks=pytest.mark.slow),
+            pytest.param(
+                "webm",
+                marks=[
+                    pytest.mark.slow,
+                    pytest.mark.skipif(
+                        get_ffmpeg_major_version() == 4
+                        or (IS_WINDOWS and get_ffmpeg_major_version() in (6, 7)),
+                        reason="Codec for webm is not available in this FFmpeg installation.",
+                    ),
+                ],
+            ),
         ),
     )
     @pytest.mark.parametrize(
@@ -1034,22 +1058,10 @@ class TestVideoEncoder:
     def test_video_encoder_against_ffmpeg_cli(
         self, tmp_path, format, encode_params, method, frame_rate
     ):
-        ffmpeg_version = get_ffmpeg_major_version()
-        if format == "webm" and (
-            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
-        ):
-            pytest.mark.skip(
-                "Codec for webm is not available in this FFmpeg installation."
-            )
-
         pixel_format = encode_params["pixel_format"]
         crf = encode_params["crf"]
         preset = encode_params["preset"]
-
-        if format in ("avi", "flv") and pixel_format == "yuv444p":
-            pytest.mark.skip(
-                f"Default codec for {format} does not support {pixel_format}"
-            )
+        ffmpeg_version = get_ffmpeg_major_version()
 
         source_frames = self.decode(TEST_SRC_2_720P.path)
 

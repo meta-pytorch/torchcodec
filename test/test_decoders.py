@@ -628,7 +628,7 @@ class TestVideoDecoder:
             return
 
         if "cuda" in device and in_fbcode():
-            pytest.mark.skip("decoding on CUDA is not supported internally")
+            pytest.skip("decoding on CUDA is not supported internally")
 
         decoder, device = make_video_decoder(AV1_VIDEO.path, device=device)
         ref_frame10 = AV1_VIDEO.get_frame_data_by_index(10)
@@ -1207,7 +1207,7 @@ class TestVideoDecoder:
         # TODO: encode a video with no pts values to unskip this test. Couldn't
         # find a way to do that with FFmpeg's CLI, but this should be doable
         # once we have our own video encoder.
-        pytest.mark.skip(reason="TODO: Need video with no pts values.")
+        pytest.skip(reason="TODO: Need video with no pts values.")
 
         path = "/home/nicolashug/Downloads/sample_video_2.avi"
         decoder = VideoDecoder(path, seek_mode=seek_mode)
@@ -1303,7 +1303,7 @@ class TestVideoDecoder:
             #
             # It works on the ffmpeg interface because FFmpeg fallsback to the
             # CPU, while the BETA interface doesn't.
-            pytest.mark.skip("Asset not supported by NVDEC")
+            pytest.skip("Asset not supported by NVDEC")
 
         decoder, _ = make_video_decoder(asset.path, device=device)
         decoder.get_frame_at(10)
@@ -1469,7 +1469,7 @@ class TestVideoDecoder:
     ):
 
         if in_fbcode() and asset is AV1_VIDEO:
-            pytest.mark.skip("AV1 CUDA not supported internally")
+            pytest.skip("AV1 CUDA not supported internally")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         with set_cuda_backend("beta"):

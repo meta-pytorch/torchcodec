@@ -48,17 +48,18 @@ def _get_container_metadata(path, seek_mode):
         get_container_metadata_from_header,
         functools.partial(_get_container_metadata, seek_mode="approximate"),
         functools.partial(_get_container_metadata, seek_mode="exact"),
-        functools.partial(_get_container_metadata, seek_mode="custom_frame_mappings"),
+        pytest.param(
+            functools.partial(
+                _get_container_metadata, seek_mode="custom_frame_mappings"
+            ),
+            marks=pytest.mark.skipif(
+                get_ffmpeg_major_version() in (4, 5),
+                reason="ffprobe isn't accurate on ffmpeg 4 and 5",
+            ),
+        ),
     ),
 )
 def test_get_metadata(metadata_getter):
-    seek_mode = (
-        metadata_getter.keywords["seek_mode"]
-        if isinstance(metadata_getter, functools.partial)
-        else None
-    )
-    if (seek_mode == "custom_frame_mappings") and get_ffmpeg_major_version() in (4, 5):
-        pytest.mark.skip(reason="ffprobe isn't accurate on ffmpeg 4 and 5")
     metadata = metadata_getter(NASA_VIDEO.path)
 
     with_scan = (
