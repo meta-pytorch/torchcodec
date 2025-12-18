@@ -13,45 +13,45 @@ from torchcodec.encoders import VideoEncoder
 DEFAULT_VIDEO_PATH = "test/resources/nasa_13013.mp4"
 # Alternatively, run this command to generate a longer test video:
 #   ffmpeg -f lavfi -i testsrc2=duration=600:size=1280x720:rate=30 -c:v libx264 -pix_fmt yuv420p test/resources/testsrc2_10min.mp4
-# DEFAULT_VIDEO_PATH = "test/resources/testsrc2_10min.mp4"
-DEFAULT_AVERAGE_OVER = 30
-DEFAULT_MAX_FRAMES = 300
 
 
-def monitor_nvenc_during_encoding(encoding_func, **kwargs):
-    nvidia_process = subprocess.Popen(
-        [
-            "nvidia-smi",
-            "-lms",
-            "50",
-            "--query-gpu=utilization.encoder,memory.used",
-            "--format=csv,noheader,nounits",
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-    )
+class NVENCMonitor:
+    def __init__(self):
+        self.nvidia_process = None
+        self.metrics = None
 
-    try:
-        encoding_func(**kwargs)
-    finally:
-        nvidia_process.terminate()
-        try:
-            stdout, _ = nvidia_process.communicate()
-        except subprocess.TimeoutExpired:
-            nvidia_process.kill()
-            stdout, _ = nvidia_process.communicate()
+    def __enter__(self):
+        self.nvidia_process = subprocess.Popen(
+            [
+                "nvidia-smi",
+                "-lms",
+                "50",  # check every 50 ms
+                "--query-gpu=utilization.encoder,memory.used",
+                "--format=csv,noheader,nounits",
+            ],
+            stdout=subprocess.PIPE,  # capture outputs
+            stderr=subprocess.DEVNULL,  # ignore errors
+            text=True,
+        )
+        return self
 
-    nvidia_samples = []
-    for line in stdout.strip().split("\n"):
-        if line.strip():
-            values = [float(x.strip()) for x in line.split(",")]
-            nvidia_samples.append({"utilization": values[0], "memory_used": values[1]})
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.nvidia_process.terminate()
+        stdout, _ = self.nvidia_process.communicate()
 
-    max_util = max((s["utilization"] for s in nvidia_samples), default=0.0)
-    max_memory = max((s["memory_used"] for s in nvidia_samples), default=0.0)
+        samples = []
+        for line in stdout.strip().split("\n"):
+            if line.strip():
+                res = [float(x.strip()) for x in line.split(",")]
+                samples.append({"utilization": res[0], "memory_used": res[1]})
 
-    return {"utilization": max_util, "memory_used": max_memory}
+        # max_util = max((s["utilization"] for s in samples), default=0.0)
+        # max_memory = max((s["memory_used"] for s in samples), default=0.0)
+
+        self.metrics = {
+            "utilization": [s["utilization"] for s in samples],
+            "memory_used": [s["memory_used"] for s in samples],
+        }
 
 
 def bench(f, average_over=50, warmup=2, **f_kwargs):
@@ -59,21 +59,18 @@ def bench(f, average_over=50, warmup=2, **f_kwargs):
         f(**f_kwargs)
 
     times = []
-    nvenc_utils = []
-    nvenc_memory_used = []
 
-    for _ in range(average_over):
-        start = perf_counter_ns()
-        nvenc_metrics = monitor_nvenc_during_encoding(f, **f_kwargs)
-        end = perf_counter_ns()
-
-        times.append(end - start)
-        nvenc_utils.append(nvenc_metrics["utilization"])
-        nvenc_memory_used.append(nvenc_metrics["memory_used"])
+    with NVENCMonitor() as monitor:
+        for _ in range(average_over):
+            start = perf_counter_ns()
+            f(**f_kwargs)
+            end = perf_counter_ns()
+            times.append(end - start)
+    nvenc_metrics = monitor.metrics
 
     times_tensor = torch.tensor(times).float()
-    nvenc_tensor = torch.tensor(nvenc_utils).float()
-    nvenc_memory_used_tensor = torch.tensor(nvenc_memory_used).float()
+    nvenc_tensor = torch.tensor(nvenc_metrics["utilization"]).float()
+    nvenc_memory_used_tensor = torch.tensor(nvenc_metrics["memory_used"]).float()
 
     return times_tensor, {
         "utilization": nvenc_tensor,
@@ -101,17 +98,18 @@ def report_stats(times, num_frames, nvenc_metrics=None, prefix="", unit="ms"):
     )
 
     if nvenc_metrics is not None:
-        # NVENC metrics structure - show median and peak values
-        util_median = nvenc_metrics["utilization"].median().item()
-        util_peak = nvenc_metrics["utilization"].max().item()
+        mem_used_max = nvenc_metrics["memory_used"].max().item()
         mem_used_median = nvenc_metrics["memory_used"].median().item()
-        mem_used_peak = nvenc_metrics["memory_used"].max().item()
+        util_max = nvenc_metrics["utilization"].max().item()
+        # For median utilization, only consider non-zero samples as NVENC is often idle
+        util_nonzero = nvenc_metrics["utilization"][nvenc_metrics["utilization"] > 0]
+        util_median = util_nonzero.median().item() if len(util_nonzero) > 0 else 0.0
 
         print(
-            f"NVENC utilization:    median = {util_median:.1f}%, peak = {util_peak:.1f}%"
+            f"GPU memory used:      median = {mem_used_median:.1f}, max = {mem_used_max:.1f} MiB"
         )
         print(
-            f"GPU memory used:      median = {mem_used_median:.1f}, peak = {mem_used_peak:.1f} MiB"
+            f"NVENC utilization:    median = {util_median:.1f}%, max = {util_max:.1f}%"
         )
 
 
@@ -169,13 +167,13 @@ def main():
     parser.add_argument(
         "--average-over",
         type=int,
-        default=DEFAULT_AVERAGE_OVER,
+        default=30,
         help="Number of runs to average over",
     )
     parser.add_argument(
         "--max-frames",
         type=int,
-        default=DEFAULT_MAX_FRAMES,
+        default=10,
         help="Maximum number of frames to decode for benchmarking",
     )
     parser.add_argument(
