@@ -85,6 +85,14 @@ Decoding
         How to sample regular and random clips from a video
 
      .. grid-item-card:: :octicon:`file-code;1em`
+        Decoder transforms
+        :img-top: _static/img/card-background.svg
+        :link: generated_examples/decoding/transforms.html
+        :link-type: url
+
+        How to apply transforms while decoding
+
+     .. grid-item-card:: :octicon:`file-code;1em`
         Performance Tips
         :img-top: _static/img/card-background.svg
         :link: generated_examples/decoding/performance_tips.html
