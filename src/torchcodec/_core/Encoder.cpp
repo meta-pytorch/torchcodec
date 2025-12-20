@@ -106,6 +106,26 @@ AVSampleFormat findBestOutputSampleFormat(const AVCodec& avCodec) {
   return supportedSampleFormats[0];
 }
 
+void closeAVIOContext(
+    AVFormatContext* formatContext,
+    AVIOContextHolder* avioContextHolder) {
+  if (!formatContext || !formatContext->pb) {
+    return;
+  }
+
+  if (formatContext->pb->error == 0) {
+    avio_flush(formatContext->pb);
+  }
+
+  if (avioContextHolder == nullptr) {
+    if (formatContext->pb->error == 0) {
+      avio_close(formatContext->pb);
+    }
+  }
+
+  formatContext->pb = nullptr;
+}
+
 } // namespace
 
 AudioEncoder::~AudioEncoder() {
@@ -113,19 +133,7 @@ AudioEncoder::~AudioEncoder() {
 }
 
 void AudioEncoder::close_avio() {
-  if (avFormatContext_ && avFormatContext_->pb) {
-    if (avFormatContext_->pb->error == 0) {
-      avio_flush(avFormatContext_->pb);
-    }
-
-    if (!avioContextHolder_) {
-      if (avFormatContext_->pb->error == 0) {
-        avio_close(avFormatContext_->pb);
-      }
-      // avoids closing again in destructor, which would segfault.
-      avFormatContext_->pb = nullptr;
-    }
-  }
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 AudioEncoder::AudioEncoder(
@@ -165,9 +173,9 @@ AudioEncoder::AudioEncoder(
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
     const AudioStreamOptions& audioStreamOptions)
-    : samples_(validateSamples(samples)),
-      inSampleRate_(sampleRate),
-      avioContextHolder_(std::move(avioContextHolder)) {
+    : avioContextHolder_(std::move(avioContextHolder)),
+      samples_(validateSamples(samples)),
+      inSampleRate_(sampleRate) {
   setFFmpegLogLevel();
   AVFormatContext* avFormatContext = nullptr;
   int status = avformat_alloc_output_context2(
@@ -646,18 +654,7 @@ void sortCodecOptions(
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
-  // TODO-VideoEncoder: Unify destructor with ~AudioEncoder()
-  if (avFormatContext_ && avFormatContext_->pb) {
-    if (avFormatContext_->pb->error == 0) {
-      avio_flush(avFormatContext_->pb);
-    }
-    if (!avioContextHolder_) {
-      if (avFormatContext_->pb->error == 0) {
-        avio_close(avFormatContext_->pb);
-      }
-      avFormatContext_->pb = nullptr;
-    }
-  }
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 VideoEncoder::VideoEncoder(
@@ -698,9 +695,9 @@ VideoEncoder::VideoEncoder(
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
     const VideoStreamOptions& videoStreamOptions)
-    : frames_(validateFrames(frames)),
-      inFrameRate_(frameRate),
-      avioContextHolder_(std::move(avioContextHolder)) {
+    : avioContextHolder_(std::move(avioContextHolder)),
+      frames_(validateFrames(frames)),
+      inFrameRate_(frameRate) {
   setFFmpegLogLevel();
   // Map mkv -> matroska when used as format name
   formatName = (formatName == "mkv") ? "matroska" : formatName;
