@@ -1514,7 +1514,7 @@ class TestVideoDecoder:
         self, asset, contiguous_indices, seek_mode
     ):
         if in_fbcode() and asset is AV1_VIDEO:
-            pytest.mark.skip("AV1 CUDA not supported internally")
+            pytest.skip("AV1 CUDA not supported internally")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         with set_cuda_backend("beta"):
@@ -1557,7 +1557,7 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frame_played_at(self, asset, seek_mode):
         if in_fbcode() and asset is AV1_VIDEO:
-            pytest.mark.skip("AV1 CUDA not supported internally")
+            pytest.skip("AV1 CUDA not supported internally")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         with set_cuda_backend("beta"):
@@ -1597,7 +1597,7 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frames_played_at(self, asset, seek_mode):
         if in_fbcode() and asset is AV1_VIDEO:
-            pytest.mark.skip("AV1 CUDA not supported internally")
+            pytest.skip("AV1 CUDA not supported internally")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         with set_cuda_backend("beta"):
@@ -1638,7 +1638,7 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_backwards(self, asset, seek_mode):
         if in_fbcode() and asset is AV1_VIDEO:
-            pytest.mark.skip("AV1 CUDA not supported internally")
+            pytest.skip("AV1 CUDA not supported internally")
 
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         with set_cuda_backend("beta"):

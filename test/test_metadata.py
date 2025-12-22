@@ -60,8 +60,6 @@ def _get_container_metadata(path, seek_mode):
     ),
 )
 def test_get_metadata(metadata_getter):
-    metadata = metadata_getter(NASA_VIDEO.path)
-
     seek_mode = (
         metadata_getter.keywords["seek_mode"]
         if isinstance(metadata_getter, functools.partial)
