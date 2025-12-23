@@ -1293,15 +1293,15 @@ class TestVideoDecoder:
         # This just validates that we can decode 10-bit videos.
         # TODO validate against the ref that the decoded frames are correct
 
-        if device == "cuda:beta" and asset is H264_10BITS:
-            # This fails on the BETA interface with:
-            #
-            # RuntimeError: Codec configuration not supported on this GPU.
-            # Codec: 4, chroma format: 1, bit depth: 10
-            #
-            # It works on the ffmpeg interface because FFmpeg fallsback to the
-            # CPU, while the BETA interface doesn't.
-            pytest.skip("Asset not supported by NVDEC")
+        # if device == "cuda:beta" and asset is H264_10BITS:
+        #     # This fails on the BETA interface with:
+        #     #
+        #     # RuntimeError: Codec configuration not supported on this GPU.
+        #     # Codec: 4, chroma format: 1, bit depth: 10
+        #     #
+        #     # It works on the ffmpeg interface because FFmpeg fallsback to the
+        #     # CPU, while the BETA interface doesn't.
+        #     pytest.skip("Asset not supported by NVDEC")
 
         decoder, _ = make_video_decoder(asset.path, device=device)
         decoder.get_frame_at(10)
