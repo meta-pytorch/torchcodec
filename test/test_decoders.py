@@ -622,6 +622,7 @@ class TestVideoDecoder:
         ):
             decoder.get_frames_at([0.3])
 
+    @needs_cuda
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frame_at_av1(self, device):
         if device == "cuda" and get_ffmpeg_major_version() == 4:

@@ -45,7 +45,7 @@ def pytest_collection_modifyitems(items):
             # with needs_cuda, needs_ffmpeg_cli, skip, or skipif. Future skipped tests
             # should follow the pattern of needs_cuda and needs_ffmpeg_cli if we are
             # skipping a test because of a dependency.
-            if needs_ffmpeg_cli or has_skip_marker or has_skipif_marker:
+            if needs_cuda or needs_ffmpeg_cli or has_skip_marker or has_skipif_marker:
                 continue
 
         if (
