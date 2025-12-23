@@ -45,11 +45,29 @@ def needs_ffmpeg_cli(test_item):
 _CUDA_BETA_DEVICE_STR = "cuda:beta"
 
 
-def all_supported_devices():
+def all_supported_devices(*, cuda_marks: list[pytest.MarkDecorator] | None = None):
+    """
+    Returns all supported devices for parametrization.
+
+    Args:
+        cuda_marks: Optional list of marks to add to cuda devices.
+
+    Example:
+        @pytest.mark.parametrize(
+            "device",
+            all_supported_devices(
+                cuda_marks=[pytest.mark.skipif(in_fbcode(), reason="...")]
+            ),
+        )
+    """
+    extra_marks = cuda_marks or []
+
     return (
         "cpu",
-        pytest.param("cuda", marks=pytest.mark.needs_cuda),
-        pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
+        pytest.param("cuda", marks=[pytest.mark.needs_cuda] + extra_marks),
+        pytest.param(
+            _CUDA_BETA_DEVICE_STR, marks=[pytest.mark.needs_cuda] + extra_marks
+        ),
     )
 
 

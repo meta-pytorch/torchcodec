@@ -622,13 +622,19 @@ class TestVideoDecoder:
         ):
             decoder.get_frames_at([0.3])
 
-    @pytest.mark.parametrize("device", all_supported_devices())
+    @pytest.mark.parametrize(
+        "device",
+        all_supported_devices(
+            cuda_marks=[
+                pytest.mark.skipif(
+                    in_fbcode(), reason="AV1 CUDA not supported internally"
+                )
+            ]
+        ),
+    )
     def test_get_frame_at_av1(self, device):
         if device == "cuda" and get_ffmpeg_major_version() == 4:
             return
-
-        if "cuda" in device and in_fbcode():
-            pytest.skip("decoding on CUDA is not supported internally")
 
         decoder, device = make_video_decoder(AV1_VIDEO.path, device=device)
         ref_frame10 = AV1_VIDEO.get_frame_data_by_index(10)
@@ -1191,6 +1197,7 @@ class TestVideoDecoder:
             assert_frames_equal(ref_frame3, frames[1].data)
             assert_frames_equal(ref_frame5, frames[2].data)
 
+    @pytest.mark.skip(reason="TODO: Need video with no pts values.")
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_pts_to_dts_fallback(self, seek_mode):
         # Non-regression test for
@@ -1207,7 +1214,6 @@ class TestVideoDecoder:
         # TODO: encode a video with no pts values to unskip this test. Couldn't
         # find a way to do that with FFmpeg's CLI, but this should be doable
         # once we have our own video encoder.
-        pytest.skip(reason="TODO: Need video with no pts values.")
 
         path = "/home/nicolashug/Downloads/sample_video_2.avi"
         decoder = VideoDecoder(path, seek_mode=seek_mode)
@@ -1294,16 +1300,6 @@ class TestVideoDecoder:
     def test_10bit_videos(self, device, asset):
         # This just validates that we can decode 10-bit videos.
         # TODO validate against the ref that the decoded frames are correct
-
-        if device == "cuda:beta" and asset is H264_10BITS:
-            # This fails on the BETA interface with:
-            #
-            # RuntimeError: Codec configuration not supported on this GPU.
-            # Codec: 4, chroma format: 1, bit depth: 10
-            #
-            # It works on the ffmpeg interface because FFmpeg fallsback to the
-            # CPU, while the BETA interface doesn't.
-            pytest.skip("Asset not supported by NVDEC")
 
         decoder, _ = make_video_decoder(asset.path, device=device)
         decoder.get_frame_at(10)
@@ -1456,7 +1452,13 @@ class TestVideoDecoder:
             TEST_SRC_2_720P,
             BT709_FULL_RANGE,
             TEST_SRC_2_720P_H265,
-            AV1_VIDEO,
+            pytest.param(
+                AV1_VIDEO,
+                marks=pytest.mark.skipif(
+                    in_fbcode(),
+                    reason="AV1 CUDA not supported internally",
+                ),
+            ),
             TEST_SRC_2_720P_VP9,
             TEST_SRC_2_720P_VP8,
             TEST_SRC_2_720P_MPEG4,
@@ -1467,10 +1469,6 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_get_frame_at(
         self, asset, contiguous_indices, seek_mode
     ):
-
-        if in_fbcode() and asset is AV1_VIDEO:
-            pytest.skip("AV1 CUDA not supported internally")
-
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         with set_cuda_backend("beta"):
             beta_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
@@ -1502,7 +1500,13 @@ class TestVideoDecoder:
             TEST_SRC_2_720P,
             BT709_FULL_RANGE,
             TEST_SRC_2_720P_H265,
-            AV1_VIDEO,
+            pytest.param(
+                AV1_VIDEO,
+                marks=pytest.mark.skipif(
+                    in_fbcode(),
+                    reason="AV1 CUDA not supported internally",
+                ),
+            ),
             TEST_SRC_2_720P_VP9,
             TEST_SRC_2_720P_VP8,
             TEST_SRC_2_720P_MPEG4,
@@ -1513,9 +1517,6 @@ class TestVideoDecoder:
     def test_beta_cuda_interface_get_frames_at(
         self, asset, contiguous_indices, seek_mode
     ):
-        if in_fbcode() and asset is AV1_VIDEO:
-            pytest.skip("AV1 CUDA not supported internally")
-
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         with set_cuda_backend("beta"):
             beta_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
@@ -1548,7 +1549,13 @@ class TestVideoDecoder:
             TEST_SRC_2_720P,
             BT709_FULL_RANGE,
             TEST_SRC_2_720P_H265,
-            AV1_VIDEO,
+            pytest.param(
+                AV1_VIDEO,
+                marks=pytest.mark.skipif(
+                    in_fbcode(),
+                    reason="AV1 CUDA not supported internally",
+                ),
+            ),
             TEST_SRC_2_720P_VP9,
             TEST_SRC_2_720P_VP8,
             TEST_SRC_2_720P_MPEG4,
@@ -1556,9 +1563,6 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frame_played_at(self, asset, seek_mode):
-        if in_fbcode() and asset is AV1_VIDEO:
-            pytest.skip("AV1 CUDA not supported internally")
-
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         with set_cuda_backend("beta"):
             beta_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
@@ -1588,7 +1592,13 @@ class TestVideoDecoder:
             TEST_SRC_2_720P,
             BT709_FULL_RANGE,
             TEST_SRC_2_720P_H265,
-            AV1_VIDEO,
+            pytest.param(
+                AV1_VIDEO,
+                marks=pytest.mark.skipif(
+                    in_fbcode(),
+                    reason="AV1 CUDA not supported internally",
+                ),
+            ),
             TEST_SRC_2_720P_VP9,
             TEST_SRC_2_720P_VP8,
             TEST_SRC_2_720P_MPEG4,
@@ -1596,9 +1606,6 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_get_frames_played_at(self, asset, seek_mode):
-        if in_fbcode() and asset is AV1_VIDEO:
-            pytest.skip("AV1 CUDA not supported internally")
-
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         with set_cuda_backend("beta"):
             beta_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
@@ -1629,7 +1636,13 @@ class TestVideoDecoder:
             TEST_SRC_2_720P,
             BT709_FULL_RANGE,
             TEST_SRC_2_720P_H265,
-            AV1_VIDEO,
+            pytest.param(
+                AV1_VIDEO,
+                marks=pytest.mark.skipif(
+                    in_fbcode(),
+                    reason="AV1 CUDA not supported internally",
+                ),
+            ),
             TEST_SRC_2_720P_VP9,
             TEST_SRC_2_720P_VP8,
             TEST_SRC_2_720P_MPEG4,
@@ -1637,9 +1650,6 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_beta_cuda_interface_backwards(self, asset, seek_mode):
-        if in_fbcode() and asset is AV1_VIDEO:
-            pytest.skip("AV1 CUDA not supported internally")
-
         ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
         with set_cuda_backend("beta"):
             beta_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
