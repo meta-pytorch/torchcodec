@@ -622,8 +622,16 @@ class TestVideoDecoder:
         ):
             decoder.get_frames_at([0.3])
 
-    @needs_cuda
-    @pytest.mark.parametrize("device", all_supported_devices())
+    @pytest.mark.parametrize(
+        "device",
+        all_supported_devices(
+            cuda_marks=[
+                pytest.mark.skipif(
+                    in_fbcode(), reason="AV1 CUDA not supported internally"
+                )
+            ]
+        ),
+    )
     def test_get_frame_at_av1(self, device):
         if device == "cuda" and get_ffmpeg_major_version() == 4:
             return
@@ -1292,16 +1300,6 @@ class TestVideoDecoder:
     def test_10bit_videos(self, device, asset):
         # This just validates that we can decode 10-bit videos.
         # TODO validate against the ref that the decoded frames are correct
-
-        # if device == "cuda:beta" and asset is H264_10BITS:
-        #     # This fails on the BETA interface with:
-        #     #
-        #     # RuntimeError: Codec configuration not supported on this GPU.
-        #     # Codec: 4, chroma format: 1, bit depth: 10
-        #     #
-        #     # It works on the ffmpeg interface because FFmpeg fallsback to the
-        #     # CPU, while the BETA interface doesn't.
-        #     pytest.skip("Asset not supported by NVDEC")
 
         decoder, _ = make_video_decoder(asset.path, device=device)
         decoder.get_frame_at(10)
