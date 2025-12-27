@@ -57,13 +57,13 @@ jobs:
       build-platform: "python-build-package"
       build-command: "BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1 python -m build --wheel -vvv --no-isolation"
 
-  install-and-test:
+  install-and-test-cppapi:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.10']
-        ffmpeg-version-for-tests: ['4.4.2', '5.1.2', '6.1.1', '7.0.1', '8.0']
+        ffmpeg-version-for-tests: ['8.0']
     needs: build
     steps:
       - name: Check out repo
@@ -101,9 +101,25 @@ jobs:
       - name: Install ffmpeg, post build
         run: bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
 
-      - name: Install test dependencies
-        run: bash packaging/install_test_dependencies.sh
-
-      - name: Run Python tests
+      - name: Install pkg-config and pybind11
         run: |
-          pytest --override-ini="addopts=-v" test
+          conda install pkg-config pybind11 -c conda-forge
+
+      - name: Configure cppapi
+        run: |
+          torch_prefix=$(python -c "import torch; print(torch.utils.cmake_prefix_path)")
+          torchcodec_prefix=$(python -c "import torchcodec; print(torchcodec.cmake_prefix_path)")
+          mkdir _build_cppapi && cd _build_cppapi && cmake \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_VERBOSE_MAKEFILE=ON \
+            -DCMAKE_PREFIX_PATH="$torch_prefix;$torchcodec_prefix" \
+            ../test/cppapi
+
+      - name: Build cppapi
+        run: |
+          cmake --build _build_cppapi
+
+      - name: Execute cppapi
+        run: |
+          ver=$(python -c "import torchcodec; print(torchcodec.ffmpeg_major_version)")
+          ./_build_cppapi/torchcodec_cppapitest${ver}
