@@ -6,6 +6,9 @@
 
 import contextlib
 import gc
+import pathlib
+import subprocess
+import tempfile
 from functools import partial
 
 import numpy
@@ -1156,6 +1159,68 @@ class TestVideoDecoder:
 
         with pytest.raises(RuntimeError, match="Target fps must be positive"):
             decoder.get_frames_played_in_range(start_seconds, stop_seconds, fps=-10)
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("target_fps", [5.0, 24.0, 30.1, 60.0])
+    def test_get_frames_played_in_range_fps_matches_ffmpeg(self, target_fps):
+        """Test that TorchCodec's fps output matches FFmpeg's fps filter."""
+        video_path = str(NASA_VIDEO.path)
+        start_seconds = 0.0
+        duration_seconds = 1.0
+
+        decoder = VideoDecoder(video_path, dimension_order="NHWC")
+        stop_seconds = start_seconds + duration_seconds
+        height = decoder.metadata.height
+        width = decoder.metadata.width
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+            raw_file = tmpdir / "frames.raw"
+
+            # Extract frames with FFmpeg as raw RGB24 data
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                video_path,
+                "-ss",
+                str(start_seconds),
+                "-t",
+                str(duration_seconds),
+                "-vf",
+                f"fps=fps={target_fps}",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                str(raw_file),
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            assert result.returncode == 0, f"FFmpeg failed: {result.stderr}"
+
+            raw_data = numpy.fromfile(raw_file, dtype=numpy.uint8)
+            frame_size = height * width * 3
+            num_ffmpeg_frames = len(raw_data) // frame_size
+            ffmpeg_frames = raw_data.reshape(num_ffmpeg_frames, height, width, 3)
+
+            tc_frames_batch = decoder.get_frames_played_in_range(
+                start_seconds=start_seconds,
+                stop_seconds=stop_seconds,
+                fps=target_fps,
+            )
+
+            # Verify frame counts match
+            assert len(tc_frames_batch) == num_ffmpeg_frames
+
+            # Verify both FFmpeg and TorchCodec produce identical frames
+            for out_idx in range(num_ffmpeg_frames):
+                torch.testing.assert_close(
+                    torch.from_numpy(ffmpeg_frames[out_idx]),
+                    tc_frames_batch.data[out_idx],
+                    rtol=0,
+                    atol=0,
+                    msg=f"Frame {out_idx} differs between FFmpeg and TorchCodec",
+                )
 
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_key_frame_indices(self, device):
