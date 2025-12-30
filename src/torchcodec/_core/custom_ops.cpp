@@ -63,7 +63,7 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "get_frames_in_range(Tensor(a!) decoder, *, int start, int stop, int? step=None) -> (Tensor, Tensor, Tensor)");
   m.def(
-      "get_frames_by_pts_in_range(Tensor(a!) decoder, *, float start_seconds, float stop_seconds) -> (Tensor, Tensor, Tensor)");
+      "get_frames_by_pts_in_range(Tensor(a!) decoder, *, float start_seconds, float stop_seconds, float? target_fps=None) -> (Tensor, Tensor, Tensor)");
   m.def(
       "get_frames_by_pts_in_range_audio(Tensor(a!) decoder, *, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def(
@@ -575,13 +575,16 @@ OpsFrameBatchOutput get_frames_by_pts(
 // Return the frames inside the range as a single stacked Tensor. The range is
 // defined as [start_seconds, stop_seconds). The frames are stacked in pts
 // order.
+// If target_fps is specified, frames are resampled to match the target frame
+// rate by duplicating or dropping frames as necessary.
 OpsFrameBatchOutput get_frames_by_pts_in_range(
     at::Tensor& decoder,
     double start_seconds,
-    double stop_seconds) {
+    double stop_seconds,
+    std::optional<double> target_fps = std::nullopt) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto result =
-      videoDecoder->getFramesPlayedInRange(start_seconds, stop_seconds);
+  auto result = videoDecoder->getFramesPlayedInRange(
+      start_seconds, stop_seconds, target_fps);
   return makeOpsFrameBatchOutput(result);
 }
 

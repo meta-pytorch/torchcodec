@@ -147,9 +147,13 @@ class SingleStreamDecoder {
   // Valid values for startSeconds and stopSeconds are:
   //
   //   [beginStreamPtsSecondsFromContent, endStreamPtsSecondsFromContent)
+  //
+  // If targetFps is specified, frames are resampled to match the target frame
+  // rate by duplicating or dropping frames as necessary.
   FrameBatchOutput getFramesPlayedInRange(
       double startSeconds,
-      double stopSeconds);
+      double stopSeconds,
+      std::optional<double> targetFps = std::nullopt);
 
   AudioFramesOutput getFramesPlayedInRangeAudio(
       double startSeconds,

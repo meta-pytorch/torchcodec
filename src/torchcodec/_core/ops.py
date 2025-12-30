@@ -535,6 +535,7 @@ def get_frames_by_pts_in_range_abstract(
     *,
     start_seconds: float,
     stop_seconds: float,
+    target_fps: float | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (

@@ -1099,6 +1099,65 @@ class TestVideoDecoder:
             frame = decoder.get_frames_played_in_range(0, 23)  # noqa
 
     @pytest.mark.parametrize("device", all_supported_devices())
+    def test_get_frames_played_in_range_with_fps(self, device):
+        decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode="exact"
+        )
+
+        source_fps = decoder.metadata.average_fps
+        duration_seconds = 1.0
+        start_seconds = decoder.get_frame_at(0).pts_seconds
+        frame1_pts = decoder.get_frame_at(1).pts_seconds
+        stop_seconds = start_seconds + duration_seconds
+
+        # Test downsampling: request lower fps than source
+        target_fps_low = 5
+        frames_low_fps = decoder.get_frames_played_in_range(
+            start_seconds, stop_seconds, fps=target_fps_low
+        )
+        expected_frames_low = round(duration_seconds * target_fps_low)
+        assert len(frames_low_fps) == expected_frames_low
+
+        # Test upsampling: request higher fps than source (frames should be duplicated)
+        # Request 3x the source fps for a single frame's duration
+        target_fps_high = int(source_fps * 3)
+        frames_high_fps = decoder.get_frames_played_in_range(
+            start_seconds, frame1_pts, fps=target_fps_high
+        )
+        # All frames should be duplicates of frame 0 since we're within frame 0's display time
+        frame_duration = frame1_pts - start_seconds
+        expected_frames_high = round(frame_duration * target_fps_high)
+        assert len(frames_high_fps) == expected_frames_high
+
+        # All duplicated frames should have the same content as frame 0
+        frame0_data = decoder.get_frame_at(0).data
+        for i in range(len(frames_high_fps)):
+            assert_frames_equal(frames_high_fps.data[i], frame0_data)
+
+        # Test that fps=None returns the original behavior (same as not passing fps)
+        frames_no_fps = decoder.get_frames_played_in_range(start_seconds, stop_seconds)
+        frames_none_fps = decoder.get_frames_played_in_range(
+            start_seconds, stop_seconds, fps=None
+        )
+        assert len(frames_no_fps) == len(frames_none_fps)
+        assert_frames_equal(frames_no_fps.data, frames_none_fps.data)
+
+    @pytest.mark.parametrize("device", all_supported_devices())
+    def test_get_frames_played_in_range_with_fps_fails(self, device):
+        decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode="exact"
+        )
+
+        start_seconds = decoder.get_frame_at(0).pts_seconds
+        stop_seconds = start_seconds + 1.0
+
+        with pytest.raises(RuntimeError, match="Target fps must be positive"):
+            decoder.get_frames_played_in_range(start_seconds, stop_seconds, fps=0)
+
+        with pytest.raises(RuntimeError, match="Target fps must be positive"):
+            decoder.get_frames_played_in_range(start_seconds, stop_seconds, fps=-10)
+
+    @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_key_frame_indices(self, device):
         decoder, _ = make_video_decoder(
             NASA_VIDEO.path, device=device, seek_mode="exact"

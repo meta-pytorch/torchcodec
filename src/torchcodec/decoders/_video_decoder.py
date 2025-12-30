@@ -452,32 +452,31 @@ class VideoDecoder:
         )
 
     def get_frames_played_in_range(
-        self, start_seconds: float, stop_seconds: float
+        self, start_seconds: float, stop_seconds: float, fps: float | None = None
     ) -> FrameBatch:
         """Returns multiple frames in the given range.
 
-        Frames are in the half open range [start_seconds, stop_seconds). Each
-        returned frame's :term:`pts`, in seconds, is inside of the half open
-        range.
-
         Args:
-            start_seconds (float): Time, in seconds, of the start of the
-                range.
-            stop_seconds (float): Time, in seconds, of the end of the
-                range. As a half open range, the end is excluded.
+            start_seconds (float): Time, in seconds, of the start of the range.
+            stop_seconds (float): Time, in seconds, of the end of the range.
+                As a half open range, the end is excluded.
+            fps (float, optional): If specified, resample output to this frame
+                rate by duplicating or dropping frames as necessary. If None
+                (default), returns frames at the source video's frame rate.
 
         Returns:
             FrameBatch: The frames within the specified range.
         """
         if not start_seconds <= stop_seconds:
             raise ValueError(
-                f"Invalid start seconds: {start_seconds}. It must be less than or equal to stop seconds ({stop_seconds})."
+                f"Invalid start seconds: {start_seconds}. "
+                f"It must be less than or equal to stop seconds ({stop_seconds})."
             )
         if not self._begin_stream_seconds <= start_seconds < self._end_stream_seconds:
             raise ValueError(
                 f"Invalid start seconds: {start_seconds}. "
                 f"It must be greater than or equal to {self._begin_stream_seconds} "
-                f"and less than or equal to {self._end_stream_seconds}."
+                f"and less than {self._end_stream_seconds}."
             )
         if not stop_seconds <= self._end_stream_seconds:
             raise ValueError(
@@ -488,6 +487,7 @@ class VideoDecoder:
             self._decoder,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
+            target_fps=fps,
         )
         return FrameBatch(*frames)
 

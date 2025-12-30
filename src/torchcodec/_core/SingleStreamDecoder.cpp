@@ -844,7 +844,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
 
 FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     double startSeconds,
-    double stopSeconds) {
+    double stopSeconds,
+    std::optional<double> targetFps) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
@@ -905,6 +906,116 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
             "; must be less than or equal to " +
             std::to_string(maxSeconds.value()) + ").");
   }
+
+  // Resample frames to match the target frame rate
+  if (targetFps.has_value()) {
+    TORCH_CHECK(
+        targetFps.value() > 0,
+        "Target fps must be positive, got " +
+            std::to_string(targetFps.value()));
+
+    double fps = static_cast<double>(targetFps.value());
+    double frameDuration = 1.0 / fps;
+
+    // Calculate the exact number of output frames for the half-open range
+    // [startSeconds, stopSeconds). FFmpeg's fps filter uses rounding to
+    // determine the frame count, which we replicate here for consistency.
+    // Examples:
+    // - 35.23 fps, 1.0s: round(35.23) = 35 frames
+    // - 35.87 fps, 1.0s: round(35.87) = 36 frames
+    double product = (stopSeconds - startSeconds) * fps;
+    int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
+
+    if (numOutputFrames <= 0) {
+      FrameBatchOutput frameBatchOutput(
+          0,
+          resizedOutputDims_.value_or(metadataDims_),
+          videoStreamOptions.device);
+      frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
+      return frameBatchOutput;
+    }
+
+    // Generate target timestamps using index-based calculation to avoid
+    // floating-point accumulation errors
+    std::vector<double> targetTimestamps;
+    targetTimestamps.reserve(numOutputFrames);
+    for (int64_t i = 0; i < numOutputFrames; ++i) {
+      double targetPts = startSeconds + i * frameDuration;
+      targetTimestamps.push_back(targetPts);
+    }
+
+    // Map source frames to output frames using FFmpeg's fps filter logic.
+    // FFmpeg uses av_rescale_q_rnd with AV_ROUND_NEAR_INF, which means each
+    // input frame's pts is rounded to determine its output index:
+    //   output_index = round((pts - startSeconds) * fps)
+    //
+    // Multiple input frames may round to the same output index; the LAST one
+    // is used. When upsampling (target fps > source fps), some output indices
+    // may have no corresponding input frame; we use the previous frame.
+    auto& streamInfo = streamInfos_[activeStreamIndex_];
+    std::vector<int64_t> sourceFrameIndices(numOutputFrames, -1);
+
+    // For each source frame, compute which output index it maps to.
+    for (int64_t j = 0; j < static_cast<int64_t>(streamInfo.allFrames.size());
+         ++j) {
+      double framePts =
+          ptsToSeconds(streamInfo.allFrames[j].pts, streamInfo.timeBase);
+      int64_t outputIdx =
+          static_cast<int64_t>(std::round((framePts - startSeconds) * fps));
+
+      if (outputIdx >= numOutputFrames) {
+        break;
+      }
+      if (outputIdx >= 0) {
+        sourceFrameIndices[outputIdx] = j;
+      }
+    }
+
+    // Fill gaps for upsampling: if an output index has no mapped frame,
+    // use the most recent valid frame.
+    int64_t lastValidFrame = 0;
+    for (int64_t i = 0; i < numOutputFrames; ++i) {
+      if (sourceFrameIndices[i] == -1) {
+        sourceFrameIndices[i] = lastValidFrame;
+      } else {
+        lastValidFrame = sourceFrameIndices[i];
+      }
+    }
+
+    FrameBatchOutput frameBatchOutput(
+        numOutputFrames,
+        resizedOutputDims_.value_or(metadataDims_),
+        videoStreamOptions.device);
+
+    // Decode frames, reusing already-decoded frames for duplicates
+    int64_t lastDecodedSourceIndex = -1;
+    torch::Tensor lastDecodedData;
+
+    for (int64_t i = 0; i < numOutputFrames; ++i) {
+      int64_t sourceIdx = sourceFrameIndices[i];
+
+      if (sourceIdx == lastDecodedSourceIndex && lastDecodedSourceIndex >= 0) {
+        // Copy already-decoded frame data
+        frameBatchOutput.data[i].copy_(lastDecodedData);
+      } else {
+        // Get the frame at this source index
+        FrameOutput frameOutput =
+            getFrameAtIndexInternal(sourceIdx, frameBatchOutput.data[i]);
+        lastDecodedData = frameBatchOutput.data[i];
+        lastDecodedSourceIndex = sourceIdx;
+      }
+
+      // Use the TARGET timestamp for output pts, not source
+      frameBatchOutput.ptsSeconds[i] = targetTimestamps[i];
+      frameBatchOutput.durationSeconds[i] = frameDuration;
+    }
+
+    frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
+    return frameBatchOutput;
+  }
+
+  // Original behavior when targetFps is not specified:
+  // Return all frames in range at source fps
 
   // Note that we look at nextPts for a frame, and not its pts or duration.
   // Our abstract player displays frames starting at the pts for that frame
