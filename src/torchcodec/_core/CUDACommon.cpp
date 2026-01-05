@@ -57,8 +57,7 @@ void initializeCudaContextWithPytorch(const torch::Device& device) {
 // Color space and color range are independent concepts, so we can have a BT.709
 // with full range, and another one with limited range. Same for BT.601.
 //
-// In the first version of this note we'll focus on the full color range. It
-// will later be updated to account for the limited range.
+// First, we'll consider the conversion in the full color range.
 //
 // Color conversion matrix
 // -----------------------
@@ -109,6 +108,53 @@ void initializeCudaContextWithPytorch(const torch::Device& device) {
 //         [ 1.0000e+00,  1.8556e+00,  4.6231e-09]])
 //
 // Which matches https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.709_conversion
+//
+//
+// Next, lets consider encoding RGB -> YUV in the limited color range.
+// Y is in the range [16-235] and U,V are in [16-240].
+// The reduced range provides margins for errors during processing.
+// https://en.wikipedia.org/wiki/YCbCr#Y%E2%80%B2PbPr_to_Y%E2%80%B2CbCr
+//
+// To encode RGB -> YUV in limited range, we start with the full range conversion
+// matrix derived above, then scale it to compress into the limited ranges:
+// - RGB [0,255] -> Y [16,235]: compress by (235-16)/255 ≈ 219/255
+// - RGB [0,255] -> U,V [16,240]: compress by (240-16)/255 ≈ 224/255
+//
+// ```py
+// import torch
+// kr, kg, kb = 0.2126, 0.7152, 0.0722  # BT.709 luma coefficients
+// u_scale = 2 * (1 - kb)
+// v_scale = 2 * (1 - kr)
+//
+// # Full range RGB->YUV matrix
+// rgb_to_yuv_full = torch.tensor([
+//     [kr, kg, kb],
+//     [-kr/u_scale, -kg/u_scale, (1-kb)/u_scale],
+//     [(1-kr)/v_scale, -kg/v_scale, -kb/v_scale]
+// ])
+//
+// # Limited range compression factors
+// full_to_limited_y_scale = 219.0 / 255.0
+// full_to_limited_uv_scale = 224.0 / 255.0
+//
+// # Scale the full range matrix rows
+// rgb_to_yuv_limited = rgb_to_yuv_full * torch.tensor([
+//     [full_to_limited_y_scale],
+//     [full_to_limited_uv_scale],
+//     [full_to_limited_uv_scale]
+// ])
+//
+// print("RGB->YUV matrix (Limited Range BT.709):")
+// print(rgb_to_yuv_limited)
+// ```
+//
+// This yields:
+// tensor([[ 0.183,  0.614,  0.062],
+//         [-0.101, -0.339,  0.439],
+//         [ 0.439, -0.399, -0.040]])
+//
+// Which is the matrix we store in CudaDeviceInterface.
+// TODO: land PR that adds this matrix in CudaDeviceInterface
 //
 // Color conversion in NPP
 // -----------------------
