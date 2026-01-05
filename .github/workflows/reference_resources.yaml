@@ -60,7 +60,7 @@ jobs:
           name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cpu_x86_64
           path: pytorch/torchcodec/dist/
       - name: Setup conda env
-        uses: conda-incubator/setup-miniconda@v2
+        uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
           miniconda-version: "latest"
