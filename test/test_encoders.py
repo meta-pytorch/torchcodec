@@ -34,6 +34,34 @@ IS_WINDOWS_WITH_FFMPEG_LE_70 = IS_WINDOWS and (
     or (get_ffmpeg_major_version() == 7 and get_ffmpeg_minor_version() == 0)
 )
 
+# Common encode parameters used across video encoder tests
+VIDEO_ENCODE_PARAMS = (
+    {"pixel_format": "yuv444p", "crf": 0, "preset": None},
+    {"pixel_format": "yuv420p", "crf": 30, "preset": None},
+    {"pixel_format": "yuv420p", "crf": None, "preset": "ultrafast"},
+    {"pixel_format": "yuv420p", "crf": None, "preset": None},
+)
+
+
+def _get_format_encode_params(formats, encode_params=VIDEO_ENCODE_PARAMS):
+    """Generate (format, encode_params) tuples with appropriate skip marks."""
+    result = []
+    for fmt in formats:
+        for params in encode_params:
+            if fmt in ("avi", "flv") and params["pixel_format"] == "yuv444p":
+                result.append(
+                    pytest.param(
+                        fmt,
+                        params,
+                        marks=pytest.mark.skip(
+                            reason=f"Default codec for {fmt} does not support {params['pixel_format']}"
+                        ),
+                    )
+                )
+            else:
+                result.append((fmt, params))
+    return result
+
 
 @pytest.fixture
 def with_ffmpeg_debug_logs():
@@ -1026,13 +1054,12 @@ class TestVideoEncoder:
 
     @needs_ffmpeg_cli
     @pytest.mark.parametrize(
-        "format",
-        (
-            "mov",
-            "mp4",
-            "mkv",
+        "format,encode_params",
+        _get_format_encode_params(("mov", "mp4", "avi", "mkv", "flv"))
+        + [
             pytest.param(
                 "webm",
+                encode_params,
                 marks=[
                     pytest.mark.slow,
                     pytest.mark.skipif(
@@ -1041,16 +1068,8 @@ class TestVideoEncoder:
                         reason="Codec for webm is not available in this FFmpeg installation.",
                     ),
                 ],
-            ),
-        ),
-    )
-    @pytest.mark.parametrize(
-        "encode_params",
-        [
-            {"pixel_format": "yuv444p", "crf": 0, "preset": None},
-            {"pixel_format": "yuv420p", "crf": 30, "preset": None},
-            {"pixel_format": "yuv420p", "crf": None, "preset": "ultrafast"},
-            {"pixel_format": "yuv420p", "crf": None, "preset": None},
+            )
+            for encode_params in VIDEO_ENCODE_PARAMS
         ],
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
