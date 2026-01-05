@@ -845,7 +845,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
 FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     double startSeconds,
     double stopSeconds,
-    std::optional<double> targetFps) {
+    std::optional<double> fps) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
@@ -908,14 +908,13 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
   }
 
   // Resample frames to match the target frame rate
-  if (targetFps.has_value()) {
+  if (fps.has_value()) {
     TORCH_CHECK(
-        targetFps.value() > 0,
-        "Target fps must be positive, got " +
-            std::to_string(targetFps.value()));
+        fps.value() > 0,
+        "fps must be positive, got " + std::to_string(fps.value()));
 
-    double fps = static_cast<double>(targetFps.value());
-    double frameDuration = 1.0 / fps;
+    double fpsVal = static_cast<double>(fps.value());
+    double frameDuration = 1.0 / fpsVal;
 
     // Calculate the exact number of output frames for the half-open range
     // [startSeconds, stopSeconds). FFmpeg's fps filter uses rounding to
@@ -923,7 +922,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     // Examples:
     // - 35.23 fps, 1.0s: round(35.23) = 35 frames
     // - 35.87 fps, 1.0s: round(35.87) = 36 frames
-    double product = (stopSeconds - startSeconds) * fps;
+    double product = (stopSeconds - startSeconds) * fpsVal;
     int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
 
     if (numOutputFrames <= 0) {
@@ -961,7 +960,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       double framePts =
           ptsToSeconds(streamInfo.allFrames[j].pts, streamInfo.timeBase);
       int64_t outputIdx =
-          static_cast<int64_t>(std::round((framePts - startSeconds) * fps));
+          static_cast<int64_t>(std::round((framePts - startSeconds) * fpsVal));
 
       if (outputIdx >= numOutputFrames) {
         break;
@@ -1014,7 +1013,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     return frameBatchOutput;
   }
 
-  // Original behavior when targetFps is not specified:
+  // Original behavior when fps is not specified:
   // Return all frames in range at source fps
 
   // Note that we look at nextPts for a frame, and not its pts or duration.

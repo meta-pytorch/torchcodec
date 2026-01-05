@@ -1154,10 +1154,10 @@ class TestVideoDecoder:
         start_seconds = decoder.get_frame_at(0).pts_seconds
         stop_seconds = start_seconds + 1.0
 
-        with pytest.raises(RuntimeError, match="Target fps must be positive"):
+        with pytest.raises(RuntimeError, match="fps must be positive"):
             decoder.get_frames_played_in_range(start_seconds, stop_seconds, fps=0)
 
-        with pytest.raises(RuntimeError, match="Target fps must be positive"):
+        with pytest.raises(RuntimeError, match="fps must be positive"):
             decoder.get_frames_played_in_range(start_seconds, stop_seconds, fps=-10)
 
     @needs_ffmpeg_cli

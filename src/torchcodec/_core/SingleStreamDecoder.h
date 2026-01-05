@@ -148,12 +148,12 @@ class SingleStreamDecoder {
   //
   //   [beginStreamPtsSecondsFromContent, endStreamPtsSecondsFromContent)
   //
-  // If targetFps is specified, frames are resampled to match the target frame
+  // If fps is specified, frames are resampled to match the target frame
   // rate by duplicating or dropping frames as necessary.
   FrameBatchOutput getFramesPlayedInRange(
       double startSeconds,
       double stopSeconds,
-      std::optional<double> targetFps = std::nullopt);
+      std::optional<double> fps = std::nullopt);
 
   AudioFramesOutput getFramesPlayedInRangeAudio(
       double startSeconds,

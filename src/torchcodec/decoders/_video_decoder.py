@@ -487,7 +487,7 @@ class VideoDecoder:
             self._decoder,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
-            target_fps=fps,
+            fps=fps,
         )
         return FrameBatch(*frames)
 
