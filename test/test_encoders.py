@@ -34,7 +34,6 @@ IS_WINDOWS_WITH_FFMPEG_LE_70 = IS_WINDOWS and (
     or (get_ffmpeg_major_version() == 7 and get_ffmpeg_minor_version() == 0)
 )
 
-# Common encode parameters used across video encoder tests
 VIDEO_ENCODE_PARAMS = (
     {"pixel_format": "yuv444p", "crf": 0, "preset": None},
     {"pixel_format": "yuv420p", "crf": 30, "preset": None},
