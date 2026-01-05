@@ -107,23 +107,23 @@ AVSampleFormat findBestOutputSampleFormat(const AVCodec& avCodec) {
 }
 
 void closeAVIOContext(
-    AVFormatContext* formatContext,
+    AVFormatContext* avFormatContext,
     AVIOContextHolder* avioContextHolder) {
-  if (!formatContext || !formatContext->pb) {
+  if (!avFormatContext || !avFormatContext->pb) {
     return;
   }
 
-  if (formatContext->pb->error == 0) {
-    avio_flush(formatContext->pb);
+  if (avFormatContext->pb->error == 0) {
+    avio_flush(avFormatContext->pb);
   }
 
-  if (avioContextHolder == nullptr) {
-    if (formatContext->pb->error == 0) {
-      avio_close(formatContext->pb);
+  if (!avioContextHolder) {
+    if (avFormatContext->pb->error == 0) {
+      avio_close(avFormatContext->pb);
     }
   }
 
-  formatContext->pb = nullptr;
+  avFormatContext->pb = nullptr;
 }
 
 } // namespace
