@@ -1114,22 +1114,22 @@ class TestVideoDecoder:
         stop_seconds = start_seconds + duration_seconds
 
         # Test downsampling: request lower fps than source
-        target_fps_low = 5
+        fps_low = 5
         frames_low_fps = decoder.get_frames_played_in_range(
-            start_seconds, stop_seconds, fps=target_fps_low
+            start_seconds, stop_seconds, fps=fps_low
         )
-        expected_frames_low = round(duration_seconds * target_fps_low)
+        expected_frames_low = round(duration_seconds * fps_low)
         assert len(frames_low_fps) == expected_frames_low
 
         # Test upsampling: request higher fps than source (frames should be duplicated)
         # Request 3x the source fps for a single frame's duration
-        target_fps_high = int(source_fps * 3)
+        fps_high = int(source_fps * 3)
         frames_high_fps = decoder.get_frames_played_in_range(
-            start_seconds, frame1_pts, fps=target_fps_high
+            start_seconds, frame1_pts, fps=fps_high
         )
         # All frames should be duplicates of frame 0 since we're within frame 0's display time
         frame_duration = frame1_pts - start_seconds
-        expected_frames_high = round(frame_duration * target_fps_high)
+        expected_frames_high = round(frame_duration * fps_high)
         assert len(frames_high_fps) == expected_frames_high
 
         # All duplicated frames should have the same content as frame 0
@@ -1161,8 +1161,8 @@ class TestVideoDecoder:
             decoder.get_frames_played_in_range(start_seconds, stop_seconds, fps=-10)
 
     @needs_ffmpeg_cli
-    @pytest.mark.parametrize("target_fps", [5.0, 24.0, 30.1, 60.0])
-    def test_get_frames_played_in_range_fps_matches_ffmpeg(self, target_fps):
+    @pytest.mark.parametrize("fps", [5.0, 24.0, 30.1, 60.0])
+    def test_get_frames_played_in_range_fps_matches_ffmpeg(self, fps):
         """Test that TorchCodec's fps output matches FFmpeg's fps filter."""
         video_path = str(NASA_VIDEO.path)
         start_seconds = 0.0
@@ -1188,7 +1188,7 @@ class TestVideoDecoder:
                 "-t",
                 str(duration_seconds),
                 "-vf",
-                f"fps=fps={target_fps}",
+                f"fps=fps={fps}",
                 "-f",
                 "rawvideo",
                 "-pix_fmt",
@@ -1206,7 +1206,7 @@ class TestVideoDecoder:
             tc_frames_batch = decoder.get_frames_played_in_range(
                 start_seconds=start_seconds,
                 stop_seconds=stop_seconds,
-                fps=target_fps,
+                fps=fps,
             )
 
             # Verify frame counts match

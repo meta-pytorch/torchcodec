@@ -949,7 +949,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     //   output_index = round((pts - startSeconds) * fps)
     //
     // Multiple input frames may round to the same output index; the LAST one
-    // is used. When upsampling (target fps > source fps), some output indices
+    // is used. When upsampling (fps > source fps), some output indices
     // may have no corresponding input frame; we use the previous frame.
     auto& streamInfo = streamInfos_[activeStreamIndex_];
     std::vector<int64_t> sourceFrameIndices(numOutputFrames, -1);
@@ -994,17 +994,14 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       int64_t sourceIdx = sourceFrameIndices[i];
 
       if (sourceIdx == lastDecodedSourceIndex && lastDecodedSourceIndex >= 0) {
-        // Copy already-decoded frame data
         frameBatchOutput.data[i].copy_(lastDecodedData);
       } else {
-        // Get the frame at this source index
         FrameOutput frameOutput =
             getFrameAtIndexInternal(sourceIdx, frameBatchOutput.data[i]);
         lastDecodedData = frameBatchOutput.data[i];
         lastDecodedSourceIndex = sourceIdx;
       }
 
-      // Use the TARGET timestamp for output pts, not source
       frameBatchOutput.ptsSeconds[i] = targetTimestamps[i];
       frameBatchOutput.durationSeconds[i] = frameDuration;
     }
