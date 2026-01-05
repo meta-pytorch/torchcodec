@@ -129,10 +129,6 @@ void closeAVIOContext(
 } // namespace
 
 AudioEncoder::~AudioEncoder() {
-  close_avio();
-}
-
-void AudioEncoder::close_avio() {
   closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
@@ -173,9 +169,9 @@ AudioEncoder::AudioEncoder(
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
     const AudioStreamOptions& audioStreamOptions)
-    : avioContextHolder_(std::move(avioContextHolder)),
-      samples_(validateSamples(samples)),
-      inSampleRate_(sampleRate) {
+    : samples_(validateSamples(samples)),
+      inSampleRate_(sampleRate),
+      avioContextHolder_(std::move(avioContextHolder)) {
   setFFmpegLogLevel();
   AVFormatContext* avFormatContext = nullptr;
   int status = avformat_alloc_output_context2(
@@ -344,7 +340,7 @@ void AudioEncoder::encode() {
       "Error in: av_write_trailer",
       getFFMPEGErrorStringFromErrorCode(status));
 
-  close_avio();
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 UniqueAVFrame AudioEncoder::maybeConvertAVFrame(const UniqueAVFrame& avFrame) {
@@ -695,9 +691,9 @@ VideoEncoder::VideoEncoder(
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
     const VideoStreamOptions& videoStreamOptions)
-    : avioContextHolder_(std::move(avioContextHolder)),
-      frames_(validateFrames(frames)),
-      inFrameRate_(frameRate) {
+    : frames_(validateFrames(frames)),
+      inFrameRate_(frameRate),
+      avioContextHolder_(std::move(avioContextHolder)) {
   setFFmpegLogLevel();
   // Map mkv -> matroska when used as format name
   formatName = (formatName == "mkv") ? "matroska" : formatName;

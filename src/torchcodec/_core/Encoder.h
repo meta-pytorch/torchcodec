@@ -43,9 +43,7 @@ class AudioEncoder {
   void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
   void maybeFlushSwrBuffers(AutoAVPacket& autoAVPacket);
   void flushBuffers();
-  void close_avio();
 
-  std::unique_ptr<AVIOContextHolder> avioContextHolder_;
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;
   int streamIndex_;
@@ -59,6 +57,8 @@ class AudioEncoder {
   int inSampleRate_ = -1;
 
   UniqueAVAudioFifo avAudioFifo_;
+
+  std::unique_ptr<AVIOContextHolder> avioContextHolder_;
 
   bool encodeWasCalled_ = false;
   int64_t lastEncodedAVFramePts_ = 0;
@@ -166,7 +166,6 @@ class VideoEncoder {
   void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
   void flushBuffers();
 
-  std::unique_ptr<AVIOContextHolder> avioContextHolder_;
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;
   AVStream* avStream_ = nullptr;
@@ -183,6 +182,7 @@ class VideoEncoder {
   int outHeight_ = -1;
   AVPixelFormat outPixelFormat_ = AV_PIX_FMT_NONE;
 
+  std::unique_ptr<AVIOContextHolder> avioContextHolder_;
   std::unique_ptr<DeviceInterface> deviceInterface_;
 
   bool encodeWasCalled_ = false;
