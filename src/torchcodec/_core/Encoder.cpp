@@ -106,26 +106,30 @@ AVSampleFormat findBestOutputSampleFormat(const AVCodec& avCodec) {
   return supportedSampleFormats[0];
 }
 
+void closeAVIOContext(
+    AVFormatContext* avFormatContext,
+    AVIOContextHolder* avioContextHolder) {
+  if (!avFormatContext || !avFormatContext->pb) {
+    return;
+  }
+
+  if (avFormatContext->pb->error == 0) {
+    avio_flush(avFormatContext->pb);
+  }
+
+  if (!avioContextHolder) {
+    if (avFormatContext->pb->error == 0) {
+      avio_close(avFormatContext->pb);
+    }
+  }
+
+  avFormatContext->pb = nullptr;
+}
+
 } // namespace
 
 AudioEncoder::~AudioEncoder() {
-  close_avio();
-}
-
-void AudioEncoder::close_avio() {
-  if (avFormatContext_ && avFormatContext_->pb) {
-    if (avFormatContext_->pb->error == 0) {
-      avio_flush(avFormatContext_->pb);
-    }
-
-    if (!avioContextHolder_) {
-      if (avFormatContext_->pb->error == 0) {
-        avio_close(avFormatContext_->pb);
-      }
-      // avoids closing again in destructor, which would segfault.
-      avFormatContext_->pb = nullptr;
-    }
-  }
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 AudioEncoder::AudioEncoder(
@@ -336,7 +340,7 @@ void AudioEncoder::encode() {
       "Error in: av_write_trailer",
       getFFMPEGErrorStringFromErrorCode(status));
 
-  close_avio();
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 UniqueAVFrame AudioEncoder::maybeConvertAVFrame(const UniqueAVFrame& avFrame) {
@@ -622,8 +626,8 @@ void tryToValidateCodecOption(
 
 void sortCodecOptions(
     const std::map<std::string, std::string>& extraOptions,
-    AVDictionary** codecDict,
-    AVDictionary** formatDict) {
+    UniqueAVDictionary& codecDict,
+    UniqueAVDictionary& formatDict) {
   // Accepts a map of options as input, then sorts them into codec options and
   // format options. The sorted options are returned into two separate dicts.
   const AVClass* formatClass = avformat_get_class();
@@ -636,29 +640,17 @@ void sortCodecOptions(
         AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ,
         nullptr);
     if (fmtOpt) {
-      av_dict_set(formatDict, key.c_str(), value.c_str(), 0);
+      av_dict_set(formatDict.getAddress(), key.c_str(), value.c_str(), 0);
     } else {
       // Default to codec option (includes AVCodecContext + encoder-private)
-      av_dict_set(codecDict, key.c_str(), value.c_str(), 0);
+      av_dict_set(codecDict.getAddress(), key.c_str(), value.c_str(), 0);
     }
   }
 }
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
-  // TODO-VideoEncoder: Unify destructor with ~AudioEncoder()
-  if (avFormatContext_ && avFormatContext_->pb) {
-    if (avFormatContext_->pb->error == 0) {
-      avio_flush(avFormatContext_->pb);
-    }
-    if (!avioContextHolder_) {
-      if (avFormatContext_->pb->error == 0) {
-        avio_close(avFormatContext_->pb);
-      }
-      avFormatContext_->pb = nullptr;
-    }
-  }
-  av_dict_free(&avFormatOptions_);
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 VideoEncoder::VideoEncoder(
@@ -831,25 +823,25 @@ void VideoEncoder::initializeEncoder(
   }
 
   // Apply videoStreamOptions
-  AVDictionary* avCodecOptions = nullptr;
+  UniqueAVDictionary avCodecOptions;
   if (videoStreamOptions.extraOptions.has_value()) {
     for (const auto& [key, value] : videoStreamOptions.extraOptions.value()) {
       tryToValidateCodecOption(*avCodec, key.c_str(), value);
     }
     sortCodecOptions(
         videoStreamOptions.extraOptions.value(),
-        &avCodecOptions,
-        &avFormatOptions_);
+        avCodecOptions,
+        avFormatOptions_);
   }
 
   if (videoStreamOptions.crf.has_value()) {
     std::string crfValue = std::to_string(videoStreamOptions.crf.value());
     tryToValidateCodecOption(*avCodec, "crf", crfValue);
-    av_dict_set(&avCodecOptions, "crf", crfValue.c_str(), 0);
+    av_dict_set(avCodecOptions.getAddress(), "crf", crfValue.c_str(), 0);
   }
   if (videoStreamOptions.preset.has_value()) {
     av_dict_set(
-        &avCodecOptions,
+        avCodecOptions.getAddress(),
         "preset",
         videoStreamOptions.preset.value().c_str(),
         0);
@@ -862,8 +854,8 @@ void VideoEncoder::initializeEncoder(
         avCodecContext_.get(), outPixelFormat_);
   }
 
-  int status = avcodec_open2(avCodecContext_.get(), avCodec, &avCodecOptions);
-  av_dict_free(&avCodecOptions);
+  int status = avcodec_open2(
+      avCodecContext_.get(), avCodec, avCodecOptions.getAddress());
 
   TORCH_CHECK(
       status == AVSUCCESS,
@@ -892,7 +884,8 @@ void VideoEncoder::encode() {
   TORCH_CHECK(!encodeWasCalled_, "Cannot call encode() twice.");
   encodeWasCalled_ = true;
 
-  int status = avformat_write_header(avFormatContext_.get(), &avFormatOptions_);
+  int status = avformat_write_header(
+      avFormatContext_.get(), avFormatOptions_.getAddress());
   TORCH_CHECK(
       status == AVSUCCESS,
       "Error in avformat_write_header: ",

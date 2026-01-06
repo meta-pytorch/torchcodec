@@ -342,6 +342,9 @@ std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
   void* i = nullptr;
   const AVCodec* codec = nullptr;
   while ((codec = av_codec_iterate(&i)) != nullptr) {
+    TORCH_CHECK(
+        codec != nullptr,
+        "codec returned by av_codec_iterate should not be null");
     if (isDecoder) {
       if (codec->id != codecId || !av_codec_is_decoder(codec)) {
         continue;
