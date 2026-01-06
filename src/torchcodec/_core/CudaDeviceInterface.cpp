@@ -518,13 +518,8 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
       ": NPP error code ",
       status);
 
-  avFrame->colorspace = codecContext->colorspace != AVCOL_SPC_UNSPECIFIED
-      ? codecContext->colorspace
-      : AVCOL_SPC_BT470BG; // BT.601
-  avFrame->color_range = codecContext->color_range != AVCOL_RANGE_UNSPECIFIED
-      ? codecContext->color_range
-      : AVCOL_RANGE_MPEG; // limited range
-
+  avFrame->colorspace = codecContext->colorspace;
+  avFrame->color_range = codecContext->color_range;
   return avFrame;
 }
 

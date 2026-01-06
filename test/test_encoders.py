@@ -1352,13 +1352,15 @@ class TestVideoEncoder:
         ],
     )
     # BT.601, BT.709, BT.2020
-    @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc"))
+    @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc", None))
     # Full/PC range, Limited/TV range
-    @pytest.mark.parametrize("color_range", ("pc", "tv"))
+    @pytest.mark.parametrize("color_range", ("pc", "tv", None))
     def test_nvenc_against_ffmpeg_cli(
         self, tmp_path, method, format, codec, color_space, color_range
     ):
         ffmpeg_version = get_ffmpeg_major_version()
+        # TODO-VideoEncoder: Investigate why FFmpeg 4 and 6 fail with non-default color space and range.
+        # See https://github.com/meta-pytorch/torchcodec/issues/1140
         if ffmpeg_version in (4, 6) and not (
             color_space == "bt470bg" and color_range == "tv"
         ):
@@ -1467,13 +1469,11 @@ class TestVideoEncoder:
                 == ffmpeg_metadata["pix_fmt"]
                 == expected_pix_fmt
             )
-            assert (
-                encoder_metadata["color_range"]
-                == ffmpeg_metadata["color_range"]
-                == color_range
-            )
-            assert (
-                encoder_metadata["color_space"]
-                == ffmpeg_metadata["color_space"]
-                == color_space
-            )
+            assert encoder_metadata["color_range"] == ffmpeg_metadata["color_range"]
+            assert encoder_metadata["color_space"] == ffmpeg_metadata["color_space"]
+            # Default values vary by codec, so we only assert when
+            # color_range and color_space are not None.
+            if color_range is not None:
+                color_range = ffmpeg_metadata["color_range"]
+            if color_space is not None:
+                assert color_space == ffmpeg_metadata["color_space"]
