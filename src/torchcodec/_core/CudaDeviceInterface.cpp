@@ -393,18 +393,18 @@ struct ColorConversionMatrices {
 
   static constexpr Npp32f BT601_FULL[3][4] = {
       {0.299f, 0.587f, 0.114f, 0.0f},
-      {-0.168736f, -0.331264f, 0.5f, 128.0f},
-      {0.5f, -0.418688f, -0.081312f, 128.0f}};
+      {-0.169f, -0.331f, 0.500f, 128.0f},
+      {0.500f, -0.419f, -0.081f, 128.0f}};
 
   static constexpr Npp32f BT709_LIMITED[3][4] = {
       {0.183f, 0.614f, 0.062f, 16.0f},
-      {-0.101f, -0.338f, 0.439f, 128.0f},
+      {-0.101f, -0.339f, 0.439f, 128.0f},
       {0.439f, -0.399f, -0.040f, 128.0f}};
 
   static constexpr Npp32f BT709_FULL[3][4] = {
-      {0.2126f, 0.7152f, 0.0722f, 0.0f},
-      {-0.114572f, -0.385428f, 0.5f, 128.0f},
-      {0.5f, -0.454153f, -0.045847f, 128.0f}};
+      {0.213f, 0.715f, 0.072f, 0.0f},
+      {-0.115f, -0.385f, 0.500f, 128.0f},
+      {0.500f, -0.454f, -0.046f, 128.0f}};
 
   static constexpr Npp32f BT2020_LIMITED[3][4] = {
       {0.2256f, 0.5823f, 0.0509f, 16.0f},
@@ -412,9 +412,9 @@ struct ColorConversionMatrices {
       {0.439f, -0.403f, -0.036f, 128.0f}};
 
   static constexpr Npp32f BT2020_FULL[3][4] = {
-      {0.2627f, 0.6780f, 0.0593f, 0.0f},
-      {-0.139630f, -0.360370f, 0.5f, 128.0f},
-      {0.5f, -0.459786f, -0.040214f, 128.0f}};
+      {0.263f, 0.678f, 0.059f, 0.0f},
+      {-0.140f, -0.360f, 0.500f, 128.0f},
+      {0.500f, -0.460f, -0.040f, 128.0f}};
 };
 
 // Returns conversion matrix based on codec context color space and range
