@@ -433,14 +433,24 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
       avFrame != nullptr && avFrame->data[0] != nullptr,
       "avFrame must be pre-allocated with CUDA memory");
 
-  // TODO VideoEncoder: Investigate ways to avoid this copy
-  torch::Tensor hwcFrame = tensor.permute({1, 2, 0}).contiguous();
+  const Npp8u* pSrc[3] = {
+      static_cast<const Npp8u*>(tensor.data_ptr()) +
+          0 * tensor.stride(0) * tensor.element_size(), // R plane
+      static_cast<const Npp8u*>(tensor.data_ptr()) +
+          1 * tensor.stride(0) * tensor.element_size(), // G plane
+      static_cast<const Npp8u*>(tensor.data_ptr()) +
+          2 * tensor.stride(0) * tensor.element_size() // B plane
+  };
+
+  int aSrcStep[3] = {
+      static_cast<int>(tensor.stride(1) * tensor.element_size()),
+      static_cast<int>(tensor.stride(1) * tensor.element_size()),
+      static_cast<int>(tensor.stride(1) * tensor.element_size())};
 
   NppiSize oSizeROI = {width, height};
-  NppStatus status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
-      static_cast<const Npp8u*>(hwcFrame.data_ptr()),
-      validateInt64ToInt(
-          hwcFrame.stride(0) * hwcFrame.element_size(), "nSrcStep"),
+  NppStatus status = nppiRGBToNV12_8u_ColorTwist32f_P3P2R_Ctx(
+      pSrc,
+      aSrcStep,
       avFrame->data,
       avFrame->linesize,
       oSizeROI,
