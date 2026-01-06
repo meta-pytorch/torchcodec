@@ -1102,9 +1102,10 @@ class TestVideoDecoder:
             frame = decoder.get_frames_played_in_range(0, 23)  # noqa
 
     @pytest.mark.parametrize("device", all_supported_devices())
-    def test_get_frames_played_in_range_with_fps(self, device):
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_get_frames_played_in_range_with_fps(self, device, seek_mode):
         decoder, _ = make_video_decoder(
-            NASA_VIDEO.path, device=device, seek_mode="exact"
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
         )
 
         source_fps = decoder.metadata.average_fps
@@ -1146,9 +1147,10 @@ class TestVideoDecoder:
         assert_frames_equal(frames_no_fps.data, frames_none_fps.data)
 
     @pytest.mark.parametrize("device", all_supported_devices())
-    def test_get_frames_played_in_range_with_fps_fails(self, device):
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_get_frames_played_in_range_with_fps_fails(self, device, seek_mode):
         decoder, _ = make_video_decoder(
-            NASA_VIDEO.path, device=device, seek_mode="exact"
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
         )
 
         start_seconds = decoder.get_frame_at(0).pts_seconds
@@ -1211,6 +1213,71 @@ class TestVideoDecoder:
 
             # Verify frame counts match
             assert len(tc_frames_batch) == num_ffmpeg_frames
+
+            # Verify both FFmpeg and TorchCodec produce identical frames
+            for out_idx in range(num_ffmpeg_frames):
+                torch.testing.assert_close(
+                    torch.from_numpy(ffmpeg_frames[out_idx]),
+                    tc_frames_batch.data[out_idx],
+                    rtol=0,
+                    atol=0,
+                    msg=f"Frame {out_idx} differs between FFmpeg and TorchCodec",
+                )
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("fps", [5.0, 15.0, 29.97, 60.0])
+    def test_get_frames_played_in_range_full_video_fps_matches_ffmpeg(self, fps):
+        """Test fps parameter on full video duration matches FFmpeg's fps filter."""
+        video_path = str(NASA_VIDEO.path)
+
+        decoder = VideoDecoder(video_path, dimension_order="NHWC")
+        start_seconds = decoder.metadata.begin_stream_seconds
+        stop_seconds = decoder.metadata.end_stream_seconds
+        duration = stop_seconds - start_seconds
+        height = decoder.metadata.height
+        width = decoder.metadata.width
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+            raw_file = tmpdir / "frames.raw"
+
+            # Extract frames with FFmpeg as raw RGB24 data for the full video
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                video_path,
+                "-ss",
+                str(start_seconds),
+                "-t",
+                str(duration),
+                "-vf",
+                f"fps=fps={fps}",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                str(raw_file),
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            assert result.returncode == 0, f"FFmpeg failed: {result.stderr}"
+
+            raw_data = numpy.fromfile(raw_file, dtype=numpy.uint8)
+            frame_size = height * width * 3
+            num_ffmpeg_frames = len(raw_data) // frame_size
+            ffmpeg_frames = raw_data.reshape(num_ffmpeg_frames, height, width, 3)
+
+            tc_frames_batch = decoder.get_frames_played_in_range(
+                start_seconds=start_seconds,
+                stop_seconds=stop_seconds,
+                fps=fps,
+            )
+
+            # Verify frame counts match
+            assert len(tc_frames_batch) == num_ffmpeg_frames, (
+                f"Frame count mismatch: TorchCodec={len(tc_frames_batch)}, "
+                f"FFmpeg={num_ffmpeg_frames}"
+            )
 
             # Verify both FFmpeg and TorchCodec produce identical frames
             for out_idx in range(num_ffmpeg_frames):

@@ -913,26 +913,20 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         fps.value() > 0,
         "fps must be positive, got " + std::to_string(fps.value()));
 
-    double fpsVal = static_cast<double>(fps.value());
+    // TODO: add an early break if requested fps is the same as the current fps
+
+    double fpsVal = fps.value();
     double frameDuration = 1.0 / fpsVal;
 
     // Calculate the exact number of output frames for the half-open range
-    // [startSeconds, stopSeconds). FFmpeg's fps filter uses rounding to
-    // determine the frame count, which we replicate here for consistency.
-    // Examples:
-    // - 35.23 fps, 1.0s: round(35.23) = 35 frames
-    // - 35.87 fps, 1.0s: round(35.87) = 36 frames
+    // [startSeconds, stopSeconds). FFmpeg's fps filter drops the frames until
+    // the next frame would overshoot.
+    // https://github.com/FFmpeg/FFmpeg/blob/n7.1/libavfilter/vf_fps.c#L290-L291
+    // We try to replicate this behavior by taking the last source frame that
+    // rounds to this output index.
+
     double product = (stopSeconds - startSeconds) * fpsVal;
     int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
-
-    if (numOutputFrames <= 0) {
-      FrameBatchOutput frameBatchOutput(
-          0,
-          resizedOutputDims_.value_or(metadataDims_),
-          videoStreamOptions.device);
-      frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-      return frameBatchOutput;
-    }
 
     // Generate target timestamps using index-based calculation to avoid
     // floating-point accumulation errors
@@ -954,20 +948,39 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     auto& streamInfo = streamInfos_[activeStreamIndex_];
     std::vector<int64_t> sourceFrameIndices(numOutputFrames, -1);
 
-    // For each source frame, compute which output index it maps to.
-    for (int64_t j = 0; j < static_cast<int64_t>(streamInfo.allFrames.size());
-         ++j) {
-      double framePts =
-          ptsToSeconds(streamInfo.allFrames[j].pts, streamInfo.timeBase);
-      int64_t outputIdx =
-          static_cast<int64_t>(std::round((framePts - startSeconds) * fpsVal));
+    switch (seekMode_) {
+      case SeekMode::exact:
+      case SeekMode::custom_frame_mappings: {
+        // For each source frame, compute which output index it maps to.
+        for (int64_t j = 0;
+             j < static_cast<int64_t>(streamInfo.allFrames.size());
+             ++j) {
+          double framePts =
+              ptsToSeconds(streamInfo.allFrames[j].pts, streamInfo.timeBase);
+          int64_t outputIdx = static_cast<int64_t>(
+              std::round((framePts - startSeconds) * fpsVal));
 
-      if (outputIdx >= numOutputFrames) {
+          if (outputIdx >= numOutputFrames) {
+            break;
+          }
+          if (outputIdx >= 0) {
+            sourceFrameIndices[outputIdx] = j;
+          }
+        }
         break;
       }
-      if (outputIdx >= 0) {
-        sourceFrameIndices[outputIdx] = j;
+      case SeekMode::approximate: {
+        double sourceFps = streamMetadata.averageFpsFromHeader.value();
+
+        for (int64_t i = 0; i < numOutputFrames; ++i) {
+          int64_t sourceIdx =
+              static_cast<int64_t>(std::floor(targetTimestamps[i] * sourceFps));
+          sourceFrameIndices[i] = sourceIdx;
+        }
+        break;
       }
+      default:
+        TORCH_CHECK(false, "Unknown SeekMode");
     }
 
     // Fill gaps for upsampling: if an output index has no mapped frame,
