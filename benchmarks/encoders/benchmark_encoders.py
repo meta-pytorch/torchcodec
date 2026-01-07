@@ -3,53 +3,21 @@ import shutil
 import subprocess
 import tempfile
 from argparse import ArgumentParser
-from contextlib import nullcontext
 from pathlib import Path
 from time import perf_counter_ns
 
+import pynvml
 import torch
 from torchcodec.decoders import VideoDecoder
 from torchcodec.encoders import VideoEncoder
 
+# Initialize pynvml for GPU monitoring
+pynvml.nvmlInit()
+handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+
 DEFAULT_VIDEO_PATH = "test/resources/nasa_13013.mp4"
 # Alternatively, run this command to generate a longer test video:
 #   ffmpeg -f lavfi -i testsrc2=duration=600:size=1280x720:rate=30 -c:v libx264 -pix_fmt yuv420p test/resources/testsrc2_10min.mp4
-
-
-class NVENCMonitor:
-    def __init__(self):
-        self.nvidia_process = None
-        self.metrics = None
-
-    def __enter__(self):
-        self.nvidia_process = subprocess.Popen(
-            [
-                "nvidia-smi",
-                "-lms",
-                "50",  # check every 50 ms
-                "--query-gpu=utilization.encoder,memory.used",
-                "--format=csv,noheader,nounits",
-            ],
-            stdout=subprocess.PIPE,  # capture outputs
-            stderr=subprocess.DEVNULL,  # ignore errors
-            text=True,
-        )
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.nvidia_process.terminate()
-        stdout, _ = self.nvidia_process.communicate()
-
-        samples = []
-        for line in stdout.strip().split("\n"):
-            if line.strip():
-                res = [float(x.strip()) for x in line.split(",")]
-                samples.append({"utilization": res[0], "memory_used": res[1]})
-
-        self.metrics = {
-            "utilization": [s["utilization"] for s in samples],
-            "memory_used": [s["memory_used"] for s in samples],
-        }
 
 
 def bench(f, average_over=50, warmup=2, gpu_monitoring=False, **f_kwargs):
@@ -57,23 +25,27 @@ def bench(f, average_over=50, warmup=2, gpu_monitoring=False, **f_kwargs):
         f(**f_kwargs)
 
     times = []
-    cm = NVENCMonitor if gpu_monitoring else nullcontext
-    with cm() as monitor:
-        for _ in range(average_over):
-            start = perf_counter_ns()
-            f(**f_kwargs)
-            end = perf_counter_ns()
-            times.append(end - start)
+    utilizations = []
+    memory_usage = []
+
+    for _ in range(average_over):
+        start = perf_counter_ns()
+        f(**f_kwargs)
+        end = perf_counter_ns()
+        times.append(end - start)
+
+        if gpu_monitoring:
+            # Use encoder-specific utilization
+            util = pynvml.nvmlDeviceGetEncoderUtilization(handle)[0]
+            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+            mem_used = mem_info.used / (1024 * 1024)  # Convert bytes to MiB
+            utilizations.append(util)
+            memory_usage.append(mem_used)
 
     times_tensor = torch.tensor(times).float()
-    if gpu_monitoring:
-        nvenc_metrics = monitor.metrics
-        nvenc_tensor = torch.tensor(nvenc_metrics["utilization"]).float()
-        nvenc_memory_used_tensor = torch.tensor(nvenc_metrics["memory_used"]).float()
-
     return times_tensor, {
-        "utilization": nvenc_tensor if gpu_monitoring else None,
-        "memory_used": nvenc_memory_used_tensor if gpu_monitoring else None,
+        "utilization": torch.tensor(utilizations).float() if gpu_monitoring else None,
+        "memory_used": torch.tensor(memory_usage).float() if gpu_monitoring else None,
     }
 
 
@@ -230,6 +202,7 @@ def main():
             raw_path=str(raw_frames_path),
             output_path=str(ffmpeg_gpu_output),
             device="cuda",
+            gpu_monitoring=True,
             skip_write_frames=args.skip_write_frames,
             average_over=args.average_over,
         )
