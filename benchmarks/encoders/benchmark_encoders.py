@@ -14,6 +14,7 @@ from torchcodec.encoders import VideoEncoder
 pynvml.nvmlInit()
 handle = pynvml.nvmlDeviceGetHandleByIndex(0)
 
+FRAME_RATE = 30
 DEFAULT_VIDEO_PATH = "test/resources/nasa_13013.mp4"
 # Alternatively, run this command to generate a longer test video:
 #   ffmpeg -f lavfi -i testsrc2=duration=600:size=1280x720:rate=30 -c:v libx264 -pix_fmt yuv420p test/resources/testsrc2_10min.mp4
@@ -36,7 +37,7 @@ def bench(f, average_over=50, warmup=2, gpu_monitoring=False, **f_kwargs):
         if gpu_monitoring:
             util = pynvml.nvmlDeviceGetEncoderUtilization(handle)[0]
             mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            mem_used = mem_info.used / (1000000)  # Convert bytes to MB
+            mem_used = mem_info.used / (1_000_000)  # Convert bytes to MB
             utilizations.append(util)
             memory_usage.append(mem_used)
 
@@ -59,45 +60,42 @@ def report_stats(times, num_frames, nvenc_metrics=None, prefix="", unit="ms"):
     unit_times = times * mul
     med = unit_times.median().item()
     max = unit_times.max().item()
-    print(f"\n{prefix}   {med = :.2f}, {max = :.2f} - in {unit}, fps = {fps:.1f}")
+    print(f"\n{prefix}   {med = :.2f} {unit}, {max = :.2f} {unit}, fps = {fps:.1f}")
 
     if nvenc_metrics is not None:
         mem_used_max = nvenc_metrics["memory_used"].max().item()
         mem_used_median = nvenc_metrics["memory_used"].median().item()
         util_max = nvenc_metrics["utilization"].max().item()
-        # For median utilization, only consider non-zero samples as NVENC is often idle
-        util_nonzero = nvenc_metrics["utilization"][nvenc_metrics["utilization"] > 0]
-        util_median = util_nonzero.median().item() if len(util_nonzero) > 0 else 0.0
 
         print(
-            f"GPU memory used:      median = {mem_used_median:.1f}, max = {mem_used_max:.1f} MB"
+            f"GPU memory used:      med = {mem_used_median:.1f} MB, max = {mem_used_max:.1f} MB"
         )
         print(
-            f"NVENC utilization:    median = {util_median:.1f}%, max = {util_max:.1f}%"
+            f"NVENC utilization:    med = {nvenc_metrics["utilization"].median():.1f}%,     max = {util_max:.1f}%"
         )
 
 
 def encode_torchcodec(frames, output_path, device="cpu"):
-    encoder = VideoEncoder(frames=frames, frame_rate=30)
+    encoder = VideoEncoder(frames=frames, frame_rate=FRAME_RATE)
     if device == "cuda":
         encoder.to_file(dest=output_path, codec="h264_nvenc", extra_options={"qp": 0})
     else:
         encoder.to_file(dest=output_path, codec="libx264", crf=0)
 
 
-def write_raw_frames(frames, num_frames, raw_path):
+def write_raw_frames(frames, raw_path):
     # Convert NCHW to NHWC for raw video format
-    raw_frames = frames.permute(0, 2, 3, 1).contiguous()[:num_frames]
+    raw_frames = frames.permute(0, 2, 3, 1)
     with open(raw_path, "wb") as f:
         f.write(raw_frames.cpu().numpy().tobytes())
 
 
-def write_and_encode_ffmpeg_cli(
-    frames, num_frames, raw_path, output_path, device="cpu", skip_write_frames=False
+def encode_ffmpeg_cli(
+    frames, raw_path, output_path, device="cpu", skip_write_frames=False
 ):
     # Write frames during benchmarking function by default unless skip_write_frames flag used
     if not skip_write_frames:
-        write_raw_frames(frames, num_frames, raw_path)
+        write_raw_frames(frames, raw_path)
 
     ffmpeg_cmd = [
         "ffmpeg",
@@ -109,7 +107,7 @@ def write_and_encode_ffmpeg_cli(
         "-s",
         f"{frames.shape[3]}x{frames.shape[2]}",
         "-r",
-        "30",  # frame_rate is 30
+        str(FRAME_RATE),
         "-i",
         raw_path,
         "-c:v",
@@ -136,8 +134,8 @@ def main():
     parser.add_argument(
         "--max-frames",
         type=int,
-        default=10,
-        help="Maximum number of frames to decode for benchmarking",
+        default=None,
+        help="Maximum number of frames to decode for benchmarking. By default, all frames will be decoded.",
     )
     parser.add_argument(
         "--skip-write-frames",
@@ -145,17 +143,16 @@ def main():
         help="Do not write raw frames in FFmpeg CLI benchmarks",
     )
     args = parser.parse_args()
+    decoder = VideoDecoder(str(args.path))
+    frames = decoder.get_frames_in_range(start=0, stop=args.max_frames).data
 
-    print(
-        f"Benchmarking up to {args.max_frames} frames from {Path(args.path).name} over {args.average_over} runs:"
-    )
     cuda_available = torch.cuda.is_available()
     if not cuda_available:
         print("CUDA not available. GPU benchmarks will be skipped.")
 
-    decoder = VideoDecoder(str(args.path))
-    valid_max_frames = min(args.max_frames, len(decoder))
-    frames = decoder.get_frames_in_range(start=0, stop=valid_max_frames).data
+    print(
+        f"Benchmarking {len(frames)} frames from {Path(args.path).name} over {args.average_over} runs:"
+    )
     gpu_frames = frames.cuda() if cuda_available else None
     print(
         f"Decoded {frames.shape[0]} frames of size {frames.shape[2]}x{frames.shape[3]}"
@@ -166,10 +163,10 @@ def main():
 
     # By default, frames will be written inside the benchmark function
     if args.skip_write_frames:
-        write_raw_frames(frames, args.max_frames, str(raw_frames_path))
+        write_raw_frames(frames, str(raw_frames_path))
 
-    # Benchmark torchcodec on GPU
     if cuda_available:
+        # Benchmark torchcodec on GPU
         gpu_output = temp_dir / "torchcodec_gpu.mp4"
         times, nvenc_metrics = bench(
             encode_torchcodec,
@@ -182,16 +179,11 @@ def main():
         report_stats(
             times, frames.shape[0], nvenc_metrics, prefix="VideoEncoder on GPU"
         )
-    else:
-        print("Skipping VideoEncoder GPU benchmark (CUDA not available)")
-
-    # Benchmark FFmpeg CLI on GPU
-    if cuda_available:
+        # Benchmark FFmpeg CLI on GPU
         ffmpeg_gpu_output = temp_dir / "ffmpeg_gpu.mp4"
         times, nvenc_metrics = bench(
-            write_and_encode_ffmpeg_cli,
+            encode_ffmpeg_cli,
             frames=gpu_frames,
-            num_frames=valid_max_frames,
             raw_path=str(raw_frames_path),
             output_path=str(ffmpeg_gpu_output),
             device="cuda",
@@ -201,8 +193,6 @@ def main():
         )
         prefix = "FFmpeg CLI on GPU  "
         report_stats(times, frames.shape[0], nvenc_metrics, prefix=prefix)
-    else:
-        print("Skipping FFmpeg CLI GPU benchmark (CUDA not available)")
 
     # Benchmark torchcodec on CPU
     cpu_output = temp_dir / "torchcodec_cpu.mp4"
@@ -218,9 +208,8 @@ def main():
     # Benchmark FFmpeg CLI on CPU
     ffmpeg_cpu_output = temp_dir / "ffmpeg_cpu.mp4"
     times, _nvenc_metrics = bench(
-        write_and_encode_ffmpeg_cli,
+        encode_ffmpeg_cli,
         frames=frames,
-        num_frames=valid_max_frames,
         raw_path=str(raw_frames_path),
         output_path=str(ffmpeg_cpu_output),
         device="cpu",
@@ -230,10 +219,7 @@ def main():
     prefix = "FFmpeg CLI on CPU  "
     report_stats(times, frames.shape[0], prefix=prefix)
 
-    try:
-        shutil.rmtree(temp_dir, ignore_errors=True)
-    except Exception:
-        pass
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":
