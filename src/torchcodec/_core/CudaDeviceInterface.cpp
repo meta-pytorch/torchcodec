@@ -6,6 +6,7 @@
 #include "Cache.h"
 #include "CudaDeviceInterface.h"
 #include "FFMPEGCommon.h"
+#include "ValidationUtils.h"
 
 extern "C" {
 #include <libavutil/hwcontext_cuda.h>
@@ -241,6 +242,8 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
   validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
 
+  hasDecodedFrame_ = true;
+
   // All of our CUDA decoding assumes NV12 format. We handle non-NV12 formats by
   // converting them to NV12.
   avFrame = maybeConvertAVFrameToNV12OrRGB24(avFrame);
@@ -334,12 +337,22 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
 // appropriately set, so we just go off and find the matching codec for the CUDA
 // device
 std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
-    const AVCodecID& codecId) {
+    const AVCodecID& codecId,
+    bool isDecoder) {
   void* i = nullptr;
   const AVCodec* codec = nullptr;
   while ((codec = av_codec_iterate(&i)) != nullptr) {
-    if (codec->id != codecId || !av_codec_is_decoder(codec)) {
-      continue;
+    TORCH_CHECK(
+        codec != nullptr,
+        "codec returned by av_codec_iterate should not be null");
+    if (isDecoder) {
+      if (codec->id != codecId || !av_codec_is_decoder(codec)) {
+        continue;
+      }
+    } else {
+      if (codec->id != codecId || !av_codec_is_encoder(codec)) {
+        continue;
+      }
     }
 
     const AVCodecHWConfig* config = nullptr;
@@ -358,6 +371,10 @@ std::string CudaDeviceInterface::getDetails() {
   // Note: for this interface specifically the fallback is only known after a
   // frame has been decoded, not before: that's when FFmpeg decides to fallback,
   // so we can't know earlier.
+  if (!hasDecodedFrame_) {
+    return std::string(
+        "FFmpeg CUDA Device Interface. Fallback status unknown (no frames decoded).");
+  }
   return std::string("FFmpeg CUDA Device Interface. Using ") +
       (usingCPUFallback_ ? "CPU fallback." : "NVDEC.");
 }
@@ -378,7 +395,7 @@ const Npp32f defaultLimitedRangeRgbToNv12[3][4] = {
     {0.439f, -0.368f, -0.071f, 128.0f}};
 } // namespace
 
-std::optional<UniqueAVFrame> CudaDeviceInterface::convertTensorToAVFrame(
+UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
     const torch::Tensor& tensor,
     int frameIndex,
     AVCodecContext* codecContext) {
@@ -386,6 +403,10 @@ std::optional<UniqueAVFrame> CudaDeviceInterface::convertTensorToAVFrame(
       tensor.dim() == 3 && tensor.size(0) == 3,
       "Expected 3D RGB tensor (CHW format), got shape: ",
       tensor.sizes());
+  TORCH_CHECK(
+      tensor.device().type() == torch::kCUDA,
+      "Expected tensor on CUDA device, got: ",
+      tensor.device().str());
 
   UniqueAVFrame avFrame(av_frame_alloc());
   TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
@@ -412,12 +433,14 @@ std::optional<UniqueAVFrame> CudaDeviceInterface::convertTensorToAVFrame(
       avFrame != nullptr && avFrame->data[0] != nullptr,
       "avFrame must be pre-allocated with CUDA memory");
 
+  // TODO VideoEncoder: Investigate ways to avoid this copy
   torch::Tensor hwcFrame = tensor.permute({1, 2, 0}).contiguous();
 
   NppiSize oSizeROI = {width, height};
   NppStatus status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
       static_cast<const Npp8u*>(hwcFrame.data_ptr()),
-      hwcFrame.stride(0) * hwcFrame.element_size(),
+      validateInt64ToInt(
+          hwcFrame.stride(0) * hwcFrame.element_size(), "nSrcStep"),
       avFrame->data,
       avFrame->linesize,
       oSizeROI,
@@ -440,7 +463,7 @@ std::optional<UniqueAVFrame> CudaDeviceInterface::convertTensorToAVFrame(
 // Allocates and initializes AVHWFramesContext, and sets pixel format fields
 // to enable encoding with CUDA device. The hw_frames_ctx field is needed by
 // FFmpeg to allocate frames on GPU's memory.
-void CudaDeviceInterface::setupHardwareFrameContext(
+void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
     AVCodecContext* codecContext) {
   TORCH_CHECK(codecContext != nullptr, "codecContext is null");
   TORCH_CHECK(
@@ -474,5 +497,4 @@ void CudaDeviceInterface::setupHardwareFrameContext(
   }
   codecContext->hw_frames_ctx = hwFramesCtxRef;
 }
-
 } // namespace facebook::torchcodec

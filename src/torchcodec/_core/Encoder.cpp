@@ -745,18 +745,33 @@ void VideoEncoder::initializeEncoder(
         avCodec = avcodec_find_encoder(desc->id);
       }
     }
-    TORCH_CHECK(
-        avCodec != nullptr,
-        "Video codec ",
-        codec,
-        " not found. To see available codecs, run: ffmpeg -encoders");
   } else {
     TORCH_CHECK(
         avFormatContext_->oformat != nullptr,
         "Output format is null, unable to find default codec.");
-    avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
-    TORCH_CHECK(avCodec != nullptr, "Video codec not found");
+    // If frames are on a CUDA device, try to substitute the default codec
+    // with its hardware equivalent
+    if (frames_.device().is_cuda()) {
+      TORCH_CHECK(
+          deviceInterface_ != nullptr,
+          "Device interface is undefined when input frames are on a CUDA device. This should never happen, please report this to the TorchCodec repo.");
+      auto hwCodec = deviceInterface_->findCodec(
+          avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
+      if (hwCodec.has_value()) {
+        avCodec = hwCodec.value();
+      }
+    }
+    if (!avCodec) {
+      avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
+    }
   }
+  TORCH_CHECK(
+      avCodec != nullptr,
+      "Video codec ",
+      videoStreamOptions.codec.has_value()
+          ? videoStreamOptions.codec.value() + " "
+          : "",
+      "not found. To see available codecs, run: ffmpeg -encoders");
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
   TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
@@ -775,6 +790,12 @@ void VideoEncoder::initializeEncoder(
   outHeight_ = inHeight_;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
+    if (frames_.device().is_cuda()) {
+      TORCH_CHECK(
+          false,
+          "GPU Video encoding currently only supports the NV12 pixel format. "
+          "Do not set pixel_format to use NV12.");
+    }
     outPixelFormat_ =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
@@ -830,7 +851,8 @@ void VideoEncoder::initializeEncoder(
   // When frames are on a CUDA device, deviceInterface_ will be defined.
   if (frames_.device().is_cuda() && deviceInterface_) {
     deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
-    deviceInterface_->setupHardwareFrameContext(avCodecContext_.get());
+    deviceInterface_->setupHardwareFrameContextForEncoding(
+        avCodecContext_.get());
   }
 
   int status = avcodec_open2(avCodecContext_.get(), avCodec, &avCodecOptions);
@@ -875,15 +897,15 @@ void VideoEncoder::encode() {
     torch::Tensor currFrame = frames_[i];
     UniqueAVFrame avFrame;
     if (frames_.device().is_cuda() && deviceInterface_) {
-      auto cudaFrame = deviceInterface_->convertTensorToAVFrame(
+      auto cudaFrame = deviceInterface_->convertCUDATensorToAVFrameForEncoding(
           currFrame, i, avCodecContext_.get());
       TORCH_CHECK(
-          cudaFrame.has_value(),
-          "convertTensorToAVFrame failed for frame ",
+          cudaFrame != nullptr,
+          "convertCUDATensorToAVFrameForEncoding failed for frame ",
           i,
-          "on device: ",
+          " on device: ",
           frames_.device());
-      avFrame = std::move(*cudaFrame);
+      avFrame = std::move(cudaFrame);
     } else {
       avFrame = convertTensorToAVFrame(currFrame, i);
     }

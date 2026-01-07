@@ -36,15 +36,14 @@ class Transform {
   //
   // Note that the validation function does not return anything. We expect
   // invalid configurations to throw an exception.
-  virtual void validate(
-      [[maybe_unused]] const StreamMetadata& streamMetadata) const {}
+  virtual void validate([[maybe_unused]] const FrameDims& inputDims) const {}
 };
 
 class ResizeTransform : public Transform {
  public:
   enum class InterpolationMode { BILINEAR };
 
-  ResizeTransform(const FrameDims& dims)
+  explicit ResizeTransform(const FrameDims& dims)
       : outputDims_(dims), interpolationMode_(InterpolationMode::BILINEAR) {}
 
   ResizeTransform(const FrameDims& dims, InterpolationMode interpolationMode)
@@ -62,14 +61,17 @@ class CropTransform : public Transform {
  public:
   CropTransform(const FrameDims& dims, int x, int y);
 
+  // Becomes a center crop if x and y are not specified.
+  explicit CropTransform(const FrameDims& dims);
+
   std::string getFilterGraphCpu() const override;
   std::optional<FrameDims> getOutputFrameDims() const override;
-  void validate(const StreamMetadata& streamMetadata) const override;
+  void validate(const FrameDims& inputDims) const override;
 
  private:
   FrameDims outputDims_;
-  int x_;
-  int y_;
+  std::optional<int> x_;
+  std::optional<int> y_;
 };
 
 } // namespace facebook::torchcodec
