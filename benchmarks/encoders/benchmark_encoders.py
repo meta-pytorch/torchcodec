@@ -114,10 +114,10 @@ def write_raw_frames(frames, num_frames, raw_path):
 
 
 def write_and_encode_ffmpeg_cli(
-    frames, num_frames, raw_path, output_path, device="cpu", write_frames=False
+    frames, num_frames, raw_path, output_path, device="cpu", skip_write_frames=False
 ):
-    # Rewrite frames during benchmarking function if write_frames flag used
-    if write_frames:
+    # Write frames during benchmarking function by default unless skip_write_frames flag used
+    if not skip_write_frames:
         write_raw_frames(frames, num_frames, raw_path)
     height, width = frames.shape[2], frames.shape[3]
 
@@ -173,9 +173,9 @@ def main():
         help="Maximum number of frames to decode for benchmarking",
     )
     parser.add_argument(
-        "--write-frames",
+        "--skip-write-frames",
         action="store_true",
-        help="Include raw frame writing time in FFmpeg CLI benchmarks for fairer comparison with tensor-based workflows",
+        help="Do not write raw frames in FFmpeg CLI benchmarks",
     )
 
     args = parser.parse_args()
@@ -200,9 +200,8 @@ def main():
     temp_dir = Path(tempfile.mkdtemp())
     raw_frames_path = temp_dir / "input_frames.raw"
 
-    # Write frames once outside benchmarking when --write-frames is False
-    # When --write-frames is True, frames will be written inside the benchmark function
-    if not args.write_frames:
+    # By default, frames will be written inside the benchmark function
+    if args.skip_write_frames:
         write_raw_frames(frames, args.max_frames, str(raw_frames_path))
 
     # Benchmark torchcodec on GPU
@@ -232,7 +231,7 @@ def main():
             raw_path=str(raw_frames_path),
             output_path=str(ffmpeg_gpu_output),
             device="cuda",
-            write_frames=args.write_frames,
+            skip_write_frames=args.skip_write_frames,
             average_over=args.average_over,
             warmup=1,
         )
@@ -262,7 +261,7 @@ def main():
         raw_path=str(raw_frames_path),
         output_path=str(ffmpeg_cpu_output),
         device="cpu",
-        write_frames=args.write_frames,
+        skip_write_frames=args.skip_write_frames,
         average_over=args.average_over,
         warmup=1,
     )
