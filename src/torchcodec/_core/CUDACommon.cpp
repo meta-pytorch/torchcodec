@@ -180,8 +180,8 @@ void initializeCudaContextWithPytorch(const torch::Device& device) {
 //   the decoder.
 // - But *internally*, `nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx` needs U and V to
 //   be centered around 0, i.e. in [-128, 127]. So we need to apply a -128
-//   offset to U and V. Y doesn't need to be offset. The offset can be applied
-//   by adding a 4th column to the matrix.
+//   offset to U and V. Y needs an offset of -16, only when using limited range.
+//   The offsets can be applied by adding a 4th column to the matrix.
 //
 //
 // So our conversion matrix becomes the following, with new offset column:
@@ -189,7 +189,7 @@ void initializeCudaContextWithPytorch(const torch::Device& device) {
 //         [ 1.0000e+00, -1.8732e-01, -4.6812e-01,     -128]
 //         [ 1.0000e+00,  1.8556e+00,  4.6231e-09 ,    -128]])
 //
-// And that's what we need to pass for BT701, full range.
+// And that's what we need to pass for BT709, full range.
 /* clang-format on */
 
 // BT.709 full range color conversion matrix for YUV to RGB conversion.
