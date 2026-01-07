@@ -126,18 +126,15 @@ void initializeCudaContextWithPytorch(const torch::Device& device) {
 // u_scale = 2 * (1 - kb)
 // v_scale = 2 * (1 - kr)
 //
-// # Full range RGB->YUV matrix
 // rgb_to_yuv_full = torch.tensor([
 //     [kr, kg, kb],
 //     [-kr/u_scale, -kg/u_scale, (1-kb)/u_scale],
 //     [(1-kr)/v_scale, -kg/v_scale, -kb/v_scale]
 // ])
 //
-// # Limited range compression factors
 // full_to_limited_y_scale = 219.0 / 255.0
 // full_to_limited_uv_scale = 224.0 / 255.0
 //
-// # Scale the full range matrix rows
 // rgb_to_yuv_limited = rgb_to_yuv_full * torch.tensor([
 //     [full_to_limited_y_scale],
 //     [full_to_limited_uv_scale],
