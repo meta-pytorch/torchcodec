@@ -416,8 +416,8 @@ struct ColorConversionMatrices {
 
   static constexpr Npp32f BT2020_FULL[3][4] = {
       {0.2627f, 0.6780f, 0.0593f, 0.0f},
-      {-0.1396f, -0.3604f, 0.5000f, 128.0f},
-      {0.5000f, -0.4598f, -0.0402f, 128.0f}};
+      {-0.139630f, -0.360370f, 0.5000f, 128.0f},
+      {0.5000f, -0.459786f, -0.040214f, 128.0f}};
 };
 
 // Returns conversion matrix based on codec context color space and range
