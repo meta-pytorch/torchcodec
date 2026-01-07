@@ -43,7 +43,6 @@ class AudioEncoder {
   void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
   void maybeFlushSwrBuffers(AutoAVPacket& autoAVPacket);
   void flushBuffers();
-  void close_avio();
 
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;

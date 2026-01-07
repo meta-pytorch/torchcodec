@@ -106,26 +106,30 @@ AVSampleFormat findBestOutputSampleFormat(const AVCodec& avCodec) {
   return supportedSampleFormats[0];
 }
 
+void closeAVIOContext(
+    AVFormatContext* avFormatContext,
+    AVIOContextHolder* avioContextHolder) {
+  if (!avFormatContext || !avFormatContext->pb) {
+    return;
+  }
+
+  if (avFormatContext->pb->error == 0) {
+    avio_flush(avFormatContext->pb);
+  }
+
+  if (!avioContextHolder) {
+    if (avFormatContext->pb->error == 0) {
+      avio_close(avFormatContext->pb);
+    }
+  }
+
+  avFormatContext->pb = nullptr;
+}
+
 } // namespace
 
 AudioEncoder::~AudioEncoder() {
-  close_avio();
-}
-
-void AudioEncoder::close_avio() {
-  if (avFormatContext_ && avFormatContext_->pb) {
-    if (avFormatContext_->pb->error == 0) {
-      avio_flush(avFormatContext_->pb);
-    }
-
-    if (!avioContextHolder_) {
-      if (avFormatContext_->pb->error == 0) {
-        avio_close(avFormatContext_->pb);
-      }
-      // avoids closing again in destructor, which would segfault.
-      avFormatContext_->pb = nullptr;
-    }
-  }
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 AudioEncoder::AudioEncoder(
@@ -336,7 +340,7 @@ void AudioEncoder::encode() {
       "Error in: av_write_trailer",
       getFFMPEGErrorStringFromErrorCode(status));
 
-  close_avio();
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 UniqueAVFrame AudioEncoder::maybeConvertAVFrame(const UniqueAVFrame& avFrame) {
@@ -646,18 +650,7 @@ void sortCodecOptions(
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
-  // TODO-VideoEncoder: Unify destructor with ~AudioEncoder()
-  if (avFormatContext_ && avFormatContext_->pb) {
-    if (avFormatContext_->pb->error == 0) {
-      avio_flush(avFormatContext_->pb);
-    }
-    if (!avioContextHolder_) {
-      if (avFormatContext_->pb->error == 0) {
-        avio_close(avFormatContext_->pb);
-      }
-      avFormatContext_->pb = nullptr;
-    }
-  }
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 VideoEncoder::VideoEncoder(
