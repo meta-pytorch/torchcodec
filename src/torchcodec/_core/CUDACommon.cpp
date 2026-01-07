@@ -149,9 +149,9 @@ void initializeCudaContextWithPytorch(const torch::Device& device) {
 // ```
 //
 // This yields:
-// tensor([[ 0.183,  0.614,  0.062],
-//         [-0.101, -0.339,  0.439],
-//         [ 0.439, -0.399, -0.040]])
+// tensor([[ 0.1826,  0.6142,  0.0620],
+//         [-0.1006, -0.3386,  0.4392],
+//         [ 0.4392, -0.3989, -0.0403]])
 //
 // Which is the matrix we store in CudaDeviceInterface.
 // TODO: land PR that adds this matrix in CudaDeviceInterface
