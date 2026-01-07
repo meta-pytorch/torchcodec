@@ -11,7 +11,6 @@ import torch
 from torchcodec.decoders import VideoDecoder
 from torchcodec.encoders import VideoEncoder
 
-# Initialize pynvml for GPU monitoring
 pynvml.nvmlInit()
 handle = pynvml.nvmlDeviceGetHandleByIndex(0)
 
@@ -35,10 +34,9 @@ def bench(f, average_over=50, warmup=2, gpu_monitoring=False, **f_kwargs):
         times.append(end - start)
 
         if gpu_monitoring:
-            # Use encoder-specific utilization
             util = pynvml.nvmlDeviceGetEncoderUtilization(handle)[0]
             mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            mem_used = mem_info.used / (1024 * 1024)  # Convert bytes to MiB
+            mem_used = mem_info.used / (1000000)  # Convert bytes to MB
             utilizations.append(util)
             memory_usage.append(mem_used)
 
@@ -59,14 +57,9 @@ def report_stats(times, num_frames, nvenc_metrics=None, prefix="", unit="ms"):
         "s": 1e-9,
     }[unit]
     unit_times = times * mul
-    std = unit_times.std().item()
     med = unit_times.median().item()
-    mean = unit_times.mean().item()
-    min = unit_times.min().item()
     max = unit_times.max().item()
-    print(
-        f"\n{prefix}   {med = :.2f}, {mean = :.2f} +- {std:.2f}, {min = :.2f}, {max = :.2f} - in {unit}, fps = {fps:.1f}"
-    )
+    print(f"\n{prefix}   {med = :.2f}, {max = :.2f} - in {unit}, fps = {fps:.1f}")
 
     if nvenc_metrics is not None:
         mem_used_max = nvenc_metrics["memory_used"].max().item()
@@ -77,7 +70,7 @@ def report_stats(times, num_frames, nvenc_metrics=None, prefix="", unit="ms"):
         util_median = util_nonzero.median().item() if len(util_nonzero) > 0 else 0.0
 
         print(
-            f"GPU memory used:      median = {mem_used_median:.1f}, max = {mem_used_max:.1f} MiB"
+            f"GPU memory used:      median = {mem_used_median:.1f}, max = {mem_used_max:.1f} MB"
         )
         print(
             f"NVENC utilization:    median = {util_median:.1f}%, max = {util_max:.1f}%"
