@@ -502,8 +502,7 @@ const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
 UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
     const torch::Tensor& tensor,
     int frameIndex,
-    AVCodecContext* codecContext,
-    AVPixelFormat targetPixelFormat) {
+    AVCodecContext* codecContext) {
   TORCH_CHECK(
       tensor.dim() == 3 && tensor.size(0) == 3,
       "Expected 3D RGB tensor (CHW format), got shape: ",
@@ -543,29 +542,20 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
 
   NppiSize oSizeROI = {width, height};
   NppStatus status;
-  switch (targetPixelFormat) {
-    case AV_PIX_FMT_NV12:
-      status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
-          static_cast<const Npp8u*>(hwcFrame.data_ptr()),
-          hwcFrame.stride(0) * hwcFrame.element_size(),
-          avFrame->data,
-          avFrame->linesize,
-          oSizeROI,
-          getConversionMatrix(codecContext),
-          *nppCtx_);
-      break;
-    default:
-      TORCH_CHECK(
-          false,
-          "GPU encoding expected to encode into nv12 pixel format, but got ",
-          av_get_pix_fmt_name(targetPixelFormat),
-          ". This should not happen, please report this to the TorchCodec repo");
-  }
+  // Convert to NV12, as CUDA_PIXEL_FORMAT is always NV12 currently
+  status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
+      static_cast<const Npp8u*>(hwcFrame.data_ptr()),
+      hwcFrame.stride(0) * hwcFrame.element_size(),
+      avFrame->data,
+      avFrame->linesize,
+      oSizeROI,
+      getConversionMatrix(codecContext),
+      *nppCtx_);
 
   TORCH_CHECK(
       status == NPP_SUCCESS,
       "Failed to convert RGB to ",
-      av_get_pix_fmt_name(targetPixelFormat),
+      av_get_pix_fmt_name(CUDA_PIXEL_FORMAT),
       ": NPP error code ",
       status);
 
@@ -578,8 +568,7 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
 // to enable encoding with CUDA device. The hw_frames_ctx field is needed by
 // FFmpeg to allocate frames on GPU's memory.
 void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
-    AVCodecContext* codecContext,
-    AVPixelFormat targetPixelFormat) {
+    AVCodecContext* codecContext) {
   TORCH_CHECK(codecContext != nullptr, "codecContext is null");
   TORCH_CHECK(
       hardwareDeviceCtx_, "Hardware device context has not been initialized");
@@ -589,7 +578,7 @@ void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
       hwFramesCtxRef != nullptr,
       "Failed to allocate hardware frames context for codec");
 
-  codecContext->sw_pix_fmt = targetPixelFormat;
+  codecContext->sw_pix_fmt = CUDA_PIXEL_FORMAT;
   // Always set pixel format to support CUDA encoding.
   codecContext->pix_fmt = AV_PIX_FMT_CUDA;
 

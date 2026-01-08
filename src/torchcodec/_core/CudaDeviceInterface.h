@@ -43,15 +43,14 @@ class CudaDeviceInterface : public DeviceInterface {
 
   std::string getDetails() override;
 
+  constexpr static AVPixelFormat CUDA_PIXEL_FORMAT = AV_PIX_FMT_NV12;
   UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
       const torch::Tensor& tensor,
       int frameIndex,
-      AVCodecContext* codecContext,
-      AVPixelFormat targetPixelFormat) override;
+      AVCodecContext* codecContext) override;
 
   void setupHardwareFrameContextForEncoding(
-      AVCodecContext* codecContext,
-      AVPixelFormat targetPixelFormat) override;
+      AVCodecContext* codecContext) override;
 
  private:
   // Our CUDA decoding code assumes NV12 format. In order to handle other

@@ -851,7 +851,7 @@ void VideoEncoder::initializeEncoder(
   if (frames_.device().is_cuda() && deviceInterface_) {
     deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
     deviceInterface_->setupHardwareFrameContextForEncoding(
-        avCodecContext_.get(), outPixelFormat_);
+        avCodecContext_.get());
   }
 
   int status = avcodec_open2(
@@ -898,7 +898,7 @@ void VideoEncoder::encode() {
     UniqueAVFrame avFrame;
     if (frames_.device().is_cuda() && deviceInterface_) {
       auto cudaFrame = deviceInterface_->convertCUDATensorToAVFrameForEncoding(
-          currFrame, i, avCodecContext_.get(), outPixelFormat_);
+          currFrame, i, avCodecContext_.get());
       TORCH_CHECK(
           cudaFrame != nullptr,
           "convertCUDATensorToAVFrameForEncoding failed for frame ",
