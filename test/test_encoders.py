@@ -1399,7 +1399,7 @@ class TestVideoEncoder:
         # VideoEncoder will default to h264_nvenc since the frames are on GPU.
         ffmpeg_cmd.extend(["-c:v", codec if codec is not None else "h264_nvenc"])
         ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # Output format is always NV12
-        ffmpeg_cmd.extend(["-qp", str(qp)])  # Use lossless qp for other codecs
+        ffmpeg_cmd.extend(["-qp", str(qp)])
         if color_space:
             ffmpeg_cmd.extend(["-colorspace", color_space])
         if color_range:
@@ -1443,13 +1443,9 @@ class TestVideoEncoder:
         encoder_frames = self.decode(encoder_output).data
 
         assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
-        # The combination of full range + bt709 results in worse accuracy
-        percentage = 91 if color_range == "full" and color_space == "bt709" else 96
         for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
             assert psnr(ff_frame, enc_frame) > 25
-            assert_tensor_close_on_at_least(
-                ff_frame, enc_frame, percentage=percentage, atol=2
-            )
+            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=96, atol=2)
 
         if method == "to_file":
             metadata_fields = ["pix_fmt", "color_range", "color_space"]
@@ -1474,6 +1470,6 @@ class TestVideoEncoder:
             # Default values vary by codec, so we only assert when
             # color_range and color_space are not None.
             if color_range is not None:
-                color_range = ffmpeg_metadata["color_range"]
+                assert color_range == encoder_metadata["color_range"]
             if color_space is not None:
-                assert color_space == ffmpeg_metadata["color_space"]
+                assert color_space == encoder_metadata["color_space"]

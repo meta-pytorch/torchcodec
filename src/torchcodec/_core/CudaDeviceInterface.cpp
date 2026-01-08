@@ -383,10 +383,61 @@ std::string CudaDeviceInterface::getDetails() {
 // Below are methods exclusive to video encoding:
 // --------------------------------------------------------------------------
 namespace {
-// For background on these matrices, see the note:
+// Note: [RGB -> YUV Color Conversion, limited color range]
+//
+// For context on this subject, first read the note:
 // [YUV -> RGB Color Conversion, color space and color range]
 // https://github.com/meta-pytorch/torchcodec/blob/main/src/torchcodec/_core/CUDACommon.cpp#L63-L65
-// TODO Video-Encoder: Extend note to explain limited vs full range
+//
+// Lets encode RGB -> YUV in the limited color range for BT.601 color space.
+// In limited range, the [0, 255] range is mapped into [16-235] for Y, and into
+// [16-240] for U,V.
+// To implement, we get the full range conversion matrix as before, then scale:
+// - Y channel: scale by (235-16)/255 = 219/255
+// - U,V channels: scale by (240-16)/255 = 224/255
+// https://en.wikipedia.org/wiki/YCbCr#Y%E2%80%B2PbPr_to_Y%E2%80%B2CbCr
+//
+// ```py
+// import torch
+// kr, kg, kb = 0.299, 0.587, 0.114  # BT.601 luma coefficients
+// u_scale = 2 * (1 - kb)
+// v_scale = 2 * (1 - kr)
+//
+// rgb_to_yuv_full = torch.tensor([
+//     [kr, kg, kb],
+//     [-kr/u_scale, -kg/u_scale, (1-kb)/u_scale],
+//     [(1-kr)/v_scale, -kg/v_scale, -kb/v_scale]
+// ])
+//
+// full_to_limited_y_scale = 219.0 / 255.0
+// full_to_limited_uv_scale = 224.0 / 255.0
+//
+// rgb_to_yuv_limited = rgb_to_yuv_full * torch.tensor([
+//     [full_to_limited_y_scale],
+//     [full_to_limited_uv_scale],
+//     [full_to_limited_uv_scale]
+// ])
+//
+// print("RGB->YUV matrix (Limited Range BT.601):")
+// print(rgb_to_yuv_limited)
+// ```
+//
+// This yields:
+// tensor([[ 0.2568,  0.5041,  0.0979],
+//         [-0.1482, -0.2910,  0.4392],
+//         [ 0.4392, -0.3678, -0.0714]])
+//
+// Which matches https://fourcc.org/fccyvrgb.php
+//
+// To perform color conversion in NPP, we are required to provide these color
+// conversion matrices to ColorTwist functions, for example,
+// `nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx`.
+// https://docs.nvidia.com/cuda/npp/image_color_conversion.html
+//
+// These offsets are added in the 4th column of each conversion matrix below.
+// - In limited range, Y is offset by 16 to add the lower margin.
+// - In both color ranges, U,V are offset by 128 to be centered around 0.
+//
 // RGB to YUV conversion matrices to use in NPP color conversion functions
 struct ColorConversionMatrices {
   static constexpr Npp32f BT601_LIMITED[3][4] = {
