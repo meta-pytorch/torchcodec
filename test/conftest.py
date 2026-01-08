@@ -38,12 +38,8 @@ def pytest_collection_modifyitems(items):
 
         # For skipif, the marker is always present regardless of whether the
         # condition is True or False, so we must check the actual condition.
-        skipif_condition_is_true = False
-        for skipif_marker in item.iter_markers("skipif"):
-            condition = skipif_marker.args[0]
-            if condition:
-                skipif_condition_is_true = True
-                break
+    skipif_condition_is_true = any(skipif_marker.args[0] for skipif_marker in item.iter_markers("skipif"))
+
 
         if in_fbcode():
             # fbcode doesn't like skipping tests, so instead we  just don't collect the test
