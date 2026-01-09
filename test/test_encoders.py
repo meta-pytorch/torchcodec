@@ -777,9 +777,9 @@ class TestVideoEncoder:
         if device == "cuda":
             with pytest.raises(
                 RuntimeError,
-                match="GPU Video encoding currently only supports the NV12 pixel format. Do not set pixel_format to use NV12",
+                match="Video encoding on GPU currently only supports the nv12 pixel format. Do not set pixel_format to use nv12 by default.",
             ):
-                getattr(encoder, method)(**valid_params, pixel_format="yuv420p")
+                getattr(encoder, method)(**valid_params, pixel_format="yuv444p")
             return
 
         with pytest.raises(
@@ -1345,13 +1345,37 @@ class TestVideoEncoder:
             pytest.param(
                 "mkv",
                 "av1_nvenc",
-                marks=pytest.mark.skipif(
-                    IN_GITHUB_CI, reason="av1_nvenc is not supported on CI"
-                ),
+                marks=[
+                    pytest.mark.skipif(
+                        IN_GITHUB_CI, reason="av1_nvenc is not supported on CI"
+                    ),
+                    pytest.mark.skipif(
+                        get_ffmpeg_major_version() == 4,
+                        reason="av1_nvenc is not supported on FFmpeg 4",
+                    ),
+                ],
             ),
         ],
     )
-    def test_nvenc_against_ffmpeg_cli(self, tmp_path, method, format, codec):
+    # We test the color space and color range parameters in this test, because
+    # we are required to define matrices specific to these specs when using NPP, see note:
+    # [RGB -> YUV Color Conversion, limited color range]
+    # BT.601, BT.709, BT.2020
+    @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc", None))
+    # Full/PC range, Limited/TV range
+    @pytest.mark.parametrize("color_range", ("pc", "tv", None))
+    def test_nvenc_against_ffmpeg_cli(
+        self, tmp_path, method, format, codec, color_space, color_range
+    ):
+        ffmpeg_version = get_ffmpeg_major_version()
+        # TODO-VideoEncoder: Investigate why FFmpeg 4 and 6 fail with non-default color space and range.
+        # See https://github.com/meta-pytorch/torchcodec/issues/1140
+        if ffmpeg_version in (4, 6) and not (
+            color_space == "bt470bg" and color_range == "tv"
+        ):
+            pytest.skip(
+                "Non-default color space and range have lower accuracy on FFmpeg 4 and 6"
+            )
         # Encode with FFmpeg CLI using nvenc codecs
         device = "cuda"
         qp = 1  # Use near lossless encoding to reduce noise and support av1_nvenc
@@ -1379,16 +1403,23 @@ class TestVideoEncoder:
             temp_raw_path,
         ]
         # CLI requires explicit codec for nvenc
+        # VideoEncoder will default to h264_nvenc since the frames are on GPU.
         ffmpeg_cmd.extend(["-c:v", codec if codec is not None else "h264_nvenc"])
-        # VideoEncoder will select an NVENC encoder by default since the frames are on GPU.
-
         ffmpeg_cmd.extend(["-pix_fmt", "nv12"])  # Output format is always NV12
         ffmpeg_cmd.extend(["-qp", str(qp)])
+        if color_space:
+            ffmpeg_cmd.extend(["-colorspace", color_space])
+        if color_range:
+            ffmpeg_cmd.extend(["-color_range", color_range])
         ffmpeg_cmd.extend([ffmpeg_encoded_path])
         subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
 
         encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
         encoder_extra_options = {"qp": qp}
+        if color_space:
+            encoder_extra_options["colorspace"] = color_space
+        if color_range:
+            encoder_extra_options["color_range"] = color_range
         if method == "to_file":
             encoder_output_path = str(tmp_path / f"nvenc_output.{format}")
             encoder.to_file(
@@ -1424,8 +1455,39 @@ class TestVideoEncoder:
             assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=96, atol=2)
 
         if method == "to_file":
-            ffmpeg_metadata = self._get_video_metadata(ffmpeg_encoded_path, ["pix_fmt"])
-            encoder_metadata = self._get_video_metadata(encoder_output, ["pix_fmt"])
-            # pix_fmt nv12 is stored as yuv420p in metadata
-            assert encoder_metadata["pix_fmt"] == "yuv420p"
-            assert ffmpeg_metadata["pix_fmt"] == "yuv420p"
+            metadata_fields = ["pix_fmt", "color_range", "color_space"]
+            ffmpeg_metadata = self._get_video_metadata(
+                ffmpeg_encoded_path, metadata_fields
+            )
+            encoder_metadata = self._get_video_metadata(encoder_output, metadata_fields)
+            # pix_fmt nv12 is stored as yuv420p in metadata, unless full range (pc)is used
+            # In that case, h264 and hevc NVENC codecs will use yuvj420p automatically.
+            if color_range == "pc" and codec != "av1_nvenc":
+                expected_pix_fmt = "yuvj420p"
+            else:
+                # av1_nvenc does not utilize the yuvj420p pixel format
+                expected_pix_fmt = "yuv420p"
+            assert (
+                encoder_metadata["pix_fmt"]
+                == ffmpeg_metadata["pix_fmt"]
+                == expected_pix_fmt
+            )
+
+            assert encoder_metadata["color_range"] == ffmpeg_metadata["color_range"]
+            assert encoder_metadata["color_space"] == ffmpeg_metadata["color_space"]
+            # Default values vary by codec, so we only assert when
+            # color_range and color_space are not None.
+            if color_range is not None:
+                # FFmpeg and torchcodec encode color_range as 'unknown' for mov and avi
+                # when color_range='tv' and color_space=None on FFmpeg 7/8.
+                # Since this failure is rare, I suspect its a bug related to these
+                # older container formats on newer FFmpeg versions.
+                if not (
+                    ffmpeg_version in (7, 8)
+                    and color_range == "tv"
+                    and color_space is None
+                    and format in ("mov", "avi")
+                ):
+                    assert color_range == encoder_metadata["color_range"]
+            if color_space is not None:
+                assert color_space == encoder_metadata["color_space"]
