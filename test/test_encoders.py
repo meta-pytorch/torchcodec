@@ -34,13 +34,6 @@ IS_WINDOWS_WITH_FFMPEG_LE_70 = IS_WINDOWS and (
     or (get_ffmpeg_major_version() == 7 and get_ffmpeg_minor_version() == 0)
 )
 
-VIDEO_ENCODE_PARAMS = (
-    {"pixel_format": "yuv444p", "crf": 0, "preset": None},
-    {"pixel_format": "yuv420p", "crf": 30, "preset": None},
-    {"pixel_format": "yuv420p", "crf": None, "preset": "ultrafast"},
-    {"pixel_format": "yuv420p", "crf": None, "preset": None},
-)
-
 
 @pytest.fixture
 def with_ffmpeg_debug_logs():
@@ -1029,6 +1022,36 @@ class TestVideoEncoder:
         )
 
     @needs_ffmpeg_cli
+    @pytest.mark.parametrize(
+        "format",
+        (
+            "mov",
+            "mp4",
+            "avi",
+            "mkv",
+            "flv",
+            pytest.param(
+                "webm",
+                marks=[
+                    pytest.mark.slow,
+                    pytest.mark.skipif(
+                        get_ffmpeg_major_version() == 4
+                        or (IS_WINDOWS and get_ffmpeg_major_version() in (6, 7)),
+                        reason="Codec for webm is not available in this FFmpeg installation.",
+                    ),
+                ],
+            ),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "encode_params",
+        [
+            {"pixel_format": "yuv444p", "crf": 0, "preset": None},
+            {"pixel_format": "yuv420p", "crf": 30, "preset": None},
+            {"pixel_format": "yuv420p", "crf": None, "preset": "ultrafast"},
+            {"pixel_format": "yuv420p", "crf": None, "preset": None},
+        ],
+    )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     @pytest.mark.parametrize("frame_rate", [30, 29.97])
     def test_video_encoder_against_ffmpeg_cli(
