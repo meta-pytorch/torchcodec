@@ -1351,6 +1351,9 @@ class TestVideoEncoder:
             ),
         ],
     )
+    # We test the color space and color range parameters in this test, because
+    # we are required to define matrices specific to these specs when using NPP, see note:
+    # [RGB -> YUV Color Conversion, limited color range]
     # BT.601, BT.709, BT.2020
     @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc", None))
     # Full/PC range, Limited/TV range
@@ -1465,11 +1468,24 @@ class TestVideoEncoder:
                 == ffmpeg_metadata["pix_fmt"]
                 == expected_pix_fmt
             )
+
             assert encoder_metadata["color_range"] == ffmpeg_metadata["color_range"]
             assert encoder_metadata["color_space"] == ffmpeg_metadata["color_space"]
             # Default values vary by codec, so we only assert when
             # color_range and color_space are not None.
             if color_range is not None:
-                assert color_range == encoder_metadata["color_range"]
+                # FFmpeg and torchcodec encode color_range as 'unknown' for mov and avi
+                # when color_range='tv' and color_space=None on FFmpeg 7/8.
+                # Since this failure is rare, I suspect its a bug related to these
+                # older container formats on newer FFmpeg versions.
+                if (
+                    ffmpeg_version in (7, 8)
+                    and color_range == "tv"
+                    and color_space is None
+                    and format in ("mov", "avi")
+                ):
+                    pass
+                else:
+                    assert color_range == encoder_metadata["color_range"]
             if color_space is not None:
                 assert color_space == encoder_metadata["color_space"]
