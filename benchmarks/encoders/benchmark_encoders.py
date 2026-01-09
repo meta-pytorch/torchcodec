@@ -161,7 +161,8 @@ def main():
     temp_dir = Path(tempfile.mkdtemp())
     raw_frames_path = temp_dir / "input_frames.raw"
 
-    # By default, frames will be written inside the benchmark function
+    # If skip_write_frames is True, we will not benchmark the time it takes to write the frames.
+    # Here, we still write the frames for FFmpeg to use!
     if args.skip_write_frames:
         write_raw_frames(frames, str(raw_frames_path))
 
