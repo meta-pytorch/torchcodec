@@ -1191,13 +1191,6 @@ class TestVideoDecoder:
             assert_frames_equal(ref_frame3, frames[1].data)
             assert_frames_equal(ref_frame5, frames[2].data)
 
-    # Non-regression test for
-    # https://github.com/pytorch/torchcodec/issues/677 and
-    # https://github.com/pytorch/torchcodec/issues/676.
-    # More accurately, this is a non-regression test for videos which do
-    # *not* specify pts values (all pts values are N/A and set to
-    # INT64_MIN), but specify *dts* value - which we fallback to.
-    #
     # The test video we have is from
     # https://huggingface.co/datasets/raushan-testing-hf/videos-test/blob/main/sample_video_2.avi
     # We can't check it into the repo due to potential licensing issues, so
@@ -1208,6 +1201,12 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     @pytest.mark.skip(reason="TODO: Need video with no pts values.")
     def test_pts_to_dts_fallback(self, seek_mode):
+        # Non-regression test for
+        # https://github.com/pytorch/torchcodec/issues/677 and
+        # https://github.com/pytorch/torchcodec/issues/676.
+        # More accurately, this is a non-regression test for videos which do
+        # *not* specify pts values (all pts values are N/A and set to
+        # INT64_MIN), but specify *dts* value - which we fallback to.
         path = "/home/nicolashug/Downloads/sample_video_2.avi"
         decoder = VideoDecoder(path, seek_mode=seek_mode)
         metadata = decoder.metadata
