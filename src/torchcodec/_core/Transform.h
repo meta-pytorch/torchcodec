@@ -29,6 +29,12 @@ class Transform {
     return std::nullopt;
   }
 
+  // The ResizeTransform is special because it is the only transform
+  // that swscale can handle.
+  virtual bool isResize() const {
+    return false;
+  }
+
   // The validity of some transforms depends on the characteristics of the
   // AVStream they're being applied to. For example, some transforms will
   // specify coordinates inside a frame, we need to validate that those are
@@ -51,6 +57,9 @@ class ResizeTransform : public Transform {
 
   std::string getFilterGraphCpu() const override;
   std::optional<FrameDims> getOutputFrameDims() const override;
+  bool isResize() const override;
+
+  int getSwsFlags() const;
 
  private:
   FrameDims outputDims_;

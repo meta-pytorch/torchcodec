@@ -133,6 +133,7 @@ def main():
 
     input_height = metadata.height
     input_width = metadata.width
+
     for num_fraction in args.total_frame_fractions:
         num_frames_to_sample = math.ceil(metadata.num_frames * num_fraction)
         print(
