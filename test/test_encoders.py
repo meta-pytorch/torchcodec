@@ -42,26 +42,6 @@ VIDEO_ENCODE_PARAMS = (
 )
 
 
-def _get_format_encode_params(formats, encode_params=VIDEO_ENCODE_PARAMS):
-    """Generate (format, encode_params) tuples with appropriate skip marks."""
-    result = []
-    for fmt in formats:
-        for params in encode_params:
-            if fmt in ("avi", "flv") and params["pixel_format"] == "yuv444p":
-                result.append(
-                    pytest.param(
-                        fmt,
-                        params,
-                        marks=pytest.mark.skip(
-                            reason=f"Default codec for {fmt} does not support {params['pixel_format']}"
-                        ),
-                    )
-                )
-            else:
-                result.append((fmt, params))
-    return result
-
-
 @pytest.fixture
 def with_ffmpeg_debug_logs():
     # Fixture that sets the ffmpeg logs to DEBUG mode
@@ -1052,25 +1032,6 @@ class TestVideoEncoder:
         )
 
     @needs_ffmpeg_cli
-    @pytest.mark.parametrize(
-        "format,encode_params",
-        _get_format_encode_params(("mov", "mp4", "avi", "mkv", "flv"))
-        + [
-            pytest.param(
-                "webm",
-                encode_params,
-                marks=[
-                    pytest.mark.slow,
-                    pytest.mark.skipif(
-                        get_ffmpeg_major_version() == 4
-                        or (IS_WINDOWS and get_ffmpeg_major_version() in (6, 7)),
-                        reason="Codec for webm is not available in this FFmpeg installation.",
-                    ),
-                ],
-            )
-            for encode_params in VIDEO_ENCODE_PARAMS
-        ],
-    )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     @pytest.mark.parametrize("frame_rate", [30, 29.97])
     def test_video_encoder_against_ffmpeg_cli(
@@ -1080,6 +1041,9 @@ class TestVideoEncoder:
         crf = encode_params["crf"]
         preset = encode_params["preset"]
         ffmpeg_version = get_ffmpeg_major_version()
+
+        if format in ("avi", "flv") and pixel_format == "yuv444p":
+            pytest.skip(f"Default codec for {format} does not support {pixel_format}")
 
         source_frames = self.decode(TEST_SRC_2_720P.path)
 

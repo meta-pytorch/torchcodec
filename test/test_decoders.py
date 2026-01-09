@@ -622,19 +622,13 @@ class TestVideoDecoder:
         ):
             decoder.get_frames_at([0.3])
 
-    @pytest.mark.parametrize(
-        "device",
-        all_supported_devices(
-            cuda_marks=[
-                pytest.mark.skipif(
-                    in_fbcode(), reason="AV1 CUDA not supported internally"
-                )
-            ]
-        ),
-    )
+    @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frame_at_av1(self, device):
         if device == "cuda" and get_ffmpeg_major_version() == 4:
             return
+
+        if "cuda" in device and in_fbcode():
+            pytest.skip("decoding on CUDA is not supported internally")
 
         decoder, device = make_video_decoder(AV1_VIDEO.path, device=device)
         ref_frame10 = AV1_VIDEO.get_frame_data_by_index(10)
@@ -1197,24 +1191,23 @@ class TestVideoDecoder:
             assert_frames_equal(ref_frame3, frames[1].data)
             assert_frames_equal(ref_frame5, frames[2].data)
 
-    @pytest.mark.skip(reason="TODO: Need video with no pts values.")
+    # Non-regression test for
+    # https://github.com/pytorch/torchcodec/issues/677 and
+    # https://github.com/pytorch/torchcodec/issues/676.
+    # More accurately, this is a non-regression test for videos which do
+    # *not* specify pts values (all pts values are N/A and set to
+    # INT64_MIN), but specify *dts* value - which we fallback to.
+    #
+    # The test video we have is from
+    # https://huggingface.co/datasets/raushan-testing-hf/videos-test/blob/main/sample_video_2.avi
+    # We can't check it into the repo due to potential licensing issues, so
+    # we have to unconditionally skip this test.
+    # TODO: encode a video with no pts values to unskip this test. Couldn't
+    # find a way to do that with FFmpeg's CLI, but this should be doable
+    # once we have our own video encoder.
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    @pytest.mark.skip(reason="TODO: Need video with no pts values.")
     def test_pts_to_dts_fallback(self, seek_mode):
-        # Non-regression test for
-        # https://github.com/pytorch/torchcodec/issues/677 and
-        # https://github.com/pytorch/torchcodec/issues/676.
-        # More accurately, this is a non-regression test for videos which do
-        # *not* specify pts values (all pts values are N/A and set to
-        # INT64_MIN), but specify *dts* value - which we fallback to.
-        #
-        # The test video we have is from
-        # https://huggingface.co/datasets/raushan-testing-hf/videos-test/blob/main/sample_video_2.avi
-        # We can't check it into the repo due to potential licensing issues, so
-        # we have to unconditionally skip this test.#
-        # TODO: encode a video with no pts values to unskip this test. Couldn't
-        # find a way to do that with FFmpeg's CLI, but this should be doable
-        # once we have our own video encoder.
-
         path = "/home/nicolashug/Downloads/sample_video_2.avi"
         decoder = VideoDecoder(path, seek_mode=seek_mode)
         metadata = decoder.metadata
@@ -1455,8 +1448,7 @@ class TestVideoDecoder:
             pytest.param(
                 AV1_VIDEO,
                 marks=pytest.mark.skipif(
-                    in_fbcode(),
-                    reason="AV1 CUDA not supported internally",
+                    in_fbcode(), reason="AV1 CUDA not supported internally"
                 ),
             ),
             TEST_SRC_2_720P_VP9,
@@ -1503,8 +1495,7 @@ class TestVideoDecoder:
             pytest.param(
                 AV1_VIDEO,
                 marks=pytest.mark.skipif(
-                    in_fbcode(),
-                    reason="AV1 CUDA not supported internally",
+                    in_fbcode(), reason="AV1 CUDA not supported internally"
                 ),
             ),
             TEST_SRC_2_720P_VP9,
@@ -1552,8 +1543,7 @@ class TestVideoDecoder:
             pytest.param(
                 AV1_VIDEO,
                 marks=pytest.mark.skipif(
-                    in_fbcode(),
-                    reason="AV1 CUDA not supported internally",
+                    in_fbcode(), reason="AV1 CUDA not supported internally"
                 ),
             ),
             TEST_SRC_2_720P_VP9,
@@ -1595,8 +1585,7 @@ class TestVideoDecoder:
             pytest.param(
                 AV1_VIDEO,
                 marks=pytest.mark.skipif(
-                    in_fbcode(),
-                    reason="AV1 CUDA not supported internally",
+                    in_fbcode(), reason="AV1 CUDA not supported internally"
                 ),
             ),
             TEST_SRC_2_720P_VP9,
@@ -1639,8 +1628,7 @@ class TestVideoDecoder:
             pytest.param(
                 AV1_VIDEO,
                 marks=pytest.mark.skipif(
-                    in_fbcode(),
-                    reason="AV1 CUDA not supported internally",
+                    in_fbcode(), reason="AV1 CUDA not supported internally"
                 ),
             ),
             TEST_SRC_2_720P_VP9,
