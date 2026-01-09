@@ -795,7 +795,7 @@ void VideoEncoder::initializeEncoder(
   } else {
     if (frames_.device().is_cuda()) {
       // Default to nv12 pixel format when encoding on GPU.
-      outPixelFormat_ = AV_PIX_FMT_NV12;
+      outPixelFormat_ = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
     } else {
       const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
       // Use first listed pixel format as default (often yuv420p).

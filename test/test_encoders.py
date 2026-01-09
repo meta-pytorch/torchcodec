@@ -1345,9 +1345,15 @@ class TestVideoEncoder:
             pytest.param(
                 "mkv",
                 "av1_nvenc",
-                marks=pytest.mark.skipif(
-                    IN_GITHUB_CI, reason="av1_nvenc is not supported on CI"
-                ),
+                marks=[
+                    pytest.mark.skipif(
+                        IN_GITHUB_CI, reason="av1_nvenc is not supported on CI"
+                    ),
+                    pytest.mark.skipif(
+                        get_ffmpeg_major_version() == 4,
+                        reason="av1_nvenc is not supported on FFmpeg 4",
+                    ),
+                ],
             ),
         ],
     )
@@ -1370,8 +1376,6 @@ class TestVideoEncoder:
             pytest.skip(
                 "Non-default color space and range have lower accuracy on FFmpeg 4 and 6"
             )
-        if ffmpeg_version == 4 and codec == "av1_nvenc":
-            pytest.skip("av1_nvenc is not supported on FFmpeg 4")
         # Encode with FFmpeg CLI using nvenc codecs
         device = "cuda"
         qp = 1  # Use near lossless encoding to reduce noise and support av1_nvenc
@@ -1478,14 +1482,12 @@ class TestVideoEncoder:
                 # when color_range='tv' and color_space=None on FFmpeg 7/8.
                 # Since this failure is rare, I suspect its a bug related to these
                 # older container formats on newer FFmpeg versions.
-                if (
+                if not (
                     ffmpeg_version in (7, 8)
                     and color_range == "tv"
                     and color_space is None
                     and format in ("mov", "avi")
                 ):
-                    pass
-                else:
                     assert color_range == encoder_metadata["color_range"]
             if color_space is not None:
                 assert color_space == encoder_metadata["color_space"]

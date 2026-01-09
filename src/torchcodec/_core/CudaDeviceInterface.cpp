@@ -542,7 +542,7 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
 
   NppiSize oSizeROI = {width, height};
   NppStatus status;
-  // Convert to NV12, as CUDA_PIXEL_FORMAT is always NV12 currently
+  // Convert to NV12, as CUDA_ENCODING_PIXEL_FORMAT is always NV12 currently
   status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
       static_cast<const Npp8u*>(hwcFrame.data_ptr()),
       hwcFrame.stride(0) * hwcFrame.element_size(),
@@ -555,7 +555,7 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
   TORCH_CHECK(
       status == NPP_SUCCESS,
       "Failed to convert RGB to ",
-      av_get_pix_fmt_name(CUDA_PIXEL_FORMAT),
+      av_get_pix_fmt_name(DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT),
       ": NPP error code ",
       status);
 
@@ -578,7 +578,7 @@ void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
       hwFramesCtxRef != nullptr,
       "Failed to allocate hardware frames context for codec");
 
-  codecContext->sw_pix_fmt = CUDA_PIXEL_FORMAT;
+  codecContext->sw_pix_fmt = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
   // Always set pixel format to support CUDA encoding.
   codecContext->pix_fmt = AV_PIX_FMT_CUDA;
 

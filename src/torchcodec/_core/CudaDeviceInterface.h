@@ -43,7 +43,6 @@ class CudaDeviceInterface : public DeviceInterface {
 
   std::string getDetails() override;
 
-  constexpr static AVPixelFormat CUDA_PIXEL_FORMAT = AV_PIX_FMT_NV12;
   UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
       const torch::Tensor& tensor,
       int frameIndex,
