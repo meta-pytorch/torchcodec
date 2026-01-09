@@ -60,7 +60,7 @@ jobs:
           name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cpu_x86_64
           path: pytorch/torchcodec/dist/
       - name: Setup conda env
-        uses: conda-incubator/setup-miniconda@v2
+        uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
           miniconda-version: "latest"
@@ -88,7 +88,7 @@ jobs:
           echo Installing $wheel_path
           python -m pip install $wheel_path -vvv
       - name: Check out repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Run generation reference resources
         run: |
