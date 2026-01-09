@@ -42,8 +42,15 @@ def pytest_collection_modifyitems(items):
             skipif_marker.args[0] for skipif_marker in item.iter_markers("skipif")
         )
 
+        # If we need to conditionally skip tests based on a dependency, we should follow
+        # the decorator pattern used by needs_cuda and needs_ffmpeg_cli:
+        #   1. Define a custom marker in pytest_configure() above
+        #   2. Create a decorator function in utils.py (e.g., @needs_my_dependency)
+        #   3. Handle the marker here in pytest_collection_modifyitems()
+        # This keeps our skip logic centralized
+
         if in_fbcode():
-            # fbcode doesn't like skipping tests, so instead we  just don't collect the test
+            # fbcode doesn't like skipping tests, so instead we just don't collect the test
             # so that they don't even "exist", hence the continue statements.
             if needs_ffmpeg_cli or has_skip_marker or skipif_condition_is_true:
                 continue
