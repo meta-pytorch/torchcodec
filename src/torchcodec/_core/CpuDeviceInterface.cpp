@@ -299,7 +299,7 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
 
   uint8_t* colorConvertedPointers[4] = {
       colorConvertedTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
-  int colorConvertedWidth = colorConvertedTensor.sizes()[1];
+  int colorConvertedWidth = static_cast<int>(colorConvertedTensor.sizes()[1]);
   int colorConvertedLinesizes[4] = {colorConvertedWidth * 3, 0, 0, 0};
 
   int colorConvertedHeight = sws_scale(
@@ -344,7 +344,7 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
 
     uint8_t* dstPointers[4] = {
         outputTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
-    int expectedOutputWidth = outputTensor.sizes()[1];
+    int expectedOutputWidth = static_cast<int>(outputTensor.sizes()[1]);
     int dstLinesizes[4] = {expectedOutputWidth * 3, 0, 0, 0};
 
     colorConvertedHeight = sws_scale(

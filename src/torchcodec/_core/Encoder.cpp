@@ -782,23 +782,30 @@ void VideoEncoder::initializeEncoder(
   outHeight_ = inHeight_;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
+    // TODO-VideoEncoder: Enable pixel formats to be set by user
+    // and handled with the appropriate NPP function on GPU.
     if (frames_.device().is_cuda()) {
       TORCH_CHECK(
           false,
-          "GPU Video encoding currently only supports the NV12 pixel format. "
-          "Do not set pixel_format to use NV12.");
+          "Video encoding on GPU currently only supports the nv12 pixel format. "
+          "Do not set pixel_format to use nv12 by default.");
     }
     outPixelFormat_ =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
-    const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
-    // Use first listed pixel format as default (often yuv420p).
-    // This is similar to FFmpeg's logic:
-    // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
-    // If pixel formats are undefined for some reason, try yuv420p
-    outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
-        ? formats[0]
-        : AV_PIX_FMT_YUV420P;
+    if (frames_.device().is_cuda()) {
+      // Default to nv12 pixel format when encoding on GPU.
+      outPixelFormat_ = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
+    } else {
+      const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
+      // Use first listed pixel format as default (often yuv420p).
+      // This is similar to FFmpeg's logic:
+      // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
+      // If pixel formats are undefined for some reason, try yuv420p
+      outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
+          ? formats[0]
+          : AV_PIX_FMT_YUV420P;
+    }
   }
 
   // Configure codec parameters
