@@ -106,9 +106,11 @@ ffmpeg -f lavfi -i \
    versions, refer to the table below for compatibility between versions of
    `torch` and `torchcodec`.
 
-2. Install FFmpeg, if it's not already installed. Linux distributions usually
-   come with FFmpeg pre-installed. TorchCodec supports supports all major FFmpeg versions
-   in [4, 8].
+2. Install FFmpeg, if it's not already installed. TorchCodec supports supports
+   all major FFmpeg versions in [4, 8].
+   Linux distributions usually come with FFmpeg pre-installed. You'll need
+   FFmpeg that comes with separate shared libraries. This is especially relevant
+   for Windows users: these are usually called the "shared" releases.
 
    If FFmpeg is not already installed, or you need a more recent version, an
    easy way to install it is to use `conda`:
