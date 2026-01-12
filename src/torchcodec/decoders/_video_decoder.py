@@ -491,6 +491,23 @@ class VideoDecoder:
         )
         return FrameBatch(*frames)
 
+    def get_all_frames(self, fps: float | None = None) -> FrameBatch:
+        """Returns all frames in the video.
+
+        Args:
+            fps (float, optional): If specified, resample output to this frame
+                rate by duplicating or dropping frames as necessary. If None
+                (default), returns frames at the source video's frame rate.
+
+        Returns:
+            FrameBatch: All frames in the video.
+        """
+        return self.get_frames_played_in_range(
+            start_seconds=self._begin_stream_seconds,
+            stop_seconds=self._end_stream_seconds,
+            fps=fps,
+        )
+
 
 def _get_and_validate_stream_metadata(
     *,

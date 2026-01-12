@@ -282,6 +282,14 @@ class SingleStreamDecoder {
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
+  // Maps output frame indices (at target fps) to source frame indices.
+  // Used for FPS resampling in getFramesPlayedInRange().
+  std::vector<int64_t> mapOutputIndicesToSourceIndices(
+      double startSeconds,
+      double fpsVal,
+      int64_t numOutputFrames,
+      const std::vector<double>& targetTimestamps);
+
   // --------------------------------------------------------------------------
   // PTS <-> INDEX CONVERSIONS
   // --------------------------------------------------------------------------

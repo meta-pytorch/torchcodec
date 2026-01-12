@@ -1290,6 +1290,35 @@ class TestVideoDecoder:
                 )
 
     @pytest.mark.parametrize("device", all_supported_devices())
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_get_all_frames(self, device, seek_mode):
+        """Test that get_all_frames returns all frames and is equivalent to get_frames_played_in_range."""
+        decoder, _ = make_video_decoder(
+            NASA_VIDEO.path, device=device, seek_mode=seek_mode
+        )
+
+        all_frames = decoder.get_all_frames()
+
+        assert len(all_frames) == len(decoder)
+
+        frames_in_range = decoder.get_frames_played_in_range(
+            start_seconds=decoder.metadata.begin_stream_seconds,
+            stop_seconds=decoder.metadata.end_stream_seconds,
+        )
+        assert len(all_frames) == len(frames_in_range)
+        assert_frames_equal(all_frames.data, frames_in_range.data)
+
+        fps = 10.0
+        all_frames_with_fps = decoder.get_all_frames(fps=fps)
+        frames_in_range_with_fps = decoder.get_frames_played_in_range(
+            start_seconds=decoder.metadata.begin_stream_seconds,
+            stop_seconds=decoder.metadata.end_stream_seconds,
+            fps=fps,
+        )
+        assert len(all_frames_with_fps) == len(frames_in_range_with_fps)
+        assert_frames_equal(all_frames_with_fps.data, frames_in_range_with_fps.data)
+
+    @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_key_frame_indices(self, device):
         decoder, _ = make_video_decoder(
             NASA_VIDEO.path, device=device, seek_mode="exact"
