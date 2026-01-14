@@ -545,7 +545,8 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
   // Convert to NV12, as CUDA_ENCODING_PIXEL_FORMAT is always NV12 currently
   status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
       static_cast<const Npp8u*>(hwcFrame.data_ptr()),
-      hwcFrame.stride(0) * hwcFrame.element_size(),
+      validateInt64ToInt(
+          hwcFrame.stride(0) * hwcFrame.element_size(), "nSrcStep"),
       avFrame->data,
       avFrame->linesize,
       oSizeROI,
