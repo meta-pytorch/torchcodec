@@ -92,23 +92,33 @@ class Resize(DecoderTransform):
     """Resize the decoded frame to a given size.
 
     Complementary TorchVision transform: :class:`~torchvision.transforms.v2.Resize`.
-    Interpolation is always bilinear. Anti-aliasing is always on.
+    Anti-aliasing is always on.
 
     Args:
         size (Sequence[int]): Desired output size. Must be a sequence of
             the form (height, width).
+        interpolation (str): Interpolation mode. Must be one of "bilinear"
+            or "bicubic". Default is "bilinear".
     """
 
-    def __init__(self, size: Sequence[int]):
+    _VALID_INTERPOLATIONS = {"bilinear", "bicubic"}
+
+    def __init__(self, size: Sequence[int], interpolation: str = "bilinear"):
         if len(size) != 2:
             raise ValueError(
                 "Resize transform must have a (height, width) "
                 f"pair for the size, got {size}."
             )
+        if interpolation not in self._VALID_INTERPOLATIONS:
+            raise ValueError(
+                f"Invalid interpolation mode: '{interpolation}'. "
+                f"Must be one of {self._VALID_INTERPOLATIONS}."
+            )
         self.size = size
+        self.interpolation = interpolation
 
     def _make_transform_spec(self, input_dims: tuple[int | None, int | None]) -> str:
-        return f"resize, {self.size[0]}, {self.size[1]}"
+        return f"resize, {self.size[0]}, {self.size[1]}, {self.interpolation}"
 
     def _get_output_dims(self) -> tuple[int | None, int | None] | None:
         return (self.size[0], self.size[1])
@@ -119,9 +129,16 @@ class Resize(DecoderTransform):
 
         assert isinstance(tv_resize, v2.Resize)
 
-        if tv_resize.interpolation is not v2.InterpolationMode.BILINEAR:
+        # Map TorchVision interpolation modes to TorchCodec string modes
+        interpolation_map = {
+            v2.InterpolationMode.BILINEAR: "bilinear",
+            v2.InterpolationMode.BICUBIC: "bicubic",
+        }
+
+        if tv_resize.interpolation not in interpolation_map:
             raise ValueError(
-                "TorchVision Resize transform must use bilinear interpolation."
+                f"TorchVision Resize transform must use bilinear or bicubic "
+                f"interpolation. Got: {tv_resize.interpolation}"
             )
         if tv_resize.antialias is False:
             raise ValueError(
@@ -134,7 +151,9 @@ class Resize(DecoderTransform):
                 "TorchVision Resize transform must have a (height, width) "
                 f"pair for the size, got {tv_resize.size}."
             )
-        return cls(size=tv_resize.size)
+
+        interpolation = interpolation_map[tv_resize.interpolation]
+        return cls(size=tv_resize.size, interpolation=interpolation)
 
 
 class CenterCrop(DecoderTransform):
