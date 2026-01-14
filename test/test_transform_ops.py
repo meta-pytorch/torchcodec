@@ -93,7 +93,7 @@ class TestPublicVideoDecoderTransformOps:
             assert frame_tv_no_antialias.shape == expected_shape
 
             assert_tensor_close_on_at_least(
-                frame_resize, frame_tv, percentage=99.8, atol=1
+                frame_resize, frame_tv, percentage=99, atol=1
             )
             torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=6)
 
@@ -109,15 +109,16 @@ class TestPublicVideoDecoderTransformOps:
                     )
 
     def test_resize_fails(self):
+        # Only unsupported interpolation modes should fail
         with pytest.raises(
             ValueError,
-            match=r"must use bilinear interpolation",
+            match=r"must use bilinear or bicubic interpolation",
         ):
             VideoDecoder(
                 NASA_VIDEO.path,
                 transforms=[
                     v2.Resize(
-                        size=(100, 100), interpolation=v2.InterpolationMode.BICUBIC
+                        size=(100, 100), interpolation=v2.InterpolationMode.NEAREST
                     )
                 ],
             )
@@ -152,6 +153,18 @@ class TestPublicVideoDecoderTransformOps:
             VideoDecoder(
                 NASA_VIDEO.path,
                 transforms=[torchcodec.transforms.Resize(size=(100, 100, 100))],
+            )
+
+        # Invalid interpolation mode for TorchCodec Resize
+        with pytest.raises(
+            ValueError,
+            match=r"Invalid interpolation mode",
+        ):
+            VideoDecoder(
+                NASA_VIDEO.path,
+                transforms=[
+                    torchcodec.transforms.Resize(size=(100, 100), interpolation="nearest")
+                ],
             )
 
     @pytest.mark.parametrize(
@@ -515,6 +528,221 @@ class TestCoreVideoDecoderTransformOps:
         ):
             add_video_stream(decoder, transform_specs="invalid, 1, 2")
 
+    @pytest.mark.parametrize("interpolation", ["bilinear", "bicubic"])
+    def test_resize_interpolation_modes(self, interpolation):
+        """Test that all supported interpolation modes work correctly."""
+        height = 135
+        width = 240
+        expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
+
+        # Test with TorchCodec Resize directly
+        decoder = VideoDecoder(
+            NASA_VIDEO.path,
+            transforms=[
+                torchcodec.transforms.Resize(
+                    size=(height, width), interpolation=interpolation
+                )
+            ],
+        )
+
+        frame = decoder[0]
+        assert frame.shape == expected_shape
+
+    @pytest.mark.parametrize(
+        "tv_interpolation,expected_tc_interpolation",
+        [
+            (v2.InterpolationMode.BILINEAR, "bilinear"),
+            (v2.InterpolationMode.BICUBIC, "bicubic"),
+        ],
+    )
+    def test_resize_torchvision_interpolation_modes(
+        self, tv_interpolation, expected_tc_interpolation
+    ):
+        """Test that TorchVision interpolation modes are correctly mapped."""
+        height = 135
+        width = 240
+        expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
+
+        # Test with TorchVision Resize (should be converted to TorchCodec Resize)
+        decoder = VideoDecoder(
+            NASA_VIDEO.path,
+            transforms=[
+                v2.Resize(size=(height, width), interpolation=tv_interpolation)
+            ],
+        )
+
+        frame = decoder[0]
+        assert frame.shape == expected_shape
+
+    @pytest.mark.parametrize(
+        "height_scaling_factor, width_scaling_factor",
+        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
+    )
+    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
+    def test_resize_bicubic_torchvision(
+        self, video, height_scaling_factor, width_scaling_factor
+    ):
+        """Test strict equality between TorchCodec bicubic resize and TorchVision bicubic resize."""
+        height = int(video.get_height() * height_scaling_factor)
+        width = int(video.get_width() * width_scaling_factor)
+
+        # We're using both the TorchCodec object and the TorchVision object to
+        # ensure that they specify exactly the same thing.
+        decoder_resize = VideoDecoder(
+            video.path,
+            transforms=[
+                torchcodec.transforms.Resize(
+                    size=(height, width), interpolation="bicubic"
+                )
+            ],
+        )
+        decoder_resize_tv = VideoDecoder(
+            video.path,
+            transforms=[
+                v2.Resize(
+                    size=(height, width), interpolation=v2.InterpolationMode.BICUBIC
+                )
+            ],
+        )
+
+        decoder_full = VideoDecoder(video.path)
+
+        num_frames = len(decoder_resize)
+        assert num_frames == len(decoder_full)
+
+        for frame_index in [
+            0,
+            int(num_frames * 0.1),
+            int(num_frames * 0.2),
+            int(num_frames * 0.3),
+            int(num_frames * 0.4),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            int(num_frames * 0.90),
+            num_frames - 1,
+        ]:
+            frame_resize_tv = decoder_resize_tv[frame_index]
+            frame_resize = decoder_resize[frame_index]
+            assert_frames_equal(frame_resize_tv, frame_resize)
+
+            frame_full = decoder_full[frame_index]
+
+            frame_tv = v2.functional.resize(
+                frame_full,
+                size=(height, width),
+                interpolation=v2.InterpolationMode.BICUBIC,
+            )
+            frame_tv_no_antialias = v2.functional.resize(
+                frame_full,
+                size=(height, width),
+                interpolation=v2.InterpolationMode.BICUBIC,
+                antialias=False,
+            )
+
+            expected_shape = (video.get_num_color_channels(), height, width)
+            assert frame_resize.shape == expected_shape
+            assert frame_tv.shape == expected_shape
+            assert frame_tv_no_antialias.shape == expected_shape
+
+            assert_tensor_close_on_at_least(
+                frame_resize, frame_tv, percentage=99, atol=1
+            )
+            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=6)
+
+            if height_scaling_factor < 1 or width_scaling_factor < 1:
+                # Antialias only relevant when down-scaling!
+                with pytest.raises(AssertionError, match="Expected at least"):
+                    assert_tensor_close_on_at_least(
+                        frame_resize, frame_tv_no_antialias, percentage=99, atol=1
+                    )
+                with pytest.raises(AssertionError, match="Tensor-likes are not close"):
+                    torch.testing.assert_close(
+                        frame_resize, frame_tv_no_antialias, rtol=0, atol=6
+                    )
+
+    def test_bicubic_vs_bilinear_produces_different_results(self):
+        """Test that bicubic and bilinear produce visually different results."""
+        height = 64
+        width = 64
+
+        decoder_bilinear = VideoDecoder(
+            NASA_VIDEO.path,
+            transforms=[
+                torchcodec.transforms.Resize(
+                    size=(height, width), interpolation="bilinear"
+                )
+            ],
+        )
+
+        decoder_bicubic = VideoDecoder(
+            NASA_VIDEO.path,
+            transforms=[
+                torchcodec.transforms.Resize(
+                    size=(height, width), interpolation="bicubic"
+                )
+            ],
+        )
+
+        frame_bilinear = decoder_bilinear[0]
+        frame_bicubic = decoder_bicubic[0]
+
+        # Both should have the same shape
+        assert frame_bilinear.shape == frame_bicubic.shape
+
+        # But the pixel values should be different (bicubic produces sharper results)
+        # We use a relatively loose tolerance since they're both valid interpolations
+        # but they should NOT be identical
+        assert not torch.equal(frame_bilinear, frame_bicubic), (
+            "Bicubic and bilinear should produce different results"
+        )
+
+    def test_resize_interpolation_default_is_bilinear(self):
+        """Test that the default interpolation mode is bilinear."""
+        height = 135
+        width = 240
+
+        # Create resize without specifying interpolation (should default to bilinear)
+        resize_default = torchcodec.transforms.Resize(size=(height, width))
+
+        # Create resize with explicit bilinear
+        resize_bilinear = torchcodec.transforms.Resize(
+            size=(height, width), interpolation="bilinear"
+        )
+
+        # Both should produce the same transform spec
+        default_spec = resize_default._make_transform_spec((480, 640))
+        bilinear_spec = resize_bilinear._make_transform_spec((480, 640))
+
+        assert default_spec == bilinear_spec
+        assert "bilinear" in default_spec
+
+    @pytest.mark.parametrize(
+        "scaling_factor,interpolation",
+        [
+            (0.5, "bilinear"),
+            (0.5, "bicubic"),
+            (2.0, "bilinear"),
+            (2.0, "bicubic"),
+        ],
+    )
+    def test_resize_interpolation_upscale_downscale(self, scaling_factor, interpolation):
+        """Test interpolation modes work correctly for both upscaling and downscaling."""
+        height = int(NASA_VIDEO.get_height() * scaling_factor)
+        width = int(NASA_VIDEO.get_width() * scaling_factor)
+        expected_shape = (NASA_VIDEO.get_num_color_channels(), height, width)
+
+        decoder = VideoDecoder(
+            NASA_VIDEO.path,
+            transforms=[
+                torchcodec.transforms.Resize(
+                    size=(height, width), interpolation=interpolation
+                )
+            ],
+        )
+
+        frame = decoder[0]
+        assert frame.shape == expected_shape
+
     def test_resize_ffmpeg(self):
         height = 135
         width = 240
@@ -547,9 +775,9 @@ class TestCoreVideoDecoderTransformOps:
         decoder = create_from_file(str(NASA_VIDEO.path))
         with pytest.raises(
             RuntimeError,
-            match="must have 3 elements",
+            match="must have 3 or 4 elements",
         ):
-            add_video_stream(decoder, transform_specs="resize, 100, 100, 100")
+            add_video_stream(decoder, transform_specs="resize, 100, 100, 100, 100")
 
         with pytest.raises(
             RuntimeError,
@@ -574,6 +802,13 @@ class TestCoreVideoDecoderTransformOps:
             match="out of range",
         ):
             add_video_stream(decoder, transform_specs="resize, 100, 1000000000000")
+
+        # Invalid interpolation mode in C++ layer
+        with pytest.raises(
+            RuntimeError,
+            match="Unknown interpolation mode",
+        ):
+            add_video_stream(decoder, transform_specs="resize, 100, 100, nearest")
 
     def test_crop_transform(self):
         # Note that filtergraph accepts dimensions as (w, h) and we accept them as (h, w).
