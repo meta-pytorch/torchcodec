@@ -43,6 +43,7 @@ from .utils import (
     needs_cuda,
     needs_ffmpeg_cli,
     psnr,
+    SINE_16_CHANNELS,
     SINE_MONO_S16,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
@@ -1848,7 +1849,7 @@ class TestAudioDecoder:
         assert samples.sample_rate == asset.sample_rate
         assert samples.pts_seconds == asset.get_frame_info(idx=0).pts_seconds
 
-    @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
+    @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3, SINE_16_CHANNELS))
     def test_get_all_samples(self, asset):
         decoder = AudioDecoder(asset.path)
         torch.testing.assert_close(
