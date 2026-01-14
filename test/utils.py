@@ -835,8 +835,8 @@ SINE_MONO_S16 = TestAudio(
     },
 )
 
-# 16-channel audio for testing multi-channel (>8) support. Generated with:
-# ffmpeg -f lavfi -i "sine=f=440:r=16000:d=1" -filter_complex "[0]asplit=16[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15];[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15]amerge=inputs=16" -c:a pcm_s16le test/resources/16ch.wav
+# 16-channel audio for testing support for >8 channels. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -t 1 -filter_complex "[0]asplit=16[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15];[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15]amerge=inputs=16" -c:a pcm_s16le test/resources/16ch.wav
 SINE_16_CHANNELS = TestAudio(
     filename="16ch.wav",
     default_stream_index=0,
