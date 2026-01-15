@@ -86,7 +86,7 @@ jobs:
           echo python_version_without_periods=${python_version_without_periods} >> $GITHUB_ENV
 
       - name: Check out repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Remove src/ folder
         run: bash packaging/remove_src.sh
@@ -151,7 +151,7 @@ jobs:
           echo python_version_without_periods=${python_version_without_periods} >> $GITHUB_ENV
 
       - name: Check out repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Remove src/ folder
         run: bash packaging/remove_src.sh

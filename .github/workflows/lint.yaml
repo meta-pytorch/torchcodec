@@ -22,9 +22,9 @@ jobs:
         python-version: ['3.12']
     steps:
       - name: Check out repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
       - name: Setup conda env
-        uses: conda-incubator/setup-miniconda@v2
+        uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
           miniconda-version: "latest"
@@ -50,9 +50,9 @@ jobs:
         python-version: ['3.12']
     steps:
       - name: Check out repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
       - name: Setup conda env
-        uses: conda-incubator/setup-miniconda@v2
+        uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
           miniconda-version: "latest"
