@@ -63,10 +63,56 @@ def load_torchcodec_shared_libraries() -> tuple[int, str]:
                 pybind_ops_module_name, pybind_ops_library_path
             )
             return ffmpeg_major_version, core_library_path
-        except Exception:
-            # Capture the full traceback for this exception
-            exc_traceback = traceback.format_exc()
-            exceptions.append((ffmpeg_major_version, exc_traceback))
+        except Exception as e:
+            # Below: all this block is just about trying to provide a more
+            # condensed and more informative exception message to the user,
+            # instead of dumping the entire traceback for each FFmpeg version,
+            # which would be too verbose.
+            # TODO: we really need a decent log system with different verbosity
+            # levels instead of this.
+            if isinstance(e, ImportError) and "No spec found for libtorchcodec" in str(
+                e
+            ):
+                # This should only happen when building from source for a single
+                # target FFmpeg version.
+                exceptions.append(
+                    (
+                        ffmpeg_major_version,
+                        f"Could not find one of the libtorchcodec* libraries, probably because TorchCodec wasn't built for FFmpeg {ffmpeg_major_version}.\n",
+                    )
+                )
+            else:
+                full_traceback_str = traceback.format_exc()
+                # If we get something like this:
+                # OSError: Could not load this library: [...]torchcodec/src/torchcodec/libtorchcodec_core6.so
+                # Then in the traceback we try to find a line like this:
+                # OSError: libavcodec.so.60: cannot open shared object file: No such file or directory
+                # which should robustly indicate that the corresponding FFmpeg
+                # version is just not installed, or can't be found.
+                missing_ffmpeg_lib = next(
+                    (
+                        line.strip()
+                        for line in full_traceback_str.splitlines()
+                        if "libav" in line and "No such file or directory" in line
+                    ),
+                    None,
+                )
+                if (
+                    isinstance(e, OSError)
+                    and ("Could not load this library") in str(e)
+                    and "libtorchcodec" in (str(e))
+                    and missing_ffmpeg_lib
+                ):
+                    exceptions.append(
+                        (
+                            ffmpeg_major_version,
+                            f"Got the following exception: {missing_ffmpeg_lib}\n"
+                            f"FFmpeg version {ffmpeg_major_version} is likely not installed or its libraries cannot be found on this system.\n",
+                        )
+                    )
+                else:
+                    # We can't identify the issue, so we just return the full traceback.
+                    exceptions.append((ffmpeg_major_version, full_traceback_str))
 
     traceback_info = (
         "\n[start of libtorchcodec loading traceback]\n"
