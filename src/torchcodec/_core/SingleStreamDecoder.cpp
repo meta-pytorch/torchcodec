@@ -571,9 +571,8 @@ void SingleStreamDecoder::addAudioStream(
       "seek_mode must be 'approximate' for audio streams.");
   if (audioStreamOptions.numChannels.has_value()) {
     TORCH_CHECK(
-        *audioStreamOptions.numChannels > 0 &&
-            *audioStreamOptions.numChannels <= AV_NUM_DATA_POINTERS,
-        "num_channels must be > 0 and <= AV_NUM_DATA_POINTERS (usually 8). Got: ",
+        *audioStreamOptions.numChannels > 0,
+        "num_channels must be > 0. Got: ",
         *audioStreamOptions.numChannels);
   }
 

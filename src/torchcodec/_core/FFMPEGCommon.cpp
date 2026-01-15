@@ -288,6 +288,16 @@ AVChannelLayout getOutputChannelLayout(
     outLayout = srcAVFrame->ch_layout;
   } else {
     av_channel_layout_default(&outLayout, outNumChannels);
+    // AV_CHANNEL_ORDER_UNSPEC indicates FFmpeg did not find a default layout.
+    // Since the channel number is changing, SwrContext will need a valid layout
+    // to do mixing. We will fail to initialize SwrContext in this case, so we
+    // error here instead.
+    TORCH_CHECK(
+        outLayout.order != AV_CHANNEL_ORDER_UNSPEC,
+        "Cannot convert audio to ",
+        outNumChannels,
+        " channels. FFmpeg did not find a default channel layout for this "
+        "channel count.");
   }
   return outLayout;
 }
@@ -303,6 +313,12 @@ int64_t getOutputChannelLayout(
     outLayout = srcAVFrame->channel_layout;
   } else {
     outLayout = av_get_default_channel_layout(outNumChannels);
+    TORCH_CHECK(
+        outLayout != 0, // av_get_default_channel_layout returns 0 on failure
+        "Cannot convert audio to ",
+        outNumChannels,
+        " channels. FFmpeg did not find a default channel layout for this "
+        "channel count.");
   }
   return outLayout;
 }
@@ -512,12 +528,16 @@ UniqueAVFrame convertAudioAVFrameSamples(
       "Could not allocate frame buffers for sample format conversion: ",
       getFFMPEGErrorStringFromErrorCode(status));
 
+  // Below we use AVFrame->extended_data instead of AVFrame->data to support
+  // decoding audio with >8 audio channels. extended_data contains pointers
+  // for all channels, while data only contains AV_NUM_DATA_POINTERS (8).
+  // https://ffmpeg.org/doxygen/trunk/structAVFrame.html#afca04d808393822625e09b5ba91c6756
   auto numConvertedSamples = swr_convert(
       swrContext.get(),
-      convertedAVFrame->data,
+      convertedAVFrame->extended_data,
       convertedAVFrame->nb_samples,
       static_cast<const uint8_t**>(
-          const_cast<const uint8_t**>(srcAVFrame->data)),
+          const_cast<const uint8_t**>(srcAVFrame->extended_data)),
       srcAVFrame->nb_samples);
   // numConvertedSamples can be 0 if we're downsampling by a great factor and
   // the first frame doesn't contain a lot of samples. It should be handled
