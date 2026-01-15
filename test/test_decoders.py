@@ -2120,7 +2120,7 @@ class TestAudioDecoder:
     # that the extra tensor allocation that happens within
     # maybeFlushSwrBuffers() is correct.
     @pytest.mark.parametrize("sample_rate", (None, 16_000))
-    @pytest.mark.parametrize("num_channels", (1, 2, 8, 16, None))
+    @pytest.mark.parametrize("num_channels", (1, 2, 8, 16, 24, None))
     def test_num_channels(self, asset, sample_rate, num_channels):
         decoder = AudioDecoder(
             asset.path, sample_rate=sample_rate, num_channels=num_channels
@@ -2133,6 +2133,15 @@ class TestAudioDecoder:
         assert samples.data.shape[0] == num_channels
 
     @pytest.mark.parametrize("asset", (SINE_MONO_S32, NASA_AUDIO_MP3))
-    def test_num_channels_errors(self, asset):
-        with pytest.raises(RuntimeError, match="num_channels must be > 0"):
-            AudioDecoder(asset.path, num_channels=0)
+    @pytest.mark.parametrize("num_channels", (0, 15, 23))
+    def test_num_channels_errors(self, asset, num_channels):
+        msg = (
+            "num_channels must be > 0"
+            if num_channels == 0
+            else f"Cannot convert audio to {num_channels} channels"
+        )
+        with pytest.raises(RuntimeError, match=msg):
+            decoder = AudioDecoder(asset.path, num_channels=num_channels)
+            # Call get_all_samples to trigger num_channels conversion.
+            # FFmpeg fails to find a default layout for certain channel counts.
+            decoder.get_all_samples()

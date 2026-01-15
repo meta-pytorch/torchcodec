@@ -288,6 +288,14 @@ AVChannelLayout getOutputChannelLayout(
     outLayout = srcAVFrame->ch_layout;
   } else {
     av_channel_layout_default(&outLayout, outNumChannels);
+    // AV_CHANNEL_ORDER_UNSPEC indicates FFmpeg did not find a default layout.
+    // We will fail to initialize SwrContext in this case, so we error here.
+    TORCH_CHECK(
+        outLayout.order != AV_CHANNEL_ORDER_UNSPEC,
+        "Cannot convert audio to ",
+        outNumChannels,
+        " channels. FFmpeg did not find a default channel layout for this "
+        "channel count.");
   }
   return outLayout;
 }
@@ -303,6 +311,12 @@ int64_t getOutputChannelLayout(
     outLayout = srcAVFrame->channel_layout;
   } else {
     outLayout = av_get_default_channel_layout(outNumChannels);
+    TORCH_CHECK(
+        outLayout != 0, // av_get_default_channel_layout returns 0 on failure
+        "Cannot convert audio to ",
+        outNumChannels,
+        " channels. FFmpeg did not find a default channel layout for this "
+        "channel count.");
   }
   return outLayout;
 }
