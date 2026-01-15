@@ -43,6 +43,7 @@ from .utils import (
     needs_cuda,
     needs_ffmpeg_cli,
     psnr,
+    SINE_16_CHANNEL_FLTP_OGG,
     SINE_16_CHANNEL_S16,
     SINE_MONO_S16,
     SINE_MONO_S32,
@@ -2115,7 +2116,9 @@ class TestAudioDecoder:
         samples = decoder.get_samples_played_in_range(start_seconds=1, stop_seconds=2)
         assert samples.duration_seconds == 1
 
-    @pytest.mark.parametrize("asset", (SINE_MONO_S32, NASA_AUDIO_MP3))
+    @pytest.mark.parametrize(
+        "asset", (SINE_MONO_S32, NASA_AUDIO_MP3, SINE_16_CHANNEL_FLTP_OGG)
+    )
     # Note that we parametrize over sample_rate as well, so that we can ensure
     # that the extra tensor allocation that happens within
     # maybeFlushSwrBuffers() is correct.
@@ -2132,7 +2135,9 @@ class TestAudioDecoder:
 
         assert samples.data.shape[0] == num_channels
 
-    @pytest.mark.parametrize("asset", (SINE_MONO_S32, NASA_AUDIO_MP3))
+    @pytest.mark.parametrize(
+        "asset", (SINE_MONO_S32, NASA_AUDIO_MP3, SINE_16_CHANNEL_FLTP_OGG)
+    )
     @pytest.mark.parametrize("num_channels", (0, 15, 23))
     def test_num_channels_errors(self, asset, num_channels):
         msg = (

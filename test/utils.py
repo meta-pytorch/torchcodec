@@ -851,3 +851,21 @@ SINE_16_CHANNEL_S16 = TestAudio(
         )
     },
 )
+
+# 16-channel audio in OGG/Vorbis format. OGG properly stores channel layout
+# metadata, unlike WAV which may leave it unset for >2 channels. Generated with:
+# ffmpeg -i test/resources/sine_16ch_s16.wav -c:a libvorbis test/resources/sine_16ch_fltp.ogg
+SINE_16_CHANNEL_FLTP_OGG = TestAudio(
+    filename="sine_16ch_fltp.ogg",
+    default_stream_index=0,
+    frames={},  # Automatically loaded from json file
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=16,
+            duration_seconds=1,
+            num_frames=33,
+            sample_format="fltp",
+        )
+    },
+)
