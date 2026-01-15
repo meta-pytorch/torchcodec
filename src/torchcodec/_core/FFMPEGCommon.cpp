@@ -289,7 +289,9 @@ AVChannelLayout getOutputChannelLayout(
   } else {
     av_channel_layout_default(&outLayout, outNumChannels);
     // AV_CHANNEL_ORDER_UNSPEC indicates FFmpeg did not find a default layout.
-    // We will fail to initialize SwrContext in this case, so we error here.
+    // Since the channel number is changing, SwrContext will need a valid layout
+    // to do mixing. We will fail to initialize SwrContext in this case, so we
+    // error here instead.
     TORCH_CHECK(
         outLayout.order != AV_CHANNEL_ORDER_UNSPEC,
         "Cannot convert audio to ",
