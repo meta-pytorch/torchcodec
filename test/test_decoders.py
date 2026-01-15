@@ -43,7 +43,7 @@ from .utils import (
     needs_cuda,
     needs_ffmpeg_cli,
     psnr,
-    SINE_16_CHANNELS,
+    SINE_16_CHANNEL_S16,
     SINE_MONO_S16,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
@@ -1791,7 +1791,9 @@ class TestVideoDecoder:
 
 
 class TestAudioDecoder:
-    @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3, SINE_MONO_S32))
+    @pytest.mark.parametrize(
+        "asset", (NASA_AUDIO, NASA_AUDIO_MP3, SINE_MONO_S32, SINE_16_CHANNEL_S16)
+    )
     def test_metadata(self, asset):
         decoder = AudioDecoder(asset.path)
         assert isinstance(decoder.metadata, AudioStreamMetadata)
@@ -1849,7 +1851,7 @@ class TestAudioDecoder:
         assert samples.sample_rate == asset.sample_rate
         assert samples.pts_seconds == asset.get_frame_info(idx=0).pts_seconds
 
-    @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3, SINE_16_CHANNELS))
+    @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3, SINE_16_CHANNEL_S16))
     def test_get_all_samples(self, asset):
         decoder = AudioDecoder(asset.path)
         torch.testing.assert_close(
@@ -2118,8 +2120,7 @@ class TestAudioDecoder:
     # that the extra tensor allocation that happens within
     # maybeFlushSwrBuffers() is correct.
     @pytest.mark.parametrize("sample_rate", (None, 16_000))
-    # FFmpeg can handle up to AV_NUM_DATA_POINTERS=8 channels
-    @pytest.mark.parametrize("num_channels", (1, 2, 8, None))
+    @pytest.mark.parametrize("num_channels", (1, 2, 8, 16, None))
     def test_num_channels(self, asset, sample_rate, num_channels):
         decoder = AudioDecoder(
             asset.path, sample_rate=sample_rate, num_channels=num_channels
@@ -2133,12 +2134,5 @@ class TestAudioDecoder:
 
     @pytest.mark.parametrize("asset", (SINE_MONO_S32, NASA_AUDIO_MP3))
     def test_num_channels_errors(self, asset):
-        with pytest.raises(
-            RuntimeError, match="num_channels must be > 0 and <= AV_NUM_DATA_POINTERS"
-        ):
+        with pytest.raises(RuntimeError, match="num_channels must be > 0"):
             AudioDecoder(asset.path, num_channels=0)
-        with pytest.raises(
-            RuntimeError, match="num_channels must be > 0 and <= AV_NUM_DATA_POINTERS"
-        ):
-            # FFmpeg can handle up to AV_NUM_DATA_POINTERS=8 channels
-            AudioDecoder(asset.path, num_channels=9)
