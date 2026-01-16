@@ -619,39 +619,51 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
 
   const int32_t* displayMatrix = nullptr;
 
-#if LIBAVUTIL_VERSION_MAJOR >= 59 // FFmpeg >= 7
-  // In FFmpeg 7+, side data is accessed through codecpar->coded_side_data
+#if LIBAVFORMAT_VERSION_INT >= AV_VERSION_INT(61, 0, 0)
+  // FFmpeg >= 7.0: Use codecpar->coded_side_data
   const AVPacketSideData* sideData = av_packet_side_data_get(
       avStream->codecpar->coded_side_data,
       avStream->codecpar->nb_coded_side_data,
       AV_PKT_DATA_DISPLAYMATRIX);
-  if (sideData != nullptr) {
+  if (sideData != nullptr && sideData->size >= 9 * sizeof(int32_t)) {
     displayMatrix = reinterpret_cast<const int32_t*>(sideData->data);
   }
 #else
-  // // In older FFmpeg versions, try to get rotation from stream metadata
-  // "rotate" tag.
-  if (displayMatrix == nullptr) {
-    const AVDictionaryEntry* rotateTag =
-        av_dict_get(avStream->metadata, "rotate", nullptr, 0);
-    if (rotateTag != nullptr && rotateTag->value != nullptr) {
-      char* endptr = nullptr;
-      double rotation = std::strtod(rotateTag->value, &endptr);
-      if (endptr != rotateTag->value && !std::isnan(rotation)) {
-        return rotation;
-      }
-    }
+  // FFmpeg < 7: Use av_stream_get_side_data.
+  // This function was deprecated in FFmpeg 6.1, but the replacement
+  // (codecpar->coded_side_data) wasn't available until FFmpeg 7.
+  // Suppress the deprecation warning only for FFmpeg 6.
+#if LIBAVFORMAT_VERSION_MAJOR == 60
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  int sideDataSize = 0;
+  const uint8_t* sideData = av_stream_get_side_data(
+      avStream, AV_PKT_DATA_DISPLAYMATRIX, &sideDataSize);
+  if (sideData != nullptr &&
+      static_cast<size_t>(sideDataSize) >= 9 * sizeof(int32_t)) {
+    displayMatrix = reinterpret_cast<const int32_t*>(sideData);
   }
+#if LIBAVFORMAT_VERSION_MAJOR == 60
+#pragma GCC diagnostic pop
+#endif
 #endif
 
-  if (displayMatrix != nullptr) {
-    double rotation = av_display_rotation_get(displayMatrix);
-    if (!std::isnan(rotation)) {
-      return rotation;
-    }
+  if (displayMatrix == nullptr) {
+    return std::nullopt;
   }
 
-  return std::nullopt;
+  // av_display_rotation_get returns the rotation angle in degrees needed to
+  // rotate the video counter-clockwise to make it upright.
+  // Returns NaN if the matrix is invalid.
+  double rotation = av_display_rotation_get(displayMatrix);
+
+  // Check for invalid matrix
+  if (std::isnan(rotation)) {
+    return std::nullopt;
+  }
+
+  return rotation;
 }
 
 SwsFrameContext::SwsFrameContext(
