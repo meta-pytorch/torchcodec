@@ -72,6 +72,28 @@ print(f"{frame_rate = } fps")
 encoder = VideoEncoder(frames=frames, frame_rate=frame_rate)
 
 # %%
+# .. _cuda_encoding:
+#
+# CUDA Encoding
+# -------------
+#
+# To encode on GPU, pass the frames as a CUDA tensor. This can result in significantly
+# faster encoding than CPU. The encoder will automatically select a CUDA-compatible
+# codec when frames are on a CUDA device, such as ``h264_nvenc`` or ``hevc_nvenc``.
+#
+# .. note::
+#
+#     On GPU, the pixel format is always set to ``nv12`` (which does equivalent chroma subsampling
+#     to ``yuv420p``). The ``pixel_format`` parameter is not supported for GPU encoding.
+#
+# .. code-block:: python
+#
+#     gpu_frames = frames.to("cuda")  # Move frames to GPU
+#     gpu_encoder = VideoEncoder(frames=gpu_frames, frame_rate=frame_rate)
+#
+# That's it! The rest of the encoding process is the same as on CPU.
+
+# %%
 # Encoding to file, bytes, or file-like
 # -------------------------------------
 #
