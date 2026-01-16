@@ -619,8 +619,8 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
 
   const int32_t* displayMatrix = nullptr;
 
-#if LIBAVFORMAT_VERSION_INT >= AV_VERSION_INT(61, 0, 0)
-  // FFmpeg >= 7.0: Use codecpar->coded_side_data
+#if LIBAVUTIL_VERSION_MAJOR >= 59 // FFmpeg >= 7
+  // Use codecpar->coded_side_data
   const AVPacketSideData* sideData = av_packet_side_data_get(
       avStream->codecpar->coded_side_data,
       avStream->codecpar->nb_coded_side_data,
@@ -629,11 +629,14 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
     displayMatrix = reinterpret_cast<const int32_t*>(sideData->data);
   }
 #else
-  size_t sideDataSize = 0;
-  const uint8_t* sideData = av_stream_get_side_data(
-      avStream, AV_PKT_DATA_DISPLAYMATRIX, &sideDataSize);
-  if (sideData != nullptr && sideDataSize >= 9 * sizeof(int32_t)) {
-    displayMatrix = reinterpret_cast<const int32_t*>(sideData);
+  // In FFmpeg 5/6, iterate through AVStream's side_data array directly
+  for (int i = 0; i < avStream->nb_side_data; i++) {
+    if (avStream->side_data[i].type == AV_PKT_DATA_DISPLAYMATRIX &&
+        avStream->side_data[i].size >= 9 * sizeof(int32_t)) {
+      displayMatrix =
+          reinterpret_cast<const int32_t*>(avStream->side_data[i].data);
+      break;
+    }
   }
 #endif
 
