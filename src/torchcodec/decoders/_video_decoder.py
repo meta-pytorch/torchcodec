@@ -15,7 +15,6 @@ from typing import Literal
 
 import torch
 from torch import device as torch_device, nn, Tensor
-
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec.decoders._decoder_utils import (
     _get_cuda_backend,
