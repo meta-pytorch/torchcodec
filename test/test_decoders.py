@@ -20,7 +20,6 @@ from torchcodec.decoders import (
     VideoStreamMetadata,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
-from torchvision.io.video import _resample_video_idx
 
 from .utils import (
     all_supported_devices,
@@ -1182,9 +1181,19 @@ class TestVideoDecoder:
             stop_seconds=stop_seconds,
         )
 
-        # Use torchvision's resampling logic to compute expected indices
+        # Compute expected indices using torchvision's resampling logic:
+        # For each output frame i, select source frame at index floor(i * step)
+        # where step = original_fps / target_fps
         original_fps = decoder.metadata.average_fps
-        expected_indices = _resample_video_idx(len(tc_frames_batch), original_fps, fps)
+        step = original_fps / fps
+        if step.is_integer():
+            expected_indices = slice(None, None, int(step))
+        else:
+            expected_indices = (
+                (torch.arange(len(tc_frames_batch), dtype=torch.float32) * step)
+                .floor()
+                .to(torch.int64)
+            )
         expected_frames = all_source_frames.data[expected_indices]
 
         # Verify frame counts match
@@ -1224,9 +1233,19 @@ class TestVideoDecoder:
             stop_seconds=stop_seconds,
         )
 
-        # Use torchvision's resampling logic to compute expected indices
+        # Compute expected indices using torchvision's resampling logic:
+        # For each output frame i, select source frame at index floor(i * step)
+        # where step = original_fps / target_fps
         original_fps = decoder.metadata.average_fps
-        expected_indices = _resample_video_idx(len(tc_frames_batch), original_fps, fps)
+        step = original_fps / fps
+        if step.is_integer():
+            expected_indices = slice(None, None, int(step))
+        else:
+            expected_indices = (
+                (torch.arange(len(tc_frames_batch), dtype=torch.float32) * step)
+                .floor()
+                .to(torch.int64)
+            )
         expected_frames = all_source_frames.data[expected_indices]
 
         # Verify frame counts match
