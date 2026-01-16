@@ -632,7 +632,8 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
   // In FFmpeg 5/6, iterate through AVStream's side_data array directly
   for (int i = 0; i < avStream->nb_side_data; i++) {
     if (avStream->side_data[i].type == AV_PKT_DATA_DISPLAYMATRIX &&
-        avStream->side_data[i].size >= 9 * sizeof(int32_t)) {
+        static_cast<size_t>(avStream->side_data[i].size) >=
+            9 * sizeof(int32_t)) {
       displayMatrix =
           reinterpret_cast<const int32_t*>(avStream->side_data[i].data);
       break;
