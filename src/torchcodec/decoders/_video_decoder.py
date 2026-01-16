@@ -15,7 +15,6 @@ from typing import Literal
 
 import torch
 from torch import device as torch_device, nn, Tensor
-
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec.decoders._decoder_utils import (
     _get_cuda_backend,
@@ -241,6 +240,16 @@ class VideoDecoder:
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
+        # Precompute rotation parameters for torch.rot90
+        # k is the number of 90-degree counter-clockwise rotations
+        # displaymatrix rotation is clockwise, so we negate it
+        rotation = self.metadata.rotation
+        if rotation is not None and rotation != 0:
+            self._rotation_k = round(-rotation / 90) % 4
+        else:
+            self._rotation_k = 0
+        self._dimension_order = dimension_order
+
         self._cpu_fallback = CpuFallbackStatus()
         if device.startswith("cuda"):
             if device_variant == "beta":
@@ -252,6 +261,28 @@ class VideoDecoder:
 
     def __len__(self) -> int:
         return self._num_frames
+
+    def _apply_rotation(self, frame: Tensor) -> Tensor:
+        """Apply rotation to a frame based on the video's rotation metadata.
+
+        Uses torch.rot90 to rotate the frame. The rotation is applied in the
+        spatial dimensions (H, W) based on the dimension order (NCHW or NHWC).
+
+        Args:
+            frame: The frame tensor to rotate.
+
+        Returns:
+            The rotated frame tensor.
+        """
+        if self._rotation_k == 0:
+            return frame
+
+        if self._dimension_order == "NCHW":
+            dims = (-2, -1)
+        else:
+            dims = (-3, -2)
+
+        return torch.rot90(frame, k=self._rotation_k, dims=dims)
 
     @property
     def cpu_fallback(self) -> CpuFallbackStatus:
@@ -284,7 +315,7 @@ class VideoDecoder:
         assert isinstance(key, int)
 
         frame_data, *_ = core.get_frame_at_index(self._decoder, frame_index=key)
-        return frame_data
+        return self._apply_rotation(frame_data)
 
     def _getitem_slice(self, key: slice) -> Tensor:
         assert isinstance(key, slice)
@@ -296,7 +327,7 @@ class VideoDecoder:
             stop=stop,
             step=step,
         )
-        return frame_data
+        return self._apply_rotation(frame_data)
 
     def __getitem__(self, key: numbers.Integral | slice) -> Tensor:
         """Return frame or frames as tensors, at the given index or range.
@@ -350,7 +381,7 @@ class VideoDecoder:
             self._decoder, frame_index=index
         )
         return Frame(
-            data=data,
+            data=self._apply_rotation(data),
             pts_seconds=pts_seconds.item(),
             duration_seconds=duration_seconds.item(),
         )
@@ -368,9 +399,8 @@ class VideoDecoder:
         data, pts_seconds, duration_seconds = core.get_frames_at_indices(
             self._decoder, frame_indices=indices
         )
-
         return FrameBatch(
-            data=data,
+            data=self._apply_rotation(data),
             pts_seconds=pts_seconds,
             duration_seconds=duration_seconds,
         )
@@ -391,13 +421,17 @@ class VideoDecoder:
         """
         # Adjust start / stop indices to enable indexing semantics, ex. [-10, 1000] returns the last 10 frames
         start, stop, step = slice(start, stop, step).indices(self._num_frames)
-        frames = core.get_frames_in_range(
+        data, pts_seconds, duration_seconds = core.get_frames_in_range(
             self._decoder,
             start=start,
             stop=stop,
             step=step,
         )
-        return FrameBatch(*frames)
+        return FrameBatch(
+            data=self._apply_rotation(data),
+            pts_seconds=pts_seconds,
+            duration_seconds=duration_seconds,
+        )
 
     def get_frame_played_at(self, seconds: float) -> Frame:
         """Return a single frame played at the given timestamp in seconds.
@@ -427,7 +461,7 @@ class VideoDecoder:
             self._decoder, seconds
         )
         return Frame(
-            data=data,
+            data=self._apply_rotation(data),
             pts_seconds=pts_seconds.item(),
             duration_seconds=duration_seconds.item(),
         )
@@ -446,7 +480,7 @@ class VideoDecoder:
             self._decoder, timestamps=seconds
         )
         return FrameBatch(
-            data=data,
+            data=self._apply_rotation(data),
             pts_seconds=pts_seconds,
             duration_seconds=duration_seconds,
         )
@@ -484,12 +518,16 @@ class VideoDecoder:
                 f"Invalid stop seconds: {stop_seconds}. "
                 f"It must be less than or equal to {self._end_stream_seconds}."
             )
-        frames = core.get_frames_by_pts_in_range(
+        data, pts_seconds, duration_seconds = core.get_frames_by_pts_in_range(
             self._decoder,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
         )
-        return FrameBatch(*frames)
+        return FrameBatch(
+            data=self._apply_rotation(data),
+            pts_seconds=pts_seconds,
+            duration_seconds=duration_seconds,
+        )
 
 
 def _get_and_validate_stream_metadata(

@@ -612,6 +612,48 @@ int64_t computeSafeDuration(
   }
 }
 
+std::optional<double> getRotationFromStream(const AVStream* avStream) {
+  if (avStream == nullptr) {
+    return std::nullopt;
+  }
+
+  const int32_t* displayMatrix = nullptr;
+
+#if LIBAVFORMAT_VERSION_INT >= AV_VERSION_INT(61, 0, 0)
+  // FFmpeg >= 7.0: Use codecpar->coded_side_data
+  const AVPacketSideData* sideData = av_packet_side_data_get(
+      avStream->codecpar->coded_side_data,
+      avStream->codecpar->nb_coded_side_data,
+      AV_PKT_DATA_DISPLAYMATRIX);
+  if (sideData != nullptr && sideData->size >= 9 * sizeof(int32_t)) {
+    displayMatrix = reinterpret_cast<const int32_t*>(sideData->data);
+  }
+#else
+  size_t sideDataSize = 0;
+  const uint8_t* sideData = av_stream_get_side_data(
+      avStream, AV_PKT_DATA_DISPLAYMATRIX, &sideDataSize);
+  if (sideData != nullptr && sideDataSize >= 9 * sizeof(int32_t)) {
+    displayMatrix = reinterpret_cast<const int32_t*>(sideData);
+  }
+#endif
+
+  if (displayMatrix == nullptr) {
+    return std::nullopt;
+  }
+
+  // av_display_rotation_get returns the rotation angle in degrees needed to
+  // rotate the video counter-clockwise to make it upright.
+  // Returns NaN if the matrix is invalid.
+  double rotation = av_display_rotation_get(displayMatrix);
+
+  // Check for invalid matrix
+  if (std::isnan(rotation)) {
+    return std::nullopt;
+  }
+
+  return rotation;
+}
+
 SwsFrameContext::SwsFrameContext(
     int inputWidth,
     int inputHeight,
