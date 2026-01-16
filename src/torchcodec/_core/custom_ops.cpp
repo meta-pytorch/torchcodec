@@ -946,6 +946,9 @@ std::string get_stream_json_metadata(
     map["sampleAspectRatioDen"] =
         std::to_string((*streamMetadata.sampleAspectRatio).den);
   }
+  if (streamMetadata.rotation.has_value()) {
+    map["rotation"] = std::to_string(*streamMetadata.rotation);
+  }
   if (streamMetadata.averageFpsFromHeader.has_value()) {
     map["averageFpsFromHeader"] =
         std::to_string(*streamMetadata.averageFpsFromHeader);

@@ -612,6 +612,66 @@ int64_t computeSafeDuration(
   }
 }
 
+std::optional<double> getRotationFromStream(const AVStream* avStream) {
+  if (avStream == nullptr) {
+    return std::nullopt;
+  }
+
+  const int32_t* displayMatrix = nullptr;
+
+#if LIBAVFORMAT_VERSION_INT >= AV_VERSION_INT(61, 0, 0)
+  // FFmpeg >= 7.0: Use codecpar->coded_side_data
+  const AVPacketSideData* sideData = av_packet_side_data_get(
+      avStream->codecpar->coded_side_data,
+      avStream->codecpar->nb_coded_side_data,
+      AV_PKT_DATA_DISPLAYMATRIX);
+  if (sideData != nullptr && sideData->size >= 9 * sizeof(int32_t)) {
+    displayMatrix = reinterpret_cast<const int32_t*>(sideData->data);
+  }
+#else
+  // FFmpeg < 7: Use av_stream_get_side_data.
+  // This function was deprecated in FFmpeg 6.1, but the replacement
+  // (codecpar->coded_side_data) wasn't available until FFmpeg 7.
+  // Suppress the deprecation warning only for FFmpeg 6.
+#if LIBAVFORMAT_VERSION_MAJOR == 60
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  // The size parameter type changed from int* (FFmpeg 4) to size_t* (FFmpeg
+  // 5/6)
+#if LIBAVFORMAT_VERSION_MAJOR >= 59 // FFmpeg 5/6
+  size_t sideDataSize = 0;
+#else // FFmpeg 4
+  int sideDataSize = 0;
+#endif
+  const uint8_t* sideData = av_stream_get_side_data(
+      avStream, AV_PKT_DATA_DISPLAYMATRIX, &sideDataSize);
+  if (sideData != nullptr &&
+      static_cast<size_t>(sideDataSize) >= 9 * sizeof(int32_t)) {
+    displayMatrix = reinterpret_cast<const int32_t*>(sideData);
+  }
+#if LIBAVFORMAT_VERSION_MAJOR == 60
+#pragma GCC diagnostic pop
+#endif
+#endif
+
+  if (displayMatrix == nullptr) {
+    return std::nullopt;
+  }
+
+  // av_display_rotation_get returns the rotation angle in degrees needed to
+  // rotate the video counter-clockwise to make it upright.
+  // Returns NaN if the matrix is invalid.
+  double rotation = av_display_rotation_get(displayMatrix);
+
+  // Check for invalid matrix
+  if (std::isnan(rotation)) {
+    return std::nullopt;
+  }
+
+  return rotation;
+}
+
 SwsFrameContext::SwsFrameContext(
     int inputWidth,
     int inputHeight,

@@ -157,6 +157,7 @@ void SingleStreamDecoder::initializeDecoder() {
       streamMetadata.height = avStream->codecpar->height;
       streamMetadata.sampleAspectRatio =
           avStream->codecpar->sample_aspect_ratio;
+      streamMetadata.rotation = getRotationFromStream(avStream);
       containerMetadata_.numVideoStreams++;
     } else if (avStream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
       AVSampleFormat format =
@@ -546,6 +547,7 @@ void SingleStreamDecoder::addVideoStream(
   metadataDims_ =
       FrameDims(streamMetadata.height.value(), streamMetadata.width.value());
   FrameDims currInputDims = metadataDims_;
+
   for (auto& transform : transforms) {
     TORCH_CHECK(transform != nullptr, "Transforms should never be nullptr!");
     if (transform->getOutputFrameDims().has_value()) {

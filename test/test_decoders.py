@@ -11,7 +11,6 @@ from functools import partial
 import numpy
 import pytest
 import torch
-
 from torchcodec import _core, FrameBatch
 from torchcodec.decoders import (
     AudioDecoder,
@@ -40,6 +39,7 @@ from .utils import (
     NASA_AUDIO_MP3,
     NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
+    NASA_VIDEO_ROTATED,
     needs_cuda,
     needs_ffmpeg_cli,
     psnr,
@@ -1751,6 +1751,52 @@ class TestVideoDecoder:
 
         assert not decoder.cpu_fallback
         assert "No fallback required" in str(decoder.cpu_fallback)
+
+    def test_rotation_metadata_90_degrees(self):
+        """Test that rotation metadata is correctly extracted for 90-degree rotated video."""
+        # NASA_VIDEO_ROTATED has 90-degree rotation metadata on both streams
+        decoder_rotated = VideoDecoder(NASA_VIDEO_ROTATED.path)
+        assert decoder_rotated.metadata.rotation is not None
+        assert decoder_rotated.metadata.rotation == 90
+
+    @pytest.mark.parametrize("dimension_order", ["NCHW", "NHWC"])
+    def test_rotation_applied_to_frames(self, dimension_order):
+        """Test that rotation is correctly applied to decoded frames."""
+        decoder = VideoDecoder(NASA_VIDEO_ROTATED.path, dimension_order=dimension_order)
+
+        frame = decoder[0]
+
+        # For a 90-degree rotation, width and height should be swapped
+        if dimension_order == "NCHW":
+            # Frame is (C, H, W)
+            frame_h, frame_w = frame.shape[1], frame.shape[2]
+        else:
+            # Frame is (H, W, C)
+            frame_h, frame_w = frame.shape[0], frame.shape[1]
+
+        assert frame_h == decoder.metadata.width
+        assert frame_w == decoder.metadata.height
+
+    @pytest.mark.parametrize("stream_index", [0, 3])
+    def test_rotation_applied_to_batch_methods(self, stream_index):
+        """Test that rotation is correctly applied to batch frame methods."""
+        decoder = VideoDecoder(NASA_VIDEO_ROTATED.path, stream_index=stream_index)
+
+        # Test get_frames_at
+        frames = decoder.get_frames_at([0, 1])
+        # For NCHW, shape is (N, C, H, W)
+        assert frames.data.shape[2] == decoder.metadata.width  # H after rotation
+        assert frames.data.shape[3] == decoder.metadata.height  # W after rotation
+
+        # Test get_frames_in_range
+        frames = decoder.get_frames_in_range(0, 2)
+        assert frames.data.shape[2] == decoder.metadata.width
+        assert frames.data.shape[3] == decoder.metadata.height
+
+        # Test __getitem__ slice
+        frames = decoder[0:2]
+        assert frames.shape[2] == decoder.metadata.width
+        assert frames.shape[3] == decoder.metadata.height
 
     @needs_cuda
     @pytest.mark.parametrize("device", cuda_devices())

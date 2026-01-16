@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 import torch
-
 from torchcodec._core.ops import (
     _get_container_json_metadata,
     _get_stream_json_metadata,
@@ -102,6 +101,13 @@ class VideoStreamMetadata(StreamMetadata):
     (SAR --- not to be confused with Storage Aspect Ratio, also SAR),
     is the ratio between the width and height of each pixel
     (``fractions.Fraction`` or None)."""
+    rotation: float | None
+    """Rotation angle in degrees from the display matrix metadata.
+    This indicates how the video should be rotated for correct display.
+    Common values are 0, 90, 180, or -90 degrees. Videos recorded on
+    mobile devices often have rotation metadata. TorchCodec automatically
+    applies this rotation during decoding, so the returned frames are
+    in the correct orientation (float or None)."""
 
     # Computed fields (computed in C++ with fallback logic)
     end_stream_seconds: float | None
@@ -227,6 +233,7 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
                     num_frames_from_content=stream_dict.get("numFramesFromContent"),
                     average_fps_from_header=stream_dict.get("averageFpsFromHeader"),
                     pixel_aspect_ratio=_get_optional_par_fraction(stream_dict),
+                    rotation=stream_dict.get("rotation"),
                     **common_meta,
                 )
             )

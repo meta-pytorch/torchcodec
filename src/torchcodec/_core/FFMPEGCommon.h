@@ -7,6 +7,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -279,6 +280,11 @@ int64_t secondsToClosestPts(double seconds, const AVRational& timeBase);
 int64_t computeSafeDuration(
     const AVRational& frameRate,
     const AVRational& timeBase);
+
+// Extracts the rotation angle in degrees from the stream's display matrix
+// side data. The display matrix is used to specify how the video should be
+// rotated for correct display.
+std::optional<double> getRotationFromStream(const AVStream* avStream);
 
 AVFilterContext* createAVFilterContextWithOptions(
     AVFilterGraph* filterGraph,

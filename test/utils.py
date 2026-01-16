@@ -5,14 +5,11 @@ import pathlib
 import platform
 import subprocess
 import sys
-
 from dataclasses import dataclass, field
 
 import numpy as np
 import pytest
-
 import torch
-
 from torchcodec._core import get_ffmpeg_library_versions
 from torchcodec.decoders import set_cuda_backend, VideoDecoder
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
@@ -482,6 +479,16 @@ class TestVideo(TestContainerFile):
 
 NASA_VIDEO = TestVideo(
     filename="nasa_13013.mp4",
+    default_stream_index=3,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
+        3: TestVideoStreamInfo(width=480, height=270, num_color_channels=3),
+    },
+    frames={},  # Automatically loaded from json file
+)
+
+NASA_VIDEO_ROTATED = TestVideo(
+    filename="nasa_13013_rotated.mp4",
     default_stream_index=3,
     stream_infos={
         0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
