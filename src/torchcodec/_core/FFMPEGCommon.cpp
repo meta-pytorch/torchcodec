@@ -637,7 +637,13 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #endif
+  // The size parameter type changed from int* (FFmpeg 4) to size_t* (FFmpeg
+  // 5/6)
+#if LIBAVFORMAT_VERSION_MAJOR >= 59 // FFmpeg 5/6
+  size_t sideDataSize = 0;
+#else // FFmpeg 4
   int sideDataSize = 0;
+#endif
   const uint8_t* sideData = av_stream_get_side_data(
       avStream, AV_PKT_DATA_DISPLAYMATRIX, &sideDataSize);
   if (sideData != nullptr &&
