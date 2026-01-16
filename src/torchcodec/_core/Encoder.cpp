@@ -782,7 +782,7 @@ void VideoEncoder::initializeEncoder(
   outHeight_ = inHeight_;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
-    // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user
+    // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user on GPU
     // and handled with the appropriate NPP function on GPU.
     if (frames_.device().is_cuda()) {
       TORCH_CHECK(
