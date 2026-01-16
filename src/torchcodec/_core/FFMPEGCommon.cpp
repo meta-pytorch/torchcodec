@@ -620,42 +620,38 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
   const int32_t* displayMatrix = nullptr;
 
 #if LIBAVUTIL_VERSION_MAJOR >= 59 // FFmpeg >= 7
-  // Use codecpar->coded_side_data
+  // In FFmpeg 7+, side data is accessed through codecpar->coded_side_data
   const AVPacketSideData* sideData = av_packet_side_data_get(
       avStream->codecpar->coded_side_data,
       avStream->codecpar->nb_coded_side_data,
       AV_PKT_DATA_DISPLAYMATRIX);
-  if (sideData != nullptr && sideData->size >= 9 * sizeof(int32_t)) {
+  if (sideData != nullptr) {
     displayMatrix = reinterpret_cast<const int32_t*>(sideData->data);
   }
 #else
-  // In FFmpeg 5/6, iterate through AVStream's side_data array directly
-  for (int i = 0; i < avStream->nb_side_data; i++) {
-    if (avStream->side_data[i].type == AV_PKT_DATA_DISPLAYMATRIX &&
-        static_cast<size_t>(avStream->side_data[i].size) >=
-            9 * sizeof(int32_t)) {
-      displayMatrix =
-          reinterpret_cast<const int32_t*>(avStream->side_data[i].data);
-      break;
+  // // In older FFmpeg versions, try to get rotation from stream metadata
+  // "rotate" tag.
+  if (displayMatrix == nullptr) {
+    const AVDictionaryEntry* rotateTag =
+        av_dict_get(avStream->metadata, "rotate", nullptr, 0);
+    if (rotateTag != nullptr && rotateTag->value != nullptr) {
+      char* endptr = nullptr;
+      double rotation = std::strtod(rotateTag->value, &endptr);
+      if (endptr != rotateTag->value && !std::isnan(rotation)) {
+        return rotation;
+      }
     }
   }
 #endif
 
-  if (displayMatrix == nullptr) {
-    return std::nullopt;
+  if (displayMatrix != nullptr) {
+    double rotation = av_display_rotation_get(displayMatrix);
+    if (!std::isnan(rotation)) {
+      return rotation;
+    }
   }
 
-  // av_display_rotation_get returns the rotation angle in degrees needed to
-  // rotate the video counter-clockwise to make it upright.
-  // Returns NaN if the matrix is invalid.
-  double rotation = av_display_rotation_get(displayMatrix);
-
-  // Check for invalid matrix
-  if (std::isnan(rotation)) {
-    return std::nullopt;
-  }
-
-  return rotation;
+  return std::nullopt;
 }
 
 SwsFrameContext::SwsFrameContext(
