@@ -770,19 +770,19 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_.reset(avCodecContext);
 
   // Store dimension order and input pixel format
-  // TODO-VideoEncoder: (P2) Remove assumption that tensor in NCHW format
+  // TODO-VideoEncoder: (P2) Enable tensors in NHWC format
   auto sizes = frames_.sizes();
   inPixelFormat_ = AV_PIX_FMT_GBRP;
   inHeight_ = static_cast<int>(sizes[2]);
   inWidth_ = static_cast<int>(sizes[3]);
 
   // Use specified dimensions or input dimensions
-  // TODO-VideoEncoder: (P2) Allow height and width to be set
+  // TODO-VideoEncoder: (P1) Allow height and width to be set
   outWidth_ = inWidth_;
   outHeight_ = inHeight_;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
-    // TODO-VideoEncoder: (P1) Enable pixel formats to be set by user
+    // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user
     // and handled with the appropriate NPP function on GPU.
     if (frames_.device().is_cuda()) {
       TORCH_CHECK(

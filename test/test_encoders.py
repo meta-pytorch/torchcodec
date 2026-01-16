@@ -1388,7 +1388,7 @@ class TestVideoEncoder:
         self, tmp_path, method, format, codec, color_space, color_range
     ):
         ffmpeg_version = get_ffmpeg_major_version()
-        # TODO-VideoEncoder: (P1) Investigate why FFmpeg 4 and 6 fail with non-default color space and range.
+        # TODO-VideoEncoder: (P2) Investigate why FFmpeg 4 and 6 fail with non-default color space and range.
         # See https://github.com/meta-pytorch/torchcodec/issues/1140
         if ffmpeg_version in (4, 6) and not (
             color_space == "bt470bg" and color_range == "tv"
