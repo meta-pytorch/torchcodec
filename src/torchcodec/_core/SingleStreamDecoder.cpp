@@ -844,7 +844,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
 
 FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     double startSeconds,
-    double stopSeconds) {
+    double stopSeconds,
+    std::optional<double> fps) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
@@ -905,6 +906,60 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
             "; must be less than or equal to " +
             std::to_string(maxSeconds.value()) + ").");
   }
+
+  // Resample frames to match the target frame rate
+  if (fps.has_value()) {
+    TORCH_CHECK(
+        fps.value() > 0,
+        "fps must be positive, got " + std::to_string(fps.value()));
+
+    // TODO: add an early break if requested fps is the same as the current fps
+
+    double fpsVal = fps.value();
+    double frameDuration = 1.0 / fpsVal;
+
+    double product = (stopSeconds - startSeconds) * fpsVal;
+    int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
+
+    // Generate target timestamps and find source frame indices
+    std::vector<int64_t> sourceFrameIndices(numOutputFrames);
+    std::vector<double> targetTimestamps(numOutputFrames);
+    for (int64_t i = 0; i < numOutputFrames; ++i) {
+      targetTimestamps[i] = startSeconds + i * frameDuration;
+      sourceFrameIndices[i] = secondsToIndexLowerBound(targetTimestamps[i]);
+    }
+
+    FrameBatchOutput frameBatchOutput(
+        numOutputFrames,
+        resizedOutputDims_.value_or(metadataDims_),
+        videoStreamOptions.device);
+
+    // Decode frames, reusing already-decoded frames for duplicates
+    int64_t lastDecodedSourceIndex = -1;
+    torch::Tensor lastDecodedData;
+
+    for (int64_t i = 0; i < numOutputFrames; ++i) {
+      int64_t sourceIdx = sourceFrameIndices[i];
+
+      if (sourceIdx == lastDecodedSourceIndex && lastDecodedSourceIndex >= 0) {
+        frameBatchOutput.data[i].copy_(lastDecodedData);
+      } else {
+        FrameOutput frameOutput =
+            getFrameAtIndexInternal(sourceIdx, frameBatchOutput.data[i]);
+        lastDecodedData = frameBatchOutput.data[i];
+        lastDecodedSourceIndex = sourceIdx;
+      }
+
+      frameBatchOutput.ptsSeconds[i] = targetTimestamps[i];
+      frameBatchOutput.durationSeconds[i] = frameDuration;
+    }
+
+    frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
+    return frameBatchOutput;
+  }
+
+  // Original behavior when fps is not specified:
+  // Return all frames in range at source fps
 
   // Note that we look at nextPts for a frame, and not its pts or duration.
   // Our abstract player displays frames starting at the pts for that frame

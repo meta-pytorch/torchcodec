@@ -147,9 +147,13 @@ class SingleStreamDecoder {
   // Valid values for startSeconds and stopSeconds are:
   //
   //   [beginStreamPtsSecondsFromContent, endStreamPtsSecondsFromContent)
+  //
+  // If fps is specified, frames are resampled to match the target frame
+  // rate by duplicating or dropping frames as necessary.
   FrameBatchOutput getFramesPlayedInRange(
       double startSeconds,
-      double stopSeconds);
+      double stopSeconds,
+      std::optional<double> fps = std::nullopt);
 
   AudioFramesOutput getFramesPlayedInRangeAudio(
       double startSeconds,
@@ -271,11 +275,6 @@ class SingleStreamDecoder {
 
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
-
-  void convertAVFrameToFrameOutputOnCPU(
-      UniqueAVFrame& avFrame,
-      FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
   // --------------------------------------------------------------------------
