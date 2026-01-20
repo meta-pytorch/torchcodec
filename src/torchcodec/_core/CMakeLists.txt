@@ -53,6 +53,21 @@ function(make_torchcodec_sublibrary
     # Avoid adding the "lib" prefix which we already add explicitly.
     set_target_properties(${library_name} PROPERTIES PREFIX "")
 
+    # On macOS, add Homebrew's FFmpeg library path to the rpath so that users
+    # with Homebrew-installed FFmpeg can use torchcodec without setting
+    # DYLD_LIBRARY_PATH. See https://github.com/pytorch/torchcodec/issues/570
+    if(APPLE)
+        if(DEFINED ENV{HOMEBREW_PREFIX})
+            set(HOMEBREW_FFMPEG_LIB "$ENV{HOMEBREW_PREFIX}/opt/ffmpeg/lib")
+        else()
+            # Default Homebrew location on Apple Silicon
+            set(HOMEBREW_FFMPEG_LIB "/opt/homebrew/opt/ffmpeg/lib")
+        endif()
+        set_target_properties(${library_name} PROPERTIES
+            INSTALL_RPATH "${HOMEBREW_FFMPEG_LIB}"
+        )
+    endif()
+
     target_link_libraries(
         ${library_name}
         PUBLIC
