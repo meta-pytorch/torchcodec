@@ -108,7 +108,7 @@ jobs:
         run: |
           pytest --override-ini="addopts=-v" test
 
-  install-and-test-cppapi:
+  install-and-test-third-party-interface:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -161,4 +161,4 @@ jobs:
 
       - name: Run Python tests
         run: |
-          pytest --override-ini="addopts=-v" test/cppapi
+          pytest --override-ini="addopts=-v" test/third-party-interface

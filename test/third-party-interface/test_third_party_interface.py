@@ -9,7 +9,7 @@ import torch
 import torchcodec
 
 
-def test_cppapi_pkgconfig(tmp_path):
+def test_third_party_interface_pkgconfig(tmp_path):
     cmake_args = [
         "cmake",
         "-DCMAKE_BUILD_TYPE=Debug",
@@ -29,14 +29,14 @@ def test_cppapi_pkgconfig(tmp_path):
         [
             "python3",
             "-c",
-            f"import torch; torch.ops.load_library('torchcodec_cppapitest{ver}.so')",
+            f"import torch; torch.ops.load_library('torchcodec_third_party_interface_test{ver}.so')",
         ],
         cwd=tmp_path,
     )
     assert result.returncode == 0
 
 
-def test_cppapi_no_ffmpeg(tmp_path):
+def test_third_party_interface_no_ffmpeg(tmp_path):
     cmake_args = [
         "cmake",
         "-DCMAKE_BUILD_TYPE=Debug",
@@ -56,7 +56,7 @@ def test_cppapi_no_ffmpeg(tmp_path):
     assert result.returncode != 0
 
 
-def test_cppapi_with_prefix(tmp_path):
+def test_third_party_interface_with_prefix(tmp_path):
     cmake_args = [
         "cmake",
         "-DCMAKE_BUILD_TYPE=Debug",
@@ -91,7 +91,7 @@ def test_cppapi_with_prefix(tmp_path):
         [
             "python3",
             "-c",
-            f"import torch; torch.ops.load_library('torchcodec_cppapitest{ver}.so')",
+            f"import torch; torch.ops.load_library('torchcodec_third_party_interface_test{ver}.so')",
         ],
         cwd=tmp_path,
     )

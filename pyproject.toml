@@ -48,8 +48,7 @@ markers = [
 
 # Tells pytest not to run tests within this directory by default.
 # These tests can still be run by manually specifying the path.
-norecursedirs = ["cppapi"]
-
+norecursedirs = ["third-party-interface"]
 
 # We don't want to run the slow tests by default. These options are ignored in
 # the CI, where we definitely want the 'slow' tests to run.
