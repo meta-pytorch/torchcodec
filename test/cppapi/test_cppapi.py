@@ -9,14 +9,13 @@ import torch
 import torchcodec
 
 
-@pytest.mark.devel
 def test_cppapi_pkgconfig(tmp_path):
     cmake_args = [
         "cmake",
         "-DCMAKE_BUILD_TYPE=Debug",
         "-DCMAKE_VERBOSE_MAKEFILE=ON",
         f"-DCMAKE_PREFIX_PATH={torchcodec.cmake_prefix_path};{torch.utils.cmake_prefix_path}",
-        Path(__file__).parent / "cppapi",
+        Path(__file__).parent,
     ]
     result = subprocess.run(cmake_args, cwd=tmp_path)
     assert result.returncode == 0
@@ -37,14 +36,13 @@ def test_cppapi_pkgconfig(tmp_path):
     assert result.returncode == 0
 
 
-@pytest.mark.devel
 def test_cppapi_no_ffmpeg(tmp_path):
     cmake_args = [
         "cmake",
         "-DCMAKE_BUILD_TYPE=Debug",
         "-DCMAKE_VERBOSE_MAKEFILE=ON",
         f"-DCMAKE_PREFIX_PATH={torchcodec.cmake_prefix_path};{torch.utils.cmake_prefix_path}",
-        Path(__file__).parent / "cppapi",
+        Path(__file__).parent,
     ]
     ver = f"{torchcodec.ffmpeg_major_version}"
     my_env = os.environ.copy()
@@ -58,14 +56,13 @@ def test_cppapi_no_ffmpeg(tmp_path):
     assert result.returncode != 0
 
 
-@pytest.mark.devel
 def test_cppapi_with_prefix(tmp_path):
     cmake_args = [
         "cmake",
         "-DCMAKE_BUILD_TYPE=Debug",
         "-DCMAKE_VERBOSE_MAKEFILE=ON",
         f"-DCMAKE_PREFIX_PATH={torchcodec.cmake_prefix_path};{torch.utils.cmake_prefix_path}",
-        Path(__file__).parent / "cppapi",
+        Path(__file__).parent,
     ]
 
     # In this test we are calculating the prefix of installed ffmpeg version from the location

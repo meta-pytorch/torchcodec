@@ -106,7 +106,7 @@ jobs:
 
       - name: Run Python tests
         run: |
-          pytest --override-ini="addopts=-v -m 'not devel'" test
+          pytest --override-ini="addopts=-v" test
 
   install-and-test-cppapi:
     runs-on: ubuntu-latest
@@ -161,4 +161,4 @@ jobs:
 
       - name: Run Python tests
         run: |
-          pytest --override-ini="addopts=-v" -m devel test
+          pytest --override-ini="addopts=-v" test/cppapi
