@@ -1798,6 +1798,55 @@ class TestVideoDecoder:
         assert frames.shape[2] == decoder.metadata.width
         assert frames.shape[3] == decoder.metadata.height
 
+    @needs_ffmpeg_cli
+    def test_rotation_matches_ffmpeg(self, tmp_path):
+        """Test that rotated frames match ffmpeg CLI output pixel-for-pixel.
+
+        ffmpeg CLI applies autorotate by default, so both should produce
+        the same output for a video with rotation metadata.
+        """
+        import subprocess
+
+        stream_index = 0
+        decoder = VideoDecoder(
+            NASA_VIDEO_ROTATED.path, stream_index=stream_index, dimension_order="NHWC"
+        )
+        tc_frame = decoder[0]  # Shape: (H, W, C) after rotation
+
+        # Get the rotated dimensions
+        height, width = tc_frame.shape[0], tc_frame.shape[1]
+
+        # Extract first frame using ffmpeg CLI (autorotate is on by default)
+        output_path = tmp_path / "ffmpeg_frame.raw"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-i",
+                str(NASA_VIDEO_ROTATED.path),
+                "-map",
+                f"0:v:{stream_index}",
+                "-vframes",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                str(output_path),
+                "-y",
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+        # Load ffmpeg output as tensor
+        with open(output_path, "rb") as f:
+            raw_bytes = f.read()
+        ffmpeg_frame = torch.frombuffer(bytearray(raw_bytes), dtype=torch.uint8)
+        ffmpeg_frame = ffmpeg_frame.reshape(height, width, 3)
+
+        # Pixel-exact comparison
+        torch.testing.assert_close(tc_frame, ffmpeg_frame, atol=0, rtol=0)
+
     @needs_cuda
     @pytest.mark.parametrize("device", cuda_devices())
     def test_cpu_fallback_h265_video(self, device):

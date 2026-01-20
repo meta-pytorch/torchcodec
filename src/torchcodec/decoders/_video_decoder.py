@@ -242,10 +242,9 @@ class VideoDecoder:
 
         # Precompute rotation parameters for torch.rot90
         # k is the number of 90-degree counter-clockwise rotations
-        # displaymatrix rotation is clockwise, so we negate it
         rotation = self.metadata.rotation
         if rotation is not None and rotation != 0:
-            self._rotation_k = round(-rotation / 90) % 4
+            self._rotation_k = round(rotation / 90) % 4
         else:
             self._rotation_k = 0
         self._dimension_order = dimension_order

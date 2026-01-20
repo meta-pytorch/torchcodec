@@ -56,9 +56,10 @@ struct StreamMetadata {
   std::optional<int> width;
   std::optional<int> height;
   std::optional<AVRational> sampleAspectRatio;
-  // Rotation angle in degrees (0, 90, 180, 270). Extracted from the display
-  // matrix side data. This indicates how the video should be rotated for
-  // correct display. Common for videos recorded on mobile devices.
+  // Rotation angle in degrees counter-clockwise (0, 90, 180, -90, -180).
+  // Extracted from the display matrix side data. This indicates how the video
+  // should be rotated for correct display. Common for videos recorded on mobile
+  // devices.
   std::optional<double> rotation;
 
   // Audio-only fields
