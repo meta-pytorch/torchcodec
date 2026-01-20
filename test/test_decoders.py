@@ -1182,6 +1182,7 @@ class TestVideoDecoder:
         )
 
         # Compute expected indices using torchvision's resampling logic:
+        # https://github.com/pytorch/vision/blob/1e53952f57462e4c28103835cf1f9e504dbea84b/torchvision/datasets/video_utils.py#L278
         # For each output frame i, select source frame at index floor(i * step)
         # where step = original_fps / target_fps
         original_fps = decoder.metadata.average_fps
@@ -1234,6 +1235,7 @@ class TestVideoDecoder:
         )
 
         # Compute expected indices using torchvision's resampling logic:
+        # https://github.com/pytorch/vision/blob/1e53952f57462e4c28103835cf1f9e504dbea84b/torchvision/datasets/video_utils.py#L278
         # For each output frame i, select source frame at index floor(i * step)
         # where step = original_fps / target_fps
         original_fps = decoder.metadata.average_fps

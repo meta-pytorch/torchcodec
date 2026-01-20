@@ -921,14 +921,6 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     double product = (stopSeconds - startSeconds) * fpsVal;
     int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
 
-    // Generate target timestamps and find source frame indices
-    std::vector<int64_t> sourceFrameIndices(numOutputFrames);
-    std::vector<double> targetTimestamps(numOutputFrames);
-    for (int64_t i = 0; i < numOutputFrames; ++i) {
-      targetTimestamps[i] = startSeconds + i * frameDuration;
-      sourceFrameIndices[i] = secondsToIndexLowerBound(targetTimestamps[i]);
-    }
-
     FrameBatchOutput frameBatchOutput(
         numOutputFrames,
         resizedOutputDims_.value_or(metadataDims_),
@@ -939,7 +931,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     torch::Tensor lastDecodedData;
 
     for (int64_t i = 0; i < numOutputFrames; ++i) {
-      int64_t sourceIdx = sourceFrameIndices[i];
+      double targetPts = startSeconds + i * frameDuration;
+      int64_t sourceIdx = secondsToIndexLowerBound(targetPts);
 
       if (sourceIdx == lastDecodedSourceIndex && lastDecodedSourceIndex >= 0) {
         frameBatchOutput.data[i].copy_(lastDecodedData);
@@ -950,16 +943,13 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         lastDecodedSourceIndex = sourceIdx;
       }
 
-      frameBatchOutput.ptsSeconds[i] = targetTimestamps[i];
+      frameBatchOutput.ptsSeconds[i] = targetPts;
       frameBatchOutput.durationSeconds[i] = frameDuration;
     }
 
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     return frameBatchOutput;
   }
-
-  // Original behavior when fps is not specified:
-  // Return all frames in range at source fps
 
   // Note that we look at nextPts for a frame, and not its pts or duration.
   // Our abstract player displays frames starting at the pts for that frame
