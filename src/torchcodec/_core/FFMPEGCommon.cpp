@@ -619,14 +619,28 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
 
   const int32_t* displayMatrix = nullptr;
 
-#if LIBAVFORMAT_VERSION_MAJOR >= 60 // FFmpeg >= 6
-  // FFmpeg >= 6: Use codecpar->coded_side_data
+// The coded_side_data API was added in FFmpeg 6.1 (libavcodec 60.31.x)
+// FFmpeg >= 6.1: Use codecpar->coded_side_data
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 31, 100)
   const AVPacketSideData* sideData = av_packet_side_data_get(
       avStream->codecpar->coded_side_data,
       avStream->codecpar->nb_coded_side_data,
       AV_PKT_DATA_DISPLAYMATRIX);
   if (sideData != nullptr && sideData->size >= 9 * sizeof(int32_t)) {
     displayMatrix = reinterpret_cast<const int32_t*>(sideData->data);
+  }
+#elif LIBAVFORMAT_VERSION_MAJOR >= 60 // FFmpeg 6.0
+  // FFmpeg 6.0: Use av_stream_get_side_data (deprecated but still available)
+  // Suppress deprecation warning for this specific call
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+  size_t sideDataSize = 0;
+  const uint8_t* sideData = av_stream_get_side_data(
+      avStream, AV_PKT_DATA_DISPLAYMATRIX, &sideDataSize);
+#pragma GCC diagnostic pop
+  if (sideData != nullptr &&
+      static_cast<size_t>(sideDataSize) >= 9 * sizeof(int32_t)) {
+    displayMatrix = reinterpret_cast<const int32_t*>(sideData);
   }
 #else
   // FFmpeg < 6: Use av_stream_get_side_data.
