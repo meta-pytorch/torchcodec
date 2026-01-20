@@ -770,14 +770,14 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_.reset(avCodecContext);
 
   // Store dimension order and input pixel format
-  // TODO-VideoEncoder: (P2) Enable tensors in NHWC format
+  // TODO-VideoEncoder: (P2) Enable tensors in NHWC shape
   auto sizes = frames_.sizes();
   inPixelFormat_ = AV_PIX_FMT_GBRP;
   inHeight_ = static_cast<int>(sizes[2]);
   inWidth_ = static_cast<int>(sizes[3]);
 
   // Use specified dimensions or input dimensions
-  // TODO-VideoEncoder: (P1) Allow height and width to be set
+  // TODO-VideoEncoder: (P2) Allow height and width to be set
   outWidth_ = inWidth_;
   outHeight_ = inHeight_;
 

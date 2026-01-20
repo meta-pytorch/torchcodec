@@ -517,7 +517,7 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
   int height = static_cast<int>(tensor.size(1));
   int width = static_cast<int>(tensor.size(2));
 
-  // TODO-VideoEncoder: (P2) Unify AVFrame creation with CPU method
+  // TODO-VideoEncoder: (P1) Unify AVFrame creation with CPU method
   avFrame->format = AV_PIX_FMT_CUDA;
   avFrame->height = height;
   avFrame->width = width;
