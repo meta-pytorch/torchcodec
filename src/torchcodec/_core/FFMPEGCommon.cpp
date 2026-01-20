@@ -619,8 +619,8 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
 
   const int32_t* displayMatrix = nullptr;
 
-#if LIBAVFORMAT_VERSION_INT >= AV_VERSION_INT(61, 0, 0)
-  // FFmpeg >= 7.0: Use codecpar->coded_side_data
+#if LIBAVFORMAT_VERSION_MAJOR >= 60 // FFmpeg >= 6
+  // FFmpeg >= 6: Use codecpar->coded_side_data
   const AVPacketSideData* sideData = av_packet_side_data_get(
       avStream->codecpar->coded_side_data,
       avStream->codecpar->nb_coded_side_data,
@@ -629,17 +629,9 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
     displayMatrix = reinterpret_cast<const int32_t*>(sideData->data);
   }
 #else
-  // FFmpeg < 7: Use av_stream_get_side_data.
-  // This function was deprecated in FFmpeg 6.1, but the replacement
-  // (codecpar->coded_side_data) wasn't available until FFmpeg 7.
-  // Suppress the deprecation warning only for FFmpeg 6.
-#if LIBAVFORMAT_VERSION_MAJOR == 60
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  // The size parameter type changed from int* (FFmpeg 4) to size_t* (FFmpeg
-  // 5/6)
-#if LIBAVFORMAT_VERSION_MAJOR >= 59 // FFmpeg 5/6
+  // FFmpeg < 6: Use av_stream_get_side_data.
+  // The size parameter type changed from int* (FFmpeg 4) to size_t* (FFmpeg 5)
+#if LIBAVFORMAT_VERSION_MAJOR >= 59 // FFmpeg 5
   size_t sideDataSize = 0;
 #else // FFmpeg 4
   int sideDataSize = 0;
@@ -650,9 +642,6 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
       static_cast<size_t>(sideDataSize) >= 9 * sizeof(int32_t)) {
     displayMatrix = reinterpret_cast<const int32_t*>(sideData);
   }
-#if LIBAVFORMAT_VERSION_MAJOR == 60
-#pragma GCC diagnostic pop
-#endif
 #endif
 
   if (displayMatrix == nullptr) {

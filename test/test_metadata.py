@@ -18,7 +18,12 @@ from torchcodec._core import (
 )
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
-from .utils import get_ffmpeg_major_version, NASA_AUDIO_MP3, NASA_VIDEO
+from .utils import (
+    get_ffmpeg_major_version,
+    NASA_AUDIO_MP3,
+    NASA_VIDEO,
+    NASA_VIDEO_ROTATED,
+)
 
 
 # TODO: Expected values in these tests should be based on the assets's
@@ -147,6 +152,18 @@ def test_get_metadata_audio_file(metadata_getter):
     assert best_audio_stream_metadata.bit_rate == 64000
     assert best_audio_stream_metadata.codec == "mp3"
     assert best_audio_stream_metadata.sample_format == "fltp"
+
+
+def test_rotation_metadata():
+    """Test that rotation metadata is correctly extracted for rotated video."""
+    # NASA_VIDEO_ROTATED has 90-degree rotation metadata
+    decoder = VideoDecoder(NASA_VIDEO_ROTATED.path)
+    assert decoder.metadata.rotation is not None
+    assert decoder.metadata.rotation == 90
+
+    # NASA_VIDEO has no rotation metadata
+    decoder = VideoDecoder(NASA_VIDEO.path)
+    assert decoder.metadata.rotation is None
 
 
 def test_repr():

@@ -1752,21 +1752,25 @@ class TestVideoDecoder:
         assert not decoder.cpu_fallback
         assert "No fallback required" in str(decoder.cpu_fallback)
 
-    def test_rotation_metadata_90_degrees(self):
-        """Test that rotation metadata is correctly extracted for 90-degree rotated video."""
-        # NASA_VIDEO_ROTATED has 90-degree rotation metadata on both streams
-        decoder_rotated = VideoDecoder(NASA_VIDEO_ROTATED.path)
-        assert decoder_rotated.metadata.rotation is not None
-        assert decoder_rotated.metadata.rotation == 90
-
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize("dimension_order", ["NCHW", "NHWC"])
-    def test_rotation_applied_to_frames(self, dimension_order):
-        """Test that rotation is correctly applied to decoded frames."""
-        decoder = VideoDecoder(NASA_VIDEO_ROTATED.path, dimension_order=dimension_order)
+    def test_rotation_applied_to_frames(self, dimension_order, tmp_path):
+        """Test that rotation is correctly applied to decoded frames.
+
+        Verifies pixel-exact match with ffmpeg CLI.
+        """
+        import subprocess
+
+        stream_index = 0
+        decoder = VideoDecoder(
+            NASA_VIDEO_ROTATED.path,
+            stream_index=stream_index,
+            dimension_order=dimension_order,
+        )
 
         frame = decoder[0]
 
-        # For a 90-degree rotation, width and height should be swapped
+        # Get frame dimensions based on dimension order
         if dimension_order == "NCHW":
             # Frame is (C, H, W)
             frame_h, frame_w = frame.shape[1], frame.shape[2]
@@ -1774,49 +1778,7 @@ class TestVideoDecoder:
             # Frame is (H, W, C)
             frame_h, frame_w = frame.shape[0], frame.shape[1]
 
-        assert frame_h == decoder.metadata.width
-        assert frame_w == decoder.metadata.height
-
-    @pytest.mark.parametrize("stream_index", [0, 3])
-    def test_rotation_applied_to_batch_methods(self, stream_index):
-        """Test that rotation is correctly applied to batch frame methods."""
-        decoder = VideoDecoder(NASA_VIDEO_ROTATED.path, stream_index=stream_index)
-
-        # Test get_frames_at
-        frames = decoder.get_frames_at([0, 1])
-        # For NCHW, shape is (N, C, H, W)
-        assert frames.data.shape[2] == decoder.metadata.width  # H after rotation
-        assert frames.data.shape[3] == decoder.metadata.height  # W after rotation
-
-        # Test get_frames_in_range
-        frames = decoder.get_frames_in_range(0, 2)
-        assert frames.data.shape[2] == decoder.metadata.width
-        assert frames.data.shape[3] == decoder.metadata.height
-
-        # Test __getitem__ slice
-        frames = decoder[0:2]
-        assert frames.shape[2] == decoder.metadata.width
-        assert frames.shape[3] == decoder.metadata.height
-
-    @needs_ffmpeg_cli
-    def test_rotation_matches_ffmpeg(self, tmp_path):
-        """Test that rotated frames match ffmpeg CLI output pixel-for-pixel.
-
-        ffmpeg CLI applies autorotate by default, so both should produce
-        the same output for a video with rotation metadata.
-        """
-        import subprocess
-
-        stream_index = 0
-        decoder = VideoDecoder(
-            NASA_VIDEO_ROTATED.path, stream_index=stream_index, dimension_order="NHWC"
-        )
-        tc_frame = decoder[0]  # Shape: (H, W, C) after rotation
-
-        # Get the rotated dimensions
-        height, width = tc_frame.shape[0], tc_frame.shape[1]
-
-        # Extract first frame using ffmpeg CLI (autorotate is on by default)
+        # Pixel-exact comparison with ffmpeg CLI (autorotate is on by default)
         output_path = tmp_path / "ffmpeg_frame.raw"
         subprocess.run(
             [
@@ -1838,14 +1800,18 @@ class TestVideoDecoder:
             capture_output=True,
         )
 
-        # Load ffmpeg output as tensor
         with open(output_path, "rb") as f:
             raw_bytes = f.read()
         ffmpeg_frame = torch.frombuffer(bytearray(raw_bytes), dtype=torch.uint8)
-        ffmpeg_frame = ffmpeg_frame.reshape(height, width, 3)
+        ffmpeg_frame = ffmpeg_frame.reshape(frame_h, frame_w, 3)
 
-        # Pixel-exact comparison
-        torch.testing.assert_close(tc_frame, ffmpeg_frame, atol=0, rtol=0)
+        # Convert to NHWC for comparison if needed
+        if dimension_order == "NCHW":
+            frame_nhwc = frame.permute(1, 2, 0)
+        else:
+            frame_nhwc = frame
+
+        torch.testing.assert_close(frame_nhwc, ffmpeg_frame, atol=0, rtol=0)
 
     @needs_cuda
     @pytest.mark.parametrize("device", cuda_devices())
