@@ -2138,15 +2138,13 @@ class TestAudioDecoder:
     @pytest.mark.parametrize(
         "asset", (SINE_MONO_S32, NASA_AUDIO_MP3, SINE_16_CHANNEL_FLTP_OGG)
     )
-    @pytest.mark.parametrize("num_channels", (0, 15, 23))
-    def test_num_channels_errors(self, asset, num_channels):
-        msg = (
-            "num_channels must be > 0"
-            if num_channels == 0
-            else f"Cannot convert audio to {num_channels} channels"
-        )
-        with pytest.raises(RuntimeError, match=msg):
-            decoder = AudioDecoder(asset.path, num_channels=num_channels)
-            # Call get_all_samples to trigger num_channels conversion.
-            # FFmpeg fails to find a default layout for certain channel counts.
-            decoder.get_all_samples()
+    def test_num_channels_errors(self, asset):
+        with pytest.raises(RuntimeError, match="num_channels must be > 0"):
+            AudioDecoder(asset.path, num_channels=0)
+        for num_channels in (15, 23):
+            with pytest.raises(RuntimeError, match="Couldn't initialize SwrContext:"):
+                decoder = AudioDecoder(asset.path, num_channels=num_channels)
+                # Call get_all_samples to trigger num_channels conversion.
+                # FFmpeg fails to find a default layout for certain channel counts,
+                # which causes SwrContext to fail to initialize.
+                decoder.get_all_samples()
