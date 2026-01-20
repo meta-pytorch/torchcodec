@@ -1,15 +1,27 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
+"""
+We allow third-parties to build their own C++ TorchCodec extensions via the DeviceInterface API.
+This test ensures that such third-party extensions can be built correctly.
+"""
+
 import os
 import subprocess
 
 from pathlib import Path
-
-import pytest
 
 import torch
 import torchcodec
 
 
 def test_third_party_interface_pkgconfig(tmp_path):
+    # Test building of third-party-interface. Since
+    # TORCHCODEC_FFMPEG{ver}_INSTALL_PREFIX is not provided, FFmpeg should be
+    # found via pkg-config
     cmake_args = [
         "cmake",
         "-DCMAKE_BUILD_TYPE=Debug",
@@ -36,7 +48,9 @@ def test_third_party_interface_pkgconfig(tmp_path):
     assert result.returncode == 0
 
 
-def test_third_party_interface_no_ffmpeg(tmp_path):
+def test_third_party_interface_fails_when_no_ffmpeg(tmp_path):
+    # Test that passing non-existing TORCHCODEC_FFMPEG{ver}_INSTALL_PREFIX
+    # makes cmake configuration fail
     cmake_args = [
         "cmake",
         "-DCMAKE_BUILD_TYPE=Debug",
@@ -57,6 +71,8 @@ def test_third_party_interface_no_ffmpeg(tmp_path):
 
 
 def test_third_party_interface_with_prefix(tmp_path):
+    # Test that passing a valid TORCHCODEC_FFMPEG{ver}_INSTALL_PREFIX uses those
+    # FFmpeg libraries.
     cmake_args = [
         "cmake",
         "-DCMAKE_BUILD_TYPE=Debug",
