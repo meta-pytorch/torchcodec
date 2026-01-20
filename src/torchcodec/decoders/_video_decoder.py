@@ -104,7 +104,8 @@ class VideoDecoder:
                 cheap no-copy operation that allows these frames to be
                 transformed using the `torchvision transforms
                 <https://pytorch.org/vision/stable/transforms.html>`_.
-        num_ffmpeg_threads (int, optional): The number of threads to use for decoding.
+        num_ffmpeg_threads (int, optional): The number of threads to use for CPU decoding.
+            This has no effect when using GPU decoding.
             Use 1 for single-threaded decoding which may be best if you are running multiple
             instances of ``VideoDecoder`` in parallel. Use a higher number for multi-threaded
             decoding which is best if you are running a single instance of ``VideoDecoder``.
