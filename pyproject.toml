@@ -43,7 +43,7 @@ excludes = [
 [tool.pytest.ini_options]
 markers = [
     # defines a 'slow' mark to mark slow tests with `@pytest.mark.slow`
-    "slow: mark test as slow",
+    "slow: mark test as slow"
 ]
 
 # Tells pytest not to run tests within this directory by default.
@@ -52,6 +52,6 @@ norecursedirs = ["third-party-interface"]
 
 # We don't want to run the slow tests by default. These options are ignored in
 # the CI, where we definitely want the 'slow' tests to run.
-addopts = "-v -m 'not slow and not devel'"
+addopts = "-v -m 'not slow'"
 
 testpaths = ["test"]
