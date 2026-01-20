@@ -8,6 +8,8 @@ find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development)
 
+option(TORCHCODEC_DISABLE_HOMEBREW_RPATH "Do not add Homebrew FFmpeg library path to rpath on macOS" OFF)
+
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
 else()
@@ -56,7 +58,7 @@ function(make_torchcodec_sublibrary
     # On macOS, add Homebrew's FFmpeg library path to the rpath so that users
     # with Homebrew-installed FFmpeg can use torchcodec without setting
     # DYLD_LIBRARY_PATH. See https://github.com/pytorch/torchcodec/issues/570
-    if(APPLE)
+    if(APPLE AND NOT TORCHCODEC_DISABLE_HOMEBREW_RPATH)
         if(DEFINED ENV{HOMEBREW_PREFIX})
             set(HOMEBREW_FFMPEG_LIB "$ENV{HOMEBREW_PREFIX}/opt/ffmpeg/lib")
         else()
