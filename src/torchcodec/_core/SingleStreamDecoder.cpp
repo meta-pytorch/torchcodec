@@ -916,7 +916,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     // TODO: add an early break if requested fps is the same as the current fps
 
     double fpsVal = fps.value();
-    double frameDuration = 1.0 / fpsVal;
+    double frameDurationSeconds = 1.0 / fpsVal;
 
     double product = (stopSeconds - startSeconds) * fpsVal;
     int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
@@ -928,23 +928,20 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
 
     // Decode frames, reusing already-decoded frames for duplicates
     int64_t lastDecodedSourceIndex = -1;
-    torch::Tensor lastDecodedData;
 
     for (int64_t i = 0; i < numOutputFrames; ++i) {
-      double targetPts = startSeconds + i * frameDuration;
-      int64_t sourceIdx = secondsToIndexLowerBound(targetPts);
+      double targetPtsSeconds = startSeconds + i * frameDurationSeconds;
+      int64_t sourceIdx = secondsToIndexLowerBound(targetPtsSeconds);
 
       if (sourceIdx == lastDecodedSourceIndex && lastDecodedSourceIndex >= 0) {
-        frameBatchOutput.data[i].copy_(lastDecodedData);
+        frameBatchOutput.data[i].copy_(frameBatchOutput.data[i - 1]);
       } else {
-        FrameOutput frameOutput =
-            getFrameAtIndexInternal(sourceIdx, frameBatchOutput.data[i]);
-        lastDecodedData = frameBatchOutput.data[i];
+        getFrameAtIndexInternal(sourceIdx, frameBatchOutput.data[i]);
         lastDecodedSourceIndex = sourceIdx;
       }
 
-      frameBatchOutput.ptsSeconds[i] = targetPts;
-      frameBatchOutput.durationSeconds[i] = frameDuration;
+      frameBatchOutput.ptsSeconds[i] = targetPtsSeconds;
+      frameBatchOutput.durationSeconds[i] = frameDurationSeconds;
     }
 
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
