@@ -770,19 +770,19 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_.reset(avCodecContext);
 
   // Store dimension order and input pixel format
-  // TODO-VideoEncoder: Remove assumption that tensor in NCHW format
+  // TODO-VideoEncoder: (P2) Enable tensors in NHWC shape
   auto sizes = frames_.sizes();
   inPixelFormat_ = AV_PIX_FMT_GBRP;
   inHeight_ = static_cast<int>(sizes[2]);
   inWidth_ = static_cast<int>(sizes[3]);
 
   // Use specified dimensions or input dimensions
-  // TODO-VideoEncoder: Allow height and width to be set
+  // TODO-VideoEncoder: (P2) Allow height and width to be set
   outWidth_ = inWidth_;
   outHeight_ = inHeight_;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
-    // TODO-VideoEncoder: Enable pixel formats to be set by user
+    // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user on GPU
     // and handled with the appropriate NPP function on GPU.
     if (frames_.device().is_cuda()) {
       TORCH_CHECK(
@@ -813,7 +813,7 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_->width = outWidth_;
   avCodecContext_->height = outHeight_;
   avCodecContext_->pix_fmt = outPixelFormat_;
-  // TODO-VideoEncoder: Add and utilize output frame_rate option
+  // TODO-VideoEncoder: (P1) Add and utilize output frame_rate option
   avCodecContext_->framerate = av_d2q(inFrameRate_, INT_MAX);
   avCodecContext_->time_base = av_inv_q(avCodecContext_->framerate);
 
@@ -963,10 +963,10 @@ UniqueAVFrame VideoEncoder::convertTensorToAVFrame(
 
   uint8_t* tensorData = static_cast<uint8_t*>(frame.data_ptr());
 
-  // TODO-VideoEncoder: Reorder tensor if in NHWC format
   int channelSize = inHeight_ * inWidth_;
-  // Reorder RGB -> GBR for AV_PIX_FMT_GBRP format
-  // TODO-VideoEncoder: Determine if FFmpeg supports planar RGB input format
+  // Since frames tensor is in NCHW, we must use a planar format.
+  // FFmpeg only provides AV_PIX_FMT_GBRP for planar RGB,
+  // so we reorder RGB -> GBR.
   inputFrame->data[0] = tensorData + channelSize;
   inputFrame->data[1] = tensorData + (2 * channelSize);
   inputFrame->data[2] = tensorData;
