@@ -387,6 +387,29 @@ void BetaCudaDeviceInterface::initializeBSF(
       getFFMPEGErrorStringFromErrorCode(retVal));
 }
 
+
+int BetaCudaDeviceInterface::reconfigureNVDECDecoder(CUVIDEOFORMAT* videoFormat) {
+  CUVIDRECONFIGUREDECODERINFO info = { 0 };
+
+  info.ulWidth  = videoFormat->coded_width;
+  info.ulHeight = videoFormat->coded_height;
+
+  info.ulTargetWidth  = videoFormat->display_area.right - videoFormat->display_area.left;
+  info.ulTargetHeight = videoFormat->display_area.bottom - videoFormat->display_area.top;
+
+  info.ulNumDecodeSurfaces = videoFormat->min_num_decode_surfaces;
+  
+  info.display_area.left   = videoFormat->display_area.left;
+  info.display_area.top    = videoFormat->display_area.top;
+  info.display_area.right  = videoFormat->display_area.right;
+  info.display_area.bottom = videoFormat->display_area.bottom;
+
+  cuvidReconfigureDecoder(*decoder_, &info);
+
+  return static_cast<int>(videoFormat_.min_num_decode_surfaces);
+}
+
+
 // This callback is called by the parser within cuvidParseVideoData when there
 // is a change in the stream's properties (like resolution change), as specified
 // by CUVIDEOFORMAT. Particularly (but not just!), this is called at the very
@@ -404,13 +427,24 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
     videoFormat_.min_num_decode_surfaces = 20;
   }
 
+  CUvideodecoderCache decoderCache;
+  
   if (!decoder_) {
-    decoder_ = NVDECCache::getCache(device_).getDecoder(videoFormat);
+    decoderCache = NVDECCache::getCache(device_).getDecoder(videoFormat);
 
-    if (!decoder_) {
-      // TODONVDEC P2: consider re-configuring an existing decoder instead of
-      // re-creating one. See docs, see DALI. Re-configuration doesn't seem to
-      // be enabled in DALI by default.
+    if (decoderCache.first == NVDECCacheType::Reconfig) {
+      // Need to reconfigure existing decoder
+      decoder_ = std::move(decoderCache.second);
+      TORCH_CHECK(decoder_, "Failed to get decoder from cache");
+      return reconfigureNVDECDecoder(videoFormat);
+    }
+    else if (decoderCache.first == NVDECCacheType::Reuse) {
+      // Can reuse existing decoder as is
+      decoder_ = std::move(decoderCache.second);
+    }
+    else if (decoderCache.first == NVDECCacheType::Create) {
+      // Need to create a new decoder
+      TORCH_CHECK(!decoder_, "Decoder should be null here");
       decoder_ = createDecoder(videoFormat);
     }
 

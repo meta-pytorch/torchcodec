@@ -35,6 +35,15 @@ struct CUvideoDecoderDeleter {
 using UniqueCUvideodecoder =
     std::unique_ptr<CUvideodecoder, CUvideoDecoderDeleter>;
 
+enum NVDECCacheType {
+    Create,
+    Reconfig,
+    Reuse
+};
+
+using CUvideodecoderCache = 
+  std::pair<NVDECCacheType, UniqueCUvideodecoder>;
+
 // A per-device cache for NVDEC decoders. There is one instance of this class
 // per GPU device, and it is accessed through the static getCache() method.
 class NVDECCache {
@@ -42,7 +51,7 @@ class NVDECCache {
   static NVDECCache& getCache(const torch::Device& device);
 
   // Get decoder from cache - returns nullptr if none available
-  UniqueCUvideodecoder getDecoder(CUVIDEOFORMAT* videoFormat);
+  CUvideodecoderCache getDecoder(CUVIDEOFORMAT* videoFormat);
 
   // Return decoder to cache - returns true if added to cache
   bool returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder);
@@ -51,48 +60,51 @@ class NVDECCache {
   // Cache key struct: a decoder can be reused and taken from the cache only if
   // all these parameters match.
   struct CacheKey {
-    cudaVideoCodec codecType;
-    uint32_t width;
-    uint32_t height;
-    cudaVideoChromaFormat chromaFormat;
-    uint32_t bitDepthLumaMinus8;
-    uint8_t numDecodeSurfaces;
+      cudaVideoCodec codecType;
+      uint32_t width;
+      uint32_t height;
+      cudaVideoChromaFormat chromaFormat;
+      uint32_t bitDepthLumaMinus8;
+      uint8_t numDecodeSurfaces;
 
-    CacheKey() = delete;
+      CacheKey() = delete;
 
-    explicit CacheKey(CUVIDEOFORMAT* videoFormat)
-        : codecType(videoFormat->codec),
-          width(videoFormat->coded_width),
-          height(videoFormat->coded_height),
-          chromaFormat(videoFormat->chroma_format),
-          bitDepthLumaMinus8(videoFormat->bit_depth_luma_minus8),
-          numDecodeSurfaces(videoFormat->min_num_decode_surfaces) {}
+      explicit CacheKey(CUVIDEOFORMAT* videoFormat)
+          : codecType(videoFormat->codec),
+            width(videoFormat->coded_width),
+            height(videoFormat->coded_height),
+            chromaFormat(videoFormat->chroma_format),
+            bitDepthLumaMinus8(videoFormat->bit_depth_luma_minus8),
+            numDecodeSurfaces(videoFormat->min_num_decode_surfaces) {}
 
-    CacheKey(const CacheKey&) = default;
-    CacheKey& operator=(const CacheKey&) = default;
+      CacheKey(const CacheKey&) = default;
+      CacheKey& operator=(const CacheKey&) = default;
 
-    bool operator<(const CacheKey& other) const {
-      return std::tie(
-                 codecType,
-                 width,
-                 height,
-                 chromaFormat,
-                 bitDepthLumaMinus8,
-                 numDecodeSurfaces) <
+      bool operator<(const CacheKey& other) const {
+          return std::tie(
+            codecType, 
+            chromaFormat, 
+            bitDepthLumaMinus8
+          ) <
           std::tie(
-                 other.codecType,
-                 other.width,
-                 other.height,
-                 other.chromaFormat,
-                 other.bitDepthLumaMinus8,
-                 other.numDecodeSurfaces);
-    }
+            other.codecType, 
+            other.chromaFormat, 
+            other.bitDepthLumaMinus8
+          );
+      }
+  };
+
+  struct VideoDecodeContext {
+      uint8_t numDecodeSurfaces;
+      uint32_t coded_width;
+      uint32_t coded_height;
   };
 
   NVDECCache() = default;
   ~NVDECCache() = default;
 
   std::map<CacheKey, UniqueCUvideodecoder> cache_;
+  std::map<CacheKey, VideoDecodeContext> context_cache_;
   std::mutex cacheLock_;
 
   // Max number of cached decoders, per device

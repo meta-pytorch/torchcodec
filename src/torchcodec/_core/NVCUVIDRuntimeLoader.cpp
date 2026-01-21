@@ -103,6 +103,7 @@ typedef CUresult CUDAAPI tcuvidMapVideoFrame(CUvideodecoder, int, unsigned int*,
 typedef CUresult CUDAAPI tcuvidUnmapVideoFrame(CUvideodecoder, unsigned int);
 typedef CUresult CUDAAPI tcuvidMapVideoFrame64(CUvideodecoder, int, unsigned long long*, unsigned int*, CUVIDPROCPARAMS*);
 typedef CUresult CUDAAPI tcuvidUnmapVideoFrame64(CUvideodecoder, unsigned long long);
+typedef CUresult CUDAAPI tcuvidReconfigureDecoder(CUvideodecoder, CUVIDRECONFIGUREDECODERINFO*);
 /* clang-format on */
 
 // Global function pointers - will be dynamically loaded
@@ -117,6 +118,7 @@ static tcuvidMapVideoFrame* dl_cuvidMapVideoFrame = nullptr;
 static tcuvidUnmapVideoFrame* dl_cuvidUnmapVideoFrame = nullptr;
 static tcuvidMapVideoFrame64* dl_cuvidMapVideoFrame64 = nullptr;
 static tcuvidUnmapVideoFrame64* dl_cuvidUnmapVideoFrame64 = nullptr;
+static tcuvidReconfigureDecoder* dl_cuvidReconfigureDecoder = nullptr;
 
 static tHandle g_nvcuvid_handle = nullptr;
 static std::mutex g_nvcuvid_mutex;
@@ -128,7 +130,7 @@ bool isLoaded() {
       dl_cuvidCreateDecoder && dl_cuvidDestroyDecoder &&
       dl_cuvidDecodePicture && dl_cuvidMapVideoFrame &&
       dl_cuvidUnmapVideoFrame && dl_cuvidMapVideoFrame64 &&
-      dl_cuvidUnmapVideoFrame64);
+      dl_cuvidUnmapVideoFrame64 && dl_cuvidReconfigureDecoder);
 }
 
 template <typename T>
@@ -202,6 +204,8 @@ bool loadNVCUVIDLibrary() {
       bindFunction<tcuvidMapVideoFrame64>("cuvidMapVideoFrame64");
   dl_cuvidUnmapVideoFrame64 =
       bindFunction<tcuvidUnmapVideoFrame64>("cuvidUnmapVideoFrame64");
+  dl_cuvidReconfigureDecoder =
+      bindFunction<tcuvidReconfigureDecoder>("cuvidReconfigureDecoder");
 
   return isLoaded();
 }
@@ -313,6 +317,14 @@ cuvidUnmapVideoFrame64(CUvideodecoder decoder, unsigned long long framePtr) {
       facebook::torchcodec::dl_cuvidUnmapVideoFrame64,
       "cuvidUnmapVideoFrame64 called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidUnmapVideoFrame64(decoder, framePtr);
+}
+
+CUresult CUDAAPI
+cuvidReconfigureDecoder(CUvideodecoder decoder, CUVIDRECONFIGUREDECODERINFO* pDecReconfigParams) {
+  TORCH_CHECK(
+      facebook::torchcodec::dl_cuvidReconfigureDecoder,
+      "cuvidReconfigureDecoder called but NVCUVID not loaded!");
+  return facebook::torchcodec::dl_cuvidReconfigureDecoder(decoder, pDecReconfigParams);
 }
 
 } // extern "C"
