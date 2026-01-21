@@ -104,6 +104,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   bool nvcuvidAvailable_ = false;
   UniqueSwsContext swsContext_;
   SwsFrameContext prevSwsFrameContext_;
+
+  uint32_t decoderId_ = 0;
 };
 
 } // namespace facebook::torchcodec

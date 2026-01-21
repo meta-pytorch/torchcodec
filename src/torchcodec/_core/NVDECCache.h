@@ -9,6 +9,8 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <list>
+#include <tuple>
 
 #include <cuda.h>
 #include <torch/types.h>
@@ -42,7 +44,7 @@ enum NVDECCacheType {
 };
 
 using CUvideodecoderCache = 
-  std::pair<NVDECCacheType, UniqueCUvideodecoder>;
+  std::tuple<NVDECCacheType, UniqueCUvideodecoder, uint32_t>;
 
 // A per-device cache for NVDEC decoders. There is one instance of this class
 // per GPU device, and it is accessed through the static getCache() method.
@@ -50,11 +52,22 @@ class NVDECCache {
  public:
   static NVDECCache& getCache(const torch::Device& device);
 
+  // Simple ID allocator for decoders - not strictly necessary, but useful for
+  // reconfiguring decoders.
+  uint32_t allocDecoderId();
+
+  // Register a decoder ID with its maximum width and height.
+  bool registerDecoderId(
+    uint32_t decoderId,
+    uint32_t ulMaxWidth,
+    uint32_t ulMaxHeight
+  );
+
   // Get decoder from cache - returns nullptr if none available
   CUvideodecoderCache getDecoder(CUVIDEOFORMAT* videoFormat);
 
   // Return decoder to cache - returns true if added to cache
-  bool returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder);
+  bool returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder, uint32_t decoderId);
 
  private:
   // Cache key struct: a decoder can be reused and taken from the cache only if
@@ -100,15 +113,24 @@ class NVDECCache {
       uint32_t coded_height;
   };
 
+  struct DecoderMaxWHContext {
+      uint32_t decoderID;
+      uint32_t ulMaxWidth;
+      uint32_t ulMaxHeight;
+  };
+
   NVDECCache() = default;
   ~NVDECCache() = default;
 
-  std::map<CacheKey, UniqueCUvideodecoder> cache_;
-  std::map<CacheKey, VideoDecodeContext> context_cache_;
+  std::map<CacheKey, std::list<UniqueCUvideodecoder>> cache_;
+  std::map<CacheKey, std::list<std::pair<VideoDecodeContext, DecoderMaxWHContext>>> context_cache_;
+  std::map<uint32_t, DecoderMaxWHContext> id_context_map_;
   std::mutex cacheLock_;
 
   // Max number of cached decoders, per device
   static constexpr int MAX_CACHE_SIZE = 20;
+
+  uint32_t nextId = 0;
 };
 
 } // namespace facebook::torchcodec

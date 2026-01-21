@@ -243,7 +243,7 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     flush();
     unmapPreviousFrame();
     NVDECCache::getCache(device_).returnDecoder(
-        &videoFormat_, std::move(decoder_));
+        &videoFormat_, std::move(decoder_), decoderId_);
   }
 
   if (videoParser_) {
@@ -432,20 +432,33 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
   if (!decoder_) {
     decoderCache = NVDECCache::getCache(device_).getDecoder(videoFormat);
 
-    if (decoderCache.first == NVDECCacheType::Reconfig) {
+    auto cache_type = std::get<0>(decoderCache);
+    if (cache_type == NVDECCacheType::Reconfig) {
       // Need to reconfigure existing decoder
-      decoder_ = std::move(decoderCache.second);
+      auto decoderId = std::get<2>(decoderCache);
+      decoderId_ = decoderId;
+      
+      decoder_ = std::move(std::get<1>(decoderCache));
       TORCH_CHECK(decoder_, "Failed to get decoder from cache");
       return reconfigureNVDECDecoder(videoFormat);
     }
-    else if (decoderCache.first == NVDECCacheType::Reuse) {
+    else if (cache_type == NVDECCacheType::Reuse) {
       // Can reuse existing decoder as is
-      decoder_ = std::move(decoderCache.second);
+      auto decoderId = std::get<2>(decoderCache);
+      decoderId_ = decoderId;
+      
+      decoder_ = std::move(std::get<1>(decoderCache));
     }
-    else if (decoderCache.first == NVDECCacheType::Create) {
+    else if (cache_type == NVDECCacheType::Create) {
       // Need to create a new decoder
       TORCH_CHECK(!decoder_, "Decoder should be null here");
       decoder_ = createDecoder(videoFormat);
+      decoderId_ = NVDECCache::getCache(device_).allocDecoderId();
+      NVDECCache::getCache(device_).registerDecoderId(
+          decoderId_,
+          videoFormat->coded_width,
+          videoFormat->coded_height
+      );
     }
 
     TORCH_CHECK(decoder_, "Failed to get or create decoder");
