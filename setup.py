@@ -138,9 +138,9 @@ class CMakeBuild(build_ext):
         subprocess.check_call(
             ["cmake", str(_ROOT_DIR)] + cmake_args, cwd=self.build_temp
         )
-        print("Calling cmake --build -j128", flush=True)
+        print("Calling cmake --build", flush=True)
         subprocess.check_call(
-            ["cmake", "--build", "." ,"-j128", "--config", cmake_build_type], cwd=self.build_temp
+            ["cmake", "--build", ".", "--config", cmake_build_type], cwd=self.build_temp
         )
         print("Calling cmake --install", flush=True)
         subprocess.check_call(
