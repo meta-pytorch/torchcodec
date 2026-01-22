@@ -106,8 +106,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   SwsFrameContext prevSwsFrameContext_;
 
   uint32_t decoderId_ = 0;
-  // Used to record the ulMaxNumDecodeSurfaces used when creating the parser
-  uint8_t  ulMaxNumDecodeSurfaces_ = 0;
 };
 
 } // namespace facebook::torchcodec

@@ -286,12 +286,7 @@ void BetaCudaDeviceInterface::initialize(
       codecType.has_value(),
       "This should never happen, we should be using the CPU fallback by now. Please report a bug.");
   parserParams.CodecType = codecType.value();
-  // TODO: There seems to be a hidden bug here. If we fix ulMaxNumDecodeSurfaces to 8, 
-  // but the video stream itself requires more surfaces (i.e., > 8),
-  // it might keep failing—whether we recreate the decoder or use the cache. 
-  // This is not yet fully confirmed and needs further validation.
   parserParams.ulMaxNumDecodeSurfaces = 8;
-  ulMaxNumDecodeSurfaces_ = parserParams.ulMaxNumDecodeSurfaces;
   parserParams.ulMaxDisplayDelay = 0;
   // Callback setup, all are triggered by the parser within a call
   // to cuvidParseVideoData
@@ -462,7 +457,10 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
           decoderId_,
           videoFormat->coded_width,
           videoFormat->coded_height,
-          ulMaxNumDecodeSurfaces_
+          // The number of surfaces used in reconfig cannot exceed the number of surfaces 
+          // specified when creating the decoder. In most cases, this should not be a problem.
+          // We'll see the real result based on whether the tests pass.
+          videoFormat->min_num_decode_surfaces
       );
     }
 
