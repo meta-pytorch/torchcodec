@@ -946,38 +946,38 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
 
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     return frameBatchOutput;
+  } else {
+    // Note that we look at nextPts for a frame, and not its pts or duration.
+    // Our abstract player displays frames starting at the pts for that frame
+    // until the pts for the next frame. There are two consequences:
+    //
+    //   1. We ignore the duration for a frame. A frame is played until the
+    //   next frame replaces it. This model is robust to durations being 0 or
+    //   incorrect; our source of truth is the pts for frames. If duration is
+    //   accurate, the nextPts for a frame would be equivalent to pts +
+    //   duration.
+    //   2. In order to establish if the start of an interval maps to a
+    //   particular frame, we need to figure out if it is ordered after the
+    //   frame's pts, but before the next frames's pts.
+
+    int64_t startFrameIndex = secondsToIndexLowerBound(startSeconds);
+    int64_t stopFrameIndex = secondsToIndexUpperBound(stopSeconds);
+    int64_t numFrames = stopFrameIndex - startFrameIndex;
+
+    FrameBatchOutput frameBatchOutput(
+        numFrames,
+        resizedOutputDims_.value_or(metadataDims_),
+        videoStreamOptions.device);
+    for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
+      FrameOutput frameOutput =
+          getFrameAtIndexInternal(i, frameBatchOutput.data[f]);
+      frameBatchOutput.ptsSeconds[f] = frameOutput.ptsSeconds;
+      frameBatchOutput.durationSeconds[f] = frameOutput.durationSeconds;
+    }
+    frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
+
+    return frameBatchOutput;
   }
-
-  // Note that we look at nextPts for a frame, and not its pts or duration.
-  // Our abstract player displays frames starting at the pts for that frame
-  // until the pts for the next frame. There are two consequences:
-  //
-  //   1. We ignore the duration for a frame. A frame is played until the
-  //   next frame replaces it. This model is robust to durations being 0 or
-  //   incorrect; our source of truth is the pts for frames. If duration is
-  //   accurate, the nextPts for a frame would be equivalent to pts +
-  //   duration.
-  //   2. In order to establish if the start of an interval maps to a
-  //   particular frame, we need to figure out if it is ordered after the
-  //   frame's pts, but before the next frames's pts.
-
-  int64_t startFrameIndex = secondsToIndexLowerBound(startSeconds);
-  int64_t stopFrameIndex = secondsToIndexUpperBound(stopSeconds);
-  int64_t numFrames = stopFrameIndex - startFrameIndex;
-
-  FrameBatchOutput frameBatchOutput(
-      numFrames,
-      resizedOutputDims_.value_or(metadataDims_),
-      videoStreamOptions.device);
-  for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
-    FrameOutput frameOutput =
-        getFrameAtIndexInternal(i, frameBatchOutput.data[f]);
-    frameBatchOutput.ptsSeconds[f] = frameOutput.ptsSeconds;
-    frameBatchOutput.durationSeconds[f] = frameOutput.durationSeconds;
-  }
-  frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-
-  return frameBatchOutput;
 }
 
 // Note [Audio Decoding Design]

@@ -1231,9 +1231,12 @@ class TestVideoDecoder:
             stop_seconds=decoder.metadata.end_stream_seconds,
         )
         assert len(all_frames) == len(frames_in_range)
-        torch.testing.assert_close(
-            all_frames.data, frames_in_range.data, atol=0, rtol=0
-        )
+        # Use strict bitwise equality, except for FFmpeg 4 + CUDA FFmpeg
+        # interface which has known issues (see #428)
+        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+            torch.testing.assert_close(
+                all_frames.data, frames_in_range.data, atol=0, rtol=0
+            )
 
         fps = 10.0
         all_frames_with_fps = decoder.get_all_frames(fps=fps)
@@ -1243,9 +1246,12 @@ class TestVideoDecoder:
             fps=fps,
         )
         assert len(all_frames_with_fps) == len(frames_in_range_with_fps)
-        torch.testing.assert_close(
-            all_frames_with_fps.data, frames_in_range_with_fps.data, atol=0, rtol=0
-        )
+        # Use strict bitwise equality, except for FFmpeg 4 + CUDA FFmpeg
+        # interface which has known issues (see #428)
+        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+            torch.testing.assert_close(
+                all_frames_with_fps.data, frames_in_range_with_fps.data, atol=0, rtol=0
+            )
 
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_key_frame_indices(self, device):

@@ -455,6 +455,10 @@ class VideoDecoder:
     ) -> FrameBatch:
         """Returns multiple frames in the given range.
 
+        Frames are in the half open range [start_seconds, stop_seconds). Each
+        returned frame's :term:`pts`, in seconds, is inside of the half open
+        range.
+
         Args:
             start_seconds (float): Time, in seconds, of the start of the range.
             stop_seconds (float): Time, in seconds, of the end of the range.
