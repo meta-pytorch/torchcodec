@@ -13,7 +13,7 @@ namespace facebook::torchcodec {
 
 namespace detail {
 
-struct __attribute__((visibility("hidden"))) TensorContext {
+struct TensorContext {
   StableTensor data;
   int64_t current_pos;
   int64_t max_pos;
@@ -23,7 +23,7 @@ struct __attribute__((visibility("hidden"))) TensorContext {
 
 // For Decoding: enables users to pass in the entire video or audio as bytes.
 // Our read and seek functions then traverse the bytes in memory.
-class __attribute__((visibility("hidden"))) AVIOFromTensorContext
+class AVIOFromTensorContext
     : public AVIOContextHolder {
  public:
   explicit AVIOFromTensorContext(StableTensor data);
@@ -33,7 +33,7 @@ class __attribute__((visibility("hidden"))) AVIOFromTensorContext
 };
 
 // For Encoding: used to encode into an output uint8 (bytes) tensor.
-class __attribute__((visibility("hidden"))) AVIOToTensorContext
+class AVIOToTensorContext
     : public AVIOContextHolder {
  public:
   explicit AVIOToTensorContext();

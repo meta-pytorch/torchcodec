@@ -12,7 +12,7 @@
 
 namespace facebook::torchcodec {
 
-class __attribute__((visibility("hidden"))) CpuDeviceInterface
+class CpuDeviceInterface
     : public DeviceInterface {
  public:
   CpuDeviceInterface(const StableDevice& device);

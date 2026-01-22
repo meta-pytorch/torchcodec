@@ -29,7 +29,7 @@ struct FrameDims {
 // like PTS and duration.
 // FrameOutput is also relevant for audio decoding, typically as the output of
 // getNextFrame(), or as a temporary output variable.
-struct __attribute__((visibility("hidden"))) FrameOutput {
+struct FrameOutput {
   // data shape is:
   // - 3D (C, H, W) or (H, W, C) for videos
   // - 2D (numChannels, numSamples) for audio
@@ -38,7 +38,7 @@ struct __attribute__((visibility("hidden"))) FrameOutput {
   double durationSeconds;
 };
 
-struct __attribute__((visibility("hidden"))) FrameBatchOutput {
+struct FrameBatchOutput {
   StableTensor data; // 4D: of shape NCHW or NHWC.
   StableTensor ptsSeconds; // 1D of shape (N,)
   StableTensor durationSeconds; // 1D of shape (N,)
@@ -49,7 +49,7 @@ struct __attribute__((visibility("hidden"))) FrameBatchOutput {
       const StableDevice& device);
 };
 
-struct __attribute__((visibility("hidden"))) AudioFramesOutput {
+struct AudioFramesOutput {
   StableTensor data; // shape is (numChannels, numSamples)
   double ptsSeconds;
 };
