@@ -491,8 +491,9 @@ NASA_VIDEO_ROTATED = TestVideo(
     filename="nasa_13013_rotated.mp4",
     default_stream_index=3,
     stream_infos={
-        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
-        3: TestVideoStreamInfo(width=480, height=270, num_color_channels=3),
+        # Post-rotation dimensions: 90-degree rotation swaps width/height
+        0: TestVideoStreamInfo(width=180, height=320, num_color_channels=3),
+        3: TestVideoStreamInfo(width=270, height=480, num_color_channels=3),
     },
     frames={},  # Automatically loaded from json file
 )

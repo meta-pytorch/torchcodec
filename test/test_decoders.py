@@ -1752,66 +1752,42 @@ class TestVideoDecoder:
         assert not decoder.cpu_fallback
         assert "No fallback required" in str(decoder.cpu_fallback)
 
-    @needs_ffmpeg_cli
     @pytest.mark.parametrize("dimension_order", ["NCHW", "NHWC"])
-    def test_rotation_applied_to_frames(self, dimension_order, tmp_path):
+    def test_rotation_applied_to_frames(self, dimension_order):
         """Test that rotation is correctly applied to decoded frames.
 
-        Verifies pixel-exact match with ffmpeg CLI.
+        Compares frames from NASA_VIDEO_ROTATED (which has 90-degree rotation
+        metadata) with manually rotated frames from NASA_VIDEO.
         """
-        import subprocess
-
-        stream_index = 0
         decoder = VideoDecoder(
+            NASA_VIDEO.path,
+            stream_index=NASA_VIDEO.default_stream_index,
+            dimension_order=dimension_order,
+        )
+        decoder_rotated = VideoDecoder(
             NASA_VIDEO_ROTATED.path,
-            stream_index=stream_index,
+            stream_index=NASA_VIDEO_ROTATED.default_stream_index,
             dimension_order=dimension_order,
         )
 
-        frame = decoder[0]
+        # Test multiple frames
+        for idx in [0, 5, 10]:
+            frame = decoder[idx]
+            frame_rotated = decoder_rotated[idx]
 
-        # Get frame dimensions based on dimension order
-        if dimension_order == "NCHW":
-            # Frame is (C, H, W)
-            frame_h, frame_w = frame.shape[1], frame.shape[2]
-        else:
-            # Frame is (H, W, C)
-            frame_h, frame_w = frame.shape[0], frame.shape[1]
+            # Manually rotate the non-rotated frame 90 degrees counter-clockwise
+            # The rotation metadata indicates the angle to rotate counter-clockwise
+            # to display the video upright, which the decoder applies automatically.
+            if dimension_order == "NCHW":
+                # Frame is (C, H, W)
+                frame_manually_rotated = torch.rot90(frame, k=1, dims=(1, 2))
+            else:
+                # Frame is (H, W, C)
+                frame_manually_rotated = torch.rot90(frame, k=1, dims=(0, 1))
 
-        # Pixel-exact comparison with ffmpeg CLI (autorotate is on by default)
-        output_path = tmp_path / "ffmpeg_frame.raw"
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-i",
-                str(NASA_VIDEO_ROTATED.path),
-                "-map",
-                f"0:v:{stream_index}",
-                "-vframes",
-                "1",
-                "-f",
-                "rawvideo",
-                "-pix_fmt",
-                "rgb24",
-                str(output_path),
-                "-y",
-            ],
-            check=True,
-            capture_output=True,
-        )
-
-        with open(output_path, "rb") as f:
-            raw_bytes = f.read()
-        ffmpeg_frame = torch.frombuffer(bytearray(raw_bytes), dtype=torch.uint8)
-        ffmpeg_frame = ffmpeg_frame.reshape(frame_h, frame_w, 3)
-
-        # Convert to NHWC for comparison if needed
-        if dimension_order == "NCHW":
-            frame_nhwc = frame.permute(1, 2, 0)
-        else:
-            frame_nhwc = frame
-
-        torch.testing.assert_close(frame_nhwc, ffmpeg_frame, atol=0, rtol=0)
+            torch.testing.assert_close(
+                frame_manually_rotated, frame_rotated, atol=0, rtol=0
+            )
 
     @needs_cuda
     @pytest.mark.parametrize("device", cuda_devices())

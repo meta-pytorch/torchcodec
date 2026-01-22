@@ -613,20 +613,23 @@ int64_t computeSafeDuration(
 }
 
 std::optional<double> getRotationFromStream(const AVStream* avStream) {
+  // av_stream_get_side_data() was deprecated in FFmpeg 6.0, but its replacement
+  // (av_packet_side_data_get() + codecpar->coded_side_data) is only available
+  // from FFmpeg 6.1. We need some #pragma magic to silence the deprecation
+  // warning which our compile chain would otherwise treat as an error.
   if (avStream == nullptr) {
     return std::nullopt;
   }
 
   const int32_t* displayMatrix = nullptr;
 
-// The coded_side_data API was added in FFmpeg 6.1 (libavcodec 60.31.x)
 // FFmpeg >= 6.1: Use codecpar->coded_side_data
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 31, 100)
   const AVPacketSideData* sideData = av_packet_side_data_get(
       avStream->codecpar->coded_side_data,
       avStream->codecpar->nb_coded_side_data,
       AV_PKT_DATA_DISPLAYMATRIX);
-  if (sideData != nullptr && sideData->size >= 9 * sizeof(int32_t)) {
+  if (sideData != nullptr) {
     displayMatrix = reinterpret_cast<const int32_t*>(sideData->data);
   }
 #elif LIBAVFORMAT_VERSION_MAJOR >= 60 // FFmpeg 6.0
@@ -638,8 +641,7 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
   const uint8_t* sideData = av_stream_get_side_data(
       avStream, AV_PKT_DATA_DISPLAYMATRIX, &sideDataSize);
 #pragma GCC diagnostic pop
-  if (sideData != nullptr &&
-      static_cast<size_t>(sideDataSize) >= 9 * sizeof(int32_t)) {
+  if (sideData != nullptr) {
     displayMatrix = reinterpret_cast<const int32_t*>(sideData);
   }
 #else
@@ -652,8 +654,7 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
 #endif
   const uint8_t* sideData = av_stream_get_side_data(
       avStream, AV_PKT_DATA_DISPLAYMATRIX, &sideDataSize);
-  if (sideData != nullptr &&
-      static_cast<size_t>(sideDataSize) >= 9 * sizeof(int32_t)) {
+  if (sideData != nullptr) {
     displayMatrix = reinterpret_cast<const int32_t*>(sideData);
   }
 #endif

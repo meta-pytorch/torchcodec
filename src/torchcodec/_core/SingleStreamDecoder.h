@@ -237,6 +237,11 @@ class SingleStreamDecoder {
 
     VideoStreamOptions videoStreamOptions;
     AudioStreamOptions audioStreamOptions;
+
+    // Rotation parameter for torch::rot90. Computed during addVideoStream.
+    // A value of 0 means no rotation. Values 1, 2, 3 correspond to 90, 180, 270
+    // degrees counter-clockwise rotation respectively.
+    int rotationK = 0;
   };
 
   // --------------------------------------------------------------------------
@@ -268,6 +273,8 @@ class SingleStreamDecoder {
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
   torch::Tensor maybePermuteHWC2CHW(torch::Tensor& hwcTensor);
+
+  torch::Tensor applyRotation(torch::Tensor& hwcTensor);
 
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
