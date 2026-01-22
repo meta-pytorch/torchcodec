@@ -33,9 +33,10 @@
 
 namespace facebook::torchcodec {
 
-class BetaCudaDeviceInterface : public DeviceInterface {
+class __attribute__((visibility("hidden"))) BetaCudaDeviceInterface
+    : public DeviceInterface {
  public:
-  explicit BetaCudaDeviceInterface(const torch::Device& device);
+  explicit BetaCudaDeviceInterface(const StableDevice& device);
   virtual ~BetaCudaDeviceInterface();
 
   void initialize(
@@ -46,7 +47,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor) override;
+      std::optional<StableTensor> preAllocatedOutputTensor) override;
 
   int sendPacket(ReferenceAVPacket& packet) override;
   int sendEOFPacket() override;

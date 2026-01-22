@@ -1,10 +1,10 @@
 #pragma once
-#include <torch/types.h>
 #include <map>
 #include <string>
 #include "AVIOContextHolder.h"
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
+#include "StableABICompat.h"
 #include "StreamOptions.h"
 
 extern "C" {
@@ -12,18 +12,18 @@ extern "C" {
 }
 
 namespace facebook::torchcodec {
-class AudioEncoder {
+class __attribute__((visibility("hidden"))) AudioEncoder {
  public:
   ~AudioEncoder();
 
   AudioEncoder(
-      const torch::Tensor& samples,
+      const StableTensor& samples,
       int sampleRate,
       std::string_view fileName,
       const AudioStreamOptions& audioStreamOptions);
 
   AudioEncoder(
-      const torch::Tensor& samples,
+      const StableTensor& samples,
       int sampleRate,
       std::string_view formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder,
@@ -31,7 +31,7 @@ class AudioEncoder {
 
   void encode();
 
-  torch::Tensor encodeToTensor();
+  StableTensor encodeToTensor();
 
  private:
   void initializeEncoder(const AudioStreamOptions& audioStreamOptions);
@@ -50,7 +50,7 @@ class AudioEncoder {
   UniqueSwrContext swrContext_;
   AudioStreamOptions audioStreamOptions;
 
-  const torch::Tensor samples_;
+  const StableTensor samples_;
 
   int outNumChannels_ = -1;
   int outSampleRate_ = -1;
@@ -127,7 +127,7 @@ class AudioEncoder {
 //
 /* clang-format on */
 
-class VideoEncoder {
+class __attribute__((visibility("hidden"))) VideoEncoder {
  public:
   ~VideoEncoder();
 
@@ -142,13 +142,13 @@ class VideoEncoder {
   VideoEncoder& operator=(VideoEncoder&&) = delete;
 
   VideoEncoder(
-      const torch::Tensor& frames,
+      const StableTensor& frames,
       double frameRate,
       std::string_view fileName,
       const VideoStreamOptions& videoStreamOptions);
 
   VideoEncoder(
-      const torch::Tensor& frames,
+      const StableTensor& frames,
       double frameRate,
       std::string_view formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder,
@@ -156,12 +156,12 @@ class VideoEncoder {
 
   void encode();
 
-  torch::Tensor encodeToTensor();
+  StableTensor encodeToTensor();
 
  private:
   void initializeEncoder(const VideoStreamOptions& videoStreamOptions);
   UniqueAVFrame convertTensorToAVFrame(
-      const torch::Tensor& frame,
+      const StableTensor& frame,
       int frameIndex);
   void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
   void flushBuffers();
@@ -171,7 +171,7 @@ class VideoEncoder {
   AVStream* avStream_ = nullptr;
   UniqueSwsContext swsContext_;
 
-  const torch::Tensor frames_;
+  const StableTensor frames_;
   double inFrameRate_;
 
   int inWidth_ = -1;

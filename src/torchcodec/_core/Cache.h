@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <torch/types.h>
+#include "StableABICompat.h"
 #include <memory>
 #include <mutex>
 
@@ -75,7 +75,7 @@ class PerGpuCache {
   // Initializes 'maxGpus' number of caches. Each cache can hold no
   // more than 'capacity' items. If 'capacity' <0 cache size is unlimited.
   PerGpuCache(int maxGpus, int capacity) {
-    TORCH_CHECK(maxGpus > 0, "maxGpus for PerGpuCache must be >0");
+    STABLE_CHECK(maxGpus > 0, "maxGpus for PerGpuCache must be >0");
     for (int i = 0; i < maxGpus; ++i) {
       cache_.emplace_back(std::make_unique<Cache<T, D>>(capacity));
     }
@@ -83,11 +83,11 @@ class PerGpuCache {
 
   // Adds an object to the specified device cache if the cache has
   // capacity. Returns true if object was added and false otherwise.
-  bool addIfCacheHasCapacity(const torch::Device& device, element_type&& obj);
+  bool addIfCacheHasCapacity(const StableDevice& device, element_type&& obj);
 
   // Returns an object from the cache of the specified device. Cache
   // does not hold a reference to the object after this call.
-  element_type get(const torch::Device& device);
+  element_type get(const StableDevice& device);
 
  private:
   // 'Cache' class implementation contains mutex which makes it non-movable
@@ -98,14 +98,14 @@ class PerGpuCache {
 // Forward declaration of getDeviceIndex which exists in CUDACommon.h
 // This avoids circular dependency between Cache.h and CUDACommon.cpp which also
 // needs to include Cache.h
-int getDeviceIndex(const torch::Device& device);
+int getDeviceIndex(const StableDevice& device);
 
 template <typename T, typename D>
 bool PerGpuCache<T, D>::addIfCacheHasCapacity(
-    const torch::Device& device,
+    const StableDevice& device,
     element_type&& obj) {
   int deviceIndex = getDeviceIndex(device);
-  TORCH_CHECK(
+  STABLE_CHECK(
       static_cast<size_t>(deviceIndex) < cache_.size(),
       "Device index out of range");
   return cache_[deviceIndex]->addIfCacheHasCapacity(std::move(obj));
@@ -113,9 +113,9 @@ bool PerGpuCache<T, D>::addIfCacheHasCapacity(
 
 template <typename T, typename D>
 typename PerGpuCache<T, D>::element_type PerGpuCache<T, D>::get(
-    const torch::Device& device) {
+    const StableDevice& device) {
   int deviceIndex = getDeviceIndex(device);
-  TORCH_CHECK(
+  STABLE_CHECK(
       static_cast<size_t>(deviceIndex) < cache_.size(),
       "Device index out of range");
   return cache_[deviceIndex]->get();

@@ -6,15 +6,15 @@
 
 #pragma once
 
-#include <torch/types.h>
 #include "AVIOContextHolder.h"
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
 namespace detail {
 
-struct TensorContext {
-  torch::Tensor data;
+struct __attribute__((visibility("hidden"))) TensorContext {
+  StableTensor data;
   int64_t current_pos;
   int64_t max_pos;
 };
@@ -23,19 +23,21 @@ struct TensorContext {
 
 // For Decoding: enables users to pass in the entire video or audio as bytes.
 // Our read and seek functions then traverse the bytes in memory.
-class AVIOFromTensorContext : public AVIOContextHolder {
+class __attribute__((visibility("hidden"))) AVIOFromTensorContext
+    : public AVIOContextHolder {
  public:
-  explicit AVIOFromTensorContext(torch::Tensor data);
+  explicit AVIOFromTensorContext(StableTensor data);
 
  private:
   detail::TensorContext tensorContext_;
 };
 
 // For Encoding: used to encode into an output uint8 (bytes) tensor.
-class AVIOToTensorContext : public AVIOContextHolder {
+class __attribute__((visibility("hidden"))) AVIOToTensorContext
+    : public AVIOContextHolder {
  public:
   explicit AVIOToTensorContext();
-  torch::Tensor getOutputTensor();
+  StableTensor getOutputTensor();
 
  private:
   detail::TensorContext tensorContext_;

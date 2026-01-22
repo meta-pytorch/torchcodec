@@ -12,9 +12,10 @@
 
 namespace facebook::torchcodec {
 
-class CudaDeviceInterface : public DeviceInterface {
+class __attribute__((visibility("hidden"))) CudaDeviceInterface
+    : public DeviceInterface {
  public:
-  CudaDeviceInterface(const torch::Device& device);
+  CudaDeviceInterface(const StableDevice& device);
 
   virtual ~CudaDeviceInterface();
 
@@ -39,12 +40,12 @@ class CudaDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor) override;
+      std::optional<StableTensor> preAllocatedOutputTensor) override;
 
   std::string getDetails() override;
 
   UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
-      const torch::Tensor& tensor,
+      const StableTensor& tensor,
       int frameIndex,
       AVCodecContext* codecContext) override;
 

@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include <torch/types.h>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -17,6 +16,7 @@
 #include "FFMPEGCommon.h"
 #include "Frame.h"
 #include "Metadata.h"
+#include "StableABICompat.h"
 #include "StreamOptions.h"
 #include "Transform.h"
 
@@ -25,7 +25,7 @@ namespace facebook::torchcodec {
 // The SingleStreamDecoder class can be used to decode video frames to Tensors.
 // Note that SingleStreamDecoder is not thread-safe.
 // Do not call non-const APIs concurrently on the same object.
-class SingleStreamDecoder {
+class __attribute__((visibility("hidden"))) SingleStreamDecoder {
  public:
   // --------------------------------------------------------------------------
   // CONSTRUCTION API
@@ -67,7 +67,7 @@ class SingleStreamDecoder {
 
   // Returns the key frame indices as a tensor. The tensor is 1D and contains
   // int64 values, where each value is the frame index for a key frame.
-  torch::Tensor getKeyFrameIndices();
+  StableTensor getKeyFrameIndices();
 
   // FrameMappings is used for the custom_frame_mappings seek mode to store
   // metadata of frames in a stream. The size of all tensors in this struct must
@@ -76,15 +76,15 @@ class SingleStreamDecoder {
   // --------------------------------------------------------------------------
   // ADDING STREAMS API
   // --------------------------------------------------------------------------
-  struct FrameMappings {
+  struct __attribute__((visibility("hidden"))) FrameMappings {
     // 1D tensor of int64, each value is the PTS of a frame in timebase units.
-    torch::Tensor all_frames;
+    StableTensor all_frames;
     // 1D tensor of bool, each value indicates if the corresponding frame in
     // all_frames is a key frame.
-    torch::Tensor is_key_frame;
+    StableTensor is_key_frame;
     // 1D tensor of int64, each value is the duration of the corresponding frame
     // in all_frames in timebase units.
-    torch::Tensor duration;
+    StableTensor duration;
   };
 
   void addVideoStream(
@@ -113,7 +113,7 @@ class SingleStreamDecoder {
 
   // Returns frames at the given indices for a given stream as a single stacked
   // Tensor.
-  FrameBatchOutput getFramesAtIndices(const torch::Tensor& frameIndices);
+  FrameBatchOutput getFramesAtIndices(const StableTensor& frameIndices);
 
   // Returns frames within a given range. The range is defined by [start, stop).
   // The values retrieved from the range are: [start, start+step,
@@ -128,7 +128,7 @@ class SingleStreamDecoder {
   // seconds=5.999, etc.
   FrameOutput getFramePlayedAt(double seconds);
 
-  FrameBatchOutput getFramesPlayedAt(const torch::Tensor& timestamps);
+  FrameBatchOutput getFramesPlayedAt(const StableTensor& timestamps);
 
   // Returns frames within a given pts range. The range is defined by
   // [startSeconds, stopSeconds) with respect to the pts values for frames. The
@@ -171,7 +171,7 @@ class SingleStreamDecoder {
   // can move it back to private.
   FrameOutput getFrameAtIndexInternal(
       int64_t frameIndex,
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+      std::optional<StableTensor> preAllocatedOutputTensor = std::nullopt);
 
   // Exposed for _test_frame_pts_equality, which is used to test non-regression
   // of pts resolution (64 to 32 bit floats)
@@ -222,7 +222,7 @@ class SingleStreamDecoder {
     bool isKeyFrame = false;
   };
 
-  struct StreamInfo {
+  struct __attribute__((visibility("hidden"))) StreamInfo {
     int streamIndex = -1;
     AVStream* stream = nullptr;
     AVMediaType avMediaType = AVMEDIA_TYPE_UNKNOWN;
@@ -265,18 +265,18 @@ class SingleStreamDecoder {
       std::function<bool(const UniqueAVFrame&)> filterFunction);
 
   FrameOutput getNextFrameInternal(
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+      std::optional<StableTensor> preAllocatedOutputTensor = std::nullopt);
 
-  torch::Tensor maybePermuteHWC2CHW(torch::Tensor& hwcTensor);
+  StableTensor maybePermuteHWC2CHW(StableTensor& hwcTensor);
 
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+      std::optional<StableTensor> preAllocatedOutputTensor = std::nullopt);
 
   void convertAVFrameToFrameOutputOnCPU(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+      std::optional<StableTensor> preAllocatedOutputTensor = std::nullopt);
 
   // --------------------------------------------------------------------------
   // PTS <-> INDEX CONVERSIONS
@@ -304,7 +304,7 @@ class SingleStreamDecoder {
   void addStream(
       int streamIndex,
       AVMediaType mediaType,
-      const torch::Device& device = torch::kCPU,
+      const StableDevice& device = StableDevice(kStableCPU),
       const std::string_view deviceVariant = "ffmpeg",
       std::optional<int> ffmpegThreadCount = std::nullopt);
 

@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include <torch/types.h>
+#include "StableABICompat.h"
 #include <map>
 #include <optional>
 #include <string>
@@ -21,7 +21,7 @@ enum ColorConversionLibrary {
   SWSCALE
 };
 
-struct VideoStreamOptions {
+struct __attribute__((visibility("hidden"))) VideoStreamOptions {
   VideoStreamOptions() {}
 
   // Number of threads we pass to FFMPEG for decoding.
@@ -43,7 +43,7 @@ struct VideoStreamOptions {
   // By default we use CPU for decoding for both C++ and python users.
   // Note: This is not used for video encoding, because device is determined by
   // the device of the input frame tensor.
-  torch::Device device = torch::kCPU;
+  StableDevice device = StableDevice(kStableCPU);
   // Device variant (e.g., "ffmpeg", "beta", etc.)
   std::string_view deviceVariant = "ffmpeg";
 
@@ -57,7 +57,7 @@ struct VideoStreamOptions {
   std::optional<std::map<std::string, std::string>> extraOptions;
 };
 
-struct AudioStreamOptions {
+struct __attribute__((visibility("hidden"))) AudioStreamOptions {
   AudioStreamOptions() {}
 
   // Encoding only

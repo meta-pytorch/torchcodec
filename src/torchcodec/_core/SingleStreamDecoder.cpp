@@ -13,7 +13,7 @@
 #include <stdexcept>
 #include <string_view>
 #include "Metadata.h"
-#include "torch/types.h"
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 namespace {
@@ -47,11 +47,11 @@ SingleStreamDecoder::SingleStreamDecoder(
   AVFormatContext* rawContext = nullptr;
   int status =
       avformat_open_input(&rawContext, videoFilePath.c_str(), nullptr, nullptr);
-  TORCH_CHECK(
+  STABLE_CHECK(
       status == 0,
       "Could not open input file: " + videoFilePath + " " +
           getFFMPEGErrorStringFromErrorCode(status));
-  TORCH_CHECK(rawContext != nullptr);
+  STABLE_CHECK(rawContext != nullptr, "Failed to allocate format context");
   formatContext_.reset(rawContext);
 
   initializeDecoder();
@@ -63,19 +63,19 @@ SingleStreamDecoder::SingleStreamDecoder(
     : seekMode_(seekMode), avioContextHolder_(std::move(context)) {
   setFFmpegLogLevel();
 
-  TORCH_CHECK(avioContextHolder_, "Context holder cannot be null");
+  STABLE_CHECK(avioContextHolder_, "Context holder cannot be null");
 
   // Because FFmpeg requires a reference to a pointer in the call to open, we
   // can't use a unique pointer here. Note that means we must call free if open
   // fails.
   AVFormatContext* rawContext = avformat_alloc_context();
-  TORCH_CHECK(rawContext != nullptr, "Unable to alloc avformat context");
+  STABLE_CHECK(rawContext != nullptr, "Unable to alloc avformat context");
 
   rawContext->pb = avioContextHolder_->getAVIOContext();
   int status = avformat_open_input(&rawContext, nullptr, nullptr, nullptr);
   if (status != 0) {
     avformat_free_context(rawContext);
-    TORCH_CHECK(
+    STABLE_CHECK(
         false,
         "Failed to open input buffer: " +
             getFFMPEGErrorStringFromErrorCode(status));
@@ -87,7 +87,7 @@ SingleStreamDecoder::SingleStreamDecoder(
 }
 
 void SingleStreamDecoder::initializeDecoder() {
-  TORCH_CHECK(!initialized_, "Attempted double initialization.");
+  STABLE_CHECK(!initialized_, "Attempted double initialization.");
 
   // In principle, the AVFormatContext should be filled in by the call to
   // avformat_open_input() which reads the header. However, some formats do not
@@ -95,7 +95,7 @@ void SingleStreamDecoder::initializeDecoder() {
   // which decodes a few frames to get missing info. For more, see:
   //   https://ffmpeg.org/doxygen/7.0/group__lavf__decoding.html
   int status = avformat_find_stream_info(formatContext_.get(), nullptr);
-  TORCH_CHECK(
+  STABLE_CHECK(
       status >= 0,
       "Failed to find stream info: ",
       getFFMPEGErrorStringFromErrorCode(status));
@@ -124,7 +124,7 @@ void SingleStreamDecoder::initializeDecoder() {
     AVStream* avStream = formatContext_->streams[i];
     StreamMetadata streamMetadata;
 
-    TORCH_CHECK(
+    STABLE_CHECK(
         static_cast<int>(i) == avStream->index,
         "Our stream index, " + std::to_string(i) +
             ", does not match AVStream's index, " +
@@ -224,7 +224,7 @@ void SingleStreamDecoder::sortAllFrames() {
     for (size_t i = 0; i < streamInfo.allFrames.size(); ++i) {
       streamInfo.allFrames[i].frameIndex = i;
       if (streamInfo.allFrames[i].isKeyFrame) {
-        TORCH_CHECK(
+        STABLE_CHECK(
             keyFrameIndex < streamInfo.keyFrames.size(),
             "The allFrames vec claims it has MORE keyFrames than the keyFrames vec. There's a bug in torchcodec.");
         streamInfo.keyFrames[keyFrameIndex].frameIndex = i;
@@ -234,7 +234,7 @@ void SingleStreamDecoder::sortAllFrames() {
         streamInfo.allFrames[i].nextPts = streamInfo.allFrames[i + 1].pts;
       }
     }
-    TORCH_CHECK(
+    STABLE_CHECK(
         keyFrameIndex == streamInfo.keyFrames.size(),
         "The allFrames vec claims it has LESS keyFrames than the keyFrames vec. There's a bug in torchcodec.");
   }
@@ -256,7 +256,7 @@ void SingleStreamDecoder::scanFileAndUpdateMetadataAndIndex() {
       break;
     }
 
-    TORCH_CHECK(
+    STABLE_CHECK(
         status == AVSUCCESS,
         "Failed to read frame from input file: ",
         getFFMPEGErrorStringFromErrorCode(status));
@@ -319,7 +319,7 @@ void SingleStreamDecoder::scanFileAndUpdateMetadataAndIndex() {
 
   // Reset the seek-cursor back to the beginning.
   int status = avformat_seek_file(formatContext_.get(), 0, INT64_MIN, 0, 0, 0);
-  TORCH_CHECK(
+  STABLE_CHECK(
       status >= 0,
       "Could not seek file to pts=0: ",
       getFFMPEGErrorStringFromErrorCode(status));
@@ -332,17 +332,16 @@ void SingleStreamDecoder::scanFileAndUpdateMetadataAndIndex() {
 void SingleStreamDecoder::readCustomFrameMappingsUpdateMetadataAndIndex(
     int streamIndex,
     FrameMappings customFrameMappings) {
-  TORCH_CHECK(
-      customFrameMappings.all_frames.dtype() == torch::kLong &&
-          customFrameMappings.is_key_frame.dtype() == torch::kBool &&
-          customFrameMappings.duration.dtype() == torch::kLong,
+  STABLE_CHECK(
+      customFrameMappings.all_frames.scalar_type() == kStableInt64 &&
+          customFrameMappings.is_key_frame.scalar_type() == kStableBool &&
+          customFrameMappings.duration.scalar_type() == kStableInt64,
       "all_frames and duration tensors must be int64 dtype, and is_key_frame tensor must be a bool dtype.");
-  const torch::Tensor& all_frames =
-      customFrameMappings.all_frames.to(torch::kLong);
-  const torch::Tensor& is_key_frame =
-      customFrameMappings.is_key_frame.to(torch::kBool);
-  const torch::Tensor& duration = customFrameMappings.duration.to(torch::kLong);
-  TORCH_CHECK(
+  // Tensors already have correct dtype after the check above
+  const StableTensor& all_frames = customFrameMappings.all_frames;
+  const StableTensor& is_key_frame = customFrameMappings.is_key_frame;
+  const StableTensor& duration = customFrameMappings.duration;
+  STABLE_CHECK(
       all_frames.size(0) == is_key_frame.size(0) &&
           is_key_frame.size(0) == duration.size(0),
       "all_frames, is_key_frame, and duration from custom_frame_mappings were not same size.");
@@ -351,10 +350,10 @@ void SingleStreamDecoder::readCustomFrameMappingsUpdateMetadataAndIndex(
   int64_t numFrames = all_frames.size(0);
   streamInfos_[streamIndex].allFrames.reserve(numFrames);
   streamInfos_[streamIndex].keyFrames.reserve(numFrames);
-  // Use accessor to efficiently access tensor elements
-  auto pts_data = all_frames.accessor<int64_t, 1>();
-  auto is_key_frame_data = is_key_frame.accessor<bool, 1>();
-  auto duration_data = duration.accessor<int64_t, 1>();
+  // Use raw pointers to efficiently access tensor elements
+  const int64_t* pts_data = all_frames.const_data_ptr<int64_t>();
+  const bool* is_key_frame_data = is_key_frame.const_data_ptr<bool>();
+  const int64_t* duration_data = duration.const_data_ptr<int64_t>();
 
   auto& streamMetadata = containerMetadata_.allStreamMetadata[streamIndex];
 
@@ -394,16 +393,17 @@ int SingleStreamDecoder::getActiveStreamIndex() const {
   return activeStreamIndex_;
 }
 
-torch::Tensor SingleStreamDecoder::getKeyFrameIndices() {
+StableTensor SingleStreamDecoder::getKeyFrameIndices() {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   validateScannedAllStreams("getKeyFrameIndices");
 
   const std::vector<FrameInfo>& keyFrames =
       streamInfos_[activeStreamIndex_].keyFrames;
-  torch::Tensor keyFrameIndices =
-      torch::empty({static_cast<int64_t>(keyFrames.size())}, {torch::kInt64});
+  StableTensor keyFrameIndices =
+      stableEmpty({static_cast<int64_t>(keyFrames.size())}, kStableInt64, kStableCPU);
+  int64_t* keyFrameIndicesData = keyFrameIndices.mutable_data_ptr<int64_t>();
   for (size_t i = 0; i < keyFrames.size(); ++i) {
-    keyFrameIndices[i] = keyFrames[i].frameIndex;
+    keyFrameIndicesData[i] = keyFrames[i].frameIndex;
   }
 
   return keyFrameIndices;
@@ -416,16 +416,16 @@ torch::Tensor SingleStreamDecoder::getKeyFrameIndices() {
 void SingleStreamDecoder::addStream(
     int streamIndex,
     AVMediaType mediaType,
-    const torch::Device& device,
+    const StableDevice& device,
     const std::string_view deviceVariant,
     std::optional<int> ffmpegThreadCount) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       activeStreamIndex_ == NO_ACTIVE_STREAM,
       "Can only add one single stream.");
-  TORCH_CHECK(
+  STABLE_CHECK(
       mediaType == AVMEDIA_TYPE_VIDEO || mediaType == AVMEDIA_TYPE_AUDIO,
       "Can only add video or audio streams.");
-  TORCH_CHECK(formatContext_.get() != nullptr);
+  STABLE_CHECK(formatContext_.get() != nullptr, "Format context is null");
 
   AVCodecOnlyUseForCallingAVFindBestStream avCodec = nullptr;
 
@@ -438,7 +438,7 @@ void SingleStreamDecoder::addStream(
         std::to_string(streamIndex) + " of the desired media type?");
   }
 
-  TORCH_CHECK(avCodec != nullptr);
+  STABLE_CHECK(avCodec != nullptr, "Codec not found for stream");
 
   StreamInfo& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.streamIndex = activeStreamIndex_;
@@ -447,14 +447,14 @@ void SingleStreamDecoder::addStream(
   streamInfo.avMediaType = mediaType;
 
   // This should never happen, checking just to be safe.
-  TORCH_CHECK(
+  STABLE_CHECK(
       streamInfo.stream->codecpar->codec_type == mediaType,
       "FFmpeg found stream with index ",
       activeStreamIndex_,
       " which is of the wrong media type.");
 
   deviceInterface_ = createDeviceInterface(device, deviceVariant);
-  TORCH_CHECK(
+  STABLE_CHECK(
       deviceInterface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
 
@@ -467,12 +467,12 @@ void SingleStreamDecoder::addStream(
   }
 
   AVCodecContext* codecContext = avcodec_alloc_context3(avCodec);
-  TORCH_CHECK(codecContext != nullptr);
+  STABLE_CHECK(codecContext != nullptr, "Failed to allocate codec context");
   streamInfo.codecContext = makeSharedAVCodecContext(codecContext);
 
   int retVal = avcodec_parameters_to_context(
       streamInfo.codecContext.get(), streamInfo.stream->codecpar);
-  TORCH_CHECK_EQ(retVal, AVSUCCESS);
+  STABLE_CHECK(retVal == AVSUCCESS, "avcodec_parameters_to_context failed");
 
   streamInfo.codecContext->thread_count = ffmpegThreadCount.value_or(0);
   streamInfo.codecContext->pkt_timebase = streamInfo.stream->time_base;
@@ -483,7 +483,7 @@ void SingleStreamDecoder::addStream(
   deviceInterface_->registerHardwareDeviceWithCodec(
       streamInfo.codecContext.get());
   retVal = avcodec_open2(streamInfo.codecContext.get(), avCodec, nullptr);
-  TORCH_CHECK(retVal >= AVSUCCESS, getFFMPEGErrorStringFromErrorCode(retVal));
+  STABLE_CHECK(retVal >= AVSUCCESS, getFFMPEGErrorStringFromErrorCode(retVal));
 
   streamInfo.codecContext->time_base = streamInfo.stream->time_base;
 
@@ -510,8 +510,8 @@ void SingleStreamDecoder::addVideoStream(
     std::vector<Transform*>& transforms,
     const VideoStreamOptions& videoStreamOptions,
     std::optional<FrameMappings> customFrameMappings) {
-  TORCH_CHECK(
-      transforms.empty() || videoStreamOptions.device == torch::kCPU,
+  STABLE_CHECK(
+      transforms.empty() || videoStreamOptions.device == kStableCPU,
       " Transforms are only supported for CPU devices.");
 
   addStream(
@@ -525,7 +525,7 @@ void SingleStreamDecoder::addVideoStream(
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
 
   if (seekMode_ == SeekMode::approximate) {
-    TORCH_CHECK(
+    STABLE_CHECK(
         streamMetadata.averageFpsFromHeader.has_value(),
         "Seek mode is approximate, but stream ",
         std::to_string(activeStreamIndex_),
@@ -536,7 +536,7 @@ void SingleStreamDecoder::addVideoStream(
   streamInfo.videoStreamOptions = videoStreamOptions;
 
   if (seekMode_ == SeekMode::custom_frame_mappings) {
-    TORCH_CHECK(
+    STABLE_CHECK(
         customFrameMappings.has_value(),
         "Missing frame mappings when custom_frame_mappings seek mode is set.");
     readCustomFrameMappingsUpdateMetadataAndIndex(
@@ -547,7 +547,7 @@ void SingleStreamDecoder::addVideoStream(
       FrameDims(streamMetadata.height.value(), streamMetadata.width.value());
   FrameDims currInputDims = metadataDims_;
   for (auto& transform : transforms) {
-    TORCH_CHECK(transform != nullptr, "Transforms should never be nullptr!");
+    STABLE_CHECK(transform != nullptr, "Transforms should never be nullptr!");
     if (transform->getOutputFrameDims().has_value()) {
       resizedOutputDims_ = transform->getOutputFrameDims().value();
     }
@@ -566,11 +566,11 @@ void SingleStreamDecoder::addVideoStream(
 void SingleStreamDecoder::addAudioStream(
     int streamIndex,
     const AudioStreamOptions& audioStreamOptions) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       seekMode_ == SeekMode::approximate,
       "seek_mode must be 'approximate' for audio streams.");
   if (audioStreamOptions.numChannels.has_value()) {
-    TORCH_CHECK(
+    STABLE_CHECK(
         *audioStreamOptions.numChannels > 0 &&
             *audioStreamOptions.numChannels <= AV_NUM_DATA_POINTERS,
         "num_channels must be > 0 and <= AV_NUM_DATA_POINTERS (usually 8). Got: ",
@@ -605,7 +605,7 @@ FrameOutput SingleStreamDecoder::getNextFrame() {
 }
 
 FrameOutput SingleStreamDecoder::getNextFrameInternal(
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    std::optional<StableTensor> preAllocatedOutputTensor) {
   validateActiveStream();
   UniqueAVFrame avFrame = decodeAVFrame([this](const UniqueAVFrame& avFrame) {
     return getPtsOrDts(avFrame) >= cursor_;
@@ -621,7 +621,7 @@ FrameOutput SingleStreamDecoder::getFrameAtIndex(int64_t frameIndex) {
 
 FrameOutput SingleStreamDecoder::getFrameAtIndexInternal(
     int64_t frameIndex,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    std::optional<StableTensor> preAllocatedOutputTensor) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
 
   const auto& streamInfo = streamInfos_[activeStreamIndex_];
@@ -649,14 +649,14 @@ FrameOutput SingleStreamDecoder::getFrameAtIndexInternal(
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
-    const torch::Tensor& frameIndices) {
+    const StableTensor& frameIndices) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
 
-  auto frameIndicesAccessor = frameIndices.accessor<int64_t, 1>();
+  const int64_t* frameIndicesData = frameIndices.const_data_ptr<int64_t>();
 
   bool indicesAreSorted = true;
   for (int64_t i = 1; i < frameIndices.numel(); ++i) {
-    if (frameIndicesAccessor[i] < frameIndicesAccessor[i - 1]) {
+    if (frameIndicesData[i] < frameIndicesData[i - 1]) {
       indicesAreSorted = false;
       break;
     }
@@ -675,8 +675,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     std::sort(
         argsort.begin(),
         argsort.end(),
-        [&frameIndicesAccessor](size_t a, size_t b) {
-          return frameIndicesAccessor[a] < frameIndicesAccessor[b];
+        [&frameIndicesData](size_t a, size_t b) {
+          return frameIndicesData[a] < frameIndicesData[b];
         });
   }
 
@@ -690,23 +690,23 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   auto previousIndexInVideo = -1;
   for (int64_t f = 0; f < frameIndices.numel(); ++f) {
     auto indexInOutput = indicesAreSorted ? f : argsort[f];
-    auto indexInVideo = frameIndicesAccessor[indexInOutput];
+    auto indexInVideo = frameIndicesData[indexInOutput];
 
+    double* ptsSecondsData = frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
+    double* durationSecondsData = frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
     if ((f > 0) && (indexInVideo == previousIndexInVideo)) {
       // Avoid decoding the same frame twice
       auto previousIndexInOutput = indicesAreSorted ? f - 1 : argsort[f - 1];
-      frameBatchOutput.data[indexInOutput].copy_(
-          frameBatchOutput.data[previousIndexInOutput]);
-      frameBatchOutput.ptsSeconds[indexInOutput] =
-          frameBatchOutput.ptsSeconds[previousIndexInOutput];
-      frameBatchOutput.durationSeconds[indexInOutput] =
-          frameBatchOutput.durationSeconds[previousIndexInOutput];
+      StableTensor currentFrame = stableSelect(frameBatchOutput.data, 0, indexInOutput);
+      StableTensor previousFrame = stableSelect(frameBatchOutput.data, 0, previousIndexInOutput);
+      stableCopy_(currentFrame, previousFrame);
+      ptsSecondsData[indexInOutput] = ptsSecondsData[previousIndexInOutput];
+      durationSecondsData[indexInOutput] = durationSecondsData[previousIndexInOutput];
     } else {
       FrameOutput frameOutput = getFrameAtIndexInternal(
-          indexInVideo, frameBatchOutput.data[indexInOutput]);
-      frameBatchOutput.ptsSeconds[indexInOutput] = frameOutput.ptsSeconds;
-      frameBatchOutput.durationSeconds[indexInOutput] =
-          frameOutput.durationSeconds;
+          indexInVideo, stableSelect(frameBatchOutput.data, 0, indexInOutput));
+      ptsSecondsData[indexInOutput] = frameOutput.ptsSeconds;
+      durationSecondsData[indexInOutput] = frameOutput.durationSeconds;
     }
     previousIndexInVideo = indexInVideo;
   }
@@ -723,16 +723,16 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
   const auto& streamInfo = streamInfos_[activeStreamIndex_];
-  TORCH_CHECK(
+  STABLE_CHECK(
       start >= 0, "Range start, " + std::to_string(start) + " is less than 0.");
-  TORCH_CHECK(
+  STABLE_CHECK(
       step > 0, "Step must be greater than 0; is " + std::to_string(step));
 
   // Note that if we do not have the number of frames available in our
   // metadata, then we assume that the upper part of the range is valid.
   std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
   if (numFrames.has_value()) {
-    TORCH_CHECK(
+    STABLE_CHECK(
         stop <= numFrames.value(),
         "Range stop, " + std::to_string(stop) +
             ", is more than the number of frames, " +
@@ -746,11 +746,13 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
       resizedOutputDims_.value_or(metadataDims_),
       videoStreamOptions.device);
 
+  double* ptsSecondsData = frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
+  double* durationSecondsData = frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
   for (int64_t i = start, f = 0; i < stop; i += step, ++f) {
     FrameOutput frameOutput =
-        getFrameAtIndexInternal(i, frameBatchOutput.data[f]);
-    frameBatchOutput.ptsSeconds[f] = frameOutput.ptsSeconds;
-    frameBatchOutput.durationSeconds[f] = frameOutput.durationSeconds;
+        getFrameAtIndexInternal(i, stableSelect(frameBatchOutput.data, 0, f));
+    ptsSecondsData[f] = frameOutput.ptsSeconds;
+    durationSecondsData[f] = frameOutput.durationSeconds;
   }
   frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
   return frameBatchOutput;
@@ -798,7 +800,7 @@ FrameOutput SingleStreamDecoder::getFramePlayedAt(double seconds) {
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
-    const torch::Tensor& timestamps) {
+    const StableTensor& timestamps) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
 
   const auto& streamMetadata =
@@ -813,14 +815,14 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
   // avoid decoding that unique frame twice is to convert the input timestamps
   // to indices, and leverage the de-duplication logic of getFramesAtIndices.
 
-  torch::Tensor frameIndices =
-      torch::empty({timestamps.numel()}, torch::kInt64);
-  auto frameIndicesAccessor = frameIndices.accessor<int64_t, 1>();
-  auto timestampsAccessor = timestamps.accessor<double, 1>();
+  StableTensor frameIndices =
+      stableEmpty({timestamps.numel()}, kStableInt64, StableDevice(kStableCPU));
+  int64_t* frameIndicesData = frameIndices.mutable_data_ptr<int64_t>();
+  const double* timestampsData = timestamps.const_data_ptr<double>();
 
   for (int64_t i = 0; i < timestamps.numel(); ++i) {
-    auto frameSeconds = timestampsAccessor[i];
-    TORCH_CHECK(
+    auto frameSeconds = timestampsData[i];
+    STABLE_CHECK(
         frameSeconds >= minSeconds,
         "frame pts is " + std::to_string(frameSeconds) +
             "; must be greater than or equal to " + std::to_string(minSeconds) +
@@ -829,14 +831,14 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
     // Note that if we can't determine the maximum number of seconds from the
     // metadata, then we assume the frame's pts is valid.
     if (maxSeconds.has_value()) {
-      TORCH_CHECK(
+      STABLE_CHECK(
           frameSeconds < maxSeconds.value(),
           "frame pts is " + std::to_string(frameSeconds) +
               "; must be less than " + std::to_string(maxSeconds.value()) +
               ".");
     }
 
-    frameIndicesAccessor[i] = secondsToIndexLowerBound(frameSeconds);
+    frameIndicesData[i] = secondsToIndexLowerBound(frameSeconds);
   }
 
   return getFramesAtIndices(frameIndices);
@@ -848,7 +850,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
-  TORCH_CHECK(
+  STABLE_CHECK(
       startSeconds <= stopSeconds,
       "Start seconds (" + std::to_string(startSeconds) +
           ") must be less than or equal to stop seconds (" +
@@ -884,7 +886,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
   }
 
   double minSeconds = streamMetadata.getBeginStreamSeconds(seekMode_);
-  TORCH_CHECK(
+  STABLE_CHECK(
       startSeconds >= minSeconds,
       "Start seconds is " + std::to_string(startSeconds) +
           "; must be greater than or equal to " + std::to_string(minSeconds) +
@@ -895,11 +897,11 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
   std::optional<double> maxSeconds =
       streamMetadata.getEndStreamSeconds(seekMode_);
   if (maxSeconds.has_value()) {
-    TORCH_CHECK(
+    STABLE_CHECK(
         startSeconds < maxSeconds.value(),
         "Start seconds is " + std::to_string(startSeconds) +
             "; must be less than " + std::to_string(maxSeconds.value()) + ".");
-    TORCH_CHECK(
+    STABLE_CHECK(
         stopSeconds <= maxSeconds.value(),
         "Stop seconds (" + std::to_string(stopSeconds) +
             "; must be less than or equal to " +
@@ -927,11 +929,13 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       numFrames,
       resizedOutputDims_.value_or(metadataDims_),
       videoStreamOptions.device);
+  double* ptsSecondsData = frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
+  double* durationSecondsData = frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
   for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
     FrameOutput frameOutput =
-        getFrameAtIndexInternal(i, frameBatchOutput.data[f]);
-    frameBatchOutput.ptsSeconds[f] = frameOutput.ptsSeconds;
-    frameBatchOutput.durationSeconds[f] = frameOutput.durationSeconds;
+        getFrameAtIndexInternal(i, stableSelect(frameBatchOutput.data, 0, f));
+    ptsSecondsData[f] = frameOutput.ptsSeconds;
+    durationSecondsData[f] = frameOutput.durationSeconds;
   }
   frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
 
@@ -997,7 +1001,7 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
   validateActiveStream(AVMEDIA_TYPE_AUDIO);
 
   if (stopSecondsOptional.has_value()) {
-    TORCH_CHECK(
+    STABLE_CHECK(
         startSeconds <= *stopSecondsOptional,
         "Start seconds (" + std::to_string(startSeconds) +
             ") must be less than or equal to stop seconds (" +
@@ -1009,7 +1013,7 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
   if (stopSecondsOptional.has_value() && startSeconds == *stopSecondsOptional) {
     // For consistency with video
     int numChannels = getNumChannels(streamInfo.codecContext);
-    return AudioFramesOutput{torch::empty({numChannels, 0}), 0.0};
+    return AudioFramesOutput{stableEmpty({numChannels, 0}, kStableFloat32, kStableCPU), 0.0};
   }
 
   auto startPts = secondsToClosestPts(startSeconds, streamInfo.timeBase);
@@ -1022,7 +1026,7 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
   // TODO-AUDIO Pre-allocate a long-enough tensor instead of creating a vec +
   // cat(). This would save a copy. We know the duration of the output and the
   // sample rate, so in theory we know the number of output samples.
-  std::vector<torch::Tensor> frames;
+  std::vector<StableTensor> frames;
 
   std::optional<double> firstFramePtsSeconds = std::nullopt;
   auto stopPts = stopSecondsOptional.has_value()
@@ -1060,17 +1064,14 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
     frames.push_back(*lastSamples);
   }
 
-  TORCH_CHECK(
+  STABLE_CHECK(
       frames.size() > 0 && firstFramePtsSeconds.has_value(),
-      "No audio frames were decoded. ",
-      "This is probably because start_seconds is too high(",
-      startSeconds,
-      "),",
-      "or because stop_seconds(",
-      stopSecondsOptional,
-      ") is too low.");
+      "No audio frames were decoded. This is probably because start_seconds is too high(" +
+          std::to_string(startSeconds) + "), or because stop_seconds(" +
+          (stopSecondsOptional.has_value() ? std::to_string(stopSecondsOptional.value()) : "nullopt") +
+          ") is too low.");
 
-  return AudioFramesOutput{torch::cat(frames, 1), *firstFramePtsSeconds};
+  return AudioFramesOutput{stableCat(frames, 1), *firstFramePtsSeconds};
 }
 
 // --------------------------------------------------------------------------
@@ -1180,7 +1181,7 @@ void SingleStreamDecoder::maybeSeekToBeforeDesiredPts() {
       desiredPts,
       desiredPts,
       0);
-  TORCH_CHECK(
+  STABLE_CHECK(
       status >= 0,
       "Could not seek file to pts=",
       std::to_string(desiredPts),
@@ -1250,7 +1251,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
       if (status == AVERROR_EOF) {
         // End of file reached. We must drain the decoder
         status = deviceInterface_->sendEOFPacket();
-        TORCH_CHECK(
+        STABLE_CHECK(
             status >= AVSUCCESS,
             "Could not flush decoder: ",
             getFFMPEGErrorStringFromErrorCode(status));
@@ -1259,7 +1260,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
         break;
       }
 
-      TORCH_CHECK(
+      STABLE_CHECK(
           status >= AVSUCCESS,
           "Could not read frame from input file: ",
           getFFMPEGErrorStringFromErrorCode(status));
@@ -1275,7 +1276,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
     // We got a valid packet. Send it to the decoder, and we'll receive it in
     // the next iteration.
     status = deviceInterface_->sendPacket(packet);
-    TORCH_CHECK(
+    STABLE_CHECK(
         status >= AVSUCCESS,
         "Could not push packet to decoder: ",
         getFFMPEGErrorStringFromErrorCode(status));
@@ -1289,7 +1290,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
           "Requested next frame while there are no more frames left to "
           "decode.");
     }
-    TORCH_CHECK(
+    STABLE_CHECK(
         false,
         "Could not receive frame from decoder: ",
         getFFMPEGErrorStringFromErrorCode(status));
@@ -1314,7 +1315,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
 
 FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    std::optional<StableTensor> preAllocatedOutputTensor) {
   // Convert the frame to tensor.
   FrameOutput frameOutput;
   frameOutput.ptsSeconds = ptsToSeconds(
@@ -1336,8 +1337,8 @@ FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
 // so. The [N] leading batch-dimension is optional i.e. the input tensor can
 // be 3D or 4D. Calling permute() is guaranteed to return a view as per the
 // docs: https://pytorch.org/docs/stable/generated/torch.permute.html
-torch::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
-    torch::Tensor& hwcTensor) {
+StableTensor SingleStreamDecoder::maybePermuteHWC2CHW(
+    StableTensor& hwcTensor) {
   if (streamInfos_[activeStreamIndex_].videoStreamOptions.dimensionOrder ==
       "NHWC") {
     return hwcTensor;
@@ -1345,14 +1346,14 @@ torch::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
   auto numDimensions = hwcTensor.dim();
   auto shape = hwcTensor.sizes();
   if (numDimensions == 3) {
-    TORCH_CHECK(shape[2] == 3, "Not a HWC tensor: ", shape);
-    return hwcTensor.permute({2, 0, 1});
+    STABLE_CHECK(shape[2] == 3, "Not a HWC tensor: " + intArrayRefToString(shape));
+    return stablePermute(hwcTensor, {2, 0, 1});
   } else if (numDimensions == 4) {
-    TORCH_CHECK(shape[3] == 3, "Not a NHWC tensor: ", shape);
-    return hwcTensor.permute({0, 3, 1, 2});
+    STABLE_CHECK(shape[3] == 3, "Not a NHWC tensor: " + intArrayRefToString(shape));
+    return stablePermute(hwcTensor, {0, 3, 1, 2});
   } else {
-    TORCH_CHECK(
-        false, "Expected tensor with 3 or 4 dimensions, got ", numDimensions);
+    STABLE_CHECK(
+        false, "Expected tensor with 3 or 4 dimensions, got " + std::to_string(numDimensions));
   }
 }
 
@@ -1416,13 +1417,13 @@ int64_t SingleStreamDecoder::secondsToIndexLowerBound(double seconds) {
     case SeekMode::approximate: {
       auto& streamMetadata =
           containerMetadata_.allStreamMetadata[activeStreamIndex_];
-      TORCH_CHECK(
+      STABLE_CHECK(
           streamMetadata.averageFpsFromHeader.has_value(),
           "Cannot use approximate mode since we couldn't find the average fps from the metadata.");
       return std::floor(seconds * streamMetadata.averageFpsFromHeader.value());
     }
     default:
-      TORCH_CHECK(false, "Unknown SeekMode");
+      STABLE_CHECK(false, "Unknown SeekMode");
   }
 }
 
@@ -1444,13 +1445,13 @@ int64_t SingleStreamDecoder::secondsToIndexUpperBound(double seconds) {
     case SeekMode::approximate: {
       auto& streamMetadata =
           containerMetadata_.allStreamMetadata[activeStreamIndex_];
-      TORCH_CHECK(
+      STABLE_CHECK(
           streamMetadata.averageFpsFromHeader.has_value(),
           "Cannot use approximate mode since we couldn't find the average fps from the metadata.");
       return std::ceil(seconds * streamMetadata.averageFpsFromHeader.value());
     }
     default:
-      TORCH_CHECK(false, "Unknown SeekMode");
+      STABLE_CHECK(false, "Unknown SeekMode");
   }
 }
 
@@ -1463,7 +1464,7 @@ int64_t SingleStreamDecoder::getPts(int64_t frameIndex) {
     case SeekMode::approximate: {
       auto& streamMetadata =
           containerMetadata_.allStreamMetadata[activeStreamIndex_];
-      TORCH_CHECK(
+      STABLE_CHECK(
           streamMetadata.averageFpsFromHeader.has_value(),
           "Cannot use approximate mode since we couldn't find the average fps from the metadata.");
       return secondsToClosestPts(
@@ -1471,7 +1472,7 @@ int64_t SingleStreamDecoder::getPts(int64_t frameIndex) {
           streamInfo.timeBase);
     }
     default:
-      TORCH_CHECK(false, "Unknown SeekMode");
+      STABLE_CHECK(false, "Unknown SeekMode");
   }
 }
 
@@ -1488,19 +1489,19 @@ void SingleStreamDecoder::validateActiveStream(
   auto errorMsg =
       "Provided stream index=" + std::to_string(activeStreamIndex_) +
       " was not previously added.";
-  TORCH_CHECK(activeStreamIndex_ != NO_ACTIVE_STREAM, errorMsg);
-  TORCH_CHECK(streamInfos_.count(activeStreamIndex_) > 0, errorMsg);
+  STABLE_CHECK(activeStreamIndex_ != NO_ACTIVE_STREAM, errorMsg);
+  STABLE_CHECK(streamInfos_.count(activeStreamIndex_) > 0, errorMsg);
 
   int allStreamMetadataSize =
       static_cast<int>(containerMetadata_.allStreamMetadata.size());
-  TORCH_CHECK(
+  STABLE_CHECK(
       activeStreamIndex_ >= 0 && activeStreamIndex_ < allStreamMetadataSize,
       "Invalid stream index=" + std::to_string(activeStreamIndex_) +
           "; valid indices are in the range [0, " +
           std::to_string(allStreamMetadataSize) + ").");
 
   if (avMediaType.has_value()) {
-    TORCH_CHECK(
+    STABLE_CHECK(
         streamInfos_[activeStreamIndex_].avMediaType == avMediaType.value(),
         "The method you called isn't supported. ",
         "If you're seeing this error, you are probably trying to call an ",
@@ -1509,7 +1510,7 @@ void SingleStreamDecoder::validateActiveStream(
 }
 
 void SingleStreamDecoder::validateScannedAllStreams(const std::string& msg) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       scannedAllStreams_,
       "Must scan all streams to update metadata before calling ",
       msg);
@@ -1579,7 +1580,7 @@ double SingleStreamDecoder::getPtsSecondsForFrame(int64_t frameIndex) {
 }
 
 std::string SingleStreamDecoder::getDeviceInterfaceDetails() const {
-  TORCH_CHECK(deviceInterface_ != nullptr, "Device interface doesn't exist.");
+  STABLE_CHECK(deviceInterface_ != nullptr, "Device interface doesn't exist.");
   return deviceInterface_->getDetails();
 }
 

@@ -11,7 +11,7 @@
 #include <mutex>
 
 #include <cuda.h>
-#include <torch/types.h>
+#include "StableABICompat.h"
 
 #include "NVCUVIDRuntimeLoader.h"
 #include "nvcuvid_include/cuviddec.h"
@@ -39,7 +39,7 @@ using UniqueCUvideodecoder =
 // per GPU device, and it is accessed through the static getCache() method.
 class NVDECCache {
  public:
-  static NVDECCache& getCache(const torch::Device& device);
+  static NVDECCache& getCache(const StableDevice& device);
 
   // Get decoder from cache - returns nullptr if none available
   UniqueCUvideodecoder getDecoder(CUVIDEOFORMAT* videoFormat);

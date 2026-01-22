@@ -137,6 +137,16 @@ function(make_torchcodec_libraries
         "${core_library_dependencies}"
     )
 
+    # Ensure core library symbols are visible for linking from custom_ops.
+    # TORCH_CXX_FLAGS may include -fvisibility=hidden, which we need to override.
+    if(LINUX)
+        target_compile_options(
+            ${core_library_name}
+            PRIVATE
+            "-fvisibility=default"
+        )
+    endif()
+
     # 2. Create libtorchcodec_custom_opsN.{ext}.
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
     set(custom_ops_sources
@@ -153,6 +163,23 @@ function(make_torchcodec_libraries
         "${custom_ops_sources}"
         "${custom_ops_dependencies}"
     )
+
+    # Suppress array-bounds and stringop-overread warnings that come from PyTorch
+    # stable ABI code handling string_view types. This is a known issue in the
+    # stable ABI implementation where it attempts to memcpy larger types through
+    # StableIValue.
+    # Also suppress attributes warnings from visibility mismatch between
+    # AVIOFileLikeContext (default visibility) and its pybind11 member types
+    # (hidden visibility). This is safe since we don't export AVIOFileLikeContext.
+    if(NOT WIN32)
+        target_compile_options(
+            ${custom_ops_library_name}
+            PRIVATE
+            "-Wno-array-bounds"
+            "-Wno-stringop-overread"
+            "-Wno-attributes"
+        )
+    endif()
 
     # 3. Create libtorchcodec_pybind_opsN.so.
     set(pybind_ops_library_name "libtorchcodec_pybind_ops${ffmpeg_major_version}")
@@ -189,23 +216,19 @@ function(make_torchcodec_libraries
     endif()
 
     # pybind11 limits the visibility of symbols in the shared library to prevent
-    # stray initialization of py::objects. The rest of the object code must
-    # match. See:
+    # stray initialization of py::objects. See:
     #   https://pybind11.readthedocs.io/en/stable/faq.html#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclass-member-wattributes
-    # We have to do this for both pybind_ops and custom_ops because they include
-    # some of the same headers.
     #
     # Note that this is Linux only. It's not necessary on Windows, and on Mac
     # hiding visibility can actually break dyanmic casts across share libraries
     # because the type infos don't get exported.
+    #
+    # We only apply this to pybind_ops, not custom_ops. custom_ops uses PyTorch's
+    # stable ABI, not pybind11, and needs default visibility to link against the
+    # core library.
     if(LINUX)
         target_compile_options(
             ${pybind_ops_library_name}
-            PUBLIC
-            "-fvisibility=hidden"
-        )
-        target_compile_options(
-            ${custom_ops_library_name}
             PUBLIC
             "-fvisibility=hidden"
         )
