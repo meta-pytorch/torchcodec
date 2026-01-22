@@ -1,5 +1,0 @@
-
-[dev]
-numpy
-pytest
-pillow
