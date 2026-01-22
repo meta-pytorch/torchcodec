@@ -517,14 +517,14 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
   int height = static_cast<int>(tensor.size(1));
   int width = static_cast<int>(tensor.size(2));
 
-  // TODO-VideoEncoder: Unify AVFrame creation with CPU version of this method
+  // TODO-VideoEncoder: (P1) Unify AVFrame creation with CPU method
   avFrame->format = AV_PIX_FMT_CUDA;
   avFrame->height = height;
   avFrame->width = width;
   avFrame->pts = frameIndex;
 
   // FFmpeg's av_hwframe_get_buffer is used to allocate memory on CUDA device.
-  // TODO-VideoEncoder: Consider using pytorch to allocate CUDA memory for
+  // TODO-VideoEncoder: (P2) Consider using pytorch to allocate CUDA memory for
   // efficiency
   int ret =
       av_hwframe_get_buffer(codecContext->hw_frames_ctx, avFrame.get(), 0);
