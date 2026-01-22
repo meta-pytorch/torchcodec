@@ -52,7 +52,6 @@ to increase performance.
 # - :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_at` for timestamps
 # - :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range` for time ranges
 #
-# %%
 # **When to use:**
 #
 # - Decoding multiple frames
@@ -136,9 +135,8 @@ to increase performance.
 # (NVDEC) on supported hardware. This keeps decoded tensors in GPU memory,
 # avoiding expensive CPU-GPU transfers for downstream GPU operations.
 #
-# %%
-# **Recommended:  use the Beta Interface!!**
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# **Recommended: use the Beta Interface!!**
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
 # We recommend you use the new "beta" CUDA interface which is significantly faster than the previous one, and supports the same features:
 #
@@ -147,7 +145,6 @@ to increase performance.
 #     with set_cuda_backend("beta"):
 #         decoder = VideoDecoder("file.mp4", device="cuda")
 #
-# %%
 # **When to use:**
 #
 # - Decoding large resolution videos
