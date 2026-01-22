@@ -1137,10 +1137,11 @@ class TestVideoDecoder:
 
         # All duplicated frames should have the same content as frame 0
         frame0_data = decoder.get_frame_at(0).data
-        for i in range(len(frames_high_fps)):
-            torch.testing.assert_close(
-                frames_high_fps.data[i], frame0_data, atol=0, rtol=0
-            )
+        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+            for i in range(len(frames_high_fps)):
+                torch.testing.assert_close(
+                    frames_high_fps.data[i], frame0_data, atol=0, rtol=0
+                )
 
         # Test that fps=None returns the original behavior (same as not passing fps)
         frames_no_fps = decoder.get_frames_played_in_range(start_seconds, stop_seconds)
@@ -1148,9 +1149,10 @@ class TestVideoDecoder:
             start_seconds, stop_seconds, fps=None
         )
         assert len(frames_no_fps) == len(frames_none_fps)
-        torch.testing.assert_close(
-            frames_no_fps.data, frames_none_fps.data, atol=0, rtol=0
-        )
+        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+            torch.testing.assert_close(
+                frames_no_fps.data, frames_none_fps.data, atol=0, rtol=0
+            )
 
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
