@@ -60,7 +60,8 @@ class NVDECCache {
   bool registerDecoderId(
     uint32_t decoderId,
     uint32_t ulMaxWidth,
-    uint32_t ulMaxHeight
+    uint32_t ulMaxHeight,
+    uint8_t  ulMaxNumDecodeSurfaces
   );
 
   // Get decoder from cache - returns nullptr if none available
@@ -117,6 +118,7 @@ class NVDECCache {
       uint32_t decoderID;
       uint32_t ulMaxWidth;
       uint32_t ulMaxHeight;
+      uint8_t  ulMaxNumDecodeSurfaces;
   };
 
   NVDECCache() = default;

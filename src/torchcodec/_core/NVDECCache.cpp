@@ -35,14 +35,20 @@ uint32_t NVDECCache::allocDecoderId() {
 // Register a decoder ID with its maximum width and height.
 bool NVDECCache::registerDecoderId(uint32_t decoderId,
     uint32_t ulMaxWidth,
-    uint32_t ulMaxHeight) {
+    uint32_t ulMaxHeight,
+    uint8_t ulMaxNumDecodeSurfaces) {
   std::lock_guard<std::mutex> lock(cacheLock_);
   auto it = id_context_map_.find(decoderId);
   if (it != id_context_map_.end()) {
     // Already registered
     return false;
   }
-  id_context_map_[decoderId] = DecoderMaxWHContext{decoderId, ulMaxWidth, ulMaxHeight};
+  id_context_map_[decoderId] = DecoderMaxWHContext{
+    decoderId, 
+    ulMaxWidth, 
+    ulMaxHeight, 
+    ulMaxNumDecodeSurfaces
+  };
   return true;
 
 }
@@ -93,7 +99,8 @@ CUvideodecoderCache NVDECCache::getDecoder(CUVIDEOFORMAT* videoFormat) {
       const auto& context = *bg;
       if (
         context.second.ulMaxWidth >= videoFormat->coded_width &&
-        context.second.ulMaxHeight >= videoFormat->coded_height
+        context.second.ulMaxHeight >= videoFormat->coded_height &&
+        context.second.ulMaxNumDecodeSurfaces >= videoFormat->min_num_decode_surfaces
       ) {
         cache_type = NVDECCacheType::Reconfig;
 

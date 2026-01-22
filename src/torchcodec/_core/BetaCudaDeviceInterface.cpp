@@ -270,7 +270,6 @@ void BetaCudaDeviceInterface::initialize(
     // We'll always use the CPU fallback from now on, so we can return early.
     return;
   }
-
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
@@ -287,7 +286,12 @@ void BetaCudaDeviceInterface::initialize(
       codecType.has_value(),
       "This should never happen, we should be using the CPU fallback by now. Please report a bug.");
   parserParams.CodecType = codecType.value();
+  // TODO: There seems to be a hidden bug here. If we fix ulMaxNumDecodeSurfaces to 8, 
+  // but the video stream itself requires more surfaces (i.e., > 8),
+  // it might keep failing—whether we recreate the decoder or use the cache. 
+  // This is not yet fully confirmed and needs further validation.
   parserParams.ulMaxNumDecodeSurfaces = 8;
+  ulMaxNumDecodeSurfaces_ = parserParams.ulMaxNumDecodeSurfaces;
   parserParams.ulMaxDisplayDelay = 0;
   // Callback setup, all are triggered by the parser within a call
   // to cuvidParseVideoData
@@ -389,7 +393,7 @@ void BetaCudaDeviceInterface::initializeBSF(
 
 
 int BetaCudaDeviceInterface::reconfigureNVDECDecoder(CUVIDEOFORMAT* videoFormat) {
-  CUVIDRECONFIGUREDECODERINFO info = { 0 };
+  CUVIDRECONFIGUREDECODERINFO info = {};
 
   info.ulWidth  = videoFormat->coded_width;
   info.ulHeight = videoFormat->coded_height;
@@ -457,7 +461,8 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
       NVDECCache::getCache(device_).registerDecoderId(
           decoderId_,
           videoFormat->coded_width,
-          videoFormat->coded_height
+          videoFormat->coded_height,
+          ulMaxNumDecodeSurfaces_
       );
     }
 
