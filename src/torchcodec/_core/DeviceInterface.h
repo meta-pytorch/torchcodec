@@ -36,7 +36,7 @@ struct DeviceInterfaceKey {
       : deviceType(type), variant(variant) {}
 };
 
-class __attribute__((visibility("hidden"))) DeviceInterface {
+class DeviceInterface {
  public:
   DeviceInterface(const StableDevice& device) : device_(device) {}
 

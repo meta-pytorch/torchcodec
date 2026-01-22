@@ -12,7 +12,7 @@ extern "C" {
 }
 
 namespace facebook::torchcodec {
-class __attribute__((visibility("hidden"))) AudioEncoder {
+class AudioEncoder {
  public:
   ~AudioEncoder();
 
@@ -127,7 +127,7 @@ class __attribute__((visibility("hidden"))) AudioEncoder {
 //
 /* clang-format on */
 
-class __attribute__((visibility("hidden"))) VideoEncoder {
+class VideoEncoder {
  public:
   ~VideoEncoder();
 

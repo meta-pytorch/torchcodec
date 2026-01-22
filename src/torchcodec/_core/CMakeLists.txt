@@ -139,11 +139,15 @@ function(make_torchcodec_libraries
 
     # Ensure core library symbols are visible for linking from custom_ops.
     # TORCH_CXX_FLAGS may include -fvisibility=hidden, which we need to override.
+    # Also suppress attributes warnings from visibility mismatch between
+    # our exported classes (default visibility) and PyTorch stable ABI types
+    # (hidden visibility). This is safe since we're overriding visibility to export symbols.
     if(LINUX)
         target_compile_options(
             ${core_library_name}
             PRIVATE
             "-fvisibility=default"
+            "-Wno-attributes"
         )
     endif()
 

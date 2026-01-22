@@ -21,7 +21,7 @@ enum ColorConversionLibrary {
   SWSCALE
 };
 
-struct __attribute__((visibility("hidden"))) VideoStreamOptions {
+struct VideoStreamOptions {
   VideoStreamOptions() {}
 
   // Number of threads we pass to FFMPEG for decoding.
@@ -57,7 +57,7 @@ struct __attribute__((visibility("hidden"))) VideoStreamOptions {
   std::optional<std::map<std::string, std::string>> extraOptions;
 };
 
-struct __attribute__((visibility("hidden"))) AudioStreamOptions {
+struct AudioStreamOptions {
   AudioStreamOptions() {}
 
   // Encoding only

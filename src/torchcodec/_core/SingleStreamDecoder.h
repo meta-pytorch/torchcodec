@@ -25,7 +25,7 @@ namespace facebook::torchcodec {
 // The SingleStreamDecoder class can be used to decode video frames to Tensors.
 // Note that SingleStreamDecoder is not thread-safe.
 // Do not call non-const APIs concurrently on the same object.
-class __attribute__((visibility("hidden"))) SingleStreamDecoder {
+class SingleStreamDecoder {
  public:
   // --------------------------------------------------------------------------
   // CONSTRUCTION API
@@ -76,7 +76,7 @@ class __attribute__((visibility("hidden"))) SingleStreamDecoder {
   // --------------------------------------------------------------------------
   // ADDING STREAMS API
   // --------------------------------------------------------------------------
-  struct __attribute__((visibility("hidden"))) FrameMappings {
+  struct FrameMappings {
     // 1D tensor of int64, each value is the PTS of a frame in timebase units.
     StableTensor all_frames;
     // 1D tensor of bool, each value indicates if the corresponding frame in
@@ -222,7 +222,7 @@ class __attribute__((visibility("hidden"))) SingleStreamDecoder {
     bool isKeyFrame = false;
   };
 
-  struct __attribute__((visibility("hidden"))) StreamInfo {
+  struct StreamInfo {
     int streamIndex = -1;
     AVStream* stream = nullptr;
     AVMediaType avMediaType = AVMEDIA_TYPE_UNKNOWN;
