@@ -183,8 +183,7 @@ TORCHCODEC_API void validateDeviceInterface(
     const std::string device,
     const std::string variant);
 
-TORCHCODEC_API std::unique_ptr<DeviceInterface>
-createDeviceInterface(
+TORCHCODEC_API std::unique_ptr<DeviceInterface> createDeviceInterface(
     const StableDevice& device,
     const std::string_view variant = "ffmpeg");
 
