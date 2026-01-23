@@ -43,6 +43,19 @@
 #define STABLE_CHECK(cond, ...) STD_TORCH_CHECK(cond, __VA_ARGS__)
 
 // ===========================================================================
+// Symbol Visibility Macro
+// ===========================================================================
+// Cross-platform macro for symbol visibility (replaces TORCH_API).
+// On Windows, uses __declspec(dllexport).
+// On GCC/Clang, uses __attribute__((visibility("default"))).
+
+#ifdef _WIN32
+#define TORCHCODEC_API __declspec(dllexport)
+#else
+#define TORCHCODEC_API __attribute__((visibility("default")))
+#endif
+
+// ===========================================================================
 // Type Aliases
 // ===========================================================================
 // Convenient aliases for stable ABI types

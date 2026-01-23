@@ -175,15 +175,15 @@ class DeviceInterface {
 using CreateDeviceInterfaceFn =
     std::function<DeviceInterface*(const StableDevice& device)>;
 
-__attribute__((visibility("default"))) bool registerDeviceInterface(
+TORCHCODEC_API bool registerDeviceInterface(
     const DeviceInterfaceKey& key,
     const CreateDeviceInterfaceFn createInterface);
 
-__attribute__((visibility("default"))) void validateDeviceInterface(
+TORCHCODEC_API void validateDeviceInterface(
     const std::string device,
     const std::string variant);
 
-__attribute__((visibility("default"))) std::unique_ptr<DeviceInterface>
+TORCHCODEC_API std::unique_ptr<DeviceInterface>
 createDeviceInterface(
     const StableDevice& device,
     const std::string_view variant = "ffmpeg");

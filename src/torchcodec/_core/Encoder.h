@@ -12,17 +12,17 @@ extern "C" {
 }
 
 namespace facebook::torchcodec {
-class __attribute__((visibility("default"))) AudioEncoder {
+class TORCHCODEC_API AudioEncoder {
  public:
   ~AudioEncoder();
 
-  __attribute__((visibility("default"))) AudioEncoder(
+  TORCHCODEC_API AudioEncoder(
       const StableTensor& samples,
       int sampleRate,
       std::string_view fileName,
       const AudioStreamOptions& audioStreamOptions);
 
-  __attribute__((visibility("default"))) AudioEncoder(
+  TORCHCODEC_API AudioEncoder(
       const StableTensor& samples,
       int sampleRate,
       std::string_view formatName,
@@ -127,7 +127,7 @@ class __attribute__((visibility("default"))) AudioEncoder {
 //
 /* clang-format on */
 
-class __attribute__((visibility("default"))) VideoEncoder {
+class TORCHCODEC_API VideoEncoder {
  public:
   ~VideoEncoder();
 
@@ -141,13 +141,13 @@ class __attribute__((visibility("default"))) VideoEncoder {
   VideoEncoder(VideoEncoder&&) = delete;
   VideoEncoder& operator=(VideoEncoder&&) = delete;
 
-  __attribute__((visibility("default"))) VideoEncoder(
+  TORCHCODEC_API VideoEncoder(
       const StableTensor& frames,
       double frameRate,
       std::string_view fileName,
       const VideoStreamOptions& videoStreamOptions);
 
-  __attribute__((visibility("default"))) VideoEncoder(
+  TORCHCODEC_API VideoEncoder(
       const StableTensor& frames,
       double frameRate,
       std::string_view formatName,

@@ -25,14 +25,14 @@ namespace facebook::torchcodec {
 // The SingleStreamDecoder class can be used to decode video frames to Tensors.
 // Note that SingleStreamDecoder is not thread-safe.
 // Do not call non-const APIs concurrently on the same object.
-class __attribute__((visibility("default"))) SingleStreamDecoder {
+class TORCHCODEC_API SingleStreamDecoder {
  public:
   // --------------------------------------------------------------------------
   // CONSTRUCTION API
   // --------------------------------------------------------------------------
 
   // Creates a SingleStreamDecoder from the video at videoFilePath.
-  __attribute__((visibility("default"))) explicit SingleStreamDecoder(
+  TORCHCODEC_API explicit SingleStreamDecoder(
       const std::string& videoFilePath,
       SeekMode seekMode = SeekMode::exact);
 
@@ -40,7 +40,7 @@ class __attribute__((visibility("default"))) SingleStreamDecoder {
   // AVIOContextHolder. The AVIOContextHolder is the base class, and the
   // derived class will have specialized how the custom read, seek and writes
   // work.
-  __attribute__((visibility("default"))) explicit SingleStreamDecoder(
+  TORCHCODEC_API explicit SingleStreamDecoder(
       std::unique_ptr<AVIOContextHolder> context,
       SeekMode seekMode = SeekMode::exact);
 
