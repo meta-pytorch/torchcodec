@@ -367,6 +367,7 @@ class VideoDecoder:
         data, pts_seconds, duration_seconds = core.get_frames_at_indices(
             self._decoder, frame_indices=indices
         )
+
         return FrameBatch(
             data=data,
             pts_seconds=pts_seconds,
@@ -389,17 +390,13 @@ class VideoDecoder:
         """
         # Adjust start / stop indices to enable indexing semantics, ex. [-10, 1000] returns the last 10 frames
         start, stop, step = slice(start, stop, step).indices(self._num_frames)
-        data, pts_seconds, duration_seconds = core.get_frames_in_range(
+        frames = core.get_frames_in_range(
             self._decoder,
             start=start,
             stop=stop,
             step=step,
         )
-        return FrameBatch(
-            data=data,
-            pts_seconds=pts_seconds,
-            duration_seconds=duration_seconds,
-        )
+        return FrameBatch(*frames)
 
     def get_frame_played_at(self, seconds: float) -> Frame:
         """Return a single frame played at the given timestamp in seconds.
@@ -486,16 +483,12 @@ class VideoDecoder:
                 f"Invalid stop seconds: {stop_seconds}. "
                 f"It must be less than or equal to {self._end_stream_seconds}."
             )
-        data, pts_seconds, duration_seconds = core.get_frames_by_pts_in_range(
+        frames = core.get_frames_by_pts_in_range(
             self._decoder,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
         )
-        return FrameBatch(
-            data=data,
-            pts_seconds=pts_seconds,
-            duration_seconds=duration_seconds,
-        )
+        return FrameBatch(*frames)
 
 
 def _get_and_validate_stream_metadata(
