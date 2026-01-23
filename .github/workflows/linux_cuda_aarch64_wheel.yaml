@@ -58,58 +58,20 @@ jobs:
       build-command: "BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1 ENABLE_CUDA=1 python -m build --wheel -vvv --no-isolation"
 
   install-and-test:
-    runs-on: linux.arm64.2xlarge
-    container:
-      image: pytorch/manylinuxaarch64-builder:cuda12.6
-    env:
-      cuda_version_without_periods: "126"
+    needs: build
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.10']
         ffmpeg-version-for-tests: ['4.4.2', '5.1.2', '6.1.1', '7.0.1', '8.0']
-    needs: build
-    steps:
-      - name: Check out repo
-        uses: actions/checkout@v3
-
-      - name: Remove src/ folder
-        run: bash packaging/remove_src.sh
-
-      - name: Setup conda env
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          auto-update-conda: true
-          # Using miniforge instead of miniconda ensures that the default
-          # conda channel is conda-forge instead of main/default. This ensures
-          # ABI consistency between dependencies:
-          # https://conda-forge.org/docs/user/transitioning_from_defaults/
-          miniforge-version: latest
-          activate-environment: test
-          python-version: ${{ matrix.python-version }}
-
-      - name: Update pip
-        run: ${CONDA_RUN} python -m pip install --upgrade pip
-
-      - name: Install PyTorch
-        run: ${CONDA_RUN} bash packaging/install_pytorch.sh cu${{ env.cuda_version_without_periods }} "torch torchvision"
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cu${{ env.cuda_version_without_periods }}_aarch64
-          path: dist/
-
-      - name: Install torchcodec from the wheel
-        run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}*.whl"
-
-      - name: Install ffmpeg
-        run: ${CONDA_RUN} bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
-
-      - name: Set LD_LIBRARY_PATH
-        run: echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
-
-      - name: Install test dependencies
-        run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh
-
-      - name: Run Python tests
-        run: ${CONDA_RUN} pytest --override-ini="addopts=-v" test
+    uses: ./.github/workflows/_test-wheel-cuda.yaml
+    with:
+      runner: linux.arm64.2xlarge
+      container-image: pytorch/manylinuxaarch64-builder:cuda12.6
+      python-version: ${{ matrix.python-version }}
+      cuda-version: '12.6'
+      ffmpeg-version: ${{ matrix.ffmpeg-version-for-tests }}
+      artifact-name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cu126_aarch64
+      wheel-pattern: "*cu126*.whl"
+      run-benchmarks: false
+      use-pytorch-test-infra-miniconda: false

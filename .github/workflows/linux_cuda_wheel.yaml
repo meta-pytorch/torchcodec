@@ -57,7 +57,7 @@ jobs:
       build-command: "BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1 ENABLE_CUDA=1 python -m build --wheel -vvv --no-isolation"
 
   install-and-test:
-    runs-on: linux.g5.4xlarge.nvidia.gpu
+    needs: build
     strategy:
       fail-fast: false
       matrix:
@@ -72,67 +72,17 @@ jobs:
         cuda-version: ['12.6', '13.0']
         # TODO: put back ffmpeg 5 https://github.com/pytorch/torchcodec/issues/325
         ffmpeg-version-for-tests: ['4.4.2', '6', '7', '8.0']
-
-    container:
-      image: "pytorch/manylinux2_28-builder:cuda${{ matrix.cuda-version }}"
-      options: "--gpus all -e NVIDIA_DRIVER_CAPABILITIES=video,compute,utility"
-    needs: build
-    steps:
-      - name: Setup env vars
-        run: |
-          cuda_version_without_periods=$(echo "${{ matrix.cuda-version }}" | sed 's/\.//g')
-          echo cuda_version_without_periods=${cuda_version_without_periods} >> $GITHUB_ENV
-          python_version_without_periods=$(echo "${{ matrix.python-version }}" | sed 's/\.//g')
-          echo python_version_without_periods=${python_version_without_periods} >> $GITHUB_ENV
-
-      - name: Check out repo
-        uses: actions/checkout@v3
-
-      - name: Remove src/ folder
-        run: bash packaging/remove_src.sh
-
-      - name: Setup miniconda using test-infra
-        uses: pytorch/test-infra/.github/actions/setup-miniconda@main
-        with:
-          python-version: ${{ matrix.python-version }}
-          default-packages: "nvidia/label/cuda-${{ matrix.cuda-version }}.0::libnpp nvidia::cuda-nvrtc=${{ matrix.cuda-version }} nvidia::cuda-toolkit=${{ matrix.cuda-version }} nvidia::cuda-cudart=${{ matrix.cuda-version }} nvidia::cuda-driver-dev=${{ matrix.cuda-version }}"
-
-      - name: Check conda environment
-        run: |
-          ${CONDA_RUN} env
-          ${CONDA_RUN} conda info
-          ${CONDA_RUN} nvidia-smi
-          ${CONDA_RUN} conda list
-
-      - name: Install ffmpeg
-        run: |
-          ${CONDA_RUN} bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
-
-      - name: Set LD_LIBRARY_PATH
-        run: echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
-      - name: Update pip
-        run: ${CONDA_RUN} python -m pip install --upgrade pip
-      - name: Install PyTorch
-        run: |
-          ${CONDA_RUN} bash packaging/install_pytorch.sh cu${{ env.cuda_version_without_periods }} "torch torchvision"
-          ${CONDA_RUN} python -c 'import torch; print(f"{torch.__version__}"); print(f"{torch.__file__}"); print(f"{torch.cuda.is_available()=}")'
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cu${{ env.cuda_version_without_periods }}_x86_64
-          path: dist/
-
-      - name: Install torchcodec from the wheel
-        run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}-cp${{ env.python_version_without_periods }}*.whl"
-
-      - name: Install test dependencies
-        run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh
-      - name: Run Python tests
-        run: |
-          ${CONDA_RUN} FAIL_WITHOUT_CUDA=1 pytest --override-ini="addopts=-v" test --tb=short
-      - name: Run Python benchmark
-        run: |
-          ${CONDA_RUN} time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none
+    uses: ./.github/workflows/_test-wheel-cuda.yaml
+    with:
+      runner: linux.g5.4xlarge.nvidia.gpu
+      container-image: pytorch/manylinux2_28-builder:cuda${{ matrix.cuda-version }}
+      python-version: ${{ matrix.python-version }}
+      cuda-version: ${{ matrix.cuda-version }}
+      ffmpeg-version: ${{ matrix.ffmpeg-version-for-tests }}
+      artifact-name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cu${{ matrix.cuda-version == '12.6' && '126' || matrix.cuda-version == '12.8' && '128' || matrix.cuda-version == '13.0' && '130' }}_x86_64
+      wheel-pattern: "*cu${{ matrix.cuda-version == '12.6' && '126' || matrix.cuda-version == '12.8' && '128' || matrix.cuda-version == '13.0' && '130' }}-cp${{ matrix.python-version == '3.10' && '310' || matrix.python-version == '3.11' && '311' || matrix.python-version == '3.12' && '312' || matrix.python-version == '3.13' && '313' }}*.whl"
+      run-benchmarks: true
+      use-pytorch-test-infra-miniconda: true
 
   build-docs:
     runs-on: linux.4xlarge.nvidia.gpu

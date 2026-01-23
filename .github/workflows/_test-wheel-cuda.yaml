@@ -1,0 +1,116 @@
+name: Test CUDA Wheel (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        required: true
+        type: string
+        description: "Runner to use (e.g., linux.g5.4xlarge.nvidia.gpu)"
+      container-image:
+        required: true
+        type: string
+        description: "Container image to use (e.g., pytorch/manylinux2_28-builder:cuda12.6)"
+      python-version:
+        required: true
+        type: string
+        description: "Python version (e.g., '3.10')"
+      cuda-version:
+        required: true
+        type: string
+        description: "CUDA version (e.g., '12.6')"
+      ffmpeg-version:
+        required: true
+        type: string
+        description: "FFmpeg version for testing (e.g., '7.0.1')"
+      artifact-name:
+        required: true
+        type: string
+        description: "Name of the wheel artifact to download"
+      wheel-pattern:
+        required: true
+        type: string
+        description: "Pattern to match the wheel file (e.g., '*cu126*.whl')"
+      run-benchmarks:
+        required: false
+        type: boolean
+        default: false
+        description: "Whether to run GPU benchmarks after tests"
+      use-pytorch-test-infra-miniconda:
+        required: false
+        type: boolean
+        default: false
+        description: "Use pytorch/test-infra miniconda setup instead of conda-incubator"
+
+defaults:
+  run:
+    shell: bash -l -eo pipefail {0}
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runner }}
+    container:
+      image: ${{ inputs.container-image }}
+      options: "--gpus all -e NVIDIA_DRIVER_CAPABILITIES=video,compute,utility"
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v3
+
+      - name: Remove src/ folder
+        run: bash packaging/remove_src.sh
+
+      - name: Setup miniconda using test-infra
+        if: ${{ inputs.use-pytorch-test-infra-miniconda }}
+        uses: pytorch/test-infra/.github/actions/setup-miniconda@main
+        with:
+          python-version: ${{ inputs.python-version }}
+          default-packages: "nvidia/label/cuda-${{ inputs.cuda-version }}.0::libnpp nvidia::cuda-nvrtc=${{ inputs.cuda-version }} nvidia::cuda-toolkit=${{ inputs.cuda-version }} nvidia::cuda-cudart=${{ inputs.cuda-version }} nvidia::cuda-driver-dev=${{ inputs.cuda-version }}"
+
+      - name: Setup conda env
+        if: ${{ !inputs.use-pytorch-test-infra-miniconda }}
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          miniforge-version: latest
+          activate-environment: test
+          python-version: ${{ inputs.python-version }}
+
+      - name: Check conda environment
+        run: |
+          ${CONDA_RUN} env
+          ${CONDA_RUN} conda info
+          ${CONDA_RUN} nvidia-smi
+          ${CONDA_RUN} conda list
+
+      - name: Update pip
+        run: ${CONDA_RUN} python -m pip install --upgrade pip
+
+      - name: Install PyTorch
+        run: |
+          cuda_version_without_periods=$(echo "${{ inputs.cuda-version }}" | sed 's/\.//g')
+          ${CONDA_RUN} bash packaging/install_pytorch.sh cu${cuda_version_without_periods} "torch torchvision"
+          ${CONDA_RUN} python -c 'import torch; print(f"{torch.__version__}"); print(f"{torch.__file__}"); print(f"{torch.cuda.is_available()=}")'
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: dist/
+
+      - name: Install torchcodec from the wheel
+        run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "${{ inputs.wheel-pattern }}"
+
+      - name: Install ffmpeg
+        run: ${CONDA_RUN} bash packaging/install_ffmpeg.sh ${{ inputs.ffmpeg-version }}
+
+      - name: Set LD_LIBRARY_PATH
+        run: echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
+
+      - name: Install test dependencies
+        run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh
+
+      - name: Run Python tests
+        run: ${CONDA_RUN} FAIL_WITHOUT_CUDA=1 pytest --override-ini="addopts=-v" test --tb=short
+
+      - name: Run Python benchmark
+        if: ${{ inputs.run-benchmarks }}
+        run: ${CONDA_RUN} time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none
