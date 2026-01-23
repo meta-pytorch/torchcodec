@@ -33,8 +33,7 @@
 
 namespace facebook::torchcodec {
 
-class BetaCudaDeviceInterface
-    : public DeviceInterface {
+class BetaCudaDeviceInterface : public DeviceInterface {
  public:
   explicit BetaCudaDeviceInterface(const StableDevice& device);
   virtual ~BetaCudaDeviceInterface();

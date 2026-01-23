@@ -14,21 +14,21 @@
 // stable ABI API. It is designed to replace the standard PyTorch C++ APIs
 // (torch::, at::, c10::) with their stable ABI equivalents.
 //
-// Target PyTorch version: 2.10+
+// Target PyTorch version: 2.11+
 //
-
-// Note: We don't define TORCH_TARGET_VERSION, so TORCH_FEATURE_VERSION
-// will default to TORCH_ABI_VERSION from the installed PyTorch headers.
-// This ensures we use the same ABI version as the runtime.
+// Note: TORCH_TARGET_VERSION is set to 0x020b000000000000 (PyTorch 2.11) in
+// CMakeLists.txt. This ensures we only use stable ABI features available in
+// PyTorch 2.11+, providing forward compatibility when building against newer
+// PyTorch versions.
 
 // Include stable ABI headers
+#include <torch/csrc/stable/accelerator.h>
+#include <torch/csrc/stable/device.h>
 #include <torch/csrc/stable/library.h>
 #include <torch/csrc/stable/ops.h>
 #include <torch/csrc/stable/tensor.h>
-#include <torch/csrc/stable/device.h>
-#include <torch/csrc/stable/accelerator.h>
-#include <torch/headeronly/core/ScalarType.h>
 #include <torch/headeronly/core/DeviceType.h>
+#include <torch/headeronly/core/ScalarType.h>
 
 #include <array>
 #include <vector>
@@ -134,17 +134,16 @@ inline void stableCopy_(StableTensor& dst, const StableTensor& src) {
 }
 
 // Stable version of tensor.to(device)
-inline StableTensor stableTo(const StableTensor& tensor, const StableDevice& device) {
+inline StableTensor stableTo(
+    const StableTensor& tensor,
+    const StableDevice& device) {
   return torch::stable::to(tensor, device);
 }
 
 // Stable version of tensor.narrow(dim, start, length)
 // Note: torch::stable::narrow() requires non-const tensor reference
-inline StableTensor stableNarrow(
-    StableTensor tensor,
-    int64_t dim,
-    int64_t start,
-    int64_t length) {
+inline StableTensor
+stableNarrow(StableTensor tensor, int64_t dim, int64_t start, int64_t length) {
   return torch::stable::narrow(tensor, dim, start, length);
 }
 
@@ -162,7 +161,8 @@ inline StableTensor stablePermute(
   const auto num_args = 2;
   std::array<StableIValue, num_args> stack{
       torch::stable::detail::from(tensor),
-      torch::stable::detail::from(StableIntArrayRef(dimsVec.data(), dimsVec.size()))};
+      torch::stable::detail::from(
+          StableIntArrayRef(dimsVec.data(), dimsVec.size()))};
   TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
       "aten::permute", "", stack.data(), TORCH_ABI_VERSION));
   return torch::stable::detail::to<StableTensor>(stack[0]);
@@ -183,10 +183,9 @@ inline StableTensor stableCat(
     int64_t dim = 0) {
   const auto num_args = 2;
   std::array<StableIValue, num_args> stack{
-      torch::stable::detail::from(tensors),
-      torch::stable::detail::from(dim)};
-  TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
-      "aten::cat", "", stack.data(), TORCH_ABI_VERSION));
+      torch::stable::detail::from(tensors), torch::stable::detail::from(dim)};
+  TORCH_ERROR_CODE_CHECK(
+      torch_call_dispatcher("aten::cat", "", stack.data(), TORCH_ABI_VERSION));
   return torch::stable::detail::to<StableTensor>(stack[0]);
 }
 
@@ -198,10 +197,8 @@ inline bool stableIsContiguous(const StableTensor& tensor) {
 
 // Helper for tensor[index] - selects along a dimension
 // Uses torch::stable::select from PyTorch's stable ops
-inline StableTensor stableSelect(
-    const StableTensor& tensor,
-    int64_t dim,
-    int64_t index) {
+inline StableTensor
+stableSelect(const StableTensor& tensor, int64_t dim, int64_t index) {
   return torch::stable::select(tensor, dim, index);
 }
 

@@ -6,13 +6,13 @@
 
 #pragma once
 
-#include "StableABICompat.h"
 #include <functional>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include "FFMPEGCommon.h"
 #include "Frame.h"
+#include "StableABICompat.h"
 #include "StreamOptions.h"
 #include "Transform.h"
 
@@ -150,7 +150,8 @@ class DeviceInterface {
       [[maybe_unused]] const StableTensor& tensor,
       [[maybe_unused]] int frameIndex,
       [[maybe_unused]] AVCodecContext* codecContext) {
-    STABLE_CHECK(false, "convertCUDATensorToAVFrameForEncoding not implemented");
+    STABLE_CHECK(
+        false, "convertCUDATensorToAVFrameForEncoding not implemented");
   }
 
   // Function used for video encoding, only implemented in CudaDeviceInterface.

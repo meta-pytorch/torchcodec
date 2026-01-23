@@ -22,7 +22,7 @@ bool loadNVCUVIDLibrary() {
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
 
-#include <torch/types.h>
+#include "StableABICompat.h"
 #include <cstdio>
 #include <mutex>
 
@@ -213,7 +213,7 @@ extern "C" {
 CUresult CUDAAPI cuvidCreateVideoParser(
     CUvideoparser* videoParser,
     CUVIDPARSERPARAMS* parserParams) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       facebook::torchcodec::dl_cuvidCreateVideoParser,
       "cuvidCreateVideoParser called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidCreateVideoParser(
@@ -223,21 +223,21 @@ CUresult CUDAAPI cuvidCreateVideoParser(
 CUresult CUDAAPI cuvidParseVideoData(
     CUvideoparser videoParser,
     CUVIDSOURCEDATAPACKET* cuvidPacket) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       facebook::torchcodec::dl_cuvidParseVideoData,
       "cuvidParseVideoData called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidParseVideoData(videoParser, cuvidPacket);
 }
 
 CUresult CUDAAPI cuvidDestroyVideoParser(CUvideoparser videoParser) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       facebook::torchcodec::dl_cuvidDestroyVideoParser,
       "cuvidDestroyVideoParser called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidDestroyVideoParser(videoParser);
 }
 
 CUresult CUDAAPI cuvidGetDecoderCaps(CUVIDDECODECAPS* caps) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       facebook::torchcodec::dl_cuvidGetDecoderCaps,
       "cuvidGetDecoderCaps called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidGetDecoderCaps(caps);
@@ -246,14 +246,14 @@ CUresult CUDAAPI cuvidGetDecoderCaps(CUVIDDECODECAPS* caps) {
 CUresult CUDAAPI cuvidCreateDecoder(
     CUvideodecoder* decoder,
     CUVIDDECODECREATEINFO* decoderParams) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       facebook::torchcodec::dl_cuvidCreateDecoder,
       "cuvidCreateDecoder called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidCreateDecoder(decoder, decoderParams);
 }
 
 CUresult CUDAAPI cuvidDestroyDecoder(CUvideodecoder decoder) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       facebook::torchcodec::dl_cuvidDestroyDecoder,
       "cuvidDestroyDecoder called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidDestroyDecoder(decoder);
@@ -261,7 +261,7 @@ CUresult CUDAAPI cuvidDestroyDecoder(CUvideodecoder decoder) {
 
 CUresult CUDAAPI
 cuvidDecodePicture(CUvideodecoder decoder, CUVIDPICPARAMS* picParams) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       facebook::torchcodec::dl_cuvidDecodePicture,
       "cuvidDecodePicture called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidDecodePicture(decoder, picParams);
@@ -278,7 +278,7 @@ CUresult CUDAAPI cuvidMapVideoFrame(
     unsigned int* framePtr,
     unsigned int* pitch,
     CUVIDPROCPARAMS* procParams) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       facebook::torchcodec::dl_cuvidMapVideoFrame,
       "cuvidMapVideoFrame called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidMapVideoFrame(
@@ -287,7 +287,7 @@ CUresult CUDAAPI cuvidMapVideoFrame(
 
 CUresult CUDAAPI
 cuvidUnmapVideoFrame(CUvideodecoder decoder, unsigned int framePtr) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       facebook::torchcodec::dl_cuvidUnmapVideoFrame,
       "cuvidUnmapVideoFrame called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidUnmapVideoFrame(decoder, framePtr);
@@ -300,7 +300,7 @@ CUresult CUDAAPI cuvidMapVideoFrame64(
     unsigned long long* framePtr,
     unsigned int* pitch,
     CUVIDPROCPARAMS* procParams) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       facebook::torchcodec::dl_cuvidMapVideoFrame64,
       "cuvidMapVideoFrame64 called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidMapVideoFrame64(
@@ -309,7 +309,7 @@ CUresult CUDAAPI cuvidMapVideoFrame64(
 
 CUresult CUDAAPI
 cuvidUnmapVideoFrame64(CUvideodecoder decoder, unsigned long long framePtr) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       facebook::torchcodec::dl_cuvidUnmapVideoFrame64,
       "cuvidUnmapVideoFrame64 called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidUnmapVideoFrame64(decoder, framePtr);

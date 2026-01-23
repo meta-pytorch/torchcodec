@@ -86,11 +86,11 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
 namespace {
 
 // Global registry for managing decoder lifetime.
-// Since stable ABI's from_blob doesn't support deleters, we store the unique_ptr
-// in this map and use the raw pointer value in the tensor. Cleanup happens when
-// the registry entry is explicitly removed or when the process exits.
-// Note: This map is not thread-safe; concurrent decoder creation/destruction
-// from multiple threads is not supported.
+// Since stable ABI's from_blob doesn't support deleters, we store the
+// unique_ptr in this map and use the raw pointer value in the tensor. Cleanup
+// happens when the registry entry is explicitly removed or when the process
+// exits. Note: This map is not thread-safe; concurrent decoder
+// creation/destruction from multiple threads is not supported.
 std::unordered_map<SingleStreamDecoder*, std::unique_ptr<SingleStreamDecoder>>
     g_decoder_registry;
 
@@ -102,7 +102,8 @@ StableTensor wrapDecoderPointerToTensor(
   g_decoder_registry[decoder] = std::move(uniqueDecoder);
 
   // Create a tensor containing the pointer value
-  StableTensor tensor = stableEmpty({1}, kStableInt64, StableDevice(kStableCPU));
+  StableTensor tensor =
+      stableEmpty({1}, kStableInt64, StableDevice(kStableCPU));
   *tensor.mutable_data_ptr<int64_t>() = reinterpret_cast<int64_t>(decoder);
 
   return tensor;
@@ -113,7 +114,8 @@ SingleStreamDecoder* unwrapTensorToGetDecoder(StableTensor& tensor) {
       stableIsContiguous(tensor),
       "fake decoder tensor must be contiguous! This is an internal error, please report on the torchcodec issue tracker.");
   int64_t ptrValue = *tensor.const_data_ptr<int64_t>();
-  SingleStreamDecoder* decoder = reinterpret_cast<SingleStreamDecoder*>(ptrValue);
+  SingleStreamDecoder* decoder =
+      reinterpret_cast<SingleStreamDecoder*>(ptrValue);
   return decoder;
 }
 
@@ -121,7 +123,8 @@ SingleStreamDecoder* unwrapTensorToGetDecoder(StableTensor& tensor) {
 // This must be called to avoid memory leaks.
 void destroyDecoder(StableTensor& tensor) {
   int64_t ptrValue = *tensor.const_data_ptr<int64_t>();
-  SingleStreamDecoder* decoder = reinterpret_cast<SingleStreamDecoder*>(ptrValue);
+  SingleStreamDecoder* decoder =
+      reinterpret_cast<SingleStreamDecoder*>(ptrValue);
   auto it = g_decoder_registry.find(decoder);
   if (it != g_decoder_registry.end()) {
     g_decoder_registry.erase(it);
@@ -152,7 +155,8 @@ OpsFrameOutput makeOpsFrameOutput(FrameOutput& frame) {
 //   float.
 //   3. Tensor of N durationis in seconds, where each duration is a
 //   single float.
-using OpsFrameBatchOutput = std::tuple<StableTensor, StableTensor, StableTensor>;
+using OpsFrameBatchOutput =
+    std::tuple<StableTensor, StableTensor, StableTensor>;
 
 OpsFrameBatchOutput makeOpsFrameBatchOutput(FrameBatchOutput& batch) {
   return std::make_tuple(batch.data, batch.ptsSeconds, batch.durationSeconds);
@@ -166,8 +170,7 @@ using OpsAudioFramesOutput = std::tuple<StableTensor, StableTensor>;
 
 OpsAudioFramesOutput makeOpsAudioFramesOutput(AudioFramesOutput& audioFrames) {
   return std::make_tuple(
-      audioFrames.data,
-      stableScalarTensor(audioFrames.ptsSeconds));
+      audioFrames.data, stableScalarTensor(audioFrames.ptsSeconds));
 }
 
 std::string quoteValue(const std::string& value) {
@@ -387,7 +390,8 @@ StableTensor create_from_file(
 StableTensor create_from_tensor(
     StableTensor video_tensor,
     std::optional<std::string> seek_mode = std::nullopt) {
-  STABLE_CHECK(stableIsContiguous(video_tensor), "video_tensor must be contiguous");
+  STABLE_CHECK(
+      stableIsContiguous(video_tensor), "video_tensor must be contiguous");
   STABLE_CHECK(
       video_tensor.scalar_type() == kStableUInt8,
       "video_tensor must be kUInt8");
@@ -435,7 +439,8 @@ void _add_video_stream(
     std::string device_variant = "ffmpeg",
     std::string transform_specs = "",
     std::optional<StableTensor> custom_frame_mappings_all_frames = std::nullopt,
-    std::optional<StableTensor> custom_frame_mappings_is_key_frame = std::nullopt,
+    std::optional<StableTensor> custom_frame_mappings_is_key_frame =
+        std::nullopt,
     std::optional<StableTensor> custom_frame_mappings_duration = std::nullopt,
     std::optional<std::string> color_conversion_library = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
@@ -443,7 +448,9 @@ void _add_video_stream(
 
   if (dimension_order.has_value()) {
     std::string stdDimensionOrder{dimension_order.value()};
-    STABLE_CHECK(stdDimensionOrder == "NHWC" || stdDimensionOrder == "NCHW", "dimension_order must be NHWC or NCHW");
+    STABLE_CHECK(
+        stdDimensionOrder == "NHWC" || stdDimensionOrder == "NCHW",
+        "dimension_order must be NHWC or NCHW");
     videoStreamOptions.dimensionOrder = stdDimensionOrder;
   }
   if (color_conversion_library.has_value()) {
@@ -458,7 +465,7 @@ void _add_video_stream(
       STABLE_CHECK(
           false,
           "Invalid color_conversion_library=" + stdColorConversionLibrary +
-          ". color_conversion_library must be either filtergraph or swscale.");
+              ". color_conversion_library must be either filtergraph or swscale.");
     }
   }
 
@@ -500,7 +507,8 @@ void add_video_stream(
     std::string device_variant = "ffmpeg",
     std::string transform_specs = "",
     std::optional<StableTensor> custom_frame_mappings_all_frames = std::nullopt,
-    std::optional<StableTensor> custom_frame_mappings_is_key_frame = std::nullopt,
+    std::optional<StableTensor> custom_frame_mappings_is_key_frame =
+        std::nullopt,
     std::optional<StableTensor> custom_frame_mappings_duration = std::nullopt) {
   _add_video_stream(
       decoder,
@@ -1111,7 +1119,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("get_next_frame", TORCH_BOX(&get_next_frame));
   m.impl("_get_key_frame_indices", TORCH_BOX(&_get_key_frame_indices));
   m.impl("get_json_metadata", TORCH_BOX(&get_json_metadata));
-  m.impl("get_container_json_metadata", TORCH_BOX(&get_container_json_metadata));
+  m.impl(
+      "get_container_json_metadata", TORCH_BOX(&get_container_json_metadata));
   m.impl("get_stream_json_metadata", TORCH_BOX(&get_stream_json_metadata));
   m.impl("get_frame_at_pts", TORCH_BOX(&get_frame_at_pts));
   m.impl("get_frame_at_index", TORCH_BOX(&get_frame_at_index));

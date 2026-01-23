@@ -43,6 +43,13 @@ function(make_torchcodec_sublibrary
 
     add_library(${library_name} ${type} ${sources})
     set_target_properties(${library_name} PROPERTIES CXX_STANDARD 17)
+
+    # Add pybind11 include dirs BEFORE torch to ensure system pybind11 is used
+    # instead of PyTorch's bundled version (which has restrictions with stable ABI).
+    target_include_directories(${library_name}
+        BEFORE PRIVATE
+        ${pybind11_INCLUDE_DIRS}
+    )
     target_include_directories(${library_name}
         PRIVATE
         ./../../../
@@ -72,6 +79,15 @@ function(make_torchcodec_sublibrary
         ${library_name}
         PUBLIC
         ${library_dependencies}
+    )
+
+    # Set PyTorch stable ABI target version to 2.11 for ALL libraries.
+    # This ensures we only use stable ABI features available in PyTorch 2.11+,
+    # providing forward compatibility when building against newer PyTorch versions.
+    # Format: 0x MAJOR(2) MINOR(2) PATCH(2) TWEAK(2) zeros(8)
+    # 0x020b000000000000 = 2.11.0.0
+    target_compile_definitions(${library_name} PRIVATE
+        TORCH_TARGET_VERSION=0x020b000000000000
     )
 
 endfunction()

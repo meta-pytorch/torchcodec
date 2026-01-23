@@ -6,9 +6,9 @@
 
 #pragma once
 
-#include "StableABICompat.h"
 #include <memory>
 #include <mutex>
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 

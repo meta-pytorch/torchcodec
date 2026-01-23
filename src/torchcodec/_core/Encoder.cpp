@@ -330,7 +330,8 @@ void AudioEncoder::encode() {
 
     numEncodedSamples += numSamplesToEncode;
   }
-  STABLE_CHECK(numEncodedSamples == numSamples, "Hmmmmmm something went wrong.");
+  STABLE_CHECK(
+      numEncodedSamples == numSamples, "Hmmmmmm something went wrong.");
 
   flushBuffers();
 

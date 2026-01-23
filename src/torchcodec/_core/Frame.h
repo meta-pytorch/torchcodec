@@ -6,9 +6,9 @@
 
 #pragma once
 
-#include "StableABICompat.h"
 #include "FFMPEGCommon.h"
 #include "Metadata.h"
+#include "StableABICompat.h"
 #include "StreamOptions.h"
 
 namespace facebook::torchcodec {

@@ -7,9 +7,9 @@
 // Enable CUDA-specific functions in PyTorch stable ABI headers
 #define USE_CUDA 1
 
-#include "StableABICompat.h"
 #include <mutex>
 #include <vector>
+#include "StableABICompat.h"
 
 #include "BetaCudaDeviceInterface.h"
 

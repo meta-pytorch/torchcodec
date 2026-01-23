@@ -399,8 +399,8 @@ StableTensor SingleStreamDecoder::getKeyFrameIndices() {
 
   const std::vector<FrameInfo>& keyFrames =
       streamInfos_[activeStreamIndex_].keyFrames;
-  StableTensor keyFrameIndices =
-      stableEmpty({static_cast<int64_t>(keyFrames.size())}, kStableInt64, kStableCPU);
+  StableTensor keyFrameIndices = stableEmpty(
+      {static_cast<int64_t>(keyFrames.size())}, kStableInt64, kStableCPU);
   int64_t* keyFrameIndicesData = keyFrameIndices.mutable_data_ptr<int64_t>();
   for (size_t i = 0; i < keyFrames.size(); ++i) {
     keyFrameIndicesData[i] = keyFrames[i].frameIndex;
@@ -692,16 +692,21 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     auto indexInOutput = indicesAreSorted ? f : argsort[f];
     auto indexInVideo = frameIndicesData[indexInOutput];
 
-    double* ptsSecondsData = frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
-    double* durationSecondsData = frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
+    double* ptsSecondsData =
+        frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
+    double* durationSecondsData =
+        frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
     if ((f > 0) && (indexInVideo == previousIndexInVideo)) {
       // Avoid decoding the same frame twice
       auto previousIndexInOutput = indicesAreSorted ? f - 1 : argsort[f - 1];
-      StableTensor currentFrame = stableSelect(frameBatchOutput.data, 0, indexInOutput);
-      StableTensor previousFrame = stableSelect(frameBatchOutput.data, 0, previousIndexInOutput);
+      StableTensor currentFrame =
+          stableSelect(frameBatchOutput.data, 0, indexInOutput);
+      StableTensor previousFrame =
+          stableSelect(frameBatchOutput.data, 0, previousIndexInOutput);
       stableCopy_(currentFrame, previousFrame);
       ptsSecondsData[indexInOutput] = ptsSecondsData[previousIndexInOutput];
-      durationSecondsData[indexInOutput] = durationSecondsData[previousIndexInOutput];
+      durationSecondsData[indexInOutput] =
+          durationSecondsData[previousIndexInOutput];
     } else {
       FrameOutput frameOutput = getFrameAtIndexInternal(
           indexInVideo, stableSelect(frameBatchOutput.data, 0, indexInOutput));
@@ -746,8 +751,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
       resizedOutputDims_.value_or(metadataDims_),
       videoStreamOptions.device);
 
-  double* ptsSecondsData = frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
-  double* durationSecondsData = frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
+  double* ptsSecondsData =
+      frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
+  double* durationSecondsData =
+      frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
   for (int64_t i = start, f = 0; i < stop; i += step, ++f) {
     FrameOutput frameOutput =
         getFrameAtIndexInternal(i, stableSelect(frameBatchOutput.data, 0, f));
@@ -929,8 +936,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       numFrames,
       resizedOutputDims_.value_or(metadataDims_),
       videoStreamOptions.device);
-  double* ptsSecondsData = frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
-  double* durationSecondsData = frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
+  double* ptsSecondsData =
+      frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
+  double* durationSecondsData =
+      frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
   for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
     FrameOutput frameOutput =
         getFrameAtIndexInternal(i, stableSelect(frameBatchOutput.data, 0, f));
@@ -1013,7 +1022,8 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
   if (stopSecondsOptional.has_value() && startSeconds == *stopSecondsOptional) {
     // For consistency with video
     int numChannels = getNumChannels(streamInfo.codecContext);
-    return AudioFramesOutput{stableEmpty({numChannels, 0}, kStableFloat32, kStableCPU), 0.0};
+    return AudioFramesOutput{
+        stableEmpty({numChannels, 0}, kStableFloat32, kStableCPU), 0.0};
   }
 
   auto startPts = secondsToClosestPts(startSeconds, streamInfo.timeBase);
@@ -1068,7 +1078,9 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
       frames.size() > 0 && firstFramePtsSeconds.has_value(),
       "No audio frames were decoded. This is probably because start_seconds is too high(" +
           std::to_string(startSeconds) + "), or because stop_seconds(" +
-          (stopSecondsOptional.has_value() ? std::to_string(stopSecondsOptional.value()) : "nullopt") +
+          (stopSecondsOptional.has_value()
+               ? std::to_string(stopSecondsOptional.value())
+               : "nullopt") +
           ") is too low.");
 
   return AudioFramesOutput{stableCat(frames, 1), *firstFramePtsSeconds};
@@ -1337,8 +1349,7 @@ FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
 // so. The [N] leading batch-dimension is optional i.e. the input tensor can
 // be 3D or 4D. Calling permute() is guaranteed to return a view as per the
 // docs: https://pytorch.org/docs/stable/generated/torch.permute.html
-StableTensor SingleStreamDecoder::maybePermuteHWC2CHW(
-    StableTensor& hwcTensor) {
+StableTensor SingleStreamDecoder::maybePermuteHWC2CHW(StableTensor& hwcTensor) {
   if (streamInfos_[activeStreamIndex_].videoStreamOptions.dimensionOrder ==
       "NHWC") {
     return hwcTensor;
@@ -1346,14 +1357,18 @@ StableTensor SingleStreamDecoder::maybePermuteHWC2CHW(
   auto numDimensions = hwcTensor.dim();
   auto shape = hwcTensor.sizes();
   if (numDimensions == 3) {
-    STABLE_CHECK(shape[2] == 3, "Not a HWC tensor: " + intArrayRefToString(shape));
+    STABLE_CHECK(
+        shape[2] == 3, "Not a HWC tensor: " + intArrayRefToString(shape));
     return stablePermute(hwcTensor, {2, 0, 1});
   } else if (numDimensions == 4) {
-    STABLE_CHECK(shape[3] == 3, "Not a NHWC tensor: " + intArrayRefToString(shape));
+    STABLE_CHECK(
+        shape[3] == 3, "Not a NHWC tensor: " + intArrayRefToString(shape));
     return stablePermute(hwcTensor, {0, 3, 1, 2});
   } else {
     STABLE_CHECK(
-        false, "Expected tensor with 3 or 4 dimensions, got " + std::to_string(numDimensions));
+        false,
+        "Expected tensor with 3 or 4 dimensions, got " +
+            std::to_string(numDimensions));
   }
 }
 

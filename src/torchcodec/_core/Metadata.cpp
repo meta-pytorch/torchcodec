@@ -5,7 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "Metadata.h"
-#include "torch/types.h"
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -14,7 +14,7 @@ std::optional<double> StreamMetadata::getDurationSeconds(
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      TORCH_CHECK(
+      STABLE_CHECK(
           endStreamPtsSecondsFromContent.has_value() &&
               beginStreamPtsSecondsFromContent.has_value(),
           "Missing beginStreamPtsSecondsFromContent or endStreamPtsSecondsFromContent");
@@ -34,7 +34,7 @@ std::optional<double> StreamMetadata::getDurationSeconds(
       }
       return std::nullopt;
     default:
-      TORCH_CHECK(false, "Unknown SeekMode");
+      STABLE_CHECK(false, "Unknown SeekMode");
   }
 }
 
@@ -42,7 +42,7 @@ double StreamMetadata::getBeginStreamSeconds(SeekMode seekMode) const {
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      TORCH_CHECK(
+      STABLE_CHECK(
           beginStreamPtsSecondsFromContent.has_value(),
           "Missing beginStreamPtsSecondsFromContent");
       return beginStreamPtsSecondsFromContent.value();
@@ -52,7 +52,7 @@ double StreamMetadata::getBeginStreamSeconds(SeekMode seekMode) const {
       }
       return 0.0;
     default:
-      TORCH_CHECK(false, "Unknown SeekMode");
+      STABLE_CHECK(false, "Unknown SeekMode");
   }
 }
 
@@ -61,7 +61,7 @@ std::optional<double> StreamMetadata::getEndStreamSeconds(
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      TORCH_CHECK(
+      STABLE_CHECK(
           endStreamPtsSecondsFromContent.has_value(),
           "Missing endStreamPtsSecondsFromContent");
       return endStreamPtsSecondsFromContent.value();
@@ -71,7 +71,7 @@ std::optional<double> StreamMetadata::getEndStreamSeconds(
       }
       return getDurationSeconds(seekMode);
     default:
-      TORCH_CHECK(false, "Unknown SeekMode");
+      STABLE_CHECK(false, "Unknown SeekMode");
   }
 }
 
@@ -79,7 +79,7 @@ std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      TORCH_CHECK(
+      STABLE_CHECK(
           numFramesFromContent.has_value(), "Missing numFramesFromContent");
       return numFramesFromContent.value();
     case SeekMode::approximate: {
@@ -94,7 +94,7 @@ std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
       return std::nullopt;
     }
     default:
-      TORCH_CHECK(false, "Unknown SeekMode");
+      STABLE_CHECK(false, "Unknown SeekMode");
   }
 }
 
@@ -117,7 +117,7 @@ std::optional<double> StreamMetadata::getAverageFps(SeekMode seekMode) const {
     case SeekMode::approximate:
       return averageFpsFromHeader;
     default:
-      TORCH_CHECK(false, "Unknown SeekMode");
+      STABLE_CHECK(false, "Unknown SeekMode");
   }
 }
 

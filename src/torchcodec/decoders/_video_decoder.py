@@ -239,9 +239,15 @@ class VideoDecoder:
             device=device,
             device_variant=device_variant,
             transform_specs=transform_specs,
-            custom_frame_mappings_all_frames=custom_frame_mappings_data[0] if custom_frame_mappings_data else None,
-            custom_frame_mappings_is_key_frame=custom_frame_mappings_data[1] if custom_frame_mappings_data else None,
-            custom_frame_mappings_duration=custom_frame_mappings_data[2] if custom_frame_mappings_data else None,
+            custom_frame_mappings_all_frames=(
+                custom_frame_mappings_data[0] if custom_frame_mappings_data else None
+            ),
+            custom_frame_mappings_is_key_frame=(
+                custom_frame_mappings_data[1] if custom_frame_mappings_data else None
+            ),
+            custom_frame_mappings_duration=(
+                custom_frame_mappings_data[2] if custom_frame_mappings_data else None
+            ),
         )
 
         self._cpu_fallback = CpuFallbackStatus()

@@ -32,8 +32,7 @@ class __attribute__((visibility("default"))) SingleStreamDecoder {
   // --------------------------------------------------------------------------
 
   // Creates a SingleStreamDecoder from the video at videoFilePath.
-  __attribute__((visibility("default")))
-  explicit SingleStreamDecoder(
+  __attribute__((visibility("default"))) explicit SingleStreamDecoder(
       const std::string& videoFilePath,
       SeekMode seekMode = SeekMode::exact);
 
@@ -41,8 +40,7 @@ class __attribute__((visibility("default"))) SingleStreamDecoder {
   // AVIOContextHolder. The AVIOContextHolder is the base class, and the
   // derived class will have specialized how the custom read, seek and writes
   // work.
-  __attribute__((visibility("default")))
-  explicit SingleStreamDecoder(
+  __attribute__((visibility("default"))) explicit SingleStreamDecoder(
       std::unique_ptr<AVIOContextHolder> context,
       SeekMode seekMode = SeekMode::exact);
 

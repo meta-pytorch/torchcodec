@@ -5,8 +5,8 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "Transform.h"
-#include "StableABICompat.h"
 #include "FFMPEGCommon.h"
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -63,8 +63,10 @@ CropTransform::CropTransform(const FrameDims& dims) : outputDims_(dims) {}
 
 CropTransform::CropTransform(const FrameDims& dims, int x, int y)
     : outputDims_(dims), x_(x), y_(y) {
-  STABLE_CHECK(x >= 0, "Crop x position must be >= 0, got: " + std::to_string(x));
-  STABLE_CHECK(y >= 0, "Crop y position must be >= 0, got: " + std::to_string(y));
+  STABLE_CHECK(
+      x >= 0, "Crop x position must be >= 0, got: " + std::to_string(x));
+  STABLE_CHECK(
+      y >= 0, "Crop y position must be >= 0, got: " + std::to_string(y));
 }
 
 std::string CropTransform::getFilterGraphCpu() const {
@@ -85,11 +87,13 @@ void CropTransform::validate(const FrameDims& inputDims) const {
   STABLE_CHECK(
       outputDims_.height <= inputDims.height,
       "Crop output height (" + std::to_string(outputDims_.height) +
-          ") is greater than input height (" + std::to_string(inputDims.height) + ")");
+          ") is greater than input height (" +
+          std::to_string(inputDims.height) + ")");
   STABLE_CHECK(
       outputDims_.width <= inputDims.width,
       "Crop output width (" + std::to_string(outputDims_.width) +
-          ") is greater than input width (" + std::to_string(inputDims.width) + ")");
+          ") is greater than input width (" + std::to_string(inputDims.width) +
+          ")");
   STABLE_CHECK(
       x_.has_value() == y_.has_value(),
       "Crop x and y values must be both set or both unset");
@@ -97,19 +101,25 @@ void CropTransform::validate(const FrameDims& inputDims) const {
     STABLE_CHECK(
         x_.value() <= inputDims.width,
         "Crop x start position, " + std::to_string(x_.value()) +
-            ", out of bounds of input width, " + std::to_string(inputDims.width));
+            ", out of bounds of input width, " +
+            std::to_string(inputDims.width));
     STABLE_CHECK(
         x_.value() + outputDims_.width <= inputDims.width,
-        "Crop x end position, " + std::to_string(x_.value() + outputDims_.width) +
-            ", out of bounds of input width " + std::to_string(inputDims.width));
+        "Crop x end position, " +
+            std::to_string(x_.value() + outputDims_.width) +
+            ", out of bounds of input width " +
+            std::to_string(inputDims.width));
     STABLE_CHECK(
         y_.value() <= inputDims.height,
         "Crop y start position, " + std::to_string(y_.value()) +
-            ", out of bounds of input height, " + std::to_string(inputDims.height));
+            ", out of bounds of input height, " +
+            std::to_string(inputDims.height));
     STABLE_CHECK(
         y_.value() + outputDims_.height <= inputDims.height,
-        "Crop y end position, " + std::to_string(y_.value() + outputDims_.height) +
-            ", out of bounds of input height " + std::to_string(inputDims.height));
+        "Crop y end position, " +
+            std::to_string(y_.value() + outputDims_.height) +
+            ", out of bounds of input height " +
+            std::to_string(inputDims.height));
   }
 }
 

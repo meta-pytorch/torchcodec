@@ -16,9 +16,7 @@ namespace {
 
 static bool g_cuda = registerDeviceInterface(
     DeviceInterfaceKey(kStableCUDA),
-    [](const StableDevice& device) {
-      return new CudaDeviceInterface(device);
-    });
+    [](const StableDevice& device) { return new CudaDeviceInterface(device); });
 
 // We reuse cuda contexts across VideoDeoder instances. This is because
 // creating a cuda context is expensive. The cache mechanism is as follows:
@@ -509,8 +507,7 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
       "Expected 3D RGB tensor (CHW format), got shape with dim=" +
           std::to_string(tensor.dim()));
   STABLE_CHECK(
-      tensor.device().type() == kStableCUDA,
-      "Expected tensor on CUDA device");
+      tensor.device().type() == kStableCUDA, "Expected tensor on CUDA device");
 
   UniqueAVFrame avFrame(av_frame_alloc());
   STABLE_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
@@ -538,8 +535,7 @@ UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
       "avFrame must be pre-allocated with CUDA memory");
 
   // TODO VideoEncoder: Investigate ways to avoid this copy
-  StableTensor hwcFrame =
-      stableContiguous(stablePermute(tensor, {1, 2, 0}));
+  StableTensor hwcFrame = stableContiguous(stablePermute(tensor, {1, 2, 0}));
 
   NppiSize oSizeROI = {width, height};
   NppStatus status;

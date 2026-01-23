@@ -39,7 +39,8 @@ int read(void* opaque, uint8_t* buf, int buf_size) {
 
   std::memcpy(
       buf,
-      tensorContext->data.const_data_ptr<uint8_t>() + tensorContext->current_pos,
+      tensorContext->data.const_data_ptr<uint8_t>() +
+          tensorContext->current_pos,
       numBytesRead);
   tensorContext->current_pos += numBytesRead;
   return numBytesRead;
@@ -59,8 +60,7 @@ int write(void* opaque, const uint8_t* buf, int buf_size) {
 
     // We double the size of the outpout tensor. Calling stableCat() may not be
     // the most efficient, but it's simple.
-    tensorContext->data =
-        stableCat({tensorContext->data, tensorContext->data});
+    tensorContext->data = stableCat({tensorContext->data, tensorContext->data});
   }
 
   STABLE_CHECK(
@@ -104,15 +104,17 @@ AVIOFromTensorContext::AVIOFromTensorContext(StableTensor data)
     : tensorContext_{data, 0, 0} {
   STABLE_CHECK(data.numel() > 0, "data must not be empty");
   STABLE_CHECK(stableIsContiguous(data), "data must be contiguous");
-  STABLE_CHECK(
-      data.scalar_type() == kStableUInt8, "data must be kUInt8");
+  STABLE_CHECK(data.scalar_type() == kStableUInt8, "data must be kUInt8");
   createAVIOContext(
       &read, nullptr, &seek, &tensorContext_, /*isForWriting=*/false);
 }
 
 AVIOToTensorContext::AVIOToTensorContext()
     : tensorContext_{
-          stableEmpty({INITIAL_TENSOR_SIZE}, kStableUInt8, StableDevice(kStableCPU)),
+          stableEmpty(
+              {INITIAL_TENSOR_SIZE},
+              kStableUInt8,
+              StableDevice(kStableCPU)),
           0,
           0} {
   createAVIOContext(
@@ -121,7 +123,10 @@ AVIOToTensorContext::AVIOToTensorContext()
 
 StableTensor AVIOToTensorContext::getOutputTensor() {
   return stableNarrow(
-      tensorContext_.data, /*dim=*/0, /*start=*/0, /*length=*/tensorContext_.max_pos);
+      tensorContext_.data,
+      /*dim=*/0,
+      /*start=*/0,
+      /*length=*/tensorContext_.max_pos);
 }
 
 } // namespace facebook::torchcodec

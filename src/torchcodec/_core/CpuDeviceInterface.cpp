@@ -18,8 +18,7 @@ static bool g_cpu = registerDeviceInterface(
 CpuDeviceInterface::CpuDeviceInterface(const StableDevice& device)
     : DeviceInterface(device) {
   STABLE_CHECK(g_cpu, "CpuDeviceInterface was not registered!");
-  STABLE_CHECK(
-      device_.type() == kStableCPU, "Unsupported device: must be CPU");
+  STABLE_CHECK(device_.type() == kStableCPU, "Unsupported device: must be CPU");
 }
 
 void CpuDeviceInterface::initialize(
@@ -296,11 +295,15 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
 
   StableTensor colorConvertedTensor = needsResize
       ? allocateEmptyHWCTensor(
-            FrameDims(avFrame->height, avFrame->width), StableDevice(kStableCPU))
+            FrameDims(avFrame->height, avFrame->width),
+            StableDevice(kStableCPU))
       : outputTensor;
 
   uint8_t* colorConvertedPointers[4] = {
-      colorConvertedTensor.mutable_data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
+      colorConvertedTensor.mutable_data_ptr<uint8_t>(),
+      nullptr,
+      nullptr,
+      nullptr};
   int colorConvertedWidth = static_cast<int>(colorConvertedTensor.sizes()[1]);
   int colorConvertedLinesizes[4] = {colorConvertedWidth * 3, 0, 0, 0};
 
@@ -341,7 +344,10 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
     }
 
     uint8_t* srcPointers[4] = {
-        colorConvertedTensor.mutable_data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
+        colorConvertedTensor.mutable_data_ptr<uint8_t>(),
+        nullptr,
+        nullptr,
+        nullptr};
     int srcLinesizes[4] = {avFrame->width * 3, 0, 0, 0};
 
     uint8_t* dstPointers[4] = {
@@ -455,8 +461,8 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
 
   auto numSamples = avFrame->nb_samples;
 
-  frameOutput.data =
-      stableEmpty({numChannels, numSamples}, kStableFloat32, StableDevice(kStableCPU));
+  frameOutput.data = stableEmpty(
+      {numChannels, numSamples}, kStableFloat32, StableDevice(kStableCPU));
 
   if (numSamples > 0) {
     uint8_t* outputChannelData =
@@ -490,13 +496,16 @@ std::optional<StableTensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
 
   int numChannels =
       audioStreamOptions_.numChannels.value_or(getNumChannels(codecContext_));
-  StableTensor lastSamples =
-      stableEmpty({numChannels, numRemainingSamples}, kStableFloat32, StableDevice(kStableCPU));
+  StableTensor lastSamples = stableEmpty(
+      {numChannels, numRemainingSamples},
+      kStableFloat32,
+      StableDevice(kStableCPU));
 
   std::vector<uint8_t*> outputBuffers(numChannels);
   for (auto i = 0; i < numChannels; i++) {
     // Get pointer to each channel in the tensor
-    // For a tensor of shape [numChannels, numSamples], we need to calculate offsets
+    // For a tensor of shape [numChannels, numSamples], we need to calculate
+    // offsets
     outputBuffers[i] = static_cast<uint8_t*>(lastSamples.mutable_data_ptr()) +
         i * numRemainingSamples * sizeof(float);
   }
@@ -504,7 +513,11 @@ std::optional<StableTensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
   auto actualNumRemainingSamples = swr_convert(
       swrContext_.get(), outputBuffers.data(), numRemainingSamples, nullptr, 0);
 
-  return torch::stable::narrow(lastSamples, /*dim=*/1, /*start=*/0, /*length=*/actualNumRemainingSamples);
+  return torch::stable::narrow(
+      lastSamples,
+      /*dim=*/1,
+      /*start=*/0,
+      /*length=*/actualNumRemainingSamples);
 }
 
 std::string CpuDeviceInterface::getDetails() {
