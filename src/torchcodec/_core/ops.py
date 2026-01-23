@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+import atexit
 import io
 import json
 import os
@@ -168,6 +169,13 @@ _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
 _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
+_destroy_decoder = torch.ops.torchcodec_ns._destroy_decoder.default
+_clear_all_decoders = torch.ops.torchcodec_ns._clear_all_decoders.default
+
+# Register atexit handler to clear all decoders before Python shuts down.
+# This prevents hangs when decoders holding file-like objects are destroyed
+# during static destruction (after Python has started shutting down).
+atexit.register(_clear_all_decoders)
 
 
 # =============================
@@ -603,3 +611,13 @@ def get_ffmpeg_library_versions():
 @register_fake("torchcodec_ns::_get_backend_details")
 def _get_backend_details_abstract(decoder: torch.Tensor) -> str:
     return ""
+
+
+@register_fake("torchcodec_ns::_destroy_decoder")
+def _destroy_decoder_abstract(decoder: torch.Tensor) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::_clear_all_decoders")
+def _clear_all_decoders_abstract() -> None:
+    return

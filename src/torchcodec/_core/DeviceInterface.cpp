@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "DeviceInterface.h"
+#include <cstring>
 #include <map>
 #include <mutex>
 
@@ -20,12 +21,24 @@ DeviceInterfaceMap& getDeviceMap() {
   return deviceMap;
 }
 
-std::string getDeviceType(const std::string& device) {
+std::string getDeviceTypeString(const std::string& device) {
   size_t pos = device.find(':');
   if (pos == std::string::npos) {
     return device;
   }
   return device.substr(0, pos);
+}
+
+// Parse device type from string (e.g., "cpu", "cuda")
+// The stable ABI Device doesn't support string-based construction
+StableDeviceType parseDeviceType(const std::string& deviceType) {
+  if (deviceType == "cpu") {
+    return kStableCPU;
+  } else if (deviceType == "cuda") {
+    return kStableCUDA;
+  } else {
+    STABLE_CHECK(false, "Unknown device type: ", deviceType);
+  }
 }
 
 } // namespace
@@ -36,10 +49,10 @@ bool registerDeviceInterface(
   std::scoped_lock lock(g_interface_mutex);
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
-  TORCH_CHECK(
+  STABLE_CHECK(
       deviceMap.find(key) == deviceMap.end(),
       "Device interface already registered for device type ",
-      key.deviceType,
+      static_cast<int>(key.deviceType),
       " variant '",
       key.variant,
       "'");
@@ -52,12 +65,12 @@ void validateDeviceInterface(
     const std::string device,
     const std::string variant) {
   std::scoped_lock lock(g_interface_mutex);
-  std::string deviceType = getDeviceType(device);
+  std::string deviceType = getDeviceTypeString(device);
 
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
   // Find device interface that matches device type and variant
-  torch::DeviceType deviceTypeEnum = torch::Device(deviceType).type();
+  StableDeviceType deviceTypeEnum = parseDeviceType(deviceType);
 
   auto deviceInterface = std::find_if(
       deviceMap.begin(),
@@ -67,7 +80,7 @@ void validateDeviceInterface(
             arg.first.variant == variant;
       });
 
-  TORCH_CHECK(
+  STABLE_CHECK(
       deviceInterface != deviceMap.end(),
       "Unsupported device: ",
       device,
@@ -79,7 +92,7 @@ void validateDeviceInterface(
 }
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
-    const torch::Device& device,
+    const StableDevice& device,
     const std::string_view variant) {
   DeviceInterfaceKey key(device.type(), variant);
   std::scoped_lock lock(g_interface_mutex);
@@ -90,28 +103,46 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
     return std::unique_ptr<DeviceInterface>(it->second(device));
   }
 
-  TORCH_CHECK(
+  STABLE_CHECK(
       false,
       "No device interface found for device type: ",
-      device.type(),
+      static_cast<int>(device.type()),
       " variant: '",
       variant,
       "'");
 }
 
-torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
-  TORCH_CHECK_EQ(avFrame->format, AV_PIX_FMT_RGB24);
+StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
+  STABLE_CHECK(
+      avFrame->format == AV_PIX_FMT_RGB24,
+      "Expected RGB24 format, got: ",
+      avFrame->format);
 
   int height = avFrame->height;
   int width = avFrame->width;
-  std::vector<int64_t> shape = {height, width, 3};
-  std::vector<int64_t> strides = {avFrame->linesize[0], 3, 1};
-  AVFrame* avFrameClone = av_frame_clone(avFrame.get());
-  auto deleter = [avFrameClone](void*) {
-    UniqueAVFrame avFrameToDelete(avFrameClone);
-  };
-  return torch::from_blob(
-      avFrameClone->data[0], shape, strides, deleter, {torch::kUInt8});
+
+  // Allocate output tensor
+  // Note: Stable ABI's from_blob doesn't support custom deleters,
+  // so we allocate and copy the data instead
+  StableTensor result =
+      stableEmpty({height, width, 3}, kStableUInt8, StableDevice(kStableCPU));
+
+  uint8_t* dst = result.mutable_data_ptr<uint8_t>();
+  const uint8_t* src = avFrame->data[0];
+  int rowSize = width * 3;
+  int linesize = avFrame->linesize[0];
+
+  if (linesize == rowSize) {
+    // Contiguous - single copy
+    std::memcpy(dst, src, static_cast<size_t>(height) * rowSize);
+  } else {
+    // Non-contiguous - copy row by row
+    for (int y = 0; y < height; y++) {
+      std::memcpy(dst + y * rowSize, src + y * linesize, rowSize);
+    }
+  }
+
+  return result;
 }
 
 } // namespace facebook::torchcodec

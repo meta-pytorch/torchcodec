@@ -239,7 +239,15 @@ class VideoDecoder:
             device=device,
             device_variant=device_variant,
             transform_specs=transform_specs,
-            custom_frame_mappings=custom_frame_mappings_data,
+            custom_frame_mappings_all_frames=(
+                custom_frame_mappings_data[0] if custom_frame_mappings_data else None
+            ),
+            custom_frame_mappings_is_key_frame=(
+                custom_frame_mappings_data[1] if custom_frame_mappings_data else None
+            ),
+            custom_frame_mappings_duration=(
+                custom_frame_mappings_data[2] if custom_frame_mappings_data else None
+            ),
         )
 
         self._cpu_fallback = CpuFallbackStatus()
@@ -250,6 +258,15 @@ class VideoDecoder:
                 self._cpu_fallback._backend = "FFmpeg CUDA"
         else:
             self._cpu_fallback._backend = "CPU"
+
+    def __del__(self) -> None:
+        # Explicitly destroy the decoder to clean up resources while Python is
+        # still alive. This is needed because the stable ABI version stores
+        # decoders in a global registry that gets destroyed at program exit,
+        # which may hang if Python is already shutting down (due to GIL
+        # acquisition in file-like object cleanup).
+        if hasattr(self, "_decoder"):
+            core._destroy_decoder(self._decoder)
 
     def __len__(self) -> int:
         return self._num_frames

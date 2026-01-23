@@ -6,12 +6,12 @@
 
 #include "ValidationUtils.h"
 #include <limits>
-#include "c10/util/Exception.h"
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
 int validateInt64ToInt(int64_t value, const std::string& parameterName) {
-  TORCH_CHECK(
+  STABLE_CHECK(
       value >= std::numeric_limits<int>::min() &&
           value <= std::numeric_limits<int>::max(),
       parameterName,

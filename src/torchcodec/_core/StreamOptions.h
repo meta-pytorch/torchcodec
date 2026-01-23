@@ -6,11 +6,11 @@
 
 #pragma once
 
-#include <torch/types.h>
 #include <map>
 #include <optional>
 #include <string>
 #include <string_view>
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -43,7 +43,7 @@ struct VideoStreamOptions {
   // By default we use CPU for decoding for both C++ and python users.
   // Note: This is not used for video encoding, because device is determined by
   // the device of the input frame tensor.
-  torch::Device device = torch::kCPU;
+  StableDevice device = StableDevice(kStableCPU);
   // Device variant (e.g., "ffmpeg", "beta", etc.)
   std::string_view deviceVariant = "ffmpeg";
 
