@@ -80,6 +80,7 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
   m.def("_destroy_decoder(Tensor(a!) decoder) -> ()");
+  m.def("_clear_all_decoders() -> ()");
 }
 
 namespace {
@@ -1076,6 +1077,13 @@ void _destroy_decoder(StableTensor& decoder) {
   destroyDecoder(decoder);
 }
 
+// Clears all decoders from the global registry.
+// This should be called before Python shuts down to avoid hangs
+// due to GIL acquisition during static destruction.
+void _clear_all_decoders() {
+  g_decoder_registry.clear();
+}
+
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
@@ -1086,6 +1094,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
   m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
+  m.impl("_clear_all_decoders", TORCH_BOX(&_clear_all_decoders));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
@@ -1120,6 +1129,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
 
   m.impl("_get_backend_details", TORCH_BOX(&get_backend_details));
   m.impl("_destroy_decoder", TORCH_BOX(&_destroy_decoder));
+  m.impl("_clear_all_decoders", TORCH_BOX(&_clear_all_decoders));
 }
 
 } // namespace facebook::torchcodec
