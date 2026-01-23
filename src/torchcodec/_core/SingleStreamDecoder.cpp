@@ -844,7 +844,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
 
 FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     double startSeconds,
-    double stopSeconds) {
+    double stopSeconds,
+    std::optional<double> fps) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   const auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
@@ -906,36 +907,77 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
             std::to_string(maxSeconds.value()) + ").");
   }
 
-  // Note that we look at nextPts for a frame, and not its pts or duration.
-  // Our abstract player displays frames starting at the pts for that frame
-  // until the pts for the next frame. There are two consequences:
-  //
-  //   1. We ignore the duration for a frame. A frame is played until the
-  //   next frame replaces it. This model is robust to durations being 0 or
-  //   incorrect; our source of truth is the pts for frames. If duration is
-  //   accurate, the nextPts for a frame would be equivalent to pts +
-  //   duration.
-  //   2. In order to establish if the start of an interval maps to a
-  //   particular frame, we need to figure out if it is ordered after the
-  //   frame's pts, but before the next frames's pts.
+  // Resample frames to match the target frame rate
+  if (fps.has_value()) {
+    TORCH_CHECK(
+        fps.value() > 0,
+        "fps must be positive, got " + std::to_string(fps.value()));
 
-  int64_t startFrameIndex = secondsToIndexLowerBound(startSeconds);
-  int64_t stopFrameIndex = secondsToIndexUpperBound(stopSeconds);
-  int64_t numFrames = stopFrameIndex - startFrameIndex;
+    // TODO: add an early break if requested fps is the same as the current fps
 
-  FrameBatchOutput frameBatchOutput(
-      numFrames,
-      resizedOutputDims_.value_or(metadataDims_),
-      videoStreamOptions.device);
-  for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
-    FrameOutput frameOutput =
-        getFrameAtIndexInternal(i, frameBatchOutput.data[f]);
-    frameBatchOutput.ptsSeconds[f] = frameOutput.ptsSeconds;
-    frameBatchOutput.durationSeconds[f] = frameOutput.durationSeconds;
+    double fpsVal = fps.value();
+    double frameDurationSeconds = 1.0 / fpsVal;
+
+    double product = (stopSeconds - startSeconds) * fpsVal;
+    int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
+
+    FrameBatchOutput frameBatchOutput(
+        numOutputFrames,
+        resizedOutputDims_.value_or(metadataDims_),
+        videoStreamOptions.device);
+
+    // Decode frames, reusing already-decoded frames for duplicates
+    int64_t lastDecodedSourceIndex = -1;
+
+    for (int64_t i = 0; i < numOutputFrames; ++i) {
+      double targetPtsSeconds = startSeconds + i * frameDurationSeconds;
+      int64_t sourceIdx = secondsToIndexLowerBound(targetPtsSeconds);
+
+      if (sourceIdx == lastDecodedSourceIndex && lastDecodedSourceIndex >= 0) {
+        frameBatchOutput.data[i].copy_(frameBatchOutput.data[i - 1]);
+      } else {
+        getFrameAtIndexInternal(sourceIdx, frameBatchOutput.data[i]);
+        lastDecodedSourceIndex = sourceIdx;
+      }
+
+      frameBatchOutput.ptsSeconds[i] = targetPtsSeconds;
+      frameBatchOutput.durationSeconds[i] = frameDurationSeconds;
+    }
+
+    frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
+    return frameBatchOutput;
+  } else {
+    // Note that we look at nextPts for a frame, and not its pts or duration.
+    // Our abstract player displays frames starting at the pts for that frame
+    // until the pts for the next frame. There are two consequences:
+    //
+    //   1. We ignore the duration for a frame. A frame is played until the
+    //   next frame replaces it. This model is robust to durations being 0 or
+    //   incorrect; our source of truth is the pts for frames. If duration is
+    //   accurate, the nextPts for a frame would be equivalent to pts +
+    //   duration.
+    //   2. In order to establish if the start of an interval maps to a
+    //   particular frame, we need to figure out if it is ordered after the
+    //   frame's pts, but before the next frames's pts.
+
+    int64_t startFrameIndex = secondsToIndexLowerBound(startSeconds);
+    int64_t stopFrameIndex = secondsToIndexUpperBound(stopSeconds);
+    int64_t numFrames = stopFrameIndex - startFrameIndex;
+
+    FrameBatchOutput frameBatchOutput(
+        numFrames,
+        resizedOutputDims_.value_or(metadataDims_),
+        videoStreamOptions.device);
+    for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
+      FrameOutput frameOutput =
+          getFrameAtIndexInternal(i, frameBatchOutput.data[f]);
+      frameBatchOutput.ptsSeconds[f] = frameOutput.ptsSeconds;
+      frameBatchOutput.durationSeconds[f] = frameOutput.durationSeconds;
+    }
+    frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
+
+    return frameBatchOutput;
   }
-  frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-
-  return frameBatchOutput;
 }
 
 // Note [Audio Decoding Design]
