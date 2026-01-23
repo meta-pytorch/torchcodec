@@ -24,7 +24,6 @@ add_executable(
 target_include_directories(VideoDecoderTest SYSTEM PRIVATE ${TORCH_INCLUDE_DIRS})
 target_include_directories(VideoDecoderTest SYSTEM PRIVATE ${libav_include_dirs})
 target_include_directories(VideoDecoderTest PRIVATE ../)
-target_include_directories(VideoDecoderTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(
   VideoDecoderTest
@@ -45,7 +44,6 @@ add_executable(
 target_include_directories(MetadataTest SYSTEM PRIVATE ${TORCH_INCLUDE_DIRS})
 target_include_directories(MetadataTest SYSTEM PRIVATE ${libav_include_dirs})
 target_include_directories(MetadataTest PRIVATE ../)
-target_include_directories(MetadataTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(
   MetadataTest
