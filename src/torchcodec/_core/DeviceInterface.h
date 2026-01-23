@@ -183,10 +183,10 @@ __attribute__((visibility("default"))) void validateDeviceInterface(
     const std::string device,
     const std::string variant);
 
-__attribute__((visibility("default")))
-    std::unique_ptr<DeviceInterface> createDeviceInterface(
-        const StableDevice& device,
-        const std::string_view variant = "ffmpeg");
+__attribute__((visibility("default"))) std::unique_ptr<DeviceInterface>
+createDeviceInterface(
+    const StableDevice& device,
+    const std::string_view variant = "ffmpeg");
 
 StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 

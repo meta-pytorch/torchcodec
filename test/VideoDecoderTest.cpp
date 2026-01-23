@@ -4,9 +4,9 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+#include "TestStableABIConversions.h"
 #include "src/torchcodec/_core/AVIOTensorContext.h"
 #include "src/torchcodec/_core/SingleStreamDecoder.h"
-#include "TestStableABIConversions.h"
 
 #include <c10/util/Flags.h>
 #include <gtest/gtest.h>
@@ -63,8 +63,8 @@ class SingleStreamDecoderTest : public testing::TestWithParam<bool> {
       torch::Tensor atTensor = at::from_blob(
           static_cast<void*>(data), {length}, deleter, {torch::kUInt8});
 
-      auto contextHolder =
-          std::make_unique<AVIOFromTensorContext>(test_utils::toStableTensor(atTensor));
+      auto contextHolder = std::make_unique<AVIOFromTensorContext>(
+          test_utils::toStableTensor(atTensor));
       return std::make_unique<SingleStreamDecoder>(
           std::move(contextHolder), SeekMode::approximate);
     } else {
@@ -211,7 +211,8 @@ TEST_P(SingleStreamDecoderTest, DecodesFramesInABatchInNCHW) {
   ourDecoder->addVideoStream(bestVideoStreamIndex, transforms);
   // Frame with index 180 corresponds to timestamp 6.006.
   auto frameIndices = torch::tensor({0, 180});
-  auto output = ourDecoder->getFramesAtIndices(test_utils::toStableTensor(frameIndices));
+  auto output =
+      ourDecoder->getFramesAtIndices(test_utils::toStableTensor(frameIndices));
   auto tensor = test_utils::toAtTensor(output.data);
   EXPECT_EQ(tensor.sizes(), std::vector<long>({2, 3, 270, 480}));
 
@@ -238,7 +239,8 @@ TEST_P(SingleStreamDecoderTest, DecodesFramesInABatchInNHWC) {
       bestVideoStreamIndex, transforms, videoStreamOptions);
   // Frame with index 180 corresponds to timestamp 6.006.
   auto frameIndices = torch::tensor({0, 180});
-  auto output = ourDecoder->getFramesAtIndices(test_utils::toStableTensor(frameIndices));
+  auto output =
+      ourDecoder->getFramesAtIndices(test_utils::toStableTensor(frameIndices));
   auto tensor = test_utils::toAtTensor(output.data);
   EXPECT_EQ(tensor.sizes(), std::vector<long>({2, 270, 480, 3}));
 
@@ -408,9 +410,11 @@ TEST_P(SingleStreamDecoderTest, PreAllocatedTensorFilterGraph) {
   std::vector<Transform*> transforms;
   ourDecoder->addVideoStream(
       bestVideoStreamIndex, transforms, videoStreamOptions);
-  auto output =
-      ourDecoder->getFrameAtIndexInternal(0, test_utils::toStableTensor(preAllocatedOutputTensor));
-  EXPECT_EQ(test_utils::toAtTensor(output.data).data_ptr(), preAllocatedOutputTensor.data_ptr());
+  auto output = ourDecoder->getFrameAtIndexInternal(
+      0, test_utils::toStableTensor(preAllocatedOutputTensor));
+  EXPECT_EQ(
+      test_utils::toAtTensor(output.data).data_ptr(),
+      preAllocatedOutputTensor.data_ptr());
 }
 
 TEST_P(SingleStreamDecoderTest, PreAllocatedTensorSwscale) {
@@ -427,9 +431,11 @@ TEST_P(SingleStreamDecoderTest, PreAllocatedTensorSwscale) {
   std::vector<Transform*> transforms;
   ourDecoder->addVideoStream(
       bestVideoStreamIndex, transforms, videoStreamOptions);
-  auto output =
-      ourDecoder->getFrameAtIndexInternal(0, test_utils::toStableTensor(preAllocatedOutputTensor));
-  EXPECT_EQ(test_utils::toAtTensor(output.data).data_ptr(), preAllocatedOutputTensor.data_ptr());
+  auto output = ourDecoder->getFrameAtIndexInternal(
+      0, test_utils::toStableTensor(preAllocatedOutputTensor));
+  EXPECT_EQ(
+      test_utils::toAtTensor(output.data).data_ptr(),
+      preAllocatedOutputTensor.data_ptr());
 }
 
 TEST_P(SingleStreamDecoderTest, GetAudioMetadata) {
