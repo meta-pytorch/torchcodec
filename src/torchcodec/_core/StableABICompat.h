@@ -17,8 +17,9 @@
 // Target PyTorch version: 2.10+
 //
 
-// Version targeting - we require PyTorch 2.10+
-#define TORCH_TARGET_VERSION (((0ULL + 2) << 56) | ((0ULL + 10) << 48))
+// Note: We don't define TORCH_TARGET_VERSION, so TORCH_FEATURE_VERSION
+// will default to TORCH_ABI_VERSION from the installed PyTorch headers.
+// This ensures we use the same ABI version as the runtime.
 
 // Include stable ABI headers
 #include <torch/csrc/stable/library.h>
@@ -190,30 +191,18 @@ inline StableTensor stableCat(
 }
 
 // Helper for tensor.is_contiguous()
-// Uses dispatcher to call aten::is_contiguous
+// Uses the stable ABI tensor method directly
 inline bool stableIsContiguous(const StableTensor& tensor) {
-  const auto num_args = 1;
-  std::array<StableIValue, num_args> stack{
-      torch::stable::detail::from(tensor)};
-  TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
-      "aten::is_contiguous", "", stack.data(), TORCH_ABI_VERSION));
-  return torch::stable::detail::to<bool>(stack[0]);
+  return tensor.is_contiguous();
 }
 
-// Helper for tensor[index] - selects along dimension 0
-// Uses dispatcher to call aten::select
+// Helper for tensor[index] - selects along a dimension
+// Uses torch::stable::select from PyTorch's stable ops
 inline StableTensor stableSelect(
     const StableTensor& tensor,
     int64_t dim,
     int64_t index) {
-  const auto num_args = 3;
-  std::array<StableIValue, num_args> stack{
-      torch::stable::detail::from(tensor),
-      torch::stable::detail::from(dim),
-      torch::stable::detail::from(index)};
-  TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
-      "aten::select.int", "", stack.data(), TORCH_ABI_VERSION));
-  return torch::stable::detail::to<StableTensor>(stack[0]);
+  return torch::stable::select(tensor, dim, index);
 }
 
 // Helper to get a human-readable name for a scalar type

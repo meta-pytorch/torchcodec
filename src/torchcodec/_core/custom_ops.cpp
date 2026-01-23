@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
@@ -200,7 +201,7 @@ std::string mapToJson(const std::map<std::string, std::string>& metadataMap) {
   return ss.str();
 }
 
-SeekMode seekModeFromString(std::string_view seekMode) {
+SeekMode seekModeFromString(std::string seekMode) {
   if (seekMode == "exact") {
     return SeekMode::exact;
   } else if (seekMode == "approximate") {
@@ -365,8 +366,8 @@ std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
 
 // Create a SingleStreamDecoder from file and wrap the pointer in a tensor.
 StableTensor create_from_file(
-    std::string_view filename,
-    std::optional<std::string_view> seek_mode = std::nullopt) {
+    std::string filename,
+    std::optional<std::string> seek_mode = std::nullopt) {
   std::string filenameStr(filename);
 
   SeekMode realSeek = SeekMode::exact;
@@ -384,7 +385,7 @@ StableTensor create_from_file(
 // pointer in a tensor. The SingleStreamDecoder will decode the provided bytes.
 StableTensor create_from_tensor(
     StableTensor video_tensor,
-    std::optional<std::string_view> seek_mode = std::nullopt) {
+    std::optional<std::string> seek_mode = std::nullopt) {
   STABLE_CHECK(stableIsContiguous(video_tensor), "video_tensor must be contiguous");
   STABLE_CHECK(
       video_tensor.scalar_type() == kStableUInt8,
@@ -406,7 +407,7 @@ StableTensor create_from_tensor(
 
 StableTensor _create_from_file_like(
     int64_t file_like_context,
-    std::optional<std::string_view> seek_mode) {
+    std::optional<std::string> seek_mode) {
   auto fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
   STABLE_CHECK(
@@ -427,15 +428,15 @@ StableTensor _create_from_file_like(
 void _add_video_stream(
     StableTensor& decoder,
     std::optional<int64_t> num_threads = std::nullopt,
-    std::optional<std::string_view> dimension_order = std::nullopt,
+    std::optional<std::string> dimension_order = std::nullopt,
     std::optional<int64_t> stream_index = std::nullopt,
-    std::string_view device = "cpu",
-    std::string_view device_variant = "ffmpeg",
-    std::string_view transform_specs = "",
+    std::string device = "cpu",
+    std::string device_variant = "ffmpeg",
+    std::string transform_specs = "",
     std::optional<StableTensor> custom_frame_mappings_all_frames = std::nullopt,
     std::optional<StableTensor> custom_frame_mappings_is_key_frame = std::nullopt,
     std::optional<StableTensor> custom_frame_mappings_duration = std::nullopt,
-    std::optional<std::string_view> color_conversion_library = std::nullopt) {
+    std::optional<std::string> color_conversion_library = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.ffmpegThreadCount = num_threads;
 
@@ -492,11 +493,11 @@ void _add_video_stream(
 void add_video_stream(
     StableTensor& decoder,
     std::optional<int64_t> num_threads = std::nullopt,
-    std::optional<std::string_view> dimension_order = std::nullopt,
+    std::optional<std::string> dimension_order = std::nullopt,
     std::optional<int64_t> stream_index = std::nullopt,
-    std::string_view device = "cpu",
-    std::string_view device_variant = "ffmpeg",
-    std::string_view transform_specs = "",
+    std::string device = "cpu",
+    std::string device_variant = "ffmpeg",
+    std::string transform_specs = "",
     std::optional<StableTensor> custom_frame_mappings_all_frames = std::nullopt,
     std::optional<StableTensor> custom_frame_mappings_is_key_frame = std::nullopt,
     std::optional<StableTensor> custom_frame_mappings_duration = std::nullopt) {
@@ -528,8 +529,7 @@ void add_audio_stream(
 
 // Seek to a particular presentation timestamp in the video in seconds.
 void seek_to_pts(StableTensor& decoder, double seconds) {
-  auto videoDecoder =
-      static_cast<SingleStreamDecoder*>(decoder.mutable_data_ptr());
+  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   videoDecoder->setCursorPtsInSeconds(seconds);
 }
 
@@ -623,7 +623,7 @@ OpsAudioFramesOutput get_frames_by_pts_in_range_audio(
 void encode_audio_to_file(
     const StableTensor& samples,
     int64_t sample_rate,
-    std::string_view file_name,
+    std::string file_name,
     std::optional<int64_t> bit_rate = std::nullopt,
     std::optional<int64_t> num_channels = std::nullopt,
     std::optional<int64_t> desired_sample_rate = std::nullopt) {
@@ -644,7 +644,7 @@ void encode_audio_to_file(
 StableTensor encode_audio_to_tensor(
     const StableTensor& samples,
     int64_t sample_rate,
-    std::string_view format,
+    std::string format,
     std::optional<int64_t> bit_rate = std::nullopt,
     std::optional<int64_t> num_channels = std::nullopt,
     std::optional<int64_t> desired_sample_rate = std::nullopt) {
@@ -667,7 +667,7 @@ StableTensor encode_audio_to_tensor(
 void _encode_audio_to_file_like(
     const StableTensor& samples,
     int64_t sample_rate,
-    std::string_view format,
+    std::string format,
     int64_t file_like_context,
     std::optional<int64_t> bit_rate = std::nullopt,
     std::optional<int64_t> num_channels = std::nullopt,
@@ -697,11 +697,11 @@ void _encode_audio_to_file_like(
 void encode_video_to_file(
     const StableTensor& frames,
     double frame_rate,
-    std::string_view file_name,
-    std::optional<std::string_view> codec = std::nullopt,
-    std::optional<std::string_view> pixel_format = std::nullopt,
+    std::string file_name,
+    std::optional<std::string> codec = std::nullopt,
+    std::optional<std::string> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
-    std::optional<std::string_view> preset = std::nullopt,
+    std::optional<std::string> preset = std::nullopt,
     std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.codec = std::move(codec);
@@ -720,11 +720,11 @@ void encode_video_to_file(
 StableTensor encode_video_to_tensor(
     const StableTensor& frames,
     double frame_rate,
-    std::string_view format,
-    std::optional<std::string_view> codec = std::nullopt,
-    std::optional<std::string_view> pixel_format = std::nullopt,
+    std::string format,
+    std::optional<std::string> codec = std::nullopt,
+    std::optional<std::string> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
-    std::optional<std::string_view> preset = std::nullopt,
+    std::optional<std::string> preset = std::nullopt,
     std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
   VideoStreamOptions videoStreamOptions;
@@ -750,12 +750,12 @@ StableTensor encode_video_to_tensor(
 void _encode_video_to_file_like(
     const StableTensor& frames,
     double frame_rate,
-    std::string_view format,
+    std::string format,
     int64_t file_like_context,
-    std::optional<std::string_view> codec = std::nullopt,
-    std::optional<std::string_view> pixel_format = std::nullopt,
+    std::optional<std::string> codec = std::nullopt,
+    std::optional<std::string> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
-    std::optional<std::string_view> preset = std::nullopt,
+    std::optional<std::string> preset = std::nullopt,
     std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   auto fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
