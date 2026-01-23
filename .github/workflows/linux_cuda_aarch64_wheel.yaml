@@ -87,8 +87,10 @@ jobs:
           miniforge-version: latest
           activate-environment: test
           python-version: ${{ matrix.python-version }}
+
       - name: Update pip
-        run: python -m pip install --upgrade pip
+        run: ${CONDA_RUN} python -m pip install --upgrade pip
+
       - name: Install PyTorch
         run: ${CONDA_RUN} bash packaging/install_pytorch.sh cu${{ env.cuda_version_without_periods }} "torch torchvision"
 
@@ -98,15 +100,16 @@ jobs:
           path: dist/
 
       - name: Install torchcodec from the wheel
-        run: bash packaging/install_torchcodec_wheel.sh
+        run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}*.whl"
 
-      - name: Install ffmpeg, post build
-        run: |
-          bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
-          echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
+      - name: Install ffmpeg
+        run: ${CONDA_RUN} bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
+
+      - name: Set LD_LIBRARY_PATH
+        run: echo LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/usr/local/cuda/lib64/:${LD_LIBRARY_PATH} >> $GITHUB_ENV
 
       - name: Install test dependencies
-        run: bash packaging/install_test_dependencies.sh
+        run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh
+
       - name: Run Python tests
-        run: |
-          pytest --override-ini="addopts=-v" test
+        run: ${CONDA_RUN} pytest --override-ini="addopts=-v" test
