@@ -102,7 +102,7 @@ if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
     if ffmpeg_path := shutil.which("ffmpeg"):
 
         def expose_ffmpeg_dlls():  # noqa: F811
-            ffmpeg_dir = Path(ffmpeg_path).parent
+            ffmpeg_dir = Path(ffmpeg_path).parent.absolute()
             return os.add_dll_directory(str(ffmpeg_dir))  # that's the actual CM
 
 
@@ -543,6 +543,7 @@ def get_frames_by_pts_in_range_abstract(
     *,
     start_seconds: float,
     stop_seconds: float,
+    fps: float | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (

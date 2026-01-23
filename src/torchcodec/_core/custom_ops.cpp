@@ -64,7 +64,7 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "get_frames_in_range(Tensor(a!) decoder, *, int start, int stop, int? step=None) -> (Tensor, Tensor, Tensor)");
   m.def(
-      "get_frames_by_pts_in_range(Tensor(a!) decoder, *, float start_seconds, float stop_seconds) -> (Tensor, Tensor, Tensor)");
+      "get_frames_by_pts_in_range(Tensor(a!) decoder, *, float start_seconds, float stop_seconds, float? fps=None) -> (Tensor, Tensor, Tensor)");
   m.def(
       "get_frames_by_pts_in_range_audio(Tensor(a!) decoder, *, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def(
@@ -144,6 +144,16 @@ OpsFrameOutput makeOpsFrameOutput(FrameOutput& frame) {
       frame.data,
       stableScalarTensor(frame.ptsSeconds),
       stableScalarTensor(frame.durationSeconds));
+}
+
+SingleStreamDecoder::FrameMappings makeFrameMappings(
+    StableTensor all_frames,
+    StableTensor is_key_frame,
+    StableTensor duration) {
+  return SingleStreamDecoder::FrameMappings{
+      std::move(all_frames),
+      std::move(is_key_frame),
+      std::move(duration)};
 }
 
 // All elements of this tuple are tensors of the same leading dimension. The
@@ -439,8 +449,7 @@ void _add_video_stream(
     std::string device_variant = "ffmpeg",
     std::string transform_specs = "",
     std::optional<StableTensor> custom_frame_mappings_all_frames = std::nullopt,
-    std::optional<StableTensor> custom_frame_mappings_is_key_frame =
-        std::nullopt,
+    std::optional<StableTensor> custom_frame_mappings_is_key_frame = std::nullopt,
     std::optional<StableTensor> custom_frame_mappings_duration = std::nullopt,
     std::optional<std::string> color_conversion_library = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
@@ -483,11 +492,11 @@ void _add_video_stream(
     STABLE_CHECK(
         custom_frame_mappings_is_key_frame.has_value() &&
             custom_frame_mappings_duration.has_value(),
-        "All three custom_frame_mappings tensors must be provided together");
-    converted_mappings = SingleStreamDecoder::FrameMappings{
+        "All custom_frame_mappings tensors must be provided together");
+    converted_mappings = makeFrameMappings(
         std::move(custom_frame_mappings_all_frames.value()),
         std::move(custom_frame_mappings_is_key_frame.value()),
-        std::move(custom_frame_mappings_duration.value())};
+        std::move(custom_frame_mappings_duration.value()));
   }
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   videoDecoder->addVideoStream(
@@ -507,8 +516,7 @@ void add_video_stream(
     std::string device_variant = "ffmpeg",
     std::string transform_specs = "",
     std::optional<StableTensor> custom_frame_mappings_all_frames = std::nullopt,
-    std::optional<StableTensor> custom_frame_mappings_is_key_frame =
-        std::nullopt,
+    std::optional<StableTensor> custom_frame_mappings_is_key_frame = std::nullopt,
     std::optional<StableTensor> custom_frame_mappings_duration = std::nullopt) {
   _add_video_stream(
       decoder,
@@ -518,9 +526,9 @@ void add_video_stream(
       device,
       device_variant,
       transform_specs,
-      custom_frame_mappings_all_frames,
-      custom_frame_mappings_is_key_frame,
-      custom_frame_mappings_duration);
+      std::move(custom_frame_mappings_all_frames),
+      std::move(custom_frame_mappings_is_key_frame),
+      std::move(custom_frame_mappings_duration));
 }
 
 void add_audio_stream(
@@ -609,13 +617,16 @@ OpsFrameBatchOutput get_frames_by_pts(
 // Return the frames inside the range as a single stacked Tensor. The range is
 // defined as [start_seconds, stop_seconds). The frames are stacked in pts
 // order.
+// If fps is specified, frames are resampled to match the target frame
+// rate by duplicating or dropping frames as necessary.
 OpsFrameBatchOutput get_frames_by_pts_in_range(
     StableTensor& decoder,
     double start_seconds,
-    double stop_seconds) {
+    double stop_seconds,
+    std::optional<double> fps = std::nullopt) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   auto result =
-      videoDecoder->getFramesPlayedInRange(start_seconds, stop_seconds);
+      videoDecoder->getFramesPlayedInRange(start_seconds, stop_seconds, fps);
   return makeOpsFrameBatchOutput(result);
 }
 
@@ -926,11 +937,10 @@ std::string get_stream_json_metadata(
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   auto allStreamMetadata =
       videoDecoder->getContainerMetadata().allStreamMetadata;
-  if (stream_index < 0 ||
-      stream_index >= static_cast<int64_t>(allStreamMetadata.size())) {
-    throw std::out_of_range(
-        "stream_index out of bounds: " + std::to_string(stream_index));
-  }
+  STABLE_CHECK_INDEX(
+      stream_index >= 0 &&
+          stream_index < static_cast<int64_t>(allStreamMetadata.size()),
+      "stream_index out of bounds");
 
   auto streamMetadata = allStreamMetadata[stream_index];
   auto seekMode = videoDecoder->getSeekMode();
