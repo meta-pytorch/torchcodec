@@ -187,11 +187,11 @@ function(make_torchcodec_libraries
     # Suppress array-bounds and stringop-overread warnings that come from PyTorch
     # stable ABI code handling string_view types. This is a known issue in the
     # stable ABI implementation where it attempts to memcpy larger types through
-    # StableIValue.
+    # StableIValue. These flags are GCC-specific (not available on Clang/Mac).
     # Also suppress attributes warnings from visibility mismatch between
     # AVIOFileLikeContext (default visibility) and its pybind11 member types
     # (hidden visibility). This is safe since we don't export AVIOFileLikeContext.
-    if(NOT WIN32)
+    if(LINUX)
         target_compile_options(
             ${custom_ops_library_name}
             PRIVATE

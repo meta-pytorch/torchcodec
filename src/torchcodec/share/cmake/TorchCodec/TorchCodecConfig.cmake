@@ -47,6 +47,10 @@ function(add_torchcodec_target ffmpeg_major_version)
     set_target_properties(${target} PROPERTIES
       INTERFACE_INCLUDE_DIRECTORIES ${TORCHCODEC_INCLUDE_DIRS}
       IMPORTED_LOCATION ${lib_path}
+      # Set PyTorch stable ABI target version to 2.11 for consumers.
+      # This ensures third-party code uses stable ABI types compatible with
+      # the library. Format: 0x MAJOR(2) MINOR(2) PATCH(2) TWEAK(2) zeros(8)
+      INTERFACE_COMPILE_DEFINITIONS "TORCH_TARGET_VERSION=0x020b000000000000"
     )
 
     list(APPEND TORCHCODEC_VARIANTS "${ffmpeg_major_version}")

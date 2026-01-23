@@ -23,19 +23,22 @@ struct TensorContext {
 
 // For Decoding: enables users to pass in the entire video or audio as bytes.
 // Our read and seek functions then traverse the bytes in memory.
-class AVIOFromTensorContext : public AVIOContextHolder {
+class __attribute__((visibility("default"))) AVIOFromTensorContext
+    : public AVIOContextHolder {
  public:
-  explicit AVIOFromTensorContext(StableTensor data);
+  __attribute__((visibility("default"))) explicit AVIOFromTensorContext(
+      StableTensor data);
 
  private:
   detail::TensorContext tensorContext_;
 };
 
 // For Encoding: used to encode into an output uint8 (bytes) tensor.
-class AVIOToTensorContext : public AVIOContextHolder {
+class __attribute__((visibility("default"))) AVIOToTensorContext
+    : public AVIOContextHolder {
  public:
-  explicit AVIOToTensorContext();
-  StableTensor getOutputTensor();
+  __attribute__((visibility("default"))) explicit AVIOToTensorContext();
+  __attribute__((visibility("default"))) StableTensor getOutputTensor();
 
  private:
   detail::TensorContext tensorContext_;

@@ -175,17 +175,18 @@ class DeviceInterface {
 using CreateDeviceInterfaceFn =
     std::function<DeviceInterface*(const StableDevice& device)>;
 
-bool registerDeviceInterface(
+__attribute__((visibility("default"))) bool registerDeviceInterface(
     const DeviceInterfaceKey& key,
     const CreateDeviceInterfaceFn createInterface);
 
-void validateDeviceInterface(
+__attribute__((visibility("default"))) void validateDeviceInterface(
     const std::string device,
     const std::string variant);
 
-std::unique_ptr<DeviceInterface> createDeviceInterface(
-    const StableDevice& device,
-    const std::string_view variant = "ffmpeg");
+__attribute__((visibility("default")))
+    std::unique_ptr<DeviceInterface> createDeviceInterface(
+        const StableDevice& device,
+        const std::string_view variant = "ffmpeg");
 
 StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 

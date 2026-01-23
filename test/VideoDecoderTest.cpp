@@ -6,6 +6,7 @@
 
 #include "src/torchcodec/_core/AVIOTensorContext.h"
 #include "src/torchcodec/_core/SingleStreamDecoder.h"
+#include "TestStableABIConversions.h"
 
 #include <c10/util/Flags.h>
 #include <gtest/gtest.h>
@@ -59,10 +60,11 @@ class SingleStreamDecoderTest : public testing::TestWithParam<bool> {
       char* data = new char[length];
       std::memcpy(data, content_.data(), length);
       auto deleter = [data](void*) { delete[] data; };
-      at::Tensor tensor = at::from_blob(
+      torch::Tensor atTensor = at::from_blob(
           static_cast<void*>(data), {length}, deleter, {torch::kUInt8});
 
-      auto contextHolder = std::make_unique<AVIOFromTensorContext>(tensor);
+      auto contextHolder =
+          std::make_unique<AVIOFromTensorContext>(test_utils::toStableTensor(atTensor));
       return std::make_unique<SingleStreamDecoder>(
           std::move(contextHolder), SeekMode::approximate);
     } else {
@@ -106,7 +108,10 @@ TEST_P(SingleStreamDecoderTest, ReturnsFpsAndDurationForVideoInMetadata) {
 }
 
 TEST(SingleStreamDecoderTest, MissingVideoFileThrowsException) {
-  EXPECT_THROW(SingleStreamDecoder("/this/file/does/not/exist"), c10::Error);
+  // With stable ABI, STABLE_CHECK throws std::runtime_error instead of
+  // c10::Error
+  EXPECT_THROW(
+      SingleStreamDecoder("/this/file/does/not/exist"), std::runtime_error);
 }
 
 void dumpTensorToDisk(
@@ -154,7 +159,7 @@ TEST(SingleStreamDecoderTest, RespectsOutputTensorDimensionOrderFromOptions) {
   videoStreamOptions.dimensionOrder = "NHWC";
   std::vector<Transform*> transforms;
   decoder->addVideoStream(-1, transforms, videoStreamOptions);
-  torch::Tensor tensor = decoder->getNextFrame().data;
+  torch::Tensor tensor = test_utils::toAtTensor(decoder->getNextFrame().data);
   EXPECT_EQ(tensor.sizes(), std::vector<long>({270, 480, 3}));
 }
 
@@ -165,11 +170,11 @@ TEST_P(SingleStreamDecoderTest, ReturnsFirstTwoFramesOfVideo) {
   std::vector<Transform*> transforms;
   ourDecoder->addVideoStream(-1, transforms);
   auto output = ourDecoder->getNextFrame();
-  torch::Tensor tensor0FromOurDecoder = output.data;
+  torch::Tensor tensor0FromOurDecoder = test_utils::toAtTensor(output.data);
   EXPECT_EQ(tensor0FromOurDecoder.sizes(), std::vector<long>({3, 270, 480}));
   EXPECT_EQ(output.ptsSeconds, 0.0);
   output = ourDecoder->getNextFrame();
-  torch::Tensor tensor1FromOurDecoder = output.data;
+  torch::Tensor tensor1FromOurDecoder = test_utils::toAtTensor(output.data);
   EXPECT_EQ(tensor1FromOurDecoder.sizes(), std::vector<long>({3, 270, 480}));
   EXPECT_EQ(output.ptsSeconds, 1'001. / 30'000);
 
@@ -206,8 +211,8 @@ TEST_P(SingleStreamDecoderTest, DecodesFramesInABatchInNCHW) {
   ourDecoder->addVideoStream(bestVideoStreamIndex, transforms);
   // Frame with index 180 corresponds to timestamp 6.006.
   auto frameIndices = torch::tensor({0, 180});
-  auto output = ourDecoder->getFramesAtIndices(frameIndices);
-  auto tensor = output.data;
+  auto output = ourDecoder->getFramesAtIndices(test_utils::toStableTensor(frameIndices));
+  auto tensor = test_utils::toAtTensor(output.data);
   EXPECT_EQ(tensor.sizes(), std::vector<long>({2, 3, 270, 480}));
 
   torch::Tensor tensor0FromFFMPEG =
@@ -233,8 +238,8 @@ TEST_P(SingleStreamDecoderTest, DecodesFramesInABatchInNHWC) {
       bestVideoStreamIndex, transforms, videoStreamOptions);
   // Frame with index 180 corresponds to timestamp 6.006.
   auto frameIndices = torch::tensor({0, 180});
-  auto output = ourDecoder->getFramesAtIndices(frameIndices);
-  auto tensor = output.data;
+  auto output = ourDecoder->getFramesAtIndices(test_utils::toStableTensor(frameIndices));
+  auto tensor = test_utils::toAtTensor(output.data);
   EXPECT_EQ(tensor.sizes(), std::vector<long>({2, 270, 480, 3}));
 
   torch::Tensor tensor0FromFFMPEG =
@@ -300,7 +305,7 @@ TEST_P(SingleStreamDecoderTest, SeeksToFrameWithSpecificPts) {
   ourDecoder->addVideoStream(-1, transforms);
   ourDecoder->setCursorPtsInSeconds(6.0);
   auto output = ourDecoder->getNextFrame();
-  torch::Tensor tensor6FromOurDecoder = output.data;
+  torch::Tensor tensor6FromOurDecoder = test_utils::toAtTensor(output.data);
   EXPECT_EQ(output.ptsSeconds, 180'180. / 30'000);
   torch::Tensor tensor6FromFFMPEG =
       readTensorFromDisk("nasa_13013.mp4.time6.000000.pt");
@@ -316,7 +321,7 @@ TEST_P(SingleStreamDecoderTest, SeeksToFrameWithSpecificPts) {
 
   ourDecoder->setCursorPtsInSeconds(6.1);
   output = ourDecoder->getNextFrame();
-  torch::Tensor tensor61FromOurDecoder = output.data;
+  torch::Tensor tensor61FromOurDecoder = test_utils::toAtTensor(output.data);
   EXPECT_EQ(output.ptsSeconds, 183'183. / 30'000);
   torch::Tensor tensor61FromFFMPEG =
       readTensorFromDisk("nasa_13013.mp4.time6.100000.pt");
@@ -336,7 +341,7 @@ TEST_P(SingleStreamDecoderTest, SeeksToFrameWithSpecificPts) {
 
   ourDecoder->setCursorPtsInSeconds(10.0);
   output = ourDecoder->getNextFrame();
-  torch::Tensor tensor10FromOurDecoder = output.data;
+  torch::Tensor tensor10FromOurDecoder = test_utils::toAtTensor(output.data);
   EXPECT_EQ(output.ptsSeconds, 300'300. / 30'000);
   torch::Tensor tensor10FromFFMPEG =
       readTensorFromDisk("nasa_13013.mp4.time10.000000.pt");
@@ -353,7 +358,7 @@ TEST_P(SingleStreamDecoderTest, SeeksToFrameWithSpecificPts) {
 
   ourDecoder->setCursorPtsInSeconds(6.0);
   output = ourDecoder->getNextFrame();
-  tensor6FromOurDecoder = output.data;
+  tensor6FromOurDecoder = test_utils::toAtTensor(output.data);
   EXPECT_EQ(output.ptsSeconds, 180'180. / 30'000);
   EXPECT_TRUE(torch::equal(tensor6FromOurDecoder, tensor6FromFFMPEG));
   EXPECT_EQ(ourDecoder->getDecodeStats().numSeeksAttempted, 1);
@@ -368,7 +373,7 @@ TEST_P(SingleStreamDecoderTest, SeeksToFrameWithSpecificPts) {
   constexpr double kPtsOfLastFrameInVideoStream = 389'389. / 30'000; // ~12.9
   ourDecoder->setCursorPtsInSeconds(kPtsOfLastFrameInVideoStream);
   output = ourDecoder->getNextFrame();
-  torch::Tensor tensor7FromOurDecoder = output.data;
+  torch::Tensor tensor7FromOurDecoder = test_utils::toAtTensor(output.data);
   EXPECT_EQ(output.ptsSeconds, 389'389. / 30'000);
   torch::Tensor tensor7FromFFMPEG =
       readTensorFromDisk("nasa_13013.mp4.time12.979633.pt");
@@ -404,8 +409,8 @@ TEST_P(SingleStreamDecoderTest, PreAllocatedTensorFilterGraph) {
   ourDecoder->addVideoStream(
       bestVideoStreamIndex, transforms, videoStreamOptions);
   auto output =
-      ourDecoder->getFrameAtIndexInternal(0, preAllocatedOutputTensor);
-  EXPECT_EQ(output.data.data_ptr(), preAllocatedOutputTensor.data_ptr());
+      ourDecoder->getFrameAtIndexInternal(0, test_utils::toStableTensor(preAllocatedOutputTensor));
+  EXPECT_EQ(test_utils::toAtTensor(output.data).data_ptr(), preAllocatedOutputTensor.data_ptr());
 }
 
 TEST_P(SingleStreamDecoderTest, PreAllocatedTensorSwscale) {
@@ -423,8 +428,8 @@ TEST_P(SingleStreamDecoderTest, PreAllocatedTensorSwscale) {
   ourDecoder->addVideoStream(
       bestVideoStreamIndex, transforms, videoStreamOptions);
   auto output =
-      ourDecoder->getFrameAtIndexInternal(0, preAllocatedOutputTensor);
-  EXPECT_EQ(output.data.data_ptr(), preAllocatedOutputTensor.data_ptr());
+      ourDecoder->getFrameAtIndexInternal(0, test_utils::toStableTensor(preAllocatedOutputTensor));
+  EXPECT_EQ(test_utils::toAtTensor(output.data).data_ptr(), preAllocatedOutputTensor.data_ptr());
 }
 
 TEST_P(SingleStreamDecoderTest, GetAudioMetadata) {
