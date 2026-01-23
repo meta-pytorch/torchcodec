@@ -112,8 +112,9 @@ class VideoStreamMetadata(StreamMetadata):
 
     .. note::
 
-        The :term:`width` and :term:`height` attributes report the
-        **post-rotation** dimensions, i.e., the dimensions of frames as they
+        The :attr:`~torchcodec.decoders.VideoStreamMetadata.width` and
+        :attr:`~torchcodec.decoders.VideoStreamMetadata.height` attributes report
+        the **post-rotation** dimensions, i.e., the dimensions of frames as they
         will be returned by TorchCodec's decoding methods. For videos with 90
         or 270 degree rotation, this means width and height are swapped
         compared to the raw encoded dimensions in the container.
