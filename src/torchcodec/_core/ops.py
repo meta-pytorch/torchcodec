@@ -101,7 +101,7 @@ if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
     if ffmpeg_path := shutil.which("ffmpeg"):
 
         def expose_ffmpeg_dlls():  # noqa: F811
-            ffmpeg_dir = Path(ffmpeg_path).parent
+            ffmpeg_dir = Path(ffmpeg_path).parent.absolute()
             return os.add_dll_directory(str(ffmpeg_dir))  # that's the actual CM
 
 
