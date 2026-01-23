@@ -432,11 +432,11 @@ void SingleStreamDecoder::addStream(
   activeStreamIndex_ = av_find_best_stream(
       formatContext_.get(), mediaType, streamIndex, -1, &avCodec, 0);
 
-  if (activeStreamIndex_ < 0) {
-    throw std::invalid_argument(
-        "No valid stream found in input file. Is " +
-        std::to_string(streamIndex) + " of the desired media type?");
-  }
+  TORCH_CHECK_VALUE(
+      activeStreamIndex_ >= 0,
+      "No valid stream found in input file. Is ",
+      streamIndex,
+      " of the desired media type?");
 
   TORCH_CHECK(avCodec != nullptr);
 
@@ -1518,24 +1518,27 @@ void SingleStreamDecoder::validateScannedAllStreams(const std::string& msg) {
 void SingleStreamDecoder::validateFrameIndex(
     const StreamMetadata& streamMetadata,
     int64_t frameIndex) {
-  if (frameIndex < 0) {
-    throw std::out_of_range(
-        "Invalid frame index=" + std::to_string(frameIndex) +
-        " for streamIndex=" + std::to_string(streamMetadata.streamIndex) +
-        "; negative indices must have an absolute value less than the number of frames, "
-        "and the number of frames must be known.");
-  }
+  TORCH_CHECK_INDEX(
+      frameIndex >= 0,
+      "Invalid frame index=",
+      frameIndex,
+      " for streamIndex=",
+      streamMetadata.streamIndex,
+      "; negative indices must have an absolute value less than the number of frames, "
+      "and the number of frames must be known.");
 
   // Note that if we do not have the number of frames available in our
   // metadata, then we assume that the frameIndex is valid.
   std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
   if (numFrames.has_value()) {
-    if (frameIndex >= numFrames.value()) {
-      throw std::out_of_range(
-          "Invalid frame index=" + std::to_string(frameIndex) +
-          " for streamIndex=" + std::to_string(streamMetadata.streamIndex) +
-          "; must be less than " + std::to_string(numFrames.value()));
-    }
+    TORCH_CHECK_INDEX(
+        frameIndex < numFrames.value(),
+        "Invalid frame index=",
+        frameIndex,
+        " for streamIndex=",
+        streamMetadata.streamIndex,
+        "; must be less than ",
+        numFrames.value());
   }
 }
 

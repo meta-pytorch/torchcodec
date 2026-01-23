@@ -892,11 +892,11 @@ std::string get_stream_json_metadata(
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   auto allStreamMetadata =
       videoDecoder->getContainerMetadata().allStreamMetadata;
-  if (stream_index < 0 ||
-      stream_index >= static_cast<int64_t>(allStreamMetadata.size())) {
-    throw std::out_of_range(
-        "stream_index out of bounds: " + std::to_string(stream_index));
-  }
+  TORCH_CHECK_INDEX(
+      stream_index >= 0 &&
+          stream_index < static_cast<int64_t>(allStreamMetadata.size()),
+      "stream_index out of bounds: ",
+      stream_index);
 
   auto streamMetadata = allStreamMetadata[stream_index];
   auto seekMode = videoDecoder->getSeekMode();
