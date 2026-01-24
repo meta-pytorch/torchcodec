@@ -17,6 +17,8 @@ def _get_extension_path(lib_name: str) -> str:
     extension_suffixes = []
     if sys.platform == "linux":
         extension_suffixes = importlib.machinery.EXTENSION_SUFFIXES
+    elif sys.platform.startswith("freebsd"):
+        extension_suffixes = importlib.machinery.EXTENSION_SUFFIXES
     elif sys.platform == "darwin":
         extension_suffixes = importlib.machinery.EXTENSION_SUFFIXES + [".dylib"]
     elif sys.platform in ("win32", "cygwin"):
