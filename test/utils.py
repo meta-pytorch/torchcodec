@@ -35,7 +35,7 @@ def needs_ffmpeg_cli(test_item):
     return pytest.mark.needs_ffmpeg_cli(test_item)
 
 
-# Decorator for skipping tests when fr_FR.UTF-8 locale isn't available.
+# Decorator for skipping tests when a locale isn't available.
 def needs_locale(test_item):
     return pytest.mark.needs_locale(test_item)
 
