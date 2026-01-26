@@ -106,26 +106,30 @@ AVSampleFormat findBestOutputSampleFormat(const AVCodec& avCodec) {
   return supportedSampleFormats[0];
 }
 
+void closeAVIOContext(
+    AVFormatContext* avFormatContext,
+    AVIOContextHolder* avioContextHolder) {
+  if (!avFormatContext || !avFormatContext->pb) {
+    return;
+  }
+
+  if (avFormatContext->pb->error == 0) {
+    avio_flush(avFormatContext->pb);
+  }
+
+  if (!avioContextHolder) {
+    if (avFormatContext->pb->error == 0) {
+      avio_close(avFormatContext->pb);
+    }
+  }
+
+  avFormatContext->pb = nullptr;
+}
+
 } // namespace
 
 AudioEncoder::~AudioEncoder() {
-  close_avio();
-}
-
-void AudioEncoder::close_avio() {
-  if (avFormatContext_ && avFormatContext_->pb) {
-    if (avFormatContext_->pb->error == 0) {
-      avio_flush(avFormatContext_->pb);
-    }
-
-    if (!avioContextHolder_) {
-      if (avFormatContext_->pb->error == 0) {
-        avio_close(avFormatContext_->pb);
-      }
-      // avoids closing again in destructor, which would segfault.
-      avFormatContext_->pb = nullptr;
-    }
-  }
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 AudioEncoder::AudioEncoder(
@@ -336,7 +340,7 @@ void AudioEncoder::encode() {
       "Error in: av_write_trailer",
       getFFMPEGErrorStringFromErrorCode(status));
 
-  close_avio();
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 UniqueAVFrame AudioEncoder::maybeConvertAVFrame(const UniqueAVFrame& avFrame) {
@@ -357,6 +361,12 @@ UniqueAVFrame AudioEncoder::maybeConvertAVFrame(const UniqueAVFrame& avFrame) {
         avFrame,
         outNumChannels_));
   }
+  // convertAudioAVFrameSamples uses avFrame's extended_data field, so we ensure
+  // it's the same as data. This should always be the case since we validated
+  // earlier that we have less than AV_NUM_DATA_POINTERS channels.
+  TORCH_CHECK(
+      avFrame->data == avFrame->extended_data,
+      "Codec context data and extended_data pointers differ, this is unexpected.")
   UniqueAVFrame convertedAVFrame = convertAudioAVFrameSamples(
       swrContext_,
       avFrame,
@@ -646,18 +656,7 @@ void sortCodecOptions(
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
-  // TODO-VideoEncoder: Unify destructor with ~AudioEncoder()
-  if (avFormatContext_ && avFormatContext_->pb) {
-    if (avFormatContext_->pb->error == 0) {
-      avio_flush(avFormatContext_->pb);
-    }
-    if (!avioContextHolder_) {
-      if (avFormatContext_->pb->error == 0) {
-        avio_close(avFormatContext_->pb);
-      }
-      avFormatContext_->pb = nullptr;
-    }
-  }
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 VideoEncoder::VideoEncoder(
@@ -777,35 +776,42 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_.reset(avCodecContext);
 
   // Store dimension order and input pixel format
-  // TODO-VideoEncoder: Remove assumption that tensor in NCHW format
+  // TODO-VideoEncoder: (P2) Enable tensors in NHWC shape
   auto sizes = frames_.sizes();
   inPixelFormat_ = AV_PIX_FMT_GBRP;
   inHeight_ = static_cast<int>(sizes[2]);
   inWidth_ = static_cast<int>(sizes[3]);
 
   // Use specified dimensions or input dimensions
-  // TODO-VideoEncoder: Allow height and width to be set
+  // TODO-VideoEncoder: (P2) Allow height and width to be set
   outWidth_ = inWidth_;
   outHeight_ = inHeight_;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
+    // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user on GPU
+    // and handled with the appropriate NPP function on GPU.
     if (frames_.device().is_cuda()) {
       TORCH_CHECK(
           false,
-          "GPU Video encoding currently only supports the NV12 pixel format. "
-          "Do not set pixel_format to use NV12.");
+          "Video encoding on GPU currently only supports the nv12 pixel format. "
+          "Do not set pixel_format to use nv12 by default.");
     }
     outPixelFormat_ =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
-    const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
-    // Use first listed pixel format as default (often yuv420p).
-    // This is similar to FFmpeg's logic:
-    // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
-    // If pixel formats are undefined for some reason, try yuv420p
-    outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
-        ? formats[0]
-        : AV_PIX_FMT_YUV420P;
+    if (frames_.device().is_cuda()) {
+      // Default to nv12 pixel format when encoding on GPU.
+      outPixelFormat_ = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
+    } else {
+      const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
+      // Use first listed pixel format as default (often yuv420p).
+      // This is similar to FFmpeg's logic:
+      // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
+      // If pixel formats are undefined for some reason, try yuv420p
+      outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
+          ? formats[0]
+          : AV_PIX_FMT_YUV420P;
+    }
   }
 
   // Configure codec parameters
@@ -813,7 +819,7 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_->width = outWidth_;
   avCodecContext_->height = outHeight_;
   avCodecContext_->pix_fmt = outPixelFormat_;
-  // TODO-VideoEncoder: Add and utilize output frame_rate option
+  // TODO-VideoEncoder: (P1) Add and utilize output frame_rate option
   avCodecContext_->framerate = av_d2q(inFrameRate_, INT_MAX);
   avCodecContext_->time_base = av_inv_q(avCodecContext_->framerate);
 
@@ -963,10 +969,10 @@ UniqueAVFrame VideoEncoder::convertTensorToAVFrame(
 
   uint8_t* tensorData = static_cast<uint8_t*>(frame.data_ptr());
 
-  // TODO-VideoEncoder: Reorder tensor if in NHWC format
   int channelSize = inHeight_ * inWidth_;
-  // Reorder RGB -> GBR for AV_PIX_FMT_GBRP format
-  // TODO-VideoEncoder: Determine if FFmpeg supports planar RGB input format
+  // Since frames tensor is in NCHW, we must use a planar format.
+  // FFmpeg only provides AV_PIX_FMT_GBRP for planar RGB,
+  // so we reorder RGB -> GBR.
   inputFrame->data[0] = tensorData + channelSize;
   inputFrame->data[1] = tensorData + (2 * channelSize);
   inputFrame->data[2] = tensorData;
