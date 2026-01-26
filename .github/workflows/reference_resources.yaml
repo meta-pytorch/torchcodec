@@ -63,7 +63,7 @@ jobs:
         uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
-          miniconda-version: "latest"
+          miniforge-version: latest
           activate-environment: test
           python-version: ${{ matrix.python-version }}
 
