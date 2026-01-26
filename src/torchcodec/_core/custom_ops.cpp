@@ -6,6 +6,8 @@
 
 #include <pybind11/pybind11.h>
 #include <cstdint>
+#include <iomanip>
+#include <locale>
 #include <sstream>
 #include <string>
 #include "AVIOFileLikeContext.h"
@@ -170,6 +172,17 @@ std::map<std::string, std::string> unflattenExtraOptions(
   return optionsMap;
 }
 
+// Convert double to string using the classic "C" locale.
+// This prevents JSON parsing errors in locales that use ',' as decimal
+// separator.
+std::string doubleToString(double value) {
+  std::ostringstream oss;
+  oss.imbue(std::locale::classic());
+  // Set precision to match std::to_string
+  oss << std::fixed << std::setprecision(6) << value;
+  return oss.str();
+}
+
 std::string mapToJson(const std::map<std::string, std::string>& metadataMap) {
   std::stringstream ss;
   ss << "{\n";
@@ -206,7 +219,7 @@ void writeFallbackBasedMetadata(
     SeekMode seekMode) {
   auto durationSeconds = streamMetadata.getDurationSeconds(seekMode);
   if (durationSeconds.has_value()) {
-    map["durationSeconds"] = std::to_string(durationSeconds.value());
+    map["durationSeconds"] = doubleToString(durationSeconds.value());
   }
 
   auto numFrames = streamMetadata.getNumFrames(seekMode);
@@ -215,16 +228,16 @@ void writeFallbackBasedMetadata(
   }
 
   double beginStreamSeconds = streamMetadata.getBeginStreamSeconds(seekMode);
-  map["beginStreamSeconds"] = std::to_string(beginStreamSeconds);
+  map["beginStreamSeconds"] = doubleToString(beginStreamSeconds);
 
   auto endStreamSeconds = streamMetadata.getEndStreamSeconds(seekMode);
   if (endStreamSeconds.has_value()) {
-    map["endStreamSeconds"] = std::to_string(endStreamSeconds.value());
+    map["endStreamSeconds"] = doubleToString(endStreamSeconds.value());
   }
 
   auto averageFps = streamMetadata.getAverageFps(seekMode);
   if (averageFps.has_value()) {
-    map["averageFps"] = std::to_string(averageFps.value());
+    map["averageFps"] = doubleToString(averageFps.value());
   }
 }
 
@@ -809,10 +822,10 @@ std::string get_json_metadata(torch::Tensor& decoder) {
         videoMetadata.durationSecondsFromHeader.value_or(0);
   }
   metadataMap["durationSecondsFromHeader"] =
-      std::to_string(durationSecondsFromHeader);
+      doubleToString(durationSecondsFromHeader);
 
   if (videoMetadata.bitRate.has_value()) {
-    metadataMap["bitRate"] = std::to_string(videoMetadata.bitRate.value());
+    metadataMap["bitRate"] = doubleToString(videoMetadata.bitRate.value());
   }
 
   if (maybeBestVideoStreamIndex.has_value()) {
@@ -869,11 +882,11 @@ std::string get_container_json_metadata(torch::Tensor& decoder) {
 
   if (containerMetadata.durationSecondsFromHeader.has_value()) {
     map["durationSecondsFromHeader"] =
-        std::to_string(*containerMetadata.durationSecondsFromHeader);
+        doubleToString(*containerMetadata.durationSecondsFromHeader);
   }
 
   if (containerMetadata.bitRate.has_value()) {
-    map["bitRate"] = std::to_string(*containerMetadata.bitRate);
+    map["bitRate"] = doubleToString(*containerMetadata.bitRate);
   }
 
   if (containerMetadata.bestVideoStreamIndex.has_value()) {
@@ -912,10 +925,10 @@ std::string get_stream_json_metadata(
 
   if (streamMetadata.durationSecondsFromHeader.has_value()) {
     map["durationSecondsFromHeader"] =
-        std::to_string(*streamMetadata.durationSecondsFromHeader);
+        doubleToString(*streamMetadata.durationSecondsFromHeader);
   }
   if (streamMetadata.bitRate.has_value()) {
-    map["bitRate"] = std::to_string(*streamMetadata.bitRate);
+    map["bitRate"] = doubleToString(*streamMetadata.bitRate);
   }
   if (streamMetadata.numFramesFromContent.has_value()) {
     map["numFramesFromContent"] =
@@ -927,15 +940,15 @@ std::string get_stream_json_metadata(
   }
   if (streamMetadata.beginStreamSecondsFromHeader.has_value()) {
     map["beginStreamSecondsFromHeader"] =
-        std::to_string(*streamMetadata.beginStreamSecondsFromHeader);
+        doubleToString(*streamMetadata.beginStreamSecondsFromHeader);
   }
   if (streamMetadata.beginStreamPtsSecondsFromContent.has_value()) {
     map["beginStreamSecondsFromContent"] =
-        std::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
+        doubleToString(*streamMetadata.beginStreamPtsSecondsFromContent);
   }
   if (streamMetadata.endStreamPtsSecondsFromContent.has_value()) {
     map["endStreamSecondsFromContent"] =
-        std::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
+        doubleToString(*streamMetadata.endStreamPtsSecondsFromContent);
   }
   if (streamMetadata.codecName.has_value()) {
     map["codec"] = quoteValue(streamMetadata.codecName.value());
@@ -954,7 +967,7 @@ std::string get_stream_json_metadata(
   }
   if (streamMetadata.averageFpsFromHeader.has_value()) {
     map["averageFpsFromHeader"] =
-        std::to_string(*streamMetadata.averageFpsFromHeader);
+        doubleToString(*streamMetadata.averageFpsFromHeader);
   }
   if (streamMetadata.sampleRate.has_value()) {
     map["sampleRate"] = std::to_string(*streamMetadata.sampleRate);
