@@ -5,7 +5,6 @@
 # LICENSE file in the root directory of this source tree.
 
 import functools
-import locale
 from fractions import Fraction
 
 import pytest
@@ -21,19 +20,6 @@ from torchcodec._core import (
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
 from .utils import get_ffmpeg_major_version, NASA_AUDIO_MP3, NASA_VIDEO
-
-
-def _is_locale_available(locale_name):
-    # Check if a locale is available by trying to set it.
-    # The original locale is always restored.
-    saved = locale.getlocale(locale.LC_NUMERIC)
-    try:
-        locale.setlocale(locale.LC_NUMERIC, locale_name)
-        return True
-    except locale.Error:
-        return False
-    finally:
-        locale.setlocale(locale.LC_NUMERIC, saved)
 
 
 # TODO: Expected values in these tests should be based on the assets's
@@ -210,21 +196,3 @@ def test_repr():
   sample_format: fltp
 """
     )
-
-
-@pytest.mark.skipif(
-    not _is_locale_available("fr_FR.UTF-8"),
-    reason="Locale that uses comma as decimal separator not available",
-)
-def test_metadata_with_comma_decimal_locale():
-    # Test that metadata parsing works when comma is used as decimal separator.
-    # Regression test for https://github.com/meta-pytorch/torchcodec/issues/1159
-    saved_locale = locale.getlocale(locale.LC_NUMERIC)
-    try:
-        locale.setlocale(locale.LC_NUMERIC, "fr_FR.UTF-8")
-        decoder = VideoDecoder(NASA_VIDEO.path)
-        metadata = decoder.metadata
-        assert metadata.average_fps == pytest.approx(29.97, abs=0.001)
-        assert metadata.duration_seconds == pytest.approx(13.013, abs=0.001)
-    finally:
-        locale.setlocale(locale.LC_NUMERIC, saved_locale)

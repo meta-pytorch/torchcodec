@@ -175,6 +175,7 @@ std::map<std::string, std::string> unflattenExtraOptions(
 // Convert double to string using the classic "C" locale.
 // This prevents JSON parsing errors in locales that use ',' as decimal
 // separator.
+// See https://github.com/meta-pytorch/torchcodec/issues/1159
 std::string doubleToString(double value) {
   std::ostringstream oss;
   oss.imbue(std::locale::classic());
