@@ -8,6 +8,16 @@ find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development)
 
+# Fetch fmt library for high-precision string formatting
+include(FetchContent)
+FetchContent_Declare(
+  fmt
+  URL https://github.com/fmtlib/fmt/releases/download/10.2.1/fmt-10.2.1.zip
+)
+# Build fmt with Position Independent Code (required for linking into shared libraries)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+FetchContent_MakeAvailable(fmt)
+
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
 else()
@@ -162,6 +172,7 @@ function(make_torchcodec_libraries
     set(custom_ops_dependencies
         ${core_library_name}
         ${Python3_LIBRARIES}
+        fmt::fmt
     )
     make_torchcodec_sublibrary(
         "${custom_ops_library_name}"
