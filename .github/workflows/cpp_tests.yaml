@@ -22,7 +22,7 @@ jobs:
         ffmpeg-version-for-tests: ['4.4.2', '5.1.2', '6.1.1', '7.0.1']
     steps:
       - name: Check out repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
       - name: Setup conda env
         uses: conda-incubator/setup-miniconda@v3
         with:
