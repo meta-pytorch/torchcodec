@@ -104,11 +104,9 @@ class VideoStreamMetadata(StreamMetadata):
     rotation: float | None
     """Rotation angle in degrees (counter-clockwise) from the display matrix
     metadata. This indicates how the video should be rotated for correct
-    display. Common values are 0, 90, 180, or -90 degrees. Videos recorded
-    on mobile devices often have rotation metadata. TorchCodec automatically
-    applies this rotation during decoding (rounded to the nearest multiple of
-    90 degrees), so the returned frames are in the correct orientation (float
-    or None). The width and height of the video will be post-rotation.
+    display. TorchCodec automatically applies this rotation during decoding
+    (rounded to the nearest multiple of 90 degrees), so the returned frames are
+    in the correct orientation (float or None).
 
     .. note::
 
