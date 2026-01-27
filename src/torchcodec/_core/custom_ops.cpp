@@ -371,7 +371,7 @@ torch::Tensor create_from_file(
 // Create a SingleStreamDecoder from the actual bytes of a video and wrap the
 // pointer in a tensor. The SingleStreamDecoder will decode the provided bytes.
 torch::Tensor create_from_tensor(
-    torch::Tensor video_tensor,
+    const torch::Tensor& video_tensor,
     std::optional<std::string_view> seek_mode = std::nullopt) {
   TORCH_CHECK(video_tensor.is_contiguous(), "video_tensor must be contiguous");
   TORCH_CHECK(
