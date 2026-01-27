@@ -29,6 +29,7 @@ from .utils import (
     cuda_devices,
     cuda_version_used_for_building_torch,
     get_ffmpeg_major_version,
+    get_ffmpeg_minor_version,
     get_python_version,
     H264_10BITS,
     H265_10BITS,
@@ -2277,7 +2278,23 @@ class TestAudioDecoder:
     # that the extra tensor allocation that happens within
     # maybeFlushSwrBuffers() is correct.
     @pytest.mark.parametrize("sample_rate", (None, 16_000))
-    @pytest.mark.parametrize("num_channels", (1, 2, 8, 16, 24, None))
+    @pytest.mark.parametrize(
+        "num_channels",
+        (
+            1,
+            2,
+            8,
+            16,
+            pytest.param(
+                24,
+                marks=pytest.mark.skipif(
+                    get_ffmpeg_major_version() == 4 and get_ffmpeg_minor_version() < 4
+                ),
+                reason="24 channel layout requires FFmpeg >= 4.4",
+            ),
+            None,
+        ),
+    )
     def test_num_channels(self, asset, sample_rate, num_channels):
         decoder = AudioDecoder(
             asset.path, sample_rate=sample_rate, num_channels=num_channels
