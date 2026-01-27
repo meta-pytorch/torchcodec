@@ -2288,9 +2288,9 @@ class TestAudioDecoder:
             pytest.param(
                 24,
                 marks=pytest.mark.skipif(
-                    get_ffmpeg_major_version() == 4 and get_ffmpeg_minor_version() < 4
+                    get_ffmpeg_major_version() == 4 and get_ffmpeg_minor_version() < 4,
+                    reason="24 channel layout requires FFmpeg >= 4.4",
                 ),
-                reason="24 channel layout requires FFmpeg >= 4.4",
             ),
             None,
         ),
