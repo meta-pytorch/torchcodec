@@ -35,11 +35,6 @@ def needs_ffmpeg_cli(test_item):
     return pytest.mark.needs_ffmpeg_cli(test_item)
 
 
-# Decorator for skipping tests when a locale isn't available.
-def needs_locale(test_item):
-    return pytest.mark.needs_locale(test_item)
-
-
 # This is a special device string that we use to test the "beta" CUDA backend.
 # It only exists here, in this test utils file. Public and core APIs have no
 # idea that this is how we're tesing them. That is, that's not a supported

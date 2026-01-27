@@ -1,4 +1,3 @@
-import locale
 import os
 import random
 
@@ -8,19 +7,6 @@ import torch
 from .utils import in_fbcode
 
 
-def _is_locale_available(locale_name):
-    # Check if a locale is available by trying to set it.
-    # The original locale is always restored.
-    saved = locale.getlocale(locale.LC_NUMERIC)
-    try:
-        locale.setlocale(locale.LC_NUMERIC, locale_name)
-        return True
-    except locale.Error:
-        return False
-    finally:
-        locale.setlocale(locale.LC_NUMERIC, saved)
-
-
 def pytest_configure(config):
     # register an additional marker (see pytest_collection_modifyitems)
     config.addinivalue_line(
@@ -28,9 +14,6 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "needs_ffmpeg_cli: mark for tests that rely on ffmpeg"
-    )
-    config.addinivalue_line(
-        "markers", "needs_locale: mark for tests that require a specific locale"
     )
 
 
@@ -51,7 +34,6 @@ def pytest_collection_modifyitems(items):
         # mark.
         needs_cuda = item.get_closest_marker("needs_cuda") is not None
         needs_ffmpeg_cli = item.get_closest_marker("needs_ffmpeg_cli") is not None
-        needs_locale = item.get_closest_marker("needs_locale") is not None
         has_skip_marker = item.get_closest_marker("skip") is not None
 
         # For skipif, the marker is always present regardless of whether the
@@ -70,12 +52,7 @@ def pytest_collection_modifyitems(items):
         if in_fbcode():
             # fbcode doesn't like skipping tests, so instead we just don't collect the test
             # so that they don't even "exist", hence the continue statements.
-            if (
-                needs_ffmpeg_cli
-                or needs_locale
-                or has_skip_marker
-                or skipif_condition_is_true
-            ):
+            if needs_ffmpeg_cli or has_skip_marker or skipif_condition_is_true:
                 continue
 
         if (
@@ -90,9 +67,6 @@ def pytest_collection_modifyitems(items):
             # supposed to run the CUDA tests, so if CUDA isn't available on
             # those for whatever reason, we need to know.
             item.add_marker(pytest.mark.skip(reason="CUDA not available."))
-
-        if needs_locale and not _is_locale_available("fr_FR.UTF-8"):
-            item.add_marker(pytest.mark.skip(reason="Requested locale not available."))
 
         out_items.append(item)
 

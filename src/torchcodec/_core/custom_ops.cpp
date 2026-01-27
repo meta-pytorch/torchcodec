@@ -840,11 +840,11 @@ std::string get_json_metadata(torch::Tensor& decoder) {
     }
     if (streamMetadata.beginStreamPtsSecondsFromContent.has_value()) {
       metadataMap["beginStreamSecondsFromContent"] =
-          std::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
+          doubleToString(*streamMetadata.beginStreamPtsSecondsFromContent);
     }
     if (streamMetadata.endStreamPtsSecondsFromContent.has_value()) {
       metadataMap["endStreamSecondsFromContent"] =
-          std::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
+          doubleToString(*streamMetadata.endStreamPtsSecondsFromContent);
     }
     if (streamMetadata.codecName.has_value()) {
       metadataMap["codec"] = quoteValue(streamMetadata.codecName.value());
@@ -857,7 +857,7 @@ std::string get_json_metadata(torch::Tensor& decoder) {
     }
     if (streamMetadata.averageFpsFromHeader.has_value()) {
       metadataMap["averageFpsFromHeader"] =
-          std::to_string(*streamMetadata.averageFpsFromHeader);
+          doubleToString(*streamMetadata.averageFpsFromHeader);
     }
   }
   if (videoMetadata.bestVideoStreamIndex.has_value()) {
