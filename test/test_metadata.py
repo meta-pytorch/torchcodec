@@ -8,7 +8,6 @@ import functools
 from fractions import Fraction
 
 import pytest
-
 from torchcodec._core import (
     add_video_stream,
     AudioStreamMetadata,
