@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "torchcodec-test-plugin"
+description = "Test extension for torchcodec"
+requires-python = ">=3.8"
+dynamic = ["version"]
+
+[project.entry-points.'torchcodec.backends']
+device_backend = 'torchcodec_test_plugin:_autoload'
