@@ -241,6 +241,11 @@ class SingleStreamDecoder {
 
     VideoStreamOptions videoStreamOptions;
     AudioStreamOptions audioStreamOptions;
+
+    // Rotation parameter for torch::rot90. Computed during addVideoStream.
+    // A value of 0 means no rotation. Values 1, 2, 3 correspond to 90, 180, -90
+    // degrees counter-clockwise rotation respectively.
+    int rotationK = 0;
   };
 
   // --------------------------------------------------------------------------
@@ -272,6 +277,8 @@ class SingleStreamDecoder {
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
   torch::Tensor maybePermuteHWC2CHW(torch::Tensor& hwcTensor);
+
+  torch::Tensor applyRotation(torch::Tensor& hwcTensor);
 
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
@@ -373,7 +380,13 @@ class SingleStreamDecoder {
   // 3. metdataDims_; the dimensions we learned from the metadata.
   std::vector<std::unique_ptr<Transform>> transforms_;
   std::optional<FrameDims> resizedOutputDims_;
+  // Post-rotation dimensions from metadata. Used for user-facing metadata and
+  // final output shape validation.
   FrameDims metadataDims_;
+  // Pre-rotation dimensions (raw encoded dimensions). Used for pre-allocating
+  // tensors before rotation is applied. For videos without rotation, this
+  // equals metadataDims_.
+  FrameDims preRotationDims_;
 
   // Whether or not we have already scanned all streams to update the metadata.
   bool scannedAllStreams_ = false;
