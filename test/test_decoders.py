@@ -1987,6 +1987,17 @@ class TestVideoDecoder:
             expected, frames_in_range_rotated.data, atol=0, rtol=0
         )
 
+        # Test get_all_frames (all frames in video)
+        # Note: NASA_VIDEO_ROTATED has fewer frames than NASA_VIDEO, so we compare
+        # the first N frames where N is the number of frames in the rotated video
+        all_frames = decoder.get_all_frames()
+        all_frames_rotated = decoder_rotated.get_all_frames()
+        num_frames_rotated = all_frames_rotated.data.shape[0]
+        expected = torch.rot90(
+            all_frames.data[:num_frames_rotated], k=1, dims=batch_rot_dims
+        )
+        torch.testing.assert_close(expected, all_frames_rotated.data, atol=0, rtol=0)
+
     @needs_cuda
     @pytest.mark.parametrize("device", cuda_devices())
     def test_cpu_fallback_h265_video(self, device):
