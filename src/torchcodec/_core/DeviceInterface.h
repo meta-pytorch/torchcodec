@@ -142,6 +142,11 @@ class DeviceInterface {
   // Pixel format used for encoding on CUDA devices
   static constexpr AVPixelFormat CUDA_ENCODING_PIXEL_FORMAT = AV_PIX_FMT_NV12;
 
+  virtual UniqueAVFrame convertTensorToAVFrameForEncoding(
+      const torch::Tensor& tensor,
+      int frameIndex,
+      AVCodecContext* codecContext) = 0;
+
   // Function used for video encoding, only implemented in CudaDeviceInterface.
   // It is here to isolate CUDA dependencies from CPU builds
   // TODO Video-Encoder: Reconsider using video encoding functions in device
@@ -156,9 +161,7 @@ class DeviceInterface {
   // Function used for video encoding, only implemented in CudaDeviceInterface.
   // It is here to isolate CUDA dependencies from CPU builds
   virtual void setupHardwareFrameContextForEncoding(
-      [[maybe_unused]] AVCodecContext* codecContext) {
-    TORCH_CHECK(false);
-  }
+      [[maybe_unused]] AVCodecContext* codecContext) {}
 
   virtual std::optional<const AVCodec*> findHardwareEncoder(
       [[maybe_unused]] const AVCodecID& codecId) {
