@@ -197,22 +197,21 @@ to increase performance.
 # This can lead to significant memory savings, especially when decoding
 # high-resolution videos that will be resized to smaller dimensions.
 #
-# :class:`~torchcodec.decoders.VideoDecoder` accepts both TorchVision
-# :class:`~torchvision.transforms.v2.Transform` objects and TorchCodec
-# :class:`~torchcodec.transforms.DecoderTransform` objects as transform
-# specifications. TorchVision transforms are accepted as a convenience;
-# TorchVision is **not required** to use decoder transforms.
+# :class:`~torchcodec.decoders.VideoDecoder` accepts both TorchCodec
+# :class:`~torchcodec.transforms.DecoderTransform` objects and TorchVision
+# :class:`~torchvision.transforms.v2.Transform` objects as transform
+# specifications. TorchVision is **not required** to use decoder transforms.
 #
 # **Example:**
 #
 # .. code-block:: python
 #
 #     from torchcodec.decoders import VideoDecoder
-#     from torchvision.transforms import v2
+#     from torchcodec.transforms import Resize
 #
 #     decoder = VideoDecoder(
 #         "file.mp4",
-#         transforms=[v2.Resize(size=(480, 640))]
+#         transforms=[Resize(size=(480, 640))]
 #     )
 #
 # **When to use:**
@@ -222,10 +221,6 @@ to increase performance.
 # - If you are using multiple FFmpeg threads, decoder transforms may be faster.
 #   Experiment with your setup to verify.
 #
-# **Caveat:**
-#
-# - If you are using a single FFmpeg thread, decoder transforms may be slower.
-#   Experiment with your setup to verify.
 
 # %%
 # .. note::
