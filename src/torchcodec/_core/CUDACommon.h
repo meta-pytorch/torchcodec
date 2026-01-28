@@ -48,4 +48,22 @@ void validatePreAllocatedTensorShape(
 
 int getDeviceIndex(const torch::Device& device);
 
+// We reuse cuda contexts across VideoDecoder and VideoEncoder instances.
+// Creating a cuda context is expensive. The cache mechanism is as follows:
+// 1. There is a cache of size MAX_CONTEXTS_PER_GPU_IN_CACHE cuda contexts for
+//    each GPU.
+// 2. When we destroy an instance we release the cuda context to the cache if
+//    the cache is not full.
+// 3. When we create an instance we try to get a cuda context from the cache.
+//    If the cache is empty we create a new cuda context.
+
+// Get or create a hardware device context for the specified CUDA device.
+// The context may be retrieved from a cache for efficiency.
+UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device);
+
+// Return a hardware device context to the cache for reuse.
+void returnHardwareDeviceContextToCache(
+    const torch::Device& device,
+    UniqueAVBufferRef ctx);
+
 } // namespace facebook::torchcodec
