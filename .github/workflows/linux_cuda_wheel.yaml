@@ -242,13 +242,12 @@ jobs:
           fi
           echo "Target Folder: ${TARGET_FOLDER}"
 
-          git config user.name 'pytorchbot'
-          git config user.email 'soumith+bot@pytorch.org'
-
           mkdir -p "${TARGET_FOLDER}"
           rm -rf "${TARGET_FOLDER}"/*
           cp -r docs-artifact/* "${TARGET_FOLDER}/"
-
           git add "${TARGET_FOLDER}"
+
+          git config user.name 'pytorchbot'
+          git config user.email 'soumith+bot@pytorch.org'
           git commit -m "auto-generating sphinx docs" || echo "No changes to commit"
           git push
