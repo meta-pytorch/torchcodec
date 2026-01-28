@@ -199,3 +199,26 @@ jobs:
         with:
           name: Built-Docs
           path: docs/build/html/
+
+  doc-preview:
+    runs-on: [self-hosted, linux.2xlarge]
+    needs: build-docs
+    if: github.repository == 'meta-pytorch/torchcodec' && github.event_name == 'pull_request'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Built-Docs
+          path: docs
+
+      - name: Add no-index tag
+        run: |
+          find docs -name "*.html" -print0 | xargs -0 sed -i '/<head>/a \ \ <meta name="robots" content="noindex">';
+
+      - name: Upload docs preview
+        uses: seemethere/upload-artifact-s3@v5
+        with:
+          retention-days: 14
+          s3-bucket: doc-previews
+          if-no-files-found: error
+          path: docs
+          s3-prefix: meta-pytorch/torchcodec/${{ github.event.pull_request.number }}
