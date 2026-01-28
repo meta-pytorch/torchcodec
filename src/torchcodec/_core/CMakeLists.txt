@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.18)
 project(TorchCodec)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON) # Needed for linking fmt into shared libraries
 
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 REQUIRED)
@@ -14,8 +15,6 @@ FetchContent_Declare(
   fmt
   URL https://github.com/fmtlib/fmt/releases/download/10.2.1/fmt-10.2.1.zip
 )
-# Build fmt with Position Independent Code (required for linking into shared libraries)
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 FetchContent_MakeAvailable(fmt)
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
