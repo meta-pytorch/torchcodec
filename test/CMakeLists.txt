@@ -49,6 +49,7 @@ target_link_libraries(
   MetadataTest
   ${libtorchcodec_library_name}
   ${libtorchcodec_custom_ops_name}
+  fmt::fmt
   GTest::gtest_main
 )
 
