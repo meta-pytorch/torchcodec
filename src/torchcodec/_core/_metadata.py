@@ -102,11 +102,11 @@ class VideoStreamMetadata(StreamMetadata):
     is the ratio between the width and height of each pixel
     (``fractions.Fraction`` or None)."""
     rotation: float | None
-    """Rotation angle in degrees (counter-clockwise) from the display matrix
-    metadata. This indicates how the video should be rotated for correct
-    display. TorchCodec automatically applies this rotation during decoding
-    (rounded to the nearest multiple of 90 degrees), so the returned frames are
-    in the correct orientation (float or None).
+    """Rotation angle in degrees (counter-clockwise rounded to the nearest
+    multiple of 90 degrees) from the display matrix metadata. This indicates
+    how the video should be rotated for correct display. TorchCodec automatically
+    applies this rotation during decoding, so the returned frames are in the
+    correct orientation (float or None).
 
     .. note::
 
@@ -114,7 +114,7 @@ class VideoStreamMetadata(StreamMetadata):
         :attr:`~torchcodec.decoders.VideoStreamMetadata.height` attributes report
         the **post-rotation** dimensions, i.e., the dimensions of frames as they
         will be returned by TorchCodec's decoding methods. For videos with 90
-        or 270 degree rotation, this means width and height are swapped
+        or -90 degree rotation, this means width and height are swapped
         compared to the raw encoded dimensions in the container.
     """
 

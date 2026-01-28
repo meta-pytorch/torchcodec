@@ -1916,6 +1916,7 @@ class TestVideoDecoder:
 
         Compares frames from NASA_VIDEO_ROTATED (which has 90-degree rotation
         metadata) with manually rotated frames from NASA_VIDEO.
+        Tests all decoding methods to ensure rotation is applied consistently.
         """
         decoder = VideoDecoder(
             NASA_VIDEO.path,
@@ -1928,24 +1929,63 @@ class TestVideoDecoder:
             dimension_order=dimension_order,
         )
 
-        # Test multiple frames
+        # Rotation dims for single frame (CHW or HWC) and batch (NCHW or NHWC)
+        # Rotation dims are (H, W) dimensions for each format
+        frame_rot_dims = (1, 2) if dimension_order == "NCHW" else (0, 1)  # CHW vs HWC
+        batch_rot_dims = (2, 3) if dimension_order == "NCHW" else (1, 2)  # NCHW vs NHWC
+
+        # Test __getitem__ / get_frame_at (single frame by index)
         for idx in [0, 5, 10]:
             frame = decoder[idx]
             frame_rotated = decoder_rotated[idx]
+            expected = torch.rot90(frame, k=1, dims=frame_rot_dims)
+            torch.testing.assert_close(expected, frame_rotated, atol=0, rtol=0)
 
-            # Manually rotate the non-rotated frame 90 degrees counter-clockwise
-            # The rotation metadata indicates the angle to rotate counter-clockwise
-            # to display the video upright, which the decoder applies automatically.
-            if dimension_order == "NCHW":
-                # Frame is (C, H, W)
-                frame_manually_rotated = torch.rot90(frame, k=1, dims=(1, 2))
-            else:
-                # Frame is (H, W, C)
-                frame_manually_rotated = torch.rot90(frame, k=1, dims=(0, 1))
+        # Test get_frames_at (multiple frames by indices)
+        indices = [0, 5, 10]
+        frames = decoder.get_frames_at(indices)
+        frames_rotated = decoder_rotated.get_frames_at(indices)
+        expected = torch.rot90(frames.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(expected, frames_rotated.data, atol=0, rtol=0)
 
-            torch.testing.assert_close(
-                frame_manually_rotated, frame_rotated, atol=0, rtol=0
-            )
+        # Test get_frames_in_range (frames by index range)
+        frames_range = decoder.get_frames_in_range(start=0, stop=6, step=2)
+        frames_range_rotated = decoder_rotated.get_frames_in_range(
+            start=0, stop=6, step=2
+        )
+        expected = torch.rot90(frames_range.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(expected, frames_range_rotated.data, atol=0, rtol=0)
+
+        # Test get_frame_played_at (single frame by timestamp)
+        pts = decoder_rotated.metadata.begin_stream_seconds
+        frame_at_pts = decoder.get_frame_played_at(pts)
+        frame_at_pts_rotated = decoder_rotated.get_frame_played_at(pts)
+        expected = torch.rot90(frame_at_pts.data, k=1, dims=frame_rot_dims)
+        torch.testing.assert_close(expected, frame_at_pts_rotated.data, atol=0, rtol=0)
+
+        # Test get_frames_played_at (multiple frames by timestamps)
+        pts_list = [
+            decoder_rotated.metadata.begin_stream_seconds,
+            decoder_rotated.metadata.begin_stream_seconds + 0.15,
+        ]
+        frames_at_pts = decoder.get_frames_played_at(pts_list)
+        frames_at_pts_rotated = decoder_rotated.get_frames_played_at(pts_list)
+        expected = torch.rot90(frames_at_pts.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(expected, frames_at_pts_rotated.data, atol=0, rtol=0)
+
+        # Test get_frames_played_in_range (frames by timestamp range)
+        start_seconds = decoder_rotated.metadata.begin_stream_seconds
+        stop_seconds = start_seconds + 0.2
+        frames_in_range = decoder.get_frames_played_in_range(
+            start_seconds=start_seconds, stop_seconds=stop_seconds
+        )
+        frames_in_range_rotated = decoder_rotated.get_frames_played_in_range(
+            start_seconds=start_seconds, stop_seconds=stop_seconds
+        )
+        expected = torch.rot90(frames_in_range.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(
+            expected, frames_in_range_rotated.data, atol=0, rtol=0
+        )
 
     @needs_cuda
     @pytest.mark.parametrize("device", cuda_devices())

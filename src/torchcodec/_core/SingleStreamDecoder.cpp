@@ -34,7 +34,7 @@ int64_t getPtsOrDts(const UniqueAVFrame& avFrame) {
 
 // Computes the rotation parameter k for torch::rot90 from a rotation angle in
 // degrees. k is the number of 90-degree counter-clockwise rotations (0-3).
-// Returns 0 for no rotation, 1 for 90°, 2 for 180°, 3 for 270°.
+// Returns 0 for no rotation, 1 for 90°, 2 for 180°/-180°, 3 for -90°.
 int computeRotationK(double rotationDegrees) {
   int k = static_cast<int>(std::round(rotationDegrees / 90.0)) % 4;
   if (k < 0) {
@@ -166,13 +166,17 @@ void SingleStreamDecoder::initializeDecoder() {
       }
       streamMetadata.rotation = getRotationFromStream(avStream);
 
-      // Report post-rotation dimensions: swap width/height for 90 or 270
+      // Store pre-rotation (raw encoded) dimensions
+      streamMetadata.preRotationWidth = avStream->codecpar->width;
+      streamMetadata.preRotationHeight = avStream->codecpar->height;
+
+      // Report post-rotation dimensions: swap width/height for 90 or -90
       // degree rotations so metadata matches what the decoder returns.
       int width = avStream->codecpar->width;
       int height = avStream->codecpar->height;
       if (streamMetadata.rotation.has_value()) {
         int k = computeRotationK(*streamMetadata.rotation);
-        // k=1 means 90 degrees, k=3 means 270 degrees - both swap dimensions
+        // k=1 means 90 degrees, k=3 means -90 degrees - both swap dimensions
         if (k == 1 || k == 3) {
           std::swap(width, height);
         }
@@ -576,7 +580,14 @@ void SingleStreamDecoder::addVideoStream(
 
   metadataDims_ =
       FrameDims(streamMetadata.height.value(), streamMetadata.width.value());
-  FrameDims currInputDims = metadataDims_;
+
+  // Store pre-rotation dimensions (raw encoded dimensions) for tensor
+  // pre-allocation
+  preRotationDims_ = FrameDims(
+      streamMetadata.preRotationHeight.value(),
+      streamMetadata.preRotationWidth.value());
+
+  FrameDims currInputDims = preRotationDims_;
 
   for (auto& transform : transforms) {
     TORCH_CHECK(transform != nullptr, "Transforms should never be nullptr!");
@@ -584,7 +595,7 @@ void SingleStreamDecoder::addVideoStream(
       resizedOutputDims_ = transform->getOutputFrameDims().value();
     }
     transform->validate(currInputDims);
-    currInputDims = resizedOutputDims_.value_or(metadataDims_);
+    currInputDims = resizedOutputDims_.value_or(preRotationDims_);
 
     // Note that we are claiming ownership of the transform objects passed in to
     // us.
@@ -718,7 +729,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
       frameIndices.numel(),
-      resizedOutputDims_.value_or(metadataDims_),
+      resizedOutputDims_.value_or(preRotationDims_),
       videoStreamOptions.device);
 
   auto previousIndexInVideo = -1;
@@ -778,7 +789,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
       numOutputFrames,
-      resizedOutputDims_.value_or(metadataDims_),
+      resizedOutputDims_.value_or(preRotationDims_),
       videoStreamOptions.device);
 
   for (int64_t i = start, f = 0; i < stop; i += step, ++f) {
@@ -915,8 +926,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
   if (startSeconds == stopSeconds) {
     FrameBatchOutput frameBatchOutput(
         0,
-        resizedOutputDims_.value_or(metadataDims_),
+        resizedOutputDims_.value_or(preRotationDims_),
         videoStreamOptions.device);
+    frameBatchOutput.data = applyRotation(frameBatchOutput.data);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     return frameBatchOutput;
   }
@@ -960,7 +972,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
 
     FrameBatchOutput frameBatchOutput(
         numOutputFrames,
-        resizedOutputDims_.value_or(metadataDims_),
+        resizedOutputDims_.value_or(preRotationDims_),
         videoStreamOptions.device);
 
     // Decode frames, reusing already-decoded frames for duplicates
@@ -981,6 +993,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       frameBatchOutput.durationSeconds[i] = frameDurationSeconds;
     }
 
+    frameBatchOutput.data = applyRotation(frameBatchOutput.data);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     return frameBatchOutput;
   } else {
@@ -1003,7 +1016,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
 
     FrameBatchOutput frameBatchOutput(
         numFrames,
-        resizedOutputDims_.value_or(metadataDims_),
+        resizedOutputDims_.value_or(preRotationDims_),
         videoStreamOptions.device);
     for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
       FrameOutput frameOutput =
@@ -1011,6 +1024,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       frameBatchOutput.ptsSeconds[f] = frameOutput.ptsSeconds;
       frameBatchOutput.durationSeconds[f] = frameOutput.durationSeconds;
     }
+    frameBatchOutput.data = applyRotation(frameBatchOutput.data);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
 
     return frameBatchOutput;
