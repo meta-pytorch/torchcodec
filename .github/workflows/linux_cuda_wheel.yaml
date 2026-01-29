@@ -199,3 +199,57 @@ jobs:
         with:
           name: Built-Docs
           path: docs/build/html/
+
+  upload-docs:
+    # This job uploads built docs:
+    # - to the `main` folder of the gh-pages branch (https://meta-pytorch.org/torchcodec/main) on every commit to the `main` branch
+    # - to the (e.g.) `0.10` folder in the gh-pages branch whenever a corresponding tag is pushed, like `v0.10.0` (https://meta-pytorch.org/torchcodec/0.10).
+
+    needs: build-docs
+    if: github.repository == 'meta-pytorch/torchcodec' && github.event_name == 'push' &&
+        ((github.ref_type == 'branch' && github.ref_name == 'main') || github.ref_type == 'tag')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out gh-pages branch
+        uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: Built-Docs
+          path: docs-artifact/
+
+      - name: Update docs and push
+        run: |
+          set -euo pipefail
+
+          REF_TYPE=${{ github.ref_type }}
+          REF_NAME=${{ github.ref_name }}
+
+          if [[ "${REF_TYPE}" == branch ]]; then
+            TARGET_FOLDER="${REF_NAME}"
+          elif [[ "${REF_TYPE}" == tag ]]; then
+            case "${REF_NAME}" in
+              *-rc*)
+                echo "Aborting upload since this is an RC tag: ${REF_NAME}"
+                exit 0
+                ;;
+              *)
+                # Strip the leading "v" as well as the trailing patch version. For example:
+                # 'v0.10.2' -> '0.10'
+                TARGET_FOLDER=$(echo "${REF_NAME}" | sed 's/v\([0-9]\+\)\.\([0-9]\+\)\.[0-9]\+/\1.\2/')
+                ;;
+            esac
+          fi
+          echo "Target Folder: ${TARGET_FOLDER}"
+
+          mkdir -p "${TARGET_FOLDER}"
+          rm -rf "${TARGET_FOLDER}"/*
+          cp -r docs-artifact/* "${TARGET_FOLDER}/"
+          git add "${TARGET_FOLDER}"
+
+          git config user.name 'pytorchbot'
+          git config user.email 'soumith+bot@pytorch.org'
+          git commit -m "auto-generating sphinx docs for ${TARGET_FOLDER}" || echo "No changes to commit"
+          git push
