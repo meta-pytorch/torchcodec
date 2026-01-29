@@ -157,7 +157,7 @@ def test_repr():
         == """VideoStreamMetadata:
   duration_seconds_from_header: 13.013
   begin_stream_seconds_from_header: 0
-  bit_rate: 128783.0
+  bit_rate: 128783
   codec: h264
   stream_index: 3
   duration_seconds: 13.013
@@ -185,7 +185,7 @@ def test_repr():
         == f"""AudioStreamMetadata:
   duration_seconds_from_header: {expected_duration_seconds_from_header}
   begin_stream_seconds_from_header: 0.138125
-  bit_rate: 64000.0
+  bit_rate: 64000
   codec: mp3
   stream_index: 0
   duration_seconds: {expected_duration_seconds_from_header}
