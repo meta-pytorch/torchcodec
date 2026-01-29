@@ -48,4 +48,14 @@ void validatePreAllocatedTensorShape(
 
 int getDeviceIndex(const torch::Device& device);
 
+// Get or create a hardware device context for the given CUDA device.
+// This is shared by both CudaDeviceInterface (decoding) and GpuEncoder
+// (encoding).
+UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device);
+
+// Add a hardware device context to the cache for reuse.
+void addHardwareDeviceContextToCache(
+    const torch::Device& device,
+    UniqueAVBufferRef hardwareDeviceCtx);
+
 } // namespace facebook::torchcodec

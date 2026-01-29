@@ -3,9 +3,12 @@
 #include <map>
 #include <string>
 #include "AVIOContextHolder.h"
-#include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
 #include "StreamOptions.h"
+
+#ifdef ENABLE_CUDA
+#include "GpuEncoder.h"
+#endif
 
 extern "C" {
 #include <libavutil/dict.h>
@@ -183,7 +186,9 @@ class VideoEncoder {
   AVPixelFormat outPixelFormat_ = AV_PIX_FMT_NONE;
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
-  std::unique_ptr<DeviceInterface> deviceInterface_;
+#ifdef ENABLE_CUDA
+  std::unique_ptr<GpuEncoder> gpuEncoder_;
+#endif
 
   bool encodeWasCalled_ = false;
   UniqueAVDictionary avFormatOptions_;
