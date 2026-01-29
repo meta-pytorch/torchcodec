@@ -210,6 +210,7 @@ jobs:
           name: Built-Docs
           path: docs
 
+      # Update HTML to add the no-index tag so that search engines do not index these ephemeral docs
       - name: Add no-index tag
         run: |
           find docs -name "*.html" -print0 | xargs -0 sed -i '/<head>/a \ \ <meta name="robots" content="noindex">';
