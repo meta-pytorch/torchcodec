@@ -201,8 +201,10 @@ jobs:
           path: docs/build/html/
 
   upload-docs:
-    # This job is largely borrowed from torchvision's docs workflow:
-    # https://github.com/pytorch/vision/blob/1e53952f57462e4c28103835cf1f9e504dbea84b/.github/workflows/docs.yml#L81
+    # This job uploads built docs:
+    # - to the `main` folder of the gh-pages branch (https://meta-pytorch.org/torchcodec/main) on every commit to the `main` branch
+    # - to the (e.g.) `0.10` folder in the gh-pages branch whenever a corresponding tag is pushed, like `v0.10.0` (https://meta-pytorch.org/torchcodec/0.10).
+
     needs: build-docs
     if: github.repository == 'meta-pytorch/torchcodec' && github.event_name == 'push' &&
         ((github.ref_type == 'branch' && github.ref_name == 'main') || github.ref_type == 'tag')
@@ -249,5 +251,5 @@ jobs:
 
           git config user.name 'pytorchbot'
           git config user.email 'soumith+bot@pytorch.org'
-          git commit -m "auto-generating sphinx docs" || echo "No changes to commit"
+          git commit -m "auto-generating sphinx docs for ${TARGET_FOLDER}" || echo "No changes to commit"
           git push
