@@ -22,7 +22,7 @@ Decoding
   .. image:: /generated_examples/decoding/images/thumb/sphx_glr_basic_example_thumb.png
     :alt:
 
-  :ref:`sphx_glr_generated_examples_decoding_basic_example.py`
+  :doc:`/generated_examples/decoding/basic_example`
 
 .. raw:: html
 
@@ -39,7 +39,7 @@ Decoding
   .. image:: /generated_examples/decoding/images/thumb/sphx_glr_audio_decoding_thumb.png
     :alt:
 
-  :ref:`sphx_glr_generated_examples_decoding_audio_decoding.py`
+  :doc:`/generated_examples/decoding/audio_decoding`
 
 .. raw:: html
 
@@ -56,7 +56,7 @@ Decoding
   .. image:: /generated_examples/decoding/images/thumb/sphx_glr_basic_cuda_example_thumb.png
     :alt:
 
-  :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py`
+  :doc:`/generated_examples/decoding/basic_cuda_example`
 
 .. raw:: html
 
@@ -73,7 +73,7 @@ Decoding
   .. image:: /generated_examples/decoding/images/thumb/sphx_glr_file_like_thumb.png
     :alt:
 
-  :ref:`sphx_glr_generated_examples_decoding_file_like.py`
+  :doc:`/generated_examples/decoding/file_like`
 
 .. raw:: html
 
@@ -90,7 +90,7 @@ Decoding
   .. image:: /generated_examples/decoding/images/thumb/sphx_glr_approximate_mode_thumb.png
     :alt:
 
-  :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py`
+  :doc:`/generated_examples/decoding/approximate_mode`
 
 .. raw:: html
 
@@ -107,7 +107,7 @@ Decoding
   .. image:: /generated_examples/decoding/images/thumb/sphx_glr_sampling_thumb.png
     :alt:
 
-  :ref:`sphx_glr_generated_examples_decoding_sampling.py`
+  :doc:`/generated_examples/decoding/sampling`
 
 .. raw:: html
 
@@ -124,11 +124,62 @@ Decoding
   .. image:: /generated_examples/decoding/images/thumb/sphx_glr_parallel_decoding_thumb.png
     :alt:
 
-  :ref:`sphx_glr_generated_examples_decoding_parallel_decoding.py`
+  :doc:`/generated_examples/decoding/parallel_decoding`
 
 .. raw:: html
 
       <div class="sphx-glr-thumbnail-title">Parallel video decoding: multi-processing and multi-threading</div>
+    </div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="This tutorial consolidates performance optimization techniques for video decoding with TorchCodec. Learn when and how to apply various strategies to increase performance.">
+
+.. only:: html
+
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_performance_tips_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/decoding/performance_tips`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">TorchCodec Performance Tips and Best Practices</div>
+    </div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we will describe the custom_frame_mappings parameter of the VideoDecoder class. This parameter allows you to provide pre-computed frame mapping information to speed up VideoDecoder instantiation, while maintaining the frame seeking accuracy of seek_mode=&quot;exact&quot;.">
+
+.. only:: html
+
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_custom_frame_mappings_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/decoding/custom_frame_mappings`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Decoding with custom frame mappings</div>
+    </div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we will demonstrate how to use the transforms parameter of the VideoDecoder class. This parameter allows us to specify a list of torchcodec.transforms.DecoderTransform or torchvision.transforms.v2.Transform objects. These objects serve as transform specifications that the VideoDecoder will apply during the decoding process.">
+
+.. only:: html
+
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_transforms_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/decoding/transforms`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Decoder Transforms: Applying transforms during decoding</div>
     </div>
 
 
@@ -149,4 +200,7 @@ Decoding
    /generated_examples/decoding/approximate_mode
    /generated_examples/decoding/sampling
    /generated_examples/decoding/parallel_decoding
+   /generated_examples/decoding/performance_tips
+   /generated_examples/decoding/custom_frame_mappings
+   /generated_examples/decoding/transforms
 

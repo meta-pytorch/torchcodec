@@ -24,12 +24,11 @@ First, a bit of boilerplate: we'll download a video from the web, and define a
 plotting utility. You can ignore that part and jump right below to
 :ref:`sampling_tuto_start`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 21-55
+.. GENERATED FROM PYTHON SOURCE LINES 21-54
 
 .. code-block:: Python
 
 
-    from typing import Optional
     import torch
     import requests
 
@@ -44,7 +43,7 @@ plotting utility. You can ignore that part and jump right below to
     raw_video_bytes = response.content
 
 
-    def plot(frames: torch.Tensor, title : Optional[str] = None):
+    def plot(frames: torch.Tensor, title: str | None = None):
         try:
             from torchvision.utils import make_grid
             from torchvision.transforms.v2.functional import to_pil_image
@@ -69,7 +68,7 @@ plotting utility. You can ignore that part and jump right below to
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 56-65
+.. GENERATED FROM PYTHON SOURCE LINES 55-64
 
 .. _sampling_tuto_start:
 
@@ -81,7 +80,7 @@ Sampling clips from a video always starts by creating a
 familiar with :class:`~torchcodec.decoders.VideoDecoder`, take a quick look
 at: :ref:`sphx_glr_generated_examples_decoding_basic_example.py`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 65-70
+.. GENERATED FROM PYTHON SOURCE LINES 64-69
 
 .. code-block:: Python
 
@@ -97,7 +96,7 @@ at: :ref:`sphx_glr_generated_examples_decoding_basic_example.py`.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 71-78
+.. GENERATED FROM PYTHON SOURCE LINES 70-77
 
 Sampling basics
 ---------------
@@ -107,7 +106,7 @@ example: all other samplers follow similar APIs and principles. We'll use
 :func:`~torchcodec.samplers.clips_at_random_indices` to sample clips that
 start at random indices.
 
-.. GENERATED FROM PYTHON SOURCE LINES 78-94
+.. GENERATED FROM PYTHON SOURCE LINES 77-93
 
 .. code-block:: Python
 
@@ -152,7 +151,7 @@ start at random indices.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 95-109
+.. GENERATED FROM PYTHON SOURCE LINES 94-108
 
 The output of the sampler is a sequence of clips, represented as
 :class:`~torchcodec.FrameBatch` object. In this object, we have different
@@ -169,7 +168,7 @@ fields:
   num_frames_per_clip) giving the duration of each frame within each clip, in
   seconds.
 
-.. GENERATED FROM PYTHON SOURCE LINES 109-112
+.. GENERATED FROM PYTHON SOURCE LINES 108-111
 
 .. code-block:: Python
 
@@ -188,7 +187,7 @@ fields:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 113-120
+.. GENERATED FROM PYTHON SOURCE LINES 112-119
 
 Indexing and manipulating clips
 -------------------------------
@@ -198,7 +197,7 @@ pytorch indexing semantics (including fancy indexing). This makes it easy to
 filter clips based on a given criteria. For example, from the clips above we
 can easily filter out those who start *after* a specific timestamp:
 
-.. GENERATED FROM PYTHON SOURCE LINES 120-123
+.. GENERATED FROM PYTHON SOURCE LINES 119-122
 
 .. code-block:: Python
 
@@ -218,7 +217,7 @@ can easily filter out those who start *after* a specific timestamp:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 124-127
+.. GENERATED FROM PYTHON SOURCE LINES 123-126
 
 .. code-block:: Python
 
@@ -250,7 +249,7 @@ can easily filter out those who start *after* a specific timestamp:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 128-131
+.. GENERATED FROM PYTHON SOURCE LINES 127-130
 
 .. code-block:: Python
 
@@ -278,7 +277,7 @@ can easily filter out those who start *after* a specific timestamp:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 132-167
+.. GENERATED FROM PYTHON SOURCE LINES 131-166
 
 .. note::
   A more natural and efficient way to get clips after a given timestamp is to
@@ -316,7 +315,7 @@ offer comparable performance in terms speed.
   caracteristics along the time-dimension.
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 170-185
+.. GENERATED FROM PYTHON SOURCE LINES 169-184
 
 .. _sampling_range:
 
@@ -334,7 +333,7 @@ important things to keep in mind:
 - Because these parameter define where a clip can start, clips may contain
   frames *after*  ``sampling_range_end``!
 
-.. GENERATED FROM PYTHON SOURCE LINES 185-198
+.. GENERATED FROM PYTHON SOURCE LINES 184-197
 
 .. code-block:: Python
 
@@ -372,7 +371,7 @@ important things to keep in mind:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 199-207
+.. GENERATED FROM PYTHON SOURCE LINES 198-206
 
 Advanced parameters: policy
 ---------------------------
@@ -383,7 +382,7 @@ video. The ``policy`` parameter defines how such invalid frames should be
 replaced with valid
 frames.
 
-.. GENERATED FROM PYTHON SOURCE LINES 207-212
+.. GENERATED FROM PYTHON SOURCE LINES 206-211
 
 .. code-block:: Python
 
@@ -405,7 +404,7 @@ frames.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 213-225
+.. GENERATED FROM PYTHON SOURCE LINES 212-224
 
 .. code-block:: Python
 
@@ -434,7 +433,7 @@ frames.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 226-233
+.. GENERATED FROM PYTHON SOURCE LINES 225-232
 
 We see above that the end of the video is at 13.8s. The sampler tries to
 sample frames at timestamps [13.28, 13.68, 14.08, ...] but 14.08 is an invalid
@@ -444,7 +443,7 @@ construct the clip.
 
 An alternative policy is "wrap": the sampler then wraps-around the clip and repeats the first few valid frames as necessary:
 
-.. GENERATED FROM PYTHON SOURCE LINES 233-246
+.. GENERATED FROM PYTHON SOURCE LINES 232-245
 
 .. code-block:: Python
 
@@ -474,7 +473,7 @@ An alternative policy is "wrap": the sampler then wraps-around the clip and repe
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 247-252
+.. GENERATED FROM PYTHON SOURCE LINES 246-251
 
 By default, the value of ``sampling_range_end`` is automatically set such that
 the sampler *doesn't* try to sample frames beyond the end of the video: the
@@ -485,7 +484,7 @@ probably don't need to worry too much about it.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 0.612 seconds)
+   **Total running time of the script:** (0 minutes 0.576 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_sampling.py:

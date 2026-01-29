@@ -19,6 +19,12 @@ For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_decoding_a
     VideoDecoder
     AudioDecoder
 
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
+    :template: function.rst
+
+    set_cuda_backend
 
 .. autosummary::
     :toctree: generated/
@@ -27,3 +33,4 @@ For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_decoding_a
 
     VideoStreamMetadata
     AudioStreamMetadata
+    CpuFallbackStatus

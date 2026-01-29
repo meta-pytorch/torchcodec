@@ -36,12 +36,11 @@ repeating it multiple times. This simulates working with long videos that
 require efficient processing. You can ignore that part and jump right below to
 :ref:`start_parallel_decoding`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 33-132
+.. GENERATED FROM PYTHON SOURCE LINES 33-131
 
 .. code-block:: Python
 
 
-    from typing import List
     import torch
     import requests
     import tempfile
@@ -84,7 +83,7 @@ require efficient processing. You can ignore that part and jump right below to
         return med
 
 
-    def split_indices(indices: List[int], num_chunks: int) -> List[List[int]]:
+    def split_indices(indices: list[int], num_chunks: int) -> list[list[int]]:
         """Split a list of indices into approximately equal chunks."""
         chunk_size = len(indices) // num_chunks
         chunks = []
@@ -156,7 +155,7 @@ require efficient processing. You can ignore that part and jump right below to
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 133-141
+.. GENERATED FROM PYTHON SOURCE LINES 132-140
 
 .. _start_parallel_decoding:
 
@@ -167,7 +166,7 @@ For this tutorial, we'll sample a frame every 2 seconds from our long video.
 This simulates a common scenario where you need to process a subset of frames
 for LLM inference.
 
-.. GENERATED FROM PYTHON SOURCE LINES 141-151
+.. GENERATED FROM PYTHON SOURCE LINES 140-150
 
 .. code-block:: Python
 
@@ -196,7 +195,7 @@ for LLM inference.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 152-157
+.. GENERATED FROM PYTHON SOURCE LINES 151-156
 
 Method 1: Sequential decoding (baseline)
 ----------------------------------------
@@ -204,12 +203,13 @@ Method 1: Sequential decoding (baseline)
 Let's start with a sequential approach as our baseline. This processes
 frames one by one without any parallelization.
 
-.. GENERATED FROM PYTHON SOURCE LINES 157-168
+.. GENERATED FROM PYTHON SOURCE LINES 156-168
 
 .. code-block:: Python
 
 
-    def decode_sequentially(indices: List[int], video_path=long_video_path):
+
+    def decode_sequentially(indices: list[int], video_path=long_video_path):
         """Decode frames sequentially using a single decoder instance."""
         decoder = VideoDecoder(video_path, seek_mode="approximate")
         return decoder.get_frames_at(indices)
@@ -227,7 +227,7 @@ frames one by one without any parallelization.
 
  .. code-block:: none
 
-    median = 14.31s ± 0.02
+    median = 14.15s ± 0.01
 
 
 
@@ -241,13 +241,14 @@ FFmpeg has built-in multithreading capabilities that can be controlled
 via the ``num_ffmpeg_threads`` parameter. This approach uses multiple
 threads within FFmpeg itself to accelerate decoding operations.
 
-.. GENERATED FROM PYTHON SOURCE LINES 175-194
+.. GENERATED FROM PYTHON SOURCE LINES 175-195
 
 .. code-block:: Python
 
 
+
     def decode_with_ffmpeg_parallelism(
-        indices: List[int],
+        indices: list[int],
         num_threads: int,
         video_path=long_video_path
     ):
@@ -272,28 +273,29 @@ threads within FFmpeg itself to accelerate decoding operations.
 
  .. code-block:: none
 
-    median = 7.09s ± 0.02
-    Speedup compared to sequential: 2.02x with 16 FFmpeg threads.
+    median = 7.06s ± 0.03
+    Speedup compared to sequential: 2.00x with 16 FFmpeg threads.
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 195-199
+.. GENERATED FROM PYTHON SOURCE LINES 196-200
 
 Method 3: multiprocessing
 -------------------------
 
 Process-based parallelism distributes work across multiple Python processes.
 
-.. GENERATED FROM PYTHON SOURCE LINES 199-222
+.. GENERATED FROM PYTHON SOURCE LINES 200-224
 
 .. code-block:: Python
 
 
+
     def decode_with_multiprocessing(
-        indices: List[int],
+        indices: list[int],
         num_processes: int,
-        video_path=long_video_path
+        video_path=long_video_path,
     ):
         """Decode frames using multiple processes with joblib."""
         chunks = split_indices(indices, num_chunks=num_processes)
@@ -320,13 +322,13 @@ Process-based parallelism distributes work across multiple Python processes.
 
  .. code-block:: none
 
-    median = 5.39s ± 0.01
+    median = 5.34s ± 0.03
     Speedup compared to sequential: 2.65x with 16 processes.
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 223-228
+.. GENERATED FROM PYTHON SOURCE LINES 225-230
 
 Method 4: Joblib multithreading
 -------------------------------
@@ -334,13 +336,14 @@ Method 4: Joblib multithreading
 Thread-based parallelism uses multiple threads within a single process.
 TorchCodec releases the GIL, so this can be very effective.
 
-.. GENERATED FROM PYTHON SOURCE LINES 228-251
+.. GENERATED FROM PYTHON SOURCE LINES 230-254
 
 .. code-block:: Python
 
 
+
     def decode_with_multithreading(
-        indices: List[int],
+        indices: list[int],
         num_threads: int,
         video_path=long_video_path
     ):
@@ -369,20 +372,20 @@ TorchCodec releases the GIL, so this can be very effective.
 
  .. code-block:: none
 
-    median = 1.94s ± 0.01
-    Speedup compared to sequential: 7.38x with 16 threads.
+    median = 1.94s ± 0.02
+    Speedup compared to sequential: 7.29x with 16 threads.
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 252-256
+.. GENERATED FROM PYTHON SOURCE LINES 255-259
 
 Validation and correctness check
 --------------------------------
 
 Let's verify that all methods produce identical results.
 
-.. GENERATED FROM PYTHON SOURCE LINES 256-262
+.. GENERATED FROM PYTHON SOURCE LINES 259-265
 
 .. code-block:: Python
 
@@ -405,7 +408,7 @@ Let's verify that all methods produce identical results.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 263-265
+.. GENERATED FROM PYTHON SOURCE LINES 266-268
 
 .. code-block:: Python
 
@@ -421,7 +424,7 @@ Let's verify that all methods produce identical results.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (2 minutes 1.981 seconds)
+   **Total running time of the script:** (2 minutes 0.283 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_parallel_decoding.py:

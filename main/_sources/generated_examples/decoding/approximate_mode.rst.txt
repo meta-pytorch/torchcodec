@@ -91,7 +91,7 @@ You can ignore that part and jump right below to :ref:`perf_creation`.
 Performance: ``VideoDecoder`` creation
 --------------------------------------
 
-In terms of performance, the ``seek_mode`` parameter ultimately affects the
+In terms of performance, the ``seek_mode`` parameter mainly affects the
 **creation** of a :class:`~torchcodec.decoders.VideoDecoder` object. The
 longer the video, the higher the performance gain.
 
@@ -138,14 +138,14 @@ longer the video, the higher the performance gain.
  .. code-block:: none
 
     Creating a VideoDecoder object with seek_mode='exact' on a short video:
-    med = 8.06ms +- 0.02
+    med = 8.15ms +- 0.04
     Creating a VideoDecoder object with seek_mode='approximate' on a short video:
-    med = 7.08ms +- 0.02
+    med = 7.09ms +- 0.05
 
     Creating a VideoDecoder object with seek_mode='exact' on a long video:
-    med = 114.17ms +- 1.21
+    med = 120.30ms +- 1.24
     Creating a VideoDecoder object with seek_mode='approximate' on a long video:
-    med = 10.50ms +- 0.03
+    med = 10.41ms +- 0.02
 
 
 
@@ -156,7 +156,7 @@ Performance: frame decoding and clip sampling
 ---------------------------------------------
 
 Strictly speaking the ``seek_mode`` parameter only affects the performance of
-the :class:`~torchcodec.decoders.VideoDecoder` creation. It does not have a
+the :class:`~torchcodec.decoders.VideoDecoder` creation. It usually does not have a
 direct effect on the performance of frame decoding or sampling.  **However**,
 because frame decoding and sampling patterns typically involve the creation of
 the :class:`~torchcodec.decoders.VideoDecoder` (one per video), ``seek_mode``
@@ -196,9 +196,9 @@ example:
  .. code-block:: none
 
     Sampling clips with seek_mode='exact':
-    med = 302.87ms +- 35.44
+    med = 289.02ms +- 34.22
     Sampling clips with seek_mode='approximate':
-    med = 182.62ms +- 54.41
+    med = 184.69ms +- 40.89
 
 
 
@@ -252,6 +252,8 @@ is a net win:
       bit_rate: 505790.0
       codec: h264
       stream_index: 0
+      duration_seconds: 13.8
+      begin_stream_seconds: 0.0
       begin_stream_seconds_from_content: 0.0
       end_stream_seconds_from_content: 13.8
       width: 640
@@ -260,8 +262,6 @@ is a net win:
       num_frames_from_content: 345
       average_fps_from_header: 25.0
       pixel_aspect_ratio: 1
-      duration_seconds: 13.8
-      begin_stream_seconds: 0.0
       end_stream_seconds: 13.8
       num_frames: 345
       average_fps: 25.0
@@ -273,6 +273,8 @@ is a net win:
       bit_rate: 505790.0
       codec: h264
       stream_index: 0
+      duration_seconds: 13.8
+      begin_stream_seconds: 0.0
       begin_stream_seconds_from_content: None
       end_stream_seconds_from_content: None
       width: 640
@@ -281,8 +283,6 @@ is a net win:
       num_frames_from_content: None
       average_fps_from_header: 25.0
       pixel_aspect_ratio: 1
-      duration_seconds: 13.8
-      begin_stream_seconds: 0
       end_stream_seconds: 13.8
       num_frames: 345
       average_fps: 25.0
@@ -292,7 +292,7 @@ is a net win:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 162-185
+.. GENERATED FROM PYTHON SOURCE LINES 162-186
 
 What is this doing under the hood?
 ----------------------------------
@@ -303,8 +303,10 @@ decoding, but processes an entire file to infer more accurate metadata (like
 duration), and also builds an internal index of frames and key-frames. This
 internal index is potentially more accurate than the one in the file's
 headers, which leads to more accurate seeking behavior.
-Without the scan, TorchCodec relies only on the metadata contained in the
-file, which may not always be as accurate.
+Without the scan (in approximate mode), TorchCodec relies only on the metadata
+contained in the file, which may not always be as accurate. In some rare
+cases, relying on this less accurate data may also lead to slower frame
+decoding, because it can involve unnecessary seeks.
 
 Which mode should I use?
 ------------------------
@@ -312,13 +314,12 @@ Which mode should I use?
 The general rule of thumb is as follows:
 
 - If you really care about exactness of frame seeking, use "exact".
-- If you can sacrifice exactness of seeking for speed, which is usually the
-  case when doing clip sampling, use "approximate".
-- If your videos don't have variable framerate and their metadata is correct,
-  then "approximate" mode is a net win: it will be just as accurate as the
-  "exact" mode while still being significantly faster.
+- If your videos are short (less then a few minutes) then "exact" will usually
+  be preferable, as the scan's fixed cost will be negligible.
+- For long videos, if you can sacrifice exactness of seeking for speed, which
+  is usually the case when doing clip sampling, consider using "approximate".
 
-.. GENERATED FROM PYTHON SOURCE LINES 187-188
+.. GENERATED FROM PYTHON SOURCE LINES 188-189
 
 .. code-block:: Python
 
@@ -333,7 +334,7 @@ The general rule of thumb is as follows:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 35.314 seconds)
+   **Total running time of the script:** (0 minutes 34.494 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_approximate_mode.py:

@@ -31,7 +31,6 @@ pool manager.
 # require efficient processing. You can ignore that part and jump right below to
 # :ref:`start_parallel_decoding`.
 
-from typing import List
 import torch
 import requests
 import tempfile
@@ -74,7 +73,7 @@ def report_stats(times, unit="s"):
     return med
 
 
-def split_indices(indices: List[int], num_chunks: int) -> List[List[int]]:
+def split_indices(indices: list[int], num_chunks: int) -> list[list[int]]:
     """Split a list of indices into approximately equal chunks."""
     chunk_size = len(indices) // num_chunks
     chunks = []
@@ -155,7 +154,8 @@ print(f"Total frames to decode: {len(all_indices)}")
 # Let's start with a sequential approach as our baseline. This processes
 # frames one by one without any parallelization.
 
-def decode_sequentially(indices: List[int], video_path=long_video_path):
+
+def decode_sequentially(indices: list[int], video_path=long_video_path):
     """Decode frames sequentially using a single decoder instance."""
     decoder = VideoDecoder(video_path, seek_mode="approximate")
     return decoder.get_frames_at(indices)
@@ -173,8 +173,9 @@ sequential_time = report_stats(times, unit="s")
 # via the ``num_ffmpeg_threads`` parameter. This approach uses multiple
 # threads within FFmpeg itself to accelerate decoding operations.
 
+
 def decode_with_ffmpeg_parallelism(
-    indices: List[int],
+    indices: list[int],
     num_threads: int,
     video_path=long_video_path
 ):
@@ -197,10 +198,11 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} FFmpeg th
 #
 # Process-based parallelism distributes work across multiple Python processes.
 
+
 def decode_with_multiprocessing(
-    indices: List[int],
+    indices: list[int],
     num_processes: int,
-    video_path=long_video_path
+    video_path=long_video_path,
 ):
     """Decode frames using multiple processes with joblib."""
     chunks = split_indices(indices, num_chunks=num_processes)
@@ -226,8 +228,9 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} processes
 # Thread-based parallelism uses multiple threads within a single process.
 # TorchCodec releases the GIL, so this can be very effective.
 
+
 def decode_with_multithreading(
-    indices: List[int],
+    indices: list[int],
     num_threads: int,
     video_path=long_video_path
 ):

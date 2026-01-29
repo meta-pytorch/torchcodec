@@ -9,7 +9,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Index &mdash; TorchCodec 0.5.0.dev20250715+cu126 Documentation</title>
+  <title>Index &mdash; TorchCodec 0.11.0.dev20260129+cu126 Documentation</title>
   
 
   
@@ -326,6 +326,7 @@
 <li class="toctree-l1"><a class="reference internal" href="api_ref_decoders.html">torchcodec.decoders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_ref_encoders.html">torchcodec.encoders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="api_ref_samplers.html">torchcodec.samplers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api_ref_transforms.html">torchcodec.transforms</a></li>
 </ul>
 
             
@@ -413,8 +414,10 @@
  | <a href="#F"><strong>F</strong></a>
  | <a href="#G"><strong>G</strong></a>
  | <a href="#H"><strong>H</strong></a>
+ | <a href="#M"><strong>M</strong></a>
  | <a href="#N"><strong>N</strong></a>
  | <a href="#P"><strong>P</strong></a>
+ | <a href="#R"><strong>R</strong></a>
  | <a href="#S"><strong>S</strong></a>
  | <a href="#T"><strong>T</strong></a>
  | <a href="#V"><strong>V</strong></a>
@@ -442,7 +445,7 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="generated/torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata">AudioStreamMetadata (class in torchcodec.decoders)</a>
 </li>
-      <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.average_fps">average_fps (torchcodec.decoders.VideoStreamMetadata property)</a>
+      <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.average_fps">average_fps (torchcodec.decoders.VideoStreamMetadata attribute)</a>
 </li>
       <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.average_fps_from_header">average_fps_from_header (torchcodec.decoders.VideoStreamMetadata attribute)</a>
 </li>
@@ -452,8 +455,12 @@
 <h2 id="B">B</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.begin_stream_seconds">begin_stream_seconds (torchcodec.decoders.VideoStreamMetadata property)</a>
+      <li><a href="generated/torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata.begin_stream_seconds">begin_stream_seconds (torchcodec.decoders.AudioStreamMetadata attribute)</a>
+
+      <ul>
+        <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.begin_stream_seconds">(torchcodec.decoders.VideoStreamMetadata attribute)</a>
 </li>
+      </ul></li>
       <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.begin_stream_seconds_from_content">begin_stream_seconds_from_content (torchcodec.decoders.VideoStreamMetadata attribute)</a>
 </li>
       <li><a href="generated/torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata.begin_stream_seconds_from_header">begin_stream_seconds_from_header (torchcodec.decoders.AudioStreamMetadata attribute)</a>
@@ -478,6 +485,8 @@
 <h2 id="C">C</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="generated/torchcodec.transforms.CenterCrop.html#torchcodec.transforms.CenterCrop">CenterCrop (class in torchcodec.transforms)</a>
+</li>
       <li><a href="glossary.html#term-clips"><strong>clips</strong></a>
 </li>
       <li><a href="generated/torchcodec.samplers.clips_at_random_indices.html#torchcodec.samplers.clips_at_random_indices">clips_at_random_indices() (in module torchcodec.samplers)</a>
@@ -496,6 +505,8 @@
         <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.codec">(torchcodec.decoders.VideoStreamMetadata attribute)</a>
 </li>
       </ul></li>
+      <li><a href="generated/torchcodec.decoders.CpuFallbackStatus.html#torchcodec.decoders.CpuFallbackStatus">CpuFallbackStatus (class in torchcodec.decoders)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -510,10 +521,14 @@
         <li><a href="generated/torchcodec.FrameBatch.html#torchcodec.FrameBatch.data">(torchcodec.FrameBatch attribute)</a>
 </li>
       </ul></li>
+      <li><a href="generated/torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform">DecoderTransform (class in torchcodec.transforms)</a>
+</li>
       <li><a href="generated/torchcodec.AudioSamples.html#torchcodec.AudioSamples.duration_seconds">duration_seconds (torchcodec.AudioSamples attribute)</a>
 
       <ul>
-        <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.duration_seconds">(torchcodec.decoders.VideoStreamMetadata property)</a>
+        <li><a href="generated/torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata.duration_seconds">(torchcodec.decoders.AudioStreamMetadata attribute)</a>
+</li>
+        <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.duration_seconds">(torchcodec.decoders.VideoStreamMetadata attribute)</a>
 </li>
         <li><a href="generated/torchcodec.Frame.html#torchcodec.Frame.duration_seconds">(torchcodec.Frame attribute)</a>
 </li>
@@ -534,7 +549,7 @@
 <h2 id="E">E</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.end_stream_seconds">end_stream_seconds (torchcodec.decoders.VideoStreamMetadata property)</a>
+      <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.end_stream_seconds">end_stream_seconds (torchcodec.decoders.VideoStreamMetadata attribute)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
@@ -558,16 +573,18 @@
 <h2 id="G">G</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_all_frames">get_all_frames() (torchcodec.decoders.VideoDecoder method)</a>
+</li>
       <li><a href="generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder.get_all_samples">get_all_samples() (torchcodec.decoders.AudioDecoder method)</a>
 </li>
       <li><a href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frame_at">get_frame_at() (torchcodec.decoders.VideoDecoder method)</a>
 </li>
       <li><a href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frame_played_at">get_frame_played_at() (torchcodec.decoders.VideoDecoder method)</a>
 </li>
-      <li><a href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frames_at">get_frames_at() (torchcodec.decoders.VideoDecoder method)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frames_at">get_frames_at() (torchcodec.decoders.VideoDecoder method)</a>
+</li>
       <li><a href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frames_in_range">get_frames_in_range() (torchcodec.decoders.VideoDecoder method)</a>
 </li>
       <li><a href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frames_played_at">get_frames_played_at() (torchcodec.decoders.VideoDecoder method)</a>
@@ -587,12 +604,25 @@
   </ul></td>
 </tr></table>
 
+<h2 id="M">M</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li>
+    module
+
+      <ul>
+        <li><a href="api_ref_transforms.html#module-torchcodec.transforms">torchcodec.transforms</a>
+</li>
+      </ul></li>
+  </ul></td>
+</tr></table>
+
 <h2 id="N">N</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="generated/torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata.num_channels">num_channels (torchcodec.decoders.AudioStreamMetadata attribute)</a>
 </li>
-      <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.num_frames">num_frames (torchcodec.decoders.VideoStreamMetadata property)</a>
+      <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata.num_frames">num_frames (torchcodec.decoders.VideoStreamMetadata attribute)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
@@ -623,6 +653,18 @@
   </ul></td>
 </tr></table>
 
+<h2 id="R">R</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="generated/torchcodec.transforms.RandomCrop.html#torchcodec.transforms.RandomCrop">RandomCrop (class in torchcodec.transforms)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="generated/torchcodec.transforms.Resize.html#torchcodec.transforms.Resize">Resize (class in torchcodec.transforms)</a>
+</li>
+  </ul></td>
+</tr></table>
+
 <h2 id="S">S</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
@@ -634,9 +676,13 @@
         <li><a href="generated/torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata.sample_rate">(torchcodec.decoders.AudioStreamMetadata attribute)</a>
 </li>
       </ul></li>
+      <li><a href="glossary.html#term-scan"><strong>scan</strong></a>
+</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
-      <li><a href="glossary.html#term-scan"><strong>scan</strong></a>
+      <li><a href="generated/torchcodec.decoders.set_cuda_backend.html#torchcodec.decoders.set_cuda_backend">set_cuda_backend() (in module torchcodec.decoders)</a>
+</li>
+      <li><a href="generated/torchcodec.decoders.CpuFallbackStatus.html#torchcodec.decoders.CpuFallbackStatus.status_known">status_known (torchcodec.decoders.CpuFallbackStatus attribute)</a>
 </li>
       <li><a href="generated/torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata.stream_index">stream_index (torchcodec.decoders.AudioStreamMetadata attribute)</a>
 
@@ -651,11 +697,32 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder.to_file">to_file() (torchcodec.encoders.AudioEncoder method)</a>
+
+      <ul>
+        <li><a href="generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder.to_file">(torchcodec.encoders.VideoEncoder method)</a>
 </li>
+      </ul></li>
+      <li><a href="generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder.to_file_like">to_file_like() (torchcodec.encoders.AudioEncoder method)</a>
+
+      <ul>
+        <li><a href="generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder.to_file_like">(torchcodec.encoders.VideoEncoder method)</a>
+</li>
+      </ul></li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder.to_tensor">to_tensor() (torchcodec.encoders.AudioEncoder method)</a>
+
+      <ul>
+        <li><a href="generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder.to_tensor">(torchcodec.encoders.VideoEncoder method)</a>
 </li>
+      </ul></li>
+      <li>
+    torchcodec.transforms
+
+      <ul>
+        <li><a href="api_ref_transforms.html#module-torchcodec.transforms">module</a>
+</li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -666,6 +733,8 @@
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder">VideoEncoder (class in torchcodec.encoders)</a>
+</li>
       <li><a href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata">VideoStreamMetadata (class in torchcodec.decoders)</a>
 </li>
   </ul></td>

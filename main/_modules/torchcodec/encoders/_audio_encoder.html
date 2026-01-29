@@ -9,7 +9,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>torchcodec.encoders._audio_encoder &mdash; TorchCodec 0.5.0.dev20250715+cu126 Documentation</title>
+  <title>torchcodec.encoders._audio_encoder &mdash; TorchCodec 0.11.0.dev20260129+cu126 Documentation</title>
   
 
   
@@ -326,6 +326,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../api_ref_decoders.html">torchcodec.decoders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../api_ref_encoders.html">torchcodec.encoders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../api_ref_samplers.html">torchcodec.samplers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_ref_transforms.html">torchcodec.transforms</a></li>
 </ul>
 
             
@@ -402,7 +403,6 @@
               
   <h1>Source code for torchcodec.encoders._audio_encoder</h1><div class="highlight"><pre>
 <span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">Tensor</span>
@@ -424,6 +424,7 @@
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">samples</span><span class="p">:</span> <span class="n">Tensor</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="n">torch</span><span class="o">.</span><span class="n">_C</span><span class="o">.</span><span class="n">_log_api_usage_once</span><span class="p">(</span><span class="s2">&quot;torchcodec.encoders.AudioEncoder&quot;</span><span class="p">)</span>
         <span class="c1"># Some of these checks are also done in C++: it&#39;s OK, they&#39;re cheap, and</span>
         <span class="c1"># doing them here allows to surface them when the AudioEncoder is</span>
         <span class="c1"># instantiated, rather than later when the encoding methods are called.</span>
@@ -446,11 +447,11 @@
 
 <div class="viewcode-block" id="AudioEncoder.to_file"><a class="viewcode-back" href="../../../generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder.to_file">[docs]</a>    <span class="k">def</span><span class="w"> </span><span class="nf">to_file</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
-        <span class="n">dest</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span>
+        <span class="n">dest</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span><span class="p">,</span>
         <span class="o">*</span><span class="p">,</span>
-        <span class="n">bit_rate</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">num_channels</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">sample_rate</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">bit_rate</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">num_channels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Encode samples into a file.</span>
 
@@ -471,7 +472,7 @@
         <span class="n">_core</span><span class="o">.</span><span class="n">encode_audio_to_file</span><span class="p">(</span>
             <span class="n">samples</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_samples</span><span class="p">,</span>
             <span class="n">sample_rate</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_sample_rate</span><span class="p">,</span>
-            <span class="n">filename</span><span class="o">=</span><span class="n">dest</span><span class="p">,</span>
+            <span class="n">filename</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">dest</span><span class="p">),</span>
             <span class="n">bit_rate</span><span class="o">=</span><span class="n">bit_rate</span><span class="p">,</span>
             <span class="n">num_channels</span><span class="o">=</span><span class="n">num_channels</span><span class="p">,</span>
             <span class="n">desired_sample_rate</span><span class="o">=</span><span class="n">sample_rate</span><span class="p">,</span>
@@ -481,9 +482,9 @@
         <span class="bp">self</span><span class="p">,</span>
         <span class="nb">format</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
         <span class="o">*</span><span class="p">,</span>
-        <span class="n">bit_rate</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">num_channels</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">sample_rate</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">bit_rate</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">num_channels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Encode samples into raw bytes, as a 1D uint8 Tensor.</span>
 
@@ -507,6 +508,45 @@
             <span class="n">samples</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_samples</span><span class="p">,</span>
             <span class="n">sample_rate</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_sample_rate</span><span class="p">,</span>
             <span class="nb">format</span><span class="o">=</span><span class="nb">format</span><span class="p">,</span>
+            <span class="n">bit_rate</span><span class="o">=</span><span class="n">bit_rate</span><span class="p">,</span>
+            <span class="n">num_channels</span><span class="o">=</span><span class="n">num_channels</span><span class="p">,</span>
+            <span class="n">desired_sample_rate</span><span class="o">=</span><span class="n">sample_rate</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+<div class="viewcode-block" id="AudioEncoder.to_file_like"><a class="viewcode-back" href="../../../generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder.to_file_like">[docs]</a>    <span class="k">def</span><span class="w"> </span><span class="nf">to_file_like</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">file_like</span><span class="p">,</span>
+        <span class="nb">format</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">bit_rate</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">num_channels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Encode samples into a file-like object.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            file_like: A file-like object that supports ``write()`` and</span>
+<span class="sd">                ``seek()`` methods, such as io.BytesIO(), an open file in binary</span>
+<span class="sd">                write mode, etc. Methods must have the following signature:</span>
+<span class="sd">                ``write(data: bytes) -&gt; int`` and ``seek(offset: int, whence:</span>
+<span class="sd">                int = 0) -&gt; int``.</span>
+<span class="sd">            format (str): The format of the encoded samples, e.g. &quot;mp3&quot;, &quot;wav&quot;</span>
+<span class="sd">                or &quot;flac&quot;.</span>
+<span class="sd">            bit_rate (int, optional): The output bit rate. Encoders typically</span>
+<span class="sd">                support a finite set of bit rate values, so ``bit_rate`` will be</span>
+<span class="sd">                matched to one of those supported values. The default is chosen</span>
+<span class="sd">                by FFmpeg.</span>
+<span class="sd">            num_channels (int, optional): The number of channels of the encoded</span>
+<span class="sd">                output samples. By default, the number of channels of the input</span>
+<span class="sd">                ``samples`` is used.</span>
+<span class="sd">            sample_rate (int, optional): The sample rate of the encoded output.</span>
+<span class="sd">                By default, the sample rate of the input ``samples`` is used.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">_core</span><span class="o">.</span><span class="n">encode_audio_to_file_like</span><span class="p">(</span>
+            <span class="n">samples</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_samples</span><span class="p">,</span>
+            <span class="n">sample_rate</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_sample_rate</span><span class="p">,</span>
+            <span class="nb">format</span><span class="o">=</span><span class="nb">format</span><span class="p">,</span>
+            <span class="n">file_like</span><span class="o">=</span><span class="n">file_like</span><span class="p">,</span>
             <span class="n">bit_rate</span><span class="o">=</span><span class="n">bit_rate</span><span class="p">,</span>
             <span class="n">num_channels</span><span class="o">=</span><span class="n">num_channels</span><span class="p">,</span>
             <span class="n">desired_sample_rate</span><span class="o">=</span><span class="n">sample_rate</span><span class="p">,</span>

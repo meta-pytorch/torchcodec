@@ -24,34 +24,12 @@ the decoded tensor in GPU memory so the GPU doesn't have to fetch from main memo
 running the transform steps. Encoded packets are often much smaller than decoded frames so
 CUDA decoding also uses less PCI-e bandwidth.
 
-When to and when not to use CUDA Decoding
------------------------------------------
-
-CUDA Decoding can offer speed-up over CPU Decoding in a few scenarios:
-
-#. You are decoding a large resolution video
-#. You are decoding a large batch of videos that's saturating the CPU
-#. You want to do whole-image transforms like scaling or convolutions on the decoded tensors
-   after decoding
-#. Your CPU is saturated and you want to free it up for other work
-
-
-Here are situations where CUDA Decoding may not make sense:
-
-#. You want bit-exact results compared to CPU Decoding
-#. You have small resolution videos and the PCI-e transfer latency is large
-#. Your GPU is already busy and CPU is not
-
-It's best to experiment with CUDA Decoding to see if it improves your use-case. With
-TorchCodec you can simply pass in a device parameter to the
-:class:`~torchcodec.decoders.VideoDecoder` class to use CUDA Decoding.
-
 Installing TorchCodec with CUDA Enabled
 ---------------------------------------
 
 Refer to the installation guide in the `README <https://github.com/pytorch/torchcodec#installing-cuda-enabled-torchcodec>`_.
 
-.. GENERATED FROM PYTHON SOURCE LINES 51-59
+.. GENERATED FROM PYTHON SOURCE LINES 29-37
 
 Checking if Pytorch has CUDA enabled
 -------------------------------------
@@ -62,7 +40,7 @@ Checking if Pytorch has CUDA enabled
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 59-66
+.. GENERATED FROM PYTHON SOURCE LINES 37-44
 
 .. code-block:: Python
 
@@ -81,14 +59,14 @@ Checking if Pytorch has CUDA enabled
 
  .. code-block:: none
 
-    torch.__version__='2.9.0.dev20250714+cu126'
+    torch.__version__='2.11.0.dev20260129+cu126'
     torch.cuda.is_available()=True
-    torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='Tesla M60', major=5, minor=2, total_memory=7606MB, multi_processor_count=16, uuid=1bb3fb37-9a86-0064-473b-947e3a43d91c, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=2MB)
+    torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='Tesla M60', major=5, minor=2, total_memory=7606MB, multi_processor_count=16, uuid=7b2bd35f-6961-3b29-409a-9d77603f8fef, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=2MB)
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 67-82
+.. GENERATED FROM PYTHON SOURCE LINES 45-60
 
 Downloading the video
 -------------------------------------
@@ -106,7 +84,7 @@ We will use the following video which has the following properties:
      <source src="https://download.pytorch.org/torchaudio/tutorial-assets/stream-api/NASAs_Most_Scientifically_Complex_Space_Observatory_Requires_Precision-MP4_small.mp4" type="video/mp4">
    </video>
 
-.. GENERATED FROM PYTHON SOURCE LINES 82-91
+.. GENERATED FROM PYTHON SOURCE LINES 60-69
 
 .. code-block:: Python
 
@@ -128,11 +106,11 @@ We will use the following video which has the following properties:
  .. code-block:: none
 
 
-    ('video.mp4', <http.client.HTTPMessage object at 0x7fa45c833970>)
+    ('video.mp4', <http.client.HTTPMessage object at 0x7f1fdc2b0af0>)
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 92-97
+.. GENERATED FROM PYTHON SOURCE LINES 70-75
 
 CUDA Decoding using VideoDecoder
 -------------------------------------
@@ -140,13 +118,14 @@ CUDA Decoding using VideoDecoder
 To use CUDA decoder, you need to pass in a cuda device to the decoder.
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 97-102
+.. GENERATED FROM PYTHON SOURCE LINES 75-81
 
 .. code-block:: Python
 
-    from torchcodec.decoders import VideoDecoder
+    from torchcodec.decoders import set_cuda_backend, VideoDecoder
 
-    decoder = VideoDecoder(video_file, device="cuda")
+    with set_cuda_backend("beta"):  # Use the BETA backend, it's faster!
+        decoder = VideoDecoder(video_file, device="cuda")
     frame = decoder[0]
 
 
@@ -156,11 +135,11 @@ To use CUDA decoder, you need to pass in a cuda device to the decoder.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 103-104
+.. GENERATED FROM PYTHON SOURCE LINES 82-83
 
 The video frames are decoded and returned as tensor of NCHW format.
 
-.. GENERATED FROM PYTHON SOURCE LINES 105-108
+.. GENERATED FROM PYTHON SOURCE LINES 84-87
 
 .. code-block:: Python
 
@@ -180,11 +159,11 @@ The video frames are decoded and returned as tensor of NCHW format.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 109-110
+.. GENERATED FROM PYTHON SOURCE LINES 88-89
 
 The video frames are left on the GPU memory.
 
-.. GENERATED FROM PYTHON SOURCE LINES 111-115
+.. GENERATED FROM PYTHON SOURCE LINES 90-94
 
 .. code-block:: Python
 
@@ -205,7 +184,45 @@ The video frames are left on the GPU memory.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 116-121
+.. GENERATED FROM PYTHON SOURCE LINES 95-105
+
+Checking for CPU Fallback
+-------------------------------------
+
+In some cases, CUDA decoding may fall back to CPU decoding. This can happen
+when the video codec or format is not supported by the NVDEC hardware decoder, or when NVCUVID wasn't found.
+TorchCodec provides the :class:`~torchcodec.decoders.CpuFallbackStatus` class
+to help you detect when this fallback occurs.
+
+You can access the fallback status via the
+:attr:`~torchcodec.decoders.VideoDecoder.cpu_fallback` attribute:
+
+.. GENERATED FROM PYTHON SOURCE LINES 105-113
+
+.. code-block:: Python
+
+
+    with set_cuda_backend("beta"):
+        decoder = VideoDecoder(video_file, device="cuda")
+
+    # Check and print the CPU fallback status
+    print(decoder.cpu_fallback)
+
+
+
+
+
+
+.. rst-class:: sphx-glr-script-out
+
+ .. code-block:: none
+
+    [Beta CUDA] Fallback status: No fallback required
+
+
+
+
+.. GENERATED FROM PYTHON SOURCE LINES 114-119
 
 Visualizing Frames
 -------------------------------------
@@ -213,13 +230,14 @@ Visualizing Frames
 Let's look at the frames decoded by CUDA decoder and compare them
 against equivalent results from the CPU decoders.
 
-.. GENERATED FROM PYTHON SOURCE LINES 121-149
+.. GENERATED FROM PYTHON SOURCE LINES 119-148
 
 .. code-block:: Python
 
     timestamps = [12, 19, 45, 131, 180]
     cpu_decoder = VideoDecoder(video_file, device="cpu")
-    cuda_decoder = VideoDecoder(video_file, device="cuda")
+    with set_cuda_backend("beta"):
+        cuda_decoder = VideoDecoder(video_file, device="cuda")
     cpu_frames = cpu_decoder.get_frames_played_at(timestamps).data
     cuda_frames = cuda_decoder.get_frames_played_at(timestamps).data
 
@@ -257,13 +275,13 @@ against equivalent results from the CPU decoders.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 150-153
+.. GENERATED FROM PYTHON SOURCE LINES 149-152
 
 They look visually similar to the human eye but there may be subtle
 differences because CUDA math is not bit-exact with respect to CPU math.
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 154-162
+.. GENERATED FROM PYTHON SOURCE LINES 153-161
 
 .. code-block:: Python
 
@@ -293,7 +311,7 @@ differences because CUDA math is not bit-exact with respect to CPU math.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 6.664 seconds)
+   **Total running time of the script:** (0 minutes 6.375 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_basic_cuda_example.py:

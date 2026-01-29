@@ -9,7 +9,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>torchcodec.samplers._index_based &mdash; TorchCodec 0.5.0.dev20250715+cu126 Documentation</title>
+  <title>torchcodec.samplers._index_based &mdash; TorchCodec 0.11.0.dev20260129+cu126 Documentation</title>
   
 
   
@@ -326,6 +326,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../api_ref_decoders.html">torchcodec.decoders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../api_ref_encoders.html">torchcodec.encoders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../api_ref_samplers.html">torchcodec.samplers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_ref_transforms.html">torchcodec.transforms</a></li>
 </ul>
 
             
@@ -401,7 +402,7 @@
              <article itemprop="articleBody" id="pytorch-article" class="pytorch-article">
               
   <h1>Source code for torchcodec.samplers._index_based</h1><div class="highlight"><pre>
-<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span><span class="p">,</span> <span class="n">Optional</span>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Literal</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
 
@@ -528,7 +529,7 @@
     <span class="n">num_frames_per_clip</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">num_indices_between_frames</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
     <span class="n">sampling_range_start</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="n">sampling_range_end</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>  <span class="c1"># interval is [start, end).</span>
+    <span class="n">sampling_range_end</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># interval is [start, end).</span>
     <span class="c1"># Important note: sampling_range_end defines the upper bound of where a clip</span>
     <span class="c1"># can *start*, not where a clip can end.</span>
     <span class="n">policy</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;repeat_last&quot;</span><span class="p">,</span> <span class="s2">&quot;wrap&quot;</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">],</span>
@@ -595,10 +596,11 @@
     <span class="n">num_frames_per_clip</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
     <span class="n">num_indices_between_frames</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
     <span class="n">sampling_range_start</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
-    <span class="n">sampling_range_end</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># interval is [start, end).</span>
+    <span class="n">sampling_range_end</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># interval is [start, end).</span>
     <span class="n">policy</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;repeat_last&quot;</span><span class="p">,</span> <span class="s2">&quot;wrap&quot;</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;repeat_last&quot;</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FrameBatch</span><span class="p">:</span>
     <span class="c1"># See docstring below</span>
+    <span class="n">torch</span><span class="o">.</span><span class="n">_C</span><span class="o">.</span><span class="n">_log_api_usage_once</span><span class="p">(</span><span class="s2">&quot;torchcodec.samplers.clips_at_random_indices&quot;</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_generic_index_based_sampler</span><span class="p">(</span>
         <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;random&quot;</span><span class="p">,</span>
         <span class="n">decoder</span><span class="o">=</span><span class="n">decoder</span><span class="p">,</span>
@@ -618,10 +620,11 @@
     <span class="n">num_frames_per_clip</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
     <span class="n">num_indices_between_frames</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
     <span class="n">sampling_range_start</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
-    <span class="n">sampling_range_end</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># interval is [start, end).</span>
+    <span class="n">sampling_range_end</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>  <span class="c1"># interval is [start, end).</span>
     <span class="n">policy</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;repeat_last&quot;</span><span class="p">,</span> <span class="s2">&quot;wrap&quot;</span><span class="p">,</span> <span class="s2">&quot;error&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;repeat_last&quot;</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FrameBatch</span><span class="p">:</span>
     <span class="c1"># See docstring below</span>
+    <span class="n">torch</span><span class="o">.</span><span class="n">_C</span><span class="o">.</span><span class="n">_log_api_usage_once</span><span class="p">(</span><span class="s2">&quot;torchcodec.samplers.clips_at_regular_indices&quot;</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">_generic_index_based_sampler</span><span class="p">(</span>
         <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;regular&quot;</span><span class="p">,</span>
         <span class="n">decoder</span><span class="o">=</span><span class="n">decoder</span><span class="p">,</span>

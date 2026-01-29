@@ -23,12 +23,11 @@ First, a bit of boilerplate: we'll download a video from the web, and define a
 plotting utility. You can ignore that part and jump right below to
 :ref:`creating_decoder`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 20-54
+.. GENERATED FROM PYTHON SOURCE LINES 20-53
 
 .. code-block:: Python
 
 
-    from typing import Optional
     import torch
     import requests
 
@@ -43,7 +42,7 @@ plotting utility. You can ignore that part and jump right below to
     raw_video_bytes = response.content
 
 
-    def plot(frames: torch.Tensor, title : Optional[str] = None):
+    def plot(frames: torch.Tensor, title: str | None = None):
         try:
             from torchvision.utils import make_grid
             from torchvision.transforms.v2.functional import to_pil_image
@@ -68,7 +67,7 @@ plotting utility. You can ignore that part and jump right below to
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 55-63
+.. GENERATED FROM PYTHON SOURCE LINES 54-62
 
 .. _creating_decoder:
 
@@ -79,7 +78,7 @@ We can now create a decoder from the raw (encoded) video bytes. You can of
 course use a local video file and pass the path as input, rather than download
 a video.
 
-.. GENERATED FROM PYTHON SOURCE LINES 63-68
+.. GENERATED FROM PYTHON SOURCE LINES 62-67
 
 .. code-block:: Python
 
@@ -95,13 +94,13 @@ a video.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 69-72
+.. GENERATED FROM PYTHON SOURCE LINES 68-71
 
 The video has not yet been decoded by the decoder, but we already have access to
 some metadata via the ``metadata`` attribute which is a
 :class:`~torchcodec.decoders.VideoStreamMetadata` object.
 
-.. GENERATED FROM PYTHON SOURCE LINES 72-74
+.. GENERATED FROM PYTHON SOURCE LINES 71-73
 
 .. code-block:: Python
 
@@ -121,6 +120,8 @@ some metadata via the ``metadata`` attribute which is a
       bit_rate: 505790.0
       codec: h264
       stream_index: 0
+      duration_seconds: 13.8
+      begin_stream_seconds: 0.0
       begin_stream_seconds_from_content: 0.0
       end_stream_seconds_from_content: 13.8
       width: 640
@@ -129,8 +130,6 @@ some metadata via the ``metadata`` attribute which is a
       num_frames_from_content: 345
       average_fps_from_header: 25.0
       pixel_aspect_ratio: 1
-      duration_seconds: 13.8
-      begin_stream_seconds: 0.0
       end_stream_seconds: 13.8
       num_frames: 345
       average_fps: 25.0
@@ -139,12 +138,12 @@ some metadata via the ``metadata`` attribute which is a
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 75-77
+.. GENERATED FROM PYTHON SOURCE LINES 74-76
 
 Decoding frames by indexing the decoder
 ---------------------------------------
 
-.. GENERATED FROM PYTHON SOURCE LINES 77-86
+.. GENERATED FROM PYTHON SOURCE LINES 76-85
 
 .. code-block:: Python
 
@@ -173,7 +172,7 @@ Decoding frames by indexing the decoder
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 87-105
+.. GENERATED FROM PYTHON SOURCE LINES 86-104
 
 Indexing the decoder returns the frames as :class:`torch.Tensor` objects.
 By default, the shape of the frames is ``(N, C, H, W)`` where N is the batch
@@ -194,7 +193,7 @@ one frame. The dimension order can be changed to ``N, H, W, C`` using the
     :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range`. They
     are described below.
 
-.. GENERATED FROM PYTHON SOURCE LINES 105-109
+.. GENERATED FROM PYTHON SOURCE LINES 104-108
 
 .. code-block:: Python
 
@@ -214,7 +213,7 @@ one frame. The dimension order can be changed to ``N, H, W, C`` using the
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 110-112
+.. GENERATED FROM PYTHON SOURCE LINES 109-111
 
 .. code-block:: Python
 
@@ -232,14 +231,14 @@ one frame. The dimension order can be changed to ``N, H, W, C`` using the
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 113-117
+.. GENERATED FROM PYTHON SOURCE LINES 112-116
 
 Iterating over frames
 ---------------------
 
 The decoder is a normal iterable object and can be iterated over like so:
 
-.. GENERATED FROM PYTHON SOURCE LINES 117-124
+.. GENERATED FROM PYTHON SOURCE LINES 116-123
 
 .. code-block:: Python
 
@@ -257,7 +256,7 @@ The decoder is a normal iterable object and can be iterated over like so:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 125-136
+.. GENERATED FROM PYTHON SOURCE LINES 124-135
 
 Retrieving pts and duration of frames
 -------------------------------------
@@ -271,7 +270,7 @@ This can be achieved using the
 return a :class:`~torchcodec.Frame` and :class:`~torchcodec.FrameBatch`
 objects respectively.
 
-.. GENERATED FROM PYTHON SOURCE LINES 136-141
+.. GENERATED FROM PYTHON SOURCE LINES 135-140
 
 .. code-block:: Python
 
@@ -298,7 +297,7 @@ objects respectively.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 142-146
+.. GENERATED FROM PYTHON SOURCE LINES 141-145
 
 .. code-block:: Python
 
@@ -324,7 +323,7 @@ objects respectively.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 147-150
+.. GENERATED FROM PYTHON SOURCE LINES 146-149
 
 .. code-block:: Python
 
@@ -355,7 +354,7 @@ objects respectively.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 151-157
+.. GENERATED FROM PYTHON SOURCE LINES 150-156
 
 Both :class:`~torchcodec.Frame` and
 :class:`~torchcodec.FrameBatch` have a ``data`` field, which contains
@@ -364,7 +363,7 @@ the decoded tensor data. They also have the ``pts_seconds`` and
 :class:`~torchcodec.Frame`, and 1-D :class:`torch.Tensor` for
 :class:`~torchcodec.FrameBatch` (one value per frame in the batch).
 
-.. GENERATED FROM PYTHON SOURCE LINES 159-168
+.. GENERATED FROM PYTHON SOURCE LINES 158-167
 
 Using time-based indexing
 -------------------------
@@ -376,7 +375,7 @@ frames based on *when* they are played with
 also returns :class:`~torchcodec.Frame` and :class:`~torchcodec.FrameBatch`
 respectively.
 
-.. GENERATED FROM PYTHON SOURCE LINES 168-173
+.. GENERATED FROM PYTHON SOURCE LINES 167-172
 
 .. code-block:: Python
 
@@ -403,7 +402,7 @@ respectively.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 174-178
+.. GENERATED FROM PYTHON SOURCE LINES 173-177
 
 .. code-block:: Python
 
@@ -429,7 +428,7 @@ respectively.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 179-181
+.. GENERATED FROM PYTHON SOURCE LINES 178-180
 
 .. code-block:: Python
 
@@ -462,7 +461,7 @@ respectively.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 3.125 seconds)
+   **Total running time of the script:** (0 minutes 2.781 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_basic_example.py:

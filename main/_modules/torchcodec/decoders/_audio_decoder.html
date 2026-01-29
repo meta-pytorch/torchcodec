@@ -9,7 +9,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>torchcodec.decoders._audio_decoder &mdash; TorchCodec 0.5.0.dev20250715+cu126 Documentation</title>
+  <title>torchcodec.decoders._audio_decoder &mdash; TorchCodec 0.11.0.dev20260129+cu126 Documentation</title>
   
 
   
@@ -326,6 +326,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../../api_ref_decoders.html">torchcodec.decoders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../api_ref_encoders.html">torchcodec.encoders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../../api_ref_samplers.html">torchcodec.samplers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api_ref_transforms.html">torchcodec.transforms</a></li>
 </ul>
 
             
@@ -407,10 +408,11 @@
 <span class="c1"># This source code is licensed under the BSD-style license found in the</span>
 <span class="c1"># LICENSE file in the root directory of this source tree.</span>
 
+
 <span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
 
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">torch</span><span class="w"> </span><span class="kn">import</span> <span class="n">Tensor</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec</span><span class="w"> </span><span class="kn">import</span> <span class="n">_core</span> <span class="k">as</span> <span class="n">core</span><span class="p">,</span> <span class="n">AudioSamples</span>
@@ -437,7 +439,7 @@
 <span class="sd">            - If ``bytes`` object or ``torch.Tensor``: the raw encoded audio data.</span>
 <span class="sd">            - If file-like object: we read video data from the object on demand. The object must</span>
 <span class="sd">              expose the methods `read(self, size: int) -&gt; bytes` and</span>
-<span class="sd">              `seek(self, offset: int, whence: int) -&gt; bytes`. Read more in:</span>
+<span class="sd">              `seek(self, offset: int, whence: int) -&gt; int`. Read more in:</span>
 <span class="sd">              :ref:`sphx_glr_generated_examples_decoding_file_like.py`.</span>
 <span class="sd">        stream_index (int, optional): Specifies which stream in the file to decode samples from.</span>
 <span class="sd">            Note that this index is absolute across all media types. If left unspecified, then</span>
@@ -456,20 +458,14 @@
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
         <span class="bp">self</span><span class="p">,</span>
-        <span class="n">source</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">,</span> <span class="n">io</span><span class="o">.</span><span class="n">RawIOBase</span><span class="p">,</span> <span class="n">io</span><span class="o">.</span><span class="n">BufferedReader</span><span class="p">,</span> <span class="nb">bytes</span><span class="p">,</span> <span class="n">Tensor</span><span class="p">],</span>
+        <span class="n">source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="n">io</span><span class="o">.</span><span class="n">RawIOBase</span> <span class="o">|</span> <span class="n">io</span><span class="o">.</span><span class="n">BufferedReader</span> <span class="o">|</span> <span class="nb">bytes</span> <span class="o">|</span> <span class="n">Tensor</span><span class="p">,</span>
         <span class="o">*</span><span class="p">,</span>
-        <span class="n">stream_index</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">sample_rate</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">num_channels</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">stream_index</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">sample_rate</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">num_channels</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
     <span class="p">):</span>
+        <span class="n">torch</span><span class="o">.</span><span class="n">_C</span><span class="o">.</span><span class="n">_log_api_usage_once</span><span class="p">(</span><span class="s2">&quot;torchcodec.decoders.AudioDecoder&quot;</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_decoder</span> <span class="o">=</span> <span class="n">create_decoder</span><span class="p">(</span><span class="n">source</span><span class="o">=</span><span class="n">source</span><span class="p">,</span> <span class="n">seek_mode</span><span class="o">=</span><span class="s2">&quot;approximate&quot;</span><span class="p">)</span>
-
-        <span class="n">core</span><span class="o">.</span><span class="n">add_audio_stream</span><span class="p">(</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">_decoder</span><span class="p">,</span>
-            <span class="n">stream_index</span><span class="o">=</span><span class="n">stream_index</span><span class="p">,</span>
-            <span class="n">sample_rate</span><span class="o">=</span><span class="n">sample_rate</span><span class="p">,</span>
-            <span class="n">num_channels</span><span class="o">=</span><span class="n">num_channels</span><span class="p">,</span>
-        <span class="p">)</span>
 
         <span class="n">container_metadata</span> <span class="o">=</span> <span class="n">core</span><span class="o">.</span><span class="n">get_container_metadata</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_decoder</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">stream_index</span> <span class="o">=</span> <span class="p">(</span>
@@ -482,11 +478,26 @@
                 <span class="s2">&quot;The best audio stream is unknown and there is no specified stream. &quot;</span>
                 <span class="o">+</span> <span class="n">ERROR_REPORTING_INSTRUCTIONS</span>
             <span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_index</span> <span class="o">&gt;=</span> <span class="nb">len</span><span class="p">(</span><span class="n">container_metadata</span><span class="o">.</span><span class="n">streams</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;The stream at index </span><span class="si">{</span><span class="n">stream_index</span><span class="si">}</span><span class="s2"> is not a valid stream.&quot;</span>
+            <span class="p">)</span>
+
         <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span> <span class="o">=</span> <span class="n">container_metadata</span><span class="o">.</span><span class="n">streams</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">stream_index</span><span class="p">]</span>
-        <span class="k">assert</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="p">,</span> <span class="n">core</span><span class="o">.</span><span class="n">AudioStreamMetadata</span><span class="p">)</span>  <span class="c1"># mypy</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="p">,</span> <span class="n">core</span><span class="o">.</span><span class="n">_metadata</span><span class="o">.</span><span class="n">AudioStreamMetadata</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;The stream at index </span><span class="si">{</span><span class="n">stream_index</span><span class="si">}</span><span class="s2"> is not an audio stream. &quot;</span>
+            <span class="p">)</span>
 
         <span class="bp">self</span><span class="o">.</span><span class="n">_desired_sample_rate</span> <span class="o">=</span> <span class="p">(</span>
             <span class="n">sample_rate</span> <span class="k">if</span> <span class="n">sample_rate</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">sample_rate</span>
+        <span class="p">)</span>
+
+        <span class="n">core</span><span class="o">.</span><span class="n">add_audio_stream</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_decoder</span><span class="p">,</span>
+            <span class="n">stream_index</span><span class="o">=</span><span class="n">stream_index</span><span class="p">,</span>
+            <span class="n">sample_rate</span><span class="o">=</span><span class="n">sample_rate</span><span class="p">,</span>
+            <span class="n">num_channels</span><span class="o">=</span><span class="n">num_channels</span><span class="p">,</span>
         <span class="p">)</span>
 
 <div class="viewcode-block" id="AudioDecoder.get_all_samples"><a class="viewcode-back" href="../../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder.get_all_samples">[docs]</a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_all_samples</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AudioSamples</span><span class="p">:</span>
@@ -501,7 +512,7 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_samples_played_in_range</span><span class="p">()</span></div>
 
 <div class="viewcode-block" id="AudioDecoder.get_samples_played_in_range"><a class="viewcode-back" href="../../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder.get_samples_played_in_range">[docs]</a>    <span class="k">def</span><span class="w"> </span><span class="nf">get_samples_played_in_range</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span> <span class="n">start_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">stop_seconds</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">start_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">stop_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AudioSamples</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns audio samples in the given range.</span>
 

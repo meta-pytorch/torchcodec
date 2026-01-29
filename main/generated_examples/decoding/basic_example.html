@@ -10,7 +10,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Decoding a video with VideoDecoder &mdash; TorchCodec 0.5.0.dev20250715+cu126 Documentation</title>
+  <title>Decoding a video with VideoDecoder &mdash; TorchCodec 0.11.0.dev20260129+cu126 Documentation</title>
   
 
   
@@ -329,6 +329,7 @@
 <li class="toctree-l1"><a class="reference internal" href="../../api_ref_decoders.html">torchcodec.decoders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../api_ref_encoders.html">torchcodec.encoders</a></li>
 <li class="toctree-l1"><a class="reference internal" href="../../api_ref_samplers.html">torchcodec.samplers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../api_ref_transforms.html">torchcodec.transforms</a></li>
 </ul>
 
             
@@ -416,8 +417,7 @@
 <p>First, a bit of boilerplate: we’ll download a video from the web, and define a
 plotting utility. You can ignore that part and jump right below to
 <a class="reference internal" href="#creating-decoder"><span class="std std-ref">Creating a decoder</span></a>.</p>
-<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <a href="https://docs.python.org/3/library/typing.html#typing.Optional" title="typing.Optional" class="sphx-glr-backref-module-typing sphx-glr-backref-type-py-data"><span class="n">Optional</span></a>
-<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
 
 
@@ -431,10 +431,10 @@ plotting utility. You can ignore that part and jump right below to
 <a href="https://docs.python.org/3/library/stdtypes.html#bytes" title="builtins.bytes" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">raw_video_bytes</span></a> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">content</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">plot</span><span class="p">(</span><span class="n">frames</span><span class="p">:</span> <a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class"><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span></a><span class="p">,</span> <span class="n">title</span> <span class="p">:</span> <a href="https://docs.python.org/3/library/typing.html#typing.Optional" title="typing.Optional" class="sphx-glr-backref-module-typing sphx-glr-backref-type-py-data"><span class="n">Optional</span></a><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">plot</span><span class="p">(</span><span class="n">frames</span><span class="p">:</span> <a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class"><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span></a><span class="p">,</span> <span class="n">title</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
     <span class="k">try</span><span class="p">:</span>
-        <span class="kn">from</span><span class="w"> </span><span class="nn">torchvision.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_grid</span>
-        <span class="kn">from</span><span class="w"> </span><span class="nn">torchvision.transforms.v2.functional</span><span class="w"> </span><span class="kn">import</span> <span class="n">to_pil_image</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">torchvision.utils</span><span class="w"> </span><span class="kn">import</span> <a href="https://docs.pytorch.org/vision/stable/generated/torchvision.utils.make_grid.html#torchvision.utils.make_grid" title="torchvision.utils.make_grid" class="sphx-glr-backref-module-torchvision-utils sphx-glr-backref-type-py-function"><span class="n">make_grid</span></a>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">torchvision.transforms.v2.functional</span><span class="w"> </span><span class="kn">import</span> <a href="https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.v2.functional.to_pil_image.html#torchvision.transforms.v2.functional.to_pil_image" title="torchvision.transforms.v2.functional.to_pil_image" class="sphx-glr-backref-module-torchvision-transforms-v2-functional sphx-glr-backref-type-py-function"><span class="n">to_pil_image</span></a>
         <span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
     <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
         <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Cannot plot, please run `pip install torchvision matplotlib`&quot;</span><span class="p">)</span>
@@ -442,7 +442,7 @@ plotting utility. You can ignore that part and jump right below to
 
     <a href="https://matplotlib.org/stable/api/matplotlib_configuration_api.html#matplotlib.rcParams" title="matplotlib.rcParams" class="sphx-glr-backref-module-matplotlib sphx-glr-backref-type-py-data"><span class="n">plt</span><span class="o">.</span><span class="n">rcParams</span></a><span class="p">[</span><span class="s2">&quot;savefig.bbox&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;tight&#39;</span>
     <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <a href="https://matplotlib.org/stable/api/_as_gen/matplotlib.pyplot.subplots.html#matplotlib.pyplot.subplots" title="matplotlib.pyplot.subplots" class="sphx-glr-backref-module-matplotlib-pyplot sphx-glr-backref-type-py-function"><span class="n">plt</span><span class="o">.</span><span class="n">subplots</span></a><span class="p">()</span>
-    <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><span class="n">to_pil_image</span><span class="p">(</span><span class="n">make_grid</span><span class="p">(</span><span class="n">frames</span><span class="p">)))</span>
+    <span class="n">ax</span><span class="o">.</span><span class="n">imshow</span><span class="p">(</span><a href="https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.v2.functional.to_pil_image.html#torchvision.transforms.v2.functional.to_pil_image" title="torchvision.transforms.v2.functional.to_pil_image" class="sphx-glr-backref-module-torchvision-transforms-v2-functional sphx-glr-backref-type-py-function"><span class="n">to_pil_image</span></a><span class="p">(</span><a href="https://docs.pytorch.org/vision/stable/generated/torchvision.utils.make_grid.html#torchvision.utils.make_grid" title="torchvision.utils.make_grid" class="sphx-glr-backref-module-torchvision-utils sphx-glr-backref-type-py-function"><span class="n">make_grid</span></a><span class="p">(</span><span class="n">frames</span><span class="p">)))</span>
     <span class="n">ax</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">xticklabels</span><span class="o">=</span><span class="p">[],</span> <span class="n">yticklabels</span><span class="o">=</span><span class="p">[],</span> <span class="n">xticks</span><span class="o">=</span><span class="p">[],</span> <span class="n">yticks</span><span class="o">=</span><span class="p">[])</span>
     <span class="k">if</span> <span class="n">title</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">ax</span><span class="o">.</span><span class="n">set_title</span><span class="p">(</span><span class="n">title</span><span class="p">)</span>
@@ -472,6 +472,8 @@ some metadata via the <code class="docutils literal notranslate"><span class="pr
   bit_rate: 505790.0
   codec: h264
   stream_index: 0
+  duration_seconds: 13.8
+  begin_stream_seconds: 0.0
   begin_stream_seconds_from_content: 0.0
   end_stream_seconds_from_content: 13.8
   width: 640
@@ -480,8 +482,6 @@ some metadata via the <code class="docutils literal notranslate"><span class="pr
   num_frames_from_content: 345
   average_fps_from_header: 25.0
   pixel_aspect_ratio: 1
-  duration_seconds: 13.8
-  begin_stream_seconds: 0.0
   end_stream_seconds: 13.8
   num_frames: 345
   average_fps: 25.0
@@ -505,7 +505,7 @@ every_twenty_frame.shape = torch.Size([18, 3, 360, 640])
 every_twenty_frame.dtype = torch.uint8
 </pre></div>
 </div>
-<p>Indexing the decoder returns the frames as <a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.7)"><code class="xref py py-class docutils literal notranslate"><span class="pre">torch.Tensor</span></code></a> objects.
+<p>Indexing the decoder returns the frames as <a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">torch.Tensor</span></code></a> objects.
 By default, the shape of the frames is <code class="docutils literal notranslate"><span class="pre">(N,</span> <span class="pre">C,</span> <span class="pre">H,</span> <span class="pre">W)</span></code> where N is the batch
 size C the number of channels, H is the height, and W is the width of the
 frames.  The batch dimension N is only present when we’re decoding more than
@@ -543,7 +543,7 @@ are described below.</p>
 </section>
 <section id="retrieving-pts-and-duration-of-frames">
 <h2>Retrieving pts and duration of frames<a class="headerlink" href="#retrieving-pts-and-duration-of-frames" title="Permalink to this heading">¶</a></h2>
-<p>Indexing the decoder returns pure <a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.7)"><code class="xref py py-class docutils literal notranslate"><span class="pre">torch.Tensor</span></code></a> objects. Sometimes, it
+<p>Indexing the decoder returns pure <a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">torch.Tensor</span></code></a> objects. Sometimes, it
 can be useful to retrieve additional information about the frames, such as
 their <a class="reference internal" href="../../glossary.html#term-pts"><span class="xref std std-term">pts</span></a> (Presentation Time Stamp), and their duration.
 This can be achieved using the
@@ -587,7 +587,7 @@ FrameBatch:
 <a class="reference internal" href="../../generated/torchcodec.FrameBatch.html#torchcodec.FrameBatch" title="torchcodec.FrameBatch"><code class="xref py py-class docutils literal notranslate"><span class="pre">FrameBatch</span></code></a> have a <code class="docutils literal notranslate"><span class="pre">data</span></code> field, which contains
 the decoded tensor data. They also have the <code class="docutils literal notranslate"><span class="pre">pts_seconds</span></code> and
 <code class="docutils literal notranslate"><span class="pre">duration_seconds</span></code> fields which are single ints for
-<a class="reference internal" href="../../generated/torchcodec.Frame.html#torchcodec.Frame" title="torchcodec.Frame"><code class="xref py py-class docutils literal notranslate"><span class="pre">Frame</span></code></a>, and 1-D <a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.7)"><code class="xref py py-class docutils literal notranslate"><span class="pre">torch.Tensor</span></code></a> for
+<a class="reference internal" href="../../generated/torchcodec.Frame.html#torchcodec.Frame" title="torchcodec.Frame"><code class="xref py py-class docutils literal notranslate"><span class="pre">Frame</span></code></a>, and 1-D <a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><code class="xref py py-class docutils literal notranslate"><span class="pre">torch.Tensor</span></code></a> for
 <a class="reference internal" href="../../generated/torchcodec.FrameBatch.html#torchcodec.FrameBatch" title="torchcodec.FrameBatch"><code class="xref py py-class docutils literal notranslate"><span class="pre">FrameBatch</span></code></a> (one value per frame in the batch).</p>
 </section>
 <section id="using-time-based-indexing">
@@ -630,7 +630,7 @@ FrameBatch:
 <li><img src="../../_images/sphx_glr_basic_example_005.png" srcset="../../_images/sphx_glr_basic_example_005.png" alt="Frame played at 2 seconds" class = "sphx-glr-multi-img"/></li>
 <li><img src="../../_images/sphx_glr_basic_example_006.png" srcset="../../_images/sphx_glr_basic_example_006.png" alt="Other frames" class = "sphx-glr-multi-img"/></li>
 </ul>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 3.125 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 2.781 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-decoding-basic-example-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../../_downloads/c8852e7e664672bdb64c6ba771a9bd30/basic_example.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">basic_example.ipynb</span></code></a></p>

@@ -2,7 +2,7 @@ Welcome to the TorchCodec documentation!
 ========================================
 
 TorchCodec is a Python library for decoding video and audio data into PyTorch
-tensors, on CPU and CUDA GPU. It also supports audio encoding, and video encoding will come soon!
+tensors, on CPU and CUDA GPU. It also supports audio and video encoding!
 It aims to be fast, easy to use, and well integrated into the PyTorch ecosystem.
 If you want to use PyTorch to train ML models on videos and audio, TorchCodec is
 how you turn these into data.
@@ -11,7 +11,7 @@ We achieve these capabilities through:
 
 * Pythonic APIs that mirror Python and PyTorch conventions.
 * Relying on `FFmpeg <https://www.ffmpeg.org/>`_ to do the decoding / encoding.
-  TorchCodec uses the version of FFmpeg you already have installed. FMPEG is a
+  TorchCodec uses the version of FFmpeg you already have installed. FFmpeg is a
   mature library with broad coverage available on most systems. It is, however,
   not easy to use.  TorchCodec abstracts FFmpeg's complexity to ensure it is
   used correctly and efficiently.
@@ -84,6 +84,22 @@ Decoding
 
         How to sample regular and random clips from a video
 
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Decoder transforms
+        :img-top: _static/img/card-background.svg
+        :link: generated_examples/decoding/transforms.html
+        :link-type: url
+
+        How to apply transforms while decoding
+
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Performance Tips
+        :img-top: _static/img/card-background.svg
+        :link: generated_examples/decoding/performance_tips.html
+        :link-type: url
+
+        Tips for optimizing video decoding performance
+
 
 Encoding
 ^^^^^^^^
@@ -97,6 +113,14 @@ Encoding
         :link-type: url
 
         How encode audio samples
+
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Video Encoding
+        :img-top: _static/img/card-background.svg
+        :link: generated_examples/encoding/video_encoding.html
+        :link-type: url
+
+        How to encode video frames
 
 .. toctree::
    :maxdepth: 1
@@ -125,3 +149,4 @@ Encoding
    api_ref_decoders
    api_ref_encoders
    api_ref_samplers
+   api_ref_transforms

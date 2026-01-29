@@ -66,7 +66,7 @@ print(f"Long video duration: {VideoDecoder(long_video_path).metadata.duration_se
 # Performance: ``VideoDecoder`` creation
 # --------------------------------------
 #
-# In terms of performance, the ``seek_mode`` parameter ultimately affects the
+# In terms of performance, the ``seek_mode`` parameter mainly affects the
 # **creation** of a :class:`~torchcodec.decoders.VideoDecoder` object. The
 # longer the video, the higher the performance gain.
 
@@ -104,7 +104,7 @@ bench(VideoDecoder, source=long_video_path, seek_mode="approximate")
 # ---------------------------------------------
 #
 # Strictly speaking the ``seek_mode`` parameter only affects the performance of
-# the :class:`~torchcodec.decoders.VideoDecoder` creation. It does not have a
+# the :class:`~torchcodec.decoders.VideoDecoder` creation. It usually does not have a
 # direct effect on the performance of frame decoding or sampling.  **However**,
 # because frame decoding and sampling patterns typically involve the creation of
 # the :class:`~torchcodec.decoders.VideoDecoder` (one per video), ``seek_mode``
@@ -168,8 +168,10 @@ print("Frame seeking is the same for this video!")
 # duration), and also builds an internal index of frames and key-frames. This
 # internal index is potentially more accurate than the one in the file's
 # headers, which leads to more accurate seeking behavior.
-# Without the scan, TorchCodec relies only on the metadata contained in the
-# file, which may not always be as accurate.
+# Without the scan (in approximate mode), TorchCodec relies only on the metadata
+# contained in the file, which may not always be as accurate. In some rare
+# cases, relying on this less accurate data may also lead to slower frame
+# decoding, because it can involve unnecessary seeks.
 #
 # Which mode should I use?
 # ------------------------
@@ -177,11 +179,10 @@ print("Frame seeking is the same for this video!")
 # The general rule of thumb is as follows:
 #
 # - If you really care about exactness of frame seeking, use "exact".
-# - If you can sacrifice exactness of seeking for speed, which is usually the
-#   case when doing clip sampling, use "approximate".
-# - If your videos don't have variable framerate and their metadata is correct,
-#   then "approximate" mode is a net win: it will be just as accurate as the
-#   "exact" mode while still being significantly faster.
+# - If your videos are short (less then a few minutes) then "exact" will usually
+#   be preferable, as the scan's fixed cost will be negligible.
+# - For long videos, if you can sacrifice exactness of seeking for speed, which
+#   is usually the case when doing clip sampling, consider using "approximate".
 
 # %%
 shutil.rmtree(temp_dir)
