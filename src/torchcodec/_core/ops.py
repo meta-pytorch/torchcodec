@@ -598,7 +598,13 @@ def scan_all_streams_to_update_metadata_abstract(decoder: torch.Tensor) -> None:
 
 def get_ffmpeg_library_versions():
     versions_json = _get_json_ffmpeg_library_versions()
-    return json.loads(versions_json)
+    versions = json.loads(versions_json)
+    # We reuse ffmpeg_major_version from load_torchcodec_shared_libraries() as
+    # it's more reliable than parsing ffmpeg_version from av_version_info().
+    # We still get the minor version from av_version_info() in _get_json_ffmpeg_library_versions().
+    # See https://github.com/pytorch/torchcodec/issues/100
+    versions["ffmpeg_major_version"] = ffmpeg_major_version
+    return versions
 
 
 @register_fake("torchcodec_ns::_get_backend_details")
