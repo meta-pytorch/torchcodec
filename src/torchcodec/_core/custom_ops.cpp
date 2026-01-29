@@ -813,7 +813,7 @@ std::string get_json_metadata(torch::Tensor& decoder) {
       fmt::to_string(durationSecondsFromHeader);
 
   if (videoMetadata.bitRate.has_value()) {
-    metadataMap["bitRate"] = std::to_string(videoMetadata.bitRate.value());
+    metadataMap["bitRate"] = fmt::to_string(videoMetadata.bitRate.value());
   }
 
   if (maybeBestVideoStreamIndex.has_value()) {
@@ -874,7 +874,7 @@ std::string get_container_json_metadata(torch::Tensor& decoder) {
   }
 
   if (containerMetadata.bitRate.has_value()) {
-    map["bitRate"] = std::to_string(*containerMetadata.bitRate);
+    map["bitRate"] = fmt::to_string(*containerMetadata.bitRate);
   }
 
   if (containerMetadata.bestVideoStreamIndex.has_value()) {
@@ -916,7 +916,7 @@ std::string get_stream_json_metadata(
         fmt::to_string(*streamMetadata.durationSecondsFromHeader);
   }
   if (streamMetadata.bitRate.has_value()) {
-    map["bitRate"] = std::to_string(*streamMetadata.bitRate);
+    map["bitRate"] = fmt::to_string(*streamMetadata.bitRate);
   }
   if (streamMetadata.numFramesFromContent.has_value()) {
     map["numFramesFromContent"] =
