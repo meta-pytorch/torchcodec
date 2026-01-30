@@ -8,7 +8,6 @@ import functools
 from fractions import Fraction
 
 import pytest
-
 from torchcodec._core import (
     add_video_stream,
     AudioStreamMetadata,
@@ -157,23 +156,23 @@ def test_repr():
         str(VideoDecoder(NASA_VIDEO.path).metadata)
         == """VideoStreamMetadata:
   duration_seconds_from_header: 13.013
-  begin_stream_seconds_from_header: 0.0
-  bit_rate: 128783.0
+  begin_stream_seconds_from_header: 0
+  bit_rate: 128783
   codec: h264
   stream_index: 3
   duration_seconds: 13.013
-  begin_stream_seconds: 0.0
-  begin_stream_seconds_from_content: 0.0
+  begin_stream_seconds: 0
+  begin_stream_seconds_from_content: 0
   end_stream_seconds_from_content: 13.013
   width: 480
   height: 270
   num_frames_from_header: 390
   num_frames_from_content: 390
-  average_fps_from_header: 29.97003
+  average_fps_from_header: 29.97002997002997
   pixel_aspect_ratio: 1
   end_stream_seconds: 13.013
   num_frames: 390
-  average_fps: 29.97003
+  average_fps: 29.97002997002997
 """
     )
     ffmpeg_major_version = get_ffmpeg_major_version()
@@ -186,11 +185,11 @@ def test_repr():
         == f"""AudioStreamMetadata:
   duration_seconds_from_header: {expected_duration_seconds_from_header}
   begin_stream_seconds_from_header: 0.138125
-  bit_rate: 64000.0
+  bit_rate: 64000
   codec: mp3
   stream_index: 0
   duration_seconds: {expected_duration_seconds_from_header}
-  begin_stream_seconds: 0.0
+  begin_stream_seconds: 0
   sample_rate: 8000
   num_channels: 2
   sample_format: fltp
