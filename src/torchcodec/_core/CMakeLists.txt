@@ -123,6 +123,8 @@ function(make_torchcodec_libraries
         Frame.cpp
         DeviceInterface.cpp
         CpuDeviceInterface.cpp
+        EncodingDeviceInterface.cpp
+        EncodingCpuDeviceInterface.cpp
         SingleStreamDecoder.cpp
         Encoder.cpp
         ValidationUtils.cpp
@@ -131,7 +133,7 @@ function(make_torchcodec_libraries
     )
 
     if(ENABLE_CUDA)
-	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp)
+	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp EncodingCudaDeviceInterface.cpp)
     endif()
 
     set(core_library_dependencies

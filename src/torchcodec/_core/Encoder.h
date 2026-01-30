@@ -3,7 +3,7 @@
 #include <map>
 #include <string>
 #include "AVIOContextHolder.h"
-#include "DeviceInterface.h"
+#include "EncodingDeviceInterface.h"
 #include "FFMPEGCommon.h"
 #include "StreamOptions.h"
 
@@ -160,30 +160,22 @@ class VideoEncoder {
 
  private:
   void initializeEncoder(const VideoStreamOptions& videoStreamOptions);
-  UniqueAVFrame convertTensorToAVFrame(
-      const torch::Tensor& frame,
-      int frameIndex);
   void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
   void flushBuffers();
 
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;
   AVStream* avStream_ = nullptr;
-  UniqueSwsContext swsContext_;
 
   const torch::Tensor frames_;
   double inFrameRate_;
-
-  int inWidth_ = -1;
-  int inHeight_ = -1;
-  AVPixelFormat inPixelFormat_ = AV_PIX_FMT_NONE;
 
   int outWidth_ = -1;
   int outHeight_ = -1;
   AVPixelFormat outPixelFormat_ = AV_PIX_FMT_NONE;
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
-  std::unique_ptr<DeviceInterface> deviceInterface_;
+  std::unique_ptr<EncodingDeviceInterface> encodingInterface_;
 
   bool encodeWasCalled_ = false;
   UniqueAVDictionary avFormatOptions_;

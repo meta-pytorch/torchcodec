@@ -7,6 +7,9 @@
 #include "CUDACommon.h"
 #include "Cache.h" // for PerGpuCache
 
+#include <c10/cuda/CUDAGuard.h>
+#include <cuda_runtime.h>
+
 namespace facebook::torchcodec {
 
 namespace {
@@ -19,7 +22,66 @@ PerGpuCache<NppStreamContext> g_cached_npp_ctxs(
     MAX_CUDA_GPUS,
     MAX_CONTEXTS_PER_GPU_IN_CACHE);
 
+PerGpuCache<AVBufferRef, Deleterp<AVBufferRef, void, av_buffer_unref>>
+    g_cached_hw_device_ctxs(MAX_CUDA_GPUS, MAX_CONTEXTS_PER_GPU_IN_CACHE);
+
+int getFlagsAVHardwareDeviceContextCreate() {
+// 58.26.100 introduced the concept of reusing the existing cuda context
+// which is much faster and lower memory than creating a new cuda context.
+#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(58, 26, 100)
+  return AV_CUDA_USE_CURRENT_CONTEXT;
+#else
+  return 0;
+#endif
+}
+
 } // namespace
+
+UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device) {
+  enum AVHWDeviceType type = av_hwdevice_find_type_by_name("cuda");
+  TORCH_CHECK(type != AV_HWDEVICE_TYPE_NONE, "Failed to find cuda device");
+  int deviceIndex = getDeviceIndex(device);
+
+  UniqueAVBufferRef hardwareDeviceCtx = g_cached_hw_device_ctxs.get(device);
+  if (hardwareDeviceCtx) {
+    return hardwareDeviceCtx;
+  }
+
+  // Create hardware device context
+  c10::cuda::CUDAGuard deviceGuard(device);
+  // We set the device because we may be called from a different thread than
+  // the one that initialized the cuda context.
+  TORCH_CHECK(
+      cudaSetDevice(deviceIndex) == cudaSuccess, "Failed to set CUDA device");
+  AVBufferRef* hardwareDeviceCtxRaw = nullptr;
+  std::string deviceOrdinal = std::to_string(deviceIndex);
+
+  int err = av_hwdevice_ctx_create(
+      &hardwareDeviceCtxRaw,
+      type,
+      deviceOrdinal.c_str(),
+      nullptr,
+      getFlagsAVHardwareDeviceContextCreate());
+
+  if (err < 0) {
+    /* clang-format off */
+    TORCH_CHECK(
+        false,
+        "Failed to create specified HW device. This typically happens when ",
+        "your installed FFmpeg doesn't support CUDA (see ",
+        "https://github.com/pytorch/torchcodec#installing-cuda-enabled-torchcodec",
+        "). FFmpeg error: ", getFFMPEGErrorStringFromErrorCode(err));
+    /* clang-format on */
+  }
+
+  return UniqueAVBufferRef(hardwareDeviceCtxRaw);
+}
+
+void returnHardwareDeviceContextToCache(
+    const torch::Device& device,
+    UniqueAVBufferRef ctx) {
+  g_cached_hw_device_ctxs.addIfCacheHasCapacity(device, std::move(ctx));
+}
 
 void initializeCudaContextWithPytorch(const torch::Device& device) {
   // It is important for pytorch itself to create the cuda context. If ffmpeg
