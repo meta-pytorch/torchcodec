@@ -15,7 +15,22 @@
     var collapsedSections = ['Introduction', 'Getting Started', 'Tutorials']
 </script> -->
 
-<script script type="text/javascript">
+<script type="text/javascript">
     var collapsedSections = []
+</script>
+
+<script type="text/javascript">
+    // Override footer links to Meta's Terms and Privacy Policy
+    document.addEventListener('DOMContentLoaded', function() {
+        var termsLink = document.querySelector('.privacy-policy a[href*="linuxfoundation.org/terms"]');
+        if (termsLink) {
+            termsLink.href = 'https://opensource.fb.com/legal/terms/';
+        }
+
+        var privacyLink = document.querySelector('.privacy-policy a[href*="linuxfoundation.org/privacy"]');
+        if (privacyLink) {
+            privacyLink.href = 'https://opensource.fb.com/legal/privacy/';
+        }
+    });
 </script>
 {% endblock %}
