@@ -379,14 +379,6 @@ std::string CudaDeviceInterface::getDetails() {
       (usingCPUFallback_ ? "CPU fallback." : "NVDEC.");
 }
 
-UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
-    const torch::Tensor& tensor,
-    int frameIndex,
-    AVCodecContext* codecContext) {
-  return convertCUDATensorToAVFrameForEncoding(
-      tensor, frameIndex, codecContext);
-}
-
 // --------------------------------------------------------------------------
 // Below are methods exclusive to video encoding:
 // --------------------------------------------------------------------------
@@ -507,7 +499,7 @@ const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
 }
 } // namespace
 
-UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
+UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
     const torch::Tensor& tensor,
     int frameIndex,
     AVCodecContext* codecContext) {

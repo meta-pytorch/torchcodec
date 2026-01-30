@@ -743,8 +743,8 @@ void VideoEncoder::initializeEncoder(
     TORCH_CHECK(
         avFormatContext_->oformat != nullptr,
         "Output format is null, unable to find default codec.");
-    // Try to find hardware codec. This will return std::nullopt when device is
-    // CPU.
+    // Try to substitute the default codec with its hardware equivalent
+    // This will return std::nullopt when device is CPU.
     auto hwCodec = deviceInterface_->findCodec(
         avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
     if (hwCodec.has_value()) {
