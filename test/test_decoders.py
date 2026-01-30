@@ -40,6 +40,7 @@ from .utils import (
     NASA_AUDIO_MP3,
     NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
+    NASA_VIDEO_ROTATED,
     needs_cuda,
     needs_ffmpeg_cli,
     psnr,
@@ -1910,6 +1911,185 @@ class TestVideoDecoder:
 
         assert not decoder.cpu_fallback
         assert "No fallback required" in str(decoder.cpu_fallback)
+
+    @pytest.mark.parametrize("dimension_order", ["NCHW", "NHWC"])
+    def test_rotation_applied_to_frames(self, dimension_order):
+        """Test that rotation is correctly applied to decoded frames.
+
+        Compares frames from NASA_VIDEO_ROTATED (which has 90-degree rotation
+        metadata) with manually rotated frames from NASA_VIDEO.
+        Tests all decoding methods to ensure rotation is applied consistently.
+        """
+        decoder = VideoDecoder(
+            NASA_VIDEO.path,
+            stream_index=NASA_VIDEO.default_stream_index,
+            dimension_order=dimension_order,
+        )
+        decoder_rotated = VideoDecoder(
+            NASA_VIDEO_ROTATED.path,
+            stream_index=NASA_VIDEO_ROTATED.default_stream_index,
+            dimension_order=dimension_order,
+        )
+
+        # Rotation dims for single frame (CHW or HWC) and batch (NCHW or NHWC)
+        # Rotation dims are (H, W) dimensions for each format
+        frame_rot_dims = (1, 2) if dimension_order == "NCHW" else (0, 1)  # CHW vs HWC
+        batch_rot_dims = (2, 3) if dimension_order == "NCHW" else (1, 2)  # NCHW vs NHWC
+
+        # Test __getitem__ / get_frame_at (single frame by index)
+        for idx in [0, 5, 10]:
+            frame = decoder[idx]
+            frame_rotated = decoder_rotated[idx]
+            expected = torch.rot90(frame, k=1, dims=frame_rot_dims)
+            torch.testing.assert_close(expected, frame_rotated, atol=0, rtol=0)
+
+        # Test get_frames_at (multiple frames by indices)
+        indices = [0, 5, 10]
+        frames = decoder.get_frames_at(indices)
+        frames_rotated = decoder_rotated.get_frames_at(indices)
+        expected = torch.rot90(frames.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(expected, frames_rotated.data, atol=0, rtol=0)
+
+        # Test get_frames_in_range (frames by index range)
+        frames_range = decoder.get_frames_in_range(start=0, stop=6, step=2)
+        frames_range_rotated = decoder_rotated.get_frames_in_range(
+            start=0, stop=6, step=2
+        )
+        expected = torch.rot90(frames_range.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(expected, frames_range_rotated.data, atol=0, rtol=0)
+
+        # Test get_frame_played_at (single frame by timestamp)
+        pts = decoder_rotated.metadata.begin_stream_seconds
+        frame_at_pts = decoder.get_frame_played_at(pts)
+        frame_at_pts_rotated = decoder_rotated.get_frame_played_at(pts)
+        expected = torch.rot90(frame_at_pts.data, k=1, dims=frame_rot_dims)
+        torch.testing.assert_close(expected, frame_at_pts_rotated.data, atol=0, rtol=0)
+
+        # Test get_frames_played_at (multiple frames by timestamps)
+        pts_list = [
+            decoder_rotated.metadata.begin_stream_seconds,
+            decoder_rotated.metadata.begin_stream_seconds + 0.15,
+        ]
+        frames_at_pts = decoder.get_frames_played_at(pts_list)
+        frames_at_pts_rotated = decoder_rotated.get_frames_played_at(pts_list)
+        expected = torch.rot90(frames_at_pts.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(expected, frames_at_pts_rotated.data, atol=0, rtol=0)
+
+        # Test get_frames_played_in_range (frames by timestamp range)
+        start_seconds = decoder_rotated.metadata.begin_stream_seconds
+        stop_seconds = start_seconds + 0.2
+        frames_in_range = decoder.get_frames_played_in_range(
+            start_seconds=start_seconds, stop_seconds=stop_seconds
+        )
+        frames_in_range_rotated = decoder_rotated.get_frames_played_in_range(
+            start_seconds=start_seconds, stop_seconds=stop_seconds
+        )
+        expected = torch.rot90(frames_in_range.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(
+            expected, frames_in_range_rotated.data, atol=0, rtol=0
+        )
+
+        # Test get_all_frames (all frames in video)
+        # Note: NASA_VIDEO_ROTATED has fewer frames than NASA_VIDEO, so we compare
+        # the first N frames where N is the number of frames in the rotated video
+        all_frames = decoder.get_all_frames()
+        all_frames_rotated = decoder_rotated.get_all_frames()
+        num_frames_rotated = all_frames_rotated.data.shape[0]
+        expected = torch.rot90(
+            all_frames.data[:num_frames_rotated], k=1, dims=batch_rot_dims
+        )
+        torch.testing.assert_close(expected, all_frames_rotated.data, atol=0, rtol=0)
+
+    def test_rotation_with_resize_transform(self):
+        """Test that Resize transform works correctly with rotated videos.
+
+        When a user specifies Resize((H, W)), they expect the final output to be
+        (H, W) regardless of the video's rotation metadata. This test verifies
+        that the resize is applied correctly such that the final output matches
+        the user's requested dimensions.
+        """
+        from torchcodec.transforms import Resize
+
+        # Test with various resize dimensions
+        test_cases = [
+            (300, 500),  # landscape output
+            (500, 300),  # portrait output
+            (256, 256),  # square output
+        ]
+
+        for desired_H, desired_W in test_cases:
+            decoder = VideoDecoder(
+                NASA_VIDEO_ROTATED.path,
+                transforms=[Resize((desired_H, desired_W))],
+            )
+            frame = decoder[0]
+
+            # Frame shape should be (C, H, W) in NCHW format (default)
+            assert frame.shape == (3, desired_H, desired_W)
+
+            # Also test batch APIs
+            frames = decoder.get_frames_at([0, 1])
+            assert frames.data.shape == (2, 3, desired_H, desired_W)
+
+    def test_rotation_with_center_crop_transform(self):
+        """Test that CenterCrop transform works correctly with rotated videos.
+
+        When a user specifies CenterCrop((H, W)), they expect the final output to be
+        (H, W) regardless of the video's rotation metadata.
+        """
+        from torchcodec.transforms import CenterCrop
+
+        # Test with various crop dimensions
+        test_cases = [
+            (100, 150),  # landscape crop
+            (150, 100),  # portrait crop
+            (100, 100),  # square crop
+        ]
+
+        for desired_H, desired_W in test_cases:
+            decoder = VideoDecoder(
+                NASA_VIDEO_ROTATED.path,
+                transforms=[CenterCrop((desired_H, desired_W))],
+            )
+            frame = decoder[0]
+
+            # Frame shape should be (C, H, W) in NCHW format (default)
+            assert frame.shape == (3, desired_H, desired_W)
+
+            # Also test batch APIs
+            frames = decoder.get_frames_at([0, 1])
+            assert frames.data.shape == (2, 3, desired_H, desired_W)
+
+    def test_rotation_with_random_crop_transform(self):
+        """Test that RandomCrop transform works correctly with rotated videos.
+
+        When a user specifies RandomCrop((H, W)), they expect the final output to be
+        (H, W) regardless of the video's rotation metadata.
+        """
+        from torchcodec.transforms import RandomCrop
+
+        # Test with various crop dimensions
+        test_cases = [
+            (100, 150),  # landscape crop
+            (150, 100),  # portrait crop
+            (100, 100),  # square crop
+        ]
+
+        for desired_H, desired_W in test_cases:
+            # Use fixed seed for reproducibility
+            torch.manual_seed(42)
+            decoder = VideoDecoder(
+                NASA_VIDEO_ROTATED.path,
+                transforms=[RandomCrop((desired_H, desired_W))],
+            )
+            frame = decoder[0]
+
+            # Frame shape should be (C, H, W) in NCHW format (default)
+            assert frame.shape == (3, desired_H, desired_W)
+
+            # Also test batch APIs
+            frames = decoder.get_frames_at([0, 1])
+            assert frames.data.shape == (2, 3, desired_H, desired_W)
 
     @needs_cuda
     @pytest.mark.parametrize("device", cuda_devices())
