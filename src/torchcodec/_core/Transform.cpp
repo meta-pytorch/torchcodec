@@ -17,6 +17,8 @@ std::string toFilterGraphInterpolation(
   switch (mode) {
     case ResizeTransform::InterpolationMode::BILINEAR:
       return "bilinear";
+    case ResizeTransform::InterpolationMode::BICUBIC:
+      return "bicubic";
     default:
       TORCH_CHECK(
           false,
@@ -29,6 +31,8 @@ int toSwsInterpolation(ResizeTransform::InterpolationMode mode) {
   switch (mode) {
     case ResizeTransform::InterpolationMode::BILINEAR:
       return SWS_BILINEAR;
+    case ResizeTransform::InterpolationMode::BICUBIC:
+      return SWS_BICUBIC;
     default:
       TORCH_CHECK(
           false,
