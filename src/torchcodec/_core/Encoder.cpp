@@ -848,12 +848,8 @@ void VideoEncoder::initializeEncoder(
 
   // Initialize the encoding interface with codec context
   encodingInterface_->initialize(avCodecContext_.get());
-
-  // When frames are on a CUDA device, set up hardware encoding
-  if (frames_.device().is_cuda()) {
-    encodingInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
-    encodingInterface_->setupHardwareFrameContext(avCodecContext_.get());
-  }
+  encodingInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
+  encodingInterface_->setupHardwareFrameContext(avCodecContext_.get());
 
   int status = avcodec_open2(
       avCodecContext_.get(), avCodec, avCodecOptions.getAddress());
