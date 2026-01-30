@@ -157,13 +157,20 @@ def test_get_metadata_audio_file(metadata_getter):
 def test_rotation_metadata():
     """Test that rotation metadata is correctly extracted for rotated video."""
     # NASA_VIDEO_ROTATED has 90-degree rotation metadata
-    decoder = VideoDecoder(NASA_VIDEO_ROTATED.path)
-    assert decoder.metadata.rotation is not None
-    assert decoder.metadata.rotation == 90
+    decoder_rotated = VideoDecoder(NASA_VIDEO_ROTATED.path)
+    assert decoder_rotated.metadata.rotation is not None
+    assert decoder_rotated.metadata.rotation == 90
 
     # NASA_VIDEO has no rotation metadata
     decoder = VideoDecoder(NASA_VIDEO.path)
     assert decoder.metadata.rotation is None
+
+    # Check that height and width are reported post-rotation
+    # For 90-degree rotation, width and height should be swapped
+    assert (decoder_rotated.metadata.height, decoder_rotated.metadata.width) == (
+        decoder.metadata.width,
+        decoder.metadata.height,
+    )
 
 
 def test_repr():

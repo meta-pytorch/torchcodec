@@ -54,8 +54,8 @@ struct StreamMetadata {
 
   // Video-only fields
   // Post-rotation dimensions
-  std::optional<int> width;
-  std::optional<int> height;
+  std::optional<int> postRotationWidth;
+  std::optional<int> postRotationHeight;
   // Pre-rotation dimensions
   std::optional<int> preRotationWidth;
   std::optional<int> preRotationHeight;

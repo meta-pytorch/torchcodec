@@ -361,31 +361,17 @@ class SingleStreamDecoder {
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
 
   // We will receive a vector of transforms upon adding a stream and store it
-  // here. However, we need to know if any of those operations change the
-  // dimensions of the output frame. If they do, we need to figure out what are
-  // the final dimensions of the output frame after ALL transformations. We
-  // figure this out as soon as we receive the transforms. If any of the
-  // transforms change the final output frame dimensions, we store that in
-  // resizedOutputDims_. If resizedOutputDims_ has no value, that means there
-  // are no transforms that change the output frame dimensions.
-  //
-  // The priority order for output frame dimension is:
-  //
-  // 1. resizedOutputDims_; the resize requested by the user always takes
-  //    priority.
-  // 2. The dimemnsions of the actual decoded AVFrame. This can change
-  //    per-decoded frame, and is unknown in SingleStreamDecoder. Only the
-  //    DeviceInterface learns it immediately after decoding a raw frame but
-  //    before the color transformation.
-  // 3. metdataDims_; the dimensions we learned from the metadata.
+  // here.
   std::vector<std::unique_ptr<Transform>> transforms_;
+  // Dimensions for tensor pre-allocation and resize/crop operations. For videos
+  // with dimension-changing transforms and 90°/-90° rotation, this stores the
+  // pre-rotation dimensions (with H/W swapped from user's request). After
+  // rotation is applied via torch::rot90(), the final output matches the user's
+  // requested dimensions. For non-rotated videos with transforms, this stores
+  // the user's requested dimensions directly.
   std::optional<FrameDims> resizedOutputDims_;
-  // Post-rotation dimensions from metadata. Used for user-facing metadata and
-  // final output shape validation.
-  FrameDims metadataDims_;
-  // Pre-rotation dimensions (raw encoded dimensions). Used for pre-allocating
-  // tensors before rotation is applied. For videos without rotation, this
-  // equals metadataDims_.
+  // Pre-rotation dimensions (raw encoded dimensions from FFmpeg). Used as
+  // fallback for tensor allocation when resizedOutputDims_ is not set.
   FrameDims preRotationDims_;
 
   // Whether or not we have already scanned all streams to update the metadata.

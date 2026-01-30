@@ -181,8 +181,8 @@ void SingleStreamDecoder::initializeDecoder() {
           std::swap(width, height);
         }
       }
-      streamMetadata.width = width;
-      streamMetadata.height = height;
+      streamMetadata.postRotationWidth = width;
+      streamMetadata.postRotationHeight = height;
 
       streamMetadata.sampleAspectRatio =
           avStream->codecpar->sample_aspect_ratio;
@@ -578,32 +578,68 @@ void SingleStreamDecoder::addVideoStream(
         activeStreamIndex_, customFrameMappings.value());
   }
 
-  metadataDims_ =
-      FrameDims(streamMetadata.height.value(), streamMetadata.width.value());
-
-  // Store pre-rotation dimensions (raw encoded dimensions) for tensor
-  // pre-allocation
+  // Store pre-rotation dimensions (raw encoded dimensions from FFmpeg)
   preRotationDims_ = FrameDims(
       streamMetadata.preRotationHeight.value(),
       streamMetadata.preRotationWidth.value());
 
-  FrameDims currInputDims = preRotationDims_;
+  // Check if rotation will swap dimensions (90° or -90° rotation)
+  bool rotationSwapsDimensions =
+      (streamInfo.rotationK == 1 || streamInfo.rotationK == 3);
+
+  // For transform validation, we use the post-rotation dimensions
+  // (what the user sees and thinks about)
+  FrameDims postRotationDims = rotationSwapsDimensions
+      ? FrameDims(preRotationDims_.width, preRotationDims_.height)
+      : preRotationDims_;
+  FrameDims currInputDims = postRotationDims;
 
   for (auto& transform : transforms) {
     TORCH_CHECK(transform != nullptr, "Transforms should never be nullptr!");
     if (transform->getOutputFrameDims().has_value()) {
+      // resizedOutputDims_ stores what the user expects as final output
+      // (post-rotation)
       resizedOutputDims_ = transform->getOutputFrameDims().value();
     }
     transform->validate(currInputDims);
-    currInputDims = resizedOutputDims_.value_or(preRotationDims_);
+    currInputDims = resizedOutputDims_.value_or(postRotationDims);
 
     // Note that we are claiming ownership of the transform objects passed in to
     // us.
     transforms_.push_back(std::unique_ptr<Transform>(transform));
   }
 
-  deviceInterface_->initializeVideo(
-      videoStreamOptions, transforms_, resizedOutputDims_);
+  // For videos with 90°/-90° rotation, transforms need to operate on swapped
+  // dimensions so that after rotation the output matches user's request.
+  // For example, if user wants final output (H=300, W=500) and video has 90°
+  // rotation, we resize/crop to (H=500, W=300) pre-rotation, then after
+  // rotation it becomes (H=300, W=500).
+  if (resizedOutputDims_.has_value() && rotationSwapsDimensions) {
+    // Update resizedOutputDims_ to pre-rotation dimensions (swapped H/W)
+    // for tensor pre-allocation. The rotation applied later will swap back.
+    resizedOutputDims_ =
+        FrameDims(resizedOutputDims_->width, resizedOutputDims_->height);
+
+    std::vector<std::unique_ptr<Transform>> preRotationTransforms;
+    for (const auto& transform : transforms_) {
+      auto dims = transform->getOutputFrameDims();
+      if (dims.has_value()) {
+        FrameDims swapped(dims->width, dims->height);
+        if (transform->isResize()) {
+          preRotationTransforms.push_back(
+              std::make_unique<ResizeTransform>(swapped));
+        } else {
+          preRotationTransforms.push_back(
+              std::make_unique<CropTransform>(swapped));
+        }
+      }
+    }
+    deviceInterface_->initializeVideo(
+        videoStreamOptions, preRotationTransforms, resizedOutputDims_);
+  } else {
+    deviceInterface_->initializeVideo(
+        videoStreamOptions, transforms_, resizedOutputDims_);
+  }
 }
 
 void SingleStreamDecoder::addAudioStream(
