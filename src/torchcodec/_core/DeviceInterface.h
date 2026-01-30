@@ -143,9 +143,11 @@ class DeviceInterface {
   static constexpr AVPixelFormat CUDA_ENCODING_PIXEL_FORMAT = AV_PIX_FMT_NV12;
 
   virtual UniqueAVFrame convertTensorToAVFrameForEncoding(
-      const torch::Tensor& tensor,
-      int frameIndex,
-      AVCodecContext* codecContext) = 0;
+      [[maybe_unused]] const torch::Tensor& tensor,
+      [[maybe_unused]] int frameIndex,
+      [[maybe_unused]] AVCodecContext* codecContext) {
+    TORCH_CHECK(false);
+  }
 
   // Function used for video encoding, only implemented in CudaDeviceInterface.
   // It is here to isolate CUDA dependencies from CPU builds
