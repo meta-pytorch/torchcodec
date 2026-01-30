@@ -45,9 +45,6 @@ target_include_directories(MetadataTest SYSTEM PRIVATE ${TORCH_INCLUDE_DIRS})
 target_include_directories(MetadataTest SYSTEM PRIVATE ${libav_include_dirs})
 target_include_directories(MetadataTest PRIVATE ../)
 
-# Use fmt in header-only mode (bundled with PyTorch)
-target_compile_definitions(MetadataTest PRIVATE FMT_HEADER_ONLY)
-
 target_link_libraries(
   MetadataTest
   ${libtorchcodec_library_name}
