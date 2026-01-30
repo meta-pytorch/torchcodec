@@ -723,11 +723,13 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
-  // Only create device interface when frames are on a CUDA device.
+  // Only create GpuEncoder when frames are on a CUDA device.
   // Encoding on CPU is implemented in this file.
+#ifdef ENABLE_CUDA
   if (frames_.device().is_cuda()) {
-    deviceInterface_ = createDeviceInterface(frames_.device());
+    gpuEncoder_ = createGpuEncoder(frames_.device());
   }
+#endif
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
@@ -749,16 +751,18 @@ void VideoEncoder::initializeEncoder(
         "Output format is null, unable to find default codec.");
     // If frames are on a CUDA device, try to substitute the default codec
     // with its hardware equivalent
+#ifdef ENABLE_CUDA
     if (frames_.device().is_cuda()) {
       TORCH_CHECK(
-          deviceInterface_ != nullptr,
-          "Device interface is undefined when input frames are on a CUDA device. This should never happen, please report this to the TorchCodec repo.");
-      auto hwCodec = deviceInterface_->findCodec(
-          avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
+          gpuEncoder_ != nullptr,
+          "GpuEncoder is undefined when input frames are on a CUDA device. This should never happen, please report this to the TorchCodec repo.");
+      auto hwCodec = gpuEncoder_->findHardwareEncoder(
+          avFormatContext_->oformat->video_codec);
       if (hwCodec.has_value()) {
         avCodec = hwCodec.value();
       }
     }
+#endif
     if (!avCodec) {
       avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
     }
@@ -799,10 +803,13 @@ void VideoEncoder::initializeEncoder(
     outPixelFormat_ =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
+#ifdef ENABLE_CUDA
     if (frames_.device().is_cuda()) {
       // Default to nv12 pixel format when encoding on GPU.
-      outPixelFormat_ = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
-    } else {
+      outPixelFormat_ = GpuEncoder::CUDA_ENCODING_PIXEL_FORMAT;
+    } else
+#endif
+    {
       const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
       // Use first listed pixel format as default (often yuv420p).
       // This is similar to FFmpeg's logic:
@@ -853,12 +860,13 @@ void VideoEncoder::initializeEncoder(
         0);
   }
 
-  // When frames are on a CUDA device, deviceInterface_ will be defined.
-  if (frames_.device().is_cuda() && deviceInterface_) {
-    deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
-    deviceInterface_->setupHardwareFrameContextForEncoding(
-        avCodecContext_.get());
+  // When frames are on a CUDA device, gpuEncoder_ will be defined.
+#ifdef ENABLE_CUDA
+  if (frames_.device().is_cuda() && gpuEncoder_) {
+    gpuEncoder_->registerHardwareDeviceWithCodec(avCodecContext_.get());
+    gpuEncoder_->setupHardwareFrameContextForEncoding(avCodecContext_.get());
   }
+#endif
 
   int status = avcodec_open2(
       avCodecContext_.get(), avCodec, avCodecOptions.getAddress());
@@ -902,8 +910,9 @@ void VideoEncoder::encode() {
   for (int i = 0; i < numFrames; ++i) {
     torch::Tensor currFrame = frames_[i];
     UniqueAVFrame avFrame;
-    if (frames_.device().is_cuda() && deviceInterface_) {
-      auto cudaFrame = deviceInterface_->convertCUDATensorToAVFrameForEncoding(
+#ifdef ENABLE_CUDA
+    if (frames_.device().is_cuda() && gpuEncoder_) {
+      auto cudaFrame = gpuEncoder_->convertCUDATensorToAVFrameForEncoding(
           currFrame, i, avCodecContext_.get());
       TORCH_CHECK(
           cudaFrame != nullptr,
@@ -912,7 +921,9 @@ void VideoEncoder::encode() {
           " on device: ",
           frames_.device());
       avFrame = std::move(cudaFrame);
-    } else {
+    } else
+#endif
+    {
       avFrame = convertTensorToAVFrame(currFrame, i);
     }
     encodeFrame(autoAVPacket, avFrame);
