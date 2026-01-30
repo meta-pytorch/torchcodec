@@ -51,7 +51,11 @@ function(make_torchcodec_sublibrary
         "${TORCH_INSTALL_PREFIX}/include"
         ${Python3_INCLUDE_DIRS}
     )
-    # Use fmt in header-only mode (bundled with PyTorch)
+    # Use fmt library in header-only mode (bundled with PyTorch): the fmt
+    # library is bundled with PyTorch and the headers are available in 
+    # TORCH_INSTALL_PREFIX/include/, which we add above. To be compatible with
+    # torch, we want to rely on the "header-only" mode of these headers and hit
+    # all the `#ifdef FMT_HEADER_ONLY` paths, so we define FMT_HEADER_ONLY here.```
     target_compile_definitions(${library_name} PRIVATE FMT_HEADER_ONLY)
 
     # Avoid adding the "lib" prefix which we already add explicitly.
