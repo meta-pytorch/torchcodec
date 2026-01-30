@@ -22,6 +22,8 @@ endif()
 if (WIN32)
   # Avoid warnings about non-ASCII characters in source files.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4819")
+  # Required for Unicode support in fmt library (bundled with PyTorch).
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
   # Important for when we add Windows CUDA: exporting all symbols is limited to
   # 65535 symbols, which (apparently) will not work for CUDA.
   # https://github.com/pytorch/pytorch/pull/3650
