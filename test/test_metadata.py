@@ -190,7 +190,7 @@ def test_repr():
   codec: mp3
   stream_index: 0
   duration_seconds: {expected_duration_seconds_from_header}
-  begin_stream_seconds: 0.0
+  begin_stream_seconds: 0.138125
   sample_rate: 8000
   num_channels: 2
   sample_format: fltp
