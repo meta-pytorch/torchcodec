@@ -116,23 +116,23 @@ transforms to reduce the dimensions.
 
     Penguin video metadata: VideoStreamMetadata:
       duration_seconds_from_header: 37.24
-      begin_stream_seconds_from_header: 0.0
-      bit_rate: 24879454.0
+      begin_stream_seconds_from_header: 0
+      bit_rate: 24879454
       codec: h264
       stream_index: 0
       duration_seconds: 37.24
-      begin_stream_seconds: 0.0
-      begin_stream_seconds_from_content: 0.0
+      begin_stream_seconds: 0
+      begin_stream_seconds_from_content: 0
       end_stream_seconds_from_content: 37.24
       width: 3840
       height: 2160
       num_frames_from_header: 931
       num_frames_from_content: 931
-      average_fps_from_header: 25.0
+      average_fps_from_header: 25
       pixel_aspect_ratio: 0
       end_stream_seconds: 37.24
       num_frames: 931
-      average_fps: 25.0
+      average_fps: 25
 
 
 
@@ -489,8 +489,8 @@ sequentially:
 
  .. code-block:: none
 
-    decoder transforms:    times_med = 2299.29ms +- 7.38
-    torchvision transform: times_med = 5145.53ms +- 37.53
+    decoder transforms:    times_med = 2323.72ms +- 3.70
+    torchvision transform: times_med = 5187.47ms +- 16.52
 
 
 
@@ -518,8 +518,8 @@ even be faster!
 
  .. code-block:: none
 
-    decoder transforms:    times_med = 14926.22ms +- 16.23
-    torchvision transform: times_med = 17131.29ms +- 33.38
+    decoder transforms:    times_med = 15311.66ms +- 58.16
+    torchvision transform: times_med = 17448.57ms +- 10.61
 
 
 
@@ -552,7 +552,7 @@ In brief, our performance guidance is:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (3 minutes 19.517 seconds)
+   **Total running time of the script:** (3 minutes 22.556 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_transforms.py:

@@ -138,14 +138,14 @@ longer the video, the higher the performance gain.
  .. code-block:: none
 
     Creating a VideoDecoder object with seek_mode='exact' on a short video:
-    med = 8.00ms +- 0.03
+    med = 8.07ms +- 0.03
     Creating a VideoDecoder object with seek_mode='approximate' on a short video:
-    med = 7.05ms +- 0.02
+    med = 7.12ms +- 0.03
 
     Creating a VideoDecoder object with seek_mode='exact' on a long video:
-    med = 109.81ms +- 0.90
+    med = 111.49ms +- 1.29
     Creating a VideoDecoder object with seek_mode='approximate' on a long video:
-    med = 10.36ms +- 0.02
+    med = 10.43ms +- 0.02
 
 
 
@@ -196,9 +196,9 @@ example:
  .. code-block:: none
 
     Sampling clips with seek_mode='exact':
-    med = 283.49ms +- 33.10
+    med = 282.71ms +- 35.63
     Sampling clips with seek_mode='approximate':
-    med = 185.15ms +- 33.19
+    med = 176.51ms +- 36.43
 
 
 
@@ -248,44 +248,44 @@ is a net win:
     Metadata of short video with seek_mode='exact':
     VideoStreamMetadata:
       duration_seconds_from_header: 13.8
-      begin_stream_seconds_from_header: 0.0
-      bit_rate: 505790.0
+      begin_stream_seconds_from_header: 0
+      bit_rate: 505790
       codec: h264
       stream_index: 0
       duration_seconds: 13.8
-      begin_stream_seconds: 0.0
-      begin_stream_seconds_from_content: 0.0
+      begin_stream_seconds: 0
+      begin_stream_seconds_from_content: 0
       end_stream_seconds_from_content: 13.8
       width: 640
       height: 360
       num_frames_from_header: 345
       num_frames_from_content: 345
-      average_fps_from_header: 25.0
+      average_fps_from_header: 25
       pixel_aspect_ratio: 1
       end_stream_seconds: 13.8
       num_frames: 345
-      average_fps: 25.0
+      average_fps: 25
 
     Metadata of short video with seek_mode='approximate':
     VideoStreamMetadata:
       duration_seconds_from_header: 13.8
-      begin_stream_seconds_from_header: 0.0
-      bit_rate: 505790.0
+      begin_stream_seconds_from_header: 0
+      bit_rate: 505790
       codec: h264
       stream_index: 0
       duration_seconds: 13.8
-      begin_stream_seconds: 0.0
+      begin_stream_seconds: 0
       begin_stream_seconds_from_content: None
       end_stream_seconds_from_content: None
       width: 640
       height: 360
       num_frames_from_header: 345
       num_frames_from_content: None
-      average_fps_from_header: 25.0
+      average_fps_from_header: 25
       pixel_aspect_ratio: 1
       end_stream_seconds: 13.8
       num_frames: 345
-      average_fps: 25.0
+      average_fps: 25
 
     Frame seeking is the same for this video!
 
@@ -334,7 +334,7 @@ The general rule of thumb is as follows:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 33.150 seconds)
+   **Total running time of the script:** (0 minutes 33.304 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_approximate_mode.py:

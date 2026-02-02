@@ -474,24 +474,24 @@ its size and content:</p>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Video size in MB: 253
 VideoStreamMetadata:
-  duration_seconds_from_header: 206.039167
-  begin_stream_seconds_from_header: 0.0
-  bit_rate: 9958354.0
+  duration_seconds_from_header: 206.03916666666666
+  begin_stream_seconds_from_header: 0
+  bit_rate: 9958354
   codec: h264
   stream_index: 0
-  duration_seconds: 206.039167
-  begin_stream_seconds: 0.0
-  begin_stream_seconds_from_content: 0.0
-  end_stream_seconds_from_content: 206.039167
+  duration_seconds: 206.03916666666666
+  begin_stream_seconds: 0
+  begin_stream_seconds_from_content: 0
+  end_stream_seconds_from_content: 206.03916666666666
   width: 1920
   height: 1080
   num_frames_from_header: 6175
   num_frames_from_content: 6175
-  average_fps_from_header: 29.97003
+  average_fps_from_header: 29.97002997002997
   pixel_aspect_ratio: 1
-  end_stream_seconds: 206.039167
+  end_stream_seconds: 206.03916666666666
   num_frames: 6175
-  average_fps: 29.97003
+  average_fps: 29.97002997002997
 </pre></div>
 </div>
 <p>We can see that the video is about 253 MB, has the resolution 1920x1080, is
@@ -553,13 +553,13 @@ frame. See <a class="reference internal" href="approximate_mode.html#sphx-glr-ge
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Decode from existing download:
-med = 238.38ms +- 0.45
+med = 237.19ms +- 1.34
 
 Download before decode:
-med = 1433.91ms +- 132.63
+med = 1379.55ms +- 41.73
 
 Direct url to FFmpeg:
-med = 282.58ms +- 5.18
+med = 291.11ms +- 15.14
 </pre></div>
 </div>
 <p>Decoding the already downloaded video is clearly the fastest. Having to
@@ -592,7 +592,7 @@ Note that using these capabilities from the fsspec library also requires the
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Stream while decode:
-med = 256.55ms +- 1.02
+med = 258.53ms +- 6.26
 </pre></div>
 </div>
 <p>Streaming the data through a file-like object is much faster than
@@ -716,10 +716,10 @@ the file-like object to <a class="reference internal" href="../../generated/torc
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Decode from existing file path:
-med = 236.77ms +- 0.44
+med = 237.33ms +- 0.58
 
 Decode from existing open file object:
-med = 237.26ms +- 0.87
+med = 237.35ms +- 0.32
 </pre></div>
 </div>
 <p>Thankfully, the answer is both means of decoding from a local file take about
@@ -732,7 +732,7 @@ methods while decoding.</p>
 <a href="https://docs.python.org/3/library/shutil.html#shutil.rmtree" title="shutil.rmtree" class="sphx-glr-backref-module-shutil sphx-glr-backref-type-py-function"><span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span></a><span class="p">(</span><a href="https://docs.python.org/3/library/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">temp_dir</span></a><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 34.391 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 37.664 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-decoding-file-like-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../../_downloads/f0caa5fce0f20da68647d009fb8dd8d0/file_like.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">file_like.ipynb</span></code></a></p>

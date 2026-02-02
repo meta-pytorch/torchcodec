@@ -513,10 +513,10 @@ The following frame metadata fields are needed
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Running ffprobe:
-ffprobe -i /tmp/tmpt2jg6i4x/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmp7uhdi5h9/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Running ffprobe:
-ffprobe -i /tmp/tmpt2jg6i4x/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmp7uhdi5h9/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Sample of fields in custom frame mappings:
 frame[&#39;key_frame&#39;] = 1, frame[&#39;pts&#39;] = 0, frame[&#39;duration&#39;] = 1
@@ -568,15 +568,15 @@ object. As video length or resolution increases, the performance gain compared t
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Running benchmarks on short_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 7.68ms +- 0.03
+med = 7.71ms +- 0.03
 Creating a VideoDecoder object with seek_mode=&#39;exact&#39;:
-med = 7.99ms +- 0.02
+med = 8.05ms +- 0.04
 
 Running benchmarks on long_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 34.57ms +- 0.15
+med = 33.31ms +- 0.19
 Creating a VideoDecoder object with seek_mode=&#39;exact&#39;:
-med = 58.73ms +- 0.58
+med = 59.49ms +- 0.56
 </pre></div>
 </div>
 </section>
@@ -607,15 +607,15 @@ so the performance benefits are realized.</p>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Running benchmarks on short_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 23.25ms +- 0.05
+med = 23.52ms +- 0.08
 Decoding frames with seek_mode=&#39;exact&#39;:
-med = 23.55ms +- 0.04
+med = 23.77ms +- 0.06
 
 Running benchmarks on long_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 50.44ms +- 0.32
+med = 49.14ms +- 0.11
 Decoding frames with seek_mode=&#39;exact&#39;:
-med = 75.99ms +- 0.58
+med = 76.78ms +- 0.56
 </pre></div>
 </div>
 </section>
@@ -644,44 +644,44 @@ also retains the benefit of exact metadata and frame seeking.</p>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Metadata of short video with custom_frame_mappings:
 VideoStreamMetadata:
   duration_seconds_from_header: 13.8
-  begin_stream_seconds_from_header: 0.0
-  bit_rate: 505790.0
+  begin_stream_seconds_from_header: 0
+  bit_rate: 505790
   codec: h264
   stream_index: 0
   duration_seconds: 13.8
-  begin_stream_seconds: 0.0
+  begin_stream_seconds: 0
   begin_stream_seconds_from_content: None
   end_stream_seconds_from_content: None
   width: 640
   height: 360
   num_frames_from_header: 345
   num_frames_from_content: None
-  average_fps_from_header: 25.0
+  average_fps_from_header: 25
   pixel_aspect_ratio: 1
   end_stream_seconds: 13.8
   num_frames: 345
-  average_fps: 25.0
+  average_fps: 25
 
 Metadata of short video with seek_mode=&#39;exact&#39;:
 VideoStreamMetadata:
   duration_seconds_from_header: 13.8
-  begin_stream_seconds_from_header: 0.0
-  bit_rate: 505790.0
+  begin_stream_seconds_from_header: 0
+  bit_rate: 505790
   codec: h264
   stream_index: 0
   duration_seconds: 13.8
-  begin_stream_seconds: 0.0
-  begin_stream_seconds_from_content: 0.0
+  begin_stream_seconds: 0
+  begin_stream_seconds_from_content: 0
   end_stream_seconds_from_content: 13.8
   width: 640
   height: 360
   num_frames_from_header: 345
   num_frames_from_content: 345
-  average_fps_from_header: 25.0
+  average_fps_from_header: 25
   pixel_aspect_ratio: 1
   end_stream_seconds: 13.8
   num_frames: 345
-  average_fps: 25.0
+  average_fps: 25
 
 Frame seeking is the same for this video!
 </pre></div>
@@ -704,7 +704,7 @@ accuracy benefits.</p>
 same videos are decoded repeatedly, and some preprocessing work can be done.</p></li>
 <li><p>For exact frame seeking without preprocessing, use “exact” mode.</p></li>
 </ul>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 31.420 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 31.492 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-decoding-custom-frame-mappings-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../../_downloads/515bb6477ed8fb530cccbe1b67ef6f0c/custom_frame_mappings.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">custom_frame_mappings.ipynb</span></code></a></p>

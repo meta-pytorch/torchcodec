@@ -148,10 +148,10 @@ The following frame metadata fields are needed
  .. code-block:: none
 
     Running ffprobe:
-    ffprobe -i /tmp/tmpt2jg6i4x/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+    ffprobe -i /tmp/tmp7uhdi5h9/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
     Running ffprobe:
-    ffprobe -i /tmp/tmpt2jg6i4x/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+    ffprobe -i /tmp/tmp7uhdi5h9/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
     Sample of fields in custom frame mappings:
     frame['key_frame'] = 1, frame['pts'] = 0, frame['duration'] = 1
@@ -224,15 +224,15 @@ object. As video length or resolution increases, the performance gain compared t
 
     Running benchmarks on short_video.mp4
     Creating a VideoDecoder object with custom_frame_mappings:
-    med = 7.68ms +- 0.03
+    med = 7.71ms +- 0.03
     Creating a VideoDecoder object with seek_mode='exact':
-    med = 7.99ms +- 0.02
+    med = 8.05ms +- 0.04
 
     Running benchmarks on long_video.mp4
     Creating a VideoDecoder object with custom_frame_mappings:
-    med = 34.57ms +- 0.15
+    med = 33.31ms +- 0.19
     Creating a VideoDecoder object with seek_mode='exact':
-    med = 58.73ms +- 0.58
+    med = 59.49ms +- 0.56
 
 
 
@@ -282,15 +282,15 @@ so the performance benefits are realized.
 
     Running benchmarks on short_video.mp4
     Decoding frames with custom_frame_mappings:
-    med = 23.25ms +- 0.05
+    med = 23.52ms +- 0.08
     Decoding frames with seek_mode='exact':
-    med = 23.55ms +- 0.04
+    med = 23.77ms +- 0.06
 
     Running benchmarks on long_video.mp4
     Decoding frames with custom_frame_mappings:
-    med = 50.44ms +- 0.32
+    med = 49.14ms +- 0.11
     Decoding frames with seek_mode='exact':
-    med = 75.99ms +- 0.58
+    med = 76.78ms +- 0.56
 
 
 
@@ -337,44 +337,44 @@ also retains the benefit of exact metadata and frame seeking.
     Metadata of short video with custom_frame_mappings:
     VideoStreamMetadata:
       duration_seconds_from_header: 13.8
-      begin_stream_seconds_from_header: 0.0
-      bit_rate: 505790.0
+      begin_stream_seconds_from_header: 0
+      bit_rate: 505790
       codec: h264
       stream_index: 0
       duration_seconds: 13.8
-      begin_stream_seconds: 0.0
+      begin_stream_seconds: 0
       begin_stream_seconds_from_content: None
       end_stream_seconds_from_content: None
       width: 640
       height: 360
       num_frames_from_header: 345
       num_frames_from_content: None
-      average_fps_from_header: 25.0
+      average_fps_from_header: 25
       pixel_aspect_ratio: 1
       end_stream_seconds: 13.8
       num_frames: 345
-      average_fps: 25.0
+      average_fps: 25
 
     Metadata of short video with seek_mode='exact':
     VideoStreamMetadata:
       duration_seconds_from_header: 13.8
-      begin_stream_seconds_from_header: 0.0
-      bit_rate: 505790.0
+      begin_stream_seconds_from_header: 0
+      bit_rate: 505790
       codec: h264
       stream_index: 0
       duration_seconds: 13.8
-      begin_stream_seconds: 0.0
-      begin_stream_seconds_from_content: 0.0
+      begin_stream_seconds: 0
+      begin_stream_seconds_from_content: 0
       end_stream_seconds_from_content: 13.8
       width: 640
       height: 360
       num_frames_from_header: 345
       num_frames_from_content: 345
-      average_fps_from_header: 25.0
+      average_fps_from_header: 25
       pixel_aspect_ratio: 1
       end_stream_seconds: 13.8
       num_frames: 345
-      average_fps: 25.0
+      average_fps: 25
 
     Frame seeking is the same for this video!
 
@@ -406,7 +406,7 @@ Which mode should I use?
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 31.420 seconds)
+   **Total running time of the script:** (0 minutes 31.492 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_custom_frame_mappings.py:

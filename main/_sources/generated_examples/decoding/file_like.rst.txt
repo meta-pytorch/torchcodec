@@ -110,24 +110,24 @@ its size and content:
 
     Video size in MB: 253
     VideoStreamMetadata:
-      duration_seconds_from_header: 206.039167
-      begin_stream_seconds_from_header: 0.0
-      bit_rate: 9958354.0
+      duration_seconds_from_header: 206.03916666666666
+      begin_stream_seconds_from_header: 0
+      bit_rate: 9958354
       codec: h264
       stream_index: 0
-      duration_seconds: 206.039167
-      begin_stream_seconds: 0.0
-      begin_stream_seconds_from_content: 0.0
-      end_stream_seconds_from_content: 206.039167
+      duration_seconds: 206.03916666666666
+      begin_stream_seconds: 0
+      begin_stream_seconds_from_content: 0
+      end_stream_seconds_from_content: 206.03916666666666
       width: 1920
       height: 1080
       num_frames_from_header: 6175
       num_frames_from_content: 6175
-      average_fps_from_header: 29.97003
+      average_fps_from_header: 29.97002997002997
       pixel_aspect_ratio: 1
-      end_stream_seconds: 206.039167
+      end_stream_seconds: 206.03916666666666
       num_frames: 6175
-      average_fps: 29.97003
+      average_fps: 29.97002997002997
 
 
 
@@ -207,13 +207,13 @@ frame. See :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py` for m
  .. code-block:: none
 
     Decode from existing download:
-    med = 238.38ms +- 0.45
+    med = 237.19ms +- 1.34
 
     Download before decode:
-    med = 1433.91ms +- 132.63
+    med = 1379.55ms +- 41.73
 
     Direct url to FFmpeg:
-    med = 282.58ms +- 5.18
+    med = 291.11ms +- 15.14
 
 
 
@@ -264,7 +264,7 @@ Note that using these capabilities from the fsspec library also requires the
  .. code-block:: none
 
     Stream while decode: 
-    med = 256.55ms +- 1.02
+    med = 258.53ms +- 6.26
 
 
 
@@ -428,10 +428,10 @@ An obvious question is: which is faster? The code below tests that question.
  .. code-block:: none
 
     Decode from existing file path:
-    med = 236.77ms +- 0.44
+    med = 237.33ms +- 0.58
 
     Decode from existing open file object:
-    med = 237.26ms +- 0.87
+    med = 237.35ms +- 0.32
 
 
 
@@ -464,7 +464,7 @@ Finally, let's clean up the local resources we created.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 34.391 seconds)
+   **Total running time of the script:** (0 minutes 37.664 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_file_like.py:
