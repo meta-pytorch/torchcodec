@@ -1060,7 +1060,6 @@ class TestVideoEncoder:
         pixel_format = encode_params["pixel_format"]
         crf = encode_params["crf"]
         preset = encode_params["preset"]
-        ffmpeg_version = ffmpeg_major_version
 
         if format in ("avi", "flv") and pixel_format == "yuv444p":
             pytest.skip(f"Default codec for {format} does not support {pixel_format}")
@@ -1148,7 +1147,7 @@ class TestVideoEncoder:
 
         # Only compare video metadata on ffmpeg versions >= 6, as older versions
         # are often missing metadata
-        if ffmpeg_version >= 6 and method == "to_file":
+        if ffmpeg_major_version >= 6 and method == "to_file":
             fields = [
                 "duration",
                 "duration_ts",
@@ -1387,10 +1386,9 @@ class TestVideoEncoder:
     def test_nvenc_against_ffmpeg_cli(
         self, tmp_path, method, format, codec, color_space, color_range
     ):
-        ffmpeg_version = ffmpeg_major_version
         # TODO-VideoEncoder: (P2) Investigate why FFmpeg 4 and 6 fail with non-default color space and range.
         # See https://github.com/meta-pytorch/torchcodec/issues/1140
-        if ffmpeg_version in (4, 6) and not (
+        if ffmpeg_major_version in (4, 6) and not (
             color_space == "bt470bg" and color_range == "tv"
         ):
             pytest.skip(
@@ -1503,7 +1501,7 @@ class TestVideoEncoder:
                 # Since this failure is rare, I suspect its a bug related to these
                 # older container formats on newer FFmpeg versions.
                 if not (
-                    ffmpeg_version in (7, 8)
+                    ffmpeg_major_version in (7, 8)
                     and color_range == "tv"
                     and color_space is None
                     and format in ("mov", "avi")
