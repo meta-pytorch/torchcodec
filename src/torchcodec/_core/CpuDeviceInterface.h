@@ -83,6 +83,9 @@ class CpuDeviceInterface : public DeviceInterface {
   // Creating both filterGraph_ and swScale_ is relatively expensive, so we
   // reuse them across frames. However, it is possible that subsequent frames
   // are different enough (change in dimensions) that we can't reuse the color
+  // conversion object. We store the relevant frame context from the frame used
+  // to create the object last time. We always compare the current frame's info
+  // against the previous one to determine if we need to recreate the color
   // conversion object.
   //
   // TODO: The names of these fields is confusing, as the actual color
