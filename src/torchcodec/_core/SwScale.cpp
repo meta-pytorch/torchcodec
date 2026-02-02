@@ -9,55 +9,88 @@
 
 namespace facebook::torchcodec {
 
-SwScale::SwScale(int swsFlags) : swsFlags_(swsFlags) {}
+SwScaleContext::SwScaleContext(
+    int inputWidth,
+    int inputHeight,
+    AVPixelFormat inputFormat,
+    AVColorSpace inputColorspace,
+    int outputWidth,
+    int outputHeight)
+    : inputWidth(inputWidth),
+      inputHeight(inputHeight),
+      inputFormat(inputFormat),
+      inputColorspace(inputColorspace),
+      outputWidth(outputWidth),
+      outputHeight(outputHeight) {}
+
+bool SwScaleContext::operator==(const SwScaleContext& other) const {
+  return inputWidth == other.inputWidth && inputHeight == other.inputHeight &&
+      inputFormat == other.inputFormat &&
+      inputColorspace == other.inputColorspace &&
+      outputWidth == other.outputWidth && outputHeight == other.outputHeight;
+}
+
+bool SwScaleContext::operator!=(const SwScaleContext& other) const {
+  return !(*this == other);
+}
+
+SwScale::SwScale(const SwScaleContext& context, int swsFlags)
+    : context_(context), swsFlags_(swsFlags) {
+  bool needsResize =
+      (context_.inputHeight != context_.outputHeight ||
+       context_.inputWidth != context_.outputWidth);
+
+  // Create color conversion context (input format -> RGB24).
+  // When resizing is needed, color conversion outputs at input resolution.
+  // When no resize is needed, color conversion outputs at output resolution.
+  SwsFrameContext colorConversionFrameContext(
+      context_.inputWidth,
+      context_.inputHeight,
+      context_.inputFormat,
+      needsResize ? context_.inputWidth : context_.outputWidth,
+      needsResize ? context_.inputHeight : context_.outputHeight);
+
+  colorConversionSwsContext_ = createSwsContext(
+      colorConversionFrameContext,
+      context_.inputColorspace,
+      // See [Transform and Format Conversion Order] for more on the output
+      // pixel format.
+      /*outputFormat=*/AV_PIX_FMT_RGB24,
+      // No flags for color conversion. When resizing is needed, we use a
+      // separate swscale context with the appropriate resize flags.
+      /*swsFlags=*/0);
+
+  // Create resize context if needed (RGB24 at input resolution -> RGB24 at
+  // output resolution).
+  if (needsResize) {
+    SwsFrameContext resizeFrameContext(
+        context_.inputWidth,
+        context_.inputHeight,
+        AV_PIX_FMT_RGB24,
+        context_.outputWidth,
+        context_.outputHeight);
+
+    resizeSwsContext_ = createSwsContext(
+        resizeFrameContext,
+        AVCOL_SPC_RGB,
+        /*outputFormat=*/AV_PIX_FMT_RGB24,
+        /*swsFlags=*/swsFlags_);
+  }
+}
 
 int SwScale::convert(
     const UniqueAVFrame& avFrame,
-    torch::Tensor& outputTensor,
-    const FrameDims& outputDims) {
-  enum AVPixelFormat frameFormat =
-      static_cast<enum AVPixelFormat>(avFrame->format);
-
+    torch::Tensor& outputTensor) {
   bool needsResize =
-      (avFrame->height != outputDims.height ||
-       avFrame->width != outputDims.width);
-
-  // We need to compare the current frame context with our previous frame
-  // context. If they are different, then we need to re-create our colorspace
-  // conversion objects. We create our colorspace conversion objects late so
-  // that we don't have to depend on the unreliable metadata in the header.
-  // And we sometimes re-create them because it's possible for frame
-  // resolution to change mid-stream. Finally, we want to reuse the colorspace
-  // conversion objects as much as possible for performance reasons.
-  SwsFrameContext colorConversionFrameContext(
-      avFrame->width,
-      avFrame->height,
-      frameFormat,
-      needsResize ? avFrame->width : outputDims.width,
-      needsResize ? avFrame->height : outputDims.height);
-
-  if (!colorConversionSwsContext_ ||
-      prevColorConversionFrameContext_ != colorConversionFrameContext) {
-    colorConversionSwsContext_ = createSwsContext(
-        colorConversionFrameContext,
-        avFrame->colorspace,
-
-        // See [Transform and Format Conversion Order] for more on the output
-        // pixel format.
-        /*outputFormat=*/AV_PIX_FMT_RGB24,
-
-        // No flags for color conversion. When resizing is needed, we use a
-        // separate swscale context with the appropriate resize flags.
-        /*swsFlags=*/0);
-    prevColorConversionFrameContext_ = colorConversionFrameContext;
-  }
+      (context_.inputHeight != context_.outputHeight ||
+       context_.inputWidth != context_.outputWidth);
 
   // When no resize is needed, we do color conversion directly into the output
-  // tensor.
-
+  // tensor. When resize is needed, we first convert to an intermediate tensor
+  // at the input resolution, then resize into the output tensor.
   torch::Tensor colorConvertedTensor = needsResize
       ? allocateEmptyHWCTensor(
-            FrameDims(avFrame->height, avFrame->width), torch::kCPU)
+            FrameDims(context_.inputHeight, context_.inputWidth), torch::kCPU)
       : outputTensor;
 
   uint8_t* colorConvertedPointers[4] = {
@@ -82,27 +115,9 @@ int SwScale::convert(
       avFrame->height);
 
   if (needsResize) {
-    // Use cached swscale context for resizing, similar to the color conversion
-    // context caching above.
-    SwsFrameContext resizeFrameContext(
-        avFrame->width,
-        avFrame->height,
-        AV_PIX_FMT_RGB24,
-        outputDims.width,
-        outputDims.height);
-
-    if (!resizeSwsContext_ || prevResizeFrameContext_ != resizeFrameContext) {
-      resizeSwsContext_ = createSwsContext(
-          resizeFrameContext,
-          AVCOL_SPC_RGB,
-          /*outputFormat=*/AV_PIX_FMT_RGB24,
-          /*swsFlags=*/swsFlags_);
-      prevResizeFrameContext_ = resizeFrameContext;
-    }
-
     uint8_t* srcPointers[4] = {
         colorConvertedTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
-    int srcLinesizes[4] = {avFrame->width * 3, 0, 0, 0};
+    int srcLinesizes[4] = {context_.inputWidth * 3, 0, 0, 0};
 
     uint8_t* dstPointers[4] = {
         outputTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
@@ -114,7 +129,7 @@ int SwScale::convert(
         srcPointers,
         srcLinesizes,
         0,
-        avFrame->height,
+        context_.inputHeight,
         dstPointers,
         dstLinesizes);
   }

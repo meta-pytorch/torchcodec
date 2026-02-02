@@ -198,10 +198,23 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     outputTensor = preAllocatedOutputTensor.value_or(
         allocateEmptyHWCTensor(outputDims, torch::kCPU));
 
-    if (!swScale_) {
-      swScale_ = std::make_unique<SwScale>(swsFlags_);
+    enum AVPixelFormat avFrameFormat =
+        static_cast<enum AVPixelFormat>(avFrame->format);
+
+    SwScaleContext swScaleContext(
+        avFrame->width,
+        avFrame->height,
+        avFrameFormat,
+        avFrame->colorspace,
+        outputDims.width,
+        outputDims.height);
+
+    if (!swScale_ || prevSwScaleContext_ != swScaleContext) {
+      swScale_ = std::make_unique<SwScale>(swScaleContext, swsFlags_);
+      prevSwScaleContext_ = swScaleContext;
     }
-    int resultHeight = swScale_->convert(avFrame, outputTensor, outputDims);
+
+    int resultHeight = swScale_->convert(avFrame, outputTensor);
 
     // If this check failed, it would mean that the frame wasn't reshaped to
     // the expected height.
