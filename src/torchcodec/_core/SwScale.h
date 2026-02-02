@@ -52,6 +52,7 @@ class SwScale {
  private:
   SwScaleContext context_;
   int swsFlags_;
+  bool needsResize_;
 
   // Color conversion context (input format -> RGB24 at original resolution).
   UniqueSwsContext colorConversionSwsContext_;

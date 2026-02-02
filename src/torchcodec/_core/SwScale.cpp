@@ -36,7 +36,7 @@ bool SwScaleContext::operator!=(const SwScaleContext& other) const {
 
 SwScale::SwScale(const SwScaleContext& context, int swsFlags)
     : context_(context), swsFlags_(swsFlags) {
-  bool needsResize =
+  needsResize_ =
       (context_.inputHeight != context_.outputHeight ||
        context_.inputWidth != context_.outputWidth);
 
@@ -47,8 +47,8 @@ SwScale::SwScale(const SwScaleContext& context, int swsFlags)
       context_.inputWidth,
       context_.inputHeight,
       context_.inputFormat,
-      needsResize ? context_.inputWidth : context_.outputWidth,
-      needsResize ? context_.inputHeight : context_.outputHeight);
+      needsResize_ ? context_.inputWidth : context_.outputWidth,
+      needsResize_ ? context_.inputHeight : context_.outputHeight);
 
   colorConversionSwsContext_ = createSwsContext(
       colorConversionFrameContext,
@@ -62,7 +62,7 @@ SwScale::SwScale(const SwScaleContext& context, int swsFlags)
 
   // Create resize context if needed (RGB24 at input resolution -> RGB24 at
   // output resolution).
-  if (needsResize) {
+  if (needsResize_) {
     SwsFrameContext resizeFrameContext(
         context_.inputWidth,
         context_.inputHeight,
@@ -81,14 +81,10 @@ SwScale::SwScale(const SwScaleContext& context, int swsFlags)
 int SwScale::convert(
     const UniqueAVFrame& avFrame,
     torch::Tensor& outputTensor) {
-  bool needsResize =
-      (context_.inputHeight != context_.outputHeight ||
-       context_.inputWidth != context_.outputWidth);
-
   // When no resize is needed, we do color conversion directly into the output
   // tensor. When resize is needed, we first convert to an intermediate tensor
   // at the input resolution, then resize into the output tensor.
-  torch::Tensor colorConvertedTensor = needsResize
+  torch::Tensor colorConvertedTensor = needsResize_
       ? allocateEmptyHWCTensor(
             FrameDims(context_.inputHeight, context_.inputWidth), torch::kCPU)
       : outputTensor;
@@ -114,7 +110,7 @@ int SwScale::convert(
       " != ",
       avFrame->height);
 
-  if (needsResize) {
+  if (needsResize_) {
     uint8_t* srcPointers[4] = {
         colorConvertedTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
     int srcLinesizes[4] = {context_.inputWidth * 3, 0, 0, 0};
