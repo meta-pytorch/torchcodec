@@ -1511,3 +1511,69 @@ class TestVideoEncoder:
                     assert color_range == encoder_metadata["color_range"]
             if color_space is not None:
                 assert color_space == encoder_metadata["color_space"]
+
+    @pytest.mark.parametrize("format", ["mp4", "mov"])
+    @pytest.mark.parametrize("truncate_percent", [0.5])
+    @pytest.mark.parametrize(
+        "extra_options",
+        [
+            # frag_keyframe with empty_moov (standard fragmented MP4)
+            {"movflags": "+frag_keyframe+empty_moov"},
+            # frag_duration creates fragments based on duration (in microseconds)
+            {"movflags": "+empty_moov", "frag_duration": "1000000"},
+        ],
+    )
+    def test_fragmented_mp4(
+        self,
+        # tmp_path,
+        extra_options,
+        format,
+        truncate_percent,
+    ):
+        # Test that VideoEncoder can write fragmented files using movflags.
+        # Fragmented files store metadata interleaved with data rather than
+        # all at the end, making them decodable even if writing is interrupted.
+        # The mov muxer (used for mp4, mov) supports these options.
+        tmp_path = Path("tmp")
+        source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
+        encoded_path = str(tmp_path / f"fragmented_output.{format}")
+        encoder.to_file(dest=encoded_path, extra_options=extra_options)
+
+        # Truncate the file to simulate interrupted write
+        with open(encoded_path, "rb") as f:
+            full_content = f.read()
+        truncated_size = int(len(full_content) * (1 - truncate_percent))
+        with open(encoded_path, "wb") as f:
+            f.write(full_content[:truncated_size])
+
+        # Verify truncated file is still readable by ffprobe
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_streams", "-of", "json", encoded_path],
+            capture_output=True,
+            text=True,
+        )
+        probe_data = json.loads(result.stdout)
+
+        # Verify video stream dimensions match original frames
+        streams = probe_data.get("streams", [])
+        video_streams = [s for s in streams if s.get("codec_type") == "video"]
+        assert len(video_streams) == 1
+        video_stream = video_streams[0]
+        assert video_stream.get("width") == source_frames.shape[3]
+        assert video_stream.get("height") == source_frames.shape[2]
+
+        # Decode as many frames as possible with VideoEncoder in approximate mode
+        decoder = VideoDecoder(encoded_path, seek_mode="approximate")
+        for i in range(len(decoder)):
+            try:
+                decoder.get_frame_at(i)
+                print(f"Decoded frame {i}")
+            except RuntimeError as e:
+                print(f"Failed to decode frame {i}: {e}")
+                break
+
+        # VideoDecoder will fail to initialize in exact mode on truncated file
+        with pytest.raises(RuntimeError) as error:
+            VideoDecoder(encoded_path, seek_mode="exact")
+        print(f"Failure occurred in exact mode: {error.value}")

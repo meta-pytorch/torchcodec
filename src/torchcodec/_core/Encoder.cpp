@@ -631,13 +631,17 @@ void tryToValidateCodecOption(
 }
 
 void sortCodecOptions(
+    const AVFormatContext* avFormatContext,
     const std::map<std::string, std::string>& extraOptions,
     UniqueAVDictionary& codecDict,
     UniqueAVDictionary& formatDict) {
   // Accepts a map of options as input, then sorts them into codec options and
   // format options. The sorted options are returned into two separate dicts.
   const AVClass* formatClass = avformat_get_class();
+  const AVClass* muxerClass =
+      avFormatContext->oformat ? avFormatContext->oformat->priv_class : nullptr;
   for (const auto& [key, value] : extraOptions) {
+    // Check if option is generic format option
     const AVOption* fmtOpt = av_opt_find2(
         &formatClass,
         key.c_str(),
@@ -645,10 +649,24 @@ void sortCodecOptions(
         0,
         AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ,
         nullptr);
-    if (fmtOpt) {
+    // Check if option is muxer-specific option
+    // (Returned from `ffmpeg -h muxer=mp4`)
+    const AVOption* muxerOpt = nullptr;
+    if (muxerClass) {
+      muxerOpt = av_opt_find2(
+          &muxerClass,
+          key.c_str(),
+          nullptr,
+          0,
+          AV_OPT_SEARCH_FAKE_OBJ,
+          nullptr);
+    }
+    if (fmtOpt || muxerOpt) {
+      // Pass container-format options to formatDict to be used in
+      // avformat_write_header
       av_dict_set(formatDict.getAddress(), key.c_str(), value.c_str(), 0);
     } else {
-      // Default to codec option (includes AVCodecContext + encoder-private)
+      // By default, pass as codec option to be used in avcodec_open2
       av_dict_set(codecDict.getAddress(), key.c_str(), value.c_str(), 0);
     }
   }
@@ -835,6 +853,7 @@ void VideoEncoder::initializeEncoder(
       tryToValidateCodecOption(*avCodec, key.c_str(), value);
     }
     sortCodecOptions(
+        avFormatContext_.get(),
         videoStreamOptions.extraOptions.value(),
         avCodecOptions,
         avFormatOptions_);
@@ -921,6 +940,17 @@ void VideoEncoder::encode() {
   flushBuffers();
 
   status = av_write_trailer(avFormatContext_.get());
+  // Fragmented video containers write an mfra atom at the end of the file.
+  // mfra stands for "Movie Fragment Random Access".
+  // When writing a fragmented video file, the return value of
+  // mov_write_mfra_tag is returned. It is negative when an error occurs. When
+  // its positive, it represents the byte size of the written mfra atom. We will
+  // erronously interpret this as an error, so we replace positive values with
+  // AVSUCCESS. See:
+  // https://github.com/FFmpeg/FFmpeg/blob/n8.0/libavformat/movenc.c#L8666
+  if (status > 0) {
+    status = AVSUCCESS;
+  }
   TORCH_CHECK(
       status == AVSUCCESS,
       "Error in av_write_trailer: ",
