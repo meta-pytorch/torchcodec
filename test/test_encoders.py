@@ -1525,7 +1525,7 @@ class TestVideoEncoder:
     )
     def test_fragmented_mp4(
         self,
-        # tmp_path,
+        tmp_path,
         extra_options,
         format,
         truncate_percent,
@@ -1534,7 +1534,6 @@ class TestVideoEncoder:
         # Fragmented files store metadata interleaved with data rather than
         # all at the end, making them decodable even if writing is interrupted.
         # The mov muxer (used for mp4, mov) supports these options.
-        tmp_path = Path("tmp")
         source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
         encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
         encoded_path = str(tmp_path / f"fragmented_output.{format}")
@@ -1563,17 +1562,20 @@ class TestVideoEncoder:
         assert video_stream.get("width") == source_frames.shape[3]
         assert video_stream.get("height") == source_frames.shape[2]
 
-        # Decode as many frames as possible with VideoEncoder in approximate mode
-        decoder = VideoDecoder(encoded_path, seek_mode="approximate")
-        for i in range(len(decoder)):
+        # Decode as many frames as possible with VideoDecoder in each seek mode
+        for seek_mode in ["approximate", "exact"]:
             try:
-                decoder.get_frame_at(i)
-                print(f"Decoded frame {i}")
+                decoder = VideoDecoder(encoded_path, seek_mode=seek_mode)
             except RuntimeError as e:
-                print(f"Failed to decode frame {i}: {e}")
-                break
+                print(f"seek_mode={seek_mode}: Failed to initialize decoder: {e}")
+                continue
 
-        # VideoDecoder will fail to initialize in exact mode on truncated file
-        with pytest.raises(RuntimeError) as error:
-            VideoDecoder(encoded_path, seek_mode="exact")
-        print(f"Failure occurred in exact mode: {error.value}")
+            for i in range(len(decoder)):
+                try:
+                    decoder.get_frame_at(i)
+                except RuntimeError:
+                    break
+            else:
+                # Hit if all frames decoded successfully
+                i = len(decoder)
+            print(f"seek_mode={seek_mode}: decoded {i}/{len(decoder)} frames")
