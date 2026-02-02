@@ -128,6 +128,7 @@ function(make_torchcodec_libraries
         ValidationUtils.cpp
         Transform.cpp
         Metadata.cpp
+        SwScale.cpp
     )
 
     if(ENABLE_CUDA)
