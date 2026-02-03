@@ -1511,11 +1511,10 @@ class TestVideoEncoder:
                 assert color_space == encoder_metadata["color_space"]
 
     @pytest.mark.parametrize("format", ["mp4", "mov"])
-    @pytest.mark.parametrize("truncate_percent", [0.5])
     @pytest.mark.parametrize(
         "extra_options",
         [
-            # frag_keyframe with empty_moov (standard fragmented MP4)
+            # frag_keyframe with empty_moov (new fragment every keyframe)
             {"movflags": "+frag_keyframe+empty_moov"},
             # frag_duration creates fragments based on duration (in microseconds)
             {"movflags": "+empty_moov", "frag_duration": "1000000"},
@@ -1526,54 +1525,29 @@ class TestVideoEncoder:
         tmp_path,
         extra_options,
         format,
-        truncate_percent,
     ):
         # Test that VideoEncoder can write fragmented files using movflags.
         # Fragmented files store metadata interleaved with data rather than
         # all at the end, making them decodable even if writing is interrupted.
-        # The mov muxer (used for mp4, mov) supports these options.
         source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
         encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
         encoded_path = str(tmp_path / f"fragmented_output.{format}")
         encoder.to_file(dest=encoded_path, extra_options=extra_options)
 
+        # Decode the file to get reference frames
+        reference_decoder = VideoDecoder(encoded_path)
+        reference_frames = [reference_decoder.get_frame_at(i) for i in range(10)]
+
         # Truncate the file to simulate interrupted write
         with open(encoded_path, "rb") as f:
             full_content = f.read()
-        truncated_size = int(len(full_content) * (1 - truncate_percent))
+        truncated_size = int(len(full_content) * 0.5)
         with open(encoded_path, "wb") as f:
             f.write(full_content[:truncated_size])
 
-        # Verify truncated file is still readable by ffprobe
-        result = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_streams", "-of", "json", encoded_path],
-            capture_output=True,
-            text=True,
-        )
-        probe_data = json.loads(result.stdout)
-
-        # Verify video stream dimensions match original frames
-        streams = probe_data.get("streams", [])
-        video_streams = [s for s in streams if s.get("codec_type") == "video"]
-        assert len(video_streams) == 1
-        video_stream = video_streams[0]
-        assert video_stream.get("width") == source_frames.shape[3]
-        assert video_stream.get("height") == source_frames.shape[2]
-
-        # Decode as many frames as possible with VideoDecoder in each seek mode
-        for seek_mode in ["approximate", "exact"]:
-            try:
-                decoder = VideoDecoder(encoded_path, seek_mode=seek_mode)
-            except RuntimeError as e:
-                print(f"seek_mode={seek_mode}: Failed to initialize decoder: {e}")
-                continue
-
-            for i in range(len(decoder)):
-                try:
-                    decoder.get_frame_at(i)
-                except RuntimeError:
-                    break
-            else:
-                # Hit if all frames decoded successfully
-                i = len(decoder)
-            print(f"seek_mode={seek_mode}: decoded {i}/{len(decoder)} frames")
+        # Decode the truncated file and verify first 10 frames match reference
+        truncated_decoder = VideoDecoder(encoded_path)
+        assert len(truncated_decoder) >= 10
+        for i in range(10):
+            truncated_frame = truncated_decoder.get_frame_at(i)
+            assert torch.equal(truncated_frame.data, reference_frames[i].data)

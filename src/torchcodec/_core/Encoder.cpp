@@ -940,13 +940,9 @@ void VideoEncoder::encode() {
   flushBuffers();
 
   status = av_write_trailer(avFormatContext_.get());
-  // Fragmented video containers write an mfra atom at the end of the file.
-  // mfra stands for "Movie Fragment Random Access".
-  // When writing a fragmented video file, the return value of
-  // mov_write_mfra_tag is returned. It is negative when an error occurs. When
-  // its positive, it represents the byte size of the written mfra atom. We will
-  // erronously interpret this as an error, so we replace positive values with
-  // AVSUCCESS. See:
+  // av_write_trailer returns mfra atom size (positive) for fragmented
+  // containers, which we'd misinterpret as an error. So we replace positive
+  // values with AVSUCCESS. See:
   // https://github.com/FFmpeg/FFmpeg/blob/n8.0/libavformat/movenc.c#L8666
   if (status > 0) {
     status = AVSUCCESS;
