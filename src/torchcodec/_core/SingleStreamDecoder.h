@@ -241,11 +241,6 @@ class SingleStreamDecoder {
 
     VideoStreamOptions videoStreamOptions;
     AudioStreamOptions audioStreamOptions;
-
-    // Rotation parameter for torch::rot90. Computed during addVideoStream.
-    // A value of 0 means no rotation. Values 1, 2, 3 correspond to 90, 180, -90
-    // degrees counter-clockwise rotation respectively.
-    int rotationK = 0;
   };
 
   // --------------------------------------------------------------------------
@@ -277,8 +272,6 @@ class SingleStreamDecoder {
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
   torch::Tensor maybePermuteHWC2CHW(torch::Tensor& hwcTensor);
-
-  torch::Tensor applyRotation(torch::Tensor& hwcTensor);
 
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
@@ -363,12 +356,9 @@ class SingleStreamDecoder {
   // We will receive a vector of transforms upon adding a stream and store it
   // here.
   std::vector<std::unique_ptr<Transform>> transforms_;
-  // Dimensions for tensor pre-allocation and resize/crop operations. For videos
-  // with dimension-changing transforms and 90°/-90° rotation, this stores the
-  // pre-rotation dimensions (with H/W swapped from user's request). After
-  // rotation is applied via torch::rot90(), the final output matches the user's
-  // requested dimensions. For non-rotated videos with transforms, this stores
-  // the user's requested dimensions directly.
+  // Dimensions for tensor pre-allocation. When rotation or user transforms
+  // change the output dimensions, this stores the final output dimensions.
+  // For rotation, a RotationTransform is prepended to the filter chain.
   std::optional<FrameDims> resizedOutputDims_;
   // Pre-rotation dimensions (raw encoded dimensions from FFmpeg). Used as
   // fallback for tensor allocation when resizedOutputDims_ is not set.

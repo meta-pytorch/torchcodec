@@ -32,17 +32,6 @@ int64_t getPtsOrDts(const UniqueAVFrame& avFrame) {
   return avFrame->pts == INT64_MIN ? avFrame->pkt_dts : avFrame->pts;
 }
 
-// Computes the rotation parameter k for torch::rot90 from a rotation angle in
-// degrees. k is the number of 90-degree counter-clockwise rotations (0-3).
-// Returns 0 for no rotation, 1 for 90°, 2 for 180°/-180°, 3 for -90°.
-int computeRotationK(double rotationDegrees) {
-  int k = static_cast<int>(std::round(rotationDegrees / 90.0)) % 4;
-  if (k < 0) {
-    k += 4;
-  }
-  return k;
-}
-
 } // namespace
 
 // --------------------------------------------------------------------------
@@ -175,9 +164,9 @@ void SingleStreamDecoder::initializeDecoder() {
       int width = avStream->codecpar->width;
       int height = avStream->codecpar->height;
       if (streamMetadata.rotation.has_value()) {
-        int k = computeRotationK(*streamMetadata.rotation);
-        // k=1 means 90 degrees, k=3 means -90 degrees - both swap dimensions
-        if (k == 1 || k == 3) {
+        Rotation rotation = rotationFromDegrees(*streamMetadata.rotation);
+        // 90° rotations swap dimensions
+        if (rotation == Rotation::Ccw90 || rotation == Rotation::Cw90) {
           std::swap(width, height);
         }
       }
@@ -564,12 +553,6 @@ void SingleStreamDecoder::addVideoStream(
   auto& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.videoStreamOptions = videoStreamOptions;
 
-  // Set rotation parameter using the helper function
-  const auto& rotation = streamMetadata.rotation;
-  if (rotation.has_value()) {
-    streamInfo.rotationK = computeRotationK(*rotation);
-  }
-
   if (seekMode_ == SeekMode::custom_frame_mappings) {
     TORCH_CHECK(
         customFrameMappings.has_value(),
@@ -583,63 +566,35 @@ void SingleStreamDecoder::addVideoStream(
       streamMetadata.preRotationHeight.value(),
       streamMetadata.preRotationWidth.value());
 
-  // Check if rotation will swap dimensions (90° or -90° rotation)
-  bool rotationSwapsDimensions =
-      (streamInfo.rotationK == 1 || streamInfo.rotationK == 3);
+  FrameDims currInputDims = preRotationDims_;
 
-  // For transform validation, we use the post-rotation dimensions
-  // (what the user sees and thinks about)
-  FrameDims postRotationDims = rotationSwapsDimensions
-      ? FrameDims(preRotationDims_.width, preRotationDims_.height)
-      : preRotationDims_;
-  FrameDims currInputDims = postRotationDims;
+  // If there's rotation, prepend a RotationTransform to handle it in the
+  // filter graph. This way user transforms (resize, crop) operate in
+  // post-rotation coordinate space, preserving x/y coordinates for crops.
+  if (streamMetadata.rotation.has_value()) {
+    Rotation rotation = rotationFromDegrees(*streamMetadata.rotation);
+    if (rotation != Rotation::None) {
+      auto rotationTransform =
+          std::make_unique<RotationTransform>(rotation, currInputDims);
+      currInputDims = rotationTransform->getOutputFrameDims().value();
+      resizedOutputDims_ = currInputDims;
+      transforms_.push_back(std::move(rotationTransform));
+    }
+  }
 
+  // Validate and add user transforms
   for (auto& transform : transforms) {
     TORCH_CHECK(transform != nullptr, "Transforms should never be nullptr!");
-    if (transform->getOutputFrameDims().has_value()) {
-      // resizedOutputDims_ stores what the user expects as final output
-      // (post-rotation)
-      resizedOutputDims_ = transform->getOutputFrameDims().value();
-    }
     transform->validate(currInputDims);
-    currInputDims = resizedOutputDims_.value_or(postRotationDims);
-
-    // Note that we are claiming ownership of the transform objects passed in to
-    // us.
+    if (transform->getOutputFrameDims().has_value()) {
+      resizedOutputDims_ = transform->getOutputFrameDims().value();
+      currInputDims = resizedOutputDims_.value();
+    }
     transforms_.push_back(std::unique_ptr<Transform>(transform));
   }
 
-  // For videos with 90°/-90° rotation, transforms need to operate on swapped
-  // dimensions so that after rotation the output matches user's request.
-  // For example, if user wants final output (H=300, W=500) and video has 90°
-  // rotation, we resize/crop to (H=500, W=300) pre-rotation, then after
-  // rotation it becomes (H=300, W=500).
-  if (resizedOutputDims_.has_value() && rotationSwapsDimensions) {
-    // Update resizedOutputDims_ to pre-rotation dimensions (swapped H/W)
-    // for tensor pre-allocation. The rotation applied later will swap back.
-    resizedOutputDims_ =
-        FrameDims(resizedOutputDims_->width, resizedOutputDims_->height);
-
-    std::vector<std::unique_ptr<Transform>> preRotationTransforms;
-    for (const auto& transform : transforms_) {
-      auto dims = transform->getOutputFrameDims();
-      if (dims.has_value()) {
-        FrameDims swapped(dims->width, dims->height);
-        if (transform->isResize()) {
-          preRotationTransforms.push_back(
-              std::make_unique<ResizeTransform>(swapped));
-        } else {
-          preRotationTransforms.push_back(
-              std::make_unique<CropTransform>(swapped));
-        }
-      }
-    }
-    deviceInterface_->initializeVideo(
-        videoStreamOptions, preRotationTransforms, resizedOutputDims_);
-  } else {
-    deviceInterface_->initializeVideo(
-        videoStreamOptions, transforms_, resizedOutputDims_);
-  }
+  deviceInterface_->initializeVideo(
+      videoStreamOptions, transforms_, resizedOutputDims_);
 }
 
 void SingleStreamDecoder::addAudioStream(
@@ -678,7 +633,6 @@ void SingleStreamDecoder::addAudioStream(
 FrameOutput SingleStreamDecoder::getNextFrame() {
   auto output = getNextFrameInternal();
   if (streamInfos_[activeStreamIndex_].avMediaType == AVMEDIA_TYPE_VIDEO) {
-    output.data = applyRotation(output.data);
     output.data = maybePermuteHWC2CHW(output.data);
   }
   return output;
@@ -695,7 +649,6 @@ FrameOutput SingleStreamDecoder::getNextFrameInternal(
 
 FrameOutput SingleStreamDecoder::getFrameAtIndex(int64_t frameIndex) {
   auto frameOutput = getFrameAtIndexInternal(frameIndex);
-  frameOutput.data = applyRotation(frameOutput.data);
   frameOutput.data = maybePermuteHWC2CHW(frameOutput.data);
   return frameOutput;
 }
@@ -791,7 +744,6 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     }
     previousIndexInVideo = indexInVideo;
   }
-  frameBatchOutput.data = applyRotation(frameBatchOutput.data);
   frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
   return frameBatchOutput;
 }
@@ -834,7 +786,6 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
     frameBatchOutput.ptsSeconds[f] = frameOutput.ptsSeconds;
     frameBatchOutput.durationSeconds[f] = frameOutput.durationSeconds;
   }
-  frameBatchOutput.data = applyRotation(frameBatchOutput.data);
   frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
   return frameBatchOutput;
 }
@@ -876,7 +827,6 @@ FrameOutput SingleStreamDecoder::getFramePlayedAt(double seconds) {
 
   // Convert the frame to tensor.
   FrameOutput frameOutput = convertAVFrameToFrameOutput(avFrame);
-  frameOutput.data = applyRotation(frameOutput.data);
   frameOutput.data = maybePermuteHWC2CHW(frameOutput.data);
   return frameOutput;
 }
@@ -964,7 +914,6 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         0,
         resizedOutputDims_.value_or(preRotationDims_),
         videoStreamOptions.device);
-    frameBatchOutput.data = applyRotation(frameBatchOutput.data);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     return frameBatchOutput;
   }
@@ -1029,7 +978,6 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       frameBatchOutput.durationSeconds[i] = frameDurationSeconds;
     }
 
-    frameBatchOutput.data = applyRotation(frameBatchOutput.data);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     return frameBatchOutput;
   } else {
@@ -1060,7 +1008,6 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       frameBatchOutput.ptsSeconds[f] = frameOutput.ptsSeconds;
       frameBatchOutput.durationSeconds[f] = frameOutput.durationSeconds;
     }
-    frameBatchOutput.data = applyRotation(frameBatchOutput.data);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
 
     return frameBatchOutput;
@@ -1479,25 +1426,6 @@ torch::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
   } else if (numDimensions == 4) {
     TORCH_CHECK(shape[3] == 3, "Not a NHWC tensor: ", shape);
     return hwcTensor.permute({0, 3, 1, 2});
-  } else {
-    TORCH_CHECK(
-        false, "Expected tensor with 3 or 4 dimensions, got ", numDimensions);
-  }
-}
-
-torch::Tensor SingleStreamDecoder::applyRotation(torch::Tensor& hwcTensor) {
-  const StreamInfo& streamInfo = streamInfos_[activeStreamIndex_];
-  if (streamInfo.rotationK == 0) {
-    return hwcTensor;
-  }
-
-  auto numDimensions = hwcTensor.dim();
-  if (numDimensions == 3) {
-    // Single frame: HWC format, rotate on (H, W) which are dims (0, 1)
-    return torch::rot90(hwcTensor, streamInfo.rotationK, {0, 1});
-  } else if (numDimensions == 4) {
-    // Batch of frames: NHWC format, rotate on (H, W) which are dims (1, 2)
-    return torch::rot90(hwcTensor, streamInfo.rotationK, {1, 2});
   } else {
     TORCH_CHECK(
         false, "Expected tensor with 3 or 4 dimensions, got ", numDimensions);

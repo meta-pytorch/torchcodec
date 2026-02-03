@@ -2089,6 +2089,25 @@ class TestVideoDecoder:
             frames = decoder.get_frames_at([0, 1])
             assert frames.data.shape == (2, 3, desired_H, desired_W)
 
+    def test_rotation_with_transform_pipeline(self):
+        """Test that a pipeline of multiple transforms works correctly with rotated videos.
+
+        This test verifies that chaining multiple transforms (e.g., Resize -> Resize -> Crop)
+        works as expected when the video has rotation metadata. Each transform should
+        operate on the output of the previous transform in post-rotation coordinate space.
+        """
+        from torchcodec.transforms import CenterCrop, Resize
+
+        decoder = VideoDecoder(
+            NASA_VIDEO_ROTATED.path,
+            transforms=[Resize((400, 300)), Resize((300, 250)), CenterCrop((100, 100))],
+        )
+        frame = decoder[0]
+        assert frame.shape == (3, 100, 100)
+
+        frames = decoder.get_frames_at([0, 1])
+        assert frames.data.shape == (2, 3, 100, 100)
+
     @needs_cuda
     @pytest.mark.parametrize("device", cuda_devices())
     def test_cpu_fallback_h265_video(self, device):
