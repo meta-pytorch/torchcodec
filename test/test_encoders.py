@@ -1510,6 +1510,10 @@ class TestVideoEncoder:
             if color_space is not None:
                 assert color_space == encoder_metadata["color_space"]
 
+    @pytest.mark.skipif(
+        ffmpeg_major_version == 4,
+        reason="On FFmpeg 4 we error on truncated packets",
+    )
     @pytest.mark.parametrize("format", ["mp4", "mov"])
     @pytest.mark.parametrize(
         "extra_options",
