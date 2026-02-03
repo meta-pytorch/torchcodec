@@ -152,7 +152,9 @@ class DeviceInterface {
   // Function used for video encoding, only implemented in CudaDeviceInterface.
   // It is here to isolate CUDA dependencies from CPU builds
   virtual void setupHardwareFrameContextForEncoding(
-      [[maybe_unused]] AVCodecContext* codecContext) {}
+      [[maybe_unused]] AVCodecContext* codecContext) {
+    TORCH_CHECK(false);
+  }
 
   virtual std::optional<const AVCodec*> findHardwareEncoder(
       [[maybe_unused]] const AVCodecID& codecId) {

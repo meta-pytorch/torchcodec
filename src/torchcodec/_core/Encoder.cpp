@@ -845,7 +845,10 @@ void VideoEncoder::initializeEncoder(
   }
 
   deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
-  deviceInterface_->setupHardwareFrameContextForEncoding(avCodecContext_.get());
+  if (frames_.device().is_cuda()) {
+    deviceInterface_->setupHardwareFrameContextForEncoding(
+        avCodecContext_.get());
+  }
 
   int status = avcodec_open2(
       avCodecContext_.get(), avCodec, avCodecOptions.getAddress());
