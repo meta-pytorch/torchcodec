@@ -8,6 +8,8 @@ import functools
 from fractions import Fraction
 
 import pytest
+
+from torchcodec import ffmpeg_major_version
 from torchcodec._core import (
     add_video_stream,
     AudioStreamMetadata,
@@ -18,7 +20,7 @@ from torchcodec._core import (
 )
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
-from .utils import get_ffmpeg_major_version, NASA_AUDIO_MP3, NASA_VIDEO
+from .utils import NASA_AUDIO_MP3, NASA_VIDEO
 
 
 # TODO: Expected values in these tests should be based on the assets's
@@ -52,7 +54,7 @@ def _get_container_metadata(path, seek_mode):
                 _get_container_metadata, seek_mode="custom_frame_mappings"
             ),
             marks=pytest.mark.skipif(
-                get_ffmpeg_major_version() in (4, 5),
+                ffmpeg_major_version in (4, 5),
                 reason="ffprobe isn't accurate on ffmpeg 4 and 5",
             ),
         ),
@@ -81,7 +83,6 @@ def test_get_metadata(metadata_getter):
     with pytest.raises(NotImplementedError, match="Decide on logic"):
         metadata.bit_rate
 
-    ffmpeg_major_version = get_ffmpeg_major_version()
     if ffmpeg_major_version <= 5:
         expected_duration_seconds_from_header = 16.57
         expected_bit_rate_from_header = 324915
@@ -134,7 +135,6 @@ def test_get_metadata_audio_file(metadata_getter):
     assert isinstance(best_audio_stream_metadata, AudioStreamMetadata)
     assert best_audio_stream_metadata is metadata.best_audio_stream
 
-    ffmpeg_major_version = get_ffmpeg_major_version()
     expected_duration_seconds_from_header = (
         13.056 if ffmpeg_major_version >= 8 else 13.248
     )
@@ -175,7 +175,6 @@ def test_repr():
   average_fps: 29.97002997002997
 """
     )
-    ffmpeg_major_version = get_ffmpeg_major_version()
     expected_duration_seconds_from_header = (
         13.056 if ffmpeg_major_version >= 8 else 13.248
     )
