@@ -5,6 +5,8 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "SingleStreamDecoder.h"
+#include <libavutil/motion_vector.h>
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
@@ -27,6 +29,41 @@ int64_t getPtsOrDts(ReferenceAVPacket& packet) {
 
 int64_t getPtsOrDts(const UniqueAVFrame& avFrame) {
   return avFrame->pts == INT64_MIN ? avFrame->pkt_dts : avFrame->pts;
+}
+
+std::vector<int32_t> extractMotionVectors(const UniqueAVFrame& avFrame) {
+  AVFrameSideData* sd =
+      av_frame_get_side_data(avFrame.get(), AV_FRAME_DATA_MOTION_VECTORS);
+  if (!sd || sd->size == 0) {
+    return {};
+  }
+
+  TORCH_CHECK(
+      sd->size % sizeof(AVMotionVector) == 0,
+      "Unexpected motion vectors side data size. Expected a multiple of ",
+      sizeof(AVMotionVector),
+      " bytes but got ",
+      sd->size,
+      ".");
+
+  const AVMotionVector* mvs = reinterpret_cast<const AVMotionVector*>(sd->data);
+  const int32_t numMvs = static_cast<int32_t>(sd->size / sizeof(*mvs));
+  std::vector<int32_t> output;
+  output.reserve(static_cast<size_t>(numMvs) * kMotionVectorNumFields);
+
+  for (int32_t i = 0; i < numMvs; ++i) {
+    output.push_back(static_cast<int32_t>(mvs[i].source));
+    output.push_back(static_cast<int32_t>(mvs[i].w));
+    output.push_back(static_cast<int32_t>(mvs[i].h));
+    output.push_back(static_cast<int32_t>(mvs[i].src_x));
+    output.push_back(static_cast<int32_t>(mvs[i].src_y));
+    output.push_back(static_cast<int32_t>(mvs[i].dst_x));
+    output.push_back(static_cast<int32_t>(mvs[i].dst_y));
+    output.push_back(static_cast<int32_t>(mvs[i].motion_x));
+    output.push_back(static_cast<int32_t>(mvs[i].motion_y));
+    output.push_back(static_cast<int32_t>(mvs[i].motion_scale));
+  }
+  return output;
 }
 
 } // namespace
@@ -415,7 +452,8 @@ void SingleStreamDecoder::addStream(
     AVMediaType mediaType,
     const torch::Device& device,
     const std::string_view deviceVariant,
-    std::optional<int> ffmpegThreadCount) {
+    std::optional<int> ffmpegThreadCount,
+    bool exportMotionVectors) {
   TORCH_CHECK(
       activeStreamIndex_ == NO_ACTIVE_STREAM,
       "Can only add one single stream.");
@@ -474,6 +512,10 @@ void SingleStreamDecoder::addStream(
   streamInfo.codecContext->thread_count = ffmpegThreadCount.value_or(0);
   streamInfo.codecContext->pkt_timebase = streamInfo.stream->time_base;
 
+  if (mediaType == AVMEDIA_TYPE_VIDEO && exportMotionVectors) {
+    streamInfo.codecContext->flags2 |= AV_CODEC_FLAG2_EXPORT_MVS;
+  }
+
   // Note that we must make sure to register the harware device context
   // with the codec context before calling avcodec_open2(). Otherwise, decoding
   // will happen on the CPU and not the hardware device.
@@ -516,7 +558,8 @@ void SingleStreamDecoder::addVideoStream(
       AVMEDIA_TYPE_VIDEO,
       videoStreamOptions.device,
       videoStreamOptions.deviceVariant,
-      videoStreamOptions.ffmpegThreadCount);
+      videoStreamOptions.ffmpegThreadCount,
+      videoStreamOptions.exportMotionVectors);
 
   auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
@@ -644,6 +687,32 @@ FrameOutput SingleStreamDecoder::getFrameAtIndexInternal(
   return result;
 }
 
+UniqueAVFrame SingleStreamDecoder::getAVFrameAtIndexInternal(
+    int64_t frameIndex) {
+  validateActiveStream(AVMEDIA_TYPE_VIDEO);
+
+  const auto& streamInfo = streamInfos_[activeStreamIndex_];
+  const auto& streamMetadata =
+      containerMetadata_.allStreamMetadata[activeStreamIndex_];
+
+  std::optional<int64_t> numFrames = streamMetadata.getNumFrames(seekMode_);
+  if (numFrames.has_value()) {
+    frameIndex = frameIndex >= 0 ? frameIndex : frameIndex + numFrames.value();
+  }
+  validateFrameIndex(streamMetadata, frameIndex);
+
+  if (frameIndex != lastDecodedFrameIndex_ + 1) {
+    int64_t pts = getPts(frameIndex);
+    setCursorPtsInSeconds(ptsToSeconds(pts, streamInfo.timeBase));
+  }
+
+  UniqueAVFrame avFrame = decodeAVFrame([this](const UniqueAVFrame& avFrame) {
+    return getPtsOrDts(avFrame) >= cursor_;
+  });
+  lastDecodedFrameIndex_ = frameIndex;
+  return avFrame;
+}
+
 FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     const torch::Tensor& frameIndices) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
@@ -708,6 +777,108 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   }
   frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
   return frameBatchOutput;
+}
+
+MotionVectorsBatchOutput SingleStreamDecoder::getMotionVectorsAtIndices(
+    const torch::Tensor& frameIndices) {
+  validateActiveStream(AVMEDIA_TYPE_VIDEO);
+
+  const auto& streamInfo = streamInfos_[activeStreamIndex_];
+  TORCH_CHECK(
+      streamInfo.videoStreamOptions.exportMotionVectors,
+      "Motion vector extraction requires export_mvs=True when creating the decoder.");
+
+  auto frameIndicesAccessor = frameIndices.accessor<int64_t, 1>();
+
+  bool indicesAreSorted = true;
+  for (int64_t i = 1; i < frameIndices.numel(); ++i) {
+    if (frameIndicesAccessor[i] < frameIndicesAccessor[i - 1]) {
+      indicesAreSorted = false;
+      break;
+    }
+  }
+
+  std::vector<size_t> argsort;
+  if (!indicesAreSorted) {
+    argsort.resize(frameIndices.numel());
+    for (size_t i = 0; i < argsort.size(); ++i) {
+      argsort[i] = i;
+    }
+    std::sort(
+        argsort.begin(),
+        argsort.end(),
+        [&frameIndicesAccessor](size_t a, size_t b) {
+          return frameIndicesAccessor[a] < frameIndicesAccessor[b];
+        });
+  }
+
+  const int64_t numFrames = frameIndices.numel();
+
+  MotionVectorsBatchOutput output;
+  output.counts = torch::zeros(
+      {numFrames}, torch::dtype(torch::kInt32).device(torch::kCPU));
+  output.ptsSeconds = torch::empty(
+      {numFrames}, torch::dtype(torch::kFloat64).device(torch::kCPU));
+  output.durationSeconds = torch::empty(
+      {numFrames}, torch::dtype(torch::kFloat64).device(torch::kCPU));
+  output.frameTypes = torch::empty(
+      {numFrames}, torch::dtype(torch::kInt32).device(torch::kCPU));
+
+  auto countsAccessor = output.counts.accessor<int32_t, 1>();
+  auto ptsAccessor = output.ptsSeconds.accessor<double, 1>();
+  auto durationAccessor = output.durationSeconds.accessor<double, 1>();
+  auto frameTypeAccessor = output.frameTypes.accessor<int32_t, 1>();
+
+  std::vector<std::vector<int32_t>> motionVectorsPerFrame(numFrames);
+  int32_t maxMvs = 0;
+  auto previousIndexInVideo = -1;
+  for (int64_t f = 0; f < numFrames; ++f) {
+    auto indexInOutput = indicesAreSorted ? f : argsort[f];
+    auto indexInVideo = frameIndicesAccessor[indexInOutput];
+
+    if ((f > 0) && (indexInVideo == previousIndexInVideo)) {
+      auto previousIndexInOutput = indicesAreSorted ? f - 1 : argsort[f - 1];
+      motionVectorsPerFrame[indexInOutput] =
+          motionVectorsPerFrame[previousIndexInOutput];
+      countsAccessor[indexInOutput] = countsAccessor[previousIndexInOutput];
+      ptsAccessor[indexInOutput] = ptsAccessor[previousIndexInOutput];
+      durationAccessor[indexInOutput] = durationAccessor[previousIndexInOutput];
+      frameTypeAccessor[indexInOutput] =
+          frameTypeAccessor[previousIndexInOutput];
+      maxMvs = std::max(maxMvs, countsAccessor[indexInOutput]);
+    } else {
+      UniqueAVFrame avFrame = getAVFrameAtIndexInternal(indexInVideo);
+      motionVectorsPerFrame[indexInOutput] = extractMotionVectors(avFrame);
+      int32_t count = static_cast<int32_t>(
+          motionVectorsPerFrame[indexInOutput].size() / kMotionVectorNumFields);
+      countsAccessor[indexInOutput] = count;
+      maxMvs = std::max(maxMvs, count);
+      ptsAccessor[indexInOutput] =
+          ptsToSeconds(getPtsOrDts(avFrame), streamInfo.timeBase);
+      durationAccessor[indexInOutput] =
+          ptsToSeconds(getDuration(avFrame), streamInfo.timeBase);
+      frameTypeAccessor[indexInOutput] =
+          static_cast<int32_t>(av_get_picture_type_char(avFrame->pict_type));
+    }
+    previousIndexInVideo = indexInVideo;
+  }
+
+  output.data = torch::zeros(
+      {numFrames, maxMvs, kMotionVectorNumFields},
+      torch::dtype(torch::kInt32).device(torch::kCPU));
+  auto dataAccessor = output.data.accessor<int32_t, 3>();
+  for (int64_t i = 0; i < numFrames; ++i) {
+    const auto& flat = motionVectorsPerFrame[i];
+    const int32_t count = countsAccessor[i];
+    for (int32_t mv = 0; mv < count; ++mv) {
+      int base = mv * kMotionVectorNumFields;
+      for (int j = 0; j < kMotionVectorNumFields; ++j) {
+        dataAccessor[i][mv][j] = flat[static_cast<size_t>(base + j)];
+      }
+    }
+  }
+
+  return output;
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesInRange(

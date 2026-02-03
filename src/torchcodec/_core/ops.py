@@ -148,6 +148,9 @@ get_frame_at_index = torch.ops.torchcodec_ns.get_frame_at_index.default
 _get_frames_at_indices_tensor_input = (
     torch.ops.torchcodec_ns.get_frames_at_indices.default
 )
+_get_motion_vectors_at_indices_tensor_input = (
+    torch.ops.torchcodec_ns.get_motion_vectors_at_indices.default
+)
 _get_frames_by_pts_tensor_input = torch.ops.torchcodec_ns.get_frames_by_pts.default
 get_frames_in_range = torch.ops.torchcodec_ns.get_frames_in_range.default
 get_frames_by_pts_in_range = torch.ops.torchcodec_ns.get_frames_by_pts_in_range.default
@@ -277,8 +280,40 @@ def get_frames_at_indices(
         frame_indices = frame_indices.to(torch.int64)
     else:
         # Convert list to tensor for dispatch
-        frame_indices = torch.tensor(frame_indices)
+        if isinstance(frame_indices, (list, tuple)) and len(frame_indices) == 0:
+            frame_indices = torch.empty((0,), dtype=torch.int64)
+        else:
+            frame_indices = torch.tensor(frame_indices)
+            if (
+                frame_indices.dtype != torch.int64
+                and frame_indices.dtype != torch.bool
+                and not frame_indices.dtype.is_floating_point
+                and not frame_indices.dtype.is_complex
+            ):
+                frame_indices = frame_indices.to(torch.int64)
     return _get_frames_at_indices_tensor_input(decoder, frame_indices=frame_indices)
+
+
+def get_motion_vectors_at_indices(
+    decoder: torch.Tensor, *, frame_indices: torch.Tensor | list[int]
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    if isinstance(frame_indices, torch.Tensor):
+        frame_indices = frame_indices.to(torch.int64)
+    else:
+        if isinstance(frame_indices, (list, tuple)) and len(frame_indices) == 0:
+            frame_indices = torch.empty((0,), dtype=torch.int64)
+        else:
+            frame_indices = torch.tensor(frame_indices)
+            if (
+                frame_indices.dtype != torch.int64
+                and frame_indices.dtype != torch.bool
+                and not frame_indices.dtype.is_floating_point
+                and not frame_indices.dtype.is_complex
+            ):
+                frame_indices = frame_indices.to(torch.int64)
+    return _get_motion_vectors_at_indices_tensor_input(
+        decoder, frame_indices=frame_indices
+    )
 
 
 def get_frames_by_pts(
@@ -408,6 +443,7 @@ def _add_video_stream_abstract(
     device: str = "cpu",
     device_variant: str = "ffmpeg",
     transform_specs: str = "",
+    export_mvs: bool | None = None,
     custom_frame_mappings: (
         tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
     ) = None,
@@ -426,6 +462,7 @@ def add_video_stream_abstract(
     device: str = "cpu",
     device_variant: str = "ffmpeg",
     transform_specs: str = "",
+    export_mvs: bool | None = None,
     custom_frame_mappings: (
         tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
     ) = None,
@@ -510,6 +547,21 @@ def get_frames_at_indices_abstract(
         torch.empty(image_size),
         torch.empty([], dtype=torch.float),
         torch.empty([], dtype=torch.float),
+    )
+
+
+@register_fake("torchcodec_ns::get_motion_vectors_at_indices")
+def get_motion_vectors_at_indices_abstract(
+    decoder: torch.Tensor, *, frame_indices: torch.Tensor | list[int]
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    mv_size = [get_ctx().new_dynamic_size() for _ in range(3)]
+    batch_size = [get_ctx().new_dynamic_size()]
+    return (
+        torch.empty(mv_size, dtype=torch.int32),
+        torch.empty(batch_size, dtype=torch.int32),
+        torch.empty(batch_size, dtype=torch.float64),
+        torch.empty(batch_size, dtype=torch.float64),
+        torch.empty(batch_size, dtype=torch.int32),
     )
 
 
