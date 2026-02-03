@@ -11,7 +11,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>TorchCodec Performance Tips and Best Practices &mdash; TorchCodec 0.11.0.dev20260202+cu126 Documentation</title>
+  <title>TorchCodec Performance Tips and Best Practices &mdash; TorchCodec 0.11.0.dev20260203+cu126 Documentation</title>
   
 
   
@@ -425,6 +425,7 @@ improve performance depending on your use case. This guide covers:</p>
 <li><p><strong>Approximate Mode &amp; Keyframe Mappings</strong> - Trade accuracy for speed</p></li>
 <li><p><strong>Multi-threading</strong> - Parallelize decoding across videos or chunks</p></li>
 <li><p><strong>CUDA Acceleration</strong> - Use GPU decoding for supported formats</p></li>
+<li><p><strong>Decoder Native Transforms</strong> - Apply transforms during decoding for memory efficiency</p></li>
 </ol>
 <p>We’ll explore each technique and when to use it.</p>
 </section>
@@ -558,12 +559,46 @@ between CPU and CUDA decoding, see <a class="reference internal" href="basic_cud
 </div>
 </section>
 </section>
+<section id="decoder-native-transforms">
+<h2>5. Decoder Native Transforms<a class="headerlink" href="#decoder-native-transforms" title="Permalink to this heading">¶</a></h2>
+<p>TorchCodec supports applying transforms like resize and crop <em>during</em> the
+decoding process itself, rather than as a separate post-processing step.
+This can lead to significant memory savings, especially when decoding
+high-resolution videos that will be resized to smaller dimensions.</p>
+<p><a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> accepts both TorchCodec
+<a class="reference internal" href="../../generated/torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform" title="torchcodec.transforms.DecoderTransform"><code class="xref py py-class docutils literal notranslate"><span class="pre">DecoderTransform</span></code></a> objects and TorchVision
+<a class="reference external" href="https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.v2.Transform.html#torchvision.transforms.v2.Transform" title="(in Torchvision v0.25)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Transform</span></code></a> objects as transform
+specifications. TorchVision is <strong>not required</strong> to use decoder transforms.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec.decoders</span><span class="w"> </span><span class="kn">import</span> <span class="n">VideoDecoder</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec.transforms</span><span class="w"> </span><span class="kn">import</span> <span class="n">Resize</span>
+
+<span class="n">decoder</span> <span class="o">=</span> <span class="n">VideoDecoder</span><span class="p">(</span>
+    <span class="s2">&quot;file.mp4&quot;</span><span class="p">,</span>
+    <span class="n">transforms</span><span class="o">=</span><span class="p">[</span><span class="n">Resize</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">480</span><span class="p">,</span> <span class="mi">640</span><span class="p">))]</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>When to use:</strong></p>
+<ul class="simple">
+<li><p>If you are applying a transform pipeline that significantly reduces the
+dimensions of your input frames and memory efficiency matters.</p></li>
+<li><p>If you are using multiple FFmpeg threads, decoder transforms may be faster.
+Experiment with your setup to verify.</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>For complete examples with memory benchmarks, transform pipelines, and
+detailed comparisons between decoder transforms and TorchVision transforms,
+see <a class="reference internal" href="transforms.html#sphx-glr-generated-examples-decoding-transforms-py"><span class="std std-ref">Decoder Transforms: Applying transforms during decoding</span></a></p>
+</div>
+</section>
 <section id="conclusion">
 <h2>Conclusion<a class="headerlink" href="#conclusion" title="Permalink to this heading">¶</a></h2>
 <p>TorchCodec offers multiple performance optimization strategies, each suited to
 different scenarios. Use batch APIs for multi-frame decoding, approximate mode
-for faster initialization, parallel processing for high throughput, and CUDA
-acceleration to offload the CPU.</p>
+for faster initialization, parallel processing for high throughput, CUDA
+acceleration to offload the CPU, and decoder native transforms for memory efficiency.</p>
 <p>The best results often come from combining techniques. Profile your specific
 use case and apply optimizations incrementally, using the benchmarks in the
 linked examples as a guide.</p>
@@ -574,6 +609,7 @@ linked examples as a guide.</p>
 <li><p><a class="reference internal" href="custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py"><span class="std std-ref">Decoding with custom frame mappings</span></a> - Custom frame mappings</p></li>
 <li><p><a class="reference internal" href="parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py"><span class="std std-ref">Parallel video decoding: multi-processing and multi-threading</span></a> - Parallel decoding strategies</p></li>
 <li><p><a class="reference internal" href="basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py"><span class="std std-ref">Accelerated video decoding on GPUs with CUDA and NVDEC</span></a> - CUDA acceleration guide</p></li>
+<li><p><a class="reference internal" href="transforms.html#sphx-glr-generated-examples-decoding-transforms-py"><span class="std std-ref">Decoder Transforms: Applying transforms during decoding</span></a> - Decoder transforms guide</p></li>
 <li><p><a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">torchcodec.decoders.VideoDecoder</span></code></a> - Full API reference</p></li>
 </ul>
 <p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 0.000 seconds)</p>
@@ -649,6 +685,7 @@ linked examples as a guide.</p>
 <li><a class="reference internal" href="#checking-for-cpu-fallback"><strong>Checking for CPU Fallback</strong></a></li>
 </ul>
 </li>
+<li><a class="reference internal" href="#decoder-native-transforms">5. Decoder Native Transforms</a></li>
 <li><a class="reference internal" href="#conclusion">Conclusion</a></li>
 </ul>
 </li>
