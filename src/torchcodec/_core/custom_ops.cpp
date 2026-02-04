@@ -1057,8 +1057,20 @@ void scan_all_streams_to_update_metadata(torch::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
-// Slim WAV decode functions - bypass SingleStreamDecoder for direct PCM access
-// Returns (samples, metadata_json) or (empty tensor, "") if not a valid WAV
+// Build JSON metadata for WAV samples
+std::string buildWavMetadataJson(const WavSamples& wav) {
+  std::map<std::string, std::string> map;
+  map["durationSecondsFromHeader"] = std::to_string(wav.durationSeconds);
+  map["durationSeconds"] = std::to_string(wav.durationSeconds);
+  map["beginStreamSecondsFromHeader"] = "0.0";
+  map["beginStreamSeconds"] = "0.0";
+  map["codec"] = "\"pcm\"";
+  map["sampleRate"] = std::to_string(wav.sampleRate);
+  map["numChannels"] = std::to_string(wav.samples.size(0));
+  return mapToJson(map);
+}
+
+// Returns (samples, metadata_json) or (empty tensor, "") if not valid
 std::tuple<torch::Tensor, std::string> validate_and_decode_wav_from_tensor(
     const torch::Tensor& data,
     std::optional<int64_t> stream_index,
@@ -1066,11 +1078,10 @@ std::tuple<torch::Tensor, std::string> validate_and_decode_wav_from_tensor(
     std::optional<int64_t> num_channels) {
   auto result = validateAndDecodeWavFromTensor(
       data, stream_index, sample_rate, num_channels);
-  if (!result) {
-    return std::make_tuple(
-        torch::empty({0, 0}, torch::kFloat32), std::string());
+  if (result) {
+    return std::make_tuple(result->samples, buildWavMetadataJson(*result));
   }
-  return std::make_tuple(result->samples, result->metadataJson);
+  return std::make_tuple(torch::empty({0, 0}, torch::kFloat32), std::string());
 }
 
 std::tuple<torch::Tensor, std::string> validate_and_decode_wav_from_file(
@@ -1080,11 +1091,10 @@ std::tuple<torch::Tensor, std::string> validate_and_decode_wav_from_file(
     std::optional<int64_t> num_channels) {
   auto result = validateAndDecodeWavFromFile(
       path, stream_index, sample_rate, num_channels);
-  if (!result) {
-    return std::make_tuple(
-        torch::empty({0, 0}, torch::kFloat32), std::string());
+  if (result) {
+    return std::make_tuple(result->samples, buildWavMetadataJson(*result));
   }
-  return std::make_tuple(result->samples, result->metadataJson);
+  return std::make_tuple(torch::empty({0, 0}, torch::kFloat32), std::string());
 }
 
 TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {

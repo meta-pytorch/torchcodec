@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
-#include <sstream>
 #include <vector>
 
 namespace facebook::torchcodec {
@@ -261,43 +260,6 @@ torch::Tensor convertPcmToFloat32(
   TORCH_CHECK(false, "Unsupported PCM format");
 }
 
-// Build JSON metadata string compatible with AudioStreamMetadata
-std::string buildWavMetadataJson(const WavHeaderInfo& header) {
-  double durationSeconds =
-      static_cast<double>(header.numSamples) / header.sampleRate;
-  double bitRate = static_cast<double>(
-      header.sampleRate * header.numChannels * header.bitsPerSample);
-
-  // Determine sample format string (FFmpeg style)
-  std::string sampleFormat;
-  if (header.formatCode == WAVE_FORMAT_IEEE_FLOAT) {
-    sampleFormat = (header.bitsPerSample == 32) ? "flt" : "dbl";
-  } else {
-    // PCM integer formats
-    if (header.bitsPerSample == 8) {
-      sampleFormat = "u8";
-    } else {
-      sampleFormat = "s" + std::to_string(header.bitsPerSample);
-    }
-  }
-
-  std::stringstream ss;
-  ss << "{\n";
-  ss << "\"durationSecondsFromHeader\": " << durationSeconds << ",\n";
-  ss << "\"durationSeconds\": " << durationSeconds << ",\n";
-  ss << "\"beginStreamSecondsFromHeader\": 0.0,\n";
-  ss << "\"beginStreamSeconds\": 0.0,\n";
-  ss << "\"bitRate\": " << bitRate << ",\n";
-  ss << "\"codec\": \"pcm\",\n";
-  ss << "\"sampleRate\": " << header.sampleRate << ",\n";
-  ss << "\"numChannels\": " << header.numChannels << ",\n";
-  ss << "\"sampleFormat\": \"" << sampleFormat << "\",\n";
-  ss << "\"mediaType\": \"audio\"\n";
-  ss << "}";
-
-  return ss.str();
-}
-
 // Validate optional parameters against WAV header
 // Returns true if parameters are compatible, false otherwise
 bool validateWavParams(
@@ -356,7 +318,9 @@ std::optional<WavSamples> validateAndDecodeWavFromTensor(
       header->formatCode,
       header->bitsPerSample);
 
-  return WavSamples{samples, buildWavMetadataJson(*header)};
+  double durationSeconds =
+      static_cast<double>(header->numSamples) / header->sampleRate;
+  return WavSamples{samples, header->sampleRate, durationSeconds};
 }
 
 std::optional<WavSamples> validateAndDecodeWavFromFile(
@@ -389,7 +353,9 @@ std::optional<WavSamples> validateAndDecodeWavFromFile(
       header->formatCode,
       header->bitsPerSample);
 
-  return WavSamples{samples, buildWavMetadataJson(*header)};
+  double durationSeconds =
+      static_cast<double>(header->numSamples) / header->sampleRate;
+  return WavSamples{samples, header->sampleRate, durationSeconds};
 }
 
 } // namespace facebook::torchcodec

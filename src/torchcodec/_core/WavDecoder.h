@@ -8,13 +8,13 @@
 
 #include <torch/types.h>
 #include <optional>
-#include <string>
 
 namespace facebook::torchcodec {
 
 struct WavSamples {
   torch::Tensor samples; // Shape: (num_channels, num_samples)
-  std::string metadataJson; // JSON compatible with AudioStreamMetadata
+  int64_t sampleRate;
+  double durationSeconds;
 };
 
 // Validate parameters and decode WAV from bytes tensor.

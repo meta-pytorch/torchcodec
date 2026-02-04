@@ -125,8 +125,9 @@ class AudioDecoder:
         sample_rate: int | None = None,
         num_channels: int | None = None,
     ) -> tuple[Tensor, str]:
-        """Decode WAV if valid and parameters match. Returns (samples, metadata_json).
+        """Decode WAV if valid and parameters match.
 
+        Returns (samples, metadata_json).
         Empty metadata_json means not a valid WAV file or parameters don't match.
         """
         if isinstance(source, Tensor):
