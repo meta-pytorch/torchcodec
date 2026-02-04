@@ -9,7 +9,6 @@
 #include <sstream>
 #include <string>
 #include <tuple>
-#include <unordered_map>
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
@@ -79,56 +78,40 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
-  m.def("_destroy_decoder(Tensor(a!) decoder) -> ()");
-  m.def("_clear_all_decoders() -> ()");
 }
 
 namespace {
 
-// Global registry for managing decoder lifetime.
-// Since stable ABI's from_blob doesn't support deleters, we store the
-// unique_ptr in this map and use the raw pointer value in the tensor. Cleanup
-// happens when the registry entry is explicitly removed or when the process
-// exits. Note: This map is not thread-safe; concurrent decoder
-// creation/destruction from multiple threads is not supported.
-std::unordered_map<SingleStreamDecoder*, std::unique_ptr<SingleStreamDecoder>>
-    g_decoder_registry;
+// Deleter function for SingleStreamDecoder pointers.
+// This is called automatically when the tensor's storage is deallocated.
+void decoderDeleter(void* ptr) {
+  delete static_cast<SingleStreamDecoder*>(ptr);
+}
 
 StableTensor wrapDecoderPointerToTensor(
     std::unique_ptr<SingleStreamDecoder> uniqueDecoder) {
-  SingleStreamDecoder* decoder = uniqueDecoder.get();
+  SingleStreamDecoder* decoder = uniqueDecoder.release();
 
-  // Store in registry for lifetime management
-  g_decoder_registry[decoder] = std::move(uniqueDecoder);
-
-  // Create a tensor containing the pointer value
-  StableTensor tensor =
-      stableEmpty({1}, kStableInt64, StableDevice(kStableCPU));
-  *tensor.mutable_data_ptr<int64_t>() = reinterpret_cast<int64_t>(decoder);
-
-  return tensor;
+  // Use from_blob with deleter - the deleter is called when the tensor's
+  // storage is deallocated, automatically cleaning up the decoder.
+  std::vector<int64_t> sizes = {static_cast<int64_t>(sizeof(void*))};
+  std::vector<int64_t> strides = {1};
+  return torch::stable::from_blob(
+      decoder,
+      StableIntArrayRef(sizes.data(), sizes.size()),
+      StableIntArrayRef(strides.data(), strides.size()),
+      StableDevice(kStableCPU),
+      kStableInt64,
+      decoderDeleter);
 }
 
 SingleStreamDecoder* unwrapTensorToGetDecoder(StableTensor& tensor) {
   STABLE_CHECK(
       stableIsContiguous(tensor),
       "fake decoder tensor must be contiguous! This is an internal error, please report on the torchcodec issue tracker.");
-  int64_t ptrValue = *tensor.const_data_ptr<int64_t>();
-  SingleStreamDecoder* decoder =
-      reinterpret_cast<SingleStreamDecoder*>(ptrValue);
+  void* dataPtr = tensor.mutable_data_ptr();
+  SingleStreamDecoder* decoder = static_cast<SingleStreamDecoder*>(dataPtr);
   return decoder;
-}
-
-// Destroys a decoder and removes it from the registry.
-// This must be called to avoid memory leaks.
-void destroyDecoder(StableTensor& tensor) {
-  int64_t ptrValue = *tensor.const_data_ptr<int64_t>();
-  SingleStreamDecoder* decoder =
-      reinterpret_cast<SingleStreamDecoder*>(ptrValue);
-  auto it = g_decoder_registry.find(decoder);
-  if (it != g_decoder_registry.end()) {
-    g_decoder_registry.erase(it);
-  }
 }
 
 // The elements of this tuple are all tensors that represent a single frame:
@@ -1089,19 +1072,6 @@ void scan_all_streams_to_update_metadata(StableTensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
-// Destroys the decoder and frees associated resources.
-// This should be called when the decoder is no longer needed.
-void _destroy_decoder(StableTensor& decoder) {
-  destroyDecoder(decoder);
-}
-
-// Clears all decoders from the global registry.
-// This should be called before Python shuts down to avoid hangs
-// due to GIL acquisition during static destruction.
-void _clear_all_decoders() {
-  g_decoder_registry.clear();
-}
-
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
@@ -1112,7 +1082,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
   m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
-  m.impl("_clear_all_decoders", TORCH_BOX(&_clear_all_decoders));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
@@ -1147,8 +1116,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       TORCH_BOX(&scan_all_streams_to_update_metadata));
 
   m.impl("_get_backend_details", TORCH_BOX(&get_backend_details));
-  m.impl("_destroy_decoder", TORCH_BOX(&_destroy_decoder));
-  m.impl("_clear_all_decoders", TORCH_BOX(&_clear_all_decoders));
 }
 
 } // namespace facebook::torchcodec

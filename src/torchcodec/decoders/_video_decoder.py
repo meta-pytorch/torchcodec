@@ -258,15 +258,6 @@ class VideoDecoder:
         else:
             self._cpu_fallback._backend = "CPU"
 
-    def __del__(self) -> None:
-        # Explicitly destroy the decoder to clean up resources while Python is
-        # still alive. This is needed because the stable ABI version stores
-        # decoders in a global registry that gets destroyed at program exit,
-        # which may hang if Python is already shutting down (due to GIL
-        # acquisition in file-like object cleanup).
-        if hasattr(self, "_decoder"):
-            core._destroy_decoder(self._decoder)
-
     def __len__(self) -> int:
         return self._num_frames
 
