@@ -568,6 +568,8 @@ void SingleStreamDecoder::addVideoStream(
   // If there's rotation, prepend a RotationTransform to handle it in the
   // filter graph. This way user transforms (resize, crop) operate in
   // post-rotation coordinate space, preserving x/y coordinates for crops.
+  // TODO: benchmark the performance of doing this additional filtergraph
+  // transform
   if (streamMetadata.rotation.has_value()) {
     Rotation rotation = rotationFromDegrees(*streamMetadata.rotation);
     if (rotation != Rotation::None) {
