@@ -64,23 +64,24 @@ class AudioDecoder:
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.AudioDecoder")
 
-        # Try WAV fast path: only when no resampling/channel conversion needed
+        # Try WAV fast path
         self._wav_samples: AudioSamples | None = None
-        if stream_index is None and sample_rate is None and num_channels is None:
-            samples, metadata_json = self._try_decode_wav(source)
-            if metadata_json:
-                metadata = json.loads(metadata_json)
-                self._wav_samples = AudioSamples(
-                    data=samples,
-                    pts_seconds=0.0,
-                    duration_seconds=metadata["durationSeconds"],
-                    sample_rate=metadata["sampleRate"],
-                )
-                self.stream_index = 0
-                self._desired_sample_rate = metadata["sampleRate"]
-                self._decoder = None  # type: ignore[assignment]
-                self.metadata = AudioStreamMetadata.from_json(metadata)
-                return
+        samples, metadata_json = self._decode_wav(
+            source, stream_index, sample_rate, num_channels
+        )
+        if metadata_json:
+            metadata = json.loads(metadata_json)
+            self._wav_samples = AudioSamples(
+                data=samples,
+                pts_seconds=0.0,
+                duration_seconds=metadata["durationSeconds"],
+                sample_rate=metadata["sampleRate"],
+            )
+            self.stream_index = 0
+            self._desired_sample_rate = metadata["sampleRate"]
+            self._decoder = None  # type: ignore[assignment]
+            self.metadata = AudioStreamMetadata.from_json(metadata)
+            return
 
         self._decoder = create_decoder(source=source, seek_mode="approximate")
 
@@ -118,31 +119,50 @@ class AudioDecoder:
         )
 
     @staticmethod
-    def _try_decode_wav(
+    def _decode_wav(
         source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
+        stream_index: int | None = None,
+        sample_rate: int | None = None,
+        num_channels: int | None = None,
     ) -> tuple[Tensor, str]:
-        """Try decoding as WAV. Returns (samples, metadata_json).
+        """Decode WAV if valid and parameters match. Returns (samples, metadata_json).
 
-        Empty metadata_json means not a valid WAV file.
+        Empty metadata_json means not a valid WAV file or parameters don't match.
         """
         if isinstance(source, Tensor):
-            return core.decode_wav_from_tensor(source)
+            return core.validate_and_decode_wav_from_tensor(
+                source,
+                stream_index=stream_index,
+                sample_rate=sample_rate,
+                num_channels=num_channels,
+            )
         elif isinstance(source, bytes):
-            return core.decode_wav_from_tensor(
-                torch.frombuffer(source, dtype=torch.uint8)
+            return core.validate_and_decode_wav_from_tensor(
+                torch.frombuffer(source, dtype=torch.uint8),
+                stream_index=stream_index,
+                sample_rate=sample_rate,
+                num_channels=num_channels,
             )
         elif isinstance(source, (str, Path)):
             path = str(source)
             if path.startswith(("http://", "https://", "s3://")):
                 return torch.empty(0), ""
-            return core.decode_wav_from_file(path)
+            return core.validate_and_decode_wav_from_file(
+                path,
+                stream_index=stream_index,
+                sample_rate=sample_rate,
+                num_channels=num_channels,
+            )
         elif isinstance(source, (io.RawIOBase, io.BufferedReader)) or (
             hasattr(source, "read") and hasattr(source, "seek")
         ):
             data = source.read()
             source.seek(0)
-            return core.decode_wav_from_tensor(
-                torch.frombuffer(data, dtype=torch.uint8)
+            return core.validate_and_decode_wav_from_tensor(
+                torch.frombuffer(data, dtype=torch.uint8),
+                stream_index=stream_index,
+                sample_rate=sample_rate,
+                num_channels=num_channels,
             )
         return torch.empty(0), ""
 

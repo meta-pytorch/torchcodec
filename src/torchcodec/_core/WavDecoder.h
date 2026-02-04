@@ -17,12 +17,28 @@ struct WavSamples {
   std::string metadataJson; // JSON compatible with AudioStreamMetadata
 };
 
-// Decode WAV from bytes tensor (zero-copy when possible for mono PCM).
-// Returns nullopt if the data is not a valid/supported WAV file.
-std::optional<WavSamples> decodeWavFromTensor(const torch::Tensor& data);
+// Validate parameters and decode WAV from bytes tensor.
+// Returns nullopt if:
+//   - The data is not a valid/supported WAV file
+//   - stream_index is specified and != 0 (WAV only has one stream)
+//   - sample_rate is specified and doesn't match the file's sample rate
+//   - num_channels is specified and doesn't match the file's channel count
+std::optional<WavSamples> validateAndDecodeWavFromTensor(
+    const torch::Tensor& data,
+    std::optional<int64_t> stream_index = std::nullopt,
+    std::optional<int64_t> sample_rate = std::nullopt,
+    std::optional<int64_t> num_channels = std::nullopt);
 
-// Decode WAV from file path (uses mmap for zero-copy access).
-// Returns nullopt if the file is not a valid/supported WAV file.
-std::optional<WavSamples> decodeWavFromFile(const std::string& path);
+// Validate parameters and decode WAV from file path.
+// Returns nullopt if:
+//   - The file is not a valid/supported WAV file
+//   - stream_index is specified and != 0 (WAV only has one stream)
+//   - sample_rate is specified and doesn't match the file's sample rate
+//   - num_channels is specified and doesn't match the file's channel count
+std::optional<WavSamples> validateAndDecodeWavFromFile(
+    const std::string& path,
+    std::optional<int64_t> stream_index = std::nullopt,
+    std::optional<int64_t> sample_rate = std::nullopt,
+    std::optional<int64_t> num_channels = std::nullopt);
 
 } // namespace facebook::torchcodec

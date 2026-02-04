@@ -80,8 +80,10 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
-  m.def("decode_wav_from_tensor(Tensor data) -> (Tensor, str)");
-  m.def("decode_wav_from_file(str path) -> (Tensor, str)");
+  m.def(
+      "validate_and_decode_wav_from_tensor(Tensor data, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> (Tensor, str)");
+  m.def(
+      "validate_and_decode_wav_from_file(str path, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> (Tensor, str)");
 }
 
 namespace {
@@ -1057,9 +1059,13 @@ void scan_all_streams_to_update_metadata(torch::Tensor& decoder) {
 
 // Slim WAV decode functions - bypass SingleStreamDecoder for direct PCM access
 // Returns (samples, metadata_json) or (empty tensor, "") if not a valid WAV
-std::tuple<torch::Tensor, std::string> decode_wav_from_tensor(
-    const torch::Tensor& data) {
-  auto result = decodeWavFromTensor(data);
+std::tuple<torch::Tensor, std::string> validate_and_decode_wav_from_tensor(
+    const torch::Tensor& data,
+    std::optional<int64_t> stream_index,
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) {
+  auto result = validateAndDecodeWavFromTensor(
+      data, stream_index, sample_rate, num_channels);
   if (!result) {
     return std::make_tuple(
         torch::empty({0, 0}, torch::kFloat32), std::string());
@@ -1067,9 +1073,13 @@ std::tuple<torch::Tensor, std::string> decode_wav_from_tensor(
   return std::make_tuple(result->samples, result->metadataJson);
 }
 
-std::tuple<torch::Tensor, std::string> decode_wav_from_file(
-    const std::string& path) {
-  auto result = decodeWavFromFile(path);
+std::tuple<torch::Tensor, std::string> validate_and_decode_wav_from_file(
+    const std::string& path,
+    std::optional<int64_t> stream_index,
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) {
+  auto result = validateAndDecodeWavFromFile(
+      path, stream_index, sample_rate, num_channels);
   if (!result) {
     return std::make_tuple(
         torch::empty({0, 0}, torch::kFloat32), std::string());
@@ -1086,7 +1096,8 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", &encode_video_to_file);
   m.impl("encode_video_to_tensor", &encode_video_to_tensor);
   m.impl("_encode_video_to_file_like", &_encode_video_to_file_like);
-  m.impl("decode_wav_from_file", &decode_wav_from_file);
+  m.impl(
+      "validate_and_decode_wav_from_file", &validate_and_decode_wav_from_file);
 }
 
 TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
@@ -1118,7 +1129,9 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       &scan_all_streams_to_update_metadata);
 
   m.impl("_get_backend_details", &get_backend_details);
-  m.impl("decode_wav_from_tensor", &decode_wav_from_tensor);
+  m.impl(
+      "validate_and_decode_wav_from_tensor",
+      &validate_and_decode_wav_from_tensor);
 }
 
 } // namespace facebook::torchcodec

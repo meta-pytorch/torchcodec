@@ -298,9 +298,35 @@ std::string buildWavMetadataJson(const WavHeaderInfo& header) {
   return ss.str();
 }
 
+// Validate optional parameters against WAV header
+// Returns true if parameters are compatible, false otherwise
+bool validateWavParams(
+    const WavHeaderInfo& header,
+    std::optional<int64_t> stream_index,
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) {
+  // WAV files only have one stream at index 0
+  if (stream_index.has_value() && stream_index.value() != 0) {
+    return false;
+  }
+  // Check sample rate matches if specified
+  if (sample_rate.has_value() && sample_rate.value() != header.sampleRate) {
+    return false;
+  }
+  // Check channel count matches if specified
+  if (num_channels.has_value() && num_channels.value() != header.numChannels) {
+    return false;
+  }
+  return true;
+}
+
 } // namespace
 
-std::optional<WavSamples> decodeWavFromTensor(const torch::Tensor& data) {
+std::optional<WavSamples> validateAndDecodeWavFromTensor(
+    const torch::Tensor& data,
+    std::optional<int64_t> stream_index,
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) {
   TORCH_CHECK(
       data.is_contiguous() && data.dtype() == torch::kUInt8,
       "Input tensor must be contiguous uint8");
@@ -310,6 +336,11 @@ std::optional<WavSamples> decodeWavFromTensor(const torch::Tensor& data) {
 
   auto header = parseWavHeader(ptr, size);
   if (!header) {
+    return std::nullopt;
+  }
+
+  // Validate optional parameters
+  if (!validateWavParams(*header, stream_index, sample_rate, num_channels)) {
     return std::nullopt;
   }
 
@@ -328,7 +359,11 @@ std::optional<WavSamples> decodeWavFromTensor(const torch::Tensor& data) {
   return WavSamples{samples, buildWavMetadataJson(*header)};
 }
 
-std::optional<WavSamples> decodeWavFromFile(const std::string& path) {
+std::optional<WavSamples> validateAndDecodeWavFromFile(
+    const std::string& path,
+    std::optional<int64_t> stream_index,
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) {
   auto fileData = readFile(path);
   if (!fileData) {
     return std::nullopt;
@@ -339,6 +374,11 @@ std::optional<WavSamples> decodeWavFromFile(const std::string& path) {
 
   auto header = parseWavHeader(ptr, size);
   if (!header || header->dataOffset + header->dataSize > size) {
+    return std::nullopt;
+  }
+
+  // Validate optional parameters
+  if (!validateWavParams(*header, stream_index, sample_rate, num_channels)) {
     return std::nullopt;
   }
 
