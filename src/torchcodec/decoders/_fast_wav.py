@@ -69,7 +69,16 @@ def _read_wav_header(data: bytes) -> WavMetadata:
                 struct.unpack("<HHIIHH", data[pos + 8 : pos + 24])
             )
 
-            if audio_format not in (1, 3):
+            # Handle WAVE_FORMAT_EXTENSIBLE - extract actual format from SubFormat GUID
+            if audio_format == WAVE_FORMAT_EXTENSIBLE:
+                # Extensible format requires at least 40 bytes (16 base + 2 cbSize + 22 extension)
+                if chunk_size < 40:
+                    raise ValueError("Invalid extensible fmt chunk size")
+                # SubFormat GUID starts at offset 24 from chunk start (pos + 8 + 24 = pos + 32)
+                # First two bytes of GUID encode the actual format (1=PCM, 3=float)
+                audio_format = struct.unpack("<H", data[pos + 32 : pos + 34])[0]
+
+            if audio_format not in (WAVE_FORMAT_PCM, WAVE_FORMAT_IEEE_FLOAT):
                 raise ValueError(f"Unsupported audio format: {audio_format}")
 
             fmt_found = True
@@ -114,7 +123,7 @@ def decode_wav_from_metadata(
     ]
 
     # Convert to tensor based on format
-    if metadata.audio_format == 3:  # IEEE float
+    if metadata.audio_format == WAVE_FORMAT_IEEE_FLOAT:
         if metadata.bits_per_sample == 32:
             samples = torch.frombuffer(audio_view, dtype=torch.float32).clone()
         elif metadata.bits_per_sample == 64:
@@ -123,7 +132,7 @@ def decode_wav_from_metadata(
             )
         else:
             raise ValueError(f"Unsupported float bits: {metadata.bits_per_sample}")
-    elif metadata.audio_format == 1:  # PCM
+    elif metadata.audio_format == WAVE_FORMAT_PCM:
         if metadata.bits_per_sample == 16:
             # Optimized: frombuffer -> to(float32) combines conversion
             int_samples = torch.frombuffer(audio_view, dtype=torch.int16)
@@ -232,11 +241,12 @@ class WavDecoder:
         )
 
     @classmethod
-    def try_create(
+    def validate_and_init(
         cls,
         source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
         sample_rate: int | None = None,
         num_channels: int | None = None,
+        stream_index: int | None = None,
     ) -> "WavDecoder | None":
         """
         Try to create a WavDecoder for the given source.
@@ -244,6 +254,10 @@ class WavDecoder:
         Returns a WavDecoder if the fast path can be used, None otherwise.
         For file-like objects, the seek position is reset if we return None.
         """
+        # WAV files only have one audio stream at index 0
+        if stream_index is not None and stream_index != 0:
+            return None
+
         source_bytes: bytes | None = None
 
         if isinstance(source, bytes):

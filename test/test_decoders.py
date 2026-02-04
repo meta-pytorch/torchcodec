@@ -2326,6 +2326,7 @@ class TestAudioDecoder:
             wav_bytes = f.read()
 
         decoder = AudioDecoder(wav_bytes)
+        assert decoder._wav_decoder is not None
 
         samples = decoder.get_all_samples()
         assert samples.data.dtype == torch.float32
@@ -2339,6 +2340,7 @@ class TestAudioDecoder:
             wav_bytes = f.read()
 
         decoder = AudioDecoder(wav_bytes)
+        assert decoder._wav_decoder is not None
 
         # Decode a range
         start_seconds = 1.0
