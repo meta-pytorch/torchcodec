@@ -152,10 +152,6 @@ void SingleStreamDecoder::initializeDecoder() {
       }
       streamMetadata.rotation = getRotationFromStream(avStream);
 
-      // Store pre-rotation (raw encoded) dimensions
-      preRotationDims_ =
-          FrameDims(avStream->codecpar->height, avStream->codecpar->width);
-
       // Report post-rotation dimensions: swap width/height for 90 or -90
       // degree rotations so metadata matches what the decoder returns.
       int width = avStream->codecpar->width;
@@ -555,6 +551,12 @@ void SingleStreamDecoder::addVideoStream(
     readCustomFrameMappingsUpdateMetadataAndIndex(
         activeStreamIndex_, customFrameMappings.value());
   }
+
+  // Set preRotationDims_ for the active stream. These are the raw encoded
+  // dimensions from FFmpeg, used as a fallback for tensor pre-allocation when
+  // no resize/rotation transforms are applied.
+  preRotationDims_ = FrameDims(
+      streamInfo.stream->codecpar->height, streamInfo.stream->codecpar->width);
 
   FrameDims currInputDims = preRotationDims_;
 
