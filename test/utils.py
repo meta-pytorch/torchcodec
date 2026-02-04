@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pytest
 import torch
+
+from torchcodec import ffmpeg_major_version
 from torchcodec._core import get_ffmpeg_library_versions
 from torchcodec.decoders import set_cuda_backend, VideoDecoder
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
@@ -88,24 +90,13 @@ def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
     return dec, clean_device
 
 
-def _get_ffmpeg_version_string():
+def get_ffmpeg_minor_version():
     ffmpeg_version = get_ffmpeg_library_versions()["ffmpeg_version"]
     # When building FFmpeg from source there can be a `n` prefix in the version
     # string.  This is quite brittle as we're using av_version_info(), which has
     # no stable format. See https://github.com/pytorch/torchcodec/issues/100
     if ffmpeg_version.startswith("n"):
         ffmpeg_version = ffmpeg_version.removeprefix("n")
-
-    return ffmpeg_version
-
-
-def get_ffmpeg_major_version():
-    ffmpeg_version = _get_ffmpeg_version_string()
-    return int(ffmpeg_version.split(".")[0])
-
-
-def get_ffmpeg_minor_version():
-    ffmpeg_version = _get_ffmpeg_version_string()
     return int(ffmpeg_version.split(".")[1])
 
 
@@ -147,7 +138,7 @@ def assert_frames_equal(*args, **kwargs):
     if sys.platform == "linux" and "x86" in platform.machine().lower():
         if args[0].device.type == "cuda":
             atol = 3 if cuda_version_used_for_building_torch() >= (13, 0) else 2
-            if get_ffmpeg_major_version() == 4:
+            if ffmpeg_major_version == 4:
                 assert_tensor_close_on_at_least(
                     args[0], args[1], percentage=95, atol=atol
                 )
@@ -839,6 +830,23 @@ SINE_MONO_S16 = TestAudio(
             num_channels=1,
             duration_seconds=4,
             num_frames=63,
+            sample_format="s16",
+        )
+    },
+)
+
+# 16-channel audio for testing support for >8 channels. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -t 1 -filter_complex "[0]asplit=16[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15];[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15]amerge=inputs=16" -c:a pcm_s16le test/resources/sine_16ch_s16.wav
+SINE_16_CHANNEL_S16 = TestAudio(
+    filename="sine_16ch_s16.wav",
+    default_stream_index=0,
+    frames={},  # Automatically loaded from json file
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=16,
+            duration_seconds=1,
+            num_frames=16,
             sample_format="s16",
         )
     },

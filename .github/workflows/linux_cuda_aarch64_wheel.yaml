@@ -59,19 +59,23 @@ jobs:
 
   install-and-test:
     runs-on: linux.arm64.2xlarge
-    container:
-      image: pytorch/manylinuxaarch64-builder:cuda12.6
-    env:
-      cuda_version_without_periods: "126"
     strategy:
       fail-fast: false
       matrix:
         python-version: ['3.10']
+        cuda-version: ['12.6']
         ffmpeg-version-for-tests: ['4.4.2', '5.1.2', '6.1.1', '7.0.1', '8.0']
+    container:
+      image: "pytorch/manylinuxaarch64-builder:cuda${{ matrix.cuda-version }}"
     needs: build
     steps:
+      - name: Setup env vars
+        run: |
+          cuda_version_without_periods=$(echo "${{ matrix.cuda-version }}" | sed 's/\.//g')
+          echo cuda_version_without_periods=${cuda_version_without_periods} >> $GITHUB_ENV
+
       - name: Check out repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Remove src/ folder
         run: bash packaging/remove_src.sh
