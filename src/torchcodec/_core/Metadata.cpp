@@ -72,12 +72,11 @@ std::optional<double> StreamMetadata::getEndStreamSeconds(
       if (endStreamPtsSecondsFromContent.has_value()) {
         return endStreamPtsSecondsFromContent.value();
       }
-      {
-        auto dur = getDurationSeconds(seekMode);
-        if (dur.has_value()) {
-          return getBeginStreamSeconds(seekMode) + dur.value();
-        }
+      auto dur = getDurationSeconds(seekMode);
+      if (dur.has_value()) {
+        return getBeginStreamSeconds(seekMode) + dur.value();
       }
+      
       return std::nullopt;
     default:
       TORCH_CHECK(false, "Unknown SeekMode");
