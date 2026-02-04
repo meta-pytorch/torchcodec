@@ -22,6 +22,8 @@ endif()
 if (WIN32)
   # Avoid warnings about non-ASCII characters in source files.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4819")
+  # Required for Unicode support in fmt library (bundled with PyTorch).
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
   # Important for when we add Windows CUDA: exporting all symbols is limited to
   # 65535 symbols, which (apparently) will not work for CUDA.
   # https://github.com/pytorch/pytorch/pull/3650
@@ -56,6 +58,12 @@ function(make_torchcodec_sublibrary
         "${TORCH_INSTALL_PREFIX}/include"
         ${Python3_INCLUDE_DIRS}
     )
+    # Use fmt library in header-only mode (bundled with PyTorch): the fmt
+    # library is bundled with PyTorch and the headers are available in
+    # TORCH_INSTALL_PREFIX/include/, which we add above. To be compatible with
+    # torch, we want to rely on the "header-only" mode of these headers and hit
+    # all the `#ifdef FMT_HEADER_ONLY` paths, so we define FMT_HEADER_ONLY here.```
+    target_compile_definitions(${library_name} PRIVATE FMT_HEADER_ONLY)
 
     # Avoid adding the "lib" prefix which we already add explicitly.
     set_target_properties(${library_name} PROPERTIES PREFIX "")
