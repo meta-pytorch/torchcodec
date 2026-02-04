@@ -8,6 +8,7 @@
 #include <cstring>
 #include <map>
 #include <mutex>
+#include <unordered_map>
 
 namespace facebook::torchcodec {
 
@@ -19,6 +20,25 @@ static std::mutex g_interface_mutex;
 DeviceInterfaceMap& getDeviceMap() {
   static DeviceInterfaceMap deviceMap;
   return deviceMap;
+}
+
+// Map from data pointer to AVFrame pointer for cleanup.
+// This is needed because the stable ABI's from_blob deleter receives the data
+// pointer, but we need to free the AVFrame (which owns the data).
+static std::mutex g_avframe_mutex;
+static std::unordered_map<void*, AVFrame*>& getAVFrameMap() {
+  static std::unordered_map<void*, AVFrame*> avframeMap;
+  return avframeMap;
+}
+
+void avFrameDeleter(void* data) {
+  std::scoped_lock lock(g_avframe_mutex);
+  auto& avframeMap = getAVFrameMap();
+  auto it = avframeMap.find(data);
+  if (it != avframeMap.end()) {
+    av_frame_free(&it->second);
+    avframeMap.erase(it);
+  }
 }
 
 std::string getDeviceTypeString(const std::string& device) {
@@ -120,29 +140,28 @@ StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
 
   int height = avFrame->height;
   int width = avFrame->width;
+  std::vector<int64_t> shape = {height, width, 3};
+  std::vector<int64_t> strides = {avFrame->linesize[0], 3, 1};
 
-  // Allocate output tensor
-  // Note: Stable ABI's from_blob doesn't support custom deleters,
-  // so we allocate and copy the data instead
-  StableTensor result =
-      stableEmpty({height, width, 3}, kStableUInt8, StableDevice(kStableCPU));
+  // Clone the AVFrame so we own the data
+  AVFrame* avFrameClone = av_frame_clone(avFrame.get());
+  STABLE_CHECK(avFrameClone != nullptr, "Failed to clone AVFrame");
 
-  uint8_t* dst = result.mutable_data_ptr<uint8_t>();
-  const uint8_t* src = avFrame->data[0];
-  int rowSize = width * 3;
-  int linesize = avFrame->linesize[0];
-
-  if (linesize == rowSize) {
-    // Contiguous - single copy
-    std::memcpy(dst, src, static_cast<size_t>(height) * rowSize);
-  } else {
-    // Non-contiguous - copy row by row
-    for (int y = 0; y < height; y++) {
-      std::memcpy(dst + y * rowSize, src + y * linesize, rowSize);
-    }
+  // Register the AVFrame for cleanup when the tensor is destroyed.
+  // The stable ABI's from_blob deleter receives the data pointer, but we need
+  // to free the AVFrame (which owns the data). We use a map to track this.
+  {
+    std::scoped_lock lock(g_avframe_mutex);
+    getAVFrameMap()[avFrameClone->data[0]] = avFrameClone;
   }
 
-  return result;
+  return torch::stable::from_blob(
+      avFrameClone->data[0],
+      StableIntArrayRef(shape.data(), shape.size()),
+      StableIntArrayRef(strides.data(), strides.size()),
+      StableDevice(kStableCPU),
+      kStableUInt8,
+      avFrameDeleter);
 }
 
 } // namespace facebook::torchcodec
