@@ -11,7 +11,7 @@ from functools import partial
 import numpy
 import pytest
 import torch
-from torchcodec import _core, FrameBatch
+from torchcodec import _core, ffmpeg_major_version, FrameBatch
 from torchcodec.decoders import (
     AudioDecoder,
     AudioStreamMetadata,
@@ -28,7 +28,6 @@ from .utils import (
     BT709_FULL_RANGE,
     cuda_devices,
     cuda_version_used_for_building_torch,
-    get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
     get_python_version,
     H264_10BITS,
@@ -379,7 +378,7 @@ class TestVideoDecoder:
             ]
         )
         for sliced, ref in zip(all_frames, decoder):
-            if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+            if not (device == "cuda" and ffmpeg_major_version == 4):
                 # TODO: remove the "if".
                 # See https://github.com/pytorch/torchcodec/issues/428
                 assert_frames_equal(sliced, ref)
@@ -625,7 +624,7 @@ class TestVideoDecoder:
 
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frame_at_av1(self, device):
-        if device == "cuda" and get_ffmpeg_major_version() == 4:
+        if device == "cuda" and ffmpeg_major_version == 4:
             return
 
         if "cuda" in device and in_fbcode():
@@ -1139,7 +1138,7 @@ class TestVideoDecoder:
 
         # All duplicated frames should have the same content as frame 0
         frame0_data = decoder.get_frame_at(0).data
-        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+        if not (device == "cuda" and ffmpeg_major_version == 4):
             for i in range(len(frames_high_fps)):
                 torch.testing.assert_close(
                     frames_high_fps.data[i], frame0_data, atol=0, rtol=0
@@ -1151,7 +1150,7 @@ class TestVideoDecoder:
             start_seconds, stop_seconds, fps=None
         )
         assert len(frames_no_fps) == len(frames_none_fps)
-        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+        if not (device == "cuda" and ffmpeg_major_version == 4):
             torch.testing.assert_close(
                 frames_no_fps.data, frames_none_fps.data, atol=0, rtol=0
             )
@@ -1237,7 +1236,7 @@ class TestVideoDecoder:
         assert len(all_frames) == len(frames_in_range)
         # Use strict bitwise equality, except for FFmpeg 4 + CUDA FFmpeg
         # interface which has known issues (see #428)
-        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+        if not (device == "cuda" and ffmpeg_major_version == 4):
             torch.testing.assert_close(
                 all_frames.data, frames_in_range.data, atol=0, rtol=0
             )
@@ -1252,7 +1251,7 @@ class TestVideoDecoder:
         assert len(all_frames_with_fps) == len(frames_in_range_with_fps)
         # Use strict bitwise equality, except for FFmpeg 4 + CUDA FFmpeg
         # interface which has known issues (see #428)
-        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+        if not (device == "cuda" and ffmpeg_major_version == 4):
             torch.testing.assert_close(
                 all_frames_with_fps.data, frames_in_range_with_fps.data, atol=0, rtol=0
             )
@@ -1634,7 +1633,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_at(frame_index)
             beta_frame = beta_decoder.get_frame_at(frame_index)
             # TODONVDEC P1 see above
-            if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     beta_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -1681,7 +1680,7 @@ class TestVideoDecoder:
         ref_frames = ref_decoder.get_frames_at(indices)
         beta_frames = beta_decoder.get_frames_at(indices)
         # TODONVDEC P1 see above
-        if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+        if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
                 beta_frames.data, ref_frames.data, rtol=0, atol=0
             )
@@ -1724,7 +1723,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_played_at(pts)
             beta_frame = beta_decoder.get_frame_played_at(pts)
             # TODONVDEC P1 see above
-            if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     beta_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -1766,7 +1765,7 @@ class TestVideoDecoder:
         ref_frames = ref_decoder.get_frames_played_at(timestamps)
         beta_frames = beta_decoder.get_frames_played_at(timestamps)
         # TODONVDEC P1 see above
-        if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+        if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
                 beta_frames.data, ref_frames.data, rtol=0, atol=0
             )
@@ -1813,7 +1812,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_at(frame_index)
             beta_frame = beta_decoder.get_frame_at(frame_index)
             # TODONVDEC P1 see above
-            if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     beta_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -1963,7 +1962,7 @@ class TestAudioDecoder:
         )
 
         expected_duration_seconds_from_header = asset.duration_seconds
-        if asset == NASA_AUDIO_MP3 and get_ffmpeg_major_version() >= 8:
+        if asset == NASA_AUDIO_MP3 and ffmpeg_major_version >= 8:
             expected_duration_seconds_from_header = 13.056
 
         assert decoder.metadata.duration_seconds_from_header == pytest.approx(
@@ -2288,7 +2287,7 @@ class TestAudioDecoder:
             pytest.param(
                 24,
                 marks=pytest.mark.skipif(
-                    get_ffmpeg_major_version() == 4 and get_ffmpeg_minor_version() < 4,
+                    ffmpeg_major_version == 4 and get_ffmpeg_minor_version() < 4,
                     reason="24 channel layout requires FFmpeg >= 4.4",
                 ),
             ),
