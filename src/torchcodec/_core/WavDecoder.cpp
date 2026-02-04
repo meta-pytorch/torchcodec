@@ -196,8 +196,10 @@ torch::Tensor convertPcmToFloat32(
       case 8: {
         auto shape = isMono ? std::vector<int64_t>{numSamples}
                             : std::vector<int64_t>{numSamples, numChannels};
+        // Interpret raw bytes as uint8
         auto uintTensor = torch::from_blob(
             const_cast<uint8_t*>(pcmData), shape, torch::kUInt8);
+        // Convert to float32, then normalize from [0, 255] to [-1, 1]
         auto floatTensor =
             uintTensor.to(torch::kFloat32).sub_(128.0f).div_(128.0f);
         if (isMono) {
@@ -208,8 +210,10 @@ torch::Tensor convertPcmToFloat32(
       case 16: {
         auto shape = isMono ? std::vector<int64_t>{numSamples}
                             : std::vector<int64_t>{numSamples, numChannels};
+        // Interpret raw bytes as int16
         auto intTensor = torch::from_blob(
             const_cast<uint8_t*>(pcmData), shape, torch::kInt16);
+        // Convert to float32, then normalize from [-32768, 32767] to [-1, 1]
         auto floatTensor = intTensor.to(torch::kFloat32).div_(32768.0f);
         if (isMono) {
           return floatTensor.unsqueeze(0);
@@ -222,8 +226,10 @@ torch::Tensor convertPcmToFloat32(
       case 32: {
         auto shape = isMono ? std::vector<int64_t>{numSamples}
                             : std::vector<int64_t>{numSamples, numChannels};
+        // Interpret raw bytes as int32
         auto intTensor = torch::from_blob(
             const_cast<uint8_t*>(pcmData), shape, torch::kInt32);
+        // Convert to float32, then normalize from [-2^31, 2^31-1] to [-1, 1]
         auto floatTensor = intTensor.to(torch::kFloat32).div_(2147483648.0f);
         if (isMono) {
           return floatTensor.unsqueeze(0);
@@ -236,6 +242,7 @@ torch::Tensor convertPcmToFloat32(
       case 32: {
         auto shape = isMono ? std::vector<int64_t>{numSamples}
                             : std::vector<int64_t>{numSamples, numChannels};
+        // Interpret raw bytes as float32 (already normalized by convention)
         auto floatTensor = torch::from_blob(
             const_cast<uint8_t*>(pcmData), shape, torch::kFloat32);
         if (isMono) {
@@ -246,8 +253,10 @@ torch::Tensor convertPcmToFloat32(
       case 64: {
         auto shape = isMono ? std::vector<int64_t>{numSamples}
                             : std::vector<int64_t>{numSamples, numChannels};
+        // Interpret raw bytes as float64
         auto doubleTensor = torch::from_blob(
             const_cast<uint8_t*>(pcmData), shape, torch::kFloat64);
+        // Convert to float32 (already normalized by convention)
         auto floatTensor = doubleTensor.to(torch::kFloat32);
         if (isMono) {
           return floatTensor.unsqueeze(0);
