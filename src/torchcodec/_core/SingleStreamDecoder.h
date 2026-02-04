@@ -354,14 +354,27 @@ class SingleStreamDecoder {
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
 
   // We will receive a vector of transforms upon adding a stream and store it
-  // here.
+  // here. However, we need to know if any of those operations change the
+  // dimensions of the output frame. If they do, we need to figure out what are
+  // the final dimensions of the output frame after ALL transformations. We
+  // figure this out as soon as we receive the transforms. If any of the
+  // transforms change the final output frame dimensions, we store that in
+  // resizedOutputDims_. If resizedOutputDims_ has no value, that means there
+  // are no transforms that change the output frame dimensions.
+  //
+  // The priority order for output frame dimensions is:
+  //
+  // 1. resizedOutputDims_; the resize requested by the user (or rotation)
+  //    always takes priority.
+  // 2. The dimensions of the actual decoded AVFrame. This can change
+  //    per-decoded frame, and is unknown in SingleStreamDecoder. Only the
+  //    DeviceInterface learns it immediately after decoding a raw frame but
+  //    before the color conversion.
+  // 3. preRotationDims_; the raw encoded dimensions from FFmpeg metadata
+  //    (before any rotation is applied). Used as fallback for tensor
+  //    allocation when resizedOutputDims_ is not set.
   std::vector<std::unique_ptr<Transform>> transforms_;
-  // Dimensions for tensor pre-allocation. When rotation or user transforms
-  // change the output dimensions, this stores the final output dimensions.
-  // For rotation, a RotationTransform is prepended to the filter chain.
   std::optional<FrameDims> resizedOutputDims_;
-  // Pre-rotation dimensions (raw encoded dimensions from FFmpeg). Used as
-  // fallback for tensor allocation when resizedOutputDims_ is not set.
   FrameDims preRotationDims_;
 
   // Whether or not we have already scanned all streams to update the metadata.
