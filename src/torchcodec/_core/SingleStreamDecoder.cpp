@@ -153,19 +153,17 @@ void SingleStreamDecoder::initializeDecoder() {
       streamMetadata.rotation = getRotationFromStream(avStream);
 
       // Store pre-rotation (raw encoded) dimensions
-      streamMetadata.preRotationWidth = avStream->codecpar->width;
-      streamMetadata.preRotationHeight = avStream->codecpar->height;
+      preRotationDims_ =
+          FrameDims(avStream->codecpar->height, avStream->codecpar->width);
 
       // Report post-rotation dimensions: swap width/height for 90 or -90
       // degree rotations so metadata matches what the decoder returns.
       int width = avStream->codecpar->width;
       int height = avStream->codecpar->height;
-      if (streamMetadata.rotation.has_value()) {
-        Rotation rotation = rotationFromDegrees(*streamMetadata.rotation);
-        // 90° rotations swap dimensions
-        if (rotation == Rotation::Ccw90 || rotation == Rotation::Cw90) {
-          std::swap(width, height);
-        }
+      Rotation rotation = rotationFromDegrees(streamMetadata.rotation);
+      // 90° rotations swap dimensions
+      if (rotation == Rotation::CCW90 || rotation == Rotation::CW90) {
+        std::swap(width, height);
       }
       streamMetadata.postRotationWidth = width;
       streamMetadata.postRotationHeight = height;
@@ -558,29 +556,32 @@ void SingleStreamDecoder::addVideoStream(
         activeStreamIndex_, customFrameMappings.value());
   }
 
-  // Store pre-rotation dimensions (raw encoded dimensions from FFmpeg)
-  preRotationDims_ = FrameDims(
-      streamMetadata.preRotationHeight.value(),
-      streamMetadata.preRotationWidth.value());
-
   FrameDims currInputDims = preRotationDims_;
 
   // If there's rotation, prepend a RotationTransform to handle it in the
   // filter graph. This way user transforms (resize, crop) operate in
   // post-rotation coordinate space, preserving x/y coordinates for crops.
+  //
+  // It is critical to apply the rotation *before* any user-supplied
+  // transforms. By design, we want:
+  //   A: VideoDecoder(..., transforms=tv_transforms)[i]
+  // to be equivalent to:
+  //   B: tv_transforms(VideoDecoder(...)[i])
+  // In B, rotation is applied before transforms, so A must behave the same.
+  //
   // TODO: benchmark the performance of doing this additional filtergraph
   // transform
-  if (streamMetadata.rotation.has_value()) {
-    Rotation rotation = rotationFromDegrees(*streamMetadata.rotation);
-    if (rotation != Rotation::None) {
-      auto rotationTransform =
-          std::make_unique<RotationTransform>(rotation, currInputDims);
-      currInputDims = rotationTransform->getOutputFrameDims().value();
-      resizedOutputDims_ = currInputDims;
-      transforms_.push_back(std::move(rotationTransform));
-    }
+  Rotation rotation = rotationFromDegrees(streamMetadata.rotation);
+  if (rotation != Rotation::NONE) {
+    auto rotationTransform =
+        std::make_unique<RotationTransform>(rotation, currInputDims);
+    currInputDims = rotationTransform->getOutputFrameDims().value();
+    resizedOutputDims_ = currInputDims;
+    transforms_.push_back(std::move(rotationTransform));
   }
 
+  // Note that we are claiming ownership of the transform objects passed in to
+  // us.
   // Validate and add user transforms
   for (auto& transform : transforms) {
     TORCH_CHECK(transform != nullptr, "Transforms should never be nullptr!");

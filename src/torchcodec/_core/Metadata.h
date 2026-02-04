@@ -56,9 +56,6 @@ struct StreamMetadata {
   // Post-rotation dimensions
   std::optional<int> postRotationWidth;
   std::optional<int> postRotationHeight;
-  // Pre-rotation dimensions
-  std::optional<int> preRotationWidth;
-  std::optional<int> preRotationHeight;
   std::optional<AVRational> sampleAspectRatio;
   // Rotation angle in degrees from display matrix, in the range [-180, 180].
   std::optional<double> rotation;

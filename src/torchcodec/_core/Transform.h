@@ -86,18 +86,21 @@ class CropTransform : public Transform {
 // Rotation values for RotationTransform.
 // These correspond to video metadata rotation angles.
 enum class Rotation {
-  None, // 0°
-  Ccw90, // 90° counter-clockwise
-  Cw90, // 90° clockwise (or -90°)
-  Rotate180 // 180° (or -180°)
+  NONE, // 0°
+  CCW90, // 90° counter-clockwise
+  CW90, // 90° clockwise (or -90°)
+  ROTATE180 // 180° (or -180°)
 };
 
 // Converts rotation degrees from video metadata to Rotation enum.
+// Input is expected in the range [-180, 180].
 // Rounds to nearest multiple of 90 degrees before converting.
-// Returns Rotation::None for unsupported rotation values (e.g., 270°).
-Rotation rotationFromDegrees(double degrees);
+// Returns Rotation::NONE for nullopt.
+Rotation rotationFromDegrees(std::optional<double> degrees);
 
-// Applies rotation using FFmpeg's transpose/flip filters.
+// Applies rotation in multiples of 90 degrees using FFmpeg's transpose/flip
+// filters. Note: this does not support arbitrary angle rotation
+// like TorchVision's RandomRotation transform.
 // Handles rotation in the filter graph so that user transforms
 // operate in post-rotation coordinate space.
 class RotationTransform : public Transform {

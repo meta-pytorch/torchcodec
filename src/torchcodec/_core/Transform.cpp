@@ -125,21 +125,28 @@ void CropTransform::validate(const FrameDims& inputDims) const {
   }
 }
 
-Rotation rotationFromDegrees(double degrees) {
+Rotation rotationFromDegrees(std::optional<double> degrees) {
+  if (!degrees.has_value()) {
+    return Rotation::NONE;
+  }
   // Round to nearest multiple of 90 degrees
-  int rounded = static_cast<int>(std::round(degrees / 90.0)) * 90;
+  int rounded = static_cast<int>(std::round(*degrees / 90.0)) * 90;
   switch (rounded) {
     case 0:
-      return Rotation::None;
+      return Rotation::NONE;
     case 90:
-      return Rotation::Ccw90;
+      return Rotation::CCW90;
     case -90:
-      return Rotation::Cw90;
+      return Rotation::CW90;
     case 180:
     case -180:
-      return Rotation::Rotate180;
+      return Rotation::ROTATE180;
     default:
-      return Rotation::None;
+      TORCH_CHECK(
+          false,
+          "Unexpected rotation value: ",
+          *degrees,
+          ". Expected range is [-180, 180].");
   }
 }
 
@@ -148,7 +155,7 @@ RotationTransform::RotationTransform(
     const FrameDims& inputDims)
     : rotation_(rotation) {
   // 90° rotations swap dimensions
-  if (rotation_ == Rotation::Ccw90 || rotation_ == Rotation::Cw90) {
+  if (rotation_ == Rotation::CCW90 || rotation_ == Rotation::CW90) {
     outputDims_ = FrameDims(inputDims.width, inputDims.height);
   } else {
     outputDims_ = inputDims;
@@ -157,13 +164,13 @@ RotationTransform::RotationTransform(
 
 std::string RotationTransform::getFilterGraphCpu() const {
   switch (rotation_) {
-    case Rotation::None:
+    case Rotation::NONE:
       return "";
-    case Rotation::Ccw90:
+    case Rotation::CCW90:
       return "transpose=cclock";
-    case Rotation::Cw90:
+    case Rotation::CW90:
       return "transpose=clock";
-    case Rotation::Rotate180:
+    case Rotation::ROTATE180:
       return "hflip,vflip";
     default:
       return "";

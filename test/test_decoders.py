@@ -20,6 +20,7 @@ from torchcodec.decoders import (
     VideoStreamMetadata,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
+from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
 from .utils import (
     all_supported_devices,
@@ -1999,96 +2000,34 @@ class TestVideoDecoder:
         )
         torch.testing.assert_close(expected, all_frames_rotated.data, atol=0, rtol=0)
 
-    def test_rotation_with_resize_transform(self):
-        """Test that Resize transform works correctly with rotated videos.
+    @pytest.mark.parametrize(
+        "desired_H, desired_W",
+        [
+            (100, 150),
+            (150, 100),
+            (100, 100),
+        ],
+    )
+    @pytest.mark.parametrize("TransformClass", [Resize, CenterCrop, RandomCrop])
+    def test_rotation_with_transform(self, TransformClass, desired_H, desired_W):
+        """Test that transforms work correctly with rotated videos.
 
-        When a user specifies Resize((H, W)), they expect the final output to be
+        When a user specifies a transform with (H, W), they expect the final output to be
         (H, W) regardless of the video's rotation metadata. This test verifies
-        that the resize is applied correctly such that the final output matches
+        that the transform is applied correctly such that the final output matches
         the user's requested dimensions.
         """
-        from torchcodec.transforms import Resize
+        decoder = VideoDecoder(
+            NASA_VIDEO_ROTATED.path,
+            transforms=[TransformClass((desired_H, desired_W))],
+        )
+        frame = decoder[0]
 
-        # Test with various resize dimensions
-        test_cases = [
-            (300, 500),  # landscape output
-            (500, 300),  # portrait output
-            (256, 256),  # square output
-        ]
+        assert frame.shape == (3, desired_H, desired_W)
 
-        for desired_H, desired_W in test_cases:
-            decoder = VideoDecoder(
-                NASA_VIDEO_ROTATED.path,
-                transforms=[Resize((desired_H, desired_W))],
-            )
-            frame = decoder[0]
-
-            # Frame shape should be (C, H, W) in NCHW format (default)
-            assert frame.shape == (3, desired_H, desired_W)
-
-            # Also test batch APIs
-            frames = decoder.get_frames_at([0, 1])
-            assert frames.data.shape == (2, 3, desired_H, desired_W)
-
-    def test_rotation_with_center_crop_transform(self):
-        """Test that CenterCrop transform works correctly with rotated videos.
-
-        When a user specifies CenterCrop((H, W)), they expect the final output to be
-        (H, W) regardless of the video's rotation metadata.
-        """
-        from torchcodec.transforms import CenterCrop
-
-        # Test with various crop dimensions
-        test_cases = [
-            (100, 150),  # landscape crop
-            (150, 100),  # portrait crop
-            (100, 100),  # square crop
-        ]
-
-        for desired_H, desired_W in test_cases:
-            decoder = VideoDecoder(
-                NASA_VIDEO_ROTATED.path,
-                transforms=[CenterCrop((desired_H, desired_W))],
-            )
-            frame = decoder[0]
-
-            # Frame shape should be (C, H, W) in NCHW format (default)
-            assert frame.shape == (3, desired_H, desired_W)
-
-            # Also test batch APIs
-            frames = decoder.get_frames_at([0, 1])
-            assert frames.data.shape == (2, 3, desired_H, desired_W)
-
-    def test_rotation_with_random_crop_transform(self):
-        """Test that RandomCrop transform works correctly with rotated videos.
-
-        When a user specifies RandomCrop((H, W)), they expect the final output to be
-        (H, W) regardless of the video's rotation metadata.
-        """
-        from torchcodec.transforms import RandomCrop
-
-        # Test with various crop dimensions
-        test_cases = [
-            (100, 150),  # landscape crop
-            (150, 100),  # portrait crop
-            (100, 100),  # square crop
-        ]
-
-        for desired_H, desired_W in test_cases:
-            # Use fixed seed for reproducibility
-            torch.manual_seed(42)
-            decoder = VideoDecoder(
-                NASA_VIDEO_ROTATED.path,
-                transforms=[RandomCrop((desired_H, desired_W))],
-            )
-            frame = decoder[0]
-
-            # Frame shape should be (C, H, W) in NCHW format (default)
-            assert frame.shape == (3, desired_H, desired_W)
-
-            # Also test batch APIs
-            frames = decoder.get_frames_at([0, 1])
-            assert frames.data.shape == (2, 3, desired_H, desired_W)
+        # Also test batch APIs
+        frames = decoder.get_frames_at([0, 1])
+        assert frames.data.shape == (2, 3, desired_H, desired_W)
 
     def test_rotation_with_transform_pipeline(self):
         """Test that a pipeline of multiple transforms works correctly with rotated videos.
@@ -2097,8 +2036,6 @@ class TestVideoDecoder:
         works as expected when the video has rotation metadata. Each transform should
         operate on the output of the previous transform in post-rotation coordinate space.
         """
-        from torchcodec.transforms import CenterCrop, Resize
-
         decoder = VideoDecoder(
             NASA_VIDEO_ROTATED.path,
             transforms=[Resize((400, 300)), Resize((300, 250)), CenterCrop((100, 100))],

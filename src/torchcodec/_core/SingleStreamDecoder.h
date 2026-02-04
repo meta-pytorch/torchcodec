@@ -372,7 +372,8 @@ class SingleStreamDecoder {
   //    before the color conversion.
   // 3. preRotationDims_; the raw encoded dimensions from FFmpeg metadata
   //    (before any rotation is applied). Used as fallback for tensor
-  //    allocation when resizedOutputDims_ is not set.
+  //    allocation when resizedOutputDims_ is not set, which only happens
+  //    when no rotation is needed, so preRotationDims_ is the correct value.
   std::vector<std::unique_ptr<Transform>> transforms_;
   std::optional<FrameDims> resizedOutputDims_;
   FrameDims preRotationDims_;
