@@ -20,9 +20,7 @@ from torchcodec._core import (
 )
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
-
 from .utils import NASA_AUDIO_MP3, NASA_VIDEO, NASA_VIDEO_ROTATED
-
 
 
 # TODO: Expected values in these tests should be based on the assets's
