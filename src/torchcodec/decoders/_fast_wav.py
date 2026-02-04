@@ -125,8 +125,10 @@ def decode_wav_from_metadata(
     # Convert to tensor based on format
     if metadata.audio_format == WAVE_FORMAT_IEEE_FLOAT:
         if metadata.bits_per_sample == 32:
+            # Interpret raw bytes as float32 (already normalized by convention)
             samples = torch.frombuffer(audio_view, dtype=torch.float32).clone()
         elif metadata.bits_per_sample == 64:
+            # Interpret raw bytes as float64, then convert to float32
             samples = torch.frombuffer(audio_view, dtype=torch.float64).to(
                 torch.float32
             )
@@ -134,21 +136,26 @@ def decode_wav_from_metadata(
             raise ValueError(f"Unsupported float bits: {metadata.bits_per_sample}")
     elif metadata.audio_format == WAVE_FORMAT_PCM:
         if metadata.bits_per_sample == 16:
-            # Optimized: frombuffer -> to(float32) combines conversion
+            # Interpret raw bytes as int16
             int_samples = torch.frombuffer(audio_view, dtype=torch.int16)
+            # Convert to float32, then normalize from [-32768, 32767] to [-1, 1]
             samples = int_samples.to(torch.float32).div_(
                 torch.iinfo(torch.int16).max + 1
             )
         elif metadata.bits_per_sample == 32:
+            # Interpret raw bytes as int32
             int_samples = torch.frombuffer(audio_view, dtype=torch.int32)
+            # Convert to float32, then normalize from [-2^31, 2^31-1] to [-1, 1]
             samples = int_samples.to(torch.float32).div_(
                 torch.iinfo(torch.int32).max + 1
             )
         elif metadata.bits_per_sample == 24:
-            # Edge case: there is no native 24-bit dtype, so we use helper function
+            # There is no 24-bit dtype, so we use helper function
             samples = _decode_24bit_pcm(audio_view)
         elif metadata.bits_per_sample == 8:
+            # Interpret raw bytes as uint8
             uint_samples = torch.frombuffer(audio_view, dtype=torch.uint8)
+            # Convert to float32, then normalize from [0, 255] to [-1, 1]
             samples = uint_samples.to(torch.float32).sub_(128.0).div_(128.0)
         else:
             raise ValueError(f"Unsupported PCM bits: {metadata.bits_per_sample}")
