@@ -198,26 +198,26 @@ def decode_wav(
 
 
 def _decode_24bit_pcm(data: memoryview) -> torch.Tensor:
-    """Decode 24-bit PCM samples to float32 tensor using numpy for speed."""
-    import numpy as np
+    """Decode 24-bit PCM samples to float32 tensor."""
+    # Interpret raw bytes as uint8, reshape to (num_samples, 3)
+    raw = torch.frombuffer(data, dtype=torch.uint8).reshape(-1, 3)
 
-    # Convert to numpy array for fast processing
-    arr = np.frombuffer(data, dtype=np.uint8).reshape(-1, 3)
-
-    # Combine bytes into 32-bit integers (with sign extension)
+    # Combine 3 bytes into int32: byte0 | (byte1 << 8) | (byte2 << 16)
     samples_i32 = (
-        arr[:, 0].astype(np.int32)
-        | (arr[:, 1].astype(np.int32) << 8)
-        | (arr[:, 2].astype(np.int32) << 16)
+        raw[:, 0].to(torch.int32)
+        | (raw[:, 1].to(torch.int32) << 8)
+        | (raw[:, 2].to(torch.int32) << 16)
     )
 
     # Sign extend from 24 to 32 bits
-    samples_i32 = np.where(samples_i32 & 0x800000, samples_i32 - 0x1000000, samples_i32)
+    samples_i32 = torch.where(
+        (samples_i32 & 0x800000) != 0,
+        samples_i32 - 0x1000000,
+        samples_i32,
+    )
 
-    # Convert to float and normalize
-    samples_f32 = samples_i32.astype(np.float32) / 8388608.0
-
-    return torch.from_numpy(samples_f32)
+    # Convert to float32, then normalize from [-2^23, 2^23-1] to [-1, 1]
+    return samples_i32.to(torch.float32) / 8388608.0
 
 
 def is_wav_bytes(data: bytes) -> bool:
