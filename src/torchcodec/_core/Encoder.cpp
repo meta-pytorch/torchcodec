@@ -766,17 +766,17 @@ void VideoEncoder::initializeEncoder(
   TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
   avCodecContext_.reset(avCodecContext);
 
-  // Store dimension order and input pixel format
+  // Store dimensions of input frames
   // TODO-VideoEncoder: (P2) Enable tensors in NHWC shape
   auto sizes = frames_.sizes();
-  inPixelFormat_ = AV_PIX_FMT_GBRP;
-  inHeight_ = static_cast<int>(sizes[2]);
-  inWidth_ = static_cast<int>(sizes[3]);
+  int inHeight = static_cast<int>(sizes[2]);
+  int inWidth = static_cast<int>(sizes[3]);
 
-  // Use specified dimensions or input dimensions
+  // Always use input dimensions as output dimensions
   // TODO-VideoEncoder: (P2) Allow height and width to be set
-  outWidth_ = inWidth_;
-  outHeight_ = inHeight_;
+  int outWidth = inWidth;
+  int outHeight = inHeight;
+  AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
     // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user on GPU
@@ -787,19 +787,19 @@ void VideoEncoder::initializeEncoder(
           "Video encoding on GPU currently only supports the nv12 pixel format. "
           "Do not set pixel_format to use nv12 by default.");
     }
-    outPixelFormat_ =
+    outPixelFormat =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
     if (frames_.device().is_cuda()) {
       // Default to nv12 pixel format when encoding on GPU.
-      outPixelFormat_ = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
+      outPixelFormat = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
     } else {
       const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
       // Use first listed pixel format as default (often yuv420p).
       // This is similar to FFmpeg's logic:
       // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
       // If pixel formats are undefined for some reason, try yuv420p
-      outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
+      outPixelFormat = (formats && formats[0] != AV_PIX_FMT_NONE)
           ? formats[0]
           : AV_PIX_FMT_YUV420P;
     }
@@ -807,9 +807,9 @@ void VideoEncoder::initializeEncoder(
 
   // Configure codec parameters
   avCodecContext_->codec_id = avCodec->id;
-  avCodecContext_->width = outWidth_;
-  avCodecContext_->height = outHeight_;
-  avCodecContext_->pix_fmt = outPixelFormat_;
+  avCodecContext_->width = outWidth;
+  avCodecContext_->height = outHeight;
+  avCodecContext_->pix_fmt = outPixelFormat;
   // TODO-VideoEncoder: (P1) Add and utilize output frame_rate option
   avCodecContext_->framerate = av_d2q(inFrameRate_, INT_MAX);
   avCodecContext_->time_base = av_inv_q(avCodecContext_->framerate);
