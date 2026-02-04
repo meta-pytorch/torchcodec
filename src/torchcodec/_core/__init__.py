@@ -24,6 +24,8 @@ from .ops import (
     create_from_file,
     create_from_file_like,
     create_from_tensor,
+    decode_wav_from_file,
+    decode_wav_from_tensor,
     encode_audio_to_file,
     encode_audio_to_file_like,
     encode_audio_to_tensor,

@@ -6,12 +6,14 @@
 
 
 import io
+import json
 from pathlib import Path
 
 import torch
 from torch import Tensor
 
 from torchcodec import _core as core, AudioSamples
+from torchcodec._core._metadata import AudioStreamMetadata
 from torchcodec.decoders._decoder_utils import (
     create_decoder,
     ERROR_REPORTING_INSTRUCTIONS,
@@ -61,6 +63,25 @@ class AudioDecoder:
         num_channels: int | None = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.AudioDecoder")
+
+        # Try WAV fast path: only when no resampling/channel conversion needed
+        self._wav_samples: AudioSamples | None = None
+        if stream_index is None and sample_rate is None and num_channels is None:
+            samples, metadata_json = self._try_decode_wav(source)
+            if metadata_json:
+                metadata = json.loads(metadata_json)
+                self._wav_samples = AudioSamples(
+                    data=samples,
+                    pts_seconds=0.0,
+                    duration_seconds=metadata["durationSeconds"],
+                    sample_rate=metadata["sampleRate"],
+                )
+                self.stream_index = 0
+                self._desired_sample_rate = metadata["sampleRate"]
+                self._decoder = None  # type: ignore[assignment]
+                self.metadata = AudioStreamMetadata.from_json(metadata)
+                return
+
         self._decoder = create_decoder(source=source, seek_mode="approximate")
 
         container_metadata = core.get_container_metadata(self._decoder)
@@ -96,6 +117,35 @@ class AudioDecoder:
             num_channels=num_channels,
         )
 
+    @staticmethod
+    def _try_decode_wav(
+        source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
+    ) -> tuple[Tensor, str]:
+        """Try decoding as WAV. Returns (samples, metadata_json).
+
+        Empty metadata_json means not a valid WAV file.
+        """
+        if isinstance(source, Tensor):
+            return core.decode_wav_from_tensor(source)
+        elif isinstance(source, bytes):
+            return core.decode_wav_from_tensor(
+                torch.frombuffer(source, dtype=torch.uint8)
+            )
+        elif isinstance(source, (str, Path)):
+            path = str(source)
+            if path.startswith(("http://", "https://", "s3://")):
+                return torch.empty(0), ""
+            return core.decode_wav_from_file(path)
+        elif isinstance(source, (io.RawIOBase, io.BufferedReader)) or (
+            hasattr(source, "read") and hasattr(source, "seek")
+        ):
+            data = source.read()
+            source.seek(0)
+            return core.decode_wav_from_tensor(
+                torch.frombuffer(data, dtype=torch.uint8)
+            )
+        return torch.empty(0), ""
+
     def get_all_samples(self) -> AudioSamples:
         """Returns all the audio samples from the source.
 
@@ -105,6 +155,9 @@ class AudioDecoder:
         Returns:
             AudioSamples: The samples within the file.
         """
+        # Use WAV fast path if available
+        if self._wav_samples is not None:
+            return self._wav_samples
         return self.get_samples_played_in_range()
 
     def get_samples_played_in_range(
@@ -134,6 +187,30 @@ class AudioDecoder:
             raise ValueError(
                 f"Invalid start seconds: {start_seconds}. It must be less than or equal to stop seconds ({stop_seconds})."
             )
+
+        # Handle WAV fast path
+        if self._wav_samples is not None:
+            sample_rate = self._wav_samples.sample_rate
+            num_samples = self._wav_samples.data.shape[1]
+
+            start_sample = round(start_seconds * sample_rate)
+            if stop_seconds is None:
+                stop_sample = num_samples
+            else:
+                stop_sample = round(stop_seconds * sample_rate)
+
+            start_sample = max(0, min(start_sample, num_samples))
+            stop_sample = max(0, min(stop_sample, num_samples))
+
+            data = self._wav_samples.data[:, start_sample:stop_sample]
+            output_pts = start_sample / sample_rate
+            return AudioSamples(
+                data=data,
+                pts_seconds=output_pts,
+                duration_seconds=data.shape[1] / sample_rate,
+                sample_rate=sample_rate,
+            )
+
         frames, first_pts = core.get_frames_by_pts_in_range_audio(
             self._decoder,
             start_seconds=start_seconds,

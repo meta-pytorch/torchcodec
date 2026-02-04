@@ -14,6 +14,7 @@
 #include "Encoder.h"
 #include "SingleStreamDecoder.h"
 #include "ValidationUtils.h"
+#include "WavDecoder.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "c10/util/Exception.h"
 
@@ -79,6 +80,8 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
+  m.def("decode_wav_from_tensor(Tensor data) -> (Tensor, str)");
+  m.def("decode_wav_from_file(str path) -> (Tensor, str)");
 }
 
 namespace {
@@ -1052,6 +1055,28 @@ void scan_all_streams_to_update_metadata(torch::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
+// Slim WAV decode functions - bypass SingleStreamDecoder for direct PCM access
+// Returns (samples, metadata_json) or (empty tensor, "") if not a valid WAV
+std::tuple<torch::Tensor, std::string> decode_wav_from_tensor(
+    const torch::Tensor& data) {
+  auto result = decodeWavFromTensor(data);
+  if (!result) {
+    return std::make_tuple(
+        torch::empty({0, 0}, torch::kFloat32), std::string());
+  }
+  return std::make_tuple(result->samples, result->metadataJson);
+}
+
+std::tuple<torch::Tensor, std::string> decode_wav_from_file(
+    const std::string& path) {
+  auto result = decodeWavFromFile(path);
+  if (!result) {
+    return std::make_tuple(
+        torch::empty({0, 0}, torch::kFloat32), std::string());
+  }
+  return std::make_tuple(result->samples, result->metadataJson);
+}
+
 TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", &create_from_file);
   m.impl("create_from_tensor", &create_from_tensor);
@@ -1061,6 +1086,7 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", &encode_video_to_file);
   m.impl("encode_video_to_tensor", &encode_video_to_tensor);
   m.impl("_encode_video_to_file_like", &_encode_video_to_file_like);
+  m.impl("decode_wav_from_file", &decode_wav_from_file);
 }
 
 TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
@@ -1092,6 +1118,7 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       &scan_all_streams_to_update_metadata);
 
   m.impl("_get_backend_details", &get_backend_details);
+  m.impl("decode_wav_from_tensor", &decode_wav_from_tensor);
 }
 
 } // namespace facebook::torchcodec

@@ -168,6 +168,8 @@ _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
 _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
+decode_wav_from_tensor = torch.ops.torchcodec_ns.decode_wav_from_tensor.default
+decode_wav_from_file = torch.ops.torchcodec_ns.decode_wav_from_file.default
 
 
 # =============================

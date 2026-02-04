@@ -2317,3 +2317,36 @@ class TestAudioDecoder:
                 # FFmpeg fails to find a default layout for certain channel counts,
                 # which causes SwrContext to fail to initialize.
                 decoder.get_all_samples()
+
+    # WAV fast path tests
+    @pytest.mark.parametrize("asset", (SINE_MONO_S16, SINE_MONO_S32))
+    def test_wav_fast_path_from_bytes(self, asset):
+        """Test that WAV files use the fast path when loaded from bytes."""
+        with open(asset.path, "rb") as f:
+            wav_bytes = f.read()
+
+        decoder = AudioDecoder(wav_bytes)
+        samples = decoder.get_all_samples()
+        assert samples.data.dtype == torch.float32
+        assert samples.data.shape[0] == asset.num_channels
+        assert samples.sample_rate == asset.sample_rate
+
+    @pytest.mark.parametrize("asset", (SINE_MONO_S16, SINE_MONO_S32))
+    def test_wav_fast_path_range_decoding(self, asset):
+        """Test that range decoding works correctly with fast path."""
+        with open(asset.path, "rb") as f:
+            wav_bytes = f.read()
+
+        decoder = AudioDecoder(wav_bytes)
+
+        # Decode a range
+        start_seconds = 1.0
+        stop_seconds = 2.0
+        samples = decoder.get_samples_played_in_range(
+            start_seconds=start_seconds, stop_seconds=stop_seconds
+        )
+
+        expected_num_samples = round((stop_seconds - start_seconds) * asset.sample_rate)
+        assert samples.data.shape[1] == expected_num_samples
+        assert samples.pts_seconds == start_seconds
+        assert samples.duration_seconds == pytest.approx(stop_seconds - start_seconds)

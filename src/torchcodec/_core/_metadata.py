@@ -140,6 +140,22 @@ class AudioStreamMetadata(StreamMetadata):
     def __repr__(self):
         return super().__repr__()
 
+    @classmethod
+    def from_json(cls, json: dict, stream_index: int = 0) -> "AudioStreamMetadata":
+        """Create AudioStreamMetadata from a JSON dictionary returned by"""
+        return cls(
+            duration_seconds_from_header=json.get("durationSecondsFromHeader"),
+            duration_seconds=json.get("durationSeconds"),
+            bit_rate=json.get("bitRate"),
+            begin_stream_seconds_from_header=json.get("beginStreamSecondsFromHeader"),
+            begin_stream_seconds=json.get("beginStreamSeconds"),
+            codec=json.get("codec"),
+            stream_index=stream_index,
+            sample_rate=json.get("sampleRate"),
+            num_channels=json.get("numChannels"),
+            sample_format=json.get("sampleFormat"),
+        )
+
 
 @dataclass
 class ContainerMetadata:
