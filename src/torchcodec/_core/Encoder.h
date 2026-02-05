@@ -16,13 +16,13 @@ class TORCHCODEC_API AudioEncoder {
  public:
   ~AudioEncoder();
 
-  TORCHCODEC_API AudioEncoder(
+  AudioEncoder(
       const StableTensor& samples,
       int sampleRate,
       std::string_view fileName,
       const AudioStreamOptions& audioStreamOptions);
 
-  TORCHCODEC_API AudioEncoder(
+  AudioEncoder(
       const StableTensor& samples,
       int sampleRate,
       std::string_view formatName,
@@ -141,13 +141,13 @@ class TORCHCODEC_API VideoEncoder {
   VideoEncoder(VideoEncoder&&) = delete;
   VideoEncoder& operator=(VideoEncoder&&) = delete;
 
-  TORCHCODEC_API VideoEncoder(
+  VideoEncoder(
       const StableTensor& frames,
       double frameRate,
       std::string_view fileName,
       const VideoStreamOptions& videoStreamOptions);
 
-  TORCHCODEC_API VideoEncoder(
+  VideoEncoder(
       const StableTensor& frames,
       double frameRate,
       std::string_view formatName,

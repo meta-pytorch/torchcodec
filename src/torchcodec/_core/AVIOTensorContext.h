@@ -25,7 +25,7 @@ struct TensorContext {
 // Our read and seek functions then traverse the bytes in memory.
 class TORCHCODEC_API AVIOFromTensorContext : public AVIOContextHolder {
  public:
-  TORCHCODEC_API explicit AVIOFromTensorContext(StableTensor data);
+  explicit AVIOFromTensorContext(StableTensor data);
 
  private:
   detail::TensorContext tensorContext_;
@@ -34,8 +34,8 @@ class TORCHCODEC_API AVIOFromTensorContext : public AVIOContextHolder {
 // For Encoding: used to encode into an output uint8 (bytes) tensor.
 class TORCHCODEC_API AVIOToTensorContext : public AVIOContextHolder {
  public:
-  TORCHCODEC_API explicit AVIOToTensorContext();
-  TORCHCODEC_API StableTensor getOutputTensor();
+  explicit AVIOToTensorContext();
+  StableTensor getOutputTensor();
 
  private:
   detail::TensorContext tensorContext_;
