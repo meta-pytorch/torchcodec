@@ -5,7 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "AVIOFileLikeContext.h"
-#include <torch/types.h>
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -20,16 +20,16 @@ AVIOFileLikeContext::AVIOFileLikeContext(
     py::gil_scoped_acquire gil;
 
     if (isForWriting) {
-      TORCH_CHECK(
+      STABLE_CHECK(
           py::hasattr(fileLike, "write"),
           "File like object must implement a write method for writing.");
     } else {
-      TORCH_CHECK(
+      STABLE_CHECK(
           py::hasattr(fileLike, "read"),
           "File like object must implement a read method for reading.");
     }
 
-    TORCH_CHECK(
+    STABLE_CHECK(
         py::hasattr(fileLike, "seek"),
         "File like object must implement a seek method.");
   }
@@ -60,7 +60,7 @@ int AVIOFileLikeContext::read(void* opaque, uint8_t* buf, int buf_size) {
       break;
     }
 
-    TORCH_CHECK(
+    STABLE_CHECK(
         numBytesRead <= request,
         "Requested up to ",
         request,
