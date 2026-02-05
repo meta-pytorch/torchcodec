@@ -227,12 +227,12 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
 
   initializeCudaContextWithPytorch(device_);
 
-  // Resolve the device index early so we don't need to call cudaGetDevice()
-  // at destruction time (when CUDA may already be shut down).
-  if (!device_.has_index()) {
-    int resolvedIndex = getDeviceIndex(device_);
-    device_.set_index(static_cast<StableDeviceIndex>(resolvedIndex));
-  }
+  // // Resolve the device index early so we don't need to call cudaGetDevice()
+  // // at destruction time (when CUDA may already be shut down).
+  // if (!device_.has_index()) {
+  //   int resolvedIndex = getDeviceIndex(device_);
+  //   device_.set_index(static_cast<StableDeviceIndex>(resolvedIndex));
+  // }
 
   nppCtx_ = getNppStreamContext(device_);
 
