@@ -46,12 +46,6 @@ function(make_torchcodec_sublibrary
     add_library(${library_name} ${type} ${sources})
     set_target_properties(${library_name} PROPERTIES CXX_STANDARD 17)
 
-    # Add pybind11 include dirs BEFORE torch to ensure system pybind11 is used
-    # instead of PyTorch's bundled version (which has restrictions with stable ABI).
-    target_include_directories(${library_name}
-        BEFORE PRIVATE
-        ${pybind11_INCLUDE_DIRS}
-    )
     target_include_directories(${library_name}
         PRIVATE
         ./../../../

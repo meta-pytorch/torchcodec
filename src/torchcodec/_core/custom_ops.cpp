@@ -4,20 +4,20 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-// Temporarily undefine TORCH_TARGET_VERSION to include fmt/format.h
-// PyTorch's bundled fmt has a check that blocks usage with stable ABI,
-// but we need fmt for proper float-to-string conversion.
+// Temporarily undefine TORCH_TARGET_VERSION to include fmt/format.h and pybind11.
+// PyTorch's bundled fmt and pybind11 have checks that block usage with stable ABI,
+// but we need fmt for proper float-to-string conversion and pybind11 for Python bindings.
 #ifdef TORCH_TARGET_VERSION
 #pragma push_macro("TORCH_TARGET_VERSION")
 #undef TORCH_TARGET_VERSION
 #endif
 
 #include <fmt/format.h>
+#include <pybind11/pybind11.h>
 
 // Restore TORCH_TARGET_VERSION
 #pragma pop_macro("TORCH_TARGET_VERSION")
 
-#include <pybind11/pybind11.h>
 #include <cstdint>
 #include <sstream>
 #include <string>
