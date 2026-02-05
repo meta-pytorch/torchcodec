@@ -718,9 +718,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   const auto& streamInfo = streamInfos_[activeStreamIndex_];
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
-      frameIndices.numel(),
-      resizedOutputDims_.value_or(preRotationDims_),
-      videoStreamOptions.device);
+      frameIndices.numel(), getOutputDims(), videoStreamOptions.device);
 
   auto previousIndexInVideo = -1;
   for (int64_t f = 0; f < frameIndices.numel(); ++f) {
@@ -777,9 +775,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   int64_t numOutputFrames = std::ceil((stop - start) / double(step));
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
-      numOutputFrames,
-      resizedOutputDims_.value_or(preRotationDims_),
-      videoStreamOptions.device);
+      numOutputFrames, getOutputDims(), videoStreamOptions.device);
 
   for (int64_t i = start, f = 0; i < stop; i += step, ++f) {
     FrameOutput frameOutput =
@@ -912,9 +908,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
   // below. Hence, we need this special case below.
   if (startSeconds == stopSeconds) {
     FrameBatchOutput frameBatchOutput(
-        0,
-        resizedOutputDims_.value_or(preRotationDims_),
-        videoStreamOptions.device);
+        0, getOutputDims(), videoStreamOptions.device);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     return frameBatchOutput;
   }
@@ -957,9 +951,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
 
     FrameBatchOutput frameBatchOutput(
-        numOutputFrames,
-        resizedOutputDims_.value_or(preRotationDims_),
-        videoStreamOptions.device);
+        numOutputFrames, getOutputDims(), videoStreamOptions.device);
 
     // Decode frames, reusing already-decoded frames for duplicates
     int64_t lastDecodedSourceIndex = -1;
@@ -1000,9 +992,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     int64_t numFrames = stopFrameIndex - startFrameIndex;
 
     FrameBatchOutput frameBatchOutput(
-        numFrames,
-        resizedOutputDims_.value_or(preRotationDims_),
-        videoStreamOptions.device);
+        numFrames, getOutputDims(), videoStreamOptions.device);
     for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
       FrameOutput frameOutput =
           getFrameAtIndexInternal(i, frameBatchOutput.data[f]);
@@ -1550,6 +1540,20 @@ int64_t SingleStreamDecoder::getPts(int64_t frameIndex) {
     default:
       TORCH_CHECK(false, "Unknown SeekMode");
   }
+}
+
+FrameDims SingleStreamDecoder::getOutputDims() const {
+  const auto& streamMetadata =
+      containerMetadata_.allStreamMetadata[activeStreamIndex_];
+  Rotation rotation = rotationFromDegrees(streamMetadata.rotation);
+  // If there is a rotation, then resizedOutputDims_ is necessarily non-null
+  // (the rotation transform would have set it).
+  if (rotation != Rotation::NONE) {
+    TORCH_CHECK(
+        resizedOutputDims_.has_value(),
+        "Internal error: rotation is applied but resizedOutputDims_ is not set");
+  }
+  return resizedOutputDims_.value_or(preRotationDims_);
 }
 
 // --------------------------------------------------------------------------

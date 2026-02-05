@@ -296,6 +296,16 @@ class SingleStreamDecoder {
 
   int64_t getPts(int64_t frameIndex);
 
+  // Returns the output frame dimensions for video frames.
+  // If resizedOutputDims_ is set (via resize, crop, or rotation transforms),
+  // returns that. Otherwise, returns preRotationDims_.
+  //
+  // Note: if resizedOutputDims_ is null, there is no rotation (the
+  // rotation transform would have set it), so preRotationDims_ ==
+  // postRotationDims_. This makes it safe to use preRotationDims_ as the
+  // fallback.
+  FrameDims getOutputDims() const;
+
   // --------------------------------------------------------------------------
   // STREAM AND METADATA APIS
   // --------------------------------------------------------------------------
