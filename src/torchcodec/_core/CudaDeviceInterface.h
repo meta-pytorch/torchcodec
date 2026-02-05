@@ -43,7 +43,7 @@ class CudaDeviceInterface : public DeviceInterface {
 
   std::string getDetails() override;
 
-  UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
+  UniqueAVFrame convertTensorToAVFrameForEncoding(
       const StableTensor& tensor,
       int frameIndex,
       AVCodecContext* codecContext) override;

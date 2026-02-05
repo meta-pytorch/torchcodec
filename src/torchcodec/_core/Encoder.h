@@ -160,27 +160,15 @@ class TORCHCODEC_API VideoEncoder {
 
  private:
   void initializeEncoder(const VideoStreamOptions& videoStreamOptions);
-  UniqueAVFrame convertTensorToAVFrame(
-      const StableTensor& frame,
-      int frameIndex);
   void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
   void flushBuffers();
 
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;
   AVStream* avStream_ = nullptr;
-  UniqueSwsContext swsContext_;
 
   const StableTensor frames_;
   double inFrameRate_;
-
-  int inWidth_ = -1;
-  int inHeight_ = -1;
-  AVPixelFormat inPixelFormat_ = AV_PIX_FMT_NONE;
-
-  int outWidth_ = -1;
-  int outHeight_ = -1;
-  AVPixelFormat outPixelFormat_ = AV_PIX_FMT_NONE;
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
   std::unique_ptr<DeviceInterface> deviceInterface_;

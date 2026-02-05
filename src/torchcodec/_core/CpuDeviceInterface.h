@@ -44,6 +44,11 @@ class CpuDeviceInterface : public DeviceInterface {
       FrameOutput& frameOutput,
       std::optional<StableTensor> preAllocatedOutputTensor) override;
 
+  UniqueAVFrame convertTensorToAVFrameForEncoding(
+      const StableTensor& tensor,
+      int frameIndex,
+      AVCodecContext* codecContext) override;
+
   std::string getDetails() override;
 
  private:

@@ -524,4 +524,78 @@ std::string CpuDeviceInterface::getDetails() {
   return std::string("CPU Device Interface.");
 }
 
+UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
+    const StableTensor& frame,
+    int frameIndex,
+    AVCodecContext* codecContext) {
+  int inHeight = static_cast<int>(frame.sizes()[1]);
+  int inWidth = static_cast<int>(frame.sizes()[2]);
+  AVPixelFormat inPixelFormat = AV_PIX_FMT_GBRP;
+  int outWidth = codecContext->width;
+  int outHeight = codecContext->height;
+  AVPixelFormat outPixelFormat = codecContext->pix_fmt;
+
+  // Initialize and cache scaling context if it does not exist
+  if (!swsContext_) {
+    swsContext_.reset(sws_getContext(
+        inWidth,
+        inHeight,
+        inPixelFormat,
+        outWidth,
+        outHeight,
+        outPixelFormat,
+        SWS_BICUBIC, // Used by FFmpeg CLI
+        nullptr,
+        nullptr,
+        nullptr));
+    STABLE_CHECK(swsContext_ != nullptr, "Failed to create scaling context");
+  }
+
+  UniqueAVFrame avFrame(av_frame_alloc());
+  STABLE_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
+
+  // Set output frame properties
+  avFrame->format = outPixelFormat;
+  avFrame->width = outWidth;
+  avFrame->height = outHeight;
+  avFrame->pts = frameIndex;
+
+  int status = av_frame_get_buffer(avFrame.get(), 0);
+  STABLE_CHECK(status >= 0, "Failed to allocate frame buffer");
+
+  // Need to convert/scale the frame
+  // Create temporary frame with input format
+  UniqueAVFrame inputFrame(av_frame_alloc());
+  STABLE_CHECK(inputFrame != nullptr, "Failed to allocate input AVFrame");
+
+  inputFrame->format = inPixelFormat;
+  inputFrame->width = inWidth;
+  inputFrame->height = inHeight;
+
+  uint8_t* tensorData = frame.mutable_data_ptr<uint8_t>();
+
+  int channelSize = inHeight * inWidth;
+  // Since frames tensor is in NCHW, we must use a planar format.
+  // FFmpeg only provides AV_PIX_FMT_GBRP for planar RGB,
+  // so we reorder RGB -> GBR.
+  inputFrame->data[0] = tensorData + channelSize;
+  inputFrame->data[1] = tensorData + (2 * channelSize);
+  inputFrame->data[2] = tensorData;
+
+  inputFrame->linesize[0] = inWidth;
+  inputFrame->linesize[1] = inWidth;
+  inputFrame->linesize[2] = inWidth;
+
+  status = sws_scale(
+      swsContext_.get(),
+      inputFrame->data,
+      inputFrame->linesize,
+      0,
+      inputFrame->height,
+      avFrame->data,
+      avFrame->linesize);
+  STABLE_CHECK(status == outHeight, "sws_scale failed");
+  return avFrame;
+}
+
 } // namespace facebook::torchcodec
