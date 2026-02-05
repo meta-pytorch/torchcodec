@@ -4,12 +4,8 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-// Enable CUDA-specific functions in PyTorch stable ABI headers
-#define USE_CUDA 1
-
 #include <mutex>
 #include <vector>
-#include "StableABICompat.h"
 
 #include "BetaCudaDeviceInterface.h"
 
@@ -547,12 +543,9 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   procParams.unpaired_field = dispInfo.repeat_first_field < 0;
   // We set the NVDEC stream to the current stream. It will be waited upon by
   // the NPP stream before any color conversion.
-  // Re types: we get a cudaStream_t from PyTorch but it's interchangeable with
-  // CUstream
-  void* rawStream = nullptr;
-  TORCH_ERROR_CODE_CHECK(
-      aoti_torch_get_current_cuda_stream(device_.index(), &rawStream));
-  procParams.output_stream = reinterpret_cast<CUstream>(rawStream);
+  // Re types: cudaStream_t from PyTorch is interchangeable with CUstream
+  procParams.output_stream =
+      reinterpret_cast<CUstream>(getCurrentCudaStream(device_.index()));
 
   CUdeviceptr framePtr = 0;
   unsigned int pitch = 0;
@@ -838,10 +831,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
 
-  void* rawNvdecStream = nullptr;
-  TORCH_ERROR_CODE_CHECK(
-      aoti_torch_get_current_cuda_stream(device_.index(), &rawNvdecStream));
-  cudaStream_t nvdecStream = reinterpret_cast<cudaStream_t>(rawNvdecStream);
+  cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
   frameOutput.data = convertNV12FrameToRGB(
       gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);

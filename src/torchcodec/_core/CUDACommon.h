@@ -23,6 +23,22 @@ namespace facebook::torchcodec {
 // https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
 constexpr int MAX_CUDA_GPUS = 128;
 
+// ===========================================================================
+// CUDA Stream Utilities
+// ===========================================================================
+// C++ wrapper for aoti_torch_get_current_cuda_stream.
+// Returns the current CUDA stream for the given device index.
+// This is the stable ABI way to get a cudaStream_t for use with CUDA libraries
+// (NPP, NVDEC, cuBLAS, etc.).
+//
+// Note: USE_CUDA must be defined at compile time (set via CMake when ENABLE_CUDA is on).
+inline cudaStream_t getCurrentCudaStream(int32_t deviceIndex) {
+  void* stream = nullptr;
+  TORCH_ERROR_CODE_CHECK(
+      aoti_torch_get_current_cuda_stream(deviceIndex, &stream));
+  return static_cast<cudaStream_t>(stream);
+}
+
 void initializeCudaContextWithPytorch(const StableDevice& device);
 
 // Unique pointer type for NPP stream context

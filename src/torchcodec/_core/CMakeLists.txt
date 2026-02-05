@@ -114,6 +114,13 @@ function(make_torchcodec_sublibrary
         TORCH_TARGET_VERSION=0x020b000000000000
     )
 
+    # Define USE_CUDA=1 when building with CUDA support.
+    # This is required by the PyTorch stable ABI headers (shim.h) to expose
+    # CUDA-specific functions like aoti_torch_get_current_cuda_stream.
+    if(ENABLE_CUDA)
+        target_compile_definitions(${library_name} PRIVATE USE_CUDA=1)
+    endif()
+
 endfunction()
 
 function(make_torchcodec_libraries

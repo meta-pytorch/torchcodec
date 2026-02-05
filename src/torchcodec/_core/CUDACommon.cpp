@@ -4,9 +4,6 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-// Enable CUDA-specific functions in PyTorch stable ABI headers
-#define USE_CUDA 1
-
 #include "CUDACommon.h"
 #include "Cache.h" // for PerGpuCache
 
@@ -177,10 +174,7 @@ StableTensor convertNV12FrameToRGB(
   // color-converting it with NPP.
   // So we make the NPP stream wait for NVDEC to finish.
   // Get the current PyTorch CUDA stream using stable ABI
-  void* rawNppStream = nullptr;
-  TORCH_ERROR_CODE_CHECK(
-      aoti_torch_get_current_cuda_stream(device.index(), &rawNppStream));
-  cudaStream_t nppStream = reinterpret_cast<cudaStream_t>(rawNppStream);
+  cudaStream_t nppStream = getCurrentCudaStream(device.index());
 
   // Use raw CUDA events for synchronization between streams
   cudaEvent_t nvdecDoneEvent;
