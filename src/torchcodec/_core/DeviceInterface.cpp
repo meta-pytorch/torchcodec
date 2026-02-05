@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "DeviceInterface.h"
+#include "StableABICompat.h"
 #include <map>
 #include <mutex>
 
@@ -36,7 +37,7 @@ bool registerDeviceInterface(
   std::scoped_lock lock(g_interface_mutex);
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
-  TORCH_CHECK(
+  STABLE_CHECK(
       deviceMap.find(key) == deviceMap.end(),
       "Device interface already registered for device type ",
       key.deviceType,
@@ -67,7 +68,7 @@ void validateDeviceInterface(
             arg.first.variant == variant;
       });
 
-  TORCH_CHECK(
+  STABLE_CHECK(
       deviceInterface != deviceMap.end(),
       "Unsupported device: ",
       device,
@@ -90,7 +91,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
     return std::unique_ptr<DeviceInterface>(it->second(device));
   }
 
-  TORCH_CHECK(
+  STABLE_CHECK(
       false,
       "No device interface found for device type: ",
       device.type(),
@@ -100,7 +101,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
 }
 
 torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
-  TORCH_CHECK_EQ(avFrame->format, AV_PIX_FMT_RGB24);
+  STABLE_CHECK_EQ(avFrame->format, AV_PIX_FMT_RGB24);
 
   int height = avFrame->height;
   int width = avFrame->width;
