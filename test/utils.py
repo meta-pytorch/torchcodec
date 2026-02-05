@@ -5,12 +5,10 @@ import pathlib
 import platform
 import subprocess
 import sys
-
 from dataclasses import dataclass, field
 
 import numpy as np
 import pytest
-
 import torch
 
 from torchcodec import ffmpeg_major_version
@@ -476,6 +474,18 @@ NASA_VIDEO = TestVideo(
     stream_infos={
         0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
         3: TestVideoStreamInfo(width=480, height=270, num_color_channels=3),
+    },
+    frames={},  # Automatically loaded from json file
+)
+
+NASA_VIDEO_ROTATED = TestVideo(
+    filename="nasa_13013_rotated.mp4",
+    default_stream_index=0,
+    stream_infos={
+        # Post-rotation dimensions: 90-degree rotation swaps width/height
+        # This is a short video (~15 frames) extracted from nasa_13013.mp4 stream 3
+        # with 90-degree rotation metadata added
+        0: TestVideoStreamInfo(width=270, height=480, num_color_channels=3),
     },
     frames={},  # Automatically loaded from json file
 )
