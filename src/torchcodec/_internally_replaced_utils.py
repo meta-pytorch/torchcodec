@@ -15,7 +15,7 @@ from types import ModuleType
 # https://github.com/pytorch/vision/blob/947ae1dc71867f28021d5bc0ff3a19c249236e2a/torchvision/_internally_replaced_utils.py#L25
 def _get_extension_path(lib_name: str) -> str:
     extension_suffixes = []
-    if sys.platform == "linux":
+    if sys.platform == "linux" or sys.platform.startswith("freebsd"):
         extension_suffixes = importlib.machinery.EXTENSION_SUFFIXES
     elif sys.platform == "darwin":
         extension_suffixes = importlib.machinery.EXTENSION_SUFFIXES + [".dylib"]
