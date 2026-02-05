@@ -9,7 +9,7 @@
   
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>torchcodec._core._metadata &mdash; TorchCodec 0.11.0.dev20260204+cu126 Documentation</title>
+  <title>torchcodec._core._metadata &mdash; TorchCodec 0.11.0.dev20260205+cu126 Documentation</title>
   
 
   
@@ -416,7 +416,6 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">fractions</span><span class="w"> </span><span class="kn">import</span> <span class="n">Fraction</span>
 
 <span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
-
 <span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec._core.ops</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
     <span class="n">_get_container_json_metadata</span><span class="p">,</span>
     <span class="n">_get_stream_json_metadata</span><span class="p">,</span>
@@ -506,6 +505,22 @@
 <span class="sd">    (SAR --- not to be confused with Storage Aspect Ratio, also SAR),</span>
 <span class="sd">    is the ratio between the width and height of each pixel</span>
 <span class="sd">    (``fractions.Fraction`` or None).&quot;&quot;&quot;</span>
+    <span class="n">rotation</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Rotation angle in degrees (counter-clockwise rounded to the nearest</span>
+<span class="sd">    multiple of 90 degrees) from the display matrix metadata. This indicates</span>
+<span class="sd">    how the video should be rotated for correct display. TorchCodec automatically</span>
+<span class="sd">    applies this rotation during decoding, so the returned frames are in the</span>
+<span class="sd">    correct orientation (float or None).</span>
+
+<span class="sd">    .. note::</span>
+
+<span class="sd">        The :attr:`~torchcodec.decoders.VideoStreamMetadata.width` and</span>
+<span class="sd">        :attr:`~torchcodec.decoders.VideoStreamMetadata.height` attributes report</span>
+<span class="sd">        the **post-rotation** dimensions, i.e., the dimensions of frames as they</span>
+<span class="sd">        will be returned by TorchCodec&#39;s decoding methods. For videos with 90</span>
+<span class="sd">        or -90 degree rotation, this means width and height are swapped</span>
+<span class="sd">        compared to the raw encoded dimensions in the container.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="c1"># Computed fields (computed in C++ with fallback logic)</span>
     <span class="n">end_stream_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span>
@@ -631,6 +646,7 @@
                     <span class="n">num_frames_from_content</span><span class="o">=</span><span class="n">stream_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;numFramesFromContent&quot;</span><span class="p">),</span>
                     <span class="n">average_fps_from_header</span><span class="o">=</span><span class="n">stream_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;averageFpsFromHeader&quot;</span><span class="p">),</span>
                     <span class="n">pixel_aspect_ratio</span><span class="o">=</span><span class="n">_get_optional_par_fraction</span><span class="p">(</span><span class="n">stream_dict</span><span class="p">),</span>
+                    <span class="n">rotation</span><span class="o">=</span><span class="n">stream_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;rotation&quot;</span><span class="p">),</span>
                     <span class="o">**</span><span class="n">common_meta</span><span class="p">,</span>
                 <span class="p">)</span>
             <span class="p">)</span>

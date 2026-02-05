@@ -130,6 +130,7 @@ some metadata via the ``metadata`` attribute which is a
       num_frames_from_content: 345
       average_fps_from_header: 25
       pixel_aspect_ratio: 1
+      rotation: None
       end_stream_seconds: 13.8
       num_frames: 345
       average_fps: 25
@@ -461,7 +462,7 @@ respectively.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 2.698 seconds)
+   **Total running time of the script:** (0 minutes 2.733 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_basic_example.py:

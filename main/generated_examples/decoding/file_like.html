@@ -10,7 +10,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Streaming data through file-like support &mdash; TorchCodec 0.11.0.dev20260204+cu126 Documentation</title>
+  <title>Streaming data through file-like support &mdash; TorchCodec 0.11.0.dev20260205+cu126 Documentation</title>
   
 
   
@@ -489,6 +489,7 @@ VideoStreamMetadata:
   num_frames_from_content: 6175
   average_fps_from_header: 29.97002997002997
   pixel_aspect_ratio: 1
+  rotation: None
   end_stream_seconds: 206.03916666666666
   num_frames: 6175
   average_fps: 29.97002997002997
@@ -553,13 +554,13 @@ frame. See <a class="reference internal" href="approximate_mode.html#sphx-glr-ge
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Decode from existing download:
-med = 236.91ms +- 0.77
+med = 238.53ms +- 1.37
 
 Download before decode:
-med = 1320.20ms +- 67.11
+med = 1414.36ms +- 74.12
 
 Direct url to FFmpeg:
-med = 291.14ms +- 6.73
+med = 284.50ms +- 5.50
 </pre></div>
 </div>
 <p>Decoding the already downloaded video is clearly the fastest. Having to
@@ -592,7 +593,7 @@ Note that using these capabilities from the fsspec library also requires the
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Stream while decode:
-med = 259.25ms +- 1.89
+med = 263.91ms +- 3.60
 </pre></div>
 </div>
 <p>Streaming the data through a file-like object is much faster than
@@ -716,10 +717,10 @@ the file-like object to <a class="reference internal" href="../../generated/torc
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Decode from existing file path:
-med = 236.72ms +- 0.95
+med = 238.76ms +- 1.47
 
 Decode from existing open file object:
-med = 237.64ms +- 0.84
+med = 238.34ms +- 0.68
 </pre></div>
 </div>
 <p>Thankfully, the answer is both means of decoding from a local file take about
@@ -732,7 +733,7 @@ methods while decoding.</p>
 <a href="https://docs.python.org/3/library/shutil.html#shutil.rmtree" title="shutil.rmtree" class="sphx-glr-backref-module-shutil sphx-glr-backref-type-py-function"><span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span></a><span class="p">(</span><a href="https://docs.python.org/3/library/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">temp_dir</span></a><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 33.299 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 35.049 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-decoding-file-like-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../../_downloads/f0caa5fce0f20da68647d009fb8dd8d0/file_like.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">file_like.ipynb</span></code></a></p>
