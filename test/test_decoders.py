@@ -1299,7 +1299,10 @@ class TestVideoDecoder:
             )
 
         # Test get_frames_played_in_range returns correct PTS values
-        stop_pts = TEST_NON_ZERO_START.get_frame_info(3).pts_seconds
+        # Use the decoder's own PTS value to avoid floating point precision issues
+        # between ffprobe's PTS (in JSON) and the decoder's computed PTS
+        frame3 = decoder.get_frame_at(3)
+        stop_pts = frame3.pts_seconds
         frames_pts_range = decoder.get_frames_played_in_range(
             expected_start_time, stop_pts
         )
