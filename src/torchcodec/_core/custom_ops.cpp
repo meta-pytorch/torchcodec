@@ -257,18 +257,39 @@ int checkedToNonNegativeInt(const std::string& str) {
 
 // Resize transform specs take the form:
 //
-//   "resize, <height>, <width>"
+//   "resize, <height>, <width>" or "resize, <height>, <width>, <interpolation>"
 //
-// Where "resize" is the string literal and <height> and <width> are positive
-// integers.
+// Where "resize" is the string literal, <height> and <width> are positive
+// integers, and <interpolation> is an optional string (bilinear, bicubic, or
+// lanczos). If <interpolation> is not specified, it defaults to bilinear.
 Transform* makeResizeTransform(
     const std::vector<std::string>& resizeTransformSpec) {
   TORCH_CHECK(
-      resizeTransformSpec.size() == 3,
-      "resizeTransformSpec must have 3 elements including its name");
+      resizeTransformSpec.size() >= 3 && resizeTransformSpec.size() <= 4,
+      "resizeTransformSpec must have 3 or 4 elements including its name");
   int height = checkedToPositiveInt(resizeTransformSpec[1]);
   int width = checkedToPositiveInt(resizeTransformSpec[2]);
-  return new ResizeTransform(FrameDims(height, width));
+
+  auto interpolationMode = ResizeTransform::InterpolationMode::BILINEAR;
+  if (resizeTransformSpec.size() == 4) {
+    const std::string& modeStr = resizeTransformSpec[3];
+    // Trim leading/trailing whitespace
+    auto trimmed = modeStr;
+    trimmed.erase(0, trimmed.find_first_not_of(" \t"));
+    trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
+
+    if (trimmed == "bilinear") {
+      interpolationMode = ResizeTransform::InterpolationMode::BILINEAR;
+    } else if (trimmed == "bicubic") {
+      interpolationMode = ResizeTransform::InterpolationMode::BICUBIC;
+    } else {
+      TORCH_CHECK(
+          false,
+          "Unknown interpolation mode: '" + trimmed +
+              "'. Supported modes: bilinear, bicubic");
+    }
+  }
+  return new ResizeTransform(FrameDims(height, width), interpolationMode);
 }
 
 // Crop transform specs take the form:
