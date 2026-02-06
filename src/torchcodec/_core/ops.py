@@ -18,7 +18,6 @@ from types import ModuleType
 
 import torch
 from torch.library import get_ctx, register_fake
-
 from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchcodec/src:internally_replaced_utils
     _get_extension_path,
     _get_pybind_ops_module_name,

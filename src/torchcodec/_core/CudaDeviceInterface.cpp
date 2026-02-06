@@ -499,7 +499,7 @@ const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
 }
 } // namespace
 
-UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
+UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
     const torch::Tensor& tensor,
     int frameIndex,
     AVCodecContext* codecContext) {

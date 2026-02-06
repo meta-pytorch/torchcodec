@@ -837,11 +837,12 @@ std::string get_json_metadata(torch::Tensor& decoder) {
     if (streamMetadata.codecName.has_value()) {
       metadataMap["codec"] = quoteValue(streamMetadata.codecName.value());
     }
-    if (streamMetadata.width.has_value()) {
-      metadataMap["width"] = std::to_string(*streamMetadata.width);
+    if (streamMetadata.postRotationWidth.has_value()) {
+      metadataMap["width"] = std::to_string(*streamMetadata.postRotationWidth);
     }
-    if (streamMetadata.height.has_value()) {
-      metadataMap["height"] = std::to_string(*streamMetadata.height);
+    if (streamMetadata.postRotationHeight.has_value()) {
+      metadataMap["height"] =
+          std::to_string(*streamMetadata.postRotationHeight);
     }
     if (streamMetadata.averageFpsFromHeader.has_value()) {
       metadataMap["averageFpsFromHeader"] =
@@ -941,17 +942,20 @@ std::string get_stream_json_metadata(
   if (streamMetadata.codecName.has_value()) {
     map["codec"] = quoteValue(streamMetadata.codecName.value());
   }
-  if (streamMetadata.width.has_value()) {
-    map["width"] = std::to_string(*streamMetadata.width);
+  if (streamMetadata.postRotationWidth.has_value()) {
+    map["width"] = std::to_string(*streamMetadata.postRotationWidth);
   }
-  if (streamMetadata.height.has_value()) {
-    map["height"] = std::to_string(*streamMetadata.height);
+  if (streamMetadata.postRotationHeight.has_value()) {
+    map["height"] = std::to_string(*streamMetadata.postRotationHeight);
   }
   if (streamMetadata.sampleAspectRatio.has_value()) {
     map["sampleAspectRatioNum"] =
         std::to_string((*streamMetadata.sampleAspectRatio).num);
     map["sampleAspectRatioDen"] =
         std::to_string((*streamMetadata.sampleAspectRatio).den);
+  }
+  if (streamMetadata.rotation.has_value()) {
+    map["rotation"] = std::to_string(*streamMetadata.rotation);
   }
   if (streamMetadata.averageFpsFromHeader.has_value()) {
     map["averageFpsFromHeader"] =

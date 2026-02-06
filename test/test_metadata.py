@@ -20,7 +20,7 @@ from torchcodec._core import (
 )
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
-from .utils import NASA_AUDIO_MP3, NASA_VIDEO
+from .utils import NASA_AUDIO_MP3, NASA_VIDEO, NASA_VIDEO_ROTATED
 
 
 # TODO: Expected values in these tests should be based on the assets's
@@ -149,6 +149,25 @@ def test_get_metadata_audio_file(metadata_getter):
     assert best_audio_stream_metadata.sample_format == "fltp"
 
 
+def test_rotation_metadata():
+    """Test that rotation metadata is correctly extracted for rotated video."""
+    # NASA_VIDEO_ROTATED has 90-degree rotation metadata
+    decoder_rotated = VideoDecoder(NASA_VIDEO_ROTATED.path)
+    assert decoder_rotated.metadata.rotation is not None
+    assert decoder_rotated.metadata.rotation == 90
+
+    # NASA_VIDEO has no rotation metadata
+    decoder = VideoDecoder(NASA_VIDEO.path)
+    assert decoder.metadata.rotation is None
+
+    # Check that height and width are reported post-rotation
+    # For 90-degree rotation, width and height should be swapped
+    assert (decoder_rotated.metadata.height, decoder_rotated.metadata.width) == (
+        decoder.metadata.width,
+        decoder.metadata.height,
+    )
+
+
 def test_repr():
     # Test for calls to print(), str(), etc. Useful to make sure we don't forget
     # to add additional @properties to __repr__
@@ -170,6 +189,7 @@ def test_repr():
   num_frames_from_content: 390
   average_fps_from_header: 29.97002997002997
   pixel_aspect_ratio: 1
+  rotation: None
   end_stream_seconds: 13.013
   num_frames: 390
   average_fps: 29.97002997002997
@@ -188,7 +208,7 @@ def test_repr():
   codec: mp3
   stream_index: 0
   duration_seconds: {expected_duration_seconds_from_header}
-  begin_stream_seconds: 0
+  begin_stream_seconds: 0.138125
   sample_rate: 8000
   num_channels: 2
   sample_format: fltp

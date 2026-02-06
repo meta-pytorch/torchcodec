@@ -53,9 +53,12 @@ struct StreamMetadata {
   std::optional<int64_t> numFramesFromContent;
 
   // Video-only fields
-  std::optional<int> width;
-  std::optional<int> height;
+  // Post-rotation dimensions
+  std::optional<int> postRotationWidth;
+  std::optional<int> postRotationHeight;
   std::optional<AVRational> sampleAspectRatio;
+  // Rotation angle in degrees from display matrix, in the range [-180, 180].
+  std::optional<double> rotation;
 
   // Audio-only fields
   std::optional<int64_t> sampleRate;
