@@ -6,6 +6,7 @@
 
 #ifdef FBCODE_CAFFE2
 #include "StableABICompat.h"
+
 // No need to do anything on fbcode. NVCUVID is available there, we can take a
 // hard dependency on it.
 // The FBCODE_CAFFE2 macro is defined in the upstream fbcode build of torch, so

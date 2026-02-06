@@ -2,8 +2,8 @@
 
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
-#include "torch/types.h"
 #include "StableABICompat.h"
+#include "torch/types.h"
 
 extern "C" {
 #include <libavutil/hwcontext.h>
@@ -331,7 +331,8 @@ void AudioEncoder::encode() {
 
     numEncodedSamples += numSamplesToEncode;
   }
-  STABLE_CHECK(numEncodedSamples == numSamples, "Hmmmmmm something went wrong.");
+  STABLE_CHECK(
+      numEncodedSamples == numSamples, "Hmmmmmm something went wrong.");
 
   flushBuffers();
 
@@ -724,11 +725,7 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
-  // Only create device interface when frames are on a CUDA device.
-  // Encoding on CPU is implemented in this file.
-  if (frames_.device().is_cuda()) {
-    deviceInterface_ = createDeviceInterface(frames_.device());
-  }
+  deviceInterface_ = createDeviceInterface(frames_.device());
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
@@ -748,17 +745,12 @@ void VideoEncoder::initializeEncoder(
     STABLE_CHECK(
         avFormatContext_->oformat != nullptr,
         "Output format is null, unable to find default codec.");
-    // If frames are on a CUDA device, try to substitute the default codec
-    // with its hardware equivalent
-    if (frames_.device().is_cuda()) {
-      STABLE_CHECK(
-          deviceInterface_ != nullptr,
-          "Device interface is undefined when input frames are on a CUDA device. This should never happen, please report this to the TorchCodec repo.");
-      auto hwCodec = deviceInterface_->findCodec(
-          avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
-      if (hwCodec.has_value()) {
-        avCodec = hwCodec.value();
-      }
+    // Try to substitute the default codec with its hardware equivalent
+    // This will return std::nullopt when device is CPU.
+    auto hwCodec = deviceInterface_->findCodec(
+        avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
+    if (hwCodec.has_value()) {
+      avCodec = hwCodec.value();
     }
     if (!avCodec) {
       avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
@@ -776,17 +768,17 @@ void VideoEncoder::initializeEncoder(
   STABLE_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
   avCodecContext_.reset(avCodecContext);
 
-  // Store dimension order and input pixel format
+  // Store dimensions of input frames
   // TODO-VideoEncoder: (P2) Enable tensors in NHWC shape
   auto sizes = frames_.sizes();
-  inPixelFormat_ = AV_PIX_FMT_GBRP;
-  inHeight_ = static_cast<int>(sizes[2]);
-  inWidth_ = static_cast<int>(sizes[3]);
+  int inHeight = static_cast<int>(sizes[2]);
+  int inWidth = static_cast<int>(sizes[3]);
 
-  // Use specified dimensions or input dimensions
+  // Always use input dimensions as output dimensions
   // TODO-VideoEncoder: (P2) Allow height and width to be set
-  outWidth_ = inWidth_;
-  outHeight_ = inHeight_;
+  int outWidth = inWidth;
+  int outHeight = inHeight;
+  AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
     // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user on GPU
@@ -797,19 +789,19 @@ void VideoEncoder::initializeEncoder(
           "Video encoding on GPU currently only supports the nv12 pixel format. "
           "Do not set pixel_format to use nv12 by default.");
     }
-    outPixelFormat_ =
+    outPixelFormat =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
     if (frames_.device().is_cuda()) {
       // Default to nv12 pixel format when encoding on GPU.
-      outPixelFormat_ = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
+      outPixelFormat = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
     } else {
       const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
       // Use first listed pixel format as default (often yuv420p).
       // This is similar to FFmpeg's logic:
       // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
       // If pixel formats are undefined for some reason, try yuv420p
-      outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
+      outPixelFormat = (formats && formats[0] != AV_PIX_FMT_NONE)
           ? formats[0]
           : AV_PIX_FMT_YUV420P;
     }
@@ -817,9 +809,9 @@ void VideoEncoder::initializeEncoder(
 
   // Configure codec parameters
   avCodecContext_->codec_id = avCodec->id;
-  avCodecContext_->width = outWidth_;
-  avCodecContext_->height = outHeight_;
-  avCodecContext_->pix_fmt = outPixelFormat_;
+  avCodecContext_->width = outWidth;
+  avCodecContext_->height = outHeight;
+  avCodecContext_->pix_fmt = outPixelFormat;
   // TODO-VideoEncoder: (P1) Add and utilize output frame_rate option
   avCodecContext_->framerate = av_d2q(inFrameRate_, INT_MAX);
   avCodecContext_->time_base = av_inv_q(avCodecContext_->framerate);
@@ -854,8 +846,7 @@ void VideoEncoder::initializeEncoder(
         0);
   }
 
-  // When frames are on a CUDA device, deviceInterface_ will be defined.
-  if (frames_.device().is_cuda() && deviceInterface_) {
+  if (frames_.device().is_cuda()) {
     deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
     deviceInterface_->setupHardwareFrameContextForEncoding(
         avCodecContext_.get());
@@ -902,20 +893,14 @@ void VideoEncoder::encode() {
   int numFrames = static_cast<int>(frames_.sizes()[0]);
   for (int i = 0; i < numFrames; ++i) {
     torch::Tensor currFrame = frames_[i];
-    UniqueAVFrame avFrame;
-    if (frames_.device().is_cuda() && deviceInterface_) {
-      auto cudaFrame = deviceInterface_->convertCUDATensorToAVFrameForEncoding(
-          currFrame, i, avCodecContext_.get());
-      STABLE_CHECK(
-          cudaFrame != nullptr,
-          "convertCUDATensorToAVFrameForEncoding failed for frame ",
-          i,
-          " on device: ",
-          frames_.device());
-      avFrame = std::move(cudaFrame);
-    } else {
-      avFrame = convertTensorToAVFrame(currFrame, i);
-    }
+    UniqueAVFrame avFrame = deviceInterface_->convertTensorToAVFrameForEncoding(
+        currFrame, i, avCodecContext_.get());
+    STABLE_CHECK(
+        avFrame != nullptr,
+        "convertTensorToAVFrameForEncoding failed for frame ",
+        i,
+        " on device: ",
+        frames_.device());
     encodeFrame(autoAVPacket, avFrame);
   }
 
@@ -926,72 +911,6 @@ void VideoEncoder::encode() {
       status == AVSUCCESS,
       "Error in av_write_trailer: ",
       getFFMPEGErrorStringFromErrorCode(status));
-}
-
-UniqueAVFrame VideoEncoder::convertTensorToAVFrame(
-    const torch::Tensor& frame,
-    int frameIndex) {
-  // Initialize and cache scaling context if it does not exist
-  if (!swsContext_) {
-    swsContext_.reset(sws_getContext(
-        inWidth_,
-        inHeight_,
-        inPixelFormat_,
-        outWidth_,
-        outHeight_,
-        outPixelFormat_,
-        SWS_BICUBIC, // Used by FFmpeg CLI
-        nullptr,
-        nullptr,
-        nullptr));
-    STABLE_CHECK(swsContext_ != nullptr, "Failed to create scaling context");
-  }
-
-  UniqueAVFrame avFrame(av_frame_alloc());
-  STABLE_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
-
-  // Set output frame properties
-  avFrame->format = outPixelFormat_;
-  avFrame->width = outWidth_;
-  avFrame->height = outHeight_;
-  avFrame->pts = frameIndex;
-
-  int status = av_frame_get_buffer(avFrame.get(), 0);
-  STABLE_CHECK(status >= 0, "Failed to allocate frame buffer");
-
-  // Need to convert/scale the frame
-  // Create temporary frame with input format
-  UniqueAVFrame inputFrame(av_frame_alloc());
-  STABLE_CHECK(inputFrame != nullptr, "Failed to allocate input AVFrame");
-
-  inputFrame->format = inPixelFormat_;
-  inputFrame->width = inWidth_;
-  inputFrame->height = inHeight_;
-
-  uint8_t* tensorData = static_cast<uint8_t*>(frame.data_ptr());
-
-  int channelSize = inHeight_ * inWidth_;
-  // Since frames tensor is in NCHW, we must use a planar format.
-  // FFmpeg only provides AV_PIX_FMT_GBRP for planar RGB,
-  // so we reorder RGB -> GBR.
-  inputFrame->data[0] = tensorData + channelSize;
-  inputFrame->data[1] = tensorData + (2 * channelSize);
-  inputFrame->data[2] = tensorData;
-
-  inputFrame->linesize[0] = inWidth_;
-  inputFrame->linesize[1] = inWidth_;
-  inputFrame->linesize[2] = inWidth_;
-
-  status = sws_scale(
-      swsContext_.get(),
-      inputFrame->data,
-      inputFrame->linesize,
-      0,
-      inputFrame->height,
-      avFrame->data,
-      avFrame->linesize);
-  STABLE_CHECK(status == outHeight_, "sws_scale failed");
-  return avFrame;
 }
 
 torch::Tensor VideoEncoder::encodeToTensor() {

@@ -33,7 +33,8 @@ torch::Tensor allocateEmptyHWCTensor(
                            .device(device);
   STABLE_CHECK(
       frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
-  STABLE_CHECK(frameDims.width > 0, "width must be > 0, got: ", frameDims.width);
+  STABLE_CHECK(
+      frameDims.width > 0, "width must be > 0, got: ", frameDims.width);
   if (numFrames.has_value()) {
     auto numFramesValue = numFrames.value();
     STABLE_CHECK(

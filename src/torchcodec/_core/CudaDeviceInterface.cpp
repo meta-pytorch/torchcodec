@@ -5,8 +5,8 @@
 
 #include "Cache.h"
 #include "CudaDeviceInterface.h"
-#include "StableABICompat.h"
 #include "FFMPEGCommon.h"
+#include "StableABICompat.h"
 #include "ValidationUtils.h"
 
 extern "C" {
@@ -500,7 +500,7 @@ const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
 }
 } // namespace
 
-UniqueAVFrame CudaDeviceInterface::convertCUDATensorToAVFrameForEncoding(
+UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
     const torch::Tensor& tensor,
     int frameIndex,
     AVCodecContext* codecContext) {

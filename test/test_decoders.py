@@ -11,7 +11,7 @@ from functools import partial
 import numpy
 import pytest
 import torch
-from torchcodec import _core, FrameBatch
+from torchcodec import _core, ffmpeg_major_version, FrameBatch
 from torchcodec.decoders import (
     AudioDecoder,
     AudioStreamMetadata,
@@ -20,6 +20,7 @@ from torchcodec.decoders import (
     VideoStreamMetadata,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
+from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
 from .utils import (
     all_supported_devices,
@@ -28,7 +29,7 @@ from .utils import (
     BT709_FULL_RANGE,
     cuda_devices,
     cuda_version_used_for_building_torch,
-    get_ffmpeg_major_version,
+    get_ffmpeg_minor_version,
     get_python_version,
     H264_10BITS,
     H265_10BITS,
@@ -39,6 +40,7 @@ from .utils import (
     NASA_AUDIO_MP3,
     NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
+    NASA_VIDEO_ROTATED,
     needs_cuda,
     needs_ffmpeg_cli,
     psnr,
@@ -378,7 +380,7 @@ class TestVideoDecoder:
             ]
         )
         for sliced, ref in zip(all_frames, decoder):
-            if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+            if not (device == "cuda" and ffmpeg_major_version == 4):
                 # TODO: remove the "if".
                 # See https://github.com/pytorch/torchcodec/issues/428
                 assert_frames_equal(sliced, ref)
@@ -624,7 +626,7 @@ class TestVideoDecoder:
 
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frame_at_av1(self, device):
-        if device == "cuda" and get_ffmpeg_major_version() == 4:
+        if device == "cuda" and ffmpeg_major_version == 4:
             return
 
         if "cuda" in device and in_fbcode():
@@ -1138,7 +1140,7 @@ class TestVideoDecoder:
 
         # All duplicated frames should have the same content as frame 0
         frame0_data = decoder.get_frame_at(0).data
-        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+        if not (device == "cuda" and ffmpeg_major_version == 4):
             for i in range(len(frames_high_fps)):
                 torch.testing.assert_close(
                     frames_high_fps.data[i], frame0_data, atol=0, rtol=0
@@ -1150,7 +1152,7 @@ class TestVideoDecoder:
             start_seconds, stop_seconds, fps=None
         )
         assert len(frames_no_fps) == len(frames_none_fps)
-        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+        if not (device == "cuda" and ffmpeg_major_version == 4):
             torch.testing.assert_close(
                 frames_no_fps.data, frames_none_fps.data, atol=0, rtol=0
             )
@@ -1236,7 +1238,7 @@ class TestVideoDecoder:
         assert len(all_frames) == len(frames_in_range)
         # Use strict bitwise equality, except for FFmpeg 4 + CUDA FFmpeg
         # interface which has known issues (see #428)
-        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+        if not (device == "cuda" and ffmpeg_major_version == 4):
             torch.testing.assert_close(
                 all_frames.data, frames_in_range.data, atol=0, rtol=0
             )
@@ -1251,7 +1253,7 @@ class TestVideoDecoder:
         assert len(all_frames_with_fps) == len(frames_in_range_with_fps)
         # Use strict bitwise equality, except for FFmpeg 4 + CUDA FFmpeg
         # interface which has known issues (see #428)
-        if not (device == "cuda" and get_ffmpeg_major_version() == 4):
+        if not (device == "cuda" and ffmpeg_major_version == 4):
             torch.testing.assert_close(
                 all_frames_with_fps.data, frames_in_range_with_fps.data, atol=0, rtol=0
             )
@@ -1633,7 +1635,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_at(frame_index)
             beta_frame = beta_decoder.get_frame_at(frame_index)
             # TODONVDEC P1 see above
-            if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     beta_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -1680,7 +1682,7 @@ class TestVideoDecoder:
         ref_frames = ref_decoder.get_frames_at(indices)
         beta_frames = beta_decoder.get_frames_at(indices)
         # TODONVDEC P1 see above
-        if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+        if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
                 beta_frames.data, ref_frames.data, rtol=0, atol=0
             )
@@ -1723,7 +1725,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_played_at(pts)
             beta_frame = beta_decoder.get_frame_played_at(pts)
             # TODONVDEC P1 see above
-            if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     beta_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -1765,7 +1767,7 @@ class TestVideoDecoder:
         ref_frames = ref_decoder.get_frames_played_at(timestamps)
         beta_frames = beta_decoder.get_frames_played_at(timestamps)
         # TODONVDEC P1 see above
-        if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+        if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
                 beta_frames.data, ref_frames.data, rtol=0, atol=0
             )
@@ -1812,7 +1814,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_at(frame_index)
             beta_frame = beta_decoder.get_frame_at(frame_index)
             # TODONVDEC P1 see above
-            if get_ffmpeg_major_version() > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     beta_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -1910,6 +1912,140 @@ class TestVideoDecoder:
         assert not decoder.cpu_fallback
         assert "No fallback required" in str(decoder.cpu_fallback)
 
+    @pytest.mark.parametrize("dimension_order", ["NCHW", "NHWC"])
+    def test_rotation_applied_to_frames(self, dimension_order):
+        """Test that rotation is correctly applied to decoded frames.
+
+        Compares frames from NASA_VIDEO_ROTATED (which has 90-degree rotation
+        metadata) with manually rotated frames from NASA_VIDEO.
+        Tests all decoding methods to ensure rotation is applied consistently.
+        """
+        decoder = VideoDecoder(
+            NASA_VIDEO.path,
+            stream_index=NASA_VIDEO.default_stream_index,
+            dimension_order=dimension_order,
+        )
+        decoder_rotated = VideoDecoder(
+            NASA_VIDEO_ROTATED.path,
+            stream_index=NASA_VIDEO_ROTATED.default_stream_index,
+            dimension_order=dimension_order,
+        )
+
+        # Rotation dims for single frame (CHW or HWC) and batch (NCHW or NHWC)
+        # Rotation dims are (H, W) dimensions for each format
+        frame_rot_dims = (1, 2) if dimension_order == "NCHW" else (0, 1)  # CHW vs HWC
+        batch_rot_dims = (2, 3) if dimension_order == "NCHW" else (1, 2)  # NCHW vs NHWC
+
+        # Test __getitem__ / get_frame_at (single frame by index)
+        for idx in [0, 5, 10]:
+            frame = decoder[idx]
+            frame_rotated = decoder_rotated[idx]
+            expected = torch.rot90(frame, k=1, dims=frame_rot_dims)
+            torch.testing.assert_close(expected, frame_rotated, atol=0, rtol=0)
+
+        # Test get_frames_at (multiple frames by indices)
+        indices = [0, 5, 10]
+        frames = decoder.get_frames_at(indices)
+        frames_rotated = decoder_rotated.get_frames_at(indices)
+        expected = torch.rot90(frames.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(expected, frames_rotated.data, atol=0, rtol=0)
+
+        # Test get_frames_in_range (frames by index range)
+        frames_range = decoder.get_frames_in_range(start=0, stop=6, step=2)
+        frames_range_rotated = decoder_rotated.get_frames_in_range(
+            start=0, stop=6, step=2
+        )
+        expected = torch.rot90(frames_range.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(expected, frames_range_rotated.data, atol=0, rtol=0)
+
+        # Test get_frame_played_at (single frame by timestamp)
+        pts = decoder_rotated.metadata.begin_stream_seconds
+        frame_at_pts = decoder.get_frame_played_at(pts)
+        frame_at_pts_rotated = decoder_rotated.get_frame_played_at(pts)
+        expected = torch.rot90(frame_at_pts.data, k=1, dims=frame_rot_dims)
+        torch.testing.assert_close(expected, frame_at_pts_rotated.data, atol=0, rtol=0)
+
+        # Test get_frames_played_at (multiple frames by timestamps)
+        pts_list = [
+            decoder_rotated.metadata.begin_stream_seconds,
+            decoder_rotated.metadata.begin_stream_seconds + 0.15,
+        ]
+        frames_at_pts = decoder.get_frames_played_at(pts_list)
+        frames_at_pts_rotated = decoder_rotated.get_frames_played_at(pts_list)
+        expected = torch.rot90(frames_at_pts.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(expected, frames_at_pts_rotated.data, atol=0, rtol=0)
+
+        # Test get_frames_played_in_range (frames by timestamp range)
+        start_seconds = decoder_rotated.metadata.begin_stream_seconds
+        stop_seconds = start_seconds + 0.2
+        frames_in_range = decoder.get_frames_played_in_range(
+            start_seconds=start_seconds, stop_seconds=stop_seconds
+        )
+        frames_in_range_rotated = decoder_rotated.get_frames_played_in_range(
+            start_seconds=start_seconds, stop_seconds=stop_seconds
+        )
+        expected = torch.rot90(frames_in_range.data, k=1, dims=batch_rot_dims)
+        torch.testing.assert_close(
+            expected, frames_in_range_rotated.data, atol=0, rtol=0
+        )
+
+        # Test get_all_frames (all frames in video)
+        # Note: NASA_VIDEO_ROTATED has fewer frames than NASA_VIDEO, so we compare
+        # the first N frames where N is the number of frames in the rotated video
+        all_frames = decoder.get_all_frames()
+        all_frames_rotated = decoder_rotated.get_all_frames()
+        num_frames_rotated = all_frames_rotated.data.shape[0]
+        expected = torch.rot90(
+            all_frames.data[:num_frames_rotated], k=1, dims=batch_rot_dims
+        )
+        torch.testing.assert_close(expected, all_frames_rotated.data, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "desired_H, desired_W",
+        [
+            (100, 150),
+            (150, 100),
+            (100, 100),
+        ],
+    )
+    @pytest.mark.parametrize("TransformClass", [Resize, CenterCrop, RandomCrop])
+    def test_rotation_with_transform(self, TransformClass, desired_H, desired_W):
+        """Test that transforms work correctly with rotated videos.
+
+        When a user specifies a transform with (H, W), they expect the final output to be
+        (H, W) regardless of the video's rotation metadata. This test verifies
+        that the transform is applied correctly such that the final output matches
+        the user's requested dimensions.
+        """
+        decoder = VideoDecoder(
+            NASA_VIDEO_ROTATED.path,
+            transforms=[TransformClass((desired_H, desired_W))],
+        )
+        frame = decoder[0]
+
+        assert frame.shape == (3, desired_H, desired_W)
+
+        # Also test batch APIs
+        frames = decoder.get_frames_at([0, 1])
+        assert frames.data.shape == (2, 3, desired_H, desired_W)
+
+    def test_rotation_with_transform_pipeline(self):
+        """Test that a pipeline of multiple transforms works correctly with rotated videos.
+
+        This test verifies that chaining multiple transforms (e.g., Resize -> Resize -> Crop)
+        works as expected when the video has rotation metadata. Each transform should
+        operate on the output of the previous transform in post-rotation coordinate space.
+        """
+        decoder = VideoDecoder(
+            NASA_VIDEO_ROTATED.path,
+            transforms=[Resize((400, 300)), Resize((300, 250)), CenterCrop((100, 100))],
+        )
+        frame = decoder[0]
+        assert frame.shape == (3, 100, 100)
+
+        frames = decoder.get_frames_at([0, 1])
+        assert frames.data.shape == (2, 3, 100, 100)
+
     @needs_cuda
     @pytest.mark.parametrize("device", cuda_devices())
     def test_cpu_fallback_h265_video(self, device):
@@ -1962,7 +2098,7 @@ class TestAudioDecoder:
         )
 
         expected_duration_seconds_from_header = asset.duration_seconds
-        if asset == NASA_AUDIO_MP3 and get_ffmpeg_major_version() >= 8:
+        if asset == NASA_AUDIO_MP3 and ffmpeg_major_version >= 8:
             expected_duration_seconds_from_header = 13.056
 
         assert decoder.metadata.duration_seconds_from_header == pytest.approx(
@@ -2277,7 +2413,23 @@ class TestAudioDecoder:
     # that the extra tensor allocation that happens within
     # maybeFlushSwrBuffers() is correct.
     @pytest.mark.parametrize("sample_rate", (None, 16_000))
-    @pytest.mark.parametrize("num_channels", (1, 2, 8, 16, 24, None))
+    @pytest.mark.parametrize(
+        "num_channels",
+        (
+            1,
+            2,
+            8,
+            16,
+            pytest.param(
+                24,
+                marks=pytest.mark.skipif(
+                    ffmpeg_major_version == 4 and get_ffmpeg_minor_version() < 4,
+                    reason="24 channel layout requires FFmpeg >= 4.4",
+                ),
+            ),
+            None,
+        ),
+    )
     def test_num_channels(self, asset, sample_rate, num_channels):
         decoder = AudioDecoder(
             asset.path, sample_rate=sample_rate, num_channels=num_channels

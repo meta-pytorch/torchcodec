@@ -5,8 +5,8 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "AVIOTensorContext.h"
-#include "StableABICompat.h"
 #include <torch/types.h>
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 

@@ -30,7 +30,6 @@ from .utils import (
     assert_frames_equal,
     assert_tensor_close_on_at_least,
     AV1_VIDEO,
-    get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
     H265_VIDEO,
     NASA_VIDEO,
@@ -536,7 +535,7 @@ class TestCoreVideoDecoderTransformOps:
             assert frame_resize.shape == expected_shape
             assert frame_ref.shape == expected_shape
 
-            if get_ffmpeg_major_version() <= 4 and get_ffmpeg_minor_version() <= 1:
+            if torchcodec.ffmpeg_major_version <= 4 and get_ffmpeg_minor_version() <= 1:
                 # FFmpeg version 4.1 and before appear to have a different
                 # resize implementation.
                 torch.testing.assert_close(frame_resize, frame_ref, rtol=0, atol=2)
