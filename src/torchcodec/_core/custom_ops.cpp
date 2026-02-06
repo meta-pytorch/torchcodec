@@ -14,6 +14,7 @@
 #include "Encoder.h"
 #include "SingleStreamDecoder.h"
 #include "ValidationUtils.h"
+#include "WavDecoder.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "c10/util/Exception.h"
 
@@ -79,6 +80,10 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
+  m.def(
+      "validate_and_decode_wav_from_tensor(Tensor data, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> (Tensor, str)");
+  m.def(
+      "validate_and_decode_wav_from_file(str path, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> (Tensor, str)");
 }
 
 namespace {
@@ -1056,6 +1061,46 @@ void scan_all_streams_to_update_metadata(torch::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
+// Build JSON metadata for WAV samples
+std::string buildWavMetadataJson(const WavSamples& wav) {
+  std::map<std::string, std::string> map;
+  map["durationSecondsFromHeader"] = std::to_string(wav.durationSeconds);
+  map["durationSeconds"] = std::to_string(wav.durationSeconds);
+  map["beginStreamSecondsFromHeader"] = "0.0";
+  map["beginStreamSeconds"] = "0.0";
+  map["codec"] = "\"pcm\"";
+  map["sampleRate"] = std::to_string(wav.sampleRate);
+  map["numChannels"] = std::to_string(wav.samples.size(0));
+  return mapToJson(map);
+}
+
+// Returns (samples, metadata_json) or (empty tensor, "") if not valid
+std::tuple<torch::Tensor, std::string> validate_and_decode_wav_from_tensor(
+    const torch::Tensor& data,
+    std::optional<int64_t> stream_index,
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) {
+  auto result = validateAndDecodeWavFromTensor(
+      data, stream_index, sample_rate, num_channels);
+  if (result) {
+    return std::make_tuple(result->samples, buildWavMetadataJson(*result));
+  }
+  return std::make_tuple(torch::empty({0, 0}, torch::kFloat32), std::string());
+}
+
+std::tuple<torch::Tensor, std::string> validate_and_decode_wav_from_file(
+    const std::string& path,
+    std::optional<int64_t> stream_index,
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) {
+  auto result = validateAndDecodeWavFromFile(
+      path, stream_index, sample_rate, num_channels);
+  if (result) {
+    return std::make_tuple(result->samples, buildWavMetadataJson(*result));
+  }
+  return std::make_tuple(torch::empty({0, 0}, torch::kFloat32), std::string());
+}
+
 TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", &create_from_file);
   m.impl("create_from_tensor", &create_from_tensor);
@@ -1065,6 +1110,8 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", &encode_video_to_file);
   m.impl("encode_video_to_tensor", &encode_video_to_tensor);
   m.impl("_encode_video_to_file_like", &_encode_video_to_file_like);
+  m.impl(
+      "validate_and_decode_wav_from_file", &validate_and_decode_wav_from_file);
 }
 
 TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
@@ -1096,6 +1143,9 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       &scan_all_streams_to_update_metadata);
 
   m.impl("_get_backend_details", &get_backend_details);
+  m.impl(
+      "validate_and_decode_wav_from_tensor",
+      &validate_and_decode_wav_from_tensor);
 }
 
 } // namespace facebook::torchcodec

@@ -136,6 +136,7 @@ function(make_torchcodec_libraries
         ValidationUtils.cpp
         Transform.cpp
         Metadata.cpp
+        WavDecoder.cpp
     )
 
     if(ENABLE_CUDA)
