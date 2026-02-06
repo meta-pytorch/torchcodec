@@ -1261,8 +1261,7 @@ class TestVideoDecoder:
     def test_non_zero_start_pts(self, seek_mode):
         """Test that frame retrieval methods return correct PTS values for videos with non-zero start time.
 
-        This is a regression test to ensure that PTS values are correctly reported
-        for videos where the first frame doesn't start at time 0.
+        This is a non-regression test for https://github.com/meta-pytorch/torchcodec/pull/1209
         """
         decoder = VideoDecoder(TEST_NON_ZERO_START.path, seek_mode=seek_mode)
 
@@ -1271,7 +1270,6 @@ class TestVideoDecoder:
         expected_start_time = TEST_NON_ZERO_START.get_frame_info(0).pts_seconds
         assert expected_start_time == pytest.approx(8.333, rel=1e-3)
 
-        # Test get_frame_at returns correct PTS
         frame0 = decoder.get_frame_at(0)
         assert frame0.pts_seconds == pytest.approx(expected_start_time, rel=1e-3)
 
@@ -1279,18 +1277,16 @@ class TestVideoDecoder:
         expected_frame1_pts = TEST_NON_ZERO_START.get_frame_info(1).pts_seconds
         assert frame1.pts_seconds == pytest.approx(expected_frame1_pts, rel=1e-3)
 
-        # Test get_frames_at returns correct PTS values
         frames = decoder.get_frames_at([0, 1, 2])
         for i, expected_idx in enumerate([0, 1, 2]):
             expected_pts = TEST_NON_ZERO_START.get_frame_info(expected_idx).pts_seconds
             assert frames.pts_seconds[i].item() == pytest.approx(expected_pts, rel=1e-3)
 
-        # Test get_frame_played_at returns correct PTS
-        # Request frame at the start time
         frame_at_start = decoder.get_frame_played_at(expected_start_time)
-        assert frame_at_start.pts_seconds == pytest.approx(expected_start_time, rel=1e-3)
+        assert frame_at_start.pts_seconds == pytest.approx(
+            expected_start_time, rel=1e-3
+        )
 
-        # Test get_frames_in_range returns correct PTS values
         frames_range = decoder.get_frames_in_range(0, 3)
         for i in range(3):
             expected_pts = TEST_NON_ZERO_START.get_frame_info(i).pts_seconds
@@ -1298,7 +1294,6 @@ class TestVideoDecoder:
                 expected_pts, rel=1e-3
             )
 
-        # Test get_frames_played_in_range returns correct PTS values
         # Use the decoder's own PTS value to avoid floating point precision issues
         # between ffprobe's PTS (in JSON) and the decoder's computed PTS
         frame3 = decoder.get_frame_at(3)
