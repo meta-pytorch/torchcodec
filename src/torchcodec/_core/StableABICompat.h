@@ -61,10 +61,6 @@ inline std::string buildErrorMessage() {
     }                                                                    \
   } while (false)
 
-// Equality check - replacement for TORCH_CHECK_EQ
-#define STABLE_CHECK_EQ(a, b, ...) \
-  STABLE_CHECK((a) == (b), "Expected " #a " == " #b ". ", ##__VA_ARGS__)
-
 // Index error check - throws std::out_of_range which pybind11 maps to
 // IndexError Use this for index validation errors that should raise IndexError
 // in Python

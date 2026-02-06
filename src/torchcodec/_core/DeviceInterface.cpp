@@ -101,7 +101,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
 }
 
 torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
-  STABLE_CHECK_EQ(avFrame->format, AV_PIX_FMT_RGB24);
+  STABLE_CHECK(avFrame->format == AV_PIX_FMT_RGB24, "Expected RGB24 format");
 
   int height = avFrame->height;
   int width = avFrame->width;

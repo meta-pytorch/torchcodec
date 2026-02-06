@@ -482,7 +482,7 @@ void SingleStreamDecoder::addStream(
 
   int retVal = avcodec_parameters_to_context(
       streamInfo.codecContext.get(), streamInfo.stream->codecpar);
-  STABLE_CHECK_EQ(retVal, AVSUCCESS);
+  STABLE_CHECK(retVal == AVSUCCESS, "avcodec_parameters_to_context failed");
 
   streamInfo.codecContext->thread_count = ffmpegThreadCount.value_or(0);
   streamInfo.codecContext->pkt_timebase = streamInfo.stream->time_base;

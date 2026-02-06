@@ -93,7 +93,7 @@ torch::Tensor wrapDecoderPointerToTensor(
       decoder, {sizeof(SingleStreamDecoder*)}, deleter, {at::kLong});
   auto videoDecoder =
       static_cast<SingleStreamDecoder*>(tensor.mutable_data_ptr());
-  STABLE_CHECK_EQ(videoDecoder, decoder);
+  STABLE_CHECK(videoDecoder == decoder, "videoDecoder != decoder");
   return tensor;
 }
 
