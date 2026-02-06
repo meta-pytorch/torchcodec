@@ -49,6 +49,16 @@ struct FrameBatchOutput {
       const torch::Device& device);
 };
 
+constexpr int kMotionVectorNumFields = 10;
+
+struct MotionVectorsBatchOutput {
+  torch::Tensor data; // 3D: of shape (N, max_mvs, kMotionVectorNumFields)
+  torch::Tensor counts; // 1D of shape (N,)
+  torch::Tensor ptsSeconds; // 1D of shape (N,)
+  torch::Tensor durationSeconds; // 1D of shape (N,)
+  torch::Tensor frameTypes; // 1D of shape (N,)
+};
+
 struct AudioFramesOutput {
   torch::Tensor data; // shape is (numChannels, numSamples)
   double ptsSeconds;

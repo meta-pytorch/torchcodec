@@ -118,6 +118,101 @@ class FrameBatch(Iterable):
 
 
 @dataclass
+class MotionVectorBatch(Iterable):
+    """Motion vectors and metadata for multiple video frames.
+
+    The ``data`` tensor is padded to shape ``(N, max_mvs, 10)``. Each motion
+    vector has 10 int32 fields in this order:
+    1) source
+    2) w
+    3) h
+    4) src_x
+    5) src_y
+    6) dst_x
+    7) dst_y
+    8) motion_x
+    9) motion_y
+    10) motion_scale
+
+    The motion components follow the FFmpeg convention. In particular,
+    ``dst_x`` and ``dst_y`` refer to the block position in the current frame,
+    and ``src_x`` and ``src_y`` refer to the corresponding block position in
+    the reference frame identified by ``source``. Coordinates can be
+    sub-pixel, represented via the fixed-point fields ``motion_x``,
+    ``motion_y``, and ``motion_scale``:
+    ``src_x = dst_x + motion_x / motion_scale`` and
+    ``src_y = dst_y + motion_y / motion_scale``.
+
+    All tensors are on CPU. ``data``, ``counts``, and ``frame_types`` are int32.
+    ``pts_seconds`` and ``duration_seconds`` are float64.
+
+    .. note::
+
+        If none of the requested frames contain motion vectors, ``max_mvs`` can
+        be 0 and ``data`` will have shape ``(N, 0, 10)``.
+    """
+
+    data: Tensor
+    """Motion vectors as a 3D tensor (N, max_mvs, 10) of int32."""
+    counts: Tensor
+    """Number of motion vectors per frame (1D tensor of int32)."""
+    pts_seconds: Tensor
+    """PTS for each frame in seconds (1D tensor of float64)."""
+    duration_seconds: Tensor
+    """Duration for each frame in seconds (1D tensor of float64)."""
+    frame_types: Tensor
+    """Frame types as ASCII codes (1D tensor of int32)."""
+
+    def __post_init__(self):
+        if self.data.ndim != 3:
+            raise ValueError(f"data must be 3-dimensional, got {self.data.shape = }")
+        leading_dim = self.data.shape[0]
+        for name, tensor in (
+            ("counts", self.counts),
+            ("pts_seconds", self.pts_seconds),
+            ("duration_seconds", self.duration_seconds),
+            ("frame_types", self.frame_types),
+        ):
+            if tensor.ndim != 1 or tensor.shape[0] != leading_dim:
+                raise ValueError(
+                    f"{name} must be 1D with length {leading_dim}, got {tensor.shape = }."
+                )
+
+    def __iter__(self) -> Iterator["MotionVectorBatch"]:
+        for i in range(len(self)):
+            yield self[i]
+
+    def __getitem__(self, key) -> "MotionVectorBatch":
+        data = self.data[key]
+        counts = self.counts[key]
+        pts_seconds = self.pts_seconds[key]
+        duration_seconds = self.duration_seconds[key]
+        frame_types = self.frame_types[key]
+
+        if data.ndim == 2:
+            data = data.unsqueeze(0)
+        if counts.ndim == 0:
+            counts = counts.unsqueeze(0)
+            pts_seconds = pts_seconds.unsqueeze(0)
+            duration_seconds = duration_seconds.unsqueeze(0)
+            frame_types = frame_types.unsqueeze(0)
+
+        return MotionVectorBatch(
+            data=data,
+            counts=counts,
+            pts_seconds=pts_seconds,
+            duration_seconds=duration_seconds,
+            frame_types=frame_types,
+        )
+
+    def __len__(self):
+        return len(self.data)
+
+    def __repr__(self):
+        return _frame_repr(self)
+
+
+@dataclass
 class AudioSamples(Iterable):
     """Audio samples with associated metadata."""
 

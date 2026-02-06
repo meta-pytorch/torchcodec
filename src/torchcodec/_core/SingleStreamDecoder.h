@@ -115,6 +115,10 @@ class SingleStreamDecoder {
   // Tensor.
   FrameBatchOutput getFramesAtIndices(const torch::Tensor& frameIndices);
 
+  // Returns motion vectors and metadata for frames at the given indices.
+  MotionVectorsBatchOutput getMotionVectorsAtIndices(
+      const torch::Tensor& frameIndices);
+
   // Returns frames within a given range. The range is defined by [start, stop).
   // The values retrieved from the range are: [start, start+step,
   // start+(2*step), start+(3*step), ..., stop). The default for step is 1.
@@ -176,6 +180,8 @@ class SingleStreamDecoder {
   FrameOutput getFrameAtIndexInternal(
       int64_t frameIndex,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+
+  UniqueAVFrame getAVFrameAtIndexInternal(int64_t frameIndex);
 
   // Exposed for _test_frame_pts_equality, which is used to test non-regression
   // of pts resolution (64 to 32 bit floats)
@@ -315,7 +321,8 @@ class SingleStreamDecoder {
       AVMediaType mediaType,
       const torch::Device& device = torch::kCPU,
       const std::string_view deviceVariant = "ffmpeg",
-      std::optional<int> ffmpegThreadCount = std::nullopt);
+      std::optional<int> ffmpegThreadCount = std::nullopt,
+      bool exportMotionVectors = false);
 
   // Returns the "best" stream index for a given media type. The "best" is
   // determined by various heuristics in FFMPEG.

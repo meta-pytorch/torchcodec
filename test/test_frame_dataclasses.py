@@ -1,6 +1,6 @@
 import pytest
 import torch
-from torchcodec import AudioSamples, Frame, FrameBatch
+from torchcodec import AudioSamples, Frame, FrameBatch, MotionVectorBatch
 
 
 def test_unpacking():
@@ -142,6 +142,44 @@ def test_framebatch_indexing():
     fb_fancy = fb[([0], [1])]  # select T=0 and N=1.
     assert isinstance(fb_fancy, FrameBatch)
     assert fb_fancy.data.shape == (1, C, H, W)
+
+
+def test_motion_vector_batch_error():
+    with pytest.raises(ValueError, match="data must be 3-dimensional"):
+        MotionVectorBatch(
+            data=torch.rand(2, 3),
+            counts=torch.zeros(2, dtype=torch.int32),
+            pts_seconds=torch.zeros(2),
+            duration_seconds=torch.zeros(2),
+            frame_types=torch.zeros(2, dtype=torch.int32),
+        )
+
+    with pytest.raises(ValueError, match="counts must be 1D"):
+        MotionVectorBatch(
+            data=torch.zeros(2, 1, 10),
+            counts=torch.zeros(2, 1, dtype=torch.int32),
+            pts_seconds=torch.zeros(2),
+            duration_seconds=torch.zeros(2),
+            frame_types=torch.zeros(2, dtype=torch.int32),
+        )
+
+    with pytest.raises(ValueError, match="frame_types must be 1D"):
+        MotionVectorBatch(
+            data=torch.zeros(2, 1, 10),
+            counts=torch.zeros(2, dtype=torch.int32),
+            pts_seconds=torch.zeros(2),
+            duration_seconds=torch.zeros(2),
+            frame_types=torch.zeros(2, 1, dtype=torch.int32),
+        )
+
+    with pytest.raises(ValueError, match="counts must be 1D with length 2"):
+        MotionVectorBatch(
+            data=torch.zeros(2, 1, 10),
+            counts=torch.zeros(3, dtype=torch.int32),
+            pts_seconds=torch.zeros(2),
+            duration_seconds=torch.zeros(2),
+            frame_types=torch.zeros(2, dtype=torch.int32),
+        )
 
 
 def test_audio_samples_error():

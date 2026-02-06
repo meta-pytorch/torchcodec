@@ -15,7 +15,7 @@ from typing import Literal
 
 import torch
 from torch import device as torch_device, nn, Tensor
-from torchcodec import _core as core, Frame, FrameBatch
+from torchcodec import _core as core, Frame, FrameBatch, MotionVectorBatch
 from torchcodec.decoders._decoder_utils import (
     _get_cuda_backend,
     create_decoder,
@@ -127,6 +127,10 @@ class VideoDecoder:
             :class:`~torchcodec.transforms.DecoderTransform` and
             :class:`~torchvision.transforms.v2.Transform`
             objects. Read more about this parameter in: TODO_DECODER_TRANSFORMS_TUTORIAL.
+        export_mvs (bool, optional): If True, request FFmpeg to export motion
+            vectors as side data. Required for
+            :meth:`~torchcodec.decoders.VideoDecoder.get_motion_vectors_at`.
+            CPU-only. Default: False.
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
@@ -170,6 +174,7 @@ class VideoDecoder:
         device: str | torch_device | None = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
         transforms: Sequence[DecoderTransform | nn.Module] | None = None,
+        export_mvs: bool = False,
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
@@ -224,6 +229,9 @@ class VideoDecoder:
         elif isinstance(device, torch_device):
             device = str(device)
 
+        if export_mvs and not device.startswith("cpu"):
+            raise ValueError("export_mvs is only supported for CPU decoding.")
+
         device_variant = _get_cuda_backend()
         transform_specs = _make_transform_specs(
             transforms,
@@ -238,8 +246,10 @@ class VideoDecoder:
             device=device,
             device_variant=device_variant,
             transform_specs=transform_specs,
+            export_mvs=export_mvs,
             custom_frame_mappings=custom_frame_mappings_data,
         )
+        self._export_mvs = export_mvs
 
         self._cpu_fallback = CpuFallbackStatus()
         if device.startswith("cuda"):
@@ -373,6 +383,53 @@ class VideoDecoder:
             data=data,
             pts_seconds=pts_seconds,
             duration_seconds=duration_seconds,
+        )
+
+    def get_motion_vectors_at(
+        self, indices: torch.Tensor | list[int]
+    ) -> MotionVectorBatch:
+        """Return motion vectors at the given indices.
+
+        .. note::
+
+            This requires ``export_mvs=True`` when creating the decoder.
+            Motion vectors are returned as a padded tensor of shape
+            ``(N, max_mvs, 10)``, along with a ``counts`` vector that indicates
+            how many vectors are valid per frame. Each motion vector has 10
+            int32 fields in this order: source, w, h, src_x, src_y, dst_x,
+            dst_y, motion_x, motion_y, motion_scale. All outputs are on CPU.
+            ``data``, ``counts``, and ``frame_types`` are int32, and
+            ``pts_seconds`` and ``duration_seconds`` are float64. The motion
+            components follow the FFmpeg convention:
+            ``src_x = dst_x + motion_x / motion_scale`` and
+            ``src_y = dst_y + motion_y / motion_scale``.
+            This API is CPU-only.
+
+            If none of the requested frames contain motion vectors, ``max_mvs``
+            can be 0 and ``data`` will have shape ``(N, 0, 10)``.
+
+        Args:
+            indices (torch.Tensor or list of int): The indices of the frames to retrieve.
+
+        Returns:
+            MotionVectorBatch: Motion vectors and per-frame metadata.
+        """
+
+        if not self._export_mvs:
+            raise RuntimeError(
+                "Motion vector extraction requires export_mvs=True when creating the decoder."
+            )
+
+        data, counts, pts_seconds, duration_seconds, frame_types = (
+            core.get_motion_vectors_at_indices(self._decoder, frame_indices=indices)
+        )
+
+        return MotionVectorBatch(
+            data=data,
+            counts=counts,
+            pts_seconds=pts_seconds,
+            duration_seconds=duration_seconds,
+            frame_types=frame_types,
         )
 
     def get_frames_in_range(self, start: int, stop: int, step: int = 1) -> FrameBatch:
