@@ -49,6 +49,7 @@ from .utils import (
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    TEST_NON_ZERO_START,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
     TEST_SRC_2_720P_MPEG4,
@@ -1256,6 +1257,58 @@ class TestVideoDecoder:
         if not (device == "cuda" and ffmpeg_major_version == 4):
             torch.testing.assert_close(
                 all_frames_with_fps.data, frames_in_range_with_fps.data, atol=0, rtol=0
+            )
+
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_non_zero_start_pts(self, seek_mode):
+        """Test that frame retrieval methods return correct PTS values for videos with non-zero start time.
+
+        This is a non-regression test for https://github.com/meta-pytorch/torchcodec/pull/1209
+        """
+        decoder = VideoDecoder(TEST_NON_ZERO_START.path, seek_mode=seek_mode)
+
+        # Verify the video has a non-zero start time
+        assert decoder.metadata.begin_stream_seconds > 0
+        expected_start_time = TEST_NON_ZERO_START.get_frame_info(0).pts_seconds
+        assert expected_start_time == pytest.approx(8.333, rel=1e-3)
+
+        frame0 = decoder.get_frame_at(0)
+        assert frame0.pts_seconds == pytest.approx(expected_start_time, rel=1e-3)
+
+        frame1 = decoder.get_frame_at(1)
+        expected_frame1_pts = TEST_NON_ZERO_START.get_frame_info(1).pts_seconds
+        assert frame1.pts_seconds == pytest.approx(expected_frame1_pts, rel=1e-3)
+
+        frames = decoder.get_frames_at([0, 1, 2])
+        for i, expected_idx in enumerate([0, 1, 2]):
+            expected_pts = TEST_NON_ZERO_START.get_frame_info(expected_idx).pts_seconds
+            assert frames.pts_seconds[i].item() == pytest.approx(expected_pts, rel=1e-3)
+
+        frame_at_start = decoder.get_frame_played_at(expected_start_time)
+        assert frame_at_start.pts_seconds == pytest.approx(
+            expected_start_time, rel=1e-3
+        )
+
+        frames_range = decoder.get_frames_in_range(0, 3)
+        for i in range(3):
+            expected_pts = TEST_NON_ZERO_START.get_frame_info(i).pts_seconds
+            assert frames_range.pts_seconds[i].item() == pytest.approx(
+                expected_pts, rel=1e-3
+            )
+
+        # Use the decoder's own PTS value to avoid floating point precision issues
+        # between ffprobe's PTS (in JSON) and the decoder's computed PTS
+        frame3 = decoder.get_frame_at(3)
+        stop_pts = frame3.pts_seconds
+        frames_pts_range = decoder.get_frames_played_in_range(
+            expected_start_time, stop_pts
+        )
+        # Should get frames 0, 1, 2 (stop is exclusive)
+        assert len(frames_pts_range) == 3
+        for i in range(3):
+            expected_pts = TEST_NON_ZERO_START.get_frame_info(i).pts_seconds
+            assert frames_pts_range.pts_seconds[i].item() == pytest.approx(
+                expected_pts, rel=1e-3
             )
 
     @pytest.mark.parametrize("device", all_supported_devices())

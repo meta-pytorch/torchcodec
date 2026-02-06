@@ -1486,7 +1486,10 @@ int64_t SingleStreamDecoder::secondsToIndexLowerBound(double seconds) {
       TORCH_CHECK(
           streamMetadata.averageFpsFromHeader.has_value(),
           "Cannot use approximate mode since we couldn't find the average fps from the metadata.");
-      return std::floor(seconds * streamMetadata.averageFpsFromHeader.value());
+      double beginSeconds = streamMetadata.getBeginStreamSeconds(seekMode_);
+      double relativeSeconds = seconds - beginSeconds;
+      return std::floor(
+          relativeSeconds * streamMetadata.averageFpsFromHeader.value());
     }
     default:
       TORCH_CHECK(false, "Unknown SeekMode");
@@ -1514,7 +1517,10 @@ int64_t SingleStreamDecoder::secondsToIndexUpperBound(double seconds) {
       TORCH_CHECK(
           streamMetadata.averageFpsFromHeader.has_value(),
           "Cannot use approximate mode since we couldn't find the average fps from the metadata.");
-      return std::ceil(seconds * streamMetadata.averageFpsFromHeader.value());
+      double beginSeconds = streamMetadata.getBeginStreamSeconds(seekMode_);
+      double relativeSeconds = seconds - beginSeconds;
+      return std::ceil(
+          relativeSeconds * streamMetadata.averageFpsFromHeader.value());
     }
     default:
       TORCH_CHECK(false, "Unknown SeekMode");
@@ -1534,7 +1540,8 @@ int64_t SingleStreamDecoder::getPts(int64_t frameIndex) {
           streamMetadata.averageFpsFromHeader.has_value(),
           "Cannot use approximate mode since we couldn't find the average fps from the metadata.");
       return secondsToClosestPts(
-          frameIndex / streamMetadata.averageFpsFromHeader.value(),
+          streamMetadata.getBeginStreamSeconds(seekMode_) +
+              (frameIndex / streamMetadata.averageFpsFromHeader.value()),
           streamInfo.timeBase);
     }
     default:
