@@ -150,8 +150,20 @@ void SingleStreamDecoder::initializeDecoder() {
       if (fps > 0) {
         streamMetadata.averageFpsFromHeader = fps;
       }
-      streamMetadata.width = avStream->codecpar->width;
-      streamMetadata.height = avStream->codecpar->height;
+      streamMetadata.rotation = getRotationFromStream(avStream);
+
+      // Report post-rotation dimensions: swap width/height for 90 or -90
+      // degree rotations so metadata matches what the decoder returns.
+      int width = avStream->codecpar->width;
+      int height = avStream->codecpar->height;
+      Rotation rotation = rotationFromDegrees(streamMetadata.rotation);
+      // 90° rotations swap dimensions
+      if (rotation == Rotation::CCW90 || rotation == Rotation::CW90) {
+        std::swap(width, height);
+      }
+      streamMetadata.postRotationWidth = width;
+      streamMetadata.postRotationHeight = height;
+
       streamMetadata.sampleAspectRatio =
           avStream->codecpar->sample_aspect_ratio;
       containerMetadata_.numVideoStreams++;
@@ -540,19 +552,46 @@ void SingleStreamDecoder::addVideoStream(
         activeStreamIndex_, customFrameMappings.value());
   }
 
-  metadataDims_ =
-      FrameDims(streamMetadata.height.value(), streamMetadata.width.value());
-  FrameDims currInputDims = metadataDims_;
+  // Set preRotationDims_ for the active stream. These are the raw encoded
+  // dimensions from FFmpeg, used as a fallback for tensor pre-allocation when
+  // no resize/rotation transforms are applied.
+  preRotationDims_ = FrameDims(
+      streamInfo.stream->codecpar->height, streamInfo.stream->codecpar->width);
+
+  FrameDims currInputDims = preRotationDims_;
+
+  // If there's rotation, prepend a RotationTransform to handle it in the
+  // filter graph. This way user transforms (resize, crop) operate in
+  // post-rotation coordinate space, preserving x/y coordinates for crops.
+  //
+  // It is critical to apply the rotation *before* any user-supplied
+  // transforms. By design, we want:
+  //   A: VideoDecoder(..., transforms=tv_transforms)[i]
+  // to be equivalent to:
+  //   B: tv_transforms(VideoDecoder(...)[i])
+  // In B, rotation is applied before transforms, so A must behave the same.
+  //
+  // TODO: benchmark the performance of doing this additional filtergraph
+  // transform
+  Rotation rotation = rotationFromDegrees(streamMetadata.rotation);
+  if (rotation != Rotation::NONE) {
+    auto rotationTransform =
+        std::make_unique<RotationTransform>(rotation, currInputDims);
+    currInputDims = rotationTransform->getOutputFrameDims().value();
+    resizedOutputDims_ = currInputDims;
+    transforms_.push_back(std::move(rotationTransform));
+  }
+
+  // Note that we are claiming ownership of the transform objects passed in to
+  // us.
+  // Validate and add user transforms
   for (auto& transform : transforms) {
     TORCH_CHECK(transform != nullptr, "Transforms should never be nullptr!");
+    transform->validate(currInputDims);
     if (transform->getOutputFrameDims().has_value()) {
       resizedOutputDims_ = transform->getOutputFrameDims().value();
+      currInputDims = resizedOutputDims_.value();
     }
-    transform->validate(currInputDims);
-    currInputDims = resizedOutputDims_.value_or(metadataDims_);
-
-    // Note that we are claiming ownership of the transform objects passed in to
-    // us.
     transforms_.push_back(std::unique_ptr<Transform>(transform));
   }
 
@@ -679,9 +718,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   const auto& streamInfo = streamInfos_[activeStreamIndex_];
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
-      frameIndices.numel(),
-      resizedOutputDims_.value_or(metadataDims_),
-      videoStreamOptions.device);
+      frameIndices.numel(), getOutputDims(), videoStreamOptions.device);
 
   auto previousIndexInVideo = -1;
   for (int64_t f = 0; f < frameIndices.numel(); ++f) {
@@ -738,9 +775,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   int64_t numOutputFrames = std::ceil((stop - start) / double(step));
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
-      numOutputFrames,
-      resizedOutputDims_.value_or(metadataDims_),
-      videoStreamOptions.device);
+      numOutputFrames, getOutputDims(), videoStreamOptions.device);
 
   for (int64_t i = start, f = 0; i < stop; i += step, ++f) {
     FrameOutput frameOutput =
@@ -873,9 +908,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
   // below. Hence, we need this special case below.
   if (startSeconds == stopSeconds) {
     FrameBatchOutput frameBatchOutput(
-        0,
-        resizedOutputDims_.value_or(metadataDims_),
-        videoStreamOptions.device);
+        0, getOutputDims(), videoStreamOptions.device);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     return frameBatchOutput;
   }
@@ -918,9 +951,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
 
     FrameBatchOutput frameBatchOutput(
-        numOutputFrames,
-        resizedOutputDims_.value_or(metadataDims_),
-        videoStreamOptions.device);
+        numOutputFrames, getOutputDims(), videoStreamOptions.device);
 
     // Decode frames, reusing already-decoded frames for duplicates
     int64_t lastDecodedSourceIndex = -1;
@@ -961,9 +992,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     int64_t numFrames = stopFrameIndex - startFrameIndex;
 
     FrameBatchOutput frameBatchOutput(
-        numFrames,
-        resizedOutputDims_.value_or(metadataDims_),
-        videoStreamOptions.device);
+        numFrames, getOutputDims(), videoStreamOptions.device);
     for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
       FrameOutput frameOutput =
           getFrameAtIndexInternal(i, frameBatchOutput.data[f]);
@@ -1511,6 +1540,20 @@ int64_t SingleStreamDecoder::getPts(int64_t frameIndex) {
     default:
       TORCH_CHECK(false, "Unknown SeekMode");
   }
+}
+
+FrameDims SingleStreamDecoder::getOutputDims() const {
+  const auto& streamMetadata =
+      containerMetadata_.allStreamMetadata[activeStreamIndex_];
+  Rotation rotation = rotationFromDegrees(streamMetadata.rotation);
+  // If there is a rotation, then resizedOutputDims_ is necessarily non-null
+  // (the rotation transform would have set it).
+  if (rotation != Rotation::NONE) {
+    TORCH_CHECK(
+        resizedOutputDims_.has_value(),
+        "Internal error: rotation is applied but resizedOutputDims_ is not set");
+  }
+  return resizedOutputDims_.value_or(preRotationDims_);
 }
 
 // --------------------------------------------------------------------------
