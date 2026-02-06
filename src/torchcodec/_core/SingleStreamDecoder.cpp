@@ -49,7 +49,7 @@ SingleStreamDecoder::SingleStreamDecoder(
       status == 0,
       "Could not open input file: " + videoFilePath + " " +
           getFFMPEGErrorStringFromErrorCode(status));
-  STABLE_CHECK(rawContext != nullptr);
+  STABLE_CHECK(rawContext != nullptr, "Failed to allocate AVFormatContext");
   formatContext_.reset(rawContext);
 
   initializeDecoder();
@@ -435,7 +435,7 @@ void SingleStreamDecoder::addStream(
   STABLE_CHECK(
       mediaType == AVMEDIA_TYPE_VIDEO || mediaType == AVMEDIA_TYPE_AUDIO,
       "Can only add video or audio streams.");
-  STABLE_CHECK(formatContext_.get() != nullptr);
+  STABLE_CHECK(formatContext_.get() != nullptr, "Format context is null");
 
   AVCodecOnlyUseForCallingAVFindBestStream avCodec = nullptr;
 
@@ -448,7 +448,7 @@ void SingleStreamDecoder::addStream(
       streamIndex,
       " of the desired media type?");
 
-  STABLE_CHECK(avCodec != nullptr);
+  STABLE_CHECK(avCodec != nullptr, "Codec not found");
 
   StreamInfo& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.streamIndex = activeStreamIndex_;
@@ -477,7 +477,7 @@ void SingleStreamDecoder::addStream(
   }
 
   AVCodecContext* codecContext = avcodec_alloc_context3(avCodec);
-  STABLE_CHECK(codecContext != nullptr);
+  STABLE_CHECK(codecContext != nullptr, "Failed to allocate codec context");
   streamInfo.codecContext = makeSharedAVCodecContext(codecContext);
 
   int retVal = avcodec_parameters_to_context(

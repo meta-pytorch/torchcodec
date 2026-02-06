@@ -430,7 +430,9 @@ void _add_video_stream(
 
   if (dimension_order.has_value()) {
     std::string stdDimensionOrder{dimension_order.value()};
-    STABLE_CHECK(stdDimensionOrder == "NHWC" || stdDimensionOrder == "NCHW");
+    STABLE_CHECK(
+        stdDimensionOrder == "NHWC" || stdDimensionOrder == "NCHW",
+        "dimension_order must be NHWC or NCHW");
     videoStreamOptions.dimensionOrder = stdDimensionOrder;
   }
   if (color_conversion_library.has_value()) {
