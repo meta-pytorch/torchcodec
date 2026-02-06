@@ -10,7 +10,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Decoding with custom frame mappings &mdash; TorchCodec 0.11.0.dev20260205+cu126 Documentation</title>
+  <title>Decoding with custom frame mappings &mdash; TorchCodec 0.11.0.dev20260206+cu126 Documentation</title>
   
 
   
@@ -513,10 +513,10 @@ The following frame metadata fields are needed
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Running ffprobe:
-ffprobe -i /tmp/tmpsb7spl5p/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmp9vm2s585/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Running ffprobe:
-ffprobe -i /tmp/tmpsb7spl5p/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmp9vm2s585/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Sample of fields in custom frame mappings:
 frame[&#39;key_frame&#39;] = 1, frame[&#39;pts&#39;] = 0, frame[&#39;duration&#39;] = 1
@@ -568,15 +568,15 @@ object. As video length or resolution increases, the performance gain compared t
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Running benchmarks on short_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 7.73ms +- 0.04
+med = 7.70ms +- 0.03
 Creating a VideoDecoder object with seek_mode=&#39;exact&#39;:
-med = 8.10ms +- 0.04
+med = 8.05ms +- 0.06
 
 Running benchmarks on long_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 33.48ms +- 0.62
+med = 33.41ms +- 0.27
 Creating a VideoDecoder object with seek_mode=&#39;exact&#39;:
-med = 60.52ms +- 0.89
+med = 60.34ms +- 0.89
 </pre></div>
 </div>
 </section>
@@ -607,15 +607,15 @@ so the performance benefits are realized.</p>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Running benchmarks on short_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 23.42ms +- 0.15
+med = 23.29ms +- 0.15
 Decoding frames with seek_mode=&#39;exact&#39;:
-med = 23.74ms +- 0.06
+med = 23.62ms +- 0.14
 
 Running benchmarks on long_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 49.31ms +- 0.19
+med = 50.60ms +- 0.65
 Decoding frames with seek_mode=&#39;exact&#39;:
-med = 76.10ms +- 0.65
+med = 76.84ms +- 0.70
 </pre></div>
 </div>
 </section>
@@ -706,7 +706,7 @@ accuracy benefits.</p>
 same videos are decoded repeatedly, and some preprocessing work can be done.</p></li>
 <li><p>For exact frame seeking without preprocessing, use “exact” mode.</p></li>
 </ul>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 31.464 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 31.540 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-decoding-custom-frame-mappings-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../../_downloads/515bb6477ed8fb530cccbe1b67ef6f0c/custom_frame_mappings.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">custom_frame_mappings.ipynb</span></code></a></p>

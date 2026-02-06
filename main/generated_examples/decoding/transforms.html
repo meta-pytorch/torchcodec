@@ -11,7 +11,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Decoder Transforms: Applying transforms during decoding &mdash; TorchCodec 0.11.0.dev20260205+cu126 Documentation</title>
+  <title>Decoder Transforms: Applying transforms during decoding &mdash; TorchCodec 0.11.0.dev20260206+cu126 Documentation</title>
   
 
   
@@ -718,8 +718,8 @@ sequentially:</p>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;torchvision transform: </span><span class="si">{</span><span class="n">bench</span><span class="p">(</span><span class="n">sample_torchvision_transforms</span><span class="p">,</span><span class="w"> </span><span class="n">num_threads</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>decoder transforms:    times_med = 2339.55ms +- 14.95
-torchvision transform: times_med = 5178.07ms +- 111.39
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>decoder transforms:    times_med = 2325.42ms +- 12.85
+torchvision transform: times_med = 5176.17ms +- 101.95
 </pre></div>
 </div>
 <p>The reason is that FFmpeg is applying the decoder transforms in parallel.
@@ -730,8 +730,8 @@ even be faster!</p>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;torchvision transform: </span><span class="si">{</span><span class="n">bench</span><span class="p">(</span><span class="n">sample_torchvision_transforms</span><span class="p">,</span><span class="w"> </span><span class="n">num_threads</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>decoder transforms:    times_med = 15482.65ms +- 296.99
-torchvision transform: times_med = 17430.14ms +- 34.02
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>decoder transforms:    times_med = 15229.97ms +- 39.47
+torchvision transform: times_med = 17474.98ms +- 62.24
 </pre></div>
 </div>
 <p>In brief, our performance guidance is:</p>
@@ -749,7 +749,7 @@ be slower. Experiment with your setup to verify.</p></li>
 <div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><a href="https://docs.python.org/3/library/shutil.html#shutil.rmtree" title="shutil.rmtree" class="sphx-glr-backref-module-shutil sphx-glr-backref-type-py-function"><span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span></a><span class="p">(</span><a href="https://docs.python.org/3/library/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">temp_dir</span></a><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (3 minutes 23.522 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (3 minutes 22.387 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-decoding-transforms-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../../_downloads/f189e474be55fc74900ac94fda37f6f0/transforms.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">transforms.ipynb</span></code></a></p>
