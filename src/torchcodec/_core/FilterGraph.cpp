@@ -58,7 +58,8 @@ FilterGraph::FilterGraph(
     const FiltersContext& filtersContext,
     const VideoStreamOptions& videoStreamOptions) {
   filterGraph_.reset(avfilter_graph_alloc());
-  STABLE_CHECK(filterGraph_.get() != nullptr);
+  STABLE_CHECK(
+      filterGraph_.get() != nullptr, "Failed to allocate filter graph");
 
   if (videoStreamOptions.ffmpegThreadCount.has_value()) {
     filterGraph_->nb_threads = videoStreamOptions.ffmpegThreadCount.value();
