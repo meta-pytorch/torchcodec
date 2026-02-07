@@ -613,6 +613,18 @@ TEST_SRC_2_720P_MPEG4 = TestVideo(
     frames={0: {}},  # Not needed for now
 )
 
+# Video with non-zero start time (start_time ~8.333s)
+# Used to test that PTS values are correctly reported for videos that don't
+# start at time 0.
+TEST_NON_ZERO_START = TestVideo(
+    filename="test_non_zero_start.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=200, height=112, num_color_channels=3),
+    },
+    frames={},  # Automatically loaded from json file
+)
+
 
 def supports_approximate_mode(asset: TestVideo) -> bool:
     # Those are missing the `duration` field so they fail in approximate mode (on all devices).
