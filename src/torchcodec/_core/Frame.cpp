@@ -10,8 +10,8 @@
 namespace facebook::torchcodec {
 
 FrameDims::FrameDims(int height, int width) : height(height), width(width) {
-  STABLE_CHECK(height > 0, "FrameDims.height must be > 0, got: ", height);
-  STABLE_CHECK(width > 0, "FrameDims.width must be > 0, got: ", width);
+  STD_TORCH_CHECK(height > 0, "FrameDims.height must be > 0, got: ", height);
+  STD_TORCH_CHECK(width > 0, "FrameDims.width must be > 0, got: ", width);
 }
 
 FrameBatchOutput::FrameBatchOutput(
@@ -31,13 +31,13 @@ torch::Tensor allocateEmptyHWCTensor(
                            .dtype(torch::kUInt8)
                            .layout(torch::kStrided)
                            .device(device);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       frameDims.width > 0, "width must be > 0, got: ", frameDims.width);
   if (numFrames.has_value()) {
     auto numFramesValue = numFrames.value();
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         numFramesValue >= 0, "numFrames must be >= 0, got: ", numFramesValue);
     return torch::empty(
         {numFramesValue, frameDims.height, frameDims.width, 3}, tensorOptions);

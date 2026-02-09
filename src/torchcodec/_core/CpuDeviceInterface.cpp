@@ -18,8 +18,8 @@ static bool g_cpu = registerDeviceInterface(
 
 CpuDeviceInterface::CpuDeviceInterface(const torch::Device& device)
     : DeviceInterface(device) {
-  STABLE_CHECK(g_cpu, "CpuDeviceInterface was not registered!");
-  STABLE_CHECK(
+  STD_TORCH_CHECK(g_cpu, "CpuDeviceInterface was not registered!");
+  STD_TORCH_CHECK(
       device_.type() == torch::kCPU, "Unsupported device: ", device_.str());
 }
 
@@ -27,7 +27,7 @@ void CpuDeviceInterface::initialize(
     const AVStream* avStream,
     [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx,
     const SharedAVCodecContext& codecContext) {
-  STABLE_CHECK(avStream != nullptr, "avStream is null");
+  STD_TORCH_CHECK(avStream != nullptr, "avStream is null");
   codecContext_ = codecContext;
   timeBase_ = avStream->time_base;
 }
@@ -67,7 +67,8 @@ void CpuDeviceInterface::initializeVideo(
   // need to know the actual frame dimensions.
   if (transforms.size() == 1 && transforms[0]->isResize()) {
     auto resize = dynamic_cast<ResizeTransform*>(transforms[0].get());
-    STABLE_CHECK(resize != nullptr, "ResizeTransform expected but not found!");
+    STD_TORCH_CHECK(
+        resize != nullptr, "ResizeTransform expected but not found!");
     swsFlags_ = resize->getSwsFlags();
   }
 
@@ -140,7 +141,7 @@ void CpuDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
-  STABLE_CHECK(initialized_, "CpuDeviceInterface was not initialized.");
+  STD_TORCH_CHECK(initialized_, "CpuDeviceInterface was not initialized.");
 
   if (avMediaType_ == AVMEDIA_TYPE_AUDIO) {
     convertAudioAVFrameToFrameOutput(avFrame, frameOutput);
@@ -181,7 +182,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
 
   if (preAllocatedOutputTensor.has_value()) {
     auto shape = preAllocatedOutputTensor.value().sizes();
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         (shape.size() == 3) && (shape[0] == outputDims.height) &&
             (shape[1] == outputDims.width) && (shape[2] == 3),
         "Expected pre-allocated tensor of shape ",
@@ -205,7 +206,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     // If this check failed, it would mean that the frame wasn't reshaped to
     // the expected height.
     // TODO: Can we do the same check for width?
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         resultHeight == outputDims.height,
         "resultHeight != outputDims.height: ",
         resultHeight,
@@ -219,7 +220,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     // Similarly to above, if this check fails it means the frame wasn't
     // reshaped to its expected dimensions by filtergraph.
     auto shape = outputTensor.sizes();
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         (shape.size() == 3) && (shape[0] == outputDims.height) &&
             (shape[1] == outputDims.width) && (shape[2] == 3),
         "Expected output tensor of shape ",
@@ -238,7 +239,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
       frameOutput.data = outputTensor;
     }
   } else {
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         false,
         "Invalid color conversion library: ",
         static_cast<int>(colorConversionLibrary));
@@ -312,7 +313,7 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
       colorConvertedPointers,
       colorConvertedLinesizes);
 
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       colorConvertedHeight == avFrame->height,
       "Color conversion swscale pass failed: colorConvertedHeight != avFrame->height: ",
       colorConvertedHeight,
@@ -397,7 +398,7 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
   int outSampleRate = audioStreamOptions_.sampleRate.value_or(srcSampleRate);
 
   int srcNumChannels = getNumChannels(codecContext_);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       srcNumChannels == getNumChannels(srcAVFrame),
       "The frame has ",
       getNumChannels(srcAVFrame),
@@ -434,7 +435,7 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
   const UniqueAVFrame& avFrame = mustConvert ? convertedAVFrame : srcAVFrame;
 
   AVSampleFormat format = static_cast<AVSampleFormat>(avFrame->format);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       format == outSampleFormat,
       "Something went wrong, the frame didn't get converted to the desired format. ",
       "Desired format = ",
@@ -443,7 +444,7 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
       av_get_sample_fmt_name(format));
 
   int numChannels = getNumChannels(avFrame);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       numChannels == outNumChannels,
       "Something went wrong, the frame didn't get converted to the desired ",
       "number of channels = ",

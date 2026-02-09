@@ -21,16 +21,16 @@ AVIOFileLikeContext::AVIOFileLikeContext(
     py::gil_scoped_acquire gil;
 
     if (isForWriting) {
-      STABLE_CHECK(
+      STD_TORCH_CHECK(
           py::hasattr(fileLike, "write"),
           "File like object must implement a write method for writing.");
     } else {
-      STABLE_CHECK(
+      STD_TORCH_CHECK(
           py::hasattr(fileLike, "read"),
           "File like object must implement a read method for reading.");
     }
 
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         py::hasattr(fileLike, "seek"),
         "File like object must implement a seek method.");
   }
@@ -61,7 +61,7 @@ int AVIOFileLikeContext::read(void* opaque, uint8_t* buf, int buf_size) {
       break;
     }
 
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         numBytesRead <= request,
         "Requested up to ",
         request,
