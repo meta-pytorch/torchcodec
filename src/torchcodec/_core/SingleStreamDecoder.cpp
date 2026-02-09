@@ -1405,6 +1405,25 @@ FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
 // docs: https://pytorch.org/docs/stable/generated/torch.permute.html
 torch::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
     torch::Tensor& hwcTensor) {
+  // For non-CPU devices (e.g. CUDA), apply rotation here since FFmpeg's filter
+  // graph is bypassed during decoding. CPU handles rotation in filter graph.
+  if (deviceInterface_->device().type() != torch::kCPU) {
+    const auto& streamMetadata =
+        containerMetadata_.allStreamMetadata[activeStreamIndex_];
+    Rotation rotation = rotationFromDegrees(streamMetadata.rotation);
+    if (rotation != Rotation::NONE) {
+      int k = (rotation == Rotation::CCW90)   ? 1
+          : (rotation == Rotation::CW90)      ? -1
+          : (rotation == Rotation::ROTATE180) ? 2
+                                              : 0;
+      // Tensor is in HWC/NHWC format, H,W at dims {0,1} for 3D, {1,2} for 4D
+      std::vector<int64_t> dims = hwcTensor.dim() == 3
+          ? std::vector<int64_t>{0, 1}
+          : std::vector<int64_t>{1, 2};
+      hwcTensor = torch::rot90(hwcTensor, k, dims);
+    }
+  }
+
   if (streamInfos_[activeStreamIndex_].videoStreamOptions.dimensionOrder ==
       "NHWC") {
     return hwcTensor;
@@ -1559,6 +1578,12 @@ FrameDims SingleStreamDecoder::getOutputDims() const {
     TORCH_CHECK(
         resizedOutputDims_.has_value(),
         "Internal error: rotation is applied but resizedOutputDims_ is not set");
+    // For non-CPU devices, rotation is applied AFTER decoding in
+    // maybePermuteHWC2CHW using torch::rot90(). Return pre-rotation dims
+    // so tensors are allocated at the correct size for decoding.
+    if (deviceInterface_->device().type() != torch::kCPU) {
+      return preRotationDims_;
+    }
   }
   return resizedOutputDims_.value_or(preRotationDims_);
 }

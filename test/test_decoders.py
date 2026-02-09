@@ -1966,20 +1966,23 @@ class TestVideoDecoder:
         assert "No fallback required" in str(decoder.cpu_fallback)
 
     @pytest.mark.parametrize("dimension_order", ["NCHW", "NHWC"])
-    def test_rotation_applied_to_frames(self, dimension_order):
+    @pytest.mark.parametrize("device", all_supported_devices())
+    def test_rotation_applied_to_frames(self, dimension_order, device):
         """Test that rotation is correctly applied to decoded frames.
 
         Compares frames from NASA_VIDEO_ROTATED (which has 90-degree rotation
         metadata) with manually rotated frames from NASA_VIDEO.
         Tests all decoding methods to ensure rotation is applied consistently.
         """
-        decoder = VideoDecoder(
+        decoder, _ = make_video_decoder(
             NASA_VIDEO.path,
+            device=device,
             stream_index=NASA_VIDEO.default_stream_index,
             dimension_order=dimension_order,
         )
-        decoder_rotated = VideoDecoder(
+        decoder_rotated, _ = make_video_decoder(
             NASA_VIDEO_ROTATED.path,
+            device=device,
             stream_index=NASA_VIDEO_ROTATED.default_stream_index,
             dimension_order=dimension_order,
         )
