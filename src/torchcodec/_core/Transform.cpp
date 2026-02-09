@@ -143,7 +143,7 @@ Rotation rotationFromDegrees(std::optional<double> degrees) {
     case -180:
       return Rotation::ROTATE180;
     default:
-      TORCH_CHECK(
+      STD_TORCH_CHECK(
           false,
           "Unexpected rotation value: ",
           *degrees,

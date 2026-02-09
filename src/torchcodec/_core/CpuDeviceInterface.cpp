@@ -532,11 +532,11 @@ UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
         nullptr,
         nullptr,
         nullptr));
-    TORCH_CHECK(swsContext_ != nullptr, "Failed to create scaling context");
+    STD_TORCH_CHECK(swsContext_ != nullptr, "Failed to create scaling context");
   }
 
   UniqueAVFrame avFrame(av_frame_alloc());
-  TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
+  STD_TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
 
   // Set output frame properties
   avFrame->format = outPixelFormat;
@@ -545,12 +545,12 @@ UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
   avFrame->pts = frameIndex;
 
   int status = av_frame_get_buffer(avFrame.get(), 0);
-  TORCH_CHECK(status >= 0, "Failed to allocate frame buffer");
+  STD_TORCH_CHECK(status >= 0, "Failed to allocate frame buffer");
 
   // Need to convert/scale the frame
   // Create temporary frame with input format
   UniqueAVFrame inputFrame(av_frame_alloc());
-  TORCH_CHECK(inputFrame != nullptr, "Failed to allocate input AVFrame");
+  STD_TORCH_CHECK(inputFrame != nullptr, "Failed to allocate input AVFrame");
 
   inputFrame->format = inPixelFormat;
   inputFrame->width = inWidth;
@@ -578,7 +578,7 @@ UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
       inputFrame->height,
       avFrame->data,
       avFrame->linesize);
-  TORCH_CHECK(status == outHeight, "sws_scale failed");
+  STD_TORCH_CHECK(status == outHeight, "sws_scale failed");
   return avFrame;
 }
 

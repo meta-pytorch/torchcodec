@@ -1553,7 +1553,7 @@ FrameDims SingleStreamDecoder::getOutputDims() const {
   // If there is a rotation, then resizedOutputDims_ is necessarily non-null
   // (the rotation transform would have set it).
   if (rotation != Rotation::NONE) {
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         resizedOutputDims_.has_value(),
         "Internal error: rotation is applied but resizedOutputDims_ is not set");
   }
