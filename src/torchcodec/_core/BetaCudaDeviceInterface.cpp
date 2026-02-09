@@ -25,6 +25,14 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
+#ifdef USE_NVTX
+    #include "nvtx3/nvtx3.hpp"
+
+    #define NVTX_SCOPED_RANGE(NAME) nvtx3::scoped_range NVTX_RANGE_##__LINE__{NAME};
+#else
+    #define NVTX_SCOPED_RANGE(NAME) ((void)0)
+#endif
+
 namespace facebook::torchcodec {
 
 namespace {
@@ -91,6 +99,7 @@ pfnDisplayPictureCallback(void* pUserData, CUVIDPARSERDISPINFO* dispInfo) {
 }
 
 static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
+  NVTX_SCOPED_RANGE("createDecoder");
   // Decoder creation parameters, most are taken from DALI
   CUVIDDECODECREATEINFO decoderParams = {};
   decoderParams.bitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
@@ -191,6 +200,7 @@ std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
 }
 
 bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
+  NVTX_SCOPED_RANGE("nativeNVDECSupport");
   // Return true iff the input video stream is supported by our NVDEC
   // implementation.
 
@@ -258,6 +268,7 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
     : DeviceInterface(device) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::BetaCudaDeviceInterface");
   TORCH_CHECK(g_cuda_beta, "BetaCudaDeviceInterface was not registered!");
   TORCH_CHECK(
       device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
@@ -269,7 +280,9 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::~BetaCudaDeviceInterface");
   if (decoder_) {
+    NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::~returnDecoder");
     // DALI doesn't seem to do any particular cleanup of the decoder before
     // sending it to the cache, so we probably don't need to do anything either.
     // Just to be safe, we flush.
@@ -282,6 +295,7 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
   }
 
   if (videoParser_) {
+    NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::~cuvidDestroyVideoParser");
     cuvidDestroyVideoParser(videoParser_);
     videoParser_ = nullptr;
   }
@@ -293,6 +307,7 @@ void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
     [[maybe_unused]] const SharedAVCodecContext& codecContext) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::initialize");
   if (!nvcuvidAvailable_ || !nativeNVDECSupport(codecContext)) {
     cpuFallback_ = createDeviceInterface(torch::kCPU);
     TORCH_CHECK(
@@ -339,6 +354,7 @@ void BetaCudaDeviceInterface::initialize(
 void BetaCudaDeviceInterface::initializeBSF(
     const AVCodecParameters* codecPar,
     const UniqueDecodingAVFormatContext& avFormatCtx) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::initializeBSF");
   // Setup bit stream filters (BSF):
   // https://ffmpeg.org/doxygen/7.0/group__lavc__bsf.html
   // This is only needed for some formats, like H264 or HEVC.
@@ -430,6 +446,7 @@ void BetaCudaDeviceInterface::initializeBSF(
 // we should handle the case of multiple calls. Probably need to flush buffers,
 // etc.
 int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::streamPropertyChange");
   TORCH_CHECK(videoFormat != nullptr, "Invalid video format");
 
   videoFormat_ = *videoFormat;
@@ -461,6 +478,7 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
 // Moral equivalent of avcodec_send_packet(). Here, we pass the AVPacket down to
 // the NVCUVID parser.
 int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::sendPacket");
   if (cpuFallback_) {
     return cpuFallback_->sendPacket(packet);
   }
@@ -488,6 +506,7 @@ int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
 }
 
 int BetaCudaDeviceInterface::sendEOFPacket() {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::sendEOFPacket");
   if (cpuFallback_) {
     return cpuFallback_->sendEOFPacket();
   }
@@ -501,6 +520,7 @@ int BetaCudaDeviceInterface::sendEOFPacket() {
 
 int BetaCudaDeviceInterface::sendCuvidPacket(
     CUVIDSOURCEDATAPACKET& cuvidPacket) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::sendCuvidPacket");
   CUresult result = cuvidParseVideoData(videoParser_, &cuvidPacket);
   return result == CUDA_SUCCESS ? AVSUCCESS : AVERROR_EXTERNAL;
 }
@@ -508,6 +528,7 @@ int BetaCudaDeviceInterface::sendCuvidPacket(
 ReferenceAVPacket& BetaCudaDeviceInterface::applyBSF(
     ReferenceAVPacket& packet,
     ReferenceAVPacket& filteredPacket) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::applyBSF");
   if (!bitstreamFilter_) {
     return packet;
   }
@@ -536,6 +557,7 @@ ReferenceAVPacket& BetaCudaDeviceInterface::applyBSF(
 // given frame. It means we can send that frame to be decoded by the hardware
 // NVDEC decoder by calling cuvidDecodePicture which is non-blocking.
 int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* picParams) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::frameReadyForDecoding");
   TORCH_CHECK(picParams != nullptr, "Invalid picture parameters");
   TORCH_CHECK(decoder_, "Decoder not initialized before picture decode");
   // Send frame to be decoded by NVDEC - non-blocking call.
@@ -547,12 +569,14 @@ int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* picParams) {
 
 int BetaCudaDeviceInterface::frameReadyInDisplayOrder(
     CUVIDPARSERDISPINFO* dispInfo) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::frameReadyInDisplayOrder");
   readyFrames_.push(*dispInfo);
   return 1; // success
 }
 
 // Moral equivalent of avcodec_receive_frame().
 int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::receiveFrame");
   if (cpuFallback_) {
     return cpuFallback_->receiveFrame(avFrame);
   }
@@ -609,6 +633,7 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
 }
 
 void BetaCudaDeviceInterface::unmapPreviousFrame() {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::unmapPreviousFrame");
   if (previouslyMappedFrame_ == 0) {
     return;
   }
@@ -623,6 +648,7 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
     CUdeviceptr framePtr,
     unsigned int pitch,
     const CUVIDPARSERDISPINFO& dispInfo) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::convertCudaFrameToAVFrame");
   TORCH_CHECK(framePtr != 0, "Invalid CUDA frame pointer");
 
   // Get frame dimensions from video format display area (not coded dimensions)
@@ -691,6 +717,7 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
 }
 
 void BetaCudaDeviceInterface::flush() {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::flush");
   if (cpuFallback_) {
     cpuFallback_->flush();
     return;
@@ -711,6 +738,7 @@ void BetaCudaDeviceInterface::flush() {
 
 UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
     UniqueAVFrame& cpuFrame) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::transferCpuFrameToGpuNV12");
   // This is called in the context of the CPU fallback: the frame was decoded on
   // the CPU, and in this function we convert that frame into NV12 format and
   // send it to the GPU.
@@ -850,6 +878,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::convertAVFrameToFrameOutput");
   UniqueAVFrame gpuFrame =
       cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
 
@@ -869,6 +898,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {
+  NVTX_SCOPED_RANGE("BetaCudaDeviceInterface::getDetails");
   std::string details = "Beta CUDA Device Interface.";
   if (cpuFallback_) {
     details += " Using CPU fallback.";
