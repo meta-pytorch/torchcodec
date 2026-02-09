@@ -6,6 +6,7 @@
 
 #include <c10/cuda/CUDAStream.h>
 #include <torch/types.h>
+#include <map>
 #include <mutex>
 #include <vector>
 
@@ -27,6 +28,43 @@ extern "C" {
 namespace facebook::torchcodec {
 
 namespace {
+
+// Cache for cuvidGetDecoderCaps results.
+// The key is a tuple of (codec type, chroma format, bit depth minus 8).
+// The value is a pair of (CUresult, CUVIDDECODECAPS).
+struct DecoderCapsCache {
+  using Key = std::tuple<cudaVideoCodec, cudaVideoChromaFormat, unsigned int>;
+  std::map<Key, std::pair<CUresult, CUVIDDECODECAPS>> cache;
+  std::mutex mutex;
+
+  std::pair<CUresult, CUVIDDECODECAPS> getDecoderCaps(
+      cudaVideoCodec codecType,
+      cudaVideoChromaFormat chromaFormat,
+      unsigned int bitDepthMinus8) {
+    Key key{codecType, chromaFormat, bitDepthMinus8};
+
+    std::lock_guard<std::mutex> lock(mutex);
+    auto it = cache.find(key);
+    if (it != cache.end()) {
+      return it->second;
+    }
+
+    CUVIDDECODECAPS caps = {};
+    caps.eCodecType = codecType;
+    caps.eChromaFormat = chromaFormat;
+    caps.nBitDepthMinus8 = bitDepthMinus8;
+
+    CUresult result = cuvidGetDecoderCaps(&caps);
+    cache[key] = {result, caps};
+    return {result, caps};
+  }
+};
+
+static DecoderCapsCache& getDecoderCapsCache() {
+  static DecoderCapsCache cache;
+  return cache;
+}
+
 
 static bool g_cuda_beta = registerDeviceInterface(
     DeviceInterfaceKey(torch::kCUDA, /*variant=*/"beta"),
@@ -171,12 +209,9 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
     return false;
   }
 
-  auto caps = CUVIDDECODECAPS{};
-  caps.eCodecType = codecType.value();
-  caps.eChromaFormat = chromaFormat.value();
-  caps.nBitDepthMinus8 = desc->comp[0].depth - 8;
-
-  CUresult result = cuvidGetDecoderCaps(&caps);
+  auto bitDepthMinus8 = static_cast<unsigned int>(desc->comp[0].depth - 8);
+  auto [result, caps] = getDecoderCapsCache().getDecoderCaps(
+      codecType.value(), chromaFormat.value(), bitDepthMinus8);
   if (result != CUDA_SUCCESS) {
     return false;
   }
