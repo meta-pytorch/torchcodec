@@ -51,6 +51,9 @@ double StreamMetadata::getBeginStreamSeconds(SeekMode seekMode) const {
       if (beginStreamPtsSecondsFromContent.has_value()) {
         return beginStreamPtsSecondsFromContent.value();
       }
+      if (beginStreamSecondsFromHeader.has_value()) {
+        return beginStreamSecondsFromHeader.value();
+      }
       return 0.0;
     default:
       STD_TORCH_CHECK(false, "Unknown SeekMode");
@@ -66,13 +69,19 @@ std::optional<double> StreamMetadata::getEndStreamSeconds(
           endStreamPtsSecondsFromContent.has_value(),
           "Missing endStreamPtsSecondsFromContent");
       return endStreamPtsSecondsFromContent.value();
-    case SeekMode::approximate:
+    case SeekMode::approximate: {
       if (endStreamPtsSecondsFromContent.has_value()) {
         return endStreamPtsSecondsFromContent.value();
       }
-      return getDurationSeconds(seekMode);
+      auto dur = getDurationSeconds(seekMode);
+      if (dur.has_value()) {
+        return getBeginStreamSeconds(seekMode) + dur.value();
+      }
+      return std::nullopt;
+    }
     default:
       STD_TORCH_CHECK(false, "Unknown SeekMode");
+      return std::nullopt;
   }
 }
 
