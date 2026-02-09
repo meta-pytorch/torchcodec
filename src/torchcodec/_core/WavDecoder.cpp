@@ -6,365 +6,401 @@
 
 #include "WavDecoder.h"
 
-#include <cstdint>
+#include <algorithm>
+#include <cstdio>
 #include <cstring>
-#include <fstream>
-#include <vector>
+#include <stdexcept>
 
 namespace facebook::torchcodec {
 namespace {
 
-// PCM format codes in WAV files
-constexpr uint16_t WAVE_FORMAT_PCM = 1;
-constexpr uint16_t WAVE_FORMAT_IEEE_FLOAT = 3;
-
-// Read a little-endian value from raw bytes
 template <typename T>
-T readLE(const uint8_t* data) {
+T readLittleEndian(const uint8_t* data) {
   T value;
   std::memcpy(&value, data, sizeof(T));
   return value;
 }
 
-// Check for a 4-byte identifier (FOURCC) at a given offset
-bool checkFourCC(
-    const uint8_t* data,
-    int64_t size,
-    int64_t offset,
-    const char* expected) {
-  if (offset + 4 > size) {
+bool checkFourCC(const uint8_t* data, const char* expected) {
+  return std::memcmp(data, expected, 4) == 0;
+}
+
+} // namespace
+
+// WavFileReader implementation
+WavFileReader::WavFileReader(const std::string& path) : file_(nullptr) {
+  file_ = std::fopen(path.c_str(), "rb");
+  if (!file_) {
+    throw std::runtime_error("Failed to open WAV file: " + path);
+  }
+}
+
+WavFileReader::~WavFileReader() {
+  if (file_) {
+    std::fclose(file_);
+  }
+}
+
+int64_t WavFileReader::read(void* buffer, int64_t size) {
+  if (!file_) {
+    return -1;
+  }
+  size_t bytesRead = std::fread(buffer, 1, static_cast<size_t>(size), file_);
+  return static_cast<int64_t>(bytesRead);
+}
+
+int64_t WavFileReader::seek(int64_t position) {
+  if (!file_) {
+    return -1;
+  }
+  if (std::fseek(file_, static_cast<long>(position), SEEK_SET) != 0) {
+    return -1;
+  }
+  return position;
+}
+
+// WavTensorReader implementation
+WavTensorReader::WavTensorReader(const torch::Tensor& data)
+    : data_(data), currentPos_(0) {
+  TORCH_CHECK(data.is_contiguous(), "WAV data tensor must be contiguous");
+  TORCH_CHECK(
+      data.scalar_type() == torch::kUInt8, "WAV data tensor must be uint8");
+}
+
+int64_t WavTensorReader::read(void* buffer, int64_t size) {
+  int64_t available = data_.numel() - currentPos_;
+  int64_t toRead = std::min(size, available);
+  if (toRead <= 0) {
+    return 0;
+  }
+
+  const uint8_t* src = data_.data_ptr<uint8_t>() + currentPos_;
+  std::memcpy(buffer, src, static_cast<size_t>(toRead));
+  currentPos_ += toRead;
+  return toRead;
+}
+
+int64_t WavTensorReader::seek(int64_t position) {
+  if (position < 0 || position > data_.numel()) {
+    return -1;
+  }
+  currentPos_ = position;
+  return currentPos_;
+}
+
+// WavDecoder implementation
+WavDecoder::WavDecoder(std::unique_ptr<WavReader> reader)
+    : reader_(std::move(reader)) {
+  parseHeader();
+}
+
+bool WavDecoder::isWavFile(const void* data, size_t size) {
+  if (size < 12) {
     return false;
   }
-  return std::memcmp(data + offset, expected, 4) == 0;
+  const uint8_t* bytes = static_cast<const uint8_t*>(data);
+  // Check for RIFF....WAVE
+  return checkFourCC(bytes, "RIFF") && checkFourCC(bytes + 8, "WAVE");
 }
 
-// WAV header info extracted during parsing
-struct WavHeaderInfo {
-  int64_t dataOffset; // Byte offset to PCM data
-  int64_t dataSize; // Size of PCM data in bytes
-  int64_t numSamples; // Total samples per channel
-  int sampleRate;
-  int numChannels;
-  int bitsPerSample;
-  uint16_t formatCode; // 1=PCM int, 3=IEEE float
-};
+void WavDecoder::parseHeader() {
+  // Read enough for header parsing (typical WAV headers are < 100 bytes)
+  // TODO: source?
+  constexpr int64_t headerBufferSize = 256;
+  std::vector<uint8_t> buffer(headerBufferSize);
 
-// Read entire file into a vector
-std::optional<std::vector<uint8_t>> readFile(const std::string& path) {
-  std::ifstream file(path, std::ios::binary | std::ios::ate);
-  if (!file) {
-    return std::nullopt;
+  reader_->seek(0);
+  int64_t bytesRead = reader_->read(buffer.data(), headerBufferSize);
+  if (bytesRead < 44) {
+    throw std::runtime_error("WAV data too small to contain valid header");
   }
 
-  auto size = file.tellg();
-  if (size <= 0) {
-    return std::nullopt;
+  const uint8_t* data = buffer.data();
+
+  // Verify RIFF header
+  if (!checkFourCC(data, "RIFF")) {
+    throw std::runtime_error("Missing RIFF header");
   }
 
-  std::vector<uint8_t> data(static_cast<size_t>(size));
-  file.seekg(0, std::ios::beg);
-  if (!file.read(reinterpret_cast<char*>(data.data()), size)) {
-    return std::nullopt;
+  // Verify WAVE format
+  if (!checkFourCC(data + 8, "WAVE")) {
+    throw std::runtime_error("Missing WAVE format identifier");
   }
 
-  return data;
-}
-
-// Parse WAV header from raw bytes
-std::optional<WavHeaderInfo> parseWavHeader(const uint8_t* data, int64_t size) {
-  // Need at least 44 bytes for minimal WAV header
-  if (size < 44) {
-    return std::nullopt;
-  }
-
-  // Check RIFF/WAVE signature
-  if (!checkFourCC(data, size, 0, "RIFF") ||
-      !checkFourCC(data, size, 8, "WAVE")) {
-    return std::nullopt;
-  }
-
-  // Parse chunks to find fmt and data
-  int64_t pos = 12;
-  int numChannels = 0;
-  int sampleRate = 0;
-  int bitsPerSample = 0;
-  uint16_t formatCode = 0;
-  int64_t dataOffset = 0;
-  int64_t dataSize = 0;
+  // Find and parse fmt chunk
+  int64_t offset = 12;
   bool foundFmt = false;
-  bool foundData = false;
 
-  while (pos + 8 <= size) {
-    uint32_t chunkSize = readLE<uint32_t>(data + pos + 4);
+  while (offset + 8 <= bytesRead) {
+    if (checkFourCC(data + offset, "fmt ")) {
+      uint32_t fmtSize = readLittleEndian<uint32_t>(data + offset + 4);
 
-    if (checkFourCC(data, size, pos, "fmt ")) {
-      if (pos + 8 + 16 > size) {
-        return std::nullopt;
+      if (offset + 8 + fmtSize > bytesRead) {
+        throw std::runtime_error("fmt chunk extends beyond buffer");
       }
-      const uint8_t* fmt = data + pos + 8;
-      formatCode = readLE<uint16_t>(fmt);
-      numChannels = readLE<uint16_t>(fmt + 2);
-      sampleRate = readLE<uint32_t>(fmt + 4);
-      bitsPerSample = readLE<uint16_t>(fmt + 14);
+
+      if (fmtSize < 16) {
+        throw std::runtime_error("fmt chunk too small");
+      }
+
+      const uint8_t* fmtData = data + offset + 8;
+      // TODO: explain https://en.wikipedia.org/wiki/WAV#WAV_file_header
+      header_.audioFormat = readLittleEndian<uint16_t>(fmtData);
+      header_.numChannels = readLittleEndian<uint16_t>(fmtData + 2);
+      header_.sampleRate = readLittleEndian<uint32_t>(fmtData + 4);
+      header_.byteRate = readLittleEndian<uint32_t>(fmtData + 8);
+      header_.blockAlign = readLittleEndian<uint16_t>(fmtData + 12);
+      header_.bitsPerSample = readLittleEndian<uint16_t>(fmtData + 14);
+
+      // Parse extended format fields for WAVE_FORMAT_EXTENSIBLE
+      if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
+        // Extended format requires at least 40 bytes total (16 base + 2 cbSize
+        // + 22 extension)
+        if (fmtSize < 40) {
+          throw std::runtime_error(
+              "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
+        }
+
+        header_.validBitsPerSample = readLittleEndian<uint16_t>(fmtData + 18);
+        header_.channelMask = readLittleEndian<uint32_t>(fmtData + 20);
+        // SubFormat GUID starts at offset 24, first 2 bytes are the format code
+        header_.subFormat = readLittleEndian<uint16_t>(fmtData + 24);
+      }
+
       foundFmt = true;
-    } else if (checkFourCC(data, size, pos, "data")) {
-      dataOffset = pos + 8;
-      dataSize = chunkSize;
-      foundData = true;
+      offset += 8 + fmtSize;
       break;
     }
-
-    pos += 8 + chunkSize + (chunkSize & 1);
+    // Skip unknown chunks
+    uint32_t chunkSize = readLittleEndian<uint32_t>(data + offset + 4);
+    offset += 8 + chunkSize;
   }
 
-  if (!foundFmt || !foundData) {
-    return std::nullopt;
+  if (!foundFmt) {
+    throw std::runtime_error("fmt chunk not found");
   }
 
-  // Validate basic parameters
-  if (numChannels <= 0 || sampleRate <= 0 || bitsPerSample <= 0) {
-    return std::nullopt;
-  }
-
-  // Validate format/bitsPerSample combinations
-  if (formatCode == WAVE_FORMAT_PCM) {
-    if (bitsPerSample != 8 && bitsPerSample != 16 && bitsPerSample != 24 &&
-        bitsPerSample != 32) {
-      return std::nullopt;
+  while (offset + 8 <= bytesRead) {
+    if (checkFourCC(data + offset, "data")) {
+      // Parse data chunk
+      header_.dataSize = readLittleEndian<uint32_t>(data + offset + 4);
+      header_.dataOffset = offset + 8;
+      return;
     }
-  } else if (formatCode == WAVE_FORMAT_IEEE_FLOAT) {
-    if (bitsPerSample != 32 && bitsPerSample != 64) {
-      return std::nullopt;
-    }
-  } else {
-    // Unsupported format (extensible, etc.)
-    return std::nullopt;
+
+    // Skip this chunk
+    uint32_t chunkSize = readLittleEndian<uint32_t>(data + offset + 4);
+    offset += 8 + chunkSize;
   }
 
-  int bytesPerSample = bitsPerSample / 8;
-  int64_t bytesPerFrame = numChannels * bytesPerSample;
-  int64_t numSamples = dataSize / bytesPerFrame;
-
-  return WavHeaderInfo{
-      dataOffset,
-      dataSize,
-      numSamples,
-      sampleRate,
-      numChannels,
-      bitsPerSample,
-      formatCode};
+  throw std::runtime_error("data chunk not found");
 }
 
-// Convert 24-bit PCM samples to float32 tensor
-torch::Tensor convert24BitPcmToFloat32(
-    const uint8_t* pcmData,
+bool WavDecoder::isSupported() const {
+  // Determine effective format (subFormat for extensible, audioFormat
+  // otherwise)
+  uint16_t effectiveFormat = header_.audioFormat;
+  if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
+    effectiveFormat = header_.subFormat;
+  }
+
+  // Support PCM and IEEE float formats
+  if (effectiveFormat != WAV_FORMAT_PCM &&
+      effectiveFormat != WAV_FORMAT_IEEE_FLOAT) {
+    return false;
+  }
+
+  // Validate bits per sample
+  if (effectiveFormat == WAV_FORMAT_PCM) {
+    if (header_.bitsPerSample != 8 && header_.bitsPerSample != 16 &&
+        header_.bitsPerSample != 24 && header_.bitsPerSample != 32) {
+      return false;
+    }
+  } else if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
+    if (header_.bitsPerSample != 32 && header_.bitsPerSample != 64) {
+      return false;
+    }
+  }
+
+  return header_.numChannels > 0 && header_.sampleRate > 0 &&
+      header_.blockAlign > 0;
+}
+
+bool WavDecoder::isCompatible(
+    std::optional<int64_t> stream_index,
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) const {
+  // WAV files only have one stream at index 0
+  if (stream_index.has_value() && stream_index.value() != 0) {
+    return false;
+  }
+  // Check sample rate matches if specified (no resampling support)
+  if (sample_rate.has_value() &&
+      sample_rate.value() != static_cast<int64_t>(header_.sampleRate)) {
+    return false;
+  }
+  // Check channel count matches if specified (no remixing support)
+  if (num_channels.has_value() &&
+      num_channels.value() != static_cast<int64_t>(header_.numChannels)) {
+    return false;
+  }
+  return true;
+}
+
+const WavHeader& WavDecoder::getHeader() const {
+  return header_;
+}
+
+double WavDecoder::getDurationSeconds() const {
+  if (header_.blockAlign == 0 || header_.sampleRate == 0) {
+    return 0.0;
+  }
+  int64_t numSamples =
+      static_cast<int64_t>(header_.dataSize) / header_.blockAlign;
+  return static_cast<double>(numSamples) / header_.sampleRate;
+}
+
+torch::Tensor WavDecoder::convertSamplesToFloat(
+    const void* rawData,
     int64_t numSamples,
-    int numChannels) {
-  auto output = torch::empty({numChannels, numSamples}, torch::kFloat32);
+    int64_t numChannels) {
+  // Output is (numChannels, numSamples) float32
+  torch::Tensor output =
+      torch::empty({numChannels, numSamples}, torch::kFloat32);
   float* outPtr = output.data_ptr<float>();
 
-  constexpr float scale = 1.0f / 8388608.0f;
+  const uint8_t* src = static_cast<const uint8_t*>(rawData);
+  int bytesPerSample = header_.bitsPerSample / 8;
 
-  for (int64_t s = 0; s < numSamples; ++s) {
-    for (int c = 0; c < numChannels; ++c) {
-      size_t byteIdx = (s * numChannels + c) * 3;
-      int32_t sample = pcmData[byteIdx] | (pcmData[byteIdx + 1] << 8) |
-          (pcmData[byteIdx + 2] << 16);
-      // Sign extend from 24 to 32 bits
-      if (sample & 0x800000) {
-        sample |= 0xFF000000;
+  // Determine effective format (subFormat for extensible, audioFormat
+  // otherwise)
+  uint16_t effectiveFormat = header_.audioFormat;
+  if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
+    effectiveFormat = header_.subFormat;
+  }
+
+  if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
+    if (header_.bitsPerSample == 32) {
+      // 32-bit float - just copy and deinterleave
+      const float* floatSrc = reinterpret_cast<const float*>(src);
+      for (int64_t s = 0; s < numSamples; ++s) {
+        for (int64_t c = 0; c < numChannels; ++c) {
+          outPtr[c * numSamples + s] = floatSrc[s * numChannels + c];
+        }
       }
-      outPtr[c * numSamples + s] = sample * scale;
+    } else if (header_.bitsPerSample == 64) {
+      // 64-bit float - convert to 32-bit and deinterleave
+      const double* doubleSrc = reinterpret_cast<const double*>(src);
+      for (int64_t s = 0; s < numSamples; ++s) {
+        for (int64_t c = 0; c < numChannels; ++c) {
+          outPtr[c * numSamples + s] =
+              static_cast<float>(doubleSrc[s * numChannels + c]);
+        }
+      }
+    }
+  } else {
+    // PCM format - convert to normalized float
+    for (int64_t s = 0; s < numSamples; ++s) {
+      for (int64_t c = 0; c < numChannels; ++c) {
+        const uint8_t* samplePtr = src + (s * numChannels + c) * bytesPerSample;
+        float value = 0.0f;
+
+        switch (header_.bitsPerSample) {
+          case 8: {
+            // 8-bit PCM is unsigned (0-255, center at 128)
+            uint8_t sample = *samplePtr;
+            value = (static_cast<float>(sample) - 128.0f) / 128.0f;
+            break;
+          }
+          case 16: {
+            // 16-bit PCM is signed
+            int16_t sample = readLittleEndian<int16_t>(samplePtr);
+            value = static_cast<float>(sample) / 32768.0f;
+            break;
+          }
+          case 24: {
+            // 24-bit PCM is signed, stored in 3 bytes little-endian
+            int32_t sample = static_cast<int32_t>(samplePtr[0]) |
+                (static_cast<int32_t>(samplePtr[1]) << 8) |
+                (static_cast<int32_t>(samplePtr[2]) << 16);
+            // Sign extend from 24 to 32 bits
+            if (sample & 0x800000) {
+              sample |= 0xFF000000;
+            }
+            value = static_cast<float>(sample) / 8388608.0f;
+            break;
+          }
+          case 32: {
+            // 32-bit PCM is signed
+            int32_t sample = readLittleEndian<int32_t>(samplePtr);
+            value = static_cast<float>(sample) / 2147483648.0f;
+            break;
+          }
+        }
+        outPtr[c * numSamples + s] = value;
+      }
     }
   }
 
   return output;
 }
 
-// Convert PCM data to float32 tensor
-// Returns tensor of shape (numChannels, numSamples)
-torch::Tensor convertPcmToFloat32(
-    const uint8_t* pcmData,
-    int64_t numSamples,
-    int numChannels,
-    uint16_t formatCode,
-    int bitsPerSample) {
-  const bool isMono = (numChannels == 1);
+std::tuple<torch::Tensor, double> WavDecoder::getSamplesInRange(
+    double startSeconds,
+    std::optional<double> stopSeconds) {
+  TORCH_CHECK(startSeconds >= 0, "start_seconds must be non-negative");
+  if (stopSeconds.has_value()) {
+    TORCH_CHECK(
+        stopSeconds.value() >= startSeconds,
+        "stop_seconds must be >= start_seconds");
+  }
 
-  if (formatCode == WAVE_FORMAT_PCM) {
-    switch (bitsPerSample) {
-      case 8: {
-        auto shape = isMono ? std::vector<int64_t>{numSamples}
-                            : std::vector<int64_t>{numSamples, numChannels};
-        // Interpret raw bytes as uint8
-        auto uintTensor = torch::from_blob(
-            const_cast<uint8_t*>(pcmData), shape, torch::kUInt8);
-        // Convert to float32, then normalize from [0, 255] to [-1, 1]
-        auto floatTensor =
-            uintTensor.to(torch::kFloat32).sub_(128.0f).div_(128.0f);
-        if (isMono) {
-          return floatTensor.unsqueeze(0);
-        }
-        return floatTensor.t().contiguous();
-      }
-      case 16: {
-        auto shape = isMono ? std::vector<int64_t>{numSamples}
-                            : std::vector<int64_t>{numSamples, numChannels};
-        // Interpret raw bytes as int16
-        auto intTensor = torch::from_blob(
-            const_cast<uint8_t*>(pcmData), shape, torch::kInt16);
-        // Convert to float32, then normalize from [-32768, 32767] to [-1, 1]
-        auto floatTensor = intTensor.to(torch::kFloat32).div_(32768.0f);
-        if (isMono) {
-          return floatTensor.unsqueeze(0);
-        }
-        return floatTensor.t().contiguous();
-      }
-      case 24: {
-        return convert24BitPcmToFloat32(pcmData, numSamples, numChannels);
-      }
-      case 32: {
-        auto shape = isMono ? std::vector<int64_t>{numSamples}
-                            : std::vector<int64_t>{numSamples, numChannels};
-        // Interpret raw bytes as int32
-        auto intTensor = torch::from_blob(
-            const_cast<uint8_t*>(pcmData), shape, torch::kInt32);
-        // Convert to float32, then normalize from [-2^31, 2^31-1] to [-1, 1]
-        auto floatTensor = intTensor.to(torch::kFloat32).div_(2147483648.0f);
-        if (isMono) {
-          return floatTensor.unsqueeze(0);
-        }
-        return floatTensor.t().contiguous();
-      }
-    }
-  } else if (formatCode == WAVE_FORMAT_IEEE_FLOAT) {
-    switch (bitsPerSample) {
-      case 32: {
-        auto shape = isMono ? std::vector<int64_t>{numSamples}
-                            : std::vector<int64_t>{numSamples, numChannels};
-        // Interpret raw bytes as float32 (already normalized by convention)
-        auto floatTensor = torch::from_blob(
-            const_cast<uint8_t*>(pcmData), shape, torch::kFloat32);
-        if (isMono) {
-          return floatTensor.clone().unsqueeze(0);
-        }
-        return floatTensor.t().contiguous();
-      }
-      case 64: {
-        auto shape = isMono ? std::vector<int64_t>{numSamples}
-                            : std::vector<int64_t>{numSamples, numChannels};
-        // Interpret raw bytes as float64
-        auto doubleTensor = torch::from_blob(
-            const_cast<uint8_t*>(pcmData), shape, torch::kFloat64);
-        // Convert to float32 (already normalized by convention)
-        auto floatTensor = doubleTensor.to(torch::kFloat32);
-        if (isMono) {
-          return floatTensor.unsqueeze(0);
-        }
-        return floatTensor.t().contiguous();
-      }
+  double duration = getDurationSeconds();
+  if (startSeconds >= duration) {
+    // Return empty tensor
+    return std::make_tuple(
+        torch::empty({header_.numChannels, 0}, torch::kFloat32), startSeconds);
+  }
+
+  double actualStop = stopSeconds.value_or(duration);
+  actualStop = std::min(actualStop, duration);
+
+  // Calculate sample range
+  int64_t startSample = static_cast<int64_t>(startSeconds * header_.sampleRate);
+  int64_t stopSample = static_cast<int64_t>(actualStop * header_.sampleRate);
+  int64_t numSamples = stopSample - startSample;
+
+  if (numSamples <= 0) {
+    return std::make_tuple(
+        torch::empty({header_.numChannels, 0}, torch::kFloat32), startSeconds);
+  }
+
+  // Calculate byte positions
+  int64_t byteOffset = startSample * header_.blockAlign;
+  int64_t bytesToRead = numSamples * header_.blockAlign;
+
+  // Seek to position and read
+  reader_->seek(static_cast<int64_t>(header_.dataOffset) + byteOffset);
+  std::vector<uint8_t> rawData(bytesToRead);
+  int64_t bytesRead = reader_->read(rawData.data(), bytesToRead);
+
+  if (bytesRead < bytesToRead) {
+    // Adjust numSamples if we couldn't read everything
+    numSamples = bytesRead / header_.blockAlign;
+    if (numSamples <= 0) {
+      return std::make_tuple(
+          torch::empty({header_.numChannels, 0}, torch::kFloat32),
+          startSeconds);
     }
   }
 
-  TORCH_CHECK(false, "Unsupported PCM format");
-}
+  torch::Tensor samples =
+      convertSamplesToFloat(rawData.data(), numSamples, header_.numChannels);
 
-// Validate optional parameters against WAV header
-// Returns true if parameters are compatible, false otherwise
-bool validateWavParams(
-    const WavHeaderInfo& header,
-    std::optional<int64_t> stream_index,
-    std::optional<int64_t> sample_rate,
-    std::optional<int64_t> num_channels) {
-  // WAV files only have one stream at index 0
-  if (stream_index.has_value() && stream_index.value() != 0) {
-    return false;
-  }
-  // Check sample rate matches if specified
-  if (sample_rate.has_value() && sample_rate.value() != header.sampleRate) {
-    return false;
-  }
-  // Check channel count matches if specified
-  if (num_channels.has_value() && num_channels.value() != header.numChannels) {
-    return false;
-  }
-  return true;
-}
+  // Calculate actual PTS
+  double ptsSeconds = static_cast<double>(startSample) / header_.sampleRate;
 
-} // namespace
-
-std::optional<WavSamples> validateAndDecodeWavFromTensor(
-    const torch::Tensor& data,
-    std::optional<int64_t> stream_index,
-    std::optional<int64_t> sample_rate,
-    std::optional<int64_t> num_channels) {
-  TORCH_CHECK(
-      data.is_contiguous() && data.dtype() == torch::kUInt8,
-      "Input tensor must be contiguous uint8");
-
-  const uint8_t* ptr = data.data_ptr<uint8_t>();
-  int64_t size = data.numel();
-
-  auto header = parseWavHeader(ptr, size);
-  if (!header) {
-    return std::nullopt;
-  }
-
-  // Validate optional parameters
-  if (!validateWavParams(*header, stream_index, sample_rate, num_channels)) {
-    return std::nullopt;
-  }
-
-  // Validate data bounds
-  if (header->dataOffset + header->dataSize > size) {
-    return std::nullopt;
-  }
-
-  auto samples = convertPcmToFloat32(
-      ptr + header->dataOffset,
-      header->numSamples,
-      header->numChannels,
-      header->formatCode,
-      header->bitsPerSample);
-
-  double durationSeconds =
-      static_cast<double>(header->numSamples) / header->sampleRate;
-  return WavSamples{samples, header->sampleRate, durationSeconds};
-}
-
-std::optional<WavSamples> validateAndDecodeWavFromFile(
-    const std::string& path,
-    std::optional<int64_t> stream_index,
-    std::optional<int64_t> sample_rate,
-    std::optional<int64_t> num_channels) {
-  auto fileData = readFile(path);
-  if (!fileData) {
-    return std::nullopt;
-  }
-
-  const uint8_t* ptr = fileData->data();
-  int64_t size = static_cast<int64_t>(fileData->size());
-
-  auto header = parseWavHeader(ptr, size);
-  if (!header || header->dataOffset + header->dataSize > size) {
-    return std::nullopt;
-  }
-
-  // Validate optional parameters
-  if (!validateWavParams(*header, stream_index, sample_rate, num_channels)) {
-    return std::nullopt;
-  }
-
-  auto samples = convertPcmToFloat32(
-      ptr + header->dataOffset,
-      header->numSamples,
-      header->numChannels,
-      header->formatCode,
-      header->bitsPerSample);
-
-  double durationSeconds =
-      static_cast<double>(header->numSamples) / header->sampleRate;
-  return WavSamples{samples, header->sampleRate, durationSeconds};
+  return std::make_tuple(samples, ptsSeconds);
 }
 
 } // namespace facebook::torchcodec

@@ -157,6 +157,24 @@ class AudioStreamMetadata(StreamMetadata):
         )
 
 
+def create_audio_metadata_from_wav(wav_json: dict) -> AudioStreamMetadata:
+    """Create AudioStreamMetadata from WAV metadata dict."""
+    return AudioStreamMetadata(
+        duration_seconds_from_header=wav_json.get("duration_seconds"),
+        begin_stream_seconds_from_header=wav_json.get(
+            "begin_stream_seconds_from_header", 0.0
+        ),
+        bit_rate=wav_json.get("bit_rate"),
+        codec=wav_json.get("codec", "pcm"),
+        stream_index=wav_json.get("stream_index", 0),
+        duration_seconds=wav_json.get("duration_seconds"),
+        begin_stream_seconds=wav_json.get("begin_stream_seconds", 0.0),
+        sample_rate=wav_json.get("sample_rate"),
+        num_channels=wav_json.get("num_channels"),
+        sample_format=wav_json.get("sample_format"),
+    )
+
+
 @dataclass
 class ContainerMetadata:
     duration_seconds_from_header: float | None

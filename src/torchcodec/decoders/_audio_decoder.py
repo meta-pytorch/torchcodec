@@ -6,16 +6,16 @@
 
 
 import io
-import json
 from pathlib import Path
 
 import torch
 from torch import Tensor
 
 from torchcodec import _core as core, AudioSamples
-from torchcodec._core._metadata import AudioStreamMetadata
 from torchcodec.decoders._decoder_utils import (
+    _is_uncompressed_wav,
     create_decoder,
+    decode_wav,
     ERROR_REPORTING_INSTRUCTIONS,
 )
 
@@ -61,28 +61,30 @@ class AudioDecoder:
         stream_index: int | None = None,
         sample_rate: int | None = None,
         num_channels: int | None = None,
+        use_wav_decoder: (
+            bool | None
+        ) = None,  # optionally disable wav decoder for testing
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.AudioDecoder")
 
-        # Try WAV fast path
-        self._wav_samples: AudioSamples | None = None
-        samples, metadata_json = self._decode_wav(
-            source, stream_index, sample_rate, num_channels
-        )
-        if metadata_json:
-            metadata = json.loads(metadata_json)
-            self._wav_samples = AudioSamples(
-                data=samples,
-                pts_seconds=0.0,
-                duration_seconds=metadata["durationSeconds"],
-                sample_rate=metadata["sampleRate"],
+        # Check if this is an uncompressed WAV file that we can decode directly with WavDecoder.
+        self._use_wav_decoder = False
+        self._wav_source = None
+
+        if use_wav_decoder is not False and (
+            wav_metadata := _is_uncompressed_wav(
+                source, stream_index, sample_rate, num_channels
             )
+        ):
+            self._use_wav_decoder = True
+            self._wav_source = source
             self.stream_index = 0
-            self._desired_sample_rate = metadata["sampleRate"]
-            self._decoder = None  # type: ignore[assignment]
-            self.metadata = AudioStreamMetadata.from_json(metadata)
+
+            # Create metadata from WAV JSON
+            self.metadata = core.create_audio_metadata_from_wav(wav_metadata)
             return
 
+        # Fall back to FFmpeg decoder
         self._decoder = create_decoder(source=source, seek_mode="approximate")
 
         container_metadata = core.get_container_metadata(self._decoder)
@@ -118,55 +120,6 @@ class AudioDecoder:
             num_channels=num_channels,
         )
 
-    @staticmethod
-    def _decode_wav(
-        source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
-        stream_index: int | None = None,
-        sample_rate: int | None = None,
-        num_channels: int | None = None,
-    ) -> tuple[Tensor, str]:
-        """Decode WAV if valid and parameters match.
-
-        Returns (samples, metadata_json).
-        Empty metadata_json means not a valid WAV file or parameters don't match.
-        """
-        if isinstance(source, Tensor):
-            return core.validate_and_decode_wav_from_tensor(
-                source,
-                stream_index=stream_index,
-                sample_rate=sample_rate,
-                num_channels=num_channels,
-            )
-        elif isinstance(source, bytes):
-            return core.validate_and_decode_wav_from_tensor(
-                torch.frombuffer(source, dtype=torch.uint8),
-                stream_index=stream_index,
-                sample_rate=sample_rate,
-                num_channels=num_channels,
-            )
-        elif isinstance(source, (str, Path)):
-            path = str(source)
-            if path.startswith(("http://", "https://", "s3://")):
-                return torch.empty(0), ""
-            return core.validate_and_decode_wav_from_file(
-                path,
-                stream_index=stream_index,
-                sample_rate=sample_rate,
-                num_channels=num_channels,
-            )
-        elif isinstance(source, (io.RawIOBase, io.BufferedReader)) or (
-            hasattr(source, "read") and hasattr(source, "seek")
-        ):
-            data = source.read()
-            source.seek(0)
-            return core.validate_and_decode_wav_from_tensor(
-                torch.frombuffer(data, dtype=torch.uint8),
-                stream_index=stream_index,
-                sample_rate=sample_rate,
-                num_channels=num_channels,
-            )
-        return torch.empty(0), ""
-
     def get_all_samples(self) -> AudioSamples:
         """Returns all the audio samples from the source.
 
@@ -176,9 +129,6 @@ class AudioDecoder:
         Returns:
             AudioSamples: The samples within the file.
         """
-        # Use WAV fast path if available
-        if self._wav_samples is not None:
-            return self._wav_samples
         return self.get_samples_played_in_range()
 
     def get_samples_played_in_range(
@@ -209,29 +159,25 @@ class AudioDecoder:
                 f"Invalid start seconds: {start_seconds}. It must be less than or equal to stop seconds ({stop_seconds})."
             )
 
-        # Handle WAV fast path
-        if self._wav_samples is not None:
-            sample_rate = self._wav_samples.sample_rate
-            num_samples = self._wav_samples.data.shape[1]
+        # Use native WAV decoder if available
+        if self._use_wav_decoder and self._wav_source is not None:
+            frames, pts_tensor = decode_wav(
+                self._wav_source,
+                start_seconds=start_seconds,
+                stop_seconds=stop_seconds,
+            )
+            first_pts = pts_tensor.item()
+            sample_rate = self.metadata.sample_rate
+            assert sample_rate is not None  # mypy
 
-            start_sample = round(start_seconds * sample_rate)
-            if stop_seconds is None:
-                stop_sample = num_samples
-            else:
-                stop_sample = round(stop_seconds * sample_rate)
-
-            start_sample = max(0, min(start_sample, num_samples))
-            stop_sample = max(0, min(stop_sample, num_samples))
-
-            data = self._wav_samples.data[:, start_sample:stop_sample]
-            output_pts = start_sample / sample_rate
             return AudioSamples(
-                data=data,
-                pts_seconds=output_pts,
-                duration_seconds=data.shape[1] / sample_rate,
+                data=frames,
+                pts_seconds=first_pts,
+                duration_seconds=frames.shape[1] / sample_rate,
                 sample_rate=sample_rate,
             )
 
+        # FFmpeg path
         frames, first_pts = core.get_frames_by_pts_in_range_audio(
             self._decoder,
             start_seconds=start_seconds,
