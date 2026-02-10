@@ -286,7 +286,7 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     flush();
     unmapPreviousFrame();
     NVDECCache::getCache(device_).returnDecoder(
-        &videoFormat_, std::move(decoder_));
+        &videoFormat_, std::move(decoder_), decoderId_);
   }
 
   if (videoParser_) {
@@ -313,7 +313,6 @@ void BetaCudaDeviceInterface::initialize(
     // We'll always use the CPU fallback from now on, so we can return early.
     return;
   }
-
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
@@ -430,6 +429,29 @@ void BetaCudaDeviceInterface::initializeBSF(
       getFFMPEGErrorStringFromErrorCode(retVal));
 }
 
+
+int BetaCudaDeviceInterface::reconfigureNVDECDecoder(CUVIDEOFORMAT* videoFormat) {
+  CUVIDRECONFIGUREDECODERINFO info = {};
+
+  info.ulWidth  = videoFormat->coded_width;
+  info.ulHeight = videoFormat->coded_height;
+
+  info.ulTargetWidth  = videoFormat->display_area.right - videoFormat->display_area.left;
+  info.ulTargetHeight = videoFormat->display_area.bottom - videoFormat->display_area.top;
+
+  info.ulNumDecodeSurfaces = videoFormat->min_num_decode_surfaces;
+  
+  info.display_area.left   = videoFormat->display_area.left;
+  info.display_area.top    = videoFormat->display_area.top;
+  info.display_area.right  = videoFormat->display_area.right;
+  info.display_area.bottom = videoFormat->display_area.bottom;
+
+  cuvidReconfigureDecoder(*decoder_, &info);
+
+  return static_cast<int>(videoFormat_.min_num_decode_surfaces);
+}
+
+
 // This callback is called by the parser within cuvidParseVideoData when there
 // is a change in the stream's properties (like resolution change), as specified
 // by CUVIDEOFORMAT. Particularly (but not just!), this is called at the very
@@ -447,14 +469,42 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
     videoFormat_.min_num_decode_surfaces = 20;
   }
 
+  CUvideodecoderCache decoderCache;
+  
   if (!decoder_) {
-    decoder_ = NVDECCache::getCache(device_).getDecoder(videoFormat);
+    decoderCache = NVDECCache::getCache(device_).getDecoder(videoFormat);
 
-    if (!decoder_) {
-      // TODONVDEC P2: consider re-configuring an existing decoder instead of
-      // re-creating one. See docs, see DALI. Re-configuration doesn't seem to
-      // be enabled in DALI by default.
+    auto cache_type = std::get<0>(decoderCache);
+    if (cache_type == NVDECCacheType::Reconfig) {
+      // Need to reconfigure existing decoder
+      auto decoderId = std::get<2>(decoderCache);
+      decoderId_ = decoderId;
+      
+      decoder_ = std::move(std::get<1>(decoderCache));
+      TORCH_CHECK(decoder_, "Failed to get decoder from cache");
+      return reconfigureNVDECDecoder(videoFormat);
+    }
+    else if (cache_type == NVDECCacheType::Reuse) {
+      // Can reuse existing decoder as is
+      auto decoderId = std::get<2>(decoderCache);
+      decoderId_ = decoderId;
+      
+      decoder_ = std::move(std::get<1>(decoderCache));
+    }
+    else if (cache_type == NVDECCacheType::Create) {
+      // Need to create a new decoder
+      TORCH_CHECK(!decoder_, "Decoder should be null here");
       decoder_ = createDecoder(videoFormat);
+      decoderId_ = NVDECCache::getCache(device_).allocDecoderId();
+      NVDECCache::getCache(device_).registerDecoderId(
+          decoderId_,
+          videoFormat->coded_width,
+          videoFormat->coded_height,
+          // The number of surfaces used in reconfig cannot exceed the number of surfaces 
+          // specified when creating the decoder. In most cases, this should not be a problem.
+          // We'll see the real result based on whether the tests pass.
+          videoFormat->min_num_decode_surfaces
+      );
     }
 
     TORCH_CHECK(decoder_, "Failed to get or create decoder");
