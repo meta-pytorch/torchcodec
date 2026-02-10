@@ -36,6 +36,23 @@ class SingleStreamDecoder {
       const std::string& videoFilePath,
       SeekMode seekMode = SeekMode::exact);
 
+  // Creates a SingleStreamDecoder from the video at videoFilePath and adds
+  // a video stream. If streamIndex is -1, uses the best video stream.
+  SingleStreamDecoder(
+      const std::string& videoFilePath,
+      SeekMode seekMode,
+      int streamIndex,
+      std::vector<Transform*>& transforms,
+      const VideoStreamOptions& videoStreamOptions);
+
+  // Creates a SingleStreamDecoder from the video at videoFilePath and adds
+  // an audio stream. If streamIndex is -1, uses the best audio stream.
+  SingleStreamDecoder(
+      const std::string& videoFilePath,
+      SeekMode seekMode,
+      int streamIndex,
+      const AudioStreamOptions& audioStreamOptions);
+
   // Creates a SingleStreamDecoder using the provided AVIOContext inside the
   // AVIOContextHolder. The AVIOContextHolder is the base class, and the
   // derived class will have specialized how the custom read, seek and writes
@@ -43,6 +60,14 @@ class SingleStreamDecoder {
   explicit SingleStreamDecoder(
       std::unique_ptr<AVIOContextHolder> context,
       SeekMode seekMode = SeekMode::exact);
+
+  // Creates a SingleStreamDecoder using the provided AVIOContext and adds
+  // an audio stream. If streamIndex is -1, uses the best audio stream.
+  SingleStreamDecoder(
+      std::unique_ptr<AVIOContextHolder> context,
+      SeekMode seekMode,
+      int streamIndex,
+      const AudioStreamOptions& audioStreamOptions);
 
   // --------------------------------------------------------------------------
   // VIDEO METADATA QUERY API
