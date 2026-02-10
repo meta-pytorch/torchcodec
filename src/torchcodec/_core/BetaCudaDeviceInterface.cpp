@@ -69,7 +69,6 @@ static DecoderCapsCache& getDecoderCapsCache() {
   return cache;
 }
 
-
 static bool g_cuda_beta = registerDeviceInterface(
     DeviceInterfaceKey(torch::kCUDA, /*variant=*/"beta"),
     [](const torch::Device& device) {
