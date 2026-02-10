@@ -2321,7 +2321,6 @@ class TestAudioDecoder:
     # WAV fast path tests
     @pytest.mark.parametrize("asset", (SINE_MONO_S16, SINE_MONO_S32))
     def test_wav_fast_path_from_bytes(self, asset):
-        """Test that WAV files use the fast path when loaded from bytes."""
         with open(asset.path, "rb") as f:
             wav_bytes = f.read()
 
@@ -2333,16 +2332,19 @@ class TestAudioDecoder:
         assert samples.data.shape[0] == asset.num_channels
         assert samples.sample_rate == asset.sample_rate
 
+        baseline_decoder = AudioDecoder(wav_bytes, _fast_wav=False)
+        assert baseline_decoder._wav_decoder is None
+        baseline = baseline_decoder.get_all_samples()
+        torch.testing.assert_close(samples.data, baseline.data)
+
     @pytest.mark.parametrize("asset", (SINE_MONO_S16, SINE_MONO_S32))
     def test_wav_fast_path_range_decoding(self, asset):
-        """Test that range decoding works correctly with fast path."""
         with open(asset.path, "rb") as f:
             wav_bytes = f.read()
 
         decoder = AudioDecoder(wav_bytes)
         assert decoder._wav_decoder is not None
 
-        # Decode a range
         start_seconds = 1.0
         stop_seconds = 2.0
         samples = decoder.get_samples_played_in_range(
@@ -2353,3 +2355,9 @@ class TestAudioDecoder:
         assert samples.data.shape[1] == expected_num_samples
         assert samples.pts_seconds == start_seconds
         assert samples.duration_seconds == pytest.approx(stop_seconds - start_seconds)
+
+        baseline_decoder = AudioDecoder(wav_bytes, _fast_wav=False)
+        baseline = baseline_decoder.get_samples_played_in_range(
+            start_seconds=start_seconds, stop_seconds=stop_seconds
+        )
+        torch.testing.assert_close(samples.data, baseline.data)

@@ -60,13 +60,15 @@ class AudioDecoder:
         stream_index: int | None = None,
         sample_rate: int | None = None,
         num_channels: int | None = None,
+        _fast_wav: bool = True,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.AudioDecoder")
 
-        # Try fast WAV path
-        self._wav_decoder = WavDecoder.try_create(
-            source, sample_rate, num_channels, stream_index
-        )
+        self._wav_decoder = None
+        if _fast_wav:
+            self._wav_decoder = WavDecoder.try_create(
+                source, sample_rate, num_channels, stream_index
+            )
         if self._wav_decoder is not None:
             self.stream_index = self._wav_decoder.stream_index
             self.metadata = self._wav_decoder.metadata
@@ -76,28 +78,26 @@ class AudioDecoder:
         self._decoder = create_decoder(source=source, seek_mode="approximate")
 
         container_metadata = core.get_container_metadata(self._decoder)
-        _stream_index = (
+        self.stream_index = (
             container_metadata.best_audio_stream_index
             if stream_index is None
             else stream_index
         )
-        if _stream_index is None:
+        if self.stream_index is None:
             raise ValueError(
                 "The best audio stream is unknown and there is no specified stream. "
                 + ERROR_REPORTING_INSTRUCTIONS
             )
-        self.stream_index = _stream_index
         if self.stream_index >= len(container_metadata.streams):
             raise ValueError(
                 f"The stream at index {stream_index} is not a valid stream."
             )
 
-        _metadata = container_metadata.streams[self.stream_index]
-        if not isinstance(_metadata, core._metadata.AudioStreamMetadata):
+        self.metadata = container_metadata.streams[self.stream_index]
+        if not isinstance(self.metadata, core._metadata.AudioStreamMetadata):
             raise ValueError(
                 f"The stream at index {stream_index} is not an audio stream. "
             )
-        self.metadata = _metadata
 
         self._desired_sample_rate = (
             sample_rate if sample_rate is not None else self.metadata.sample_rate
