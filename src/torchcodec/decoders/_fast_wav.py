@@ -18,7 +18,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import torch
-from torch import Tensor
 
 from torchcodec import _core as core, AudioSamples
 
@@ -66,6 +65,7 @@ def _parse_wav_chunks(
             break
 
         chunk_id = chunk_header[0:4]
+        # chunk size is a 4-byte little-endian integer starting at offset 4, after the chunk ID
         chunk_size = struct.unpack("<I", chunk_header[4:8])[0]
 
         if chunk_id == b"fmt ":
@@ -114,29 +114,20 @@ def _parse_wav_chunks(
     raise ValueError("No data chunk found")
 
 
-def _read_wav_header(source: io.IOBase) -> WavMetadata:
-    """Parse WAV header from a seekable source."""
-
-    def read_at(offset: int, size: int) -> bytes:
-        source.seek(offset, 0)
-        return source.read(size)
-
-    return _parse_wav_chunks(read_at)
-
-
-def _decode_samples_from_bytes(
+def _samples_from_bytes(
     audio_bytes: bytes,
     metadata: WavMetadata,
-    num_samples: int,
 ) -> torch.Tensor:
     """
-    Decode raw PCM bytes to a float32 tensor.
+    Convert raw PCM bytes to a float32 tensor.
 
     Args:
         audio_bytes: Raw PCM audio data bytes
         metadata: WAV metadata for format information
-        num_samples: Number of samples (per channel) in audio_bytes
     """
+    bytes_per_sample = metadata.bits_per_sample // 8
+    num_samples = len(audio_bytes) // bytes_per_sample // metadata.num_channels
+
     # Convert to tensor based on format
     if metadata.audio_format == WAVE_FORMAT_IEEE_FLOAT:
         if metadata.bits_per_sample == 32:
@@ -166,7 +157,7 @@ def _decode_samples_from_bytes(
             )
         elif metadata.bits_per_sample == 24:
             # There is no 24-bit dtype, so we use helper function
-            samples = _decode_24bit_pcm(memoryview(audio_bytes))
+            samples = _convert_24bit_pcm(memoryview(audio_bytes))
         elif metadata.bits_per_sample == 8:
             # Interpret raw bytes as uint8
             uint_samples = torch.frombuffer(audio_bytes, dtype=torch.uint8)
@@ -186,38 +177,8 @@ def _decode_samples_from_bytes(
     return samples
 
 
-def decode_wav(
-    source: io.IOBase,
-    target_sample_rate: int | None = None,
-    target_num_channels: int | None = None,
-) -> tuple[torch.Tensor, WavMetadata]:
-    """
-    Decode a WAV file from a seekable source to a float32 tensor.
-    """
-    metadata = _read_wav_header(source)
-
-    if target_sample_rate is not None and target_sample_rate != metadata.sample_rate:
-        raise ValueError(
-            f"Resampling not supported. Source: {metadata.sample_rate}Hz, target: {target_sample_rate}Hz"
-        )
-
-    if target_num_channels is not None and target_num_channels != metadata.num_channels:
-        raise ValueError(
-            f"Channel conversion not supported. Source: {metadata.num_channels}, target: {target_num_channels}"
-        )
-
-    # Read all audio data
-    bytes_per_sample = metadata.bits_per_sample // 8
-    data_size = metadata.num_samples * metadata.num_channels * bytes_per_sample
-    source.seek(metadata._data_offset, 0)
-    audio_bytes = source.read(data_size)
-
-    samples = _decode_samples_from_bytes(audio_bytes, metadata, metadata.num_samples)
-    return samples, metadata
-
-
-def _decode_24bit_pcm(data: memoryview) -> torch.Tensor:
-    """Decode 24-bit PCM samples to float32 tensor."""
+def _convert_24bit_pcm(data: memoryview) -> torch.Tensor:
+    """Convert 24-bit PCM samples to float32 tensor."""
     # Interpret raw bytes as uint8, reshape to (num_samples, 3)
     raw = torch.frombuffer(data, dtype=torch.uint8).reshape(-1, 3)
 
@@ -239,19 +200,6 @@ def _decode_24bit_pcm(data: memoryview) -> torch.Tensor:
     return samples_i32.to(torch.float32) / 8388608.0
 
 
-def is_wav_source(source: io.IOBase) -> bool:
-    """Check if the given seekable source appears to be a WAV file."""
-    source.seek(0, 0)
-    header = source.read(12)
-    source.seek(0, 0)
-    return len(header) >= 12 and header[0:4] == b"RIFF" and header[8:12] == b"WAVE"
-
-
-def is_wav_bytes(data: bytes) -> bool:
-    """Check if the given bytes appear to be a WAV file."""
-    return len(data) >= 12 and data[0:4] == b"RIFF" and data[8:12] == b"WAVE"
-
-
 class WavDecoder:
     """Fast WAV decoder that bypasses FFmpeg for simple PCM WAV files.
 
@@ -264,10 +212,65 @@ class WavDecoder:
 
     def __init__(
         self,
-        source: bytes | io.IOBase,
-        wav_metadata: WavMetadata,
+        source: str | Path | io.RawIOBase | io.BufferedReader | bytes,
+        sample_rate: int | None = None,
+        num_channels: int | None = None,
+        stream_index: int | None = None,
     ):
-        self._source = source
+        """
+        Create a WavDecoder for the given source.
+
+        Raises:
+            ValueError: If source is not a valid WAV or doesn't match requirements.
+            TypeError: If source type is not supported.
+            OSError: If file cannot be opened.
+        """
+        if stream_index is not None and stream_index != 0:
+            raise ValueError("WAV files only have stream index 0")
+
+        if isinstance(source, bytes):
+            self._source = source
+            wav_metadata = _parse_wav_chunks(
+                lambda offset, size: source[offset : offset + size], len(source)
+            )
+
+        elif isinstance(source, (str, Path)):
+            path = Path(source)
+            if path.suffix.lower() != ".wav":
+                raise ValueError(f"Not a .wav file: {path}")
+            file_handle = open(path, "rb")
+            try:
+                wav_metadata = _parse_wav_chunks(
+                    lambda offset, size: (
+                        file_handle.seek(offset, 0),
+                        file_handle.read(size),
+                    )[1]
+                )
+            except ValueError:
+                file_handle.close()
+                raise
+            self._source = file_handle
+
+        elif isinstance(source, (io.RawIOBase, io.BufferedReader)) or (
+            hasattr(source, "read") and hasattr(source, "seek")
+        ):
+            wav_metadata = _parse_wav_chunks(
+                lambda offset, size: (source.seek(offset, 0), source.read(size))[1]
+            )
+            self._source = source
+
+        else:
+            raise TypeError(f"Unsupported source type: {type(source)}")
+
+        if sample_rate is not None and sample_rate != wav_metadata.sample_rate:
+            raise ValueError(
+                f"Sample rate mismatch: source={wav_metadata.sample_rate}, requested={sample_rate}"
+            )
+        if num_channels is not None and num_channels != wav_metadata.num_channels:
+            raise ValueError(
+                f"Channel count mismatch: source={wav_metadata.num_channels}, requested={num_channels}"
+            )
+
         self._wav_metadata = wav_metadata
         self.stream_index = 0
         self.metadata = core._metadata.AudioStreamMetadata(
@@ -286,9 +289,9 @@ class WavDecoder:
         )
 
     @classmethod
-    def validate_and_init(
+    def try_create(
         cls,
-        source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
+        source: str | Path | io.RawIOBase | io.BufferedReader | bytes,
         sample_rate: int | None = None,
         num_channels: int | None = None,
         stream_index: int | None = None,
@@ -296,133 +299,60 @@ class WavDecoder:
         """
         Try to create a WavDecoder for the given source.
 
-        Returns a WavDecoder if the fast path can be used, None otherwise.
-        For file-like objects, the seek position is reset if we return None.
-
-        Handles each source type natively (like FFmpeg's SingleStreamDecoder):
-        - bytes: direct slicing (no BytesIO wrapper)
-        - file path: native file I/O
-        - file-like: read/seek callbacks
+        Returns a WavDecoder if successful, None otherwise.
+        For file-like objects, the seek position is restored on failure.
         """
-        # WAV files only have one audio stream at index 0
-        if stream_index is not None and stream_index != 0:
-            return None
-
-        # Skip text-mode files - let the main decoder path handle the error message
-        if isinstance(source, io.TextIOBase):
-            return None
-
-        # Handle bytes directly (like FFmpeg's AVIOFromTensorContext)
-        if isinstance(source, bytes):
-            if not is_wav_bytes(source):
-                return None
+        original_pos = None
+        if hasattr(source, "seek") and hasattr(source, "tell"):
             try:
-                wav_metadata = _parse_wav_chunks(
-                    lambda offset, size: source[offset : offset + size], len(source)
-                )
-            except ValueError:
-                return None
-            if sample_rate is not None and sample_rate != wav_metadata.sample_rate:
-                return None
-            if num_channels is not None and num_channels != wav_metadata.num_channels:
-                return None
-            return cls(source, wav_metadata)
-
-        # Handle file path (like FFmpeg's avformat_open_input with filename)
-        if isinstance(source, (str, Path)):
-            path = Path(source)
-            if path.suffix.lower() != ".wav":
-                return None
-            try:
-                file_handle = open(path, "rb")
-            except OSError:
-                return None
-
-            wav_metadata = None
-            try:
-                if is_wav_source(file_handle):
-                    wav_metadata = _read_wav_header(file_handle)
-            except ValueError:
+                original_pos = source.tell()
+            except (OSError, io.UnsupportedOperation):
                 pass
 
-            if (
-                wav_metadata is None
-                or (sample_rate is not None and sample_rate != wav_metadata.sample_rate)
-                or (
-                    num_channels is not None
-                    and num_channels != wav_metadata.num_channels
-                )
-            ):
-                file_handle.close()
-                return None
-
-            return cls(file_handle, wav_metadata)
-
-        # Handle file-like objects (like FFmpeg's AVIOFileLikeContext)
-        if isinstance(source, (io.RawIOBase, io.BufferedReader)) or (
-            hasattr(source, "read") and hasattr(source, "seek")
-        ):
-            wav_metadata = None
-            try:
-                if is_wav_source(source):
-                    wav_metadata = _read_wav_header(source)
-            except ValueError:
-                pass
-
-            if (
-                wav_metadata is None
-                or (sample_rate is not None and sample_rate != wav_metadata.sample_rate)
-                or (
-                    num_channels is not None
-                    and num_channels != wav_metadata.num_channels
-                )
-            ):
-                source.seek(0, 0)
-                return None
-
-            return cls(source, wav_metadata)
-
-        return None
+        try:
+            return cls(source, sample_rate, num_channels, stream_index)
+        except (ValueError, TypeError, OSError):
+            if original_pos is not None:
+                try:
+                    source.seek(original_pos, 0)
+                except (OSError, io.UnsupportedOperation):
+                    pass
+            return None
 
     def get_all_samples(self) -> AudioSamples:
-        """Returns all the audio samples from the source."""
         return self.get_samples_played_in_range()
 
     def get_samples_played_in_range(
         self, start_seconds: float = 0.0, stop_seconds: float | None = None
     ) -> AudioSamples:
-        """Returns audio samples in the given range.
-
-        This method reads only the bytes needed for the requested range,
-        enabling efficient streaming from large or remote files.
-        """
         if stop_seconds is not None and not start_seconds <= stop_seconds:
             raise ValueError(
                 f"Invalid start seconds: {start_seconds}. "
                 f"It must be less than or equal to stop seconds ({stop_seconds})."
             )
 
-        metadata = self._wav_metadata
-        sample_rate = metadata.sample_rate
-        bytes_per_sample = metadata.bits_per_sample // 8
-        bytes_per_frame = bytes_per_sample * metadata.num_channels
+        sample_rate = self._wav_metadata.sample_rate
+        bytes_per_sample = self._wav_metadata.bits_per_sample // 8
+        bytes_per_frame = bytes_per_sample * self._wav_metadata.num_channels
 
         # Calculate sample range
         start_sample = round(start_seconds * sample_rate)
         end_sample = (
             round(stop_seconds * sample_rate)
             if stop_seconds is not None
-            else metadata.num_samples
+            else self._wav_metadata.num_samples
         )
 
         # Clamp to valid range
-        start_sample = max(0, min(start_sample, metadata.num_samples))
-        end_sample = max(start_sample, min(end_sample, metadata.num_samples))
+        start_sample = max(0, min(start_sample, self._wav_metadata.num_samples))
+        end_sample = max(start_sample, min(end_sample, self._wav_metadata.num_samples))
         num_samples = end_sample - start_sample
 
         if num_samples == 0:
             # Return empty tensor with correct shape
-            data = torch.empty((metadata.num_channels, 0), dtype=torch.float32)
+            data = torch.empty(
+                (self._wav_metadata.num_channels, 0), dtype=torch.float32
+            )
             return AudioSamples(
                 data=data,
                 pts_seconds=start_seconds,
@@ -431,7 +361,7 @@ class WavDecoder:
             )
 
         # Calculate byte offset and read only the needed bytes
-        byte_offset = metadata._data_offset + start_sample * bytes_per_frame
+        byte_offset = self._wav_metadata._data_offset + start_sample * bytes_per_frame
         num_bytes = num_samples * bytes_per_frame
 
         # Handle bytes via slicing, file-like via seek/read
@@ -441,7 +371,7 @@ class WavDecoder:
             self._source.seek(byte_offset, 0)
             audio_bytes = self._source.read(num_bytes)
 
-        data = _decode_samples_from_bytes(audio_bytes, metadata, num_samples)
+        data = _samples_from_bytes(audio_bytes, self._wav_metadata)
         return AudioSamples(
             data=data,
             pts_seconds=start_seconds,

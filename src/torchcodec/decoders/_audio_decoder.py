@@ -64,7 +64,7 @@ class AudioDecoder:
         torch._C._log_api_usage_once("torchcodec.decoders.AudioDecoder")
 
         # Try fast WAV path
-        self._wav_decoder = WavDecoder.validate_and_init(
+        self._wav_decoder = WavDecoder.try_create(
             source, sample_rate, num_channels, stream_index
         )
         if self._wav_decoder is not None:
