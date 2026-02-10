@@ -76,26 +76,28 @@ class AudioDecoder:
         self._decoder = create_decoder(source=source, seek_mode="approximate")
 
         container_metadata = core.get_container_metadata(self._decoder)
-        self.stream_index = (
+        _stream_index = (
             container_metadata.best_audio_stream_index
             if stream_index is None
             else stream_index
         )
-        if self.stream_index is None:
+        if _stream_index is None:
             raise ValueError(
                 "The best audio stream is unknown and there is no specified stream. "
                 + ERROR_REPORTING_INSTRUCTIONS
             )
+        self.stream_index = _stream_index
         if self.stream_index >= len(container_metadata.streams):
             raise ValueError(
                 f"The stream at index {stream_index} is not a valid stream."
             )
 
-        self.metadata = container_metadata.streams[self.stream_index]
-        if not isinstance(self.metadata, core._metadata.AudioStreamMetadata):
+        _metadata = container_metadata.streams[self.stream_index]
+        if not isinstance(_metadata, core._metadata.AudioStreamMetadata):
             raise ValueError(
                 f"The stream at index {stream_index} is not an audio stream. "
             )
+        self.metadata = _metadata
 
         self._desired_sample_rate = (
             sample_rate if sample_rate is not None else self.metadata.sample_rate

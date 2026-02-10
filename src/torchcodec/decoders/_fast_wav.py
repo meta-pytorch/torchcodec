@@ -14,10 +14,12 @@ than going through FFmpeg's full decoding pipeline.
 
 import io
 import struct
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 import torch
+from torch import Tensor
 
 from torchcodec import _core as core, AudioSamples
 
@@ -41,7 +43,7 @@ class WavMetadata:
 
 
 def _parse_wav_chunks(
-    read_at: callable,
+    read_at: Callable[[int, int], bytes],
     total_size: int | None = None,
 ) -> WavMetadata:
     # Parse WAV header using a function that reads bytes from different sources (bytes or file-like).
@@ -212,7 +214,7 @@ class WavDecoder:
 
     def __init__(
         self,
-        source: str | Path | io.RawIOBase | io.BufferedReader | bytes,
+        source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
         sample_rate: int | None = None,
         num_channels: int | None = None,
         stream_index: int | None = None,
@@ -228,8 +230,12 @@ class WavDecoder:
         if stream_index is not None and stream_index != 0:
             raise ValueError("WAV files only have stream index 0")
 
+        # Convert Tensor to bytes so it falls into the bytes path
+        if isinstance(source, Tensor):
+            source = source.numpy().tobytes()
+
         if isinstance(source, bytes):
-            self._source = source
+            self._source: bytes | io.BufferedReader | io.RawIOBase = source
             wav_metadata = _parse_wav_chunks(
                 lambda offset, size: source[offset : offset + size], len(source)
             )
@@ -291,7 +297,7 @@ class WavDecoder:
     @classmethod
     def try_create(
         cls,
-        source: str | Path | io.RawIOBase | io.BufferedReader | bytes,
+        source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
         sample_rate: int | None = None,
         num_channels: int | None = None,
         stream_index: int | None = None,
@@ -303,7 +309,7 @@ class WavDecoder:
         For file-like objects, the seek position is restored on failure.
         """
         original_pos = None
-        if hasattr(source, "seek") and hasattr(source, "tell"):
+        if isinstance(source, (io.RawIOBase, io.BufferedReader)):
             try:
                 original_pos = source.tell()
             except (OSError, io.UnsupportedOperation):
@@ -312,7 +318,9 @@ class WavDecoder:
         try:
             return cls(source, sample_rate, num_channels, stream_index)
         except (ValueError, TypeError, OSError):
-            if original_pos is not None:
+            if original_pos is not None and isinstance(
+                source, (io.RawIOBase, io.BufferedReader)
+            ):
                 try:
                     source.seek(original_pos, 0)
                 except (OSError, io.UnsupportedOperation):
