@@ -11,7 +11,7 @@ from functools import partial
 import numpy
 import pytest
 import torch
-from torchcodec import _core, ffmpeg_major_version, FrameBatch
+from torchcodec import _core, ffmpeg_major_version, FrameBatch, MotionVectorBatch
 from torchcodec.decoders import (
     AudioDecoder,
     AudioStreamMetadata,
@@ -603,6 +603,92 @@ class TestVideoDecoder:
         torch.testing.assert_close(
             frames.duration_seconds, expected_duration_seconds, atol=1e-4, rtol=0
         )
+
+    def test_get_frames_at_empty_indices(self):
+        decoder = VideoDecoder(NASA_VIDEO.path, device="cpu")
+        frames = decoder.get_frames_at([])
+
+        assert isinstance(frames, FrameBatch)
+        assert frames.data.shape[0] == 0
+        assert frames.pts_seconds.shape == (0,)
+        assert frames.duration_seconds.shape == (0,)
+
+    def test_get_motion_vectors_at(self):
+        decoder = VideoDecoder(NASA_VIDEO.path, device="cpu", export_mvs=True)
+        motion_vectors = decoder.get_motion_vectors_at([0, 1, 2])
+
+        assert isinstance(motion_vectors, MotionVectorBatch)
+        assert motion_vectors.data.shape[0] == 3
+        assert motion_vectors.data.shape[2] == 10
+        assert motion_vectors.counts.shape == (3,)
+        assert motion_vectors.pts_seconds.shape == (3,)
+        assert motion_vectors.duration_seconds.shape == (3,)
+        assert motion_vectors.frame_types.shape == (3,)
+        assert motion_vectors.data.dtype == torch.int32
+        assert motion_vectors.counts.dtype == torch.int32
+        assert motion_vectors.frame_types.dtype == torch.int32
+        assert motion_vectors.pts_seconds.dtype == torch.float64
+        assert motion_vectors.duration_seconds.dtype == torch.float64
+        assert int(motion_vectors.counts.max()) <= motion_vectors.data.shape[1]
+
+    def test_get_motion_vectors_at_requires_export(self):
+        decoder = VideoDecoder(NASA_VIDEO.path)
+        with pytest.raises(RuntimeError, match="export_mvs=True"):
+            decoder.get_motion_vectors_at([0])
+
+    def test_get_motion_vectors_at_empty_indices(self):
+        decoder = VideoDecoder(NASA_VIDEO.path, device="cpu", export_mvs=True)
+        motion_vectors = decoder.get_motion_vectors_at([])
+
+        assert isinstance(motion_vectors, MotionVectorBatch)
+        assert motion_vectors.data.shape == (0, 0, 10)
+        assert motion_vectors.counts.shape == (0,)
+        assert motion_vectors.pts_seconds.shape == (0,)
+        assert motion_vectors.duration_seconds.shape == (0,)
+        assert motion_vectors.frame_types.shape == (0,)
+        assert motion_vectors.data.dtype == torch.int32
+        assert motion_vectors.counts.dtype == torch.int32
+        assert motion_vectors.frame_types.dtype == torch.int32
+        assert motion_vectors.pts_seconds.dtype == torch.float64
+        assert motion_vectors.duration_seconds.dtype == torch.float64
+
+    def test_get_motion_vectors_at_unsorted_and_duplicate_indices(self):
+        decoder = VideoDecoder(NASA_VIDEO.path, device="cpu", export_mvs=True)
+        indices = [2, 0, 2, 1]
+        batch = decoder.get_motion_vectors_at(indices)
+
+        assert isinstance(batch, MotionVectorBatch)
+        assert batch.data.shape[0] == len(indices)
+        assert batch.data.shape[2] == 10
+
+        for pos, idx in enumerate(indices):
+            single = decoder.get_motion_vectors_at([idx])
+            assert int(batch.counts[pos]) == int(single.counts[0])
+            assert int(batch.frame_types[pos]) == int(single.frame_types[0])
+            torch.testing.assert_close(
+                batch.pts_seconds[pos], single.pts_seconds[0], atol=1e-6, rtol=0
+            )
+            torch.testing.assert_close(
+                batch.duration_seconds[pos],
+                single.duration_seconds[0],
+                atol=1e-6,
+                rtol=0,
+            )
+
+            count = int(batch.counts[pos])
+            assert count <= batch.data.shape[1]
+            if count > 0:
+                torch.testing.assert_close(
+                    batch.data[pos, :count], single.data[0, :count]
+                )
+            if batch.data.shape[1] > count:
+                assert torch.all(batch.data[pos, count:] == 0)
+
+        torch.testing.assert_close(batch.data[0], batch.data[2])
+        assert int(batch.counts[0]) == int(batch.counts[2])
+        assert int(batch.frame_types[0]) == int(batch.frame_types[2])
+        torch.testing.assert_close(batch.pts_seconds[0], batch.pts_seconds[2])
+        torch.testing.assert_close(batch.duration_seconds[0], batch.duration_seconds[2])
 
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))

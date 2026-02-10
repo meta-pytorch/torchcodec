@@ -48,9 +48,9 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
   m.def(
-      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None, str? color_conversion_library=None) -> ()");
+      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", bool? export_mvs=None, (Tensor, Tensor, Tensor)? custom_frame_mappings=None, str? color_conversion_library=None) -> ()");
   m.def(
-      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None) -> ()");
+      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", bool? export_mvs=None, (Tensor, Tensor, Tensor)? custom_frame_mappings=None) -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
   m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
@@ -61,6 +61,8 @@ TORCH_LIBRARY(torchcodec_ns, m) {
       "get_frame_at_index(Tensor(a!) decoder, *, int frame_index) -> (Tensor, Tensor, Tensor)");
   m.def(
       "get_frames_at_indices(Tensor(a!) decoder, *, Tensor frame_indices) -> (Tensor, Tensor, Tensor)");
+  m.def(
+      "get_motion_vectors_at_indices(Tensor(a!) decoder, *, Tensor frame_indices) -> (Tensor, Tensor, Tensor, Tensor, Tensor)");
   m.def(
       "get_frames_in_range(Tensor(a!) decoder, *, int start, int stop, int? step=None) -> (Tensor, Tensor, Tensor)");
   m.def(
@@ -143,6 +145,23 @@ using OpsFrameBatchOutput =
 
 OpsFrameBatchOutput makeOpsFrameBatchOutput(FrameBatchOutput& batch) {
   return std::make_tuple(batch.data, batch.ptsSeconds, batch.durationSeconds);
+}
+
+using OpsMotionVectorsBatchOutput = std::tuple<
+    torch::Tensor,
+    torch::Tensor,
+    torch::Tensor,
+    torch::Tensor,
+    torch::Tensor>;
+
+OpsMotionVectorsBatchOutput makeOpsMotionVectorsBatchOutput(
+    MotionVectorsBatchOutput& batch) {
+  return std::make_tuple(
+      batch.data,
+      batch.counts,
+      batch.ptsSeconds,
+      batch.durationSeconds,
+      batch.frameTypes);
 }
 
 // The elements of this tuple are all tensors that represent the concatenation
@@ -421,6 +440,7 @@ void _add_video_stream(
     std::string_view device = "cpu",
     std::string_view device_variant = "ffmpeg",
     std::string_view transform_specs = "",
+    std::optional<bool> export_mvs = std::nullopt,
     std::optional<std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>>
         custom_frame_mappings = std::nullopt,
     std::optional<std::string_view> color_conversion_library = std::nullopt) {
@@ -453,6 +473,7 @@ void _add_video_stream(
 
   videoStreamOptions.device = torch::Device(std::string(device));
   videoStreamOptions.deviceVariant = device_variant;
+  videoStreamOptions.exportMotionVectors = export_mvs.value_or(false);
 
   std::vector<Transform*> transforms =
       makeTransforms(std::string(transform_specs));
@@ -478,6 +499,7 @@ void add_video_stream(
     std::string_view device = "cpu",
     std::string_view device_variant = "ffmpeg",
     std::string_view transform_specs = "",
+    std::optional<bool> export_mvs = std::nullopt,
     const std::optional<
         std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>>&
         custom_frame_mappings = std::nullopt) {
@@ -489,6 +511,7 @@ void add_video_stream(
       device,
       device_variant,
       transform_specs,
+      export_mvs,
       custom_frame_mappings);
 }
 
@@ -553,6 +576,14 @@ OpsFrameBatchOutput get_frames_at_indices(
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   auto result = videoDecoder->getFramesAtIndices(frame_indices);
   return makeOpsFrameBatchOutput(result);
+}
+
+OpsMotionVectorsBatchOutput get_motion_vectors_at_indices(
+    torch::Tensor& decoder,
+    const torch::Tensor& frame_indices) {
+  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
+  auto result = videoDecoder->getMotionVectorsAtIndices(frame_indices);
+  return makeOpsMotionVectorsBatchOutput(result);
 }
 
 // Return the frames inside a range as a single stacked Tensor. The range is
@@ -1086,6 +1117,7 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("get_frame_at_pts", &get_frame_at_pts);
   m.impl("get_frame_at_index", &get_frame_at_index);
   m.impl("get_frames_at_indices", &get_frames_at_indices);
+  m.impl("get_motion_vectors_at_indices", &get_motion_vectors_at_indices);
   m.impl("get_frames_in_range", &get_frames_in_range);
   m.impl("get_frames_by_pts_in_range", &get_frames_by_pts_in_range);
   m.impl("get_frames_by_pts_in_range_audio", &get_frames_by_pts_in_range_audio);

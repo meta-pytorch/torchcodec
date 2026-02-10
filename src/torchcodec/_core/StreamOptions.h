@@ -47,6 +47,9 @@ struct VideoStreamOptions {
   // Device variant (e.g., "ffmpeg", "beta", etc.)
   std::string_view deviceVariant = "ffmpeg";
 
+  // If true, request FFmpeg to export motion vectors as side data.
+  bool exportMotionVectors = false;
+
   // Encoding options
   std::optional<std::string> codec;
   // Optional pixel format for video encoding (e.g., "yuv420p", "yuv444p")
