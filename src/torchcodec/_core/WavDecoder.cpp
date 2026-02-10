@@ -279,9 +279,17 @@ torch::Tensor WavDecoder::convertSamplesToFloat(
     effectiveFormat = header_.subFormat;
   }
 
+  // WAV stores samples interleaved: [L R L R ...]. These loops convert to
+  // float and deinterleave into channel-first layout: (numChannels, numSamples)
+  // in a single pass to avoid intermediate allocations.
+  //
+  // Example with 2 channels (L, R) and 3 samples:
+  //   Input  (interleaved):   [L0 R0 L1 R1 L2 R2]
+  //                            ^read:  s * numChannels + c = 0,1,2,3,4,5
+  //   Output (channel-first): [L0 L1 L2 R0 R1 R2]
+  //                            ^write: c * numSamples + s = 0,1,2,3,4,5
   if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
     if (header_.bitsPerSample == 32) {
-      // 32-bit float - just copy and deinterleave
       const float* floatSrc = reinterpret_cast<const float*>(src);
       for (int64_t s = 0; s < numSamples; ++s) {
         for (int64_t c = 0; c < numChannels; ++c) {
@@ -289,7 +297,6 @@ torch::Tensor WavDecoder::convertSamplesToFloat(
         }
       }
     } else if (header_.bitsPerSample == 64) {
-      // 64-bit float - convert to 32-bit and deinterleave
       const double* doubleSrc = reinterpret_cast<const double*>(src);
       for (int64_t s = 0; s < numSamples; ++s) {
         for (int64_t c = 0; c < numChannels; ++c) {
@@ -299,7 +306,6 @@ torch::Tensor WavDecoder::convertSamplesToFloat(
       }
     }
   } else {
-    // PCM format - convert to normalized float
     for (int64_t s = 0; s < numSamples; ++s) {
       for (int64_t c = 0; c < numChannels; ++c) {
         const uint8_t* samplePtr = src + (s * numChannels + c) * bytesPerSample;
