@@ -1164,7 +1164,47 @@ std::string buildWavMetadataJson(WavDecoder& decoder) {
   map["bit_rate"] = "null";
   map["codec"] = "\"pcm\"";
   map["stream_index"] = "0";
-  map["sample_format"] = "null";
+  // Derive sample_format string matching FFmpeg's av_get_sample_fmt_name().
+  // https://ffmpeg.org/doxygen/6.1/group__lavu__sampfmts.html#gaf9a51ca15301871723577c730b5865c5
+  // For WAV_FORMAT_EXTENSIBLE, the actual format is in subFormat.
+  uint16_t effectiveFormat = header.audioFormat;
+  if (effectiveFormat == WAV_FORMAT_EXTENSIBLE) {
+    effectiveFormat = header.subFormat;
+  }
+  if (effectiveFormat == WAV_FORMAT_PCM) {
+    switch (header.bitsPerSample) {
+      case 8:
+        map["sample_format"] = "\"u8\"";
+        break;
+      case 16:
+        map["sample_format"] = "\"s16\"";
+        break;
+      case 24:
+        // FFmpeg has no s24; it decodes 24-bit PCM as s32.
+        map["sample_format"] = "\"s32\"";
+        break;
+      case 32:
+        map["sample_format"] = "\"s32\"";
+        break;
+      default:
+        map["sample_format"] = "null";
+        break;
+    }
+  } else if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
+    switch (header.bitsPerSample) {
+      case 32:
+        map["sample_format"] = "\"flt\"";
+        break;
+      case 64:
+        map["sample_format"] = "\"dbl\"";
+        break;
+      default:
+        map["sample_format"] = "null";
+        break;
+    }
+  } else {
+    map["sample_format"] = "null";
+  }
 
   return mapToJson(map);
 }
