@@ -6,6 +6,7 @@
 
 #include <c10/cuda/CUDAStream.h>
 #include <torch/types.h>
+#include <map>
 #include <mutex>
 #include <vector>
 
@@ -27,6 +28,46 @@ extern "C" {
 namespace facebook::torchcodec {
 
 namespace {
+
+// Per-device cache for cuvidGetDecoderCaps results.
+// The key is a tuple of (device index, codec type, chroma format, bit depth
+// minus 8).
+struct DecoderCapsCache {
+  using Key =
+      std::tuple<int, cudaVideoCodec, cudaVideoChromaFormat, unsigned int>;
+  std::map<Key, CUVIDDECODECAPS> cache;
+  std::mutex mutex;
+
+  std::pair<CUresult, CUVIDDECODECAPS> getDecoderCaps(
+      int deviceIndex,
+      cudaVideoCodec codecType,
+      cudaVideoChromaFormat chromaFormat,
+      unsigned int bitDepthMinus8) {
+    Key key{deviceIndex, codecType, chromaFormat, bitDepthMinus8};
+
+    std::lock_guard<std::mutex> lock(mutex);
+    auto it = cache.find(key);
+    if (it != cache.end()) {
+      return {CUDA_SUCCESS, it->second};
+    }
+
+    CUVIDDECODECAPS caps = {};
+    caps.eCodecType = codecType;
+    caps.eChromaFormat = chromaFormat;
+    caps.nBitDepthMinus8 = bitDepthMinus8;
+
+    CUresult result = cuvidGetDecoderCaps(&caps);
+    if (result == CUDA_SUCCESS) {
+      cache[key] = caps;
+    }
+    return {result, caps};
+  }
+};
+
+static DecoderCapsCache& getDecoderCapsCache() {
+  static DecoderCapsCache cache;
+  return cache;
+}
 
 static bool g_cuda_beta = registerDeviceInterface(
     DeviceInterfaceKey(torch::kCUDA, /*variant=*/"beta"),
@@ -152,7 +193,9 @@ std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
   }
 }
 
-bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
+bool nativeNVDECSupport(
+    const torch::Device& device,
+    const SharedAVCodecContext& codecContext) {
   // Return true iff the input video stream is supported by our NVDEC
   // implementation.
 
@@ -171,12 +214,12 @@ bool nativeNVDECSupport(const SharedAVCodecContext& codecContext) {
     return false;
   }
 
-  auto caps = CUVIDDECODECAPS{};
-  caps.eCodecType = codecType.value();
-  caps.eChromaFormat = chromaFormat.value();
-  caps.nBitDepthMinus8 = desc->comp[0].depth - 8;
-
-  CUresult result = cuvidGetDecoderCaps(&caps);
+  auto bitDepthMinus8 = static_cast<unsigned int>(desc->comp[0].depth - 8);
+  auto [result, caps] = getDecoderCapsCache().getDecoderCaps(
+      getDeviceIndex(device),
+      codecType.value(),
+      chromaFormat.value(),
+      bitDepthMinus8);
   if (result != CUDA_SUCCESS) {
     return false;
   }
@@ -258,7 +301,7 @@ void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
     [[maybe_unused]] const SharedAVCodecContext& codecContext) {
-  if (!nvcuvidAvailable_ || !nativeNVDECSupport(codecContext)) {
+  if (!nvcuvidAvailable_ || !nativeNVDECSupport(device_, codecContext)) {
     cpuFallback_ = createDeviceInterface(torch::kCPU);
     TORCH_CHECK(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
