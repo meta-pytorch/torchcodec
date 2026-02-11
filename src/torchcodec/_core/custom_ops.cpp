@@ -4,6 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+#include <fmt/format.h>
 #include <pybind11/pybind11.h>
 #include <cstdint>
 #include <sstream>
@@ -12,6 +13,7 @@
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
 #include "SingleStreamDecoder.h"
+#include "StableABICompat.h"
 #include "ValidationUtils.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "c10/util/Exception.h"
@@ -91,12 +93,12 @@ torch::Tensor wrapDecoderPointerToTensor(
       decoder, {sizeof(SingleStreamDecoder*)}, deleter, {at::kLong});
   auto videoDecoder =
       static_cast<SingleStreamDecoder*>(tensor.mutable_data_ptr());
-  TORCH_CHECK_EQ(videoDecoder, decoder) << "videoDecoder=" << videoDecoder;
+  STD_TORCH_CHECK(videoDecoder == decoder, "videoDecoder != decoder");
   return tensor;
 }
 
 SingleStreamDecoder* unwrapTensorToGetDecoder(torch::Tensor& tensor) {
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       tensor.is_contiguous(),
       "fake decoder tensor must be contiguous! This is an internal error, please report on the torchcodec issue tracker.");
   void* buffer = tensor.mutable_data_ptr();
@@ -196,7 +198,7 @@ SeekMode seekModeFromString(std::string_view seekMode) {
   } else if (seekMode == "custom_frame_mappings") {
     return SeekMode::custom_frame_mappings;
   } else {
-    TORCH_CHECK(false, "Invalid seek mode: " + std::string(seekMode));
+    STD_TORCH_CHECK(false, "Invalid seek mode: " + std::string(seekMode));
   }
 }
 
@@ -206,7 +208,7 @@ void writeFallbackBasedMetadata(
     SeekMode seekMode) {
   auto durationSeconds = streamMetadata.getDurationSeconds(seekMode);
   if (durationSeconds.has_value()) {
-    map["durationSeconds"] = std::to_string(durationSeconds.value());
+    map["durationSeconds"] = fmt::to_string(durationSeconds.value());
   }
 
   auto numFrames = streamMetadata.getNumFrames(seekMode);
@@ -215,16 +217,16 @@ void writeFallbackBasedMetadata(
   }
 
   double beginStreamSeconds = streamMetadata.getBeginStreamSeconds(seekMode);
-  map["beginStreamSeconds"] = std::to_string(beginStreamSeconds);
+  map["beginStreamSeconds"] = fmt::to_string(beginStreamSeconds);
 
   auto endStreamSeconds = streamMetadata.getEndStreamSeconds(seekMode);
   if (endStreamSeconds.has_value()) {
-    map["endStreamSeconds"] = std::to_string(endStreamSeconds.value());
+    map["endStreamSeconds"] = fmt::to_string(endStreamSeconds.value());
   }
 
   auto averageFps = streamMetadata.getAverageFps(seekMode);
   if (averageFps.has_value()) {
-    map["averageFps"] = std::to_string(averageFps.value());
+    map["averageFps"] = fmt::to_string(averageFps.value());
   }
 }
 
@@ -233,11 +235,11 @@ int checkedToPositiveInt(const std::string& str) {
   try {
     ret = std::stoi(str);
   } catch (const std::invalid_argument&) {
-    TORCH_CHECK(false, "String cannot be converted to an int:" + str);
+    STD_TORCH_CHECK(false, "String cannot be converted to an int:" + str);
   } catch (const std::out_of_range&) {
-    TORCH_CHECK(false, "String would become integer out of range:" + str);
+    STD_TORCH_CHECK(false, "String would become integer out of range:" + str);
   }
-  TORCH_CHECK(ret > 0, "String must be a positive integer:" + str);
+  STD_TORCH_CHECK(ret > 0, "String must be a positive integer:" + str);
   return ret;
 }
 
@@ -246,11 +248,11 @@ int checkedToNonNegativeInt(const std::string& str) {
   try {
     ret = std::stoi(str);
   } catch (const std::invalid_argument&) {
-    TORCH_CHECK(false, "String cannot be converted to an int:" + str);
+    STD_TORCH_CHECK(false, "String cannot be converted to an int:" + str);
   } catch (const std::out_of_range&) {
-    TORCH_CHECK(false, "String would become integer out of range:" + str);
+    STD_TORCH_CHECK(false, "String would become integer out of range:" + str);
   }
-  TORCH_CHECK(ret >= 0, "String must be a non-negative integer:" + str);
+  STD_TORCH_CHECK(ret >= 0, "String must be a non-negative integer:" + str);
   return ret;
 }
 
@@ -262,7 +264,7 @@ int checkedToNonNegativeInt(const std::string& str) {
 // integers.
 Transform* makeResizeTransform(
     const std::vector<std::string>& resizeTransformSpec) {
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       resizeTransformSpec.size() == 3,
       "resizeTransformSpec must have 3 elements including its name");
   int height = checkedToPositiveInt(resizeTransformSpec[1]);
@@ -280,7 +282,7 @@ Transform* makeResizeTransform(
 // width) for specifying image dimensions; FFmpeg uses (width, height).
 Transform* makeCropTransform(
     const std::vector<std::string>& cropTransformSpec) {
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       cropTransformSpec.size() == 5,
       "cropTransformSpec must have 5 elements including its name");
   int height = checkedToPositiveInt(cropTransformSpec[1]);
@@ -299,7 +301,7 @@ Transform* makeCropTransform(
 // width) for specifying image dimensions; FFmpeg uses (width, height).
 Transform* makeCenterCropTransform(
     const std::vector<std::string>& cropTransformSpec) {
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       cropTransformSpec.size() == 3,
       "cropTransformSpec must have 3 elements including its name");
   int height = checkedToPositiveInt(cropTransformSpec[1]);
@@ -327,7 +329,7 @@ std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
   std::vector<std::string> transformSpecs = split(transformSpecsRaw, ';');
   for (const std::string& transformSpecRaw : transformSpecs) {
     std::vector<std::string> transformSpec = split(transformSpecRaw, ',');
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         transformSpec.size() >= 1,
         "Invalid transform spec: " + transformSpecRaw);
 
@@ -339,7 +341,7 @@ std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
     } else if (name == "center_crop") {
       transforms.push_back(makeCenterCropTransform(transformSpec));
     } else {
-      TORCH_CHECK(false, "Invalid transform name: " + name);
+      STD_TORCH_CHECK(false, "Invalid transform name: " + name);
     }
   }
   return transforms;
@@ -371,10 +373,11 @@ torch::Tensor create_from_file(
 // Create a SingleStreamDecoder from the actual bytes of a video and wrap the
 // pointer in a tensor. The SingleStreamDecoder will decode the provided bytes.
 torch::Tensor create_from_tensor(
-    torch::Tensor video_tensor,
+    const torch::Tensor& video_tensor,
     std::optional<std::string_view> seek_mode = std::nullopt) {
-  TORCH_CHECK(video_tensor.is_contiguous(), "video_tensor must be contiguous");
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
+      video_tensor.is_contiguous(), "video_tensor must be contiguous");
+  STD_TORCH_CHECK(
       video_tensor.scalar_type() == torch::kUInt8,
       "video_tensor must be kUInt8");
 
@@ -397,7 +400,7 @@ torch::Tensor _create_from_file_like(
     std::optional<std::string_view> seek_mode) {
   auto fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       fileLikeContext != nullptr, "file_like_context must be a valid pointer");
   std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
 
@@ -428,7 +431,9 @@ void _add_video_stream(
 
   if (dimension_order.has_value()) {
     std::string stdDimensionOrder{dimension_order.value()};
-    TORCH_CHECK(stdDimensionOrder == "NHWC" || stdDimensionOrder == "NCHW");
+    STD_TORCH_CHECK(
+        stdDimensionOrder == "NHWC" || stdDimensionOrder == "NCHW",
+        "dimension_order must be NHWC or NCHW");
     videoStreamOptions.dimensionOrder = stdDimensionOrder;
   }
   if (color_conversion_library.has_value()) {
@@ -440,7 +445,7 @@ void _add_video_stream(
       videoStreamOptions.colorConversionLibrary =
           ColorConversionLibrary::SWSCALE;
     } else {
-      TORCH_CHECK(
+      STD_TORCH_CHECK(
           false,
           "Invalid color_conversion_library=",
           stdColorConversionLibrary,
@@ -655,7 +660,7 @@ void _encode_audio_to_file_like(
     std::optional<int64_t> desired_sample_rate = std::nullopt) {
   auto fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       fileLikeContext != nullptr, "file_like_context must be a valid pointer");
   std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
 
@@ -740,7 +745,7 @@ void _encode_video_to_file_like(
     std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   auto fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       fileLikeContext != nullptr, "file_like_context must be a valid pointer");
   std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
 
@@ -809,10 +814,10 @@ std::string get_json_metadata(torch::Tensor& decoder) {
         videoMetadata.durationSecondsFromHeader.value_or(0);
   }
   metadataMap["durationSecondsFromHeader"] =
-      std::to_string(durationSecondsFromHeader);
+      fmt::to_string(durationSecondsFromHeader);
 
   if (videoMetadata.bitRate.has_value()) {
-    metadataMap["bitRate"] = std::to_string(videoMetadata.bitRate.value());
+    metadataMap["bitRate"] = fmt::to_string(videoMetadata.bitRate.value());
   }
 
   if (maybeBestVideoStreamIndex.has_value()) {
@@ -827,24 +832,25 @@ std::string get_json_metadata(torch::Tensor& decoder) {
     }
     if (streamMetadata.beginStreamPtsSecondsFromContent.has_value()) {
       metadataMap["beginStreamSecondsFromContent"] =
-          std::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
+          fmt::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
     }
     if (streamMetadata.endStreamPtsSecondsFromContent.has_value()) {
       metadataMap["endStreamSecondsFromContent"] =
-          std::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
+          fmt::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
     }
     if (streamMetadata.codecName.has_value()) {
       metadataMap["codec"] = quoteValue(streamMetadata.codecName.value());
     }
-    if (streamMetadata.width.has_value()) {
-      metadataMap["width"] = std::to_string(*streamMetadata.width);
+    if (streamMetadata.postRotationWidth.has_value()) {
+      metadataMap["width"] = std::to_string(*streamMetadata.postRotationWidth);
     }
-    if (streamMetadata.height.has_value()) {
-      metadataMap["height"] = std::to_string(*streamMetadata.height);
+    if (streamMetadata.postRotationHeight.has_value()) {
+      metadataMap["height"] =
+          std::to_string(*streamMetadata.postRotationHeight);
     }
     if (streamMetadata.averageFpsFromHeader.has_value()) {
       metadataMap["averageFpsFromHeader"] =
-          std::to_string(*streamMetadata.averageFpsFromHeader);
+          fmt::to_string(*streamMetadata.averageFpsFromHeader);
     }
   }
   if (videoMetadata.bestVideoStreamIndex.has_value()) {
@@ -869,11 +875,11 @@ std::string get_container_json_metadata(torch::Tensor& decoder) {
 
   if (containerMetadata.durationSecondsFromHeader.has_value()) {
     map["durationSecondsFromHeader"] =
-        std::to_string(*containerMetadata.durationSecondsFromHeader);
+        fmt::to_string(*containerMetadata.durationSecondsFromHeader);
   }
 
   if (containerMetadata.bitRate.has_value()) {
-    map["bitRate"] = std::to_string(*containerMetadata.bitRate);
+    map["bitRate"] = fmt::to_string(*containerMetadata.bitRate);
   }
 
   if (containerMetadata.bestVideoStreamIndex.has_value()) {
@@ -898,11 +904,10 @@ std::string get_stream_json_metadata(
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   auto allStreamMetadata =
       videoDecoder->getContainerMetadata().allStreamMetadata;
-  TORCH_CHECK_INDEX(
+  STABLE_CHECK_INDEX(
       stream_index >= 0 &&
           stream_index < static_cast<int64_t>(allStreamMetadata.size()),
-      "stream_index out of bounds: ",
-      stream_index);
+      "stream_index out of bounds: " + std::to_string(stream_index));
 
   auto streamMetadata = allStreamMetadata[stream_index];
   auto seekMode = videoDecoder->getSeekMode();
@@ -912,10 +917,10 @@ std::string get_stream_json_metadata(
 
   if (streamMetadata.durationSecondsFromHeader.has_value()) {
     map["durationSecondsFromHeader"] =
-        std::to_string(*streamMetadata.durationSecondsFromHeader);
+        fmt::to_string(*streamMetadata.durationSecondsFromHeader);
   }
   if (streamMetadata.bitRate.has_value()) {
-    map["bitRate"] = std::to_string(*streamMetadata.bitRate);
+    map["bitRate"] = fmt::to_string(*streamMetadata.bitRate);
   }
   if (streamMetadata.numFramesFromContent.has_value()) {
     map["numFramesFromContent"] =
@@ -927,24 +932,24 @@ std::string get_stream_json_metadata(
   }
   if (streamMetadata.beginStreamSecondsFromHeader.has_value()) {
     map["beginStreamSecondsFromHeader"] =
-        std::to_string(*streamMetadata.beginStreamSecondsFromHeader);
+        fmt::to_string(*streamMetadata.beginStreamSecondsFromHeader);
   }
   if (streamMetadata.beginStreamPtsSecondsFromContent.has_value()) {
     map["beginStreamSecondsFromContent"] =
-        std::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
+        fmt::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
   }
   if (streamMetadata.endStreamPtsSecondsFromContent.has_value()) {
     map["endStreamSecondsFromContent"] =
-        std::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
+        fmt::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
   }
   if (streamMetadata.codecName.has_value()) {
     map["codec"] = quoteValue(streamMetadata.codecName.value());
   }
-  if (streamMetadata.width.has_value()) {
-    map["width"] = std::to_string(*streamMetadata.width);
+  if (streamMetadata.postRotationWidth.has_value()) {
+    map["width"] = std::to_string(*streamMetadata.postRotationWidth);
   }
-  if (streamMetadata.height.has_value()) {
-    map["height"] = std::to_string(*streamMetadata.height);
+  if (streamMetadata.postRotationHeight.has_value()) {
+    map["height"] = std::to_string(*streamMetadata.postRotationHeight);
   }
   if (streamMetadata.sampleAspectRatio.has_value()) {
     map["sampleAspectRatioNum"] =
@@ -952,9 +957,12 @@ std::string get_stream_json_metadata(
     map["sampleAspectRatioDen"] =
         std::to_string((*streamMetadata.sampleAspectRatio).den);
   }
+  if (streamMetadata.rotation.has_value()) {
+    map["rotation"] = std::to_string(*streamMetadata.rotation);
+  }
   if (streamMetadata.averageFpsFromHeader.has_value()) {
     map["averageFpsFromHeader"] =
-        std::to_string(*streamMetadata.averageFpsFromHeader);
+        fmt::to_string(*streamMetadata.averageFpsFromHeader);
   }
   if (streamMetadata.sampleRate.has_value()) {
     map["sampleRate"] = std::to_string(*streamMetadata.sampleRate);

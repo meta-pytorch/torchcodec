@@ -45,6 +45,11 @@ class CpuDeviceInterface : public DeviceInterface {
       FrameOutput& frameOutput,
       std::optional<torch::Tensor> preAllocatedOutputTensor) override;
 
+  UniqueAVFrame convertTensorToAVFrameForEncoding(
+      const torch::Tensor& tensor,
+      int frameIndex,
+      AVCodecContext* codecContext) override;
+
   std::string getDetails() override;
 
  private:
