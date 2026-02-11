@@ -27,11 +27,11 @@ extern "C" {
 }
 
 #ifdef USE_NVTX
-    #include "nvtx3/nvtx3.hpp"
+#include "nvtx3/nvtx3.hpp"
 
-    #define NVTX_SCOPED_RANGE(NAME) nvtx3::scoped_range NVTX_RANGE_##__LINE__{NAME};
+#define NVTX_SCOPED_RANGE(NAME) nvtx3::scoped_range NVTX_RANGE_##__LINE__{NAME};
 #else
-    #define NVTX_SCOPED_RANGE(NAME) ((void)0)
+#define NVTX_SCOPED_RANGE(NAME) ((void)0)
 #endif
 
 namespace facebook::torchcodec {
