@@ -58,7 +58,7 @@ FilterGraph::FilterGraph(
     const FiltersContext& filtersContext,
     const VideoStreamOptions& videoStreamOptions) {
   filterGraph_.reset(avfilter_graph_alloc());
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       filterGraph_.get() != nullptr, "Failed to allocate filter graph");
 
   if (videoStreamOptions.ffmpegThreadCount.has_value()) {
@@ -68,7 +68,7 @@ FilterGraph::FilterGraph(
   // Configure the source context.
   const AVFilter* bufferSrc = avfilter_get_by_name("buffer");
   UniqueAVBufferSrcParameters srcParams(av_buffersrc_parameters_alloc());
-  STABLE_CHECK(srcParams, "Failed to allocate buffersrc params");
+  STD_TORCH_CHECK(srcParams, "Failed to allocate buffersrc params");
 
   srcParams->format = filtersContext.inputFormat;
   srcParams->width = filtersContext.inputWidth;
@@ -81,27 +81,27 @@ FilterGraph::FilterGraph(
 
   sourceContext_ =
       avfilter_graph_alloc_filter(filterGraph_.get(), bufferSrc, "in");
-  STABLE_CHECK(sourceContext_, "Failed to allocate filter graph");
+  STD_TORCH_CHECK(sourceContext_, "Failed to allocate filter graph");
 
   int status = av_buffersrc_parameters_set(sourceContext_, srcParams.get());
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       status >= 0,
       "Failed to create filter graph: ",
       getFFMPEGErrorStringFromErrorCode(status));
 
   status = avfilter_init_str(sourceContext_, nullptr);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       status >= 0,
       "Failed to create filter graph : ",
       getFFMPEGErrorStringFromErrorCode(status));
 
   // Configure the sink context.
   const AVFilter* bufferSink = avfilter_get_by_name("buffersink");
-  STABLE_CHECK(bufferSink != nullptr, "Failed to get buffersink filter.");
+  STD_TORCH_CHECK(bufferSink != nullptr, "Failed to get buffersink filter.");
 
   sinkContext_ = createAVFilterContextWithOptions(
       filterGraph_.get(), bufferSink, filtersContext.outputFormat);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       sinkContext_ != nullptr, "Failed to create and configure buffersink");
 
   // Create the filtergraph nodes based on the source and sink contexts.
@@ -130,7 +130,7 @@ FilterGraph::FilterGraph(
       nullptr);
   outputs.reset(outputsTmp);
   inputs.reset(inputsTmp);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       status >= 0,
       "Failed to parse filter description: ",
       getFFMPEGErrorStringFromErrorCode(status),
@@ -138,7 +138,7 @@ FilterGraph::FilterGraph(
 
   // Check filtergraph validity and configure links and formats.
   status = avfilter_graph_config(filterGraph_.get(), nullptr);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       status >= 0,
       "Failed to configure filter graph: ",
       getFFMPEGErrorStringFromErrorCode(status),
@@ -147,12 +147,12 @@ FilterGraph::FilterGraph(
 
 UniqueAVFrame FilterGraph::convert(const UniqueAVFrame& avFrame) {
   int status = av_buffersrc_write_frame(sourceContext_, avFrame.get());
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       status >= AVSUCCESS, "Failed to add frame to buffer source context");
 
   UniqueAVFrame filteredAVFrame(av_frame_alloc());
   status = av_buffersink_get_frame(sinkContext_, filteredAVFrame.get());
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       status >= AVSUCCESS, "Failed to get frame from buffer sink context");
 
   return filteredAVFrame;

@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "CpuDeviceInterface.h"
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 namespace {
@@ -17,15 +18,15 @@ static bool g_cpu = registerDeviceInterface(
 
 CpuDeviceInterface::CpuDeviceInterface(const StableDevice& device)
     : DeviceInterface(device) {
-  STABLE_CHECK(g_cpu, "CpuDeviceInterface was not registered!");
-  STABLE_CHECK(device_.type() == kStableCPU, "Unsupported device: must be CPU");
+  STD_TORCH_CHECK(g_cpu, "CpuDeviceInterface was not registered!");
+  STD_TORCH_CHECK(device_.type() == kStableCPU, "Unsupported device: must be CPU");
 }
 
 void CpuDeviceInterface::initialize(
     const AVStream* avStream,
     [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx,
     const SharedAVCodecContext& codecContext) {
-  STABLE_CHECK(avStream != nullptr, "avStream is null");
+  STD_TORCH_CHECK(avStream != nullptr, "avStream is null");
   codecContext_ = codecContext;
   timeBase_ = avStream->time_base;
 }
@@ -65,7 +66,7 @@ void CpuDeviceInterface::initializeVideo(
   // need to know the actual frame dimensions.
   if (transforms.size() == 1 && transforms[0]->isResize()) {
     auto resize = dynamic_cast<ResizeTransform*>(transforms[0].get());
-    STABLE_CHECK(resize != nullptr, "ResizeTransform expected but not found!");
+    STD_TORCH_CHECK(resize != nullptr, "ResizeTransform expected but not found!");
     swsFlags_ = resize->getSwsFlags();
   }
 
@@ -138,7 +139,7 @@ void CpuDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<StableTensor> preAllocatedOutputTensor) {
-  STABLE_CHECK(initialized_, "CpuDeviceInterface was not initialized.");
+  STD_TORCH_CHECK(initialized_, "CpuDeviceInterface was not initialized.");
 
   if (avMediaType_ == AVMEDIA_TYPE_AUDIO) {
     convertAudioAVFrameToFrameOutput(avFrame, frameOutput);
@@ -179,7 +180,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
 
   if (preAllocatedOutputTensor.has_value()) {
     auto shape = preAllocatedOutputTensor.value().sizes();
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         (shape.size() == 3) && (shape[0] == outputDims.height) &&
             (shape[1] == outputDims.width) && (shape[2] == 3),
         "Expected pre-allocated tensor of shape ",
@@ -204,7 +205,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     // If this check failed, it would mean that the frame wasn't reshaped to
     // the expected height.
     // TODO: Can we do the same check for width?
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         resultHeight == outputDims.height,
         "resultHeight != outputDims.height: ",
         resultHeight,
@@ -218,7 +219,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     // Similarly to above, if this check fails it means the frame wasn't
     // reshaped to its expected dimensions by filtergraph.
     auto shape = outputTensor.sizes();
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         (shape.size() == 3) && (shape[0] == outputDims.height) &&
             (shape[1] == outputDims.width) && (shape[2] == 3),
         "Expected output tensor of shape ",
@@ -238,7 +239,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
       frameOutput.data = outputTensor;
     }
   } else {
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         false,
         "Invalid color conversion library: ",
         static_cast<int>(colorConversionLibrary));
@@ -316,7 +317,7 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
       colorConvertedPointers,
       colorConvertedLinesizes);
 
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       colorConvertedHeight == avFrame->height,
       "Color conversion swscale pass failed: colorConvertedHeight != avFrame->height: ",
       colorConvertedHeight,
@@ -404,7 +405,7 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
   int outSampleRate = audioStreamOptions_.sampleRate.value_or(srcSampleRate);
 
   int srcNumChannels = getNumChannels(codecContext_);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       srcNumChannels == getNumChannels(srcAVFrame),
       "The frame has ",
       getNumChannels(srcAVFrame),
@@ -441,7 +442,7 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
   const UniqueAVFrame& avFrame = mustConvert ? convertedAVFrame : srcAVFrame;
 
   AVSampleFormat format = static_cast<AVSampleFormat>(avFrame->format);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       format == outSampleFormat,
       "Something went wrong, the frame didn't get converted to the desired format. ",
       "Desired format = ",
@@ -450,7 +451,7 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
       av_get_sample_fmt_name(format));
 
   int numChannels = getNumChannels(avFrame);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       numChannels == outNumChannels,
       "Something went wrong, the frame didn't get converted to the desired ",
       "number of channels = ",
@@ -548,11 +549,11 @@ UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
         nullptr,
         nullptr,
         nullptr));
-    STABLE_CHECK(swsContext_ != nullptr, "Failed to create scaling context");
+    STD_TORCH_CHECK(swsContext_ != nullptr, "Failed to create scaling context");
   }
 
   UniqueAVFrame avFrame(av_frame_alloc());
-  STABLE_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
+  STD_TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
 
   // Set output frame properties
   avFrame->format = outPixelFormat;
@@ -561,12 +562,12 @@ UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
   avFrame->pts = frameIndex;
 
   int status = av_frame_get_buffer(avFrame.get(), 0);
-  STABLE_CHECK(status >= 0, "Failed to allocate frame buffer");
+  STD_TORCH_CHECK(status >= 0, "Failed to allocate frame buffer");
 
   // Need to convert/scale the frame
   // Create temporary frame with input format
   UniqueAVFrame inputFrame(av_frame_alloc());
-  STABLE_CHECK(inputFrame != nullptr, "Failed to allocate input AVFrame");
+  STD_TORCH_CHECK(inputFrame != nullptr, "Failed to allocate input AVFrame");
 
   inputFrame->format = inPixelFormat;
   inputFrame->width = inWidth;
@@ -594,7 +595,7 @@ UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
       inputFrame->height,
       avFrame->data,
       avFrame->linesize);
-  STABLE_CHECK(status == outHeight, "sws_scale failed");
+  STD_TORCH_CHECK(status == outHeight, "sws_scale failed");
   return avFrame;
 }
 

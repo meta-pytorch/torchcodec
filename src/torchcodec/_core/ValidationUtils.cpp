@@ -11,7 +11,7 @@
 namespace facebook::torchcodec {
 
 int validateInt64ToInt(int64_t value, const std::string& parameterName) {
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       value >= std::numeric_limits<int>::min() &&
           value <= std::numeric_limits<int>::max(),
       parameterName,

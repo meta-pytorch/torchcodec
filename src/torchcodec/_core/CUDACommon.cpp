@@ -6,6 +6,7 @@
 
 #include "CUDACommon.h"
 #include "Cache.h" // for PerGpuCache
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -179,19 +180,19 @@ StableTensor convertNV12FrameToRGB(
   // Use raw CUDA events for synchronization between streams
   cudaEvent_t nvdecDoneEvent;
   cudaError_t eventErr = cudaEventCreate(&nvdecDoneEvent);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       eventErr == cudaSuccess,
       "cudaEventCreate failed: ",
       cudaGetErrorString(eventErr));
 
   eventErr = cudaEventRecord(nvdecDoneEvent, nvdecStream);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       eventErr == cudaSuccess,
       "cudaEventRecord failed: ",
       cudaGetErrorString(eventErr));
 
   eventErr = cudaStreamWaitEvent(nppStream, nvdecDoneEvent, 0);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       eventErr == cudaSuccess,
       "cudaStreamWaitEvent failed: ",
       cudaGetErrorString(eventErr));
@@ -200,7 +201,7 @@ StableTensor convertNV12FrameToRGB(
 
   nppCtx->hStream = nppStream;
   cudaError_t err = cudaStreamGetFlags(nppCtx->hStream, &nppCtx->nStreamFlags);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       err == cudaSuccess,
       "cudaStreamGetFlags failed: ",
       cudaGetErrorString(err));
@@ -260,7 +261,7 @@ StableTensor convertNV12FrameToRGB(
         oSizeROI,
         *nppCtx);
   }
-  STABLE_CHECK(status == NPP_SUCCESS, "Failed to convert NV12 frame.");
+  STD_TORCH_CHECK(status == NPP_SUCCESS, "Failed to convert NV12 frame.");
 
   return dst;
 }
@@ -284,7 +285,7 @@ UniqueNppContext getNppStreamContext(const StableDevice& device) {
   nppCtx = std::make_unique<NppStreamContext>();
   cudaDeviceProp prop{};
   cudaError_t err = cudaGetDeviceProperties(&prop, deviceIndex);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       err == cudaSuccess,
       "cudaGetDeviceProperties failed: ",
       cudaGetErrorString(err));
@@ -317,7 +318,7 @@ void validatePreAllocatedTensorShape(
 
   if (preAllocatedOutputTensor.has_value()) {
     auto shape = preAllocatedOutputTensor.value().sizes();
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         (shape.size() == 3) && (shape[0] == frameDims.height) &&
             (shape[1] == frameDims.width) && (shape[2] == 3),
         "Expected tensor of shape ",
@@ -332,13 +333,13 @@ int getDeviceIndex(const StableDevice& device) {
   // PyTorch uses int8_t as its DeviceIndex, but FFmpeg and CUDA
   // libraries use int. So we use int, too.
   int deviceIndex = static_cast<int>(device.index());
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       deviceIndex >= -1 && deviceIndex < MAX_CUDA_GPUS,
       "Invalid device index = ",
       deviceIndex);
 
   if (deviceIndex == -1) {
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         cudaGetDevice(&deviceIndex) == cudaSuccess,
         "Failed to get current CUDA device.");
   }

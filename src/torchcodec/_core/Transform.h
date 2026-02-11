@@ -83,4 +83,36 @@ class CropTransform : public Transform {
   std::optional<int> y_;
 };
 
+// Rotation values for RotationTransform.
+// These correspond to video metadata rotation angles.
+enum class Rotation {
+  NONE, // 0°
+  CCW90, // 90° counter-clockwise
+  CW90, // 90° clockwise (or -90°)
+  ROTATE180 // 180° (or -180°)
+};
+
+// Converts rotation degrees from video metadata to Rotation enum.
+// Input is expected in the range [-180, 180].
+// Rounds to nearest multiple of 90 degrees before converting.
+// Returns Rotation::NONE for nullopt.
+Rotation rotationFromDegrees(std::optional<double> degrees);
+
+// Applies rotation in multiples of 90 degrees using FFmpeg's transpose/flip
+// filters. Note: this does not support arbitrary angle rotation
+// like TorchVision's RandomRotation transform.
+// Handles rotation in the filter graph so that user transforms
+// operate in post-rotation coordinate space.
+class RotationTransform : public Transform {
+ public:
+  RotationTransform(Rotation rotation, const FrameDims& inputDims);
+
+  std::string getFilterGraphCpu() const override;
+  std::optional<FrameDims> getOutputFrameDims() const override;
+
+ private:
+  Rotation rotation_;
+  FrameDims outputDims_;
+};
+
 } // namespace facebook::torchcodec

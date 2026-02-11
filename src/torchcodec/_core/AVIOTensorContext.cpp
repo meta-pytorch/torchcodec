@@ -16,7 +16,7 @@ constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
 // The signature of this function is defined by FFMPEG.
 int read(void* opaque, uint8_t* buf, int buf_size) {
   auto tensorContext = static_cast<detail::TensorContext*>(opaque);
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       tensorContext->current_pos <= tensorContext->data.numel(),
       "Tried to read outside of the buffer: current_pos=" +
           std::to_string(tensorContext->current_pos) +
@@ -26,7 +26,7 @@ int read(void* opaque, uint8_t* buf, int buf_size) {
       static_cast<int64_t>(buf_size),
       tensorContext->data.numel() - tensorContext->current_pos);
 
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       numBytesRead >= 0,
       "Tried to read negative bytes: numBytesRead=" +
           std::to_string(numBytesRead) +
@@ -52,7 +52,7 @@ int write(void* opaque, const uint8_t* buf, int buf_size) {
 
   int64_t bufSize = static_cast<int64_t>(buf_size);
   if (tensorContext->current_pos + bufSize > tensorContext->data.numel()) {
-    STABLE_CHECK(
+    STD_TORCH_CHECK(
         tensorContext->data.numel() * 2 <= MAX_TENSOR_SIZE,
         "We tried to allocate an output encoded tensor larger than " +
             std::to_string(MAX_TENSOR_SIZE) +
@@ -63,7 +63,7 @@ int write(void* opaque, const uint8_t* buf, int buf_size) {
     tensorContext->data = stableCat({tensorContext->data, tensorContext->data});
   }
 
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       tensorContext->current_pos + bufSize <= tensorContext->data.numel(),
       "Re-allocation of the output tensor didn't work. "
       "This should not happen, please report on TorchCodec bug tracker");
@@ -102,9 +102,9 @@ int64_t seek(void* opaque, int64_t offset, int whence) {
 
 AVIOFromTensorContext::AVIOFromTensorContext(StableTensor data)
     : tensorContext_{data, 0, 0} {
-  STABLE_CHECK(data.numel() > 0, "data must not be empty");
-  STABLE_CHECK(stableIsContiguous(data), "data must be contiguous");
-  STABLE_CHECK(data.scalar_type() == kStableUInt8, "data must be kUInt8");
+  STD_TORCH_CHECK(data.numel() > 0, "data must not be empty");
+  STD_TORCH_CHECK(stableIsContiguous(data), "data must be contiguous");
+  STD_TORCH_CHECK(data.scalar_type() == kStableUInt8, "data must be kUInt8");
   createAVIOContext(
       &read, nullptr, &seek, &tensorContext_, /*isForWriting=*/false);
 }

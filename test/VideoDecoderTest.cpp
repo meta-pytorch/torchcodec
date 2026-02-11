@@ -157,7 +157,7 @@ TEST_P(SingleStreamDecoderTest, ReturnsFpsAndDurationForVideoInMetadata) {
 }
 
 TEST(SingleStreamDecoderTest, MissingVideoFileThrowsException) {
-  // With stable ABI, STABLE_CHECK throws std::runtime_error instead of
+  // With stable ABI, STD_TORCH_CHECK throws std::runtime_error instead of
   // c10::Error
   EXPECT_THROW(
       SingleStreamDecoder("/this/file/does/not/exist"), std::runtime_error);

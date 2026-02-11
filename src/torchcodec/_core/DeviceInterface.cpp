@@ -57,7 +57,7 @@ StableDeviceType parseDeviceType(const std::string& deviceType) {
   } else if (deviceType == "cuda") {
     return kStableCUDA;
   } else {
-    STABLE_CHECK(false, "Unknown device type: ", deviceType);
+    STD_TORCH_CHECK(false, "Unknown device type: ", deviceType);
   }
 }
 
@@ -69,7 +69,7 @@ bool registerDeviceInterface(
   std::scoped_lock lock(g_interface_mutex);
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       deviceMap.find(key) == deviceMap.end(),
       "Device interface already registered for device type ",
       static_cast<int>(key.deviceType),
@@ -100,7 +100,7 @@ void validateDeviceInterface(
             arg.first.variant == variant;
       });
 
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       deviceInterface != deviceMap.end(),
       "Unsupported device: ",
       device,
@@ -123,7 +123,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
     return std::unique_ptr<DeviceInterface>(it->second(device));
   }
 
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       false,
       "No device interface found for device type: ",
       static_cast<int>(device.type()),
@@ -133,7 +133,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
 }
 
 StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
-  STABLE_CHECK(
+  STD_TORCH_CHECK(
       avFrame->format == AV_PIX_FMT_RGB24,
       "Expected RGB24 format, got: ",
       avFrame->format);
@@ -145,7 +145,7 @@ StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
 
   // Clone the AVFrame so we own the data
   AVFrame* avFrameClone = av_frame_clone(avFrame.get());
-  STABLE_CHECK(avFrameClone != nullptr, "Failed to clone AVFrame");
+  STD_TORCH_CHECK(avFrameClone != nullptr, "Failed to clone AVFrame");
 
   // Register the AVFrame for cleanup when the tensor is destroyed.
   // The stable ABI's from_blob deleter receives the data pointer, but we need

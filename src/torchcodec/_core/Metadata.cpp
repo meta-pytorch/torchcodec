@@ -14,7 +14,7 @@ std::optional<double> StreamMetadata::getDurationSeconds(
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      STABLE_CHECK(
+      STD_TORCH_CHECK(
           endStreamPtsSecondsFromContent.has_value() &&
               beginStreamPtsSecondsFromContent.has_value(),
           "Missing beginStreamPtsSecondsFromContent or endStreamPtsSecondsFromContent");
@@ -34,7 +34,7 @@ std::optional<double> StreamMetadata::getDurationSeconds(
       }
       return std::nullopt;
     default:
-      STABLE_CHECK(false, "Unknown SeekMode");
+      STD_TORCH_CHECK(false, "Unknown SeekMode");
   }
 }
 
@@ -42,17 +42,17 @@ double StreamMetadata::getBeginStreamSeconds(SeekMode seekMode) const {
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      STABLE_CHECK(
+      STD_TORCH_CHECK(
           beginStreamPtsSecondsFromContent.has_value(),
           "Missing beginStreamPtsSecondsFromContent");
       return beginStreamPtsSecondsFromContent.value();
     case SeekMode::approximate:
-      if (beginStreamPtsSecondsFromContent.has_value()) {
-        return beginStreamPtsSecondsFromContent.value();
+      if (beginStreamSecondsFromHeader.has_value()) {
+        return beginStreamSecondsFromHeader.value();
       }
       return 0.0;
     default:
-      STABLE_CHECK(false, "Unknown SeekMode");
+      STD_TORCH_CHECK(false, "Unknown SeekMode");
   }
 }
 
@@ -61,17 +61,19 @@ std::optional<double> StreamMetadata::getEndStreamSeconds(
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      STABLE_CHECK(
+      STD_TORCH_CHECK(
           endStreamPtsSecondsFromContent.has_value(),
           "Missing endStreamPtsSecondsFromContent");
       return endStreamPtsSecondsFromContent.value();
-    case SeekMode::approximate:
-      if (endStreamPtsSecondsFromContent.has_value()) {
-        return endStreamPtsSecondsFromContent.value();
+    case SeekMode::approximate: {
+      auto dur = getDurationSeconds(seekMode);
+      if (dur.has_value()) {
+        return getBeginStreamSeconds(seekMode) + dur.value();
       }
-      return getDurationSeconds(seekMode);
+      return std::nullopt;
+    }
     default:
-      STABLE_CHECK(false, "Unknown SeekMode");
+      STD_TORCH_CHECK(false, "Unknown SeekMode");
   }
 }
 
@@ -79,7 +81,7 @@ std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
   switch (seekMode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
-      STABLE_CHECK(
+      STD_TORCH_CHECK(
           numFramesFromContent.has_value(), "Missing numFramesFromContent");
       return numFramesFromContent.value();
     case SeekMode::approximate: {
@@ -94,7 +96,7 @@ std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
       return std::nullopt;
     }
     default:
-      STABLE_CHECK(false, "Unknown SeekMode");
+      STD_TORCH_CHECK(false, "Unknown SeekMode");
   }
 }
 
@@ -117,7 +119,7 @@ std::optional<double> StreamMetadata::getAverageFps(SeekMode seekMode) const {
     case SeekMode::approximate:
       return averageFpsFromHeader;
     default:
-      STABLE_CHECK(false, "Unknown SeekMode");
+      STD_TORCH_CHECK(false, "Unknown SeekMode");
   }
 }
 
