@@ -61,7 +61,7 @@ Checking if Pytorch has CUDA enabled
 
     torch.__version__='2.11.0.dev20260210+cu126'
     torch.cuda.is_available()=True
-    torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='Tesla M60', major=5, minor=2, total_memory=7606MB, multi_processor_count=16, uuid=add5173b-bffb-c9a2-7895-abcb26d1413d, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=2MB)
+    torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='Tesla M60', major=5, minor=2, total_memory=7606MB, multi_processor_count=16, uuid=c7157ff4-2037-3de0-9163-326af0e71047, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=2MB)
 
 
 
@@ -106,7 +106,7 @@ We will use the following video which has the following properties:
  .. code-block:: none
 
 
-    ('video.mp4', <http.client.HTTPMessage object at 0x7f4473ef4ca0>)
+    ('video.mp4', <http.client.HTTPMessage object at 0x7f44ca0c0e20>)
 
 
 
@@ -311,7 +311,7 @@ differences because CUDA math is not bit-exact with respect to CPU math.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 6.682 seconds)
+   **Total running time of the script:** (0 minutes 6.375 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_basic_cuda_example.py:

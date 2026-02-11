@@ -10,7 +10,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <title>Exact vs Approximate seek mode: Performance and accuracy comparison &mdash; TorchCodec 0.11.0.dev20260210+cu126 Documentation</title>
+  <title>Exact vs Approximate seek mode: Performance and accuracy comparison &mdash; TorchCodec 0.11.0.dev20260211+cu126 Documentation</title>
   
 
   
@@ -498,14 +498,14 @@ longer the video, the higher the performance gain.</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Creating a VideoDecoder object with seek_mode=&#39;exact&#39; on a short video:
-med = 8.00ms +- 0.03
+med = 8.03ms +- 0.02
 Creating a VideoDecoder object with seek_mode=&#39;approximate&#39; on a short video:
-med = 7.04ms +- 0.01
+med = 7.09ms +- 0.02
 
 Creating a VideoDecoder object with seek_mode=&#39;exact&#39; on a long video:
-med = 111.13ms +- 1.37
+med = 110.12ms +- 1.11
 Creating a VideoDecoder object with seek_mode=&#39;approximate&#39; on a long video:
-med = 10.42ms +- 0.02
+med = 10.45ms +- 0.02
 </pre></div>
 </div>
 </section>
@@ -539,9 +539,9 @@ example:</p>
 </pre></div>
 </div>
 <div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>Sampling clips with seek_mode=&#39;exact&#39;:
-med = 279.13ms +- 33.07
+med = 296.26ms +- 35.83
 Sampling clips with seek_mode=&#39;approximate&#39;:
-med = 186.58ms +- 32.37
+med = 190.35ms +- 32.20
 </pre></div>
 </div>
 </section>
@@ -644,7 +644,7 @@ is usually the case when doing clip sampling, consider using “approximate”.<
 <div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><a href="https://docs.python.org/3/library/shutil.html#shutil.rmtree" title="shutil.rmtree" class="sphx-glr-backref-module-shutil sphx-glr-backref-type-py-function"><span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span></a><span class="p">(</span><a href="https://docs.python.org/3/library/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">temp_dir</span></a><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 32.995 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 33.592 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-decoding-approximate-mode-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../../_downloads/4bf13eb02a73a239a7e7af99b5c000a9/approximate_mode.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">approximate_mode.ipynb</span></code></a></p>
