@@ -8,23 +8,6 @@ find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development)
 
-# NVTX support - read env variable into a normal variable
-set(USE_NVTX_ENV OFF)
-if(DEFINED ENV{USE_NVTX})
-    if($ENV{USE_NVTX} STREQUAL "1" OR $ENV{USE_NVTX} STREQUAL "ON")
-        set(USE_NVTX_ENV ON)
-    endif()
-endif()
-
-# NVTX support - only if ENABLE_CUDA is set
-include(CMakeDependentOption)
-cmake_dependent_option(
-    USE_NVTX
-    "Enable NVTX annotations for profiling (requires CUDA)"
-    ${USE_NVTX_ENV}  # default if dependency satisfied
-    "ENABLE_CUDA"    # dependency
-    OFF  # value if dependency not satisfied
-)
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -75,10 +58,6 @@ function(make_torchcodec_sublibrary
     # torch, we want to rely on the "header-only" mode of these headers and hit
     # all the `#ifdef FMT_HEADER_ONLY` paths, so we define FMT_HEADER_ONLY here.```
     target_compile_definitions(${library_name} PRIVATE FMT_HEADER_ONLY)
-
-    if(USE_NVTX)
-        target_compile_definitions(${library_name} PRIVATE USE_NVTX)
-    endif()
 
     # Avoid adding the "lib" prefix which we already add explicitly.
     set_target_properties(${library_name} PROPERTIES PREFIX "")
@@ -182,6 +161,13 @@ function(make_torchcodec_libraries
         "${core_sources}"
         "${core_library_dependencies}"
     )
+
+    if(ENABLE_CUDA AND USE_NVTX)
+        target_compile_definitions(${core_library_name} PRIVATE USE_NVTX)
+        if(NVTX_INCLUDE_DIR)
+            target_include_directories(${core_library_name} PRIVATE ${NVTX_INCLUDE_DIR})
+        endif()
+    endif()
 
     # 2. Create libtorchcodec_custom_opsN.{ext}.
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")

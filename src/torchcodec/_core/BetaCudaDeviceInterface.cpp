@@ -27,9 +27,22 @@ extern "C" {
 }
 
 #ifdef USE_NVTX
-#include "nvtx3/nvtx3.hpp"
+#include "nvtx3/nvToolsExt.h"
 
-#define NVTX_SCOPED_RANGE(NAME) nvtx3::scoped_range NVTX_RANGE_##__LINE__{NAME};
+struct NvtxRange {
+  explicit NvtxRange(const char* name) {
+    nvtxRangePushA(name);
+  }
+
+  ~NvtxRange() {
+    nvtxRangePop();
+  }
+
+  NvtxRange(const NvtxRange&) = delete;
+  NvtxRange& operator=(const NvtxRange&) = delete;
+};
+
+#define NVTX_SCOPED_RANGE(NAME) NvtxRange NVTX_RANGE_##__LINE__{NAME};
 #else
 #define NVTX_SCOPED_RANGE(NAME) ((void)0)
 #endif
