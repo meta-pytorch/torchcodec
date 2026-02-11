@@ -14,10 +14,8 @@
 #include <stdexcept>
 #include <string>
 
-// Force default (public) visibility on symbols whose signatures include
-// hidden-visibility stable ABI types (e.g. StableDevice). Without this,
-// GCC demotes such symbols to hidden even with -fvisibility=default.
-// Use this only on functions that third-party code needs to link against.
+// Flag meant to be used for any API that third-party libraries may call.
+// It ensures the API symbol is always public.
 #ifdef _WIN32
 #define TORCHCODEC_THIRD_PARTY_API
 #else
