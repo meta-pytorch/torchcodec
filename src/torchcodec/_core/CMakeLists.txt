@@ -226,7 +226,6 @@ function(make_torchcodec_libraries
         target_compile_options(
             ${core_library_name}
             PRIVATE
-            "-fvisibility=default"
             "-Wno-attributes"
         )
 
