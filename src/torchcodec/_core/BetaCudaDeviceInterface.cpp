@@ -258,6 +258,8 @@ void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
     [[maybe_unused]] const SharedAVCodecContext& codecContext) {
+  rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
+
   if (!nvcuvidAvailable_ || !nativeNVDECSupport(codecContext)) {
     cpuFallback_ = createDeviceInterface(torch::kCPU);
     TORCH_CHECK(
@@ -274,7 +276,6 @@ void BetaCudaDeviceInterface::initialize(
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
-  rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
 
   const AVCodecParameters* codecPar = avStream->codecpar;
   TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
@@ -829,6 +830,9 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
   // dimensions, but NV12->RGB conversion needs pre-rotation dimensions.
   // We save and nullify the pre-allocated tensor, then copy into it after
   // rotation.
+  // Our current rotation implementation is a bit hacky. Once we support native
+  // transforms on the beta CUDA interface, rotation should be handled as part
+  // of the transform pipeline instead.
   std::optional<torch::Tensor> savedPreAllocatedOutputTensor = std::nullopt;
   if (rotation_ != Rotation::NONE && preAllocatedOutputTensor.has_value()) {
     savedPreAllocatedOutputTensor = preAllocatedOutputTensor;
@@ -843,7 +847,6 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
   frameOutput.data = convertNV12FrameToRGB(
       gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
 
-  // Apply rotation using torch::rot90 on the H and W dims of our HWC tensor.
   if (rotation_ != Rotation::NONE) {
     int k = 0;
     switch (rotation_) {
@@ -859,6 +862,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       default:
         break;
     }
+    // Apply rotation using torch::rot90 on the H and W dims of our HWC tensor.
     // torch::rot90 returns a view, so we need to make it contiguous.
     frameOutput.data = torch::rot90(frameOutput.data, k, {0, 1}).contiguous();
 
