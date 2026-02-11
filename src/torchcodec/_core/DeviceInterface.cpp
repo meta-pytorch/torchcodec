@@ -7,6 +7,7 @@
 #include "DeviceInterface.h"
 #include <map>
 #include <mutex>
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -36,7 +37,7 @@ bool registerDeviceInterface(
   std::scoped_lock lock(g_interface_mutex);
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       deviceMap.find(key) == deviceMap.end(),
       "Device interface already registered for device type ",
       key.deviceType,
@@ -67,7 +68,7 @@ void validateDeviceInterface(
             arg.first.variant == variant;
       });
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       deviceInterface != deviceMap.end(),
       "Unsupported device: ",
       device,
@@ -90,7 +91,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
     return std::unique_ptr<DeviceInterface>(it->second(device));
   }
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       false,
       "No device interface found for device type: ",
       device.type(),
@@ -100,7 +101,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
 }
 
 torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
-  TORCH_CHECK_EQ(avFrame->format, AV_PIX_FMT_RGB24);
+  STD_TORCH_CHECK(avFrame->format == AV_PIX_FMT_RGB24, "Expected RGB24 format");
 
   int height = avFrame->height;
   int width = avFrame->width;
