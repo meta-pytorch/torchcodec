@@ -75,7 +75,6 @@ std::optional<double> StreamMetadata::getEndStreamSeconds(
     }
     default:
       STD_TORCH_CHECK(false, "Unknown SeekMode");
-      return std::nullopt;
   }
 }
 
