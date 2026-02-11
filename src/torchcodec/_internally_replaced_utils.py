@@ -7,12 +7,13 @@
 import importlib
 import importlib.util
 import sys
+import traceback
 from pathlib import Path
 from types import ModuleType
 
 import torch
 
-# Note that this value must match the value used as _PYBIND_OPS_MODULE_NAME when we compile _core/pybind_ops.cpp.
+# Note that this value must match the value used as PYBIND_OPS_MODULE_NAME when we compile _core/pybind_ops.cpp.
 # If the values do not match, we will not be able to import the C++ shared library as a Python module at runtime.
 _PYBIND_OPS_MODULE_NAME = "core_pybind_ops"
 
@@ -84,8 +85,6 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
          works when the module name and file name match exactly. Our shared
          libraries do not meet those conditions.
     """
-    import traceback
-
     exceptions = []
     for ffmpeg_major_version in (8, 7, 6, 5, 4):
         core_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
