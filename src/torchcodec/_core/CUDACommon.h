@@ -13,6 +13,7 @@
 
 #include "FFMPEGCommon.h"
 #include "Frame.h"
+#include "Transform.h"
 
 extern "C" {
 #include <libavutil/hwcontext_cuda.h>
@@ -36,6 +37,16 @@ torch::Tensor convertNV12FrameToRGB(
     const UniqueNppContext& nppCtx,
     at::cuda::CUDAStream nvdecStream,
     std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+
+// Apply rotation to an HWC tensor using NPP.
+// If dst is provided, the result is written directly into it (must have the
+// correct post-rotation shape). Otherwise a new tensor is allocated.
+torch::Tensor applyNppRotation(
+    torch::Tensor& src,
+    Rotation rotation,
+    const torch::Device& device,
+    const UniqueNppContext& nppCtx,
+    std::optional<torch::Tensor> dst = std::nullopt);
 
 UniqueNppContext getNppStreamContext(const torch::Device& device);
 void returnNppStreamContextToCache(

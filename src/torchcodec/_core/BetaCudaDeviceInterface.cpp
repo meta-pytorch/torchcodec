@@ -274,6 +274,7 @@ void BetaCudaDeviceInterface::initialize(
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
+  rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
 
   const AVCodecParameters* codecPar = avStream->codecpar;
   TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
@@ -824,6 +825,16 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       gpuFrame->format == AV_PIX_FMT_CUDA,
       "Expected CUDA format frame from BETA CUDA interface");
 
+  // When rotation is active, the pre-allocated tensor has post-rotation
+  // dimensions but NV12->RGB conversion needs pre-rotation dimensions.
+  // We save the original pre-allocated tensor so we can copy the rotated
+  // result back into it (needed for batch decoding).
+  std::optional<torch::Tensor> originalPreAllocatedOutputTensor;
+  if (rotation_ != Rotation::NONE) {
+    originalPreAllocatedOutputTensor = preAllocatedOutputTensor;
+    preAllocatedOutputTensor = std::nullopt;
+  }
+
   validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
 
   at::cuda::CUDAStream nvdecStream =
@@ -831,6 +842,16 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   frameOutput.data = convertNV12FrameToRGB(
       gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+
+  // Apply rotation using NPP if configured
+  if (rotation_ != Rotation::NONE) {
+    frameOutput.data = applyNppRotation(
+        frameOutput.data,
+        rotation_,
+        device_,
+        nppCtx_,
+        originalPreAllocatedOutputTensor);
+  }
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {

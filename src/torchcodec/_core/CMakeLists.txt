@@ -151,6 +151,8 @@ function(make_torchcodec_libraries
         list(APPEND core_library_dependencies
             ${CUDA_nppi_LIBRARY}
             ${CUDA_nppicc_LIBRARY}
+            ${CUDA_nppidei_LIBRARY}
+            ${CUDA_nppig_LIBRARY}
         )
     endif()
 

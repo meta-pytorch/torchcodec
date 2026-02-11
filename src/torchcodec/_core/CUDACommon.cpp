@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "CUDACommon.h"
+#include <nppi_geometry_transforms.h> // for nppiTranspose, nppiMirror
 #include "Cache.h" // for PerGpuCache
 
 namespace facebook::torchcodec {
@@ -155,6 +156,93 @@ const Npp32f bt709FullRangeColorTwist[3][4] = {
     {1.0f, 0.0f, 1.5748f, 0.0f},
     {1.0f, -0.187324273f, -0.468124273f, -128.0f},
     {1.0f, 1.8556f, 0.0f, -128.0f}};
+
+torch::Tensor applyNppRotation(
+    torch::Tensor& src,
+    Rotation rotation,
+    const torch::Device& device,
+    const UniqueNppContext& nppCtx,
+    std::optional<torch::Tensor> dst) {
+  if (rotation == Rotation::NONE) {
+    return src;
+  }
+
+  int srcHeight = static_cast<int>(src.size(0));
+  int srcWidth = static_cast<int>(src.size(1));
+  NppStatus status;
+
+  // For 90° rotations: transpose + mirror
+  // For 180°: mirror both axes
+  if (rotation == Rotation::CCW90 || rotation == Rotation::CW90) {
+    // Transpose swaps width and height
+    int dstHeight = srcWidth;
+    int dstWidth = srcHeight;
+    FrameDims dstDims(dstHeight, dstWidth);
+    torch::Tensor transposed = allocateEmptyHWCTensor(dstDims, device);
+
+    NppiSize srcSize = {srcWidth, srcHeight};
+
+    status = nppiTranspose_8u_C3R_Ctx(
+        static_cast<const Npp8u*>(src.data_ptr()),
+        static_cast<int>(src.stride(0)),
+        static_cast<Npp8u*>(transposed.data_ptr()),
+        static_cast<int>(transposed.stride(0)),
+        srcSize,
+        *nppCtx);
+
+    TORCH_CHECK(
+        status == NPP_SUCCESS,
+        "Failed to transpose frame with NPP, error code: ",
+        status);
+
+    // After transpose, apply mirror to complete the rotation
+    // CCW90 = transpose + horizontal flip
+    // CW90 = transpose + vertical flip
+    torch::Tensor out = dst.value_or(allocateEmptyHWCTensor(dstDims, device));
+    NppiSize transposedSize = {dstWidth, dstHeight};
+    NppiAxis axis =
+        (rotation == Rotation::CCW90) ? NPP_HORIZONTAL_AXIS : NPP_VERTICAL_AXIS;
+
+    status = nppiMirror_8u_C3R_Ctx(
+        static_cast<const Npp8u*>(transposed.data_ptr()),
+        static_cast<int>(transposed.stride(0)),
+        static_cast<Npp8u*>(out.data_ptr()),
+        static_cast<int>(out.stride(0)),
+        transposedSize,
+        axis,
+        *nppCtx);
+
+    TORCH_CHECK(
+        status == NPP_SUCCESS,
+        "Failed to mirror frame with NPP, error code: ",
+        status);
+
+    return out;
+  } else if (rotation == Rotation::ROTATE180) {
+    // 180° rotation = mirror both axes
+    FrameDims dstDims(srcHeight, srcWidth);
+    torch::Tensor out = dst.value_or(allocateEmptyHWCTensor(dstDims, device));
+    NppiSize srcSize = {srcWidth, srcHeight};
+
+    status = nppiMirror_8u_C3R_Ctx(
+        static_cast<const Npp8u*>(src.data_ptr()),
+        static_cast<int>(src.stride(0)),
+        static_cast<Npp8u*>(out.data_ptr()),
+        static_cast<int>(out.stride(0)),
+        srcSize,
+        NPP_BOTH_AXIS,
+        *nppCtx);
+
+    TORCH_CHECK(
+        status == NPP_SUCCESS,
+        "Failed to mirror frame with NPP, error code: ",
+        status);
+
+    return out;
+  }
+
+  return src;
+}
 
 torch::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,

@@ -98,6 +98,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   // NPP context for color conversion
   UniqueNppContext nppCtx_;
 
+  // Rotation to apply to frames
+  Rotation rotation_ = Rotation::NONE;
+
   std::unique_ptr<DeviceInterface> cpuFallback_;
   bool nvcuvidAvailable_ = false;
   UniqueSwsContext swsContext_;
