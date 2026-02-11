@@ -17,7 +17,7 @@ FrameDims::FrameDims(int height, int width) : height(height), width(width) {
 FrameBatchOutput::FrameBatchOutput(
     int64_t numFrames,
     const FrameDims& outputDims,
-    const torch::Device& device)
+    const StableDevice& device)
     : ptsSeconds(torch::empty({numFrames}, {torch::kFloat64})),
       durationSeconds(torch::empty({numFrames}, {torch::kFloat64})) {
   data = allocateEmptyHWCTensor(outputDims, device, numFrames);
@@ -25,12 +25,14 @@ FrameBatchOutput::FrameBatchOutput(
 
 torch::Tensor allocateEmptyHWCTensor(
     const FrameDims& frameDims,
-    const torch::Device& device,
+    const StableDevice& device,
     std::optional<int> numFrames) {
+  torch::Device torchDevice(
+      static_cast<c10::DeviceType>(device.type()), device.index());
   auto tensorOptions = torch::TensorOptions()
                            .dtype(torch::kUInt8)
                            .layout(torch::kStrided)
-                           .device(device);
+                           .device(torchDevice);
   STD_TORCH_CHECK(
       frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
   STD_TORCH_CHECK(

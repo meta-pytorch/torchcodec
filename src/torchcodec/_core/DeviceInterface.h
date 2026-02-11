@@ -21,7 +21,7 @@ namespace facebook::torchcodec {
 
 // Key for device interface registration with device type + variant support
 struct DeviceInterfaceKey {
-  torch::DeviceType deviceType;
+  StableDeviceType deviceType;
   std::string_view variant = "ffmpeg"; // e.g., "ffmpeg", "beta", etc.
 
   bool operator<(const DeviceInterfaceKey& other) const {
@@ -31,19 +31,19 @@ struct DeviceInterfaceKey {
     return variant < other.variant;
   }
 
-  explicit DeviceInterfaceKey(torch::DeviceType type) : deviceType(type) {}
+  explicit DeviceInterfaceKey(StableDeviceType type) : deviceType(type) {}
 
-  DeviceInterfaceKey(torch::DeviceType type, const std::string_view& variant)
+  DeviceInterfaceKey(StableDeviceType type, const std::string_view& variant)
       : deviceType(type), variant(variant) {}
 };
 
 class DeviceInterface {
  public:
-  DeviceInterface(const torch::Device& device) : device_(device) {}
+  DeviceInterface(const StableDevice& device) : device_(device) {}
 
   virtual ~DeviceInterface(){};
 
-  torch::Device& device() {
+  StableDevice& device() {
     return device_;
   };
 
@@ -164,13 +164,13 @@ class DeviceInterface {
   }
 
  protected:
-  torch::Device device_;
+  StableDevice device_;
   SharedAVCodecContext codecContext_;
   AVMediaType avMediaType_;
 };
 
 using CreateDeviceInterfaceFn =
-    std::function<DeviceInterface*(const torch::Device& device)>;
+    std::function<DeviceInterface*(const StableDevice& device)>;
 
 bool registerDeviceInterface(
     const DeviceInterfaceKey& key,
@@ -181,7 +181,7 @@ void validateDeviceInterface(
     const std::string variant);
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
-    const torch::Device& device,
+    const StableDevice& device,
     const std::string_view variant = "ffmpeg");
 
 torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);

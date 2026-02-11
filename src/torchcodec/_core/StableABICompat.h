@@ -6,7 +6,10 @@
 
 #pragma once
 
+#include <torch/csrc/stable/accelerator.h>
+#include <torch/csrc/stable/device.h>
 #include <torch/csrc/stable/library.h>
+#include <torch/headeronly/core/DeviceType.h>
 
 #include <stdexcept>
 #include <string>
@@ -20,3 +23,19 @@
       throw std::out_of_range(std::string(msg)); \
     }                                            \
   } while (false)
+
+namespace facebook::torchcodec {
+
+// Device types
+using StableDevice = torch::stable::Device;
+using StableDeviceType = torch::headeronly::DeviceType;
+using StableDeviceIndex = torch::stable::accelerator::DeviceIndex;
+
+// DeviceGuard for CUDA context management
+using StableDeviceGuard = torch::stable::accelerator::DeviceGuard;
+
+// Device type constants
+constexpr auto kStableCPU = torch::headeronly::DeviceType::CPU;
+constexpr auto kStableCUDA = torch::headeronly::DeviceType::CUDA;
+
+} // namespace facebook::torchcodec

@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "DeviceInterface.h"
+#include <cstring>
 #include <map>
 #include <mutex>
 #include "StableABICompat.h"
@@ -29,6 +30,17 @@ std::string getDeviceType(const std::string& device) {
   return device.substr(0, pos);
 }
 
+// Parse device type from string (e.g., "cpu", "cuda")
+StableDeviceType parseDeviceType(const std::string& deviceType) {
+  if (deviceType == "cpu") {
+    return kStableCPU;
+  } else if (deviceType == "cuda") {
+    return kStableCUDA;
+  } else {
+    STD_TORCH_CHECK(false, "Unknown device type: ", deviceType);
+  }
+}
+
 } // namespace
 
 bool registerDeviceInterface(
@@ -40,7 +52,7 @@ bool registerDeviceInterface(
   STD_TORCH_CHECK(
       deviceMap.find(key) == deviceMap.end(),
       "Device interface already registered for device type ",
-      key.deviceType,
+      static_cast<int>(key.deviceType),
       " variant '",
       key.variant,
       "'");
@@ -58,7 +70,7 @@ void validateDeviceInterface(
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
   // Find device interface that matches device type and variant
-  torch::DeviceType deviceTypeEnum = torch::Device(deviceType).type();
+  StableDeviceType deviceTypeEnum = parseDeviceType(deviceType);
 
   auto deviceInterface = std::find_if(
       deviceMap.begin(),
@@ -80,7 +92,7 @@ void validateDeviceInterface(
 }
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
-    const torch::Device& device,
+    const StableDevice& device,
     const std::string_view variant) {
   DeviceInterfaceKey key(device.type(), variant);
   std::scoped_lock lock(g_interface_mutex);
@@ -94,7 +106,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
   STD_TORCH_CHECK(
       false,
       "No device interface found for device type: ",
-      device.type(),
+      static_cast<int>(device.type()),
       " variant: '",
       variant,
       "'");
