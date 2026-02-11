@@ -83,19 +83,13 @@ class CpuDeviceInterface : public DeviceInterface {
   // Creating both filterGraph_ and swScale_ is relatively expensive, so we
   // reuse them across frames. However, it is possible that subsequent frames
   // are different enough (change in dimensions) that we can't reuse the color
-  // conversion object. We store the relevant frame context from the frame used
+  // conversion object. We store the relevant frame config from the frame used
   // to create the object last time. We always compare the current frame's info
   // against the previous one to determine if we need to recreate the color
   // conversion object.
-  //
-  // TODO: The names of these fields is confusing, as the actual color
-  //       conversion object for Sws has "context" in the name, and we use
-  //       "context" for the structs we store to know if we need to recreate a
-  //       color conversion object. We should clean that up.
   std::unique_ptr<FilterGraph> filterGraph_;
-  FiltersContext prevFiltersContext_;
+  FiltersConfig prevFiltersConfig_;
   std::unique_ptr<SwScale> swScale_;
-  SwScaleContext prevSwScaleContext_;
 
   // We pass these filters to FFmpeg's filtergraph API. It is a simple pipeline
   // of what FFmpeg calls "filters" to apply to decoded frames before returning

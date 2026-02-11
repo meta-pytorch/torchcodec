@@ -13,27 +13,6 @@ namespace facebook::torchcodec {
 
 struct FrameDims;
 
-struct SwScaleContext {
-  int inputWidth = 0;
-  int inputHeight = 0;
-  AVPixelFormat inputFormat = AV_PIX_FMT_NONE;
-  AVColorSpace inputColorspace = AVCOL_SPC_UNSPECIFIED;
-  int outputWidth = 0;
-  int outputHeight = 0;
-
-  SwScaleContext() = default;
-  SwScaleContext(
-      int inputWidth,
-      int inputHeight,
-      AVPixelFormat inputFormat,
-      AVColorSpace inputColorspace,
-      int outputWidth,
-      int outputHeight);
-
-  bool operator==(const SwScaleContext&) const;
-  bool operator!=(const SwScaleContext&) const;
-};
-
 // SwScale uses a double swscale path:
 // 1. Color conversion (e.g., YUV -> RGB24) at the original frame resolution
 // 2. Resize in RGB24 space (if resizing is needed)
@@ -45,12 +24,16 @@ struct SwScaleContext {
 // when the context changes, similar to how FilterGraph is managed.
 class SwScale {
  public:
-  SwScale(const SwScaleContext& context, int swsFlags = SWS_BILINEAR);
+  SwScale(const SwsFrameConfig& config, int swsFlags = SWS_BILINEAR);
 
   int convert(const UniqueAVFrame& avFrame, torch::Tensor& outputTensor);
 
+  const SwsFrameConfig& getConfig() const {
+    return config_;
+  }
+
  private:
-  SwScaleContext context_;
+  SwsFrameConfig config_;
   int swsFlags_;
   bool needsResize_;
 

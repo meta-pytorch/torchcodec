@@ -616,39 +616,41 @@ int64_t computeSafeDuration(
   }
 }
 
-SwsFrameContext::SwsFrameContext(
+SwsFrameConfig::SwsFrameConfig(
     int inputWidth,
     int inputHeight,
     AVPixelFormat inputFormat,
+    AVColorSpace inputColorspace,
     int outputWidth,
     int outputHeight)
     : inputWidth(inputWidth),
       inputHeight(inputHeight),
       inputFormat(inputFormat),
+      inputColorspace(inputColorspace),
       outputWidth(outputWidth),
       outputHeight(outputHeight) {}
 
-bool SwsFrameContext::operator==(const SwsFrameContext& other) const {
+bool SwsFrameConfig::operator==(const SwsFrameConfig& other) const {
   return inputWidth == other.inputWidth && inputHeight == other.inputHeight &&
-      inputFormat == other.inputFormat && outputWidth == other.outputWidth &&
-      outputHeight == other.outputHeight;
+      inputFormat == other.inputFormat &&
+      inputColorspace == other.inputColorspace &&
+      outputWidth == other.outputWidth && outputHeight == other.outputHeight;
 }
 
-bool SwsFrameContext::operator!=(const SwsFrameContext& other) const {
+bool SwsFrameConfig::operator!=(const SwsFrameConfig& other) const {
   return !(*this == other);
 }
 
 UniqueSwsContext createSwsContext(
-    const SwsFrameContext& swsFrameContext,
-    AVColorSpace colorspace,
+    const SwsFrameConfig& swsFrameConfig,
     AVPixelFormat outputFormat,
     int swsFlags) {
   SwsContext* swsContext = sws_getContext(
-      swsFrameContext.inputWidth,
-      swsFrameContext.inputHeight,
-      swsFrameContext.inputFormat,
-      swsFrameContext.outputWidth,
-      swsFrameContext.outputHeight,
+      swsFrameConfig.inputWidth,
+      swsFrameConfig.inputHeight,
+      swsFrameConfig.inputFormat,
+      swsFrameConfig.outputWidth,
+      swsFrameConfig.outputHeight,
       outputFormat,
       swsFlags,
       nullptr,
@@ -670,7 +672,8 @@ UniqueSwsContext createSwsContext(
       &saturation);
   TORCH_CHECK(ret != -1, "sws_getColorspaceDetails returned -1");
 
-  const int* colorspaceTable = sws_getCoefficients(colorspace);
+  const int* colorspaceTable =
+      sws_getCoefficients(swsFrameConfig.inputColorspace);
   ret = sws_setColorspaceDetails(
       swsContext,
       colorspaceTable,

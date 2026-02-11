@@ -9,50 +9,25 @@
 
 namespace facebook::torchcodec {
 
-SwScaleContext::SwScaleContext(
-    int inputWidth,
-    int inputHeight,
-    AVPixelFormat inputFormat,
-    AVColorSpace inputColorspace,
-    int outputWidth,
-    int outputHeight)
-    : inputWidth(inputWidth),
-      inputHeight(inputHeight),
-      inputFormat(inputFormat),
-      inputColorspace(inputColorspace),
-      outputWidth(outputWidth),
-      outputHeight(outputHeight) {}
-
-bool SwScaleContext::operator==(const SwScaleContext& other) const {
-  return inputWidth == other.inputWidth && inputHeight == other.inputHeight &&
-      inputFormat == other.inputFormat &&
-      inputColorspace == other.inputColorspace &&
-      outputWidth == other.outputWidth && outputHeight == other.outputHeight;
-}
-
-bool SwScaleContext::operator!=(const SwScaleContext& other) const {
-  return !(*this == other);
-}
-
-SwScale::SwScale(const SwScaleContext& context, int swsFlags)
-    : context_(context), swsFlags_(swsFlags) {
+SwScale::SwScale(const SwsFrameConfig& config, int swsFlags)
+    : config_(config), swsFlags_(swsFlags) {
   needsResize_ =
-      (context_.inputHeight != context_.outputHeight ||
-       context_.inputWidth != context_.outputWidth);
+      (config_.inputHeight != config_.outputHeight ||
+       config_.inputWidth != config_.outputWidth);
 
   // Create color conversion context (input format -> RGB24).
-  // When resizing is needed, color conversion outputs at input resolution.
-  // When no resize is needed, color conversion outputs at output resolution.
-  SwsFrameContext colorConversionFrameContext(
-      context_.inputWidth,
-      context_.inputHeight,
-      context_.inputFormat,
-      needsResize_ ? context_.inputWidth : context_.outputWidth,
-      needsResize_ ? context_.inputHeight : context_.outputHeight);
+  // Color conversion always outputs at the input resolution.
+  // When no resize is needed, input and output resolutions are the same.
+  SwsFrameConfig colorConversionFrameConfig(
+      config_.inputWidth,
+      config_.inputHeight,
+      config_.inputFormat,
+      config_.inputColorspace,
+      config_.inputWidth,
+      config_.inputHeight);
 
   colorConversionSwsContext_ = createSwsContext(
-      colorConversionFrameContext,
-      context_.inputColorspace,
+      colorConversionFrameConfig,
       // See [Transform and Format Conversion Order] for more on the output
       // pixel format.
       /*outputFormat=*/AV_PIX_FMT_RGB24,
@@ -63,16 +38,16 @@ SwScale::SwScale(const SwScaleContext& context, int swsFlags)
   // Create resize context if needed (RGB24 at input resolution -> RGB24 at
   // output resolution).
   if (needsResize_) {
-    SwsFrameContext resizeFrameContext(
-        context_.inputWidth,
-        context_.inputHeight,
+    SwsFrameConfig resizeFrameConfig(
+        config_.inputWidth,
+        config_.inputHeight,
         AV_PIX_FMT_RGB24,
-        context_.outputWidth,
-        context_.outputHeight);
+        AVCOL_SPC_RGB,
+        config_.outputWidth,
+        config_.outputHeight);
 
     resizeSwsContext_ = createSwsContext(
-        resizeFrameContext,
-        AVCOL_SPC_RGB,
+        resizeFrameConfig,
         /*outputFormat=*/AV_PIX_FMT_RGB24,
         /*swsFlags=*/swsFlags_);
   }
@@ -81,12 +56,16 @@ SwScale::SwScale(const SwScaleContext& context, int swsFlags)
 int SwScale::convert(
     const UniqueAVFrame& avFrame,
     torch::Tensor& outputTensor) {
+  // When resizing is needed, we do sws_scale twice: first convert to RGB24 at
+  // original resolution, then resize in RGB24 space. This ensures transforms
+  // happen in the output color space (RGB24) rather than the input color space
+  // (YUV).
+  //
   // When no resize is needed, we do color conversion directly into the output
-  // tensor. When resize is needed, we first convert to an intermediate tensor
-  // at the input resolution, then resize into the output tensor.
+  // tensor.
   torch::Tensor colorConvertedTensor = needsResize_
       ? allocateEmptyHWCTensor(
-            FrameDims(context_.inputHeight, context_.inputWidth), torch::kCPU)
+            FrameDims(config_.inputHeight, config_.inputWidth), torch::kCPU)
       : outputTensor;
 
   uint8_t* colorConvertedPointers[4] = {
@@ -113,7 +92,7 @@ int SwScale::convert(
   if (needsResize_) {
     uint8_t* srcPointers[4] = {
         colorConvertedTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
-    int srcLinesizes[4] = {context_.inputWidth * 3, 0, 0, 0};
+    int srcLinesizes[4] = {config_.inputWidth * 3, 0, 0, 0};
 
     uint8_t* dstPointers[4] = {
         outputTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
@@ -125,7 +104,7 @@ int SwScale::convert(
         srcPointers,
         srcLinesizes,
         0,
-        context_.inputHeight,
+        config_.inputHeight,
         dstPointers,
         dstLinesizes);
   }

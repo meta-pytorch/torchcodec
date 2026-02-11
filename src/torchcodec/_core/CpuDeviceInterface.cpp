@@ -201,7 +201,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     enum AVPixelFormat avFrameFormat =
         static_cast<enum AVPixelFormat>(avFrame->format);
 
-    SwScaleContext swScaleContext(
+    SwsFrameConfig swsFrameConfig(
         avFrame->width,
         avFrame->height,
         avFrameFormat,
@@ -209,9 +209,8 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
         outputDims.width,
         outputDims.height);
 
-    if (!swScale_ || prevSwScaleContext_ != swScaleContext) {
-      swScale_ = std::make_unique<SwScale>(swScaleContext, swsFlags_);
-      prevSwScaleContext_ = swScaleContext;
+    if (!swScale_ || swScale_->getConfig() != swsFrameConfig) {
+      swScale_ = std::make_unique<SwScale>(swsFrameConfig, swsFlags_);
     }
 
     int resultHeight = swScale_->convert(avFrame, outputTensor);
@@ -265,7 +264,7 @@ torch::Tensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
   enum AVPixelFormat avFrameFormat =
       static_cast<enum AVPixelFormat>(avFrame->format);
 
-  FiltersContext filtersContext(
+  FiltersConfig filtersConfig(
       avFrame->width,
       avFrame->height,
       avFrameFormat,
@@ -276,10 +275,10 @@ torch::Tensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
       filters_,
       timeBase_);
 
-  if (!filterGraph_ || prevFiltersContext_ != filtersContext) {
+  if (!filterGraph_ || prevFiltersConfig_ != filtersConfig) {
     filterGraph_ =
-        std::make_unique<FilterGraph>(filtersContext, videoStreamOptions_);
-    prevFiltersContext_ = std::move(filtersContext);
+        std::make_unique<FilterGraph>(filtersConfig, videoStreamOptions_);
+    prevFiltersConfig_ = std::move(filtersConfig);
   }
   return rgbAVFrameToTensor(filterGraph_->convert(avFrame));
 }
