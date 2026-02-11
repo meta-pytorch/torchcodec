@@ -781,7 +781,7 @@ void VideoEncoder::initializeEncoder(
   // TODO-VideoEncoder: (P2) Allow height and width to be set
   int outWidth = inWidth;
   int outHeight = inHeight;
-  AVPixelFormat outPixelFormat;
+  AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
     // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user on GPU
