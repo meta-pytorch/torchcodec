@@ -302,6 +302,7 @@ void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
     [[maybe_unused]] const SharedAVCodecContext& codecContext) {
+  STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
   if (!nvcuvidAvailable_ || !nativeNVDECSupport(device_, codecContext)) {
     cpuFallback_ = createDeviceInterface(torch::kCPU);
@@ -316,7 +317,6 @@ void BetaCudaDeviceInterface::initialize(
     return;
   }
 
-  STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
 
@@ -903,6 +903,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
         k = 3;
         break;
       default:
+        STD_TORCH_CHECK(false, "Unexpected rotation value");
         break;
     }
     // Apply rotation using torch::rot90 on the H and W dims of our HWC tensor.
