@@ -96,6 +96,10 @@ class CpuDeviceInterface : public DeviceInterface {
   FiltersConfig prevFiltersConfig_;
   std::unique_ptr<SwScale> swScale_;
 
+  // Cached swscale context for encoding (tensor -> AVFrame pixel format
+  // conversion).
+  UniqueSwsContext encodingSwsContext_;
+
   // We pass these filters to FFmpeg's filtergraph API. It is a simple pipeline
   // of what FFmpeg calls "filters" to apply to decoded frames before returning
   // them. In the PyTorch ecosystem, we call these "transforms". During

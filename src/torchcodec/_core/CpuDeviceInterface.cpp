@@ -418,8 +418,8 @@ UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
   AVPixelFormat outPixelFormat = codecContext->pix_fmt;
 
   // Initialize and cache scaling context if it does not exist
-  if (!swsContext_) {
-    swsContext_.reset(sws_getContext(
+  if (!encodingSwsContext_) {
+    encodingSwsContext_.reset(sws_getContext(
         inWidth,
         inHeight,
         inPixelFormat,
@@ -430,7 +430,8 @@ UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
         nullptr,
         nullptr,
         nullptr));
-    STD_TORCH_CHECK(swsContext_ != nullptr, "Failed to create scaling context");
+    STD_TORCH_CHECK(
+        encodingSwsContext_ != nullptr, "Failed to create scaling context");
   }
 
   UniqueAVFrame avFrame(av_frame_alloc());
@@ -469,7 +470,7 @@ UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
   inputFrame->linesize[2] = inWidth;
 
   status = sws_scale(
-      swsContext_.get(),
+      encodingSwsContext_.get(),
       inputFrame->data,
       inputFrame->linesize,
       0,
