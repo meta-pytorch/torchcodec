@@ -66,8 +66,6 @@ def _load_pybind11_module(module_name: str, library_path: str) -> ModuleType:
 
 def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
     """
-    Load the TorchCodec shared libraries.
-
     Successively try to load the shared libraries for each version of FFmpeg
     that we support. We always start with the highest version, working our way
     down to the lowest version. Once we can load ALL shared libraries for a
