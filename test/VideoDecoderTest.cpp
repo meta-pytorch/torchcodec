@@ -106,7 +106,8 @@ TEST_P(SingleStreamDecoderTest, ReturnsFpsAndDurationForVideoInMetadata) {
 }
 
 TEST(SingleStreamDecoderTest, MissingVideoFileThrowsException) {
-  EXPECT_THROW(SingleStreamDecoder("/this/file/does/not/exist"), c10::Error);
+  EXPECT_THROW(
+      SingleStreamDecoder("/this/file/does/not/exist"), std::runtime_error);
 }
 
 void dumpTensorToDisk(

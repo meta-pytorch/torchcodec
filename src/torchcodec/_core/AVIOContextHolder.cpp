@@ -5,7 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "AVIOContextHolder.h"
-#include <torch/types.h>
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -16,20 +16,21 @@ void AVIOContextHolder::createAVIOContext(
     void* heldData,
     bool isForWriting,
     int bufferSize) {
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       bufferSize > 0,
       "Buffer size must be greater than 0; is " + std::to_string(bufferSize));
   auto buffer = static_cast<uint8_t*>(av_malloc(bufferSize));
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       buffer != nullptr,
       "Failed to allocate buffer of size " + std::to_string(bufferSize));
 
-  TORCH_CHECK(seek != nullptr, "seek method must be defined");
+  STD_TORCH_CHECK(seek != nullptr, "seek method must be defined");
 
   if (isForWriting) {
-    TORCH_CHECK(write != nullptr, "write method must be defined for writing");
+    STD_TORCH_CHECK(
+        write != nullptr, "write method must be defined for writing");
   } else {
-    TORCH_CHECK(read != nullptr, "read method must be defined for reading");
+    STD_TORCH_CHECK(read != nullptr, "read method must be defined for reading");
   }
 
   avioContext_.reset(avioAllocContext(
@@ -43,7 +44,7 @@ void AVIOContextHolder::createAVIOContext(
 
   if (!avioContext_) {
     av_freep(&buffer);
-    TORCH_CHECK(false, "Failed to allocate AVIOContext");
+    STD_TORCH_CHECK(false, "Failed to allocate AVIOContext");
   }
 }
 
