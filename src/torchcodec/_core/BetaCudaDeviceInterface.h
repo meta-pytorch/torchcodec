@@ -20,6 +20,7 @@
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
 #include "NVDECCache.h"
+#include "Transform.h"
 
 #include <map>
 #include <memory>
@@ -102,6 +103,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   bool nvcuvidAvailable_ = false;
   UniqueSwsContext swsContext_;
   SwsFrameContext prevSwsFrameContext_;
+  Rotation rotation_ = Rotation::NONE;
 };
 
 } // namespace facebook::torchcodec

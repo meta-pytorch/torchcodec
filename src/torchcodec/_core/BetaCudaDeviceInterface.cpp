@@ -274,6 +274,7 @@ void BetaCudaDeviceInterface::initialize(
   TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
+  rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
 
   const AVCodecParameters* codecPar = avStream->codecpar;
   TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
@@ -824,6 +825,16 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       gpuFrame->format == AV_PIX_FMT_CUDA,
       "Expected CUDA format frame from BETA CUDA interface");
 
+  // When rotation is active, the pre-allocated tensor has post-rotation
+  // dimensions, but NV12->RGB conversion needs pre-rotation dimensions.
+  // We save and nullify the pre-allocated tensor, then copy into it after
+  // rotation.
+  std::optional<torch::Tensor> savedPreAllocatedOutputTensor = std::nullopt;
+  if (rotation_ != Rotation::NONE && preAllocatedOutputTensor.has_value()) {
+    savedPreAllocatedOutputTensor = preAllocatedOutputTensor;
+    preAllocatedOutputTensor = std::nullopt;
+  }
+
   validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
 
   at::cuda::CUDAStream nvdecStream =
@@ -831,6 +842,31 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   frameOutput.data = convertNV12FrameToRGB(
       gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+
+  // Apply rotation using torch::rot90 on the H and W dims of our HWC tensor.
+  if (rotation_ != Rotation::NONE) {
+    int k = 0;
+    switch (rotation_) {
+      case Rotation::CCW90:
+        k = 1;
+        break;
+      case Rotation::ROTATE180:
+        k = 2;
+        break;
+      case Rotation::CW90:
+        k = 3;
+        break;
+      default:
+        break;
+    }
+    // torch::rot90 returns a view, so we need to make it contiguous.
+    frameOutput.data = torch::rot90(frameOutput.data, k, {0, 1}).contiguous();
+
+    if (savedPreAllocatedOutputTensor.has_value()) {
+      savedPreAllocatedOutputTensor.value().copy_(frameOutput.data);
+      frameOutput.data = savedPreAllocatedOutputTensor.value();
+    }
+  }
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {
