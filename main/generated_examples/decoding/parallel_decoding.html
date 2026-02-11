@@ -568,7 +568,7 @@ frames one by one without any parallelization.</p>
 <a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">sequential_time</span></a> <span class="o">=</span> <span class="n">report_stats</span><span class="p">(</span><a href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="torch.Tensor" class="sphx-glr-backref-module-torch sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">times</span></a><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">&quot;s&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>median = 14.17s ± 0.03
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>median = 14.20s ± 0.04
 </pre></div>
 </div>
 </section>
@@ -595,7 +595,7 @@ threads within FFmpeg itself to accelerate decoding operations.</p>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Speedup compared to sequential: </span><span class="si">{</span><a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">speedup</span></a><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x with </span><span class="si">{</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">NUM_CPUS</span></a><span class="si">}</span><span class="s2"> FFmpeg threads.&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>median = 7.05s ± 0.02
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>median = 7.06s ± 0.02
 Speedup compared to sequential: 2.01x with 16 FFmpeg threads.
 </pre></div>
 </div>
@@ -625,8 +625,8 @@ Speedup compared to sequential: 2.01x with 16 FFmpeg threads.
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Speedup compared to sequential: </span><span class="si">{</span><a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">speedup</span></a><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x with </span><span class="si">{</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">NUM_CPUS</span></a><span class="si">}</span><span class="s2"> processes.&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>median = 5.35s ± 0.05
-Speedup compared to sequential: 2.65x with 16 processes.
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>median = 5.35s ± 0.06
+Speedup compared to sequential: 2.66x with 16 processes.
 </pre></div>
 </div>
 </section>
@@ -656,8 +656,8 @@ TorchCodec releases the GIL, so this can be very effective.</p>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Speedup compared to sequential: </span><span class="si">{</span><a href="https://docs.python.org/3/library/functions.html#float" title="builtins.float" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">speedup</span></a><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">x with </span><span class="si">{</span><a href="https://docs.python.org/3/library/functions.html#int" title="builtins.int" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">NUM_CPUS</span></a><span class="si">}</span><span class="s2"> threads.&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>median = 1.91s ± 0.02
-Speedup compared to sequential: 7.41x with 16 threads.
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>median = 1.92s ± 0.03
+Speedup compared to sequential: 7.40x with 16 threads.
 </pre></div>
 </div>
 </section>
@@ -677,7 +677,7 @@ Speedup compared to sequential: 7.41x with 16 threads.
 <a href="https://docs.python.org/3/library/shutil.html#shutil.rmtree" title="shutil.rmtree" class="sphx-glr-backref-module-shutil sphx-glr-backref-type-py-function"><span class="n">shutil</span><span class="o">.</span><span class="n">rmtree</span></a><span class="p">(</span><a href="https://docs.python.org/3/library/stdtypes.html#str" title="builtins.str" class="sphx-glr-backref-module-builtins sphx-glr-backref-type-py-class sphx-glr-backref-instance"><span class="n">temp_dir</span></a><span class="p">)</span>
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (2 minutes 0.189 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (2 minutes 0.600 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-decoding-parallel-decoding-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../../_downloads/1cff79ade5aa64baf192aceab5e06959/parallel_decoding.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">parallel_decoding.ipynb</span></code></a></p>
