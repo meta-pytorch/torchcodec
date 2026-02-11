@@ -14,6 +14,16 @@
 #include <stdexcept>
 #include <string>
 
+// Force default (public) visibility on symbols whose signatures include
+// hidden-visibility stable ABI types (e.g. StableDevice). Without this,
+// GCC demotes such symbols to hidden even with -fvisibility=default.
+// Use this only on functions that third-party code needs to link against.
+#ifdef _WIN32
+#define TORCHCODEC_THIRD_PARTY_API
+#else
+#define TORCHCODEC_THIRD_PARTY_API __attribute__((visibility("default")))
+#endif
+
 // Index error check - throws std::out_of_range which pybind11 maps to
 // IndexError Use this for index validation errors that should raise IndexError
 // in Python

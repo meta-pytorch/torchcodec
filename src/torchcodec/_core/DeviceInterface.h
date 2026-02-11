@@ -172,7 +172,7 @@ class DeviceInterface {
 using CreateDeviceInterfaceFn =
     std::function<DeviceInterface*(const StableDevice& device)>;
 
-bool registerDeviceInterface(
+TORCHCODEC_THIRD_PARTY_API bool registerDeviceInterface(
     const DeviceInterfaceKey& key,
     const CreateDeviceInterfaceFn createInterface);
 

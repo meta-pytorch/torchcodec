@@ -161,20 +161,6 @@ function(make_torchcodec_libraries
         "${core_library_dependencies}"
     )
 
-    # Ensure core library symbols are visible for linking from custom_ops.
-    # TORCH_CXX_FLAGS may include -fvisibility=hidden, which we need to override.
-    # Also suppress attributes warnings from visibility mismatch between
-    # our exported classes (default visibility) and PyTorch stable ABI types
-    # (hidden visibility). This is safe since we're overriding visibility to export symbols.
-    if(LINUX)
-        target_compile_options(
-            ${core_library_name}
-            PRIVATE
-            "-fvisibility=default"
-            "-Wno-attributes"
-        )
-    endif()
-
     # 2. Create libtorchcodec_custom_opsN.{ext}.
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
     set(custom_ops_sources
@@ -238,16 +224,21 @@ function(make_torchcodec_libraries
     # because the type infos don't get exported.
     if(LINUX)
         target_compile_options(
+            ${core_library_name}
+            PRIVATE
+            "-fvisibility=default"
+            "-Wno-attributes"
+        )
+
+        target_compile_options(
             ${pybind_ops_library_name}
             PUBLIC
             "-fvisibility=hidden"
-            "-Wno-attributes"
         )
         target_compile_options(
             ${custom_ops_library_name}
             PUBLIC
             "-fvisibility=hidden"
-            "-Wno-attributes"
         )
     endif()
 
