@@ -235,11 +235,13 @@ function(make_torchcodec_libraries
         )
     endif()
 
-    target_compile_options(
-        ${core_library_name}
-        PRIVATE
-        "-Wno-attributes"
-    )
+    if (LINUX)
+        target_compile_options(
+            ${core_library_name}
+            PRIVATE
+            "-Wno-attributes"
+        )
+    endif()
 
     # The value we use here must match the value we return from
     # _get_pybind_ops_module_name() on the Python side. If the values do not
