@@ -224,12 +224,6 @@ function(make_torchcodec_libraries
     # because the type infos don't get exported.
     if(LINUX)
         target_compile_options(
-            ${core_library_name}
-            PRIVATE
-            "-Wno-attributes"
-        )
-
-        target_compile_options(
             ${pybind_ops_library_name}
             PUBLIC
             "-fvisibility=hidden"
@@ -240,6 +234,12 @@ function(make_torchcodec_libraries
             "-fvisibility=hidden"
         )
     endif()
+
+    target_compile_options(
+        ${core_library_name}
+        PRIVATE
+        "-Wno-attributes"
+    )
 
     # The value we use here must match the value we return from
     # _get_pybind_ops_module_name() on the Python side. If the values do not
