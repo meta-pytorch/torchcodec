@@ -106,7 +106,7 @@ We will use the following video which has the following properties:
  .. code-block:: none
 
 
-    ('video.mp4', <http.client.HTTPMessage object at 0x7f44ca0c0e20>)
+    ('video.mp4', <http.client.HTTPMessage object at 0x7f1e9d1ee620>)
 
 
 
@@ -311,7 +311,7 @@ differences because CUDA math is not bit-exact with respect to CPU math.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 6.375 seconds)
+   **Total running time of the script:** (0 minutes 6.166 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_basic_cuda_example.py:
