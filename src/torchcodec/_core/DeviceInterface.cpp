@@ -26,6 +26,7 @@ DeviceInterfaceMap& getDeviceMap() {
 // This is needed because the stable ABI's from_blob deleter receives the data
 // pointer, but we need to free the AVFrame (which owns the data).
 static std::mutex g_avframe_mutex;
+
 static std::unordered_map<void*, AVFrame*>& getAVFrameMap() {
   static std::unordered_map<void*, AVFrame*> avframeMap;
   return avframeMap;

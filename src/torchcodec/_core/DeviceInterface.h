@@ -146,15 +146,15 @@ class DeviceInterface {
       [[maybe_unused]] const StableTensor& tensor,
       [[maybe_unused]] int frameIndex,
       [[maybe_unused]] AVCodecContext* codecContext) {
-    STD_TORCH_CHECK(
-        false, "convertTensorToAVFrameForEncoding not implemented");
+    STD_TORCH_CHECK(false, "convertTensorToAVFrameForEncoding not implemented");
   }
 
   // Function used for video encoding, only implemented in CudaDeviceInterface.
   // It is here to isolate CUDA dependencies from CPU builds
   virtual void setupHardwareFrameContextForEncoding(
       [[maybe_unused]] AVCodecContext* codecContext) {
-    STD_TORCH_CHECK(false, "setupHardwareFrameContextForEncoding not implemented");
+    STD_TORCH_CHECK(
+        false, "setupHardwareFrameContextForEncoding not implemented");
   }
 
   virtual std::optional<const AVCodec*> findHardwareEncoder(

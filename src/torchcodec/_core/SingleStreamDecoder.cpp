@@ -490,7 +490,8 @@ void SingleStreamDecoder::addStream(
   deviceInterface_->registerHardwareDeviceWithCodec(
       streamInfo.codecContext.get());
   retVal = avcodec_open2(streamInfo.codecContext.get(), avCodec, nullptr);
-  STD_TORCH_CHECK(retVal >= AVSUCCESS, getFFMPEGErrorStringFromErrorCode(retVal));
+  STD_TORCH_CHECK(
+      retVal >= AVSUCCESS, getFFMPEGErrorStringFromErrorCode(retVal));
 
   streamInfo.codecContext->time_base = streamInfo.stream->time_base;
 
@@ -584,7 +585,8 @@ void SingleStreamDecoder::addVideoStream(
   // us.
   // Validate and add user transforms
   for (auto& transform : transforms) {
-    STD_TORCH_CHECK(transform != nullptr, "Transforms should never be nullptr!");
+    STD_TORCH_CHECK(
+        transform != nullptr, "Transforms should never be nullptr!");
     if (transform->getOutputFrameDims().has_value()) {
       resizedOutputDims_ = transform->getOutputFrameDims().value();
       currInputDims = resizedOutputDims_.value();
@@ -1683,7 +1685,8 @@ double SingleStreamDecoder::getPtsSecondsForFrame(int64_t frameIndex) {
 }
 
 std::string SingleStreamDecoder::getDeviceInterfaceDetails() const {
-  STD_TORCH_CHECK(deviceInterface_ != nullptr, "Device interface doesn't exist.");
+  STD_TORCH_CHECK(
+      deviceInterface_ != nullptr, "Device interface doesn't exist.");
   return deviceInterface_->getDetails();
 }
 

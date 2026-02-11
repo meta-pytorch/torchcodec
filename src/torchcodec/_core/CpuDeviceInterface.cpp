@@ -19,7 +19,8 @@ static bool g_cpu = registerDeviceInterface(
 CpuDeviceInterface::CpuDeviceInterface(const StableDevice& device)
     : DeviceInterface(device) {
   STD_TORCH_CHECK(g_cpu, "CpuDeviceInterface was not registered!");
-  STD_TORCH_CHECK(device_.type() == kStableCPU, "Unsupported device: must be CPU");
+  STD_TORCH_CHECK(
+      device_.type() == kStableCPU, "Unsupported device: must be CPU");
 }
 
 void CpuDeviceInterface::initialize(
@@ -66,7 +67,8 @@ void CpuDeviceInterface::initializeVideo(
   // need to know the actual frame dimensions.
   if (transforms.size() == 1 && transforms[0]->isResize()) {
     auto resize = dynamic_cast<ResizeTransform*>(transforms[0].get());
-    STD_TORCH_CHECK(resize != nullptr, "ResizeTransform expected but not found!");
+    STD_TORCH_CHECK(
+        resize != nullptr, "ResizeTransform expected but not found!");
     swsFlags_ = resize->getSwsFlags();
   }
 

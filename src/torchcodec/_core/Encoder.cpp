@@ -200,7 +200,8 @@ void AudioEncoder::initializeEncoder(
   STD_TORCH_CHECK(avCodec != nullptr, "Codec not found");
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
-  STD_TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
+  STD_TORCH_CHECK(
+      avCodecContext != nullptr, "Couldn't allocate codec context.");
   avCodecContext_.reset(avCodecContext);
 
   auto desiredBitRate = audioStreamOptions.bitRate;
@@ -270,7 +271,8 @@ StableTensor AudioEncoder::encodeToTensor() {
   encode();
   auto avioToTensorContext =
       dynamic_cast<AVIOToTensorContext*>(avioContextHolder_.get());
-  STD_TORCH_CHECK(avioToTensorContext != nullptr, "Invalid AVIO context holder.");
+  STD_TORCH_CHECK(
+      avioToTensorContext != nullptr, "Invalid AVIO context holder.");
   return avioToTensorContext->getOutputTensor();
 }
 
@@ -764,7 +766,8 @@ void VideoEncoder::initializeEncoder(
       "not found. To see available codecs, run: ffmpeg -encoders");
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
-  STD_TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
+  STD_TORCH_CHECK(
+      avCodecContext != nullptr, "Couldn't allocate codec context.");
   avCodecContext_.reset(avCodecContext);
 
   // Store dimensions of input frames
@@ -919,7 +922,8 @@ StableTensor VideoEncoder::encodeToTensor() {
   encode();
   auto avioToTensorContext =
       dynamic_cast<AVIOToTensorContext*>(avioContextHolder_.get());
-  STD_TORCH_CHECK(avioToTensorContext != nullptr, "Invalid AVIO context holder.");
+  STD_TORCH_CHECK(
+      avioToTensorContext != nullptr, "Invalid AVIO context holder.");
   return avioToTensorContext->getOutputTensor();
 }
 

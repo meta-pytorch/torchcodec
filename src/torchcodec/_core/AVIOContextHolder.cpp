@@ -27,7 +27,8 @@ void AVIOContextHolder::createAVIOContext(
   STD_TORCH_CHECK(seek != nullptr, "seek method must be defined");
 
   if (isForWriting) {
-    STD_TORCH_CHECK(write != nullptr, "write method must be defined for writing");
+    STD_TORCH_CHECK(
+        write != nullptr, "write method must be defined for writing");
   } else {
     STD_TORCH_CHECK(read != nullptr, "read method must be defined for reading");
   }

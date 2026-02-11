@@ -41,13 +41,14 @@
 
 #define STABLE_CHECK(cond, ...) STD_TORCH_CHECK(cond, __VA_ARGS__)
 
-// Index error check - throws std::out_of_range which pybind11 maps to IndexError
-// Use this for index validation errors that should raise IndexError in Python
-#define STABLE_CHECK_INDEX(cond, msg)              \
-  do {                                             \
-    if (!(cond)) {                                 \
-      throw std::out_of_range(std::string(msg));   \
-    }                                              \
+// Index error check - throws std::out_of_range which pybind11 maps to
+// IndexError Use this for index validation errors that should raise IndexError
+// in Python
+#define STABLE_CHECK_INDEX(cond, msg)            \
+  do {                                           \
+    if (!(cond)) {                               \
+      throw std::out_of_range(std::string(msg)); \
+    }                                            \
   } while (false)
 
 // ===========================================================================

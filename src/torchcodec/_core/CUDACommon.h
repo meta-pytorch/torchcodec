@@ -31,7 +31,8 @@ constexpr int MAX_CUDA_GPUS = 128;
 // This is the stable ABI way to get a cudaStream_t for use with CUDA libraries
 // (NPP, NVDEC, cuBLAS, etc.).
 //
-// Note: USE_CUDA must be defined at compile time (set via CMake when ENABLE_CUDA is on).
+// Note: USE_CUDA must be defined at compile time (set via CMake when
+// ENABLE_CUDA is on).
 inline cudaStream_t getCurrentCudaStream(int32_t deviceIndex) {
   void* stream = nullptr;
   TORCH_ERROR_CODE_CHECK(

@@ -4,9 +4,10 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-// Temporarily undefine TORCH_TARGET_VERSION to include fmt/format.h and pybind11.
-// PyTorch's bundled fmt and pybind11 have checks that block usage with stable ABI,
-// but we need fmt for proper float-to-string conversion and pybind11 for Python bindings.
+// Temporarily undefine TORCH_TARGET_VERSION to include fmt/format.h and
+// pybind11. PyTorch's bundled fmt and pybind11 have checks that block usage
+// with stable ABI, but we need fmt for proper float-to-string conversion and
+// pybind11 for Python bindings.
 #ifdef TORCH_TARGET_VERSION
 #pragma push_macro("TORCH_TARGET_VERSION")
 #undef TORCH_TARGET_VERSION
@@ -147,9 +148,7 @@ SingleStreamDecoder::FrameMappings makeFrameMappings(
     StableTensor is_key_frame,
     StableTensor duration) {
   return SingleStreamDecoder::FrameMappings{
-      std::move(all_frames),
-      std::move(is_key_frame),
-      std::move(duration)};
+      std::move(all_frames), std::move(is_key_frame), std::move(duration)};
 }
 
 // All elements of this tuple are tensors of the same leading dimension. The
@@ -445,7 +444,8 @@ void _add_video_stream(
     std::string device_variant = "ffmpeg",
     std::string transform_specs = "",
     std::optional<StableTensor> custom_frame_mappings_all_frames = std::nullopt,
-    std::optional<StableTensor> custom_frame_mappings_is_key_frame = std::nullopt,
+    std::optional<StableTensor> custom_frame_mappings_is_key_frame =
+        std::nullopt,
     std::optional<StableTensor> custom_frame_mappings_duration = std::nullopt,
     std::optional<std::string> color_conversion_library = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
@@ -512,7 +512,8 @@ void add_video_stream(
     std::string device_variant = "ffmpeg",
     std::string transform_specs = "",
     std::optional<StableTensor> custom_frame_mappings_all_frames = std::nullopt,
-    std::optional<StableTensor> custom_frame_mappings_is_key_frame = std::nullopt,
+    std::optional<StableTensor> custom_frame_mappings_is_key_frame =
+        std::nullopt,
     std::optional<StableTensor> custom_frame_mappings_duration = std::nullopt) {
   _add_video_stream(
       decoder,
