@@ -6,8 +6,18 @@
 
 #pragma once
 
+// Temporarily undefine TORCH_TARGET_VERSION to include pybind11.
+// PyTorch's bundled pybind11 has checks that block usage with stable ABI.
+#ifdef TORCH_TARGET_VERSION
+#pragma push_macro("TORCH_TARGET_VERSION")
+#undef TORCH_TARGET_VERSION
+#endif
+
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+
+// Restore TORCH_TARGET_VERSION
+#pragma pop_macro("TORCH_TARGET_VERSION")
 
 #include "AVIOContextHolder.h"
 

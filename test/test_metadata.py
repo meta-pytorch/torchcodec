@@ -32,13 +32,15 @@ def _get_container_metadata(path, seek_mode):
 
     # For custom_frame_mappings seek mode, add a video stream to update metadata
     if seek_mode == "custom_frame_mappings":
-        custom_frame_mappings = NASA_VIDEO.get_custom_frame_mappings()
+        all_frames, is_key_frame, duration = NASA_VIDEO.get_custom_frame_mappings()
 
         # Add the best video stream (index 3 for NASA_VIDEO)
         add_video_stream(
             decoder,
             stream_index=NASA_VIDEO.default_stream_index,
-            custom_frame_mappings=custom_frame_mappings,
+            custom_frame_mappings_all_frames=all_frames,
+            custom_frame_mappings_is_key_frame=is_key_frame,
+            custom_frame_mappings_duration=duration,
         )
     return get_container_metadata(decoder)
 

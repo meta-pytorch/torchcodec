@@ -5,9 +5,10 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "DeviceInterface.h"
+#include <cstring>
 #include <map>
 #include <mutex>
-#include "StableABICompat.h"
+#include <unordered_map>
 
 namespace facebook::torchcodec {
 
@@ -21,7 +22,27 @@ DeviceInterfaceMap& getDeviceMap() {
   return deviceMap;
 }
 
-std::string getDeviceType(const std::string& device) {
+// Map from data pointer to AVFrame pointer for cleanup.
+// This is needed because the stable ABI's from_blob deleter receives the data
+// pointer, but we need to free the AVFrame (which owns the data).
+static std::mutex g_avframe_mutex;
+
+static std::unordered_map<void*, AVFrame*>& getAVFrameMap() {
+  static std::unordered_map<void*, AVFrame*> avframeMap;
+  return avframeMap;
+}
+
+void avFrameDeleter(void* data) {
+  std::scoped_lock lock(g_avframe_mutex);
+  auto& avframeMap = getAVFrameMap();
+  auto it = avframeMap.find(data);
+  if (it != avframeMap.end()) {
+    av_frame_free(&it->second);
+    avframeMap.erase(it);
+  }
+}
+
+std::string getDeviceTypeString(const std::string& device) {
   size_t pos = device.find(':');
   if (pos == std::string::npos) {
     return device;
@@ -67,7 +88,7 @@ void validateDeviceInterface(
     const std::string device,
     const std::string variant) {
   std::scoped_lock lock(g_interface_mutex);
-  std::string deviceType = getDeviceType(device);
+  std::string deviceType = getDeviceTypeString(device);
 
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
@@ -114,19 +135,36 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
       "'");
 }
 
-torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
-  STD_TORCH_CHECK(avFrame->format == AV_PIX_FMT_RGB24, "Expected RGB24 format");
+StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
+  STD_TORCH_CHECK(
+      avFrame->format == AV_PIX_FMT_RGB24,
+      "Expected RGB24 format, got: ",
+      avFrame->format);
 
   int height = avFrame->height;
   int width = avFrame->width;
   std::vector<int64_t> shape = {height, width, 3};
   std::vector<int64_t> strides = {avFrame->linesize[0], 3, 1};
+
+  // Clone the AVFrame so we own the data
   AVFrame* avFrameClone = av_frame_clone(avFrame.get());
-  auto deleter = [avFrameClone](void*) {
-    UniqueAVFrame avFrameToDelete(avFrameClone);
-  };
-  return torch::from_blob(
-      avFrameClone->data[0], shape, strides, deleter, {torch::kUInt8});
+  STD_TORCH_CHECK(avFrameClone != nullptr, "Failed to clone AVFrame");
+
+  // Register the AVFrame for cleanup when the tensor is destroyed.
+  // The stable ABI's from_blob deleter receives the data pointer, but we need
+  // to free the AVFrame (which owns the data). We use a map to track this.
+  {
+    std::scoped_lock lock(g_avframe_mutex);
+    getAVFrameMap()[avFrameClone->data[0]] = avFrameClone;
+  }
+
+  return torch::stable::from_blob(
+      avFrameClone->data[0],
+      StableIntArrayRef(shape.data(), shape.size()),
+      StableIntArrayRef(strides.data(), strides.size()),
+      StableDevice(kStableCPU),
+      kStableUInt8,
+      avFrameDeleter);
 }
 
 } // namespace facebook::torchcodec

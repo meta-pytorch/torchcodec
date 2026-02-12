@@ -4,9 +4,6 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include <c10/cuda/CUDAStream.h>
-#include <torch/types.h>
-#include <map>
 #include <mutex>
 #include <vector>
 #include "StableABICompat.h"
@@ -272,6 +269,14 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
   initializeCudaContextWithPytorch(device_);
+
+  // // Resolve the device index early so we don't need to call cudaGetDevice()
+  // // at destruction time (when CUDA may already be shut down).
+  // if (!device_.has_index()) {
+  //   int resolvedIndex = getDeviceIndex(device_);
+  //   device_.set_index(static_cast<StableDeviceIndex>(resolvedIndex));
+  // }
+
   nppCtx_ = getNppStreamContext(device_);
 
   nvcuvidAvailable_ = loadNVCUVIDLibrary();
@@ -581,10 +586,9 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   procParams.unpaired_field = dispInfo.repeat_first_field < 0;
   // We set the NVDEC stream to the current stream. It will be waited upon by
   // the NPP stream before any color conversion.
-  // Re types: we get a cudaStream_t from PyTorch but it's interchangeable with
-  // CUstream
-  procParams.output_stream = reinterpret_cast<CUstream>(
-      at::cuda::getCurrentCUDAStream(device_.index()).stream());
+  // Re types: cudaStream_t from PyTorch is interchangeable with CUstream
+  procParams.output_stream =
+      reinterpret_cast<CUstream>(getCurrentCudaStream(device_.index()));
 
   CUdeviceptr framePtr = 0;
   unsigned int pitch = 0;
@@ -858,7 +862,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    std::optional<StableTensor> preAllocatedOutputTensor) {
   UniqueAVFrame gpuFrame =
       cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
 
@@ -870,8 +874,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
 
-  at::cuda::CUDAStream nvdecStream =
-      at::cuda::getCurrentCUDAStream(device_.index());
+  cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
   frameOutput.data = convertNV12FrameToRGB(
       gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);

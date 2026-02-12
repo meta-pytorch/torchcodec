@@ -5,7 +5,6 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "Transform.h"
-#include <torch/types.h>
 #include "FFMPEGCommon.h"
 #include "StableABICompat.h"
 
@@ -23,6 +22,7 @@ std::string toFilterGraphInterpolation(
           false,
           "Unknown interpolation mode: " +
               std::to_string(static_cast<int>(mode)));
+      return ""; // unreachable, but silences compiler warning
   }
 }
 
@@ -35,6 +35,7 @@ int toSwsInterpolation(ResizeTransform::InterpolationMode mode) {
           false,
           "Unknown interpolation mode: " +
               std::to_string(static_cast<int>(mode)));
+      return 0; // unreachable, but silences compiler warning
   }
 }
 

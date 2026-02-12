@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include <mutex>
+#include "StableABICompat.h"
 
 #include "CUDACommon.h"
 #include "FFMPEGCommon.h"

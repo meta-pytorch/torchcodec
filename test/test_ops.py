@@ -509,7 +509,13 @@ class TestVideoDecoderOps:
             decoder = create_from_file(
                 str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
             )
-            add_video_stream(decoder, stream_index=0, custom_frame_mappings=None)
+            add_video_stream(
+                decoder,
+                stream_index=0,
+                custom_frame_mappings_all_frames=None,
+                custom_frame_mappings_is_key_frame=None,
+                custom_frame_mappings_duration=None,
+            )
 
         with pytest.raises(
             RuntimeError,
@@ -518,12 +524,13 @@ class TestVideoDecoderOps:
             decoder = create_from_file(
                 str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
             )
-            wrong_types = (
-                torch.tensor([1.1, 2.2, 3.3]),
-                torch.tensor([1, 2]),
-                torch.tensor([1, 2, 3]),
+            add_video_stream(
+                decoder,
+                stream_index=0,
+                custom_frame_mappings_all_frames=torch.tensor([1.1, 2.2, 3.3]),
+                custom_frame_mappings_is_key_frame=torch.tensor([1, 2]),
+                custom_frame_mappings_duration=torch.tensor([1, 2, 3]),
             )
-            add_video_stream(decoder, stream_index=0, custom_frame_mappings=wrong_types)
 
         with pytest.raises(
             RuntimeError,
@@ -532,13 +539,12 @@ class TestVideoDecoderOps:
             decoder = create_from_file(
                 str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
             )
-            different_lengths = (
-                torch.tensor([1, 2, 3]),
-                torch.tensor([False, False]),
-                torch.tensor([1, 2, 3]),
-            )
             add_video_stream(
-                decoder, stream_index=0, custom_frame_mappings=different_lengths
+                decoder,
+                stream_index=0,
+                custom_frame_mappings_all_frames=torch.tensor([1, 2, 3]),
+                custom_frame_mappings_is_key_frame=torch.tensor([False, False]),
+                custom_frame_mappings_duration=torch.tensor([1, 2, 3]),
             )
 
     @needs_ffmpeg_cli
@@ -549,14 +555,17 @@ class TestVideoDecoderOps:
             str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
         )
         device, device_variant = unsplit_device_str(device)
+        all_frames, is_key_frame, duration = NASA_VIDEO.get_custom_frame_mappings(
+            stream_index=stream_index
+        )
         add_video_stream(
             decoder,
             device=device,
             device_variant=device_variant,
             stream_index=stream_index,
-            custom_frame_mappings=NASA_VIDEO.get_custom_frame_mappings(
-                stream_index=stream_index
-            ),
+            custom_frame_mappings_all_frames=all_frames,
+            custom_frame_mappings_is_key_frame=is_key_frame,
+            custom_frame_mappings_duration=duration,
         )
 
         frame0, _, _ = get_next_frame(decoder)

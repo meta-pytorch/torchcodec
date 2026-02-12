@@ -7,8 +7,12 @@
 // See test_third_party_interface.py for context.
 #include "DeviceInterface.h"
 #include "FilterGraph.h"
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
+
+// Use stable ABI device type constant for PrivateUse1
+constexpr auto kStablePrivateUse1 = torch::headeronly::DeviceType::PrivateUse1;
 
 class DummyDeviceInterface : public DeviceInterface {
  public:
@@ -24,7 +28,7 @@ class DummyDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor =
+      std::optional<StableTensor> preAllocatedOutputTensor =
           std::nullopt) override {}
 
  private:
@@ -33,7 +37,7 @@ class DummyDeviceInterface : public DeviceInterface {
 
 namespace {
 static bool g_dummy = registerDeviceInterface(
-    DeviceInterfaceKey(StableDeviceType::PrivateUse1),
+    DeviceInterfaceKey(kStablePrivateUse1),
     [](const StableDevice& device) {
       return new DummyDeviceInterface(device);
     });

@@ -1,6 +1,10 @@
-#include <ATen/cuda/CUDAEvent.h>
-#include <c10/cuda/CUDAStream.h>
-#include <torch/types.h>
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+// All rights reserved.
+//
+// This source code is licensed under the BSD-style license found in the
+// LICENSE file in the root directory of this source tree.
+
+#include <cuda_runtime.h>
 #include <mutex>
 
 #include "Cache.h"
@@ -59,8 +63,7 @@ UniqueAVBufferRef getHardwareDeviceContext(const StableDevice& device) {
   }
 
   // Create hardware device context
-  c10::cuda::CUDAGuard deviceGuard(
-      c10::Device(static_cast<c10::DeviceType>(device.type()), device.index()));
+  StableDeviceGuard deviceGuard(device.index());
   // We set the device because we may be called from a different thread than
   // the one that initialized the cuda context.
   STD_TORCH_CHECK(
@@ -98,6 +101,13 @@ CudaDeviceInterface::CudaDeviceInterface(const StableDevice& device)
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
   initializeCudaContextWithPytorch(device_);
+
+  // // Resolve the device index early so we don't need to call cudaGetDevice()
+  // // at destruction time (when CUDA may already be shut down).
+  // if (!device_.has_index()) {
+  //   int resolvedIndex = getDeviceIndex(device_);
+  //   device_.set_index(static_cast<StableDeviceIndex>(resolvedIndex));
+  // }
 
   hardwareDeviceCtx_ = getHardwareDeviceContext(device_);
   nppCtx_ = getNppStreamContext(device_);
@@ -239,7 +249,7 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
 void CudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    std::optional<StableTensor> preAllocatedOutputTensor) {
   validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
 
   hasDecodedFrame_ = true;
@@ -281,11 +291,10 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     // pre-allocated tensor is on the GPU, so we can't send that to the CPU
     // device interface. We copy it over here.
     if (preAllocatedOutputTensor.has_value()) {
-      preAllocatedOutputTensor.value().copy_(cpuFrameOutput.data);
+      stableCopy_(preAllocatedOutputTensor.value(), cpuFrameOutput.data);
       frameOutput.data = preAllocatedOutputTensor.value();
     } else {
-      frameOutput.data = cpuFrameOutput.data.to(torch::Device(
-          static_cast<c10::DeviceType>(device_.type()), device_.index()));
+      frameOutput.data = stableTo(cpuFrameOutput.data, device_);
     }
 
     usingCPUFallback_ = true;
@@ -310,11 +319,11 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   AVPixelFormat actualFormat = hwFramesCtx->sw_format;
   STD_TORCH_CHECK(
       actualFormat == AV_PIX_FMT_NV12,
-      "The AVFrame is ",
-      (av_get_pix_fmt_name(actualFormat) ? av_get_pix_fmt_name(actualFormat)
-                                         : "unknown"),
-      ", but we expected AV_PIX_FMT_NV12. "
-      "That's unexpected, please report this to the TorchCodec repo.");
+      std::string("The AVFrame is ") +
+          (av_get_pix_fmt_name(actualFormat) ? av_get_pix_fmt_name(actualFormat)
+                                             : "unknown") +
+          ", but we expected AV_PIX_FMT_NV12. "
+          "That's unexpected, please report this to the TorchCodec repo.");
 
   // Figure out the NVDEC stream from the avFrame's hardware context.
   // In reality, we know that this stream is hardcoded to be the default stream
@@ -326,8 +335,7 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   auto cudaDeviceCtx =
       static_cast<AVCUDADeviceContext*>(hwFramesCtx->device_ctx->hwctx);
   STD_TORCH_CHECK(cudaDeviceCtx != nullptr, "The hardware context is null");
-  at::cuda::CUDAStream nvdecStream = // That's always the default stream. Sad.
-      c10::cuda::getStreamFromExternal(cudaDeviceCtx->stream, device_.index());
+  cudaStream_t nvdecStream = cudaDeviceCtx->stream;
 
   frameOutput.data = convertNV12FrameToRGB(
       avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
@@ -501,17 +509,15 @@ const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
 } // namespace
 
 UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
-    const torch::Tensor& tensor,
+    const StableTensor& tensor,
     int frameIndex,
     AVCodecContext* codecContext) {
   STD_TORCH_CHECK(
       tensor.dim() == 3 && tensor.size(0) == 3,
-      "Expected 3D RGB tensor (CHW format), got shape: ",
-      tensor.sizes());
+      "Expected 3D RGB tensor (CHW format), got shape with dim=",
+      tensor.dim());
   STD_TORCH_CHECK(
-      tensor.device().type() == torch::kCUDA,
-      "Expected tensor on CUDA device, got: ",
-      tensor.device().str());
+      tensor.device().type() == kStableCUDA, "Expected tensor on CUDA device");
 
   UniqueAVFrame avFrame(av_frame_alloc());
   STD_TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
@@ -539,13 +545,13 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
       "avFrame must be pre-allocated with CUDA memory");
 
   // TODO VideoEncoder: Investigate ways to avoid this copy
-  torch::Tensor hwcFrame = tensor.permute({1, 2, 0}).contiguous();
+  StableTensor hwcFrame = stableContiguous(stablePermute(tensor, {1, 2, 0}));
 
   NppiSize oSizeROI = {width, height};
   NppStatus status;
   // Convert to NV12, as CUDA_ENCODING_PIXEL_FORMAT is always NV12 currently
   status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
-      static_cast<const Npp8u*>(hwcFrame.data_ptr()),
+      hwcFrame.const_data_ptr<Npp8u>(),
       validateInt64ToInt(
           hwcFrame.stride(0) * hwcFrame.element_size(), "nSrcStep"),
       avFrame->data,
@@ -596,8 +602,8 @@ void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
     av_buffer_unref(&hwFramesCtxRef);
     STD_TORCH_CHECK(
         false,
-        "Failed to initialize CUDA frames context for codec: ",
-        getFFMPEGErrorStringFromErrorCode(ret));
+        "Failed to initialize CUDA frames context for codec: " +
+            getFFMPEGErrorStringFromErrorCode(ret));
   }
   codecContext->hw_frames_ctx = hwFramesCtxRef;
 }

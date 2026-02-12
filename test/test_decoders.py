@@ -1948,10 +1948,12 @@ class TestVideoDecoder:
 
         # Hacky way to ensure passing "cuda:1" is supported by both backends. We
         # just check that there's an error when passing cuda:N where N is too
-        # high.
+        # high. Stable ABI has different error message format.
         bad_device_number = torch.cuda.device_count() + 1
         for backend in ("ffmpeg", "beta"):
-            with pytest.raises(RuntimeError, match="invalid device ordinal"):
+            with pytest.raises(
+                RuntimeError, match="invalid device ordinal|torch_call_dispatcher"
+            ):
                 with set_cuda_backend(backend):
                     VideoDecoder(H265_VIDEO.path, device=f"cuda:{bad_device_number}")
 
