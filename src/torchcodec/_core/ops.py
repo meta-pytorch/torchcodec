@@ -98,19 +98,23 @@ if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
     # On windows we try to locate the FFmpeg DLLs and temporarily add them to
     # the DLL search path. This seems to be needed on some users machine, but
     # not on our CI. We don't know why.
-    if ffmpeg_path := shutil.which("ffmpeg"):
+    if ffmpeg_dir := os.getenv("TORCHCODEC_FFMPEG_DIR"):
+        def expose_ffmpeg_dlls():
+            return os.add_dll_directory(str(ffmpeg_dir))
+    else:
+        if ffmpeg_path := shutil.which("ffmpeg"):
 
-        def expose_ffmpeg_dlls():  # noqa: F811
-            ffmpeg_dir = Path(ffmpeg_path).parent
-            return os.add_dll_directory(str(ffmpeg_dir))  # that's the actual CM
-        
-        if chocolateyInstall := os.environ.get("ChocolateyInstall"):
-            # Chocolatey creates shim so we need to get the actual path to the FFmpeg executable.
-            chocolateyInstallPath = Path(chocolateyInstall)
-            if Path(ffmpeg_path).parent.parent == chocolateyInstallPath and (chocolateyFFmpegSharedPaths := list(chocolateyInstallPath.rglob("lib/ffmpeg-shared/tools/ffmpeg-*-shared/bin"))):
-                chocolateyFFmpegSharedPath = chocolateyFFmpegSharedPaths[0]
-                def expose_ffmpeg_dlls():  # noqa: F811
-                    return os.add_dll_directory(str(chocolateyFFmpegSharedPath))
+            def expose_ffmpeg_dlls():  # noqa: F811
+                ffmpeg_dir = Path(ffmpeg_path).parent
+                return os.add_dll_directory(str(ffmpeg_dir))  # that's the actual CM
+
+            if chocolateyInstall := os.environ.get("ChocolateyInstall"):
+                # Chocolatey creates shim so we need to get the actual path to the FFmpeg executable.
+                chocolateyInstallPath = Path(chocolateyInstall)
+                if Path(ffmpeg_path).parent.parent == chocolateyInstallPath and (chocolateyFFmpegSharedPaths := list(chocolateyInstallPath.rglob("lib/ffmpeg-shared/tools/ffmpeg-*-shared/bin"))):
+                    chocolateyFFmpegSharedPath = chocolateyFFmpegSharedPaths[0]
+                    def expose_ffmpeg_dlls():  # noqa: F811
+                        return os.add_dll_directory(str(chocolateyFFmpegSharedPath))
 
 
 with expose_ffmpeg_dlls():
