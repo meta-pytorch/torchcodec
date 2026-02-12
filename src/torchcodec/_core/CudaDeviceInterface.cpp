@@ -323,7 +323,9 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   auto cudaDeviceCtx =
       static_cast<AVCUDADeviceContext*>(hwFramesCtx->device_ctx->hwctx);
   STD_TORCH_CHECK(cudaDeviceCtx != nullptr, "The hardware context is null");
-  cudaStream_t nvdecStream = cudaDeviceCtx->stream;
+
+  cudaStream_t nvdecStream = // That's always the default stream. Sad.
+      cudaDeviceCtx->stream;
 
   frameOutput.data = convertNV12FrameToRGB(
       avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
