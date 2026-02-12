@@ -147,9 +147,13 @@ class SingleStreamDecoder {
   // Valid values for startSeconds and stopSeconds are:
   //
   //   [beginStreamPtsSecondsFromContent, endStreamPtsSecondsFromContent)
+  //
+  // If fps is specified, frames are resampled to match the target frame
+  // rate by duplicating or dropping frames as necessary.
   FrameBatchOutput getFramesPlayedInRange(
       double startSeconds,
-      double stopSeconds);
+      double stopSeconds,
+      std::optional<double> fps = std::nullopt);
 
   AudioFramesOutput getFramesPlayedInRangeAudio(
       double startSeconds,
@@ -273,11 +277,6 @@ class SingleStreamDecoder {
       UniqueAVFrame& avFrame,
       std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
-  void convertAVFrameToFrameOutputOnCPU(
-      UniqueAVFrame& avFrame,
-      FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
-
   // --------------------------------------------------------------------------
   // PTS <-> INDEX CONVERSIONS
   // --------------------------------------------------------------------------
@@ -296,6 +295,16 @@ class SingleStreamDecoder {
   int64_t secondsToIndexUpperBound(double seconds);
 
   int64_t getPts(int64_t frameIndex);
+
+  // Returns the output frame dimensions for video frames.
+  // If resizedOutputDims_ is set (via resize, crop, or rotation transforms),
+  // returns that. Otherwise, returns preRotationDims_.
+  //
+  // Note: if resizedOutputDims_ is null, there is no rotation (the
+  // rotation transform would have set it), so preRotationDims_ ==
+  // postRotationDims_. This makes it safe to use preRotationDims_ as the
+  // fallback.
+  FrameDims getOutputDims() const;
 
   // --------------------------------------------------------------------------
   // STREAM AND METADATA APIS
@@ -363,18 +372,21 @@ class SingleStreamDecoder {
   // resizedOutputDims_. If resizedOutputDims_ has no value, that means there
   // are no transforms that change the output frame dimensions.
   //
-  // The priority order for output frame dimension is:
+  // The priority order for output frame dimensions is:
   //
-  // 1. resizedOutputDims_; the resize requested by the user always takes
-  //    priority.
-  // 2. The dimemnsions of the actual decoded AVFrame. This can change
+  // 1. resizedOutputDims_; the resize requested by the user (or rotation)
+  //    always takes priority.
+  // 2. The dimensions of the actual decoded AVFrame. This can change
   //    per-decoded frame, and is unknown in SingleStreamDecoder. Only the
   //    DeviceInterface learns it immediately after decoding a raw frame but
-  //    before the color transformation.
-  // 3. metdataDims_; the dimensions we learned from the metadata.
+  //    before the color conversion.
+  // 3. preRotationDims_; the raw encoded dimensions from FFmpeg metadata
+  //    (before any rotation is applied). Used as fallback for tensor
+  //    allocation when resizedOutputDims_ is not set, which only happens
+  //    when no rotation is needed, so preRotationDims_ is the correct value.
   std::vector<std::unique_ptr<Transform>> transforms_;
   std::optional<FrameDims> resizedOutputDims_;
-  FrameDims metadataDims_;
+  FrameDims preRotationDims_;
 
   // Whether or not we have already scanned all streams to update the metadata.
   bool scannedAllStreams_ = false;

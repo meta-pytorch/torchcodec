@@ -10,13 +10,13 @@ from pathlib import Path
 
 import pytest
 import torch
+from torchcodec import ffmpeg_major_version
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
 from torchcodec.encoders import AudioEncoder, VideoEncoder
 
 from .utils import (
     assert_tensor_close_on_at_least,
-    get_ffmpeg_major_version,
     get_ffmpeg_minor_version,
     in_fbcode,
     IN_GITHUB_CI,
@@ -30,8 +30,8 @@ from .utils import (
 )
 
 IS_WINDOWS_WITH_FFMPEG_LE_70 = IS_WINDOWS and (
-    get_ffmpeg_major_version() < 7
-    or (get_ffmpeg_major_version() == 7 and get_ffmpeg_minor_version() == 0)
+    ffmpeg_major_version < 7
+    or (ffmpeg_major_version == 7 and get_ffmpeg_minor_version() == 0)
 )
 
 
@@ -95,7 +95,7 @@ def validate_frames_properties(*, actual: Path, expected: Path):
     for frame_index, (d_actual, d_expected) in enumerate(
         zip(frames_actual, frames_expected)
     ):
-        if get_ffmpeg_major_version() >= 6:
+        if ffmpeg_major_version >= 6:
             assert all(required_prop in d_expected for required_prop in required_props)
 
         for prop in d_expected:
@@ -226,7 +226,7 @@ class TestAudioEncoder:
             pytest.param(
                 "wav",
                 marks=pytest.mark.skipif(
-                    get_ffmpeg_major_version() == 4,
+                    ffmpeg_major_version == 4,
                     reason="Swresample with FFmpeg 4 doesn't work on wav files",
                 ),
             ),
@@ -266,7 +266,27 @@ class TestAudioEncoder:
     @pytest.mark.parametrize("bit_rate", (None, 0, 44_100, 999_999_999))
     @pytest.mark.parametrize("num_channels", (None, 1, 2))
     @pytest.mark.parametrize("sample_rate", (8_000, 32_000))
-    @pytest.mark.parametrize("format", ("mp3", "wav", "flac"))
+    @pytest.mark.parametrize(
+        "format",
+        [
+            # TODO: https://github.com/pytorch/torchcodec/issues/837
+            pytest.param(
+                "mp3",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version <= 5,
+                    reason="Encoding mp3 on Windows is weirdly buggy",
+                ),
+            ),
+            pytest.param(
+                "wav",
+                marks=pytest.mark.skipif(
+                    ffmpeg_major_version == 4,
+                    reason="Swresample with FFmpeg 4 doesn't work on wav files",
+                ),
+            ),
+            "flac",
+        ],
+    )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     def test_against_cli(
         self,
@@ -282,12 +302,6 @@ class TestAudioEncoder:
     ):
         # Encodes samples with our encoder and with the FFmpeg CLI, and checks
         # that both decoded outputs are equal
-
-        if get_ffmpeg_major_version() == 4 and format == "wav":
-            pytest.skip("Swresample with FFmpeg 4 doesn't work on wav files")
-        if IS_WINDOWS and get_ffmpeg_major_version() <= 5 and format == "mp3":
-            # TODO: https://github.com/pytorch/torchcodec/issues/837
-            pytest.skip("Encoding mp3 on Windows is weirdly buggy")
 
         encoded_by_ffmpeg = tmp_path / f"ffmpeg_output.{format}"
         subprocess.run(
@@ -379,14 +393,14 @@ class TestAudioEncoder:
             pytest.param(
                 "mp3",
                 marks=pytest.mark.skipif(
-                    IS_WINDOWS and get_ffmpeg_major_version() <= 5,
+                    IS_WINDOWS and ffmpeg_major_version <= 5,
                     reason="Encoding mp3 on Windows is weirdly buggy",
                 ),
             ),
             pytest.param(
                 "wav",
                 marks=pytest.mark.skipif(
-                    get_ffmpeg_major_version() == 4,
+                    ffmpeg_major_version == 4,
                     reason="Swresample with FFmpeg 4 doesn't work on wav files",
                 ),
             ),
@@ -845,13 +859,15 @@ class TestVideoEncoder:
                     pytest.mark.skipif(
                         in_fbcode(), reason="NVENC not available in fbcode"
                     ),
+                    pytest.mark.skipif(
+                        ffmpeg_major_version == 4,
+                        reason="CUDA + FFmpeg 4 test is flaky",
+                    ),
                 ],
             ),
         ),
     )
     def test_contiguity(self, method, tmp_path, device):
-        if get_ffmpeg_major_version() == 4 and device == "cuda":
-            pytest.skip("CUDA + FFmpeg 4 test is flaky")
         # Ensure that 2 sets of video frames with the same pixel values are encoded
         # in the same way, regardless of their memory layout. Here we encode 2 equal
         # frame tensors, one is contiguous while the other is non-contiguous.
@@ -919,8 +935,8 @@ class TestVideoEncoder:
                 marks=[
                     pytest.mark.slow,
                     pytest.mark.skipif(
-                        get_ffmpeg_major_version() == 4
-                        or (IS_WINDOWS and get_ffmpeg_major_version() in (6, 7)),
+                        ffmpeg_major_version == 4
+                        or (IS_WINDOWS and ffmpeg_major_version >= 6),
                         reason="Codec for webm is not available in this FFmpeg installation.",
                     ),
                 ],
@@ -974,8 +990,8 @@ class TestVideoEncoder:
                 marks=[
                     pytest.mark.slow,
                     pytest.mark.skipif(
-                        get_ffmpeg_major_version() == 4
-                        or (IS_WINDOWS and get_ffmpeg_major_version() in (6, 7)),
+                        ffmpeg_major_version == 4
+                        or (IS_WINDOWS and ffmpeg_major_version >= 6),
                         reason="Codec for webm is not available in this FFmpeg installation.",
                     ),
                 ],
@@ -1014,7 +1030,17 @@ class TestVideoEncoder:
             "avi",
             "mkv",
             "flv",
-            pytest.param("webm", marks=pytest.mark.slow),
+            pytest.param(
+                "webm",
+                marks=[
+                    pytest.mark.slow,
+                    pytest.mark.skipif(
+                        ffmpeg_major_version == 4
+                        or (IS_WINDOWS and ffmpeg_major_version >= 6),
+                        reason="Codec for webm is not available in this FFmpeg installation.",
+                    ),
+                ],
+            ),
         ),
     )
     @pytest.mark.parametrize(
@@ -1031,12 +1057,6 @@ class TestVideoEncoder:
     def test_video_encoder_against_ffmpeg_cli(
         self, tmp_path, format, encode_params, method, frame_rate
     ):
-        ffmpeg_version = get_ffmpeg_major_version()
-        if format == "webm" and (
-            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
-        ):
-            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
-
         pixel_format = encode_params["pixel_format"]
         crf = encode_params["crf"]
         preset = encode_params["preset"]
@@ -1127,7 +1147,7 @@ class TestVideoEncoder:
 
         # Only compare video metadata on ffmpeg versions >= 6, as older versions
         # are often missing metadata
-        if ffmpeg_version >= 6 and method == "to_file":
+        if ffmpeg_major_version >= 6 and method == "to_file":
             fields = [
                 "duration",
                 "duration_ts",
@@ -1334,7 +1354,6 @@ class TestVideoEncoder:
     @needs_ffmpeg_cli
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    # TODO-VideoEncoder: Enable additional pixel formats ("yuv420p", "yuv444p")
     @pytest.mark.parametrize(
         ("format", "codec"),
         [
@@ -1350,7 +1369,7 @@ class TestVideoEncoder:
                         IN_GITHUB_CI, reason="av1_nvenc is not supported on CI"
                     ),
                     pytest.mark.skipif(
-                        get_ffmpeg_major_version() == 4,
+                        ffmpeg_major_version == 4,
                         reason="av1_nvenc is not supported on FFmpeg 4",
                     ),
                 ],
@@ -1367,10 +1386,9 @@ class TestVideoEncoder:
     def test_nvenc_against_ffmpeg_cli(
         self, tmp_path, method, format, codec, color_space, color_range
     ):
-        ffmpeg_version = get_ffmpeg_major_version()
-        # TODO-VideoEncoder: Investigate why FFmpeg 4 and 6 fail with non-default color space and range.
+        # TODO-VideoEncoder: (P2) Investigate why FFmpeg 4 and 6 fail with non-default color space and range.
         # See https://github.com/meta-pytorch/torchcodec/issues/1140
-        if ffmpeg_version in (4, 6) and not (
+        if ffmpeg_major_version in (4, 6) and not (
             color_space == "bt470bg" and color_range == "tv"
         ):
             pytest.skip(
@@ -1483,7 +1501,7 @@ class TestVideoEncoder:
                 # Since this failure is rare, I suspect its a bug related to these
                 # older container formats on newer FFmpeg versions.
                 if not (
-                    ffmpeg_version in (7, 8)
+                    ffmpeg_major_version in (7, 8)
                     and color_range == "tv"
                     and color_space is None
                     and format in ("mov", "avi")

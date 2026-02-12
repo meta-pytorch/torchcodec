@@ -22,6 +22,8 @@ endif()
 if (WIN32)
   # Avoid warnings about non-ASCII characters in source files.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4819")
+  # Required for Unicode support in fmt library (bundled with PyTorch).
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
   # Important for when we add Windows CUDA: exporting all symbols is limited to
   # 65535 symbols, which (apparently) will not work for CUDA.
   # https://github.com/pytorch/pytorch/pull/3650
@@ -49,9 +51,46 @@ function(make_torchcodec_sublibrary
         "${TORCH_INSTALL_PREFIX}/include"
         ${Python3_INCLUDE_DIRS}
     )
+    # Use fmt library in header-only mode (bundled with PyTorch): the fmt
+    # library is bundled with PyTorch and the headers are available in
+    # TORCH_INSTALL_PREFIX/include/, which we add above. To be compatible with
+    # torch, we want to rely on the "header-only" mode of these headers and hit
+    # all the `#ifdef FMT_HEADER_ONLY` paths, so we define FMT_HEADER_ONLY here.```
+    target_compile_definitions(${library_name} PRIVATE FMT_HEADER_ONLY)
 
     # Avoid adding the "lib" prefix which we already add explicitly.
     set_target_properties(${library_name} PROPERTIES PREFIX "")
+
+    # On macOS, for wheels, add Homebrew's FFmpeg library path to the rpath so
+    # that users with Homebrew-installed FFmpeg can use torchcodec without
+    # setting DYLD_LIBRARY_PATH. See
+    # https://github.com/pytorch/torchcodec/issues/570.
+    # That's the behavior we enable by default when building TorchCodec wheels
+    # which we'll ship on PyPI.
+    # Note that this means homebrew-FFmpeg will always take precedence over
+    # conda-FFmpeg. For this reason, this behavior can (and should!) be disabled
+    # when building TorchCodec for conda, by setting
+    # TORCHCODEC_DISABLE_HOMEBREW_RPATH.
+    # We should have the following behavior for users:
+    # - For TorchCodec installed from PyPI (pip or uv): Users don't have to use
+    #   a conda env, and by default the homebrew-ffmpeg should be found. For
+    #   users who do use a conda env, they should be able to use the
+    #   conda-installed FFmpeg, but only if HomeBrew FFmpeg doesn't exist since
+    #   homebrew will take precedence.
+    # - For TorchCodec installed from conda, users must install FFmpeg from
+    #   conda as well (it should be a dependency of the TorchCodec conda
+    #   package). Homebrew FFmpeg shouldn't be used.
+    if(APPLE AND NOT (DEFINED TORCHCODEC_DISABLE_HOMEBREW_RPATH AND TORCHCODEC_DISABLE_HOMEBREW_RPATH))
+        if(DEFINED ENV{HOMEBREW_PREFIX})
+            set(HOMEBREW_FFMPEG_LIB "$ENV{HOMEBREW_PREFIX}/opt/ffmpeg/lib")
+        else()
+            # Default Homebrew location on Apple Silicon
+            set(HOMEBREW_FFMPEG_LIB "/opt/homebrew/opt/ffmpeg/lib")
+        endif()
+        set_target_properties(${library_name} PROPERTIES
+            INSTALL_RPATH "${HOMEBREW_FFMPEG_LIB}"
+        )
+    endif()
 
     target_link_libraries(
         ${library_name}

@@ -29,6 +29,7 @@ to increase performance.
 # 2. **Approximate Mode & Keyframe Mappings** - Trade accuracy for speed
 # 3. **Multi-threading** - Parallelize decoding across videos or chunks
 # 4. **CUDA Acceleration** - Use GPU decoding for supported formats
+# 5. **Decoder Native Transforms** - Apply transforms during decoding for memory efficiency
 #
 # We'll explore each technique and when to use it.
 
@@ -52,7 +53,6 @@ to increase performance.
 # - :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_at` for timestamps
 # - :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range` for time ranges
 #
-# %%
 # **When to use:**
 #
 # - Decoding multiple frames
@@ -136,9 +136,8 @@ to increase performance.
 # (NVDEC) on supported hardware. This keeps decoded tensors in GPU memory,
 # avoiding expensive CPU-GPU transfers for downstream GPU operations.
 #
-# %%
-# **Recommended:  use the Beta Interface!!**
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# **Recommended: use the Beta Interface!!**
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
 # We recommend you use the new "beta" CUDA interface which is significantly faster than the previous one, and supports the same features:
 #
@@ -147,7 +146,6 @@ to increase performance.
 #     with set_cuda_backend("beta"):
 #         decoder = VideoDecoder("file.mp4", device="cuda")
 #
-# %%
 # **When to use:**
 #
 # - Decoding large resolution videos
@@ -191,13 +189,54 @@ to increase performance.
 #     between CPU and CUDA decoding, see :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py`
 
 # %%
+# 5. Decoder Native Transforms
+# ----------------------------
+#
+# TorchCodec supports applying transforms like resize and crop *during* the
+# decoding process itself, rather than as a separate post-processing step.
+# This can lead to significant memory savings, especially when decoding
+# high-resolution videos that will be resized to smaller dimensions.
+#
+# :class:`~torchcodec.decoders.VideoDecoder` accepts both TorchCodec
+# :class:`~torchcodec.transforms.DecoderTransform` objects and TorchVision
+# :class:`~torchvision.transforms.v2.Transform` objects as transform
+# specifications. TorchVision is **not required** to use decoder transforms.
+#
+# **Example:**
+#
+# .. code-block:: python
+#
+#     from torchcodec.decoders import VideoDecoder
+#     from torchcodec.transforms import Resize
+#
+#     decoder = VideoDecoder(
+#         "file.mp4",
+#         transforms=[Resize(size=(480, 640))]
+#     )
+#
+# **When to use:**
+#
+# - If you are applying a transform pipeline that significantly reduces the
+#   dimensions of your input frames and memory efficiency matters.
+# - If you are using multiple FFmpeg threads, decoder transforms may be faster.
+#   Experiment with your setup to verify.
+#
+
+# %%
+# .. note::
+#
+#     For complete examples with memory benchmarks, transform pipelines, and
+#     detailed comparisons between decoder transforms and TorchVision transforms,
+#     see :ref:`sphx_glr_generated_examples_decoding_transforms.py`
+
+# %%
 # Conclusion
 # ----------
 #
 # TorchCodec offers multiple performance optimization strategies, each suited to
 # different scenarios. Use batch APIs for multi-frame decoding, approximate mode
-# for faster initialization, parallel processing for high throughput, and CUDA
-# acceleration to offload the CPU.
+# for faster initialization, parallel processing for high throughput, CUDA
+# acceleration to offload the CPU, and decoder native transforms for memory efficiency.
 #
 # The best results often come from combining techniques. Profile your specific
 # use case and apply optimizations incrementally, using the benchmarks in the
@@ -210,4 +249,5 @@ to increase performance.
 # - :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py` - Custom frame mappings
 # - :ref:`sphx_glr_generated_examples_decoding_parallel_decoding.py` - Parallel decoding strategies
 # - :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py` - CUDA acceleration guide
+# - :ref:`sphx_glr_generated_examples_decoding_transforms.py` - Decoder transforms guide
 # - :class:`torchcodec.decoders.VideoDecoder` - Full API reference

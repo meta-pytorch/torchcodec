@@ -69,7 +69,7 @@ jobs:
     needs: build
     steps:
       - name: Check out torchcodec repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Remove src/ folder
         run: bash packaging/remove_src.sh
@@ -78,7 +78,11 @@ jobs:
         uses: conda-incubator/setup-miniconda@v3
         with:
           auto-update-conda: true
-          miniconda-version: "latest"
+          # Using miniforge instead of miniconda ensures that the default
+          # conda channel is conda-forge instead of main/default. This ensures
+          # ABI consistency between dependencies:
+          # https://conda-forge.org/docs/user/transitioning_from_defaults/
+          miniforge-version: latest
           activate-environment: test
           python-version: ${{ matrix.python-version }}
       - name: Update pip

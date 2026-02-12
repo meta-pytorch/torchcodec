@@ -9,6 +9,7 @@ from fractions import Fraction
 
 import pytest
 
+from torchcodec import ffmpeg_major_version
 from torchcodec._core import (
     add_video_stream,
     AudioStreamMetadata,
@@ -19,7 +20,7 @@ from torchcodec._core import (
 )
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
-from .utils import get_ffmpeg_major_version, NASA_AUDIO_MP3, NASA_VIDEO
+from .utils import NASA_AUDIO_MP3, NASA_VIDEO, NASA_VIDEO_ROTATED
 
 
 # TODO: Expected values in these tests should be based on the assets's
@@ -48,7 +49,15 @@ def _get_container_metadata(path, seek_mode):
         get_container_metadata_from_header,
         functools.partial(_get_container_metadata, seek_mode="approximate"),
         functools.partial(_get_container_metadata, seek_mode="exact"),
-        functools.partial(_get_container_metadata, seek_mode="custom_frame_mappings"),
+        pytest.param(
+            functools.partial(
+                _get_container_metadata, seek_mode="custom_frame_mappings"
+            ),
+            marks=pytest.mark.skipif(
+                ffmpeg_major_version in (4, 5),
+                reason="ffprobe isn't accurate on ffmpeg 4 and 5",
+            ),
+        ),
     ),
 )
 def test_get_metadata(metadata_getter):
@@ -57,8 +66,6 @@ def test_get_metadata(metadata_getter):
         if isinstance(metadata_getter, functools.partial)
         else None
     )
-    if (seek_mode == "custom_frame_mappings") and get_ffmpeg_major_version() in (4, 5):
-        pytest.skip(reason="ffprobe isn't accurate on ffmpeg 4 and 5")
     metadata = metadata_getter(NASA_VIDEO.path)
 
     with_scan = (
@@ -76,7 +83,6 @@ def test_get_metadata(metadata_getter):
     with pytest.raises(NotImplementedError, match="Decide on logic"):
         metadata.bit_rate
 
-    ffmpeg_major_version = get_ffmpeg_major_version()
     if ffmpeg_major_version <= 5:
         expected_duration_seconds_from_header = 16.57
         expected_bit_rate_from_header = 324915
@@ -129,7 +135,6 @@ def test_get_metadata_audio_file(metadata_getter):
     assert isinstance(best_audio_stream_metadata, AudioStreamMetadata)
     assert best_audio_stream_metadata is metadata.best_audio_stream
 
-    ffmpeg_major_version = get_ffmpeg_major_version()
     expected_duration_seconds_from_header = (
         13.056 if ffmpeg_major_version >= 8 else 13.248
     )
@@ -144,6 +149,25 @@ def test_get_metadata_audio_file(metadata_getter):
     assert best_audio_stream_metadata.sample_format == "fltp"
 
 
+def test_rotation_metadata():
+    """Test that rotation metadata is correctly extracted for rotated video."""
+    # NASA_VIDEO_ROTATED has 90-degree rotation metadata
+    decoder_rotated = VideoDecoder(NASA_VIDEO_ROTATED.path)
+    assert decoder_rotated.metadata.rotation is not None
+    assert decoder_rotated.metadata.rotation == 90
+
+    # NASA_VIDEO has no rotation metadata
+    decoder = VideoDecoder(NASA_VIDEO.path)
+    assert decoder.metadata.rotation is None
+
+    # Check that height and width are reported post-rotation
+    # For 90-degree rotation, width and height should be swapped
+    assert (decoder_rotated.metadata.height, decoder_rotated.metadata.width) == (
+        decoder.metadata.width,
+        decoder.metadata.height,
+    )
+
+
 def test_repr():
     # Test for calls to print(), str(), etc. Useful to make sure we don't forget
     # to add additional @properties to __repr__
@@ -151,26 +175,26 @@ def test_repr():
         str(VideoDecoder(NASA_VIDEO.path).metadata)
         == """VideoStreamMetadata:
   duration_seconds_from_header: 13.013
-  begin_stream_seconds_from_header: 0.0
-  bit_rate: 128783.0
+  begin_stream_seconds_from_header: 0
+  bit_rate: 128783
   codec: h264
   stream_index: 3
   duration_seconds: 13.013
-  begin_stream_seconds: 0.0
-  begin_stream_seconds_from_content: 0.0
+  begin_stream_seconds: 0
+  begin_stream_seconds_from_content: 0
   end_stream_seconds_from_content: 13.013
   width: 480
   height: 270
   num_frames_from_header: 390
   num_frames_from_content: 390
-  average_fps_from_header: 29.97003
+  average_fps_from_header: 29.97002997002997
   pixel_aspect_ratio: 1
+  rotation: None
   end_stream_seconds: 13.013
   num_frames: 390
-  average_fps: 29.97003
+  average_fps: 29.97002997002997
 """
     )
-    ffmpeg_major_version = get_ffmpeg_major_version()
     expected_duration_seconds_from_header = (
         13.056 if ffmpeg_major_version >= 8 else 13.248
     )
@@ -180,11 +204,11 @@ def test_repr():
         == f"""AudioStreamMetadata:
   duration_seconds_from_header: {expected_duration_seconds_from_header}
   begin_stream_seconds_from_header: 0.138125
-  bit_rate: 64000.0
+  bit_rate: 64000
   codec: mp3
   stream_index: 0
   duration_seconds: {expected_duration_seconds_from_header}
-  begin_stream_seconds: 0.0
+  begin_stream_seconds: 0.138125
   sample_rate: 8000
   num_channels: 2
   sample_format: fltp

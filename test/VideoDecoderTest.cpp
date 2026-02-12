@@ -59,7 +59,7 @@ class SingleStreamDecoderTest : public testing::TestWithParam<bool> {
       char* data = new char[length];
       std::memcpy(data, content_.data(), length);
       auto deleter = [data](void*) { delete[] data; };
-      at::Tensor tensor = at::from_blob(
+      torch::Tensor tensor = at::from_blob(
           static_cast<void*>(data), {length}, deleter, {torch::kUInt8});
 
       auto contextHolder = std::make_unique<AVIOFromTensorContext>(tensor);
@@ -106,7 +106,8 @@ TEST_P(SingleStreamDecoderTest, ReturnsFpsAndDurationForVideoInMetadata) {
 }
 
 TEST(SingleStreamDecoderTest, MissingVideoFileThrowsException) {
-  EXPECT_THROW(SingleStreamDecoder("/this/file/does/not/exist"), c10::Error);
+  EXPECT_THROW(
+      SingleStreamDecoder("/this/file/does/not/exist"), std::runtime_error);
 }
 
 void dumpTensorToDisk(

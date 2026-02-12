@@ -18,7 +18,6 @@ from types import ModuleType
 
 import torch
 from torch.library import get_ctx, register_fake
-
 from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchcodec/src:internally_replaced_utils
     _get_extension_path,
     _get_pybind_ops_module_name,
@@ -547,6 +546,7 @@ def get_frames_by_pts_in_range_abstract(
     *,
     start_seconds: float,
     stop_seconds: float,
+    fps: float | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
     return (
