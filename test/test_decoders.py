@@ -2332,7 +2332,7 @@ class TestAudioDecoder:
         assert samples.data.shape[0] == asset.num_channels
         assert samples.sample_rate == asset.sample_rate
 
-        baseline_decoder = AudioDecoder(wav_bytes, _fast_wav=False)
+        baseline_decoder = AudioDecoder(wav_bytes, use_wav_decoder=False)
         assert baseline_decoder._wav_decoder is None
         baseline = baseline_decoder.get_all_samples()
         torch.testing.assert_close(samples.data, baseline.data)
@@ -2356,7 +2356,7 @@ class TestAudioDecoder:
         assert samples.pts_seconds == start_seconds
         assert samples.duration_seconds == pytest.approx(stop_seconds - start_seconds)
 
-        baseline_decoder = AudioDecoder(wav_bytes, _fast_wav=False)
+        baseline_decoder = AudioDecoder(wav_bytes, use_wav_decoder=False)
         baseline = baseline_decoder.get_samples_played_in_range(
             start_seconds=start_seconds, stop_seconds=stop_seconds
         )

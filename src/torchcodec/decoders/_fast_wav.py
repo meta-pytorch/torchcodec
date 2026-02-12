@@ -130,51 +130,57 @@ def _samples_from_bytes(
     bytes_per_sample = metadata.bits_per_sample // 8
     num_samples = len(audio_bytes) // bytes_per_sample // metadata.num_channels
 
+    # Deinterleave: reshape to (num_samples, num_channels) and transpose.
+    # This is done *before* dtype conversion so that .to(float32) produces a
+    # contiguous result in a single pass (combined layout change + conversion),
+    # avoiding a separate .contiguous() copy.
+    def _deinterleave(t: Tensor) -> Tensor:
+        if metadata.num_channels == 1:
+            return t.unsqueeze(0)
+        return t.view(num_samples, metadata.num_channels).t()
+
     # Convert to tensor based on format
     if metadata.audio_format == WAVE_FORMAT_IEEE_FLOAT:
         if metadata.bits_per_sample == 32:
             # Interpret raw bytes as float32 (already normalized by convention)
-            samples = torch.frombuffer(audio_bytes, dtype=torch.float32).clone()
+            samples = _deinterleave(
+                torch.frombuffer(audio_bytes, dtype=torch.float32)
+            ).contiguous()
         elif metadata.bits_per_sample == 64:
-            # Interpret raw bytes as float64, then convert to float32
-            samples = torch.frombuffer(audio_bytes, dtype=torch.float64).to(
-                torch.float32
-            )
+            # Interpret raw bytes as float64, then convert to float32.
+            # .to() on the transposed view produces a contiguous float32 result.
+            samples = _deinterleave(
+                torch.frombuffer(audio_bytes, dtype=torch.float64)
+            ).to(torch.float32)
         else:
             raise ValueError(f"Unsupported float bits: {metadata.bits_per_sample}")
     elif metadata.audio_format == WAVE_FORMAT_PCM:
         if metadata.bits_per_sample == 16:
-            # Interpret raw bytes as int16
-            int_samples = torch.frombuffer(audio_bytes, dtype=torch.int16)
-            # Convert to float32, then normalize from [-32768, 32767] to [-1, 1]
-            samples = int_samples.to(torch.float32).div_(
-                torch.iinfo(torch.int16).max + 1
-            )
+            # Interpret raw bytes as int16, deinterleave, then convert+normalize.
+            # .to() on the transposed view produces a contiguous float32 result.
+            samples = _deinterleave(
+                torch.frombuffer(audio_bytes, dtype=torch.int16)
+            ).to(torch.float32)
+            samples.div_(torch.iinfo(torch.int16).max + 1)
         elif metadata.bits_per_sample == 32:
-            # Interpret raw bytes as int32
-            int_samples = torch.frombuffer(audio_bytes, dtype=torch.int32)
-            # Convert to float32, then normalize from [-2^31, 2^31-1] to [-1, 1]
-            samples = int_samples.to(torch.float32).div_(
-                torch.iinfo(torch.int32).max + 1
-            )
+            # Interpret raw bytes as int32, deinterleave, then convert+normalize.
+            samples = _deinterleave(
+                torch.frombuffer(audio_bytes, dtype=torch.int32)
+            ).to(torch.float32)
+            samples.div_(torch.iinfo(torch.int32).max + 1)
         elif metadata.bits_per_sample == 24:
             # There is no 24-bit dtype, so we use helper function
-            samples = _convert_24bit_pcm(memoryview(audio_bytes))
+            samples = _deinterleave(_convert_24bit_pcm(memoryview(audio_bytes)))
         elif metadata.bits_per_sample == 8:
-            # Interpret raw bytes as uint8
-            uint_samples = torch.frombuffer(audio_bytes, dtype=torch.uint8)
-            # Convert to float32, then normalize from [0, 255] to [-1, 1]
-            samples = uint_samples.to(torch.float32).sub_(128.0).div_(128.0)
+            # Interpret raw bytes as uint8, deinterleave, then convert+normalize.
+            samples = _deinterleave(
+                torch.frombuffer(audio_bytes, dtype=torch.uint8)
+            ).to(torch.float32)
+            samples.sub_(128.0).div_(128.0)
         else:
             raise ValueError(f"Unsupported PCM bits: {metadata.bits_per_sample}")
     else:
         raise ValueError(f"Unsupported audio format: {metadata.audio_format}")
-
-    # Reshape to (num_channels, num_samples) - contiguous for efficiency
-    if metadata.num_channels == 1:
-        samples = samples.unsqueeze(0)
-    else:
-        samples = samples.view(num_samples, metadata.num_channels).t().contiguous()
 
     return samples
 

@@ -60,12 +60,12 @@ class AudioDecoder:
         stream_index: int | None = None,
         sample_rate: int | None = None,
         num_channels: int | None = None,
-        _fast_wav: bool = True,
+        use_wav_decoder: bool = True,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.AudioDecoder")
 
         self._wav_decoder = None
-        if _fast_wav:
+        if use_wav_decoder:
             self._wav_decoder = WavDecoder.try_create(
                 source, sample_rate, num_channels, stream_index
             )
