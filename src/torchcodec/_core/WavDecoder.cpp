@@ -268,14 +268,6 @@ torch::Tensor WavDecoder::convertSamplesToFloat(
     const void* rawData,
     int64_t numSamples,
     int64_t numChannels) {
-  // Output is (numChannels, numSamples) float32
-  torch::Tensor output =
-      torch::empty({numChannels, numSamples}, torch::kFloat32);
-  float* outPtr = output.data_ptr<float>();
-
-  const uint8_t* src = static_cast<const uint8_t*>(rawData);
-  int bytesPerSample = header_.bitsPerSample / 8;
-
   // Determine effective format (subFormat for extensible, audioFormat
   // otherwise)
   uint16_t effectiveFormat = header_.audioFormat;
@@ -283,76 +275,71 @@ torch::Tensor WavDecoder::convertSamplesToFloat(
     effectiveFormat = header_.subFormat;
   }
 
-  // WAV stores samples interleaved: [L R L R ...]. These loops convert to
-  // float and deinterleave into channel-first layout: (numChannels, numSamples)
-  // in a single pass to avoid intermediate allocations.
-  //
-  // Example with 2 channels (L, R) and 3 samples:
-  //   Input  (interleaved):   [L0 R0 L1 R1 L2 R2]
-  //                            ^read:  s * numChannels + c = 0,1,2,3,4,5
-  //   Output (channel-first): [L0 L1 L2 R0 R1 R2]
-  //                            ^write: c * numSamples + s = 0,1,2,3,4,5
+  // Wrap the raw interleaved buffer as a (numSamples, numChannels) tensor view,
+  // transpose to (numChannels, numSamples), then use .to(kFloat32) which
+  // performs the dtype conversion and layout change in a single vectorized,
+  // multi-threaded pass via ATen's optimized copy kernels.
+  auto fromBlob = [&](const void* ptr, torch::Dtype dtype) {
+    return torch::from_blob(
+               const_cast<void*>(ptr),
+               {numSamples, numChannels},
+               torch::TensorOptions().dtype(dtype))
+        .t();
+  };
+
   if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
     if (header_.bitsPerSample == 32) {
-      const float* floatSrc = reinterpret_cast<const float*>(src);
-      for (int64_t s = 0; s < numSamples; ++s) {
-        for (int64_t c = 0; c < numChannels; ++c) {
-          outPtr[c * numSamples + s] = floatSrc[s * numChannels + c];
-        }
-      }
+      auto interleaved =
+          fromBlob(reinterpret_cast<const float*>(rawData), torch::kFloat32);
+      return interleaved.contiguous();
     } else if (header_.bitsPerSample == 64) {
-      const double* doubleSrc = reinterpret_cast<const double*>(src);
-      for (int64_t s = 0; s < numSamples; ++s) {
-        for (int64_t c = 0; c < numChannels; ++c) {
-          outPtr[c * numSamples + s] =
-              static_cast<float>(doubleSrc[s * numChannels + c]);
-        }
-      }
+      auto interleaved =
+          fromBlob(reinterpret_cast<const double*>(rawData), torch::kFloat64);
+      return interleaved.to(torch::kFloat32);
     }
   } else {
-    for (int64_t s = 0; s < numSamples; ++s) {
-      for (int64_t c = 0; c < numChannels; ++c) {
-        const uint8_t* samplePtr = src + (s * numChannels + c) * bytesPerSample;
-        float value = 0.0f;
-
-        switch (header_.bitsPerSample) {
-          case 8: {
-            // 8-bit PCM is unsigned (0-255, center at 128)
-            uint8_t sample = *samplePtr;
-            value = (static_cast<float>(sample) - 128.0f) / 128.0f;
-            break;
-          }
-          case 16: {
-            // 16-bit PCM is signed
-            int16_t sample = readLittleEndian<int16_t>(samplePtr);
-            value = static_cast<float>(sample) / 32768.0f;
-            break;
-          }
-          case 24: {
-            // 24-bit PCM is signed, stored in 3 bytes little-endian
-            int32_t sample = static_cast<int32_t>(samplePtr[0]) |
-                (static_cast<int32_t>(samplePtr[1]) << 8) |
-                (static_cast<int32_t>(samplePtr[2]) << 16);
-            // Sign extend from 24 to 32 bits
+    switch (header_.bitsPerSample) {
+      case 8: {
+        auto interleaved =
+            fromBlob(reinterpret_cast<const uint8_t*>(rawData), torch::kUInt8);
+        return interleaved.to(torch::kFloat32).sub_(128.0f).div_(128.0f);
+      }
+      case 16: {
+        auto interleaved =
+            fromBlob(reinterpret_cast<const int16_t*>(rawData), torch::kInt16);
+        return interleaved.to(torch::kFloat32).div_(32768.0f);
+      }
+      case 24: {
+        // No 24-bit dtype; fall back to scalar loop.
+        const uint8_t* src = static_cast<const uint8_t*>(rawData);
+        torch::Tensor output =
+            torch::empty({numChannels, numSamples}, torch::kFloat32);
+        float* outPtr = output.data_ptr<float>();
+        for (int64_t s = 0; s < numSamples; ++s) {
+          for (int64_t c = 0; c < numChannels; ++c) {
+            const uint8_t* p = src + (s * numChannels + c) * 3;
+            int32_t sample = static_cast<int32_t>(p[0]) |
+                (static_cast<int32_t>(p[1]) << 8) |
+                (static_cast<int32_t>(p[2]) << 16);
             if (sample & 0x800000) {
               sample |= 0xFF000000;
             }
-            value = static_cast<float>(sample) / 8388608.0f;
-            break;
-          }
-          case 32: {
-            // 32-bit PCM is signed
-            int32_t sample = readLittleEndian<int32_t>(samplePtr);
-            value = static_cast<float>(sample) / 2147483648.0f;
-            break;
+            outPtr[c * numSamples + s] =
+                static_cast<float>(sample) / 8388608.0f;
           }
         }
-        outPtr[c * numSamples + s] = value;
+        return output;
+      }
+      case 32: {
+        auto interleaved =
+            fromBlob(reinterpret_cast<const int32_t*>(rawData), torch::kInt32);
+        return interleaved.to(torch::kFloat32).div_(2147483648.0f);
       }
     }
   }
 
-  return output;
+  // Should not be reached for valid WAV files.
+  return torch::empty({numChannels, numSamples}, torch::kFloat32);
 }
 
 std::tuple<torch::Tensor, double> WavDecoder::getSamplesInRange(
