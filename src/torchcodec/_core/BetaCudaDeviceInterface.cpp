@@ -71,8 +71,8 @@ static DecoderCapsCache& getDecoderCapsCache() {
 }
 
 static bool g_cuda_beta = registerDeviceInterface(
-    DeviceInterfaceKey(torch::kCUDA, /*variant=*/"beta"),
-    [](const torch::Device& device) {
+    DeviceInterfaceKey(kStableCUDA, /*variant=*/"beta"),
+    [](const StableDevice& device) {
       return new BetaCudaDeviceInterface(device);
     });
 
@@ -195,7 +195,7 @@ std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
 }
 
 bool nativeNVDECSupport(
-    const torch::Device& device,
+    const StableDevice& device,
     const SharedAVCodecContext& codecContext) {
   // Return true iff the input video stream is supported by our NVDEC
   // implementation.
@@ -265,11 +265,11 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
 
 } // namespace
 
-BetaCudaDeviceInterface::BetaCudaDeviceInterface(const torch::Device& device)
+BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
     : DeviceInterface(device) {
   STD_TORCH_CHECK(g_cuda_beta, "BetaCudaDeviceInterface was not registered!");
   STD_TORCH_CHECK(
-      device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
+      device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
   initializeCudaContextWithPytorch(device_);
   nppCtx_ = getNppStreamContext(device_);
@@ -303,7 +303,7 @@ void BetaCudaDeviceInterface::initialize(
     const UniqueDecodingAVFormatContext& avFormatCtx,
     [[maybe_unused]] const SharedAVCodecContext& codecContext) {
   if (!nvcuvidAvailable_ || !nativeNVDECSupport(device_, codecContext)) {
-    cpuFallback_ = createDeviceInterface(torch::kCPU);
+    cpuFallback_ = createDeviceInterface(kStableCPU);
     STD_TORCH_CHECK(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
     cpuFallback_->initialize(avStream, avFormatCtx, codecContext);

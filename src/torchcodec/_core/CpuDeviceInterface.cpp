@@ -11,16 +11,16 @@ namespace facebook::torchcodec {
 namespace {
 
 static bool g_cpu = registerDeviceInterface(
-    DeviceInterfaceKey(torch::kCPU),
-    [](const torch::Device& device) { return new CpuDeviceInterface(device); });
+    DeviceInterfaceKey(kStableCPU),
+    [](const StableDevice& device) { return new CpuDeviceInterface(device); });
 
 } // namespace
 
-CpuDeviceInterface::CpuDeviceInterface(const torch::Device& device)
+CpuDeviceInterface::CpuDeviceInterface(const StableDevice& device)
     : DeviceInterface(device) {
   STD_TORCH_CHECK(g_cpu, "CpuDeviceInterface was not registered!");
   STD_TORCH_CHECK(
-      device_.type() == torch::kCPU, "Unsupported device: ", device_.str());
+      device_.type() == kStableCPU, "Unsupported device: must be CPU");
 }
 
 void CpuDeviceInterface::initialize(
@@ -198,7 +198,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
     outputTensor = preAllocatedOutputTensor.value_or(
-        allocateEmptyHWCTensor(outputDims, torch::kCPU));
+        allocateEmptyHWCTensor(outputDims, kStableCPU));
 
     enum AVPixelFormat avFrameFormat =
         static_cast<enum AVPixelFormat>(avFrame->format);

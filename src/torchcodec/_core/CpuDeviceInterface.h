@@ -15,7 +15,7 @@ namespace facebook::torchcodec {
 
 class CpuDeviceInterface : public DeviceInterface {
  public:
-  CpuDeviceInterface(const torch::Device& device);
+  CpuDeviceInterface(const StableDevice& device);
 
   virtual ~CpuDeviceInterface() {}
 
