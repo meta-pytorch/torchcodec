@@ -1909,10 +1909,7 @@ class TestVideoDecoder:
 
     @needs_cuda
     def test_beta_cuda_interface_error(self):
-        # Stable ABI has different error message format
-        with pytest.raises(
-            RuntimeError, match="Invalid device string|torch_parse_device_string"
-        ):
+        with pytest.raises(RuntimeError, match="torch_parse_device_string"):
             VideoDecoder(NASA_VIDEO.path, device="cuda:0:bad_variant")
 
     @needs_cuda

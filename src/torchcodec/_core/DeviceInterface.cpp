@@ -51,7 +51,9 @@ std::string getDeviceTypeString(const std::string& device) {
 }
 
 // Parse device type from string (e.g., "cpu", "cuda")
-// The stable ABI Device doesn't support string-based construction
+// TODO_STABLE_ABI: we might need to support more device types, i.e. those from
+// https://github.com/pytorch/pytorch/blob/main/torch/headeronly/core/DeviceType.h
+// Ideally we'd remove this helper?
 StableDeviceType parseDeviceType(const std::string& deviceType) {
   if (deviceType == "cpu") {
     return kStableCPU;

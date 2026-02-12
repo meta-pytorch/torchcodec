@@ -41,6 +41,14 @@
 
 #define STABLE_CHECK(cond, ...) STD_TORCH_CHECK(cond, __VA_ARGS__)
 
+// Flag meant to be used for any API that third-party libraries may call.
+// It ensures the API symbol is always public.
+#ifdef _WIN32
+#define TORCHCODEC_THIRD_PARTY_API
+#else
+#define TORCHCODEC_THIRD_PARTY_API __attribute__((visibility("default")))
+#endif
+
 // Index error check - throws std::out_of_range which pybind11 maps to
 // IndexError Use this for index validation errors that should raise IndexError
 // in Python

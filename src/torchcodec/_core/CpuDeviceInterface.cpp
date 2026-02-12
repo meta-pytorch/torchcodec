@@ -199,7 +199,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
     outputTensor = preAllocatedOutputTensor.value_or(
-        allocateEmptyHWCTensor(outputDims, StableDevice(kStableCPU)));
+        allocateEmptyHWCTensor(outputDims, kStableCPU));
 
     int resultHeight =
         convertAVFrameToTensorUsingSwScale(avFrame, outputTensor, outputDims);
@@ -298,8 +298,7 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
 
   StableTensor colorConvertedTensor = needsResize
       ? allocateEmptyHWCTensor(
-            FrameDims(avFrame->height, avFrame->width),
-            StableDevice(kStableCPU))
+            FrameDims(avFrame->height, avFrame->width), kStableCPU)
       : outputTensor;
 
   uint8_t* colorConvertedPointers[4] = {
