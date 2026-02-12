@@ -4,7 +4,6 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include <torch/types.h>
 #include <mutex>
 
 #include "CUDACommon.h"
@@ -20,7 +19,7 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-NVDECCache& NVDECCache::getCache(const torch::Device& device) {
+NVDECCache& NVDECCache::getCache(const StableDevice& device) {
   static NVDECCache cacheInstances[MAX_CUDA_GPUS];
   return cacheInstances[getDeviceIndex(device)];
 }
@@ -29,11 +28,15 @@ UniqueCUvideodecoder NVDECCache::getDecoder(CUVIDEOFORMAT* videoFormat) {
   CacheKey key(videoFormat);
   std::lock_guard<std::mutex> lock(cacheLock_);
 
-  auto it = cache_.find(key);
-  if (it != cache_.end()) {
-    auto decoder = std::move(it->second);
-    cache_.erase(it);
-    return decoder;
+  // Find all entries with matching key and look for one not in use
+  auto range = cache_.equal_range(key);
+  for (auto it = range.first; it != range.second; ++it) {
+    if (!it->second.inUse) {
+      // Take ownership of the decoder and remove the entry from cache
+      auto decoder = std::move(it->second.decoder);
+      cache_.erase(it);
+      return decoder;
+    }
   }
 
   return nullptr;
@@ -53,7 +56,8 @@ bool NVDECCache::returnDecoder(
     return false;
   }
 
-  cache_[key] = std::move(decoder);
+  // Add the decoder back to cache as not in use
+  cache_.emplace(key, CacheEntry(std::move(decoder), false));
   return true;
 }
 

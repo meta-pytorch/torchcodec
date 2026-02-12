@@ -6,6 +6,7 @@
 
 #include "CUDACommon.h"
 #include "Cache.h" // for PerGpuCache
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -21,12 +22,16 @@ PerGpuCache<NppStreamContext> g_cached_npp_ctxs(
 
 } // namespace
 
-void initializeCudaContextWithPytorch(const torch::Device& device) {
+void initializeCudaContextWithPytorch(const StableDevice& device) {
   // It is important for pytorch itself to create the cuda context. If ffmpeg
   // creates the context it may not be compatible with pytorch.
   // This is a dummy tensor to initialize the cuda context.
   torch::Tensor dummyTensorForCudaInitialization = torch::zeros(
-      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device));
+      {1},
+      torch::TensorOptions()
+          .dtype(torch::kUInt8)
+          .device(torch::Device(
+              static_cast<c10::DeviceType>(device.type()), device.index())));
 }
 
 /* clang-format off */
@@ -158,7 +163,7 @@ const Npp32f bt709FullRangeColorTwist[3][4] = {
 
 torch::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
-    const torch::Device& device,
+    const StableDevice& device,
     const UniqueNppContext& nppCtx,
     at::cuda::CUDAStream nvdecStream,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
@@ -181,7 +186,7 @@ torch::Tensor convertNV12FrameToRGB(
 
   nppCtx->hStream = nppStream.stream();
   cudaError_t err = cudaStreamGetFlags(nppCtx->hStream, &nppCtx->nStreamFlags);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       err == cudaSuccess,
       "cudaStreamGetFlags failed: ",
       cudaGetErrorString(err));
@@ -241,12 +246,12 @@ torch::Tensor convertNV12FrameToRGB(
         oSizeROI,
         *nppCtx);
   }
-  TORCH_CHECK(status == NPP_SUCCESS, "Failed to convert NV12 frame.");
+  STD_TORCH_CHECK(status == NPP_SUCCESS, "Failed to convert NV12 frame.");
 
   return dst;
 }
 
-UniqueNppContext getNppStreamContext(const torch::Device& device) {
+UniqueNppContext getNppStreamContext(const StableDevice& device) {
   int deviceIndex = getDeviceIndex(device);
 
   UniqueNppContext nppCtx = g_cached_npp_ctxs.get(device);
@@ -265,7 +270,7 @@ UniqueNppContext getNppStreamContext(const torch::Device& device) {
   nppCtx = std::make_unique<NppStreamContext>();
   cudaDeviceProp prop{};
   cudaError_t err = cudaGetDeviceProperties(&prop, deviceIndex);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       err == cudaSuccess,
       "cudaGetDeviceProperties failed: ",
       cudaGetErrorString(err));
@@ -282,7 +287,7 @@ UniqueNppContext getNppStreamContext(const torch::Device& device) {
 }
 
 void returnNppStreamContextToCache(
-    const torch::Device& device,
+    const StableDevice& device,
     UniqueNppContext nppCtx) {
   if (nppCtx) {
     g_cached_npp_ctxs.addIfCacheHasCapacity(device, std::move(nppCtx));
@@ -298,7 +303,7 @@ void validatePreAllocatedTensorShape(
 
   if (preAllocatedOutputTensor.has_value()) {
     auto shape = preAllocatedOutputTensor.value().sizes();
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         (shape.size() == 3) && (shape[0] == frameDims.height) &&
             (shape[1] == frameDims.width) && (shape[2] == 3),
         "Expected tensor of shape ",
@@ -310,17 +315,17 @@ void validatePreAllocatedTensorShape(
   }
 }
 
-int getDeviceIndex(const torch::Device& device) {
+int getDeviceIndex(const StableDevice& device) {
   // PyTorch uses int8_t as its torch::DeviceIndex, but FFmpeg and CUDA
   // libraries use int. So we use int, too.
   int deviceIndex = static_cast<int>(device.index());
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       deviceIndex >= -1 && deviceIndex < MAX_CUDA_GPUS,
       "Invalid device index = ",
       deviceIndex);
 
   if (deviceIndex == -1) {
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         cudaGetDevice(&deviceIndex) == cudaSuccess,
         "Failed to get current CUDA device.");
   }

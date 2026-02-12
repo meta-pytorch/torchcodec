@@ -12,7 +12,7 @@ namespace facebook::torchcodec {
 
 class DummyDeviceInterface : public DeviceInterface {
  public:
-  DummyDeviceInterface(const torch::Device& device) : DeviceInterface(device) {}
+  DummyDeviceInterface(const StableDevice& device) : DeviceInterface(device) {}
 
   virtual ~DummyDeviceInterface() {}
 
@@ -33,8 +33,8 @@ class DummyDeviceInterface : public DeviceInterface {
 
 namespace {
 static bool g_dummy = registerDeviceInterface(
-    DeviceInterfaceKey(torch::kPrivateUse1),
-    [](const torch::Device& device) {
+    DeviceInterfaceKey(StableDeviceType::PrivateUse1),
+    [](const StableDevice& device) {
       return new DummyDeviceInterface(device);
     });
 } // namespace

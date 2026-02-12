@@ -7,6 +7,7 @@
 #include "DeviceInterface.h"
 #include <map>
 #include <mutex>
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -28,6 +29,20 @@ std::string getDeviceType(const std::string& device) {
   return device.substr(0, pos);
 }
 
+// Parse device type from string (e.g., "cpu", "cuda")
+// TODO_STABLE_ABI: we might need to support more device types, i.e. those from
+// https://github.com/pytorch/pytorch/blob/main/torch/headeronly/core/DeviceType.h
+// Ideally we'd remove this helper?
+StableDeviceType parseDeviceType(const std::string& deviceType) {
+  if (deviceType == "cpu") {
+    return kStableCPU;
+  } else if (deviceType == "cuda") {
+    return kStableCUDA;
+  } else {
+    STD_TORCH_CHECK(false, "Unknown device type: ", deviceType);
+  }
+}
+
 } // namespace
 
 bool registerDeviceInterface(
@@ -36,10 +51,10 @@ bool registerDeviceInterface(
   std::scoped_lock lock(g_interface_mutex);
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       deviceMap.find(key) == deviceMap.end(),
       "Device interface already registered for device type ",
-      key.deviceType,
+      static_cast<int>(key.deviceType),
       " variant '",
       key.variant,
       "'");
@@ -57,7 +72,7 @@ void validateDeviceInterface(
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
   // Find device interface that matches device type and variant
-  torch::DeviceType deviceTypeEnum = torch::Device(deviceType).type();
+  StableDeviceType deviceTypeEnum = parseDeviceType(deviceType);
 
   auto deviceInterface = std::find_if(
       deviceMap.begin(),
@@ -67,7 +82,7 @@ void validateDeviceInterface(
             arg.first.variant == variant;
       });
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       deviceInterface != deviceMap.end(),
       "Unsupported device: ",
       device,
@@ -79,7 +94,7 @@ void validateDeviceInterface(
 }
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
-    const torch::Device& device,
+    const StableDevice& device,
     const std::string_view variant) {
   DeviceInterfaceKey key(device.type(), variant);
   std::scoped_lock lock(g_interface_mutex);
@@ -90,17 +105,17 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
     return std::unique_ptr<DeviceInterface>(it->second(device));
   }
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       false,
       "No device interface found for device type: ",
-      device.type(),
+      static_cast<int>(device.type()),
       " variant: '",
       variant,
       "'");
 }
 
 torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
-  TORCH_CHECK_EQ(avFrame->format, AV_PIX_FMT_RGB24);
+  STD_TORCH_CHECK(avFrame->format == AV_PIX_FMT_RGB24, "Expected RGB24 format");
 
   int height = avFrame->height;
   int width = avFrame->width;
