@@ -941,7 +941,9 @@ void VideoEncoder::encode() {
 
   status = av_write_trailer(avFormatContext_.get());
   // av_write_trailer returns mfra atom size (positive) for fragmented
-  // containers, which we'd misinterpret as an error. So we replace positive
+  // containers, which we'd misinterpret as an error, since all FFmpeg errors
+  // are negative (see AVERROR definition:
+  // http://ffmpeg.org/doxygen/8.0/error_8h_source.html) So we replace positive
   // values with AVSUCCESS. See:
   // https://github.com/FFmpeg/FFmpeg/blob/n8.0/libavformat/movenc.c#L8666
   if (status > 0) {

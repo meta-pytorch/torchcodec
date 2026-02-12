@@ -1512,7 +1512,7 @@ class TestVideoEncoder:
 
     @pytest.mark.skipif(
         ffmpeg_major_version == 4,
-        reason="On FFmpeg 4 we error on truncated packets",
+        reason="On FFmpeg 4  hitting a truncated packet results in AVERROR_INVALIDDATA, which torchcodec does not handle.",
     )
     @pytest.mark.parametrize("format", ["mp4", "mov"])
     @pytest.mark.parametrize(
@@ -1554,4 +1554,6 @@ class TestVideoEncoder:
         assert len(truncated_decoder) >= 10
         for i in range(10):
             truncated_frame = truncated_decoder.get_frame_at(i)
-            assert torch.equal(truncated_frame.data, reference_frames[i].data)
+            torch.testing.assert_close(
+                truncated_frame.data, reference_frames[i].data, atol=0, rtol=0
+            )
