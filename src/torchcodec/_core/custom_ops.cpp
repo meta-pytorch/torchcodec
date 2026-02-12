@@ -455,7 +455,7 @@ void _add_video_stream(
 
   validateDeviceInterface(std::string(device), std::string(device_variant));
 
-  videoStreamOptions.device = StableDevice(std::string(device));
+  videoStreamOptions.device = torch::Device(std::string(device));
   videoStreamOptions.deviceVariant = device_variant;
 
   std::vector<Transform*> transforms =

@@ -4,6 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+#include <torch/types.h>
 #include <mutex>
 
 #include "CUDACommon.h"
@@ -19,7 +20,7 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-NVDECCache& NVDECCache::getCache(const StableDevice& device) {
+NVDECCache& NVDECCache::getCache(const torch::Device& device) {
   static NVDECCache cacheInstances[MAX_CUDA_GPUS];
   return cacheInstances[getDeviceIndex(device)];
 }

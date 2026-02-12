@@ -18,8 +18,10 @@ namespace facebook::torchcodec {
 namespace {
 
 static bool g_cuda = registerDeviceInterface(
-    DeviceInterfaceKey(kStableCUDA),
-    [](const StableDevice& device) { return new CudaDeviceInterface(device); });
+    DeviceInterfaceKey(torch::kCUDA),
+    [](const torch::Device& device) {
+      return new CudaDeviceInterface(device);
+    });
 
 // We reuse cuda contexts across VideoDeoder instances. This is because
 // creating a cuda context is expensive. The cache mechanism is as follows:
@@ -48,7 +50,7 @@ int getFlagsAVHardwareDeviceContextCreate() {
 #endif
 }
 
-UniqueAVBufferRef getHardwareDeviceContext(const StableDevice& device) {
+UniqueAVBufferRef getHardwareDeviceContext(const torch::Device& device) {
   enum AVHWDeviceType type = av_hwdevice_find_type_by_name("cuda");
   STD_TORCH_CHECK(type != AV_HWDEVICE_TYPE_NONE, "Failed to find cuda device");
   int deviceIndex = getDeviceIndex(device);
@@ -59,8 +61,7 @@ UniqueAVBufferRef getHardwareDeviceContext(const StableDevice& device) {
   }
 
   // Create hardware device context
-  c10::cuda::CUDAGuard deviceGuard(
-      c10::Device(static_cast<c10::DeviceType>(device.type()), device.index()));
+  c10::cuda::CUDAGuard deviceGuard(device);
   // We set the device because we may be called from a different thread than
   // the one that initialized the cuda context.
   STD_TORCH_CHECK(
@@ -91,11 +92,11 @@ UniqueAVBufferRef getHardwareDeviceContext(const StableDevice& device) {
 
 } // namespace
 
-CudaDeviceInterface::CudaDeviceInterface(const StableDevice& device)
+CudaDeviceInterface::CudaDeviceInterface(const torch::Device& device)
     : DeviceInterface(device) {
   STD_TORCH_CHECK(g_cuda, "CudaDeviceInterface was not registered!");
   STD_TORCH_CHECK(
-      device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
+      device_.type() == torch::kCUDA, "Unsupported device: ", device_.str());
 
   initializeCudaContextWithPytorch(device_);
 
@@ -120,7 +121,7 @@ void CudaDeviceInterface::initialize(
   timeBase_ = avStream->time_base;
 
   // TODO: Ideally, we should keep all interface implementations independent.
-  cpuInterface_ = createDeviceInterface(kStableCPU);
+  cpuInterface_ = createDeviceInterface(torch::kCPU);
   STD_TORCH_CHECK(
       cpuInterface_ != nullptr, "Failed to create CPU device interface");
   cpuInterface_->initialize(avStream, avFormatCtx, codecContext);
@@ -284,8 +285,7 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
       preAllocatedOutputTensor.value().copy_(cpuFrameOutput.data);
       frameOutput.data = preAllocatedOutputTensor.value();
     } else {
-      frameOutput.data = cpuFrameOutput.data.to(torch::Device(
-          static_cast<c10::DeviceType>(device_.type()), device_.index()));
+      frameOutput.data = cpuFrameOutput.data.to(device_);
     }
 
     usingCPUFallback_ = true;

@@ -11,9 +11,9 @@
 #include <mutex>
 
 #include <cuda.h>
+#include <torch/types.h>
 
 #include "NVCUVIDRuntimeLoader.h"
-#include "StableABICompat.h"
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
 
@@ -50,7 +50,7 @@ struct CacheEntry {
 // which ones are currently in use.
 class NVDECCache {
  public:
-  static NVDECCache& getCache(const StableDevice& device);
+  static NVDECCache& getCache(const torch::Device& device);
 
   // Get decoder from cache - returns nullptr if none available.
   // The returned decoder is marked as "in use" until returned via

@@ -313,7 +313,7 @@ class SingleStreamDecoder {
   void addStream(
       int streamIndex,
       AVMediaType mediaType,
-      const StableDevice& device = StableDevice(kStableCPU),
+      const torch::Device& device = torch::kCPU,
       const std::string_view deviceVariant = "ffmpeg",
       std::optional<int> ffmpegThreadCount = std::nullopt);
 

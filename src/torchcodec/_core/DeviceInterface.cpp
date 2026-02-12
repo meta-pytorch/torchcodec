@@ -29,20 +29,6 @@ std::string getDeviceType(const std::string& device) {
   return device.substr(0, pos);
 }
 
-// Parse device type from string (e.g., "cpu", "cuda")
-// TODO_STABLE_ABI: we might need to support more device types, i.e. those from
-// https://github.com/pytorch/pytorch/blob/main/torch/headeronly/core/DeviceType.h
-// Ideally we'd remove this helper?
-StableDeviceType parseDeviceType(const std::string& deviceType) {
-  if (deviceType == "cpu") {
-    return kStableCPU;
-  } else if (deviceType == "cuda") {
-    return kStableCUDA;
-  } else {
-    STD_TORCH_CHECK(false, "Unknown device type: ", deviceType);
-  }
-}
-
 } // namespace
 
 bool registerDeviceInterface(
@@ -54,7 +40,7 @@ bool registerDeviceInterface(
   STD_TORCH_CHECK(
       deviceMap.find(key) == deviceMap.end(),
       "Device interface already registered for device type ",
-      static_cast<int>(key.deviceType),
+      key.deviceType,
       " variant '",
       key.variant,
       "'");
@@ -72,7 +58,7 @@ void validateDeviceInterface(
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
   // Find device interface that matches device type and variant
-  StableDeviceType deviceTypeEnum = parseDeviceType(deviceType);
+  torch::DeviceType deviceTypeEnum = torch::Device(deviceType).type();
 
   auto deviceInterface = std::find_if(
       deviceMap.begin(),
@@ -94,7 +80,7 @@ void validateDeviceInterface(
 }
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
-    const StableDevice& device,
+    const torch::Device& device,
     const std::string_view variant) {
   DeviceInterfaceKey key(device.type(), variant);
   std::scoped_lock lock(g_interface_mutex);
@@ -108,7 +94,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
   STD_TORCH_CHECK(
       false,
       "No device interface found for device type: ",
-      static_cast<int>(device.type()),
+      device.type(),
       " variant: '",
       variant,
       "'");

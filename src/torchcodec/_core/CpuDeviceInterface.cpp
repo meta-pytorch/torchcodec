@@ -11,16 +11,16 @@ namespace facebook::torchcodec {
 namespace {
 
 static bool g_cpu = registerDeviceInterface(
-    DeviceInterfaceKey(kStableCPU),
-    [](const StableDevice& device) { return new CpuDeviceInterface(device); });
+    DeviceInterfaceKey(torch::kCPU),
+    [](const torch::Device& device) { return new CpuDeviceInterface(device); });
 
 } // namespace
 
-CpuDeviceInterface::CpuDeviceInterface(const StableDevice& device)
+CpuDeviceInterface::CpuDeviceInterface(const torch::Device& device)
     : DeviceInterface(device) {
   STD_TORCH_CHECK(g_cpu, "CpuDeviceInterface was not registered!");
   STD_TORCH_CHECK(
-      device_.type() == kStableCPU, "Unsupported device: must be CPU");
+      device_.type() == torch::kCPU, "Unsupported device: ", device_.str());
 }
 
 void CpuDeviceInterface::initialize(
@@ -198,7 +198,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
     outputTensor = preAllocatedOutputTensor.value_or(
-        allocateEmptyHWCTensor(outputDims, kStableCPU));
+        allocateEmptyHWCTensor(outputDims, torch::kCPU));
 
     int resultHeight =
         convertAVFrameToTensorUsingSwScale(avFrame, outputTensor, outputDims);
@@ -296,7 +296,7 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
 
   torch::Tensor colorConvertedTensor = needsResize
       ? allocateEmptyHWCTensor(
-            FrameDims(avFrame->height, avFrame->width), kStableCPU)
+            FrameDims(avFrame->height, avFrame->width), torch::kCPU)
       : outputTensor;
 
   uint8_t* colorConvertedPointers[4] = {

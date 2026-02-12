@@ -426,7 +426,7 @@ torch::Tensor SingleStreamDecoder::getKeyFrameIndices() {
 void SingleStreamDecoder::addStream(
     int streamIndex,
     AVMediaType mediaType,
-    const StableDevice& device,
+    const torch::Device& device,
     const std::string_view deviceVariant,
     std::optional<int> ffmpegThreadCount) {
   STD_TORCH_CHECK(
@@ -522,7 +522,7 @@ void SingleStreamDecoder::addVideoStream(
     const VideoStreamOptions& videoStreamOptions,
     std::optional<FrameMappings> customFrameMappings) {
   STD_TORCH_CHECK(
-      transforms.empty() || videoStreamOptions.device == kStableCPU,
+      transforms.empty() || videoStreamOptions.device == torch::kCPU,
       " Transforms are only supported for CPU devices.");
 
   addStream(
