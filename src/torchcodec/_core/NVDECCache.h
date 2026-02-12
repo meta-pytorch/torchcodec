@@ -35,16 +35,30 @@ struct CUvideoDecoderDeleter {
 using UniqueCUvideodecoder =
     std::unique_ptr<CUvideodecoder, CUvideoDecoderDeleter>;
 
+// Cache entry that holds a decoder and tracks whether it's currently in use.
+struct CacheEntry {
+  UniqueCUvideodecoder decoder;
+  bool inUse;
+
+  CacheEntry(UniqueCUvideodecoder dec, bool used)
+      : decoder(std::move(dec)), inUse(used) {}
+};
+
 // A per-device cache for NVDEC decoders. There is one instance of this class
 // per GPU device, and it is accessed through the static getCache() method.
+// The cache supports multiple decoders with the same parameters, tracking
+// which ones are currently in use.
 class NVDECCache {
  public:
   static NVDECCache& getCache(const StableDevice& device);
 
-  // Get decoder from cache - returns nullptr if none available
+  // Get decoder from cache - returns nullptr if none available.
+  // The returned decoder is marked as "in use" until returned via
+  // returnDecoder.
   UniqueCUvideodecoder getDecoder(CUVIDEOFORMAT* videoFormat);
 
-  // Return decoder to cache - returns true if added to cache
+  // Return decoder to cache - marks the decoder as not in use.
+  // Returns true if the decoder was successfully returned to cache.
   bool returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder);
 
  private:
@@ -92,7 +106,7 @@ class NVDECCache {
   NVDECCache() = default;
   ~NVDECCache() = default;
 
-  std::map<CacheKey, UniqueCUvideodecoder> cache_;
+  std::multimap<CacheKey, CacheEntry> cache_;
   std::mutex cacheLock_;
 
   // Max number of cached decoders, per device
