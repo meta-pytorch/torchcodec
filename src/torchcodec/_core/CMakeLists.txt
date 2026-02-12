@@ -235,6 +235,34 @@ function(make_torchcodec_libraries
         )
     endif()
 
+    # We disable the "attributes" warning in the core library.
+    # This warning is triggered when, e.g., a class has "default" (i.e.
+    # public) visibility but a member of that class has "hidden" visibility.
+    # We have such a pattern in the core library with the VideoStreamOptions
+    # class and its StableDevice field:
+    # - VideoStreamOptions has "default" (public) visibility because it is part
+    #   of the core library, and the core library must have public symbols
+    #   because it is depended on by other libraries (the pybind ops library and
+    #   the custom ops library)
+    # - the StableDevice field has "hidden" visibility because this is how
+    #   torch::stable exports it.
+    # This creates this mismatch where a class has "higher" visibility than its
+    # member, hence the warning.
+    #
+    # We choose to silence this warning here. A possibly better solution would
+    # be to have a more fine-grained visibility control where each
+    # class/function would be "hidden" unless explicitly marked as public, e.g.
+    # through a TORCHCODEC_API annotation. In this case, it is likely that
+    # VideoStreamOptions could be in fact "hidden" as well.
+    # TODO_STABLE_ABI: do that!
+    if (LINUX)
+        target_compile_options(
+            ${core_library_name}
+            PRIVATE
+            "-Wno-attributes"
+        )
+    endif()
+
     # The value we use here must match _PYBIND_OPS_MODULE_NAME in
     # torchcodec/_internally_replaced_utils.py. If the values do not
     # match, then we will be unable to import the C++ shared library as a

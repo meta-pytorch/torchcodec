@@ -46,7 +46,7 @@ struct FrameBatchOutput {
   FrameBatchOutput(
       int64_t numFrames,
       const FrameDims& outputDims,
-      const torch::Device& device);
+      const StableDevice& device);
 };
 
 struct AudioFramesOutput {
@@ -66,7 +66,7 @@ struct AudioFramesOutput {
 // maybePermuteHWC2CHW().
 torch::Tensor allocateEmptyHWCTensor(
     const FrameDims& frameDims,
-    const torch::Device& device,
+    const StableDevice& device,
     std::optional<int> numFrames = std::nullopt);
 
 } // namespace facebook::torchcodec

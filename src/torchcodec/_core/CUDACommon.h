@@ -25,27 +25,27 @@ namespace facebook::torchcodec {
 // https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
 constexpr int MAX_CUDA_GPUS = 128;
 
-void initializeCudaContextWithPytorch(const torch::Device& device);
+void initializeCudaContextWithPytorch(const StableDevice& device);
 
 // Unique pointer type for NPP stream context
 using UniqueNppContext = std::unique_ptr<NppStreamContext>;
 
 torch::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
-    const torch::Device& device,
+    const StableDevice& device,
     const UniqueNppContext& nppCtx,
     at::cuda::CUDAStream nvdecStream,
     std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
-UniqueNppContext getNppStreamContext(const torch::Device& device);
+UniqueNppContext getNppStreamContext(const StableDevice& device);
 void returnNppStreamContextToCache(
-    const torch::Device& device,
+    const StableDevice& device,
     UniqueNppContext nppCtx);
 
 void validatePreAllocatedTensorShape(
     const std::optional<torch::Tensor>& preAllocatedOutputTensor,
     const UniqueAVFrame& avFrame);
 
-int getDeviceIndex(const torch::Device& device);
+int getDeviceIndex(const StableDevice& device);
 
 } // namespace facebook::torchcodec
