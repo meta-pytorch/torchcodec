@@ -1147,12 +1147,14 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
 
   STD_TORCH_CHECK(
       frames.size() > 0 && firstFramePtsSeconds.has_value(),
-      "No audio frames were decoded. This is probably because start_seconds is too high(" +
-          std::to_string(startSeconds) + "), or because stop_seconds(" +
-          (stopSecondsOptional.has_value()
-               ? std::to_string(stopSecondsOptional.value())
-               : "nullopt") +
-          ") is too low.");
+      "No audio frames were decoded. ",
+      "This is probably because start_seconds is too high(",
+      startSeconds,
+      "),",
+      "or because stop_seconds(",
+      stopSecondsOptional.has_value() ? std::to_string(*stopSecondsOptional)
+                                      : "nullopt",
+      ") is too low.");
 
   return AudioFramesOutput{stableCat(frames, 1), *firstFramePtsSeconds};
 }
@@ -1437,9 +1439,7 @@ StableTensor SingleStreamDecoder::maybePermuteHWC2CHW(StableTensor& hwcTensor) {
     return stablePermute(hwcTensor, {0, 3, 1, 2});
   } else {
     STD_TORCH_CHECK(
-        false,
-        "Expected tensor with 3 or 4 dimensions, got " +
-            std::to_string(numDimensions));
+        false, "Expected tensor with 3 or 4 dimensions, got ", numDimensions);
   }
 }
 

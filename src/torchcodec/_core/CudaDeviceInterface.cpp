@@ -82,10 +82,10 @@ UniqueAVBufferRef getHardwareDeviceContext(const StableDevice& device) {
     /* clang-format off */
     STD_TORCH_CHECK(
         false,
-        "Failed to create specified HW device. This typically happens when "
-        "your installed FFmpeg doesn't support CUDA (see "
-        "https://github.com/pytorch/torchcodec#installing-cuda-enabled-torchcodec"
-        "). FFmpeg error: " + getFFMPEGErrorStringFromErrorCode(err));
+        "Failed to create specified HW device. This typically happens when ",
+        "your installed FFmpeg doesn't support CUDA (see ",
+        "https://github.com/pytorch/torchcodec#installing-cuda-enabled-torchcodec",
+        "). FFmpeg error: ", getFFMPEGErrorStringFromErrorCode(err));
     /* clang-format on */
   }
 
@@ -234,11 +234,14 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
   STD_TORCH_CHECK(
       (filteredAVFrame->width == nv12ConversionContext_->outputWidth) &&
           (filteredAVFrame->height == nv12ConversionContext_->outputHeight),
-      "Expected frame from filter graph of " +
-          std::to_string(nv12ConversionContext_->outputWidth) + "x" +
-          std::to_string(nv12ConversionContext_->outputHeight) + ", got " +
-          std::to_string(filteredAVFrame->width) + "x" +
-          std::to_string(filteredAVFrame->height));
+      "Expected frame from filter graph of ",
+      nv12ConversionContext_->outputWidth,
+      "x",
+      nv12ConversionContext_->outputHeight,
+      ", got ",
+      filteredAVFrame->width,
+      "x",
+      filteredAVFrame->height);
 
   return filteredAVFrame;
 }
@@ -511,8 +514,8 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
     AVCodecContext* codecContext) {
   STD_TORCH_CHECK(
       tensor.dim() == 3 && tensor.size(0) == 3,
-      "Expected 3D RGB tensor (CHW format), got shape with dim=" +
-          std::to_string(tensor.dim()));
+      "Expected 3D RGB tensor (CHW format), got shape with dim=",
+      tensor.dim());
   STD_TORCH_CHECK(
       tensor.device().type() == kStableCUDA, "Expected tensor on CUDA device");
 
@@ -534,8 +537,8 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
       av_hwframe_get_buffer(codecContext->hw_frames_ctx, avFrame.get(), 0);
   STD_TORCH_CHECK(
       ret >= 0,
-      "Failed to allocate hardware frame: " +
-          getFFMPEGErrorStringFromErrorCode(ret));
+      "Failed to allocate hardware frame: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
 
   STD_TORCH_CHECK(
       avFrame != nullptr && avFrame->data[0] != nullptr,
@@ -559,9 +562,10 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
 
   STD_TORCH_CHECK(
       status == NPP_SUCCESS,
-      std::string("Failed to convert RGB to ") +
-          av_get_pix_fmt_name(DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT) +
-          ": NPP error code " + std::to_string(status));
+      "Failed to convert RGB to ",
+      av_get_pix_fmt_name(DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT),
+      ": NPP error code ",
+      status);
 
   avFrame->colorspace = codecContext->colorspace;
   avFrame->color_range = codecContext->color_range;

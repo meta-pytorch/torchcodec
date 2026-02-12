@@ -18,9 +18,10 @@ int read(void* opaque, uint8_t* buf, int buf_size) {
   auto tensorContext = static_cast<detail::TensorContext*>(opaque);
   STD_TORCH_CHECK(
       tensorContext->current_pos <= tensorContext->data.numel(),
-      "Tried to read outside of the buffer: current_pos=" +
-          std::to_string(tensorContext->current_pos) +
-          ", size=" + std::to_string(tensorContext->data.numel()));
+      "Tried to read outside of the buffer: current_pos=",
+      tensorContext->current_pos,
+      ", size=",
+      tensorContext->data.numel());
 
   int64_t numBytesRead = std::min(
       static_cast<int64_t>(buf_size),
@@ -28,10 +29,12 @@ int read(void* opaque, uint8_t* buf, int buf_size) {
 
   STD_TORCH_CHECK(
       numBytesRead >= 0,
-      "Tried to read negative bytes: numBytesRead=" +
-          std::to_string(numBytesRead) +
-          ", size=" + std::to_string(tensorContext->data.numel()) +
-          ", current_pos=" + std::to_string(tensorContext->current_pos));
+      "Tried to read negative bytes: numBytesRead=",
+      numBytesRead,
+      ", size=",
+      tensorContext->data.numel(),
+      ", current_pos=",
+      tensorContext->current_pos);
 
   if (numBytesRead == 0) {
     return AVERROR_EOF;
@@ -54,9 +57,9 @@ int write(void* opaque, const uint8_t* buf, int buf_size) {
   if (tensorContext->current_pos + bufSize > tensorContext->data.numel()) {
     STD_TORCH_CHECK(
         tensorContext->data.numel() * 2 <= MAX_TENSOR_SIZE,
-        "We tried to allocate an output encoded tensor larger than " +
-            std::to_string(MAX_TENSOR_SIZE) +
-            " bytes. If you think this should be supported, please report.");
+        "We tried to allocate an output encoded tensor larger than ",
+        MAX_TENSOR_SIZE,
+        " bytes. If you think this should be supported, please report.");
 
     // We double the size of the outpout tensor. Calling stableCat() may not be
     // the most efficient, but it's simple.
