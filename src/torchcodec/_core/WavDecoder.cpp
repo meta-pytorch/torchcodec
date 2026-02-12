@@ -25,6 +25,15 @@ bool checkFourCC(const uint8_t* data, const char* expected) {
   return std::memcmp(data, expected, 4) == 0;
 }
 
+void readExact(WavReader* reader, void* buffer, int64_t size) {
+  int64_t bytesRead = reader->read(buffer, size);
+  if (bytesRead != size) {
+    throw std::runtime_error(
+        "WAV: unexpected end of data (expected " + std::to_string(size) +
+        " bytes, got " + std::to_string(bytesRead) + ")");
+  }
+}
+
 } // namespace
 
 // WavFileReader implementation
@@ -104,96 +113,91 @@ bool WavDecoder::isWavFile(const void* data, size_t size) {
 }
 
 void WavDecoder::parseHeader() {
-  // Read enough for header parsing (typical WAV headers are < 100 bytes)
-  // TODO: source?
-  constexpr int64_t headerBufferSize = 256;
-  std::vector<uint8_t> buffer(headerBufferSize);
-
   reader_->seek(0);
-  int64_t bytesRead = reader_->read(buffer.data(), headerBufferSize);
-  if (bytesRead < 44) {
-    throw std::runtime_error("WAV data too small to contain valid header");
-  }
 
-  const uint8_t* data = buffer.data();
+  // Read and verify RIFF header (12 bytes: "RIFF" + fileSize + "WAVE")
+  uint8_t riffHeader[12];
+  readExact(reader_.get(), riffHeader, 12);
 
-  // Verify RIFF header
-  if (!checkFourCC(data, "RIFF")) {
+  if (!checkFourCC(riffHeader, "RIFF")) {
     throw std::runtime_error("Missing RIFF header");
   }
-
-  // Verify WAVE format
-  if (!checkFourCC(data + 8, "WAVE")) {
+  if (!checkFourCC(riffHeader + 8, "WAVE")) {
     throw std::runtime_error("Missing WAVE format identifier");
   }
 
-  // Find and parse fmt chunk
-  int64_t offset = 12;
+  // Find and parse fmt chunk by reading chunk headers incrementally
+  int64_t pos = 12;
   bool foundFmt = false;
 
-  while (offset + 8 <= bytesRead) {
-    if (checkFourCC(data + offset, "fmt ")) {
-      uint32_t fmtSize = readLittleEndian<uint32_t>(data + offset + 4);
+  while (true) {
+    uint8_t chunkHeader[8];
+    readExact(reader_.get(), chunkHeader, 8);
 
-      if (offset + 8 + fmtSize > bytesRead) {
-        throw std::runtime_error("fmt chunk extends beyond buffer");
-      }
+    uint32_t chunkSize = readLittleEndian<uint32_t>(chunkHeader + 4);
 
-      if (fmtSize < 16) {
+    if (checkFourCC(chunkHeader, "fmt ")) {
+      if (chunkSize < 16) {
         throw std::runtime_error("fmt chunk too small");
       }
 
-      const uint8_t* fmtData = data + offset + 8;
-      // TODO: explain https://en.wikipedia.org/wiki/WAV#WAV_file_header
-      header_.audioFormat = readLittleEndian<uint16_t>(fmtData);
-      header_.numChannels = readLittleEndian<uint16_t>(fmtData + 2);
-      header_.sampleRate = readLittleEndian<uint32_t>(fmtData + 4);
-      header_.byteRate = readLittleEndian<uint32_t>(fmtData + 8);
-      header_.blockAlign = readLittleEndian<uint16_t>(fmtData + 12);
-      header_.bitsPerSample = readLittleEndian<uint16_t>(fmtData + 14);
+      std::vector<uint8_t> fmtData(chunkSize);
+      readExact(reader_.get(), fmtData.data(), chunkSize);
+
+      header_.audioFormat = readLittleEndian<uint16_t>(fmtData.data());
+      header_.numChannels = readLittleEndian<uint16_t>(fmtData.data() + 2);
+      header_.sampleRate = readLittleEndian<uint32_t>(fmtData.data() + 4);
+      header_.byteRate = readLittleEndian<uint32_t>(fmtData.data() + 8);
+      header_.blockAlign = readLittleEndian<uint16_t>(fmtData.data() + 12);
+      header_.bitsPerSample = readLittleEndian<uint16_t>(fmtData.data() + 14);
 
       // Parse extended format fields for WAVE_FORMAT_EXTENSIBLE
       if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
         // Extended format requires at least 40 bytes total (16 base + 2 cbSize
         // + 22 extension)
-        if (fmtSize < 40) {
+        if (chunkSize < 40) {
           throw std::runtime_error(
               "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
         }
 
-        header_.validBitsPerSample = readLittleEndian<uint16_t>(fmtData + 18);
-        header_.channelMask = readLittleEndian<uint32_t>(fmtData + 20);
+        header_.validBitsPerSample =
+            readLittleEndian<uint16_t>(fmtData.data() + 18);
+        header_.channelMask = readLittleEndian<uint32_t>(fmtData.data() + 20);
         // SubFormat GUID starts at offset 24, first 2 bytes are the format code
-        header_.subFormat = readLittleEndian<uint16_t>(fmtData + 24);
+        header_.subFormat = readLittleEndian<uint16_t>(fmtData.data() + 24);
       }
 
       foundFmt = true;
-      offset += 8 + fmtSize;
+      pos += 8 + chunkSize;
       break;
     }
-    // Skip unknown chunks
-    uint32_t chunkSize = readLittleEndian<uint32_t>(data + offset + 4);
-    offset += 8 + chunkSize;
+
+    // Skip unknown chunk
+    pos += 8 + chunkSize;
+    reader_->seek(pos);
   }
 
   if (!foundFmt) {
     throw std::runtime_error("fmt chunk not found");
   }
 
-  while (offset + 8 <= bytesRead) {
-    if (checkFourCC(data + offset, "data")) {
-      // Parse data chunk
-      header_.dataSize = readLittleEndian<uint32_t>(data + offset + 4);
-      header_.dataOffset = offset + 8;
+  // Find data chunk
+  while (true) {
+    uint8_t chunkHeader[8];
+    readExact(reader_.get(), chunkHeader, 8);
+
+    uint32_t chunkSize = readLittleEndian<uint32_t>(chunkHeader + 4);
+
+    if (checkFourCC(chunkHeader, "data")) {
+      header_.dataSize = chunkSize;
+      header_.dataOffset = pos + 8;
       return;
     }
 
     // Skip this chunk
-    uint32_t chunkSize = readLittleEndian<uint32_t>(data + offset + 4);
-    offset += 8 + chunkSize;
+    pos += 8 + chunkSize;
+    reader_->seek(pos);
   }
-
-  throw std::runtime_error("data chunk not found");
 }
 
 bool WavDecoder::isSupported() const {

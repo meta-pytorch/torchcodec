@@ -144,18 +144,24 @@ def _is_uncompressed_wav(
             metadata_json = core.get_wav_metadata_from_tensor(
                 source, stream_index, sample_rate, num_channels
             )
-        else:
-            # File-like objects - read all data to get full metadata
+        elif isinstance(source, (io.RawIOBase, io.BufferedReader)):
+            # File-like objects - only reads the header, not the entire file
             current_pos = source.seek(0, io.SEEK_CUR)
             source.seek(0)
-            data = source.read()
-            source.seek(current_pos)
-            if len(data) < 12:
-                return None
-            buffer = torch.frombuffer(data, dtype=torch.uint8)
-            metadata_json = core.get_wav_metadata_from_tensor(
-                buffer, stream_index, sample_rate, num_channels
+            metadata_json = core.get_wav_metadata_from_file_like(
+                source, stream_index, sample_rate, num_channels
             )
+            source.seek(current_pos)
+        elif hasattr(source, "read") and hasattr(source, "seek"):
+            # Duck-typed file-like objects
+            current_pos = source.seek(0, io.SEEK_CUR)
+            source.seek(0)
+            metadata_json = core.get_wav_metadata_from_file_like(
+                source, stream_index, sample_rate, num_channels
+            )
+            source.seek(current_pos)
+        else:
+            return None
 
         if not metadata_json:
             return None

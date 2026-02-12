@@ -90,6 +90,8 @@ TORCH_LIBRARY(torchcodec_ns, m) {
       "get_wav_metadata_from_file(str filename, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> str");
   m.def(
       "get_wav_metadata_from_tensor(Tensor data, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> str");
+  m.def(
+      "_get_wav_metadata_from_file_like(int ctx, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> str");
 }
 
 namespace {
@@ -357,11 +359,37 @@ std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
   return transforms;
 }
 
-} // namespace
+// WavReader implementation that wraps AVIOFileLikeContext for reading WAV
+// headers from Python file-like objects.
+class WavAVIOReader : public WavReader {
+ public:
+  explicit WavAVIOReader(std::unique_ptr<AVIOFileLikeContext> ctx)
+      : ctx_(std::move(ctx)) {}
 
-// ==============================
-// Implementations for the operators
-// ==============================
+  int64_t read(void* buffer, int64_t size) override {
+    AVIOContext* avio = ctx_->getAVIOContext();
+    int ret =
+        avio->read_packet(avio->opaque, static_cast<uint8_t*>(buffer), size);
+    if (ret <= 0) {
+      return 0;
+    }
+    return static_cast<int64_t>(ret);
+  }
+
+  int64_t seek(int64_t position) override {
+    AVIOContext* avio = ctx_->getAVIOContext();
+    int64_t ret = avio->seek(avio->opaque, position, SEEK_SET);
+    if (ret < 0) {
+      return -1;
+    }
+    return ret;
+  }
+
+ private:
+  std::unique_ptr<AVIOFileLikeContext> ctx_;
+};
+
+} // namespace
 
 // Create a SingleStreamDecoder from file and wrap the pointer in a tensor.
 torch::Tensor create_from_file(
@@ -1241,6 +1269,28 @@ std::string get_wav_metadata_from_tensor(
   return buildWavMetadataJson(decoder);
 }
 
+std::string _get_wav_metadata_from_file_like(
+    int64_t file_like_context,
+    std::optional<int64_t> stream_index,
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) {
+  auto* fileLikeContext =
+      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+  TORCH_CHECK(
+      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
+
+  auto reader = std::make_unique<WavAVIOReader>(
+      std::unique_ptr<AVIOFileLikeContext>(fileLikeContext));
+  WavDecoder decoder(std::move(reader));
+
+  if (!decoder.isSupported() ||
+      !decoder.isCompatible(stream_index, sample_rate, num_channels)) {
+    return "";
+  }
+
+  return buildWavMetadataJson(decoder);
+}
+
 TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", &create_from_file);
   m.impl("create_from_tensor", &create_from_tensor);
@@ -1255,6 +1305,7 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("_decode_wav_from_file_like", &_decode_wav_from_file_like);
   m.impl("get_wav_metadata_from_file", &get_wav_metadata_from_file);
   m.impl("get_wav_metadata_from_tensor", &get_wav_metadata_from_tensor);
+  m.impl("_get_wav_metadata_from_file_like", &_get_wav_metadata_from_file_like);
 }
 
 TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

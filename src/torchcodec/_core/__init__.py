@@ -46,6 +46,7 @@ from .ops import (
     get_json_metadata,
     get_next_frame,
     get_wav_metadata_from_file,
+    get_wav_metadata_from_file_like,
     get_wav_metadata_from_tensor,
     scan_all_streams_to_update_metadata,
     seek_to_pts,

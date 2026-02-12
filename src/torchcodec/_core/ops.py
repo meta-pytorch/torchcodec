@@ -183,6 +183,9 @@ get_wav_metadata_from_file = torch._dynamo.disallow_in_graph(
 get_wav_metadata_from_tensor = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.get_wav_metadata_from_tensor.default
 )
+_get_wav_metadata_from_file_like = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns._get_wav_metadata_from_file_like.default
+)
 
 
 # =============================
@@ -281,6 +284,21 @@ def encode_video_to_file_like(
         crf,
         preset,
         extra_options,
+    )
+
+
+def get_wav_metadata_from_file_like(
+    file_like: io.RawIOBase | io.BufferedReader,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> str:
+    assert _pybind_ops is not None
+    return _get_wav_metadata_from_file_like(
+        _pybind_ops.create_file_like_context(file_like, False),
+        stream_index,
+        sample_rate,
+        num_channels,
     )
 
 
@@ -664,6 +682,16 @@ def get_wav_metadata_from_file_abstract(
 @register_fake("torchcodec_ns::get_wav_metadata_from_tensor")
 def get_wav_metadata_from_tensor_abstract(
     data: torch.Tensor,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> str:
+    return ""
+
+
+@register_fake("torchcodec_ns::_get_wav_metadata_from_file_like")
+def _get_wav_metadata_from_file_like_abstract(
+    ctx: int,
     stream_index: int | None = None,
     sample_rate: int | None = None,
     num_channels: int | None = None,

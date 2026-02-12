@@ -2330,3 +2330,19 @@ class TestAudioDecoder:
             native_samples.data, ffmpeg_samples.data, atol=0, rtol=0
         )
         assert native_samples.sample_rate == ffmpeg_samples.sample_rate
+
+    @pytest.mark.parametrize(
+        "asset", (SINE_MONO_S16, SINE_MONO_S32, SINE_16_CHANNEL_S16)
+    )
+    def test_wav_file_like(self, asset):
+        ffmpeg_decoder = AudioDecoder(asset.path, use_wav_decoder=False)
+        ffmpeg_samples = ffmpeg_decoder.get_all_samples()
+
+        with open(asset.path, "rb") as f:
+            file_like_decoder = AudioDecoder(f, use_wav_decoder=True)
+            file_like_samples = file_like_decoder.get_all_samples()
+
+        torch.testing.assert_close(
+            file_like_samples.data, ffmpeg_samples.data, atol=0, rtol=0
+        )
+        assert file_like_samples.sample_rate == ffmpeg_samples.sample_rate
