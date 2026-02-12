@@ -1133,40 +1133,13 @@ OpsWavOutput _decode_wav_from_file_like(
     int64_t file_like_context,
     double start_seconds,
     std::optional<double> stop_seconds) {
-  // Get the file-like object and read all data into a tensor
-  auto fileLikeContext =
+  auto* fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
   TORCH_CHECK(
       fileLikeContext != nullptr, "file_like_context must be a valid pointer");
 
-  // Read all data from file-like object
-  // First, try to get size by seeking to end
-  fileLikeContext->getAVIOContext()->seek(
-      fileLikeContext->getAVIOContext(), 0, SEEK_END);
-  int64_t totalSize = fileLikeContext->getAVIOContext()->pos;
-  fileLikeContext->getAVIOContext()->seek(
-      fileLikeContext->getAVIOContext(), 0, SEEK_SET);
-
-  std::vector<uint8_t> buffer(totalSize);
-  int64_t bytesRead = 0;
-  while (bytesRead < totalSize) {
-    int ret = fileLikeContext->getAVIOContext()->read_packet(
-        fileLikeContext->getAVIOContext()->opaque,
-        buffer.data() + bytesRead,
-        totalSize - bytesRead);
-    if (ret <= 0) {
-      break;
-    }
-    bytesRead += ret;
-  }
-
-  // Create tensor from buffer
-  torch::Tensor tensorData =
-      torch::from_blob(
-          buffer.data(), {static_cast<int64_t>(buffer.size())}, torch::kUInt8)
-          .clone();
-
-  auto reader = std::make_unique<WavTensorReader>(tensorData);
+  auto reader = std::make_unique<WavAVIOReader>(
+      std::unique_ptr<AVIOFileLikeContext>(fileLikeContext));
   WavDecoder decoder(std::move(reader));
 
   TORCH_CHECK(

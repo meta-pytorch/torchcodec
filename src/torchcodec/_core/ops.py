@@ -302,6 +302,19 @@ def get_wav_metadata_from_file_like(
     )
 
 
+def decode_wav_from_file_like(
+    file_like: io.RawIOBase | io.BufferedReader,
+    start_seconds: float = 0.0,
+    stop_seconds: float | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    assert _pybind_ops is not None
+    return _decode_wav_from_file_like(
+        _pybind_ops.create_file_like_context(file_like, False),
+        start_seconds,
+        stop_seconds,
+    )
+
+
 def get_frames_at_indices(
     decoder: torch.Tensor, *, frame_indices: torch.Tensor | list[int]
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

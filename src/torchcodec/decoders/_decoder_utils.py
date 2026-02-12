@@ -206,14 +206,11 @@ def decode_wav(
         return core.decode_wav_from_tensor(buffer, start_seconds, stop_seconds)
     elif isinstance(source, Tensor):
         return core.decode_wav_from_tensor(source, start_seconds, stop_seconds)
-    elif hasattr(source, "read") and hasattr(source, "seek"):
-        # File-like object - read all data and pass to tensor version
+    elif isinstance(source, (io.RawIOBase, io.BufferedReader)) or (
+        hasattr(source, "read") and hasattr(source, "seek")
+    ):
         source.seek(0)
-        data = source.read()
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=UserWarning)
-            buffer = torch.frombuffer(data, dtype=torch.uint8)
-        return core.decode_wav_from_tensor(buffer, start_seconds, stop_seconds)
+        return core.decode_wav_from_file_like(source, start_seconds, stop_seconds)
     else:
         raise TypeError(
             f"Unsupported source type: {type(source)}. "
