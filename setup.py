@@ -112,6 +112,20 @@ class CMakeBuild(build_ext):
         torch_dir = Path(torch.utils.cmake_prefix_path) / "Torch"
         cmake_build_type = os.environ.get("CMAKE_BUILD_TYPE", "Release")
         enable_cuda = os.environ.get("ENABLE_CUDA", "")
+
+        if use_nvtx := os.environ.get("USE_NVTX", ""):
+            assert enable_cuda, "NVTX support requires CUDA. Please set ENABLE_CUDA=1."
+            try:
+                # This should be available automatically with torch.
+                import nvidia.nvtx
+
+                nvtx_include_dir = Path(nvidia.nvtx.__file__).parent / "include"
+                assert (nvtx_include_dir / "nvtx3 " / "nvToolsExt.h").exists()
+            except (ImportError, AssertionError):
+                print("Can't find NVTX headers automatically", flush=True)
+        else:
+            nvtx_include_dir = ""
+
         torchcodec_disable_compile_warning_as_error = os.environ.get(
             "TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR", "OFF"
         )
@@ -126,6 +140,8 @@ class CMakeBuild(build_ext):
             f"-DCMAKE_BUILD_TYPE={cmake_build_type}",
             f"-DPYTHON_VERSION={python_version.major}.{python_version.minor}",
             f"-DENABLE_CUDA={enable_cuda}",
+            f"-DUSE_NVTX={use_nvtx}",
+            f"-DNVTX_INCLUDE_DIR={nvtx_include_dir}",
             f"-DTORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR={torchcodec_disable_compile_warning_as_error}",
             f"-DTORCHCODEC_DISABLE_HOMEBREW_RPATH={torchcodec_disable_homebrew_rpath}",
         ]

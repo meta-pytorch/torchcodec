@@ -8,6 +8,7 @@ find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development)
 
+
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
 else()
@@ -160,6 +161,13 @@ function(make_torchcodec_libraries
         "${core_sources}"
         "${core_library_dependencies}"
     )
+
+    if(ENABLE_CUDA AND USE_NVTX)
+        target_compile_definitions(${core_library_name} PRIVATE USE_NVTX)
+        if(NVTX_INCLUDE_DIR)
+            target_include_directories(${core_library_name} PRIVATE ${NVTX_INCLUDE_DIR})
+        endif()
+    endif()
 
     # 2. Create libtorchcodec_custom_opsN.{ext}.
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
