@@ -37,10 +37,6 @@ namespace facebook::torchcodec {
 // Device types
 using StableDevice = torch::stable::Device;
 using StableDeviceType = torch::headeronly::DeviceType;
-using StableDeviceIndex = torch::stable::accelerator::DeviceIndex;
-
-// DeviceGuard for CUDA context management
-using StableDeviceGuard = torch::stable::accelerator::DeviceGuard;
 
 // Device type constants
 constexpr auto kStableCPU = torch::headeronly::DeviceType::CPU;

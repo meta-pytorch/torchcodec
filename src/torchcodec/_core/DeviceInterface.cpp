@@ -5,7 +5,6 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "DeviceInterface.h"
-#include <cstring>
 #include <map>
 #include <mutex>
 #include "StableABICompat.h"
