@@ -1,5 +1,3 @@
-#include <ATen/cuda/CUDAEvent.h>
-#include <c10/cuda/CUDAStream.h>
 #include <torch/types.h>
 #include <mutex>
 
@@ -59,8 +57,7 @@ UniqueAVBufferRef getHardwareDeviceContext(const StableDevice& device) {
   }
 
   // Create hardware device context
-  c10::cuda::CUDAGuard deviceGuard(
-      c10::Device(static_cast<c10::DeviceType>(device.type()), device.index()));
+  StableDeviceGuard deviceGuard(device.index());
   // We set the device because we may be called from a different thread than
   // the one that initialized the cuda context.
   STD_TORCH_CHECK(
@@ -326,8 +323,7 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   auto cudaDeviceCtx =
       static_cast<AVCUDADeviceContext*>(hwFramesCtx->device_ctx->hwctx);
   STD_TORCH_CHECK(cudaDeviceCtx != nullptr, "The hardware context is null");
-  at::cuda::CUDAStream nvdecStream = // That's always the default stream. Sad.
-      c10::cuda::getStreamFromExternal(cudaDeviceCtx->stream, device_.index());
+  cudaStream_t nvdecStream = cudaDeviceCtx->stream;
 
   frameOutput.data = convertNV12FrameToRGB(
       avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);

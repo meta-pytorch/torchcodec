@@ -161,6 +161,10 @@ function(make_torchcodec_libraries
         "${core_library_dependencies}"
     )
 
+    if(ENABLE_CUDA)
+        target_compile_definitions(${core_library_name} PRIVATE USE_CUDA)
+    endif()
+
     # 2. Create libtorchcodec_custom_opsN.{ext}.
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
     set(custom_ops_sources

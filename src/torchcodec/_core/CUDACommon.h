@@ -6,10 +6,9 @@
 
 #pragma once
 
-#include <ATen/cuda/CUDAEvent.h>
-#include <c10/cuda/CUDAStream.h>
+#include <cuda_runtime.h>
 #include <npp.h>
-#include <torch/types.h>
+#include <torch/csrc/inductor/aoti_torch/c/shim.h>
 
 #include "FFMPEGCommon.h"
 #include "Frame.h"
@@ -25,6 +24,17 @@ namespace facebook::torchcodec {
 // https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
 constexpr int MAX_CUDA_GPUS = 128;
 
+// C++ wrapper for aoti_torch_get_current_cuda_stream.
+// Returns the current CUDA stream for the given device index.
+// This is the stable ABI way to get a cudaStream_t for use with CUDA libraries
+// (NPP, NVDEC, etc.).
+inline cudaStream_t getCurrentCudaStream(int32_t deviceIndex) {
+  void* stream = nullptr;
+  TORCH_ERROR_CODE_CHECK(
+      aoti_torch_get_current_cuda_stream(deviceIndex, &stream));
+  return static_cast<cudaStream_t>(stream);
+}
+
 void initializeCudaContextWithPytorch(const StableDevice& device);
 
 // Unique pointer type for NPP stream context
@@ -34,7 +44,7 @@ torch::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
     const StableDevice& device,
     const UniqueNppContext& nppCtx,
-    at::cuda::CUDAStream nvdecStream,
+    cudaStream_t nvdecStream,
     std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
 UniqueNppContext getNppStreamContext(const StableDevice& device);

@@ -165,7 +165,7 @@ torch::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
     const StableDevice& device,
     const UniqueNppContext& nppCtx,
-    at::cuda::CUDAStream nvdecStream,
+    cudaStream_t nvdecStream,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
   auto frameDims = FrameDims(avFrame->height, avFrame->width);
   torch::Tensor dst;
@@ -178,13 +178,30 @@ torch::Tensor convertNV12FrameToRGB(
   // We need to make sure NVDEC has finished decoding a frame before
   // color-converting it with NPP.
   // So we make the NPP stream wait for NVDEC to finish.
-  at::cuda::CUDAStream nppStream =
-      at::cuda::getCurrentCUDAStream(device.index());
-  at::cuda::CUDAEvent nvdecDoneEvent;
-  nvdecDoneEvent.record(nvdecStream);
-  nvdecDoneEvent.block(nppStream);
+  cudaStream_t nppStream = getCurrentCudaStream(device.index());
 
-  nppCtx->hStream = nppStream.stream();
+  cudaEvent_t nvdecDoneEvent;
+  cudaError_t eventErr = cudaEventCreate(&nvdecDoneEvent);
+  STD_TORCH_CHECK(
+      eventErr == cudaSuccess,
+      "cudaEventCreate failed: ",
+      cudaGetErrorString(eventErr));
+
+  eventErr = cudaEventRecord(nvdecDoneEvent, nvdecStream);
+  STD_TORCH_CHECK(
+      eventErr == cudaSuccess,
+      "cudaEventRecord failed: ",
+      cudaGetErrorString(eventErr));
+
+  eventErr = cudaStreamWaitEvent(nppStream, nvdecDoneEvent, 0);
+  STD_TORCH_CHECK(
+      eventErr == cudaSuccess,
+      "cudaStreamWaitEvent failed: ",
+      cudaGetErrorString(eventErr));
+
+  cudaEventDestroy(nvdecDoneEvent);
+
+  nppCtx->hStream = nppStream;
   cudaError_t err = cudaStreamGetFlags(nppCtx->hStream, &nppCtx->nStreamFlags);
   STD_TORCH_CHECK(
       err == cudaSuccess,
