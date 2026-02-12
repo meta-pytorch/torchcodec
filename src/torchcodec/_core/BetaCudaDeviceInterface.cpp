@@ -871,8 +871,8 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   // When rotation is active, the pre-allocated tensor has post-rotation
   // dimensions, but NV12->RGB conversion needs pre-rotation dimensions.
-  // We save and nullify the pre-allocated tensor, then copy into it after
-  // rotation.
+  // When there's a rotation, we save and nullify the pre-allocated tensor,
+  // then copy into it after rotation.
   // Our current rotation implementation is a bit hacky. Once we support native
   // transforms on the beta CUDA interface, rotation should be handled as part
   // of the transform pipeline instead.
@@ -891,29 +891,35 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
 
   if (rotation_ != Rotation::NONE) {
-    int k = 0;
-    switch (rotation_) {
-      case Rotation::CCW90:
-        k = 1;
-        break;
-      case Rotation::ROTATE180:
-        k = 2;
-        break;
-      case Rotation::CW90:
-        k = 3;
-        break;
-      default:
-        STD_TORCH_CHECK(false, "Unexpected rotation value");
-        break;
-    }
-    // Apply rotation using torch::rot90 on the H and W dims of our HWC tensor.
-    // torch::rot90 returns a view, so we need to make it contiguous.
-    frameOutput.data = torch::rot90(frameOutput.data, k, {0, 1}).contiguous();
+    applyRotation(frameOutput, savedPreAllocatedOutputTensor);
+  }
+}
 
-    if (savedPreAllocatedOutputTensor.has_value()) {
-      savedPreAllocatedOutputTensor.value().copy_(frameOutput.data);
-      frameOutput.data = savedPreAllocatedOutputTensor.value();
-    }
+void BetaCudaDeviceInterface::applyRotation(
+    FrameOutput& frameOutput,
+    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+  int k = 0;
+  switch (rotation_) {
+    case Rotation::CCW90:
+      k = 1;
+      break;
+    case Rotation::ROTATE180:
+      k = 2;
+      break;
+    case Rotation::CW90:
+      k = 3;
+      break;
+    default:
+      STD_TORCH_CHECK(false, "Unexpected rotation value");
+      break;
+  }
+  // Apply rotation using torch::rot90 on the H and W dims of our HWC tensor.
+  // torch::rot90 returns a view, so we need to make it contiguous.
+  frameOutput.data = torch::rot90(frameOutput.data, k, {0, 1}).contiguous();
+
+  if (preAllocatedOutputTensor.has_value()) {
+    preAllocatedOutputTensor.value().copy_(frameOutput.data);
+    frameOutput.data = preAllocatedOutputTensor.value();
   }
 }
 

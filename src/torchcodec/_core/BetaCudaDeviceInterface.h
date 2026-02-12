@@ -83,6 +83,10 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
 
+  void applyRotation(
+      FrameOutput& frameOutput,
+      std::optional<torch::Tensor> preAllocatedOutputTensor);
+
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;
   CUVIDEOFORMAT videoFormat_ = {};
