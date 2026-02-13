@@ -4,61 +4,17 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include <mutex>
+// NVDECCache is a template class with implementation in the header.
+// This file is kept for build system compatibility and potential future
+// non-template code.
 
-#include "CUDACommon.h"
-#include "FFMPEGCommon.h"
 #include "NVDECCache.h"
-
-#include <cuda_runtime.h> // For cudaGetDevice
-
-extern "C" {
-#include <libavutil/hwcontext_cuda.h>
-#include <libavutil/pixdesc.h>
-}
 
 namespace facebook::torchcodec {
 
-NVDECCache& NVDECCache::getCache(const StableDevice& device) {
-  static NVDECCache cacheInstances[MAX_CUDA_GPUS];
-  return cacheInstances[getDeviceIndex(device)];
-}
-
-UniqueCUvideodecoder NVDECCache::getDecoder(CUVIDEOFORMAT* videoFormat) {
-  CacheKey key(videoFormat);
-  std::lock_guard<std::mutex> lock(cacheLock_);
-
-  // Find all entries with matching key and look for one not in use
-  auto range = cache_.equal_range(key);
-  for (auto it = range.first; it != range.second; ++it) {
-    if (!it->second.inUse) {
-      // Take ownership of the decoder and remove the entry from cache
-      auto decoder = std::move(it->second.decoder);
-      cache_.erase(it);
-      return decoder;
-    }
-  }
-
-  return nullptr;
-}
-
-bool NVDECCache::returnDecoder(
-    CUVIDEOFORMAT* videoFormat,
-    UniqueCUvideodecoder decoder) {
-  if (!decoder) {
-    return false;
-  }
-
-  CacheKey key(videoFormat);
-  std::lock_guard<std::mutex> lock(cacheLock_);
-
-  if (cache_.size() >= MAX_CACHE_SIZE) {
-    return false;
-  }
-
-  // Add the decoder back to cache as not in use
-  cache_.emplace(key, CacheEntry(std::move(decoder), false));
-  return true;
-}
+// Explicit template instantiation for the default policy.
+// This can reduce compile times when the same instantiation is used
+// in multiple translation units.
+template class NVDECCacheImpl<DefaultNVDECEvictionPolicy>;
 
 } // namespace facebook::torchcodec
