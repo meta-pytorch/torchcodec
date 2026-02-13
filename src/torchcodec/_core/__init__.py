@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+from ._audio import create_audio_decoder
 from ._metadata import (
     AudioStreamMetadata,
     ContainerMetadata,
