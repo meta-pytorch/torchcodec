@@ -1509,3 +1509,51 @@ class TestVideoEncoder:
                     assert color_range == encoder_metadata["color_range"]
             if color_space is not None:
                 assert color_space == encoder_metadata["color_space"]
+
+    @pytest.mark.skipif(
+        ffmpeg_major_version == 4,
+        reason="On FFmpeg 4  hitting a truncated packet results in AVERROR_INVALIDDATA, which torchcodec does not handle.",
+    )
+    @pytest.mark.parametrize("format", ["mp4", "mov"])
+    @pytest.mark.parametrize(
+        "extra_options",
+        [
+            # frag_keyframe with empty_moov (new fragment every keyframe)
+            {"movflags": "+frag_keyframe+empty_moov"},
+            # frag_duration creates fragments based on duration (in microseconds)
+            {"movflags": "+empty_moov", "frag_duration": "1000000"},
+        ],
+    )
+    def test_fragmented_mp4(
+        self,
+        tmp_path,
+        extra_options,
+        format,
+    ):
+        # Test that VideoEncoder can write fragmented files using movflags.
+        # Fragmented files store metadata interleaved with data rather than
+        # all at the end, making them decodable even if writing is interrupted.
+        source_frames, frame_rate = self.decode_and_get_frame_rate(TEST_SRC_2_720P.path)
+        encoder = VideoEncoder(frames=source_frames, frame_rate=frame_rate)
+        encoded_path = str(tmp_path / f"fragmented_output.{format}")
+        encoder.to_file(dest=encoded_path, extra_options=extra_options)
+
+        # Decode the file to get reference frames
+        reference_decoder = VideoDecoder(encoded_path)
+        reference_frames = [reference_decoder.get_frame_at(i) for i in range(10)]
+
+        # Truncate the file to simulate interrupted write
+        with open(encoded_path, "rb") as f:
+            full_content = f.read()
+        truncated_size = int(len(full_content) * 0.5)
+        with open(encoded_path, "wb") as f:
+            f.write(full_content[:truncated_size])
+
+        # Decode the truncated file and verify first 10 frames match reference
+        truncated_decoder = VideoDecoder(encoded_path)
+        assert len(truncated_decoder) >= 10
+        for i in range(10):
+            truncated_frame = truncated_decoder.get_frame_at(i)
+            torch.testing.assert_close(
+                truncated_frame.data, reference_frames[i].data, atol=0, rtol=0
+            )
