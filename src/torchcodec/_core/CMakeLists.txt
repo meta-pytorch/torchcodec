@@ -177,7 +177,7 @@ function(make_torchcodec_libraries
     )
     set(custom_ops_dependencies
         ${core_library_name}
-        ${Python3_LIBRARIES}
+        ""
     )
     make_torchcodec_sublibrary(
         "${custom_ops_library_name}"
