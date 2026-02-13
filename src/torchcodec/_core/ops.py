@@ -98,6 +98,21 @@ _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
 _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
+decode_wav_from_file = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.decode_wav_from_file.default
+)
+decode_wav_from_tensor = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.decode_wav_from_tensor.default
+)
+_decode_wav_from_file_like = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns._decode_wav_from_file_like.default
+)
+get_wav_metadata_from_file = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.get_wav_metadata_from_file.default
+)
+get_wav_metadata_from_tensor = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.get_wav_metadata_from_tensor.default
+)
 
 
 # =============================
@@ -533,4 +548,54 @@ def get_ffmpeg_library_versions():
 
 @register_fake("torchcodec_ns::_get_backend_details")
 def _get_backend_details_abstract(decoder: torch.Tensor) -> str:
+    return ""
+
+
+@register_fake("torchcodec_ns::decode_wav_from_file")
+def decode_wav_from_file_abstract(
+    filename: str,
+    start_seconds: float = 0.0,
+    stop_seconds: float | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    samples_size = [get_ctx().new_dynamic_size() for _ in range(2)]
+    return (torch.empty(samples_size), torch.empty([], dtype=torch.float64))
+
+
+@register_fake("torchcodec_ns::decode_wav_from_tensor")
+def decode_wav_from_tensor_abstract(
+    data: torch.Tensor,
+    start_seconds: float = 0.0,
+    stop_seconds: float | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    samples_size = [get_ctx().new_dynamic_size() for _ in range(2)]
+    return (torch.empty(samples_size), torch.empty([], dtype=torch.float64))
+
+
+@register_fake("torchcodec_ns::_decode_wav_from_file_like")
+def _decode_wav_from_file_like_abstract(
+    ctx: int,
+    start_seconds: float = 0.0,
+    stop_seconds: float | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    samples_size = [get_ctx().new_dynamic_size() for _ in range(2)]
+    return (torch.empty(samples_size), torch.empty([], dtype=torch.float64))
+
+
+@register_fake("torchcodec_ns::get_wav_metadata_from_file")
+def get_wav_metadata_from_file_abstract(
+    filename: str,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> str:
+    return ""
+
+
+@register_fake("torchcodec_ns::get_wav_metadata_from_tensor")
+def get_wav_metadata_from_tensor_abstract(
+    data: torch.Tensor,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> str:
     return ""

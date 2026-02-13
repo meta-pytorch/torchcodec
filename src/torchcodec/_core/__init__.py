@@ -8,12 +8,14 @@
 from ._metadata import (
     AudioStreamMetadata,
     ContainerMetadata,
+    create_audio_metadata_from_wav,
     get_container_metadata,
     get_container_metadata_from_header,
     VideoStreamMetadata,
 )
 from .ops import (
     _add_video_stream,
+    _decode_wav_from_file_like,
     _get_backend_details,
     _get_key_frame_indices,
     _test_frame_pts_equality,
@@ -24,6 +26,8 @@ from .ops import (
     create_from_file,
     create_from_file_like,
     create_from_tensor,
+    decode_wav_from_file,
+    decode_wav_from_tensor,
     encode_audio_to_file,
     encode_audio_to_file_like,
     encode_audio_to_tensor,
@@ -41,6 +45,8 @@ from .ops import (
     get_frames_in_range,
     get_json_metadata,
     get_next_frame,
+    get_wav_metadata_from_file,
+    get_wav_metadata_from_tensor,
     scan_all_streams_to_update_metadata,
     seek_to_pts,
 )

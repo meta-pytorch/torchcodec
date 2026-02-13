@@ -15,6 +15,7 @@
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
+#include "WavDecoder.h"
 #include "c10/core/SymIntArrayRef.h"
 #include "c10/util/Exception.h"
 
@@ -80,6 +81,16 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
+  m.def(
+      "decode_wav_from_file(str filename, float start_seconds=0.0, float? stop_seconds=None) -> (Tensor, Tensor)");
+  m.def(
+      "decode_wav_from_tensor(Tensor data, float start_seconds=0.0, float? stop_seconds=None) -> (Tensor, Tensor)");
+  m.def(
+      "_decode_wav_from_file_like(int ctx, float start_seconds=0.0, float? stop_seconds=None) -> (Tensor, Tensor)");
+  m.def(
+      "get_wav_metadata_from_file(str filename, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> str");
+  m.def(
+      "get_wav_metadata_from_tensor(Tensor data, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> str");
 }
 
 namespace {
@@ -1059,6 +1070,184 @@ void scan_all_streams_to_update_metadata(torch::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
+// The elements of this tuple are:
+//   1. The audio samples as a float32 tensor of shape (num_channels,
+//   num_samples)
+//   2. A single float value for the pts of the first sample, in seconds.
+using OpsWavOutput = std::tuple<torch::Tensor, torch::Tensor>;
+
+OpsWavOutput decode_wav_from_file(
+    std::string_view filename,
+    double start_seconds,
+    std::optional<double> stop_seconds) {
+  auto reader = std::make_unique<WavFileReader>(std::string(filename));
+  WavDecoder decoder(std::move(reader));
+
+  TORCH_CHECK(
+      decoder.isSupported(),
+      "Unsupported WAV format. Only PCM and IEEE float formats are supported.");
+
+  auto [samples, pts] = decoder.getSamplesInRange(start_seconds, stop_seconds);
+  return std::make_tuple(
+      samples, torch::tensor(pts, torch::dtype(torch::kFloat64)));
+}
+
+OpsWavOutput decode_wav_from_tensor(
+    const torch::Tensor& data,
+    double start_seconds,
+    std::optional<double> stop_seconds) {
+  auto reader = std::make_unique<WavTensorReader>(data);
+  WavDecoder decoder(std::move(reader));
+
+  TORCH_CHECK(
+      decoder.isSupported(),
+      "Unsupported WAV format. Only PCM and IEEE float formats are supported.");
+
+  auto [samples, pts] = decoder.getSamplesInRange(start_seconds, stop_seconds);
+  return std::make_tuple(
+      samples, torch::tensor(pts, torch::dtype(torch::kFloat64)));
+}
+
+OpsWavOutput _decode_wav_from_file_like(
+    int64_t file_like_context,
+    double start_seconds,
+    std::optional<double> stop_seconds) {
+  // Get the file-like object and read all data into a tensor
+  auto fileLikeContext =
+      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+  TORCH_CHECK(
+      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
+
+  // Read all data from file-like object
+  // First, try to get size by seeking to end
+  fileLikeContext->getAVIOContext()->seek(
+      fileLikeContext->getAVIOContext(), 0, SEEK_END);
+  int64_t totalSize = fileLikeContext->getAVIOContext()->pos;
+  fileLikeContext->getAVIOContext()->seek(
+      fileLikeContext->getAVIOContext(), 0, SEEK_SET);
+
+  std::vector<uint8_t> buffer(totalSize);
+  int64_t bytesRead = 0;
+  while (bytesRead < totalSize) {
+    int ret = fileLikeContext->getAVIOContext()->read_packet(
+        fileLikeContext->getAVIOContext()->opaque,
+        buffer.data() + bytesRead,
+        totalSize - bytesRead);
+    if (ret <= 0) {
+      break;
+    }
+    bytesRead += ret;
+  }
+
+  // Create tensor from buffer
+  torch::Tensor tensorData =
+      torch::from_blob(
+          buffer.data(), {static_cast<int64_t>(buffer.size())}, torch::kUInt8)
+          .clone();
+
+  auto reader = std::make_unique<WavTensorReader>(tensorData);
+  WavDecoder decoder(std::move(reader));
+
+  TORCH_CHECK(
+      decoder.isSupported(),
+      "Unsupported WAV format. Only PCM and IEEE float formats are supported.");
+
+  auto [samples, pts] = decoder.getSamplesInRange(start_seconds, stop_seconds);
+  return std::make_tuple(
+      samples, torch::tensor(pts, torch::dtype(torch::kFloat64)));
+}
+
+std::string buildWavMetadataJson(WavDecoder& decoder) {
+  const WavHeader& header = decoder.getHeader();
+  std::map<std::string, std::string> map;
+  // Fields matching AudioStreamMetadata
+  map["sample_rate"] = std::to_string(header.sampleRate);
+  map["num_channels"] = std::to_string(header.numChannels);
+  map["duration_seconds"] = fmt::to_string(decoder.getDurationSeconds());
+  map["duration_seconds_from_header"] =
+      fmt::to_string(decoder.getDurationSeconds());
+  map["begin_stream_seconds"] = "0.0";
+  map["begin_stream_seconds_from_header"] = "0.0";
+  map["bit_rate"] = "null";
+  map["codec"] = "\"pcm\"";
+  map["stream_index"] = "0";
+  // Derive sample_format string matching FFmpeg's av_get_sample_fmt_name().
+  // https://ffmpeg.org/doxygen/6.1/group__lavu__sampfmts.html#gaf9a51ca15301871723577c730b5865c5
+  // For WAV_FORMAT_EXTENSIBLE, the actual format is in subFormat.
+  uint16_t effectiveFormat = header.audioFormat;
+  if (effectiveFormat == WAV_FORMAT_EXTENSIBLE) {
+    effectiveFormat = header.subFormat;
+  }
+  if (effectiveFormat == WAV_FORMAT_PCM) {
+    switch (header.bitsPerSample) {
+      case 8:
+        map["sample_format"] = "\"u8\"";
+        break;
+      case 16:
+        map["sample_format"] = "\"s16\"";
+        break;
+      case 24:
+        // FFmpeg has no s24; it decodes 24-bit PCM as s32.
+        map["sample_format"] = "\"s32\"";
+        break;
+      case 32:
+        map["sample_format"] = "\"s32\"";
+        break;
+      default:
+        map["sample_format"] = "null";
+        break;
+    }
+  } else if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
+    switch (header.bitsPerSample) {
+      case 32:
+        map["sample_format"] = "\"flt\"";
+        break;
+      case 64:
+        map["sample_format"] = "\"dbl\"";
+        break;
+      default:
+        map["sample_format"] = "null";
+        break;
+    }
+  } else {
+    map["sample_format"] = "null";
+  }
+
+  return mapToJson(map);
+}
+
+std::string get_wav_metadata_from_file(
+    std::string_view filename,
+    std::optional<int64_t> stream_index,
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) {
+  auto reader = std::make_unique<WavFileReader>(std::string(filename));
+  WavDecoder decoder(std::move(reader));
+
+  if (!decoder.isSupported() ||
+      !decoder.isCompatible(stream_index, sample_rate, num_channels)) {
+    return "";
+  }
+
+  return buildWavMetadataJson(decoder);
+}
+
+std::string get_wav_metadata_from_tensor(
+    const torch::Tensor& data,
+    std::optional<int64_t> stream_index,
+    std::optional<int64_t> sample_rate,
+    std::optional<int64_t> num_channels) {
+  auto reader = std::make_unique<WavTensorReader>(data);
+  WavDecoder decoder(std::move(reader));
+
+  if (!decoder.isSupported() ||
+      !decoder.isCompatible(stream_index, sample_rate, num_channels)) {
+    return "";
+  }
+
+  return buildWavMetadataJson(decoder);
+}
+
 TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", &create_from_file);
   m.impl("create_from_tensor", &create_from_tensor);
@@ -1068,6 +1257,11 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", &encode_video_to_file);
   m.impl("encode_video_to_tensor", &encode_video_to_tensor);
   m.impl("_encode_video_to_file_like", &_encode_video_to_file_like);
+  m.impl("decode_wav_from_file", &decode_wav_from_file);
+  m.impl("decode_wav_from_tensor", &decode_wav_from_tensor);
+  m.impl("_decode_wav_from_file_like", &_decode_wav_from_file_like);
+  m.impl("get_wav_metadata_from_file", &get_wav_metadata_from_file);
+  m.impl("get_wav_metadata_from_tensor", &get_wav_metadata_from_tensor);
 }
 
 TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

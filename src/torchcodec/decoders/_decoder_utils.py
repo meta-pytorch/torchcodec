@@ -7,11 +7,13 @@
 
 import contextvars
 import io
+import json
 
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
+import torch
 from torch import Tensor
 from torchcodec import _core as core
 
@@ -111,3 +113,103 @@ def set_cuda_backend(backend: str) -> Generator[None, None, None]:
 
 def _get_cuda_backend() -> str:
     return _CUDA_BACKEND.get()
+
+
+def _is_uncompressed_wav(
+    source,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> dict | None:
+    """Check if source is an uncompressed WAV file compatible with native decoder.
+
+    Returns metadata dict if compatible, None otherwise (not WAV, unsupported format,
+    or requested parameters don't match the source).
+    """
+    try:
+        if isinstance(source, str):
+            metadata_json = core.get_wav_metadata_from_file(
+                source, stream_index, sample_rate, num_channels
+            )
+        elif isinstance(source, Path):
+            metadata_json = core.get_wav_metadata_from_file(
+                str(source), stream_index, sample_rate, num_channels
+            )
+        elif isinstance(source, bytes):
+            buffer = torch.frombuffer(source, dtype=torch.uint8)
+            metadata_json = core.get_wav_metadata_from_tensor(
+                buffer, stream_index, sample_rate, num_channels
+            )
+        elif isinstance(source, Tensor):
+            metadata_json = core.get_wav_metadata_from_tensor(
+                source, stream_index, sample_rate, num_channels
+            )
+        else:
+            # File-like objects - read all data to get full metadata
+            current_pos = source.seek(0, io.SEEK_CUR)
+            source.seek(0)
+            data = source.read()
+            source.seek(current_pos)
+            if len(data) < 12:
+                return None
+            buffer = torch.frombuffer(data, dtype=torch.uint8)
+            metadata_json = core.get_wav_metadata_from_tensor(
+                buffer, stream_index, sample_rate, num_channels
+            )
+
+        if not metadata_json:
+            return None
+
+        return json.loads(metadata_json)
+    except Exception:
+        # In the case of an error, fall back to FFmpeg decoder
+        return None
+
+
+def decode_wav(
+    source: str | Path | bytes | Tensor | io.RawIOBase | io.BufferedReader,
+    start_seconds: float = 0.0,
+    stop_seconds: float | None = None,
+) -> tuple[Tensor, Tensor]:
+    """Decode audio samples from a WAV file using the native decoder.
+
+    Args:
+        source: The WAV audio source - can be a file path (str or Path),
+            raw bytes, a uint8 tensor containing WAV data, or a file-like object.
+        start_seconds: Start time in seconds for the audio range.
+        stop_seconds: Stop time in seconds (exclusive). None means decode to end.
+
+    Returns:
+        A tuple of (samples, pts_seconds) where:
+        - samples: Float32 tensor of shape (num_channels, num_samples) normalized to [-1, 1]
+        - pts_seconds: Float64 tensor containing the PTS of the first sample
+
+    Raises:
+        RuntimeError: If the WAV format is not supported (compressed formats).
+    """
+    import warnings
+
+    if isinstance(source, str):
+        return core.decode_wav_from_file(source, start_seconds, stop_seconds)
+    elif isinstance(source, Path):
+        return core.decode_wav_from_file(str(source), start_seconds, stop_seconds)
+    elif isinstance(source, bytes):
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            buffer = torch.frombuffer(source, dtype=torch.uint8)
+        return core.decode_wav_from_tensor(buffer, start_seconds, stop_seconds)
+    elif isinstance(source, Tensor):
+        return core.decode_wav_from_tensor(source, start_seconds, stop_seconds)
+    elif hasattr(source, "read") and hasattr(source, "seek"):
+        # File-like object - read all data and pass to tensor version
+        source.seek(0)
+        data = source.read()
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning)
+            buffer = torch.frombuffer(data, dtype=torch.uint8)
+        return core.decode_wav_from_tensor(buffer, start_seconds, stop_seconds)
+    else:
+        raise TypeError(
+            f"Unsupported source type: {type(source)}. "
+            "Expected str, Path, bytes, Tensor, or file-like object."
+        )

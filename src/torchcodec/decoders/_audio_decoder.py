@@ -13,7 +13,9 @@ from torch import Tensor
 
 from torchcodec import _core as core, AudioSamples
 from torchcodec.decoders._decoder_utils import (
+    _is_uncompressed_wav,
     create_decoder,
+    decode_wav,
     ERROR_REPORTING_INSTRUCTIONS,
 )
 
@@ -59,8 +61,30 @@ class AudioDecoder:
         stream_index: int | None = None,
         sample_rate: int | None = None,
         num_channels: int | None = None,
+        use_wav_decoder: (
+            bool | None
+        ) = None,  # optionally disable wav decoder for testing
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.AudioDecoder")
+
+        # Check if this is an uncompressed WAV file that we can decode directly with WavDecoder.
+        self._use_wav_decoder = False
+        self._wav_source = None
+
+        if use_wav_decoder is not False and (
+            wav_metadata := _is_uncompressed_wav(
+                source, stream_index, sample_rate, num_channels
+            )
+        ):
+            self._use_wav_decoder = True
+            self._wav_source = source
+            self.stream_index = 0
+
+            # Create metadata from WAV JSON
+            self.metadata = core.create_audio_metadata_from_wav(wav_metadata)
+            return
+
+        # Fall back to FFmpeg decoder
         self._decoder = create_decoder(source=source, seek_mode="approximate")
 
         container_metadata = core.get_container_metadata(self._decoder)
@@ -134,6 +158,26 @@ class AudioDecoder:
             raise ValueError(
                 f"Invalid start seconds: {start_seconds}. It must be less than or equal to stop seconds ({stop_seconds})."
             )
+
+        # Use native WAV decoder if available
+        if self._use_wav_decoder and self._wav_source is not None:
+            frames, pts_tensor = decode_wav(
+                self._wav_source,
+                start_seconds=start_seconds,
+                stop_seconds=stop_seconds,
+            )
+            first_pts = pts_tensor.item()
+            sample_rate = self.metadata.sample_rate
+            assert sample_rate is not None  # mypy
+
+            return AudioSamples(
+                data=frames,
+                pts_seconds=first_pts,
+                duration_seconds=frames.shape[1] / sample_rate,
+                sample_rate=sample_rate,
+            )
+
+        # FFmpeg path
         frames, first_pts = core.get_frames_by_pts_in_range_audio(
             self._decoder,
             start_seconds=start_seconds,

@@ -2513,3 +2513,16 @@ class TestAudioDecoder:
                 # FFmpeg fails to find a default layout for certain channel counts,
                 # which causes SwrContext to fail to initialize.
                 decoder.get_all_samples()
+
+    @pytest.mark.parametrize(
+        "asset", (SINE_MONO_S16, SINE_MONO_S32, SINE_16_CHANNEL_S16)
+    )
+    def test_native_matches_ffmpeg_full(self, asset):
+        native_decoder = AudioDecoder(asset.path, use_wav_decoder=True)
+        native_samples = native_decoder.get_all_samples()
+        ffmpeg_decoder = AudioDecoder(asset.path, use_wav_decoder=False)
+        ffmpeg_samples = ffmpeg_decoder.get_all_samples()
+        torch.testing.assert_close(
+            native_samples.data, ffmpeg_samples.data, atol=0, rtol=0
+        )
+        assert native_samples.sample_rate == ffmpeg_samples.sample_rate
