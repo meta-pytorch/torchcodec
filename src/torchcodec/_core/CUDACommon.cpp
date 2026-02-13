@@ -22,12 +22,16 @@ PerGpuCache<NppStreamContext> g_cached_npp_ctxs(
 
 } // namespace
 
-void initializeCudaContextWithPytorch(const torch::Device& device) {
+void initializeCudaContextWithPytorch(const StableDevice& device) {
   // It is important for pytorch itself to create the cuda context. If ffmpeg
   // creates the context it may not be compatible with pytorch.
   // This is a dummy tensor to initialize the cuda context.
   torch::Tensor dummyTensorForCudaInitialization = torch::zeros(
-      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device));
+      {1},
+      torch::TensorOptions()
+          .dtype(torch::kUInt8)
+          .device(torch::Device(
+              static_cast<c10::DeviceType>(device.type()), device.index())));
 }
 
 /* clang-format off */
@@ -159,7 +163,7 @@ const Npp32f bt709FullRangeColorTwist[3][4] = {
 
 torch::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
-    const torch::Device& device,
+    const StableDevice& device,
     const UniqueNppContext& nppCtx,
     at::cuda::CUDAStream nvdecStream,
     std::optional<torch::Tensor> preAllocatedOutputTensor) {
@@ -247,7 +251,7 @@ torch::Tensor convertNV12FrameToRGB(
   return dst;
 }
 
-UniqueNppContext getNppStreamContext(const torch::Device& device) {
+UniqueNppContext getNppStreamContext(const StableDevice& device) {
   int deviceIndex = getDeviceIndex(device);
 
   UniqueNppContext nppCtx = g_cached_npp_ctxs.get(device);
@@ -283,7 +287,7 @@ UniqueNppContext getNppStreamContext(const torch::Device& device) {
 }
 
 void returnNppStreamContextToCache(
-    const torch::Device& device,
+    const StableDevice& device,
     UniqueNppContext nppCtx) {
   if (nppCtx) {
     g_cached_npp_ctxs.addIfCacheHasCapacity(device, std::move(nppCtx));
@@ -311,7 +315,7 @@ void validatePreAllocatedTensorShape(
   }
 }
 
-int getDeviceIndex(const torch::Device& device) {
+int getDeviceIndex(const StableDevice& device) {
   // PyTorch uses int8_t as its torch::DeviceIndex, but FFmpeg and CUDA
   // libraries use int. So we use int, too.
   int deviceIndex = static_cast<int>(device.index());
