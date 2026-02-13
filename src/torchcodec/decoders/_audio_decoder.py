@@ -16,6 +16,7 @@ from torchcodec.decoders._decoder_utils import (
     create_decoder,
     ERROR_REPORTING_INSTRUCTIONS,
 )
+from torchcodec.decoders._fast_wav import WavDecoder
 
 
 class AudioDecoder:
@@ -59,8 +60,21 @@ class AudioDecoder:
         stream_index: int | None = None,
         sample_rate: int | None = None,
         num_channels: int | None = None,
+        _fast_wav: bool = True,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.AudioDecoder")
+
+        self._wav_decoder = None
+        if _fast_wav:
+            self._wav_decoder = WavDecoder.try_create(
+                source, sample_rate, num_channels, stream_index
+            )
+        if self._wav_decoder is not None:
+            self.stream_index = self._wav_decoder.stream_index
+            self.metadata = self._wav_decoder.metadata
+            return
+
+        # Standard FFmpeg path
         self._decoder = create_decoder(source=source, seek_mode="approximate")
 
         container_metadata = core.get_container_metadata(self._decoder)
@@ -130,6 +144,12 @@ class AudioDecoder:
         Returns:
             AudioSamples: The samples within the specified range.
         """
+        # Use fast WAV decoder if available
+        if self._wav_decoder is not None:
+            return self._wav_decoder.get_samples_played_in_range(
+                start_seconds, stop_seconds
+            )
+        # Use standard FFmpeg decoder
         if stop_seconds is not None and not start_seconds <= stop_seconds:
             raise ValueError(
                 f"Invalid start seconds: {start_seconds}. It must be less than or equal to stop seconds ({stop_seconds})."
