@@ -6,7 +6,6 @@
 
 
 import io
-import json
 import numbers
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -16,13 +15,8 @@ from typing import Literal
 import torch
 from torch import device as torch_device, nn, Tensor
 from torchcodec import _core as core, Frame, FrameBatch
-from torchcodec.decoders._decoder_utils import (
-    _get_cuda_backend,
-    create_decoder,
-    ERROR_REPORTING_INSTRUCTIONS,
-)
+from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.transforms import DecoderTransform
-from torchcodec.transforms._decoder_transforms import _make_transform_specs
 
 
 @dataclass
@@ -175,49 +169,6 @@ class VideoDecoder:
         ) = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
-        allowed_seek_modes = ("exact", "approximate")
-        if seek_mode not in allowed_seek_modes:
-            raise ValueError(
-                f"Invalid seek mode ({seek_mode}). "
-                f"Supported values are {', '.join(allowed_seek_modes)}."
-            )
-
-        # Validate seek_mode and custom_frame_mappings are not mismatched
-        if custom_frame_mappings is not None and seek_mode == "approximate":
-            raise ValueError(
-                "custom_frame_mappings is incompatible with seek_mode='approximate'. "
-                "Use seek_mode='custom_frame_mappings' or leave it unspecified to automatically use custom frame mappings."
-            )
-
-        # Auto-select custom_frame_mappings seek_mode and process data when mappings are provided
-        custom_frame_mappings_data = None
-        if custom_frame_mappings is not None:
-            seek_mode = "custom_frame_mappings"  # type: ignore[assignment]
-            custom_frame_mappings_data = _read_custom_frame_mappings(
-                custom_frame_mappings
-            )
-
-        self._decoder = create_decoder(source=source, seek_mode=seek_mode)
-
-        (
-            self.metadata,
-            self.stream_index,
-            self._begin_stream_seconds,
-            self._end_stream_seconds,
-            self._num_frames,
-        ) = _get_and_validate_stream_metadata(
-            decoder=self._decoder, stream_index=stream_index
-        )
-
-        allowed_dimension_orders = ("NCHW", "NHWC")
-        if dimension_order not in allowed_dimension_orders:
-            raise ValueError(
-                f"Invalid dimension order ({dimension_order}). "
-                f"Supported values are {', '.join(allowed_dimension_orders)}."
-            )
-
-        if num_ffmpeg_threads is None:
-            raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
         if device is None:
             device = str(torch.get_default_device())
@@ -225,20 +176,24 @@ class VideoDecoder:
             device = str(device)
 
         device_variant = _get_cuda_backend()
-        transform_specs = _make_transform_specs(
-            transforms,
-            input_dims=(self.metadata.height, self.metadata.width),
-        )
 
-        core.add_video_stream(
+        (
             self._decoder,
-            stream_index=self.stream_index,
+            self.stream_index,
+            self.metadata,
+            self._begin_stream_seconds,
+            self._end_stream_seconds,
+            self._num_frames,
+        ) = core.create_video_decoder(
+            source=source,
+            stream_index=stream_index,
+            seek_mode=seek_mode,
             dimension_order=dimension_order,
-            num_threads=num_ffmpeg_threads,
+            num_ffmpeg_threads=num_ffmpeg_threads,
             device=device,
             device_variant=device_variant,
-            transform_specs=transform_specs,
-            custom_frame_mappings=custom_frame_mappings_data,
+            transforms=transforms,
+            custom_frame_mappings=custom_frame_mappings,
         )
 
         self._cpu_fallback = CpuFallbackStatus()
@@ -511,112 +466,3 @@ class VideoDecoder:
             stop_seconds=self._end_stream_seconds,
             fps=fps,
         )
-
-
-def _get_and_validate_stream_metadata(
-    *,
-    decoder: Tensor,
-    stream_index: int | None = None,
-) -> tuple[core._metadata.VideoStreamMetadata, int, float, float, int]:
-
-    container_metadata = core.get_container_metadata(decoder)
-
-    if stream_index is None:
-        if (stream_index := container_metadata.best_video_stream_index) is None:
-            raise ValueError(
-                "The best video stream is unknown and there is no specified stream. "
-                + ERROR_REPORTING_INSTRUCTIONS
-            )
-
-    if stream_index >= len(container_metadata.streams):
-        raise ValueError(f"The stream index {stream_index} is not a valid stream.")
-
-    metadata = container_metadata.streams[stream_index]
-    if not isinstance(metadata, core._metadata.VideoStreamMetadata):
-        raise ValueError(f"The stream at index {stream_index} is not a video stream. ")
-
-    if metadata.begin_stream_seconds is None:
-        raise ValueError(
-            "The minimum pts value in seconds is unknown. "
-            + ERROR_REPORTING_INSTRUCTIONS
-        )
-    begin_stream_seconds = metadata.begin_stream_seconds
-
-    if metadata.end_stream_seconds is None:
-        raise ValueError(
-            "The maximum pts value in seconds is unknown. "
-            + ERROR_REPORTING_INSTRUCTIONS
-        )
-    end_stream_seconds = metadata.end_stream_seconds
-
-    if metadata.num_frames is None:
-        raise ValueError(
-            "The number of frames is unknown. " + ERROR_REPORTING_INSTRUCTIONS
-        )
-    num_frames = metadata.num_frames
-
-    return (
-        metadata,
-        stream_index,
-        begin_stream_seconds,
-        end_stream_seconds,
-        num_frames,
-    )
-
-
-def _read_custom_frame_mappings(
-    custom_frame_mappings: str | bytes | io.RawIOBase | io.BufferedReader,
-) -> tuple[Tensor, Tensor, Tensor]:
-    """Parse custom frame mappings from JSON data and extract frame metadata.
-
-    Args:
-        custom_frame_mappings: JSON data containing frame metadata, provided as:
-            - A JSON string (str, bytes)
-            - A file-like object with a read() method
-
-    Returns:
-        A tuple of three tensors:
-        - all_frames (Tensor): Presentation timestamps (PTS) for each frame
-        - is_key_frame (Tensor): Boolean tensor indicating which frames are key frames
-        - duration (Tensor): Duration of each frame
-    """
-    try:
-        input_data = (
-            json.load(custom_frame_mappings)
-            if hasattr(custom_frame_mappings, "read")
-            else json.loads(custom_frame_mappings)
-        )
-    except json.JSONDecodeError as e:
-        raise ValueError(
-            f"Invalid custom frame mappings: {e}. It should be a valid JSON string or a file-like object."
-        ) from e
-
-    if not input_data or "frames" not in input_data:
-        raise ValueError(
-            "Invalid custom frame mappings. The input is empty or missing the required 'frames' key."
-        )
-
-    first_frame = input_data["frames"][0]
-    pts_key = next((key for key in ("pts", "pkt_pts") if key in first_frame), None)
-    duration_key = next(
-        (key for key in ("duration", "pkt_duration") if key in first_frame), None
-    )
-    key_frame_present = "key_frame" in first_frame
-
-    if not pts_key or not duration_key or not key_frame_present:
-        raise ValueError(
-            "Invalid custom frame mappings. The 'pts'/'pkt_pts', 'duration'/'pkt_duration', and 'key_frame' keys are required in the frame metadata."
-        )
-
-    all_frames = torch.tensor(
-        [int(frame[pts_key]) for frame in input_data["frames"]], dtype=torch.int64
-    )
-    is_key_frame = torch.tensor(
-        [int(frame["key_frame"]) for frame in input_data["frames"]], dtype=torch.bool
-    )
-    duration = torch.tensor(
-        [int(frame[duration_key]) for frame in input_data["frames"]], dtype=torch.int64
-    )
-    if not (len(all_frames) == len(is_key_frame) == len(duration)):
-        raise ValueError("Mismatched lengths in frame index data")
-    return all_frames, is_key_frame, duration

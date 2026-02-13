@@ -14,7 +14,7 @@ import torch
 from torchcodec import ffmpeg_major_version
 from torchcodec._core import get_ffmpeg_library_versions
 from torchcodec.decoders import set_cuda_backend, VideoDecoder
-from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
+from torchcodec._core._video import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
 IN_GITHUB_CI = bool(os.getenv("GITHUB_ACTIONS"))

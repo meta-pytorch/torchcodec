@@ -6,6 +6,7 @@
 
 
 from ._audio import create_audio_decoder
+from ._video import create_video_decoder
 from ._metadata import (
     AudioStreamMetadata,
     ContainerMetadata,
