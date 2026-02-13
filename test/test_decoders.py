@@ -1967,6 +1967,8 @@ class TestVideoDecoder:
 
     @pytest.mark.parametrize("dimension_order", ["NCHW", "NHWC"])
     @pytest.mark.parametrize(
+        # We are skipping over cuda because we do not support rotation metadata
+        # for the FFmpeg CUDA interface.
         "device",
         ("cpu", pytest.param("cuda:beta", marks=pytest.mark.needs_cuda)),
     )

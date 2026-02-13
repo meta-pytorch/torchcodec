@@ -869,29 +869,26 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       gpuFrame->format == AV_PIX_FMT_CUDA,
       "Expected CUDA format frame from BETA CUDA interface");
 
-  // When rotation is active, the pre-allocated tensor has post-rotation
-  // dimensions, but NV12->RGB conversion needs pre-rotation dimensions.
-  // When there's a rotation, we save and nullify the pre-allocated tensor,
-  // then copy into it after rotation.
-  // Our current rotation implementation is a bit hacky. Once we support native
-  // transforms on the beta CUDA interface, rotation should be handled as part
-  // of the transform pipeline instead.
-  std::optional<torch::Tensor> savedPreAllocatedOutputTensor = std::nullopt;
-  if (rotation_ != Rotation::NONE && preAllocatedOutputTensor.has_value()) {
-    savedPreAllocatedOutputTensor = preAllocatedOutputTensor;
-    preAllocatedOutputTensor = std::nullopt;
-  }
-
-  validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
-
   at::cuda::CUDAStream nvdecStream =
       at::cuda::getCurrentCUDAStream(device_.index());
 
-  frameOutput.data = convertNV12FrameToRGB(
-      gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
-
-  if (rotation_ != Rotation::NONE) {
-    applyRotation(frameOutput, savedPreAllocatedOutputTensor);
+  if (rotation_ == Rotation::NONE) {
+    validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
+    frameOutput.data = convertNV12FrameToRGB(
+        gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+  } else {
+    // preAllocatedOutputTensor has post-rotation dimensions, but NV12->RGB
+    // conversion outputs pre-rotation dimensions, so we can't use it as the
+    // conversion destination or validate it against the frame shape.
+    // Once we support native transforms on the beta CUDA interface, rotation
+    // should be handled as part of the transform pipeline instead.
+    frameOutput.data = convertNV12FrameToRGB(
+        gpuFrame,
+        device_,
+        nppCtx_,
+        nvdecStream,
+        /*preAllocatedOutputTensor=*/std::nullopt);
+    applyRotation(frameOutput, preAllocatedOutputTensor);
   }
 }
 
