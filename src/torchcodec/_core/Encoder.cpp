@@ -35,7 +35,7 @@ StableTensor validateSamples(const StableTensor& samples) {
       AV_NUM_DATA_POINTERS,
       " channels per frame.");
 
-  return stableContiguous(samples);
+  return torch::stable::contiguous(samples);
 }
 
 void validateSampleRate(const AVCodec& avCodec, int sampleRate) {
@@ -550,7 +550,7 @@ StableTensor validateFrames(const StableTensor& frames) {
       frames.sizes()[1] == 3,
       "frame must have 3 channels (R, G, B), got ",
       frames.sizes()[1]);
-  return stableContiguous(frames);
+  return torch::stable::contiguous(frames);
 }
 
 AVPixelFormat validatePixelFormat(
@@ -897,7 +897,7 @@ void VideoEncoder::encode() {
   AutoAVPacket autoAVPacket;
   int numFrames = static_cast<int>(frames_.sizes()[0]);
   for (int i = 0; i < numFrames; ++i) {
-    StableTensor currFrame = stableSelect(frames_, 0, i);
+    StableTensor currFrame = torch::stable::select(frames_, 0, i);
     UniqueAVFrame avFrame = deviceInterface_->convertTensorToAVFrameForEncoding(
         currFrame, i, avCodecContext_.get());
     STD_TORCH_CHECK(

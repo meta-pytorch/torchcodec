@@ -18,8 +18,16 @@ FrameBatchOutput::FrameBatchOutput(
     int64_t numFrames,
     const FrameDims& outputDims,
     const StableDevice& device)
-    : ptsSeconds(stableEmptyCPU({numFrames}, kStableFloat64)),
-      durationSeconds(stableEmptyCPU({numFrames}, kStableFloat64)) {
+    : ptsSeconds(torch::stable::empty(
+          {numFrames},
+          kStableFloat64,
+          kStableStrided,
+          StableDevice(kStableCPU))),
+      durationSeconds(torch::stable::empty(
+          {numFrames},
+          kStableFloat64,
+          kStableStrided,
+          StableDevice(kStableCPU))) {
   data = allocateEmptyHWCTensor(outputDims, device, numFrames);
 }
 
@@ -35,13 +43,13 @@ StableTensor allocateEmptyHWCTensor(
     auto numFramesValue = numFrames.value();
     STD_TORCH_CHECK(
         numFramesValue >= 0, "numFrames must be >= 0, got: ", numFramesValue);
-    return stableEmpty(
+    return torch::stable::empty(
         {numFramesValue, frameDims.height, frameDims.width, 3},
         kStableUInt8,
         kStableStrided,
         device);
   } else {
-    return stableEmpty(
+    return torch::stable::empty(
         {frameDims.height, frameDims.width, 3},
         kStableUInt8,
         kStableStrided,

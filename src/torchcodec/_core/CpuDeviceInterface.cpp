@@ -232,7 +232,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     if (preAllocatedOutputTensor.has_value()) {
       // We have already validated that preAllocatedOutputTensor and
       // outputTensor have the same shape.
-      stableCopy_(preAllocatedOutputTensor.value(), outputTensor);
+      torch::stable::copy_(preAllocatedOutputTensor.value(), outputTensor);
       frameOutput.data = preAllocatedOutputTensor.value();
     } else {
       frameOutput.data = outputTensor;
@@ -460,7 +460,7 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
 
   auto numSamples = avFrame->nb_samples;
 
-  frameOutput.data = stableEmpty(
+  frameOutput.data = torch::stable::empty(
       {numChannels, numSamples},
       kStableFloat32,
       kStableStrided,
@@ -498,7 +498,7 @@ std::optional<StableTensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
 
   int numChannels =
       audioStreamOptions_.numChannels.value_or(getNumChannels(codecContext_));
-  StableTensor lastSamples = stableEmpty(
+  StableTensor lastSamples = torch::stable::empty(
       {numChannels, numRemainingSamples},
       kStableFloat32,
       kStableStrided,
@@ -513,7 +513,7 @@ std::optional<StableTensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
   auto actualNumRemainingSamples = swr_convert(
       swrContext_.get(), outputBuffers.data(), numRemainingSamples, nullptr, 0);
 
-  return stableNarrow(
+  return torch::stable::narrow(
       lastSamples,
       /*dim=*/1,
       /*start=*/0,

@@ -278,10 +278,11 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     // pre-allocated tensor is on the GPU, so we can't send that to the CPU
     // device interface. We copy it over here.
     if (preAllocatedOutputTensor.has_value()) {
-      stableCopy_(preAllocatedOutputTensor.value(), cpuFrameOutput.data);
+      torch::stable::copy_(
+          preAllocatedOutputTensor.value(), cpuFrameOutput.data);
       frameOutput.data = preAllocatedOutputTensor.value();
     } else {
-      frameOutput.data = stableTo(cpuFrameOutput.data, device_);
+      frameOutput.data = torch::stable::to(cpuFrameOutput.data, device_);
     }
 
     usingCPUFallback_ = true;
@@ -537,7 +538,8 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
       "avFrame must be pre-allocated with CUDA memory");
 
   // TODO VideoEncoder: Investigate ways to avoid this copy
-  StableTensor hwcFrame = stableContiguous(stablePermute(tensor, {1, 2, 0}));
+  StableTensor hwcFrame =
+      torch::stable::contiguous(stablePermute(tensor, {1, 2, 0}));
 
   NppiSize oSizeROI = {width, height};
   NppStatus status;

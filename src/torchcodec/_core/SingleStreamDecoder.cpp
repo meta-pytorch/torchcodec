@@ -407,8 +407,11 @@ StableTensor SingleStreamDecoder::getKeyFrameIndices() {
 
   const std::vector<FrameInfo>& keyFrames =
       streamInfos_[activeStreamIndex_].keyFrames;
-  StableTensor keyFrameIndices =
-      stableEmptyCPU({static_cast<int64_t>(keyFrames.size())}, kStableInt64);
+  StableTensor keyFrameIndices = torch::stable::empty(
+      {static_cast<int64_t>(keyFrames.size())},
+      kStableInt64,
+      kStableStrided,
+      StableDevice(kStableCPU));
   int64_t* keyFrameIndicesPtr = keyFrameIndices.mutable_data_ptr<int64_t>();
   for (size_t i = 0; i < keyFrames.size(); ++i) {
     keyFrameIndicesPtr[i] = keyFrames[i].frameIndex;
@@ -732,14 +735,16 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     if ((f > 0) && (indexInVideo == previousIndexInVideo)) {
       // Avoid decoding the same frame twice
       auto previousIndexInOutput = indicesAreSorted ? f - 1 : argsort[f - 1];
-      auto dst = stableSelect(frameBatchOutput.data, 0, indexInOutput);
-      auto src = stableSelect(frameBatchOutput.data, 0, previousIndexInOutput);
-      stableCopy_(dst, src);
+      auto dst = torch::stable::select(frameBatchOutput.data, 0, indexInOutput);
+      auto src = torch::stable::select(
+          frameBatchOutput.data, 0, previousIndexInOutput);
+      torch::stable::copy_(dst, src);
       ptsPtr[indexInOutput] = ptsPtr[previousIndexInOutput];
       durPtr[indexInOutput] = durPtr[previousIndexInOutput];
     } else {
       FrameOutput frameOutput = getFrameAtIndexInternal(
-          indexInVideo, stableSelect(frameBatchOutput.data, 0, indexInOutput));
+          indexInVideo,
+          torch::stable::select(frameBatchOutput.data, 0, indexInOutput));
       ptsPtr[indexInOutput] = frameOutput.ptsSeconds;
       durPtr[indexInOutput] = frameOutput.durationSeconds;
     }
@@ -782,8 +787,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   double* ptsPtr = frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
   double* durPtr = frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
   for (int64_t i = start, f = 0; i < stop; i += step, ++f) {
-    FrameOutput frameOutput =
-        getFrameAtIndexInternal(i, stableSelect(frameBatchOutput.data, 0, f));
+    FrameOutput frameOutput = getFrameAtIndexInternal(
+        i, torch::stable::select(frameBatchOutput.data, 0, f));
     ptsPtr[f] = frameOutput.ptsSeconds;
     durPtr[f] = frameOutput.durationSeconds;
   }
@@ -848,8 +853,11 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
   // avoid decoding that unique frame twice is to convert the input timestamps
   // to indices, and leverage the de-duplication logic of getFramesAtIndices.
 
-  StableTensor frameIndices =
-      stableEmptyCPU({timestamps.numel()}, kStableInt64);
+  StableTensor frameIndices = torch::stable::empty(
+      {timestamps.numel()},
+      kStableInt64,
+      kStableStrided,
+      StableDevice(kStableCPU));
   int64_t* frameIndicesPtr = frameIndices.mutable_data_ptr<int64_t>();
   const double* timestampsPtr = timestamps.const_data_ptr<double>();
 
@@ -969,12 +977,12 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       int64_t sourceIdx = secondsToIndexLowerBound(targetPtsSeconds);
 
       if (sourceIdx == lastDecodedSourceIndex && lastDecodedSourceIndex >= 0) {
-        auto dst = stableSelect(frameBatchOutput.data, 0, i);
-        auto src = stableSelect(frameBatchOutput.data, 0, i - 1);
-        stableCopy_(dst, src);
+        auto dst = torch::stable::select(frameBatchOutput.data, 0, i);
+        auto src = torch::stable::select(frameBatchOutput.data, 0, i - 1);
+        torch::stable::copy_(dst, src);
       } else {
         getFrameAtIndexInternal(
-            sourceIdx, stableSelect(frameBatchOutput.data, 0, i));
+            sourceIdx, torch::stable::select(frameBatchOutput.data, 0, i));
         lastDecodedSourceIndex = sourceIdx;
       }
 
@@ -1008,8 +1016,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     double* durPtr =
         frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
     for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
-      FrameOutput frameOutput =
-          getFrameAtIndexInternal(i, stableSelect(frameBatchOutput.data, 0, f));
+      FrameOutput frameOutput = getFrameAtIndexInternal(
+          i, torch::stable::select(frameBatchOutput.data, 0, f));
       ptsPtr[f] = frameOutput.ptsSeconds;
       durPtr[f] = frameOutput.durationSeconds;
     }
@@ -1091,7 +1099,12 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
     // For consistency with video
     int numChannels = getNumChannels(streamInfo.codecContext);
     return AudioFramesOutput{
-        stableEmptyCPU({numChannels, 0}, kStableFloat32), 0.0};
+        torch::stable::empty(
+            {numChannels, 0},
+            kStableFloat32,
+            kStableStrided,
+            StableDevice(kStableCPU)),
+        0.0};
   }
 
   auto startPts = secondsToClosestPts(startSeconds, streamInfo.timeBase);

@@ -99,68 +99,6 @@ constexpr auto kStableStrided = torch::headeronly::Layout::Strided;
 // Helper functions wrapping torch::stable ops
 // ============================================================================
 
-// Create an empty tensor with the given shape, dtype, layout, and device.
-inline StableTensor stableEmpty(
-    StableIntArrayRef size,
-    StableScalarType dtype,
-    StableLayout layout = kStableStrided,
-    std::optional<StableDevice> device = std::nullopt,
-    std::optional<bool> pin_memory = std::nullopt,
-    std::optional<StableMemoryFormat> memory_format = std::nullopt) {
-  return torch::stable::empty(
-      size, dtype, layout, device, pin_memory, memory_format);
-}
-
-// Create an empty CPU tensor (convenience).
-inline StableTensor stableEmptyCPU(
-    StableIntArrayRef size,
-    StableScalarType dtype) {
-  return torch::stable::empty(
-      size, dtype, kStableStrided, StableDevice(kStableCPU));
-}
-
-// Copy src into self (in-place).
-inline StableTensor stableCopy_(
-    StableTensor& self,
-    const StableTensor& src,
-    std::optional<bool> non_blocking = std::nullopt) {
-  torch::stable::copy_(self, src, non_blocking);
-  return self;
-}
-
-// Move/cast tensor to a device (with optional dtype).
-inline StableTensor stableTo(
-    const StableTensor& self,
-    StableDevice device,
-    bool non_blocking = false,
-    bool copy = false) {
-  return torch::stable::to(self, device, non_blocking, copy);
-}
-
-// Narrow a tensor along a dimension.
-inline StableTensor
-stableNarrow(StableTensor& self, int64_t dim, int64_t start, int64_t length) {
-  return torch::stable::narrow(self, dim, start, length);
-}
-
-// Return a contiguous tensor.
-inline StableTensor stableContiguous(
-    const StableTensor& self,
-    StableMemoryFormat memory_format = StableMemoryFormat::Contiguous) {
-  return torch::stable::contiguous(self, memory_format);
-}
-
-// Select a slice along a dimension (reduces dim by 1).
-inline StableTensor
-stableSelect(const StableTensor& self, int64_t dim, int64_t index) {
-  return torch::stable::select(self, dim, index);
-}
-
-// Check if tensor is contiguous.
-inline bool stableIsContiguous(const StableTensor& self) {
-  return self.is_contiguous();
-}
-
 // Permute tensor dimensions. Since permute is not in the stable API,
 // we implement it via successive transpose operations.
 inline StableTensor stablePermute(
@@ -199,15 +137,6 @@ inline StableTensor stablePermute(
   return result;
 }
 
-// Create a scalar tensor with the given value.
-// Uses torch::stable::full with a scalar shape.
-inline StableTensor stableScalarTensor(
-    double value,
-    StableScalarType dtype = kStableFloat64,
-    std::optional<StableDevice> device = std::nullopt) {
-  return torch::stable::full({}, value, dtype, kStableStrided, device);
-}
-
 // Concatenate tensors along a dimension.
 // Since cat is not in the stable API, we implement it manually:
 // allocate output, then copy_ slices via narrow.
@@ -227,7 +156,7 @@ inline StableTensor stableCat(
   std::vector<int64_t> outShape(firstSizes.begin(), firstSizes.end());
   outShape[dim] = totalSize;
 
-  StableTensor result = stableEmpty(
+  StableTensor result = torch::stable::empty(
       outShape, tensors[0].scalar_type(), kStableStrided, tensors[0].device());
 
   // Copy each tensor into the right slice

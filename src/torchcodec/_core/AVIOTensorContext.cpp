@@ -108,7 +108,7 @@ int64_t seek(void* opaque, int64_t offset, int whence) {
 AVIOFromTensorContext::AVIOFromTensorContext(StableTensor data)
     : tensorContext_{data, 0, 0} {
   STD_TORCH_CHECK(data.numel() > 0, "data must not be empty");
-  STD_TORCH_CHECK(stableIsContiguous(data), "data must be contiguous");
+  STD_TORCH_CHECK(data.is_contiguous(), "data must be contiguous");
   STD_TORCH_CHECK(data.scalar_type() == kStableUInt8, "data must be kUInt8");
   createAVIOContext(
       &read, nullptr, &seek, &tensorContext_, /*isForWriting=*/false);
@@ -116,7 +116,11 @@ AVIOFromTensorContext::AVIOFromTensorContext(StableTensor data)
 
 AVIOToTensorContext::AVIOToTensorContext()
     : tensorContext_{
-          stableEmptyCPU({INITIAL_TENSOR_SIZE}, kStableUInt8),
+          torch::stable::empty(
+              {INITIAL_TENSOR_SIZE},
+              kStableUInt8,
+              kStableStrided,
+              StableDevice(kStableCPU)),
           0,
           0} {
   createAVIOContext(
@@ -124,7 +128,7 @@ AVIOToTensorContext::AVIOToTensorContext()
 }
 
 StableTensor AVIOToTensorContext::getOutputTensor() {
-  return stableNarrow(
+  return torch::stable::narrow(
       tensorContext_.data,
       /*dim=*/0,
       /*start=*/0,

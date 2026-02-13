@@ -62,8 +62,8 @@ void initializeCudaContextWithPytorch(const StableDevice& device) {
   // It is important for pytorch itself to create the cuda context. If ffmpeg
   // creates the context it may not be compatible with pytorch.
   // This is a dummy tensor to initialize the cuda context.
-  StableTensor dummyTensorForCudaInitialization =
-      stableEmpty({1}, kStableUInt8, kStableStrided, StableDevice(device));
+  StableTensor dummyTensorForCudaInitialization = torch::stable::empty(
+      {1}, kStableUInt8, kStableStrided, StableDevice(device));
 }
 
 /* clang-format off */
