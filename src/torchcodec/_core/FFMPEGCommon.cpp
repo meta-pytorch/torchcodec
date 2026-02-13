@@ -681,7 +681,7 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
   return rotation;
 }
 
-SwsFrameConfig::SwsFrameConfig(
+SwsConfig::SwsConfig(
     int inputWidth,
     int inputHeight,
     AVPixelFormat inputFormat,
@@ -695,27 +695,27 @@ SwsFrameConfig::SwsFrameConfig(
       outputWidth(outputWidth),
       outputHeight(outputHeight) {}
 
-bool SwsFrameConfig::operator==(const SwsFrameConfig& other) const {
+bool SwsConfig::operator==(const SwsConfig& other) const {
   return inputWidth == other.inputWidth && inputHeight == other.inputHeight &&
       inputFormat == other.inputFormat &&
       inputColorspace == other.inputColorspace &&
       outputWidth == other.outputWidth && outputHeight == other.outputHeight;
 }
 
-bool SwsFrameConfig::operator!=(const SwsFrameConfig& other) const {
+bool SwsConfig::operator!=(const SwsConfig& other) const {
   return !(*this == other);
 }
 
 UniqueSwsContext createSwsContext(
-    const SwsFrameConfig& swsFrameConfig,
+    const SwsConfig& swsConfig,
     AVPixelFormat outputFormat,
     int swsFlags) {
   SwsContext* swsContext = sws_getContext(
-      swsFrameConfig.inputWidth,
-      swsFrameConfig.inputHeight,
-      swsFrameConfig.inputFormat,
-      swsFrameConfig.outputWidth,
-      swsFrameConfig.outputHeight,
+      swsConfig.inputWidth,
+      swsConfig.inputHeight,
+      swsConfig.inputFormat,
+      swsConfig.outputWidth,
+      swsConfig.outputHeight,
       outputFormat,
       swsFlags,
       nullptr,
@@ -737,8 +737,7 @@ UniqueSwsContext createSwsContext(
       &saturation);
   STD_TORCH_CHECK(ret != -1, "sws_getColorspaceDetails returned -1");
 
-  const int* colorspaceTable =
-      sws_getCoefficients(swsFrameConfig.inputColorspace);
+  const int* colorspaceTable = sws_getCoefficients(swsConfig.inputColorspace);
   ret = sws_setColorspaceDetails(
       swsContext,
       colorspaceTable,

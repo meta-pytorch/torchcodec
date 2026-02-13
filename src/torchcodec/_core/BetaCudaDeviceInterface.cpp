@@ -748,7 +748,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
       "Failed to allocate NV12 CPU frame buffer: ",
       getFFMPEGErrorStringFromErrorCode(ret));
 
-  SwsFrameConfig swsFrameConfig(
+  SwsConfig swsConfig(
       width,
       height,
       static_cast<AVPixelFormat>(cpuFrame->format),
@@ -756,10 +756,9 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
       width,
       height);
 
-  if (!swsContext_ || prevSwsFrameConfig_ != swsFrameConfig) {
-    swsContext_ =
-        createSwsContext(swsFrameConfig, AV_PIX_FMT_NV12, SWS_BILINEAR);
-    prevSwsFrameConfig_ = swsFrameConfig;
+  if (!swsContext_ || prevSwsConfig_ != swsConfig) {
+    swsContext_ = createSwsContext(swsConfig, AV_PIX_FMT_NV12, SWS_BILINEAR);
+    prevSwsConfig_ = swsConfig;
   }
 
   int convertedHeight = sws_scale(

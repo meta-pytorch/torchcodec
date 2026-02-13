@@ -24,16 +24,16 @@ struct FrameDims;
 // when the context changes, similar to how FilterGraph is managed.
 class SwScale {
  public:
-  SwScale(const SwsFrameConfig& config, int swsFlags = SWS_BILINEAR);
+  SwScale(const SwsConfig& config, int swsFlags = SWS_BILINEAR);
 
   int convert(const UniqueAVFrame& avFrame, torch::Tensor& outputTensor);
 
-  const SwsFrameConfig& getConfig() const {
+  const SwsConfig& getConfig() const {
     return config_;
   }
 
  private:
-  SwsFrameConfig config_;
+  SwsConfig config_;
   int swsFlags_;
   bool needsResize_;
 

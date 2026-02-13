@@ -9,7 +9,7 @@
 
 namespace facebook::torchcodec {
 
-SwScale::SwScale(const SwsFrameConfig& config, int swsFlags)
+SwScale::SwScale(const SwsConfig& config, int swsFlags)
     : config_(config), swsFlags_(swsFlags) {
   needsResize_ =
       (config_.inputHeight != config_.outputHeight ||
@@ -18,7 +18,7 @@ SwScale::SwScale(const SwsFrameConfig& config, int swsFlags)
   // Create color conversion context (input format -> RGB24).
   // Color conversion always outputs at the input resolution.
   // When no resize is needed, input and output resolutions are the same.
-  SwsFrameConfig colorConversionFrameConfig(
+  SwsConfig colorConversionFrameConfig(
       config_.inputWidth,
       config_.inputHeight,
       config_.inputFormat,
@@ -38,7 +38,7 @@ SwScale::SwScale(const SwsFrameConfig& config, int swsFlags)
   // Create resize context if needed (RGB24 at input resolution -> RGB24 at
   // output resolution).
   if (needsResize_) {
-    SwsFrameConfig resizeFrameConfig(
+    SwsConfig resizeFrameConfig(
         config_.inputWidth,
         config_.inputHeight,
         AV_PIX_FMT_RGB24,

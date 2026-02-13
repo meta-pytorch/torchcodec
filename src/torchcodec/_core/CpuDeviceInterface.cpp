@@ -203,7 +203,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     enum AVPixelFormat avFrameFormat =
         static_cast<enum AVPixelFormat>(avFrame->format);
 
-    SwsFrameConfig swsFrameConfig(
+    SwsConfig swsConfig(
         avFrame->width,
         avFrame->height,
         avFrameFormat,
@@ -211,8 +211,8 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
         outputDims.width,
         outputDims.height);
 
-    if (!swScale_ || swScale_->getConfig() != swsFrameConfig) {
-      swScale_ = std::make_unique<SwScale>(swsFrameConfig, swsFlags_);
+    if (!swScale_ || swScale_->getConfig() != swsConfig) {
+      swScale_ = std::make_unique<SwScale>(swsConfig, swsFlags_);
     }
 
     int resultHeight = swScale_->convert(avFrame, outputTensor);
