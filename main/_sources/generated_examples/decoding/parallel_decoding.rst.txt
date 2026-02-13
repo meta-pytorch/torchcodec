@@ -227,7 +227,7 @@ frames one by one without any parallelization.
 
  .. code-block:: none
 
-    median = 14.26s ± 0.02
+    median = 14.16s ± 0.02
 
 
 
@@ -273,8 +273,8 @@ threads within FFmpeg itself to accelerate decoding operations.
 
  .. code-block:: none
 
-    median = 7.11s ± 0.02
-    Speedup compared to sequential: 2.01x with 16 FFmpeg threads.
+    median = 7.07s ± 0.03
+    Speedup compared to sequential: 2.00x with 16 FFmpeg threads.
 
 
 
@@ -322,8 +322,8 @@ Process-based parallelism distributes work across multiple Python processes.
 
  .. code-block:: none
 
-    median = 5.42s ± 0.08
-    Speedup compared to sequential: 2.63x with 16 processes.
+    median = 5.31s ± 0.04
+    Speedup compared to sequential: 2.67x with 16 processes.
 
 
 
@@ -372,8 +372,8 @@ TorchCodec releases the GIL, so this can be very effective.
 
  .. code-block:: none
 
-    median = 1.95s ± 0.03
-    Speedup compared to sequential: 7.32x with 16 threads.
+    median = 1.92s ± 0.03
+    Speedup compared to sequential: 7.40x with 16 threads.
 
 
 
@@ -424,7 +424,7 @@ Let's verify that all methods produce identical results.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (2 minutes 1.545 seconds)
+   **Total running time of the script:** (2 minutes 0.457 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_parallel_decoding.py:
