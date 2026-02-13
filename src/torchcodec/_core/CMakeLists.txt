@@ -263,8 +263,8 @@ function(make_torchcodec_libraries
         )
     endif()
 
-    # The value we use here must match the value we return from
-    # _get_pybind_ops_module_name() on the Python side. If the values do not
+    # The value we use here must match _PYBIND_OPS_MODULE_NAME in
+    # torchcodec/_internally_replaced_utils.py. If the values do not
     # match, then we will be unable to import the C++ shared library as a
     # Python module at runtime.
     target_compile_definitions(
