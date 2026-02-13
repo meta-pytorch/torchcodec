@@ -179,27 +179,7 @@ torch::Tensor convertNV12FrameToRGB(
   // color-converting it with NPP.
   // So we make the NPP stream wait for NVDEC to finish.
   cudaStream_t nppStream = getCurrentCudaStream(device.index());
-
-  cudaEvent_t nvdecDoneEvent;
-  cudaError_t eventErr = cudaEventCreate(&nvdecDoneEvent);
-  STD_TORCH_CHECK(
-      eventErr == cudaSuccess,
-      "cudaEventCreate failed: ",
-      cudaGetErrorString(eventErr));
-
-  eventErr = cudaEventRecord(nvdecDoneEvent, nvdecStream);
-  STD_TORCH_CHECK(
-      eventErr == cudaSuccess,
-      "cudaEventRecord failed: ",
-      cudaGetErrorString(eventErr));
-
-  eventErr = cudaStreamWaitEvent(nppStream, nvdecDoneEvent, 0);
-  STD_TORCH_CHECK(
-      eventErr == cudaSuccess,
-      "cudaStreamWaitEvent failed: ",
-      cudaGetErrorString(eventErr));
-
-  cudaEventDestroy(nvdecDoneEvent);
+  syncStreams(/*runningStream=*/nvdecStream, /*waitingStream=*/nppStream);
 
   nppCtx->hStream = nppStream;
   cudaError_t err = cudaStreamGetFlags(nppCtx->hStream, &nppCtx->nStreamFlags);

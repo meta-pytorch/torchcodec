@@ -38,6 +38,27 @@ inline cudaStream_t getCurrentCudaStream(int32_t deviceIndex) {
   return static_cast<cudaStream_t>(stream);
 }
 
+// Make waitingStream wait until all work currently enqueued on runningStream
+// has completed.
+void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream) {
+  cudaEvent_t event;
+  cudaError_t err = cudaEventCreate(&event);
+  STD_TORCH_CHECK(
+      err == cudaSuccess, "cudaEventCreate failed: ", cudaGetErrorString(err));
+
+  err = cudaEventRecord(event, runningStream);
+  STD_TORCH_CHECK(
+      err == cudaSuccess, "cudaEventRecord failed: ", cudaGetErrorString(err));
+
+  err = cudaStreamWaitEvent(waitingStream, event, 0);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "cudaStreamWaitEvent failed: ",
+      cudaGetErrorString(err));
+
+  cudaEventDestroy(event);
+}
+
 void initializeCudaContextWithPytorch(const StableDevice& device);
 
 // Unique pointer type for NPP stream context
