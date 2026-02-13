@@ -10,86 +10,15 @@ import json
 import os
 import shutil
 import sys
-import traceback
 import warnings
 from contextlib import nullcontext
 from pathlib import Path
-from types import ModuleType
 
 import torch
 from torch.library import get_ctx, register_fake
 from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchcodec/src:internally_replaced_utils
-    _get_extension_path,
-    _get_pybind_ops_module_name,
-    _load_pybind11_module,
+    load_torchcodec_shared_libraries,
 )
-
-_pybind_ops: ModuleType | None = None
-
-
-def load_torchcodec_shared_libraries() -> tuple[int, str]:
-    # Successively try to load the shared libraries for each version of FFmpeg
-    # that we support. We always start with the highest version, working our way
-    # down to the lowest version. Once we can load ALL shared libraries for a
-    # version of FFmpeg, we have succeeded and we stop.
-    #
-    # Note that we use two different methods for loading shared libraries:
-    #
-    #   1. torch.ops.load_library(): For PyTorch custom ops and the C++ only
-    #      libraries the custom ops depend on. Loading libraries through PyTorch
-    #      registers the custom ops with PyTorch's runtime and the ops can be
-    #      accessed through torch.ops after loading.
-    #
-    #   2. importlib: For pybind11 modules. We load them dynamically, rather
-    #      than using a plain import statement. A plain import statement only
-    #      works when the module name and file name match exactly. Our shared
-    #      libraries do not meet those conditions.
-
-    exceptions = []
-    for ffmpeg_major_version in (8, 7, 6, 5, 4):
-        pybind_ops_module_name = _get_pybind_ops_module_name(ffmpeg_major_version)
-        core_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
-        custom_ops_library_name = f"libtorchcodec_custom_ops{ffmpeg_major_version}"
-        pybind_ops_library_name = f"libtorchcodec_pybind_ops{ffmpeg_major_version}"
-        try:
-            core_library_path = _get_extension_path(core_library_name)
-            torch.ops.load_library(core_library_path)
-            torch.ops.load_library(_get_extension_path(custom_ops_library_name))
-
-            pybind_ops_library_path = _get_extension_path(pybind_ops_library_name)
-            global _pybind_ops
-            _pybind_ops = _load_pybind11_module(
-                pybind_ops_module_name, pybind_ops_library_path
-            )
-            return ffmpeg_major_version, core_library_path
-        except Exception:
-            # Capture the full traceback for this exception
-            exc_traceback = traceback.format_exc()
-            exceptions.append((ffmpeg_major_version, exc_traceback))
-
-    traceback_info = (
-        "\n[start of libtorchcodec loading traceback]\n"
-        + "\n".join(f"FFmpeg version {v}:\n{tb}" for v, tb in exceptions)
-        + "[end of libtorchcodec loading traceback]."
-    )
-    raise RuntimeError(
-        f"""Could not load libtorchcodec. Likely causes:
-          1. FFmpeg is not properly installed in your environment. We support
-             versions 4, 5, 6, 7, and 8, and we attempt to load libtorchcodec
-             for each of those versions. Errors for versions not installed on
-             your system are expected; only the error for your installed FFmpeg
-             version is relevant. On Windows, ensure you've installed the
-             "full-shared" version which ships DLLs.
-          2. The PyTorch version ({torch.__version__}) is not compatible with
-             this version of TorchCodec. Refer to the version compatibility
-             table:
-             https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec.
-          3. Another runtime dependency; see exceptions below.
-
-        The following exceptions were raised as we tried to load libtorchcodec:
-        """
-        f"{traceback_info}"
-    )
 
 
 expose_ffmpeg_dlls = nullcontext
@@ -105,7 +34,9 @@ if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
 
 
 with expose_ffmpeg_dlls():
-    ffmpeg_major_version, core_library_path = load_torchcodec_shared_libraries()
+    ffmpeg_major_version, core_library_path, _pybind_ops = (
+        load_torchcodec_shared_libraries()
+    )
 
 
 # Note: We use disallow_in_graph because PyTorch does constant propagation of

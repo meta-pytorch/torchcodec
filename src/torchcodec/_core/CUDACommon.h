@@ -6,10 +6,8 @@
 
 #pragma once
 
-#include <ATen/cuda/CUDAEvent.h>
-#include <c10/cuda/CUDAStream.h>
+#include <cuda_runtime.h>
 #include <npp.h>
-#include <torch/types.h>
 
 #include "FFMPEGCommon.h"
 #include "Frame.h"
@@ -25,6 +23,8 @@ namespace facebook::torchcodec {
 // https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
 constexpr int MAX_CUDA_GPUS = 128;
 
+cudaStream_t getCurrentCudaStream(int32_t deviceIndex);
+
 void initializeCudaContextWithPytorch(const StableDevice& device);
 
 // Unique pointer type for NPP stream context
@@ -34,7 +34,7 @@ torch::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
     const StableDevice& device,
     const UniqueNppContext& nppCtx,
-    at::cuda::CUDAStream nvdecStream,
+    cudaStream_t nvdecStream,
     std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
 
 UniqueNppContext getNppStreamContext(const StableDevice& device);
