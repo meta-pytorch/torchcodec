@@ -11,7 +11,7 @@
 
 namespace facebook::torchcodec {
 
-struct FiltersContext {
+struct FiltersConfig {
   int inputWidth = 0;
   int inputHeight = 0;
   AVPixelFormat inputFormat = AV_PIX_FMT_NONE;
@@ -23,10 +23,10 @@ struct FiltersContext {
   AVRational timeBase = {0, 0};
   UniqueAVBufferRef hwFramesCtx;
 
-  FiltersContext() = default;
-  FiltersContext(FiltersContext&&) = default;
-  FiltersContext& operator=(FiltersContext&&) = default;
-  FiltersContext(
+  FiltersConfig() = default;
+  FiltersConfig(FiltersConfig&&) = default;
+  FiltersConfig& operator=(FiltersConfig&&) = default;
+  FiltersConfig(
       int inputWidth,
       int inputHeight,
       AVPixelFormat inputFormat,
@@ -38,14 +38,14 @@ struct FiltersContext {
       AVRational timeBase,
       AVBufferRef* hwFramesCtx = nullptr);
 
-  bool operator==(const FiltersContext&) const;
-  bool operator!=(const FiltersContext&) const;
+  bool operator==(const FiltersConfig&) const;
+  bool operator!=(const FiltersConfig&) const;
 };
 
 class FilterGraph {
  public:
   FilterGraph(
-      const FiltersContext& filtersContext,
+      const FiltersConfig& filtersConfig,
       const VideoStreamOptions& videoStreamOptions);
 
   UniqueAVFrame convert(const UniqueAVFrame& avFrame);

@@ -106,7 +106,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   std::unique_ptr<DeviceInterface> cpuFallback_;
   bool nvcuvidAvailable_ = false;
   UniqueSwsContext swsContext_;
-  SwsFrameContext prevSwsFrameContext_;
+
+  SwsConfig prevSwsConfig_;
   Rotation rotation_ = Rotation::NONE;
 };
 
