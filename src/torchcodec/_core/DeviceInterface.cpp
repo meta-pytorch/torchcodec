@@ -21,7 +21,7 @@ DeviceInterfaceMap& getDeviceMap() {
   return deviceMap;
 }
 
-std::string getDeviceType(const std::string& device) {
+std::string getDeviceTypeString(const std::string& device) {
   size_t pos = device.find(':');
   if (pos == std::string::npos) {
     return device;
@@ -67,7 +67,7 @@ void validateDeviceInterface(
     const std::string device,
     const std::string variant) {
   std::scoped_lock lock(g_interface_mutex);
-  std::string deviceType = getDeviceType(device);
+  std::string deviceType = getDeviceTypeString(device);
 
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
@@ -114,7 +114,25 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
       "'");
 }
 
-torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
+// Global map to store AVFrame pointers associated with tensor data pointers.
+// This is used by rgbAVFrameToTensor to ensure AVFrames are properly freed
+// when the corresponding tensor is deallocated.
+namespace {
+std::mutex g_avframe_map_mutex;
+std::map<void*, AVFrame*> g_avframe_map;
+} // namespace
+
+// Deleter callback for from_blob: frees the AVFrame associated with the data.
+static void avFrameDeleter(void* data) {
+  std::lock_guard<std::mutex> lock(g_avframe_map_mutex);
+  auto it = g_avframe_map.find(data);
+  if (it != g_avframe_map.end()) {
+    UniqueAVFrame avFrameToDelete(it->second);
+    g_avframe_map.erase(it);
+  }
+}
+
+StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   STD_TORCH_CHECK(avFrame->format == AV_PIX_FMT_RGB24, "Expected RGB24 format");
 
   int height = avFrame->height;
@@ -122,11 +140,22 @@ torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   std::vector<int64_t> shape = {height, width, 3};
   std::vector<int64_t> strides = {avFrame->linesize[0], 3, 1};
   AVFrame* avFrameClone = av_frame_clone(avFrame.get());
-  auto deleter = [avFrameClone](void*) {
-    UniqueAVFrame avFrameToDelete(avFrameClone);
-  };
-  return torch::from_blob(
-      avFrameClone->data[0], shape, strides, deleter, {torch::kUInt8});
+
+  void* data = avFrameClone->data[0];
+
+  // Register the AVFrame in the global map for cleanup
+  {
+    std::lock_guard<std::mutex> lock(g_avframe_map_mutex);
+    g_avframe_map[data] = avFrameClone;
+  }
+
+  return torch::stable::from_blob(
+      data,
+      shape,
+      strides,
+      StableDevice(kStableCPU),
+      kStableUInt8,
+      avFrameDeleter);
 }
 
 } // namespace facebook::torchcodec

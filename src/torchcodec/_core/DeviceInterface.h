@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include <torch/types.h>
 #include <functional>
 #include <memory>
 #include <stdexcept>
@@ -78,7 +77,7 @@ class DeviceInterface {
   // buffered samples.
   // Returns an optional tensor containing the flushed samples, or std::nullopt
   // if there are no buffered samples or audio is not supported.
-  virtual std::optional<torch::Tensor> maybeFlushAudioBuffers() {
+  virtual std::optional<StableTensor> maybeFlushAudioBuffers() {
     return std::nullopt;
   }
 
@@ -92,7 +91,7 @@ class DeviceInterface {
   virtual void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt) = 0;
+      std::optional<StableTensor> preAllocatedOutputTensor = std::nullopt) = 0;
 
   // ------------------------------------------
   // Extension points for custom decoding paths
@@ -144,7 +143,7 @@ class DeviceInterface {
   static constexpr AVPixelFormat CUDA_ENCODING_PIXEL_FORMAT = AV_PIX_FMT_NV12;
 
   virtual UniqueAVFrame convertTensorToAVFrameForEncoding(
-      [[maybe_unused]] const torch::Tensor& tensor,
+      [[maybe_unused]] const StableTensor& tensor,
       [[maybe_unused]] int frameIndex,
       [[maybe_unused]] AVCodecContext* codecContext) {
     STD_TORCH_CHECK(false, "convertTensorToAVFrameForEncoding not implemented");
@@ -176,7 +175,7 @@ TORCHCODEC_THIRD_PARTY_API bool registerDeviceInterface(
     const DeviceInterfaceKey& key,
     const CreateDeviceInterfaceFn createInterface);
 
-void validateDeviceInterface(
+TORCHCODEC_API void validateDeviceInterface(
     const std::string device,
     const std::string variant);
 
@@ -184,6 +183,6 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
     const StableDevice& device,
     const std::string_view variant = "ffmpeg");
 
-torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
+StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 
 } // namespace facebook::torchcodec

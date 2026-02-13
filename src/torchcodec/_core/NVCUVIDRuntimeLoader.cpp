@@ -25,9 +25,9 @@ bool loadNVCUVIDLibrary() {
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
 
-#include <torch/types.h>
 #include <cstdio>
 #include <mutex>
+#include "StableABICompat.h"
 
 #if defined(WIN64) || defined(_WIN64)
 #include <windows.h>
