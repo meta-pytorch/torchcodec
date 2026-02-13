@@ -15,7 +15,7 @@ import pytest
 import torch
 import torchcodec
 
-from torchcodec._core import (
+from torchcodec._core.ops import (
     _add_video_stream,
     add_video_stream,
     create_from_file,

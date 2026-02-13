@@ -11,7 +11,8 @@ from functools import partial
 import numpy
 import pytest
 import torch
-from torchcodec import _core, ffmpeg_major_version, FrameBatch
+from torchcodec import ffmpeg_major_version, FrameBatch
+from torchcodec._core import _metadata as _core_metadata
 from torchcodec.decoders import (
     AudioDecoder,
     AudioStreamMetadata,
@@ -113,7 +114,7 @@ class TestDecoder:
             raise ValueError("Oops, double check the parametrization of this test!")
 
         decoder = Decoder(source)
-        assert isinstance(decoder.metadata, _core._metadata.StreamMetadata)
+        assert isinstance(decoder.metadata, _core_metadata.StreamMetadata)
 
     @pytest.mark.parametrize("Decoder", (VideoDecoder, AudioDecoder))
     def test_create_fails(self, Decoder):

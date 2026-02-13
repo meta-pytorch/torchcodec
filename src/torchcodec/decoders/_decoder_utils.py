@@ -13,7 +13,12 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from torch import Tensor
-from torchcodec import _core as core
+from torchcodec._core.ops import (
+    create_from_bytes,
+    create_from_file,
+    create_from_file_like,
+    create_from_tensor,
+)
 
 ERROR_REPORTING_INSTRUCTIONS = """
 This should never happen. Please report an issue following the steps in
@@ -27,15 +32,15 @@ def create_decoder(
     seek_mode: str,
 ) -> Tensor:
     if isinstance(source, str):
-        return core.create_from_file(source, seek_mode)
+        return create_from_file(source, seek_mode)
     elif isinstance(source, Path):
-        return core.create_from_file(str(source), seek_mode)
+        return create_from_file(str(source), seek_mode)
     elif isinstance(source, io.RawIOBase) or isinstance(source, io.BufferedReader):
-        return core.create_from_file_like(source, seek_mode)
+        return create_from_file_like(source, seek_mode)
     elif isinstance(source, bytes):
-        return core.create_from_bytes(source, seek_mode)
+        return create_from_bytes(source, seek_mode)
     elif isinstance(source, Tensor):
-        return core.create_from_tensor(source, seek_mode)
+        return create_from_tensor(source, seek_mode)
     elif isinstance(source, io.TextIOBase):
         raise TypeError(
             "source is for reading text, likely from open(..., 'r'). Try with 'rb' for binary reading?"
@@ -45,7 +50,7 @@ def create_decoder(
         # it last in general to be defensive: hasattr is a blunt instrument. We
         # could use the inspect module to check for methods with the right
         # signature.
-        return core.create_from_file_like(source, seek_mode)
+        return create_from_file_like(source, seek_mode)
 
     raise TypeError(
         f"Unknown source type: {type(source)}. "

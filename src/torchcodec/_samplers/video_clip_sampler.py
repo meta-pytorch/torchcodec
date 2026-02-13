@@ -14,7 +14,7 @@ from typing import Any
 import torch
 from torch import nn, Tensor
 
-from torchcodec._core import (
+from torchcodec._core.ops import (
     add_video_stream,
     create_from_tensor,
     get_frames_at_indices,

@@ -4,7 +4,11 @@ from typing import Any
 import torch
 from torch import Tensor
 
-from torchcodec import _core
+from torchcodec._core.ops import (
+    encode_video_to_file,
+    encode_video_to_file_like,
+    encode_video_to_tensor,
+)
 
 
 class VideoEncoder:
@@ -72,7 +76,7 @@ class VideoEncoder:
                 See :ref:`extra_options` for details.
         """
         preset = str(preset) if isinstance(preset, int) else preset
-        _core.encode_video_to_file(
+        encode_video_to_file(
             frames=self._frames,
             frame_rate=self._frame_rate,
             filename=str(dest),
@@ -125,7 +129,7 @@ class VideoEncoder:
             Tensor: The raw encoded bytes as 1D uint8 Tensor on CPU regardless of the device of the input frames.
         """
         preset_value = str(preset) if isinstance(preset, int) else preset
-        return _core.encode_video_to_tensor(
+        return encode_video_to_tensor(
             frames=self._frames,
             frame_rate=self._frame_rate,
             format=format,
@@ -181,7 +185,7 @@ class VideoEncoder:
                 See :ref:`extra_options` for details.
         """
         preset = str(preset) if isinstance(preset, int) else preset
-        _core.encode_video_to_file_like(
+        encode_video_to_file_like(
             frames=self._frames,
             frame_rate=self._frame_rate,
             format=format,

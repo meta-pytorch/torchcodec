@@ -10,13 +10,15 @@ from fractions import Fraction
 import pytest
 
 from torchcodec import ffmpeg_major_version
-from torchcodec._core import (
-    add_video_stream,
+from torchcodec._core._metadata import (
     AudioStreamMetadata,
-    create_from_file,
     get_container_metadata,
     get_container_metadata_from_header,
     VideoStreamMetadata,
+)
+from torchcodec._core.ops import (
+    add_video_stream,
+    create_from_file,
 )
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 

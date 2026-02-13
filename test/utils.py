@@ -12,7 +12,7 @@ import pytest
 import torch
 
 from torchcodec import ffmpeg_major_version
-from torchcodec._core import get_ffmpeg_library_versions
+from torchcodec._core.ops import get_ffmpeg_library_versions
 from torchcodec.decoders import set_cuda_backend, VideoDecoder
 from torchcodec._core._video import _read_custom_frame_mappings
 

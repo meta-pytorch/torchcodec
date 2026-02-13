@@ -3,7 +3,11 @@ from pathlib import Path
 import torch
 from torch import Tensor
 
-from torchcodec import _core
+from torchcodec._core.ops import (
+    encode_audio_to_file,
+    encode_audio_to_file_like,
+    encode_audio_to_tensor,
+)
 
 
 class AudioEncoder:
@@ -65,7 +69,7 @@ class AudioEncoder:
             sample_rate (int, optional): The sample rate of the encoded output.
                 By default, the sample rate of the input ``samples`` is used.
         """
-        _core.encode_audio_to_file(
+        encode_audio_to_file(
             samples=self._samples,
             sample_rate=self._sample_rate,
             filename=str(dest),
@@ -100,7 +104,7 @@ class AudioEncoder:
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor.
         """
-        return _core.encode_audio_to_tensor(
+        return encode_audio_to_tensor(
             samples=self._samples,
             sample_rate=self._sample_rate,
             format=format,
@@ -138,7 +142,7 @@ class AudioEncoder:
             sample_rate (int, optional): The sample rate of the encoded output.
                 By default, the sample rate of the input ``samples`` is used.
         """
-        _core.encode_audio_to_file_like(
+        encode_audio_to_file_like(
             samples=self._samples,
             sample_rate=self._sample_rate,
             format=format,

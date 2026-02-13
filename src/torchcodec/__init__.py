@@ -24,4 +24,4 @@ except Exception:
 cmake_prefix_path = Path(__file__).parent / "share" / "cmake"
 # Similarly, these are exposed for downstream builds that use torchcodec as a
 # dependency.
-from ._core import core_library_path, ffmpeg_major_version  # usort:skip
+from ._core.ops import core_library_path, ffmpeg_major_version  # usort:skip
