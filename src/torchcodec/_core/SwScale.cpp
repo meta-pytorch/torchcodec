@@ -65,7 +65,7 @@ int SwScale::convert(
   // tensor.
   torch::Tensor colorConvertedTensor = needsResize_
       ? allocateEmptyHWCTensor(
-            FrameDims(config_.inputHeight, config_.inputWidth), torch::kCPU)
+            FrameDims(config_.inputHeight, config_.inputWidth), kStableCPU)
       : outputTensor;
 
   uint8_t* colorConvertedPointers[4] = {
