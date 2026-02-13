@@ -161,6 +161,14 @@ function(make_torchcodec_libraries
         "${core_library_dependencies}"
     )
 
+    if(ENABLE_CUDA)
+        # We have to define USE_CUDA because we rely on some APIs like
+        # aoti_torch_get_current_cuda_stream, which are only exposed in torch
+        # headers if is defined!
+        # https://github.com/pytorch/pytorch/blob/98e36864e640023a716e058d894ea2d20e76e5f7/torch/csrc/inductor/aoti_torch/c/shim.h#L573-L602
+        target_compile_definitions(${core_library_name} PRIVATE USE_CUDA)
+    endif()
+
     # 2. Create libtorchcodec_custom_opsN.{ext}.
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
     set(custom_ops_sources

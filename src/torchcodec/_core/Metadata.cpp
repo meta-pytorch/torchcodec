@@ -6,7 +6,6 @@
 
 #include "Metadata.h"
 #include "StableABICompat.h"
-#include "torch/types.h"
 
 namespace facebook::torchcodec {
 

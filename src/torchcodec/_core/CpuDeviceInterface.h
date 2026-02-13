@@ -37,15 +37,15 @@ class CpuDeviceInterface : public DeviceInterface {
   virtual void initializeAudio(
       const AudioStreamOptions& audioStreamOptions) override;
 
-  virtual std::optional<torch::Tensor> maybeFlushAudioBuffers() override;
+  virtual std::optional<StableTensor> maybeFlushAudioBuffers() override;
 
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor) override;
+      std::optional<StableTensor> preAllocatedOutputTensor) override;
 
   UniqueAVFrame convertTensorToAVFrameForEncoding(
-      const torch::Tensor& tensor,
+      const StableTensor& tensor,
       int frameIndex,
       AVCodecContext* codecContext) override;
 
@@ -59,14 +59,14 @@ class CpuDeviceInterface : public DeviceInterface {
   void convertVideoAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor);
+      std::optional<StableTensor> preAllocatedOutputTensor);
 
   int convertAVFrameToTensorUsingSwScale(
       const UniqueAVFrame& avFrame,
-      torch::Tensor& outputTensor,
+      StableTensor& outputTensor,
       const FrameDims& outputDims);
 
-  torch::Tensor convertAVFrameToTensorUsingFilterGraph(
+  StableTensor convertAVFrameToTensorUsingFilterGraph(
       const UniqueAVFrame& avFrame,
       const FrameDims& outputDims);
 

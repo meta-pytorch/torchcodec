@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "CUDACommon.h"
+#include <torch/csrc/inductor/aoti_torch/c/shim.h>
 #include "Cache.h" // for PerGpuCache
 #include "StableABICompat.h"
 
@@ -22,16 +23,47 @@ PerGpuCache<NppStreamContext> g_cached_npp_ctxs(
 
 } // namespace
 
+cudaStream_t getCurrentCudaStream(int32_t deviceIndex) {
+  // This is the documented and blessed way to get the current CUDA stream with
+  // the stable ABI. aoti_torch_get_current_cuda_stream, TORCH_ERROR_CODE_CHECK,
+  // and the corresponding torch/csrc/inductor/aoti_torch/c/shim.h header are
+  // all safe to use:
+  // https://github.com/pytorch/pytorch/blob/7bc8d4b0648e1d364dce0104c3aea2e7e3c1640a/docs/cpp/source/stable.rst?plain=1#L172-L179
+  void* stream = nullptr;
+  TORCH_ERROR_CODE_CHECK(
+      aoti_torch_get_current_cuda_stream(deviceIndex, &stream));
+  // Note: no need for checking against nullptr stream, it's a valid default
+  // stream value.
+  return static_cast<cudaStream_t>(stream);
+}
+
+// Make waitingStream wait until all work currently enqueued on runningStream
+// has completed.
+void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream) {
+  cudaEvent_t event;
+  cudaError_t err = cudaEventCreate(&event);
+  STD_TORCH_CHECK(
+      err == cudaSuccess, "cudaEventCreate failed: ", cudaGetErrorString(err));
+
+  err = cudaEventRecord(event, runningStream);
+  STD_TORCH_CHECK(
+      err == cudaSuccess, "cudaEventRecord failed: ", cudaGetErrorString(err));
+
+  err = cudaStreamWaitEvent(waitingStream, event, 0);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "cudaStreamWaitEvent failed: ",
+      cudaGetErrorString(err));
+
+  cudaEventDestroy(event);
+}
+
 void initializeCudaContextWithPytorch(const StableDevice& device) {
   // It is important for pytorch itself to create the cuda context. If ffmpeg
   // creates the context it may not be compatible with pytorch.
   // This is a dummy tensor to initialize the cuda context.
-  torch::Tensor dummyTensorForCudaInitialization = torch::zeros(
-      {1},
-      torch::TensorOptions()
-          .dtype(torch::kUInt8)
-          .device(torch::Device(
-              static_cast<c10::DeviceType>(device.type()), device.index())));
+  StableTensor dummyTensorForCudaInitialization =
+      stableEmpty({1}, kStableUInt8, kStableStrided, StableDevice(device));
 }
 
 /* clang-format off */
@@ -161,14 +193,14 @@ const Npp32f bt709FullRangeColorTwist[3][4] = {
     {1.0f, -0.187324273f, -0.468124273f, -128.0f},
     {1.0f, 1.8556f, 0.0f, -128.0f}};
 
-torch::Tensor convertNV12FrameToRGB(
+StableTensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
     const StableDevice& device,
     const UniqueNppContext& nppCtx,
-    at::cuda::CUDAStream nvdecStream,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    cudaStream_t nvdecStream,
+    std::optional<StableTensor> preAllocatedOutputTensor) {
   auto frameDims = FrameDims(avFrame->height, avFrame->width);
-  torch::Tensor dst;
+  StableTensor dst;
   if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
@@ -178,13 +210,10 @@ torch::Tensor convertNV12FrameToRGB(
   // We need to make sure NVDEC has finished decoding a frame before
   // color-converting it with NPP.
   // So we make the NPP stream wait for NVDEC to finish.
-  at::cuda::CUDAStream nppStream =
-      at::cuda::getCurrentCUDAStream(device.index());
-  at::cuda::CUDAEvent nvdecDoneEvent;
-  nvdecDoneEvent.record(nvdecStream);
-  nvdecDoneEvent.block(nppStream);
+  cudaStream_t nppStream = getCurrentCudaStream(device.index());
+  syncStreams(/*runningStream=*/nvdecStream, /*waitingStream=*/nppStream);
 
-  nppCtx->hStream = nppStream.stream();
+  nppCtx->hStream = nppStream;
   cudaError_t err = cudaStreamGetFlags(nppCtx->hStream, &nppCtx->nStreamFlags);
   STD_TORCH_CHECK(
       err == cudaSuccess,
@@ -211,7 +240,7 @@ torch::Tensor convertNV12FrameToRGB(
       status = nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
           yuvData,
           srcStep,
-          static_cast<Npp8u*>(dst.data_ptr()),
+          dst.mutable_data_ptr<Npp8u>(),
           dst.stride(0),
           oSizeROI,
           bt709FullRangeColorTwist,
@@ -229,7 +258,7 @@ torch::Tensor convertNV12FrameToRGB(
       status = nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx(
           yuvData,
           avFrame->linesize[0],
-          static_cast<Npp8u*>(dst.data_ptr()),
+          dst.mutable_data_ptr<Npp8u>(),
           dst.stride(0),
           oSizeROI,
           *nppCtx);
@@ -241,7 +270,7 @@ torch::Tensor convertNV12FrameToRGB(
     status = nppiNV12ToRGB_8u_P2C3R_Ctx(
         yuvData,
         avFrame->linesize[0],
-        static_cast<Npp8u*>(dst.data_ptr()),
+        dst.mutable_data_ptr<Npp8u>(),
         dst.stride(0),
         oSizeROI,
         *nppCtx);
@@ -295,7 +324,7 @@ void returnNppStreamContextToCache(
 }
 
 void validatePreAllocatedTensorShape(
-    const std::optional<torch::Tensor>& preAllocatedOutputTensor,
+    const std::optional<StableTensor>& preAllocatedOutputTensor,
     const UniqueAVFrame& avFrame) {
   // Note that CUDA does not yet support transforms, so the only possible
   // frame dimensions are the raw decoded frame's dimensions.
@@ -311,7 +340,7 @@ void validatePreAllocatedTensorShape(
         "x",
         frameDims.width,
         "x3, got ",
-        shape);
+        intArrayRefToString(shape));
   }
 }
 

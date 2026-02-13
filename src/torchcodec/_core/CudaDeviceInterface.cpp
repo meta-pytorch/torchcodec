@@ -1,6 +1,4 @@
-#include <ATen/cuda/CUDAEvent.h>
-#include <c10/cuda/CUDAStream.h>
-#include <torch/types.h>
+#include <cuda_runtime.h>
 #include <mutex>
 
 #include "Cache.h"
@@ -59,8 +57,7 @@ UniqueAVBufferRef getHardwareDeviceContext(const StableDevice& device) {
   }
 
   // Create hardware device context
-  c10::cuda::CUDAGuard deviceGuard(
-      c10::Device(static_cast<c10::DeviceType>(device.type()), device.index()));
+  StableDeviceGuard deviceGuard(device.index());
   // We set the device because we may be called from a different thread than
   // the one that initialized the cuda context.
   STD_TORCH_CHECK(
@@ -239,7 +236,7 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
 void CudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    std::optional<StableTensor> preAllocatedOutputTensor) {
   validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
 
   hasDecodedFrame_ = true;
@@ -281,11 +278,10 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     // pre-allocated tensor is on the GPU, so we can't send that to the CPU
     // device interface. We copy it over here.
     if (preAllocatedOutputTensor.has_value()) {
-      preAllocatedOutputTensor.value().copy_(cpuFrameOutput.data);
+      stableCopy_(preAllocatedOutputTensor.value(), cpuFrameOutput.data);
       frameOutput.data = preAllocatedOutputTensor.value();
     } else {
-      frameOutput.data = cpuFrameOutput.data.to(torch::Device(
-          static_cast<c10::DeviceType>(device_.type()), device_.index()));
+      frameOutput.data = stableTo(cpuFrameOutput.data, device_);
     }
 
     usingCPUFallback_ = true;
@@ -326,8 +322,9 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   auto cudaDeviceCtx =
       static_cast<AVCUDADeviceContext*>(hwFramesCtx->device_ctx->hwctx);
   STD_TORCH_CHECK(cudaDeviceCtx != nullptr, "The hardware context is null");
-  at::cuda::CUDAStream nvdecStream = // That's always the default stream. Sad.
-      c10::cuda::getStreamFromExternal(cudaDeviceCtx->stream, device_.index());
+
+  cudaStream_t nvdecStream = // That's always the default stream. Sad.
+      cudaDeviceCtx->stream;
 
   frameOutput.data = convertNV12FrameToRGB(
       avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
@@ -501,22 +498,23 @@ const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
 } // namespace
 
 UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
-    const torch::Tensor& tensor,
+    const StableTensor& tensor,
     int frameIndex,
     AVCodecContext* codecContext) {
   STD_TORCH_CHECK(
-      tensor.dim() == 3 && tensor.size(0) == 3,
-      "Expected 3D RGB tensor (CHW format), got shape: ",
-      tensor.sizes());
+      tensor.dim() == 3 && tensor.sizes()[0] == 3,
+      "Expected 3D RGB tensor (CHW format), got ",
+      tensor.dim(),
+      "D tensor");
   STD_TORCH_CHECK(
-      tensor.device().type() == torch::kCUDA,
+      tensor.device().type() == kStableCUDA,
       "Expected tensor on CUDA device, got: ",
-      tensor.device().str());
+      deviceTypeName(tensor.device().type()));
 
   UniqueAVFrame avFrame(av_frame_alloc());
   STD_TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
-  int height = static_cast<int>(tensor.size(1));
-  int width = static_cast<int>(tensor.size(2));
+  int height = static_cast<int>(tensor.sizes()[1]);
+  int width = static_cast<int>(tensor.sizes()[2]);
 
   // TODO-VideoEncoder: (P1) Unify AVFrame creation with CPU method
   avFrame->format = AV_PIX_FMT_CUDA;
@@ -539,15 +537,16 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
       "avFrame must be pre-allocated with CUDA memory");
 
   // TODO VideoEncoder: Investigate ways to avoid this copy
-  torch::Tensor hwcFrame = tensor.permute({1, 2, 0}).contiguous();
+  StableTensor hwcFrame = stableContiguous(stablePermute(tensor, {1, 2, 0}));
 
   NppiSize oSizeROI = {width, height};
   NppStatus status;
   // Convert to NV12, as CUDA_ENCODING_PIXEL_FORMAT is always NV12 currently
   status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
-      static_cast<const Npp8u*>(hwcFrame.data_ptr()),
+      hwcFrame.const_data_ptr<Npp8u>(),
       validateInt64ToInt(
-          hwcFrame.stride(0) * hwcFrame.element_size(), "nSrcStep"),
+          hwcFrame.stride(0) * static_cast<int64_t>(hwcFrame.element_size()),
+          "nSrcStep"),
       avFrame->data,
       avFrame->linesize,
       oSizeROI,

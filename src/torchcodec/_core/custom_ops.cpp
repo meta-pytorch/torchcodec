@@ -6,6 +6,7 @@
 
 #include <fmt/format.h>
 #include <pybind11/pybind11.h>
+#include <torch/types.h>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -84,6 +85,20 @@ TORCH_LIBRARY(torchcodec_ns, m) {
 
 namespace {
 
+// ---------------------------------------------------------------------------
+// Conversion helpers between at::Tensor (used by the PyTorch dispatcher) and
+// StableTensor (used by the core library). The handle is a shared_ptr under
+// the hood, so copies are cheap reference-count bumps.
+// ---------------------------------------------------------------------------
+inline StableTensor toStableTensor(const at::Tensor& tensor) {
+  at::Tensor* p = new at::Tensor(tensor);
+  return StableTensor(reinterpret_cast<AtenTensorHandle>(p));
+}
+
+inline at::Tensor toATenTensor(const StableTensor& t) {
+  return *reinterpret_cast<at::Tensor*>(t.get());
+}
+
 torch::Tensor wrapDecoderPointerToTensor(
     std::unique_ptr<SingleStreamDecoder> uniqueDecoder) {
   SingleStreamDecoder* decoder = uniqueDecoder.release();
@@ -116,7 +131,7 @@ using OpsFrameOutput = std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>;
 
 OpsFrameOutput makeOpsFrameOutput(FrameOutput& frame) {
   return std::make_tuple(
-      frame.data,
+      toATenTensor(frame.data),
       torch::tensor(frame.ptsSeconds, torch::dtype(torch::kFloat64)),
       torch::tensor(frame.durationSeconds, torch::dtype(torch::kFloat64)));
 }
@@ -125,9 +140,9 @@ SingleStreamDecoder::FrameMappings makeFrameMappings(
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
         custom_frame_mappings) {
   return SingleStreamDecoder::FrameMappings{
-      std::move(std::get<0>(custom_frame_mappings)),
-      std::move(std::get<1>(custom_frame_mappings)),
-      std::move(std::get<2>(custom_frame_mappings))};
+      toStableTensor(std::get<0>(custom_frame_mappings)),
+      toStableTensor(std::get<1>(custom_frame_mappings)),
+      toStableTensor(std::get<2>(custom_frame_mappings))};
 }
 
 // All elements of this tuple are tensors of the same leading dimension. The
@@ -143,7 +158,10 @@ using OpsFrameBatchOutput =
     std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>;
 
 OpsFrameBatchOutput makeOpsFrameBatchOutput(FrameBatchOutput& batch) {
-  return std::make_tuple(batch.data, batch.ptsSeconds, batch.durationSeconds);
+  return std::make_tuple(
+      toATenTensor(batch.data),
+      toATenTensor(batch.ptsSeconds),
+      toATenTensor(batch.durationSeconds));
 }
 
 // The elements of this tuple are all tensors that represent the concatenation
@@ -154,7 +172,7 @@ using OpsAudioFramesOutput = std::tuple<torch::Tensor, torch::Tensor>;
 
 OpsAudioFramesOutput makeOpsAudioFramesOutput(AudioFramesOutput& audioFrames) {
   return std::make_tuple(
-      audioFrames.data,
+      toATenTensor(audioFrames.data),
       torch::tensor(audioFrames.ptsSeconds, torch::dtype(torch::kFloat64)));
 }
 
@@ -387,7 +405,7 @@ torch::Tensor create_from_tensor(
   }
 
   auto avioContextHolder =
-      std::make_unique<AVIOFromTensorContext>(video_tensor);
+      std::make_unique<AVIOFromTensorContext>(toStableTensor(video_tensor));
 
   std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
       std::make_unique<SingleStreamDecoder>(
@@ -555,7 +573,7 @@ OpsFrameBatchOutput get_frames_at_indices(
     torch::Tensor& decoder,
     const torch::Tensor& frame_indices) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto result = videoDecoder->getFramesAtIndices(frame_indices);
+  auto result = videoDecoder->getFramesAtIndices(toStableTensor(frame_indices));
   return makeOpsFrameBatchOutput(result);
 }
 
@@ -576,7 +594,7 @@ OpsFrameBatchOutput get_frames_by_pts(
     torch::Tensor& decoder,
     const torch::Tensor& timestamps) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto result = videoDecoder->getFramesPlayedAt(timestamps);
+  auto result = videoDecoder->getFramesPlayedAt(toStableTensor(timestamps));
   return makeOpsFrameBatchOutput(result);
 }
 
@@ -620,7 +638,7 @@ void encode_audio_to_file(
   audioStreamOptions.sampleRate =
       validateOptionalInt64ToInt(desired_sample_rate, "desired_sample_rate");
   AudioEncoder(
-      samples,
+      toStableTensor(samples),
       validateInt64ToInt(sample_rate, "sample_rate"),
       file_name,
       audioStreamOptions)
@@ -641,13 +659,13 @@ torch::Tensor encode_audio_to_tensor(
       validateOptionalInt64ToInt(num_channels, "num_channels");
   audioStreamOptions.sampleRate =
       validateOptionalInt64ToInt(desired_sample_rate, "desired_sample_rate");
-  return AudioEncoder(
-             samples,
-             validateInt64ToInt(sample_rate, "sample_rate"),
-             format,
-             std::move(avioContextHolder),
-             audioStreamOptions)
-      .encodeToTensor();
+  return toATenTensor(AudioEncoder(
+                          toStableTensor(samples),
+                          validateInt64ToInt(sample_rate, "sample_rate"),
+                          format,
+                          std::move(avioContextHolder),
+                          audioStreamOptions)
+                          .encodeToTensor());
 }
 
 void _encode_audio_to_file_like(
@@ -672,7 +690,7 @@ void _encode_audio_to_file_like(
       validateOptionalInt64ToInt(desired_sample_rate, "desired_sample_rate");
 
   AudioEncoder encoder(
-      samples,
+      toStableTensor(samples),
       validateInt64ToInt(sample_rate, "sample_rate"),
       format,
       std::move(avioContextHolder),
@@ -700,7 +718,9 @@ void encode_video_to_file(
         unflattenExtraOptions(extra_options.value());
   }
 
-  VideoEncoder(frames, frame_rate, file_name, videoStreamOptions).encode();
+  VideoEncoder(
+      toStableTensor(frames), frame_rate, file_name, videoStreamOptions)
+      .encode();
 }
 
 torch::Tensor encode_video_to_tensor(
@@ -724,13 +744,13 @@ torch::Tensor encode_video_to_tensor(
         unflattenExtraOptions(extra_options.value());
   }
 
-  return VideoEncoder(
-             frames,
-             frame_rate,
-             format,
-             std::move(avioContextHolder),
-             videoStreamOptions)
-      .encodeToTensor();
+  return toATenTensor(VideoEncoder(
+                          toStableTensor(frames),
+                          frame_rate,
+                          format,
+                          std::move(avioContextHolder),
+                          videoStreamOptions)
+                          .encodeToTensor());
 }
 
 void _encode_video_to_file_like(
@@ -761,7 +781,7 @@ void _encode_video_to_file_like(
   }
 
   VideoEncoder encoder(
-      frames,
+      toStableTensor(frames),
       frame_rate,
       format,
       std::move(avioContextHolder),
@@ -789,7 +809,7 @@ bool _test_frame_pts_equality(
 
 torch::Tensor _get_key_frame_indices(torch::Tensor& decoder) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  return videoDecoder->getKeyFrameIndices();
+  return toATenTensor(videoDecoder->getKeyFrameIndices());
 }
 
 // Get the metadata from the video as a string.
