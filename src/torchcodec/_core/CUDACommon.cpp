@@ -37,6 +37,8 @@ cudaStream_t getCurrentCudaStream(int32_t deviceIndex) {
   return static_cast<cudaStream_t>(stream);
 }
 
+// Make waitingStream wait until all work currently enqueued on runningStream
+// has completed.
 void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream) {
   cudaEvent_t event;
   cudaError_t err = cudaEventCreate(&event);
