@@ -7,7 +7,6 @@
 
 import contextvars
 import io
-
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
@@ -46,6 +45,56 @@ def create_decoder(
         # could use the inspect module to check for methods with the right
         # signature.
         return core.create_from_file_like(source, seek_mode)
+
+    raise TypeError(
+        f"Unknown source type: {type(source)}. "
+        "Supported types are str, Path, bytes, Tensor and file-like objects with "
+        "read(self, size: int) -> bytes and "
+        "seek(self, offset: int, whence: int) -> int methods."
+    )
+
+
+def create_audio_decoder(
+    *,
+    source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
+    seek_mode: str,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> Tensor:
+    """Create an audio decoder and add an audio stream in one consolidated call.
+
+    This function handles all source types and calls the appropriate consolidated
+    C++ op that creates the decoder and adds the audio stream in a single operation.
+    """
+    if isinstance(source, str):
+        return core.create_audio_decoder_from_file(
+            source, seek_mode, stream_index, sample_rate, num_channels
+        )
+    elif isinstance(source, Path):
+        return core.create_audio_decoder_from_file(
+            str(source), seek_mode, stream_index, sample_rate, num_channels
+        )
+    elif isinstance(source, io.RawIOBase) or isinstance(source, io.BufferedReader):
+        return core.create_audio_decoder_from_file_like(
+            source, seek_mode, stream_index, sample_rate, num_channels
+        )
+    elif isinstance(source, bytes):
+        return core.create_audio_decoder_from_bytes(
+            source, seek_mode, stream_index, sample_rate, num_channels
+        )
+    elif isinstance(source, Tensor):
+        return core.create_audio_decoder_from_tensor(
+            source, seek_mode, stream_index, sample_rate, num_channels
+        )
+    elif isinstance(source, io.TextIOBase):
+        raise TypeError(
+            "source is for reading text, likely from open(..., 'r'). Try with 'rb' for binary reading?"
+        )
+    elif hasattr(source, "read") and hasattr(source, "seek"):
+        return core.create_audio_decoder_from_file_like(
+            source, seek_mode, stream_index, sample_rate, num_channels
+        )
 
     raise TypeError(
         f"Unknown source type: {type(source)}. "

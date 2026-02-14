@@ -71,6 +71,16 @@ _create_from_file_like = torch._dynamo.disallow_in_graph(
 add_video_stream = torch.ops.torchcodec_ns.add_video_stream.default
 _add_video_stream = torch.ops.torchcodec_ns._add_video_stream.default
 add_audio_stream = torch.ops.torchcodec_ns.add_audio_stream.default
+# Consolidated decoder creation: creates decoder and adds audio stream in one call
+create_audio_decoder_from_file = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.create_audio_decoder_from_file.default
+)
+create_audio_decoder_from_tensor = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.create_audio_decoder_from_tensor.default
+)
+_create_audio_decoder_from_file_like = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns._create_audio_decoder_from_file_like.default
+)
 seek_to_pts = torch.ops.torchcodec_ns.seek_to_pts.default
 get_next_frame = torch.ops.torchcodec_ns.get_next_frame.default
 get_frame_at_pts = torch.ops.torchcodec_ns.get_frame_at_pts.default
@@ -121,6 +131,52 @@ def create_from_file_like(
             file_like, False  # False means not for writing
         ),
         seek_mode,
+    )
+
+
+def create_audio_decoder_from_file_like(
+    file_like: io.RawIOBase | io.BufferedReader,
+    seek_mode: str | None = None,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> torch.Tensor:
+    """Create an audio decoder from a file-like object in one consolidated call.
+
+    This combines creating a decoder from a file-like object and adding an audio
+    stream into a single operation.
+    """
+    assert _pybind_ops is not None
+    return _create_audio_decoder_from_file_like(
+        _pybind_ops.create_file_like_context(
+            file_like, False  # False means not for writing
+        ),
+        seek_mode,
+        stream_index,
+        sample_rate,
+        num_channels,
+    )
+
+
+def create_audio_decoder_from_bytes(
+    audio_bytes: bytes,
+    seek_mode: str | None = None,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> torch.Tensor:
+    """Create an audio decoder from bytes in one consolidated call.
+
+    This combines creating a decoder from bytes and adding an audio stream
+    into a single operation.
+    """
+    with warnings.catch_warnings():
+        # Ignore warning stating that the underlying audio_bytes buffer is
+        # non-writable.
+        warnings.filterwarnings("ignore", category=UserWarning)
+        buffer = torch.frombuffer(audio_bytes, dtype=torch.uint8)
+    return create_audio_decoder_from_tensor(
+        buffer, seek_mode, stream_index, sample_rate, num_channels
     )
 
 
@@ -237,6 +293,39 @@ def create_from_file_abstract(filename: str, seek_mode: str | None) -> torch.Ten
 @register_fake("torchcodec_ns::_create_from_file_like")
 def _create_from_file_like_abstract(
     file_like: int, seek_mode: str | None
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::create_audio_decoder_from_file")
+def create_audio_decoder_from_file_abstract(
+    filename: str,
+    seek_mode: str | None = None,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::create_audio_decoder_from_tensor")
+def create_audio_decoder_from_tensor_abstract(
+    video_tensor: torch.Tensor,
+    seek_mode: str | None = None,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::_create_audio_decoder_from_file_like")
+def _create_audio_decoder_from_file_like_abstract(
+    file_like_context: int,
+    seek_mode: str | None = None,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 

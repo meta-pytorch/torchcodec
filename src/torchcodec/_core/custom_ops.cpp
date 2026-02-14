@@ -54,6 +54,12 @@ TORCH_LIBRARY(torchcodec_ns, m) {
       "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None) -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
+  m.def(
+      "create_audio_decoder_from_file(str filename, str? seek_mode=None, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> Tensor");
+  m.def(
+      "create_audio_decoder_from_tensor(Tensor video_tensor, str? seek_mode=None, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> Tensor");
+  m.def(
+      "_create_audio_decoder_from_file_like(int file_like_context, str? seek_mode=None, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> Tensor");
   m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
   m.def("get_next_frame(Tensor(a!) decoder) -> (Tensor, Tensor, Tensor)");
   m.def(
@@ -507,6 +513,103 @@ void add_audio_stream(
 
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   videoDecoder->addAudioStream(stream_index.value_or(-1), audioStreamOptions);
+}
+
+// Create a SingleStreamDecoder from file and add an audio stream in one call.
+// This consolidates create_from_file + add_audio_stream into a single
+// operation.
+torch::Tensor create_audio_decoder_from_file(
+    std::string_view filename,
+    std::optional<std::string_view> seek_mode = std::nullopt,
+    std::optional<int64_t> stream_index = std::nullopt,
+    std::optional<int64_t> sample_rate = std::nullopt,
+    std::optional<int64_t> num_channels = std::nullopt) {
+  std::string filenameStr(filename);
+
+  SeekMode realSeek = SeekMode::exact;
+  if (seek_mode.has_value()) {
+    realSeek = seekModeFromString(seek_mode.value());
+  }
+
+  AudioStreamOptions audioStreamOptions;
+  audioStreamOptions.sampleRate = sample_rate;
+  audioStreamOptions.numChannels = num_channels;
+
+  std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
+      std::make_unique<SingleStreamDecoder>(
+          filenameStr, realSeek, stream_index.value_or(-1), audioStreamOptions);
+
+  return wrapDecoderPointerToTensor(std::move(uniqueDecoder));
+}
+
+// Create a SingleStreamDecoder from a tensor and add an audio stream in one
+// call. This consolidates create_from_tensor + add_audio_stream into a single
+// operation.
+torch::Tensor create_audio_decoder_from_tensor(
+    const torch::Tensor& video_tensor,
+    std::optional<std::string_view> seek_mode = std::nullopt,
+    std::optional<int64_t> stream_index = std::nullopt,
+    std::optional<int64_t> sample_rate = std::nullopt,
+    std::optional<int64_t> num_channels = std::nullopt) {
+  TORCH_CHECK(video_tensor.is_contiguous(), "video_tensor must be contiguous");
+  TORCH_CHECK(
+      video_tensor.scalar_type() == torch::kUInt8,
+      "video_tensor must be kUInt8");
+
+  SeekMode realSeek = SeekMode::exact;
+  if (seek_mode.has_value()) {
+    realSeek = seekModeFromString(seek_mode.value());
+  }
+
+  AudioStreamOptions audioStreamOptions;
+  audioStreamOptions.sampleRate = sample_rate;
+  audioStreamOptions.numChannels = num_channels;
+
+  auto avioContextHolder =
+      std::make_unique<AVIOFromTensorContext>(video_tensor);
+
+  std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
+      std::make_unique<SingleStreamDecoder>(
+          std::move(avioContextHolder),
+          realSeek,
+          stream_index.value_or(-1),
+          audioStreamOptions);
+
+  return wrapDecoderPointerToTensor(std::move(uniqueDecoder));
+}
+
+// Create a SingleStreamDecoder from a file-like object and add an audio stream
+// in one call. This consolidates _create_from_file_like + add_audio_stream into
+// a single operation.
+torch::Tensor _create_audio_decoder_from_file_like(
+    int64_t file_like_context,
+    std::optional<std::string_view> seek_mode = std::nullopt,
+    std::optional<int64_t> stream_index = std::nullopt,
+    std::optional<int64_t> sample_rate = std::nullopt,
+    std::optional<int64_t> num_channels = std::nullopt) {
+  auto fileLikeContext =
+      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+  TORCH_CHECK(
+      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
+  std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
+
+  SeekMode realSeek = SeekMode::exact;
+  if (seek_mode.has_value()) {
+    realSeek = seekModeFromString(seek_mode.value());
+  }
+
+  AudioStreamOptions audioStreamOptions;
+  audioStreamOptions.sampleRate = sample_rate;
+  audioStreamOptions.numChannels = num_channels;
+
+  std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
+      std::make_unique<SingleStreamDecoder>(
+          std::move(avioContextHolder),
+          realSeek,
+          stream_index.value_or(-1),
+          audioStreamOptions);
+
+  return wrapDecoderPointerToTensor(std::move(uniqueDecoder));
 }
 
 // Seek to a particular presentation timestamp in the video in seconds.
@@ -1063,6 +1166,11 @@ TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", &create_from_file);
   m.impl("create_from_tensor", &create_from_tensor);
   m.impl("_create_from_file_like", &_create_from_file_like);
+  m.impl("create_audio_decoder_from_file", &create_audio_decoder_from_file);
+  m.impl("create_audio_decoder_from_tensor", &create_audio_decoder_from_tensor);
+  m.impl(
+      "_create_audio_decoder_from_file_like",
+      &_create_audio_decoder_from_file_like);
   m.impl(
       "_get_json_ffmpeg_library_versions", &_get_json_ffmpeg_library_versions);
   m.impl("encode_video_to_file", &encode_video_to_file);

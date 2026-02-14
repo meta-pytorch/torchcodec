@@ -84,6 +84,61 @@ SingleStreamDecoder::SingleStreamDecoder(
   initializeDecoder();
 }
 
+SingleStreamDecoder::SingleStreamDecoder(
+    const std::string& videoFilePath,
+    SeekMode seekMode,
+    int streamIndex,
+    std::vector<Transform*>& transforms,
+    const VideoStreamOptions& videoStreamOptions)
+    : SingleStreamDecoder(videoFilePath, seekMode) {
+  // Resolve best stream if streamIndex is -1
+  int resolvedStreamIndex = streamIndex;
+  if (streamIndex == -1) {
+    auto bestIdx = containerMetadata_.bestVideoStreamIndex;
+    TORCH_CHECK(
+        bestIdx.has_value(),
+        "No video stream found in the source. Cannot create video decoder.");
+    resolvedStreamIndex = *bestIdx;
+  }
+  addVideoStream(resolvedStreamIndex, transforms, videoStreamOptions);
+}
+
+SingleStreamDecoder::SingleStreamDecoder(
+    const std::string& videoFilePath,
+    SeekMode seekMode,
+    int streamIndex,
+    const AudioStreamOptions& audioStreamOptions)
+    : SingleStreamDecoder(videoFilePath, seekMode) {
+  // Resolve best stream if streamIndex is -1
+  int resolvedStreamIndex = streamIndex;
+  if (streamIndex == -1) {
+    auto bestIdx = containerMetadata_.bestAudioStreamIndex;
+    TORCH_CHECK(
+        bestIdx.has_value(),
+        "No audio stream found in the source. Cannot create audio decoder.");
+    resolvedStreamIndex = *bestIdx;
+  }
+  addAudioStream(resolvedStreamIndex, audioStreamOptions);
+}
+
+SingleStreamDecoder::SingleStreamDecoder(
+    std::unique_ptr<AVIOContextHolder> context,
+    SeekMode seekMode,
+    int streamIndex,
+    const AudioStreamOptions& audioStreamOptions)
+    : SingleStreamDecoder(std::move(context), seekMode) {
+  // Resolve best stream if streamIndex is -1
+  int resolvedStreamIndex = streamIndex;
+  if (streamIndex == -1) {
+    auto bestIdx = containerMetadata_.bestAudioStreamIndex;
+    TORCH_CHECK(
+        bestIdx.has_value(),
+        "No audio stream found in the source. Cannot create audio decoder.");
+    resolvedStreamIndex = *bestIdx;
+  }
+  addAudioStream(resolvedStreamIndex, audioStreamOptions);
+}
+
 void SingleStreamDecoder::initializeDecoder() {
   STD_TORCH_CHECK(!initialized_, "Attempted double initialization.");
 
