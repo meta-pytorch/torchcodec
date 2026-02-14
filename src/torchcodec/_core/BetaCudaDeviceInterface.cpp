@@ -4,7 +4,6 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include <c10/cuda/CUDAStream.h>
 #include <torch/types.h>
 #include <map>
 #include <mutex>
@@ -302,6 +301,8 @@ void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
     [[maybe_unused]] const SharedAVCodecContext& codecContext) {
+  STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
+  rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
   if (!nvcuvidAvailable_ || !nativeNVDECSupport(device_, codecContext)) {
     cpuFallback_ = createDeviceInterface(kStableCPU);
     STD_TORCH_CHECK(
@@ -315,7 +316,6 @@ void BetaCudaDeviceInterface::initialize(
     return;
   }
 
-  STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
 
@@ -583,8 +583,8 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   // the NPP stream before any color conversion.
   // Re types: we get a cudaStream_t from PyTorch but it's interchangeable with
   // CUstream
-  procParams.output_stream = reinterpret_cast<CUstream>(
-      at::cuda::getCurrentCUDAStream(device_.index()).stream());
+  procParams.output_stream =
+      reinterpret_cast<CUstream>(getCurrentCudaStream(device_.index()));
 
   CUdeviceptr framePtr = 0;
   unsigned int pitch = 0;
@@ -868,13 +868,54 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       gpuFrame->format == AV_PIX_FMT_CUDA,
       "Expected CUDA format frame from BETA CUDA interface");
 
-  validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
+  cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
-  at::cuda::CUDAStream nvdecStream =
-      at::cuda::getCurrentCUDAStream(device_.index());
+  if (rotation_ == Rotation::NONE) {
+    validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
+    frameOutput.data = convertNV12FrameToRGB(
+        gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+  } else {
+    // preAllocatedOutputTensor has post-rotation dimensions, but NV12->RGB
+    // conversion outputs pre-rotation dimensions, so we can't use it as the
+    // conversion destination or validate it against the frame shape.
+    // Once we support native transforms on the beta CUDA interface, rotation
+    // should be handled as part of the transform pipeline instead.
+    frameOutput.data = convertNV12FrameToRGB(
+        gpuFrame,
+        device_,
+        nppCtx_,
+        nvdecStream,
+        /*preAllocatedOutputTensor=*/std::nullopt);
+    applyRotation(frameOutput, preAllocatedOutputTensor);
+  }
+}
 
-  frameOutput.data = convertNV12FrameToRGB(
-      gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+void BetaCudaDeviceInterface::applyRotation(
+    FrameOutput& frameOutput,
+    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+  int k = 0;
+  switch (rotation_) {
+    case Rotation::CCW90:
+      k = 1;
+      break;
+    case Rotation::ROTATE180:
+      k = 2;
+      break;
+    case Rotation::CW90:
+      k = 3;
+      break;
+    default:
+      STD_TORCH_CHECK(false, "Unexpected rotation value");
+      break;
+  }
+  // Apply rotation using torch::rot90 on the H and W dims of our HWC tensor.
+  // torch::rot90 returns a view, so we need to make it contiguous.
+  frameOutput.data = torch::rot90(frameOutput.data, k, {0, 1}).contiguous();
+
+  if (preAllocatedOutputTensor.has_value()) {
+    preAllocatedOutputTensor.value().copy_(frameOutput.data);
+    frameOutput.data = preAllocatedOutputTensor.value();
+  }
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {
