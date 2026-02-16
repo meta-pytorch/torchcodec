@@ -95,45 +95,22 @@ inline StableTensor stablePermute(
     std::vector<int64_t> dims) {
   const auto num_args = 2;
   std::array<StableIValue, num_args> stack{
-      torch::stable::detail::from(self),
-      torch::stable::detail::from(dims)};
+      torch::stable::detail::from(self), torch::stable::detail::from(dims)};
   TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
       "aten::permute", "", stack.data(), TORCH_ABI_VERSION));
   return torch::stable::detail::to<StableTensor>(stack[0]);
 }
 
-// Concatenate tensors along a dimension.
-// Since cat is not in the stable API, we implement it manually:
-// allocate output, then copy_ slices via narrow.
+// aten::cat(Tensor[] tensors, int dim=0) -> Tensor
 inline StableTensor stableCat(
     const std::vector<StableTensor>& tensors,
     int64_t dim) {
-  STD_TORCH_CHECK(!tensors.empty(), "stableCat: tensor list must not be empty");
-
-  // Compute the total size along the cat dimension
-  int64_t totalSize = 0;
-  for (const auto& t : tensors) {
-    totalSize += t.sizes()[dim];
-  }
-
-  // Build the output shape
-  auto firstSizes = tensors[0].sizes();
-  std::vector<int64_t> outShape(firstSizes.begin(), firstSizes.end());
-  outShape[dim] = totalSize;
-
-  StableTensor result = torch::stable::empty(
-      outShape, tensors[0].scalar_type(), kStableStrided, tensors[0].device());
-
-  // Copy each tensor into the right slice
-  int64_t offset = 0;
-  for (const auto& t : tensors) {
-    int64_t len = t.sizes()[dim];
-    auto slice = torch::stable::narrow(result, dim, offset, len);
-    torch::stable::copy_(slice, t, /*non_blocking=*/std::nullopt);
-    offset += len;
-  }
-
-  return result;
+  const auto num_args = 2;
+  std::array<StableIValue, num_args> stack{
+      torch::stable::detail::from(tensors), torch::stable::detail::from(dim)};
+  TORCH_ERROR_CODE_CHECK(
+      torch_call_dispatcher("aten::cat", "", stack.data(), TORCH_ABI_VERSION));
+  return torch::stable::detail::to<StableTensor>(stack[0]);
 }
 
 inline const char* deviceTypeName(StableDeviceType deviceType) {
