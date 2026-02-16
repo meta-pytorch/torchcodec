@@ -89,42 +89,17 @@ constexpr auto kStableStrided = torch::headeronly::Layout::Strided;
 // Helper functions wrapping torch::stable ops
 // ============================================================================
 
-// Permute tensor dimensions. Since permute is not in the stable API,
-// we implement it via successive transpose operations.
+// aten::permute(Tensor(a) self, int[] dims) -> Tensor(a)
 inline StableTensor stablePermute(
     const StableTensor& self,
-    std::initializer_list<int64_t> dims) {
-  std::vector<int64_t> perm(dims);
-  int64_t ndim = self.dim();
-
-  // Build the permutation using transpositions.
-  // We apply a sequence of transpose operations to achieve the desired
-  // permutation.
-  StableTensor result = torch::stable::clone(self);
-
-  // Track current position of each original dimension
-  std::vector<int64_t> pos(ndim);
-  for (int64_t i = 0; i < ndim; ++i) {
-    pos[i] = i;
-  }
-
-  // For each target position, find where the desired dimension currently is
-  // and transpose it into place.
-  for (int64_t i = 0; i < ndim; ++i) {
-    // Find where perm[i] currently is
-    int64_t j = i;
-    for (int64_t k = i; k < ndim; ++k) {
-      if (pos[k] == perm[i]) {
-        j = k;
-        break;
-      }
-    }
-    if (i != j) {
-      result = torch::stable::transpose(result, i, j);
-      std::swap(pos[i], pos[j]);
-    }
-  }
-  return result;
+    std::vector<int64_t> dims) {
+  const auto num_args = 2;
+  std::array<StableIValue, num_args> stack{
+      torch::stable::detail::from(self),
+      torch::stable::detail::from(dims)};
+  TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
+      "aten::permute", "", stack.data(), TORCH_ABI_VERSION));
+  return torch::stable::detail::to<StableTensor>(stack[0]);
 }
 
 // Concatenate tensors along a dimension.
