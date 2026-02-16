@@ -34,16 +34,6 @@
 #define TORCHCODEC_THIRD_PARTY_API __attribute__((visibility("default")))
 #endif
 
-// Check macro similar to TORCH_CHECK but using STD_TORCH_CHECK style
-#define STABLE_CHECK(cond, ...)                                    \
-  do {                                                             \
-    if (!(cond)) {                                                 \
-      std::ostringstream __stable_check_ss;                        \
-      __stable_check_ss << "STABLE_CHECK failed: " << __VA_ARGS__; \
-      throw std::runtime_error(__stable_check_ss.str());           \
-    }                                                              \
-  } while (false)
-
 // Index error check - throws std::out_of_range which pybind11 maps to
 // IndexError Use this for index validation errors that should raise IndexError
 // in Python
