@@ -295,7 +295,8 @@ void AudioEncoder::encode() {
 
   AutoAVPacket autoAVPacket;
 
-  const uint8_t* psamples = samples_.const_data_ptr<uint8_t>();
+  const uint8_t* psamples =
+      static_cast<const uint8_t*>(samples_.const_data_ptr());
   int numSamples = static_cast<int>(samples_.sizes()[1]); // per channel
   int numEncodedSamples = 0; // per channel
   int numBytesPerSample = static_cast<int>(samples_.element_size());
