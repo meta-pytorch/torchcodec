@@ -261,30 +261,6 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
   cudaFree(opaque);
 }
 
-StableTensor stableFlip(const StableTensor& self, std::vector<int64_t> dims) {
-  const auto num_args = 2;
-  std::array<StableIValue, num_args> stack{
-      torch::stable::detail::from(self), torch::stable::detail::from(dims)};
-  TORCH_ERROR_CODE_CHECK(
-      torch_call_dispatcher("aten::flip", "", stack.data(), TORCH_ABI_VERSION));
-  return torch::stable::detail::to<StableTensor>(stack[0]);
-}
-
-// Equivalent of torch::rot90(tensor, k, {dim0, dim1})
-StableTensor
-stableRot90(const StableTensor& self, int k, int64_t dim0, int64_t dim1) {
-  switch (k) {
-    case 1:
-      return torch::stable::transpose(stableFlip(self, {dim1}), dim0, dim1);
-    case 2:
-      return stableFlip(self, {dim0, dim1});
-    case 3:
-      return torch::stable::transpose(stableFlip(self, {dim0}), dim0, dim1);
-    default:
-      STD_TORCH_CHECK(false, "Unexpected k value for rot90: ", k);
-  }
-}
-
 } // namespace
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)

@@ -114,24 +114,6 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
       "'");
 }
 
-// Global map to store AVFrame pointers associated with tensor data pointers.
-// This is used by rgbAVFrameToTensor to ensure AVFrames are properly freed
-// when the corresponding tensor is deallocated.
-namespace {
-std::mutex g_avframe_map_mutex;
-std::map<void*, AVFrame*> g_avframe_map;
-} // namespace
-
-// Deleter callback for from_blob: frees the AVFrame associated with the data.
-static void avFrameDeleter(void* data) {
-  std::lock_guard<std::mutex> lock(g_avframe_map_mutex);
-  auto it = g_avframe_map.find(data);
-  if (it != g_avframe_map.end()) {
-    UniqueAVFrame avFrameToDelete(it->second);
-    g_avframe_map.erase(it);
-  }
-}
-
 StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   STD_TORCH_CHECK(avFrame->format == AV_PIX_FMT_RGB24, "Expected RGB24 format");
 
@@ -141,21 +123,17 @@ StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   std::vector<int64_t> strides = {avFrame->linesize[0], 3, 1};
   AVFrame* avFrameClone = av_frame_clone(avFrame.get());
 
-  void* data = avFrameClone->data[0];
-
-  // Register the AVFrame in the global map for cleanup
-  {
-    std::lock_guard<std::mutex> lock(g_avframe_map_mutex);
-    g_avframe_map[data] = avFrameClone;
-  }
+  auto deleter = [avFrameClone](void*) {
+    UniqueAVFrame toFree(avFrameClone);
+  };
 
   return torch::stable::from_blob(
-      data,
+      avFrameClone->data[0],
       shape,
       strides,
       StableDevice(kStableCPU),
       kStableUInt8,
-      avFrameDeleter);
+      deleter);
 }
 
 } // namespace facebook::torchcodec

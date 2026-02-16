@@ -113,6 +113,22 @@ inline StableTensor stableCat(
   return torch::stable::detail::to<StableTensor>(stack[0]);
 }
 
+// aten::rot90(Tensor self, int k=1, int[] dims=[0,1]) -> Tensor
+inline StableTensor stableRot90(
+    const StableTensor& self,
+    int k,
+    int64_t dim0,
+    int64_t dim1) {
+  const auto num_args = 3;
+  std::array<StableIValue, num_args> stack{
+      torch::stable::detail::from(self),
+      torch::stable::detail::from(static_cast<int64_t>(k)),
+      torch::stable::detail::from(std::vector<int64_t>{dim0, dim1})};
+  TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
+      "aten::rot90", "", stack.data(), TORCH_ABI_VERSION));
+  return torch::stable::detail::to<StableTensor>(stack[0]);
+}
+
 inline const char* deviceTypeName(StableDeviceType deviceType) {
   switch (deviceType) {
     case kStableCPU:
