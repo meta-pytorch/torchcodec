@@ -161,35 +161,6 @@ inline StableTensor stableCat(
   return result;
 }
 
-// ============================================================================
-// String helpers for error messages
-// ============================================================================
-
-inline const char* scalarTypeName(StableScalarType dtype) {
-  switch (dtype) {
-    case kStableUInt8:
-      return "uint8";
-    case kStableInt8:
-      return "int8";
-    case kStableInt16:
-      return "int16";
-    case kStableInt32:
-      return "int32";
-    case kStableInt64:
-      return "int64";
-    case kStableFloat16:
-      return "float16";
-    case kStableFloat32:
-      return "float32";
-    case kStableFloat64:
-      return "float64";
-    case kStableBool:
-      return "bool";
-    default:
-      return "unknown";
-  }
-}
-
 inline const char* deviceTypeName(StableDeviceType deviceType) {
   switch (deviceType) {
     case kStableCPU:

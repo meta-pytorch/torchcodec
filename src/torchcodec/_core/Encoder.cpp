@@ -18,7 +18,7 @@ StableTensor validateSamples(const StableTensor& samples) {
   STD_TORCH_CHECK(
       samples.scalar_type() == kStableFloat32,
       "samples must have float32 dtype, got ",
-      scalarTypeName(samples.scalar_type()));
+      (samples.scalar_type()));
   STD_TORCH_CHECK(
       samples.dim() == 2,
       "samples must have 2 dimensions, got ",
@@ -542,7 +542,7 @@ StableTensor validateFrames(const StableTensor& frames) {
   STD_TORCH_CHECK(
       frames.scalar_type() == kStableUInt8,
       "frames must have uint8 dtype, got ",
-      scalarTypeName(frames.scalar_type()));
+      frames.scalar_type());
   STD_TORCH_CHECK(
       frames.dim() == 4,
       "frames must have 4 dimensions (N, C, H, W), got ",
