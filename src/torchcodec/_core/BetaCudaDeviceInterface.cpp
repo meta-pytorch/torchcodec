@@ -4,6 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+#include <map>
 #include <mutex>
 #include <vector>
 #include "StableABICompat.h"
@@ -260,6 +261,30 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
   cudaFree(opaque);
 }
 
+StableTensor stableFlip(const StableTensor& self, std::vector<int64_t> dims) {
+  const auto num_args = 2;
+  std::array<StableIValue, num_args> stack{
+      torch::stable::detail::from(self), torch::stable::detail::from(dims)};
+  TORCH_ERROR_CODE_CHECK(
+      torch_call_dispatcher("aten::flip", "", stack.data(), TORCH_ABI_VERSION));
+  return torch::stable::detail::to<StableTensor>(stack[0]);
+}
+
+// Equivalent of torch::rot90(tensor, k, {dim0, dim1})
+StableTensor
+stableRot90(const StableTensor& self, int k, int64_t dim0, int64_t dim1) {
+  switch (k) {
+    case 1:
+      return torch::stable::transpose(stableFlip(self, {dim1}), dim0, dim1);
+    case 2:
+      return stableFlip(self, {dim0, dim1});
+    case 3:
+      return torch::stable::transpose(stableFlip(self, {dim0}), dim0, dim1);
+    default:
+      STD_TORCH_CHECK(false, "Unexpected k value for rot90: ", k);
+  }
+}
+
 } // namespace
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
@@ -299,6 +324,8 @@ void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
     [[maybe_unused]] const SharedAVCodecContext& codecContext) {
+  STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
+  rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
   if (!nvcuvidAvailable_ || !nativeNVDECSupport(device_, codecContext)) {
     cpuFallback_ = createDeviceInterface(kStableCPU);
     STD_TORCH_CHECK(
@@ -312,7 +339,6 @@ void BetaCudaDeviceInterface::initialize(
     return;
   }
 
-  STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   timeBase_ = avStream->time_base;
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
 
@@ -865,12 +891,58 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       gpuFrame->format == AV_PIX_FMT_CUDA,
       "Expected CUDA format frame from BETA CUDA interface");
 
-  validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
-
   cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
-  frameOutput.data = convertNV12FrameToRGB(
-      gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+  if (rotation_ == Rotation::NONE) {
+    validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
+    frameOutput.data = convertNV12FrameToRGB(
+        gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+  } else {
+    // preAllocatedOutputTensor has post-rotation dimensions, but NV12->RGB
+    // conversion outputs pre-rotation dimensions, so we can't use it as the
+    // conversion destination or validate it against the frame shape.
+    // Once we support native transforms on the beta CUDA interface, rotation
+    // should be handled as part of the transform pipeline instead.
+    frameOutput.data = convertNV12FrameToRGB(
+        gpuFrame,
+        device_,
+        nppCtx_,
+        nvdecStream,
+        /*preAllocatedOutputTensor=*/std::nullopt);
+    applyRotation(frameOutput, preAllocatedOutputTensor);
+  }
+}
+
+void BetaCudaDeviceInterface::applyRotation(
+    FrameOutput& frameOutput,
+    std::optional<StableTensor> preAllocatedOutputTensor) {
+  int k = 0;
+  switch (rotation_) {
+    case Rotation::CCW90:
+      k = 1;
+      break;
+    case Rotation::ROTATE180:
+      k = 2;
+      break;
+    case Rotation::CW90:
+      k = 3;
+      break;
+    default:
+      STD_TORCH_CHECK(false, "Unexpected rotation value");
+      break;
+  }
+  // Apply rotation using rot90 on the H and W dims of our HWC tensor.
+  // stableRot90 returns a view, so we need to make it contiguous.
+  frameOutput.data =
+      torch::stable::contiguous(stableRot90(frameOutput.data, k, 0, 1));
+
+  if (preAllocatedOutputTensor.has_value()) {
+    torch::stable::copy_(
+        preAllocatedOutputTensor.value(),
+        frameOutput.data,
+        /*non_blocking=*/std::nullopt);
+    frameOutput.data = preAllocatedOutputTensor.value();
+  }
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {

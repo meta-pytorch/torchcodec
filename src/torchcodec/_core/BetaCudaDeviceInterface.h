@@ -20,6 +20,7 @@
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
 #include "NVDECCache.h"
+#include "Transform.h"
 
 #include <memory>
 #include <mutex>
@@ -81,6 +82,10 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
 
+  void applyRotation(
+      FrameOutput& frameOutput,
+      std::optional<StableTensor> preAllocatedOutputTensor);
+
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;
   CUVIDEOFORMAT videoFormat_ = {};
@@ -101,6 +106,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   bool nvcuvidAvailable_ = false;
   UniqueSwsContext swsContext_;
   SwsFrameContext prevSwsFrameContext_;
+  Rotation rotation_ = Rotation::NONE;
 };
 
 } // namespace facebook::torchcodec
