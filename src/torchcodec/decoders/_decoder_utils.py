@@ -66,3 +66,28 @@ def set_cuda_backend(backend: str) -> Generator[None, None, None]:
 
 def _get_cuda_backend() -> str:
     return _CUDA_BACKEND.get()
+
+
+def set_nvdec_cache_size(size: int) -> None:
+    """Set the maximum number of NVDEC decoders cached per GPU device.
+
+    The NVDEC decoder cache stores hardware decoders for reuse, avoiding the
+    overhead of creating new decoders for subsequent video decoding operations on
+    the same GPU. This function controls the maximum number of decoders that can
+    be cached per device.
+
+    Args:
+        size (int): The maximum number of NVDEC decoders to cache per GPU
+            device. Must be non-negative. Setting to 0 disables caching. The
+            default value is 20.
+    """
+    core.set_nvdec_cache_size(size)
+
+
+def get_nvdec_cache_size() -> int:
+    """Get the current maximum number of NVDEC decoders cached per GPU device.
+
+    Returns:
+        int: The current maximum cache size per GPU device.
+    """
+    return core.get_nvdec_cache_size()

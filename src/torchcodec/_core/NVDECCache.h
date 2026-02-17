@@ -107,8 +107,6 @@ class NVDECCache {
   std::mutex cacheLock_;
   uint64_t lastUsedCounter_ = 0;
 
-  // Max number of cached decoders, per device
-  static constexpr int MAX_CACHE_SIZE = 20;
 };
 
 } // namespace facebook::torchcodec

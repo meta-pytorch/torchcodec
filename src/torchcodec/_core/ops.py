@@ -136,6 +136,8 @@ _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
 _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
+set_nvdec_cache_size = torch.ops.torchcodec_ns.set_nvdec_cache_size.default
+get_nvdec_cache_size = torch.ops.torchcodec_ns.get_nvdec_cache_size.default
 
 
 # =============================
@@ -572,3 +574,13 @@ def get_ffmpeg_library_versions():
 @register_fake("torchcodec_ns::_get_backend_details")
 def _get_backend_details_abstract(decoder: torch.Tensor) -> str:
     return ""
+
+
+@register_fake("torchcodec_ns::set_nvdec_cache_size")
+def set_nvdec_cache_size_abstract(size: int) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::get_nvdec_cache_size")
+def get_nvdec_cache_size_abstract() -> int:
+    return 0

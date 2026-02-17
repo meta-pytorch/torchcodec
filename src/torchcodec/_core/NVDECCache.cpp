@@ -9,6 +9,7 @@
 #include "CUDACommon.h"
 #include "FFMPEGCommon.h"
 #include "NVDECCache.h"
+#include "NVDECCacheConfig.h"
 
 #include <cuda_runtime.h> // For cudaGetDevice
 
@@ -50,7 +51,7 @@ void NVDECCache::returnDecoder(
   // Evict least recently used entry if at capacity.
   // This search is O(MAX_CACHE_SIZE) but MAX_CACHE_SIZE is always small, so
   // this isn't significant.
-  if (cache_.size() >= MAX_CACHE_SIZE) {
+  if (cache_.size() >= static_cast<size_t>(getNVDECCacheMaxSize())) {
     auto victim = cache_.begin();
     for (auto it = cache_.begin(); it != cache_.end(); ++it) {
       if (it->second.lastUsed < victim->second.lastUsed) {
