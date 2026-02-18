@@ -358,7 +358,7 @@ void SingleStreamDecoder::readCustomFrameMappingsUpdateMetadataAndIndex(
   int64_t numFrames = all_frames.sizes()[0];
   streamInfos_[streamIndex].allFrames.reserve(numFrames);
   streamInfos_[streamIndex].keyFrames.reserve(numFrames);
-  // Use raw data pointers to efficiently access tensor elements
+  // TODO_STABLE_ABI: use accessors once they're available in stable ABI.
   const int64_t* pts_data = all_frames.const_data_ptr<int64_t>();
   const bool* is_key_frame_data = is_key_frame.const_data_ptr<bool>();
   const int64_t* duration_data = duration.const_data_ptr<int64_t>();
@@ -721,8 +721,11 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   FrameBatchOutput frameBatchOutput(
       frameIndices.numel(), getOutputDims(), videoStreamOptions.device);
 
-  double* ptsPtr = frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
-  double* durPtr = frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
+  // TODO_STABLE_ABI: use accessors once they're available in stable ABI.
+  double* frameBatchOutputPtsSeconds =
+      frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
+  double* frameBatchOutputDurationSeconds =
+      frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
 
   auto previousIndexInVideo = -1;
   for (int64_t f = 0; f < frameIndices.numel(); ++f) {
@@ -736,14 +739,17 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
       auto src = torch::stable::select(
           frameBatchOutput.data, 0, previousIndexInOutput);
       torch::stable::copy_(dst, src);
-      ptsPtr[indexInOutput] = ptsPtr[previousIndexInOutput];
-      durPtr[indexInOutput] = durPtr[previousIndexInOutput];
+      frameBatchOutputPtsSeconds[indexInOutput] =
+          frameBatchOutputPtsSeconds[previousIndexInOutput];
+      frameBatchOutputDurationSeconds[indexInOutput] =
+          frameBatchOutputDurationSeconds[previousIndexInOutput];
     } else {
       FrameOutput frameOutput = getFrameAtIndexInternal(
           indexInVideo,
           torch::stable::select(frameBatchOutput.data, 0, indexInOutput));
-      ptsPtr[indexInOutput] = frameOutput.ptsSeconds;
-      durPtr[indexInOutput] = frameOutput.durationSeconds;
+      frameBatchOutputPtsSeconds[indexInOutput] = frameOutput.ptsSeconds;
+      frameBatchOutputDurationSeconds[indexInOutput] =
+          frameOutput.durationSeconds;
     }
     previousIndexInVideo = indexInVideo;
   }
@@ -781,13 +787,16 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   FrameBatchOutput frameBatchOutput(
       numOutputFrames, getOutputDims(), videoStreamOptions.device);
 
-  double* ptsPtr = frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
-  double* durPtr = frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
+  // TODO_STABLE_ABI: use accessors once they're available in stable ABI.
+  double* frameBatchOutputPtsSeconds =
+      frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
+  double* frameBatchOutputDurationSeconds =
+      frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
   for (int64_t i = start, f = 0; i < stop; i += step, ++f) {
     FrameOutput frameOutput = getFrameAtIndexInternal(
         i, torch::stable::select(frameBatchOutput.data, 0, f));
-    ptsPtr[f] = frameOutput.ptsSeconds;
-    durPtr[f] = frameOutput.durationSeconds;
+    frameBatchOutputPtsSeconds[f] = frameOutput.ptsSeconds;
+    frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
   }
   frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
   return frameBatchOutput;
@@ -959,8 +968,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     FrameBatchOutput frameBatchOutput(
         numOutputFrames, getOutputDims(), videoStreamOptions.device);
 
-    double* ptsPtr = frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
-    double* durPtr =
+    // TODO_STABLE_ABI: use accessors once they're available in stable ABI.
+    double* frameBatchOutputPtsSeconds =
+        frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
+    double* frameBatchOutputDurationSeconds =
         frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
 
     // Decode frames, reusing already-decoded frames for duplicates
@@ -980,8 +991,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         lastDecodedSourceIndex = sourceIdx;
       }
 
-      ptsPtr[i] = targetPtsSeconds;
-      durPtr[i] = frameDurationSeconds;
+      frameBatchOutputPtsSeconds[i] = targetPtsSeconds;
+      frameBatchOutputDurationSeconds[i] = frameDurationSeconds;
     }
 
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
@@ -1006,14 +1017,16 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
 
     FrameBatchOutput frameBatchOutput(
         numFrames, getOutputDims(), videoStreamOptions.device);
-    double* ptsPtr = frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
-    double* durPtr =
+    // TODO_STABLE_ABI: use accessors once they're available in stable ABI.
+    double* frameBatchOutputPtsSeconds =
+        frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
+    double* frameBatchOutputDurationSeconds =
         frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
     for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
       FrameOutput frameOutput = getFrameAtIndexInternal(
           i, torch::stable::select(frameBatchOutput.data, 0, f));
-      ptsPtr[f] = frameOutput.ptsSeconds;
-      durPtr[f] = frameOutput.durationSeconds;
+      frameBatchOutputPtsSeconds[f] = frameOutput.ptsSeconds;
+      frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
     }
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
 
