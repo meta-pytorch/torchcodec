@@ -21,4 +21,8 @@ void setNVDECCacheMaxSize(int size);
 // Get the current maximum number of NVDEC decoders cached per device.
 int getNVDECCacheMaxSize();
 
+// Get the maximum number of entries currently held across all per-device
+// caches.
+int getMaxNVDECCacheCurrentSize();
+
 } // namespace facebook::torchcodec

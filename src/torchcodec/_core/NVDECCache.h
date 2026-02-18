@@ -56,6 +56,12 @@ class NVDECCache {
   // Return decoder to cache using LRU eviction.
   void returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder);
 
+  // Returns the number of entries currently in this cache instance.
+  size_t size();
+
+  // Returns the maximum size() across all per-device cache instances.
+  static int getMaxCurrentSizeAcrossDevices();
+
  private:
   // Cache key struct: a decoder can be reused and taken from the cache only if
   // all these parameters match.
@@ -103,10 +109,11 @@ class NVDECCache {
   NVDECCache() = default;
   ~NVDECCache() = default;
 
+  static NVDECCache* getCacheInstances();
+
   std::multimap<CacheKey, CacheEntry> cache_;
   std::mutex cacheLock_;
   uint64_t lastUsedCounter_ = 0;
-
 };
 
 } // namespace facebook::torchcodec

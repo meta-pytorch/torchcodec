@@ -1106,8 +1106,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
   m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
-  m.impl("set_nvdec_cache_size", &set_nvdec_cache_size);
-  m.impl("get_nvdec_cache_size", &get_nvdec_cache_size);
+  m.impl("set_nvdec_cache_size", TORCH_BOX(&set_nvdec_cache_size));
+  m.impl("get_nvdec_cache_size", TORCH_BOX(&get_nvdec_cache_size));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
