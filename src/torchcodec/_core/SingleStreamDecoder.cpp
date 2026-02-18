@@ -735,18 +735,18 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     if ((f > 0) && (indexInVideo == previousIndexInVideo)) {
       // Avoid decoding the same frame twice
       auto previousIndexInOutput = indicesAreSorted ? f - 1 : argsort[f - 1];
-      auto dst = torch::stable::select(frameBatchOutput.data, 0, indexInOutput);
-      auto src = torch::stable::select(
-          frameBatchOutput.data, 0, previousIndexInOutput);
-      torch::stable::copy_(dst, src);
+      copyFrame(
+          frameBatchOutput.data,
+          indexInOutput,
+          frameBatchOutput.data,
+          previousIndexInOutput);
       frameBatchOutputPtsSeconds[indexInOutput] =
           frameBatchOutputPtsSeconds[previousIndexInOutput];
       frameBatchOutputDurationSeconds[indexInOutput] =
           frameBatchOutputDurationSeconds[previousIndexInOutput];
     } else {
       FrameOutput frameOutput = getFrameAtIndexInternal(
-          indexInVideo,
-          torch::stable::select(frameBatchOutput.data, 0, indexInOutput));
+          indexInVideo, selectRow(frameBatchOutput.data, indexInOutput));
       frameBatchOutputPtsSeconds[indexInOutput] = frameOutput.ptsSeconds;
       frameBatchOutputDurationSeconds[indexInOutput] =
           frameOutput.durationSeconds;
@@ -793,8 +793,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   double* frameBatchOutputDurationSeconds =
       frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
   for (int64_t i = start, f = 0; i < stop; i += step, ++f) {
-    FrameOutput frameOutput = getFrameAtIndexInternal(
-        i, torch::stable::select(frameBatchOutput.data, 0, f));
+    FrameOutput frameOutput =
+        getFrameAtIndexInternal(i, selectRow(frameBatchOutput.data, f));
     frameBatchOutputPtsSeconds[f] = frameOutput.ptsSeconds;
     frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
   }
@@ -982,12 +982,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       int64_t sourceIdx = secondsToIndexLowerBound(targetPtsSeconds);
 
       if (sourceIdx == lastDecodedSourceIndex && lastDecodedSourceIndex >= 0) {
-        auto dst = torch::stable::select(frameBatchOutput.data, 0, i);
-        auto src = torch::stable::select(frameBatchOutput.data, 0, i - 1);
-        torch::stable::copy_(dst, src);
+        copyFrame(frameBatchOutput.data, i, frameBatchOutput.data, i - 1);
       } else {
-        getFrameAtIndexInternal(
-            sourceIdx, torch::stable::select(frameBatchOutput.data, 0, i));
+        getFrameAtIndexInternal(sourceIdx, selectRow(frameBatchOutput.data, i));
         lastDecodedSourceIndex = sourceIdx;
       }
 
@@ -1023,8 +1020,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     double* frameBatchOutputDurationSeconds =
         frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
     for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
-      FrameOutput frameOutput = getFrameAtIndexInternal(
-          i, torch::stable::select(frameBatchOutput.data, 0, f));
+      FrameOutput frameOutput =
+          getFrameAtIndexInternal(i, selectRow(frameBatchOutput.data, f));
       frameBatchOutputPtsSeconds[f] = frameOutput.ptsSeconds;
       frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
     }

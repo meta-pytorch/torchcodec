@@ -131,6 +131,21 @@ stableRot90(const StableTensor& self, int k, int64_t dim0, int64_t dim1) {
   return torch::stable::detail::to<StableTensor>(stack[0]);
 }
 
+// Shorthand for torch::stable::select(tensor, 0, index), i.e. tensor[index].
+inline StableTensor selectRow(const StableTensor& tensor, int64_t index) {
+  return torch::stable::select(tensor, 0, index);
+}
+
+// Copy row srcIndex from srcTensor into row dstIndex of dstTensor.
+inline void copyFrame(
+    StableTensor& dstTensor,
+    int64_t dstIndex,
+    const StableTensor& srcTensor,
+    int64_t srcIndex) {
+  auto dst = selectRow(dstTensor, dstIndex);
+  torch::stable::copy_(dst, selectRow(srcTensor, srcIndex));
+}
+
 // TODO_STABLE_ABI: this should probably be natively supported by torch::stable.
 // Consider upstreaming.
 inline const char* deviceTypeName(StableDeviceType deviceType) {
