@@ -126,11 +126,20 @@ StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   std::vector<int64_t> strides = {avFrame->linesize[0], 3, 1};
   AVFrame* avFrameClone = av_frame_clone(avFrame.get());
 
-  auto deleter = [avFrameClone](void*) { UniqueAVFrame toFree(avFrameClone); };
+  // TODO_STABLE_ABI: we're still using the non-stable ABI here. That's because
+  // stable::from_blob doesn't yet support a capturing lambda deleter. We need
+  // to land https://github.com/pytorch/pytorch/pull/175089.
+  // TC won't be able stable until this is resolved.
+  auto deleter = [avFrameClone](void*) {
+    UniqueAVFrame avFrameToDelete(avFrameClone);
+  };
 
   at::Tensor tensor = at::from_blob(
       avFrameClone->data[0], shape, strides, deleter, {at::kByte});
 
+  // We got an at::Tensor, we have to convert it to a stableTensor. This is
+  // safe, there won't be any memory leak, i.e. the at::Tensor's deleter will
+  // properly be passed down to the StableTensor.
   at::Tensor* p = new at::Tensor(std::move(tensor));
   return StableTensor(reinterpret_cast<AtenTensorHandle>(p));
 }
