@@ -2346,3 +2346,55 @@ class TestAudioDecoder:
             file_like_samples.data, ffmpeg_samples.data, atol=0, rtol=0
         )
         assert file_like_samples.sample_rate == ffmpeg_samples.sample_rate
+
+    @pytest.mark.parametrize("asset", (SINE_MONO_S16, SINE_MONO_S32))
+    def test_wav_fast_path_file_like_streaming(self, asset):
+        class StreamingReader:
+            """File-like object that simulates a stream with limited data available."""
+
+            def __init__(self, data: bytes, available: int):
+                self._data = data
+                self._pos = 0
+                self.available = available
+
+            def read(self, size: int) -> bytes:
+                end = min(self._pos + size, self.available)
+                if self._pos >= self.available:
+                    return b""
+                chunk = self._data[self._pos : end]
+                self._pos = end
+                return chunk
+
+            def seek(self, offset: int, whence: int = 0) -> int:
+                if whence == 0:
+                    self._pos = offset
+                elif whence == 1:
+                    self._pos += offset
+                elif whence == 2:
+                    self._pos = len(self._data) + offset
+                self._pos = max(0, min(self._pos, self.available))
+                return self._pos
+
+        with open(asset.path, "rb") as f:
+            data = f.read()
+
+        # Only expose the first 200 bytes (enough for the WAV header, which is ~44 bytes)
+        reader = StreamingReader(data, available=200)
+
+        decoder = AudioDecoder(reader, use_wav_decoder=True)
+        assert decoder._use_wav_decoder
+
+        # Extend available data to cover the full file for decoding.
+        # The key property tested above is that init only needed 200 bytes.
+        reader.available = len(data)
+
+        streaming_samples = decoder.get_samples_played_in_range(0, 1.0)
+
+        # Compare against FFmpeg baseline with full data
+        ffmpeg_decoder = AudioDecoder(data, use_wav_decoder=False)
+        ffmpeg_samples = ffmpeg_decoder.get_samples_played_in_range(0, 1.0)
+
+        torch.testing.assert_close(
+            streaming_samples.data, ffmpeg_samples.data, atol=0, rtol=0
+        )
+        assert streaming_samples.sample_rate == ffmpeg_samples.sample_rate
