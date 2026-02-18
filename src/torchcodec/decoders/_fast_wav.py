@@ -169,8 +169,13 @@ def _samples_from_bytes(
             ).to(torch.float32)
             samples.div_(torch.iinfo(torch.int32).max + 1)
         elif metadata.bits_per_sample == 24:
-            # There is no 24-bit dtype, so we use helper function
-            samples = _deinterleave(_convert_24bit_pcm(memoryview(audio_bytes)))
+            # There is no 24-bit dtype, so we use helper function to get int32.
+            # .to(float32) on the transposed int32 view fuses deinterleave +
+            # type conversion into one contiguous copy, matching s16/s32.
+            samples = _deinterleave(_convert_24bit_pcm(memoryview(audio_bytes))).to(
+                torch.float32
+            )
+            samples.div_(8388608.0)  # 2^23
         elif metadata.bits_per_sample == 8:
             # Interpret raw bytes as uint8, deinterleave, then convert+normalize.
             samples = _deinterleave(
@@ -186,26 +191,19 @@ def _samples_from_bytes(
 
 
 def _convert_24bit_pcm(data: memoryview) -> torch.Tensor:
-    """Convert 24-bit PCM samples to float32 tensor."""
-    # Interpret raw bytes as uint8, reshape to (num_samples, 3)
-    raw = torch.frombuffer(data, dtype=torch.uint8).reshape(-1, 3)
+    """Convert 24-bit PCM bytes to sign-extended int32 tensor."""
+    raw = torch.frombuffer(data, dtype=torch.uint8)
+    n = len(raw) // 3
 
-    # Combine 3 bytes into int32: byte0 | (byte1 << 8) | (byte2 << 16)
-    samples_i32 = (
-        raw[:, 0].to(torch.int32)
-        | (raw[:, 1].to(torch.int32) << 8)
-        | (raw[:, 2].to(torch.int32) << 16)
-    )
+    # Pack 3-byte samples into upper 3 bytes of int32: [0, b0, b1, b2]
+    # On little-endian this represents (b0 << 8) | (b1 << 16) | (b2 << 24)
+    padded = torch.zeros(n * 4, dtype=torch.uint8)
+    padded[1::4] = raw[0::3]
+    padded[2::4] = raw[1::3]
+    padded[3::4] = raw[2::3]
 
-    # Sign extend from 24 to 32 bits
-    samples_i32 = torch.where(
-        (samples_i32 & 0x800000) != 0,
-        samples_i32 - 0x1000000,
-        samples_i32,
-    )
-
-    # Convert to float32, then normalize from [-2^23, 2^23-1] to [-1, 1]
-    return samples_i32.to(torch.float32) / 8388608.0
+    # Arithmetic right shift by 8 sign-extends from bit 23 automatically
+    return padded.view(torch.int32) >> 8
 
 
 class WavDecoder:
