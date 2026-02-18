@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "DeviceInterface.h"
+#include <ATen/ops/from_blob.h>
 #include <map>
 #include <mutex>
 #include "StableABICompat.h"
@@ -125,17 +126,13 @@ StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   std::vector<int64_t> strides = {avFrame->linesize[0], 3, 1};
   AVFrame* avFrameClone = av_frame_clone(avFrame.get());
 
-  auto deleter = [avFrameClone](void*) {
-    UniqueAVFrame toFree(avFrameClone);
-  };
+  auto deleter = [avFrameClone](void*) { UniqueAVFrame toFree(avFrameClone); };
 
-  return torch::stable::from_blob(
-      avFrameClone->data[0],
-      shape,
-      strides,
-      StableDevice(kStableCPU),
-      kStableUInt8,
-      deleter);
+  at::Tensor tensor = at::from_blob(
+      avFrameClone->data[0], shape, strides, deleter, {at::kByte});
+
+  at::Tensor* p = new at::Tensor(std::move(tensor));
+  return StableTensor(reinterpret_cast<AtenTensorHandle>(p));
 }
 
 } // namespace facebook::torchcodec

@@ -115,11 +115,8 @@ inline StableTensor stableCat(
 }
 
 // aten::rot90(Tensor self, int k=1, int[] dims=[0,1]) -> Tensor
-inline StableTensor stableRot90(
-    const StableTensor& self,
-    int k,
-    int64_t dim0,
-    int64_t dim1) {
+inline StableTensor
+stableRot90(const StableTensor& self, int k, int64_t dim0, int64_t dim1) {
   const auto num_args = 3;
   std::array<StableIValue, num_args> stack{
       torch::stable::detail::from(self),
