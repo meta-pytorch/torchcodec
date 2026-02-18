@@ -291,7 +291,7 @@ torch::Tensor WavDecoder::convertSamplesToFloat(
     if (header_.bitsPerSample == 32) {
       auto interleaved =
           fromBlob(reinterpret_cast<const float*>(rawData), torch::kFloat32);
-      return interleaved.contiguous();
+      return interleaved; //.contiguous();
     } else if (header_.bitsPerSample == 64) {
       auto interleaved =
           fromBlob(reinterpret_cast<const double*>(rawData), torch::kFloat64);
