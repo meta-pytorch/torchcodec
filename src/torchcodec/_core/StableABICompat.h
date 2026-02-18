@@ -86,11 +86,15 @@ constexpr auto kStableBool = torch::headeronly::ScalarType::Bool;
 // Layout constants
 constexpr auto kStableStrided = torch::headeronly::Layout::Strided;
 
-// ============================================================================
-// Helper functions wrapping torch::stable ops
-// ============================================================================
+// Note: the magic use of torch_call_dispatcher is what is officially
+// recommended
+// https://github.com/pytorch/pytorch/blob/89f3759429b96a8693b698f013990240bb4e25b3/docs/source/notes/libtorch_stable_abi.md?plain=1#L221
+// It allows us to make an ABI-stable call to an op that isn't officially in the
+// stable ABI. Some of these ops currently include permute, rot90, etc.
+// See also how xformers relies on it:
+// https://github.com/facebookresearch/xformers/blob/720adff2b021f6f43957718514f5be3d10e36fb1/xformers/csrc/pt_stable_utils.h#L85
 
-// aten::permute(Tensor(a) self, int[] dims) -> Tensor(a)
+// TODO_STABLE_ABI: upstream?
 inline StableTensor stablePermute(
     const StableTensor& self,
     std::vector<int64_t> dims) {
@@ -102,7 +106,7 @@ inline StableTensor stablePermute(
   return torch::stable::detail::to<StableTensor>(stack[0]);
 }
 
-// aten::cat(Tensor[] tensors, int dim=0) -> Tensor
+// TODO_STABLE_ABI: upstream?
 inline StableTensor stableCat(
     const std::vector<StableTensor>& tensors,
     int64_t dim) {
@@ -114,7 +118,7 @@ inline StableTensor stableCat(
   return torch::stable::detail::to<StableTensor>(stack[0]);
 }
 
-// aten::rot90(Tensor self, int k=1, int[] dims=[0,1]) -> Tensor
+// TODO_STABLE_ABI: upstream?
 inline StableTensor
 stableRot90(const StableTensor& self, int k, int64_t dim0, int64_t dim1) {
   const auto num_args = 3;
@@ -127,6 +131,8 @@ stableRot90(const StableTensor& self, int k, int64_t dim0, int64_t dim1) {
   return torch::stable::detail::to<StableTensor>(stack[0]);
 }
 
+// TODO_STABLE_ABI: this should probably be natively supported by torch::stable.
+// Consider upstreaming.
 inline const char* deviceTypeName(StableDeviceType deviceType) {
   switch (deviceType) {
     case kStableCPU:
@@ -138,6 +144,10 @@ inline const char* deviceTypeName(StableDeviceType deviceType) {
   }
 }
 
+// TODO_STABLE_ABI: This is needed to properly print shape info in error
+// messages. There should probably be a better native way to support it, e.g.
+// StableIntArrayRef probably needs to support the `<<` operator. Consider
+// upstreaming.
 inline std::string intArrayRefToString(StableIntArrayRef arr) {
   std::ostringstream ss;
   ss << "[";

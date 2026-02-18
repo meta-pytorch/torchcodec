@@ -898,7 +898,7 @@ void VideoEncoder::encode() {
   AutoAVPacket autoAVPacket;
   int numFrames = static_cast<int>(frames_.sizes()[0]);
   for (int i = 0; i < numFrames; ++i) {
-    StableTensor currFrame = torch::stable::select(frames_, 0, i);
+    StableTensor currFrame = torch::stable::select(frames_, 0, i); // frames_[i]
     UniqueAVFrame avFrame = deviceInterface_->convertTensorToAVFrameForEncoding(
         currFrame, i, avCodecContext_.get());
     STD_TORCH_CHECK(

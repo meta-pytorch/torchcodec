@@ -85,11 +85,16 @@ TORCH_LIBRARY(torchcodec_ns, m) {
 
 namespace {
 
-// ---------------------------------------------------------------------------
 // Conversion helpers between at::Tensor (used by the PyTorch dispatcher) and
 // StableTensor (used by the core library). The handle is a shared_ptr under
 // the hood, so copies are cheap reference-count bumps.
-// ---------------------------------------------------------------------------
+// TODO_STABLE_ABI: the at::Tensor <--> stable::Tensor conversions in this file
+// are temporary. This is because the core C++ code has been migrated to
+// torch::stable, but custom_ops.cpp still relies on non-stable torch stuff,
+// like TORCH_LIBRARY and torch::Tensor as return type. This file will be
+// migrated as a follow-up.  For now, we can work around this by converting
+// to/from StableTensor, which is cheap. Those conversion helpers will
+// eventually be removed.
 inline StableTensor toStableTensor(const at::Tensor& tensor) {
   at::Tensor* p = new at::Tensor(tensor);
   return StableTensor(reinterpret_cast<AtenTensorHandle>(p));

@@ -273,10 +273,6 @@ class TORCHCODEC_API SingleStreamDecoder {
 
   StableTensor maybePermuteHWC2CHW(StableTensor& hwcTensor);
 
-  FrameOutput convertAVFrameToFrameOutputOnCPU(
-      UniqueAVFrame& avFrame,
-      std::optional<StableTensor> preAllocatedOutputTensor = std::nullopt);
-
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       std::optional<StableTensor> preAllocatedOutputTensor = std::nullopt);

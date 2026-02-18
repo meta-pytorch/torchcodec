@@ -62,8 +62,8 @@ int write(void* opaque, const uint8_t* buf, int buf_size) {
         MAX_TENSOR_SIZE,
         " bytes. If you think this should be supported, please report.");
 
-    // We double the size of the outpout tensor. Calling stableCat() may not be
-    // the most efficient, but it's simple.
+    // We double the size of the outpout tensor. Calling cat() may not be the
+    // most efficient, but it's simple.
     tensorContext->data =
         stableCat({tensorContext->data, tensorContext->data}, 0);
   }
