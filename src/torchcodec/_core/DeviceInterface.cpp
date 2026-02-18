@@ -117,7 +117,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
       "'");
 }
 
-StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
+torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   STD_TORCH_CHECK(avFrame->format == AV_PIX_FMT_RGB24, "Expected RGB24 format");
 
   int height = avFrame->height;
@@ -137,11 +137,11 @@ StableTensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   at::Tensor tensor = at::from_blob(
       avFrameClone->data[0], shape, strides, deleter, {at::kByte});
 
-  // We got an at::Tensor, we have to convert it to a stableTensor. This is
-  // safe, there won't be any memory leak, i.e. the at::Tensor's deleter will
-  // properly be passed down to the StableTensor.
+  // We got an at::Tensor, we have to convert it to a torch::stable::Tensor.
+  // This is safe, there won't be any memory leak, i.e. the at::Tensor's deleter
+  // will properly be passed down to the torch::stable::Tensor.
   at::Tensor* p = new at::Tensor(std::move(tensor));
-  return StableTensor(reinterpret_cast<AtenTensorHandle>(p));
+  return torch::stable::Tensor(reinterpret_cast<AtenTensorHandle>(p));
 }
 
 } // namespace facebook::torchcodec

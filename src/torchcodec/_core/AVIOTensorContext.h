@@ -14,7 +14,7 @@ namespace facebook::torchcodec {
 namespace detail {
 
 struct TensorContext {
-  StableTensor data;
+  torch::stable::Tensor data;
   int64_t current_pos;
   int64_t max_pos;
 };
@@ -25,7 +25,7 @@ struct TensorContext {
 // Our read and seek functions then traverse the bytes in memory.
 class TORCHCODEC_API AVIOFromTensorContext : public AVIOContextHolder {
  public:
-  explicit AVIOFromTensorContext(StableTensor data);
+  explicit AVIOFromTensorContext(torch::stable::Tensor data);
 
  private:
   detail::TensorContext tensorContext_;
@@ -35,7 +35,7 @@ class TORCHCODEC_API AVIOFromTensorContext : public AVIOContextHolder {
 class TORCHCODEC_API AVIOToTensorContext : public AVIOContextHolder {
  public:
   explicit AVIOToTensorContext();
-  StableTensor getOutputTensor();
+  torch::stable::Tensor getOutputTensor();
 
  private:
   detail::TensorContext tensorContext_;

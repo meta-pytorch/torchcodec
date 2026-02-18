@@ -14,7 +14,7 @@ namespace facebook::torchcodec {
 
 namespace {
 
-StableTensor validateSamples(const StableTensor& samples) {
+torch::stable::Tensor validateSamples(const torch::stable::Tensor& samples) {
   STD_TORCH_CHECK(
       samples.scalar_type() == kStableFloat32,
       "samples must have float32 dtype, got ",
@@ -133,7 +133,7 @@ AudioEncoder::~AudioEncoder() {
 }
 
 AudioEncoder::AudioEncoder(
-    const StableTensor& samples,
+    const torch::stable::Tensor& samples,
     int sampleRate,
     std::string_view fileName,
     const AudioStreamOptions& audioStreamOptions)
@@ -164,7 +164,7 @@ AudioEncoder::AudioEncoder(
 }
 
 AudioEncoder::AudioEncoder(
-    const StableTensor& samples,
+    const torch::stable::Tensor& samples,
     int sampleRate,
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
@@ -264,7 +264,7 @@ void AudioEncoder::initializeEncoder(
   }
 }
 
-StableTensor AudioEncoder::encodeToTensor() {
+torch::stable::Tensor AudioEncoder::encodeToTensor() {
   STD_TORCH_CHECK(
       avioContextHolder_ != nullptr,
       "Cannot encode to tensor, avio tensor context doesn't exist.");
@@ -538,7 +538,7 @@ void AudioEncoder::flushBuffers() {
 
 namespace {
 
-StableTensor validateFrames(const StableTensor& frames) {
+torch::stable::Tensor validateFrames(const torch::stable::Tensor& frames) {
   STD_TORCH_CHECK(
       frames.scalar_type() == kStableUInt8,
       "frames must have uint8 dtype, got ",
@@ -664,7 +664,7 @@ VideoEncoder::~VideoEncoder() {
 }
 
 VideoEncoder::VideoEncoder(
-    const StableTensor& frames,
+    const torch::stable::Tensor& frames,
     double frameRate,
     std::string_view fileName,
     const VideoStreamOptions& videoStreamOptions)
@@ -696,7 +696,7 @@ VideoEncoder::VideoEncoder(
 }
 
 VideoEncoder::VideoEncoder(
-    const StableTensor& frames,
+    const torch::stable::Tensor& frames,
     double frameRate,
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
@@ -898,7 +898,7 @@ void VideoEncoder::encode() {
   AutoAVPacket autoAVPacket;
   int numFrames = static_cast<int>(frames_.sizes()[0]);
   for (int i = 0; i < numFrames; ++i) {
-    StableTensor currFrame = selectRow(frames_, i);
+    torch::stable::Tensor currFrame = selectRow(frames_, i);
     UniqueAVFrame avFrame = deviceInterface_->convertTensorToAVFrameForEncoding(
         currFrame, i, avCodecContext_.get());
     STD_TORCH_CHECK(
@@ -919,7 +919,7 @@ void VideoEncoder::encode() {
       getFFMPEGErrorStringFromErrorCode(status));
 }
 
-StableTensor VideoEncoder::encodeToTensor() {
+torch::stable::Tensor VideoEncoder::encodeToTensor() {
   STD_TORCH_CHECK(
       avioContextHolder_ != nullptr,
       "Cannot encode to tensor, avio tensor context doesn't exist.");

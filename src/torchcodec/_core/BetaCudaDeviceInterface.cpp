@@ -857,7 +857,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<StableTensor> preAllocatedOutputTensor) {
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   UniqueAVFrame gpuFrame =
       cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
 
@@ -891,7 +891,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
 void BetaCudaDeviceInterface::applyRotation(
     FrameOutput& frameOutput,
-    std::optional<StableTensor> preAllocatedOutputTensor) {
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   int k = 0;
   switch (rotation_) {
     case Rotation::CCW90:

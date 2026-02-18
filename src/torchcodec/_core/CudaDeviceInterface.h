@@ -39,12 +39,12 @@ class CudaDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<StableTensor> preAllocatedOutputTensor) override;
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor) override;
 
   std::string getDetails() override;
 
   UniqueAVFrame convertTensorToAVFrameForEncoding(
-      const StableTensor& tensor,
+      const torch::stable::Tensor& tensor,
       int frameIndex,
       AVCodecContext* codecContext) override;
 

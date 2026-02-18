@@ -23,7 +23,7 @@ FrameBatchOutput::FrameBatchOutput(
   data = allocateEmptyHWCTensor(outputDims, device, numFrames);
 }
 
-StableTensor allocateEmptyHWCTensor(
+torch::stable::Tensor allocateEmptyHWCTensor(
     const FrameDims& frameDims,
     const StableDevice& device,
     std::optional<int> numFrames) {

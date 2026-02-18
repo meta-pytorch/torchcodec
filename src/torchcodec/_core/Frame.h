@@ -33,15 +33,15 @@ struct FrameOutput {
   // data shape is:
   // - 3D (C, H, W) or (H, W, C) for videos
   // - 2D (numChannels, numSamples) for audio
-  StableTensor data;
+  torch::stable::Tensor data;
   double ptsSeconds;
   double durationSeconds;
 };
 
 struct FrameBatchOutput {
-  StableTensor data; // 4D: of shape NCHW or NHWC.
-  StableTensor ptsSeconds; // 1D of shape (N,)
-  StableTensor durationSeconds; // 1D of shape (N,)
+  torch::stable::Tensor data; // 4D: of shape NCHW or NHWC.
+  torch::stable::Tensor ptsSeconds; // 1D of shape (N,)
+  torch::stable::Tensor durationSeconds; // 1D of shape (N,)
 
   FrameBatchOutput(
       int64_t numFrames,
@@ -50,7 +50,7 @@ struct FrameBatchOutput {
 };
 
 struct AudioFramesOutput {
-  StableTensor data; // shape is (numChannels, numSamples)
+  torch::stable::Tensor data; // shape is (numChannels, numSamples)
   double ptsSeconds;
 };
 
@@ -64,7 +64,7 @@ struct AudioFramesOutput {
 // assume HWC tensors, since this is what FFmpeg natively handles. It's up to
 // the high-level decoding entry-points to permute that back to CHW, by calling
 // maybePermuteHWC2CHW().
-StableTensor allocateEmptyHWCTensor(
+torch::stable::Tensor allocateEmptyHWCTensor(
     const FrameDims& frameDims,
     const StableDevice& device,
     std::optional<int> numFrames = std::nullopt);

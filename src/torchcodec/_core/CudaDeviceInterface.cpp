@@ -236,7 +236,7 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
 void CudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<StableTensor> preAllocatedOutputTensor) {
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
 
   hasDecodedFrame_ = true;
@@ -499,7 +499,7 @@ const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
 } // namespace
 
 UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
-    const StableTensor& tensor,
+    const torch::stable::Tensor& tensor,
     int frameIndex,
     AVCodecContext* codecContext) {
   STD_TORCH_CHECK(
@@ -538,7 +538,7 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
       "avFrame must be pre-allocated with CUDA memory");
 
   // TODO VideoEncoder: Investigate ways to avoid this copy
-  StableTensor hwcFrame =
+  torch::stable::Tensor hwcFrame =
       torch::stable::contiguous(stablePermute(tensor, {1, 2, 0}));
 
   NppiSize oSizeROI = {width, height};

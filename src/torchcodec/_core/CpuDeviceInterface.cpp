@@ -139,7 +139,7 @@ ColorConversionLibrary CpuDeviceInterface::getColorConversionLibrary(
 void CpuDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<StableTensor> preAllocatedOutputTensor) {
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   STD_TORCH_CHECK(initialized_, "CpuDeviceInterface was not initialized.");
 
   if (avMediaType_ == AVMEDIA_TYPE_AUDIO) {
@@ -162,7 +162,7 @@ void CpuDeviceInterface::convertAVFrameToFrameOutput(
 void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<StableTensor> preAllocatedOutputTensor) {
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   // Note that we ignore the dimensions from the metadata; we don't even bother
   // storing them. The resized dimensions take priority. If we don't have any,
   // then we use the dimensions from the actual decoded frame. We use the actual
@@ -193,7 +193,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   }
 
   auto colorConversionLibrary = getColorConversionLibrary(outputDims);
-  StableTensor outputTensor;
+  torch::stable::Tensor outputTensor;
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
     outputTensor = preAllocatedOutputTensor.value_or(
@@ -247,7 +247,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
 
 int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
     const UniqueAVFrame& avFrame,
-    StableTensor& outputTensor,
+    torch::stable::Tensor& outputTensor,
     const FrameDims& outputDims) {
   enum AVPixelFormat frameFormat =
       static_cast<enum AVPixelFormat>(avFrame->format);
@@ -293,7 +293,7 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
   // When no resize is needed, we do color conversion directly into the output
   // tensor.
 
-  StableTensor colorConvertedTensor = needsResize
+  torch::stable::Tensor colorConvertedTensor = needsResize
       ? allocateEmptyHWCTensor(
             FrameDims(avFrame->height, avFrame->width), kStableCPU)
       : outputTensor;
@@ -367,7 +367,8 @@ int CpuDeviceInterface::convertAVFrameToTensorUsingSwScale(
   return colorConvertedHeight;
 }
 
-StableTensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
+torch::stable::Tensor
+CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
     const UniqueAVFrame& avFrame,
     const FrameDims& outputDims) {
   enum AVPixelFormat avFrameFormat =
@@ -476,7 +477,8 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
   }
 }
 
-std::optional<StableTensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
+std::optional<torch::stable::Tensor>
+CpuDeviceInterface::maybeFlushAudioBuffers() {
   // When sample rate conversion is involved, swresample buffers some of the
   // samples in-between calls to swr_convert (see the libswresample docs).
   // That's because the last few samples in a given frame require future
@@ -494,7 +496,7 @@ std::optional<StableTensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
 
   int numChannels =
       audioStreamOptions_.numChannels.value_or(getNumChannels(codecContext_));
-  StableTensor lastSamples =
+  torch::stable::Tensor lastSamples =
       torch::stable::empty({numChannels, numRemainingSamples});
 
   std::vector<uint8_t*> outputBuffers(numChannels);
@@ -518,7 +520,7 @@ std::string CpuDeviceInterface::getDetails() {
 }
 
 UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
-    const StableTensor& frame,
+    const torch::stable::Tensor& frame,
     int frameIndex,
     AVCodecContext* codecContext) {
   int inHeight = static_cast<int>(frame.sizes()[1]);

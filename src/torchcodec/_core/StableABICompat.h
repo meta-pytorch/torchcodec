@@ -48,19 +48,7 @@
 
 namespace facebook::torchcodec {
 
-// ============================================================================
-// Tensor types
-// ============================================================================
-using StableTensor = torch::stable::Tensor;
-using StableScalarType = torch::headeronly::ScalarType;
-using StableIntArrayRef = torch::headeronly::IntHeaderOnlyArrayRef;
-using StableLayout = torch::headeronly::Layout;
-using StableMemoryFormat = torch::headeronly::MemoryFormat;
-using StableDeviceIndex = torch::stable::accelerator::DeviceIndex;
-
-// ============================================================================
 // Device types
-// ============================================================================
 using StableDevice = torch::stable::Device;
 using StableDeviceType = torch::headeronly::DeviceType;
 
@@ -72,21 +60,12 @@ constexpr auto kStableCPU = torch::headeronly::DeviceType::CPU;
 constexpr auto kStableCUDA = torch::headeronly::DeviceType::CUDA;
 constexpr auto kStableXPU = torch::headeronly::DeviceType::XPU;
 
-// ============================================================================
 // Scalar type constants
-// ============================================================================
 constexpr auto kStableUInt8 = torch::headeronly::ScalarType::Byte;
-constexpr auto kStableInt8 = torch::headeronly::ScalarType::Char;
-constexpr auto kStableInt16 = torch::headeronly::ScalarType::Short;
-constexpr auto kStableInt32 = torch::headeronly::ScalarType::Int;
 constexpr auto kStableInt64 = torch::headeronly::ScalarType::Long;
-constexpr auto kStableFloat16 = torch::headeronly::ScalarType::Half;
 constexpr auto kStableFloat32 = torch::headeronly::ScalarType::Float;
 constexpr auto kStableFloat64 = torch::headeronly::ScalarType::Double;
 constexpr auto kStableBool = torch::headeronly::ScalarType::Bool;
-
-// Layout constants
-constexpr auto kStableStrided = torch::headeronly::Layout::Strided;
 
 // Note: the magic use of torch_call_dispatcher is what is officially
 // recommended
@@ -97,32 +76,35 @@ constexpr auto kStableStrided = torch::headeronly::Layout::Strided;
 // https://github.com/facebookresearch/xformers/blob/720adff2b021f6f43957718514f5be3d10e36fb1/xformers/csrc/pt_stable_utils.h#L85
 
 // TODO_STABLE_ABI: upstream?
-inline StableTensor stablePermute(
-    const StableTensor& self,
+inline torch::stable::Tensor stablePermute(
+    const torch::stable::Tensor& self,
     std::vector<int64_t> dims) {
   const auto num_args = 2;
   std::array<StableIValue, num_args> stack{
       torch::stable::detail::from(self), torch::stable::detail::from(dims)};
   TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
       "aten::permute", "", stack.data(), TORCH_ABI_VERSION));
-  return torch::stable::detail::to<StableTensor>(stack[0]);
+  return torch::stable::detail::to<torch::stable::Tensor>(stack[0]);
 }
 
 // TODO_STABLE_ABI: upstream?
-inline StableTensor stableCat(
-    const std::vector<StableTensor>& tensors,
+inline torch::stable::Tensor stableCat(
+    const std::vector<torch::stable::Tensor>& tensors,
     int64_t dim) {
   const auto num_args = 2;
   std::array<StableIValue, num_args> stack{
       torch::stable::detail::from(tensors), torch::stable::detail::from(dim)};
   TORCH_ERROR_CODE_CHECK(
       torch_call_dispatcher("aten::cat", "", stack.data(), TORCH_ABI_VERSION));
-  return torch::stable::detail::to<StableTensor>(stack[0]);
+  return torch::stable::detail::to<torch::stable::Tensor>(stack[0]);
 }
 
 // TODO_STABLE_ABI: upstream?
-inline StableTensor
-stableRot90(const StableTensor& self, int k, int64_t dim0, int64_t dim1) {
+inline torch::stable::Tensor stableRot90(
+    const torch::stable::Tensor& self,
+    int k,
+    int64_t dim0,
+    int64_t dim1) {
   const auto num_args = 3;
   std::array<StableIValue, num_args> stack{
       torch::stable::detail::from(self),
@@ -130,18 +112,19 @@ stableRot90(const StableTensor& self, int k, int64_t dim0, int64_t dim1) {
       torch::stable::detail::from(std::vector<int64_t>{dim0, dim1})};
   TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
       "aten::rot90", "", stack.data(), TORCH_ABI_VERSION));
-  return torch::stable::detail::to<StableTensor>(stack[0]);
+  return torch::stable::detail::to<torch::stable::Tensor>(stack[0]);
 }
 
 // Shorthand for torch::stable::select(tensor, 0, index), i.e. tensor[index].
-inline StableTensor selectRow(const StableTensor& tensor, int64_t index) {
+inline torch::stable::Tensor selectRow(
+    const torch::stable::Tensor& tensor,
+    int64_t index) {
   return torch::stable::select(tensor, 0, index);
 }
 
-// TODO_STABLE_ABI: StableTensor should natively support .accessor<T, N>().
 template <typename T, size_t N>
 torch::headeronly::HeaderOnlyTensorAccessor<T, N> accessor(
-    StableTensor& tensor) {
+    torch::stable::Tensor& tensor) {
   return torch::headeronly::HeaderOnlyTensorAccessor<T, N>(
       tensor.mutable_data_ptr<T>(),
       tensor.sizes().data(),
@@ -150,7 +133,7 @@ torch::headeronly::HeaderOnlyTensorAccessor<T, N> accessor(
 
 template <typename T, size_t N>
 torch::headeronly::HeaderOnlyTensorAccessor<const T, N> accessor(
-    const StableTensor& tensor) {
+    const torch::stable::Tensor& tensor) {
   return torch::headeronly::HeaderOnlyTensorAccessor<const T, N>(
       tensor.const_data_ptr<T>(),
       tensor.sizes().data(),
@@ -159,9 +142,9 @@ torch::headeronly::HeaderOnlyTensorAccessor<const T, N> accessor(
 
 // Copy row srcIndex from srcTensor into row dstIndex of dstTensor.
 inline void copyFrame(
-    StableTensor& dstTensor,
+    torch::stable::Tensor& dstTensor,
     int64_t dstIndex,
-    const StableTensor& srcTensor,
+    const torch::stable::Tensor& srcTensor,
     int64_t srcIndex) {
   auto dst = selectRow(dstTensor, dstIndex);
   torch::stable::copy_(dst, selectRow(srcTensor, srcIndex));
@@ -182,9 +165,10 @@ inline const char* deviceTypeName(StableDeviceType deviceType) {
 
 // TODO_STABLE_ABI: This is needed to properly print shape info in error
 // messages. There should probably be a better native way to support it, e.g.
-// StableIntArrayRef probably needs to support the `<<` operator. Consider
-// upstreaming.
-inline std::string intArrayRefToString(StableIntArrayRef arr) {
+// torch::headeronly::IntHeaderOnlyArrayRef probably needs to support the `<<`
+// operator. Consider upstreaming.
+inline std::string intArrayRefToString(
+    torch::headeronly::IntHeaderOnlyArrayRef arr) {
   std::ostringstream ss;
   ss << "[";
   for (size_t i = 0; i < arr.size(); ++i) {

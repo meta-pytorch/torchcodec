@@ -105,7 +105,7 @@ int64_t seek(void* opaque, int64_t offset, int whence) {
 
 } // namespace
 
-AVIOFromTensorContext::AVIOFromTensorContext(StableTensor data)
+AVIOFromTensorContext::AVIOFromTensorContext(torch::stable::Tensor data)
     : tensorContext_{data, 0, 0} {
   STD_TORCH_CHECK(data.numel() > 0, "data must not be empty");
   STD_TORCH_CHECK(data.is_contiguous(), "data must be contiguous");
@@ -123,7 +123,7 @@ AVIOToTensorContext::AVIOToTensorContext()
       nullptr, &write, &seek, &tensorContext_, /*isForWriting=*/true);
 }
 
-StableTensor AVIOToTensorContext::getOutputTensor() {
+torch::stable::Tensor AVIOToTensorContext::getOutputTensor() {
   return torch::stable::narrow(
       tensorContext_.data,
       /*dim=*/0,

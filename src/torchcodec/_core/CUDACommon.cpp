@@ -62,7 +62,7 @@ void initializeCudaContextWithPytorch(const StableDevice& device) {
   // It is important for pytorch itself to create the cuda context. If ffmpeg
   // creates the context it may not be compatible with pytorch.
   // This is a dummy tensor to initialize the cuda context.
-  StableTensor dummyTensorForCudaInitialization = torch::stable::empty(
+  torch::stable::Tensor dummyTensorForCudaInitialization = torch::stable::empty(
       {1}, kStableUInt8, std::nullopt, StableDevice(device));
 }
 
@@ -193,14 +193,14 @@ const Npp32f bt709FullRangeColorTwist[3][4] = {
     {1.0f, -0.187324273f, -0.468124273f, -128.0f},
     {1.0f, 1.8556f, 0.0f, -128.0f}};
 
-StableTensor convertNV12FrameToRGB(
+torch::stable::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
     const StableDevice& device,
     const UniqueNppContext& nppCtx,
     cudaStream_t nvdecStream,
-    std::optional<StableTensor> preAllocatedOutputTensor) {
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   auto frameDims = FrameDims(avFrame->height, avFrame->width);
-  StableTensor dst;
+  torch::stable::Tensor dst;
   if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
@@ -324,7 +324,7 @@ void returnNppStreamContextToCache(
 }
 
 void validatePreAllocatedTensorShape(
-    const std::optional<StableTensor>& preAllocatedOutputTensor,
+    const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,
     const UniqueAVFrame& avFrame) {
   // Note that CUDA does not yet support transforms, so the only possible
   // frame dimensions are the raw decoded frame's dimensions.

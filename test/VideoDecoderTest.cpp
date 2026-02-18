@@ -27,12 +27,12 @@ C10_DEFINE_bool(
 
 namespace facebook::torchcodec {
 
-inline StableTensor toStableTensor(const torch::Tensor& tensor) {
+inline torch::stable::Tensor toStableTensor(const torch::Tensor& tensor) {
   torch::Tensor* p = new torch::Tensor(tensor);
-  return StableTensor(reinterpret_cast<AtenTensorHandle>(p));
+  return torch::stable::Tensor(reinterpret_cast<AtenTensorHandle>(p));
 }
 
-inline torch::Tensor toATenTensor(const StableTensor& t) {
+inline torch::Tensor toATenTensor(const torch::stable::Tensor& t) {
   return *reinterpret_cast<torch::Tensor*>(t.get());
 }
 

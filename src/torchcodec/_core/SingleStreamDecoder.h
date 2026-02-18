@@ -67,7 +67,7 @@ class TORCHCODEC_API SingleStreamDecoder {
 
   // Returns the key frame indices as a tensor. The tensor is 1D and contains
   // int64 values, where each value is the frame index for a key frame.
-  StableTensor getKeyFrameIndices();
+  torch::stable::Tensor getKeyFrameIndices();
 
   // FrameMappings is used for the custom_frame_mappings seek mode to store
   // metadata of frames in a stream. The size of all tensors in this struct must
@@ -78,13 +78,13 @@ class TORCHCODEC_API SingleStreamDecoder {
   // --------------------------------------------------------------------------
   struct FrameMappings {
     // 1D tensor of int64, each value is the PTS of a frame in timebase units.
-    StableTensor all_frames;
+    torch::stable::Tensor all_frames;
     // 1D tensor of bool, each value indicates if the corresponding frame in
     // all_frames is a key frame.
-    StableTensor is_key_frame;
+    torch::stable::Tensor is_key_frame;
     // 1D tensor of int64, each value is the duration of the corresponding frame
     // in all_frames in timebase units.
-    StableTensor duration;
+    torch::stable::Tensor duration;
   };
 
   void addVideoStream(
@@ -113,7 +113,8 @@ class TORCHCODEC_API SingleStreamDecoder {
 
   // Returns frames at the given indices for a given stream as a single stacked
   // Tensor.
-  FrameBatchOutput getFramesAtIndices(const StableTensor& frameIndices);
+  FrameBatchOutput getFramesAtIndices(
+      const torch::stable::Tensor& frameIndices);
 
   // Returns frames within a given range. The range is defined by [start, stop).
   // The values retrieved from the range are: [start, start+step,
@@ -128,7 +129,7 @@ class TORCHCODEC_API SingleStreamDecoder {
   // seconds=5.999, etc.
   FrameOutput getFramePlayedAt(double seconds);
 
-  FrameBatchOutput getFramesPlayedAt(const StableTensor& timestamps);
+  FrameBatchOutput getFramesPlayedAt(const torch::stable::Tensor& timestamps);
 
   // Returns frames within a given pts range. The range is defined by
   // [startSeconds, stopSeconds) with respect to the pts values for frames. The
@@ -175,7 +176,8 @@ class TORCHCODEC_API SingleStreamDecoder {
   // can move it back to private.
   FrameOutput getFrameAtIndexInternal(
       int64_t frameIndex,
-      std::optional<StableTensor> preAllocatedOutputTensor = std::nullopt);
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+          std::nullopt);
 
   // Exposed for _test_frame_pts_equality, which is used to test non-regression
   // of pts resolution (64 to 32 bit floats)
@@ -269,13 +271,15 @@ class TORCHCODEC_API SingleStreamDecoder {
       std::function<bool(const UniqueAVFrame&)> filterFunction);
 
   FrameOutput getNextFrameInternal(
-      std::optional<StableTensor> preAllocatedOutputTensor = std::nullopt);
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+          std::nullopt);
 
-  StableTensor maybePermuteHWC2CHW(StableTensor& hwcTensor);
+  torch::stable::Tensor maybePermuteHWC2CHW(torch::stable::Tensor& hwcTensor);
 
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
-      std::optional<StableTensor> preAllocatedOutputTensor = std::nullopt);
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+          std::nullopt);
 
   // --------------------------------------------------------------------------
   // PTS <-> INDEX CONVERSIONS

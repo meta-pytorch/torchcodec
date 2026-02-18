@@ -17,13 +17,13 @@ class TORCHCODEC_API AudioEncoder {
   ~AudioEncoder();
 
   AudioEncoder(
-      const StableTensor& samples,
+      const torch::stable::Tensor& samples,
       int sampleRate,
       std::string_view fileName,
       const AudioStreamOptions& audioStreamOptions);
 
   AudioEncoder(
-      const StableTensor& samples,
+      const torch::stable::Tensor& samples,
       int sampleRate,
       std::string_view formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder,
@@ -31,7 +31,7 @@ class TORCHCODEC_API AudioEncoder {
 
   void encode();
 
-  StableTensor encodeToTensor();
+  torch::stable::Tensor encodeToTensor();
 
  private:
   void initializeEncoder(const AudioStreamOptions& audioStreamOptions);
@@ -50,7 +50,7 @@ class TORCHCODEC_API AudioEncoder {
   UniqueSwrContext swrContext_;
   AudioStreamOptions audioStreamOptions;
 
-  const StableTensor samples_;
+  const torch::stable::Tensor samples_;
 
   int outNumChannels_ = -1;
   int outSampleRate_ = -1;
@@ -142,13 +142,13 @@ class TORCHCODEC_API VideoEncoder {
   VideoEncoder& operator=(VideoEncoder&&) = delete;
 
   VideoEncoder(
-      const StableTensor& frames,
+      const torch::stable::Tensor& frames,
       double frameRate,
       std::string_view fileName,
       const VideoStreamOptions& videoStreamOptions);
 
   VideoEncoder(
-      const StableTensor& frames,
+      const torch::stable::Tensor& frames,
       double frameRate,
       std::string_view formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder,
@@ -156,7 +156,7 @@ class TORCHCODEC_API VideoEncoder {
 
   void encode();
 
-  StableTensor encodeToTensor();
+  torch::stable::Tensor encodeToTensor();
 
  private:
   void initializeEncoder(const VideoStreamOptions& videoStreamOptions);
@@ -167,7 +167,7 @@ class TORCHCODEC_API VideoEncoder {
   UniqueAVCodecContext avCodecContext_;
   AVStream* avStream_ = nullptr;
 
-  const StableTensor frames_;
+  const torch::stable::Tensor frames_;
   double inFrameRate_;
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
