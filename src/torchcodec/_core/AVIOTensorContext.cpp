@@ -116,11 +116,7 @@ AVIOFromTensorContext::AVIOFromTensorContext(StableTensor data)
 
 AVIOToTensorContext::AVIOToTensorContext()
     : tensorContext_{
-          torch::stable::empty(
-              {INITIAL_TENSOR_SIZE},
-              kStableUInt8,
-              kStableStrided,
-              StableDevice(kStableCPU)),
+          torch::stable::empty({INITIAL_TENSOR_SIZE}, kStableUInt8),
           0,
           0} {
   createAVIOContext(

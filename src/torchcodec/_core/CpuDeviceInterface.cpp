@@ -460,11 +460,7 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
 
   auto numSamples = avFrame->nb_samples;
 
-  frameOutput.data = torch::stable::empty(
-      {numChannels, numSamples},
-      kStableFloat32,
-      kStableStrided,
-      StableDevice(kStableCPU));
+  frameOutput.data = torch::stable::empty({numChannels, numSamples});
 
   if (numSamples > 0) {
     uint8_t* outputChannelData =
@@ -499,10 +495,7 @@ std::optional<StableTensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
   int numChannels =
       audioStreamOptions_.numChannels.value_or(getNumChannels(codecContext_));
   StableTensor lastSamples = torch::stable::empty(
-      {numChannels, numRemainingSamples},
-      kStableFloat32,
-      kStableStrided,
-      StableDevice(kStableCPU));
+      {numChannels, numRemainingSamples});
 
   std::vector<uint8_t*> outputBuffers(numChannels);
   for (auto i = 0; i < numChannels; i++) {

@@ -408,10 +408,7 @@ StableTensor SingleStreamDecoder::getKeyFrameIndices() {
   const std::vector<FrameInfo>& keyFrames =
       streamInfos_[activeStreamIndex_].keyFrames;
   StableTensor keyFrameIndices = torch::stable::empty(
-      {static_cast<int64_t>(keyFrames.size())},
-      kStableInt64,
-      kStableStrided,
-      StableDevice(kStableCPU));
+      {static_cast<int64_t>(keyFrames.size())}, kStableInt64);
   int64_t* keyFrameIndicesPtr = keyFrameIndices.mutable_data_ptr<int64_t>();
   for (size_t i = 0; i < keyFrames.size(); ++i) {
     keyFrameIndicesPtr[i] = keyFrames[i].frameIndex;
@@ -854,10 +851,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
   // to indices, and leverage the de-duplication logic of getFramesAtIndices.
 
   StableTensor frameIndices = torch::stable::empty(
-      {timestamps.numel()},
-      kStableInt64,
-      kStableStrided,
-      StableDevice(kStableCPU));
+      {timestamps.numel()}, kStableInt64);
   int64_t* frameIndicesPtr = frameIndices.mutable_data_ptr<int64_t>();
   const double* timestampsPtr = timestamps.const_data_ptr<double>();
 
@@ -1099,11 +1093,7 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
     // For consistency with video
     int numChannels = getNumChannels(streamInfo.codecContext);
     return AudioFramesOutput{
-        torch::stable::empty(
-            {numChannels, 0},
-            kStableFloat32,
-            kStableStrided,
-            StableDevice(kStableCPU)),
+        torch::stable::empty({numChannels, 0}),
         0.0};
   }
 
