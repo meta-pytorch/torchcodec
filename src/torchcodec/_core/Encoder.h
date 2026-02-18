@@ -12,7 +12,7 @@ extern "C" {
 }
 
 namespace facebook::torchcodec {
-class TORCHCODEC_API AudioEncoder {
+class FORCE_PUBLIC_VISIBILITY AudioEncoder {
  public:
   ~AudioEncoder();
 
@@ -127,7 +127,7 @@ class TORCHCODEC_API AudioEncoder {
 //
 /* clang-format on */
 
-class TORCHCODEC_API VideoEncoder {
+class FORCE_PUBLIC_VISIBILITY VideoEncoder {
  public:
   ~VideoEncoder();
 

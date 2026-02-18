@@ -23,9 +23,9 @@
 
 // Symbol visibility for the shared library
 #ifdef _WIN32
-#define TORCHCODEC_API __declspec(dllexport)
+#define FORCE_PUBLIC_VISIBILITY __declspec(dllexport)
 #else
-#define TORCHCODEC_API __attribute__((visibility("default")))
+#define FORCE_PUBLIC_VISIBILITY __attribute__((visibility("default")))
 #endif
 
 // Flag meant to be used for any API that third-party libraries may call.

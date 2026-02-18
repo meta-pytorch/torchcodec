@@ -176,7 +176,7 @@ TORCHCODEC_THIRD_PARTY_API bool registerDeviceInterface(
     const DeviceInterfaceKey& key,
     const CreateDeviceInterfaceFn createInterface);
 
-TORCHCODEC_API void validateDeviceInterface(
+FORCE_PUBLIC_VISIBILITY void validateDeviceInterface(
     const std::string device,
     const std::string variant);
 

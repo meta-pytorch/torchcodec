@@ -23,7 +23,7 @@ struct TensorContext {
 
 // For Decoding: enables users to pass in the entire video or audio as bytes.
 // Our read and seek functions then traverse the bytes in memory.
-class TORCHCODEC_API AVIOFromTensorContext : public AVIOContextHolder {
+class FORCE_PUBLIC_VISIBILITY AVIOFromTensorContext : public AVIOContextHolder {
  public:
   explicit AVIOFromTensorContext(torch::stable::Tensor data);
 
@@ -32,7 +32,7 @@ class TORCHCODEC_API AVIOFromTensorContext : public AVIOContextHolder {
 };
 
 // For Encoding: used to encode into an output uint8 (bytes) tensor.
-class TORCHCODEC_API AVIOToTensorContext : public AVIOContextHolder {
+class FORCE_PUBLIC_VISIBILITY AVIOToTensorContext : public AVIOContextHolder {
  public:
   explicit AVIOToTensorContext();
   torch::stable::Tensor getOutputTensor();

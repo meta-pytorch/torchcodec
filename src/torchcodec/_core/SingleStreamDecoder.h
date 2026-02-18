@@ -25,7 +25,7 @@ namespace facebook::torchcodec {
 // The SingleStreamDecoder class can be used to decode video frames to Tensors.
 // Note that SingleStreamDecoder is not thread-safe.
 // Do not call non-const APIs concurrently on the same object.
-class TORCHCODEC_API SingleStreamDecoder {
+class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
  public:
   // --------------------------------------------------------------------------
   // CONSTRUCTION API
