@@ -22,7 +22,6 @@ std::string toFilterGraphInterpolation(
           false,
           "Unknown interpolation mode: " +
               std::to_string(static_cast<int>(mode)));
-      return ""; // unreachable, silence compiler warning
   }
 }
 
@@ -35,7 +34,6 @@ int toSwsInterpolation(ResizeTransform::InterpolationMode mode) {
           false,
           "Unknown interpolation mode: " +
               std::to_string(static_cast<int>(mode)));
-      return 0; // unreachable, silence compiler warning
   }
 }
 
@@ -149,7 +147,6 @@ Rotation rotationFromDegrees(std::optional<double> degrees) {
           "Unexpected rotation value: ",
           *degrees,
           ". Expected range is [-180, 180].");
-      return Rotation::NONE; // unreachable, silence compiler warning
   }
 }
 
