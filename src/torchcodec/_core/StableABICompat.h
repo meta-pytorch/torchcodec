@@ -68,6 +68,7 @@ using StableDeviceGuard = torch::stable::accelerator::DeviceGuard;
 // Device type constants
 constexpr auto kStableCPU = torch::headeronly::DeviceType::CPU;
 constexpr auto kStableCUDA = torch::headeronly::DeviceType::CUDA;
+constexpr auto kStableXPU = torch::headeronly::DeviceType::XPU;
 
 // ============================================================================
 // Scalar type constants

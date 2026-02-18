@@ -38,6 +38,8 @@ StableDeviceType parseDeviceType(const std::string& deviceType) {
     return kStableCPU;
   } else if (deviceType == "cuda") {
     return kStableCUDA;
+  } else if (deviceType == "xpu") {
+    return kStableXPU;
   } else {
     STD_TORCH_CHECK(false, "Unknown device type: ", deviceType);
   }
