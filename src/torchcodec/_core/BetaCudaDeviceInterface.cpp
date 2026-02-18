@@ -913,10 +913,7 @@ void BetaCudaDeviceInterface::applyRotation(
       torch::stable::contiguous(stableRot90(frameOutput.data, k, 0, 1));
 
   if (preAllocatedOutputTensor.has_value()) {
-    torch::stable::copy_(
-        preAllocatedOutputTensor.value(),
-        frameOutput.data,
-        /*non_blocking=*/std::nullopt);
+    torch::stable::copy_(preAllocatedOutputTensor.value(), frameOutput.data);
     frameOutput.data = preAllocatedOutputTensor.value();
   }
 }

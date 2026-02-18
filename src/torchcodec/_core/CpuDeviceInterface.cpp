@@ -494,8 +494,8 @@ std::optional<StableTensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
 
   int numChannels =
       audioStreamOptions_.numChannels.value_or(getNumChannels(codecContext_));
-  StableTensor lastSamples = torch::stable::empty(
-      {numChannels, numRemainingSamples});
+  StableTensor lastSamples =
+      torch::stable::empty({numChannels, numRemainingSamples});
 
   std::vector<uint8_t*> outputBuffers(numChannels);
   for (auto i = 0; i < numChannels; i++) {

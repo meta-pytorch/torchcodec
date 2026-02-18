@@ -850,8 +850,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
   // avoid decoding that unique frame twice is to convert the input timestamps
   // to indices, and leverage the de-duplication logic of getFramesAtIndices.
 
-  StableTensor frameIndices = torch::stable::empty(
-      {timestamps.numel()}, kStableInt64);
+  StableTensor frameIndices =
+      torch::stable::empty({timestamps.numel()}, kStableInt64);
   int64_t* frameIndicesPtr = frameIndices.mutable_data_ptr<int64_t>();
   const double* timestampsPtr = timestamps.const_data_ptr<double>();
 
@@ -1092,9 +1092,7 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
   if (stopSecondsOptional.has_value() && startSeconds == *stopSecondsOptional) {
     // For consistency with video
     int numChannels = getNumChannels(streamInfo.codecContext);
-    return AudioFramesOutput{
-        torch::stable::empty({numChannels, 0}),
-        0.0};
+    return AudioFramesOutput{torch::stable::empty({numChannels, 0}), 0.0};
   }
 
   auto startPts = secondsToClosestPts(startSeconds, streamInfo.timeBase);
