@@ -14,6 +14,8 @@
 #include <torch/headeronly/core/DeviceType.h>
 #include <torch/headeronly/core/ScalarType.h>
 
+#include <torch/headeronly/core/TensorAccessor.h>
+
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -134,6 +136,25 @@ stableRot90(const StableTensor& self, int k, int64_t dim0, int64_t dim1) {
 // Shorthand for torch::stable::select(tensor, 0, index), i.e. tensor[index].
 inline StableTensor selectRow(const StableTensor& tensor, int64_t index) {
   return torch::stable::select(tensor, 0, index);
+}
+
+// TODO_STABLE_ABI: StableTensor should natively support .accessor<T, N>().
+template <typename T, size_t N>
+torch::headeronly::HeaderOnlyTensorAccessor<T, N> accessor(
+    StableTensor& tensor) {
+  return torch::headeronly::HeaderOnlyTensorAccessor<T, N>(
+      tensor.mutable_data_ptr<T>(),
+      tensor.sizes().data(),
+      tensor.strides().data());
+}
+
+template <typename T, size_t N>
+torch::headeronly::HeaderOnlyTensorAccessor<const T, N> accessor(
+    const StableTensor& tensor) {
+  return torch::headeronly::HeaderOnlyTensorAccessor<const T, N>(
+      tensor.const_data_ptr<T>(),
+      tensor.sizes().data(),
+      tensor.strides().data());
 }
 
 // Copy row srcIndex from srcTensor into row dstIndex of dstTensor.

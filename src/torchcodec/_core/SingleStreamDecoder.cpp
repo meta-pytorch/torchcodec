@@ -358,10 +358,9 @@ void SingleStreamDecoder::readCustomFrameMappingsUpdateMetadataAndIndex(
   int64_t numFrames = all_frames.sizes()[0];
   streamInfos_[streamIndex].allFrames.reserve(numFrames);
   streamInfos_[streamIndex].keyFrames.reserve(numFrames);
-  // TODO_STABLE_ABI: use accessors once they're available in stable ABI.
-  const int64_t* pts_data = all_frames.const_data_ptr<int64_t>();
-  const bool* is_key_frame_data = is_key_frame.const_data_ptr<bool>();
-  const int64_t* duration_data = duration.const_data_ptr<int64_t>();
+  auto pts_data = accessor<int64_t, 1>(all_frames);
+  auto is_key_frame_data = accessor<bool, 1>(is_key_frame);
+  auto duration_data = accessor<int64_t, 1>(duration);
 
   auto& streamMetadata = containerMetadata_.allStreamMetadata[streamIndex];
 
@@ -409,9 +408,9 @@ StableTensor SingleStreamDecoder::getKeyFrameIndices() {
       streamInfos_[activeStreamIndex_].keyFrames;
   StableTensor keyFrameIndices = torch::stable::empty(
       {static_cast<int64_t>(keyFrames.size())}, kStableInt64);
-  int64_t* keyFrameIndicesPtr = keyFrameIndices.mutable_data_ptr<int64_t>();
+  auto keyFrameIndicesAccessor = accessor<int64_t, 1>(keyFrameIndices);
   for (size_t i = 0; i < keyFrames.size(); ++i) {
-    keyFrameIndicesPtr[i] = keyFrames[i].frameIndex;
+    keyFrameIndicesAccessor[i] = keyFrames[i].frameIndex;
   }
 
   return keyFrameIndices;
@@ -688,7 +687,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     const StableTensor& frameIndices) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
 
-  const int64_t* frameIndicesData = frameIndices.const_data_ptr<int64_t>();
+  auto frameIndicesData = accessor<int64_t, 1>(frameIndices);
 
   bool indicesAreSorted = true;
   for (int64_t i = 1; i < frameIndices.numel(); ++i) {
@@ -721,11 +720,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   FrameBatchOutput frameBatchOutput(
       frameIndices.numel(), getOutputDims(), videoStreamOptions.device);
 
-  // TODO_STABLE_ABI: use accessors once they're available in stable ABI.
-  double* frameBatchOutputPtsSeconds =
-      frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
-  double* frameBatchOutputDurationSeconds =
-      frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
+  auto frameBatchOutputPtsSeconds =
+      accessor<double, 1>(frameBatchOutput.ptsSeconds);
+  auto frameBatchOutputDurationSeconds =
+      accessor<double, 1>(frameBatchOutput.durationSeconds);
 
   auto previousIndexInVideo = -1;
   for (int64_t f = 0; f < frameIndices.numel(); ++f) {
@@ -787,11 +785,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   FrameBatchOutput frameBatchOutput(
       numOutputFrames, getOutputDims(), videoStreamOptions.device);
 
-  // TODO_STABLE_ABI: use accessors once they're available in stable ABI.
-  double* frameBatchOutputPtsSeconds =
-      frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
-  double* frameBatchOutputDurationSeconds =
-      frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
+  auto frameBatchOutputPtsSeconds =
+      accessor<double, 1>(frameBatchOutput.ptsSeconds);
+  auto frameBatchOutputDurationSeconds =
+      accessor<double, 1>(frameBatchOutput.durationSeconds);
   for (int64_t i = start, f = 0; i < stop; i += step, ++f) {
     FrameOutput frameOutput =
         getFrameAtIndexInternal(i, selectRow(frameBatchOutput.data, f));
@@ -861,11 +858,11 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
 
   StableTensor frameIndices =
       torch::stable::empty({timestamps.numel()}, kStableInt64);
-  int64_t* frameIndicesPtr = frameIndices.mutable_data_ptr<int64_t>();
-  const double* timestampsPtr = timestamps.const_data_ptr<double>();
+  auto frameIndicesAccessor = accessor<int64_t, 1>(frameIndices);
+  auto timestampsAccessor = accessor<double, 1>(timestamps);
 
   for (int64_t i = 0; i < timestamps.numel(); ++i) {
-    auto frameSeconds = timestampsPtr[i];
+    auto frameSeconds = timestampsAccessor[i];
     STD_TORCH_CHECK(
         frameSeconds >= minSeconds,
         "frame pts is " + std::to_string(frameSeconds) +
@@ -882,7 +879,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
               ".");
     }
 
-    frameIndicesPtr[i] = secondsToIndexLowerBound(frameSeconds);
+    frameIndicesAccessor[i] = secondsToIndexLowerBound(frameSeconds);
   }
 
   return getFramesAtIndices(frameIndices);
@@ -968,11 +965,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     FrameBatchOutput frameBatchOutput(
         numOutputFrames, getOutputDims(), videoStreamOptions.device);
 
-    // TODO_STABLE_ABI: use accessors once they're available in stable ABI.
-    double* frameBatchOutputPtsSeconds =
-        frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
-    double* frameBatchOutputDurationSeconds =
-        frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
+    auto frameBatchOutputPtsSeconds =
+        accessor<double, 1>(frameBatchOutput.ptsSeconds);
+    auto frameBatchOutputDurationSeconds =
+        accessor<double, 1>(frameBatchOutput.durationSeconds);
 
     // Decode frames, reusing already-decoded frames for duplicates
     int64_t lastDecodedSourceIndex = -1;
@@ -1014,11 +1010,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
 
     FrameBatchOutput frameBatchOutput(
         numFrames, getOutputDims(), videoStreamOptions.device);
-    // TODO_STABLE_ABI: use accessors once they're available in stable ABI.
-    double* frameBatchOutputPtsSeconds =
-        frameBatchOutput.ptsSeconds.mutable_data_ptr<double>();
-    double* frameBatchOutputDurationSeconds =
-        frameBatchOutput.durationSeconds.mutable_data_ptr<double>();
+    auto frameBatchOutputPtsSeconds =
+        accessor<double, 1>(frameBatchOutput.ptsSeconds);
+    auto frameBatchOutputDurationSeconds =
+        accessor<double, 1>(frameBatchOutput.durationSeconds);
     for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
       FrameOutput frameOutput =
           getFrameAtIndexInternal(i, selectRow(frameBatchOutput.data, f));
