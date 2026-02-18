@@ -565,11 +565,7 @@ UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
   inputFrame->width = inWidth;
   inputFrame->height = inHeight;
 
-  // The tensor data is read-only here (used as source for sws_scale), but
-  // AVFrame::data requires uint8_t* (non-const). We use const_data_ptr and
-  // const_cast since FFmpeg's sws_scale treats the source as const internally.
-  uint8_t* tensorData =
-      const_cast<uint8_t*>(static_cast<const uint8_t*>(frame.const_data_ptr()));
+  uint8_t* tensorData = static_cast<uint8_t*>(frame.mutable_data_ptr());
 
   int channelSize = inHeight * inWidth;
   // Since frames tensor is in NCHW, we must use a planar format.
