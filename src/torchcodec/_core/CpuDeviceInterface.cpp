@@ -502,7 +502,7 @@ CpuDeviceInterface::maybeFlushAudioBuffers() {
   std::vector<uint8_t*> outputBuffers(numChannels);
   for (auto i = 0; i < numChannels; i++) {
     outputBuffers[i] = reinterpret_cast<uint8_t*>(
-        lastSamples.mutable_data_ptr<float>() + i * lastSamples.sizes()[1]);
+        selectRow(lastSamples, i).mutable_data_ptr<float>());
   }
 
   auto actualNumRemainingSamples = swr_convert(
