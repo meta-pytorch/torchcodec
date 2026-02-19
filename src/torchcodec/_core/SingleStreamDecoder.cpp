@@ -358,9 +358,9 @@ void SingleStreamDecoder::readCustomFrameMappingsUpdateMetadataAndIndex(
   int64_t numFrames = all_frames.sizes()[0];
   streamInfos_[streamIndex].allFrames.reserve(numFrames);
   streamInfos_[streamIndex].keyFrames.reserve(numFrames);
-  auto pts_data = accessor<int64_t, 1>(all_frames);
-  auto is_key_frame_data = accessor<bool, 1>(is_key_frame);
-  auto duration_data = accessor<int64_t, 1>(duration);
+  auto pts_data = constAccessor<int64_t, 1>(all_frames);
+  auto is_key_frame_data = constAccessor<bool, 1>(is_key_frame);
+  auto duration_data = constAccessor<int64_t, 1>(duration);
 
   auto& streamMetadata = containerMetadata_.allStreamMetadata[streamIndex];
 
@@ -408,7 +408,7 @@ torch::stable::Tensor SingleStreamDecoder::getKeyFrameIndices() {
       streamInfos_[activeStreamIndex_].keyFrames;
   torch::stable::Tensor keyFrameIndices = torch::stable::empty(
       {static_cast<int64_t>(keyFrames.size())}, kStableInt64);
-  auto keyFrameIndicesAccessor = accessor<int64_t, 1>(keyFrameIndices);
+  auto keyFrameIndicesAccessor = mutableAccessor<int64_t, 1>(keyFrameIndices);
   for (size_t i = 0; i < keyFrames.size(); ++i) {
     keyFrameIndicesAccessor[i] = keyFrames[i].frameIndex;
   }
@@ -687,7 +687,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     const torch::stable::Tensor& frameIndices) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
 
-  auto frameIndicesData = accessor<int64_t, 1>(frameIndices);
+  auto frameIndicesData = constAccessor<int64_t, 1>(frameIndices);
 
   bool indicesAreSorted = true;
   for (int64_t i = 1; i < frameIndices.numel(); ++i) {
@@ -721,9 +721,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
       frameIndices.numel(), getOutputDims(), videoStreamOptions.device);
 
   auto frameBatchOutputPtsSeconds =
-      accessor<double, 1>(frameBatchOutput.ptsSeconds);
+      mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
   auto frameBatchOutputDurationSeconds =
-      accessor<double, 1>(frameBatchOutput.durationSeconds);
+      mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
 
   auto previousIndexInVideo = -1;
   for (int64_t f = 0; f < frameIndices.numel(); ++f) {
@@ -786,9 +786,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
       numOutputFrames, getOutputDims(), videoStreamOptions.device);
 
   auto frameBatchOutputPtsSeconds =
-      accessor<double, 1>(frameBatchOutput.ptsSeconds);
+      mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
   auto frameBatchOutputDurationSeconds =
-      accessor<double, 1>(frameBatchOutput.durationSeconds);
+      mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
   for (int64_t i = start, f = 0; i < stop; i += step, ++f) {
     FrameOutput frameOutput =
         getFrameAtIndexInternal(i, selectRow(frameBatchOutput.data, f));
@@ -858,8 +858,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
 
   torch::stable::Tensor frameIndices =
       torch::stable::empty({timestamps.numel()}, kStableInt64);
-  auto frameIndicesAccessor = accessor<int64_t, 1>(frameIndices);
-  auto timestampsAccessor = accessor<double, 1>(timestamps);
+  auto frameIndicesAccessor = mutableAccessor<int64_t, 1>(frameIndices);
+  auto timestampsAccessor = constAccessor<double, 1>(timestamps);
 
   for (int64_t i = 0; i < timestamps.numel(); ++i) {
     auto frameSeconds = timestampsAccessor[i];
@@ -966,9 +966,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         numOutputFrames, getOutputDims(), videoStreamOptions.device);
 
     auto frameBatchOutputPtsSeconds =
-        accessor<double, 1>(frameBatchOutput.ptsSeconds);
+        mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
     auto frameBatchOutputDurationSeconds =
-        accessor<double, 1>(frameBatchOutput.durationSeconds);
+        mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
 
     // Decode frames, reusing already-decoded frames for duplicates
     int64_t lastDecodedSourceIndex = -1;
@@ -1011,9 +1011,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     FrameBatchOutput frameBatchOutput(
         numFrames, getOutputDims(), videoStreamOptions.device);
     auto frameBatchOutputPtsSeconds =
-        accessor<double, 1>(frameBatchOutput.ptsSeconds);
+        mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
     auto frameBatchOutputDurationSeconds =
-        accessor<double, 1>(frameBatchOutput.durationSeconds);
+        mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
     for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
       FrameOutput frameOutput =
           getFrameAtIndexInternal(i, selectRow(frameBatchOutput.data, f));

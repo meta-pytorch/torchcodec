@@ -123,7 +123,7 @@ inline torch::stable::Tensor selectRow(
 }
 
 template <typename T, size_t N>
-torch::headeronly::HeaderOnlyTensorAccessor<T, N> accessor(
+torch::headeronly::HeaderOnlyTensorAccessor<T, N> mutableAccessor(
     torch::stable::Tensor& tensor) {
   return torch::headeronly::HeaderOnlyTensorAccessor<T, N>(
       tensor.mutable_data_ptr<T>(),
@@ -132,7 +132,7 @@ torch::headeronly::HeaderOnlyTensorAccessor<T, N> accessor(
 }
 
 template <typename T, size_t N>
-torch::headeronly::HeaderOnlyTensorAccessor<const T, N> accessor(
+torch::headeronly::HeaderOnlyTensorAccessor<const T, N> constAccessor(
     const torch::stable::Tensor& tensor) {
   return torch::headeronly::HeaderOnlyTensorAccessor<const T, N>(
       tensor.const_data_ptr<T>(),
@@ -158,6 +158,8 @@ inline const char* deviceTypeName(StableDeviceType deviceType) {
       return "cpu";
     case kStableCUDA:
       return "cuda";
+    case kStableXPU:
+      return "xpu";
     default:
       return "unknown";
   }
