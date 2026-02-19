@@ -68,24 +68,19 @@ def create_audio_decoder(
     This is a Python convenience wrapper that calls the existing two-step
     C++ API (create decoder + add audio stream) in a single Python function.
     """
-    # Step 1: Create the decoder using existing C++ op
     decoder = create_decoder(source=source, seek_mode=seek_mode)
 
-    # Step 2: Validate stream_index before calling add_audio_stream
     if stream_index is not None:
         container_metadata = core.get_container_metadata(decoder)
         if stream_index >= len(container_metadata.streams):
             raise ValueError(
                 f"The stream at index {stream_index} is not a valid stream."
             )
-        # Check that the stream is actually an audio stream
         stream_metadata = container_metadata.streams[stream_index]
         if not isinstance(stream_metadata, core._metadata.AudioStreamMetadata):
             raise ValueError(
                 f"The stream at index {stream_index} is not an audio stream. "
             )
-
-    # Step 3: Add audio stream using existing C++ op
     core.add_audio_stream(
         decoder,
         stream_index=stream_index,

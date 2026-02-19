@@ -83,7 +83,9 @@ class AudioDecoder:
                 + ERROR_REPORTING_INSTRUCTIONS
             )
 
-        self.metadata = container_metadata.streams[self.stream_index]
+        self.metadata: core.AudioStreamMetadata = container_metadata.streams[
+            self.stream_index
+        ]
 
         self._desired_sample_rate = (
             sample_rate if sample_rate is not None else self.metadata.sample_rate
