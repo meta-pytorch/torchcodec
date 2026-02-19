@@ -145,7 +145,7 @@ def _samples_from_bytes(
             # Interpret raw bytes as float32 (already normalized by convention)
             samples = _deinterleave(
                 torch.frombuffer(audio_bytes, dtype=torch.float32)
-            ).contiguous()
+            )  # .contiguous()
         elif metadata.bits_per_sample == 64:
             # Interpret raw bytes as float64, then convert to float32.
             # .to() on the transposed view produces a contiguous float32 result.
