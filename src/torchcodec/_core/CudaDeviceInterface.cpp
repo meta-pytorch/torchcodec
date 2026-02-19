@@ -197,7 +197,7 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
   enum AVPixelFormat frameFormat =
       static_cast<enum AVPixelFormat>(avFrame->format);
 
-  auto newContext = std::make_unique<FiltersContext>(
+  auto newConfig = std::make_unique<FiltersConfig>(
       avFrame->width,
       avFrame->height,
       frameFormat,
@@ -209,22 +209,22 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
       timeBase_,
       av_buffer_ref(avFrame->hw_frames_ctx));
 
-  if (!nv12Conversion_ || *nv12ConversionContext_ != *newContext) {
+  if (!nv12Conversion_ || *nv12ConversionConfig_ != *newConfig) {
     nv12Conversion_ =
-        std::make_unique<FilterGraph>(*newContext, videoStreamOptions_);
-    nv12ConversionContext_ = std::move(newContext);
+        std::make_unique<FilterGraph>(*newConfig, videoStreamOptions_);
+    nv12ConversionConfig_ = std::move(newConfig);
   }
   auto filteredAVFrame = nv12Conversion_->convert(avFrame);
 
   // If this check fails it means the frame wasn't
   // reshaped to its expected dimensions by filtergraph.
   STD_TORCH_CHECK(
-      (filteredAVFrame->width == nv12ConversionContext_->outputWidth) &&
-          (filteredAVFrame->height == nv12ConversionContext_->outputHeight),
+      (filteredAVFrame->width == nv12ConversionConfig_->outputWidth) &&
+          (filteredAVFrame->height == nv12ConversionConfig_->outputHeight),
       "Expected frame from filter graph of ",
-      nv12ConversionContext_->outputWidth,
+      nv12ConversionConfig_->outputWidth,
       "x",
-      nv12ConversionContext_->outputHeight,
+      nv12ConversionConfig_->outputHeight,
       ", got ",
       filteredAVFrame->width,
       "x",
