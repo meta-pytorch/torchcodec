@@ -64,6 +64,7 @@ void initializeCudaContextWithPytorch(const StableDevice& device) {
   // This is a dummy tensor to initialize the cuda context.
   torch::stable::Tensor dummyTensorForCudaInitialization = torch::stable::empty(
       {1}, kStableUInt8, std::nullopt, StableDevice(device));
+  torch::stable::zero_(dummyTensorForCudaInitialization);
 }
 
 /* clang-format off */
