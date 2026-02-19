@@ -155,11 +155,11 @@ def _is_uncompressed_wav(
         elif hasattr(source, "read") and hasattr(source, "seek"):
             # Duck-typed file-like objects
             current_pos = source.seek(0, io.SEEK_CUR)
-            source.seek(0)
+            source.seek(0, io.SEEK_SET)
             metadata_json = core.get_wav_metadata_from_file_like(
                 source, stream_index, sample_rate, num_channels
             )
-            source.seek(current_pos)
+            source.seek(current_pos, io.SEEK_SET)
         else:
             return None
 
@@ -209,7 +209,7 @@ def decode_wav(
     elif isinstance(source, (io.RawIOBase, io.BufferedReader)) or (
         hasattr(source, "read") and hasattr(source, "seek")
     ):
-        source.seek(0)
+        source.seek(0, io.SEEK_SET)
         return core.decode_wav_from_file_like(source, start_seconds, stop_seconds)
     else:
         raise TypeError(

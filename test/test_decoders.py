@@ -2398,3 +2398,81 @@ class TestAudioDecoder:
             streaming_samples.data, ffmpeg_samples.data, atol=0, rtol=0
         )
         assert streaming_samples.sample_rate == ffmpeg_samples.sample_rate
+
+    @pytest.mark.parametrize("asset", (SINE_MONO_S16, SINE_MONO_S32))
+    @pytest.mark.parametrize(
+        "source_kind",
+        ("str", "path", "file_like_rawio", "file_like_bufferedio", "file_like_custom"),
+    )
+    @pytest.mark.parametrize(
+        "start_seconds, stop_seconds", ((None, None), (1.0, 2.0)), ids=("full", "range")
+    )
+    def test_wav_fast_path_source_kinds(
+        self, asset, source_kind, start_seconds, stop_seconds
+    ):
+        if source_kind == "str":
+            source = str(asset.path)
+        elif source_kind == "path":
+            source = asset.path
+        elif source_kind == "file_like_rawio":
+            source = open(asset.path, mode="rb", buffering=0)
+        elif source_kind == "file_like_bufferedio":
+            source = open(asset.path, mode="rb", buffering=4096)
+        elif source_kind == "file_like_custom":
+
+            class CustomReader:
+                def __init__(self, file):
+                    self._file = file
+
+                def read(self, size: int) -> bytes:
+                    return self._file.read(size)
+
+                def seek(self, offset: int, whence: int) -> int:
+                    return self._file.seek(offset, whence)
+
+            source = CustomReader(open(asset.path, mode="rb", buffering=0))
+        else:
+            raise ValueError("Oops, double check the parametrization of this test!")
+
+        decoder = AudioDecoder(source)
+        assert decoder._use_wav_decoder
+
+        if start_seconds is None:
+            samples = decoder.get_all_samples()
+        else:
+            samples = decoder.get_samples_played_in_range(start_seconds, stop_seconds)
+
+        with open(asset.path, "rb") as f:
+            baseline_data = f.read()
+        ffmpeg_decoder = AudioDecoder(baseline_data, use_wav_decoder=False)
+        if start_seconds is None:
+            ffmpeg_samples = ffmpeg_decoder.get_all_samples()
+        else:
+            ffmpeg_samples = ffmpeg_decoder.get_samples_played_in_range(
+                start_seconds, stop_seconds
+            )
+
+        torch.testing.assert_close(samples.data, ffmpeg_samples.data, atol=0, rtol=0)
+        assert samples.sample_rate == ffmpeg_samples.sample_rate
+        assert samples.pts_seconds == ffmpeg_samples.pts_seconds
+
+    def test_wav_fast_path_file_like_multiple_reads(self):
+        asset = SINE_MONO_S32
+        source = open(asset.path, mode="rb", buffering=0)
+        decoder = AudioDecoder(source)
+        assert decoder._use_wav_decoder
+
+        # Read ranges in reverse order to stress seek logic
+        samples_1_2 = decoder.get_samples_played_in_range(1.0, 2.0)
+        samples_0_1 = decoder.get_samples_played_in_range(0.0, 1.0)
+
+        with open(asset.path, "rb") as f:
+            baseline_data = f.read()
+        ffmpeg_decoder = AudioDecoder(baseline_data, use_wav_decoder=False)
+        ffmpeg_1_2 = ffmpeg_decoder.get_samples_played_in_range(1.0, 2.0)
+        ffmpeg_0_1 = ffmpeg_decoder.get_samples_played_in_range(0.0, 1.0)
+
+        torch.testing.assert_close(samples_1_2.data, ffmpeg_1_2.data, atol=0, rtol=0)
+        torch.testing.assert_close(samples_0_1.data, ffmpeg_0_1.data, atol=0, rtol=0)
+        assert samples_1_2.sample_rate == ffmpeg_1_2.sample_rate
+        assert samples_0_1.sample_rate == ffmpeg_0_1.sample_rate
