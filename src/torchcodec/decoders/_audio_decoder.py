@@ -10,7 +10,6 @@ from pathlib import Path
 
 import torch
 from torch import Tensor
-
 from torchcodec import _core as core, AudioSamples
 from torchcodec.decoders._decoder_utils import (
     create_audio_decoder,
@@ -85,7 +84,7 @@ class AudioDecoder:
 
         self.metadata: core.AudioStreamMetadata = container_metadata.streams[
             self.stream_index
-        ]
+        ]  # type: ignore[assignment]
 
         self._desired_sample_rate = (
             sample_rate if sample_rate is not None else self.metadata.sample_rate
