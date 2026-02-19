@@ -69,7 +69,7 @@ class CudaDeviceInterface : public DeviceInterface {
 
   // This filtergraph instance is only used for NV12 format conversion in
   // maybeConvertAVFrameToNV12().
-  std::unique_ptr<FiltersContext> nv12ConversionContext_;
+  std::unique_ptr<FiltersConfig> nv12ConversionConfig_;
   std::unique_ptr<FilterGraph> nv12Conversion_;
 
   bool usingCPUFallback_ = false;
