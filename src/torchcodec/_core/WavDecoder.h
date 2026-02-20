@@ -46,6 +46,19 @@ class WavReader {
 
   // Seek to absolute position. Returns new position or -1 on error.
   virtual int64_t seek(int64_t position) = 0;
+
+  // Optional zero-copy interface for direct memory access
+  // Returns pointer to data at position, or nullptr if not available
+  virtual const uint8_t* getDirectDataPtr(
+      int64_t /* position */,
+      int64_t /* size */) {
+    return nullptr; // Default: no direct access available
+  }
+
+  // Returns true if this reader supports direct memory access
+  virtual bool supportsDirectAccess() const {
+    return false;
+  }
 };
 
 // WavReader implementation for file paths
@@ -68,6 +81,10 @@ class WavTensorReader : public WavReader {
 
   int64_t read(void* buffer, int64_t size) override;
   int64_t seek(int64_t position) override;
+
+  // Zero-copy interface implementation
+  const uint8_t* getDirectDataPtr(int64_t position, int64_t size) override;
+  bool supportsDirectAccess() const override;
 
  private:
   torch::Tensor data_;

@@ -97,6 +97,20 @@ int64_t WavTensorReader::seek(int64_t position) {
   return currentPos_;
 }
 
+bool WavTensorReader::supportsDirectAccess() const {
+  return true;
+}
+
+const uint8_t* WavTensorReader::getDirectDataPtr(
+    int64_t position,
+    int64_t size) {
+  // Bounds check
+  if (position < 0 || position + size > data_.numel()) {
+    return nullptr;
+  }
+  return data_.data_ptr<uint8_t>() + position;
+}
+
 // WavDecoder implementation
 WavDecoder::WavDecoder(std::unique_ptr<WavReader> reader)
     : reader_(std::move(reader)) {
@@ -375,9 +389,23 @@ std::tuple<torch::Tensor, double> WavDecoder::getSamplesInRange(
   // Calculate byte positions
   int64_t byteOffset = startSample * header_.blockAlign;
   int64_t bytesToRead = numSamples * header_.blockAlign;
+  int64_t dataPosition = static_cast<int64_t>(header_.dataOffset) + byteOffset;
 
-  // Seek to position and read
-  reader_->seek(static_cast<int64_t>(header_.dataOffset) + byteOffset);
+  // Zero-copy fast path for tensor inputs
+  if (reader_->supportsDirectAccess()) {
+    const uint8_t* directPtr =
+        reader_->getDirectDataPtr(dataPosition, bytesToRead);
+    if (directPtr != nullptr) {
+      // Direct conversion without intermediate copy
+      torch::Tensor samples =
+          convertSamplesToFloat(directPtr, numSamples, header_.numChannels);
+      double ptsSeconds = static_cast<double>(startSample) / header_.sampleRate;
+      return std::make_tuple(samples, ptsSeconds);
+    }
+  }
+
+  // Existing streaming path (for file inputs or fallback)
+  reader_->seek(dataPosition);
   std::vector<uint8_t> rawData(bytesToRead);
   int64_t bytesRead = reader_->read(rawData.data(), bytesToRead);
 
