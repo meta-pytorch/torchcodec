@@ -543,7 +543,7 @@ OpsFrameOutput get_next_frame(torch::stable::Tensor& decoder) {
   try {
     result = videoDecoder->getNextFrame();
   } catch (const SingleStreamDecoder::EndOfFileException& e) {
-    throw std::out_of_range(e.what());
+    STABLE_CHECK_INDEX(false, e.what());
   }
   return makeOpsFrameOutput(result);
 }
@@ -559,7 +559,7 @@ OpsFrameOutput get_frame_at_pts(
   try {
     result = videoDecoder->getFramePlayedAt(seconds);
   } catch (const SingleStreamDecoder::EndOfFileException& e) {
-    throw std::out_of_range(e.what());
+    STABLE_CHECK_INDEX(false, e.what());
   }
   return makeOpsFrameOutput(result);
 }
