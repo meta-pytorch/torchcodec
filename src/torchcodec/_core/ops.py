@@ -85,11 +85,15 @@ def add_video_stream(
         tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
     ) = None,
 ) -> None:
-    cfm_pts: torch.Tensor | None = None
-    cfm_keyframe_indices: torch.Tensor | None = None
-    cfm_duration: torch.Tensor | None = None
+    custom_frame_mappings_pts: torch.Tensor | None = None
+    custom_frame_mappings_keyframe_indices: torch.Tensor | None = None
+    custom_frame_mappings_duration: torch.Tensor | None = None
     if custom_frame_mappings is not None:
-        cfm_pts, cfm_keyframe_indices, cfm_duration = custom_frame_mappings
+        (
+            custom_frame_mappings_pts,
+            custom_frame_mappings_keyframe_indices,
+            custom_frame_mappings_duration,
+        ) = custom_frame_mappings
     _add_video_stream_raw(
         decoder,
         num_threads=num_threads,
@@ -98,9 +102,9 @@ def add_video_stream(
         device=device,
         device_variant=device_variant,
         transform_specs=transform_specs,
-        custom_frame_mappings_pts=cfm_pts,
-        custom_frame_mappings_duration=cfm_duration,
-        custom_frame_mappings_keyframe_indices=cfm_keyframe_indices,
+        custom_frame_mappings_pts=custom_frame_mappings_pts,
+        custom_frame_mappings_duration=custom_frame_mappings_duration,
+        custom_frame_mappings_keyframe_indices=custom_frame_mappings_keyframe_indices,
     )
 
 

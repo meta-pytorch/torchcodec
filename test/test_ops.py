@@ -509,7 +509,7 @@ class TestVideoDecoderOps:
             decoder = create_from_file(
                 str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
             )
-            add_video_stream(decoder, stream_index=0)
+            add_video_stream(decoder, stream_index=0, custom_frame_mappings=None)
 
         with pytest.raises(
             RuntimeError,
@@ -523,11 +523,7 @@ class TestVideoDecoderOps:
                 torch.tensor([1, 2]),
                 torch.tensor([1, 2, 3]),
             )
-            add_video_stream(
-                decoder,
-                stream_index=0,
-                custom_frame_mappings=wrong_types,
-            )
+            add_video_stream(decoder, stream_index=0, custom_frame_mappings=wrong_types)
 
         with pytest.raises(
             RuntimeError,
@@ -542,9 +538,7 @@ class TestVideoDecoderOps:
                 torch.tensor([1, 2, 3]),
             )
             add_video_stream(
-                decoder,
-                stream_index=0,
-                custom_frame_mappings=different_lengths,
+                decoder, stream_index=0, custom_frame_mappings=different_lengths
             )
 
     @needs_ffmpeg_cli
