@@ -11,10 +11,7 @@ from pathlib import Path
 import torch
 from torch import Tensor
 from torchcodec import _core as core, AudioSamples
-from torchcodec.decoders._decoder_utils import (
-    create_audio_decoder,
-    ERROR_REPORTING_INSTRUCTIONS,
-)
+from torchcodec.decoders._decoder_utils import create_audio_decoder
 
 
 class AudioDecoder:
@@ -61,30 +58,17 @@ class AudioDecoder:
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.AudioDecoder")
 
-        # Use consolidated function that creates decoder and adds audio stream
-        self._decoder = create_audio_decoder(
+        (
+            self._decoder,
+            self.stream_index,
+            self.metadata,
+        ) = create_audio_decoder(
             source=source,
             seek_mode="approximate",
             stream_index=stream_index,
             sample_rate=sample_rate,
             num_channels=num_channels,
         )
-
-        container_metadata = core.get_container_metadata(self._decoder)
-        self.stream_index = (
-            container_metadata.best_audio_stream_index
-            if stream_index is None
-            else stream_index
-        )
-        if self.stream_index is None:
-            raise ValueError(
-                "The best audio stream is unknown and there is no specified stream. "
-                + ERROR_REPORTING_INSTRUCTIONS
-            )
-
-        self.metadata: core.AudioStreamMetadata = container_metadata.streams[
-            self.stream_index
-        ]  # type: ignore[assignment]
 
         self._desired_sample_rate = (
             sample_rate if sample_rate is not None else self.metadata.sample_rate

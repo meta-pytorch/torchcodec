@@ -62,25 +62,26 @@ def create_audio_decoder(
     stream_index: int | None = None,
     sample_rate: int | None = None,
     num_channels: int | None = None,
-) -> Tensor:
-    """Create an audio decoder and add an audio stream.
+) -> tuple[Tensor, int, core._metadata.AudioStreamMetadata]:
 
-    This is a Python convenience wrapper that calls the existing two-step
-    C++ API (create decoder + add audio stream) in a single Python function.
-    """
     decoder = create_decoder(source=source, seek_mode=seek_mode)
 
-    if stream_index is not None:
-        container_metadata = core.get_container_metadata(decoder)
-        if stream_index >= len(container_metadata.streams):
+    container_metadata = core.get_container_metadata(decoder)
+
+    if stream_index is None:
+        if (stream_index := container_metadata.best_audio_stream_index) is None:
             raise ValueError(
-                f"The stream at index {stream_index} is not a valid stream."
+                "The best audio stream is unknown and there is no specified stream. "
+                + ERROR_REPORTING_INSTRUCTIONS
             )
-        stream_metadata = container_metadata.streams[stream_index]
-        if not isinstance(stream_metadata, core._metadata.AudioStreamMetadata):
-            raise ValueError(
-                f"The stream at index {stream_index} is not an audio stream. "
-            )
+
+    if stream_index >= len(container_metadata.streams):
+        raise ValueError(f"The stream at index {stream_index} is not a valid stream.")
+
+    metadata = container_metadata.streams[stream_index]
+    if not isinstance(metadata, core._metadata.AudioStreamMetadata):
+        raise ValueError(f"The stream at index {stream_index} is not an audio stream. ")
+
     core.add_audio_stream(
         decoder,
         stream_index=stream_index,
@@ -88,7 +89,7 @@ def create_audio_decoder(
         num_channels=num_channels,
     )
 
-    return decoder
+    return (decoder, stream_index, metadata)
 
 
 # Thread-local and async-safe storage for the current CUDA backend
