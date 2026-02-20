@@ -80,8 +80,8 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
 
 namespace {
 
-// Free-function deleter for torch::stable::from_blob.
-// The data pointer IS the decoder pointer, so we delete it directly.
+// TODO_STABLE_ABI: use previous deleter pattern with a lambda, once
+// https://github.com/pytorch/pytorch/pull/175089 is available.
 void decoderDeleter(void* data) {
   delete static_cast<SingleStreamDecoder*>(data);
 }
@@ -464,8 +464,16 @@ void _add_video_stream(
 
   std::vector<Transform*> transforms = makeTransforms(transform_specs);
 
-  std::optional<SingleStreamDecoder::FrameMappings> converted_mappings =
-      custom_frame_mappings_pts.has_value()
+  bool hasPts = custom_frame_mappings_pts.has_value();
+  bool hasDuration = custom_frame_mappings_duration.has_value();
+  bool hasKeyframeIndices = custom_frame_mappings_keyframe_indices.has_value();
+  STD_TORCH_CHECK(
+      (hasPts == hasDuration) && (hasDuration == hasKeyframeIndices),
+      "custom_frame_mappings_pts, custom_frame_mappings_duration, and "
+      "custom_frame_mappings_keyframe_indices must all be provided or all be "
+      "None. This is a bug in TorchCodec, please report it.");
+
+  std::optional<SingleStreamDecoder::FrameMappings> converted_mappings = hasPts
       ? std::make_optional(SingleStreamDecoder::FrameMappings{
             custom_frame_mappings_pts.value(),
             custom_frame_mappings_keyframe_indices.value(),
