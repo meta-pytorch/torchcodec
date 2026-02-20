@@ -85,10 +85,11 @@ def add_video_stream(
         tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
     ) = None,
 ) -> None:
+    cfm_pts: torch.Tensor | None = None
+    cfm_keyframe_indices: torch.Tensor | None = None
+    cfm_duration: torch.Tensor | None = None
     if custom_frame_mappings is not None:
         cfm_pts, cfm_keyframe_indices, cfm_duration = custom_frame_mappings
-    else:
-        cfm_pts = cfm_keyframe_indices = cfm_duration = None
     _add_video_stream_raw(
         decoder,
         num_threads=num_threads,
