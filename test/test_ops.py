@@ -509,7 +509,7 @@ class TestVideoDecoderOps:
             decoder = create_from_file(
                 str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
             )
-            add_video_stream(decoder, stream_index=0, custom_frame_mappings=None)
+            add_video_stream(decoder, stream_index=0)
 
         with pytest.raises(
             RuntimeError,
@@ -523,7 +523,13 @@ class TestVideoDecoderOps:
                 torch.tensor([1, 2]),
                 torch.tensor([1, 2, 3]),
             )
-            add_video_stream(decoder, stream_index=0, custom_frame_mappings=wrong_types)
+            add_video_stream(
+                decoder,
+                stream_index=0,
+                custom_frame_mappings_pts=wrong_types[0],
+                custom_frame_mappings_keyframe_indices=wrong_types[1],
+                custom_frame_mappings_duration=wrong_types[2],
+            )
 
         with pytest.raises(
             RuntimeError,
@@ -538,7 +544,11 @@ class TestVideoDecoderOps:
                 torch.tensor([1, 2, 3]),
             )
             add_video_stream(
-                decoder, stream_index=0, custom_frame_mappings=different_lengths
+                decoder,
+                stream_index=0,
+                custom_frame_mappings_pts=different_lengths[0],
+                custom_frame_mappings_keyframe_indices=different_lengths[1],
+                custom_frame_mappings_duration=different_lengths[2],
             )
 
     @needs_ffmpeg_cli
@@ -549,14 +559,15 @@ class TestVideoDecoderOps:
             str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
         )
         device, device_variant = unsplit_device_str(device)
+        cfm = NASA_VIDEO.get_custom_frame_mappings(stream_index=stream_index)
         add_video_stream(
             decoder,
             device=device,
             device_variant=device_variant,
             stream_index=stream_index,
-            custom_frame_mappings=NASA_VIDEO.get_custom_frame_mappings(
-                stream_index=stream_index
-            ),
+            custom_frame_mappings_pts=cfm[0],
+            custom_frame_mappings_keyframe_indices=cfm[1],
+            custom_frame_mappings_duration=cfm[2],
         )
 
         frame0, _, _ = get_next_frame(decoder)
