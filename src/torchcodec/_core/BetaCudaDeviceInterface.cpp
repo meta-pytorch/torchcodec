@@ -4,7 +4,6 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include <torch/types.h>
 #include <map>
 #include <mutex>
 #include <vector>
@@ -858,7 +857,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   UniqueAVFrame gpuFrame =
       cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
 
@@ -892,7 +891,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
 void BetaCudaDeviceInterface::applyRotation(
     FrameOutput& frameOutput,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   int k = 0;
   switch (rotation_) {
     case Rotation::CCW90:
@@ -908,12 +907,13 @@ void BetaCudaDeviceInterface::applyRotation(
       STD_TORCH_CHECK(false, "Unexpected rotation value");
       break;
   }
-  // Apply rotation using torch::rot90 on the H and W dims of our HWC tensor.
-  // torch::rot90 returns a view, so we need to make it contiguous.
-  frameOutput.data = torch::rot90(frameOutput.data, k, {0, 1}).contiguous();
+  // Apply rotation using rot90 on the H and W dims of our HWC tensor.
+  // stableRot90 returns a view, so we need to make it contiguous.
+  frameOutput.data =
+      torch::stable::contiguous(stableRot90(frameOutput.data, k, 0, 1));
 
   if (preAllocatedOutputTensor.has_value()) {
-    preAllocatedOutputTensor.value().copy_(frameOutput.data);
+    torch::stable::copy_(preAllocatedOutputTensor.value(), frameOutput.data);
     frameOutput.data = preAllocatedOutputTensor.value();
   }
 }

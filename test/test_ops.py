@@ -1117,7 +1117,7 @@ class TestAudioEncoderOps:
 
         valid_output_file = str(tmp_path / ".mp3")
 
-        with pytest.raises(RuntimeError, match="must have float32 dtype, got int"):
+        with pytest.raises(RuntimeError, match="must have float32 dtype, got Int"):
             encode_audio_to_file(
                 samples=torch.arange(10, dtype=torch.int),
                 sample_rate=10,

@@ -1951,7 +1951,7 @@ class TestVideoDecoder:
         # high.
         bad_device_number = torch.cuda.device_count() + 1
         for backend in ("ffmpeg", "beta"):
-            with pytest.raises(RuntimeError, match="invalid device ordinal"):
+            with pytest.raises(RuntimeError, match="torch_call_dispatcher"):
                 with set_cuda_backend(backend):
                     VideoDecoder(H265_VIDEO.path, device=f"cuda:{bad_device_number}")
 

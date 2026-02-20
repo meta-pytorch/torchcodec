@@ -18,21 +18,15 @@ FrameBatchOutput::FrameBatchOutput(
     int64_t numFrames,
     const FrameDims& outputDims,
     const StableDevice& device)
-    : ptsSeconds(torch::empty({numFrames}, {torch::kFloat64})),
-      durationSeconds(torch::empty({numFrames}, {torch::kFloat64})) {
+    : ptsSeconds(torch::stable::empty({numFrames}, kStableFloat64)),
+      durationSeconds(torch::stable::empty({numFrames}, kStableFloat64)) {
   data = allocateEmptyHWCTensor(outputDims, device, numFrames);
 }
 
-torch::Tensor allocateEmptyHWCTensor(
+torch::stable::Tensor allocateEmptyHWCTensor(
     const FrameDims& frameDims,
     const StableDevice& device,
     std::optional<int> numFrames) {
-  torch::Device torchDevice(
-      static_cast<c10::DeviceType>(device.type()), device.index());
-  auto tensorOptions = torch::TensorOptions()
-                           .dtype(torch::kUInt8)
-                           .layout(torch::kStrided)
-                           .device(torchDevice);
   STD_TORCH_CHECK(
       frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
   STD_TORCH_CHECK(
@@ -41,10 +35,17 @@ torch::Tensor allocateEmptyHWCTensor(
     auto numFramesValue = numFrames.value();
     STD_TORCH_CHECK(
         numFramesValue >= 0, "numFrames must be >= 0, got: ", numFramesValue);
-    return torch::empty(
-        {numFramesValue, frameDims.height, frameDims.width, 3}, tensorOptions);
+    return torch::stable::empty(
+        {numFramesValue, frameDims.height, frameDims.width, 3},
+        kStableUInt8,
+        std::nullopt,
+        device);
   } else {
-    return torch::empty({frameDims.height, frameDims.width, 3}, tensorOptions);
+    return torch::stable::empty(
+        {frameDims.height, frameDims.width, 3},
+        kStableUInt8,
+        std::nullopt,
+        device);
   }
 }
 

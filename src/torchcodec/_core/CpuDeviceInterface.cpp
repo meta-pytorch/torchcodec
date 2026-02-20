@@ -5,7 +5,6 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "CpuDeviceInterface.h"
-#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 namespace {
@@ -140,7 +139,7 @@ ColorConversionLibrary CpuDeviceInterface::getColorConversionLibrary(
 void CpuDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   STD_TORCH_CHECK(initialized_, "CpuDeviceInterface was not initialized.");
 
   if (avMediaType_ == AVMEDIA_TYPE_AUDIO) {
@@ -155,15 +154,15 @@ void CpuDeviceInterface::convertAVFrameToFrameOutput(
 // Callers may pass a pre-allocated tensor, where the output.data tensor will
 // be stored. This parameter is honored in any case, but it only leads to a
 // speed-up when swscale is used. With swscale, we can tell ffmpeg to place the
-// decoded frame directly into `preAllocatedtensor.data_ptr()`. We haven't yet
-// found a way to do that with filtegraph.
+// decoded frame directly into `preAllocatedtensor.mutable_data_ptr()`. We
+// haven't yet found a way to do that with filtegraph.
 // TODO: Figure out whether that's possible!
 // Dimension order of the preAllocatedOutputTensor must be HWC, regardless of
 // `dimension_order` parameter. It's up to callers to re-shape it if needed.
 void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   // Note that we ignore the dimensions from the metadata; we don't even bother
   // storing them. The resized dimensions take priority. If we don't have any,
   // then we use the dimensions from the actual decoded frame. We use the actual
@@ -190,11 +189,11 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
         "x",
         outputDims.width,
         "x3, got ",
-        shape);
+        intArrayRefToString(shape));
   }
 
   auto colorConversionLibrary = getColorConversionLibrary(outputDims);
-  torch::Tensor outputTensor;
+  torch::stable::Tensor outputTensor;
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
     outputTensor = preAllocatedOutputTensor.value_or(
@@ -242,12 +241,12 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
         "x",
         outputDims.width,
         "x3, got ",
-        shape);
+        intArrayRefToString(shape));
 
     if (preAllocatedOutputTensor.has_value()) {
       // We have already validated that preAllocatedOutputTensor and
       // outputTensor have the same shape.
-      preAllocatedOutputTensor.value().copy_(outputTensor);
+      torch::stable::copy_(preAllocatedOutputTensor.value(), outputTensor);
       frameOutput.data = preAllocatedOutputTensor.value();
     } else {
       frameOutput.data = outputTensor;
@@ -260,7 +259,8 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   }
 }
 
-torch::Tensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
+torch::stable::Tensor
+CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
     const UniqueAVFrame& avFrame,
     const FrameDims& outputDims) {
   enum AVPixelFormat avFrameFormat =
@@ -353,11 +353,11 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
 
   auto numSamples = avFrame->nb_samples;
 
-  frameOutput.data = torch::empty({numChannels, numSamples}, torch::kFloat32);
+  frameOutput.data = torch::stable::empty({numChannels, numSamples});
 
   if (numSamples > 0) {
     uint8_t* outputChannelData =
-        static_cast<uint8_t*>(frameOutput.data.data_ptr());
+        static_cast<uint8_t*>(frameOutput.data.mutable_data_ptr());
     auto numBytesPerChannel = numSamples * av_get_bytes_per_sample(format);
     for (auto channel = 0; channel < numChannels;
          ++channel, outputChannelData += numBytesPerChannel) {
@@ -369,7 +369,8 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
   }
 }
 
-std::optional<torch::Tensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
+std::optional<torch::stable::Tensor>
+CpuDeviceInterface::maybeFlushAudioBuffers() {
   // When sample rate conversion is involved, swresample buffers some of the
   // samples in-between calls to swr_convert (see the libswresample docs).
   // That's because the last few samples in a given frame require future
@@ -387,19 +388,23 @@ std::optional<torch::Tensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
 
   int numChannels =
       audioStreamOptions_.numChannels.value_or(getNumChannels(codecContext_));
-  torch::Tensor lastSamples =
-      torch::empty({numChannels, numRemainingSamples}, torch::kFloat32);
+  torch::stable::Tensor lastSamples =
+      torch::stable::empty({numChannels, numRemainingSamples});
 
   std::vector<uint8_t*> outputBuffers(numChannels);
   for (auto i = 0; i < numChannels; i++) {
-    outputBuffers[i] = static_cast<uint8_t*>(lastSamples[i].data_ptr());
+    outputBuffers[i] = reinterpret_cast<uint8_t*>(
+        selectRow(lastSamples, i).mutable_data_ptr<float>());
   }
 
   auto actualNumRemainingSamples = swr_convert(
       swrContext_.get(), outputBuffers.data(), numRemainingSamples, nullptr, 0);
 
-  return lastSamples.narrow(
-      /*dim=*/1, /*start=*/0, /*length=*/actualNumRemainingSamples);
+  return torch::stable::narrow(
+      lastSamples,
+      /*dim=*/1,
+      /*start=*/0,
+      /*length=*/actualNumRemainingSamples);
 }
 
 std::string CpuDeviceInterface::getDetails() {
@@ -407,11 +412,11 @@ std::string CpuDeviceInterface::getDetails() {
 }
 
 UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
-    const torch::Tensor& frame,
+    const torch::stable::Tensor& frame,
     int frameIndex,
     AVCodecContext* codecContext) {
-  int inHeight = static_cast<int>(frame.size(1));
-  int inWidth = static_cast<int>(frame.size(2));
+  int inHeight = static_cast<int>(frame.sizes()[1]);
+  int inWidth = static_cast<int>(frame.sizes()[2]);
   AVPixelFormat inPixelFormat = AV_PIX_FMT_GBRP;
   int outWidth = codecContext->width;
   int outHeight = codecContext->height;
@@ -455,7 +460,7 @@ UniqueAVFrame CpuDeviceInterface::convertTensorToAVFrameForEncoding(
   inputFrame->width = inWidth;
   inputFrame->height = inHeight;
 
-  uint8_t* tensorData = static_cast<uint8_t*>(frame.data_ptr());
+  uint8_t* tensorData = static_cast<uint8_t*>(frame.mutable_data_ptr());
 
   int channelSize = inHeight * inWidth;
   // Since frames tensor is in NCHW, we must use a planar format.

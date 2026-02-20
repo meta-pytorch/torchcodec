@@ -55,7 +55,7 @@ SwScale::SwScale(const SwsConfig& config, int swsFlags)
 
 int SwScale::convert(
     const UniqueAVFrame& avFrame,
-    torch::Tensor& outputTensor) {
+    torch::stable::Tensor& outputTensor) {
   // When resizing is needed, we do sws_scale twice: first convert to RGB24 at
   // original resolution, then resize in RGB24 space. This ensures transforms
   // happen in the output color space (RGB24) rather than the input color space
@@ -63,13 +63,16 @@ int SwScale::convert(
   //
   // When no resize is needed, we do color conversion directly into the output
   // tensor.
-  torch::Tensor colorConvertedTensor = needsResize_
+  torch::stable::Tensor colorConvertedTensor = needsResize_
       ? allocateEmptyHWCTensor(
             FrameDims(config_.inputHeight, config_.inputWidth), kStableCPU)
       : outputTensor;
 
   uint8_t* colorConvertedPointers[4] = {
-      colorConvertedTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
+      colorConvertedTensor.mutable_data_ptr<uint8_t>(),
+      nullptr,
+      nullptr,
+      nullptr};
   int colorConvertedWidth = static_cast<int>(colorConvertedTensor.sizes()[1]);
   int colorConvertedLinesizes[4] = {colorConvertedWidth * 3, 0, 0, 0};
 
@@ -91,11 +94,14 @@ int SwScale::convert(
 
   if (needsResize_) {
     uint8_t* srcPointers[4] = {
-        colorConvertedTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
+        colorConvertedTensor.mutable_data_ptr<uint8_t>(),
+        nullptr,
+        nullptr,
+        nullptr};
     int srcLinesizes[4] = {config_.inputWidth * 3, 0, 0, 0};
 
     uint8_t* dstPointers[4] = {
-        outputTensor.data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
+        outputTensor.mutable_data_ptr<uint8_t>(), nullptr, nullptr, nullptr};
     int expectedOutputWidth = static_cast<int>(outputTensor.sizes()[1]);
     int dstLinesizes[4] = {expectedOutputWidth * 3, 0, 0, 0};
 

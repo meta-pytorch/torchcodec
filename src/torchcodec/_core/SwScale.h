@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include <torch/types.h>
 #include "FFMPEGCommon.h"
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -26,7 +26,9 @@ class SwScale {
  public:
   SwScale(const SwsConfig& config, int swsFlags = SWS_BILINEAR);
 
-  int convert(const UniqueAVFrame& avFrame, torch::Tensor& outputTensor);
+  int convert(
+      const UniqueAVFrame& avFrame,
+      torch::stable::Tensor& outputTensor);
 
   const SwsConfig& getConfig() const {
     return config_;
