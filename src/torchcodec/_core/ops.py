@@ -68,8 +68,41 @@ create_from_tensor = torch._dynamo.disallow_in_graph(
 _create_from_file_like = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns._create_from_file_like.default
 )
-add_video_stream = torch.ops.torchcodec_ns.add_video_stream.default
+_add_video_stream_raw = torch.ops.torchcodec_ns.add_video_stream.default
 _add_video_stream = torch.ops.torchcodec_ns._add_video_stream.default
+
+
+def add_video_stream(
+    decoder: torch.Tensor,
+    *,
+    num_threads: int | None = None,
+    dimension_order: str | None = None,
+    stream_index: int | None = None,
+    device: str = "cpu",
+    device_variant: str = "ffmpeg",
+    transform_specs: str = "",
+    custom_frame_mappings: (
+        tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
+    ) = None,
+) -> None:
+    if custom_frame_mappings is not None:
+        cfm_pts, cfm_keyframe_indices, cfm_duration = custom_frame_mappings
+    else:
+        cfm_pts = cfm_keyframe_indices = cfm_duration = None
+    _add_video_stream_raw(
+        decoder,
+        num_threads=num_threads,
+        dimension_order=dimension_order,
+        stream_index=stream_index,
+        device=device,
+        device_variant=device_variant,
+        transform_specs=transform_specs,
+        custom_frame_mappings_pts=cfm_pts,
+        custom_frame_mappings_duration=cfm_duration,
+        custom_frame_mappings_keyframe_indices=cfm_keyframe_indices,
+    )
+
+
 add_audio_stream = torch.ops.torchcodec_ns.add_audio_stream.default
 seek_to_pts = torch.ops.torchcodec_ns.seek_to_pts.default
 get_next_frame = torch.ops.torchcodec_ns.get_next_frame.default

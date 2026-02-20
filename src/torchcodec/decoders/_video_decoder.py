@@ -230,12 +230,6 @@ class VideoDecoder:
             input_dims=(self.metadata.height, self.metadata.width),
         )
 
-        cfm_pts = None
-        cfm_duration = None
-        cfm_keyframe_indices = None
-        if custom_frame_mappings_data is not None:
-            cfm_pts, cfm_keyframe_indices, cfm_duration = custom_frame_mappings_data
-
         core.add_video_stream(
             self._decoder,
             stream_index=self.stream_index,
@@ -244,9 +238,7 @@ class VideoDecoder:
             device=device,
             device_variant=device_variant,
             transform_specs=transform_specs,
-            custom_frame_mappings_pts=cfm_pts,
-            custom_frame_mappings_duration=cfm_duration,
-            custom_frame_mappings_keyframe_indices=cfm_keyframe_indices,
+            custom_frame_mappings=custom_frame_mappings_data,
         )
 
         self._cpu_fallback = CpuFallbackStatus()
