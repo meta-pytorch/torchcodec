@@ -376,14 +376,105 @@ class WavDecoder:
         byte_offset = self._wav_metadata._data_offset + start_sample * bytes_per_frame
         num_bytes = num_samples * bytes_per_frame
 
-        # Handle bytes via slicing, file-like via seek/read
+        # Fast path for bytes source: use torch.frombuffer with offset for common formats
         if isinstance(self._source, bytes):
-            audio_bytes = self._source[byte_offset : byte_offset + num_bytes]
-        else:
-            self._source.seek(byte_offset, 0)
-            audio_bytes = self._source.read(num_bytes)
+            if (
+                self._wav_metadata.audio_format == WAVE_FORMAT_IEEE_FLOAT
+                and self._wav_metadata.bits_per_sample == 32
+            ):
+                # f32: Direct frombuffer with offset - no expensive slice
+                float_count = num_bytes // 4
+                data = torch.frombuffer(
+                    self._source,
+                    dtype=torch.float32,
+                    offset=byte_offset,
+                    count=float_count,
+                ).view(self._wav_metadata.num_channels, -1)
 
-        data = _samples_from_bytes(audio_bytes, self._wav_metadata)
+            elif (
+                self._wav_metadata.audio_format == WAVE_FORMAT_IEEE_FLOAT
+                and self._wav_metadata.bits_per_sample == 64
+            ):
+                # f64: Direct frombuffer, then convert to f32
+                double_count = num_bytes // 8
+                data = (
+                    torch.frombuffer(
+                        self._source,
+                        dtype=torch.float64,
+                        offset=byte_offset,
+                        count=double_count,
+                    )
+                    .view(self._wav_metadata.num_channels, -1)
+                    .to(torch.float32)
+                )
+
+            elif (
+                self._wav_metadata.audio_format == WAVE_FORMAT_PCM
+                and self._wav_metadata.bits_per_sample == 16
+            ):
+                # s16: Direct frombuffer, then normalize
+                int16_count = num_bytes // 2
+                data = (
+                    torch.frombuffer(
+                        self._source,
+                        dtype=torch.int16,
+                        offset=byte_offset,
+                        count=int16_count,
+                    )
+                    .view(self._wav_metadata.num_channels, -1)
+                    .to(torch.float32)
+                )
+                data.div_(32768.0)  # Normalize s16 to [-1, 1]
+
+            elif (
+                self._wav_metadata.audio_format == WAVE_FORMAT_PCM
+                and self._wav_metadata.bits_per_sample == 32
+            ):
+                # s32: Direct frombuffer, then normalize
+                int32_count = num_bytes // 4
+                data = (
+                    torch.frombuffer(
+                        self._source,
+                        dtype=torch.int32,
+                        offset=byte_offset,
+                        count=int32_count,
+                    )
+                    .view(self._wav_metadata.num_channels, -1)
+                    .to(torch.float32)
+                )
+                data.div_(2147483648.0)  # Normalize s32 to [-1, 1]
+
+            elif (
+                self._wav_metadata.audio_format == WAVE_FORMAT_PCM
+                and self._wav_metadata.bits_per_sample == 8
+            ):
+                # u8: Direct frombuffer, then normalize
+                uint8_count = num_bytes
+                data = (
+                    torch.frombuffer(
+                        self._source,
+                        dtype=torch.uint8,
+                        offset=byte_offset,
+                        count=uint8_count,
+                    )
+                    .view(self._wav_metadata.num_channels, -1)
+                    .to(torch.float32)
+                )
+                data.sub_(128.0).div_(128.0)  # Normalize u8 to [-1, 1]
+
+            else:
+                # Fallback for unsupported formats (s24, etc.)
+                audio_bytes = self._source[byte_offset : byte_offset + num_bytes]
+                data = _samples_from_bytes(audio_bytes, self._wav_metadata)
+        else:
+            # Fallback path for other formats/sources
+            if isinstance(self._source, bytes):
+                audio_bytes = self._source[byte_offset : byte_offset + num_bytes]
+            else:
+                self._source.seek(byte_offset, 0)
+                audio_bytes = self._source.read(num_bytes)
+
+            data = _samples_from_bytes(audio_bytes, self._wav_metadata)
         return AudioSamples(
             data=data,
             pts_seconds=start_seconds,
