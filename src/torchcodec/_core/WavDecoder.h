@@ -129,6 +129,11 @@ class WavDecoder {
       const void* rawData,
       int64_t numSamples,
       int64_t numChannels);
+  void convertChunkToFloatDirect(
+      const void* rawData,
+      int64_t numSamples,
+      float* outputPtr,
+      int64_t totalSamples);
 
   std::unique_ptr<WavReader> reader_;
   WavHeader header_;

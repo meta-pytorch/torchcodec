@@ -278,6 +278,95 @@ double WavDecoder::getDurationSeconds() const {
   return static_cast<double>(numSamples) / header_.sampleRate;
 }
 
+void WavDecoder::convertChunkToFloatDirect(
+    const void* rawData,
+    int64_t numSamples,
+    float* outputPtr,
+    int64_t totalSamples) {
+  // Determine effective format (subFormat for extensible, audioFormat
+  // otherwise)
+  uint16_t effectiveFormat = header_.audioFormat;
+  if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
+    effectiveFormat = header_.subFormat;
+  }
+
+  if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
+    if (header_.bitsPerSample == 32) {
+      const float* src = reinterpret_cast<const float*>(rawData);
+      // Convert from interleaved (s0c0, s0c1, s1c0, s1c1...) to (channels,
+      // samples)
+      for (int64_t s = 0; s < numSamples; ++s) {
+        for (int64_t c = 0; c < header_.numChannels; ++c) {
+          outputPtr[c * totalSamples + s] = src[s * header_.numChannels + c];
+        }
+      }
+    } else if (header_.bitsPerSample == 64) {
+      const double* src = reinterpret_cast<const double*>(rawData);
+      for (int64_t s = 0; s < numSamples; ++s) {
+        for (int64_t c = 0; c < header_.numChannels; ++c) {
+          outputPtr[c * totalSamples + s] =
+              static_cast<float>(src[s * header_.numChannels + c]);
+        }
+      }
+    }
+  } else {
+    // Handle PCM formats
+    switch (header_.bitsPerSample) {
+      case 8: {
+        const uint8_t* src = reinterpret_cast<const uint8_t*>(rawData);
+        for (int64_t s = 0; s < numSamples; ++s) {
+          for (int64_t c = 0; c < header_.numChannels; ++c) {
+            outputPtr[c * totalSamples + s] =
+                (static_cast<float>(src[s * header_.numChannels + c]) -
+                 128.0f) /
+                128.0f;
+          }
+        }
+        break;
+      }
+      case 16: {
+        const int16_t* src = reinterpret_cast<const int16_t*>(rawData);
+        for (int64_t s = 0; s < numSamples; ++s) {
+          for (int64_t c = 0; c < header_.numChannels; ++c) {
+            outputPtr[c * totalSamples + s] =
+                static_cast<float>(src[s * header_.numChannels + c]) / 32768.0f;
+          }
+        }
+        break;
+      }
+      case 24: {
+        // 24-bit handling (same as original)
+        const uint8_t* src = static_cast<const uint8_t*>(rawData);
+        for (int64_t s = 0; s < numSamples; ++s) {
+          for (int64_t c = 0; c < header_.numChannels; ++c) {
+            const uint8_t* p = src + (s * header_.numChannels + c) * 3;
+            int32_t sample = static_cast<int32_t>(p[0]) |
+                (static_cast<int32_t>(p[1]) << 8) |
+                (static_cast<int32_t>(p[2]) << 16);
+            if (sample & 0x800000) {
+              sample |= 0xFF000000;
+            }
+            outputPtr[c * totalSamples + s] =
+                static_cast<float>(sample) / 8388608.0f;
+          }
+        }
+        break;
+      }
+      case 32: {
+        const int32_t* src = reinterpret_cast<const int32_t*>(rawData);
+        for (int64_t s = 0; s < numSamples; ++s) {
+          for (int64_t c = 0; c < header_.numChannels; ++c) {
+            outputPtr[c * totalSamples + s] =
+                static_cast<float>(src[s * header_.numChannels + c]) /
+                2147483648.0f;
+          }
+        }
+        break;
+      }
+    }
+  }
+}
+
 torch::Tensor WavDecoder::convertSamplesToFloat(
     const void* rawData,
     int64_t numSamples,
@@ -404,23 +493,71 @@ std::tuple<torch::Tensor, double> WavDecoder::getSamplesInRange(
     }
   }
 
-  // Existing streaming path (for file inputs or fallback)
+  // Optimized streaming path with chunked reading
+  //
+  // This chunked approach is faster than the traditional fromBlob().to()
+  // approach because:
+  // 1. Eliminates the hidden copy in .to() - PyTorch's .to(kFloat32) allocates
+  // a new tensor
+  //    and copies all data, even for type conversions (int16->float32, etc.)
+  // 2. Writes directly to pre-allocated tensor memory instead of intermediate
+  // buffer
+  // 3. Reduces peak memory usage from ~1.8GB (original + temp buffer + tensor)
+  // to ~1.2GB
+  // 4. Better for file-like objects: smaller chunks reduce Python callback
+  // overhead
+  //
+  // Memory flow comparison:
+  //   Original: Python -> full buffer (600MB) -> .to() creates new tensor
+  //   (600MB copy) Chunked:  Python -> small buffer (64KB) -> direct write to
+  //   final tensor (no copy)
   reader_->seek(dataPosition);
-  std::vector<uint8_t> rawData(bytesToRead);
-  int64_t bytesRead = reader_->read(rawData.data(), bytesToRead);
 
-  if (bytesRead < bytesToRead) {
-    // Adjust numSamples if we couldn't read everything
-    numSamples = bytesRead / header_.blockAlign;
-    if (numSamples <= 0) {
-      return std::make_tuple(
-          torch::empty({header_.numChannels, 0}, torch::kFloat32),
-          startSeconds);
+  torch::Tensor samples =
+      torch::empty({header_.numChannels, numSamples}, torch::kFloat32);
+  float* outputPtr = samples.data_ptr<float>();
+
+  constexpr size_t CHUNK_SIZE = 64 * 1024; // 64KB chunks
+  size_t alignedChunkSize =
+      (CHUNK_SIZE / header_.blockAlign) * header_.blockAlign;
+  if (alignedChunkSize == 0)
+    alignedChunkSize = header_.blockAlign; // Ensure at least one sample
+
+  std::vector<uint8_t> chunkBuffer(alignedChunkSize);
+  int64_t totalBytesRead = 0;
+  int64_t samplesProcessed = 0;
+
+  while (totalBytesRead < bytesToRead) {
+    size_t bytesToReadThisChunk = std::min(
+        static_cast<size_t>(bytesToRead - totalBytesRead), alignedChunkSize);
+    int64_t bytesReadThisChunk =
+        reader_->read(chunkBuffer.data(), bytesToReadThisChunk);
+
+    if (bytesReadThisChunk <= 0) {
+      break; // EOF or error
+    }
+
+    // Convert this chunk directly to the output tensor
+    int64_t samplesInChunk = bytesReadThisChunk / header_.blockAlign;
+    if (samplesInChunk > 0) {
+      convertChunkToFloatDirect(
+          chunkBuffer.data(),
+          samplesInChunk,
+          outputPtr + samplesProcessed,
+          numSamples);
+      samplesProcessed += samplesInChunk;
+    }
+
+    totalBytesRead += bytesReadThisChunk;
+    if (bytesReadThisChunk < static_cast<int64_t>(bytesToReadThisChunk)) {
+      break; // Partial read, likely EOF
     }
   }
 
-  torch::Tensor samples =
-      convertSamplesToFloat(rawData.data(), numSamples, header_.numChannels);
+  // Adjust tensor size if we read less than expected
+  if (samplesProcessed < numSamples) {
+    samples = samples.narrow(1, 0, samplesProcessed);
+  }
 
   // Calculate actual PTS
   double ptsSeconds = static_cast<double>(startSample) / header_.sampleRate;
