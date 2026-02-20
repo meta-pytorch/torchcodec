@@ -291,29 +291,30 @@ AVFilterContext* createAVFilterContextWithOptions(
     const AVFilter* buffer,
     const enum AVPixelFormat outputFormat);
 
-struct SwsFrameContext {
+struct SwsConfig {
   int inputWidth = 0;
   int inputHeight = 0;
   AVPixelFormat inputFormat = AV_PIX_FMT_NONE;
+  AVColorSpace inputColorspace = AVCOL_SPC_UNSPECIFIED;
   int outputWidth = 0;
   int outputHeight = 0;
 
-  SwsFrameContext() = default;
-  SwsFrameContext(
+  SwsConfig() = default;
+  SwsConfig(
       int inputWidth,
       int inputHeight,
       AVPixelFormat inputFormat,
+      AVColorSpace inputColorspace,
       int outputWidth,
       int outputHeight);
 
-  bool operator==(const SwsFrameContext& other) const;
-  bool operator!=(const SwsFrameContext& other) const;
+  bool operator==(const SwsConfig& other) const;
+  bool operator!=(const SwsConfig& other) const;
 };
 
 // Utility functions for swscale context management
 UniqueSwsContext createSwsContext(
-    const SwsFrameContext& swsFrameContext,
-    AVColorSpace colorspace,
+    const SwsConfig& swsConfig,
     AVPixelFormat outputFormat,
     int swsFlags);
 

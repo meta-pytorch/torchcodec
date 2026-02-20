@@ -24,7 +24,7 @@ class DummyDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor =
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
           std::nullopt) override {}
 
  private:

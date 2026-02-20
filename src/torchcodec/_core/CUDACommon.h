@@ -30,12 +30,13 @@ void initializeCudaContextWithPytorch(const StableDevice& device);
 // Unique pointer type for NPP stream context
 using UniqueNppContext = std::unique_ptr<NppStreamContext>;
 
-torch::Tensor convertNV12FrameToRGB(
+torch::stable::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
     const StableDevice& device,
     const UniqueNppContext& nppCtx,
     cudaStream_t nvdecStream,
-    std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+        std::nullopt);
 
 UniqueNppContext getNppStreamContext(const StableDevice& device);
 void returnNppStreamContextToCache(
@@ -43,7 +44,7 @@ void returnNppStreamContextToCache(
     UniqueNppContext nppCtx);
 
 void validatePreAllocatedTensorShape(
-    const std::optional<torch::Tensor>& preAllocatedOutputTensor,
+    const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,
     const UniqueAVFrame& avFrame);
 
 int getDeviceIndex(const StableDevice& device);

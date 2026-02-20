@@ -9,6 +9,7 @@
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
 #include "FilterGraph.h"
+#include "SwScale.h"
 
 namespace facebook::torchcodec {
 
@@ -37,15 +38,16 @@ class CpuDeviceInterface : public DeviceInterface {
   virtual void initializeAudio(
       const AudioStreamOptions& audioStreamOptions) override;
 
-  virtual std::optional<torch::Tensor> maybeFlushAudioBuffers() override;
+  virtual std::optional<torch::stable::Tensor> maybeFlushAudioBuffers()
+      override;
 
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor) override;
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor) override;
 
   UniqueAVFrame convertTensorToAVFrameForEncoding(
-      const torch::Tensor& tensor,
+      const torch::stable::Tensor& tensor,
       int frameIndex,
       AVCodecContext* codecContext) override;
 
@@ -59,14 +61,9 @@ class CpuDeviceInterface : public DeviceInterface {
   void convertVideoAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor);
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor);
 
-  int convertAVFrameToTensorUsingSwScale(
-      const UniqueAVFrame& avFrame,
-      torch::Tensor& outputTensor,
-      const FrameDims& outputDims);
-
-  torch::Tensor convertAVFrameToTensorUsingFilterGraph(
+  torch::stable::Tensor convertAVFrameToTensorUsingFilterGraph(
       const UniqueAVFrame& avFrame,
       const FrameDims& outputDims);
 
@@ -85,32 +82,24 @@ class CpuDeviceInterface : public DeviceInterface {
   // resolutions.
   std::optional<FrameDims> resizedOutputDims_;
 
-  // Color-conversion objects. Only one of filterGraph_ and swsContext_ should
+  // Color-conversion objects. Only one of filterGraph_ and swScale_ should
   // be non-null. Which one we use is determined dynamically in
   // getColorConversionLibrary() each time we decode a frame.
   //
-  // Creating both filterGraph_ and swsContext_ is relatively expensive, so we
-  // reuse them across frames. However, it is possbile that subsequent frames
+  // Creating both filterGraph_ and swScale_ is relatively expensive, so we
+  // reuse them across frames. However, it is possible that subsequent frames
   // are different enough (change in dimensions) that we can't reuse the color
-  // conversion object. We store the relevant frame context from the frame used
+  // conversion object. We store the relevant frame config from the frame used
   // to create the object last time. We always compare the current frame's info
   // against the previous one to determine if we need to recreate the color
   // conversion object.
-  //
-  // TODO: The names of these fields is confusing, as the actual color
-  //       conversion object for Sws has "context" in the name,  and we use
-  //       "context" for the structs we store to know if we need to recreate a
-  //       color conversion object. We should clean that up.
   std::unique_ptr<FilterGraph> filterGraph_;
-  FiltersContext prevFiltersContext_;
-  UniqueSwsContext swsContext_;
-  SwsFrameContext prevSwsFrameContext_;
+  FiltersConfig prevFiltersConfig_;
+  std::unique_ptr<SwScale> swScale_;
 
-  // Cached swscale context for resizing in RGB24 space (used in double swscale
-  // path). Like the color conversion context above, we cache this to avoid
-  // recreating it for every frame.
-  UniqueSwsContext resizeSwsContext_;
-  SwsFrameContext prevResizeSwsFrameContext_;
+  // Cached swscale context for encoding (tensor -> AVFrame pixel format
+  // conversion).
+  UniqueSwsContext encodingSwsContext_;
 
   // We pass these filters to FFmpeg's filtergraph API. It is a simple pipeline
   // of what FFmpeg calls "filters" to apply to decoded frames before returning

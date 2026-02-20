@@ -15,7 +15,7 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-FiltersContext::FiltersContext(
+FiltersConfig::FiltersConfig(
     int inputWidth,
     int inputHeight,
     AVPixelFormat inputFormat,
@@ -41,7 +41,7 @@ bool operator==(const AVRational& lhs, const AVRational& rhs) {
   return lhs.num == rhs.num && lhs.den == rhs.den;
 }
 
-bool FiltersContext::operator==(const FiltersContext& other) const {
+bool FiltersConfig::operator==(const FiltersConfig& other) const {
   return inputWidth == other.inputWidth && inputHeight == other.inputHeight &&
       inputFormat == other.inputFormat && outputWidth == other.outputWidth &&
       outputHeight == other.outputHeight &&
@@ -50,12 +50,12 @@ bool FiltersContext::operator==(const FiltersContext& other) const {
       hwFramesCtx.get() == other.hwFramesCtx.get();
 }
 
-bool FiltersContext::operator!=(const FiltersContext& other) const {
+bool FiltersConfig::operator!=(const FiltersConfig& other) const {
   return !(*this == other);
 }
 
 FilterGraph::FilterGraph(
-    const FiltersContext& filtersContext,
+    const FiltersConfig& filtersConfig,
     const VideoStreamOptions& videoStreamOptions) {
   filterGraph_.reset(avfilter_graph_alloc());
   STD_TORCH_CHECK(
@@ -70,13 +70,13 @@ FilterGraph::FilterGraph(
   UniqueAVBufferSrcParameters srcParams(av_buffersrc_parameters_alloc());
   STD_TORCH_CHECK(srcParams, "Failed to allocate buffersrc params");
 
-  srcParams->format = filtersContext.inputFormat;
-  srcParams->width = filtersContext.inputWidth;
-  srcParams->height = filtersContext.inputHeight;
-  srcParams->sample_aspect_ratio = filtersContext.inputAspectRatio;
-  srcParams->time_base = filtersContext.timeBase;
-  if (filtersContext.hwFramesCtx) {
-    srcParams->hw_frames_ctx = av_buffer_ref(filtersContext.hwFramesCtx.get());
+  srcParams->format = filtersConfig.inputFormat;
+  srcParams->width = filtersConfig.inputWidth;
+  srcParams->height = filtersConfig.inputHeight;
+  srcParams->sample_aspect_ratio = filtersConfig.inputAspectRatio;
+  srcParams->time_base = filtersConfig.timeBase;
+  if (filtersConfig.hwFramesCtx) {
+    srcParams->hw_frames_ctx = av_buffer_ref(filtersConfig.hwFramesCtx.get());
   }
 
   sourceContext_ =
@@ -100,7 +100,7 @@ FilterGraph::FilterGraph(
   STD_TORCH_CHECK(bufferSink != nullptr, "Failed to get buffersink filter.");
 
   sinkContext_ = createAVFilterContextWithOptions(
-      filterGraph_.get(), bufferSink, filtersContext.outputFormat);
+      filterGraph_.get(), bufferSink, filtersConfig.outputFormat);
   STD_TORCH_CHECK(
       sinkContext_ != nullptr, "Failed to create and configure buffersink");
 
@@ -124,7 +124,7 @@ FilterGraph::FilterGraph(
   AVFilterInOut* inputsTmp = inputs.release();
   status = avfilter_graph_parse_ptr(
       filterGraph_.get(),
-      filtersContext.filtergraphStr.c_str(),
+      filtersConfig.filtergraphStr.c_str(),
       &inputsTmp,
       &outputsTmp,
       nullptr);
@@ -134,7 +134,7 @@ FilterGraph::FilterGraph(
       status >= 0,
       "Failed to parse filter description: ",
       getFFMPEGErrorStringFromErrorCode(status),
-      ", provided filters: " + filtersContext.filtergraphStr);
+      ", provided filters: " + filtersConfig.filtergraphStr);
 
   // Check filtergraph validity and configure links and formats.
   status = avfilter_graph_config(filterGraph_.get(), nullptr);
@@ -142,7 +142,7 @@ FilterGraph::FilterGraph(
       status >= 0,
       "Failed to configure filter graph: ",
       getFFMPEGErrorStringFromErrorCode(status),
-      ", provided filters: " + filtersContext.filtergraphStr);
+      ", provided filters: " + filtersConfig.filtergraphStr);
 }
 
 UniqueAVFrame FilterGraph::convert(const UniqueAVFrame& avFrame) {

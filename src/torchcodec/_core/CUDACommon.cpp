@@ -62,12 +62,9 @@ void initializeCudaContextWithPytorch(const StableDevice& device) {
   // It is important for pytorch itself to create the cuda context. If ffmpeg
   // creates the context it may not be compatible with pytorch.
   // This is a dummy tensor to initialize the cuda context.
-  torch::Tensor dummyTensorForCudaInitialization = torch::zeros(
-      {1},
-      torch::TensorOptions()
-          .dtype(torch::kUInt8)
-          .device(torch::Device(
-              static_cast<c10::DeviceType>(device.type()), device.index())));
+  torch::stable::Tensor dummyTensorForCudaInitialization = torch::stable::empty(
+      {1}, kStableUInt8, std::nullopt, StableDevice(device));
+  torch::stable::zero_(dummyTensorForCudaInitialization);
 }
 
 /* clang-format off */
@@ -197,14 +194,14 @@ const Npp32f bt709FullRangeColorTwist[3][4] = {
     {1.0f, -0.187324273f, -0.468124273f, -128.0f},
     {1.0f, 1.8556f, 0.0f, -128.0f}};
 
-torch::Tensor convertNV12FrameToRGB(
+torch::stable::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
     const StableDevice& device,
     const UniqueNppContext& nppCtx,
     cudaStream_t nvdecStream,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   auto frameDims = FrameDims(avFrame->height, avFrame->width);
-  torch::Tensor dst;
+  torch::stable::Tensor dst;
   if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
@@ -244,7 +241,7 @@ torch::Tensor convertNV12FrameToRGB(
       status = nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
           yuvData,
           srcStep,
-          static_cast<Npp8u*>(dst.data_ptr()),
+          dst.mutable_data_ptr<Npp8u>(),
           dst.stride(0),
           oSizeROI,
           bt709FullRangeColorTwist,
@@ -262,7 +259,7 @@ torch::Tensor convertNV12FrameToRGB(
       status = nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx(
           yuvData,
           avFrame->linesize[0],
-          static_cast<Npp8u*>(dst.data_ptr()),
+          dst.mutable_data_ptr<Npp8u>(),
           dst.stride(0),
           oSizeROI,
           *nppCtx);
@@ -274,7 +271,7 @@ torch::Tensor convertNV12FrameToRGB(
     status = nppiNV12ToRGB_8u_P2C3R_Ctx(
         yuvData,
         avFrame->linesize[0],
-        static_cast<Npp8u*>(dst.data_ptr()),
+        dst.mutable_data_ptr<Npp8u>(),
         dst.stride(0),
         oSizeROI,
         *nppCtx);
@@ -328,7 +325,7 @@ void returnNppStreamContextToCache(
 }
 
 void validatePreAllocatedTensorShape(
-    const std::optional<torch::Tensor>& preAllocatedOutputTensor,
+    const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,
     const UniqueAVFrame& avFrame) {
   // Note that CUDA does not yet support transforms, so the only possible
   // frame dimensions are the raw decoded frame's dimensions.
@@ -344,7 +341,7 @@ void validatePreAllocatedTensorShape(
         "x",
         frameDims.width,
         "x3, got ",
-        shape);
+        intArrayRefToString(shape));
   }
 }
 

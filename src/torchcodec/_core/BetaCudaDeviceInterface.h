@@ -22,7 +22,6 @@
 #include "NVDECCache.h"
 #include "Transform.h"
 
-#include <map>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -47,7 +46,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor) override;
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor) override;
 
   int sendPacket(ReferenceAVPacket& packet) override;
   int sendEOFPacket() override;
@@ -85,7 +84,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void applyRotation(
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor);
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor);
 
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;
@@ -106,7 +105,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   std::unique_ptr<DeviceInterface> cpuFallback_;
   bool nvcuvidAvailable_ = false;
   UniqueSwsContext swsContext_;
-  SwsFrameContext prevSwsFrameContext_;
+
+  SwsConfig prevSwsConfig_;
   Rotation rotation_ = Rotation::NONE;
 };
 
