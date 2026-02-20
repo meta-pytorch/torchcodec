@@ -20,6 +20,7 @@ from .ops import (
     add_audio_stream,
     add_video_stream,
     core_library_path,
+    create_audio_decoder,
     create_from_bytes,
     create_from_file,
     create_from_file_like,

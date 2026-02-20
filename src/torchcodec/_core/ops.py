@@ -21,6 +21,11 @@ from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchco
 )
 
 
+_ERROR_REPORTING_INSTRUCTIONS = """
+This should never happen. Please report an issue following the steps in
+https://github.com/pytorch/torchcodec/issues/new?assignees=&labels=&projects=&template=bug-report.yml.
+"""
+
 expose_ffmpeg_dlls = nullcontext
 if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
     # On windows we try to locate the FFmpeg DLLs and temporarily add them to
@@ -534,3 +539,40 @@ def get_ffmpeg_library_versions():
 @register_fake("torchcodec_ns::_get_backend_details")
 def _get_backend_details_abstract(decoder: torch.Tensor) -> str:
     return ""
+
+
+def create_audio_decoder(
+    decoder: torch.Tensor,
+    *,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> tuple[int, "AudioStreamMetadata"]:
+
+    from torchcodec._core._metadata import AudioStreamMetadata, get_container_metadata
+
+    container_metadata = get_container_metadata(decoder)
+
+    if stream_index is None:
+        stream_index = container_metadata.best_audio_stream_index
+        if stream_index is None:
+            raise ValueError(
+                "The best audio stream is unknown and there is no specified stream. "
+                + _ERROR_REPORTING_INSTRUCTIONS
+            )
+
+    if stream_index >= len(container_metadata.streams):
+        raise ValueError(f"The stream at index {stream_index} is not a valid stream.")
+
+    metadata = container_metadata.streams[stream_index]
+    if not isinstance(metadata, AudioStreamMetadata):
+        raise ValueError(f"The stream at index {stream_index} is not an audio stream.")
+
+    add_audio_stream(
+        decoder,
+        stream_index=stream_index,
+        sample_rate=sample_rate,
+        num_channels=num_channels,
+    )
+
+    return (stream_index, metadata)
