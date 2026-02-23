@@ -135,6 +135,7 @@ class WavDecoder {
       float* outputPtr,
       int64_t totalSamples);
 
+ private:
   std::unique_ptr<WavReader> reader_;
   WavHeader header_;
 };

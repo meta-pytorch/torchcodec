@@ -290,23 +290,18 @@ void WavDecoder::convertChunkToFloatDirect(
     effectiveFormat = header_.subFormat;
   }
 
+  std::vector<float> tempBuffer(numSamples * header_.numChannels);
+
   if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
     if (header_.bitsPerSample == 32) {
       const float* src = reinterpret_cast<const float*>(rawData);
-      // Convert from interleaved (s0c0, s0c1, s1c0, s1c1...) to (channels,
-      // samples)
-      for (int64_t s = 0; s < numSamples; ++s) {
-        for (int64_t c = 0; c < header_.numChannels; ++c) {
-          outputPtr[c * totalSamples + s] = src[s * header_.numChannels + c];
-        }
+      for (int64_t i = 0; i < numSamples * header_.numChannels; ++i) {
+        tempBuffer[i] = src[i];
       }
     } else if (header_.bitsPerSample == 64) {
       const double* src = reinterpret_cast<const double*>(rawData);
-      for (int64_t s = 0; s < numSamples; ++s) {
-        for (int64_t c = 0; c < header_.numChannels; ++c) {
-          outputPtr[c * totalSamples + s] =
-              static_cast<float>(src[s * header_.numChannels + c]);
-        }
+      for (int64_t i = 0; i < numSamples * header_.numChannels; ++i) {
+        tempBuffer[i] = static_cast<float>(src[i]);
       }
     }
   } else {
@@ -314,28 +309,20 @@ void WavDecoder::convertChunkToFloatDirect(
     switch (header_.bitsPerSample) {
       case 8: {
         const uint8_t* src = reinterpret_cast<const uint8_t*>(rawData);
-        for (int64_t s = 0; s < numSamples; ++s) {
-          for (int64_t c = 0; c < header_.numChannels; ++c) {
-            outputPtr[c * totalSamples + s] =
-                (static_cast<float>(src[s * header_.numChannels + c]) -
-                 128.0f) /
-                128.0f;
-          }
+        for (int64_t i = 0; i < numSamples * header_.numChannels; ++i) {
+          tempBuffer[i] = (static_cast<float>(src[i]) - 128.0f) / 128.0f;
         }
         break;
       }
       case 16: {
         const int16_t* src = reinterpret_cast<const int16_t*>(rawData);
-        for (int64_t s = 0; s < numSamples; ++s) {
-          for (int64_t c = 0; c < header_.numChannels; ++c) {
-            outputPtr[c * totalSamples + s] =
-                static_cast<float>(src[s * header_.numChannels + c]) / 32768.0f;
-          }
+        for (int64_t i = 0; i < numSamples * header_.numChannels; ++i) {
+          tempBuffer[i] = static_cast<float>(src[i]) / 32768.0f;
         }
         break;
       }
       case 24: {
-        // 24-bit handling (same as original)
+        // 24-bit handling
         const uint8_t* src = static_cast<const uint8_t*>(rawData);
         for (int64_t s = 0; s < numSamples; ++s) {
           for (int64_t c = 0; c < header_.numChannels; ++c) {
@@ -346,7 +333,7 @@ void WavDecoder::convertChunkToFloatDirect(
             if (sample & 0x800000) {
               sample |= 0xFF000000;
             }
-            outputPtr[c * totalSamples + s] =
+            tempBuffer[s * header_.numChannels + c] =
                 static_cast<float>(sample) / 8388608.0f;
           }
         }
@@ -354,15 +341,19 @@ void WavDecoder::convertChunkToFloatDirect(
       }
       case 32: {
         const int32_t* src = reinterpret_cast<const int32_t*>(rawData);
-        for (int64_t s = 0; s < numSamples; ++s) {
-          for (int64_t c = 0; c < header_.numChannels; ++c) {
-            outputPtr[c * totalSamples + s] =
-                static_cast<float>(src[s * header_.numChannels + c]) /
-                2147483648.0f;
-          }
+        for (int64_t i = 0; i < numSamples * header_.numChannels; ++i) {
+          tempBuffer[i] = static_cast<float>(src[i]) / 2147483648.0f;
         }
         break;
       }
+    }
+  }
+
+  // Copy from interleaved tempBuffer to channel-first output layout
+  // This preserves cache locality by processing one channel at a time
+  for (int64_t c = 0; c < header_.numChannels; ++c) {
+    for (int64_t s = 0; s < numSamples; ++s) {
+      outputPtr[c * totalSamples + s] = tempBuffer[s * header_.numChannels + c];
     }
   }
 }
@@ -493,24 +484,42 @@ std::tuple<torch::Tensor, double> WavDecoder::getSamplesInRange(
     }
   }
 
-  // Optimized streaming path with chunked reading
-  //
-  // This chunked approach is faster than the traditional fromBlob().to()
-  // approach because:
-  // 1. Eliminates the hidden copy in .to() - PyTorch's .to(kFloat32) allocates
-  // a new tensor
-  //    and copies all data, even for type conversions (int16->float32, etc.)
-  // 2. Writes directly to pre-allocated tensor memory instead of intermediate
+  // Format-specific processing strategy selection
+  uint16_t effectiveFormat = header_.audioFormat;
+  if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
+    effectiveFormat = header_.subFormat;
+  }
+
+  // F32 (32-bit IEEE float) benefits from bulk operations (no conversion
+  // needed)
+  if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT && header_.bitsPerSample == 32) {
+    // Zero-copy bulk processing: read directly into pre-allocated tensor
+    reader_->seek(dataPosition);
+
+    // Use original bulk approach with PyTorch optimized operations
+    std::vector<uint8_t> rawData(bytesToRead);
+    int64_t bytesRead = reader_->read(rawData.data(), bytesToRead);
+
+    if (bytesRead <= 0) {
+      // Return empty tensor for read errors
+      torch::Tensor samples =
+          torch::empty({header_.numChannels, 0}, torch::kFloat32);
+      double ptsSeconds = static_cast<double>(startSample) / header_.sampleRate;
+      return std::make_tuple(samples, ptsSeconds);
+    }
+
+    // Use bulk conversion with PyTorch optimized operations (original approach)
+    int64_t actualSamples = bytesRead / header_.blockAlign;
+    torch::Tensor samples = convertSamplesToFloat(
+        rawData.data(), actualSamples, header_.numChannels);
+
+    double ptsSeconds = static_cast<double>(startSample) / header_.sampleRate;
+    return std::make_tuple(samples, ptsSeconds);
+  }
+
+  // Chunked processing path
+  // Writes directly to pre-allocated tensor memory instead of intermediate
   // buffer
-  // 3. Reduces peak memory usage from ~1.8GB (original + temp buffer + tensor)
-  // to ~1.2GB
-  // 4. Better for file-like objects: smaller chunks reduce Python callback
-  // overhead
-  //
-  // Memory flow comparison:
-  //   Original: Python -> full buffer (600MB) -> .to() creates new tensor
-  //   (600MB copy) Chunked:  Python -> small buffer (64KB) -> direct write to
-  //   final tensor (no copy)
   reader_->seek(dataPosition);
 
   torch::Tensor samples =
