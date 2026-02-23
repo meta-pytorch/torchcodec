@@ -70,13 +70,15 @@ class NVDECCache {
 
     CacheKey() = delete;
 
-    explicit CacheKey(CUVIDEOFORMAT* videoFormat)
-        : codecType(videoFormat->codec),
-          width(videoFormat->coded_width),
-          height(videoFormat->coded_height),
-          chromaFormat(videoFormat->chroma_format),
-          bitDepthLumaMinus8(videoFormat->bit_depth_luma_minus8),
-          numDecodeSurfaces(videoFormat->min_num_decode_surfaces) {}
+    explicit CacheKey(CUVIDEOFORMAT* videoFormat) {
+      STD_TORCH_CHECK(videoFormat != nullptr, "videoFormat must not be null");
+      codecType = videoFormat->codec;
+      width = videoFormat->coded_width;
+      height = videoFormat->coded_height;
+      chromaFormat = videoFormat->chroma_format;
+      bitDepthLumaMinus8 = videoFormat->bit_depth_luma_minus8;
+      numDecodeSurfaces = videoFormat->min_num_decode_surfaces;
+    }
 
     CacheKey(const CacheKey&) = default;
     CacheKey& operator=(const CacheKey&) = default;
