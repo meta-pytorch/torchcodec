@@ -21,11 +21,6 @@ from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchco
 )
 
 
-_ERROR_REPORTING_INSTRUCTIONS = """
-This should never happen. Please report an issue following the steps in
-https://github.com/pytorch/torchcodec/issues/new?assignees=&labels=&projects=&template=bug-report.yml.
-"""
-
 expose_ffmpeg_dlls = nullcontext
 if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
     # On windows we try to locate the FFmpeg DLLs and temporarily add them to
