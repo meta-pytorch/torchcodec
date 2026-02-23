@@ -50,7 +50,8 @@ bool NVDECCache::returnDecoder(
   std::lock_guard<std::mutex> lock(cacheLock_);
 
   // Evict least recently used entry if at capacity.
-  // This is O(MAX_CACHE_SIZE) which should be small enough to be significant.
+  // This search is O(MAX_CACHE_SIZE) but MAX_CACHE_SIZE is always small, so
+  // this isn't significant.
   if (cache_.size() >= MAX_CACHE_SIZE) {
     auto victim = cache_.begin();
     for (auto it = cache_.begin(); it != cache_.end(); ++it) {
