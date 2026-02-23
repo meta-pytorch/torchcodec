@@ -130,79 +130,117 @@ def _samples_from_bytes(
     bytes_per_sample = metadata.bits_per_sample // 8
     num_samples = len(audio_bytes) // bytes_per_sample // metadata.num_channels
 
-    # Deinterleave: reshape to (num_samples, num_channels) and transpose.
-    # This is done *before* dtype conversion so that .to(float32) produces a
-    # contiguous result in a single pass (combined layout change + conversion),
-    # avoiding a separate .contiguous() copy.
-    def _deinterleave(t: Tensor) -> Tensor:
-        if metadata.num_channels == 1:
-            return t.unsqueeze(0)
-        return t.view(num_samples, metadata.num_channels).t()
+    if num_samples == 0:
+        return torch.empty((metadata.num_channels, 0), dtype=torch.float32)
 
-    # Convert to tensor based on format
     if metadata.audio_format == WAVE_FORMAT_IEEE_FLOAT:
         if metadata.bits_per_sample == 32:
-            # Interpret raw bytes as float32 (already normalized by convention)
-            samples = _deinterleave(
+            # f32: Direct frombuffer + deinterleave
+            return (
                 torch.frombuffer(audio_bytes, dtype=torch.float32)
-            )  # .contiguous()
+                .view(num_samples, metadata.num_channels)
+                .t()
+            )
         elif metadata.bits_per_sample == 64:
-            # Interpret raw bytes as float64, then convert to float32.
-            # .to() on the transposed view produces a contiguous float32 result.
-            samples = _deinterleave(
+            # f64: frombuffer + convert + deinterleave
+            return (
                 torch.frombuffer(audio_bytes, dtype=torch.float64)
-            ).to(torch.float32)
+                .to(torch.float32)
+                .view(num_samples, metadata.num_channels)
+                .t()
+            )
         else:
             raise ValueError(f"Unsupported float bits: {metadata.bits_per_sample}")
+
     elif metadata.audio_format == WAVE_FORMAT_PCM:
         if metadata.bits_per_sample == 16:
-            # Interpret raw bytes as int16, deinterleave, then convert+normalize.
-            # .to() on the transposed view produces a contiguous float32 result.
-            samples = _deinterleave(
+            # s16: frombuffer + convert + deinterleave + normalize
+            data = (
                 torch.frombuffer(audio_bytes, dtype=torch.int16)
-            ).to(torch.float32)
-            samples.div_(torch.iinfo(torch.int16).max + 1)
-        elif metadata.bits_per_sample == 32:
-            # Interpret raw bytes as int32, deinterleave, then convert+normalize.
-            samples = _deinterleave(
-                torch.frombuffer(audio_bytes, dtype=torch.int32)
-            ).to(torch.float32)
-            samples.div_(torch.iinfo(torch.int32).max + 1)
-        elif metadata.bits_per_sample == 24:
-            # There is no 24-bit dtype, so we use helper function to get int32.
-            # .to(float32) on the transposed int32 view fuses deinterleave +
-            # type conversion into one contiguous copy, matching s16/s32.
-            samples = _deinterleave(_convert_24bit_pcm(memoryview(audio_bytes))).to(
-                torch.float32
+                .to(torch.float32)
+                .view(num_samples, metadata.num_channels)
+                .t()
             )
-            samples.div_(8388608.0)  # 2^23
+            data.div_(32768.0)
+            return data
+
+        elif metadata.bits_per_sample == 32:
+            # s32: frombuffer + convert + deinterleave + normalize
+            data = (
+                torch.frombuffer(audio_bytes, dtype=torch.int32)
+                .to(torch.float32)
+                .view(num_samples, metadata.num_channels)
+                .t()
+            )
+            data.div_(2147483648.0)
+            return data
+
         elif metadata.bits_per_sample == 8:
-            # Interpret raw bytes as uint8, deinterleave, then convert+normalize.
-            samples = _deinterleave(
+            # u8: frombuffer + convert + deinterleave + normalize
+            data = (
                 torch.frombuffer(audio_bytes, dtype=torch.uint8)
-            ).to(torch.float32)
-            samples.sub_(128.0).div_(128.0)
+                .to(torch.float32)
+                .view(num_samples, metadata.num_channels)
+                .t()
+            )
+            data.sub_(128.0).div_(128.0)
+            return data
+
+        elif metadata.bits_per_sample == 24:
+            # s24: Use 24-bit helper + convert + deinterleave
+            int32_data = _convert_24bit_pcm(memoryview(audio_bytes))
+            data = (
+                int32_data.to(torch.float32)
+                .view(num_samples, metadata.num_channels)
+                .t()
+            )
+            data.div_(8388608.0)
+            return data
+
         else:
             raise ValueError(f"Unsupported PCM bits: {metadata.bits_per_sample}")
     else:
         raise ValueError(f"Unsupported audio format: {metadata.audio_format}")
 
-    return samples
+    return torch.empty((metadata.num_channels, 0), dtype=torch.float32)
 
 
-def _convert_24bit_pcm(data: memoryview) -> torch.Tensor:
-    """Convert 24-bit PCM bytes to sign-extended int32 tensor."""
-    raw = torch.frombuffer(data, dtype=torch.uint8)
+def _supports_buffer_protocol(obj) -> bool:
+    """Check if object supports the buffer protocol for direct memory access."""
+    try:
+        memoryview(obj)
+        return True
+    except TypeError:
+        return False
+
+
+def _convert_24bit_pcm(data: memoryview | torch.Tensor) -> torch.Tensor:
+    """Convert 24-bit PCM bytes to sign-extended int32 tensor.
+
+    Args:
+        data: Either a memoryview of raw bytes or a torch.Tensor of uint8 values
+
+    Returns:
+        torch.Tensor of int32 values with proper sign extension
+    """
+    # Handle both input types
+    if isinstance(data, torch.Tensor):
+        raw = data
+    else:
+        raw = torch.frombuffer(data, dtype=torch.uint8)
+
     n = len(raw) // 3
 
-    # Pack 3-byte samples into upper 3 bytes of int32: [0, b0, b1, b2]
-    # On little-endian this represents (b0 << 8) | (b1 << 16) | (b2 << 24)
-    padded = torch.zeros(n * 4, dtype=torch.uint8)
-    padded[1::4] = raw[0::3]
-    padded[2::4] = raw[1::3]
-    padded[3::4] = raw[2::3]
+    if n == 0:
+        return torch.empty(0, dtype=torch.int32)
 
-    # Arithmetic right shift by 8 sign-extends from bit 23 automatically
+    # Use vectorized operations but keep arithmetic right shift for performance
+    padded = torch.zeros(n * 4, dtype=torch.uint8)
+    padded[1::4] = raw[0::3]  # b0 - first byte of each 24-bit sample
+    padded[2::4] = raw[1::3]  # b1 - second byte of each 24-bit sample
+    padded[3::4] = raw[2::3]  # b2 - third byte of each 24-bit sample
+
+    # Arithmetic right shift is much faster than torch.where for sign extension
     return padded.view(torch.int32) >> 8
 
 
@@ -234,9 +272,8 @@ class WavDecoder:
         if stream_index is not None and stream_index != 0:
             raise ValueError("WAV files only have stream index 0")
 
-        # Convert Tensor to bytes so it falls into the bytes path
-        if isinstance(source, Tensor):
-            source = source.numpy().tobytes()
+        # This is only set for file-like objects with getbuffer
+        self._use_buffer_access = False
 
         if isinstance(source, bytes):
             self._source: bytes | io.BufferedReader | io.RawIOBase = source
@@ -264,9 +301,29 @@ class WavDecoder:
         elif isinstance(source, (io.RawIOBase, io.BufferedReader)) or (
             hasattr(source, "read") and hasattr(source, "seek")
         ):
-            wav_metadata = _parse_wav_chunks(
-                lambda offset, size: (source.seek(offset, 0), source.read(size))[1]
-            )
+            # Try buffer access first for BytesIO objects, fall back to I/O
+            if hasattr(source, "getbuffer"):
+                try:
+                    buffer = source.getbuffer()
+                    self._use_buffer_access = True
+                except Exception:
+                    self._use_buffer_access = False
+            else:
+                self._use_buffer_access = False
+
+            # Create read function based on available access method
+            if self._use_buffer_access:
+
+                def read_func(offset, size):
+                    return bytes(buffer[offset : offset + size])
+
+            else:
+
+                def read_func(offset, size):
+                    source.seek(offset, 0)
+                    return source.read(size)
+
+            wav_metadata = _parse_wav_chunks(read_func)
             self._source = source
 
         else:
@@ -376,8 +433,8 @@ class WavDecoder:
         byte_offset = self._wav_metadata._data_offset + start_sample * bytes_per_frame
         num_bytes = num_samples * bytes_per_frame
 
-        # Fast path for bytes source: use torch.frombuffer with offset for common formats
-        if isinstance(self._source, bytes):
+        # Fast path for buffer-like sources: use torch.frombuffer with offset for common formats
+        if _supports_buffer_protocol(self._source):
             if (
                 self._wav_metadata.audio_format == WAVE_FORMAT_IEEE_FLOAT
                 and self._wav_metadata.bits_per_sample == 32
@@ -462,19 +519,59 @@ class WavDecoder:
                 )
                 data.sub_(128.0).div_(128.0)  # Normalize u8 to [-1, 1]
 
+            elif (
+                self._wav_metadata.audio_format == WAVE_FORMAT_PCM
+                and self._wav_metadata.bits_per_sample == 24
+            ):
+                # s24: Zero-copy path matching other formats (s16/s32/f32/f64)
+                uint8_count = num_bytes
+                raw_uint8 = torch.frombuffer(
+                    self._source,
+                    dtype=torch.uint8,
+                    offset=byte_offset,  # Zero-copy: just offset pointer
+                    count=uint8_count,  # Direct element count
+                )
+                int32_samples = _convert_24bit_pcm(raw_uint8)
+                data = int32_samples.view(self._wav_metadata.num_channels, -1).to(
+                    torch.float32
+                )
+                data.div_(8388608.0)  # Normalize s24 to [-1, 1]
+
             else:
-                # Fallback for unsupported formats (s24, etc.)
+                # Fallback for truly unsupported formats
                 audio_bytes = self._source[byte_offset : byte_offset + num_bytes]
                 data = _samples_from_bytes(audio_bytes, self._wav_metadata)
         else:
-            # Fallback path for other formats/sources
-            if isinstance(self._source, bytes):
-                audio_bytes = self._source[byte_offset : byte_offset + num_bytes]
+            # File-like source: use zero-copy buffer access when possible
+            if self._use_buffer_access:
+                # Zero-copy path using getbuffer() - eliminates ALL seek/read overhead
+                try:
+                    buffer = self._source.getbuffer()
+                    audio_buffer = buffer[byte_offset : byte_offset + num_bytes]
+
+                    # Convert directly from memoryview (zero copy)
+                    data = _samples_from_bytes(audio_buffer, self._wav_metadata)
+                except Exception:
+                    # Fallback to regular I/O if getbuffer fails
+                    self._use_buffer_access = False
+                    self._source.seek(byte_offset, 0)
+                    audio_bytes = self._source.read(num_bytes)
+                    data = _samples_from_bytes(audio_bytes, self._wav_metadata)
             else:
+                # Regular I/O path for file-like objects without buffer access
                 self._source.seek(byte_offset, 0)
                 audio_bytes = self._source.read(num_bytes)
 
-            data = _samples_from_bytes(audio_bytes, self._wav_metadata)
+                if len(audio_bytes) < num_bytes:
+                    # Adjust num_samples for partial read
+                    actual_bytes = len(audio_bytes)
+                    num_samples = (
+                        actual_bytes
+                        // (self._wav_metadata.bits_per_sample // 8)
+                        // self._wav_metadata.num_channels
+                    )
+
+                data = _samples_from_bytes(audio_bytes, self._wav_metadata)
         return AudioSamples(
             data=data,
             pts_seconds=start_seconds,
