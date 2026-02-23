@@ -215,17 +215,15 @@ function(make_torchcodec_libraries
         set(HIP_CLANG "${ROCM_PATH}/lib/llvm/bin/clang++")
 
         # GPU architectures for HIP kernel compilation.
-        # Override with -DHIP_ARCHITECTURES="gfx942;gfx90a" to limit targets.
-        # The default list covers datacenter + consumer GPUs across generations:
-        #   gfx90a  = MI250/MI250X (CDNA2)
-        #   gfx942  = MI300X/MI300A/MI325X (CDNA3)
-        #   gfx950  = MI355X (CDNA4)
-        #   gfx1100 = RX 7900 XTX (RDNA3)
-        #   gfx1200 = RX 9070 (RDNA4)
-        # Adding an arch that the installed ROCm doesn't support is harmless -
-        # the compiler will warn but the other targets still build.
+        # Set via -DHIP_ARCHITECTURES or PYTORCH_ROCM_ARCH env var.
         if(NOT DEFINED HIP_ARCHITECTURES)
-            set(HIP_ARCHITECTURES "gfx90a;gfx942;gfx950;gfx1100;gfx1200")
+            if(DEFINED ENV{PYTORCH_ROCM_ARCH})
+                string(REPLACE " " ";" HIP_ARCHITECTURES "$ENV{PYTORCH_ROCM_ARCH}")
+            else()
+                message(FATAL_ERROR
+                    "No GPU architectures specified for ROCm build. "
+                    "Set PYTORCH_ROCM_ARCH env var or pass -DHIP_ARCHITECTURES.")
+            endif()
         endif()
 
         # Build the --offload-arch flags

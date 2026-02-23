@@ -138,8 +138,6 @@ class CMakeBuild(build_ext):
             f"-DTORCHCODEC_DISABLE_HOMEBREW_RPATH={torchcodec_disable_homebrew_rpath}",
         ]
 
-        # For ROCm builds, set the HIP compiler to the ROCm Clang
-        # CMake >= 4.0 requires the actual Clang compiler, not the hipcc wrapper
         if enable_rocm:
             rocm_path = os.environ.get("ROCM_PATH", "/opt/rocm")
             rocm_clang = os.path.join(rocm_path, "lib", "llvm", "bin", "clang++")
@@ -147,23 +145,20 @@ class CMakeBuild(build_ext):
                 cmake_args.append(f"-DCMAKE_HIP_COMPILER={rocm_clang}")
             cmake_args.append(f"-DCMAKE_PREFIX_PATH={rocm_path}")
 
-            # Allow user to specify target GPU architectures via env var.
-            # e.g. HIP_ARCHITECTURES="gfx942;gfx90a" for MI300X + MI250 only.
-            # If not set, CMakeLists.txt uses a broad default list.
+            # Resolve GPU architectures from env or PyTorch's build config.
             hip_archs = os.environ.get("HIP_ARCHITECTURES", "")
+            if not hip_archs:
+                try:
+                    arch_list = torch.cuda.get_arch_list() if hasattr(torch.cuda, "get_arch_list") else []
+                    hip_archs = ";".join(a for a in arch_list if a.startswith("gfx"))
+                except Exception:
+                    pass
             if hip_archs:
                 cmake_args.append(f"-DHIP_ARCHITECTURES={hip_archs}")
-            else:
-                # Try to auto-detect from PyTorch's build config
-                try:
-                    gpu_arch = torch.cuda.get_arch_list() if torch.cuda.is_available() else []
-                    hip_archs_from_torch = ";".join(
-                        a.replace("gfx", "gfx") for a in gpu_arch if a.startswith("gfx")
-                    )
-                    if hip_archs_from_torch:
-                        cmake_args.append(f"-DHIP_ARCHITECTURES={hip_archs_from_torch}")
-                except Exception:
-                    pass  # Fall through to CMake default
+
+            # PyTorch's LoadHIP.cmake requires PYTORCH_ROCM_ARCH to be set.
+            if not os.environ.get("PYTORCH_ROCM_ARCH") and hip_archs:
+                os.environ["PYTORCH_ROCM_ARCH"] = hip_archs.replace(";", " ")
 
         self.build_temp = os.getenv("TORCHCODEC_CMAKE_BUILD_DIR", self.build_temp)
         print(f"Using {self.build_temp = }", flush=True)
