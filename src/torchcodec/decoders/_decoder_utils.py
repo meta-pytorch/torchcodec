@@ -7,7 +7,6 @@
 
 import contextvars
 import io
-
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
@@ -53,27 +52,6 @@ def create_decoder(
         "read(self, size: int) -> bytes and "
         "seek(self, offset: int, whence: int) -> int methods."
     )
-
-
-def create_audio_decoder(
-    *,
-    source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
-    seek_mode: str,
-    stream_index: int | None = None,
-    sample_rate: int | None = None,
-    num_channels: int | None = None,
-) -> tuple[Tensor, int, core._metadata.AudioStreamMetadata]:
-
-    decoder = create_decoder(source=source, seek_mode=seek_mode)
-
-    stream_index, metadata = core.create_audio_decoder(
-        decoder,
-        stream_index=stream_index,
-        sample_rate=sample_rate,
-        num_channels=num_channels,
-    )
-
-    return (decoder, stream_index, metadata)
 
 
 # Thread-local and async-safe storage for the current CUDA backend

@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+from ._decoder_utils import create_audio_decoder
 from ._metadata import (
     AudioStreamMetadata,
     ContainerMetadata,
@@ -20,7 +21,6 @@ from .ops import (
     add_audio_stream,
     add_video_stream,
     core_library_path,
-    create_audio_decoder,
     create_from_bytes,
     create_from_file,
     create_from_file_like,
