@@ -439,7 +439,6 @@ def add_audio_stream_abstract(
     stream_index: int | None = None,
     sample_rate: int | None = None,
     num_channels: int | None = None,
-    num_threads: int | None = None,
 ) -> None:
     return
 

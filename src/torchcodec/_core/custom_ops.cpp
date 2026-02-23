@@ -53,7 +53,7 @@ TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", (Tensor, Tensor, Tensor)? custom_frame_mappings=None) -> ()");
   m.def(
-      "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None, int? num_threads=None) -> ()");
+      "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
   m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
   m.def("get_next_frame(Tensor(a!) decoder) -> (Tensor, Tensor, Tensor)");
   m.def(
@@ -500,12 +500,10 @@ void add_audio_stream(
     torch::Tensor& decoder,
     std::optional<int64_t> stream_index = std::nullopt,
     std::optional<int64_t> sample_rate = std::nullopt,
-    std::optional<int64_t> num_channels = std::nullopt,
-    std::optional<int64_t> num_threads = std::nullopt) {
+    std::optional<int64_t> num_channels = std::nullopt) {
   AudioStreamOptions audioStreamOptions;
   audioStreamOptions.sampleRate = sample_rate;
   audioStreamOptions.numChannels = num_channels;
-  audioStreamOptions.ffmpegThreadCount = num_threads;
 
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   videoDecoder->addAudioStream(stream_index.value_or(-1), audioStreamOptions);

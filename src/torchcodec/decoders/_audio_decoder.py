@@ -44,12 +44,6 @@ class AudioDecoder:
             By default, the sample rate of the source is used.
         num_channels (int, optional): The desired number of channels of the decoded samples.
             By default, the number of channels of the source is used.
-        num_ffmpeg_threads (int, optional): The number of threads to use for
-            decoding. Use 1 for single-threaded decoding which may be best if
-            you are running multiple instances of ``AudioDecoder`` in parallel.
-            Use a higher number for multi-threaded decoding which is best if you
-            are running a single instance of ``AudioDecoder``. Passing 0 lets
-            FFmpeg decide on the number of threads. Default: 1.
 
     Attributes:
         metadata (AudioStreamMetadata): Metadata of the audio stream.
@@ -65,7 +59,6 @@ class AudioDecoder:
         stream_index: int | None = None,
         sample_rate: int | None = None,
         num_channels: int | None = None,
-        num_ffmpeg_threads: int = 1,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.AudioDecoder")
         self._decoder = create_decoder(source=source, seek_mode="approximate")
@@ -96,15 +89,11 @@ class AudioDecoder:
             sample_rate if sample_rate is not None else self.metadata.sample_rate
         )
 
-        if num_ffmpeg_threads is None:
-            raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
-
         core.add_audio_stream(
             self._decoder,
             stream_index=stream_index,
             sample_rate=sample_rate,
             num_channels=num_channels,
-            num_threads=num_ffmpeg_threads,
         )
 
     def get_all_samples(self) -> AudioSamples:
