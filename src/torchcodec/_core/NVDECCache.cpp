@@ -28,15 +28,12 @@ UniqueCUvideodecoder NVDECCache::getDecoder(CUVIDEOFORMAT* videoFormat) {
   CacheKey key(videoFormat);
   std::lock_guard<std::mutex> lock(cacheLock_);
 
-  // Find all entries with matching key and look for one not in use
-  auto range = cache_.equal_range(key);
-  for (auto it = range.first; it != range.second; ++it) {
-    if (!it->second.inUse) {
-      // Take ownership of the decoder and remove the entry from cache
-      auto decoder = std::move(it->second.decoder);
-      cache_.erase(it);
-      return decoder;
-    }
+  // Find an entry with matching key
+  auto it = cache_.find(key);
+  if (it != cache_.end()) {
+    auto decoder = std::move(it->second.decoder);
+    cache_.erase(it);
+    return decoder;
   }
 
   return nullptr;
@@ -52,12 +49,25 @@ bool NVDECCache::returnDecoder(
   CacheKey key(videoFormat);
   std::lock_guard<std::mutex> lock(cacheLock_);
 
+  // Evict least recently used entry if at capacity.
+  // This search is O(MAX_CACHE_SIZE) but MAX_CACHE_SIZE is always small, so
+  // this isn't significant.
   if (cache_.size() >= MAX_CACHE_SIZE) {
-    return false;
+    auto victim = cache_.begin();
+    for (auto it = cache_.begin(); it != cache_.end(); ++it) {
+      if (it->second.lastUsed < victim->second.lastUsed) {
+        victim = it;
+      }
+    }
+    cache_.erase(victim);
   }
 
-  // Add the decoder back to cache as not in use
-  cache_.emplace(key, CacheEntry(std::move(decoder), false));
+  // Add the decoder back to cache
+  cache_.emplace(key, CacheEntry(std::move(decoder), lastUsedCounter_++));
+
+  STD_TORCH_CHECK(
+      cache_.size() <= MAX_CACHE_SIZE,
+      "Cache size exceeded maximum limit, please report a bug");
   return true;
 }
 
