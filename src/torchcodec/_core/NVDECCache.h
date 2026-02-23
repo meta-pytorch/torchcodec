@@ -53,9 +53,8 @@ class NVDECCache {
   // Get decoder from cache - returns nullptr if none available.
   UniqueCUvideodecoder getDecoder(CUVIDEOFORMAT* videoFormat);
 
-  // Return decoder to cache.
-  // Returns true if the decoder was successfully returned to cache.
-  bool returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder);
+  // Return decoder to cache using LRU eviction.
+  void returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder);
 
  private:
   // Cache key struct: a decoder can be reused and taken from the cache only if
