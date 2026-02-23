@@ -208,13 +208,13 @@ frame. See :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py` for m
  .. code-block:: none
 
     Decode from existing download:
-    med = 239.79ms +- 1.06
+    med = 236.15ms +- 0.09
 
     Download before decode:
-    med = 1394.30ms +- 101.55
+    med = 1346.79ms +- 40.60
 
     Direct url to FFmpeg:
-    med = 287.72ms +- 15.75
+    med = 301.58ms +- 11.92
 
 
 
@@ -265,7 +265,7 @@ Note that using these capabilities from the fsspec library also requires the
  .. code-block:: none
 
     Stream while decode: 
-    med = 258.57ms +- 1.88
+    med = 257.71ms +- 3.32
 
 
 
@@ -429,10 +429,10 @@ An obvious question is: which is faster? The code below tests that question.
  .. code-block:: none
 
     Decode from existing file path:
-    med = 236.94ms +- 0.89
+    med = 237.00ms +- 0.92
 
     Decode from existing open file object:
-    med = 237.53ms +- 0.96
+    med = 237.96ms +- 0.81
 
 
 
@@ -465,7 +465,7 @@ Finally, let's clean up the local resources we created.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 34.910 seconds)
+   **Total running time of the script:** (0 minutes 33.771 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_file_like.py:
