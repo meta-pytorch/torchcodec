@@ -12,6 +12,10 @@
 #include "Metadata.h"
 #include "StableABICompat.h"
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 namespace facebook::torchcodec {
 namespace {
 
@@ -166,6 +170,14 @@ void SingleStreamDecoder::initializeDecoder() {
 
       streamMetadata.sampleAspectRatio =
           avStream->codecpar->sample_aspect_ratio;
+
+      AVPixelFormat pixFmt =
+          static_cast<AVPixelFormat>(avStream->codecpar->format);
+      const char* rawPixelFormat = av_get_pix_fmt_name(pixFmt);
+      if (rawPixelFormat != nullptr) {
+        streamMetadata.pixelFormat = std::string(rawPixelFormat);
+      }
+
       containerMetadata_.numVideoStreams++;
     } else if (avStream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
       AVSampleFormat format =

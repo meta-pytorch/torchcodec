@@ -117,6 +117,8 @@ class VideoStreamMetadata(StreamMetadata):
         or -90 degree rotation, this means width and height are swapped
         compared to the raw encoded dimensions in the container.
     """
+    pixel_format: str | None
+    """The source pixel format of the video, as reported by FFmpeg. E.g. ``'yuv420p'``, ``'yuv444p'``, etc."""
 
     # Computed fields (computed in C++ with fallback logic)
     end_stream_seconds: float | None
@@ -243,6 +245,7 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
                     average_fps_from_header=stream_dict.get("averageFpsFromHeader"),
                     pixel_aspect_ratio=_get_optional_par_fraction(stream_dict),
                     rotation=stream_dict.get("rotation"),
+                    pixel_format=stream_dict.get("pixelFormat"),
                     **common_meta,
                 )
             )
