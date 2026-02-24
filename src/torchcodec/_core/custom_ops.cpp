@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
+
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
@@ -982,6 +983,24 @@ std::string get_stream_json_metadata(
   }
   if (streamMetadata.rotation.has_value()) {
     map["rotation"] = std::to_string(*streamMetadata.rotation);
+  }
+  if (streamMetadata.colorPrimaries.has_value()) {
+    map["colorPrimaries"] =
+        quoteValue(av_color_primaries_name(*streamMetadata.colorPrimaries));
+  }
+  if (streamMetadata.colorSpace.has_value()) {
+    map["colorSpace"] =
+        quoteValue(av_color_space_name(*streamMetadata.colorSpace));
+  }
+  if (streamMetadata.colorTransferCharacteristic.has_value()) {
+    map["colorTransferCharacteristic"] = quoteValue(
+        av_color_transfer_name(*streamMetadata.colorTransferCharacteristic));
+  }
+  if (streamMetadata.pixelFormat.has_value()) {
+    const char* name = av_get_pix_fmt_name(*streamMetadata.pixelFormat);
+    if (name != nullptr) {
+      map["pixelFormat"] = quoteValue(name);
+    }
   }
   if (streamMetadata.averageFpsFromHeader.has_value()) {
     map["averageFpsFromHeader"] =

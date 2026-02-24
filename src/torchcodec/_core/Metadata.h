@@ -13,6 +13,8 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
+#include <libavutil/pixdesc.h>
+#include <libavutil/pixfmt.h>
 #include <libavutil/rational.h>
 }
 
@@ -59,6 +61,10 @@ struct StreamMetadata {
   std::optional<AVRational> sampleAspectRatio;
   // Rotation angle in degrees from display matrix, in the range [-180, 180].
   std::optional<double> rotation;
+  std::optional<AVColorPrimaries> colorPrimaries;
+  std::optional<AVColorSpace> colorSpace;
+  std::optional<AVColorTransferCharacteristic> colorTransferCharacteristic;
+  std::optional<AVPixelFormat> pixelFormat;
 
   // Audio-only fields
   std::optional<int64_t> sampleRate;

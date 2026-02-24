@@ -166,6 +166,23 @@ void SingleStreamDecoder::initializeDecoder() {
 
       streamMetadata.sampleAspectRatio =
           avStream->codecpar->sample_aspect_ratio;
+
+      if (avStream->codecpar->color_primaries != AVCOL_PRI_UNSPECIFIED) {
+        streamMetadata.colorPrimaries = avStream->codecpar->color_primaries;
+      }
+      if (avStream->codecpar->color_space != AVCOL_SPC_UNSPECIFIED) {
+        streamMetadata.colorSpace = avStream->codecpar->color_space;
+      }
+      if (avStream->codecpar->color_trc != AVCOL_TRC_UNSPECIFIED) {
+        streamMetadata.colorTransferCharacteristic =
+            avStream->codecpar->color_trc;
+      }
+      AVPixelFormat pixFmt =
+          static_cast<AVPixelFormat>(avStream->codecpar->format);
+      if (pixFmt != AV_PIX_FMT_NONE) {
+        streamMetadata.pixelFormat = pixFmt;
+      }
+
       containerMetadata_.numVideoStreams++;
     } else if (avStream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
       AVSampleFormat format =

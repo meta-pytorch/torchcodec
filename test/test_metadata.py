@@ -20,7 +20,7 @@ from torchcodec._core import (
 )
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
-from .utils import NASA_AUDIO_MP3, NASA_VIDEO, NASA_VIDEO_ROTATED
+from .utils import BT709_FULL_RANGE, NASA_AUDIO_MP3, NASA_VIDEO, NASA_VIDEO_ROTATED
 
 
 # TODO: Expected values in these tests should be based on the assets's
@@ -168,6 +168,22 @@ def test_rotation_metadata():
     )
 
 
+def test_color_metadata():
+    # BT709_FULL_RANGE has explicit color properties set
+    decoder = VideoDecoder(BT709_FULL_RANGE.path)
+    assert decoder.metadata.color_primaries == "bt709"
+    assert decoder.metadata.color_space == "bt709"
+    assert decoder.metadata.color_transfer_characteristic == "bt709"
+    assert decoder.metadata.pixel_format == "yuvj420p"
+
+    # NASA_VIDEO also has BT.709 color metadata
+    decoder_nasa = VideoDecoder(NASA_VIDEO.path)
+    assert decoder_nasa.metadata.color_primaries == "bt709"
+    assert decoder_nasa.metadata.color_space == "bt709"
+    assert decoder_nasa.metadata.color_transfer_characteristic == "bt709"
+    assert decoder_nasa.metadata.pixel_format == "yuv420p"
+
+
 def test_repr():
     # Test for calls to print(), str(), etc. Useful to make sure we don't forget
     # to add additional @properties to __repr__
@@ -190,6 +206,10 @@ def test_repr():
   average_fps_from_header: 29.97002997002997
   pixel_aspect_ratio: 1
   rotation: None
+  color_primaries: bt709
+  color_space: bt709
+  color_transfer_characteristic: bt709
+  pixel_format: yuv420p
   end_stream_seconds: 13.013
   num_frames: 390
   average_fps: 29.97002997002997
