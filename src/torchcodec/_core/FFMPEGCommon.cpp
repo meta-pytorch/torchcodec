@@ -53,6 +53,14 @@ std::string getFFMPEGErrorStringFromErrorCode(int errorCode) {
   return std::string(errorBuffer);
 }
 
+int getStreamIndexEntryCount(const AVStream* stream) {
+#if LIBAVFORMAT_VERSION_MAJOR >= 59 // FFmpeg 5.0+
+  return avformat_index_get_entries_count(stream);
+#else // FFmpeg 4
+  return stream->nb_index_entries;
+#endif
+}
+
 int64_t getDuration(const UniqueAVFrame& avFrame) {
 #if LIBAVUTIL_VERSION_MAJOR < 58
   return avFrame->pkt_duration;

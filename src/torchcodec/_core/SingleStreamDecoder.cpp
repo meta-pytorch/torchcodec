@@ -1218,7 +1218,7 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
       strcmp(formatContext_->iformat->name, "matroska,webm") == 0) {
     // FFmpeg does not expose any flags to check if the index has been built.
     // As a heuristic, checking if there is only 1 index entry works.
-    if (streamInfo.stream->nb_index_entries <= 1) {
+    if (getStreamIndexEntryCount(streamInfo.stream) <= 1) {
       return false;
     }
   }
