@@ -171,9 +171,13 @@ void SingleStreamDecoder::initializeDecoder() {
       streamMetadata.sampleAspectRatio =
           avStream->codecpar->sample_aspect_ratio;
 
-      AVPixelFormat pixFmt =
+      AVPixelFormat pixelFormat =
           static_cast<AVPixelFormat>(avStream->codecpar->format);
-      const char* rawPixelFormat = av_get_pix_fmt_name(pixFmt);
+      // If the AVPixelFormat is not recognized, we get back nullptr. We have
+      // to make sure we don't initialize a std::string with nullptr. There's
+      // nothing to do on the else branch because we're already using an
+      // optional; it'll just remain empty.
+      const char* rawPixelFormat = av_get_pix_fmt_name(pixelFormat);
       if (rawPixelFormat != nullptr) {
         streamMetadata.pixelFormat = std::string(rawPixelFormat);
       }
