@@ -145,8 +145,12 @@ class CMakeBuild(build_ext):
                 cmake_args.append(f"-DCMAKE_HIP_COMPILER={rocm_clang}")
             cmake_args.append(f"-DCMAKE_PREFIX_PATH={rocm_path}")
 
-            # Resolve GPU architectures from env or PyTorch's build config.
+            # Resolve GPU architectures: HIP_ARCHITECTURES > PYTORCH_ROCM_ARCH > torch.cuda.get_arch_list()
             hip_archs = os.environ.get("HIP_ARCHITECTURES", "")
+            if not hip_archs:
+                pytorch_rocm_arch = os.environ.get("PYTORCH_ROCM_ARCH", "")
+                if pytorch_rocm_arch:
+                    hip_archs = pytorch_rocm_arch.replace(" ", ";")
             if not hip_archs:
                 try:
                     arch_list = torch.cuda.get_arch_list() if hasattr(torch.cuda, "get_arch_list") else []
@@ -155,10 +159,8 @@ class CMakeBuild(build_ext):
                     pass
             if hip_archs:
                 cmake_args.append(f"-DHIP_ARCHITECTURES={hip_archs}")
-
-            # PyTorch's LoadHIP.cmake requires PYTORCH_ROCM_ARCH to be set.
-            if not os.environ.get("PYTORCH_ROCM_ARCH") and hip_archs:
-                os.environ["PYTORCH_ROCM_ARCH"] = hip_archs.replace(";", " ")
+                if not os.environ.get("PYTORCH_ROCM_ARCH"):
+                    os.environ["PYTORCH_ROCM_ARCH"] = hip_archs.replace(";", " ")
 
         self.build_temp = os.getenv("TORCHCODEC_CMAKE_BUILD_DIR", self.build_temp)
         print(f"Using {self.build_temp = }", flush=True)
