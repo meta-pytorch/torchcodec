@@ -39,12 +39,10 @@ UniqueCUvideodecoder NVDECCache::getDecoder(CUVIDEOFORMAT* videoFormat) {
   return nullptr;
 }
 
-bool NVDECCache::returnDecoder(
+void NVDECCache::returnDecoder(
     CUVIDEOFORMAT* videoFormat,
     UniqueCUvideodecoder decoder) {
-  if (!decoder) {
-    return false;
-  }
+  STD_TORCH_CHECK(decoder != nullptr, "decoder must not be null");
 
   CacheKey key(videoFormat);
   std::lock_guard<std::mutex> lock(cacheLock_);
@@ -68,7 +66,6 @@ bool NVDECCache::returnDecoder(
   STD_TORCH_CHECK(
       cache_.size() <= MAX_CACHE_SIZE,
       "Cache size exceeded maximum limit, please report a bug");
-  return true;
 }
 
 } // namespace facebook::torchcodec
