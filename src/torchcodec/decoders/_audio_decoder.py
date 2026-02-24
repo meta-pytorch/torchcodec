@@ -10,6 +10,7 @@ from pathlib import Path
 
 import torch
 from torch import Tensor
+
 from torchcodec import _core as core, AudioSamples
 from torchcodec._core._decoder_utils import create_audio_decoder
 
