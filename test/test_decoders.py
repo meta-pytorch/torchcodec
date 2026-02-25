@@ -1463,10 +1463,15 @@ class TestVideoDecoder:
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
             if cuda_version_used_for_building_torch() >= (13, 0):
+                print("WE'RE IN CUDA 13")
                 torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
             elif cuda_version_used_for_building_torch() >= (12, 9):
                 torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=2)
             elif cuda_version_used_for_building_torch() == (12, 8):
+                print("WE'RE IN CUDA 12.8")
+                assert psnr(gpu_frame, cpu_frame) > 20
+            elif cuda_version_used_for_building_torch() == (12, 6):
+                print("WE'RE IN CUDA 12.6")
                 assert psnr(gpu_frame, cpu_frame) > 20
 
     @needs_cuda
