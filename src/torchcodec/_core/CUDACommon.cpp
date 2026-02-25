@@ -184,15 +184,22 @@ void initializeCudaContextWithPytorch(const StableDevice& device) {
 //         [ 1.0000e+00, -1.8732e-01, -4.6812e-01,     -128]
 //         [ 1.0000e+00,  1.8556e+00,  4.6231e-09 ,    -128]])
 //
-// And that's what we need to pass for BT701, full range.
+// And that's what we need to pass for BT709, full range.
 /* clang-format on */
 
 // BT.709 full range color conversion matrix for YUV to RGB conversion.
 // See Note [YUV -> RGB Color Conversion, color space and color range]
+#if CUDART_VERSION >= 13000
 const Npp32f bt709FullRangeColorTwist[3][4] = {
     {1.0f, 0.0f, 1.5748f, 0.0f},
     {1.0f, -0.187324273f, -0.468124273f, -128.0f},
     {1.0f, 1.8556f, 0.0f, -128.0f}};
+#else
+const Npp32f bt709FullRangeColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.5748f, -201.5744f},
+    {1.0f, -0.187324273f, -0.468124273f, 83.8974f},
+    {1.0f, 1.8556f, 0.0f, -237.5168f}};
+#endif
 
 torch::stable::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
