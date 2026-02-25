@@ -984,6 +984,9 @@ std::string get_stream_json_metadata(
   if (streamMetadata.rotation.has_value()) {
     map["rotation"] = std::to_string(*streamMetadata.rotation);
   }
+  if (streamMetadata.pixelFormat.has_value()) {
+    map["pixelFormat"] = quoteValue(streamMetadata.pixelFormat.value());
+  }
   if (streamMetadata.averageFpsFromHeader.has_value()) {
     map["averageFpsFromHeader"] =
         fmt::to_string(*streamMetadata.averageFpsFromHeader);
