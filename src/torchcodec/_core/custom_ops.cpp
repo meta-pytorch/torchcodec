@@ -4,8 +4,14 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+// fmt and pybind11 headers from torch error out if TORCH_TARGET_VERSION is
+// defined, so we temporarily undefine it.
+// See https://github.com/pytorch/pytorch/pull/174372 for context
+#pragma push_macro("TORCH_TARGET_VERSION")
+#undef TORCH_TARGET_VERSION
 #include <fmt/format.h>
 #include <pybind11/pybind11.h>
+#pragma pop_macro("TORCH_TARGET_VERSION")
 #include <cstdint>
 #include <sstream>
 #include <string>
