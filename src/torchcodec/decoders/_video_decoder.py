@@ -16,13 +16,8 @@ from typing import Literal
 import torch
 from torch import device as torch_device, nn, Tensor
 from torchcodec import _core as core, Frame, FrameBatch
-from torchcodec.decoders._decoder_utils import (
-    _get_cuda_backend,
-    create_decoder,
-    ERROR_REPORTING_INSTRUCTIONS,
-)
+from torchcodec._core._decoder_utils import create_video_decoder
 from torchcodec.transforms import DecoderTransform
-from torchcodec.transforms._decoder_transforms import _make_transform_specs
 
 
 @dataclass
@@ -197,18 +192,6 @@ class VideoDecoder:
                 custom_frame_mappings
             )
 
-        self._decoder = create_decoder(source=source, seek_mode=seek_mode)
-
-        (
-            self.metadata,
-            self.stream_index,
-            self._begin_stream_seconds,
-            self._end_stream_seconds,
-            self._num_frames,
-        ) = _get_and_validate_stream_metadata(
-            decoder=self._decoder, stream_index=stream_index
-        )
-
         allowed_dimension_orders = ("NCHW", "NHWC")
         if dimension_order not in allowed_dimension_orders:
             raise ValueError(
@@ -219,29 +202,30 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
-        if device is None:
-            device = str(torch.get_default_device())
-        elif isinstance(device, torch_device):
-            device = str(device)
-
-        device_variant = _get_cuda_backend()
-        transform_specs = _make_transform_specs(
-            transforms,
-            input_dims=(self.metadata.height, self.metadata.width),
-        )
-
-        core.add_video_stream(
+        (
             self._decoder,
-            stream_index=self.stream_index,
+            self.metadata,
+            self.stream_index,
+            self._begin_stream_seconds,
+            self._end_stream_seconds,
+            self._num_frames,
+            device_variant,
+        ) = create_video_decoder(
+            source=source,
+            seek_mode=seek_mode,
+            stream_index=stream_index,
             dimension_order=dimension_order,
-            num_threads=num_ffmpeg_threads,
+            num_ffmpeg_threads=num_ffmpeg_threads,
             device=device,
-            device_variant=device_variant,
-            transform_specs=transform_specs,
+            transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
         self._cpu_fallback = CpuFallbackStatus()
+        if device is None:
+            device = str(torch.get_default_device())
+        elif isinstance(device, torch_device):
+            device = str(device)
         if device.startswith("cuda"):
             if device_variant == "beta":
                 self._cpu_fallback._backend = "Beta CUDA"
@@ -511,57 +495,6 @@ class VideoDecoder:
             stop_seconds=self._end_stream_seconds,
             fps=fps,
         )
-
-
-def _get_and_validate_stream_metadata(
-    *,
-    decoder: Tensor,
-    stream_index: int | None = None,
-) -> tuple[core._metadata.VideoStreamMetadata, int, float, float, int]:
-
-    container_metadata = core.get_container_metadata(decoder)
-
-    if stream_index is None:
-        if (stream_index := container_metadata.best_video_stream_index) is None:
-            raise ValueError(
-                "The best video stream is unknown and there is no specified stream. "
-                + ERROR_REPORTING_INSTRUCTIONS
-            )
-
-    if stream_index >= len(container_metadata.streams):
-        raise ValueError(f"The stream index {stream_index} is not a valid stream.")
-
-    metadata = container_metadata.streams[stream_index]
-    if not isinstance(metadata, core._metadata.VideoStreamMetadata):
-        raise ValueError(f"The stream at index {stream_index} is not a video stream. ")
-
-    if metadata.begin_stream_seconds is None:
-        raise ValueError(
-            "The minimum pts value in seconds is unknown. "
-            + ERROR_REPORTING_INSTRUCTIONS
-        )
-    begin_stream_seconds = metadata.begin_stream_seconds
-
-    if metadata.end_stream_seconds is None:
-        raise ValueError(
-            "The maximum pts value in seconds is unknown. "
-            + ERROR_REPORTING_INSTRUCTIONS
-        )
-    end_stream_seconds = metadata.end_stream_seconds
-
-    if metadata.num_frames is None:
-        raise ValueError(
-            "The number of frames is unknown. " + ERROR_REPORTING_INSTRUCTIONS
-        )
-    num_frames = metadata.num_frames
-
-    return (
-        metadata,
-        stream_index,
-        begin_stream_seconds,
-        end_stream_seconds,
-        num_frames,
-    )
 
 
 def _read_custom_frame_mappings(
