@@ -195,9 +195,9 @@ const Npp32f bt709FullRangeColorTwist[3][4] = {
     {1.0f, -0.187324273f, -0.468124273f, -128.0f},
     {1.0f, 1.8556f, 0.0f, -128.0f}};
 #else
-// Just kidding! The note above about nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx
+// The note above about nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx
 // offsets is actually only true for CUDA 13+. For CUDA 12, the behavior is
-// different - and, of course, still undocumented.
+// different and still undocumented.
 // See https://github.com/meta-pytorch/torchcodec/issues/1262#issue-3989049538
 // for how these offsets need to be derived.
 const Npp32f bt709FullRangeColorTwist[3][4] = {
