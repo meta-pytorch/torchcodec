@@ -612,7 +612,11 @@ void SingleStreamDecoder::addAudioStream(
         *audioStreamOptions.numChannels);
   }
 
-  addStream(streamIndex, AVMEDIA_TYPE_AUDIO);
+  // We hardcode ffmpegThreadCount=1 for audio, see
+  // https://github.com/pytorch/torchcodec/issues/1253 and
+  // https://github.com/pytorch/torchcodec/pull/1254
+  addStream(
+      streamIndex, AVMEDIA_TYPE_AUDIO, StableDevice(kStableCPU), "ffmpeg", 1);
 
   auto& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.audioStreamOptions = audioStreamOptions;
