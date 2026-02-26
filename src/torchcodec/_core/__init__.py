@@ -5,12 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from ._decoder_utils import (
-    _get_cuda_backend,
-    create_audio_decoder,
-    create_video_decoder,
-    set_cuda_backend,
-)
+from ._decoder_utils import create_audio_decoder, create_video_decoder
 from ._metadata import (
     AudioStreamMetadata,
     ContainerMetadata,

@@ -17,6 +17,7 @@ import torch
 from torch import device as torch_device, nn, Tensor
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec._core._decoder_utils import create_video_decoder
+from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.transforms import DecoderTransform
 
 
@@ -217,6 +218,7 @@ class VideoDecoder:
             dimension_order=dimension_order,
             num_ffmpeg_threads=num_ffmpeg_threads,
             device=device,
+            device_variant=_get_cuda_backend(),
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
         )

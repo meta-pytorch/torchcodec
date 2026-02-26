@@ -5,15 +5,12 @@
 # LICENSE file in the root directory of this source tree.
 
 
-import contextvars
 import io
-from collections.abc import Generator, Sequence
-from contextlib import contextmanager
+from collections.abc import Sequence
 from pathlib import Path
 
 import torch
 from torch import device as torch_device, nn, Tensor
-
 from torchcodec._core._metadata import (
     AudioStreamMetadata,
     get_container_metadata,
@@ -35,64 +32,6 @@ _ERROR_REPORTING_INSTRUCTIONS = """
 This should never happen. Please report an issue following the steps in
 https://github.com/pytorch/torchcodec/issues/new?assignees=&labels=&projects=&template=bug-report.yml.
 """
-
-
-# Thread-local and async-safe storage for the current CUDA backend
-_CUDA_BACKEND: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "_CUDA_BACKEND", default="ffmpeg"
-)
-
-
-@contextmanager
-def set_cuda_backend(backend: str) -> Generator[None, None, None]:
-    """Context Manager to set the CUDA backend for :class:`~torchcodec.decoders.VideoDecoder`.
-
-    This context manager allows you to specify which CUDA backend implementation
-    to use when creating :class:`~torchcodec.decoders.VideoDecoder` instances
-    with CUDA devices.
-
-    .. note::
-        **We recommend trying the "beta" backend instead of the default "ffmpeg"
-        backend!** The beta backend is faster, and will eventually become the
-        default in future versions. It may have rough edges that we'll polish
-        over time, but it's already quite stable and ready for adoption. Let us
-        know what you think!
-
-    Only the creation of the decoder needs to be inside the context manager, the
-    decoding methods can be called outside of it. You still need to pass
-    ``device="cuda"`` when creating the
-    :class:`~torchcodec.decoders.VideoDecoder` instance. If a CUDA device isn't
-    specified, this context manager will have no effect. See example below.
-
-    This is thread-safe and async-safe.
-
-    Args:
-        backend (str): The CUDA backend to use. Can be "ffmpeg" (default) or
-            "beta". We recommend trying "beta" as it's faster!
-
-    Example:
-        >>> with set_cuda_backend("beta"):
-        ...     decoder = VideoDecoder("video.mp4", device="cuda")
-        ...
-        ... # Only the decoder creation needs to be part of the context manager.
-        ... # Decoder will now the beta CUDA implementation:
-        ... decoder.get_frame_at(0)
-    """
-    backend = backend.lower()
-    if backend not in ("ffmpeg", "beta"):
-        raise ValueError(
-            f"Invalid CUDA backend ({backend}). Supported values are 'ffmpeg' and 'beta'."
-        )
-
-    previous_state = _CUDA_BACKEND.set(backend)
-    try:
-        yield
-    finally:
-        _CUDA_BACKEND.reset(previous_state)
-
-
-def _get_cuda_backend() -> str:
-    return _CUDA_BACKEND.get()
 
 
 def create_decoder(
@@ -231,6 +170,7 @@ def create_video_decoder(
     dimension_order: str = "NCHW",
     num_ffmpeg_threads: int = 1,
     device: str | torch_device | None = None,
+    device_variant: str = "ffmpeg",
     transforms: Sequence[DecoderTransform | nn.Module] | None = None,
     custom_frame_mappings: tuple[Tensor, Tensor, Tensor] | None = None,
 ) -> tuple[Tensor, VideoStreamMetadata, int, float, float, int, str]:
@@ -246,6 +186,7 @@ def create_video_decoder(
         dimension_order: The dimension order for decoded frames.
         num_ffmpeg_threads: Number of FFmpeg threads for CPU decoding.
         device: The device for decoding.
+        device_variant: The CUDA backend variant to use ("ffmpeg" or "beta").
         transforms: Optional sequence of transforms to apply.
         custom_frame_mappings: Optional pre-processed frame mappings data.
 
@@ -268,7 +209,6 @@ def create_video_decoder(
     elif isinstance(device, torch_device):
         device = str(device)
 
-    device_variant = _get_cuda_backend()
     transform_specs = _make_transform_specs(
         transforms,
         input_dims=(metadata.height, metadata.width),

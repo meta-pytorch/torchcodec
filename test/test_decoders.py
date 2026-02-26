@@ -12,7 +12,6 @@ import numpy
 import pytest
 import torch
 from torchcodec import _core, ffmpeg_major_version, FrameBatch
-from torchcodec._core._decoder_utils import _get_cuda_backend
 from torchcodec.decoders import (
     AudioDecoder,
     AudioStreamMetadata,
@@ -20,6 +19,7 @@ from torchcodec.decoders import (
     VideoDecoder,
     VideoStreamMetadata,
 )
+from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
 from .utils import (
