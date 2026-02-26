@@ -28,7 +28,6 @@ from .utils import (
     AV1_VIDEO,
     BT709_FULL_RANGE,
     cuda_devices,
-    cuda_version_used_for_building_torch,
     get_ffmpeg_minor_version,
     get_python_version,
     H264_10BITS,
@@ -1462,12 +1461,7 @@ class TestVideoDecoder:
             gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
-            if cuda_version_used_for_building_torch() >= (13, 0):
-                torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
-            elif cuda_version_used_for_building_torch() >= (12, 9):
-                torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=2)
-            elif cuda_version_used_for_building_torch() == (12, 8):
-                assert psnr(gpu_frame, cpu_frame) > 20
+            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
 
     @needs_cuda
     def test_10bit_gpu_fallsback_to_cpu(self):
@@ -1646,7 +1640,7 @@ class TestVideoDecoder:
     #   assert_tensor_close_on_at_least or something like that.
     # - unskip equality assertion checks for MPEG4 asset. The frames are decoded
     #   fine, it's the color conversion that's different. The frame from the
-    #   BETA interface is assumed to be 701 while the one from the default
+    #   BETA interface is assumed to be 709 while the one from the default
     #   interface is 601.
 
     @needs_cuda
