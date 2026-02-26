@@ -203,6 +203,7 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
+        device_variant = _get_cuda_backend()
         (
             self._decoder,
             self.metadata,
@@ -210,7 +211,6 @@ class VideoDecoder:
             self._begin_stream_seconds,
             self._end_stream_seconds,
             self._num_frames,
-            device_variant,
         ) = create_video_decoder(
             source=source,
             seek_mode=seek_mode,
@@ -218,7 +218,7 @@ class VideoDecoder:
             dimension_order=dimension_order,
             num_ffmpeg_threads=num_ffmpeg_threads,
             device=device,
-            device_variant=_get_cuda_backend(),
+            device_variant=device_variant,
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
         )

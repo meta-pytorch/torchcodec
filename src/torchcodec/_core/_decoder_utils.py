@@ -173,7 +173,7 @@ def create_video_decoder(
     device_variant: str = "ffmpeg",
     transforms: Sequence[DecoderTransform | nn.Module] | None = None,
     custom_frame_mappings: tuple[Tensor, Tensor, Tensor] | None = None,
-) -> tuple[Tensor, VideoStreamMetadata, int, float, float, int, str]:
+) -> tuple[Tensor, VideoStreamMetadata, int, float, float, int]:
     """Create a video decoder and add a video stream.
 
     This function consolidates the creation of a decoder and adding a video stream
@@ -192,7 +192,7 @@ def create_video_decoder(
 
     Returns:
         A tuple of (decoder, metadata, stream_index, begin_stream_seconds,
-        end_stream_seconds, num_frames, device_variant).
+        end_stream_seconds, num_frames).
     """
     decoder = create_decoder(source=source, seek_mode=seek_mode)
 
@@ -232,5 +232,4 @@ def create_video_decoder(
         begin_stream_seconds,
         end_stream_seconds,
         num_frames,
-        device_variant,
     )
