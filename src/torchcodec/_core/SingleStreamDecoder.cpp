@@ -12,6 +12,10 @@
 #include "Metadata.h"
 #include "StableABICompat.h"
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 namespace facebook::torchcodec {
 namespace {
 
@@ -166,6 +170,18 @@ void SingleStreamDecoder::initializeDecoder() {
 
       streamMetadata.sampleAspectRatio =
           avStream->codecpar->sample_aspect_ratio;
+
+      AVPixelFormat pixelFormat =
+          static_cast<AVPixelFormat>(avStream->codecpar->format);
+      // If the AVPixelFormat is not recognized, we get back nullptr. We have
+      // to make sure we don't initialize a std::string with nullptr. There's
+      // nothing to do on the else branch because we're already using an
+      // optional; it'll just remain empty.
+      const char* rawPixelFormat = av_get_pix_fmt_name(pixelFormat);
+      if (rawPixelFormat != nullptr) {
+        streamMetadata.pixelFormat = std::string(rawPixelFormat);
+      }
+
       containerMetadata_.numVideoStreams++;
     } else if (avStream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
       AVSampleFormat format =
