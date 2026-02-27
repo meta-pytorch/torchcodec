@@ -1205,23 +1205,6 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
     // implement caching.
     return false;
   }
-  // Some mkv / webm files lazily create "cues" or index entries.
-  //   https://github.com/FFmpeg/FFmpeg/blob/release/8.0/libavformat/matroskadec.c#L425-L426
-  // As a result, getKeyFrameIdentifier which relies on
-  // av_index_search_timestamp can return the same keyframe for any two
-  // timestamps, even one very far from the target timestamp. In that case, we
-  // sequentially decode to the target timestamp when we should seek instead.
-  // For example, see: https://github.com/meta-pytorch/torchcodec/issues/1223
-  // After decoding a frame, the index will be built, so this condition will
-  // only be hit once and only applies to approximate seek_mode.
-  if (formatContext_->iformat && formatContext_->iformat->name &&
-      strcmp(formatContext_->iformat->name, "matroska,webm") == 0) {
-    // FFmpeg does not expose any flags to check if the index has been built.
-    // As a heuristic, checking if there is only 1 index entry works.
-    if (getStreamIndexEntryCount(streamInfo.stream) <= 1) {
-      return false;
-    }
-  }
   // We are seeking forwards. We can skip a seek if both the last decoded frame
   // and cursor_ share the same keyframe:
   // Videos have I frames and non-I frames (P and B frames). Non-I frames need

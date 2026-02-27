@@ -202,9 +202,6 @@ const int AVSUCCESS = 0;
 // Returns the FFMPEG error as a string using the provided `errorCode`.
 std::string getFFMPEGErrorStringFromErrorCode(int errorCode);
 
-// Returns the number of index entries for the given stream.
-int getStreamIndexEntryCount(const AVStream* stream);
-
 // Returns duration from the frame. Abstracted into a function because the
 // struct member representing duration has changed across the versions we
 // support.

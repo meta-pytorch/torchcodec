@@ -357,7 +357,12 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   // pts to the user when they request a frame.
   int64_t cursor_ = INT64_MIN;
   bool cursorWasJustSet_ = false;
-  int64_t lastDecodedAvFramePts_ = 0;
+  // INT64_MIN is used instead of 0 so that when calling canWeAvoidSeeking(),
+  // getKeyFrameIdentifier() will return -1 before the first decode, forcing a
+  // seek. This way, formats that do not build an index before the first seek
+  // will have their index and our logic in canWeAvoidSeeking() will work
+  // properly. See: https://github.com/meta-pytorch/torchcodec/issues/1223
+  int64_t lastDecodedAvFramePts_ = INT64_MIN;
   int64_t lastDecodedAvFrameDuration_ = 0;
   int64_t lastDecodedFrameIndex_ = INT64_MIN;
 
