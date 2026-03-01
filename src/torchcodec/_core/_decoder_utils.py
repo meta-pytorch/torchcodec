@@ -9,8 +9,7 @@ import io
 from collections.abc import Sequence
 from pathlib import Path
 
-import torch
-from torch import device as torch_device, nn, Tensor
+from torch import nn, Tensor
 from torchcodec._core._metadata import (
     AudioStreamMetadata,
     get_container_metadata,
@@ -106,17 +105,7 @@ def _get_and_validate_stream_metadata(
     *,
     decoder: Tensor,
     stream_index: int | None = None,
-) -> tuple[VideoStreamMetadata, int, float, float, int]:
-    """Get and validate video stream metadata from a decoder.
-
-    Args:
-        decoder: The decoder tensor.
-        stream_index: The stream index to use, or None to use the best stream.
-
-    Returns:
-        A tuple of (metadata, stream_index, begin_stream_seconds,
-        end_stream_seconds, num_frames).
-    """
+) -> tuple[VideoStreamMetadata, int]:
     container_metadata = get_container_metadata(decoder)
 
     if stream_index is None:
@@ -138,27 +127,21 @@ def _get_and_validate_stream_metadata(
             "The minimum pts value in seconds is unknown. "
             + _ERROR_REPORTING_INSTRUCTIONS
         )
-    begin_stream_seconds = metadata.begin_stream_seconds
 
     if metadata.end_stream_seconds is None:
         raise ValueError(
             "The maximum pts value in seconds is unknown. "
             + _ERROR_REPORTING_INSTRUCTIONS
         )
-    end_stream_seconds = metadata.end_stream_seconds
 
     if metadata.num_frames is None:
         raise ValueError(
             "The number of frames is unknown. " + _ERROR_REPORTING_INSTRUCTIONS
         )
-    num_frames = metadata.num_frames
 
     return (
         metadata,
         stream_index,
-        begin_stream_seconds,
-        end_stream_seconds,
-        num_frames,
     )
 
 
@@ -169,11 +152,11 @@ def create_video_decoder(
     stream_index: int | None = None,
     dimension_order: str = "NCHW",
     num_ffmpeg_threads: int = 1,
-    device: str | torch_device | None = None,
+    device: str,
     device_variant: str = "ffmpeg",
     transforms: Sequence[DecoderTransform | nn.Module] | None = None,
     custom_frame_mappings: tuple[Tensor, Tensor, Tensor] | None = None,
-) -> tuple[Tensor, VideoStreamMetadata, int, float, float, int]:
+) -> tuple[Tensor, VideoStreamMetadata, int]:
     """Create a video decoder and add a video stream.
 
     This function consolidates the creation of a decoder and adding a video stream
@@ -185,29 +168,20 @@ def create_video_decoder(
         stream_index: The stream index to decode, or None to use the best stream.
         dimension_order: The dimension order for decoded frames.
         num_ffmpeg_threads: Number of FFmpeg threads for CPU decoding.
-        device: The device for decoding.
+        device: The device for decoding (as a string).
         device_variant: The CUDA backend variant to use ("ffmpeg" or "beta").
         transforms: Optional sequence of transforms to apply.
         custom_frame_mappings: Optional pre-processed frame mappings data.
 
     Returns:
-        A tuple of (decoder, metadata, stream_index, begin_stream_seconds,
-        end_stream_seconds, num_frames).
+        A tuple of (decoder, metadata, stream_index).
     """
     decoder = create_decoder(source=source, seek_mode=seek_mode)
 
     (
         metadata,
         stream_index,
-        begin_stream_seconds,
-        end_stream_seconds,
-        num_frames,
     ) = _get_and_validate_stream_metadata(decoder=decoder, stream_index=stream_index)
-
-    if device is None:
-        device = str(torch.get_default_device())
-    elif isinstance(device, torch_device):
-        device = str(device)
 
     transform_specs = _make_transform_specs(
         transforms,
@@ -229,7 +203,4 @@ def create_video_decoder(
         decoder,
         metadata,
         stream_index,
-        begin_stream_seconds,
-        end_stream_seconds,
-        num_frames,
     )

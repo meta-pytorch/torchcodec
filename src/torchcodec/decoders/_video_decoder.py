@@ -204,13 +204,14 @@ class VideoDecoder:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
         device_variant = _get_cuda_backend()
+        if device is None:
+            device = str(torch.get_default_device())
+        elif isinstance(device, torch_device):
+            device = str(device)
         (
             self._decoder,
             self.metadata,
             self.stream_index,
-            self._begin_stream_seconds,
-            self._end_stream_seconds,
-            self._num_frames,
         ) = create_video_decoder(
             source=source,
             seek_mode=seek_mode,
@@ -223,11 +224,11 @@ class VideoDecoder:
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
+        self._begin_stream_seconds = self.metadata.begin_stream_seconds
+        self._end_stream_seconds = self.metadata.end_stream_seconds
+        self._num_frames = self.metadata.num_frames
+
         self._cpu_fallback = CpuFallbackStatus()
-        if device is None:
-            device = str(torch.get_default_device())
-        elif isinstance(device, torch_device):
-            device = str(device)
         if device.startswith("cuda"):
             if device_variant == "beta":
                 self._cpu_fallback._backend = "Beta CUDA"
