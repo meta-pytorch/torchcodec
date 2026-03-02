@@ -564,6 +564,26 @@ BT709_FULL_RANGE = TestVideo(
     frames={0: {}},  # Not needed for now
 )
 
+# BT.2020 10-bit video with limited range (tv), generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x240:rate=30 -c:v libx265 \
+# -pix_fmt yuv420p10le -color_primaries bt2020 -color_trc smpte2084 \
+# -colorspace bt2020nc -color_range tv bt2020_10bit.mp4
+#
+# Confirm color space with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/bt2020_10bit.mp4
+# color_range=tv
+# color_space=bt2020nc
+# color_transfer=smpte2084
+# color_primaries=bt2020
+BT2020_10BIT = TestVideo(
+    filename="bt2020_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
 # ffmpeg -f lavfi -i testsrc2=duration=2:size=1280x720:rate=30 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -b:v 2500k -r 30 -movflags +faststart output_720p_2s.mp4
 TEST_SRC_2_720P = TestVideo(
     filename="testsrc2.mp4",

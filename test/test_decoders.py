@@ -26,6 +26,7 @@ from .utils import (
     all_supported_devices,
     assert_frames_equal,
     AV1_VIDEO,
+    BT2020_10BIT,
     BT709_FULL_RANGE,
     cuda_devices,
     get_ffmpeg_minor_version,
@@ -1455,6 +1456,32 @@ class TestVideoDecoder:
         # stream=color_space,color_transfer,color_primaries,color_range -of
         # default=noprint_wrappers=1 test/resources/nasa_13013.mp4
         decoder_gpu = VideoDecoder(asset.path, device="cuda")
+        decoder_cpu = VideoDecoder(asset.path, device="cpu")
+
+        for frame_index in (0, 10, 20, 5):
+            gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
+            cpu_frame = decoder_cpu.get_frame_at(frame_index).data
+
+            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
+
+    @needs_cuda
+    @pytest.mark.skip(
+        reason="BT.2020 CUDA color conversion doesn't yet match CPU. See PR #1267."
+    )
+    def test_bt2020_10bit_video(self):
+        # Test ensuring result consistency between CPU and beta CUDA (NVDEC)
+        # decoder on a BT.2020 10-bit video (limited range). This is a
+        # non-regression test for BT.2020 color conversion support.
+        #
+        # bt2020_10bit.mp4 is a BT.2020 limited range 10-bit HEVC video:
+        # color_space=bt2020nc, color_range=tv, pix_fmt=yuv420p10le
+        #
+        # NVDEC decodes 10-bit natively (converting to 8-bit NV12), then our
+        # BT.2020 color twist matrix handles the YUV->RGB conversion.
+        asset = BT2020_10BIT
+
+        with set_cuda_backend("beta"):
+            decoder_gpu = VideoDecoder(asset.path, device="cuda")
         decoder_cpu = VideoDecoder(asset.path, device="cpu")
 
         for frame_index in (0, 10, 20, 5):
