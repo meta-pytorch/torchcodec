@@ -768,7 +768,6 @@ void VideoEncoder::initializeEncoder(
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
-  // Otherwise, use the default video codec for the format.
   if (videoStreamOptions.codec.has_value()) {
     const std::string& codec = videoStreamOptions.codec.value();
     // Try to find codec by name ("libx264", "libsvtav1")

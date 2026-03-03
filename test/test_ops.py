@@ -1149,8 +1149,8 @@ class TestStreamingEncoderOps:
         if output == "file":
             handle = create_streaming_encoder(str(tmp_path / "test.mp4"))
         else:
-            f = open(tmp_path / "test.mp4", "wb")
-            handle = create_streaming_encoder_to_file_like("mp4", file_like=f)
+            with open(tmp_path / "test.mp4", "wb") as f:
+                handle = create_streaming_encoder_to_file_like("mp4", file_like=f)
         streaming_encoder_close(handle)
         streaming_encoder_close(handle)  # double close is a no-op
 
