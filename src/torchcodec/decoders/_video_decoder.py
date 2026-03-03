@@ -224,6 +224,10 @@ class VideoDecoder:
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
+        assert self.metadata.begin_stream_seconds is not None  # mypy.
+        assert self.metadata.end_stream_seconds is not None  # mypy.
+        assert self.metadata.num_frames is not None  # mypy.
+
         self._begin_stream_seconds = self.metadata.begin_stream_seconds
         self._end_stream_seconds = self.metadata.end_stream_seconds
         self._num_frames = self.metadata.num_frames
