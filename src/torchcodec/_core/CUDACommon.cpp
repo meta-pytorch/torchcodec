@@ -206,6 +206,39 @@ const Npp32f bt709FullRangeColorTwist[3][4] = {
     {1.0f, 1.8556f, 0.0f, -237.5168f}};
 #endif
 
+// BT.601 full range color conversion matrix for YUV to RGB conversion.
+// Luma coefficients for BT.601: kr=0.299, kg=0.587, kb=0.114
+// See Note [YUV -> RGB Color Conversion, color space and color range]
+#if CUDART_VERSION >= 13000
+const Npp32f bt601FullRangeColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.402f, 0.0f},
+    {1.0f, -0.344136286f, -0.714136286f, -128.0f},
+    {1.0f, 1.772f, 0.0f, -128.0f}};
+#else
+const Npp32f bt601FullRangeColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.402f, -179.456f},
+    {1.0f, -0.344136286f, -0.714136286f, 135.4589f},
+    {1.0f, 1.772f, 0.0f, -226.816f}};
+#endif
+
+// BT.601 limited range color conversion matrix for YUV to RGB conversion.
+// Same luma coefficients as above, but Y is scaled from [16, 235] to [0, 255]
+// (factor 255/219 = 1.16438356) and UV from [16, 240] (factor 255/224).
+// nppiNV12ToRGB_8u_P2C3R_Ctx is documented as BT.601 but actually performs
+// full range conversion, so we use a custom color twist for limited range.
+// See Note [YUV -> RGB Color Conversion, color space and color range]
+#if CUDART_VERSION >= 13000
+const Npp32f bt601LimitedRangeColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.59602679f, -16.0f},
+    {1.16438356f, -0.39176229f, -0.81296765f, -128.0f},
+    {1.16438356f, 2.01723214f, 0.0f, -128.0f}};
+#else
+const Npp32f bt601LimitedRangeColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.59602679f, -222.9216f},
+    {1.16438356f, -0.39176229f, -0.81296765f, 135.5753f},
+    {1.16438356f, 2.01723214f, 0.0f, -276.8358f}};
+#endif
+
 torch::stable::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
     const StableDevice& device,
@@ -240,7 +273,12 @@ torch::stable::Tensor convertNV12FrameToRGB(
 
   // For background, see
   // Note [YUV -> RGB Color Conversion, color space and color range]
-  if (avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT709) {
+  //
+  // When the colorspace is unspecified, we default to BT.601. This matches
+  // FFmpeg's swscale behavior: sws_getCoefficients(SWS_CS_DEFAULT) returns
+  // BT.601 coefficients regardless of resolution.
+  bool isBT709 = avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT709;
+  if (isBT709) {
     if (avFrame->color_range == AVColorRange::AVCOL_RANGE_JPEG) {
       // NPP provides a pre-defined color conversion function for BT.709 full
       // range: nppiNV12ToRGB_709HDTV_8u_P2C3R_Ctx. But it's not closely
@@ -277,16 +315,32 @@ torch::stable::Tensor convertNV12FrameToRGB(
           *nppCtx);
     }
   } else {
-    // TODO we're assuming BT.601 color space (and probably limited range) by
-    // calling nppiNV12ToRGB_8u_P2C3R_Ctx. We should handle BT.601 full range,
-    // and other color-spaces like 2020.
-    status = nppiNV12ToRGB_8u_P2C3R_Ctx(
-        yuvData,
-        avFrame->linesize[0],
-        dst.mutable_data_ptr<Npp8u>(),
-        dst.stride(0),
-        oSizeROI,
-        *nppCtx);
+    if (avFrame->color_range == AVColorRange::AVCOL_RANGE_JPEG) {
+      // BT.601 full range via custom color twist
+      int srcStep[2] = {avFrame->linesize[0], avFrame->linesize[1]};
+      status = nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
+          yuvData,
+          srcStep,
+          dst.mutable_data_ptr<Npp8u>(),
+          dst.stride(0),
+          oSizeROI,
+          bt601FullRangeColorTwist,
+          *nppCtx);
+    } else {
+      // BT.601 limited range via custom color twist.
+      // nppiNV12ToRGB_8u_P2C3R_Ctx is documented as BT.601 but actually
+      // performs full range conversion (no Y offset/scale), so we use a
+      // custom matrix instead.
+      int srcStep[2] = {avFrame->linesize[0], avFrame->linesize[1]};
+      status = nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
+          yuvData,
+          srcStep,
+          dst.mutable_data_ptr<Npp8u>(),
+          dst.stride(0),
+          oSizeROI,
+          bt601LimitedRangeColorTwist,
+          *nppCtx);
+    }
   }
   STD_TORCH_CHECK(status == NPP_SUCCESS, "Failed to convert NV12 frame.");
 
