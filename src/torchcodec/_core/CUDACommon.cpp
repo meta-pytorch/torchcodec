@@ -227,7 +227,7 @@ const Npp32f bt2020FullRangeColorTwist[3][4] = {
 
 const Npp32f bt2020LimitedRangeColorTwist[3][4] = {
     {1.16438356f, 0.0f, 1.67867411f, -16.0f},
-    {1.16438356f, -0.187326105f, -0.65042127f, -128.0f},
+    {1.16438356f, -0.187326105f, -0.650424319f, -128.0f},
     {1.16438356f, 2.14177232f, 0.0f, -128.0f}};
 #else
 // CUDA < 13: expand Cb/Cr centering into the offset column.
@@ -241,8 +241,8 @@ const Npp32f bt2020FullRangeColorTwist[3][4] = {
 
 // Limited range: Y offset = -(1.16438356*16), plus Cb/Cr centering.
 const Npp32f bt2020LimitedRangeColorTwist[3][4] = {
-    {1.16438356f, 0.0f, 1.67867411f, -233.5006f},
-    {1.16438356f, -0.187326105f, -0.65042127f, 88.6015f},
+    {1.16438356f, 0.0f, 1.67867411f, -233.5004f},
+    {1.16438356f, -0.187326105f, -0.650424319f, 88.6019f},
     {1.16438356f, 2.14177232f, 0.0f, -292.7770f}};
 #endif
 
