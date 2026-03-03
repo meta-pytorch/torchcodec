@@ -25,6 +25,8 @@ from torchcodec._core import (
     create_from_file,
     create_from_file_like,
     create_from_tensor,
+    create_streaming_encoder,
+    create_streaming_encoder_to_file_like,
     encode_audio_to_file,
     get_ffmpeg_library_versions,
     get_frame_at_index,
@@ -37,6 +39,7 @@ from torchcodec._core import (
     get_json_metadata,
     get_next_frame,
     seek_to_pts,
+    streaming_encoder_close,
 )
 
 from .utils import (
@@ -1138,6 +1141,29 @@ class TestAudioEncoderOps:
                 sample_rate=10,
                 filename="./file.bad_extension",
             )
+
+
+class TestStreamingEncoderOps:
+    @pytest.mark.parametrize("output", ("file", "file_like"))
+    def test_create_and_close(self, tmp_path, output):
+        if output == "file":
+            handle = create_streaming_encoder(str(tmp_path / "test.mp4"))
+        else:
+            f = open(tmp_path / "test.mp4", "wb")
+            handle = create_streaming_encoder_to_file_like("mp4", file_like=f)
+        streaming_encoder_close(handle)
+        streaming_encoder_close(handle)  # double close is a no-op
+
+    def test_create_invalid_path(self):
+        with pytest.raises(RuntimeError):
+            create_streaming_encoder("/nonexistent/dir/test.mp4")
+
+    def test_create_invalid_format(self, tmp_path):
+        with pytest.raises(RuntimeError, match="check the desired extension"):
+            create_streaming_encoder(str(tmp_path / "test.bad_extension"))
+        with open(tmp_path / "test.mp4", "wb") as f:
+            with pytest.raises(RuntimeError, match="Check the desired format"):
+                create_streaming_encoder_to_file_like("not_a_format", file_like=f)
 
 
 if __name__ == "__main__":

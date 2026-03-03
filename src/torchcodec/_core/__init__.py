@@ -25,6 +25,8 @@ from .ops import (
     create_from_file,
     create_from_file_like,
     create_from_tensor,
+    create_streaming_encoder,
+    create_streaming_encoder_to_file_like,
     encode_audio_to_file,
     encode_audio_to_file_like,
     encode_audio_to_tensor,
@@ -44,4 +46,5 @@ from .ops import (
     get_next_frame,
     scan_all_streams_to_update_metadata,
     seek_to_pts,
+    streaming_encoder_close,
 )

@@ -177,4 +177,27 @@ class FORCE_PUBLIC_VISIBILITY VideoEncoder {
   UniqueAVDictionary avFormatOptions_;
 };
 
+class StreamingEncoder {
+ public:
+  ~StreamingEncoder();
+
+  StreamingEncoder(const StreamingEncoder&) = delete;
+  StreamingEncoder& operator=(const StreamingEncoder&) = delete;
+  StreamingEncoder(StreamingEncoder&&) = delete;
+  StreamingEncoder& operator=(StreamingEncoder&&) = delete;
+
+  StreamingEncoder(std::string_view fileName);
+
+  StreamingEncoder(
+      std::string_view formatName,
+      std::unique_ptr<AVIOContextHolder> avioContextHolder);
+
+  void close();
+
+ private:
+  UniqueEncodingAVFormatContext avFormatContext_;
+  std::unique_ptr<AVIOContextHolder> avioContextHolder_;
+  bool closed_ = false;
+};
+
 } // namespace facebook::torchcodec
