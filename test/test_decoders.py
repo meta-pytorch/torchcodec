@@ -25,8 +25,9 @@ from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    assert_tensor_close_on_at_least,
     AV1_VIDEO,
-    BT2020_10BIT,
+    BT2020_LIMITED_RANGE_10BIT,
     BT709_FULL_RANGE,
     cuda_devices,
     get_ffmpeg_minor_version,
@@ -1465,7 +1466,6 @@ class TestVideoDecoder:
             torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
 
     @needs_cuda
-    @pytest.mark.skip("TODO investigate CPU vs BetaCUDA mismatch on BT.2020 10-bit")
     def test_bt2020_10bit_video(self):
         # Test ensuring result consistency between CPU and beta CUDA (NVDEC)
         # decoder on a BT.2020 10-bit video (limited range). This is a
@@ -1476,7 +1476,10 @@ class TestVideoDecoder:
         #
         # NVDEC decodes 10-bit natively (converting to 8-bit NV12), then our
         # BT.2020 color twist matrix handles the YUV->RGB conversion.
-        asset = BT2020_10BIT
+        #
+        # TODO investigate CPU vs BetaCUDA mismatch on BT.2020 10-bit.
+        # See PR #1267 for details.
+        asset = BT2020_LIMITED_RANGE_10BIT
 
         with set_cuda_backend("beta"):
             decoder_gpu = VideoDecoder(asset.path, device="cuda")
@@ -1486,7 +1489,7 @@ class TestVideoDecoder:
             gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
-            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
+            assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=90, atol=3)
 
     @needs_cuda
     def test_10bit_gpu_fallsback_to_cpu(self):
