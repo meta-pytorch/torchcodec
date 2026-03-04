@@ -252,15 +252,12 @@ def create_streaming_encoder(
         return _create_streaming_encoder(dest)
     else:
         assert _pybind_ops is not None
-        if format is None:
-            name = getattr(dest, "name", None)
-            if name is not None:
-                format = Path(name).suffix.lstrip(".")
-            if not format:
-                raise ValueError(
-                    "format must be specified when dest is a file-like object "
-                    "without a name attribute (e.g. format='mp4')"
-                )
+        format = format or Path(getattr(dest, "name", "")).suffix.lstrip(".")
+        if not format:
+            raise ValueError(
+                "format must be specified when dest is a file-like object "
+                "without a name attribute (e.g. format='mp4')"
+            )
         return _create_streaming_encoder_to_file_like(
             format,
             _pybind_ops.create_file_like_context(dest, True),
