@@ -10,6 +10,10 @@
 #include <sstream>
 #include <string>
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"

@@ -13,7 +13,6 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
-#include <libavutil/pixdesc.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/rational.h>
 }
