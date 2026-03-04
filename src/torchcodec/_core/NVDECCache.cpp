@@ -52,6 +52,10 @@ void NVDECCache::returnDecoder(
   CacheKey key(videoFormat);
   std::lock_guard<std::mutex> lock(cacheLock_);
 
+  if (getNVDECCacheMaxSize() <= 0) {
+    return;
+  }
+
   // Evict least recently used entry if at capacity.
   // This search is O(MAX_CACHE_SIZE), MAX_CACHE_SIZE is supposed to be small,
   // so linear vs constant search overhead is expected to be negligible.
