@@ -76,10 +76,10 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
-  m.def("create_streaming_encoder(str filename) -> Tensor");
+  m.def("create_streaming_encoder(str filename, str? format=None) -> Tensor");
   m.def(
-      "_create_streaming_encoder_to_file_like(str format, "
-      "int file_like_context) -> Tensor");
+      "_create_streaming_encoder_to_file_like(int file_like_context, "
+      "str format) -> Tensor");
   m.def("streaming_encoder_close(Tensor(a!) encoder) -> ()");
 }
 
@@ -1124,14 +1124,16 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
-torch::stable::Tensor create_streaming_encoder(std::string file_name) {
-  auto encoder = std::make_unique<StreamingEncoder>(file_name);
+torch::stable::Tensor create_streaming_encoder(
+    std::string file_name,
+    std::optional<std::string> format) {
+  auto encoder = std::make_unique<StreamingEncoder>(file_name, format);
   return wrapStreamingEncoderPointerToTensor(std::move(encoder));
 }
 
 torch::stable::Tensor _create_streaming_encoder_to_file_like(
-    std::string format,
-    int64_t file_like_context) {
+    int64_t file_like_context,
+    std::string format) {
   auto fileLikeContext =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
   STD_TORCH_CHECK(
