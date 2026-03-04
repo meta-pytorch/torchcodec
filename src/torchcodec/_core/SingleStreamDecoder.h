@@ -358,13 +358,14 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   int64_t cursor_ = INT64_MIN;
   bool cursorWasJustSet_ = false;
   // Initialized to INT64_MIN instead of 0. With 0, canWeAvoidSeeking() could
-  // incorrectly skip a seek when the index had not yet been built, as some
-  // formats (mkv, webm) delay building the index until the first seek.
+  // incorrectly skip a seek when the internal FFmpeg frame index (used by
+  // av_index_search_timestamp() in approximate mode) had not yet been built,
+  // as some formats (mkv, webm) delay building it until the first seek.
   // With INT64_MIN, we always seek when retrieving the first frame. This
   // means we correctly seek when the first requested frame is far into the
   // video, at the cost of an unnecessary (likely cheap) seek when the first
   // requested frame is near the start.
-  // See: https://github.com/meta-pytorch/torchcodec/issues/1223
+  // See: https://github.com/meta-pytorch/torchcodec/pull/1259
   int64_t lastDecodedAvFramePts_ = INT64_MIN;
   int64_t lastDecodedAvFrameDuration_ = 0;
   int64_t lastDecodedFrameIndex_ = INT64_MIN;
