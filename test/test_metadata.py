@@ -8,7 +8,6 @@ import functools
 from fractions import Fraction
 
 import pytest
-
 from torchcodec import ffmpeg_major_version
 from torchcodec._core import (
     add_video_stream,
@@ -20,7 +19,12 @@ from torchcodec._core import (
 )
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
-from .utils import BT709_FULL_RANGE, NASA_AUDIO_MP3, NASA_VIDEO, NASA_VIDEO_ROTATED
+from .utils import (
+    BT2020_LIMITED_RANGE_10BIT,
+    NASA_AUDIO_MP3,
+    NASA_VIDEO,
+    NASA_VIDEO_ROTATED,
+)
 
 
 # TODO: Expected values in these tests should be based on the assets's
@@ -170,14 +174,14 @@ def test_rotation_metadata():
 
 
 def test_color_metadata():
-    # BT709_FULL_RANGE has explicit color properties set
-    decoder = VideoDecoder(BT709_FULL_RANGE.path)
-    assert decoder.metadata.color_primaries == "bt709"
-    assert decoder.metadata.color_space == "bt709"
-    assert decoder.metadata.color_transfer_characteristic == "bt709"
-    assert decoder.metadata.pixel_format == "yuvj420p"
+    # BT2020_LIMITED_RANGE_10BIT is a BT.2020 10-bit HEVC video with PQ transfer
+    decoder_bt2020 = VideoDecoder(BT2020_LIMITED_RANGE_10BIT.path)
+    assert decoder_bt2020.metadata.color_primaries == "bt2020"
+    assert decoder_bt2020.metadata.color_space == "bt2020nc"
+    assert decoder_bt2020.metadata.color_transfer_characteristic == "smpte2084"
+    assert decoder_bt2020.metadata.pixel_format == "yuv420p10le"
 
-    # NASA_VIDEO also has BT.709 color metadata
+    # NASA_VIDEO has BT.709 color metadata
     decoder_nasa = VideoDecoder(NASA_VIDEO.path)
     assert decoder_nasa.metadata.color_primaries == "bt709"
     assert decoder_nasa.metadata.color_space == "bt709"

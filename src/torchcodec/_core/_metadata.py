@@ -118,17 +118,16 @@ class VideoStreamMetadata(StreamMetadata):
         compared to the raw encoded dimensions in the container.
     """
     color_primaries: str | None
-    """Color primaries as reported by FFmpeg (str or None). E.g. ``"bt709"``,
-    ``"bt2020"``."""
+    """Color primaries as reported by FFmpeg. E.g. ``"bt709"``, ``"bt2020"``."""
     color_space: str | None
-    """Color space as reported by FFmpeg (str or None). E.g. ``"bt709"``,
+    """Color space as reported by FFmpeg. E.g. ``"bt709"``,
     ``"bt2020nc"``."""
     color_transfer_characteristic: str | None
-    """Color transfer characteristic (OETF) as reported by FFmpeg (str or None).
+    """Color transfer characteristic (OETF) as reported by FFmpeg
     E.g. ``"bt709"``, ``"smpte2084"`` (PQ), ``"arib-std-b67"`` (HLG)."""
     pixel_format: str | None
-    """Pixel format as reported by FFmpeg (str or None). E.g. ``"yuv420p"``,
-    ``"yuv420p10le"``."""
+    """The source pixel format of the video as reported by FFmpeg.
+    E.g. ``'yuv420p'``, ``'yuv444p'``, etc."""
 
     # Computed fields (computed in C++ with fallback logic)
     end_stream_seconds: float | None
