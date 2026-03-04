@@ -64,7 +64,8 @@ struct StreamMetadata {
   std::optional<AVColorPrimaries> colorPrimaries;
   std::optional<AVColorSpace> colorSpace;
   std::optional<AVColorTransferCharacteristic> colorTransferCharacteristic;
-  std::optional<AVPixelFormat> pixelFormat;
+  // The pixel format of the encoded video, e.g. "yuv420p".
+  std::optional<std::string> pixelFormat;
 
   // Audio-only fields
   std::optional<int64_t> sampleRate;

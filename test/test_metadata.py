@@ -105,6 +105,7 @@ def test_get_metadata(metadata_getter):
     assert best_video_stream_metadata.bit_rate == 128783
     assert best_video_stream_metadata.average_fps == pytest.approx(29.97, abs=0.001)
     assert best_video_stream_metadata.pixel_aspect_ratio == Fraction(1, 1)
+    assert best_video_stream_metadata.pixel_format == "yuv420p"
     assert best_video_stream_metadata.codec == "h264"
     assert best_video_stream_metadata.num_frames_from_content == (
         390 if with_scan else None

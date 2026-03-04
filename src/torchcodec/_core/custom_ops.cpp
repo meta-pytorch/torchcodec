@@ -997,10 +997,7 @@ std::string get_stream_json_metadata(
         av_color_transfer_name(*streamMetadata.colorTransferCharacteristic));
   }
   if (streamMetadata.pixelFormat.has_value()) {
-    const char* name = av_get_pix_fmt_name(*streamMetadata.pixelFormat);
-    if (name != nullptr) {
-      map["pixelFormat"] = quoteValue(name);
-    }
+    map["pixelFormat"] = quoteValue(streamMetadata.pixelFormat.value());
   }
   if (streamMetadata.averageFpsFromHeader.has_value()) {
     map["averageFpsFromHeader"] =
