@@ -224,8 +224,10 @@ const Npp32f bt601FullRangeColorTwist[3][4] = {
 // BT.601 limited range color conversion matrix for YUV to RGB conversion.
 // Same luma coefficients as above, but Y is scaled from [16, 235] to [0, 255]
 // (factor 255/219 = 1.16438356) and UV from [16, 240] (factor 255/224).
-// nppiNV12ToRGB_8u_P2C3R_Ctx is documented as BT.601 but actually performs
-// full range conversion, so we use a custom color twist for limited range.
+// NPP provides a pre-defined color conversion function for BT.601 limited
+// range: nppiNV12ToRGB_8u_P2C3R_Ctx. But it's not closely matching the
+// results we have on CPU. So we're using a custom color conversion matrix,
+// which provides more accurate results.
 // See Note [YUV -> RGB Color Conversion, color space and color range]
 #if CUDART_VERSION >= 13000
 const Npp32f bt601LimitedRangeColorTwist[3][4] = {
@@ -276,9 +278,9 @@ torch::stable::Tensor convertNV12FrameToRGB(
   //
   // When the colorspace is unspecified, we default to BT.601. This matches
   // FFmpeg's swscale behavior: sws_getCoefficients(SWS_CS_DEFAULT) returns
-  // BT.601 coefficients regardless of resolution.
-  bool isBT709 = avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT709;
-  if (isBT709) {
+  // BT.601 coefficients
+  // https://github.com/FFmpeg/FFmpeg/blob/5b8a4a0e14cde74704b13493eb33cce3be260283/libswscale/swscale.h#L396-L403
+  if (avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT709) {
     if (avFrame->color_range == AVColorRange::AVCOL_RANGE_JPEG) {
       // NPP provides a pre-defined color conversion function for BT.709 full
       // range: nppiNV12ToRGB_709HDTV_8u_P2C3R_Ctx. But it's not closely
@@ -327,10 +329,10 @@ torch::stable::Tensor convertNV12FrameToRGB(
           bt601FullRangeColorTwist,
           *nppCtx);
     } else {
-      // BT.601 limited range via custom color twist.
-      // nppiNV12ToRGB_8u_P2C3R_Ctx is documented as BT.601 but actually
-      // performs full range conversion (no Y offset/scale), so we use a
-      // custom matrix instead.
+      // NPP provides a pre-defined color conversion function for BT.601
+      // limited range: nppiNV12ToRGB_8u_P2C3R_Ctx. But it's not closely
+      // matching the results we have on CPU. So we're using a custom color
+      // conversion matrix, which provides more accurate results.
       int srcStep[2] = {avFrame->linesize[0], avFrame->linesize[1]};
       status = nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
           yuvData,
