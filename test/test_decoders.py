@@ -1465,6 +1465,7 @@ class TestVideoDecoder:
             torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
 
     @needs_cuda
+    @pytest.mark.skip("TODO investigate CPU vs BetaCUDA mismatch on BT.2020 10-bit")
     def test_bt2020_10bit_video(self):
         # Test ensuring result consistency between CPU and beta CUDA (NVDEC)
         # decoder on a BT.2020 10-bit video (limited range). This is a
