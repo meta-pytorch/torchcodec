@@ -7,6 +7,7 @@
 #include "NVDECCacheConfig.h"
 
 #include <atomic>
+#include <mutex>
 
 #include "c10/util/Exception.h"
 
@@ -17,30 +18,25 @@
 namespace facebook::torchcodec {
 
 static std::atomic<int> g_nvdecCacheMaxSize{DEFAULT_NVDEC_CACHE_MAX_SIZE};
+// This mutex serializes setNVDECCacheMaxSize() calls so that the atomic store
+// and the subsequent cache eviction happen as one unit. getNVDECCacheMaxSize()
+// intentionally reads the atomic without this mutex: callers like
+// returnDecoder() may briefly see a stale value during an ongoing
+// setNVDECCacheMaxSize(), which is acceptable because the eviction pass will
+// correct the cache size momentarily.
+static std::mutex g_nvdecCacheMaxSizeMutex;
 
 void setNVDECCacheMaxSize(int size) {
   TORCH_CHECK(size >= 0, "NVDEC cache size must be non-negative, got ", size);
-  int currentMax = getMaxNVDECCacheCurrentSize();
-  TORCH_CHECK(
-      size >= currentMax,
-      "Cannot set NVDEC cache max size to ",
-      size,
-      " because a device cache currently holds ",
-      currentMax,
-      " entries. Decode those videos first or set a larger max.");
+  std::lock_guard<std::mutex> lock(g_nvdecCacheMaxSizeMutex);
   g_nvdecCacheMaxSize.store(size);
+#ifdef USE_CUDA
+  NVDECCache::evictExcessEntriesAcrossDevices(size);
+#endif
 }
 
 int getNVDECCacheMaxSize() {
   return g_nvdecCacheMaxSize.load();
-}
-
-int getMaxNVDECCacheCurrentSize() {
-#ifdef USE_CUDA
-  return NVDECCache::getMaxCurrentSizeAcrossDevices();
-#else
-  return 0;
-#endif
 }
 
 } // namespace facebook::torchcodec
