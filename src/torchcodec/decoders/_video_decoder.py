@@ -210,8 +210,8 @@ class VideoDecoder:
             device = str(device)
         (
             self._decoder,
-            self.metadata,
             self.stream_index,
+            self.metadata,
         ) = create_video_decoder(
             source=source,
             seek_mode=seek_mode,

@@ -101,7 +101,7 @@ def create_audio_decoder(
     return (decoder, stream_index, metadata)
 
 
-def _get_and_validate_stream_metadata(
+def _get_and_validate_video_stream_metadata(
     *,
     decoder: Tensor,
     stream_index: int | None = None,
@@ -139,10 +139,7 @@ def _get_and_validate_stream_metadata(
             "The number of frames is unknown. " + _ERROR_REPORTING_INSTRUCTIONS
         )
 
-    return (
-        metadata,
-        stream_index,
-    )
+    return (metadata, stream_index)
 
 
 def create_video_decoder(
@@ -156,32 +153,16 @@ def create_video_decoder(
     device_variant: str = "ffmpeg",
     transforms: Sequence[DecoderTransform | nn.Module] | None = None,
     custom_frame_mappings: tuple[Tensor, Tensor, Tensor] | None = None,
-) -> tuple[Tensor, VideoStreamMetadata, int]:
-    """Create a video decoder and add a video stream.
+) -> tuple[Tensor, int, VideoStreamMetadata]:
 
-    This function consolidates the creation of a decoder and adding a video stream
-    into a single operation, performing all necessary validation.
-
-    Args:
-        source: The source of the video.
-        seek_mode: The seek mode for the decoder.
-        stream_index: The stream index to decode, or None to use the best stream.
-        dimension_order: The dimension order for decoded frames.
-        num_ffmpeg_threads: Number of FFmpeg threads for CPU decoding.
-        device: The device for decoding (as a string).
-        device_variant: The CUDA backend variant to use ("ffmpeg" or "beta").
-        transforms: Optional sequence of transforms to apply.
-        custom_frame_mappings: Optional pre-processed frame mappings data.
-
-    Returns:
-        A tuple of (decoder, metadata, stream_index).
-    """
     decoder = create_decoder(source=source, seek_mode=seek_mode)
 
     (
         metadata,
         stream_index,
-    ) = _get_and_validate_stream_metadata(decoder=decoder, stream_index=stream_index)
+    ) = _get_and_validate_video_stream_metadata(
+        decoder=decoder, stream_index=stream_index
+    )
 
     transform_specs = _make_transform_specs(
         transforms,
@@ -199,8 +180,4 @@ def create_video_decoder(
         custom_frame_mappings=custom_frame_mappings,
     )
 
-    return (
-        decoder,
-        metadata,
-        stream_index,
-    )
+    return (decoder, stream_index, metadata)
