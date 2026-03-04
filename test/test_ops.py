@@ -26,7 +26,6 @@ from torchcodec._core import (
     create_from_file_like,
     create_from_tensor,
     create_streaming_encoder,
-    create_streaming_encoder_to_file_like,
     encode_audio_to_file,
     get_ffmpeg_library_versions,
     get_frame_at_index,
@@ -1144,13 +1143,18 @@ class TestAudioEncoderOps:
 
 
 class TestStreamingEncoderOps:
-    @pytest.mark.parametrize("output", ("file", "file_like"))
+    @pytest.mark.parametrize(
+        "output", ("file", "file_like", "file_like_explicit_format")
+    )
     def test_create_and_close(self, tmp_path, output):
         if output == "file":
             handle = create_streaming_encoder(str(tmp_path / "test.mp4"))
+        elif output == "file_like":
+            f = open(tmp_path / "test.mp4", "wb")
+            handle = create_streaming_encoder(dest=f)
         else:
-            with open(tmp_path / "test.mp4", "wb") as f:
-                handle = create_streaming_encoder_to_file_like("mp4", file_like=f)
+            f = open(tmp_path / "test.mp4", "wb")
+            handle = create_streaming_encoder(dest=f, format="mp4")
         streaming_encoder_close(handle)
         streaming_encoder_close(handle)  # double close is a no-op
 
@@ -1163,7 +1167,17 @@ class TestStreamingEncoderOps:
             create_streaming_encoder(str(tmp_path / "test.bad_extension"))
         with open(tmp_path / "test.mp4", "wb") as f:
             with pytest.raises(RuntimeError, match="Check the desired format"):
-                create_streaming_encoder_to_file_like("not_a_format", file_like=f)
+                create_streaming_encoder(dest=f, format="not_a_format")
+
+    def test_create_file_like_without_format(self):
+        buf = io.BytesIO()
+        with pytest.raises(ValueError, match="format must be specified"):
+            create_streaming_encoder(dest=buf)
+
+    def test_create_file_like_format_inferred_from_name(self, tmp_path):
+        f = open(tmp_path / "test.mp4", "wb")
+        handle = create_streaming_encoder(dest=f)
+        streaming_encoder_close(handle)
 
 
 if __name__ == "__main__":

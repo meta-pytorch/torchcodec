@@ -136,7 +136,7 @@ _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
 _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
-create_streaming_encoder = torch._dynamo.disallow_in_graph(
+_create_streaming_encoder = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_streaming_encoder.default
 )
 _create_streaming_encoder_to_file_like = torch._dynamo.disallow_in_graph(
@@ -244,16 +244,27 @@ def encode_video_to_file_like(
     )
 
 
-def create_streaming_encoder_to_file_like(
-    format: str,
-    file_like: io.RawIOBase | io.BufferedIOBase,
+def create_streaming_encoder(
+    dest: str | io.RawIOBase | io.BufferedIOBase,
+    format: str | None = None,
 ) -> torch.Tensor:
-    assert _pybind_ops is not None
-
-    return _create_streaming_encoder_to_file_like(
-        format,
-        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
-    )
+    if isinstance(dest, str):
+        return _create_streaming_encoder(dest)
+    else:
+        assert _pybind_ops is not None
+        if format is None:
+            name = getattr(dest, "name", None)
+            if name is not None:
+                format = Path(name).suffix.lstrip(".")
+            if not format:
+                raise ValueError(
+                    "format must be specified when dest is a file-like object "
+                    "without a name attribute (e.g. format='mp4')"
+                )
+        return _create_streaming_encoder_to_file_like(
+            format,
+            _pybind_ops.create_file_like_context(dest, True),
+        )
 
 
 def get_frames_at_indices(

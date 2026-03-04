@@ -26,7 +26,6 @@ from .ops import (
     create_from_file_like,
     create_from_tensor,
     create_streaming_encoder,
-    create_streaming_encoder_to_file_like,
     encode_audio_to_file,
     encode_audio_to_file_like,
     encode_audio_to_tensor,
