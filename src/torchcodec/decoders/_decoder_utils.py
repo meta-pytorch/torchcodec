@@ -9,6 +9,8 @@ import contextvars
 from collections.abc import Generator
 from contextlib import contextmanager
 
+from torchcodec import _core as core
+
 
 # Thread-local and async-safe storage for the current CUDA backend
 _CUDA_BACKEND: contextvars.ContextVar[str] = contextvars.ContextVar(
