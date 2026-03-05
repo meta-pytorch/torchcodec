@@ -15,7 +15,9 @@ from torchcodec import _core, ffmpeg_major_version, FrameBatch
 from torchcodec.decoders import (
     AudioDecoder,
     AudioStreamMetadata,
+    get_nvdec_cache_capacity,
     set_cuda_backend,
+    set_nvdec_cache_capacity,
     VideoDecoder,
     VideoStreamMetadata,
 )
@@ -1976,6 +1978,33 @@ class TestVideoDecoder:
             with pytest.raises(RuntimeError, match="torch_call_dispatcher"):
                 with set_cuda_backend(backend):
                     VideoDecoder(H265_VIDEO.path, device=f"cuda:{bad_device_number}")
+
+    def test_nvdec_cache_capacity(self):
+        default_capacity = get_nvdec_cache_capacity()
+        assert default_capacity == 20
+
+        try:
+            set_nvdec_cache_capacity(42)
+            assert get_nvdec_cache_capacity() == 42
+
+            set_nvdec_cache_capacity(0)
+            assert get_nvdec_cache_capacity() == 0
+
+            set_nvdec_cache_capacity(1)
+            assert get_nvdec_cache_capacity() == 1
+
+            with pytest.raises(
+                RuntimeError, match="NVDEC cache capacity must be between 0 and"
+            ):
+                set_nvdec_cache_capacity(-1)
+
+            # Capacity is unchanged after the failed call above.
+            assert get_nvdec_cache_capacity() == 1
+        finally:
+            # Restore default so other tests are unaffected.
+            set_nvdec_cache_capacity(default_capacity)
+
+        assert get_nvdec_cache_capacity() == default_capacity
 
     def test_cpu_fallback_no_fallback_on_cpu_device(self):
         """Test that CPU device doesn't trigger fallback (it's not a fallback scenario)."""
