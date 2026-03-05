@@ -315,11 +315,6 @@ torch::stable::Tensor convertNV12FrameToRGB(
 
   // For background, see
   // Note [YUV -> RGB Color Conversion, color space and color range]
-  //
-  // When the colorspace is unspecified, we default to BT.601. This matches
-  // FFmpeg's swscale behavior: sws_getCoefficients(SWS_CS_DEFAULT) returns
-  // BT.601 coefficients
-  // https://github.com/FFmpeg/FFmpeg/blob/5b8a4a0e14cde74704b13493eb33cce3be260283/libswscale/swscale.h#L396-L403
   if (avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT709) {
     if (avFrame->color_range == AVColorRange::AVCOL_RANGE_JPEG) {
       // NPP provides a pre-defined color conversion function for BT.709 full
@@ -375,6 +370,10 @@ torch::stable::Tensor convertNV12FrameToRGB(
         matrix,
         *nppCtx);
   } else {
+    // When the colorspace is unspecified, we default to BT.601. This matches
+    // FFmpeg's swscale behavior: sws_getCoefficients(SWS_CS_DEFAULT) returns
+    // BT.601 coefficients
+    // https://github.com/FFmpeg/FFmpeg/blob/5b8a4a0e14cde74704b13493eb33cce3be260283/libswscale/swscale.h#L396-L403
     if (avFrame->color_range == AVColorRange::AVCOL_RANGE_JPEG) {
       // BT.601 full range via custom color twist
       int srcStep[2] = {avFrame->linesize[0], avFrame->linesize[1]};

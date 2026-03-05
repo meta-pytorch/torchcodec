@@ -575,6 +575,44 @@ BT709_FULL_RANGE = TestVideo(
 # color_space=bt2020nc
 # color_transfer=smpte2084
 # color_primaries=bt2020
+# Full range video with unspecified colorspace, generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x240:rate=30 -c:v libx264
+# -profile:v high -pix_fmt yuv420p -color_range pc unspecified_full_range.mp4
+#
+# Confirm color space with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/unspecified_full_range.mp4
+# color_range=pc
+# color_space=unknown
+# color_transfer=unknown
+# color_primaries=unknown
+UNSPECIFIED_FULL_RANGE = TestVideo(
+    filename="unspecified_full_range.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# Limited range video with unspecified colorspace, generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x240:rate=30 -c:v libx264
+# -profile:v baseline -pix_fmt yuv420p unspecified_limited_range.mp4
+#
+# Confirm color space with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/unspecified_limited_range.mp4
+# color_range=unknown
+# color_space=unknown
+# color_transfer=unknown
+# color_primaries=unknown
+UNSPECIFIED_LIMITED_RANGE = TestVideo(
+    filename="unspecified_limited_range.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
 BT2020_LIMITED_RANGE_10BIT = TestVideo(
     filename="bt2020_10bit.mp4",
     default_stream_index=0,
