@@ -124,29 +124,24 @@ Encoding
 
 .. toctree::
    :maxdepth: 1
-   :caption: TorchCodec documentation
    :hidden:
 
    Home <self>
-   glossary
 
 .. toctree::
    :maxdepth: 1
-   :caption: Examples and tutorials
    :hidden:
 
-   Installation instructions <https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec>
    generated_examples/index
 
-
 .. toctree::
-   :glob:
    :maxdepth: 1
-   :caption: API Reference
    :hidden:
 
-   api_ref_torchcodec
-   api_ref_decoders
-   api_ref_encoders
-   api_ref_samplers
-   api_ref_transforms
+   api_ref
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
+   glossary
