@@ -11,14 +11,14 @@
 
 namespace facebook::torchcodec {
 
-// Default max number of cached NVDEC decoders per device.
-constexpr int DEFAULT_NVDEC_CACHE_MAX_SIZE = 20;
+// Default capacity of the per-device NVDEC decoder cache.
+constexpr int DEFAULT_NVDEC_CACHE_CAPACITY = 20;
 
-// Set the maximum number of NVDEC decoders cached per device.
-// size must be non-negative.
-void setNVDECCacheMaxSize(int size);
+// Set the capacity of the per-device NVDEC decoder cache.
+// capacity must be non-negative.
+void setNVDECCacheCapacity(int capacity);
 
-// Get the current maximum number of NVDEC decoders cached per device.
-int getNVDECCacheMaxSize();
+// Get the current capacity of the per-device NVDEC decoder cache.
+int getNVDECCacheCapacity();
 
 } // namespace facebook::torchcodec

@@ -58,8 +58,8 @@ class NVDECCache {
   void returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder);
 
   // Iterates all per-device cache instances and evicts LRU entries until each
-  // cache's size is at most maxSize. Called from setNVDECCacheMaxSize().
-  static void evictExcessEntriesAcrossDevices(int maxSize);
+  // cache's size is at most capacity. Called from setNVDECCacheCapacity().
+  static void evictExcessEntriesAcrossDevices(int capacity);
 
  private:
   // Cache key struct: a decoder can be reused and taken from the cache only if

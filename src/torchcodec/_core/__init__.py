@@ -42,8 +42,8 @@ from .ops import (
     get_frames_in_range,
     get_json_metadata,
     get_next_frame,
-    get_nvdec_cache_size,
+    get_nvdec_cache_capacity,
     scan_all_streams_to_update_metadata,
     seek_to_pts,
-    set_nvdec_cache_size,
+    set_nvdec_cache_capacity,
 )
