@@ -80,6 +80,7 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
   m.def("get_nvdec_cache_capacity() -> int");
+  m.def("_get_nvdec_cache_size(int device_index) -> int");
 }
 
 namespace {
@@ -1103,6 +1104,15 @@ int64_t get_nvdec_cache_capacity() {
   return static_cast<int64_t>(getNVDECCacheCapacity());
 }
 
+int64_t _get_nvdec_cache_size(int64_t device_index) {
+  STD_TORCH_CHECK(
+      device_index >= 0,
+      "device_index must be non-negative, got ",
+      device_index);
+  return static_cast<int64_t>(
+      getNVDECCacheSize(static_cast<int>(device_index)));
+}
+
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
@@ -1115,6 +1125,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
   m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
   m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
+  m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

@@ -2000,6 +2000,17 @@ class TestVideoDecoder:
 
             # Capacity is unchanged after the failed call above.
             assert get_nvdec_cache_capacity() == 1
+
+            assert _core._get_nvdec_cache_size(0) == 0
+            with set_cuda_backend("beta"):
+                dec = VideoDecoder(NASA_VIDEO.path, device="cuda")
+
+            dec[0]
+            del dec
+            import gc
+
+            gc.collect()
+            assert _core._get_nvdec_cache_size(0) == 1
         finally:
             # Restore default so other tests are unaffected.
             set_nvdec_cache_capacity(default_capacity)

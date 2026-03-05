@@ -12,6 +12,7 @@
 #include "c10/util/Exception.h"
 
 #ifdef USE_CUDA
+#include "CUDACommon.h"
 #include "NVDECCache.h"
 #endif
 
@@ -42,6 +43,20 @@ void setNVDECCacheCapacity(int capacity) {
 
 int getNVDECCacheCapacity() {
   return g_nvdecCacheCapacity.load();
+}
+
+int getNVDECCacheSize(int device_index) {
+#ifdef USE_CUDA
+  TORCH_CHECK(
+      device_index >= 0 && device_index < MAX_CUDA_GPUS,
+      "device_index must be between 0 and ",
+      MAX_CUDA_GPUS - 1,
+      ", got ",
+      device_index);
+  return NVDECCache::getCacheSizeForDevice(device_index);
+#else
+  return 0;
+#endif
 }
 
 } // namespace facebook::torchcodec

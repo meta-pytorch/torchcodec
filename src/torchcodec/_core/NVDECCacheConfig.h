@@ -21,4 +21,7 @@ void setNVDECCacheCapacity(int capacity);
 // Get the current capacity of the per-device NVDEC decoder cache.
 int getNVDECCacheCapacity();
 
+// Get the current number of entries in the NVDEC decoder cache for a device.
+int getNVDECCacheSize(int device_index);
+
 } // namespace facebook::torchcodec

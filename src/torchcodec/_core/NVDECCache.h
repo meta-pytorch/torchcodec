@@ -61,6 +61,9 @@ class NVDECCache {
   // cache's size is at most capacity. Called from setNVDECCacheCapacity().
   static void evictExcessEntriesAcrossDevices(int capacity);
 
+  // Returns the number of entries in the cache for a given device index.
+  static int getCacheSizeForDevice(int device_index);
+
  private:
   // Cache key struct: a decoder can be reused and taken from the cache only if
   // all these parameters match.

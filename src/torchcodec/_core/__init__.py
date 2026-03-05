@@ -17,6 +17,7 @@ from .ops import (
     _add_video_stream,
     _get_backend_details,
     _get_key_frame_indices,
+    _get_nvdec_cache_size,
     _test_frame_pts_equality,
     add_audio_stream,
     add_video_stream,

@@ -95,4 +95,10 @@ void NVDECCache::evictExcessEntriesAcrossDevices(int capacity) {
   }
 }
 
+int NVDECCache::getCacheSizeForDevice(int device_index) {
+  NVDECCache* instances = getCacheInstances();
+  std::lock_guard<std::mutex> lock(instances[device_index].cacheLock_);
+  return static_cast<int>(instances[device_index].cache_.size());
+}
+
 } // namespace facebook::torchcodec
