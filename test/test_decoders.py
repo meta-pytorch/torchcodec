@@ -1688,8 +1688,8 @@ class TestVideoDecoder:
     #   assert_tensor_close_on_at_least or something like that.
     # - unskip equality assertion checks for MPEG4 asset. The frames are decoded
     #   fine, it's the color conversion that's different. The frame from the
-    #   BETA interface is assumed to be 709 while the one from the default
-    #   interface is 601.
+    #   BETA interface is mapped to 709 by the matrix coefficient using NVCUVID
+    #   while the one from the default interface is 601.
 
     @needs_cuda
     @pytest.mark.parametrize(
