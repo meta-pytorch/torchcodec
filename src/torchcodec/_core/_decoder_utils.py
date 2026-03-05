@@ -6,17 +6,25 @@
 
 
 import io
+from collections.abc import Sequence
 from pathlib import Path
 
-from torch import Tensor
-from torchcodec._core._metadata import AudioStreamMetadata, get_container_metadata
+from torch import nn, Tensor
+from torchcodec._core._metadata import (
+    AudioStreamMetadata,
+    get_container_metadata,
+    VideoStreamMetadata,
+)
 from torchcodec._core.ops import (
     add_audio_stream,
+    add_video_stream,
     create_from_bytes,
     create_from_file,
     create_from_file_like,
     create_from_tensor,
 )
+from torchcodec.transforms import DecoderTransform
+from torchcodec.transforms._decoder_transforms import _make_transform_specs
 
 
 _ERROR_REPORTING_INSTRUCTIONS = """
@@ -88,6 +96,88 @@ def create_audio_decoder(
         stream_index=stream_index,
         sample_rate=sample_rate,
         num_channels=num_channels,
+    )
+
+    return (decoder, stream_index, metadata)
+
+
+def _get_and_validate_video_stream_metadata(
+    *,
+    decoder: Tensor,
+    stream_index: int | None = None,
+) -> tuple[VideoStreamMetadata, int]:
+    container_metadata = get_container_metadata(decoder)
+
+    if stream_index is None:
+        if (stream_index := container_metadata.best_video_stream_index) is None:
+            raise ValueError(
+                "The best video stream is unknown and there is no specified stream. "
+                + _ERROR_REPORTING_INSTRUCTIONS
+            )
+
+    if stream_index >= len(container_metadata.streams):
+        raise ValueError(f"The stream index {stream_index} is not a valid stream.")
+
+    metadata = container_metadata.streams[stream_index]
+    if not isinstance(metadata, VideoStreamMetadata):
+        raise ValueError(f"The stream at index {stream_index} is not a video stream. ")
+
+    if metadata.begin_stream_seconds is None:
+        raise ValueError(
+            "The minimum pts value in seconds is unknown. "
+            + _ERROR_REPORTING_INSTRUCTIONS
+        )
+
+    if metadata.end_stream_seconds is None:
+        raise ValueError(
+            "The maximum pts value in seconds is unknown. "
+            + _ERROR_REPORTING_INSTRUCTIONS
+        )
+
+    if metadata.num_frames is None:
+        raise ValueError(
+            "The number of frames is unknown. " + _ERROR_REPORTING_INSTRUCTIONS
+        )
+
+    return (metadata, stream_index)
+
+
+def create_video_decoder(
+    *,
+    source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
+    seek_mode: str,
+    stream_index: int | None = None,
+    dimension_order: str = "NCHW",
+    num_ffmpeg_threads: int = 1,
+    device: str,
+    device_variant: str = "ffmpeg",
+    transforms: Sequence[DecoderTransform | nn.Module] | None = None,
+    custom_frame_mappings: tuple[Tensor, Tensor, Tensor] | None = None,
+) -> tuple[Tensor, int, VideoStreamMetadata]:
+
+    decoder = create_decoder(source=source, seek_mode=seek_mode)
+
+    (
+        metadata,
+        stream_index,
+    ) = _get_and_validate_video_stream_metadata(
+        decoder=decoder, stream_index=stream_index
+    )
+
+    transform_specs = _make_transform_specs(
+        transforms,
+        input_dims=(metadata.height, metadata.width),
+    )
+
+    add_video_stream(
+        decoder,
+        stream_index=stream_index,
+        dimension_order=dimension_order,
+        num_threads=num_ffmpeg_threads,
+        device=device,
+        device_variant=device_variant,
+        transform_specs=transform_specs,
+        custom_frame_mappings=custom_frame_mappings,
     )
 
     return (decoder, stream_index, metadata)
