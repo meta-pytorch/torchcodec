@@ -7,6 +7,7 @@
 #include <fmt/format.h>
 #include <pybind11/pybind11.h>
 #include <cstdint>
+#include <limits>
 #include <sstream>
 #include <string>
 #include "AVIOFileLikeContext.h"
@@ -1089,6 +1090,12 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
 }
 
 void set_nvdec_cache_size(int64_t size) {
+  STD_TORCH_CHECK(
+      size >= 0 && size <= std::numeric_limits<int>::max(),
+      "NVDEC cache size must be between 0 and ",
+      std::numeric_limits<int>::max(),
+      ", got ",
+      size);
   setNVDECCacheMaxSize(static_cast<int>(size));
 }
 
