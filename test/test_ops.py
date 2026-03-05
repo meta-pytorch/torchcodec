@@ -1143,23 +1143,22 @@ class TestAudioEncoderOps:
 
 
 class TestStreamingEncoderOps:
-    @pytest.mark.parametrize(
-        "output", ("file", "file_like", "file_like_explicit_format")
-    )
-    def test_create_and_close(self, tmp_path, output):
-        if output == "file":
-            handle = create_streaming_encoder(str(tmp_path / "test.mp4"))
-        elif output == "file_like":
-            f = open(tmp_path / "test.mp4", "wb")
-            handle = create_streaming_encoder(dest=f)
-        else:
-            f = open(tmp_path / "test", "wb")
-            handle = create_streaming_encoder(dest=f, format="mp4")
+    def test_create_and_close_file(self, tmp_path):
+        handle = create_streaming_encoder(str(tmp_path / "test.mp4"))
         streaming_encoder_close(handle)
         streaming_encoder_close(handle)  # double close is a no-op
 
+    # TODO: Test if closing the file before closing the streaming encoder causes any issues.
+    @pytest.mark.parametrize("format", (None, "mp4"))
+    def test_create_and_close_file_like(self, tmp_path, format):
+        filename = "test.mp4" if format is None else "test"
+        f = open(tmp_path / filename, "wb")
+        handle = create_streaming_encoder(dest=f, format=format)
+        streaming_encoder_close(handle)
+        f.close()
+
     def test_create_invalid_path(self):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="make sure it's a valid path"):
             create_streaming_encoder("/nonexistent/dir/test.mp4")
 
     def test_create_invalid_format(self, tmp_path):
@@ -1178,6 +1177,7 @@ class TestStreamingEncoderOps:
         f = open(tmp_path / "test.mp4", "wb")
         handle = create_streaming_encoder(dest=f)
         streaming_encoder_close(handle)
+        f.close()
 
 
 if __name__ == "__main__":
