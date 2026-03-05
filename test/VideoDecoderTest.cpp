@@ -315,9 +315,10 @@ TEST_P(SingleStreamDecoderTest, SeeksToFrameWithSpecificPts) {
       readTensorFromDisk("nasa_13013.mp4.time6.000000.pt");
   EXPECT_TRUE(torch::equal(tensor6FromOurDecoder, tensor6FromFFMPEG));
   EXPECT_EQ(ourDecoder->getDecodeStats().numSeeksAttempted, 1);
-  // We skipped the seek since timestamp=6 and timestamp=0 share the same
-  // keyframe.
-  EXPECT_EQ(ourDecoder->getDecodeStats().numSeeksSkipped, 1);
+  // lastDecodedAvFramePts_ is initialized to INT64_MIN, so the
+  // first seek is always performed even though timestamp=6 and timestamp=0
+  // share the same keyframe.
+  EXPECT_EQ(ourDecoder->getDecodeStats().numSeeksSkipped, 0);
   // There are about 180 packets/frames between timestamp=0 and timestamp=6 at
   // ~30 fps.
   EXPECT_GT(ourDecoder->getDecodeStats().numPacketsRead, 180);
