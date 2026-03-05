@@ -1979,11 +1979,18 @@ class TestVideoDecoder:
                 with set_cuda_backend(backend):
                     VideoDecoder(H265_VIDEO.path, device=f"cuda:{bad_device_number}")
 
-    def test_nvdec_cache_capacity(self):
-        default_capacity = get_nvdec_cache_capacity()
-        assert default_capacity == 20
-
+    @contextlib.contextmanager
+    def restore_nvdec_cache_capacity(self):
         try:
+            original = get_nvdec_cache_capacity()
+            yield
+        finally:
+            set_nvdec_cache_capacity(original)
+            assert get_nvdec_cache_capacity() == original
+
+    def test_nvdec_cache_capacity(self):
+
+        with self.restore_nvdec_cache_capacity():
             set_nvdec_cache_capacity(42)
             assert get_nvdec_cache_capacity() == 42
 
@@ -2001,21 +2008,32 @@ class TestVideoDecoder:
             # Capacity is unchanged after the failed call above.
             assert get_nvdec_cache_capacity() == 1
 
-            assert _core._get_nvdec_cache_size(0) == 0
+    def test_nvdec_cache_capacity_eviction(self):
+
+        def create_decoder():
             with set_cuda_backend("beta"):
                 dec = VideoDecoder(NASA_VIDEO.path, device="cuda")
-
             dec[0]
             del dec
-            import gc
-
             gc.collect()
-            assert _core._get_nvdec_cache_size(0) == 1
-        finally:
-            # Restore default so other tests are unaffected.
-            set_nvdec_cache_capacity(default_capacity)
 
-        assert get_nvdec_cache_capacity() == default_capacity
+        with self.restore_nvdec_cache_capacity():
+            assert _core._get_nvdec_cache_size(device_index=0) == 0
+
+            # Create decoder, it should be in the cache
+            create_decoder()
+            assert _core._get_nvdec_cache_size(device_index=0) == 1
+
+            # Set capacity to 1, decoder should still be there
+            set_nvdec_cache_capacity(1)
+            assert _core._get_nvdec_cache_size(device_index=0) == 1
+            # Set capacity to 0, this should evict it
+            set_nvdec_cache_capacity(0)
+            assert _core._get_nvdec_cache_size(device_index=0) == 0
+
+            # Create a new decoder, it's not cached since capacity is 0
+            create_decoder()
+            assert _core._get_nvdec_cache_size(device_index=0) == 0
 
     def test_cpu_fallback_no_fallback_on_cpu_device(self):
         """Test that CPU device doesn't trigger fallback (it's not a fallback scenario)."""
