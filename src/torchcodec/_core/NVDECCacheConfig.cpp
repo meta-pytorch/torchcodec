@@ -45,7 +45,7 @@ int getNVDECCacheCapacity() {
   return g_nvdecCacheCapacity.load();
 }
 
-int getNVDECCacheSize(int device_index) {
+int getNVDECCacheSize([[maybe_unused]] int device_index) {
 #ifdef USE_CUDA
   TORCH_CHECK(
       device_index >= 0 && device_index < MAX_CUDA_GPUS,
