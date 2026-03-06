@@ -1,6 +1,5 @@
 #pragma once
 #include <map>
-#include <optional>
 #include <string>
 #include "AVIOContextHolder.h"
 #include "DeviceInterface.h"
@@ -187,9 +186,7 @@ class StreamingEncoder {
   StreamingEncoder(StreamingEncoder&&) = delete;
   StreamingEncoder& operator=(StreamingEncoder&&) = delete;
 
-  StreamingEncoder(
-      std::string_view fileName,
-      std::optional<std::string> formatName = std::nullopt);
+  StreamingEncoder(std::string_view fileName);
 
   StreamingEncoder(
       std::string_view formatName,

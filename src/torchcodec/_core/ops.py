@@ -249,14 +249,13 @@ def create_streaming_encoder(
     format: str | None = None,
 ) -> torch.Tensor:
     if isinstance(dest, str):
-        return _create_streaming_encoder(dest, format)
+        return _create_streaming_encoder(dest)
     else:
         assert _pybind_ops is not None
         format = format or Path(getattr(dest, "name", "")).suffix.lstrip(".")
         if not format:
             raise ValueError(
-                "format must be specified when dest is a file-like object "
-                "without a name attribute (e.g. format='mp4')"
+                "format must be specified when it cannot be inferred from dest"
             )
         return _create_streaming_encoder_to_file_like(
             _pybind_ops.create_file_like_context(dest, True),
@@ -604,7 +603,6 @@ def _get_backend_details_abstract(decoder: torch.Tensor) -> str:
 @register_fake("torchcodec_ns::create_streaming_encoder")
 def create_streaming_encoder_abstract(
     filename: str,
-    format: str | None = None,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 

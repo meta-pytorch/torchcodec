@@ -76,7 +76,7 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
-  m.def("create_streaming_encoder(str filename, str? format=None) -> Tensor");
+  m.def("create_streaming_encoder(str filename) -> Tensor");
   m.def(
       "_create_streaming_encoder_to_file_like(int file_like_context, "
       "str format) -> Tensor");
@@ -1118,10 +1118,8 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
-torch::stable::Tensor create_streaming_encoder(
-    std::string file_name,
-    std::optional<std::string> format) {
-  auto encoder = std::make_unique<StreamingEncoder>(file_name, format);
+torch::stable::Tensor create_streaming_encoder(std::string file_name) {
+  auto encoder = std::make_unique<StreamingEncoder>(file_name);
   return wrapStreamingEncoderPointerToTensor(std::move(encoder));
 }
 

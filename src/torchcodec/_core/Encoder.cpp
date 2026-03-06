@@ -680,11 +680,10 @@ void sortCodecOptions(
 // for writing via avio_open.
 void allocateFileFormatContext(
     std::string_view fileName,
-    UniqueEncodingAVFormatContext& avFormatContextHolder,
-    const char* formatName = nullptr) {
+    UniqueEncodingAVFormatContext& avFormatContextHolder) {
   AVFormatContext* avFormatContext = nullptr;
   int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, formatName, fileName.data());
+      &avFormatContext, nullptr, nullptr, fileName.data());
 
   STD_TORCH_CHECK(
       avFormatContext != nullptr,
@@ -1035,14 +1034,9 @@ StreamingEncoder::~StreamingEncoder() {
   }
 }
 
-StreamingEncoder::StreamingEncoder(
-    std::string_view fileName,
-    std::optional<std::string> formatName) {
+StreamingEncoder::StreamingEncoder(std::string_view fileName) {
   setFFmpegLogLevel();
-  allocateFileFormatContext(
-      fileName,
-      avFormatContext_,
-      formatName.has_value() ? formatName->data() : nullptr);
+  allocateFileFormatContext(fileName, avFormatContext_);
 }
 
 StreamingEncoder::StreamingEncoder(
