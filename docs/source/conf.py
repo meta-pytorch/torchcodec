@@ -141,7 +141,6 @@ templates_path = [
 #
 source_suffix = [".rst"]
 
-# Version for the version switcher
 version = ".".join(torchcodec.__version__.split(".")[:2])
 
 html_title = f"TorchCodec {torchcodec.__version__} Documentation"
@@ -187,9 +186,6 @@ html_theme_path = [pytorch_sphinx_theme2.get_html_theme_path()]
 html_theme_options = {
     "navigation_with_keys": False,
     "analytics_id": "GTM-T8XT4PS",
-    "logo": {
-        "text": "",
-    },
     "icon_links": [
         {
             "name": "X",
@@ -214,11 +210,8 @@ html_theme_options = {
     ],
     "use_edit_page_button": True,
     "navbar_center": "navbar-nav",
-    "switcher": {
-        "json_url": "https://pytorch.org/torchcodec/stable/_static/torchcodec-versions.json",
-        "version_match": version,
-    },
-    "show_version_warning_banner": True,
+    "navbar_start": ["navbar-logo", "pytorch_version"],
+    "display_version": True,
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
@@ -261,7 +254,7 @@ html_context = {
 }
 
 # sitemap config
-html_baseurl = f"https://meta-pytorch.org/torchcodec/{version}/"
+html_baseurl = "https://meta-pytorch.org/torchcodec/stable/"
 sitemap_locales = [None]
 sitemap_excludes = [
     "search.html",
