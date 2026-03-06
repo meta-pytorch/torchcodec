@@ -28,6 +28,8 @@ from .utils import (
     assert_tensor_close_on_at_least,
     AV1_VIDEO,
     BT2020_LIMITED_RANGE_10BIT,
+    BT601_FULL_RANGE,
+    BT601_LIMITED_RANGE,
     BT709_FULL_RANGE,
     cuda_devices,
     get_ffmpeg_minor_version,
@@ -1490,6 +1492,24 @@ class TestVideoDecoder:
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
             assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=90, atol=3)
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset",
+        (BT601_FULL_RANGE, BT601_LIMITED_RANGE),
+    )
+    def test_bt601_colorspace(self, asset):
+        # Test ensuring result consistency between CPU and beta CUDA (NVDEC)
+        # decoder on BT.601 videos with full and limited range.
+        with set_cuda_backend("beta"):
+            decoder_gpu = VideoDecoder(asset.path, device="cuda")
+        decoder_cpu = VideoDecoder(asset.path, device="cpu")
+
+        for frame_index in (0, 10, 20, 5):
+            gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
+            cpu_frame = decoder_cpu.get_frame_at(frame_index).data
+
+            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
 
     @needs_cuda
     def test_10bit_gpu_fallsback_to_cpu(self):
