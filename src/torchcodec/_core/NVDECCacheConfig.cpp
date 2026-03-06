@@ -26,7 +26,7 @@ static std::atomic<int> g_nvdecCacheCapacity{DEFAULT_NVDEC_CACHE_CAPACITY};
 // setNVDECCacheCapacity(), which is acceptable because the worst case is a
 // single decoder being added back to the cache after eviction. That entry will
 // be consumed by a subsequent getDecoder() call or evicted by a future
-// setNVDECCacheCapacity() call.
+// returnDecoder() or setNVDECCacheCapacity() call.
 static std::mutex g_nvdecCacheCapacityMutex;
 
 void setNVDECCacheCapacity(int capacity) {

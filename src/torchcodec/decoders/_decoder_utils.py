@@ -77,7 +77,9 @@ def set_nvdec_cache_capacity(capacity: int) -> None:
     overhead of creating and destructing new decoders for subsequent video
     decoding operations on the same GPU. This function sets the capacity of the
     cache, i.e. the maximum number of decoders that can be cached per device.
-    The default capacity is 20 decoders per device.
+    The default capacity is 20 decoders per device. If the cache contains more
+    decoders than the target ``capacity``, excess decoders will be evicted
+    using a least-recently-used policy.
 
     Generally, a decoder can be re-used from the cache if it matches the same
     codec and frame dimensions.
