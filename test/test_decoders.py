@@ -28,6 +28,8 @@ from .utils import (
     assert_tensor_close_on_at_least,
     AV1_VIDEO,
     BT2020_LIMITED_RANGE_10BIT,
+    BT601_FULL_RANGE,
+    BT601_LIMITED_RANGE,
     BT709_FULL_RANGE,
     cuda_devices,
     get_ffmpeg_minor_version,
@@ -56,8 +58,6 @@ from .utils import (
     TEST_SRC_2_720P_MPEG4,
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
-    UNSPECIFIED_FULL_RANGE,
-    UNSPECIFIED_LIMITED_RANGE,
 )
 
 
@@ -1496,11 +1496,11 @@ class TestVideoDecoder:
     @needs_cuda
     @pytest.mark.parametrize(
         "asset",
-        (UNSPECIFIED_FULL_RANGE, UNSPECIFIED_LIMITED_RANGE),
+        (BT601_FULL_RANGE, BT601_LIMITED_RANGE),
     )
-    def test_unspecified_colorspace(self, asset):
+    def test_bt601_colorspace(self, asset):
         # Test ensuring result consistency between CPU and beta CUDA (NVDEC)
-        # decoder on videos with unspecified colorspace metadata.
+        # decoder on BT.601 videos with full and limited range.
         with set_cuda_backend("beta"):
             decoder_gpu = VideoDecoder(asset.path, device="cuda")
         decoder_cpu = VideoDecoder(asset.path, device="cpu")
