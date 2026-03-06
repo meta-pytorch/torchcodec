@@ -44,6 +44,8 @@ UniqueCUvideodecoder NVDECCache::getDecoder(CUVIDEOFORMAT* videoFormat) {
   return nullptr;
 }
 
+// Evicts the least-recently-used entry from cache_.
+// Caller must hold cacheLock_!!!
 void NVDECCache::evictLRUEntry() {
   if (cache_.empty()) {
     return;

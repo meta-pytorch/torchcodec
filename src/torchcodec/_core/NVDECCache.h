@@ -111,8 +111,6 @@ class NVDECCache {
   NVDECCache() = default;
   ~NVDECCache() = default;
 
-  // Evicts the least-recently-used entry from cache_. Caller must hold
-  // cacheLock_.
   void evictLRUEntry();
 
   static NVDECCache* getCacheInstances();
