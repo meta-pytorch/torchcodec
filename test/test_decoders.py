@@ -1989,7 +1989,6 @@ class TestVideoDecoder:
             assert get_nvdec_cache_capacity() == original
 
     def test_nvdec_cache_capacity(self):
-
         with self.restore_nvdec_cache_capacity():
             set_nvdec_cache_capacity(42)
             assert get_nvdec_cache_capacity() == 42
@@ -2008,6 +2007,7 @@ class TestVideoDecoder:
             # Capacity is unchanged after the failed call above.
             assert get_nvdec_cache_capacity() == 1
 
+    @needs_cuda
     def test_nvdec_cache_capacity_eviction(self):
 
         def create_decoder():
