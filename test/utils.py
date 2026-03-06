@@ -883,3 +883,18 @@ SINE_16_CHANNEL_S16 = TestAudio(
         )
     },
 )
+
+SINE_STEREO_F32 = TestAudio(
+    filename="sine_stereo_f32_2s.wav",
+    default_stream_index=0,
+    frames={},  # Automatically loaded from json file if exists
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=2,
+            duration_seconds=2.0,
+            num_frames=32,
+            sample_format="fltp",
+        )
+    },
+)

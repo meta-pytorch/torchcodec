@@ -15,6 +15,7 @@ import torch
 from torchcodec._core.ops import (
     _get_container_json_metadata,
     _get_stream_json_metadata,
+    _get_wav_metadata_from_file,
     create_from_file,
 )
 
@@ -159,6 +160,24 @@ class AudioStreamMetadata(StreamMetadata):
 
 
 @dataclass
+class WavStreamMetadata(AudioStreamMetadata):
+    """Metadata for WAV audio streams with additional WAV-specific fields."""
+
+    audio_format: int | None = None
+    """Raw format code (1=PCM, 3=IEEE_FLOAT)."""
+    sub_format: int | None = None
+    """Format code for WAVE_FORMAT_EXTENSIBLE."""
+    bits_per_sample: int | None = None
+    """Bits per sample (8, 16, 24, 32, 64)."""
+    block_align: int | None = None
+    """Bytes per sample frame."""
+    data_size: int | None = None
+    """Size of audio data in bytes."""
+    data_offset: int | None = None
+    """Byte offset to audio data."""
+
+
+@dataclass
 class ContainerMetadata:
     duration_seconds_from_header: float | None
     bit_rate_from_header: float | None
@@ -278,4 +297,31 @@ def get_container_metadata_from_header(
 ) -> ContainerMetadata:
     return get_container_metadata(
         create_from_file(str(filename), seek_mode="approximate")
+    )
+
+
+def get_wav_metadata(filename: str | pathlib.Path) -> WavStreamMetadata:
+    """Return WAV metadata from a file following the established pattern."""
+    wav_json = json.loads(_get_wav_metadata_from_file(str(filename)))
+
+    return WavStreamMetadata(
+        # Base StreamMetadata fields
+        duration_seconds_from_header=wav_json.get("durationSecondsFromHeader"),
+        duration_seconds=wav_json.get("durationSeconds"),
+        bit_rate=wav_json.get("bitRate"),
+        begin_stream_seconds_from_header=wav_json.get("beginStreamSecondsFromHeader"),
+        begin_stream_seconds=wav_json.get("beginStreamSeconds"),
+        codec=wav_json.get("codec"),
+        stream_index=0,
+        # AudioStreamMetadata fields
+        sample_rate=wav_json.get("sampleRate"),
+        num_channels=wav_json.get("numChannels"),
+        sample_format=wav_json.get("sampleFormat"),
+        # WAV-specific fields
+        audio_format=wav_json.get("audioFormat"),
+        sub_format=wav_json.get("subFormat"),
+        bits_per_sample=wav_json.get("bitsPerSample"),
+        block_align=wav_json.get("blockAlign"),
+        data_size=wav_json.get("dataSize"),
+        data_offset=wav_json.get("dataOffset"),
     )

@@ -7,7 +7,6 @@
 #include <fmt/format.h>
 #include <pybind11/pybind11.h>
 #include <cstdint>
-#include <sstream>
 #include <string>
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
@@ -15,6 +14,7 @@
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
+#include "WavDecoder.h"
 
 namespace facebook::torchcodec {
 
@@ -76,6 +76,8 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
+  m.def("_get_wav_metadata_from_file(str filename) -> str");
+  m.def("create_audio_metadata_from_wav(str wav_metadata_json) -> str");
 }
 
 namespace {
@@ -1085,6 +1087,46 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
+std::string _get_wav_metadata_from_file(const std::string& filename) {
+  auto reader = std::make_unique<WavFileReader>(filename);
+  WavDecoder decoder(std::move(reader));
+
+  STD_TORCH_CHECK(decoder.isSupported(), "Unsupported WAV format");
+
+  const WavHeader& header = decoder.getHeader();
+  double duration = decoder.getDurationSeconds();
+
+  std::map<std::string, std::string> map;
+  map["numChannels"] = fmt::to_string(header.numChannels);
+  map["sampleRate"] = fmt::to_string(header.sampleRate);
+  map["durationSeconds"] = fmt::to_string(duration);
+  map["durationSecondsFromHeader"] = fmt::to_string(duration);
+  map["beginStreamSeconds"] = "0"; // WAV files always start at 0
+  map["codec"] = "\"" + decoder.getCodecName() + "\"";
+  map["sampleFormat"] = "\"" + decoder.getSampleFormatName() + "\"";
+
+  // Calculate bit rate: sample_rate * channels * bits_per_sample
+  if (header.sampleRate > 0 && header.numChannels > 0 &&
+      header.bitsPerSample > 0) {
+    uint64_t bitRate = static_cast<uint64_t>(header.sampleRate) *
+        header.numChannels * header.bitsPerSample;
+    map["bitRate"] = fmt::to_string(bitRate);
+  }
+  map["audioFormat"] = fmt::to_string(header.audioFormat);
+  map["bitsPerSample"] = fmt::to_string(header.bitsPerSample);
+  map["blockAlign"] = fmt::to_string(header.blockAlign);
+  map["dataSize"] = fmt::to_string(header.dataSize);
+  map["dataOffset"] = fmt::to_string(header.dataOffset);
+  map["subFormat"] = fmt::to_string(header.subFormat);
+
+  return mapToJson(map);
+}
+
+std::string create_audio_metadata_from_wav(
+    const std::string& wav_metadata_json) {
+  return wav_metadata_json;
+}
+
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
@@ -1095,6 +1137,11 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
   m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
+  m.impl(
+      "_get_wav_metadata_from_file", TORCH_BOX(&_get_wav_metadata_from_file));
+  m.impl(
+      "create_audio_metadata_from_wav",
+      TORCH_BOX(&create_audio_metadata_from_wav));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

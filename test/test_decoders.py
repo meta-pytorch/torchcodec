@@ -20,6 +20,7 @@ from torchcodec.decoders import (
     VideoStreamMetadata,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
+from torchcodec.decoders._wav_decoder import WavDecoder
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
 from .utils import (
@@ -50,6 +51,7 @@ from .utils import (
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    SINE_STEREO_F32,
     TEST_NON_ZERO_START,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
@@ -2535,3 +2537,40 @@ class TestAudioDecoder:
                 # FFmpeg fails to find a default layout for certain channel counts,
                 # which causes SwrContext to fail to initialize.
                 decoder.get_all_samples()
+
+
+class TestWavDecoder:
+    def test_metadata_against_audio_decoder(self):
+        wav_decoder = WavDecoder(SINE_STEREO_F32.path)
+        audio_decoder = AudioDecoder(SINE_STEREO_F32.path)
+
+        assert wav_decoder.metadata.sample_rate == audio_decoder.metadata.sample_rate
+        assert wav_decoder.metadata.num_channels == audio_decoder.metadata.num_channels
+        assert (
+            wav_decoder.metadata.duration_seconds
+            == audio_decoder.metadata.duration_seconds
+        )
+        assert wav_decoder.stream_index == audio_decoder.stream_index
+        assert (
+            wav_decoder.metadata.begin_stream_seconds
+            == audio_decoder.metadata.begin_stream_seconds
+        )
+        assert (
+            wav_decoder.metadata.begin_stream_seconds_from_header
+            == audio_decoder.metadata.begin_stream_seconds_from_header
+        )
+        assert wav_decoder.metadata.bit_rate == audio_decoder.metadata.bit_rate
+        assert wav_decoder.metadata.codec == audio_decoder.metadata.codec
+        assert (
+            wav_decoder.metadata.duration_seconds_from_header
+            == audio_decoder.metadata.duration_seconds_from_header
+        )
+        assert (
+            wav_decoder.metadata.sample_format == audio_decoder.metadata.sample_format
+        )
+
+    def test_non_wav_file_raises_error(self):
+        with pytest.raises(
+            ValueError, match="Source is not a supported uncompressed WAV file"
+        ):
+            WavDecoder(NASA_AUDIO.path)
