@@ -13,6 +13,7 @@
 #include <cuda.h>
 
 #include "NVCUVIDRuntimeLoader.h"
+#include "NVDECCacheConfig.h"
 #include "StableABICompat.h"
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
@@ -55,6 +56,13 @@ class NVDECCache {
 
   // Return decoder to cache using LRU eviction.
   void returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder);
+
+  // Iterates all per-device cache instances and evicts LRU entries until each
+  // cache's size is at most capacity. Called from setNVDECCacheCapacity().
+  static void evictExcessEntriesAcrossDevices(int capacity);
+
+  // Returns the number of entries in the cache for a given device index.
+  static int getCacheSizeForDevice(int device_index);
 
  private:
   // Cache key struct: a decoder can be reused and taken from the cache only if
@@ -103,12 +111,13 @@ class NVDECCache {
   NVDECCache() = default;
   ~NVDECCache() = default;
 
+  void evictLRUEntry();
+
+  static NVDECCache* getCacheInstances();
+
   std::multimap<CacheKey, CacheEntry> cache_;
   std::mutex cacheLock_;
   uint64_t lastUsedCounter_ = 0;
-
-  // Max number of cached decoders, per device
-  static constexpr int MAX_CACHE_SIZE = 20;
 };
 
 } // namespace facebook::torchcodec

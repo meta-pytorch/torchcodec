@@ -143,6 +143,9 @@ _create_streaming_encoder_to_file_like = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns._create_streaming_encoder_to_file_like.default
 )
 streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.default
+set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
+get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
+_get_nvdec_cache_size = torch.ops.torchcodec_ns._get_nvdec_cache_size.default
 
 
 # =============================
@@ -618,3 +621,18 @@ def _create_streaming_encoder_to_file_like_abstract(
 @register_fake("torchcodec_ns::streaming_encoder_close")
 def streaming_encoder_close_abstract(encoder: torch.Tensor) -> None:
     return
+
+
+@register_fake("torchcodec_ns::set_nvdec_cache_capacity")
+def set_nvdec_cache_capacity_abstract(capacity: int) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::get_nvdec_cache_capacity")
+def get_nvdec_cache_capacity_abstract() -> int:
+    return 0
+
+
+@register_fake("torchcodec_ns::_get_nvdec_cache_size")
+def _get_nvdec_cache_size_abstract(device_index: int) -> int:
+    return 0

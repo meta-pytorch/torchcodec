@@ -12,6 +12,7 @@
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
+#include "NVDECCacheConfig.h"
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
@@ -81,6 +82,9 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "_create_streaming_encoder_to_file_like(int file_like_context, "
       "str format) -> Tensor");
   m.def("streaming_encoder_close(Tensor(a!) encoder) -> ()");
+  m.def("set_nvdec_cache_capacity(int capacity) -> ()");
+  m.def("get_nvdec_cache_capacity() -> int");
+  m.def("_get_nvdec_cache_size(int device_index) -> int");
 }
 
 namespace {
@@ -1142,6 +1146,28 @@ void streaming_encoder_close(torch::stable::Tensor& encoder) {
   unwrapTensorToGetStreamingEncoder(encoder)->close();
 }
 
+void set_nvdec_cache_capacity(int64_t capacity) {
+  int capacityInt = validateInt64ToInt(capacity, "capacity");
+  STD_TORCH_CHECK(
+      capacityInt >= 0,
+      "NVDEC cache capacity must be non-negative, got ",
+      capacityInt);
+  setNVDECCacheCapacity(capacityInt);
+}
+
+int64_t get_nvdec_cache_capacity() {
+  return static_cast<int64_t>(getNVDECCacheCapacity());
+}
+
+int64_t _get_nvdec_cache_size(int64_t device_index) {
+  int deviceIndexInt = validateInt64ToInt(device_index, "device_index");
+  STD_TORCH_CHECK(
+      deviceIndexInt >= 0,
+      "device_index must be non-negative, got ",
+      deviceIndexInt);
+  return static_cast<int64_t>(getNVDECCacheSize(deviceIndexInt));
+}
+
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
@@ -1156,6 +1182,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl(
       "_create_streaming_encoder_to_file_like",
       TORCH_BOX(&_create_streaming_encoder_to_file_like));
+  m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
+  m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
+  m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
