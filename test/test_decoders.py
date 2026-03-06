@@ -2000,7 +2000,7 @@ class TestVideoDecoder:
             assert get_nvdec_cache_capacity() == 1
 
             with pytest.raises(
-                RuntimeError, match="NVDEC cache capacity must be between 0 and"
+                RuntimeError, match="NVDEC cache capacity must be non-negative"
             ):
                 set_nvdec_cache_capacity(-1)
 

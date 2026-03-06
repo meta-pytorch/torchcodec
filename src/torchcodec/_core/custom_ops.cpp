@@ -7,7 +7,6 @@
 #include <fmt/format.h>
 #include <pybind11/pybind11.h>
 #include <cstdint>
-#include <limits>
 #include <sstream>
 #include <string>
 #include "AVIOFileLikeContext.h"
@@ -1091,13 +1090,12 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
 }
 
 void set_nvdec_cache_capacity(int64_t capacity) {
+  int capacityInt = validateInt64ToInt(capacity, "capacity");
   STD_TORCH_CHECK(
-      capacity >= 0 && capacity <= std::numeric_limits<int>::max(),
-      "NVDEC cache capacity must be between 0 and ",
-      std::numeric_limits<int>::max(),
-      ", got ",
-      capacity);
-  setNVDECCacheCapacity(static_cast<int>(capacity));
+      capacityInt >= 0,
+      "NVDEC cache capacity must be non-negative, got ",
+      capacityInt);
+  setNVDECCacheCapacity(capacityInt);
 }
 
 int64_t get_nvdec_cache_capacity() {
@@ -1105,12 +1103,12 @@ int64_t get_nvdec_cache_capacity() {
 }
 
 int64_t _get_nvdec_cache_size(int64_t device_index) {
+  int deviceIndexInt = validateInt64ToInt(device_index, "device_index");
   STD_TORCH_CHECK(
-      device_index >= 0,
+      deviceIndexInt >= 0,
       "device_index must be non-negative, got ",
-      device_index);
-  return static_cast<int64_t>(
-      getNVDECCacheSize(static_cast<int>(device_index)));
+      deviceIndexInt);
+  return static_cast<int64_t>(getNVDECCacheSize(deviceIndexInt));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
