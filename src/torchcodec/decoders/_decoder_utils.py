@@ -9,7 +9,7 @@ import contextvars
 from collections.abc import Generator
 from contextlib import contextmanager
 
-from torchcodec import _core as core
+from torchcodec import _core
 
 
 # Thread-local and async-safe storage for the current CUDA backend
@@ -71,26 +71,33 @@ def _get_cuda_backend() -> str:
 
 
 def set_nvdec_cache_capacity(capacity: int) -> None:
-    """Set the maximum number of NVDEC decoders cached per GPU device.
+    """Set the maximum number of NVDEC decoders that can be cached (per GPU).
 
     The NVDEC decoder cache stores hardware decoders for reuse, avoiding the
-    overhead of creating new decoders for subsequent video decoding operations on
-    the same GPU. This function sets the capacity of the cache, i.e. the maximum
-    number of decoders that can be cached per device. The default capacity is 20
-    decoders per device.
+    overhead of creating and destructing new decoders for subsequent video
+    decoding operations on the same GPU. This function sets the capacity of the
+    cache, i.e. the maximum number of decoders that can be cached per device.
+    The default capacity is 20 decoders per device.
+
+    Generally, a decoder can be re-used from the cache if it matches the same
+    codec and frame dimensions.
+
+    See also :func:`~torchcodec.decoders.get_nvdec_cache_capacity`.
 
     Args:
-        capacity (int): The maximum number of NVDEC decoders to cache per GPU
-            device. Must be non-negative. Setting to 0 disables caching.
+        capacity (int): The maximum number of NVDEC decoders that can be cached
+            per GPU device. Must be non-negative. Setting to 0 disables caching.
     """
-    core.set_nvdec_cache_capacity(capacity)
+    _core.set_nvdec_cache_capacity(capacity)
 
 
 def get_nvdec_cache_capacity() -> int:
     """Get the capacity of the per-device NVDEC decoder cache.
 
+    See also :func:`~torchcodec.decoders.set_nvdec_cache_capacity`.
+
     Returns:
         int: The maximum number of NVDEC decoders that can be cached per GPU
             device.
     """
-    return core.get_nvdec_cache_capacity()
+    return _core.get_nvdec_cache_capacity()

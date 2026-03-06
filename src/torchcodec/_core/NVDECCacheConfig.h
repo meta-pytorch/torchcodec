@@ -12,6 +12,7 @@
 namespace facebook::torchcodec {
 
 // Default capacity of the per-device NVDEC decoder cache.
+// capacity == maximum number of cached instances allowed.
 constexpr int DEFAULT_NVDEC_CACHE_CAPACITY = 20;
 
 // Set the capacity of the per-device NVDEC decoder cache.

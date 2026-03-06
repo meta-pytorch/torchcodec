@@ -25,6 +25,8 @@ For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_decoding_a
     :template: function.rst
 
     set_cuda_backend
+    set_nvdec_cache_capacity
+    get_nvdec_cache_capacity
 
 .. autosummary::
     :toctree: generated/
