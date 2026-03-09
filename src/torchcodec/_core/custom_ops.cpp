@@ -11,6 +11,7 @@
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
+#include "NVDECCacheConfig.h"
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
@@ -76,6 +77,9 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
+  m.def("set_nvdec_cache_capacity(int capacity) -> ()");
+  m.def("get_nvdec_cache_capacity() -> int");
+  m.def("_get_nvdec_cache_size(int device_index) -> int");
   m.def("_get_wav_metadata_from_file(str filename) -> str");
 }
 
@@ -1119,6 +1123,28 @@ std::string _get_wav_metadata_from_file(const std::string& filename) {
   return mapToJson(map);
 }
 
+void set_nvdec_cache_capacity(int64_t capacity) {
+  int capacityInt = validateInt64ToInt(capacity, "capacity");
+  STD_TORCH_CHECK(
+      capacityInt >= 0,
+      "NVDEC cache capacity must be non-negative, got ",
+      capacityInt);
+  setNVDECCacheCapacity(capacityInt);
+}
+
+int64_t get_nvdec_cache_capacity() {
+  return static_cast<int64_t>(getNVDECCacheCapacity());
+}
+
+int64_t _get_nvdec_cache_size(int64_t device_index) {
+  int deviceIndexInt = validateInt64ToInt(device_index, "device_index");
+  STD_TORCH_CHECK(
+      deviceIndexInt >= 0,
+      "device_index must be non-negative, got ",
+      deviceIndexInt);
+  return static_cast<int64_t>(getNVDECCacheSize(deviceIndexInt));
+}
+
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
@@ -1129,6 +1155,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
   m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
+  m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
+  m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
+  m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
   m.impl(
       "_get_wav_metadata_from_file", TORCH_BOX(&_get_wav_metadata_from_file));
 }
