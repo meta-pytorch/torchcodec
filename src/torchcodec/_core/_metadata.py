@@ -15,7 +15,6 @@ import torch
 from torchcodec._core.ops import (
     _get_container_json_metadata,
     _get_stream_json_metadata,
-    _get_wav_metadata_from_file,
     create_from_file,
 )
 
@@ -300,10 +299,7 @@ def get_container_metadata_from_header(
     )
 
 
-def get_wav_metadata(filename: str | pathlib.Path) -> WavStreamMetadata:
-    """Return WAV metadata from a file following the established pattern."""
-    wav_json = json.loads(_get_wav_metadata_from_file(str(filename)))
-
+def _create_wav_metadata_from_dict(wav_json: dict) -> WavStreamMetadata:
     return WavStreamMetadata(
         # Base StreamMetadata fields
         duration_seconds_from_header=wav_json.get("durationSecondsFromHeader"),

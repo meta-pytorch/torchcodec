@@ -66,7 +66,6 @@ class WavFileReader : public WavReader {
 class WavDecoder {
  public:
   explicit WavDecoder(std::unique_ptr<WavReader> reader);
-  bool isSupported() const;
   const WavHeader& getHeader() const;
   double getDurationSeconds() const;
   std::string getCodecName() const;
@@ -81,6 +80,7 @@ class WavDecoder {
   uint16_t getEffectiveFormat() const;
   ChunkInfo findChunk(const char* chunkId, int64_t startPos = 12);
   void parseHeader();
+  void validate() const;
 
   std::unique_ptr<WavReader> reader_;
   WavHeader header_;

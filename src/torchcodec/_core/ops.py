@@ -139,9 +139,6 @@ _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
 _get_wav_metadata_from_file = (
     torch.ops.torchcodec_ns._get_wav_metadata_from_file.default
 )
-create_audio_metadata_from_wav = (
-    torch.ops.torchcodec_ns.create_audio_metadata_from_wav.default
-)
 
 
 # =============================

@@ -116,6 +116,7 @@ void WavDecoder::parseHeader() {
 WavDecoder::WavDecoder(std::unique_ptr<WavReader> reader)
     : reader_(std::move(reader)) {
   parseHeader();
+  validate();
 }
 
 uint16_t WavDecoder::getEffectiveFormat() const {
@@ -156,29 +157,44 @@ double WavDecoder::getDurationSeconds() const {
   return static_cast<double>(numSamples) / header_.sampleRate;
 }
 
-bool WavDecoder::isSupported() const {
+void WavDecoder::validate() const {
   uint16_t effectiveFormat = getEffectiveFormat();
 
-  // Support PCM and IEEE float formats
   if (effectiveFormat != WAV_FORMAT_PCM &&
       effectiveFormat != WAV_FORMAT_IEEE_FLOAT) {
-    return false;
+    STD_TORCH_CHECK(
+        false,
+        "Unsupported WAV format: ",
+        effectiveFormat,
+        ". Only PCM and IEEE float formats are supported.");
   }
 
-  // Validate bits per sample
   if (effectiveFormat == WAV_FORMAT_PCM) {
-    if (header_.bitsPerSample != 8 && header_.bitsPerSample != 16 &&
-        header_.bitsPerSample != 24 && header_.bitsPerSample != 32) {
-      return false;
-    }
-  } else if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
-    if (header_.bitsPerSample != 32 && header_.bitsPerSample != 64) {
-      return false;
+    // TODO: support 8, 16, 24 bits
+    if (header_.bitsPerSample != 32) {
+      STD_TORCH_CHECK(
+          false,
+          "Unsupported PCM bit depth: ",
+          header_.bitsPerSample,
+          ". Currently supported bit depths are: 32)");
     }
   }
 
-  return header_.numChannels > 0 && header_.sampleRate > 0 &&
-      header_.blockAlign > 0;
+  // Check bit depth for IEEE_FLOAT
+  if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
+    // TODO: support 64 bit float
+    if (header_.bitsPerSample != 32) {
+      STD_TORCH_CHECK(
+          false,
+          "Unsupported IEEE_FLOAT bit depth: ",
+          header_.bitsPerSample,
+          ". Currently supported bit depths are: 32)");
+    }
+  }
+
+  STD_TORCH_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
+  STD_TORCH_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
+  STD_TORCH_CHECK(header_.blockAlign > 0, "Invalid WAV: zero block alignment");
 }
 
 const WavHeader& WavDecoder::getHeader() const {

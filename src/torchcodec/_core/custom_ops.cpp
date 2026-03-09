@@ -77,7 +77,6 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
   m.def("_get_wav_metadata_from_file(str filename) -> str");
-  m.def("create_audio_metadata_from_wav(str wav_metadata_json) -> str");
 }
 
 namespace {
@@ -1091,8 +1090,6 @@ std::string _get_wav_metadata_from_file(const std::string& filename) {
   auto reader = std::make_unique<WavFileReader>(filename);
   WavDecoder decoder(std::move(reader));
 
-  STD_TORCH_CHECK(decoder.isSupported(), "Unsupported WAV format");
-
   const WavHeader& header = decoder.getHeader();
   double duration = decoder.getDurationSeconds();
 
@@ -1122,11 +1119,6 @@ std::string _get_wav_metadata_from_file(const std::string& filename) {
   return mapToJson(map);
 }
 
-std::string create_audio_metadata_from_wav(
-    const std::string& wav_metadata_json) {
-  return wav_metadata_json;
-}
-
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
@@ -1139,9 +1131,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
   m.impl(
       "_get_wav_metadata_from_file", TORCH_BOX(&_get_wav_metadata_from_file));
-  m.impl(
-      "create_audio_metadata_from_wav",
-      TORCH_BOX(&create_audio_metadata_from_wav));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

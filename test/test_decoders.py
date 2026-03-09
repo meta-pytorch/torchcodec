@@ -51,7 +51,6 @@ from .utils import (
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
-    SINE_STEREO_F32,
     TEST_NON_ZERO_START,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
@@ -2540,34 +2539,29 @@ class TestAudioDecoder:
 
 
 class TestWavDecoder:
-    def test_metadata_against_audio_decoder(self):
-        wav_decoder = WavDecoder(SINE_STEREO_F32.path)
-        audio_decoder = AudioDecoder(SINE_STEREO_F32.path)
+    def test_metadata_against_audio_dec(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        audio_dec = AudioDecoder(SINE_MONO_S32.path)
 
-        assert wav_decoder.metadata.sample_rate == audio_decoder.metadata.sample_rate
-        assert wav_decoder.metadata.num_channels == audio_decoder.metadata.num_channels
+        assert wav_dec.metadata.sample_rate == audio_dec.metadata.sample_rate
+        assert wav_dec.metadata.num_channels == audio_dec.metadata.num_channels
+        assert wav_dec.metadata.duration_seconds == audio_dec.metadata.duration_seconds
+        assert wav_dec.stream_index == audio_dec.stream_index
         assert (
-            wav_decoder.metadata.duration_seconds
-            == audio_decoder.metadata.duration_seconds
-        )
-        assert wav_decoder.stream_index == audio_decoder.stream_index
-        assert (
-            wav_decoder.metadata.begin_stream_seconds
-            == audio_decoder.metadata.begin_stream_seconds
+            wav_dec.metadata.begin_stream_seconds
+            == audio_dec.metadata.begin_stream_seconds
         )
         assert (
-            wav_decoder.metadata.begin_stream_seconds_from_header
-            == audio_decoder.metadata.begin_stream_seconds_from_header
+            wav_dec.metadata.begin_stream_seconds_from_header
+            == audio_dec.metadata.begin_stream_seconds_from_header
         )
-        assert wav_decoder.metadata.bit_rate == audio_decoder.metadata.bit_rate
-        assert wav_decoder.metadata.codec == audio_decoder.metadata.codec
+        assert wav_dec.metadata.bit_rate == audio_dec.metadata.bit_rate
+        assert wav_dec.metadata.codec == audio_dec.metadata.codec
         assert (
-            wav_decoder.metadata.duration_seconds_from_header
-            == audio_decoder.metadata.duration_seconds_from_header
+            wav_dec.metadata.duration_seconds_from_header
+            == audio_dec.metadata.duration_seconds_from_header
         )
-        assert (
-            wav_decoder.metadata.sample_format == audio_decoder.metadata.sample_format
-        )
+        assert wav_dec.metadata.sample_format == audio_dec.metadata.sample_format
 
     def test_non_wav_file_raises_error(self):
         with pytest.raises(

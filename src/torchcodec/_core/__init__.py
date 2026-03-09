@@ -11,7 +11,6 @@ from ._metadata import (
     ContainerMetadata,
     get_container_metadata,
     get_container_metadata_from_header,
-    get_wav_metadata,
     VideoStreamMetadata,
     WavStreamMetadata,
 )
@@ -24,7 +23,6 @@ from .ops import (
     add_audio_stream,
     add_video_stream,
     core_library_path,
-    create_audio_metadata_from_wav,
     create_from_bytes,
     create_from_file,
     create_from_file_like,
