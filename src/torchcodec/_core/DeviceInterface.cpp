@@ -22,9 +22,9 @@ DeviceInterfaceMap& getDeviceMap() {
   return deviceMap;
 }
 
-std::string getDeviceTypeString(const std::string& device) {
+std::string_view getDeviceTypeString(std::string_view device) {
   size_t pos = device.find(':');
-  if (pos == std::string::npos) {
+  if (pos == std::string_view::npos) {
     return device;
   }
   return device.substr(0, pos);
@@ -34,7 +34,7 @@ std::string getDeviceTypeString(const std::string& device) {
 // TODO_STABLE_ABI: we might need to support more device types, i.e. those from
 // https://github.com/pytorch/pytorch/blob/main/torch/headeronly/core/DeviceType.h
 // Ideally we'd remove this helper?
-StableDeviceType parseDeviceType(const std::string& deviceType) {
+StableDeviceType parseDeviceType(std::string_view deviceType) {
   if (deviceType == "cpu") {
     return kStableCPU;
   } else if (deviceType == "cuda") {
@@ -67,10 +67,10 @@ bool registerDeviceInterface(
 }
 
 void validateDeviceInterface(
-    const std::string& device,
-    const std::string& variant) {
+    std::string_view device,
+    std::string_view variant) {
   std::scoped_lock lock(g_interface_mutex);
-  std::string deviceType = getDeviceTypeString(device);
+  std::string_view deviceType = getDeviceTypeString(device);
 
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
@@ -98,7 +98,7 @@ void validateDeviceInterface(
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
     const StableDevice& device,
-    const std::string_view variant) {
+    std::string_view variant) {
   DeviceInterfaceKey key(device.type(), variant);
   std::scoped_lock lock(g_interface_mutex);
   DeviceInterfaceMap& deviceMap = getDeviceMap();

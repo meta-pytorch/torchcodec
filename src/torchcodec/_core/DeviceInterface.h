@@ -10,6 +10,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include "FFMPEGCommon.h"
 #include "Frame.h"
 #include "StableABICompat.h"
@@ -21,7 +22,9 @@ namespace facebook::torchcodec {
 // Key for device interface registration with device type + variant support
 struct DeviceInterfaceKey {
   StableDeviceType deviceType;
-  std::string_view variant = "ffmpeg"; // e.g., "ffmpeg", "beta", etc.
+  // This key is stored in the global device-interface registry, so it must own
+  // its variant string.
+  std::string variant = "ffmpeg"; // e.g., "ffmpeg", "beta", etc.
 
   bool operator<(const DeviceInterfaceKey& other) const {
     if (deviceType != other.deviceType) {
@@ -32,7 +35,7 @@ struct DeviceInterfaceKey {
 
   explicit DeviceInterfaceKey(StableDeviceType type) : deviceType(type) {}
 
-  DeviceInterfaceKey(StableDeviceType type, const std::string_view& variant)
+  DeviceInterfaceKey(StableDeviceType type, std::string_view variant)
       : deviceType(type), variant(variant) {}
 };
 
@@ -177,12 +180,12 @@ TORCHCODEC_THIRD_PARTY_API bool registerDeviceInterface(
     const CreateDeviceInterfaceFn createInterface);
 
 FORCE_PUBLIC_VISIBILITY void validateDeviceInterface(
-    const std::string& device,
-    const std::string& variant);
+    std::string_view device,
+    std::string_view variant);
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
     const StableDevice& device,
-    const std::string_view variant = "ffmpeg");
+    std::string_view variant = "ffmpeg");
 
 torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 
