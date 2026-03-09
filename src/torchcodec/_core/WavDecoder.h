@@ -14,8 +14,6 @@
 
 namespace facebook::torchcodec {
 
-enum class ReaderType { File };
-
 constexpr uint16_t WAV_FORMAT_PCM = 1;
 constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 3;
 constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
@@ -28,7 +26,6 @@ struct WavHeader {
   uint16_t bitsPerSample = 0;
   uint64_t dataOffset = 0;
   uint64_t dataSize = 0;
-
   // Extended format fields (WAVE_FORMAT_EXTENSIBLE)
   uint32_t channelMask = 0;
   uint16_t subFormat = 0; // Extracted from SubFormat GUID (first 2 bytes)
@@ -37,18 +34,8 @@ struct WavHeader {
 class WavReader {
  public:
   virtual ~WavReader() = default;
-
-  // Read up to `size` bytes into `buffer`. Returns bytes actually read.
   virtual int64_t read(void* buffer, int64_t size) = 0;
-
-  // Seek to absolute position. Returns new position or -1 on error.
   virtual int64_t seek(int64_t position) = 0;
-
- protected:
-  explicit WavReader(ReaderType type) : type_(type) {}
-
- private:
-  ReaderType type_;
 };
 
 class WavFileReader : public WavReader {

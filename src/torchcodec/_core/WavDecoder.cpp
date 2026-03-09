@@ -42,7 +42,7 @@ void readExact(WavReader* reader, void* buffer, int64_t size) {
 
 // WavFileReader implementation
 WavFileReader::WavFileReader(const std::string& path)
-    : WavReader(ReaderType::File), file_(nullptr) {
+    : WavReader(), file_(nullptr) {
   file_ = std::fopen(path.c_str(), "rb");
   STD_TORCH_CHECK(file_ != nullptr, "Failed to open WAV file: ", path);
 }
