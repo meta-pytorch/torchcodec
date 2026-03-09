@@ -61,7 +61,11 @@ int64_t WavFileReader::read(void* buffer, int64_t size) {
 
 int64_t WavFileReader::seek(int64_t position) {
   STD_TORCH_CHECK(file_ != nullptr, "WAV file handle is null");
+#ifdef _WIN32
+  if (_fseeki64(file_, position, SEEK_SET) != 0) {
+#else
   if (fseeko(file_, static_cast<off_t>(position), SEEK_SET) != 0) {
+#endif
     return -1;
   }
   return position;
