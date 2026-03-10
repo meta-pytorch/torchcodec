@@ -34,20 +34,13 @@ struct WavHeader {
   uint16_t validBitsPerSample = 0;
 };
 
-class WavReader {
- public:
-  virtual ~WavReader() = default;
-  virtual int64_t read(void* buffer, int64_t size) = 0;
-  virtual int64_t seek(int64_t position) = 0;
-};
-
-class WavFileReader : public WavReader {
+class WavFileReader {
  public:
   explicit WavFileReader(const std::string& path);
-  ~WavFileReader() override;
+  ~WavFileReader();
 
-  int64_t read(void* buffer, int64_t size) override;
-  int64_t seek(int64_t position) override;
+  int64_t read(void* buffer, int64_t size);
+  int64_t seek(int64_t position);
 
  private:
   std::FILE* file_;
@@ -55,7 +48,7 @@ class WavFileReader : public WavReader {
 
 class WavDecoder {
  public:
-  explicit WavDecoder(std::unique_ptr<WavReader> reader);
+  explicit WavDecoder(std::unique_ptr<WavFileReader> reader);
   const WavHeader& getHeader() const;
   double getDurationSeconds() const;
   std::string getCodecName() const;
@@ -72,7 +65,7 @@ class WavDecoder {
   void parseHeader();
   void validate() const;
 
-  std::unique_ptr<WavReader> reader_;
+  std::unique_ptr<WavFileReader> reader_;
   WavHeader header_;
 };
 

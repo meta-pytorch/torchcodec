@@ -27,22 +27,9 @@ bool checkFourCC(const uint8_t* data, const char* expected) {
   return std::memcmp(data, expected, 4) == 0;
 }
 
-void readExact(WavReader* reader, void* buffer, int64_t size) {
-  int64_t bytesRead = reader->read(buffer, size);
-  STD_TORCH_CHECK(
-      bytesRead == size,
-      "WAV: unexpected end of data (expected ",
-      size,
-      " bytes, got ",
-      bytesRead,
-      ")");
-}
-
 } // namespace
 
-// WavFileReader implementation
-WavFileReader::WavFileReader(const std::string& path)
-    : WavReader(), file_(nullptr) {
+WavFileReader::WavFileReader(const std::string& path) : file_(nullptr) {
   file_ = std::fopen(path.c_str(), "rb");
   STD_TORCH_CHECK(file_ != nullptr, "Failed to open WAV file: ", path);
 }
@@ -76,7 +63,12 @@ void WavDecoder::parseHeader() {
 
   // Verify RIFF header (12 bytes: "RIFF" + fileSize + "WAVE")
   uint8_t riffHeader[12];
-  readExact(reader_.get(), riffHeader, 12);
+  int64_t bytesRead = reader_->read(riffHeader, 12);
+  STD_TORCH_CHECK(
+      bytesRead == 12,
+      "WAV: unexpected end of data (expected 12 bytes, got ",
+      bytesRead,
+      ")");
 
   STD_TORCH_CHECK(checkFourCC(riffHeader, "RIFF"), "Missing RIFF header");
   STD_TORCH_CHECK(
@@ -91,7 +83,14 @@ void WavDecoder::parseHeader() {
 
   reader_->seek(fmtChunk.offset);
   std::vector<uint8_t> fmtData(fmtChunk.size);
-  readExact(reader_.get(), fmtData.data(), fmtChunk.size);
+  int64_t bytesRead = reader_->read(fmtData.data(), fmtChunk.size);
+  STD_TORCH_CHECK(
+      bytesRead == static_cast<int64_t>(fmtChunk.size),
+      "WAV: unexpected end of data (expected ",
+      fmtChunk.size,
+      " bytes, got ",
+      bytesRead,
+      ")");
 
   header_.audioFormat = readLittleEndian<uint16_t>(fmtData.data());
   header_.numChannels = readLittleEndian<uint16_t>(fmtData.data() + 2);
@@ -120,7 +119,7 @@ void WavDecoder::parseHeader() {
   header_.dataOffset = dataChunk.offset;
 }
 
-WavDecoder::WavDecoder(std::unique_ptr<WavReader> reader)
+WavDecoder::WavDecoder(std::unique_ptr<WavFileReader> reader)
     : reader_(std::move(reader)) {
   parseHeader();
   validate();
