@@ -152,7 +152,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     // Skip this chunk and continue searching
     startPos += 8 + chunkSize;
     STD_TORCH_CHECK(
-        startPos <= header_.fileSize,
+        static_cast<uint64_t>(startPos) <= header_.fileSize,
         "Chunk extends beyond file bounds at position: ",
         startPos);
     reader_->seek(startPos);
