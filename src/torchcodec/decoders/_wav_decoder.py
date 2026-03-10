@@ -5,25 +5,20 @@
 # LICENSE file in the root directory of this source tree.
 
 
-import json
 from pathlib import Path
 
 import torch
 from torchcodec import _core
 
-from torchcodec._core._metadata import _create_audio_metadata_from_wav_dict
 
-
-def _try_get_wav_metadata(source) -> dict | None:
+def _try_create_wav_decoder(source):
     try:
         if isinstance(source, str):
-            metadata_json = _core._get_wav_metadata_from_file(source)
+            return _core.create_wav_decoder_from_file(source)
         elif isinstance(source, Path):
-            metadata_json = _core._get_wav_metadata_from_file(str(source))
+            return _core.create_wav_decoder_from_file(str(source))
         else:
             return None
-
-        return json.loads(metadata_json)
     except Exception as e:
         print(f"Error occurred while processing WAV file: {e}")
         return None
@@ -34,8 +29,8 @@ class WavDecoder:
     def __init__(self, source: str | Path):
         torch._C._log_api_usage_once("torchcodec.decoders.WavDecoder")
 
-        metadata_dict = _try_get_wav_metadata(source)
-        if metadata_dict is None:
+        self._decoder = _try_create_wav_decoder(source)
+        if self._decoder is None:
             raise ValueError(
                 "Source is not a supported uncompressed WAV file. "
                 "For compressed audio formats or non-WAV files, use AudioDecoder instead."
@@ -43,4 +38,6 @@ class WavDecoder:
 
         self._source = source
         self.stream_index = 0
-        self.metadata = _create_audio_metadata_from_wav_dict(metadata_dict)
+
+    def get_all_samples(self):
+        return _core.get_wav_all_samples(self._decoder)

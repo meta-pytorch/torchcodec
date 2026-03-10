@@ -2617,28 +2617,11 @@ class TestAudioDecoder:
 
 
 class TestWavDecoder:
-    def test_metadata(self):
+    def test_tensor_handle_creation(self):
         wav_dec = WavDecoder(SINE_MONO_S32.path)
-        audio_dec = AudioDecoder(SINE_MONO_S32.path)
-        assert wav_dec.metadata.sample_rate == audio_dec.metadata.sample_rate
-        assert wav_dec.metadata.num_channels == audio_dec.metadata.num_channels
-        assert wav_dec.metadata.duration_seconds == audio_dec.metadata.duration_seconds
-        assert wav_dec.stream_index == audio_dec.stream_index
-        assert (
-            wav_dec.metadata.begin_stream_seconds
-            == audio_dec.metadata.begin_stream_seconds
-        )
-        assert (
-            wav_dec.metadata.begin_stream_seconds_from_header
-            == audio_dec.metadata.begin_stream_seconds_from_header
-        )
-        assert wav_dec.metadata.bit_rate == audio_dec.metadata.bit_rate
-        assert wav_dec.metadata.codec == audio_dec.metadata.codec
-        assert (
-            wav_dec.metadata.duration_seconds_from_header
-            == audio_dec.metadata.duration_seconds_from_header
-        )
-        assert wav_dec.metadata.sample_format == audio_dec.metadata.sample_format
+        assert wav_dec._decoder is not None
+        assert wav_dec.stream_index == 0
+        assert wav_dec._source == SINE_MONO_S32.path
 
     def test_non_wav_file_raises_error(self):
         with pytest.raises(

@@ -80,7 +80,8 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
   m.def("get_nvdec_cache_capacity() -> int");
   m.def("_get_nvdec_cache_size(int device_index) -> int");
-  m.def("_get_wav_metadata_from_file(str filename) -> str");
+  m.def("create_wav_decoder_from_file(str filename) -> Tensor");
+  m.def("get_wav_all_samples(Tensor decoder) -> Tensor");
 }
 
 namespace {
@@ -108,6 +109,32 @@ torch::stable::Tensor wrapDecoderPointerToTensor(
       static_cast<SingleStreamDecoder*>(tensor.mutable_data_ptr());
   STD_TORCH_CHECK(videoDecoder == decoder, "videoDecoder != decoder");
   return tensor;
+}
+
+torch::stable::Tensor wrapWavDecoderPointerToTensor(
+    std::unique_ptr<WavDecoder> uniqueDecoder) {
+  WavDecoder* decoder = uniqueDecoder.release();
+
+  int64_t sizes[] = {static_cast<int64_t>(sizeof(WavDecoder*))};
+  int64_t strides[] = {1};
+  torch::stable::Tensor tensor = torch::stable::from_blob(
+      decoder,
+      {sizes, 1},
+      {strides, 1},
+      StableDevice(kStableCPU),
+      kStableInt64,
+      [](void* data) { delete static_cast<WavDecoder*>(data); });
+  auto wavDecoder = static_cast<WavDecoder*>(tensor.mutable_data_ptr());
+  STD_TORCH_CHECK(wavDecoder == decoder, "wavDecoder != decoder");
+  return tensor;
+}
+
+WavDecoder* unwrapTensorToGetWavDecoder(torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(
+      tensor.is_contiguous(),
+      "fake decoder tensor must be contiguous! This is an internal error, please report on the torchcodec issue tracker.");
+  WavDecoder* decoder = static_cast<WavDecoder*>(tensor.mutable_data_ptr());
+  return decoder;
 }
 
 SingleStreamDecoder* unwrapTensorToGetDecoder(torch::stable::Tensor& tensor) {
@@ -1090,40 +1117,18 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
-std::string _get_wav_metadata_from_file(const std::string& filename) {
+torch::stable::Tensor create_wav_decoder_from_file(
+    const std::string& filename) {
   auto reader = std::make_unique<WavFileReader>(filename);
-  WavDecoder decoder(std::move(reader));
+  auto decoder = std::make_unique<WavDecoder>(std::move(reader));
+  return wrapWavDecoderPointerToTensor(std::move(decoder));
+}
 
-  const WavHeader& header = decoder.getHeader();
-  double duration = decoder.getDurationSeconds();
-
-  std::map<std::string, std::string> map;
-  map["numChannels"] = fmt::to_string(header.numChannels);
-  map["sampleRate"] = fmt::to_string(header.sampleRate);
-  map["durationSeconds"] = fmt::to_string(duration);
-  map["durationSecondsFromHeader"] = fmt::to_string(duration);
-  map["beginStreamSeconds"] = "0"; // WAV files always start at 0
-  map["codec"] = "\"" + decoder.getCodecName() + "\"";
-  map["sampleFormat"] = "\"" + decoder.getSampleFormatName() + "\"";
-
-  // Calculate bit rate: sample_rate * channels * bits_per_sample
-  if (header.sampleRate > 0 && header.numChannels > 0 &&
-      header.bitsPerSample > 0) {
-    uint64_t bitRate = static_cast<uint64_t>(header.sampleRate) *
-        header.numChannels * header.bitsPerSample;
-    map["bitRate"] = fmt::to_string(bitRate);
-  }
-  map["audioFormat"] = fmt::to_string(header.audioFormat);
-  map["bitsPerSample"] = fmt::to_string(header.bitsPerSample);
-  map["blockAlign"] = fmt::to_string(header.blockAlign);
-  map["byteRate"] = fmt::to_string(header.byteRate);
-  map["dataSize"] = fmt::to_string(header.dataSize);
-  map["dataOffset"] = fmt::to_string(header.dataOffset);
-  map["subFormat"] = fmt::to_string(header.subFormat);
-  map["validBitsPerSample"] = fmt::to_string(header.validBitsPerSample);
-  map["fileSize"] = fmt::to_string(header.fileSize);
-
-  return mapToJson(map);
+torch::stable::Tensor get_wav_all_samples(torch::stable::Tensor& decoder) {
+  auto wavDecoder = unwrapTensorToGetWavDecoder(decoder);
+  (void)wavDecoder; // Suppress unused variable warning
+  STD_TORCH_CHECK(false, "get_wav_all_samples not yet implemented");
+  return torch::stable::empty({0}, kStableFloat32);
 }
 
 void set_nvdec_cache_capacity(int64_t capacity) {
@@ -1162,7 +1167,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
   m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
   m.impl(
-      "_get_wav_metadata_from_file", TORCH_BOX(&_get_wav_metadata_from_file));
+      "create_wav_decoder_from_file", TORCH_BOX(&create_wav_decoder_from_file));
+  m.impl("get_wav_all_samples", TORCH_BOX(&get_wav_all_samples));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

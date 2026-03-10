@@ -139,9 +139,10 @@ _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
 set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
 get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
 _get_nvdec_cache_size = torch.ops.torchcodec_ns._get_nvdec_cache_size.default
-_get_wav_metadata_from_file = (
-    torch.ops.torchcodec_ns._get_wav_metadata_from_file.default
+create_wav_decoder_from_file = (
+    torch.ops.torchcodec_ns.create_wav_decoder_from_file.default
 )
+get_wav_all_samples = torch.ops.torchcodec_ns.get_wav_all_samples.default
 
 
 # =============================
