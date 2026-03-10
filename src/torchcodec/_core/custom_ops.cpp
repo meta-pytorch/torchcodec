@@ -992,17 +992,14 @@ std::string get_stream_json_metadata(
   if (streamMetadata.rotation.has_value()) {
     map["rotation"] = std::to_string(*streamMetadata.rotation);
   }
-  if (streamMetadata.colorPrimaries.has_value()) {
-    map["colorPrimaries"] =
-        quoteValue(av_color_primaries_name(*streamMetadata.colorPrimaries));
+  if (auto name = streamMetadata.getColorPrimariesName()) {
+    map["colorPrimaries"] = quoteValue(*name);
   }
-  if (streamMetadata.colorSpace.has_value()) {
-    map["colorSpace"] =
-        quoteValue(av_color_space_name(*streamMetadata.colorSpace));
+  if (auto name = streamMetadata.getColorSpaceName()) {
+    map["colorSpace"] = quoteValue(*name);
   }
-  if (streamMetadata.colorTransferCharacteristic.has_value()) {
-    map["colorTransferCharacteristic"] = quoteValue(
-        av_color_transfer_name(*streamMetadata.colorTransferCharacteristic));
+  if (auto name = streamMetadata.getColorTransferCharacteristicName()) {
+    map["colorTransferCharacteristic"] = quoteValue(*name);
   }
   if (streamMetadata.pixelFormat.has_value()) {
     map["pixelFormat"] = quoteValue(streamMetadata.pixelFormat.value());

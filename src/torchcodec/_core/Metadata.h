@@ -77,6 +77,12 @@ struct StreamMetadata {
   std::optional<double> getEndStreamSeconds(SeekMode seekMode) const;
   std::optional<int64_t> getNumFrames(SeekMode seekMode) const;
   std::optional<double> getAverageFps(SeekMode seekMode) const;
+
+  // Color metadata name accessors. These return nullopt if the field is unset
+  // or if FFmpeg returns NULL for the name.
+  std::optional<std::string> getColorPrimariesName() const;
+  std::optional<std::string> getColorSpaceName() const;
+  std::optional<std::string> getColorTransferCharacteristicName() const;
 };
 
 struct ContainerMetadata {
