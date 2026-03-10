@@ -11,14 +11,10 @@ from pathlib import Path
 import torch
 from torchcodec import _core
 
-from torchcodec._core._metadata import _create_wav_metadata_from_dict
+from torchcodec._core._metadata import _create_audio_metadata_from_wav_dict
 
 
 def _try_get_wav_metadata(source) -> dict | None:
-    """Try to extract WAV metadata if source is a supported uncompressed WAV.
-
-    Returns parsed metadata dict if compatible, None otherwise.
-    """
     try:
         if isinstance(source, str):
             metadata_json = _core._get_wav_metadata_from_file(source)
@@ -34,22 +30,7 @@ def _try_get_wav_metadata(source) -> dict | None:
 
 
 class WavDecoder:
-    """A validator for uncompressed WAV audio files.
-
-    This class validates WAV file format and extracts metadata.
-    For compressed audio formats or non-WAV files, use AudioDecoder instead.
-
-    Args:
-        source (str or ``Pathlib.path``): Path to a WAV file.
-
-    Attributes:
-        metadata (AudioStreamMetadata): Metadata of the audio stream.
-        stream_index (int): Always 0 for WAV files (single stream).
-
-    Raises:
-        ValueError: If the source is not a supported uncompressed WAV file.
-    """
-
+    # TODO: Docstrings
     def __init__(self, source: str | Path):
         torch._C._log_api_usage_once("torchcodec.decoders.WavDecoder")
 
@@ -62,4 +43,4 @@ class WavDecoder:
 
         self._source = source
         self.stream_index = 0
-        self.metadata = _create_wav_metadata_from_dict(metadata_dict)
+        self.metadata = _create_audio_metadata_from_wav_dict(metadata_dict)

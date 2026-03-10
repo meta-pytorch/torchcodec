@@ -2620,7 +2620,6 @@ class TestWavDecoder:
     def test_metadata(self):
         wav_dec = WavDecoder(SINE_MONO_S32.path)
         audio_dec = AudioDecoder(SINE_MONO_S32.path)
-
         assert wav_dec.metadata.sample_rate == audio_dec.metadata.sample_rate
         assert wav_dec.metadata.num_channels == audio_dec.metadata.num_channels
         assert wav_dec.metadata.duration_seconds == audio_dec.metadata.duration_seconds
@@ -2640,15 +2639,6 @@ class TestWavDecoder:
             == audio_dec.metadata.duration_seconds_from_header
         )
         assert wav_dec.metadata.sample_format == audio_dec.metadata.sample_format
-        # Test WAV-specific metadata fields are populated
-        assert wav_dec.metadata.audio_format == 0xFFFE  # WAV_FORMAT_EXTENSIBLE
-        assert wav_dec.metadata.sub_format == 1  # WAV_FORMAT_PCM
-        assert wav_dec.metadata.bits_per_sample == 32  # 32-bit samples
-        assert wav_dec.metadata.block_align == 4  # 32 bits * 1 channel / 8 = 4 bytes
-        assert wav_dec.metadata.data_size > 0  # There is some amount of audio data
-        assert (
-            wav_dec.metadata.data_offset >= 44
-        )  # Standard WAV header is at least 44 bytes
 
     def test_non_wav_file_raises_error(self):
         with pytest.raises(

@@ -159,30 +159,6 @@ class AudioStreamMetadata(StreamMetadata):
 
 
 @dataclass
-class WavStreamMetadata(AudioStreamMetadata):
-    """Metadata for WAV audio streams with additional WAV-specific fields."""
-
-    audio_format: int | None = None
-    """Raw format code (1=PCM, 3=IEEE_FLOAT)."""
-    sub_format: int | None = None
-    """Format code for WAVE_FORMAT_EXTENSIBLE."""
-    bits_per_sample: int | None = None
-    """Bits per sample (8, 16, 24, 32, 64)."""
-    block_align: int | None = None
-    """Bytes per sample frame."""
-    byte_rate: int | None = None
-    """Average bytes per second."""
-    data_size: int | None = None
-    """Size of audio data in bytes."""
-    data_offset: int | None = None
-    """Byte offset to audio data."""
-    file_size: int | None = None
-    """Total file size from RIFF header."""
-    valid_bits_per_sample: int | None = None
-    """Valid bits per sample (WAVE_FORMAT_EXTENSIBLE only)."""
-
-
-@dataclass
 class ContainerMetadata:
     duration_seconds_from_header: float | None
     bit_rate_from_header: float | None
@@ -305,8 +281,8 @@ def get_container_metadata_from_header(
     )
 
 
-def _create_wav_metadata_from_dict(wav_json: dict) -> WavStreamMetadata:
-    return WavStreamMetadata(
+def _create_audio_metadata_from_wav_dict(wav_json: dict) -> AudioStreamMetadata:
+    return AudioStreamMetadata(
         # Base StreamMetadata fields
         duration_seconds_from_header=wav_json.get("durationSecondsFromHeader"),
         duration_seconds=wav_json.get("durationSeconds"),
@@ -319,14 +295,4 @@ def _create_wav_metadata_from_dict(wav_json: dict) -> WavStreamMetadata:
         sample_rate=wav_json.get("sampleRate"),
         num_channels=wav_json.get("numChannels"),
         sample_format=wav_json.get("sampleFormat"),
-        # WAV-specific fields
-        audio_format=wav_json.get("audioFormat"),
-        sub_format=wav_json.get("subFormat"),
-        bits_per_sample=wav_json.get("bitsPerSample"),
-        block_align=wav_json.get("blockAlign"),
-        byte_rate=wav_json.get("byteRate"),
-        data_size=wav_json.get("dataSize"),
-        data_offset=wav_json.get("dataOffset"),
-        file_size=wav_json.get("fileSize"),
-        valid_bits_per_sample=wav_json.get("validBitsPerSample"),
     )
