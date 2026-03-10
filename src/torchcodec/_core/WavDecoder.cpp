@@ -158,15 +158,6 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
   }
 }
 
-double WavDecoder::getDurationSeconds() const {
-  if (header_.blockAlign == 0 || header_.sampleRate == 0) {
-    return 0.0;
-  }
-  int64_t numSamples =
-      static_cast<int64_t>(header_.dataSize) / header_.blockAlign;
-  return static_cast<double>(numSamples) / header_.sampleRate;
-}
-
 void WavDecoder::validate() const {
   uint16_t effectiveFormat = getEffectiveFormat();
 
@@ -207,69 +198,4 @@ void WavDecoder::validate() const {
   STD_TORCH_CHECK(header_.blockAlign > 0, "Invalid WAV: zero block alignment");
 }
 
-const WavHeader& WavDecoder::getHeader() const {
-  return header_;
-}
-
-std::string WavDecoder::getCodecName() const {
-  uint16_t effectiveFormat = getEffectiveFormat();
-
-  if (effectiveFormat == WAV_FORMAT_PCM) {
-    switch (header_.bitsPerSample) {
-      case 8:
-        return "pcm_u8";
-      case 16:
-        return "pcm_s16le";
-      case 24:
-        return "pcm_s24le";
-      case 32:
-        return "pcm_s32le";
-      default:
-        STD_TORCH_CHECK(
-            false, "Unsupported PCM bit depth: ", header_.bitsPerSample);
-    }
-  } else if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
-    switch (header_.bitsPerSample) {
-      case 32:
-        return "pcm_f32le";
-      case 64:
-        return "pcm_f64le";
-      default:
-        STD_TORCH_CHECK(
-            false, "Unsupported IEEE float bit depth: ", header_.bitsPerSample);
-    }
-  }
-  STD_TORCH_CHECK(false, "Unsupported WAV format: ", effectiveFormat);
-}
-
-std::string WavDecoder::getSampleFormatName() const {
-  uint16_t effectiveFormat = getEffectiveFormat();
-
-  if (effectiveFormat == WAV_FORMAT_PCM) {
-    switch (header_.bitsPerSample) {
-      case 8:
-        return "u8";
-      case 16:
-        return "s16";
-      case 24:
-        return "s32"; // 24-bit PCM packed in 32-bit container
-      case 32:
-        return "s32";
-      default:
-        STD_TORCH_CHECK(
-            false, "Unsupported PCM bit depth: ", header_.bitsPerSample);
-    }
-  } else if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
-    switch (header_.bitsPerSample) {
-      case 32:
-        return "flt";
-      case 64:
-        return "dbl";
-      default:
-        STD_TORCH_CHECK(
-            false, "Unsupported IEEE float bit depth: ", header_.bitsPerSample);
-    }
-  }
-  STD_TORCH_CHECK(false, "Unsupported WAV format: ", effectiveFormat);
-}
 } // namespace facebook::torchcodec

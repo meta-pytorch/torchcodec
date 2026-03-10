@@ -50,10 +50,6 @@ class WavFileReader {
 class WavDecoder {
  public:
   explicit WavDecoder(std::unique_ptr<WavFileReader> reader);
-  const WavHeader& getHeader() const;
-  double getDurationSeconds() const;
-  std::string getCodecName() const;
-  std::string getSampleFormatName() const;
 
  private:
   struct ChunkInfo {
