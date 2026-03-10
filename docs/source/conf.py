@@ -210,8 +210,12 @@ html_theme_options = {
     ],
     "use_edit_page_button": True,
     "navbar_center": "navbar-nav",
-    "navbar_start": ["navbar-logo", "pytorch_version"],
-    "display_version": True,
+    "navbar_start": ["navbar-logo", "version-switcher"],
+    "switcher": {
+        "json_url": "_static/torchcodec-versions.json",
+        "version_match": version,
+    },
+    "show_version_warning_banner": True,
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,

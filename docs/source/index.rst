@@ -132,6 +132,12 @@ Encoding
    :maxdepth: 1
    :hidden:
 
+   Installation <https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec>
+
+.. toctree::
+   :maxdepth: 1
+   :hidden:
+
    generated_examples/index
 
 .. toctree::
