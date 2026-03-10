@@ -9,6 +9,7 @@
 #include "CUDACommon.h"
 #include "FFMPEGCommon.h"
 #include "NVDECCache.h"
+#include "NVDECCacheConfig.h"
 
 #include <cuda_runtime.h> // For cudaGetDevice
 
@@ -19,9 +20,13 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-NVDECCache& NVDECCache::getCache(const StableDevice& device) {
+NVDECCache* NVDECCache::getCacheInstances() {
   static NVDECCache cacheInstances[MAX_CUDA_GPUS];
-  return cacheInstances[getDeviceIndex(device)];
+  return cacheInstances;
+}
+
+NVDECCache& NVDECCache::getCache(const StableDevice& device) {
+  return getCacheInstances()[getDeviceIndex(device)];
 }
 
 UniqueCUvideodecoder NVDECCache::getDecoder(CUVIDEOFORMAT* videoFormat) {
@@ -39,6 +44,21 @@ UniqueCUvideodecoder NVDECCache::getDecoder(CUVIDEOFORMAT* videoFormat) {
   return nullptr;
 }
 
+// Evicts the least-recently-used entry from cache_.
+// Caller must hold cacheLock_!!!
+void NVDECCache::evictLRUEntry() {
+  if (cache_.empty()) {
+    return;
+  }
+  auto victim = cache_.begin();
+  for (auto it = cache_.begin(); it != cache_.end(); ++it) {
+    if (it->second.lastUsed < victim->second.lastUsed) {
+      victim = it;
+    }
+  }
+  cache_.erase(victim);
+}
+
 void NVDECCache::returnDecoder(
     CUVIDEOFORMAT* videoFormat,
     UniqueCUvideodecoder decoder) {
@@ -47,25 +67,40 @@ void NVDECCache::returnDecoder(
   CacheKey key(videoFormat);
   std::lock_guard<std::mutex> lock(cacheLock_);
 
-  // Evict least recently used entry if at capacity.
-  // This search is O(MAX_CACHE_SIZE) but MAX_CACHE_SIZE is always small, so
-  // this isn't significant.
-  if (cache_.size() >= MAX_CACHE_SIZE) {
-    auto victim = cache_.begin();
-    for (auto it = cache_.begin(); it != cache_.end(); ++it) {
-      if (it->second.lastUsed < victim->second.lastUsed) {
-        victim = it;
-      }
-    }
-    cache_.erase(victim);
+  int capacity = getNVDECCacheCapacity();
+  if (capacity <= 0) {
+    return;
+  }
+
+  // Evict least recently used entries until under capacity.
+  // This search is O(capacity), which is supposed to be small,
+  // so linear vs constant search overhead is expected to be negligible.
+  while (cache_.size() >= static_cast<size_t>(capacity)) {
+    evictLRUEntry();
   }
 
   // Add the decoder back to cache
   cache_.emplace(key, CacheEntry(std::move(decoder), lastUsedCounter_++));
 
   STD_TORCH_CHECK(
-      cache_.size() <= MAX_CACHE_SIZE,
-      "Cache size exceeded maximum limit, please report a bug");
+      cache_.size() <= static_cast<size_t>(capacity),
+      "Cache size exceeded capacity, please report a bug");
+}
+
+void NVDECCache::evictExcessEntriesAcrossDevices(int capacity) {
+  NVDECCache* instances = getCacheInstances();
+  for (int i = 0; i < MAX_CUDA_GPUS; ++i) {
+    std::lock_guard<std::mutex> lock(instances[i].cacheLock_);
+    while (instances[i].cache_.size() > static_cast<size_t>(capacity)) {
+      instances[i].evictLRUEntry();
+    }
+  }
+}
+
+int NVDECCache::getCacheSizeForDevice(int device_index) {
+  NVDECCache* instances = getCacheInstances();
+  std::lock_guard<std::mutex> lock(instances[device_index].cacheLock_);
+  return static_cast<int>(instances[device_index].cache_.size());
 }
 
 } // namespace facebook::torchcodec
