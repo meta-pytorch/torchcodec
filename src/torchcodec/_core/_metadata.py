@@ -279,20 +279,3 @@ def get_container_metadata_from_header(
     return get_container_metadata(
         create_from_file(str(filename), seek_mode="approximate")
     )
-
-
-def _create_audio_metadata_from_wav_dict(wav_json: dict) -> AudioStreamMetadata:
-    return AudioStreamMetadata(
-        # Base StreamMetadata fields
-        duration_seconds_from_header=wav_json.get("durationSecondsFromHeader"),
-        duration_seconds=wav_json.get("durationSeconds"),
-        bit_rate=wav_json.get("bitRate"),
-        begin_stream_seconds_from_header=wav_json.get("beginStreamSecondsFromHeader"),
-        begin_stream_seconds=wav_json.get("beginStreamSeconds"),
-        codec=wav_json.get("codec"),
-        stream_index=0,
-        # AudioStreamMetadata fields
-        sample_rate=wav_json.get("sampleRate"),
-        num_channels=wav_json.get("numChannels"),
-        sample_format=wav_json.get("sampleFormat"),
-    )
