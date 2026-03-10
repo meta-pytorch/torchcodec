@@ -30,8 +30,9 @@ namespace facebook::torchcodec {
 
 static_assert(
     std::is_same_v<decltype(VideoStreamOptions{}.deviceVariant), std::string>);
-static_assert(
-    std::is_same_v<decltype(DeviceInterfaceKey(kStableCPU).variant), std::string>);
+static_assert(std::is_same_v<
+              decltype(DeviceInterfaceKey(kStableCPU).variant),
+              std::string>);
 
 inline torch::stable::Tensor toStableTensor(const torch::Tensor& tensor) {
   torch::Tensor* p = new torch::Tensor(tensor);
