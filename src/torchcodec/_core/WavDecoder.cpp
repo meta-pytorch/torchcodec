@@ -82,6 +82,8 @@ void WavDecoder::parseHeader() {
   STD_TORCH_CHECK(
       checkFourCC(riffHeader + 8, "WAVE"), "Missing WAVE format identifier");
 
+  header_.fileSize = readLittleEndian<uint32_t>(riffHeader + 4) + 8;
+
   // Find and parse fmt chunk
   ChunkInfo fmtChunk = findChunk("fmt ");
   STD_TORCH_CHECK(
@@ -94,7 +96,7 @@ void WavDecoder::parseHeader() {
   header_.audioFormat = readLittleEndian<uint16_t>(fmtData.data());
   header_.numChannels = readLittleEndian<uint16_t>(fmtData.data() + 2);
   header_.sampleRate = readLittleEndian<uint32_t>(fmtData.data() + 4);
-  // Skip byteRate at offset 8 (not used)
+  header_.byteRate = readLittleEndian<uint32_t>(fmtData.data() + 8);
   header_.blockAlign = readLittleEndian<uint16_t>(fmtData.data() + 12);
   header_.bitsPerSample = readLittleEndian<uint16_t>(fmtData.data() + 14);
 
@@ -105,7 +107,8 @@ void WavDecoder::parseHeader() {
     STD_TORCH_CHECK(
         fmtChunk.size >= 40, "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
 
-    // Skip validBitsPerSample at offset 18 (not used)
+    header_.validBitsPerSample =
+        readLittleEndian<uint16_t>(fmtData.data() + 18);
     header_.channelMask = readLittleEndian<uint32_t>(fmtData.data() + 20);
     // SubFormat GUID starts at offset 24, first 2 bytes are the format code
     header_.subFormat = readLittleEndian<uint16_t>(fmtData.data() + 24);
@@ -148,6 +151,10 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
 
     // Skip this chunk and continue searching
     startPos += 8 + chunkSize;
+    STD_TORCH_CHECK(
+        startPos <= header_.fileSize,
+        "Chunk extends beyond file bounds at position: ",
+        startPos);
     reader_->seek(startPos);
   }
 }

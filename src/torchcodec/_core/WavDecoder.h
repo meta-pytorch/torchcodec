@@ -24,11 +24,14 @@ struct WavHeader {
   uint32_t sampleRate = 0;
   uint16_t blockAlign = 0;
   uint16_t bitsPerSample = 0;
+  uint32_t byteRate = 0;
   uint64_t dataOffset = 0;
   uint64_t dataSize = 0;
+  uint64_t fileSize = 0;
   // Extended format fields (WAVE_FORMAT_EXTENSIBLE)
   uint32_t channelMask = 0;
   uint16_t subFormat = 0; // Extracted from SubFormat GUID (first 2 bytes)
+  uint16_t validBitsPerSample = 0;
 };
 
 class WavReader {

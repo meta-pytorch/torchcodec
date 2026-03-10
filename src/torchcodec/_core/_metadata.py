@@ -170,10 +170,16 @@ class WavStreamMetadata(AudioStreamMetadata):
     """Bits per sample (8, 16, 24, 32, 64)."""
     block_align: int | None = None
     """Bytes per sample frame."""
+    byte_rate: int | None = None
+    """Average bytes per second."""
     data_size: int | None = None
     """Size of audio data in bytes."""
     data_offset: int | None = None
     """Byte offset to audio data."""
+    file_size: int | None = None
+    """Total file size from RIFF header."""
+    valid_bits_per_sample: int | None = None
+    """Valid bits per sample (WAVE_FORMAT_EXTENSIBLE only)."""
 
 
 @dataclass
@@ -318,6 +324,9 @@ def _create_wav_metadata_from_dict(wav_json: dict) -> WavStreamMetadata:
         sub_format=wav_json.get("subFormat"),
         bits_per_sample=wav_json.get("bitsPerSample"),
         block_align=wav_json.get("blockAlign"),
+        byte_rate=wav_json.get("byteRate"),
         data_size=wav_json.get("dataSize"),
         data_offset=wav_json.get("dataOffset"),
+        file_size=wav_json.get("fileSize"),
+        valid_bits_per_sample=wav_json.get("validBitsPerSample"),
     )

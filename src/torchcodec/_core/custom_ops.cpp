@@ -1116,9 +1116,12 @@ std::string _get_wav_metadata_from_file(const std::string& filename) {
   map["audioFormat"] = fmt::to_string(header.audioFormat);
   map["bitsPerSample"] = fmt::to_string(header.bitsPerSample);
   map["blockAlign"] = fmt::to_string(header.blockAlign);
+  map["byteRate"] = fmt::to_string(header.byteRate);
   map["dataSize"] = fmt::to_string(header.dataSize);
   map["dataOffset"] = fmt::to_string(header.dataOffset);
   map["subFormat"] = fmt::to_string(header.subFormat);
+  map["validBitsPerSample"] = fmt::to_string(header.validBitsPerSample);
+  map["fileSize"] = fmt::to_string(header.fileSize);
 
   return mapToJson(map);
 }
