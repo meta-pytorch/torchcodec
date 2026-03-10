@@ -83,13 +83,13 @@ void WavDecoder::parseHeader() {
 
   reader_->seek(fmtChunk.offset);
   std::vector<uint8_t> fmtData(fmtChunk.size);
-  int64_t bytesRead = reader_->read(fmtData.data(), fmtChunk.size);
+  int64_t fmtBytesRead = reader_->read(fmtData.data(), fmtChunk.size);
   STD_TORCH_CHECK(
-      bytesRead == static_cast<int64_t>(fmtChunk.size),
+      fmtBytesRead == static_cast<int64_t>(fmtChunk.size),
       "WAV: unexpected end of data (expected ",
       fmtChunk.size,
       " bytes, got ",
-      bytesRead,
+      fmtBytesRead,
       ")");
 
   header_.audioFormat = readLittleEndian<uint16_t>(fmtData.data());

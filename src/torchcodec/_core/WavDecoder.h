@@ -13,11 +13,12 @@
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
-
 constexpr uint16_t WAV_FORMAT_PCM = 1;
 constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 3;
 constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
 
+// See standard format codes and Wav file format:
+// https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
 struct WavHeader {
   uint16_t audioFormat = 0;
   uint16_t numChannels = 0;
