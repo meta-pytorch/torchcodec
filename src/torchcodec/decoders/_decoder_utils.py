@@ -99,7 +99,6 @@ def get_nvdec_cache_capacity() -> int:
     See also :func:`~torchcodec.decoders.set_nvdec_cache_capacity`.
 
     Returns:
-        int: The maximum number of NVDEC decoders that can be cached per GPU
-            device.
+        int: The maximum number of NVDEC decoders that can be cached per GPU device.
     """
     return _core.get_nvdec_cache_capacity()
