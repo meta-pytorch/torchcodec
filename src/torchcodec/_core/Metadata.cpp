@@ -7,6 +7,10 @@
 #include "Metadata.h"
 #include "StableABICompat.h"
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 namespace facebook::torchcodec {
 
 std::optional<double> StreamMetadata::getDurationSeconds(
@@ -121,6 +125,40 @@ std::optional<double> StreamMetadata::getAverageFps(SeekMode seekMode) const {
     default:
       STD_TORCH_CHECK(false, "Unknown SeekMode");
   }
+}
+
+std::optional<std::string> StreamMetadata::getColorPrimariesName() const {
+  if (!colorPrimaries.has_value()) {
+    return std::nullopt;
+  }
+  const char* name = av_color_primaries_name(*colorPrimaries);
+  if (name == nullptr) {
+    return std::nullopt;
+  }
+  return std::string(name);
+}
+
+std::optional<std::string> StreamMetadata::getColorSpaceName() const {
+  if (!colorSpace.has_value()) {
+    return std::nullopt;
+  }
+  const char* name = av_color_space_name(*colorSpace);
+  if (name == nullptr) {
+    return std::nullopt;
+  }
+  return std::string(name);
+}
+
+std::optional<std::string> StreamMetadata::getColorTransferCharacteristicName()
+    const {
+  if (!colorTransferCharacteristic.has_value()) {
+    return std::nullopt;
+  }
+  const char* name = av_color_transfer_name(*colorTransferCharacteristic);
+  if (name == nullptr) {
+    return std::nullopt;
+  }
+  return std::string(name);
 }
 
 } // namespace facebook::torchcodec
