@@ -674,6 +674,12 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
     case 6:
       avFrame->colorspace = AVCOL_SPC_SMPTE170M; // BT.601
       break;
+    case 9:
+      avFrame->colorspace = AVCOL_SPC_BT2020_NCL;
+      break;
+    case 10:
+      avFrame->colorspace = AVCOL_SPC_BT2020_CL;
+      break;
     default:
       // Default to BT.601
       avFrame->colorspace = AVCOL_SPC_SMPTE170M;

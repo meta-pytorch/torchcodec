@@ -66,8 +66,8 @@ bool registerDeviceInterface(
 }
 
 void validateDeviceInterface(
-    const std::string device,
-    const std::string variant) {
+    const std::string& device,
+    const std::string& variant) {
   std::scoped_lock lock(g_interface_mutex);
   std::string deviceType = getDeviceTypeString(device);
 

@@ -18,6 +18,7 @@
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
+#include "NVDECCacheConfig.h"
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
@@ -82,6 +83,9 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
+  m.def("set_nvdec_cache_capacity(int capacity) -> ()");
+  m.def("get_nvdec_cache_capacity() -> int");
+  m.def("_get_nvdec_cache_size(int device_index) -> int");
 }
 
 namespace {
@@ -434,11 +438,10 @@ void _add_video_stream(
   videoStreamOptions.ffmpegThreadCount = num_threads;
 
   if (dimension_order.has_value()) {
-    const std::string& stdDimensionOrder = dimension_order.value();
     STD_TORCH_CHECK(
-        stdDimensionOrder == "NHWC" || stdDimensionOrder == "NCHW",
+        *dimension_order == "NHWC" || *dimension_order == "NCHW",
         "dimension_order must be NHWC or NCHW");
-    videoStreamOptions.dimensionOrder = stdDimensionOrder;
+    videoStreamOptions.dimensionOrder = std::move(*dimension_order);
   }
   if (color_conversion_library.has_value()) {
     const std::string& stdColorConversionLibrary =
@@ -460,10 +463,11 @@ void _add_video_stream(
 
   validateDeviceInterface(device, device_variant);
 
-  videoStreamOptions.device = StableDevice(device);
-  videoStreamOptions.deviceVariant = device_variant;
+  videoStreamOptions.device = StableDevice(std::move(device));
+  videoStreamOptions.deviceVariant = std::move(device_variant);
 
-  std::vector<Transform*> transforms = makeTransforms(transform_specs);
+  std::vector<Transform*> transforms =
+      makeTransforms(std::move(transform_specs));
 
   bool hasPts = custom_frame_mappings_pts.has_value();
   bool hasDuration = custom_frame_mappings_duration.has_value();
@@ -476,9 +480,9 @@ void _add_video_stream(
 
   std::optional<SingleStreamDecoder::FrameMappings> converted_mappings = hasPts
       ? std::make_optional(SingleStreamDecoder::FrameMappings{
-            custom_frame_mappings_pts.value(),
-            custom_frame_mappings_keyframe_indices.value(),
-            custom_frame_mappings_duration.value()})
+            std::move(*custom_frame_mappings_pts),
+            std::move(*custom_frame_mappings_keyframe_indices),
+            std::move(*custom_frame_mappings_duration)})
       : std::nullopt;
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   videoDecoder->addVideoStream(
@@ -506,14 +510,14 @@ void add_video_stream(
   _add_video_stream(
       decoder,
       num_threads,
-      dimension_order,
+      std::move(dimension_order),
       stream_index,
-      device,
-      device_variant,
-      transform_specs,
-      custom_frame_mappings_pts,
-      custom_frame_mappings_duration,
-      custom_frame_mappings_keyframe_indices);
+      std::move(device),
+      std::move(device_variant),
+      std::move(transform_specs),
+      std::move(custom_frame_mappings_pts),
+      std::move(custom_frame_mappings_duration),
+      std::move(custom_frame_mappings_keyframe_indices));
 }
 
 void add_audio_stream(
@@ -1086,6 +1090,28 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
+void set_nvdec_cache_capacity(int64_t capacity) {
+  int capacityInt = validateInt64ToInt(capacity, "capacity");
+  STD_TORCH_CHECK(
+      capacityInt >= 0,
+      "NVDEC cache capacity must be non-negative, got ",
+      capacityInt);
+  setNVDECCacheCapacity(capacityInt);
+}
+
+int64_t get_nvdec_cache_capacity() {
+  return static_cast<int64_t>(getNVDECCacheCapacity());
+}
+
+int64_t _get_nvdec_cache_size(int64_t device_index) {
+  int deviceIndexInt = validateInt64ToInt(device_index, "device_index");
+  STD_TORCH_CHECK(
+      deviceIndexInt >= 0,
+      "device_index must be non-negative, got ",
+      deviceIndexInt);
+  return static_cast<int64_t>(getNVDECCacheSize(deviceIndexInt));
+}
+
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
@@ -1096,6 +1122,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
   m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
+  m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
+  m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
+  m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
