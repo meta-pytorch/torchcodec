@@ -25,7 +25,6 @@ Installation instructions
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Installation instructions
-        :img-top: _static/img/card-background.svg
         :link: https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec
         :link-type: url
 
@@ -38,7 +37,6 @@ Decoding
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Getting Started with TorchCodec
-        :img-top: _static/img/card-background.svg
         :link: generated_examples/decoding/basic_example.html
         :link-type: url
 
@@ -46,7 +44,6 @@ Decoding
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Audio Decoding
-        :img-top: _static/img/card-background.svg
         :link: generated_examples/decoding/audio_decoding.html
         :link-type: url
 
@@ -54,7 +51,6 @@ Decoding
 
      .. grid-item-card:: :octicon:`file-code;1em`
         GPU decoding
-        :img-top: _static/img/card-background.svg
         :link: generated_examples/decoding/basic_cuda_example.html
         :link-type: url
 
@@ -62,7 +58,6 @@ Decoding
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Streaming video
-        :img-top: _static/img/card-background.svg
         :link: generated_examples/decoding/file_like.html
         :link-type: url
 
@@ -70,7 +65,6 @@ Decoding
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Parallel decoding
-        :img-top: _static/img/card-background.svg
         :link: generated_examples/decoding/parallel_decoding.html
         :link-type: url
 
@@ -78,7 +72,6 @@ Decoding
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Clip sampling
-        :img-top: _static/img/card-background.svg
         :link: generated_examples/decoding/sampling.html
         :link-type: url
 
@@ -86,7 +79,6 @@ Decoding
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Decoder transforms
-        :img-top: _static/img/card-background.svg
         :link: generated_examples/decoding/transforms.html
         :link-type: url
 
@@ -94,7 +86,6 @@ Decoding
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Performance Tips
-        :img-top: _static/img/card-background.svg
         :link: generated_examples/decoding/performance_tips.html
         :link-type: url
 
@@ -108,7 +99,6 @@ Encoding
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Audio Encoding
-        :img-top: _static/img/card-background.svg
         :link: generated_examples/encoding/audio_encoding.html
         :link-type: url
 
@@ -116,7 +106,6 @@ Encoding
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Video Encoding
-        :img-top: _static/img/card-background.svg
         :link: generated_examples/encoding/video_encoding.html
         :link-type: url
 

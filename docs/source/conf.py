@@ -186,6 +186,7 @@ html_theme_path = [pytorch_sphinx_theme2.get_html_theme_path()]
 html_theme_options = {
     "navigation_with_keys": False,
     "analytics_id": "GTM-T8XT4PS",
+    "show_lf_header": True,
     "icon_links": [
         {
             "name": "X",
@@ -211,6 +212,9 @@ html_theme_options = {
     "use_edit_page_button": True,
     "navbar_center": "navbar-nav",
     "navbar_start": ["navbar-logo", "version-switcher"],
+    "logo": {
+        "text": "TorchCodec",
+    },
     "switcher": {
         "json_url": "_static/torchcodec-versions.json",
         "version_match": version,
@@ -252,7 +256,7 @@ html_context = {
     "feedback_url": "https://github.com/pytorch/torchcodec",
     "github_version": "main",
     "doc_path": "docs/source",
-    "library_links": theme_variables.get("library_links", []),
+    "library_links": [],
     "community_links": theme_variables.get("community_links", []),
     "language_bindings_links": html_theme_options.get("language_bindings_links", []),
 }
