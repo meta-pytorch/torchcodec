@@ -31,7 +31,7 @@ void WavDecoder::parseHeader() {
 
   // Verify RIFF header (12 bytes: "RIFF" + fileSize + "WAVE")
   uint8_t riffHeader[12];
-  size_t bytesRead = std::fread(riffHeader, 1, 12, file_);
+  size_t bytesRead = fread(riffHeader, 1, 12, file_);
   STD_TORCH_CHECK(
       bytesRead == 12,
       "WAV: unexpected end of data (expected 12 bytes, got ",
@@ -52,7 +52,7 @@ void WavDecoder::parseHeader() {
   // Use ChunkInfo to seek to and read the fmt chunk data
   fseek(file_, static_cast<long>(fmtChunk.offset), SEEK_SET);
   std::vector<uint8_t> fmtData(fmtChunk.size);
-  size_t fmtBytesRead = std::fread(fmtData.data(), 1, fmtChunk.size, file_);
+  size_t fmtBytesRead = fread(fmtData.data(), 1, fmtChunk.size, file_);
   STD_TORCH_CHECK(
       fmtBytesRead == fmtChunk.size,
       "WAV: unexpected end of data (expected ",
@@ -107,7 +107,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
 
   while (true) {
     uint8_t chunkHeader[8];
-    size_t bytesRead = std::fread(chunkHeader, 1, 8, file_);
+    size_t bytesRead = fread(chunkHeader, 1, 8, file_);
     STD_TORCH_CHECK(bytesRead == 8, "Chunk not found: ", chunkId);
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readLittleEndian<uint32_t>(chunkHeader + 4);
