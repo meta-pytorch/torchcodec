@@ -123,7 +123,7 @@ class VideoStreamMetadata(StreamMetadata):
     """Color space as reported by FFmpeg. E.g. ``"bt709"``,
     ``"bt2020nc"``."""
     color_transfer_characteristic: str | None
-    """Color transfer characteristic (OETF) as reported by FFmpeg
+    """Color transfer characteristic as reported by FFmpeg
     E.g. ``"bt709"``, ``"smpte2084"`` (PQ), ``"arib-std-b67"`` (HLG)."""
     pixel_format: str | None
     """The source pixel format of the video as reported by FFmpeg.
