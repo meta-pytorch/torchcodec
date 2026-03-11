@@ -216,7 +216,7 @@ html_theme_options = {
         "text": "TorchCodec",
     },
     "switcher": {
-        "json_url": "_static/torchcodec-versions.json",
+        "json_url": "https://meta-pytorch.org/torchcodec/torchcodec-versions.json",
         "version_match": version,
     },
     "show_version_warning_banner": True,
