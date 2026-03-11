@@ -40,8 +40,6 @@ class WavDecoder {
     uint32_t size;
   };
 
-  int64_t read(void* buffer, int64_t size);
-  int64_t seek(int64_t position);
   uint16_t getEffectiveFormat() const;
   ChunkInfo findChunk(const char* chunkId, int64_t startPos = 12);
   void parseHeader();

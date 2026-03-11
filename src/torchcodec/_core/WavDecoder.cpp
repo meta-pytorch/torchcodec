@@ -26,30 +26,12 @@ bool checkFourCC(const uint8_t* data, const char* expected) {
 
 } // namespace
 
-int64_t WavDecoder::read(void* buffer, int64_t size) {
-  STD_TORCH_CHECK(file_ != nullptr, "WAV file handle is null");
-  size_t bytesRead = std::fread(buffer, 1, static_cast<size_t>(size), file_);
-  return static_cast<int64_t>(bytesRead);
-}
-
-int64_t WavDecoder::seek(int64_t position) {
-  STD_TORCH_CHECK(file_ != nullptr, "WAV file handle is null");
-#ifdef _WIN32
-  if (_fseeki64(file_, position, SEEK_SET) != 0) {
-#else
-  if (fseeko(file_, static_cast<off_t>(position), SEEK_SET) != 0) {
-#endif
-    return -1;
-  }
-  return position;
-}
-
 void WavDecoder::parseHeader() {
-  seek(0);
+  fseek(file_, 0, SEEK_SET);
 
   // Verify RIFF header (12 bytes: "RIFF" + fileSize + "WAVE")
   uint8_t riffHeader[12];
-  int64_t bytesRead = read(riffHeader, 12);
+  size_t bytesRead = std::fread(riffHeader, 1, 12, file_);
   STD_TORCH_CHECK(
       bytesRead == 12,
       "WAV: unexpected end of data (expected 12 bytes, got ",
@@ -67,17 +49,19 @@ void WavDecoder::parseHeader() {
   STD_TORCH_CHECK(
       fmtChunk.size >= 16, "Invalid fmt chunk: size must be at least 16 bytes");
 
-  seek(fmtChunk.offset);
+  // Use ChunkInfo to seek to and read the fmt chunk data
+  fseek(file_, static_cast<long>(fmtChunk.offset), SEEK_SET);
   std::vector<uint8_t> fmtData(fmtChunk.size);
-  int64_t fmtBytesRead = read(fmtData.data(), fmtChunk.size);
+  size_t fmtBytesRead = std::fread(fmtData.data(), 1, fmtChunk.size, file_);
   STD_TORCH_CHECK(
-      fmtBytesRead == static_cast<int64_t>(fmtChunk.size),
+      fmtBytesRead == fmtChunk.size,
       "WAV: unexpected end of data (expected ",
       fmtChunk.size,
       " bytes, got ",
       fmtBytesRead,
       ")");
 
+  // Parse format fields from fmtData buffer
   header_.audioFormat = readLittleEndian<uint16_t>(fmtData.data());
   header_.numChannels = readLittleEndian<uint16_t>(fmtData.data() + 2);
   header_.sampleRate = readLittleEndian<uint32_t>(fmtData.data() + 4);
@@ -89,7 +73,6 @@ void WavDecoder::parseHeader() {
     // + 22 extension)
     STD_TORCH_CHECK(
         fmtChunk.size >= 40, "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
-
     // SubFormat GUID starts at offset 24, first 2 bytes are the format code
     header_.subFormat = readLittleEndian<uint16_t>(fmtData.data() + 24);
   }
@@ -120,11 +103,11 @@ uint16_t WavDecoder::getEffectiveFormat() const {
 WavDecoder::ChunkInfo WavDecoder::findChunk(
     const char* chunkId,
     int64_t startPos) {
-  seek(startPos);
+  fseek(file_, static_cast<long>(startPos), SEEK_SET);
 
   while (true) {
     uint8_t chunkHeader[8];
-    int64_t bytesRead = read(chunkHeader, 8);
+    size_t bytesRead = std::fread(chunkHeader, 1, 8, file_);
     STD_TORCH_CHECK(bytesRead == 8, "Chunk not found: ", chunkId);
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readLittleEndian<uint32_t>(chunkHeader + 4);
@@ -139,13 +122,13 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
         static_cast<uint64_t>(startPos) <= header_.fileSize,
         "Chunk extends beyond file bounds at position: ",
         startPos);
-    seek(startPos);
+    fseek(file_, static_cast<long>(startPos), SEEK_SET);
   }
 }
 
 void WavDecoder::validate() const {
   uint16_t effectiveFormat = getEffectiveFormat();
-
+  // Only uncompressed formats are supported
   if (effectiveFormat != WAV_FORMAT_PCM &&
       effectiveFormat != WAV_FORMAT_IEEE_FLOAT) {
     STD_TORCH_CHECK(
