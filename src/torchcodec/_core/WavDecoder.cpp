@@ -44,8 +44,8 @@ void WavDecoder::parseHeader() {
 
   header_.fileSize = readLittleEndian<uint32_t>(riffHeader + 4) + 8;
 
-  // Find and parse fmt chunk
-  ChunkInfo fmtChunk = findChunk("fmt ");
+  // Find and parse fmt chunk (start search after 12-byte RIFF header)
+  ChunkInfo fmtChunk = findChunk("fmt ", 12);
   STD_TORCH_CHECK(
       fmtChunk.size >= 16, "Invalid fmt chunk: size must be at least 16 bytes");
 
@@ -106,6 +106,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
   fseek(file_, static_cast<long>(startPos), SEEK_SET);
 
   while (true) {
+    // Read chunk header (4B ID + 4B size)
     uint8_t chunkHeader[8];
     size_t bytesRead = fread(chunkHeader, 1, 8, file_);
     STD_TORCH_CHECK(bytesRead == 8, "Chunk not found: ", chunkId);
