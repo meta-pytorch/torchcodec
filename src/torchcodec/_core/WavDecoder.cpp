@@ -6,12 +6,9 @@
 
 #include "WavDecoder.h"
 
-#include <algorithm>
 #include <cstdio>
 #include <cstring>
-
-#include "AVIOContextHolder.h"
-#include "FFMPEGCommon.h"
+#include <vector>
 
 namespace facebook::torchcodec {
 namespace {
@@ -29,24 +26,13 @@ bool checkFourCC(const uint8_t* data, const char* expected) {
 
 } // namespace
 
-WavFileReader::WavFileReader(const std::string& path) : file_(nullptr) {
-  file_ = std::fopen(path.c_str(), "rb");
-  STD_TORCH_CHECK(file_ != nullptr, "Failed to open WAV file: ", path);
-}
-
-WavFileReader::~WavFileReader() {
-  if (file_) {
-    std::fclose(file_);
-  }
-}
-
-int64_t WavFileReader::read(void* buffer, int64_t size) {
+int64_t WavDecoder::read(void* buffer, int64_t size) {
   STD_TORCH_CHECK(file_ != nullptr, "WAV file handle is null");
   size_t bytesRead = std::fread(buffer, 1, static_cast<size_t>(size), file_);
   return static_cast<int64_t>(bytesRead);
 }
 
-int64_t WavFileReader::seek(int64_t position) {
+int64_t WavDecoder::seek(int64_t position) {
   STD_TORCH_CHECK(file_ != nullptr, "WAV file handle is null");
 #ifdef _WIN32
   if (_fseeki64(file_, position, SEEK_SET) != 0) {
@@ -59,11 +45,11 @@ int64_t WavFileReader::seek(int64_t position) {
 }
 
 void WavDecoder::parseHeader() {
-  reader_->seek(0);
+  seek(0);
 
   // Verify RIFF header (12 bytes: "RIFF" + fileSize + "WAVE")
   uint8_t riffHeader[12];
-  int64_t bytesRead = reader_->read(riffHeader, 12);
+  int64_t bytesRead = read(riffHeader, 12);
   STD_TORCH_CHECK(
       bytesRead == 12,
       "WAV: unexpected end of data (expected 12 bytes, got ",
@@ -81,9 +67,9 @@ void WavDecoder::parseHeader() {
   STD_TORCH_CHECK(
       fmtChunk.size >= 16, "Invalid fmt chunk: size must be at least 16 bytes");
 
-  reader_->seek(fmtChunk.offset);
+  seek(fmtChunk.offset);
   std::vector<uint8_t> fmtData(fmtChunk.size);
-  int64_t fmtBytesRead = reader_->read(fmtData.data(), fmtChunk.size);
+  int64_t fmtBytesRead = read(fmtData.data(), fmtChunk.size);
   STD_TORCH_CHECK(
       fmtBytesRead == static_cast<int64_t>(fmtChunk.size),
       "WAV: unexpected end of data (expected ",
@@ -95,8 +81,6 @@ void WavDecoder::parseHeader() {
   header_.audioFormat = readLittleEndian<uint16_t>(fmtData.data());
   header_.numChannels = readLittleEndian<uint16_t>(fmtData.data() + 2);
   header_.sampleRate = readLittleEndian<uint32_t>(fmtData.data() + 4);
-  header_.byteRate = readLittleEndian<uint32_t>(fmtData.data() + 8);
-  header_.blockAlign = readLittleEndian<uint16_t>(fmtData.data() + 12);
   header_.bitsPerSample = readLittleEndian<uint16_t>(fmtData.data() + 14);
 
   // Parse extended format fields for WAVE_FORMAT_EXTENSIBLE
@@ -106,23 +90,24 @@ void WavDecoder::parseHeader() {
     STD_TORCH_CHECK(
         fmtChunk.size >= 40, "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
 
-    header_.validBitsPerSample =
-        readLittleEndian<uint16_t>(fmtData.data() + 18);
-    header_.channelMask = readLittleEndian<uint32_t>(fmtData.data() + 20);
     // SubFormat GUID starts at offset 24, first 2 bytes are the format code
     header_.subFormat = readLittleEndian<uint16_t>(fmtData.data() + 24);
   }
 
-  // Find data chunk
-  ChunkInfo dataChunk = findChunk("data", fmtChunk.offset + fmtChunk.size);
-  header_.dataSize = dataChunk.size;
-  header_.dataOffset = dataChunk.offset;
+  // TODO: Find data chunk
 }
 
-WavDecoder::WavDecoder(std::unique_ptr<WavFileReader> reader)
-    : reader_(std::move(reader)) {
+WavDecoder::WavDecoder(const std::string& path) : file_(nullptr) {
+  file_ = std::fopen(path.c_str(), "rb");
+  STD_TORCH_CHECK(file_ != nullptr, "Failed to open WAV file: ", path);
   parseHeader();
   validate();
+}
+
+WavDecoder::~WavDecoder() {
+  if (file_) {
+    std::fclose(file_);
+  }
 }
 
 uint16_t WavDecoder::getEffectiveFormat() const {
@@ -135,11 +120,11 @@ uint16_t WavDecoder::getEffectiveFormat() const {
 WavDecoder::ChunkInfo WavDecoder::findChunk(
     const char* chunkId,
     int64_t startPos) {
-  reader_->seek(startPos);
+  seek(startPos);
 
   while (true) {
     uint8_t chunkHeader[8];
-    int64_t bytesRead = reader_->read(chunkHeader, 8);
+    int64_t bytesRead = read(chunkHeader, 8);
     STD_TORCH_CHECK(bytesRead == 8, "Chunk not found: ", chunkId);
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readLittleEndian<uint32_t>(chunkHeader + 4);
@@ -154,7 +139,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
         static_cast<uint64_t>(startPos) <= header_.fileSize,
         "Chunk extends beyond file bounds at position: ",
         startPos);
-    reader_->seek(startPos);
+    seek(startPos);
   }
 }
 
@@ -195,7 +180,6 @@ void WavDecoder::validate() const {
 
   STD_TORCH_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
   STD_TORCH_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
-  STD_TORCH_CHECK(header_.blockAlign > 0, "Invalid WAV: zero block alignment");
 }
 
 } // namespace facebook::torchcodec

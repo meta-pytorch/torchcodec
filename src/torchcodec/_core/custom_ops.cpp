@@ -1119,8 +1119,7 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
 
 torch::stable::Tensor create_wav_decoder_from_file(
     const std::string& filename) {
-  auto reader = std::make_unique<WavFileReader>(filename);
-  auto decoder = std::make_unique<WavDecoder>(std::move(reader));
+  auto decoder = std::make_unique<WavDecoder>(filename);
   return wrapWavDecoderPointerToTensor(std::move(decoder));
 }
 

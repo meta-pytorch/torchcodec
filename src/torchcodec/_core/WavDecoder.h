@@ -23,33 +23,16 @@ struct WavHeader {
   uint16_t audioFormat = 0;
   uint16_t numChannels = 0;
   uint32_t sampleRate = 0;
-  uint16_t blockAlign = 0;
   uint16_t bitsPerSample = 0;
-  uint32_t byteRate = 0;
-  uint64_t dataOffset = 0;
-  uint64_t dataSize = 0;
   uint64_t fileSize = 0;
   // Extended format fields (WAVE_FORMAT_EXTENSIBLE)
-  uint32_t channelMask = 0;
   uint16_t subFormat = 0; // Extracted from SubFormat GUID (first 2 bytes)
-  uint16_t validBitsPerSample = 0;
-};
-
-class WavFileReader {
- public:
-  explicit WavFileReader(const std::string& path);
-  ~WavFileReader();
-
-  int64_t read(void* buffer, int64_t size);
-  int64_t seek(int64_t position);
-
- private:
-  std::FILE* file_;
 };
 
 class WavDecoder {
  public:
-  explicit WavDecoder(std::unique_ptr<WavFileReader> reader);
+  explicit WavDecoder(const std::string& path);
+  ~WavDecoder();
 
  private:
   struct ChunkInfo {
@@ -57,12 +40,14 @@ class WavDecoder {
     uint32_t size;
   };
 
+  int64_t read(void* buffer, int64_t size);
+  int64_t seek(int64_t position);
   uint16_t getEffectiveFormat() const;
   ChunkInfo findChunk(const char* chunkId, int64_t startPos = 12);
   void parseHeader();
   void validate() const;
 
-  std::unique_ptr<WavFileReader> reader_;
+  std::FILE* file_;
   WavHeader header_;
 };
 
