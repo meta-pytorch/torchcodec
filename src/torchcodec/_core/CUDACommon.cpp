@@ -381,7 +381,7 @@ torch::stable::Tensor convertNV12FrameToRGB(
           yuvData,
           srcStep,
           dst.mutable_data_ptr<Npp8u>(),
-          dst.stride(0),
+          static_cast<int>(dst.stride(0)),
           oSizeROI,
           bt601FullRangeColorTwist,
           *nppCtx);
@@ -395,7 +395,7 @@ torch::stable::Tensor convertNV12FrameToRGB(
           yuvData,
           srcStep,
           dst.mutable_data_ptr<Npp8u>(),
-          dst.stride(0),
+          static_cast<int>(dst.stride(0)),
           oSizeROI,
           bt601LimitedRangeColorTwist,
           *nppCtx);
