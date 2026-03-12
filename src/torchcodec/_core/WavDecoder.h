@@ -7,16 +7,10 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
-#include <optional>
 #include <string>
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
-constexpr uint16_t WAV_FORMAT_PCM = 1;
-constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 3;
-constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
-
 constexpr size_t RIFF_HEADER_SIZE = 12; // "RIFF" + fileSize + "WAVE"
 constexpr size_t CHUNK_HEADER_SIZE = 8; // chunkID + chunkSize
 constexpr size_t MIN_FMT_CHUNK_SIZE = 16;
@@ -24,6 +18,10 @@ constexpr size_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
 
 // See standard format codes and Wav file format:
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
+constexpr uint16_t WAV_FORMAT_PCM = 1;
+constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 3;
+constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
+
 struct WavHeader {
   uint16_t audioFormat = 0;
   uint16_t numChannels = 0;
@@ -45,11 +43,10 @@ class WavDecoder {
     uint32_t size;
   };
 
-  uint16_t getEffectiveFormat() const;
   ChunkInfo
   findChunk(const char* chunkId, int64_t startPos, uint64_t fileSizeLimit);
   void parseHeader();
-  void validate() const;
+  void validateHeader() const;
 
   std::FILE* file_;
   WavHeader header_;

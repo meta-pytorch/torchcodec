@@ -111,6 +111,12 @@ torch::stable::Tensor wrapDecoderPointerToTensor(
   return tensor;
 }
 
+// TODO_STABLE_ABI: use previous deleter pattern with a lambda, once
+// https://github.com/pytorch/pytorch/pull/175089 is available.
+void wavDecoderDeleter(void* data) {
+  delete static_cast<WavDecoder*>(data);
+}
+
 torch::stable::Tensor wrapWavDecoderPointerToTensor(
     std::unique_ptr<WavDecoder> uniqueDecoder) {
   WavDecoder* decoder = uniqueDecoder.release();
@@ -123,7 +129,7 @@ torch::stable::Tensor wrapWavDecoderPointerToTensor(
       {strides, 1},
       StableDevice(kStableCPU),
       kStableInt64,
-      [](void* data) { delete static_cast<WavDecoder*>(data); });
+      &wavDecoderDeleter);
   auto wavDecoder = static_cast<WavDecoder*>(tensor.mutable_data_ptr());
   STD_TORCH_CHECK(wavDecoder == decoder, "wavDecoder != decoder");
   return tensor;

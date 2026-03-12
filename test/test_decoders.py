@@ -2624,7 +2624,5 @@ class TestWavDecoder:
         assert wav_dec._source == SINE_MONO_S32.path
 
     def test_non_wav_file_raises_error(self):
-        with pytest.raises(
-            ValueError, match="Source is not a supported uncompressed WAV file"
-        ):
+        with pytest.raises(RuntimeError, match="Missing RIFF header"):
             WavDecoder(NASA_AUDIO.path)
