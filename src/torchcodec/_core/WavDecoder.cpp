@@ -8,6 +8,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <vector>
 
 namespace facebook::torchcodec {
@@ -29,12 +30,13 @@ bool checkFourCC(const uint8_t* data, const char* expected) {
 void WavDecoder::parseHeader() {
   fseek(file_, 0, SEEK_SET);
 
-  // Verify RIFF header (12 bytes: "RIFF" + fileSize + "WAVE")
-  uint8_t riffHeader[12];
-  size_t bytesRead = fread(riffHeader, 1, 12, file_);
+  uint8_t riffHeader[RIFF_HEADER_SIZE];
+  size_t bytesRead = fread(riffHeader, 1, RIFF_HEADER_SIZE, file_);
   STD_TORCH_CHECK(
-      bytesRead == 12,
-      "WAV: unexpected end of data (expected 12 bytes, got ",
+      bytesRead == RIFF_HEADER_SIZE,
+      "WAV: unexpected end of data (expected ",
+      RIFF_HEADER_SIZE,
+      " bytes, got ",
       bytesRead,
       ")");
 
@@ -44,10 +46,13 @@ void WavDecoder::parseHeader() {
 
   header_.fileSize = readLittleEndian<uint32_t>(riffHeader + 4) + 8;
 
-  // Find and parse fmt chunk (start search after 12-byte RIFF header)
-  ChunkInfo fmtChunk = findChunk("fmt ", 12);
+  uint64_t actualFileSize = std::filesystem::file_size(filePath_);
+  ChunkInfo fmtChunk = findChunk("fmt ", RIFF_HEADER_SIZE, actualFileSize);
   STD_TORCH_CHECK(
-      fmtChunk.size >= 16, "Invalid fmt chunk: size must be at least 16 bytes");
+      fmtChunk.size >= MIN_FMT_CHUNK_SIZE,
+      "Invalid fmt chunk: size must be at least ",
+      MIN_FMT_CHUNK_SIZE,
+      " bytes");
 
   // Use ChunkInfo to seek to and read the fmt chunk data
   fseek(file_, static_cast<long>(fmtChunk.offset), SEEK_SET);
@@ -61,26 +66,23 @@ void WavDecoder::parseHeader() {
       fmtBytesRead,
       ")");
 
-  // Parse format fields from fmtData buffer
   header_.audioFormat = readLittleEndian<uint16_t>(fmtData.data());
   header_.numChannels = readLittleEndian<uint16_t>(fmtData.data() + 2);
   header_.sampleRate = readLittleEndian<uint32_t>(fmtData.data() + 4);
   header_.bitsPerSample = readLittleEndian<uint16_t>(fmtData.data() + 14);
 
-  // Parse extended format fields for WAVE_FORMAT_EXTENSIBLE
   if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
-    // Extended format requires at least 40 bytes total (16 base + 2 cbSize
-    // + 22 extension)
     STD_TORCH_CHECK(
-        fmtChunk.size >= 40, "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
-    // SubFormat GUID starts at offset 24, first 2 bytes are the format code
+        fmtChunk.size >= MIN_WAVEX_FMT_CHUNK_SIZE,
+        "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
     header_.subFormat = readLittleEndian<uint16_t>(fmtData.data() + 24);
   }
 
   // TODO: Find data chunk
 }
 
-WavDecoder::WavDecoder(const std::string& path) : file_(nullptr) {
+WavDecoder::WavDecoder(const std::string& path)
+    : file_(nullptr), filePath_(path) {
   file_ = std::fopen(path.c_str(), "rb");
   STD_TORCH_CHECK(file_ != nullptr, "Failed to open WAV file: ", path);
   parseHeader();
@@ -102,25 +104,26 @@ uint16_t WavDecoder::getEffectiveFormat() const {
 // its offset and size.
 WavDecoder::ChunkInfo WavDecoder::findChunk(
     const char* chunkId,
-    int64_t startPos) {
+    int64_t startPos,
+    uint64_t fileSizeLimit) {
   fseek(file_, static_cast<long>(startPos), SEEK_SET);
 
   while (true) {
-    // Read chunk header (4B ID + 4B size)
-    uint8_t chunkHeader[8];
-    size_t bytesRead = fread(chunkHeader, 1, 8, file_);
-    STD_TORCH_CHECK(bytesRead == 8, "Chunk not found: ", chunkId);
+    uint8_t chunkHeader[CHUNK_HEADER_SIZE];
+    size_t bytesRead = fread(chunkHeader, 1, CHUNK_HEADER_SIZE, file_);
+    STD_TORCH_CHECK(
+        bytesRead == CHUNK_HEADER_SIZE, "Chunk not found: ", chunkId);
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readLittleEndian<uint32_t>(chunkHeader + 4);
 
     if (checkFourCC(chunkHeader, chunkId)) {
-      return {startPos + 8, chunkSize};
+      return {startPos + CHUNK_HEADER_SIZE, chunkSize};
     }
 
     // Skip this chunk and continue searching
-    startPos += 8 + chunkSize;
+    startPos += CHUNK_HEADER_SIZE + chunkSize;
     STD_TORCH_CHECK(
-        static_cast<uint64_t>(startPos) <= header_.fileSize,
+        static_cast<uint64_t>(startPos) <= fileSizeLimit,
         "Chunk extends beyond file bounds at position: ",
         startPos);
     fseek(file_, static_cast<long>(startPos), SEEK_SET);

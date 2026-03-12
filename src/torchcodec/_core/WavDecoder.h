@@ -17,6 +17,11 @@ constexpr uint16_t WAV_FORMAT_PCM = 1;
 constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 3;
 constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
 
+constexpr size_t RIFF_HEADER_SIZE = 12; // "RIFF" + fileSize + "WAVE"
+constexpr size_t CHUNK_HEADER_SIZE = 8; // chunkID + chunkSize
+constexpr size_t MIN_FMT_CHUNK_SIZE = 16;
+constexpr size_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
+
 // See standard format codes and Wav file format:
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
 struct WavHeader {
@@ -41,12 +46,14 @@ class WavDecoder {
   };
 
   uint16_t getEffectiveFormat() const;
-  ChunkInfo findChunk(const char* chunkId, int64_t startPos);
+  ChunkInfo
+  findChunk(const char* chunkId, int64_t startPos, uint64_t fileSizeLimit);
   void parseHeader();
   void validate() const;
 
   std::FILE* file_;
   WavHeader header_;
+  std::string filePath_;
 };
 
 } // namespace facebook::torchcodec
