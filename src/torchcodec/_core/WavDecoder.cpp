@@ -32,6 +32,18 @@ bool checkFourCC(const uint8_t* data, const char* expected) {
 
 } // namespace
 
+WavDecoder::WavDecoder(const std::string& path) {
+  // TODO WavDecoder: Support big-endian host machines
+  STD_TORCH_CHECK(
+      is_little_endian(), "WAV decoder requires little-endian architecture");
+  file_.open(path, std::ios::binary);
+  STD_TORCH_CHECK(file_.is_open(), "Failed to open WAV file: ", path);
+
+  uint64_t actualFileSize = std::filesystem::file_size(path);
+  parseHeader(actualFileSize);
+  validateHeader();
+}
+
 void WavDecoder::parseHeader(uint64_t actualFileSize) {
   file_.seekg(0, std::ios::beg);
 
@@ -86,49 +98,6 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
   // TODO WavDecoder: Find data chunk
 }
 
-WavDecoder::WavDecoder(const std::string& path) {
-  // TODO WavDecoder: Support big-endian host machines
-  STD_TORCH_CHECK(
-      is_little_endian(), "WAV decoder requires little-endian architecture");
-  file_.open(path, std::ios::binary);
-  STD_TORCH_CHECK(file_.is_open(), "Failed to open WAV file: ", path);
-
-  uint64_t actualFileSize = std::filesystem::file_size(path);
-  parseHeader(actualFileSize);
-  validateHeader();
-}
-
-// Given a chunkId, read through each chunk until we find a match, then return
-// its offset and size.
-WavDecoder::ChunkInfo WavDecoder::findChunk(
-    const char* chunkId,
-    int64_t startPos,
-    uint64_t fileSizeLimit) {
-  while (true) {
-    STD_TORCH_CHECK(
-        static_cast<uint64_t>(startPos) <= fileSizeLimit,
-        "Chunk extends beyond file bounds at position: ",
-        startPos);
-    file_.seekg(startPos, std::ios::beg);
-
-    uint8_t chunkHeader[CHUNK_HEADER_SIZE];
-    file_.read(reinterpret_cast<char*>(chunkHeader), CHUNK_HEADER_SIZE);
-    STD_TORCH_CHECK(
-        !file_.fail() && file_.gcount() == CHUNK_HEADER_SIZE,
-        "Chunk not found: ",
-        chunkId);
-    // Read chunk size which immediately follows the chunk ID
-    uint32_t chunkSize = readValue<uint32_t>(chunkHeader + 4);
-
-    if (checkFourCC(chunkHeader, chunkId)) {
-      return {startPos + static_cast<int64_t>(CHUNK_HEADER_SIZE), chunkSize};
-    }
-
-    // Skip this chunk and continue searching (odd chunks are padded)
-    startPos += CHUNK_HEADER_SIZE + chunkSize + (chunkSize % 2);
-  }
-}
-
 void WavDecoder::validateHeader() const {
   uint16_t effectiveFormat = (header_.audioFormat == WAV_FORMAT_EXTENSIBLE)
       ? header_.subFormat
@@ -165,6 +134,37 @@ void WavDecoder::validateHeader() const {
 
   STD_TORCH_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
   STD_TORCH_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
+}
+
+// Given a chunkId, read through each chunk until we find a match, then return
+// its offset and size.
+WavDecoder::ChunkInfo WavDecoder::findChunk(
+    const char* chunkId,
+    int64_t startPos,
+    uint64_t fileSizeLimit) {
+  while (true) {
+    STD_TORCH_CHECK(
+        static_cast<uint64_t>(startPos) <= fileSizeLimit,
+        "Chunk extends beyond file bounds at position: ",
+        startPos);
+    file_.seekg(startPos, std::ios::beg);
+
+    uint8_t chunkHeader[CHUNK_HEADER_SIZE];
+    file_.read(reinterpret_cast<char*>(chunkHeader), CHUNK_HEADER_SIZE);
+    STD_TORCH_CHECK(
+        !file_.fail() && file_.gcount() == CHUNK_HEADER_SIZE,
+        "Chunk not found: ",
+        chunkId);
+    // Read chunk size which immediately follows the chunk ID
+    uint32_t chunkSize = readValue<uint32_t>(chunkHeader + 4);
+
+    if (checkFourCC(chunkHeader, chunkId)) {
+      return {startPos + static_cast<int64_t>(CHUNK_HEADER_SIZE), chunkSize};
+    }
+
+    // Skip this chunk and continue searching (odd chunks are padded)
+    startPos += CHUNK_HEADER_SIZE + chunkSize + (chunkSize % 2);
+  }
 }
 
 } // namespace facebook::torchcodec
