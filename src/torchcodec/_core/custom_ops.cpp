@@ -7,7 +7,6 @@
 #include <fmt/format.h>
 #include <pybind11/pybind11.h>
 #include <cstdint>
-#include <sstream>
 #include <string>
 
 extern "C" {
@@ -21,6 +20,7 @@ extern "C" {
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
+#include "WavDecoder.h"
 
 namespace facebook::torchcodec {
 
@@ -85,6 +85,8 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
   m.def("get_nvdec_cache_capacity() -> int");
   m.def("_get_nvdec_cache_size(int device_index) -> int");
+  m.def("create_wav_decoder_from_file(str filename) -> Tensor");
+  m.def("get_wav_all_samples(Tensor decoder) -> Tensor");
 }
 
 namespace {
@@ -112,6 +114,38 @@ torch::stable::Tensor wrapDecoderPointerToTensor(
       static_cast<SingleStreamDecoder*>(tensor.mutable_data_ptr());
   STD_TORCH_CHECK(videoDecoder == decoder, "videoDecoder != decoder");
   return tensor;
+}
+
+// TODO_STABLE_ABI: use previous deleter pattern with a lambda, once
+// https://github.com/pytorch/pytorch/pull/175089 is available.
+void wavDecoderDeleter(void* data) {
+  delete static_cast<WavDecoder*>(data);
+}
+
+torch::stable::Tensor wrapWavDecoderPointerToTensor(
+    std::unique_ptr<WavDecoder> uniqueDecoder) {
+  WavDecoder* decoder = uniqueDecoder.release();
+
+  int64_t sizes[] = {static_cast<int64_t>(sizeof(WavDecoder*))};
+  int64_t strides[] = {1};
+  torch::stable::Tensor tensor = torch::stable::from_blob(
+      decoder,
+      {sizes, 1},
+      {strides, 1},
+      StableDevice(kStableCPU),
+      kStableInt64,
+      &wavDecoderDeleter);
+  auto wavDecoder = static_cast<WavDecoder*>(tensor.mutable_data_ptr());
+  STD_TORCH_CHECK(wavDecoder == decoder, "wavDecoder != decoder");
+  return tensor;
+}
+
+WavDecoder* unwrapTensorToGetWavDecoder(torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(
+      tensor.is_contiguous(),
+      "fake decoder tensor must be contiguous! This is an internal error, please report on the torchcodec issue tracker.");
+  WavDecoder* decoder = static_cast<WavDecoder*>(tensor.mutable_data_ptr());
+  return decoder;
 }
 
 SingleStreamDecoder* unwrapTensorToGetDecoder(torch::stable::Tensor& tensor) {
@@ -1103,6 +1137,19 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
+torch::stable::Tensor create_wav_decoder_from_file(
+    const std::string& filename) {
+  auto decoder = std::make_unique<WavDecoder>(filename);
+  return wrapWavDecoderPointerToTensor(std::move(decoder));
+}
+
+torch::stable::Tensor get_wav_all_samples(torch::stable::Tensor& decoder) {
+  auto wavDecoder = unwrapTensorToGetWavDecoder(decoder);
+  (void)wavDecoder; // Suppress unused variable warning
+  STD_TORCH_CHECK(false, "get_wav_all_samples not yet implemented");
+  return torch::stable::empty({0}, kStableFloat32);
+}
+
 void set_nvdec_cache_capacity(int64_t capacity) {
   int capacityInt = validateInt64ToInt(capacity, "capacity");
   STD_TORCH_CHECK(
@@ -1138,6 +1185,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
   m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
   m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
+  m.impl(
+      "create_wav_decoder_from_file", TORCH_BOX(&create_wav_decoder_from_file));
+  m.impl("get_wav_all_samples", TORCH_BOX(&get_wav_all_samples));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
