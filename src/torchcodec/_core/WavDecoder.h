@@ -36,6 +36,12 @@ struct WavHeader {
 class WavDecoder {
  public:
   explicit WavDecoder(const std::string& path);
+  // Delete copy constructor and copy assignment operator since std::ifstream
+  // is stored as a member variable and is not copyable.
+  WavDecoder(const WavDecoder&) = delete;
+  WavDecoder& operator=(const WavDecoder&) = delete;
+  WavDecoder(WavDecoder&&) = default;
+  WavDecoder& operator=(WavDecoder&&) = default;
 
  private:
   struct ChunkInfo {

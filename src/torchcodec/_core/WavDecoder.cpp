@@ -16,7 +16,7 @@ namespace {
 
 bool is_little_endian() {
   uint32_t x = 1;
-  return *(uint8_t*)&x;
+  return reinterpret_cast<const uint8_t*>(&x)[0];
 }
 
 template <typename T>
@@ -151,11 +151,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     const char* chunkId,
     int64_t startPos,
     uint64_t fileSizeLimit) {
-  while (true) {
-    STD_TORCH_CHECK(
-        static_cast<uint64_t>(startPos) <= fileSizeLimit,
-        "Chunk extends beyond file bounds at position: ",
-        startPos);
+  while (startPos + CHUNK_HEADER_SIZE <= fileSizeLimit) {
     file_.seekg(startPos, std::ios::beg);
 
     uint8_t chunkHeader[CHUNK_HEADER_SIZE];
@@ -174,6 +170,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     // Skip this chunk and continue searching (odd chunks are padded)
     startPos += CHUNK_HEADER_SIZE + chunkSize + (chunkSize % 2);
   }
+  STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
 }
 
 } // namespace facebook::torchcodec
