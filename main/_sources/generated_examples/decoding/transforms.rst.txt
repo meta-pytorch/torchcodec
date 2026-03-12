@@ -131,6 +131,10 @@ transforms to reduce the dimensions.
       average_fps_from_header: 25
       pixel_aspect_ratio: 0
       rotation: None
+      color_primaries: bt709
+      color_space: bt709
+      color_transfer_characteristic: bt709
+      pixel_format: yuv420p
       end_stream_seconds: 37.24
       num_frames: 931
       average_fps: 25
@@ -490,8 +494,8 @@ sequentially:
 
  .. code-block:: none
 
-    decoder transforms:    times_med = 2341.05ms +- 5.79
-    torchvision transform: times_med = 5199.38ms +- 51.80
+    decoder transforms:    times_med = 2016.90ms +- 13.41
+    torchvision transform: times_med = 4077.05ms +- 8.59
 
 
 
@@ -519,8 +523,8 @@ even be faster!
 
  .. code-block:: none
 
-    decoder transforms:    times_med = 15231.13ms +- 30.79
-    torchvision transform: times_med = 17315.49ms +- 8.22
+    decoder transforms:    times_med = 10753.95ms +- 18.30
+    torchvision transform: times_med = 12657.26ms +- 56.93
 
 
 
@@ -553,7 +557,7 @@ In brief, our performance guidance is:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (3 minutes 21.599 seconds)
+   **Total running time of the script:** (2 minutes 28.774 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_transforms.py:
