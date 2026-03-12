@@ -1,5 +1,11 @@
 [
     {
+        "name": "main (unstable)",
+        "version": "main",
+        "url": "https://meta-pytorch.org/torchcodec/main/",
+        "preferred": true
+    },
+    {
         "name": "0.10 (stable)",
         "version": "0.10",
         "url": "https://meta-pytorch.org/torchcodec/stable/",
