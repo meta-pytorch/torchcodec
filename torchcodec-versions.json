@@ -1,0 +1,53 @@
+[
+    {
+        "name": "0.10 (stable)",
+        "version": "0.10",
+        "url": "https://meta-pytorch.org/torchcodec/stable/",
+        "preferred": true
+    },
+    {
+        "name": "0.9",
+        "version": "0.9",
+        "url": "https://meta-pytorch.org/torchcodec/0.9/"
+    },
+    {
+        "name": "0.8",
+        "version": "0.8",
+        "url": "https://meta-pytorch.org/torchcodec/0.8/"
+    },
+    {
+        "name": "0.7",
+        "version": "0.7",
+        "url": "https://meta-pytorch.org/torchcodec/0.7/"
+    },
+    {
+        "name": "0.6",
+        "version": "0.6",
+        "url": "https://meta-pytorch.org/torchcodec/0.6/"
+    },
+    {
+        "name": "0.5",
+        "version": "0.5",
+        "url": "https://meta-pytorch.org/torchcodec/0.5/"
+    },
+    {
+        "name": "0.4",
+        "version": "0.4",
+        "url": "https://meta-pytorch.org/torchcodec/0.4/"
+    },
+    {
+        "name": "0.3",
+        "version": "0.3",
+        "url": "https://meta-pytorch.org/torchcodec/0.3/"
+    },
+    {
+        "name": "0.2",
+        "version": "0.2",
+        "url": "https://meta-pytorch.org/torchcodec/0.2/"
+    },
+    {
+        "name": "0.1",
+        "version": "0.1",
+        "url": "https://meta-pytorch.org/torchcodec/0.1/"
+    }
+]
