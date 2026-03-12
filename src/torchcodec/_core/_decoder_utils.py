@@ -39,8 +39,7 @@ def create_audio_decoder(
     sample_rate: int | None = None,
     num_channels: int | None = None,
 ) -> tuple[Tensor, int, AudioStreamMetadata]:
-    # Use unified audio decoder op that creates decoder and adds stream in one step
-    # Validation is done inside _create_audio_decoder_op
+
     decoder = _create_audio_decoder_op(
         source,
         stream_index=stream_index,
@@ -48,10 +47,8 @@ def create_audio_decoder(
         num_channels=num_channels,
     )
 
-    # Get the actual stream index that was used (in case stream_index was None)
     actual_stream_index = get_active_stream_index(decoder)
 
-    # Get metadata for the stream
     container_metadata = get_container_metadata(decoder)
     metadata = container_metadata.streams[actual_stream_index]
     if not isinstance(metadata, AudioStreamMetadata):

@@ -71,7 +71,6 @@ _create_from_file_like = torch._dynamo.disallow_in_graph(
 _add_video_stream_raw = torch.ops.torchcodec_ns.add_video_stream.default
 _add_video_stream = torch.ops.torchcodec_ns._add_video_stream.default
 
-# Unified audio decoder creation ops (raw C++ ops)
 _create_audio_decoder_from_file_raw = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_audio_decoder_from_file.default
 )
@@ -82,7 +81,6 @@ _create_audio_decoder_from_file_like_raw = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns._create_audio_decoder_from_file_like.default
 )
 
-# Stream info op
 get_active_stream_index = torch.ops.torchcodec_ns.get_active_stream_index.default
 
 
@@ -202,7 +200,7 @@ def create_audio_decoder(
     This is a convenience function that dispatches to the appropriate
     create_audio_decoder_from_* function based on the source type.
     """
-    # Validate stream_index if provided (before calling C++ ops)
+
     if stream_index is not None:
         from torchcodec._core._metadata import (
             AudioStreamMetadata,
@@ -221,7 +219,6 @@ def create_audio_decoder(
                 f"The stream at index {stream_index} is not an audio stream."
             )
 
-    # Now dispatch to the appropriate create_audio_decoder_from_* function
     if isinstance(source, str):
         return create_audio_decoder_from_file(
             source,
@@ -620,7 +617,6 @@ def add_audio_stream_abstract(
     return
 
 
-# Abstract implementations for unified audio decoder creation ops
 @register_fake("torchcodec_ns::create_audio_decoder_from_file")
 def create_audio_decoder_from_file_abstract(
     filename: str,

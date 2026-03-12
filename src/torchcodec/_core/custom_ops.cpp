@@ -56,8 +56,6 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None) -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
-  // Unified audio decoder creation ops - these combine create +
-  // add_audio_stream
   m.def(
       "create_audio_decoder_from_file(str filename, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> Tensor");
   m.def(
@@ -550,13 +548,11 @@ void add_audio_stream(
 // UNIFIED AUDIO DECODER CREATION OPS
 // --------------------------------------------------------------------------
 
-// Create an audio decoder from file with stream already added.
 torch::stable::Tensor create_audio_decoder_from_file(
     std::string filename,
     std::optional<int64_t> stream_index = std::nullopt,
     std::optional<int64_t> sample_rate = std::nullopt,
     std::optional<int64_t> num_channels = std::nullopt) {
-  // Audio always uses approximate seek mode
   AudioStreamOptions audioStreamOptions;
   audioStreamOptions.sampleRate = sample_rate;
   audioStreamOptions.numChannels = num_channels;
@@ -570,7 +566,6 @@ torch::stable::Tensor create_audio_decoder_from_file(
   return wrapDecoderPointerToTensor(std::move(decoder));
 }
 
-// Create an audio decoder from tensor with stream already added.
 torch::stable::Tensor create_audio_decoder_from_tensor(
     const torch::stable::Tensor& audio_tensor,
     std::optional<int64_t> stream_index = std::nullopt,
@@ -598,7 +593,6 @@ torch::stable::Tensor create_audio_decoder_from_tensor(
   return wrapDecoderPointerToTensor(std::move(decoder));
 }
 
-// Create an audio decoder from file-like object with stream already added.
 torch::stable::Tensor _create_audio_decoder_from_file_like(
     int64_t file_like_context,
     std::optional<int64_t> stream_index = std::nullopt,
@@ -627,7 +621,6 @@ torch::stable::Tensor _create_audio_decoder_from_file_like(
 // STREAM INFO OP
 // --------------------------------------------------------------------------
 
-// Get the active stream index from the decoder.
 int64_t get_active_stream_index(torch::stable::Tensor& decoder) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   return videoDecoder->getActiveStreamIndex();
@@ -1234,7 +1227,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
   m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
   m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
-  // Unified audio decoder creation ops
   m.impl(
       "create_audio_decoder_from_file",
       TORCH_BOX(&create_audio_decoder_from_file));
