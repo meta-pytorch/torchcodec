@@ -25,6 +25,7 @@ from torchcodec._core import (
     create_from_file,
     create_from_file_like,
     create_from_tensor,
+    create_streaming_encoder,
     encode_audio_to_file,
     get_ffmpeg_library_versions,
     get_frame_at_index,
@@ -37,6 +38,7 @@ from torchcodec._core import (
     get_json_metadata,
     get_next_frame,
     seek_to_pts,
+    streaming_encoder_close,
 )
 
 from .utils import (
@@ -1138,6 +1140,44 @@ class TestAudioEncoderOps:
                 sample_rate=10,
                 filename="./file.bad_extension",
             )
+
+
+class TestStreamingEncoderOps:
+    def test_create_and_close_file(self, tmp_path):
+        encoder_tensor = create_streaming_encoder(str(tmp_path / "test.mp4"))
+        streaming_encoder_close(encoder_tensor)
+        streaming_encoder_close(encoder_tensor)  # double close is a no-op
+
+    # TODO: Test if closing the file before closing the streaming encoder causes any issues.
+    @pytest.mark.parametrize("format", (None, "mp4"))
+    def test_create_and_close_file_like(self, tmp_path, format):
+        filename = "test.mp4" if format is None else "test"
+        f = open(tmp_path / filename, "wb")
+        encoder_tensor = create_streaming_encoder(dest=f, format=format)
+        streaming_encoder_close(encoder_tensor)
+        f.close()
+
+    def test_create_invalid_path(self):
+        with pytest.raises(RuntimeError, match="make sure it's a valid path"):
+            create_streaming_encoder("/nonexistent/dir/test.mp4")
+
+    def test_create_invalid_format(self, tmp_path):
+        with pytest.raises(RuntimeError, match="check the desired extension"):
+            create_streaming_encoder(str(tmp_path / "test.bad_extension"))
+        with open(tmp_path / "test.mp4", "wb") as f:
+            with pytest.raises(RuntimeError, match="Check the desired format"):
+                create_streaming_encoder(dest=f, format="not_a_format")
+
+    def test_create_file_like_without_format(self):
+        buf = io.BytesIO()
+        with pytest.raises(ValueError, match="format must be specified"):
+            create_streaming_encoder(dest=buf)
+
+    def test_create_file_like_format_inferred_from_name(self, tmp_path):
+        f = open(tmp_path / "test.mp4", "wb")
+        encoder_tensor = create_streaming_encoder(dest=f)
+        streaming_encoder_close(encoder_tensor)
+        f.close()
 
 
 if __name__ == "__main__":

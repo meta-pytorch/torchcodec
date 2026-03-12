@@ -82,6 +82,11 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
+  m.def("create_streaming_encoder(str filename) -> Tensor");
+  m.def(
+      "_create_streaming_encoder_to_file_like(int file_like_context, "
+      "str format) -> Tensor");
+  m.def("streaming_encoder_close(Tensor(a!) encoder) -> ()");
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
   m.def("get_nvdec_cache_capacity() -> int");
   m.def("_get_nvdec_cache_size(int device_index) -> int");
@@ -121,6 +126,34 @@ SingleStreamDecoder* unwrapTensorToGetDecoder(torch::stable::Tensor& tensor) {
   void* buffer = tensor.mutable_data_ptr();
   SingleStreamDecoder* decoder = static_cast<SingleStreamDecoder*>(buffer);
   return decoder;
+}
+
+torch::stable::Tensor wrapStreamingEncoderPointerToTensor(
+    std::unique_ptr<StreamingEncoder> uniqueEncoder) {
+  StreamingEncoder* encoder = uniqueEncoder.release();
+  int64_t sizes[] = {static_cast<int64_t>(sizeof(StreamingEncoder*))};
+  int64_t strides[] = {1};
+  torch::stable::Tensor tensor = torch::stable::from_blob(
+      encoder,
+      {sizes, 1},
+      {strides, 1},
+      StableDevice(kStableCPU),
+      kStableInt64,
+      [encoder](void*) { delete encoder; });
+  auto streamingEncoder =
+      static_cast<StreamingEncoder*>(tensor.mutable_data_ptr());
+  STD_TORCH_CHECK(streamingEncoder == encoder, "streamingEncoder != encoder");
+  return tensor;
+}
+
+StreamingEncoder* unwrapTensorToGetStreamingEncoder(
+    torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(
+      tensor.is_contiguous(),
+      "fake encoder tensor must be contiguous! This is an internal error, please report on the torchcodec issue tracker.");
+  void* buffer = tensor.mutable_data_ptr();
+  StreamingEncoder* encoder = static_cast<StreamingEncoder*>(buffer);
+  return encoder;
 }
 
 // The elements of this tuple are all tensors that represent a single frame:
@@ -1103,6 +1136,30 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
+torch::stable::Tensor create_streaming_encoder(std::string file_name) {
+  auto encoder = std::make_unique<StreamingEncoder>(file_name);
+  return wrapStreamingEncoderPointerToTensor(std::move(encoder));
+}
+
+torch::stable::Tensor _create_streaming_encoder_to_file_like(
+    int64_t file_like_context,
+    std::string format) {
+  auto fileLikeContext =
+      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+  STD_TORCH_CHECK(
+      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
+  std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
+
+  auto encoder =
+      std::make_unique<StreamingEncoder>(format, std::move(avioContextHolder));
+
+  return wrapStreamingEncoderPointerToTensor(std::move(encoder));
+}
+
+void streaming_encoder_close(torch::stable::Tensor& encoder) {
+  unwrapTensorToGetStreamingEncoder(encoder)->close();
+}
+
 void set_nvdec_cache_capacity(int64_t capacity) {
   int capacityInt = validateInt64ToInt(capacity, "capacity");
   STD_TORCH_CHECK(
@@ -1135,6 +1192,10 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
   m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
+  m.impl("create_streaming_encoder", TORCH_BOX(&create_streaming_encoder));
+  m.impl(
+      "_create_streaming_encoder_to_file_like",
+      TORCH_BOX(&_create_streaming_encoder_to_file_like));
   m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
   m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
   m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
@@ -1172,6 +1233,11 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       TORCH_BOX(&scan_all_streams_to_update_metadata));
 
   m.impl("_get_backend_details", TORCH_BOX(&get_backend_details));
+  m.impl("create_streaming_encoder", TORCH_BOX(&create_streaming_encoder));
+  m.impl(
+      "_create_streaming_encoder_to_file_like",
+      TORCH_BOX(&_create_streaming_encoder_to_file_like));
+  m.impl("streaming_encoder_close", TORCH_BOX(&streaming_encoder_close));
 }
 
 } // namespace facebook::torchcodec

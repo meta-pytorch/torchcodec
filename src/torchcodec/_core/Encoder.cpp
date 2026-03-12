@@ -675,21 +675,12 @@ void sortCodecOptions(
     }
   }
 }
-} // namespace
 
-VideoEncoder::~VideoEncoder() {
-  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
-}
-
-VideoEncoder::VideoEncoder(
-    const torch::stable::Tensor& frames,
-    double frameRate,
+// Allocate an AVFormatContext for file output, including opening the file
+// for writing via avio_open.
+void allocateFileFormatContext(
     std::string_view fileName,
-    const VideoStreamOptions& videoStreamOptions)
-    : frames_(validateFrames(frames)), inFrameRate_(frameRate) {
-  setFFmpegLogLevel();
-
-  // Allocate output format context
+    UniqueEncodingAVFormatContext& avFormatContextHolder) {
   AVFormatContext* avFormatContext = nullptr;
   int status = avformat_alloc_output_context2(
       &avFormatContext, nullptr, nullptr, fileName.data());
@@ -701,28 +692,23 @@ VideoEncoder::VideoEncoder(
       fileName,
       ", check the desired extension? ",
       getFFMPEGErrorStringFromErrorCode(status));
-  avFormatContext_.reset(avFormatContext);
+  avFormatContextHolder.reset(avFormatContext);
 
-  status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
+  status =
+      avio_open(&avFormatContextHolder->pb, fileName.data(), AVIO_FLAG_WRITE);
   STD_TORCH_CHECK(
       status >= 0,
       "avio_open failed. The destination file is ",
       fileName,
       ", make sure it's a valid path? ",
       getFFMPEGErrorStringFromErrorCode(status));
-  initializeEncoder(videoStreamOptions);
 }
 
-VideoEncoder::VideoEncoder(
-    const torch::stable::Tensor& frames,
-    double frameRate,
+// Allocate an AVFormatContext for AVIO output (tensor, file-like).
+void allocateAVIOFormatContext(
     std::string_view formatName,
-    std::unique_ptr<AVIOContextHolder> avioContextHolder,
-    const VideoStreamOptions& videoStreamOptions)
-    : frames_(validateFrames(frames)),
-      inFrameRate_(frameRate),
-      avioContextHolder_(std::move(avioContextHolder)) {
-  setFFmpegLogLevel();
+    AVIOContextHolder* avioContextHolder,
+    UniqueEncodingAVFormatContext& avFormatContextHolder) {
   // Map mkv -> matroska when used as format name
   formatName = (formatName == "mkv") ? "matroska" : formatName;
   AVFormatContext* avFormatContext = nullptr;
@@ -736,10 +722,40 @@ VideoEncoder::VideoEncoder(
       formatName,
       ". ",
       getFFMPEGErrorStringFromErrorCode(status));
-  avFormatContext_.reset(avFormatContext);
+  avFormatContextHolder.reset(avFormatContext);
 
-  avFormatContext_->pb = avioContextHolder_->getAVIOContext();
+  avFormatContextHolder->pb = avioContextHolder->getAVIOContext();
+}
 
+} // namespace
+
+VideoEncoder::~VideoEncoder() {
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
+}
+
+VideoEncoder::VideoEncoder(
+    const torch::stable::Tensor& frames,
+    double frameRate,
+    std::string_view fileName,
+    const VideoStreamOptions& videoStreamOptions)
+    : frames_(validateFrames(frames)), inFrameRate_(frameRate) {
+  setFFmpegLogLevel();
+  allocateFileFormatContext(fileName, avFormatContext_);
+  initializeEncoder(videoStreamOptions);
+}
+
+VideoEncoder::VideoEncoder(
+    const torch::stable::Tensor& frames,
+    double frameRate,
+    std::string_view formatName,
+    std::unique_ptr<AVIOContextHolder> avioContextHolder,
+    const VideoStreamOptions& videoStreamOptions)
+    : frames_(validateFrames(frames)),
+      inFrameRate_(frameRate),
+      avioContextHolder_(std::move(avioContextHolder)) {
+  setFFmpegLogLevel();
+  allocateAVIOFormatContext(
+      formatName, avioContextHolder_.get(), avFormatContext_);
   initializeEncoder(videoStreamOptions);
 }
 
@@ -1010,6 +1026,36 @@ void VideoEncoder::flushBuffers() {
   AutoAVPacket autoAVPacket;
   // Send null frame to signal end of input
   encodeFrame(autoAVPacket, UniqueAVFrame(nullptr));
+}
+
+StreamingEncoder::~StreamingEncoder() {
+  if (!closed_) {
+    close();
+  }
+}
+
+StreamingEncoder::StreamingEncoder(std::string_view fileName) {
+  setFFmpegLogLevel();
+  allocateFileFormatContext(fileName, avFormatContext_);
+}
+
+StreamingEncoder::StreamingEncoder(
+    std::string_view formatName,
+    std::unique_ptr<AVIOContextHolder> avioContextHolder)
+    : avioContextHolder_(std::move(avioContextHolder)) {
+  setFFmpegLogLevel();
+  allocateAVIOFormatContext(
+      formatName, avioContextHolder_.get(), avFormatContext_);
+}
+
+void StreamingEncoder::close() {
+  if (closed_) {
+    return;
+  }
+  closed_ = true;
+  // TODO: Once addFrame is implemented, close() will need to flush the
+  // encoder and call av_write_trailer.
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 } // namespace facebook::torchcodec
