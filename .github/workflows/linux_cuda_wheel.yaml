@@ -133,7 +133,7 @@ jobs:
           ${CONDA_RUN} time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none
 
   build-docs:
-    runs-on: linux.4xlarge.nvidia.gpu
+    runs-on: linux.g5.4xlarge.nvidia.gpu
     env:
       PYTHON_VERSION: '3.10'
       CUDA_VERSION: '12.6'
