@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <fstream>
 #include <string>
 #include "StableABICompat.h"
 
@@ -35,7 +36,6 @@ struct WavHeader {
 class WavDecoder {
  public:
   explicit WavDecoder(const std::string& path);
-  ~WavDecoder();
 
  private:
   struct ChunkInfo {
@@ -45,12 +45,11 @@ class WavDecoder {
 
   ChunkInfo
   findChunk(const char* chunkId, int64_t startPos, uint64_t fileSizeLimit);
-  void parseHeader();
+  void parseHeader(uint64_t actualFileSize);
   void validateHeader() const;
 
-  std::FILE* file_;
+  std::ifstream file_;
   WavHeader header_;
-  std::string filePath_;
 };
 
 } // namespace facebook::torchcodec

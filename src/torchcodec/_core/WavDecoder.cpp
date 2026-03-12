@@ -6,9 +6,9 @@
 
 #include "WavDecoder.h"
 
-#include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <vector>
 
 namespace facebook::torchcodec {
@@ -27,17 +27,17 @@ bool checkFourCC(const uint8_t* data, const char* expected) {
 
 } // namespace
 
-void WavDecoder::parseHeader() {
-  fseek(file_, 0, SEEK_SET);
+void WavDecoder::parseHeader(uint64_t actualFileSize) {
+  file_.seekg(0, std::ios::beg);
 
   uint8_t riffHeader[RIFF_HEADER_SIZE];
-  size_t bytesRead = fread(riffHeader, 1, RIFF_HEADER_SIZE, file_);
+  file_.read(reinterpret_cast<char*>(riffHeader), RIFF_HEADER_SIZE);
   STD_TORCH_CHECK(
-      bytesRead == RIFF_HEADER_SIZE,
+      !file_.fail() && file_.gcount() == RIFF_HEADER_SIZE,
       "WAV: unexpected end of data (expected ",
       RIFF_HEADER_SIZE,
       " bytes, got ",
-      bytesRead,
+      file_.gcount(),
       ")");
 
   STD_TORCH_CHECK(checkFourCC(riffHeader, "RIFF"), "Missing RIFF header");
@@ -46,7 +46,6 @@ void WavDecoder::parseHeader() {
 
   header_.fileSize = readLittleEndian<uint32_t>(riffHeader + 4) + 8;
 
-  uint64_t actualFileSize = std::filesystem::file_size(filePath_);
   ChunkInfo fmtChunk = findChunk("fmt ", RIFF_HEADER_SIZE, actualFileSize);
   STD_TORCH_CHECK(
       fmtChunk.size >= MIN_FMT_CHUNK_SIZE,
@@ -55,15 +54,16 @@ void WavDecoder::parseHeader() {
       " bytes");
 
   // Use ChunkInfo to seek to and read the fmt chunk data
-  fseek(file_, static_cast<long>(fmtChunk.offset), SEEK_SET);
+  file_.seekg(fmtChunk.offset, std::ios::beg);
   std::vector<uint8_t> fmtData(fmtChunk.size);
-  size_t fmtBytesRead = fread(fmtData.data(), 1, fmtChunk.size, file_);
+  file_.read(reinterpret_cast<char*>(fmtData.data()), fmtChunk.size);
   STD_TORCH_CHECK(
-      fmtBytesRead == fmtChunk.size,
+      !file_.fail() &&
+          file_.gcount() == static_cast<std::streamsize>(fmtChunk.size),
       "WAV: unexpected end of data (expected ",
       fmtChunk.size,
       " bytes, got ",
-      fmtBytesRead,
+      file_.gcount(),
       ")");
 
   header_.audioFormat = readLittleEndian<uint16_t>(fmtData.data());
@@ -81,18 +81,13 @@ void WavDecoder::parseHeader() {
   // TODO: Find data chunk
 }
 
-WavDecoder::WavDecoder(const std::string& path)
-    : file_(nullptr), filePath_(path) {
-  file_ = std::fopen(path.c_str(), "rb");
-  STD_TORCH_CHECK(file_ != nullptr, "Failed to open WAV file: ", path);
-  parseHeader();
-  validateHeader();
-}
+WavDecoder::WavDecoder(const std::string& path) {
+  file_.open(path, std::ios::binary);
+  STD_TORCH_CHECK(file_.is_open(), "Failed to open WAV file: ", path);
 
-WavDecoder::~WavDecoder() {
-  if (file_) {
-    std::fclose(file_);
-  }
+  uint64_t actualFileSize = std::filesystem::file_size(path);
+  parseHeader(actualFileSize);
+  validateHeader();
 }
 
 // Given a chunkId, read through each chunk until we find a match, then return
@@ -106,12 +101,14 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
         static_cast<uint64_t>(startPos) <= fileSizeLimit,
         "Chunk extends beyond file bounds at position: ",
         startPos);
-    fseek(file_, static_cast<long>(startPos), SEEK_SET);
+    file_.seekg(startPos, std::ios::beg);
 
     uint8_t chunkHeader[CHUNK_HEADER_SIZE];
-    size_t bytesRead = fread(chunkHeader, 1, CHUNK_HEADER_SIZE, file_);
+    file_.read(reinterpret_cast<char*>(chunkHeader), CHUNK_HEADER_SIZE);
     STD_TORCH_CHECK(
-        bytesRead == CHUNK_HEADER_SIZE, "Chunk not found: ", chunkId);
+        !file_.fail() && file_.gcount() == CHUNK_HEADER_SIZE,
+        "Chunk not found: ",
+        chunkId);
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readLittleEndian<uint32_t>(chunkHeader + 4);
 
