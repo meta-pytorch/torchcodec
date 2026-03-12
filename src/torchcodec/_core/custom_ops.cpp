@@ -9,6 +9,11 @@
 #include <cstdint>
 #include <sstream>
 #include <string>
+
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
@@ -986,6 +991,15 @@ std::string get_stream_json_metadata(
   }
   if (streamMetadata.rotation.has_value()) {
     map["rotation"] = std::to_string(*streamMetadata.rotation);
+  }
+  if (auto name = streamMetadata.getColorPrimariesName()) {
+    map["colorPrimaries"] = quoteValue(*name);
+  }
+  if (auto name = streamMetadata.getColorSpaceName()) {
+    map["colorSpace"] = quoteValue(*name);
+  }
+  if (auto name = streamMetadata.getColorTransferCharacteristicName()) {
+    map["colorTransferCharacteristic"] = quoteValue(*name);
   }
   if (streamMetadata.pixelFormat.has_value()) {
     map["pixelFormat"] = quoteValue(streamMetadata.pixelFormat.value());
