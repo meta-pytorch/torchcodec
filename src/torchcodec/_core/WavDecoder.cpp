@@ -101,9 +101,13 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     const char* chunkId,
     int64_t startPos,
     uint64_t fileSizeLimit) {
-  fseek(file_, static_cast<long>(startPos), SEEK_SET);
-
   while (true) {
+    STD_TORCH_CHECK(
+        static_cast<uint64_t>(startPos) <= fileSizeLimit,
+        "Chunk extends beyond file bounds at position: ",
+        startPos);
+    fseek(file_, static_cast<long>(startPos), SEEK_SET);
+
     uint8_t chunkHeader[CHUNK_HEADER_SIZE];
     size_t bytesRead = fread(chunkHeader, 1, CHUNK_HEADER_SIZE, file_);
     STD_TORCH_CHECK(
@@ -115,14 +119,8 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
       return {startPos + static_cast<int64_t>(CHUNK_HEADER_SIZE), chunkSize};
     }
 
-    // Skip this chunk and continue searching (odd chunks are padded with a
-    // byte)
+    // Skip this chunk and continue searching (odd chunks are padded)
     startPos += CHUNK_HEADER_SIZE + chunkSize + (chunkSize % 2);
-    STD_TORCH_CHECK(
-        static_cast<uint64_t>(startPos) <= fileSizeLimit,
-        "Chunk extends beyond file bounds at position: ",
-        startPos);
-    fseek(file_, static_cast<long>(startPos), SEEK_SET);
   }
 }
 

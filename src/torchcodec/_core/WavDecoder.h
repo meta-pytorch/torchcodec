@@ -16,7 +16,7 @@ constexpr size_t CHUNK_HEADER_SIZE = 8; // chunkID + chunkSize
 constexpr size_t MIN_FMT_CHUNK_SIZE = 16;
 constexpr size_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
 
-// See standard format codes and Wav file format:
+// See standard format codes and Wav file format used in WavHeader:
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
 constexpr uint16_t WAV_FORMAT_PCM = 1;
 constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 3;
