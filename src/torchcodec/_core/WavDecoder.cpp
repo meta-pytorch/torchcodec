@@ -20,9 +20,17 @@ bool is_little_endian() {
 }
 
 template <typename T>
-T readValue(const uint8_t* data) {
+T readValue(const uint8_t* data, size_t offset, size_t bufferSize) {
+  STD_TORCH_CHECK(
+      offset + sizeof(T) <= bufferSize,
+      "Read past buffer: offset ",
+      offset,
+      " + ",
+      sizeof(T),
+      " > ",
+      bufferSize);
   T value;
-  std::memcpy(&value, data, sizeof(T));
+  std::memcpy(&value, data + offset, sizeof(T));
   return value;
 }
 
@@ -61,7 +69,7 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
   STD_TORCH_CHECK(
       checkFourCC(riffHeader + 8, "WAVE"), "Missing WAVE format identifier");
 
-  header_.fileSize = readValue<uint32_t>(riffHeader + 4) + 8;
+  header_.fileSize = readValue<uint32_t>(riffHeader, 4, RIFF_HEADER_SIZE) + 8;
 
   ChunkInfo fmtChunk = findChunk("fmt ", RIFF_HEADER_SIZE, actualFileSize);
   STD_TORCH_CHECK(
@@ -83,16 +91,17 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
       file_.gcount(),
       ")");
 
-  header_.audioFormat = readValue<uint16_t>(fmtData.data());
-  header_.numChannels = readValue<uint16_t>(fmtData.data() + 2);
-  header_.sampleRate = readValue<uint32_t>(fmtData.data() + 4);
-  header_.bitsPerSample = readValue<uint16_t>(fmtData.data() + 14);
+  header_.audioFormat = readValue<uint16_t>(fmtData.data(), 0, fmtChunk.size);
+  header_.numChannels = readValue<uint16_t>(fmtData.data(), 2, fmtChunk.size);
+  header_.sampleRate = readValue<uint32_t>(fmtData.data(), 4, fmtChunk.size);
+  header_.bitsPerSample =
+      readValue<uint16_t>(fmtData.data(), 14, fmtChunk.size);
 
   if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
     STD_TORCH_CHECK(
         fmtChunk.size >= MIN_WAVEX_FMT_CHUNK_SIZE,
         "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
-    header_.subFormat = readValue<uint16_t>(fmtData.data() + 24);
+    header_.subFormat = readValue<uint16_t>(fmtData.data(), 24, fmtChunk.size);
   }
 
   // TODO WavDecoder: Find data chunk
@@ -156,7 +165,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
         "Chunk not found: ",
         chunkId);
     // Read chunk size which immediately follows the chunk ID
-    uint32_t chunkSize = readValue<uint32_t>(chunkHeader + 4);
+    uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4, CHUNK_HEADER_SIZE);
 
     if (checkFourCC(chunkHeader, chunkId)) {
       return {startPos + static_cast<int64_t>(CHUNK_HEADER_SIZE), chunkSize};
