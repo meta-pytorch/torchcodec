@@ -658,6 +658,31 @@ void SingleStreamDecoder::addAudioStream(
 }
 
 // --------------------------------------------------------------------------
+// STATIC FACTORY METHODS
+// --------------------------------------------------------------------------
+
+std::unique_ptr<SingleStreamDecoder> SingleStreamDecoder::createAudioDecoder(
+    const std::string& audioFilePath,
+    SeekMode seekMode,
+    int streamIndex,
+    const AudioStreamOptions& audioStreamOptions) {
+  auto decoder = std::make_unique<SingleStreamDecoder>(audioFilePath, seekMode);
+  decoder->addAudioStream(streamIndex, audioStreamOptions);
+  return decoder;
+}
+
+std::unique_ptr<SingleStreamDecoder> SingleStreamDecoder::createAudioDecoder(
+    std::unique_ptr<AVIOContextHolder> context,
+    SeekMode seekMode,
+    int streamIndex,
+    const AudioStreamOptions& audioStreamOptions) {
+  auto decoder =
+      std::make_unique<SingleStreamDecoder>(std::move(context), seekMode);
+  decoder->addAudioStream(streamIndex, audioStreamOptions);
+  return decoder;
+}
+
+// --------------------------------------------------------------------------
 // HIGH-LEVEL DECODING ENTRY-POINTS
 // --------------------------------------------------------------------------
 

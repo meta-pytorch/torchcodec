@@ -97,6 +97,28 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       const AudioStreamOptions& audioStreamOptions = AudioStreamOptions());
 
   // --------------------------------------------------------------------------
+  // STATIC FACTORY METHODS
+  // --------------------------------------------------------------------------
+  // These factory methods create a SingleStreamDecoder and add a stream in one
+  // step, matching the public Python API. They consolidate the two-step pattern
+  // of construction + addStream into a single call.
+
+  // Creates an audio decoder from a file path with stream already added.
+  static std::unique_ptr<SingleStreamDecoder> createAudioDecoder(
+      const std::string& audioFilePath,
+      SeekMode seekMode,
+      int streamIndex,
+      const AudioStreamOptions& audioStreamOptions = AudioStreamOptions());
+
+  // Creates an audio decoder from an AVIOContextHolder with stream already
+  // added.
+  static std::unique_ptr<SingleStreamDecoder> createAudioDecoder(
+      std::unique_ptr<AVIOContextHolder> context,
+      SeekMode seekMode,
+      int streamIndex,
+      const AudioStreamOptions& audioStreamOptions = AudioStreamOptions());
+
+  // --------------------------------------------------------------------------
   // DECODING AND SEEKING APIs
   // --------------------------------------------------------------------------
 
