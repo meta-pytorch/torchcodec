@@ -14,8 +14,13 @@
 namespace facebook::torchcodec {
 namespace {
 
+bool is_little_endian() {
+  uint32_t x = 1;
+  return *(uint8_t*)&x;
+}
+
 template <typename T>
-T readLittleEndian(const uint8_t* data) {
+T readValue(const uint8_t* data) {
   T value;
   std::memcpy(&value, data, sizeof(T));
   return value;
@@ -44,7 +49,7 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
   STD_TORCH_CHECK(
       checkFourCC(riffHeader + 8, "WAVE"), "Missing WAVE format identifier");
 
-  header_.fileSize = readLittleEndian<uint32_t>(riffHeader + 4) + 8;
+  header_.fileSize = readValue<uint32_t>(riffHeader + 4) + 8;
 
   ChunkInfo fmtChunk = findChunk("fmt ", RIFF_HEADER_SIZE, actualFileSize);
   STD_TORCH_CHECK(
@@ -66,22 +71,25 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
       file_.gcount(),
       ")");
 
-  header_.audioFormat = readLittleEndian<uint16_t>(fmtData.data());
-  header_.numChannels = readLittleEndian<uint16_t>(fmtData.data() + 2);
-  header_.sampleRate = readLittleEndian<uint32_t>(fmtData.data() + 4);
-  header_.bitsPerSample = readLittleEndian<uint16_t>(fmtData.data() + 14);
+  header_.audioFormat = readValue<uint16_t>(fmtData.data());
+  header_.numChannels = readValue<uint16_t>(fmtData.data() + 2);
+  header_.sampleRate = readValue<uint32_t>(fmtData.data() + 4);
+  header_.bitsPerSample = readValue<uint16_t>(fmtData.data() + 14);
 
   if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
     STD_TORCH_CHECK(
         fmtChunk.size >= MIN_WAVEX_FMT_CHUNK_SIZE,
         "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
-    header_.subFormat = readLittleEndian<uint16_t>(fmtData.data() + 24);
+    header_.subFormat = readValue<uint16_t>(fmtData.data() + 24);
   }
 
-  // TODO: Find data chunk
+  // TODO WavDecoder: Find data chunk
 }
 
 WavDecoder::WavDecoder(const std::string& path) {
+  // TODO WavDecoder: Support big-endian host machines
+  STD_TORCH_CHECK(
+      is_little_endian(), "WAV decoder requires little-endian architecture");
   file_.open(path, std::ios::binary);
   STD_TORCH_CHECK(file_.is_open(), "Failed to open WAV file: ", path);
 
@@ -110,7 +118,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
         "Chunk not found: ",
         chunkId);
     // Read chunk size which immediately follows the chunk ID
-    uint32_t chunkSize = readLittleEndian<uint32_t>(chunkHeader + 4);
+    uint32_t chunkSize = readValue<uint32_t>(chunkHeader + 4);
 
     if (checkFourCC(chunkHeader, chunkId)) {
       return {startPos + static_cast<int64_t>(CHUNK_HEADER_SIZE), chunkSize};
@@ -133,7 +141,7 @@ void WavDecoder::validateHeader() const {
       ". Only PCM and IEEE float formats are supported.");
 
   if (effectiveFormat == WAV_FORMAT_PCM) {
-    // TODO: support 8, 16, 24 bits
+    // TODO WavDecoder: support 8, 16, 24 bits
     if (header_.bitsPerSample != 32) {
       STD_TORCH_CHECK(
           false,
@@ -145,7 +153,7 @@ void WavDecoder::validateHeader() const {
 
   // Check bit depth for IEEE_FLOAT
   if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
-    // TODO: support 64 bit float
+    // TODO WavDecoder: support 64 bit float
     if (header_.bitsPerSample != 32) {
       STD_TORCH_CHECK(
           false,
