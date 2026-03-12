@@ -19,13 +19,13 @@ class FORCE_PUBLIC_VISIBILITY AudioEncoder {
   AudioEncoder(
       const torch::stable::Tensor& samples,
       int sampleRate,
-      std::string_view fileName,
+      const std::string& fileName,
       const AudioStreamOptions& audioStreamOptions);
 
   AudioEncoder(
       const torch::stable::Tensor& samples,
       int sampleRate,
-      std::string_view formatName,
+      const std::string& formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder,
       const AudioStreamOptions& audioStreamOptions);
 
@@ -144,13 +144,13 @@ class FORCE_PUBLIC_VISIBILITY VideoEncoder {
   VideoEncoder(
       const torch::stable::Tensor& frames,
       double frameRate,
-      std::string_view fileName,
+      const std::string& fileName,
       const VideoStreamOptions& videoStreamOptions);
 
   VideoEncoder(
       const torch::stable::Tensor& frames,
       double frameRate,
-      std::string_view formatName,
+      const std::string& formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder,
       const VideoStreamOptions& videoStreamOptions);
 
