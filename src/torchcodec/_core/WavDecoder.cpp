@@ -23,18 +23,18 @@ template <typename T>
 T readValue(const uint8_t* data, size_t offset, size_t bufferSize) {
   STD_TORCH_CHECK(
       offset + sizeof(T) <= bufferSize,
-      "Read past buffer: offset ",
-      offset,
-      " + ",
+      "Reading ",
       sizeof(T),
-      " > ",
+      " bytes at offset ",
+      offset,
+      ": exceeds buffer length ",
       bufferSize);
   T value;
   std::memcpy(&value, data + offset, sizeof(T));
   return value;
 }
 
-bool checkFourCC(const uint8_t* data, const char* expected) {
+bool matchesFourCC(const uint8_t* data, const char* expected) {
   return std::memcmp(data, expected, 4) == 0;
 }
 
@@ -65,9 +65,9 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
       file_.gcount(),
       ")");
 
-  STD_TORCH_CHECK(checkFourCC(riffHeader, "RIFF"), "Missing RIFF header");
+  STD_TORCH_CHECK(matchesFourCC(riffHeader, "RIFF"), "Missing RIFF header");
   STD_TORCH_CHECK(
-      checkFourCC(riffHeader + 8, "WAVE"), "Missing WAVE format identifier");
+      matchesFourCC(riffHeader + 8, "WAVE"), "Missing WAVE format identifier");
 
   header_.fileSize = readValue<uint32_t>(riffHeader, 4, RIFF_HEADER_SIZE) + 8;
 
@@ -163,7 +163,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4, CHUNK_HEADER_SIZE);
 
-    if (checkFourCC(chunkHeader, chunkId)) {
+    if (matchesFourCC(chunkHeader, chunkId)) {
       return {startPos + static_cast<int64_t>(CHUNK_HEADER_SIZE), chunkSize};
     }
 
