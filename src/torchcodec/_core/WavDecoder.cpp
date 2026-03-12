@@ -77,6 +77,13 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
       "Invalid fmt chunk: size must be at least ",
       MIN_FMT_CHUNK_SIZE,
       " bytes");
+  STD_TORCH_CHECK(
+      fmtChunk.size <= MAX_FMT_CHUNK_SIZE,
+      "We tried to allocate fmt chunk of ",
+      fmtChunk.size,
+      " bytes, but maximum allowed is ",
+      MAX_FMT_CHUNK_SIZE,
+      " bytes.");
 
   // Use ChunkInfo to seek to and read the fmt chunk data
   file_.seekg(fmtChunk.offset, std::ios::beg);

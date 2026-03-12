@@ -16,6 +16,7 @@ constexpr size_t RIFF_HEADER_SIZE = 12; // "RIFF" + fileSize + "WAVE"
 constexpr size_t CHUNK_HEADER_SIZE = 8; // chunkID + chunkSize
 constexpr size_t MIN_FMT_CHUNK_SIZE = 16;
 constexpr size_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
+constexpr uint32_t MAX_FMT_CHUNK_SIZE = 1000; // 1 KB
 
 // See standard format codes and Wav file format used in WavHeader:
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
