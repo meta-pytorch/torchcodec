@@ -20,6 +20,7 @@ This makes it ideal for workflows where:
     1. Frame accuracy is critical, so :doc:`approximate mode <approximate_mode>` cannot be used
     2. Videos can be preprocessed once and then decoded many times
 """
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_5.jpg'
 
 # %%
 # First, some boilerplate: we'll download a short video from the web, and

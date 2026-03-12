@@ -12,6 +12,7 @@ Encoding video frames with VideoEncoder
 In this example, we'll learn how to encode video frames to a file or to raw
 bytes using the :class:`~torchcodec.encoders.VideoEncoder` class.
 """
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_11.jpg'
 
 # %%
 # First, we'll download a video and decode some frames to tensors.

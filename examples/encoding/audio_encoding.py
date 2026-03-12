@@ -12,6 +12,7 @@ Encoding audio samples with AudioEncoder
 In this example, we'll learn how to encode audio samples to a file or to raw
 bytes using the :class:`~torchcodec.encoders.AudioEncoder` class.
 """
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_audio2.jpg'
 
 # %%
 # Let's first generate some samples to be encoded. The data to be encoded could

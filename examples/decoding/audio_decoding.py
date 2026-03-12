@@ -12,6 +12,7 @@ Decoding audio streams with AudioDecoder
 In this example, we'll learn how to decode an audio file using the
 :class:`~torchcodec.decoders.AudioDecoder` class.
 """
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_audio.jpg'
 
 # %%
 # First, a bit of boilerplate: we'll download an audio file from the web and

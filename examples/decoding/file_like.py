@@ -17,6 +17,7 @@ with Python
 Our example uses a video file, so we use the :class:`~torchcodec.decoders.VideoDecoder`
 class to decode it. But all of the lessons here also apply to audio files and the
 :class:`~torchcodec.decoders.AudioDecoder` class as well."""
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_6.jpg'
 
 # %%
 # First, a bit of boilerplate. We define two functions: one to download content
