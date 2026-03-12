@@ -195,7 +195,7 @@ html_theme_options = {
         },
         {
             "name": "GitHub",
-            "url": "https://github.com/pytorch/torchcodec",
+            "url": "https://github.com/meta-pytorch/torchcodec",
             "icon": "fa-brands fa-github",
         },
         {
@@ -251,9 +251,9 @@ html_context = {
     "theme_variables": theme_variables,
     "display_github": True,
     "github_url": "https://github.com",
-    "github_user": "pytorch",
+    "github_user": "meta-pytorch",
     "github_repo": "torchcodec",
-    "feedback_url": "https://github.com/pytorch/torchcodec",
+    "feedback_url": "https://github.com/meta-pytorch/torchcodec",
     "github_version": "main",
     "doc_path": "docs/source",
     "library_links": [],

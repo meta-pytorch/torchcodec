@@ -25,7 +25,7 @@ Installation instructions
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Installation instructions
-        :link: https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec
+        :link: https://github.com/meta-pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec
         :link-type: url
 
         How to install TorchCodec
@@ -115,13 +115,7 @@ Encoding
    :maxdepth: 1
    :hidden:
 
-   Home <self>
-
-.. toctree::
-   :maxdepth: 1
-   :hidden:
-
-   Installation <https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec>
+   Installation <https://github.com/meta-pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec>
 
 .. toctree::
    :maxdepth: 1
