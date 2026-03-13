@@ -71,49 +71,18 @@ _create_from_file_like = torch._dynamo.disallow_in_graph(
 _add_video_stream_raw = torch.ops.torchcodec_ns.add_video_stream.default
 _add_video_stream = torch.ops.torchcodec_ns._add_video_stream.default
 
-_create_audio_decoder_from_file_raw = torch._dynamo.disallow_in_graph(
+# Unified audio decoder creation ops
+create_audio_decoder_from_file = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_audio_decoder_from_file.default
 )
-_create_audio_decoder_from_tensor_raw = torch._dynamo.disallow_in_graph(
+create_audio_decoder_from_tensor = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_audio_decoder_from_tensor.default
 )
-_create_audio_decoder_from_file_like_raw = torch._dynamo.disallow_in_graph(
+_create_audio_decoder_from_file_like = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns._create_audio_decoder_from_file_like.default
 )
 
 get_active_stream_index = torch.ops.torchcodec_ns.get_active_stream_index.default
-
-
-def create_audio_decoder_from_file(
-    filename: str,
-    *,
-    stream_index: int | None = None,
-    sample_rate: int | None = None,
-    num_channels: int | None = None,
-) -> torch.Tensor:
-    """Create an audio decoder from a file with the stream already added."""
-    return _create_audio_decoder_from_file_raw(
-        filename,
-        stream_index=stream_index,
-        sample_rate=sample_rate,
-        num_channels=num_channels,
-    )
-
-
-def create_audio_decoder_from_tensor(
-    audio_tensor: torch.Tensor,
-    *,
-    stream_index: int | None = None,
-    sample_rate: int | None = None,
-    num_channels: int | None = None,
-) -> torch.Tensor:
-    """Create an audio decoder from a tensor with the stream already added."""
-    return _create_audio_decoder_from_tensor_raw(
-        audio_tensor,
-        stream_index=stream_index,
-        sample_rate=sample_rate,
-        num_channels=num_channels,
-    )
 
 
 def create_audio_decoder_from_bytes(
@@ -144,7 +113,7 @@ def create_audio_decoder_from_file_like(
 ) -> torch.Tensor:
     """Create an audio decoder from a file-like object with the stream already added."""
     assert _pybind_ops is not None
-    return _create_audio_decoder_from_file_like_raw(
+    return _create_audio_decoder_from_file_like(
         _pybind_ops.create_file_like_context(
             file_like, False  # False means not for writing
         ),
