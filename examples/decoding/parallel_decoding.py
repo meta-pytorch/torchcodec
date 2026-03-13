@@ -23,7 +23,7 @@ across multiple processes or threads. But this is just one of many ways to
 parallelize work in Python. You can absolutely use a different thread or process
 pool manager.
 """
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_7.jpg'
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_parallel.jpg'
 
 # %%
 # Let's first define some utility functions for benchmarking and data
