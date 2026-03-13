@@ -44,6 +44,21 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       std::unique_ptr<AVIOContextHolder> context,
       SeekMode seekMode = SeekMode::exact);
 
+  // Creates a SingleStreamDecoder from a file path with audio stream added.
+  SingleStreamDecoder(
+      const std::string& audioFilePath,
+      SeekMode seekMode,
+      int streamIndex,
+      const AudioStreamOptions& audioStreamOptions);
+
+  // Creates a SingleStreamDecoder using the provided AVIOContext with audio
+  // stream added.
+  SingleStreamDecoder(
+      std::unique_ptr<AVIOContextHolder> context,
+      SeekMode seekMode,
+      int streamIndex,
+      const AudioStreamOptions& audioStreamOptions);
+
   // --------------------------------------------------------------------------
   // VIDEO METADATA QUERY API
   // --------------------------------------------------------------------------
@@ -93,25 +108,6 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       const VideoStreamOptions& videoStreamOptions = VideoStreamOptions(),
       std::optional<FrameMappings> customFrameMappings = std::nullopt);
   void addAudioStream(
-      int streamIndex,
-      const AudioStreamOptions& audioStreamOptions = AudioStreamOptions());
-
-  // --------------------------------------------------------------------------
-  // STATIC FACTORY METHODS
-  // --------------------------------------------------------------------------
-  // These factory methods create a SingleStreamDecoder and add a stream in one
-  // step, matching the public Python API. They consolidate the two-step pattern
-  // of construction + addStream into a single call.
-
-  static std::unique_ptr<SingleStreamDecoder> createAudioDecoder(
-      const std::string& audioFilePath,
-      SeekMode seekMode,
-      int streamIndex,
-      const AudioStreamOptions& audioStreamOptions = AudioStreamOptions());
-
-  static std::unique_ptr<SingleStreamDecoder> createAudioDecoder(
-      std::unique_ptr<AVIOContextHolder> context,
-      SeekMode seekMode,
       int streamIndex,
       const AudioStreamOptions& audioStreamOptions = AudioStreamOptions());
 

@@ -557,13 +557,14 @@ torch::stable::Tensor create_audio_decoder_from_file(
   audioStreamOptions.sampleRate = sample_rate;
   audioStreamOptions.numChannels = num_channels;
 
-  auto decoder = SingleStreamDecoder::createAudioDecoder(
-      filename,
-      SeekMode::approximate,
-      stream_index.value_or(-1),
-      audioStreamOptions);
+  std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
+      std::make_unique<SingleStreamDecoder>(
+          filename,
+          SeekMode::approximate,
+          stream_index.value_or(-1),
+          audioStreamOptions);
 
-  return wrapDecoderPointerToTensor(std::move(decoder));
+  return wrapDecoderPointerToTensor(std::move(uniqueDecoder));
 }
 
 torch::stable::Tensor create_audio_decoder_from_tensor(
@@ -584,13 +585,14 @@ torch::stable::Tensor create_audio_decoder_from_tensor(
   auto avioContextHolder =
       std::make_unique<AVIOFromTensorContext>(audio_tensor);
 
-  auto decoder = SingleStreamDecoder::createAudioDecoder(
-      std::move(avioContextHolder),
-      SeekMode::approximate,
-      stream_index.value_or(-1),
-      audioStreamOptions);
+  std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
+      std::make_unique<SingleStreamDecoder>(
+          std::move(avioContextHolder),
+          SeekMode::approximate,
+          stream_index.value_or(-1),
+          audioStreamOptions);
 
-  return wrapDecoderPointerToTensor(std::move(decoder));
+  return wrapDecoderPointerToTensor(std::move(uniqueDecoder));
 }
 
 torch::stable::Tensor _create_audio_decoder_from_file_like(
@@ -608,13 +610,14 @@ torch::stable::Tensor _create_audio_decoder_from_file_like(
   audioStreamOptions.sampleRate = sample_rate;
   audioStreamOptions.numChannels = num_channels;
 
-  auto decoder = SingleStreamDecoder::createAudioDecoder(
-      std::move(avioContextHolder),
-      SeekMode::approximate,
-      stream_index.value_or(-1),
-      audioStreamOptions);
+  std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
+      std::make_unique<SingleStreamDecoder>(
+          std::move(avioContextHolder),
+          SeekMode::approximate,
+          stream_index.value_or(-1),
+          audioStreamOptions);
 
-  return wrapDecoderPointerToTensor(std::move(decoder));
+  return wrapDecoderPointerToTensor(std::move(uniqueDecoder));
 }
 
 // --------------------------------------------------------------------------
