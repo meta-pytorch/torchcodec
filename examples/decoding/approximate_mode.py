@@ -16,7 +16,7 @@ This parameter offers a trade-off between the speed of the
 accuracy of the retreived frames (i.e. in approximate mode, requesting the
 ``i``'th frame may not necessarily return frame ``i``).
 """
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_1.jpg'
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_seek_mode.jpg'
 
 # %%
 # First, a bit of boilerplate: we'll download a short video from the web, and
