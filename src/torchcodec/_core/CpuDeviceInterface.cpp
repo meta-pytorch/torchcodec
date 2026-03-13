@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "CpuDeviceInterface.h"
+#include "ToneMap.h"
 
 namespace facebook::torchcodec {
 namespace {
@@ -176,6 +177,12 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   // Both cases cause problems for our batch APIs, as we allocate
   // FrameBatchOutputs based on the the stream metadata. But single-frame APIs
   // can still work in such situations, so they should.
+  // If tone mapping is enabled and the frame is HDR, convert to SDR RGB24.
+  if (videoStreamOptions_.toneMapping.has_value() &&
+      isHDRFrame(avFrame.get())) {
+    avFrame = toneMapHDRFrame(avFrame);
+  }
+
   auto outputDims =
       resizedOutputDims_.value_or(FrameDims(avFrame->height, avFrame->width));
 

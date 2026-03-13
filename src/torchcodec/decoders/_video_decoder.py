@@ -169,6 +169,7 @@ class VideoDecoder:
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
+        tone_mapping: str | None = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
@@ -222,6 +223,7 @@ class VideoDecoder:
             device_variant=device_variant,
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
+            tone_mapping=tone_mapping,
         )
 
         assert self.metadata.begin_stream_seconds is not None  # mypy.
