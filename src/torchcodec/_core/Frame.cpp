@@ -9,9 +9,14 @@
 
 namespace facebook::torchcodec {
 
-FrameDims::FrameDims(int height, int width) : height(height), width(width) {
+FrameDims::FrameDims(int height, int width, int bitDepth)
+    : height(height), width(width), bitDepth(bitDepth) {
   STD_TORCH_CHECK(height > 0, "FrameDims.height must be > 0, got: ", height);
   STD_TORCH_CHECK(width > 0, "FrameDims.width must be > 0, got: ", width);
+  STD_TORCH_CHECK(
+      bitDepth > 0 && bitDepth <= 16,
+      "FrameDims.bitDepth must be in (0, 16], got: ",
+      bitDepth);
 }
 
 FrameBatchOutput::FrameBatchOutput(
@@ -31,21 +36,19 @@ torch::stable::Tensor allocateEmptyHWCTensor(
       frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
   STD_TORCH_CHECK(
       frameDims.width > 0, "width must be > 0, got: ", frameDims.width);
+  auto dtype = frameDims.bitDepth > 8 ? kStableUInt16 : kStableUInt8;
   if (numFrames.has_value()) {
     auto numFramesValue = numFrames.value();
     STD_TORCH_CHECK(
         numFramesValue >= 0, "numFrames must be >= 0, got: ", numFramesValue);
     return torch::stable::empty(
         {numFramesValue, frameDims.height, frameDims.width, 3},
-        kStableUInt8,
+        dtype,
         std::nullopt,
         device);
   } else {
     return torch::stable::empty(
-        {frameDims.height, frameDims.width, 3},
-        kStableUInt8,
-        std::nullopt,
-        device);
+        {frameDims.height, frameDims.width, 3}, dtype, std::nullopt, device);
   }
 }
 

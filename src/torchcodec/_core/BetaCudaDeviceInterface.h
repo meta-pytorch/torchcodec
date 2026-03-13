@@ -81,6 +81,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const CUVIDPARSERDISPINFO& dispInfo);
 
   UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
+  UniqueAVFrame transferCpuFrameToGpuP016(UniqueAVFrame& cpuFrame);
 
   void applyRotation(
       FrameOutput& frameOutput,
@@ -108,6 +109,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   SwsConfig prevSwsConfig_;
   Rotation rotation_ = Rotation::NONE;
+
+  // Bit depth of the source video. 8 for standard, 10+ for HDR.
+  int bitDepth_ = 8;
 };
 
 } // namespace facebook::torchcodec

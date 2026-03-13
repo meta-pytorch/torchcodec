@@ -38,6 +38,14 @@ torch::stable::Tensor convertNV12FrameToRGB(
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
         std::nullopt);
 
+// Convert a P016 (16-bit YUV 4:2:0) GPU frame to a uint16 RGB tensor.
+// Used for 10-bit video decoding on the Beta CUDA path.
+torch::stable::Tensor convertP016FrameToRGB(
+    UniqueAVFrame& avFrame,
+    const StableDevice& device,
+    const UniqueNppContext& nppCtx,
+    cudaStream_t nvdecStream);
+
 UniqueNppContext getNppStreamContext(const StableDevice& device);
 void returnNppStreamContextToCache(
     const StableDevice& device,
