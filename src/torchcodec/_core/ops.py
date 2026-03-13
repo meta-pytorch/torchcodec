@@ -123,6 +123,40 @@ def create_audio_decoder_from_file_like(
     )
 
 
+def _dispatch_by_source(
+    source: str | Path | io.RawIOBase | io.BufferedReader | bytes | torch.Tensor,
+    file_fn,
+    tensor_fn,
+    bytes_fn,
+    file_like_fn,
+    **kwargs,
+):
+    """Dispatch to the appropriate function based on source type."""
+    if isinstance(source, str):
+        return file_fn(source, **kwargs)
+    elif isinstance(source, Path):
+        return file_fn(str(source), **kwargs)
+    elif isinstance(source, io.RawIOBase) or isinstance(source, io.BufferedReader):
+        return file_like_fn(source, **kwargs)
+    elif isinstance(source, bytes):
+        return bytes_fn(source, **kwargs)
+    elif isinstance(source, torch.Tensor):
+        return tensor_fn(source, **kwargs)
+    elif isinstance(source, io.TextIOBase):
+        raise TypeError(
+            "source is for reading text, likely from open(..., 'r'). Try with 'rb' for binary reading?"
+        )
+    elif hasattr(source, "read") and hasattr(source, "seek"):
+        return file_like_fn(source, **kwargs)
+    else:
+        raise TypeError(
+            f"Unknown source type: {type(source)}. "
+            "Supported types are str, Path, bytes, Tensor and file-like objects with "
+            "read(self, size: int) -> bytes and "
+            "seek(self, offset: int, whence: int) -> int methods."
+        )
+
+
 def create_decoder(
     source: str | Path | io.RawIOBase | io.BufferedReader | bytes | torch.Tensor,
     seek_mode: str | None = None,
@@ -132,29 +166,14 @@ def create_decoder(
     This is a convenience function that dispatches to the appropriate
     create_from_* function based on the source type.
     """
-    if isinstance(source, str):
-        return create_from_file(source, seek_mode)
-    elif isinstance(source, Path):
-        return create_from_file(str(source), seek_mode)
-    elif isinstance(source, io.RawIOBase) or isinstance(source, io.BufferedReader):
-        return create_from_file_like(source, seek_mode)
-    elif isinstance(source, bytes):
-        return create_from_bytes(source, seek_mode)
-    elif isinstance(source, torch.Tensor):
-        return create_from_tensor(source, seek_mode)
-    elif isinstance(source, io.TextIOBase):
-        raise TypeError(
-            "source is for reading text, likely from open(..., 'r'). Try with 'rb' for binary reading?"
-        )
-    elif hasattr(source, "read") and hasattr(source, "seek"):
-        return create_from_file_like(source, seek_mode)
-    else:
-        raise TypeError(
-            f"Unknown source type: {type(source)}. "
-            "Supported types are str, Path, bytes, Tensor and file-like objects with "
-            "read(self, size: int) -> bytes and "
-            "seek(self, offset: int, whence: int) -> int methods."
-        )
+    return _dispatch_by_source(
+        source,
+        file_fn=create_from_file,
+        tensor_fn=create_from_tensor,
+        bytes_fn=create_from_bytes,
+        file_like_fn=create_from_file_like,
+        seek_mode=seek_mode,
+    )
 
 
 def create_audio_decoder(
@@ -169,7 +188,6 @@ def create_audio_decoder(
     This is a convenience function that dispatches to the appropriate
     create_audio_decoder_from_* function based on the source type.
     """
-
     if stream_index is not None:
         from torchcodec._core._metadata import (
             AudioStreamMetadata,
@@ -188,59 +206,16 @@ def create_audio_decoder(
                 f"The stream at index {stream_index} is not an audio stream."
             )
 
-    if isinstance(source, str):
-        return create_audio_decoder_from_file(
-            source,
-            stream_index=stream_index,
-            sample_rate=sample_rate,
-            num_channels=num_channels,
-        )
-    elif isinstance(source, Path):
-        return create_audio_decoder_from_file(
-            str(source),
-            stream_index=stream_index,
-            sample_rate=sample_rate,
-            num_channels=num_channels,
-        )
-    elif isinstance(source, io.RawIOBase) or isinstance(source, io.BufferedReader):
-        return create_audio_decoder_from_file_like(
-            source,
-            stream_index=stream_index,
-            sample_rate=sample_rate,
-            num_channels=num_channels,
-        )
-    elif isinstance(source, bytes):
-        return create_audio_decoder_from_bytes(
-            source,
-            stream_index=stream_index,
-            sample_rate=sample_rate,
-            num_channels=num_channels,
-        )
-    elif isinstance(source, torch.Tensor):
-        return create_audio_decoder_from_tensor(
-            source,
-            stream_index=stream_index,
-            sample_rate=sample_rate,
-            num_channels=num_channels,
-        )
-    elif isinstance(source, io.TextIOBase):
-        raise TypeError(
-            "source is for reading text, likely from open(..., 'r'). Try with 'rb' for binary reading?"
-        )
-    elif hasattr(source, "read") and hasattr(source, "seek"):
-        return create_audio_decoder_from_file_like(
-            source,
-            stream_index=stream_index,
-            sample_rate=sample_rate,
-            num_channels=num_channels,
-        )
-    else:
-        raise TypeError(
-            f"Unknown source type: {type(source)}. "
-            "Supported types are str, Path, bytes, Tensor and file-like objects with "
-            "read(self, size: int) -> bytes and "
-            "seek(self, offset: int, whence: int) -> int methods."
-        )
+    return _dispatch_by_source(
+        source,
+        file_fn=create_audio_decoder_from_file,
+        tensor_fn=create_audio_decoder_from_tensor,
+        bytes_fn=create_audio_decoder_from_bytes,
+        file_like_fn=create_audio_decoder_from_file_like,
+        stream_index=stream_index,
+        sample_rate=sample_rate,
+        num_channels=num_channels,
+    )
 
 
 def add_video_stream(
