@@ -51,9 +51,9 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
   m.def(
-      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str? color_conversion_library=None) -> ()");
+      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str? color_conversion_library=None, str? tone_mapping=None) -> ()");
   m.def(
-      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None) -> ()");
+      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str? tone_mapping=None) -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
   m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
@@ -437,7 +437,8 @@ void _add_video_stream(
         std::nullopt,
     std::optional<torch::stable::Tensor>
         custom_frame_mappings_keyframe_indices = std::nullopt,
-    std::optional<std::string> color_conversion_library = std::nullopt) {
+    std::optional<std::string> color_conversion_library = std::nullopt,
+    std::optional<std::string> tone_mapping = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.ffmpegThreadCount = num_threads;
 
@@ -463,6 +464,16 @@ void _add_video_stream(
           stdColorConversionLibrary,
           ". color_conversion_library must be either filtergraph or swscale.");
     }
+  }
+
+  if (tone_mapping.has_value()) {
+    const std::string& tm = tone_mapping.value();
+    STD_TORCH_CHECK(
+        tm == "hable",
+        "Invalid tone_mapping=",
+        tm,
+        ". Supported values: \"hable\".");
+    videoStreamOptions.toneMapping = tm;
   }
 
   validateDeviceInterface(device, device_variant);
@@ -510,7 +521,8 @@ void add_video_stream(
     std::optional<torch::stable::Tensor> custom_frame_mappings_duration =
         std::nullopt,
     std::optional<torch::stable::Tensor>
-        custom_frame_mappings_keyframe_indices = std::nullopt) {
+        custom_frame_mappings_keyframe_indices = std::nullopt,
+    std::optional<std::string> tone_mapping = std::nullopt) {
   _add_video_stream(
       decoder,
       num_threads,
@@ -521,7 +533,9 @@ void add_video_stream(
       std::move(transform_specs),
       std::move(custom_frame_mappings_pts),
       std::move(custom_frame_mappings_duration),
-      std::move(custom_frame_mappings_keyframe_indices));
+      std::move(custom_frame_mappings_keyframe_indices),
+      /*color_conversion_library=*/std::nullopt,
+      std::move(tone_mapping));
 }
 
 void add_audio_stream(

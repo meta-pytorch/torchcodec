@@ -47,6 +47,11 @@ struct VideoStreamOptions {
   // Device variant (e.g., "ffmpeg", "beta", etc.)
   std::string_view deviceVariant = "ffmpeg";
 
+  // Tone mapping algorithm for HDR→SDR conversion.
+  // If set, HDR frames (PQ/HLG) will be tone-mapped to SDR.
+  // Supported values: "hable".
+  std::optional<std::string> toneMapping;
+
   // Encoding options
   std::optional<std::string> codec;
   // Optional pixel format for video encoding (e.g., "yuv420p", "yuv444p")
