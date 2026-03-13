@@ -658,6 +658,28 @@ void SingleStreamDecoder::addAudioStream(
 }
 
 // --------------------------------------------------------------------------
+// AUDIO STREAM CONSTRUCTORS
+// --------------------------------------------------------------------------
+
+SingleStreamDecoder::SingleStreamDecoder(
+    const std::string& audioFilePath,
+    SeekMode seekMode,
+    int streamIndex,
+    const AudioStreamOptions& audioStreamOptions)
+    : SingleStreamDecoder(audioFilePath, seekMode) {
+  addAudioStream(streamIndex, audioStreamOptions);
+}
+
+SingleStreamDecoder::SingleStreamDecoder(
+    std::unique_ptr<AVIOContextHolder> context,
+    SeekMode seekMode,
+    int streamIndex,
+    const AudioStreamOptions& audioStreamOptions)
+    : SingleStreamDecoder(std::move(context), seekMode) {
+  addAudioStream(streamIndex, audioStreamOptions);
+}
+
+// --------------------------------------------------------------------------
 // HIGH-LEVEL DECODING ENTRY-POINTS
 // --------------------------------------------------------------------------
 

@@ -71,6 +71,152 @@ _create_from_file_like = torch._dynamo.disallow_in_graph(
 _add_video_stream_raw = torch.ops.torchcodec_ns.add_video_stream.default
 _add_video_stream = torch.ops.torchcodec_ns._add_video_stream.default
 
+# Unified audio decoder creation ops
+create_audio_decoder_from_file = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.create_audio_decoder_from_file.default
+)
+create_audio_decoder_from_tensor = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.create_audio_decoder_from_tensor.default
+)
+_create_audio_decoder_from_file_like = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns._create_audio_decoder_from_file_like.default
+)
+
+get_active_stream_index = torch.ops.torchcodec_ns.get_active_stream_index.default
+
+
+def create_audio_decoder_from_bytes(
+    audio_bytes: bytes,
+    *,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> torch.Tensor:
+    """Create an audio decoder from bytes with the stream already added."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        buffer = torch.frombuffer(audio_bytes, dtype=torch.uint8)
+    return create_audio_decoder_from_tensor(
+        buffer,
+        stream_index=stream_index,
+        sample_rate=sample_rate,
+        num_channels=num_channels,
+    )
+
+
+def create_audio_decoder_from_file_like(
+    file_like: io.RawIOBase | io.BufferedReader,
+    *,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> torch.Tensor:
+    """Create an audio decoder from a file-like object with the stream already added."""
+    assert _pybind_ops is not None
+    return _create_audio_decoder_from_file_like(
+        _pybind_ops.create_file_like_context(
+            file_like, False  # False means not for writing
+        ),
+        stream_index=stream_index,
+        sample_rate=sample_rate,
+        num_channels=num_channels,
+    )
+
+
+def _dispatch_by_source(
+    source: str | Path | io.RawIOBase | io.BufferedReader | bytes | torch.Tensor,
+    file_fn,
+    tensor_fn,
+    bytes_fn,
+    file_like_fn,
+    **kwargs,
+):
+    """Dispatch to the appropriate function based on source type."""
+    if isinstance(source, str):
+        return file_fn(source, **kwargs)
+    elif isinstance(source, Path):
+        return file_fn(str(source), **kwargs)
+    elif isinstance(source, io.RawIOBase) or isinstance(source, io.BufferedReader):
+        return file_like_fn(source, **kwargs)
+    elif isinstance(source, bytes):
+        return bytes_fn(source, **kwargs)
+    elif isinstance(source, torch.Tensor):
+        return tensor_fn(source, **kwargs)
+    elif isinstance(source, io.TextIOBase):
+        raise TypeError(
+            "source is for reading text, likely from open(..., 'r'). Try with 'rb' for binary reading?"
+        )
+    elif hasattr(source, "read") and hasattr(source, "seek"):
+        return file_like_fn(source, **kwargs)
+    else:
+        raise TypeError(
+            f"Unknown source type: {type(source)}. "
+            "Supported types are str, Path, bytes, Tensor and file-like objects with "
+            "read(self, size: int) -> bytes and "
+            "seek(self, offset: int, whence: int) -> int methods."
+        )
+
+
+def create_decoder(
+    source: str | Path | io.RawIOBase | io.BufferedReader | bytes | torch.Tensor,
+    seek_mode: str | None = None,
+) -> torch.Tensor:
+    """Create a decoder from any supported source (without adding a stream).
+
+    This is a convenience function that dispatches to the appropriate
+    create_from_* function based on the source type.
+    """
+    return _dispatch_by_source(
+        source,
+        file_fn=create_from_file,
+        tensor_fn=create_from_tensor,
+        bytes_fn=create_from_bytes,
+        file_like_fn=create_from_file_like,
+        seek_mode=seek_mode,
+    )
+
+
+def create_audio_decoder(
+    source: str | Path | io.RawIOBase | io.BufferedReader | bytes | torch.Tensor,
+    *,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> torch.Tensor:
+    """Create an audio decoder from any supported source with the stream already added.
+
+    This is a convenience function that dispatches to the appropriate
+    create_audio_decoder_from_* function based on the source type.
+    """
+    if stream_index is not None:
+        from torchcodec._core._metadata import (
+            AudioStreamMetadata,
+            get_container_metadata,
+        )
+
+        temp_decoder = create_decoder(source)
+        container_metadata = get_container_metadata(temp_decoder)
+
+        if stream_index >= len(container_metadata.streams):
+            raise ValueError(f"{stream_index} is not a valid stream index.")
+
+        metadata = container_metadata.streams[stream_index]
+        if not isinstance(metadata, AudioStreamMetadata):
+            raise ValueError(
+                f"The stream at index {stream_index} is not an audio stream."
+            )
+
+    return _dispatch_by_source(
+        source,
+        file_fn=create_audio_decoder_from_file,
+        tensor_fn=create_audio_decoder_from_tensor,
+        bytes_fn=create_audio_decoder_from_bytes,
+        file_like_fn=create_audio_decoder_from_file_like,
+        stream_index=stream_index,
+        sample_rate=sample_rate,
+        num_channels=num_channels,
+    )
+
 
 def add_video_stream(
     decoder: torch.Tensor,
@@ -413,6 +559,39 @@ def add_audio_stream_abstract(
     num_channels: int | None = None,
 ) -> None:
     return
+
+
+@register_fake("torchcodec_ns::create_audio_decoder_from_file")
+def create_audio_decoder_from_file_abstract(
+    filename: str,
+    *,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::create_audio_decoder_from_tensor")
+def create_audio_decoder_from_tensor_abstract(
+    audio_tensor: torch.Tensor,
+    *,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::_create_audio_decoder_from_file_like")
+def _create_audio_decoder_from_file_like_abstract(
+    file_like_context: int,
+    *,
+    stream_index: int | None = None,
+    sample_rate: int | None = None,
+    num_channels: int | None = None,
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
 
 
 @register_fake("torchcodec_ns::seek_to_pts")
