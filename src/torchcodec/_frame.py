@@ -70,7 +70,7 @@ class FrameBatch(Iterable):
     """
 
     data: Tensor
-    """The frames data (``torch.Tensor`` of uint8)."""
+    """The frames data (``torch.Tensor`` of uint8 for 8-bit sources, uint16 for 10-bit HDR sources)."""
     pts_seconds: Tensor
     """The :term:`pts` of the frame, in seconds (``torch.Tensor`` of floats)."""
     duration_seconds: Tensor

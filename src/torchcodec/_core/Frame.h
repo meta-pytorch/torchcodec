@@ -16,10 +16,14 @@ namespace facebook::torchcodec {
 struct FrameDims {
   int height = 0;
   int width = 0;
+  // Bit depth per channel of the source video. 8 for standard video,
+  // 10 or 12 for HDR. Used to determine output tensor dtype:
+  // uint8 for bitDepth <= 8, uint16 for bitDepth > 8.
+  int bitDepth = 8;
 
   FrameDims() = default;
 
-  FrameDims(int h, int w);
+  FrameDims(int h, int w, int bitDepth = 8);
 };
 
 // All public video decoding entry points return either a FrameOutput or a

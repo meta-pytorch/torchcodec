@@ -1476,11 +1476,10 @@ class TestVideoDecoder:
         # bt2020_10bit.mp4 is a BT.2020 limited range 10-bit HEVC video:
         # color_space=bt2020nc, color_range=tv, pix_fmt=yuv420p10le
         #
-        # NVDEC decodes 10-bit natively (converting to 8-bit NV12), then our
-        # BT.2020 color twist matrix handles the YUV->RGB conversion.
-        #
-        # TODO investigate CPU vs BetaCUDA mismatch on BT.2020 10-bit.
-        # See PR #1267 for details.
+        # Both CPU and GPU now decode 10-bit to uint16 tensors (range 0-65535).
+        # NPP and swscale use different chroma upsampling, so tolerance is
+        # scaled: atol=768 is ~1.2% of the 65535 range, comparable to the
+        # ~3/255 = 1.2% tolerance used for 8-bit.
         asset = BT2020_LIMITED_RANGE_10BIT
 
         with set_cuda_backend("beta"):
@@ -1491,7 +1490,11 @@ class TestVideoDecoder:
             gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
-            assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=90, atol=3)
+            assert gpu_frame.dtype == torch.uint16
+            assert cpu_frame.dtype == torch.uint16
+            assert_tensor_close_on_at_least(
+                gpu_frame, cpu_frame, percentage=90, atol=768
+            )
 
     @needs_cuda
     def test_10bit_gpu_fallsback_to_cpu(self):
