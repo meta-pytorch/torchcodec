@@ -282,6 +282,82 @@ const Npp32f bt2020LimitedRangeColorTwist[3][4] = {
     {1.16438356f, 2.14177232f, 0.0f, -292.7770f}};
 #endif
 
+// 16-bit (P016) color twist matrices for nppiNV12ToRGB_16u_ColorTwist32f.
+// P016 data has values in [0, 65535] (10-bit values left-shifted by 6).
+// The 3x3 coefficients are the same as the 8-bit matrices, but the 4th column
+// offsets are scaled by 256 since the data values are 256x larger.
+//
+// The CUDA version convention for offsets is the same as for 8-bit:
+// CUDA >= 13: NPP internally centers U/V by subtracting 32768 (128*256).
+// CUDA < 13: offsets must include the full Cb/Cr centering contribution.
+
+// BT.601 (kr=0.299, kb=0.114) -- used as default for unspecified colorspace
+// Limited range: Y in [16*256, 235*256], UV in [16*256, 240*256]
+//   Y_scale = 255/(235-16) = 1.16438356
+//   R = Y_scale*(Y-16*256) + 1.59602679*(Cr-128*256)
+//   etc.
+#if CUDART_VERSION >= 13000
+const Npp32f bt601LimitedRange16ColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.59602679f, -4096.0f},
+    {1.16438356f, -0.391762290f, -0.812967647f, -32768.0f},
+    {1.16438356f, 2.01723214f, 0.0f, -32768.0f}};
+
+const Npp32f bt709FullRange16ColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.5748f, 0.0f},
+    {1.0f, -0.187324273f, -0.468124273f, -32768.0f},
+    {1.0f, 1.8556f, 0.0f, -32768.0f}};
+
+const Npp32f bt709LimitedRange16ColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.79274107f, -4096.0f},
+    {1.16438356f, -0.213248614f, -0.532909329f, -32768.0f},
+    {1.16438356f, 2.11240179f, 0.0f, -32768.0f}};
+
+const Npp32f bt2020FullRange16ColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.4746f, 0.0f},
+    {1.0f, -0.164553127f, -0.571353127f, -32768.0f},
+    {1.0f, 1.8814f, 0.0f, -32768.0f}};
+
+const Npp32f bt2020LimitedRange16ColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.67867411f, -4096.0f},
+    {1.16438356f, -0.187326105f, -0.650424319f, -32768.0f},
+    {1.16438356f, 2.14177232f, 0.0f, -32768.0f}};
+#else
+// CUDA < 13: expand centering into the offset column.
+// For 16-bit, each offset = -(coeff_Y * Y_offset) - (coeff_Cb * 32768) -
+// (coeff_Cr * 32768) where Y_offset = 4096 for limited, 0 for full, and
+// 32768 = 128*256 is the UV centering offset.
+
+// BT.601 limited range
+const Npp32f bt601LimitedRange16ColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.59602679f, -57067.92f},
+    {1.16438356f, -0.391762290f, -0.812967647f, 34707.28f},
+    {1.16438356f, 2.01723214f, 0.0f, -70869.98f}};
+
+// BT.709 full range
+const Npp32f bt709FullRange16ColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.5748f, -51603.04f},
+    {1.0f, -0.187324273f, -0.468124273f, 21477.73f},
+    {1.0f, 1.8556f, 0.0f, -60804.30f}};
+
+// BT.709 limited range
+const Npp32f bt709LimitedRange16ColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.79274107f, -63507.90f},
+    {1.16438356f, -0.213248614f, -0.532909329f, 19686.10f},
+    {1.16438356f, 2.11240179f, 0.0f, -73947.25f}};
+
+// BT.2020 full range
+const Npp32f bt2020FullRange16ColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.4746f, -48319.69f},
+    {1.0f, -0.164553127f, -0.571353127f, 24114.17f},
+    {1.0f, 1.8814f, 0.0f, -61649.73f}};
+
+// BT.2020 limited range
+const Npp32f bt2020LimitedRange16ColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.67867411f, -59736.12f},
+    {1.16438356f, -0.187326105f, -0.650424319f, 22690.15f},
+    {1.16438356f, 2.14177232f, 0.0f, -74949.00f}};
+#endif
+
 torch::stable::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
     const StableDevice& device,
@@ -403,6 +479,73 @@ torch::stable::Tensor convertNV12FrameToRGB(
     }
   }
   STD_TORCH_CHECK(status == NPP_SUCCESS, "Failed to convert NV12 frame.");
+
+  return dst;
+}
+
+torch::stable::Tensor convertP016FrameToRGB(
+    UniqueAVFrame& avFrame,
+    const StableDevice& device,
+    const UniqueNppContext& nppCtx,
+    cudaStream_t nvdecStream) {
+  auto frameDims = FrameDims(avFrame->height, avFrame->width, /*bitDepth=*/16);
+  torch::stable::Tensor dst = allocateEmptyHWCTensor(frameDims, device);
+
+  // Sync streams: make sure NVDEC has finished before we run NPP.
+  cudaStream_t nppStream = getCurrentCudaStream(device.index());
+  syncStreams(/*runningStream=*/nvdecStream, /*waitingStream=*/nppStream);
+
+  nppCtx->hStream = nppStream;
+  cudaError_t err = cudaStreamGetFlags(nppCtx->hStream, &nppCtx->nStreamFlags);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "cudaStreamGetFlags failed: ",
+      cudaGetErrorString(err));
+
+  NppiSize oSizeROI = {frameDims.width, frameDims.height};
+  // P016 data is 16-bit. The _16u_ NPP function takes Npp16u* pointers.
+  const Npp16u* yuvData[2] = {
+      reinterpret_cast<const Npp16u*>(avFrame->data[0]),
+      reinterpret_cast<const Npp16u*>(avFrame->data[1])};
+
+  NppStatus status;
+
+  // nppiNV12ToRGB_16u_ColorTwist32f_P2C3R_Ctx works with P016 data (16-bit
+  // semi-planar YUV 4:2:0) and outputs 16-bit RGB. We always use ColorTwist
+  // for 16-bit since there are no pre-defined colorspace-specific 16-bit
+  // functions in NPP.
+  int srcStep[2] = {avFrame->linesize[0], avFrame->linesize[1]};
+  // Output stride is in bytes. uint16 tensor stride(0) is in elements.
+  int dstStep = static_cast<int>(dst.stride(0)) * 2;
+
+  // Select the appropriate 16-bit color twist matrix based on colorspace and
+  // range. This mirrors the 8-bit dispatch logic in convertNV12FrameToRGB.
+  const Npp32f(*matrix)[4] = nullptr;
+
+  if (avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT709) {
+    matrix = (avFrame->color_range == AVColorRange::AVCOL_RANGE_JPEG)
+        ? bt709FullRange16ColorTwist
+        : bt709LimitedRange16ColorTwist;
+  } else if (
+      avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT2020_NCL ||
+      avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT2020_CL) {
+    matrix = (avFrame->color_range == AVColorRange::AVCOL_RANGE_JPEG)
+        ? bt2020FullRange16ColorTwist
+        : bt2020LimitedRange16ColorTwist;
+  } else {
+    // Default: BT.601 limited range (matches the 8-bit default behavior).
+    matrix = bt601LimitedRange16ColorTwist;
+  }
+
+  status = nppiNV12ToRGB_16u_ColorTwist32f_P2C3R_Ctx(
+      yuvData,
+      srcStep,
+      reinterpret_cast<Npp16u*>(dst.mutable_data_ptr<uint16_t>()),
+      dstStep,
+      oSizeROI,
+      matrix,
+      *nppCtx);
+  STD_TORCH_CHECK(status == NPP_SUCCESS, "Failed to convert P016 frame.");
 
   return dst;
 }

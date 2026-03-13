@@ -580,8 +580,18 @@ void SingleStreamDecoder::addVideoStream(
   // Set preRotationDims_ for the active stream. These are the raw encoded
   // dimensions from FFmpeg, used as a fallback for tensor pre-allocation when
   // no resize/rotation transforms are applied.
+  int bitDepth = 8;
+  {
+    const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(
+        static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
+    if (desc && desc->nb_components > 0) {
+      bitDepth = desc->comp[0].depth;
+    }
+  }
   preRotationDims_ = FrameDims(
-      streamInfo.stream->codecpar->height, streamInfo.stream->codecpar->width);
+      streamInfo.stream->codecpar->height,
+      streamInfo.stream->codecpar->width,
+      bitDepth);
 
   FrameDims currInputDims = preRotationDims_;
 
@@ -619,6 +629,12 @@ void SingleStreamDecoder::addVideoStream(
       currInputDims = resizedOutputDims_.value();
     }
     transforms_.push_back(std::unique_ptr<Transform>(transform));
+  }
+
+  // Propagate bitDepth from the source to resizedOutputDims_, since transforms
+  // (rotation, resize) don't change the bit depth.
+  if (resizedOutputDims_.has_value()) {
+    resizedOutputDims_->bitDepth = preRotationDims_.bitDepth;
   }
 
   deviceInterface_->initializeVideo(
