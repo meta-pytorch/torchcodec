@@ -14,26 +14,45 @@
 namespace facebook::torchcodec {
 namespace {
 
+constexpr size_t RIFF_HEADER_SIZE = 12; // "RIFF" + fileSize + "WAVE"
+constexpr size_t CHUNK_HEADER_SIZE = 8; // chunkID + chunkSize
+constexpr size_t MIN_FMT_CHUNK_SIZE = 16;
+constexpr size_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
+constexpr uint32_t MAX_CHUNK_SIZE =
+    1000; // 1 KB limit to prevent excessive allocation
+
+// See standard format codes and Wav file format used in WavHeader:
+// https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
+constexpr uint16_t WAV_FORMAT_PCM = 1;
+constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 3;
+constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
+
 bool is_little_endian() {
   uint32_t x = 1;
-  return reinterpret_cast<const uint8_t*>(&x)[0];
+  uint8_t first_byte;
+  std::memcpy(&first_byte, &x, 1);
+  return first_byte == 1;
 }
 
-template <typename T>
-T readValue(const uint8_t* data, size_t offset, size_t bufferSize) {
+// Container template requires .data() and .size() methods.
+// We currently call this function on std::array.
+template <typename T, typename Container>
+T readValue(const Container& data, size_t offset) {
+  static_assert(std::is_trivially_copyable_v<T>);
   STD_TORCH_CHECK(
-      offset + sizeof(T) <= bufferSize,
+      offset + sizeof(T) <= data.size(),
       "Reading ",
       sizeof(T),
       " bytes at offset ",
       offset,
       ": exceeds buffer length ",
-      bufferSize);
+      data.size());
   T value;
-  std::memcpy(&value, data + offset, sizeof(T));
+  std::memcpy(&value, data.data() + offset, sizeof(T));
   return value;
 }
 
+// The caller should ensure that 'data' has at least 4 bytes
 bool matchesFourCC(const uint8_t* data, const char* expected) {
   return std::memcmp(data, expected, 4) == 0;
 }
@@ -55,8 +74,8 @@ WavDecoder::WavDecoder(const std::string& path) {
 void WavDecoder::parseHeader(uint64_t actualFileSize) {
   file_.seekg(0, std::ios::beg);
 
-  uint8_t riffHeader[RIFF_HEADER_SIZE];
-  file_.read(reinterpret_cast<char*>(riffHeader), RIFF_HEADER_SIZE);
+  std::array<uint8_t, RIFF_HEADER_SIZE> riffHeader;
+  file_.read(reinterpret_cast<char*>(riffHeader.data()), RIFF_HEADER_SIZE);
   STD_TORCH_CHECK(
       !file_.fail() && file_.gcount() == RIFF_HEADER_SIZE,
       "WAV: unexpected end of data (expected ",
@@ -65,9 +84,11 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
       file_.gcount(),
       ")");
 
-  STD_TORCH_CHECK(matchesFourCC(riffHeader, "RIFF"), "Missing RIFF header");
   STD_TORCH_CHECK(
-      matchesFourCC(riffHeader + 8, "WAVE"), "Missing WAVE format identifier");
+      matchesFourCC(riffHeader.data(), "RIFF"), "Missing RIFF header");
+  STD_TORCH_CHECK(
+      matchesFourCC(riffHeader.data() + 8, "WAVE"),
+      "Missing WAVE format identifier");
 
   ChunkInfo fmtChunk = findChunk("fmt ", RIFF_HEADER_SIZE, actualFileSize);
   STD_TORCH_CHECK(
@@ -75,13 +96,6 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
       "Invalid fmt chunk: size must be at least ",
       MIN_FMT_CHUNK_SIZE,
       " bytes");
-  STD_TORCH_CHECK(
-      fmtChunk.size <= MAX_FMT_CHUNK_SIZE,
-      "We tried to allocate fmt chunk of ",
-      fmtChunk.size,
-      " bytes, but maximum allowed is ",
-      MAX_FMT_CHUNK_SIZE,
-      " bytes.");
 
   // Use ChunkInfo to seek to and read the fmt chunk data
   file_.seekg(fmtChunk.offset, std::ios::beg);
@@ -96,17 +110,16 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
       file_.gcount(),
       ")");
 
-  header_.audioFormat = readValue<uint16_t>(fmtData.data(), 0, fmtChunk.size);
-  header_.numChannels = readValue<uint16_t>(fmtData.data(), 2, fmtChunk.size);
-  header_.sampleRate = readValue<uint32_t>(fmtData.data(), 4, fmtChunk.size);
-  header_.bitsPerSample =
-      readValue<uint16_t>(fmtData.data(), 14, fmtChunk.size);
+  header_.audioFormat = readValue<uint16_t>(fmtData, 0);
+  header_.numChannels = readValue<uint16_t>(fmtData, 2);
+  header_.sampleRate = readValue<uint32_t>(fmtData, 4);
+  header_.bitsPerSample = readValue<uint16_t>(fmtData, 14);
 
   if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
     STD_TORCH_CHECK(
         fmtChunk.size >= MIN_WAVEX_FMT_CHUNK_SIZE,
         "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
-    header_.subFormat = readValue<uint16_t>(fmtData.data(), 24, fmtChunk.size);
+    header_.subFormat = readValue<uint16_t>(fmtData, 24);
   }
 
   // TODO WavDecoder: Find data chunk
@@ -159,16 +172,25 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
   while (startPos + CHUNK_HEADER_SIZE <= fileSizeLimit) {
     file_.seekg(startPos, std::ios::beg);
 
-    uint8_t chunkHeader[CHUNK_HEADER_SIZE];
-    file_.read(reinterpret_cast<char*>(chunkHeader), CHUNK_HEADER_SIZE);
+    std::array<uint8_t, CHUNK_HEADER_SIZE> chunkHeader;
+    file_.read(reinterpret_cast<char*>(chunkHeader.data()), CHUNK_HEADER_SIZE);
     STD_TORCH_CHECK(
         !file_.fail() && file_.gcount() == CHUNK_HEADER_SIZE,
         "Chunk not found: ",
         chunkId);
     // Read chunk size which immediately follows the chunk ID
-    uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4, CHUNK_HEADER_SIZE);
+    uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4);
 
-    if (matchesFourCC(chunkHeader, chunkId)) {
+    if (matchesFourCC(chunkHeader.data(), chunkId)) {
+      STD_TORCH_CHECK(
+          chunkSize <= MAX_CHUNK_SIZE,
+          "We tried to allocate ",
+          chunkId,
+          " chunk of ",
+          chunkSize,
+          " bytes, but maximum allowed is ",
+          MAX_CHUNK_SIZE,
+          " bytes.");
       return {startPos + static_cast<int64_t>(CHUNK_HEADER_SIZE), chunkSize};
     }
 
