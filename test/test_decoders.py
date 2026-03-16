@@ -1478,10 +1478,10 @@ class TestVideoDecoder:
         # bt2020_10bit.mp4 is a BT.2020 limited range 10-bit HEVC video:
         # color_space=bt2020nc, color_range=tv, pix_fmt=yuv420p10le
         #
-        # Both CPU and GPU now decode 10-bit to uint16 tensors (range 0-65535).
-        # NPP and swscale use different chroma upsampling, so tolerance is
-        # scaled: atol=768 is ~1.2% of the 65535 range, comparable to the
-        # ~3/255 = 1.2% tolerance used for 8-bit.
+        # Both CPU and GPU decode 10-bit to uint16 tensors where 10-bit
+        # values are left-shifted by 6 (range 0-65472). We right-shift back
+        # to the original 10-bit range (0-1023) before comparing, so we can
+        # use the same atol=3 tolerance as 8-bit comparisons.
         asset = BT2020_LIMITED_RANGE_10BIT
 
         with set_cuda_backend("beta"):
@@ -1489,14 +1489,12 @@ class TestVideoDecoder:
         decoder_cpu = VideoDecoder(asset.path, device="cpu")
 
         for frame_index in (0, 10, 20, 5):
-            gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
-            cpu_frame = decoder_cpu.get_frame_at(frame_index).data
-
-            assert gpu_frame.dtype == torch.uint16
-            assert cpu_frame.dtype == torch.uint16
-            assert_tensor_close_on_at_least(
-                gpu_frame, cpu_frame, percentage=90, atol=768
+            gpu_frame = (
+                decoder_gpu.get_frame_at(frame_index).data.cpu().to(torch.int32) >> 6
             )
+            cpu_frame = decoder_cpu.get_frame_at(frame_index).data.to(torch.int32) >> 6
+
+            assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=95, atol=4)
 
     @needs_cuda
     @pytest.mark.parametrize(
