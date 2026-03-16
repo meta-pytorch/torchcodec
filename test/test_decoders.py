@@ -1546,7 +1546,9 @@ class TestVideoDecoder:
         assert_frames_equal(frames_gpu.cpu(), frames_cpu)
 
     @pytest.mark.parametrize("device", all_supported_devices())
-    @pytest.mark.parametrize("asset", (H264_10BITS, H265_10BITS))
+    @pytest.mark.parametrize(
+        "asset", (H264_10BITS, H265_10BITS, BT2020_LIMITED_RANGE_10BIT)
+    )
     def test_10bit_videos(self, device, asset):
         # This just validates that we can decode 10-bit videos.
         # TODO validate against the ref that the decoded frames are correct
