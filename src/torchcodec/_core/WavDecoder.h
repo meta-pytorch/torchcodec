@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <fstream>
 #include <string>
+#include "Metadata.h"
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
@@ -24,6 +25,10 @@ class WavDecoder {
   WavDecoder& operator=(WavDecoder&&) noexcept = default;
   ~WavDecoder() = default;
 
+  std::string getSampleFormat() const;
+  std::string getCodecName() const;
+  StreamMetadata getStreamMetadata() const;
+
  private:
   struct WavHeader {
     uint16_t audioFormat = 0;
@@ -32,6 +37,8 @@ class WavDecoder {
     uint16_t bitsPerSample = 0;
     // Extended format fields (WAVE_FORMAT_EXTENSIBLE)
     uint16_t subFormat = 0; // Extracted from SubFormat GUID (first 2 bytes)
+    // Fields from data chunk
+    uint32_t dataSize = 0; // Size of audio data in bytes
   };
 
   struct ChunkInfo {

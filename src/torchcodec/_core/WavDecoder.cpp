@@ -100,6 +100,11 @@ void safeSeek(
   STD_TORCH_CHECK(!file.fail(), "Failed to seek to ", pos, " in WAV file");
 }
 
+// When using WAVEX, the audio format is stored in the subFormat field
+uint16_t getEffectiveAudioFormat(uint16_t audioFormat, uint16_t subFormat) {
+  return (audioFormat == WAV_FORMAT_EXTENSIBLE) ? subFormat : audioFormat;
+}
+
 } // namespace
 
 WavDecoder::WavDecoder(const std::string& path)
@@ -168,13 +173,13 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
     header_.subFormat = readValue<uint16_t>(fmtData, 24);
   }
 
-  // TODO WavDecoder: Find data chunk
+  ChunkInfo dataChunk = findChunk("data", RIFF_HEADER_SIZE, fileSize);
+  header_.dataSize = dataChunk.size;
 }
 
 void WavDecoder::validateHeader() const {
-  uint16_t effectiveFormat = (header_.audioFormat == WAV_FORMAT_EXTENSIBLE)
-      ? header_.subFormat
-      : header_.audioFormat;
+  uint16_t effectiveFormat =
+      getEffectiveAudioFormat(header_.audioFormat, header_.subFormat);
   // TODO WavDecoder: Support WAV_FORMAT_IEEE_FLOAT 32, 64 bit
   STD_TORCH_CHECK(
       effectiveFormat == WAV_FORMAT_PCM,
@@ -230,6 +235,53 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     startPos += numBytesToSkip;
   }
   STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
+}
+
+std::string WavDecoder::getSampleFormat() const {
+  uint16_t effectiveFormat =
+      getEffectiveAudioFormat(header_.audioFormat, header_.subFormat);
+
+  if (effectiveFormat == WAV_FORMAT_PCM) {
+    if (header_.bitsPerSample == 32)
+      return "s32";
+  }
+
+  STD_TORCH_CHECK(
+      false,
+      "Unsupported format after validation. That's unexpected, please report this to the TorchCodec repo.");
+}
+
+std::string WavDecoder::getCodecName() const {
+  uint16_t effectiveFormat =
+      getEffectiveAudioFormat(header_.audioFormat, header_.subFormat);
+
+  if (effectiveFormat == WAV_FORMAT_PCM) {
+    if (header_.bitsPerSample == 32)
+      return "pcm_s32le";
+  }
+
+  STD_TORCH_CHECK(
+      false,
+      "Unsupported format after validation. That's unexpected, please report this to the TorchCodec repo.");
+}
+
+StreamMetadata WavDecoder::getStreamMetadata() const {
+  StreamMetadata metadata;
+  metadata.streamIndex = 0; // WAV files have single audio stream
+  metadata.sampleRate = static_cast<int64_t>(header_.sampleRate);
+  metadata.numChannels = static_cast<int64_t>(header_.numChannels);
+  metadata.sampleFormat = getSampleFormat();
+  metadata.codecName = getCodecName();
+
+  double bitRate = static_cast<double>(header_.sampleRate) *
+      static_cast<double>(header_.numChannels) *
+      static_cast<double>(header_.bitsPerSample);
+  metadata.bitRate = bitRate;
+  metadata.durationSecondsFromHeader =
+      static_cast<double>(header_.dataSize) * 8.0 / bitRate;
+  metadata.beginStreamPtsSecondsFromContent = 0.0;
+
+  return metadata;
 }
 
 } // namespace facebook::torchcodec
