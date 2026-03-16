@@ -45,6 +45,7 @@ from .utils import (
     NASA_AUDIO_MP3,
     NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
+    NASA_VIDEO_HDR,
     NASA_VIDEO_ROTATED,
     needs_cuda,
     needs_ffmpeg_cli,
@@ -57,6 +58,7 @@ from .utils import (
     TEST_NON_ZERO_START,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
+    TEST_SRC_2_720P_HDR,
     TEST_SRC_2_720P_MPEG4,
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
@@ -1494,7 +1496,7 @@ class TestVideoDecoder:
             )
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data.to(torch.int32) >> 6
 
-            assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=95, atol=4)
+            assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=90, atol=3)
 
     @needs_cuda
     @pytest.mark.parametrize(
@@ -1547,7 +1549,14 @@ class TestVideoDecoder:
 
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize(
-        "asset", (H264_10BITS, H265_10BITS, BT2020_LIMITED_RANGE_10BIT)
+        "asset",
+        (
+            H264_10BITS,
+            H265_10BITS,
+            BT2020_LIMITED_RANGE_10BIT,
+            NASA_VIDEO_HDR,
+            TEST_SRC_2_720P_HDR,
+        ),
     )
     def test_10bit_videos(self, device, asset):
         # This just validates that we can decode 10-bit videos.

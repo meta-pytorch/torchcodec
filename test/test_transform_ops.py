@@ -33,8 +33,10 @@ from .utils import (
     get_ffmpeg_minor_version,
     H265_VIDEO,
     NASA_VIDEO,
+    NASA_VIDEO_HDR,
     needs_cuda,
     TEST_SRC_2_720P,
+    TEST_SRC_2_720P_HDR,
 )
 
 
@@ -43,7 +45,9 @@ class TestPublicVideoDecoderTransformOps:
         "height_scaling_factor, width_scaling_factor",
         ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
     )
-    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
+    @pytest.mark.parametrize(
+        "video", [NASA_VIDEO, TEST_SRC_2_720P, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR]
+    )
     def test_resize_torchvision(
         self, video, height_scaling_factor, width_scaling_factor
     ):
@@ -91,20 +95,39 @@ class TestPublicVideoDecoderTransformOps:
             assert frame_tv.shape == expected_shape
             assert frame_tv_no_antialias.shape == expected_shape
 
+            # Scale tolerances for uint16 (10-bit HDR) vs uint8.
+            # uint16 values span 0-65535 vs 0-255, so absolute tolerances
+            # scale by 256. The percentage and max tolerances are slightly
+            # more relaxed for uint16 because at higher precision,
+            # sub-pixel interpolation differences between FFmpeg's and
+            # torchvision's bilinear resize (particularly at frame
+            # boundaries) are no longer masked by 8-bit quantization. For
+            # example, a boundary pixel diff that rounds to 4/255 at uint8
+            # may resolve to ~1963/65535 (~7.7 in uint8-equivalent) at
+            # uint16 because the rounding no longer absorbs the
+            # disagreement in edge padding between the two implementations.
+            if frame_resize.dtype == torch.uint16:
+                close_pct, close_atol, max_atol = 99.5, 256, 12 * 256
+            else:
+                close_pct, close_atol, max_atol = 99.8, 1, 6
+
             assert_tensor_close_on_at_least(
-                frame_resize, frame_tv, percentage=99.8, atol=1
+                frame_resize, frame_tv, percentage=close_pct, atol=close_atol
             )
-            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=6)
+            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=max_atol)
 
             if height_scaling_factor < 1 or width_scaling_factor < 1:
                 # Antialias only relevant when down-scaling!
                 with pytest.raises(AssertionError, match="Expected at least"):
                     assert_tensor_close_on_at_least(
-                        frame_resize, frame_tv_no_antialias, percentage=99, atol=1
+                        frame_resize,
+                        frame_tv_no_antialias,
+                        percentage=99,
+                        atol=close_atol,
                     )
                 with pytest.raises(AssertionError, match="Tensor-likes are not close"):
                     torch.testing.assert_close(
-                        frame_resize, frame_tv_no_antialias, rtol=0, atol=6
+                        frame_resize, frame_tv_no_antialias, rtol=0, atol=max_atol
                     )
 
     def test_resize_fails(self):
@@ -157,7 +180,9 @@ class TestPublicVideoDecoderTransformOps:
         "height_scaling_factor, width_scaling_factor",
         ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.15, 0.75)),
     )
-    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
+    @pytest.mark.parametrize(
+        "video", [NASA_VIDEO, TEST_SRC_2_720P, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR]
+    )
     def test_center_crop_torchvision(
         self,
         height_scaling_factor,
@@ -212,7 +237,9 @@ class TestPublicVideoDecoderTransformOps:
         "height_scaling_factor, width_scaling_factor",
         ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.15, 0.75)),
     )
-    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
+    @pytest.mark.parametrize(
+        "video", [NASA_VIDEO, TEST_SRC_2_720P, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR]
+    )
     @pytest.mark.parametrize("seed", [0, 1234])
     def test_random_crop_torchvision(
         self,
@@ -349,9 +376,12 @@ class TestPublicVideoDecoderTransformOps:
             (v2.Resize, v2.RandomCrop),
         ],
     )
-    def test_transform_pipeline(self, resize, random_crop):
+    @pytest.mark.parametrize(
+        "video", [TEST_SRC_2_720P, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR]
+    )
+    def test_transform_pipeline(self, resize, random_crop, video):
         decoder = VideoDecoder(
-            TEST_SRC_2_720P.path,
+            video.path,
             transforms=[
                 # resized to bigger than original
                 resize(size=(2160, 3840)),
@@ -369,7 +399,7 @@ class TestPublicVideoDecoderTransformOps:
             num_frames - 1,
         ]:
             frame = decoder[frame_index]
-            assert frame.shape == (TEST_SRC_2_720P.get_num_color_channels(), 1080, 1920)
+            assert frame.shape == (video.get_num_color_channels(), 1080, 1920)
 
     def test_transform_fails(self):
         with pytest.raises(
@@ -389,7 +419,10 @@ class TestCoreVideoDecoderTransformOps:
         assert num_frames is not None
         return num_frames
 
-    @pytest.mark.parametrize("video", [NASA_VIDEO, H265_VIDEO, AV1_VIDEO])
+    @pytest.mark.parametrize(
+        "video",
+        [NASA_VIDEO, H265_VIDEO, AV1_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR],
+    )
     def test_color_conversion_library(self, video):
         num_frames = self.get_num_frames_core_ops(video)
 
