@@ -34,12 +34,12 @@ class WavDecoder {
   };
 
   struct ChunkInfo {
-    int64_t offset;
+    uint64_t offset;
     uint32_t size;
   };
 
   ChunkInfo
-  findChunk(const char* chunkId, int64_t startPos, uint64_t fileSizeLimit);
+  findChunk(const char* chunkId, uint64_t startPos, uint64_t fileSizeLimit);
   void parseHeader(uint64_t actualFileSize);
   void validateHeader() const;
 

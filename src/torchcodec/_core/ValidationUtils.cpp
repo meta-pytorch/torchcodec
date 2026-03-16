@@ -32,4 +32,21 @@ std::optional<int> validateOptionalInt64ToInt(
   }
 }
 
+std::streampos validateUint64ToStreampos(
+    uint64_t value,
+    const std::string& parameterName) {
+  // std::streampos is typically std::streamoff, which is signed, so converting
+  // it to uuint64_t is a widening cast.
+  // https://en.cppreference.com/w/cpp/io/streamoff.html
+  STD_TORCH_CHECK(
+      value <=
+          static_cast<uint64_t>(std::numeric_limits<std::streamoff>::max()),
+      parameterName,
+      "=",
+      value,
+      " is out of range for streampos type.");
+
+  return static_cast<std::streampos>(value);
+}
+
 } // namespace facebook::torchcodec

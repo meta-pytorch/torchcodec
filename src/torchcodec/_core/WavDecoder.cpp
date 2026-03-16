@@ -10,14 +10,15 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
+#include "ValidationUtils.h"
 
 namespace facebook::torchcodec {
 namespace {
 
-constexpr size_t RIFF_HEADER_SIZE = 12; // "RIFF" + fileSize + "WAVE"
-constexpr size_t CHUNK_HEADER_SIZE = 8; // chunkID + chunkSize
-constexpr size_t MIN_FMT_CHUNK_SIZE = 16;
-constexpr size_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
+constexpr uint32_t RIFF_HEADER_SIZE = 12; // "RIFF" + fileSize + "WAVE"
+constexpr uint32_t CHUNK_HEADER_SIZE = 8; // chunkID + chunkSize
+constexpr uint32_t MIN_FMT_CHUNK_SIZE = 16;
+constexpr uint32_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
 constexpr uint32_t MAX_CHUNK_SIZE =
     1000; // 1 KB limit to prevent excessive allocation
 
@@ -75,9 +76,12 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
   file_.seekg(0, std::ios::beg);
 
   std::array<uint8_t, RIFF_HEADER_SIZE> riffHeader;
-  file_.read(reinterpret_cast<char*>(riffHeader.data()), RIFF_HEADER_SIZE);
+  file_.read(
+      reinterpret_cast<char*>(riffHeader.data()),
+      static_cast<std::streamsize>(RIFF_HEADER_SIZE));
   STD_TORCH_CHECK(
-      !file_.fail() && file_.gcount() == RIFF_HEADER_SIZE,
+      !file_.fail() &&
+          file_.gcount() == static_cast<std::streamsize>(RIFF_HEADER_SIZE),
       "WAV: unexpected end of data (expected ",
       RIFF_HEADER_SIZE,
       " bytes, got ",
@@ -90,7 +94,8 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
       matchesFourCC(riffHeader.data() + 8, "WAVE"),
       "Missing WAVE format identifier");
 
-  ChunkInfo fmtChunk = findChunk("fmt ", RIFF_HEADER_SIZE, actualFileSize);
+  ChunkInfo fmtChunk = findChunk(
+      "fmt ", static_cast<uint64_t>(RIFF_HEADER_SIZE), actualFileSize);
   STD_TORCH_CHECK(
       fmtChunk.size >= MIN_FMT_CHUNK_SIZE,
       "Invalid fmt chunk: size must be at least ",
@@ -98,9 +103,13 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
       " bytes");
 
   // Use ChunkInfo to seek to and read the fmt chunk data
-  file_.seekg(fmtChunk.offset, std::ios::beg);
+  file_.seekg(
+      validateUint64ToStreampos(fmtChunk.offset, "fmtChunk.offset"),
+      std::ios::beg);
   std::vector<uint8_t> fmtData(fmtChunk.size);
-  file_.read(reinterpret_cast<char*>(fmtData.data()), fmtChunk.size);
+  file_.read(
+      reinterpret_cast<char*>(fmtData.data()),
+      static_cast<std::streamsize>(fmtChunk.size));
   STD_TORCH_CHECK(
       !file_.fail() &&
           file_.gcount() == static_cast<std::streamsize>(fmtChunk.size),
@@ -167,15 +176,18 @@ void WavDecoder::validateHeader() const {
 // its offset and size.
 WavDecoder::ChunkInfo WavDecoder::findChunk(
     const char* chunkId,
-    int64_t startPos,
+    uint64_t startPos,
     uint64_t fileSizeLimit) {
   while (startPos + CHUNK_HEADER_SIZE <= fileSizeLimit) {
-    file_.seekg(startPos, std::ios::beg);
+    file_.seekg(validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
 
     std::array<uint8_t, CHUNK_HEADER_SIZE> chunkHeader;
-    file_.read(reinterpret_cast<char*>(chunkHeader.data()), CHUNK_HEADER_SIZE);
+    file_.read(
+        reinterpret_cast<char*>(chunkHeader.data()),
+        static_cast<std::streamsize>(CHUNK_HEADER_SIZE));
     STD_TORCH_CHECK(
-        !file_.fail() && file_.gcount() == CHUNK_HEADER_SIZE,
+        !file_.fail() &&
+            file_.gcount() == static_cast<std::streamsize>(CHUNK_HEADER_SIZE),
         "Chunk not found: ",
         chunkId);
     // Read chunk size which immediately follows the chunk ID
@@ -191,11 +203,12 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
           " bytes, but maximum allowed is ",
           MAX_CHUNK_SIZE,
           " bytes.");
-      return {startPos + static_cast<int64_t>(CHUNK_HEADER_SIZE), chunkSize};
+      return {startPos + CHUNK_HEADER_SIZE, chunkSize};
     }
 
     // Skip this chunk and continue searching (odd chunks are padded)
-    startPos += CHUNK_HEADER_SIZE + chunkSize + (chunkSize % 2);
+    startPos +=
+        CHUNK_HEADER_SIZE + static_cast<uint64_t>(chunkSize) + (chunkSize % 2);
   }
   STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
 }
