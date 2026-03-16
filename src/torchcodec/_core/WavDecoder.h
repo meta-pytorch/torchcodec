@@ -29,7 +29,6 @@ struct WavHeader {
   uint16_t numChannels = 0;
   uint32_t sampleRate = 0;
   uint16_t bitsPerSample = 0;
-  uint64_t fileSize = 0;
   // Extended format fields (WAVE_FORMAT_EXTENSIBLE)
   uint16_t subFormat = 0; // Extracted from SubFormat GUID (first 2 bytes)
 };

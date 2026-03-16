@@ -69,8 +69,6 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
   STD_TORCH_CHECK(
       matchesFourCC(riffHeader + 8, "WAVE"), "Missing WAVE format identifier");
 
-  header_.fileSize = readValue<uint32_t>(riffHeader, 4, RIFF_HEADER_SIZE) + 8;
-
   ChunkInfo fmtChunk = findChunk("fmt ", RIFF_HEADER_SIZE, actualFileSize);
   STD_TORCH_CHECK(
       fmtChunk.size >= MIN_FMT_CHUNK_SIZE,
@@ -132,7 +130,7 @@ void WavDecoder::validateHeader() const {
           false,
           "Unsupported PCM bit depth: ",
           header_.bitsPerSample,
-          ". Currently supported bit depths are: 32)");
+          ". Currently supported bit depths are: 32");
     }
   }
 
@@ -144,7 +142,7 @@ void WavDecoder::validateHeader() const {
           false,
           "Unsupported IEEE_FLOAT bit depth: ",
           header_.bitsPerSample,
-          ". Currently supported bit depths are: 32)");
+          ". Currently supported bit depths are: 32");
     }
   }
 
