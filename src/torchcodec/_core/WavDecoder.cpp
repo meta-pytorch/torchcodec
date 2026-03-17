@@ -60,13 +60,24 @@ T readValue(const Container& data, size_t offset) {
   return value;
 }
 
-// The caller should ensure that 'data' has at least 4 bytes
-bool matchesFourCC(const uint8_t* data, const char* expected) {
-  return std::memcmp(data, expected, 4) == 0;
+template <size_t N>
+bool matchesFourCC(
+    const std::array<uint8_t, N>& data,
+    size_t offset,
+    const char* expected) {
+  static_assert(N >= 4);
+  STD_TORCH_CHECK(
+      offset <= N - 4,
+      "Data array too small for FourCC comparison at offset ",
+      offset);
+  return std::memcmp(data.data() + offset, expected, 4) == 0;
 }
 
 template <typename Container>
 void safeReadFile(std::ifstream& file, Container& buffer, size_t bytesToRead) {
+  static_assert(
+      sizeof(typename Container::value_type) == 1,
+      "Container must store byte-addressable data for safe reinterpret_cast to char*");
   STD_TORCH_CHECK(
       bytesToRead <= buffer.size(), "Read size exceeds buffer length");
   file.read(
@@ -108,11 +119,9 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
   std::array<uint8_t, RIFF_HEADER_SIZE> riffHeader;
   safeReadFile(file_, riffHeader, RIFF_HEADER_SIZE);
 
+  STD_TORCH_CHECK(matchesFourCC(riffHeader, 0, "RIFF"), "Missing RIFF header");
   STD_TORCH_CHECK(
-      matchesFourCC(riffHeader.data(), "RIFF"), "Missing RIFF header");
-  STD_TORCH_CHECK(
-      matchesFourCC(riffHeader.data() + 8, "WAVE"),
-      "Missing WAVE format identifier");
+      matchesFourCC(riffHeader, 8, "WAVE"), "Missing WAVE format identifier");
 
   ChunkInfo fmtChunk =
       findChunk("fmt ", static_cast<uint64_t>(RIFF_HEADER_SIZE), fileSize);
@@ -198,12 +207,16 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4);
 
-    if (matchesFourCC(chunkHeader.data(), chunkId)) {
+    if (matchesFourCC(chunkHeader, 0, chunkId)) {
       STD_TORCH_CHECK(
           startPos <= UINT64_MAX - CHUNK_HEADER_SIZE,
           "File position arithmetic would overflow");
       return {startPos + CHUNK_HEADER_SIZE, chunkSize};
     }
+    STD_TORCH_CHECK(
+        chunkSize <= UINT64_MAX - CHUNK_HEADER_SIZE - (chunkSize % 2),
+        "Chunk size would cause overflow: ",
+        chunkSize);
     uint64_t chunkLen =
         CHUNK_HEADER_SIZE + static_cast<uint64_t>(chunkSize) + (chunkSize % 2);
     STD_TORCH_CHECK(
