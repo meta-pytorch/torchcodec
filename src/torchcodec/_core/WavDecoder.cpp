@@ -21,8 +21,9 @@ constexpr uint32_t CHUNK_HEADER_SIZE = 8; // chunkID + chunkSize
 // audioFormat(2) + numChannels(2) + sampleRate(4) + byteRate(4) + blockAlign(2)
 // + bitsPerSample(2)
 constexpr uint32_t MIN_FMT_CHUNK_SIZE = 16;
-// WAVE_FORMAT_EXTENSIBLE adds: cbSize(2) + wValidBitsPerSample(2) +
-// dwChannelMask(4) + SubFormat GUID(16) = 24 more bytes, total 40
+// WAVE_FORMAT_EXTENSIBLE adds to the standard WAV fmt chunk: cbSize(2) +
+// wValidBitsPerSample(2) + dwChannelMask(4) + SubFormat GUID(16) = 24 more
+// bytes, total 40
 constexpr uint32_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
 // Arbitrary max for fmt chunk allocation - set to 5x extended format size
 constexpr uint32_t MAX_FMT_CHUNK_SIZE = 200;
@@ -33,20 +34,21 @@ constexpr uint16_t WAV_FORMAT_PCM = 1;
 constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 3;
 constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
 
-bool is_little_endian() {
+bool isLittleEndian() {
   uint32_t x = 1;
   uint8_t first_byte;
   std::memcpy(&first_byte, &x, 1);
   return first_byte == 1;
 }
 
-// Container template requires .data() and .size() methods.
-// We currently call this function on std::array.
 template <typename T, typename Container>
 T readValue(const Container& data, size_t offset) {
   static_assert(std::is_trivially_copyable_v<T>);
+  static_assert(
+      sizeof(typename Container::value_type) == 1,
+      "Container must store byte-addressable data");
   STD_TORCH_CHECK(
-      data.size() >= sizeof(T) && offset <= data.size() - sizeof(T),
+      offset <= data.size() - sizeof(T),
       "Reading ",
       sizeof(T),
       " bytes at offset ",
@@ -65,6 +67,8 @@ bool matchesFourCC(const uint8_t* data, const char* expected) {
 
 template <typename Container>
 void safeReadFile(std::ifstream& file, Container& buffer, size_t bytesToRead) {
+  STD_TORCH_CHECK(
+      bytesToRead <= buffer.size(), "Read size exceeds buffer length");
   file.read(
       reinterpret_cast<char*>(buffer.data()),
       static_cast<std::streamsize>(bytesToRead));
@@ -84,21 +88,21 @@ WavDecoder::WavDecoder(const std::string& path)
     : file_(path, std::ios::binary) {
   // TODO WavDecoder: Support big-endian host machines
   STD_TORCH_CHECK(
-      is_little_endian(), "WAV decoder requires little-endian architecture");
+      isLittleEndian(), "WAV decoder requires little-endian architecture");
   STD_TORCH_CHECK(file_.is_open(), "Failed to open WAV file: ", path);
 
-  uint64_t actualFileSize;
+  uint64_t fileSize;
   try {
-    actualFileSize = std::filesystem::file_size(path);
+    fileSize = std::filesystem::file_size(path);
   } catch (const std::filesystem::filesystem_error& e) {
     STD_TORCH_CHECK(
         false, "Failed to get file size for: ", path, ". Error: ", e.what());
   }
-  parseHeader(actualFileSize);
+  parseHeader(fileSize);
   validateHeader();
 }
 
-void WavDecoder::parseHeader(uint64_t actualFileSize) {
+void WavDecoder::parseHeader(uint64_t fileSize) {
   file_.seekg(0, std::ios::beg);
 
   std::array<uint8_t, RIFF_HEADER_SIZE> riffHeader;
@@ -110,8 +114,8 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
       matchesFourCC(riffHeader.data() + 8, "WAVE"),
       "Missing WAVE format identifier");
 
-  ChunkInfo fmtChunk = findChunk(
-      "fmt ", static_cast<uint64_t>(RIFF_HEADER_SIZE), actualFileSize);
+  ChunkInfo fmtChunk =
+      findChunk("fmt ", static_cast<uint64_t>(RIFF_HEADER_SIZE), fileSize);
   STD_TORCH_CHECK(
       fmtChunk.size >= MIN_FMT_CHUNK_SIZE,
       "Invalid fmt chunk: size must be at least ",
@@ -158,28 +162,20 @@ void WavDecoder::validateHeader() const {
       effectiveFormat,
       ". Only PCM and IEEE float formats are supported.");
 
-  if (effectiveFormat == WAV_FORMAT_PCM) {
-    // TODO WavDecoder: support 8, 16, 24 bits
-    if (header_.bitsPerSample != 32) {
-      STD_TORCH_CHECK(
-          false,
-          "Unsupported PCM bit depth: ",
-          header_.bitsPerSample,
-          ". Currently supported bit depths are: 32");
-    }
-  }
+  // TODO WavDecoder: support 8, 16, 24 bits
+  STD_TORCH_CHECK(
+      effectiveFormat != WAV_FORMAT_PCM || header_.bitsPerSample == 32,
+      "Unsupported PCM bit depth: ",
+      header_.bitsPerSample,
+      ". Currently supported bit depths are: 32");
 
   // Check bit depth for IEEE_FLOAT
-  if (effectiveFormat == WAV_FORMAT_IEEE_FLOAT) {
-    // TODO WavDecoder: support 64 bit float
-    if (header_.bitsPerSample != 32) {
-      STD_TORCH_CHECK(
-          false,
-          "Unsupported IEEE_FLOAT bit depth: ",
-          header_.bitsPerSample,
-          ". Currently supported bit depths are: 32");
-    }
-  }
+  // TODO WavDecoder: support 64 bit float
+  STD_TORCH_CHECK(
+      effectiveFormat != WAV_FORMAT_IEEE_FLOAT || header_.bitsPerSample == 32,
+      "Unsupported IEEE_FLOAT bit depth: ",
+      header_.bitsPerSample,
+      ". Currently supported bit depths are: 32");
 
   STD_TORCH_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
   STD_TORCH_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
@@ -190,8 +186,11 @@ void WavDecoder::validateHeader() const {
 WavDecoder::ChunkInfo WavDecoder::findChunk(
     const char* chunkId,
     uint64_t startPos,
-    uint64_t fileSizeLimit) {
-  while (startPos <= fileSizeLimit - CHUNK_HEADER_SIZE) {
+    uint64_t fileSize) {
+  if (fileSize < CHUNK_HEADER_SIZE) {
+    STD_TORCH_CHECK(false, "File too small to contain chunk:", chunkId);
+  }
+  while (startPos <= fileSize - CHUNK_HEADER_SIZE) {
     file_.seekg(validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
 
     std::array<uint8_t, CHUNK_HEADER_SIZE> chunkHeader;
@@ -205,13 +204,13 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
           "File position arithmetic would overflow");
       return {startPos + CHUNK_HEADER_SIZE, chunkSize};
     }
-
+    uint64_t chunkLen =
+        CHUNK_HEADER_SIZE + static_cast<uint64_t>(chunkSize) + (chunkSize % 2);
     STD_TORCH_CHECK(
-        startPos <= UINT64_MAX - CHUNK_HEADER_SIZE - chunkSize - 1,
+        startPos <= UINT64_MAX - chunkLen,
         "File position arithmetic would overflow");
     // Skip this chunk and continue searching (odd chunks are padded)
-    startPos +=
-        CHUNK_HEADER_SIZE + static_cast<uint64_t>(chunkSize) + (chunkSize % 2);
+    startPos += chunkLen;
   }
   STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
 }
