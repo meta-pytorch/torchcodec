@@ -5,17 +5,14 @@
 # LICENSE file in the root directory of this source tree.
 
 import contextlib
-
 import json
 import os
 import subprocess
 
 import pytest
-
 import torch
 import torchcodec
-
-from torchcodec._core import (
+from torchcodec._core.ops import (
     _add_video_stream,
     add_video_stream,
     create_from_file,
@@ -23,7 +20,6 @@ from torchcodec._core import (
     get_json_metadata,
 )
 from torchcodec.decoders import VideoDecoder
-
 from torchvision.transforms import v2
 
 from .utils import (

@@ -13,10 +13,9 @@ import json
 
 import numpy as np
 import pytest
-
 import torch
-
-from torchcodec._core import (
+from torchcodec._core import get_ffmpeg_library_versions
+from torchcodec._core.ops import (
     _add_video_stream,
     _test_frame_pts_equality,
     add_audio_stream,
@@ -26,7 +25,6 @@ from torchcodec._core import (
     create_from_file_like,
     create_from_tensor,
     encode_audio_to_file,
-    get_ffmpeg_library_versions,
     get_frame_at_index,
     get_frame_at_pts,
     get_frames_at_indices,

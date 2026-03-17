@@ -10,11 +10,9 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
 import torch
 import torch.utils.benchmark as benchmark
-
-from torchcodec._core import (
+from torchcodec._core.ops import (
     _add_video_stream,
     create_from_file,
     get_frames_at_indices,
