@@ -6,6 +6,7 @@
 
 #include "WavDecoder.h"
 
+#include <cstddef>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -45,8 +46,8 @@ template <typename T, typename Container>
 T readValue(const Container& data, size_t offset) {
   static_assert(std::is_trivially_copyable_v<T>);
   static_assert(
-      sizeof(typename Container::value_type) == 1,
-      "Container must store byte-addressable data");
+      std::is_same_v<typename Container::value_type, std::byte>,
+      "Container value_type must be std::byte");
   STD_TORCH_CHECK(
       offset <= data.size() - sizeof(T),
       "Reading ",
@@ -62,7 +63,7 @@ T readValue(const Container& data, size_t offset) {
 
 template <size_t N>
 bool matchesFourCC(
-    const std::array<uint8_t, N>& data,
+    const std::array<std::byte, N>& data,
     size_t offset,
     const char* expected) {
   static_assert(N >= 4);
@@ -76,8 +77,8 @@ bool matchesFourCC(
 template <typename Container>
 void safeReadFile(std::ifstream& file, Container& buffer, size_t bytesToRead) {
   static_assert(
-      sizeof(typename Container::value_type) == 1,
-      "Container must store byte-addressable data for safe reinterpret_cast to char*");
+      std::is_same_v<typename Container::value_type, std::byte>,
+      "Container value_type must be std::byte for safe reinterpret_cast to char*");
   STD_TORCH_CHECK(
       bytesToRead <= buffer.size(), "Read size exceeds buffer length");
   file.read(
@@ -116,7 +117,7 @@ WavDecoder::WavDecoder(const std::string& path)
 void WavDecoder::parseHeader(uint64_t fileSize) {
   file_.seekg(0, std::ios::beg);
 
-  std::array<uint8_t, RIFF_HEADER_SIZE> riffHeader;
+  std::array<std::byte, RIFF_HEADER_SIZE> riffHeader;
   safeReadFile(file_, riffHeader, RIFF_HEADER_SIZE);
 
   STD_TORCH_CHECK(matchesFourCC(riffHeader, 0, "RIFF"), "Missing RIFF header");
@@ -142,7 +143,7 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
       " bytes, maximum allowed is ",
       MAX_FMT_CHUNK_SIZE,
       " bytes");
-  std::vector<uint8_t> fmtData(fmtChunk.size);
+  std::vector<std::byte> fmtData(fmtChunk.size);
   safeReadFile(file_, fmtData, fmtChunk.size);
 
   header_.audioFormat = readValue<uint16_t>(fmtData, 0);
@@ -202,7 +203,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
   while (startPos <= fileSize - CHUNK_HEADER_SIZE) {
     file_.seekg(validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
 
-    std::array<uint8_t, CHUNK_HEADER_SIZE> chunkHeader;
+    std::array<std::byte, CHUNK_HEADER_SIZE> chunkHeader;
     safeReadFile(file_, chunkHeader, CHUNK_HEADER_SIZE);
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4);
