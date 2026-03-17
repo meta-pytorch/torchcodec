@@ -1565,6 +1565,41 @@ class TestVideoDecoder:
         decoder, _ = make_video_decoder(asset.path, device=device)
         decoder.get_frame_at(10)
 
+    @pytest.mark.parametrize(
+        "device",
+        (
+            "cpu",
+            # Note: the FFmpeg CUDA batch API pre-allocates uint8 tensors,
+            # which doesn't work for 10-bit content (uint16). This is fine
+            # since we're moving to Beta CUDA.
+            # pytest.param("cuda", marks=pytest.mark.needs_cuda),
+            pytest.param("cuda:beta", marks=pytest.mark.needs_cuda),
+        ),
+    )
+    @pytest.mark.parametrize("asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR))
+    def test_10bit_batch_apis(self, device, asset):
+        # TODO: add 10-bit + rotation test (needs a rotated 10-bit HDR asset)
+        decoder, _ = make_video_decoder(asset.path, device=device)
+        num_frames = len(decoder)
+
+        frame = decoder[0]
+        expected_c = asset.get_num_color_channels()
+        expected_h = asset.get_height()
+        expected_w = asset.get_width()
+        assert frame.shape == (expected_c, expected_h, expected_w)
+
+        indices = [0, min(5, num_frames - 1), min(10, num_frames - 1)]
+        frames = decoder.get_frames_at(indices)
+        assert frames.data.shape == (len(indices), expected_c, expected_h, expected_w)
+
+        frames_range = decoder.get_frames_in_range(start=0, stop=min(5, num_frames))
+        assert frames_range.data.shape[0] == min(5, num_frames)
+        assert frames_range.data.shape[1:] == (expected_c, expected_h, expected_w)
+
+        pts = decoder.metadata.begin_stream_seconds
+        frame_at_pts = decoder.get_frame_played_at(pts)
+        assert frame_at_pts.data.shape == (expected_c, expected_h, expected_w)
+
     def setup_frame_mappings(tmp_path, file, stream_index):
         json_path = tmp_path / "custom_frame_mappings.json"
         custom_frame_mappings = NASA_VIDEO.generate_custom_frame_mappings(stream_index)

@@ -341,9 +341,9 @@ const Npp32f bt709FullRange16ColorTwist[3][4] = {
 
 // BT.709 limited range
 const Npp32f bt709LimitedRange16ColorTwist[3][4] = {
-    {1.16438356f, 0.0f, 1.79274107f, -63507.90f},
-    {1.16438356f, -0.213248614f, -0.532909329f, 19686.10f},
-    {1.16438356f, 2.11240179f, 0.0f, -73947.25f}};
+    {1.16438356f, 0.0f, 1.79274107f, -63513.85f},
+    {1.16438356f, -0.213248614f, -0.532909329f, 19680.79f},
+    {1.16438356f, 2.11240179f, 0.0f, -73988.50f}};
 
 // BT.2020 full range
 const Npp32f bt2020FullRange16ColorTwist[3][4] = {
@@ -353,9 +353,9 @@ const Npp32f bt2020FullRange16ColorTwist[3][4] = {
 
 // BT.2020 limited range
 const Npp32f bt2020LimitedRange16ColorTwist[3][4] = {
-    {1.16438356f, 0.0f, 1.67867411f, -59736.12f},
-    {1.16438356f, -0.187326105f, -0.650424319f, 22690.15f},
-    {1.16438356f, 2.14177232f, 0.0f, -74949.00f}};
+    {1.16438356f, 0.0f, 1.67867411f, -59776.11f},
+    {1.16438356f, -0.187326105f, -0.650424319f, 22682.09f},
+    {1.16438356f, 2.14177232f, 0.0f, -74950.91f}};
 #endif
 
 torch::stable::Tensor convertNV12FrameToRGB(

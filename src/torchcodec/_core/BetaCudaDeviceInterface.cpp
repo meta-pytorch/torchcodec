@@ -1006,7 +1006,8 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   if (is10Bit) {
     // P016 path: convert to uint16 RGB using NPP 16-bit ColorTwist.
-    // preAllocatedOutputTensor is not supported for P016 (it would be uint8).
+    // TODO: preAllocatedOutputTensor is currently ignored here. We should
+    // either support it (for uint16 tensors) or assert that it's not passed.
     frameOutput.data =
         convertP016FrameToRGB(gpuFrame, device_, nppCtx_, nvdecStream);
     if (rotation_ != Rotation::NONE) {
