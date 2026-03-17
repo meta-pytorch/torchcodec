@@ -126,10 +126,10 @@ void CpuDeviceInterface::initializeVideo(
     // format conversion to get the behavior we want.
     //
     // We store the user transforms without the format prefix here. The format
-    // prefix is added dynamically in convertAVFrameToTensorUsingFilterGraph()
+    // prefix is added dynamically in convertVideoAVFrameToFrameOutput()
     // based on the source bit depth.
     userTransformFilters_ = filters.str();
-    filters_ = "format=rgb24," + userTransformFilters_;
+    filters_ = userTransformFilters_;
   }
 
   initialized_ = true;
