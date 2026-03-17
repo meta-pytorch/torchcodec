@@ -165,25 +165,17 @@ void WavDecoder::validateHeader() const {
   uint16_t effectiveFormat = (header_.audioFormat == WAV_FORMAT_EXTENSIBLE)
       ? header_.subFormat
       : header_.audioFormat;
+  // TODO WavDecoder: Support WAV_FORMAT_IEEE_FLOAT 32, 64 bit
   STD_TORCH_CHECK(
-      effectiveFormat == WAV_FORMAT_PCM ||
-          effectiveFormat == WAV_FORMAT_IEEE_FLOAT,
+      effectiveFormat == WAV_FORMAT_PCM,
       "Unsupported WAV format: ",
       effectiveFormat,
-      ". Only PCM and IEEE float formats are supported.");
+      ". Only PCM format is supported.");
 
   // TODO WavDecoder: support 8, 16, 24 bits
   STD_TORCH_CHECK(
       effectiveFormat != WAV_FORMAT_PCM || header_.bitsPerSample == 32,
       "Unsupported PCM bit depth: ",
-      header_.bitsPerSample,
-      ". Currently supported bit depths are: 32");
-
-  // Check bit depth for IEEE_FLOAT
-  // TODO WavDecoder: support 64 bit float
-  STD_TORCH_CHECK(
-      effectiveFormat != WAV_FORMAT_IEEE_FLOAT || header_.bitsPerSample == 32,
-      "Unsupported IEEE_FLOAT bit depth: ",
       header_.bitsPerSample,
       ". Currently supported bit depths are: 32");
 
