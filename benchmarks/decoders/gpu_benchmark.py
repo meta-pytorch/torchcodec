@@ -4,11 +4,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
-
 import torch.utils.benchmark as benchmark
-
-import torchcodec
 import torchvision.transforms.v2.functional as F
+from torchcodec._core.ops import _add_video_stream, create_from_file, get_next_frame
 
 RESIZED_WIDTH = 256
 RESIZED_HEIGHT = 256
@@ -25,7 +23,7 @@ def decode_full_video(video_path, decode_device_string, resize_device_string):
     # We use the core API instead of SimpleVideoDecoder because the core API
     # allows us to natively resize as part of the decode step.
     print(f"{decode_device_string=} {resize_device_string=}")
-    decoder = torchcodec._core.create_from_file(video_path)
+    decoder = create_from_file(video_path)
     num_threads = None
     if "cuda" in decode_device_string:
         num_threads = 1
@@ -34,7 +32,7 @@ def decode_full_video(video_path, decode_device_string, resize_device_string):
     if "native" in resize_device_string:
         resize_spec = f"resize, {RESIZED_HEIGHT}, {RESIZED_WIDTH}"
 
-    torchcodec._core._add_video_stream(
+    _add_video_stream(
         decoder,
         stream_index=-1,
         device=decode_device_string,
@@ -46,7 +44,7 @@ def decode_full_video(video_path, decode_device_string, resize_device_string):
     frame_count = 0
     while True:
         try:
-            frame, *_ = torchcodec._core.get_next_frame(decoder)
+            frame, *_ = get_next_frame(decoder)
             if resize_device_string != "none" and "native" not in resize_device_string:
                 frame = transfer_and_resize_frame(frame, resize_device_string)
 
