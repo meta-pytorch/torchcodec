@@ -17,10 +17,15 @@ namespace {
 
 constexpr uint32_t RIFF_HEADER_SIZE = 12; // "RIFF" + fileSize + "WAVE"
 constexpr uint32_t CHUNK_HEADER_SIZE = 8; // chunkID + chunkSize
+// Standard WAV fmt chunk is at least 16 bytes:
+// audioFormat(2) + numChannels(2) + sampleRate(4) + byteRate(4) + blockAlign(2)
+// + bitsPerSample(2)
 constexpr uint32_t MIN_FMT_CHUNK_SIZE = 16;
+// WAVE_FORMAT_EXTENSIBLE adds: cbSize(2) + wValidBitsPerSample(2) +
+// dwChannelMask(4) + SubFormat GUID(16) = 24 more bytes, total 40
 constexpr uint32_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
-constexpr uint32_t MAX_CHUNK_SIZE =
-    1000; // 1 KB limit to prevent excessive allocation
+// Arbitrary max for fmt chunk allocation - set to 5x extended format size
+constexpr uint32_t MAX_FMT_CHUNK_SIZE = 200;
 
 // See standard format codes and Wav file format used in WavHeader:
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
@@ -41,7 +46,7 @@ template <typename T, typename Container>
 T readValue(const Container& data, size_t offset) {
   static_assert(std::is_trivially_copyable_v<T>);
   STD_TORCH_CHECK(
-      offset + sizeof(T) <= data.size(),
+      data.size() >= sizeof(T) && offset <= data.size() - sizeof(T),
       "Reading ",
       sizeof(T),
       " bytes at offset ",
@@ -67,7 +72,13 @@ WavDecoder::WavDecoder(const std::string& path) {
   file_.open(path, std::ios::binary);
   STD_TORCH_CHECK(file_.is_open(), "Failed to open WAV file: ", path);
 
-  uint64_t actualFileSize = std::filesystem::file_size(path);
+  uint64_t actualFileSize;
+  try {
+    actualFileSize = std::filesystem::file_size(path);
+  } catch (const std::filesystem::filesystem_error& e) {
+    STD_TORCH_CHECK(
+        false, "Failed to get file size for: ", path, ". Error: ", e.what());
+  }
   parseHeader(actualFileSize);
   validateHeader();
 }
@@ -106,6 +117,13 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
   file_.seekg(
       validateUint64ToStreampos(fmtChunk.offset, "fmtChunk.offset"),
       std::ios::beg);
+  STD_TORCH_CHECK(
+      fmtChunk.size <= MAX_FMT_CHUNK_SIZE,
+      "fmt chunk too large for allocation: ",
+      fmtChunk.size,
+      " bytes, maximum allowed is ",
+      MAX_FMT_CHUNK_SIZE,
+      " bytes");
   std::vector<uint8_t> fmtData(fmtChunk.size);
   file_.read(
       reinterpret_cast<char*>(fmtData.data()),
@@ -178,7 +196,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     const char* chunkId,
     uint64_t startPos,
     uint64_t fileSizeLimit) {
-  while (startPos + CHUNK_HEADER_SIZE <= fileSizeLimit) {
+  while (startPos <= fileSizeLimit - CHUNK_HEADER_SIZE) {
     file_.seekg(validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
 
     std::array<uint8_t, CHUNK_HEADER_SIZE> chunkHeader;
@@ -195,17 +213,14 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
 
     if (matchesFourCC(chunkHeader.data(), chunkId)) {
       STD_TORCH_CHECK(
-          chunkSize <= MAX_CHUNK_SIZE,
-          "We tried to allocate ",
-          chunkId,
-          " chunk of ",
-          chunkSize,
-          " bytes, but maximum allowed is ",
-          MAX_CHUNK_SIZE,
-          " bytes.");
+          startPos <= UINT64_MAX - CHUNK_HEADER_SIZE,
+          "File position arithmetic would overflow");
       return {startPos + CHUNK_HEADER_SIZE, chunkSize};
     }
 
+    STD_TORCH_CHECK(
+        startPos <= UINT64_MAX - CHUNK_HEADER_SIZE - chunkSize - 1,
+        "File position arithmetic would overflow");
     // Skip this chunk and continue searching (odd chunks are padded)
     startPos +=
         CHUNK_HEADER_SIZE + static_cast<uint64_t>(chunkSize) + (chunkSize % 2);
