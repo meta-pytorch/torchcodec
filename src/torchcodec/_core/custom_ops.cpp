@@ -8,6 +8,11 @@
 #include <pybind11/pybind11.h>
 #include <cstdint>
 #include <string>
+
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
@@ -471,11 +476,10 @@ void _add_video_stream(
   videoStreamOptions.ffmpegThreadCount = num_threads;
 
   if (dimension_order.has_value()) {
-    const std::string& stdDimensionOrder = dimension_order.value();
     STD_TORCH_CHECK(
-        stdDimensionOrder == "NHWC" || stdDimensionOrder == "NCHW",
+        *dimension_order == "NHWC" || *dimension_order == "NCHW",
         "dimension_order must be NHWC or NCHW");
-    videoStreamOptions.dimensionOrder = stdDimensionOrder;
+    videoStreamOptions.dimensionOrder = std::move(*dimension_order);
   }
   if (color_conversion_library.has_value()) {
     const std::string& stdColorConversionLibrary =
@@ -497,10 +501,11 @@ void _add_video_stream(
 
   validateDeviceInterface(device, device_variant);
 
-  videoStreamOptions.device = StableDevice(device);
-  videoStreamOptions.deviceVariant = device_variant;
+  videoStreamOptions.device = StableDevice(std::move(device));
+  videoStreamOptions.deviceVariant = std::move(device_variant);
 
-  std::vector<Transform*> transforms = makeTransforms(transform_specs);
+  std::vector<Transform*> transforms =
+      makeTransforms(std::move(transform_specs));
 
   bool hasPts = custom_frame_mappings_pts.has_value();
   bool hasDuration = custom_frame_mappings_duration.has_value();
@@ -513,9 +518,9 @@ void _add_video_stream(
 
   std::optional<SingleStreamDecoder::FrameMappings> converted_mappings = hasPts
       ? std::make_optional(SingleStreamDecoder::FrameMappings{
-            custom_frame_mappings_pts.value(),
-            custom_frame_mappings_keyframe_indices.value(),
-            custom_frame_mappings_duration.value()})
+            std::move(*custom_frame_mappings_pts),
+            std::move(*custom_frame_mappings_keyframe_indices),
+            std::move(*custom_frame_mappings_duration)})
       : std::nullopt;
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   videoDecoder->addVideoStream(
@@ -543,14 +548,14 @@ void add_video_stream(
   _add_video_stream(
       decoder,
       num_threads,
-      dimension_order,
+      std::move(dimension_order),
       stream_index,
-      device,
-      device_variant,
-      transform_specs,
-      custom_frame_mappings_pts,
-      custom_frame_mappings_duration,
-      custom_frame_mappings_keyframe_indices);
+      std::move(device),
+      std::move(device_variant),
+      std::move(transform_specs),
+      std::move(custom_frame_mappings_pts),
+      std::move(custom_frame_mappings_duration),
+      std::move(custom_frame_mappings_keyframe_indices));
 }
 
 void add_audio_stream(
@@ -1020,6 +1025,15 @@ std::string get_stream_json_metadata(
   }
   if (streamMetadata.rotation.has_value()) {
     map["rotation"] = std::to_string(*streamMetadata.rotation);
+  }
+  if (auto name = streamMetadata.getColorPrimariesName()) {
+    map["colorPrimaries"] = quoteValue(*name);
+  }
+  if (auto name = streamMetadata.getColorSpaceName()) {
+    map["colorSpace"] = quoteValue(*name);
+  }
+  if (auto name = streamMetadata.getColorTransferCharacteristicName()) {
+    map["colorTransferCharacteristic"] = quoteValue(*name);
   }
   if (streamMetadata.pixelFormat.has_value()) {
     map["pixelFormat"] = quoteValue(streamMetadata.pixelFormat.value());

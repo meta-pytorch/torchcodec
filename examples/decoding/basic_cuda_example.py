@@ -21,7 +21,7 @@ CUDA decoding also uses less PCI-e bandwidth.
 Installing TorchCodec with CUDA Enabled
 ---------------------------------------
 
-Refer to the installation guide in the `README <https://github.com/pytorch/torchcodec#installing-cuda-enabled-torchcodec>`_.
+Refer to the installation guide in the `README <https://github.com/meta-pytorch/torchcodec#installing-cuda-enabled-torchcodec>`_.
 
 """
 
