@@ -1147,7 +1147,6 @@ torch::stable::Tensor get_wav_all_samples(torch::stable::Tensor& decoder) {
   auto wavDecoder = unwrapTensorToGetWavDecoder(decoder);
   (void)wavDecoder; // Suppress unused variable warning
   STD_TORCH_CHECK(false, "get_wav_all_samples not yet implemented");
-  return torch::stable::empty({0}, kStableFloat32);
 }
 
 void set_nvdec_cache_capacity(int64_t capacity) {

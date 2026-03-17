@@ -20,8 +20,9 @@ class WavDecoder {
   // is stored as a member variable and is not copyable.
   WavDecoder(const WavDecoder&) = delete;
   WavDecoder& operator=(const WavDecoder&) = delete;
-  WavDecoder(WavDecoder&&) = default;
-  WavDecoder& operator=(WavDecoder&&) = default;
+  WavDecoder(WavDecoder&&) noexcept = default;
+  WavDecoder& operator=(WavDecoder&&) noexcept = default;
+  ~WavDecoder() = default;
 
  private:
   struct WavHeader {
