@@ -63,13 +63,28 @@ bool matchesFourCC(const uint8_t* data, const char* expected) {
   return std::memcmp(data, expected, 4) == 0;
 }
 
+template <typename Container>
+void safeReadFile(std::ifstream& file, Container& buffer, size_t bytesToRead) {
+  file.read(
+      reinterpret_cast<char*>(buffer.data()),
+      static_cast<std::streamsize>(bytesToRead));
+  STD_TORCH_CHECK(
+      !file.fail() &&
+          file.gcount() == static_cast<std::streamsize>(bytesToRead),
+      "WAV: unexpected end of data (expected ",
+      bytesToRead,
+      " bytes, got ",
+      file.gcount(),
+      ")");
+}
+
 } // namespace
 
-WavDecoder::WavDecoder(const std::string& path) {
+WavDecoder::WavDecoder(const std::string& path)
+    : file_(path, std::ios::binary) {
   // TODO WavDecoder: Support big-endian host machines
   STD_TORCH_CHECK(
       is_little_endian(), "WAV decoder requires little-endian architecture");
-  file_.open(path, std::ios::binary);
   STD_TORCH_CHECK(file_.is_open(), "Failed to open WAV file: ", path);
 
   uint64_t actualFileSize;
@@ -87,17 +102,7 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
   file_.seekg(0, std::ios::beg);
 
   std::array<uint8_t, RIFF_HEADER_SIZE> riffHeader;
-  file_.read(
-      reinterpret_cast<char*>(riffHeader.data()),
-      static_cast<std::streamsize>(RIFF_HEADER_SIZE));
-  STD_TORCH_CHECK(
-      !file_.fail() &&
-          file_.gcount() == static_cast<std::streamsize>(RIFF_HEADER_SIZE),
-      "WAV: unexpected end of data (expected ",
-      RIFF_HEADER_SIZE,
-      " bytes, got ",
-      file_.gcount(),
-      ")");
+  safeReadFile(file_, riffHeader, RIFF_HEADER_SIZE);
 
   STD_TORCH_CHECK(
       matchesFourCC(riffHeader.data(), "RIFF"), "Missing RIFF header");
@@ -125,17 +130,7 @@ void WavDecoder::parseHeader(uint64_t actualFileSize) {
       MAX_FMT_CHUNK_SIZE,
       " bytes");
   std::vector<uint8_t> fmtData(fmtChunk.size);
-  file_.read(
-      reinterpret_cast<char*>(fmtData.data()),
-      static_cast<std::streamsize>(fmtChunk.size));
-  STD_TORCH_CHECK(
-      !file_.fail() &&
-          file_.gcount() == static_cast<std::streamsize>(fmtChunk.size),
-      "WAV: unexpected end of data (expected ",
-      fmtChunk.size,
-      " bytes, got ",
-      file_.gcount(),
-      ")");
+  safeReadFile(file_, fmtData, fmtChunk.size);
 
   header_.audioFormat = readValue<uint16_t>(fmtData, 0);
   header_.numChannels = readValue<uint16_t>(fmtData, 2);
@@ -200,14 +195,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     file_.seekg(validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
 
     std::array<uint8_t, CHUNK_HEADER_SIZE> chunkHeader;
-    file_.read(
-        reinterpret_cast<char*>(chunkHeader.data()),
-        static_cast<std::streamsize>(CHUNK_HEADER_SIZE));
-    STD_TORCH_CHECK(
-        !file_.fail() &&
-            file_.gcount() == static_cast<std::streamsize>(CHUNK_HEADER_SIZE),
-        "Chunk not found: ",
-        chunkId);
+    safeReadFile(file_, chunkHeader, CHUNK_HEADER_SIZE);
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4);
 
