@@ -9,7 +9,7 @@ from fractions import Fraction
 
 import pytest
 from torchcodec import ffmpeg_major_version
-from torchcodec._core import (
+from torchcodec._core._metadata import (
     AudioStreamMetadata,
     get_container_metadata,
     get_container_metadata_from_header,
