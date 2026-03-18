@@ -1149,10 +1149,11 @@ class TestStreamingEncoderOps:
         streaming_encoder_close(encoder_tensor)
         streaming_encoder_close(encoder_tensor)  # double close is a no-op
 
-        # TODO: Test if closing the file before closing the streaming encoder causes any issues.
+        # TODO StreamingEncoder: Test if closing the file before closing the streaming encoder causes any issues.
         with open(tmp_path / "test2.mp4", "wb") as f:
             encoder_tensor = create_streaming_encoder_to_file_like(f, "mp4")
             streaming_encoder_close(encoder_tensor)
+            streaming_encoder_close(encoder_tensor)  # double close is a no-op
 
     def test_create_invalid_path(self):
         with pytest.raises(RuntimeError, match="make sure it's a valid path"):

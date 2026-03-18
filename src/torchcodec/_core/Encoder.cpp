@@ -676,57 +676,6 @@ void sortCodecOptions(
   }
 }
 
-// Allocate an AVFormatContext for file output, including opening the file
-// for writing via avio_open.
-void allocateFileFormatContext(
-    std::string_view fileName,
-    UniqueEncodingAVFormatContext& avFormatContextHolder) {
-  AVFormatContext* avFormatContext = nullptr;
-  int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, nullptr, fileName.data());
-
-  STD_TORCH_CHECK(
-      avFormatContext != nullptr,
-      "Couldn't allocate AVFormatContext. ",
-      "The destination file is ",
-      fileName,
-      ", check the desired extension? ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  avFormatContextHolder.reset(avFormatContext);
-
-  status =
-      avio_open(&avFormatContextHolder->pb, fileName.data(), AVIO_FLAG_WRITE);
-  STD_TORCH_CHECK(
-      status >= 0,
-      "avio_open failed. The destination file is ",
-      fileName,
-      ", make sure it's a valid path? ",
-      getFFMPEGErrorStringFromErrorCode(status));
-}
-
-// Allocate an AVFormatContext for AVIO output (tensor, file-like).
-void allocateAVIOFormatContext(
-    std::string_view formatName,
-    AVIOContextHolder* avioContextHolder,
-    UniqueEncodingAVFormatContext& avFormatContextHolder) {
-  // Map mkv -> matroska when used as format name
-  formatName = (formatName == "mkv") ? "matroska" : formatName;
-  AVFormatContext* avFormatContext = nullptr;
-  int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, formatName.data(), nullptr);
-
-  STD_TORCH_CHECK(
-      avFormatContext != nullptr,
-      "Couldn't allocate AVFormatContext. ",
-      "Check the desired format? Got format=",
-      formatName,
-      ". ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  avFormatContextHolder.reset(avFormatContext);
-
-  avFormatContextHolder->pb = avioContextHolder->getAVIOContext();
-}
-
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
@@ -740,7 +689,28 @@ VideoEncoder::VideoEncoder(
     const VideoStreamOptions& videoStreamOptions)
     : frames_(validateFrames(frames)), inFrameRate_(frameRate) {
   setFFmpegLogLevel();
-  allocateFileFormatContext(fileName, avFormatContext_);
+
+  // Allocate output format context
+  AVFormatContext* avFormatContext = nullptr;
+  int status = avformat_alloc_output_context2(
+      &avFormatContext, nullptr, nullptr, fileName.data());
+
+  STD_TORCH_CHECK(
+      avFormatContext != nullptr,
+      "Couldn't allocate AVFormatContext. ",
+      "The destination file is ",
+      fileName,
+      ", check the desired extension? ",
+      getFFMPEGErrorStringFromErrorCode(status));
+  avFormatContext_.reset(avFormatContext);
+
+  status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
+  STD_TORCH_CHECK(
+      status >= 0,
+      "avio_open failed. The destination file is ",
+      fileName,
+      ", make sure it's a valid path? ",
+      getFFMPEGErrorStringFromErrorCode(status));
   initializeEncoder(videoStreamOptions);
 }
 
@@ -754,8 +724,23 @@ VideoEncoder::VideoEncoder(
       inFrameRate_(frameRate),
       avioContextHolder_(std::move(avioContextHolder)) {
   setFFmpegLogLevel();
-  allocateAVIOFormatContext(
-      formatName, avioContextHolder_.get(), avFormatContext_);
+  // Map mkv -> matroska when used as format name
+  formatName = (formatName == "mkv") ? "matroska" : formatName;
+  AVFormatContext* avFormatContext = nullptr;
+  int status = avformat_alloc_output_context2(
+      &avFormatContext, nullptr, formatName.data(), nullptr);
+
+  STD_TORCH_CHECK(
+      avFormatContext != nullptr,
+      "Couldn't allocate AVFormatContext. ",
+      "Check the desired format? Got format=",
+      formatName,
+      ". ",
+      getFFMPEGErrorStringFromErrorCode(status));
+  avFormatContext_.reset(avFormatContext);
+
+  avFormatContext_->pb = avioContextHolder_->getAVIOContext();
+
   initializeEncoder(videoStreamOptions);
 }
 
@@ -1036,7 +1021,27 @@ StreamingEncoder::~StreamingEncoder() {
 
 StreamingEncoder::StreamingEncoder(std::string_view fileName) {
   setFFmpegLogLevel();
-  allocateFileFormatContext(fileName, avFormatContext_);
+
+  AVFormatContext* avFormatContext = nullptr;
+  int status = avformat_alloc_output_context2(
+      &avFormatContext, nullptr, nullptr, fileName.data());
+
+  STD_TORCH_CHECK(
+      avFormatContext != nullptr,
+      "Couldn't allocate AVFormatContext. ",
+      "The destination file is ",
+      fileName,
+      ", check the desired extension? ",
+      getFFMPEGErrorStringFromErrorCode(status));
+  avFormatContext_.reset(avFormatContext);
+
+  status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
+  STD_TORCH_CHECK(
+      status >= 0,
+      "avio_open failed. The destination file is ",
+      fileName,
+      ", make sure it's a valid path? ",
+      getFFMPEGErrorStringFromErrorCode(status));
 }
 
 StreamingEncoder::StreamingEncoder(
@@ -1044,8 +1049,22 @@ StreamingEncoder::StreamingEncoder(
     std::unique_ptr<AVIOContextHolder> avioContextHolder)
     : avioContextHolder_(std::move(avioContextHolder)) {
   setFFmpegLogLevel();
-  allocateAVIOFormatContext(
-      formatName, avioContextHolder_.get(), avFormatContext_);
+  // Map mkv -> matroska when used as format name
+  formatName = (formatName == "mkv") ? "matroska" : formatName;
+  AVFormatContext* avFormatContext = nullptr;
+  int status = avformat_alloc_output_context2(
+      &avFormatContext, nullptr, formatName.data(), nullptr);
+
+  STD_TORCH_CHECK(
+      avFormatContext != nullptr,
+      "Couldn't allocate AVFormatContext. ",
+      "Check the desired format? Got format=",
+      formatName,
+      ". ",
+      getFFMPEGErrorStringFromErrorCode(status));
+  avFormatContext_.reset(avFormatContext);
+
+  avFormatContext_->pb = avioContextHolder_->getAVIOContext();
 }
 
 void StreamingEncoder::close() {
