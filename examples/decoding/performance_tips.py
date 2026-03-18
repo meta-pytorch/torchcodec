@@ -16,8 +16,8 @@ This tutorial consolidates performance optimization techniques for video
 decoding with TorchCodec. Learn when and how to apply various strategies
 to increase performance.
 """
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_brrrr.jpg'
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_brrrr.jpg'
 
 # %%
 # Overview

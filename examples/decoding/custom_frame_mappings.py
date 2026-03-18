@@ -20,7 +20,6 @@ This makes it ideal for workflows where:
     1. Frame accuracy is critical, so :doc:`approximate mode <approximate_mode>` cannot be used
     2. Videos can be preprocessed once and then decoded many times
 """
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_frame_mappings.jpg'
 
 # %%
 # First, some boilerplate: we'll download a short video from the web, and
@@ -33,6 +32,7 @@ from pathlib import Path
 import subprocess
 import requests
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_frame_mappings.jpg'
 # Video source: https://www.pexels.com/video/dog-eating-854132/
 # License: CC0. Author: Coverr.
 url = "https://videos.pexels.com/video-files/854132/854132-sd_640_360_25fps.mp4"

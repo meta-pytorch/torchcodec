@@ -4,6 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+
 """
 ========================================
 Decoding audio streams with AudioDecoder
@@ -12,7 +13,6 @@ Decoding audio streams with AudioDecoder
 In this example, we'll learn how to decode an audio file using the
 :class:`~torchcodec.decoders.AudioDecoder` class.
 """
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_audio.jpg'
 
 # %%
 # First, a bit of boilerplate: we'll download an audio file from the web and
@@ -26,6 +26,7 @@ def play_audio(samples):
     return Audio(samples.data, rate=samples.sample_rate)
 
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_audio.jpg'
 # Audio source is CC0: https://opengameart.org/content/town-theme-rpg
 # Attribution: cynicmusic.com pixelsphere.org
 url = "https://opengameart.org/sites/default/files/TownTheme.mp3"

@@ -12,7 +12,6 @@ Encoding video frames with VideoEncoder
 In this example, we'll learn how to encode video frames to a file or to raw
 bytes using the :class:`~torchcodec.encoders.VideoEncoder` class.
 """
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_encoding_video.jpg'
 
 # %%
 # First, we'll download a video and decode some frames to tensors.
@@ -25,6 +24,7 @@ from torchcodec.decoders import VideoDecoder
 from IPython.display import Video
 
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_encoding_video.jpg'
 def play_video(encoded_bytes):
     return Video(
         data=encoded_bytes.numpy().tobytes(),

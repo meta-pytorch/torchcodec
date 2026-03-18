@@ -16,7 +16,6 @@ This parameter offers a trade-off between the speed of the
 accuracy of the retreived frames (i.e. in approximate mode, requesting the
 ``i``'th frame may not necessarily return frame ``i``).
 """
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_seek_mode.jpg'
 
 # %%
 # First, a bit of boilerplate: we'll download a short video from the web, and
@@ -34,6 +33,7 @@ import subprocess
 from time import perf_counter_ns
 
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_seek_mode.jpg'
 # Video source: https://www.pexels.com/video/dog-eating-854132/
 # License: CC0. Author: Coverr.
 url = "https://videos.pexels.com/video-files/854132/854132-sd_640_360_25fps.mp4"
