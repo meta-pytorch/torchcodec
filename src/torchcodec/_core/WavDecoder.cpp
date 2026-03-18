@@ -36,9 +36,9 @@ constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
 
 bool isLittleEndian() {
   uint32_t x = 1;
-  uint8_t first_byte;
-  std::memcpy(&first_byte, &x, 1);
-  return first_byte == 1;
+  uint8_t firstByte;
+  std::memcpy(&firstByte, &x, 1);
+  return firstByte == 1;
 }
 
 template <typename T, typename Container>
@@ -48,7 +48,7 @@ T readValue(const Container& data, size_t offset) {
       sizeof(typename Container::value_type) == 1,
       "Container value_type must be a 1-byte type for safe byte access");
   STD_TORCH_CHECK(
-      offset <= data.size() - sizeof(T),
+      data.size() >= sizeof(T) && offset <= data.size() - sizeof(T),
       "Reading ",
       sizeof(T),
       " bytes at offset ",
@@ -60,17 +60,16 @@ T readValue(const Container& data, size_t offset) {
   return value;
 }
 
-template <size_t N>
 bool matchesFourCC(
-    const std::array<std::byte, N>& data,
+    const uint8_t* data,
+    size_t dataSize,
     size_t offset,
     const char* expected) {
-  static_assert(N >= 4);
   STD_TORCH_CHECK(
-      offset <= N - 4,
+      dataSize >= 4 && offset <= dataSize - 4,
       "Data array too small for FourCC comparison at offset ",
       offset);
-  return std::memcmp(data.data() + offset, expected, 4) == 0;
+  return std::memcmp(data + offset, expected, 4) == 0;
 }
 
 template <typename Container>
@@ -91,6 +90,14 @@ void safeReadFile(std::ifstream& file, Container& buffer, size_t bytesToRead) {
       " bytes, got ",
       file.gcount(),
       ")");
+}
+
+void safeSeek(
+    std::ifstream& file,
+    std::streampos pos,
+    std::ios_base::seekdir whence = std::ios::beg) {
+  file.seekg(pos, whence);
+  STD_TORCH_CHECK(!file.fail(), "Failed to seek to ", pos, " in WAV file");
 }
 
 } // namespace
@@ -114,14 +121,17 @@ WavDecoder::WavDecoder(const std::string& path)
 }
 
 void WavDecoder::parseHeader(uint64_t fileSize) {
-  file_.seekg(0, std::ios::beg);
+  safeSeek(file_, 0, std::ios::beg);
 
-  std::array<std::byte, RIFF_HEADER_SIZE> riffHeader;
+  std::array<uint8_t, RIFF_HEADER_SIZE> riffHeader;
   safeReadFile(file_, riffHeader, RIFF_HEADER_SIZE);
 
-  STD_TORCH_CHECK(matchesFourCC(riffHeader, 0, "RIFF"), "Missing RIFF header");
   STD_TORCH_CHECK(
-      matchesFourCC(riffHeader, 8, "WAVE"), "Missing WAVE format identifier");
+      matchesFourCC(riffHeader.data(), riffHeader.size(), 0, "RIFF"),
+      "Missing RIFF header");
+  STD_TORCH_CHECK(
+      matchesFourCC(riffHeader.data(), riffHeader.size(), 8, "WAVE"),
+      "Missing WAVE format identifier");
 
   ChunkInfo fmtChunk =
       findChunk("fmt ", static_cast<uint64_t>(RIFF_HEADER_SIZE), fileSize);
@@ -132,7 +142,8 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
       " bytes");
 
   // Use ChunkInfo to seek to and read the fmt chunk data
-  file_.seekg(
+  safeSeek(
+      file_,
       validateUint64ToStreampos(fmtChunk.offset, "fmtChunk.offset"),
       std::ios::beg);
   STD_TORCH_CHECK(
@@ -142,7 +153,7 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
       " bytes, maximum allowed is ",
       MAX_FMT_CHUNK_SIZE,
       " bytes");
-  std::vector<std::byte> fmtData(fmtChunk.size);
+  std::vector<uint8_t> fmtData(fmtChunk.size);
   safeReadFile(file_, fmtData, fmtChunk.size);
 
   header_.audioFormat = readValue<uint16_t>(fmtData, 0);
@@ -192,14 +203,15 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     STD_TORCH_CHECK(false, "File too small to contain chunk:", chunkId);
   }
   while (startPos <= fileSize - CHUNK_HEADER_SIZE) {
-    file_.seekg(validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
+    safeSeek(
+        file_, validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
 
-    std::array<std::byte, CHUNK_HEADER_SIZE> chunkHeader;
+    std::array<uint8_t, CHUNK_HEADER_SIZE> chunkHeader;
     safeReadFile(file_, chunkHeader, CHUNK_HEADER_SIZE);
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4);
 
-    if (matchesFourCC(chunkHeader, 0, chunkId)) {
+    if (matchesFourCC(chunkHeader.data(), chunkHeader.size(), 0, chunkId)) {
       STD_TORCH_CHECK(
           startPos <= UINT64_MAX - CHUNK_HEADER_SIZE,
           "File position arithmetic would overflow");
@@ -209,13 +221,13 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
         chunkSize <= UINT64_MAX - CHUNK_HEADER_SIZE - (chunkSize % 2),
         "Chunk size would cause overflow: ",
         chunkSize);
-    uint64_t chunkLen =
+    // Skip this chunk and continue searching (odd chunks are padded)
+    uint64_t numBytesToSkip =
         CHUNK_HEADER_SIZE + static_cast<uint64_t>(chunkSize) + (chunkSize % 2);
     STD_TORCH_CHECK(
-        startPos <= UINT64_MAX - chunkLen,
+        startPos <= UINT64_MAX - numBytesToSkip,
         "File position arithmetic would overflow");
-    // Skip this chunk and continue searching (odd chunks are padded)
-    startPos += chunkLen;
+    startPos += numBytesToSkip;
   }
   STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
 }
