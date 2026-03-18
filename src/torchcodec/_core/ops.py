@@ -136,8 +136,8 @@ _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
 _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
-_create_streaming_encoder = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.create_streaming_encoder.default
+create_streaming_encoder_to_file = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.create_streaming_encoder_to_file.default
 )
 _create_streaming_encoder_to_file_like = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns._create_streaming_encoder_to_file_like.default
@@ -247,23 +247,15 @@ def encode_video_to_file_like(
     )
 
 
-def create_streaming_encoder(
-    dest: str | io.RawIOBase | io.BufferedIOBase,
-    format: str | None = None,
+def create_streaming_encoder_to_file_like(
+    file_like: io.RawIOBase | io.BufferedIOBase,
+    format: str,
 ) -> torch.Tensor:
-    if isinstance(dest, str):
-        return _create_streaming_encoder(dest)
-    else:
-        assert _pybind_ops is not None
-        format = format or Path(getattr(dest, "name", "")).suffix.lstrip(".")
-        if not format:
-            raise ValueError(
-                "format must be specified when it cannot be inferred from dest"
-            )
-        return _create_streaming_encoder_to_file_like(
-            _pybind_ops.create_file_like_context(dest, True),
-            format,
-        )
+    assert _pybind_ops is not None
+    return _create_streaming_encoder_to_file_like(
+        _pybind_ops.create_file_like_context(file_like, True),
+        format,
+    )
 
 
 def get_frames_at_indices(
@@ -603,15 +595,15 @@ def _get_backend_details_abstract(decoder: torch.Tensor) -> str:
     return ""
 
 
-@register_fake("torchcodec_ns::create_streaming_encoder")
-def create_streaming_encoder_abstract(
+@register_fake("torchcodec_ns::create_streaming_encoder_to_file")
+def _create_streaming_encoder_to_file_abstract(
     filename: str,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
 
 @register_fake("torchcodec_ns::_create_streaming_encoder_to_file_like")
-def _create_streaming_encoder_to_file_like_abstract(
+def create_streaming_encoder_to_file_like_abstract(
     file_like_context: int,
     format: str,
 ) -> torch.Tensor:
