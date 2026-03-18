@@ -429,7 +429,7 @@ frames.
  .. code-block:: none
 
 
-    tensor([[13.2800, 13.6800, 13.6800, 13.6800, 13.6800]], dtype=torch.float64)
+    tensor([[13.7600, 13.7600, 13.7600, 13.7600, 13.7600]], dtype=torch.float64)
 
 
 
@@ -469,7 +469,7 @@ An alternative policy is "wrap": the sampler then wraps-around the clip and repe
  .. code-block:: none
 
 
-    tensor([[13.2800, 13.6800, 13.2800, 13.6800, 13.2800]], dtype=torch.float64)
+    tensor([[13.7600, 13.7600, 13.7600, 13.7600, 13.7600]], dtype=torch.float64)
 
 
 
@@ -484,7 +484,7 @@ probably don't need to worry too much about it.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 0.429 seconds)
+   **Total running time of the script:** (0 minutes 0.425 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_sampling.py:
