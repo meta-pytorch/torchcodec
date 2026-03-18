@@ -1071,9 +1071,10 @@ void StreamingEncoder::close() {
   if (closed_) {
     return;
   }
+  // TODO StreamingEncoder: Revisit if "closed_" flag is useful
   closed_ = true;
-  // TODO: Once addFrame is implemented, close() will need to flush the
-  // encoder and call av_write_trailer.
+  // TODO StreamingEncoder: Once addFrame is implemented, close() will need to
+  // flush the encoder and call av_write_trailer.
   closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
