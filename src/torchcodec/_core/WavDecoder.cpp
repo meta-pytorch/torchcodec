@@ -32,7 +32,6 @@ constexpr uint32_t MAX_FMT_CHUNK_SIZE = 200;
 // See standard format codes and Wav file format used in WavHeader:
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
 constexpr uint16_t WAV_FORMAT_PCM = 1;
-constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 3;
 constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
 
 bool isLittleEndian() {
