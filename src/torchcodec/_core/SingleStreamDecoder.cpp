@@ -588,6 +588,10 @@ void SingleStreamDecoder::addVideoStream(
       bitDepth = desc->comp[0].depth;
     }
   }
+  // Apply user override if set: force output to 8-bit or >8-bit path.
+  if (videoStreamOptions.outputBitDepth > 0) {
+    bitDepth = (videoStreamOptions.outputBitDepth > 8) ? 10 : 8;
+  }
   preRotationDims_ = FrameDims(
       streamInfo.stream->codecpar->height,
       streamInfo.stream->codecpar->width,

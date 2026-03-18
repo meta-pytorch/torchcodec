@@ -124,8 +124,8 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
 torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   auto format = static_cast<AVPixelFormat>(avFrame->format);
   STD_TORCH_CHECK(
-      format == AV_PIX_FMT_RGB24 || format == AV_PIX_FMT_RGB48LE,
-      "Expected RGB24 or RGB48LE format, got ",
+      format == AV_PIX_FMT_RGB24 || format == AV_PIX_FMT_RGB48,
+      "Expected RGB24 or RGB48 format, got ",
       av_get_pix_fmt_name(format));
 
   int height = avFrame->height;
@@ -141,8 +141,8 @@ torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   };
 
   at::Tensor tensor;
-  if (format == AV_PIX_FMT_RGB48LE) {
-    // RGB48LE: 6 bytes per pixel (3 channels x 2 bytes each).
+  if (format == AV_PIX_FMT_RGB48) {
+    // RGB48: 6 bytes per pixel (3 channels x 2 bytes each).
     // Strides are in uint16 elements: linesize is in bytes, so divide by 2.
     std::vector<int64_t> shape = {height, width, 3};
     std::vector<int64_t> strides = {avFrameClone->linesize[0] / 2, 3, 1};

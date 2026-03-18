@@ -153,6 +153,7 @@ def create_video_decoder(
     device_variant: str = "ffmpeg",
     transforms: Sequence[DecoderTransform | nn.Module] | None = None,
     custom_frame_mappings: tuple[Tensor, Tensor, Tensor] | None = None,
+    output_bit_depth: int = 0,
 ) -> tuple[Tensor, int, VideoStreamMetadata]:
 
     decoder = create_decoder(source=source, seek_mode=seek_mode)
@@ -178,6 +179,7 @@ def create_video_decoder(
         device_variant=device_variant,
         transform_specs=transform_specs,
         custom_frame_mappings=custom_frame_mappings,
+        output_bit_depth=output_bit_depth,
     )
 
     return (decoder, stream_index, metadata)

@@ -25,7 +25,7 @@ struct FrameDims;
 // when the context changes, similar to how FilterGraph is managed.
 class SwScale {
  public:
-  // outputFormat: AV_PIX_FMT_RGB24 for 8-bit, AV_PIX_FMT_RGB48LE for >8-bit
+  // outputFormat: AV_PIX_FMT_RGB24 for 8-bit, AV_PIX_FMT_RGB48 for >8-bit
   SwScale(
       const SwsConfig& config,
       AVPixelFormat outputFormat = AV_PIX_FMT_RGB24,
@@ -49,7 +49,7 @@ class SwScale {
   int swsFlags_;
   bool needsResize_;
 
-  // Bytes per pixel for the output format (3 for RGB24, 6 for RGB48LE).
+  // Bytes per pixel for the output format (3 for RGB24, 6 for RGB48).
   int bytesPerPixel_;
 
   // Color conversion context (input format -> output RGB at original

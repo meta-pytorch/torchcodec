@@ -18,7 +18,7 @@ SwScale::SwScale(
       (config_.inputHeight != config_.outputHeight ||
        config_.inputWidth != config_.outputWidth);
 
-  bytesPerPixel_ = (outputFormat_ == AV_PIX_FMT_RGB48LE) ? 6 : 3;
+  bytesPerPixel_ = (outputFormat_ == AV_PIX_FMT_RGB48) ? 6 : 3;
 
   // Create color conversion context (input format -> output RGB format).
   // Color conversion always outputs at the input resolution.
@@ -68,7 +68,7 @@ int SwScale::convert(
   //
   // When no resize is needed, we do color conversion directly into the output
   // tensor.
-  int inputBitDepth = (outputFormat_ == AV_PIX_FMT_RGB48LE) ? 16 : 8;
+  int inputBitDepth = (outputFormat_ == AV_PIX_FMT_RGB48) ? 16 : 8;
   torch::stable::Tensor colorConvertedTensor = needsResize_
       ? allocateEmptyHWCTensor(
             FrameDims(config_.inputHeight, config_.inputWidth, inputBitDepth),

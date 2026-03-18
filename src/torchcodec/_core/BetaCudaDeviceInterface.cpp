@@ -299,6 +299,17 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
   returnNppStreamContextToCache(device_, std::move(nppCtx_));
 }
 
+void BetaCudaDeviceInterface::initializeVideo(
+    const VideoStreamOptions& videoStreamOptions,
+    const std::vector<std::unique_ptr<Transform>>& transforms,
+    const std::optional<FrameDims>& resizedOutputDims) {
+  outputBitDepthOverride_ = videoStreamOptions.outputBitDepth;
+  if (cpuFallback_) {
+    cpuFallback_->initializeVideo(
+        videoStreamOptions, transforms, resizedOutputDims);
+  }
+}
+
 void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
@@ -988,7 +999,9 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
-  bool is10Bit = (bitDepth_ > 8);
+  int effectiveBitDepth =
+      (outputBitDepthOverride_ > 0) ? outputBitDepthOverride_ : bitDepth_;
+  bool is10Bit = (effectiveBitDepth > 8);
 
   UniqueAVFrame gpuFrame;
   if (cpuFallback_) {

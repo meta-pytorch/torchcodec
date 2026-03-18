@@ -24,14 +24,16 @@ int getBitDepthFromAVPixelFormat(AVPixelFormat format) {
 }
 
 // Returns the appropriate RGB output format based on source bit depth.
+// RGB24 is 8 bits per channel, RGB48 is 16 bits per channel. For >8-bit
+// sources (e.g. 10-bit HDR), we need RGB48 to preserve the full bit depth;
+// RGB24 would lose the extra precision.
 AVPixelFormat getOutputPixelFormat(int bitDepth) {
-  return (bitDepth > 8) ? AV_PIX_FMT_RGB48LE : AV_PIX_FMT_RGB24;
+  return (bitDepth > 8) ? AV_PIX_FMT_RGB48 : AV_PIX_FMT_RGB24;
 }
 
 // Returns the format filter string for the given output pixel format.
 std::string getFormatFilterString(AVPixelFormat outputFormat) {
-  return (outputFormat == AV_PIX_FMT_RGB48LE) ? "format=rgb48le,"
-                                              : "format=rgb24,";
+  return (outputFormat == AV_PIX_FMT_RGB48) ? "format=rgb48," : "format=rgb24,";
 }
 
 } // namespace
@@ -119,7 +121,7 @@ void CpuDeviceInterface::initializeVideo(
     // color space, not the pixel format of the input frame.
     //
     // The output frame will always be in the output RGB format (RGB24 or
-    // RGB48LE), as we specify the sink node with the appropriate format.
+    // RGB48), as we specify the sink node with the appropriate format.
     // Filtergraph will automatically insert a format conversion to ensure the
     // output frame matches the pixel format specified in the sink. But by
     // default, it will insert it after the user filters. We need an explicit
@@ -212,6 +214,10 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   // can still work in such situations, so they should.
   auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
   int bitDepth = getBitDepthFromAVPixelFormat(avFrameFormat);
+  // Apply user override if set.
+  if (videoStreamOptions_.outputBitDepth > 0) {
+    bitDepth = (videoStreamOptions_.outputBitDepth > 8) ? 10 : 8;
+  }
   AVPixelFormat outputPixelFormat = getOutputPixelFormat(bitDepth);
 
   auto outputDims = resizedOutputDims_.value_or(
