@@ -46,8 +46,8 @@ template <typename T, typename Container>
 T readValue(const Container& data, size_t offset) {
   static_assert(std::is_trivially_copyable_v<T>);
   static_assert(
-      std::is_same_v<typename Container::value_type, std::byte>,
-      "Container value_type must be std::byte");
+      sizeof(typename Container::value_type) == 1,
+      "Container value_type must be a 1-byte type for safe byte access");
   STD_TORCH_CHECK(
       offset <= data.size() - sizeof(T),
       "Reading ",
@@ -77,8 +77,8 @@ bool matchesFourCC(
 template <typename Container>
 void safeReadFile(std::ifstream& file, Container& buffer, size_t bytesToRead) {
   static_assert(
-      std::is_same_v<typename Container::value_type, std::byte>,
-      "Container value_type must be std::byte for safe reinterpret_cast to char*");
+      sizeof(typename Container::value_type) == 1,
+      "Container value_type must be a 1-byte type for safe reinterpret_cast to char*");
   STD_TORCH_CHECK(
       bytesToRead <= buffer.size(), "Read size exceeds buffer length");
   file.read(
