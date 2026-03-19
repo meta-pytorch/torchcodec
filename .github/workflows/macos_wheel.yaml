@@ -66,8 +66,13 @@ jobs:
       matrix:
         python-version: ['3.10']
         ffmpeg-version-for-tests: ['4.4.2', '5.1.2', '6.1.1', '7.0.1', '8.0']
-    needs: build
+    needs: [build, generate-matrix]
     steps:
+      - name: Extract long python version from matrix
+        run: |
+          long_version=$(echo '${{ needs.generate-matrix.outputs.matrix }}' | jq -r --arg short "${{ matrix.python-version }}" '.include[] | select(.python_version | startswith($short + ".") or .python_version == $short) | .python_version' | head -1)
+          echo "LONG_PYTHON_VERSION=${long_version}" >> $GITHUB_ENV
+
       - name: Check out torchcodec repo
         uses: actions/checkout@v6
 
@@ -94,7 +99,7 @@ jobs:
       - name: Download wheel
         uses: actions/download-artifact@v4
         with:
-          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cpu_
+          name: meta-pytorch_torchcodec__${{ env.LONG_PYTHON_VERSION }}_cpu_
           path: dist/
 
       - name: Install torchcodec from the wheel
