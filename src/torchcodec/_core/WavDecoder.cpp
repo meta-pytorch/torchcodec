@@ -64,12 +64,12 @@ bool matchesFourCC(
     const uint8_t* data,
     size_t dataSize,
     size_t offset,
-    const char* expected) {
+    std::string_view expected) {
   STD_TORCH_CHECK(
       dataSize >= 4 && offset <= dataSize - 4,
       "Data array too small for FourCC comparison at offset ",
       offset);
-  return std::memcmp(data + offset, expected, 4) == 0;
+  return std::memcmp(data + offset, expected.data(), 4) == 0;
 }
 
 template <typename Container>
@@ -196,7 +196,7 @@ void WavDecoder::validateHeader() const {
 // Given a chunkId, read through each chunk until we find a match, then return
 // its offset and size.
 WavDecoder::ChunkInfo WavDecoder::findChunk(
-    const char* chunkId,
+    std::string_view chunkId,
     uint64_t startPos,
     uint64_t fileSize) {
   if (fileSize < CHUNK_HEADER_SIZE) {
@@ -212,15 +212,8 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4);
 
     if (matchesFourCC(chunkHeader.data(), chunkHeader.size(), 0, chunkId)) {
-      STD_TORCH_CHECK(
-          startPos <= UINT64_MAX - CHUNK_HEADER_SIZE,
-          "File position arithmetic would overflow");
       return {startPos + CHUNK_HEADER_SIZE, chunkSize};
     }
-    STD_TORCH_CHECK(
-        chunkSize <= UINT64_MAX - CHUNK_HEADER_SIZE - (chunkSize % 2),
-        "Chunk size would cause overflow: ",
-        chunkSize);
     // Skip this chunk and continue searching (odd chunks are padded)
     uint64_t numBytesToSkip =
         CHUNK_HEADER_SIZE + static_cast<uint64_t>(chunkSize) + (chunkSize % 2);

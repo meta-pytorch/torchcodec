@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <fstream>
 #include <string>
+#include <string_view>
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
@@ -37,10 +38,14 @@ class WavDecoder {
   struct ChunkInfo {
     uint64_t offset;
     uint32_t size;
+
+    ChunkInfo(uint64_t offset, uint32_t size) : offset(offset), size(size) {}
   };
 
-  ChunkInfo
-  findChunk(const char* chunkId, uint64_t startPos, uint64_t fileSizeLimit);
+  ChunkInfo findChunk(
+      std::string_view chunkId,
+      uint64_t startPos,
+      uint64_t fileSizeLimit);
   void parseHeader(uint64_t actualFileSize);
   void validateHeader() const;
 
