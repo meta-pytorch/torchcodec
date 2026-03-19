@@ -114,7 +114,7 @@ ColorConversionLibrary CpuDeviceInterface::getColorConversionLibrary(
   // swscale requires widths to be multiples of 32:
   // https://stackoverflow.com/questions/74351955/turn-off-sw-scale-conversion-to-planar-yuv-32-byte-alignment-requirements
   bool areWidthsSwScaleCompatible =
-      (inputFrameDims.width % 32) == 0 && (outputDims.width % 32) == 0;
+      (inputDims.width % 32) == 0 && (outputDims.width % 32) == 0;
 
   // We want to use swscale for color conversion if possible because it is
   // faster than filtergraph. The following are the conditions we need to meet
@@ -194,7 +194,8 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
         intArrayRefToString(shape));
   }
 
-  auto colorConversionLibrary = getColorConversionLibrary(inputDims, outputDims);
+  auto colorConversionLibrary =
+      getColorConversionLibrary(inputDims, outputDims);
   torch::stable::Tensor outputTensor;
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
