@@ -295,7 +295,7 @@ StreamMetadata WavDecoder::getStreamMetadata() const {
 
   metadata.durationSecondsFromHeader =
       static_cast<double>(header_.dataSize) / bytesPerSecond;
-  metadata.beginStreamSecondsFromHeader = 0.0;
+  metadata.beginStreamPtsSecondsFromContent = 0.0;
   metadata.bitRate = static_cast<double>(header_.sampleRate) *
       static_cast<double>(header_.numChannels) *
       static_cast<double>(header_.bitsPerSample);

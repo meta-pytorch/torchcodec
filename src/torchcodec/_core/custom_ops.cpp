@@ -1168,9 +1168,7 @@ std::string get_wav_metadata_from_decoder(torch::stable::Tensor& decoder) {
   metadataMap["streamIndex"] = std::to_string(streamMetadata.streamIndex);
   metadataMap["mediaType"] = quoteValue("audio");
   metadataMap["beginStreamSeconds"] =
-      fmt::to_string(*streamMetadata.beginStreamSecondsFromHeader);
-  metadataMap["beginStreamSecondsFromHeader"] =
-      fmt::to_string(*streamMetadata.beginStreamSecondsFromHeader);
+      fmt::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
   return mapToJson(metadataMap);
 }
 
