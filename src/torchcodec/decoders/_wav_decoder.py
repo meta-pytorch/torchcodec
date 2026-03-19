@@ -36,7 +36,9 @@ class WavDecoder:
             bit_rate=metadata_dict["bitRate"],
             duration_seconds_from_header=metadata_dict["durationSecondsFromHeader"],
             begin_stream_seconds=metadata_dict["beginStreamSeconds"],
-            begin_stream_seconds_from_header=None,  # WAV format lacks stream start time metadata
+            begin_stream_seconds_from_header=metadata_dict[
+                "beginStreamSecondsFromHeader"
+            ],
         )
 
     def get_all_samples(self):

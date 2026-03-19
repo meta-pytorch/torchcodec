@@ -2624,29 +2624,7 @@ class TestWavDecoder:
 
         assert isinstance(wav_decoder.metadata, AudioStreamMetadata)
         assert wav_decoder.stream_index == audio_decoder.metadata.stream_index
-        assert (
-            wav_decoder.metadata.duration_seconds_from_header
-            == audio_decoder.metadata.duration_seconds_from_header
-        )
-        assert (
-            wav_decoder.metadata.duration_seconds
-            == audio_decoder.metadata.duration_seconds
-        )
-        assert (
-            wav_decoder.metadata.begin_stream_seconds_from_header
-            == audio_decoder.metadata.begin_stream_seconds_from_header
-        )
-        assert (
-            wav_decoder.metadata.begin_stream_seconds
-            == audio_decoder.metadata.begin_stream_seconds
-        )
-        assert wav_decoder.metadata.sample_rate == audio_decoder.metadata.sample_rate
-        assert wav_decoder.metadata.bit_rate == audio_decoder.metadata.bit_rate
-        assert wav_decoder.metadata.num_channels == audio_decoder.metadata.num_channels
-        assert (
-            wav_decoder.metadata.sample_format == audio_decoder.metadata.sample_format
-        )
-        assert wav_decoder.metadata.codec == audio_decoder.metadata.codec
+        assert wav_decoder.metadata == audio_decoder.metadata
 
     def test_tensor_handle_creation(self):
         wav_dec = WavDecoder(SINE_MONO_S32.path)

@@ -64,12 +64,12 @@ bool matchesFourCC(
     const uint8_t* data,
     size_t dataSize,
     size_t offset,
-    const char* expected) {
+    std::string_view expected) {
   STD_TORCH_CHECK(
       dataSize >= 4 && offset <= dataSize - 4,
       "Data array too small for FourCC comparison at offset ",
       offset);
-  return std::memcmp(data + offset, expected, 4) == 0;
+  return std::memcmp(data + offset, expected.data(), 4) == 0;
 }
 
 template <typename Container>
@@ -201,7 +201,7 @@ void WavDecoder::validateHeader() const {
 // Given a chunkId, read through each chunk until we find a match, then return
 // its offset and size.
 WavDecoder::ChunkInfo WavDecoder::findChunk(
-    const char* chunkId,
+    std::string_view chunkId,
     uint64_t startPos,
     uint64_t fileSize) {
   if (fileSize < CHUNK_HEADER_SIZE) {
@@ -273,15 +273,33 @@ StreamMetadata WavDecoder::getStreamMetadata() const {
   metadata.sampleFormat = getSampleFormat();
   metadata.codecName = getCodecName();
 
-  double bitRate = static_cast<double>(header_.sampleRate) *
+  // Calculate duration from data size
+  // bitsPerSample is a multiple of 8, this division will not lose precision
+  uint32_t bytesPerSample = header_.bitsPerSample / 8;
+
+  STD_TORCH_CHECK(
+      header_.sampleRate <= UINT32_MAX / header_.numChannels,
+      "Sample rate * channel count would overflow: ",
+      header_.sampleRate,
+      " * ",
+      header_.numChannels);
+  uint32_t samplesPerSecond = header_.sampleRate * header_.numChannels;
+
+  STD_TORCH_CHECK(
+      samplesPerSecond <= UINT32_MAX / bytesPerSample,
+      "Byte rate would exceed uint32_t: ",
+      samplesPerSecond,
+      " * ",
+      bytesPerSample);
+  uint32_t bytesPerSecond = samplesPerSecond * bytesPerSample;
+
+  metadata.durationSecondsFromHeader =
+      static_cast<double>(header_.dataSize) / bytesPerSecond;
+  metadata.beginStreamSecondsFromHeader = 0.0;
+  metadata.bitRate = static_cast<double>(header_.sampleRate) *
       static_cast<double>(header_.numChannels) *
       static_cast<double>(header_.bitsPerSample);
-  metadata.bitRate = bitRate;
-  metadata.durationSecondsFromHeader =
-      static_cast<double>(header_.dataSize) * 8.0 / bitRate;
-  metadata.beginStreamPtsSecondsFromContent = 0.0;
 
   return metadata;
 }
-
 } // namespace facebook::torchcodec
