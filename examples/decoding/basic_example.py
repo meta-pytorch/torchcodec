@@ -13,14 +13,13 @@ In this example, we'll learn how to decode a video using the
 :class:`~torchcodec.decoders.VideoDecoder` class.
 """
 
-import requests
-
 # %%
 # First, a bit of boilerplate: we'll download a video from the web, and define a
 # plotting utility. You can ignore that part and jump right below to
 # :ref:`creating_decoder`.
 
 import torch
+import requests
 
 
 # Video source: https://www.pexels.com/video/dog-eating-854132/
@@ -35,14 +34,14 @@ raw_video_bytes = response.content
 
 def plot(frames: torch.Tensor, title: str | None = None):
     try:
-        import matplotlib.pyplot as plt
-        from torchvision.transforms.v2.functional import to_pil_image
         from torchvision.utils import make_grid
+        from torchvision.transforms.v2.functional import to_pil_image
+        import matplotlib.pyplot as plt
     except ImportError:
         print("Cannot plot, please run `pip install torchvision matplotlib`")
         return
 
-    plt.rcParams["savefig.bbox"] = "tight"
+    plt.rcParams["savefig.bbox"] = 'tight'
     fig, ax = plt.subplots()
     ax.imshow(to_pil_image(make_grid(frames)))
     ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
@@ -76,7 +75,7 @@ print(decoder.metadata)
 # ---------------------------------------
 
 first_frame = decoder[0]  # using a single int index
-every_twenty_frame = decoder[0:-1:20]  # using slices
+every_twenty_frame = decoder[0 : -1 : 20]  # using slices
 
 print(f"{first_frame.shape = }")
 print(f"{first_frame.dtype = }")
@@ -116,10 +115,9 @@ plot(every_twenty_frame, "Every 20 frame")
 # The decoder is a normal iterable object and can be iterated over like so:
 
 for frame in decoder:
-    assert isinstance(frame, torch.Tensor) and frame.shape == (
-        3,
-        decoder.metadata.height,
-        decoder.metadata.width,
+    assert (
+        isinstance(frame, torch.Tensor)
+        and frame.shape == (3, decoder.metadata.height, decoder.metadata.width)
     )
 
 # %%
@@ -185,34 +183,30 @@ plot(other_frames.data, "Other frames")
 # ----------------------------------
 #
 # We can also retrieve all frames within a time range using
-# :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range`. This
-# returns all frames with a :term:`pts` in the half-open range
-# [start_seconds, stop_seconds).
+# :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range`.
+# This returns all frames with :term:`pts` in [start_seconds, stop_seconds).
 
-frames_in_range = decoder.get_frames_played_in_range(start_seconds=1, stop_seconds=3)
-print(f"Frames in [1, 3) at source fps: {frames_in_range.data.shape[0]} frames")
+frames_in_range = decoder.get_frames_played_in_range(start_seconds=1, stop_seconds=2)
+print(f"{type(frames_in_range) = }")
+print(frames_in_range)
 
 # %%
 # Resampling with the :attr:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range.fps` parameter
-# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
-# By default, :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range`
-# returns frames at the source video's frame rate. The
+# Both :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range` and
+# :meth:`~torchcodec.decoders.VideoDecoder.get_all_frames` support resampling
+# with the
 # :attr:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range.fps`
-# parameter lets you resample the output to a different frame rate.
+# parameter to output to a different frame rate. This is useful when you want
+# fewer frames for efficiency (e.g. for model input), or more frames for
+# smoother playback.
 
-# The source video is 25 fps, so a 2-second range contains ~50 frames.
-# Resampling to 5 fps gives us only 10 frames:
-frames_5fps = decoder.get_frames_played_in_range(start_seconds=1, stop_seconds=3, fps=5)
-print(f"Frames in [1, 3) at 5 fps: {frames_5fps.data.shape[0]} frames")
+# The source video is 25 fps, so a 1-second range contains ~25 frames.
+# Resampling to 5 fps gives us only 5 frames:
+frames_5fps = decoder.get_frames_played_in_range(start_seconds=1, stop_seconds=2, fps=5)
+print(f"{type(frames_5fps) = }")
+print(frames_5fps)
 
 # %%
-plot(frames_5fps.data, "2-second range resampled at 5 fps")
-
-# %%
-# :meth:`~torchcodec.decoders.VideoDecoder.get_all_frames` also supports the
-# :attr:`~torchcodec.decoders.VideoDecoder.get_all_frames.fps` parameter. This is convenient when you need every frame in the video
-# at a reduced frame rate:
-all_frames_2fps = decoder.get_all_frames(fps=2)
-print(f"All frames at 2 fps: {all_frames_2fps.data.shape[0]} frames")
-plot(all_frames_2fps.data[::5], "Every 5th frame from the 2 fps output")
+plot(frames_5fps.data, "1-second range resampled at 5 fps")
