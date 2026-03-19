@@ -193,12 +193,13 @@ frames_in_range = decoder.get_frames_played_in_range(start_seconds=1, stop_secon
 print(f"Frames in [1, 3) at source fps: {frames_in_range.data.shape[0]} frames")
 
 # %%
-# Resampling with the ``fps`` parameter
-# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+# Resampling with the :attr:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range.fps` parameter
+# ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #
-# By default, ``get_frames_played_in_range`` returns frames at the source
-# video's frame rate. The ``fps`` parameter lets you resample the output to a
-# different frame rate.
+# By default, :meth:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range`
+# returns frames at the source video's frame rate. The
+# :attr:`~torchcodec.decoders.VideoDecoder.get_frames_played_in_range.fps`
+# parameter lets you resample the output to a different frame rate.
 
 # The source video is 25 fps, so a 2-second range contains ~50 frames.
 # Resampling to 5 fps gives us only 10 frames:
@@ -210,7 +211,7 @@ plot(frames_5fps.data, "2-second range resampled at 5 fps")
 
 # %%
 # :meth:`~torchcodec.decoders.VideoDecoder.get_all_frames` also supports the
-# ``fps`` parameter. This is convenient when you need every frame in the video
+# :attr:`~torchcodec.decoders.VideoDecoder.get_all_frames.fps` parameter. This is convenient when you need every frame in the video
 # at a reduced frame rate:
 all_frames_2fps = decoder.get_all_frames(fps=2)
 print(f"All frames at 2 fps: {all_frames_2fps.data.shape[0]} frames")
