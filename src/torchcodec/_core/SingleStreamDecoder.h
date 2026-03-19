@@ -44,6 +44,21 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       std::unique_ptr<AVIOContextHolder> context,
       SeekMode seekMode = SeekMode::exact);
 
+  // Creates a SingleStreamDecoder from a file path with audio stream added.
+  SingleStreamDecoder(
+      const std::string& audioFilePath,
+      SeekMode seekMode,
+      int streamIndex,
+      const AudioStreamOptions& audioStreamOptions);
+
+  // Creates a SingleStreamDecoder using the provided AVIOContext with audio
+  // stream added.
+  SingleStreamDecoder(
+      std::unique_ptr<AVIOContextHolder> context,
+      SeekMode seekMode,
+      int streamIndex,
+      const AudioStreamOptions& audioStreamOptions);
+
   // --------------------------------------------------------------------------
   // VIDEO METADATA QUERY API
   // --------------------------------------------------------------------------

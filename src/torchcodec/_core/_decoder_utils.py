@@ -16,12 +16,10 @@ from torchcodec._core._metadata import (
     VideoStreamMetadata,
 )
 from torchcodec._core.ops import (
-    add_audio_stream,
     add_video_stream,
-    create_from_bytes,
-    create_from_file,
-    create_from_file_like,
-    create_from_tensor,
+    create_audio_decoder as _create_audio_decoder_op,
+    create_decoder,
+    get_active_stream_index,
 )
 from torchcodec.transforms import DecoderTransform
 from torchcodec.transforms._decoder_transforms import _make_transform_specs
@@ -33,36 +31,6 @@ https://github.com/pytorch/torchcodec/issues/new?assignees=&labels=&projects=&te
 """
 
 
-def create_decoder(
-    *,
-    source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
-    seek_mode: str,
-) -> Tensor:
-    if isinstance(source, str):
-        return create_from_file(source, seek_mode)
-    elif isinstance(source, Path):
-        return create_from_file(str(source), seek_mode)
-    elif isinstance(source, io.RawIOBase) or isinstance(source, io.BufferedReader):
-        return create_from_file_like(source, seek_mode)
-    elif isinstance(source, bytes):
-        return create_from_bytes(source, seek_mode)
-    elif isinstance(source, Tensor):
-        return create_from_tensor(source, seek_mode)
-    elif isinstance(source, io.TextIOBase):
-        raise TypeError(
-            "source is for reading text, likely from open(..., 'r'). Try with 'rb' for binary reading?"
-        )
-    elif hasattr(source, "read") and hasattr(source, "seek"):
-        return create_from_file_like(source, seek_mode)
-
-    raise TypeError(
-        f"Unknown source type: {type(source)}. "
-        "Supported types are str, Path, bytes, Tensor and file-like objects with "
-        "read(self, size: int) -> bytes and "
-        "seek(self, offset: int, whence: int) -> int methods."
-    )
-
-
 def create_audio_decoder(
     *,
     source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
@@ -72,33 +40,23 @@ def create_audio_decoder(
     num_channels: int | None = None,
 ) -> tuple[Tensor, int, AudioStreamMetadata]:
 
-    decoder = create_decoder(source=source, seek_mode=seek_mode)
-
-    container_metadata = get_container_metadata(decoder)
-
-    if stream_index is None:
-        stream_index = container_metadata.best_audio_stream_index
-        if stream_index is None:
-            raise ValueError(
-                "The best audio stream is unknown and there is no specified stream. "
-                + _ERROR_REPORTING_INSTRUCTIONS
-            )
-
-    if stream_index >= len(container_metadata.streams):
-        raise ValueError(f"The stream at index {stream_index} is not a valid stream.")
-
-    metadata = container_metadata.streams[stream_index]
-    if not isinstance(metadata, AudioStreamMetadata):
-        raise ValueError(f"The stream at index {stream_index} is not an audio stream.")
-
-    add_audio_stream(
-        decoder,
+    decoder = _create_audio_decoder_op(
+        source,
         stream_index=stream_index,
         sample_rate=sample_rate,
         num_channels=num_channels,
     )
 
-    return (decoder, stream_index, metadata)
+    actual_stream_index = get_active_stream_index(decoder)
+
+    container_metadata = get_container_metadata(decoder)
+    metadata = container_metadata.streams[actual_stream_index]
+    if not isinstance(metadata, AudioStreamMetadata):
+        raise ValueError(
+            f"The stream at index {actual_stream_index} is not an audio stream."
+        )
+
+    return (decoder, actual_stream_index, metadata)
 
 
 def _get_and_validate_video_stream_metadata(
