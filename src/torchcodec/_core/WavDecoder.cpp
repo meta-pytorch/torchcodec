@@ -172,7 +172,7 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
   header_.dataSize = dataChunk.size;
 }
 
-void WavDecoder::validateHeader() const {
+void WavDecoder::validateHeader() {
   uint16_t effectiveFormat = (header_.audioFormat == WAV_FORMAT_EXTENSIBLE)
       ? header_.subFormat
       : header_.audioFormat;
