@@ -22,6 +22,7 @@ from torchcodec.decoders import (
     VideoStreamMetadata,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
+from torchcodec.decoders._wav_decoder import WavDecoder
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
 from .utils import (
@@ -2613,3 +2614,15 @@ class TestAudioDecoder:
                 # FFmpeg fails to find a default layout for certain channel counts,
                 # which causes SwrContext to fail to initialize.
                 decoder.get_all_samples()
+
+
+class TestWavDecoder:
+    def test_tensor_handle_creation(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        assert wav_dec._decoder is not None
+        assert wav_dec.stream_index == 0
+        assert wav_dec._source == SINE_MONO_S32.path
+
+    def test_non_wav_file_raises_error(self):
+        with pytest.raises(RuntimeError, match="Missing RIFF header"):
+            WavDecoder(NASA_AUDIO.path)
