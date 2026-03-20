@@ -100,11 +100,6 @@ void safeSeek(
   STD_TORCH_CHECK(!file.fail(), "Failed to seek to ", pos, " in WAV file");
 }
 
-// When using WAVEX, the audio format is stored in the subFormat field
-uint16_t getEffectiveAudioFormat(uint16_t audioFormat, uint16_t subFormat) {
-  return (audioFormat == WAV_FORMAT_EXTENSIBLE) ? subFormat : audioFormat;
-}
-
 } // namespace
 
 WavDecoder::WavDecoder(const std::string& path)
@@ -177,9 +172,10 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
   header_.dataSize = dataChunk.size;
 }
 
-void WavDecoder::validateHeader() {
-  uint16_t effectiveFormat =
-      getEffectiveAudioFormat(header_.audioFormat, header_.subFormat);
+void WavDecoder::validateHeader() const {
+  uint16_t effectiveFormat = (header_.audioFormat == WAV_FORMAT_EXTENSIBLE)
+      ? header_.subFormat
+      : header_.audioFormat;
   // TODO WavDecoder: Support WAV_FORMAT_IEEE_FLOAT 32, 64 bit
   STD_TORCH_CHECK(
       effectiveFormat == WAV_FORMAT_PCM,
