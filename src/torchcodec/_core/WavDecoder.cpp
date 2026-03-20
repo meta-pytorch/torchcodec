@@ -239,21 +239,13 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
   STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
 }
 
-std::string WavDecoder::getSampleFormat() const {
-  return sampleFormat_;
-}
-
-std::string WavDecoder::getCodecName() const {
-  return codecName_;
-}
-
 StreamMetadata WavDecoder::getStreamMetadata() const {
   StreamMetadata metadata;
   metadata.streamIndex = 0; // WAV files have single audio stream
   metadata.sampleRate = static_cast<int64_t>(header_.sampleRate);
   metadata.numChannels = static_cast<int64_t>(header_.numChannels);
-  metadata.sampleFormat = getSampleFormat();
-  metadata.codecName = getCodecName();
+  metadata.sampleFormat = sampleFormat_;
+  metadata.codecName = codecName_;
 
   // Calculate duration from data size
   double bitRate = static_cast<double>(header_.sampleRate) *
