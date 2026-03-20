@@ -193,7 +193,7 @@ format you want. Refer to Nvidia's GPU support matrix for more details
    ```bash
    pip install torchcodec
    ```
-   Use `--index-url` to select a different variant:
+   Use `--index-url` to select a different CUDA Toolkit version:
 
    ```bash
    # This corresponds to CUDA Toolkit version 13.0. It should be the same one
