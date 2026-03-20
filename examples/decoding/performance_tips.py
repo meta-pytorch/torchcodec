@@ -252,4 +252,3 @@ to increase performance.
 # - :class:`torchcodec.decoders.VideoDecoder` - Full API reference
 
 # sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_brrrr.jpg'
-
