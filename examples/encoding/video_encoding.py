@@ -23,6 +23,8 @@ import requests
 from torchcodec.decoders import VideoDecoder
 from IPython.display import Video
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/not_grumps_encoding_video.jpg'
+
 
 def play_video(encoded_bytes):
     return Video(
