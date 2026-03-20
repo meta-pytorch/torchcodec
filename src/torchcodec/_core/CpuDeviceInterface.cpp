@@ -145,10 +145,12 @@ void CpuDeviceInterface::initializeAudio(
 }
 
 ColorConversionLibrary CpuDeviceInterface::getColorConversionLibrary(
+    const FrameDims& inputDims,
     const FrameDims& outputDims) const {
   // swscale requires widths to be multiples of 32:
   // https://stackoverflow.com/questions/74351955/turn-off-sw-scale-conversion-to-planar-yuv-32-byte-alignment-requirements
-  bool isWidthSwScaleCompatible = (outputDims.width % 32) == 0;
+  bool areWidthsSwScaleCompatible =
+      (inputDims.width % 32) == 0 && (outputDims.width % 32) == 0;
 
   // We want to use swscale for color conversion if possible because it is
   // faster than filtergraph. The following are the conditions we need to meet
@@ -165,7 +167,7 @@ ColorConversionLibrary CpuDeviceInterface::getColorConversionLibrary(
   // filtergraph in our public API, this is probably okay. It's also the only
   // way that we can be certain we are testing one versus the other.
   if (areTransformsSwScaleCompatible_ &&
-      (userRequestedSwScale_ || isWidthSwScaleCompatible)) {
+      (userRequestedSwScale_ || areWidthsSwScaleCompatible)) {
     return ColorConversionLibrary::SWSCALE;
   } else {
     return ColorConversionLibrary::FILTERGRAPH;
@@ -212,6 +214,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   // Both cases cause problems for our batch APIs, as we allocate
   // FrameBatchOutputs based on the the stream metadata. But single-frame APIs
   // can still work in such situations, so they should.
+  auto inputDims = FrameDims(avFrame->height, avFrame->width);
   auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
   int bitDepth = getBitDepthFromAVPixelFormat(avFrameFormat);
   // Apply user override if set.
@@ -244,7 +247,8 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
         intArrayRefToString(shape));
   }
 
-  auto colorConversionLibrary = getColorConversionLibrary(outputDims);
+  auto colorConversionLibrary =
+      getColorConversionLibrary(inputDims, outputDims);
   torch::stable::Tensor outputTensor;
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
