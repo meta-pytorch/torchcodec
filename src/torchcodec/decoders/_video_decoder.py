@@ -15,18 +15,8 @@ from typing import Literal
 
 import torch
 from torch import device as torch_device, nn, Tensor
-from torchcodec import Frame, FrameBatch
+from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec._core._decoder_utils import create_video_decoder
-from torchcodec._core.ops import (
-    _get_backend_details,
-    _get_key_frame_indices,
-    get_frame_at_index,
-    get_frame_at_pts,
-    get_frames_at_indices,
-    get_frames_by_pts,
-    get_frames_by_pts_in_range,
-    get_frames_in_range,
-)
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.transforms import DecoderTransform
 
@@ -264,7 +254,7 @@ class VideoDecoder:
         # right when the VideoDecoder is instantiated, but the status_known
         # attribute is initialized to False.
         if not self._cpu_fallback.status_known:
-            backend_details = _get_backend_details(self._decoder)
+            backend_details = core._get_backend_details(self._decoder)
 
             if "status unknown" not in backend_details:
                 self._cpu_fallback.status_known = True
@@ -284,14 +274,14 @@ class VideoDecoder:
     def _getitem_int(self, key: int) -> Tensor:
         assert isinstance(key, int)
 
-        frame_data, *_ = get_frame_at_index(self._decoder, frame_index=key)
+        frame_data, *_ = core.get_frame_at_index(self._decoder, frame_index=key)
         return frame_data
 
     def _getitem_slice(self, key: slice) -> Tensor:
         assert isinstance(key, slice)
 
         start, stop, step = key.indices(len(self))
-        frame_data, *_ = get_frames_in_range(
+        frame_data, *_ = core.get_frames_in_range(
             self._decoder,
             start=start,
             stop=stop,
@@ -327,7 +317,7 @@ class VideoDecoder:
         )
 
     def _get_key_frame_indices(self) -> list[int]:
-        return _get_key_frame_indices(self._decoder)
+        return core._get_key_frame_indices(self._decoder)
 
     def get_frame_at(self, index: int) -> Frame:
         """Return a single frame at the given index.
@@ -347,7 +337,7 @@ class VideoDecoder:
         Returns:
             Frame: The frame at the given index.
         """
-        data, pts_seconds, duration_seconds = get_frame_at_index(
+        data, pts_seconds, duration_seconds = core.get_frame_at_index(
             self._decoder, frame_index=index
         )
         return Frame(
@@ -366,7 +356,7 @@ class VideoDecoder:
             FrameBatch: The frames at the given indices.
         """
 
-        data, pts_seconds, duration_seconds = get_frames_at_indices(
+        data, pts_seconds, duration_seconds = core.get_frames_at_indices(
             self._decoder, frame_indices=indices
         )
 
@@ -392,7 +382,7 @@ class VideoDecoder:
         """
         # Adjust start / stop indices to enable indexing semantics, ex. [-10, 1000] returns the last 10 frames
         start, stop, step = slice(start, stop, step).indices(self._num_frames)
-        frames = get_frames_in_range(
+        frames = core.get_frames_in_range(
             self._decoder,
             start=start,
             stop=stop,
@@ -424,7 +414,9 @@ class VideoDecoder:
                 f"It must be greater than or equal to {self._begin_stream_seconds} "
                 f"and less than {self._end_stream_seconds}."
             )
-        data, pts_seconds, duration_seconds = get_frame_at_pts(self._decoder, seconds)
+        data, pts_seconds, duration_seconds = core.get_frame_at_pts(
+            self._decoder, seconds
+        )
         return Frame(
             data=data,
             pts_seconds=pts_seconds.item(),
@@ -441,7 +433,7 @@ class VideoDecoder:
             FrameBatch: The frames that are played at ``seconds``.
         """
 
-        data, pts_seconds, duration_seconds = get_frames_by_pts(
+        data, pts_seconds, duration_seconds = core.get_frames_by_pts(
             self._decoder, timestamps=seconds
         )
         return FrameBatch(
@@ -486,7 +478,7 @@ class VideoDecoder:
                 f"Invalid stop seconds: {stop_seconds}. "
                 f"It must be less than or equal to {self._end_stream_seconds}."
             )
-        frames = get_frames_by_pts_in_range(
+        frames = core.get_frames_by_pts_in_range(
             self._decoder,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,

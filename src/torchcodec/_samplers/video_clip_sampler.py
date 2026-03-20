@@ -13,12 +13,10 @@ from typing import Any
 
 import torch
 from torch import nn, Tensor
+from torchcodec._core import get_frames_at_indices, get_json_metadata, get_next_frame
 from torchcodec._core.ops import (
     add_video_stream,
     create_from_tensor,
-    get_frames_at_indices,
-    get_json_metadata,
-    get_next_frame,
     scan_all_streams_to_update_metadata,
     seek_to_pts,
 )

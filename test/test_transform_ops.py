@@ -12,13 +12,8 @@ import subprocess
 import pytest
 import torch
 import torchcodec
-from torchcodec._core.ops import (
-    _add_video_stream,
-    add_video_stream,
-    create_from_file,
-    get_frame_at_index,
-    get_json_metadata,
-)
+from torchcodec._core import get_frame_at_index, get_json_metadata
+from torchcodec._core.ops import _add_video_stream, add_video_stream, create_from_file
 from torchcodec.decoders import VideoDecoder
 from torchvision.transforms import v2
 

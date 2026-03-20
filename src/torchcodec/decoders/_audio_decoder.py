@@ -10,9 +10,8 @@ from pathlib import Path
 
 import torch
 from torch import Tensor
-from torchcodec import AudioSamples
+from torchcodec import _core as core, AudioSamples
 from torchcodec._core._decoder_utils import create_audio_decoder
-from torchcodec._core.ops import get_frames_by_pts_in_range_audio
 
 
 class AudioDecoder:
@@ -113,7 +112,7 @@ class AudioDecoder:
             raise ValueError(
                 f"Invalid start seconds: {start_seconds}. It must be less than or equal to stop seconds ({stop_seconds})."
             )
-        frames, first_pts = get_frames_by_pts_in_range_audio(
+        frames, first_pts = core.get_frames_by_pts_in_range_audio(
             self._decoder,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
