@@ -177,7 +177,7 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
   header_.dataSize = dataChunk.size;
 }
 
-void WavDecoder::validateHeader() const {
+void WavDecoder::validateHeader() {
   uint16_t effectiveFormat =
       getEffectiveAudioFormat(header_.audioFormat, header_.subFormat);
   // TODO WavDecoder: Support WAV_FORMAT_IEEE_FLOAT 32, 64 bit
@@ -196,6 +196,15 @@ void WavDecoder::validateHeader() const {
 
   STD_TORCH_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
   STD_TORCH_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
+
+  if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 32) {
+    sampleFormat_ = "s32";
+    codecName_ = "pcm_s32le";
+  } else {
+    STD_TORCH_CHECK(
+        false,
+        "Unsupported format after validation. That's unexpected, please report this to the TorchCodec repo.");
+  }
 }
 
 // Given a chunkId, read through each chunk until we find a match, then return
@@ -231,31 +240,11 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
 }
 
 std::string WavDecoder::getSampleFormat() const {
-  uint16_t effectiveFormat =
-      getEffectiveAudioFormat(header_.audioFormat, header_.subFormat);
-
-  if (effectiveFormat == WAV_FORMAT_PCM) {
-    if (header_.bitsPerSample == 32)
-      return "s32";
-  }
-
-  STD_TORCH_CHECK(
-      false,
-      "Unsupported format after validation. That's unexpected, please report this to the TorchCodec repo.");
+  return sampleFormat_;
 }
 
 std::string WavDecoder::getCodecName() const {
-  uint16_t effectiveFormat =
-      getEffectiveAudioFormat(header_.audioFormat, header_.subFormat);
-
-  if (effectiveFormat == WAV_FORMAT_PCM) {
-    if (header_.bitsPerSample == 32)
-      return "pcm_s32le";
-  }
-
-  STD_TORCH_CHECK(
-      false,
-      "Unsupported format after validation. That's unexpected, please report this to the TorchCodec repo.");
+  return codecName_;
 }
 
 StreamMetadata WavDecoder::getStreamMetadata() const {
