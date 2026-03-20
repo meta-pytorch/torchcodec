@@ -22,6 +22,7 @@ from torchcodec._core.ops import (
     create_from_file,
     create_from_file_like,
     create_from_tensor,
+    create_wav_decoder_from_file,
 )
 from torchcodec.transforms import DecoderTransform
 from torchcodec.transforms._decoder_transforms import _make_transform_specs
@@ -99,6 +100,18 @@ def create_audio_decoder(
     )
 
     return (decoder, stream_index, metadata)
+
+
+def create_wav_decoder(source: str | Path) -> Tensor:
+    if isinstance(source, str):
+        return create_wav_decoder_from_file(source)
+    elif isinstance(source, Path):
+        return create_wav_decoder_from_file(str(source))
+    else:
+        raise ValueError(
+            "Source is not a supported uncompressed WAV file. "
+            "For compressed audio formats or non-WAV files, use AudioDecoder instead."
+        )
 
 
 def _get_and_validate_video_stream_metadata(

@@ -36,6 +36,7 @@ from .utils import (
     NASA_VIDEO,
     NASA_VIDEO_HDR,
     needs_cuda,
+    TEST_NON_ZERO_START as NON_32_ALIGNED_WIDTH_VIDEO,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_HDR,
 )
@@ -198,6 +199,14 @@ class TestPublicVideoDecoderTransformOps:
                 NASA_VIDEO.path,
                 transforms=[torchcodec.transforms.Resize(size=(100, 100, 100))],
             )
+
+    def test_resize_non_32_aligned_input_width(self):
+        assert NON_32_ALIGNED_WIDTH_VIDEO.get_width() % 32 != 0
+        decoder = VideoDecoder(
+            NON_32_ALIGNED_WIDTH_VIDEO.path,
+            transforms=[torchcodec.transforms.Resize(size=(224, 224))],
+        )
+        assert decoder[0].shape == (3, 224, 224)
 
     @pytest.mark.parametrize(
         "height_scaling_factor, width_scaling_factor",

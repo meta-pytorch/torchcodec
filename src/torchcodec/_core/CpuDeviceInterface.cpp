@@ -215,6 +215,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   // FrameBatchOutputs based on the the stream metadata. But single-frame APIs
   // can still work in such situations, so they should.
   auto inputDims = FrameDims(avFrame->height, avFrame->width);
+  auto outputDims = resizedOutputDims_.value_or(inputDims);
   auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
   int bitDepth = getBitDepthFromAVPixelFormat(avFrameFormat);
   // Apply user override if set.
@@ -233,6 +234,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   if (!userTransformFilters_.empty()) {
     filters_ = getFormatFilterString(outputPixelFormat) + userTransformFilters_;
   }
+  
 
   if (preAllocatedOutputTensor.has_value()) {
     auto shape = preAllocatedOutputTensor.value().sizes();

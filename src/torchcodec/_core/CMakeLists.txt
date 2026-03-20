@@ -137,6 +137,7 @@ function(make_torchcodec_libraries
         Transform.cpp
         Metadata.cpp
         SwScale.cpp
+        WavDecoder.cpp
         NVDECCacheConfig.cpp
     )
 
