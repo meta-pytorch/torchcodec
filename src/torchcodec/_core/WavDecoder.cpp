@@ -217,15 +217,8 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4);
 
     if (matchesFourCC(chunkHeader.data(), chunkHeader.size(), 0, chunkId)) {
-      STD_TORCH_CHECK(
-          startPos <= UINT64_MAX - CHUNK_HEADER_SIZE,
-          "File position arithmetic would overflow");
       return {startPos + CHUNK_HEADER_SIZE, chunkSize};
     }
-    STD_TORCH_CHECK(
-        chunkSize <= UINT64_MAX - CHUNK_HEADER_SIZE - (chunkSize % 2),
-        "Chunk size would cause overflow: ",
-        chunkSize);
     // Skip this chunk and continue searching (odd chunks are padded)
     uint64_t numBytesToSkip =
         CHUNK_HEADER_SIZE + static_cast<uint64_t>(chunkSize) + (chunkSize % 2);
@@ -274,31 +267,13 @@ StreamMetadata WavDecoder::getStreamMetadata() const {
   metadata.codecName = getCodecName();
 
   // Calculate duration from data size
-  // bitsPerSample is a multiple of 8, this division will not lose precision
-  uint32_t bytesPerSample = header_.bitsPerSample / 8;
-
-  STD_TORCH_CHECK(
-      header_.sampleRate <= UINT32_MAX / header_.numChannels,
-      "Sample rate * channel count would overflow: ",
-      header_.sampleRate,
-      " * ",
-      header_.numChannels);
-  uint32_t samplesPerSecond = header_.sampleRate * header_.numChannels;
-
-  STD_TORCH_CHECK(
-      samplesPerSecond <= UINT32_MAX / bytesPerSample,
-      "Byte rate would exceed uint32_t: ",
-      samplesPerSecond,
-      " * ",
-      bytesPerSample);
-  uint32_t bytesPerSecond = samplesPerSecond * bytesPerSample;
-
-  metadata.durationSecondsFromHeader =
-      static_cast<double>(header_.dataSize) / bytesPerSecond;
-  metadata.beginStreamPtsSecondsFromContent = 0.0;
-  metadata.bitRate = static_cast<double>(header_.sampleRate) *
+  double bitRate = static_cast<double>(header_.sampleRate) *
       static_cast<double>(header_.numChannels) *
       static_cast<double>(header_.bitsPerSample);
+  metadata.bitRate = bitRate;
+  metadata.durationSecondsFromHeader =
+      static_cast<double>(header_.dataSize) * 8 / bitRate;
+  metadata.beginStreamPtsSecondsFromContent = 0.0;
 
   return metadata;
 }

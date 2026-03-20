@@ -26,11 +26,12 @@ class WavDecoder {
   WavDecoder& operator=(WavDecoder&&) noexcept = default;
   ~WavDecoder() = default;
 
-  std::string getSampleFormat() const;
-  std::string getCodecName() const;
   StreamMetadata getStreamMetadata() const;
 
  private:
+  std::string getSampleFormat() const;
+  std::string getCodecName() const;
+
   struct WavHeader {
     uint16_t audioFormat = 0;
     uint16_t numChannels = 0;
