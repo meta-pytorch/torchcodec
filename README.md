@@ -187,7 +187,7 @@ format you want. Refer to Nvidia's GPU support matrix for more details
 
 3. Install TorchCodec
 
-   On Linux, `pip install torchcodec` defaults to the CUDA 12.8 wheel,
+   On Linux, `pip install torchcodec` defaults to a CUDA wheel,
    matching the default behavior of `pip install torch`.
 
    ```bash
