@@ -72,9 +72,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       ReferenceAVPacket& packet,
       ReferenceAVPacket& filteredPacket);
 
-  CUdeviceptr previouslyMappedFrame_ = 0;
-  void unmapPreviousFrame();
-
   UniqueAVFrame convertCudaFrameToAVFrame(
       CUdeviceptr framePtr,
       unsigned int pitch,
@@ -85,6 +82,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void applyRotation(
       FrameOutput& frameOutput,
       std::optional<torch::stable::Tensor> preAllocatedOutputTensor);
+
+  torch::stable::Tensor lastDecodedRGBTensor_;
 
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;

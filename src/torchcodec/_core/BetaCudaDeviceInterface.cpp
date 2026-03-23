@@ -118,10 +118,8 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
       videoFormat->display_area.right - videoFormat->display_area.left;
   decoderParams.ulNumDecodeSurfaces = videoFormat->min_num_decode_surfaces;
   // We should only ever need 1 output surface, since we process frames
-  // sequentially, and we always unmap the previous frame before mapping a new
-  // one.
-  // TODONVDEC P3: set this to 2, allow for 2 frames to be mapped at a time, and
-  // benchmark to see if this makes any difference.
+  // sequentially, and we unmap each frame immediately after color conversion
+  // within receiveFrame().
   decoderParams.ulNumOutputSurfaces = 1;
   decoderParams.display_area.left = videoFormat->display_area.left;
   decoderParams.display_area.right = videoFormat->display_area.right;
@@ -283,7 +281,6 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     // What happens to those decode surfaces that haven't yet been mapped is
     // unclear.
     flush();
-    unmapPreviousFrame();
     NVDECCache::getCache(device_).returnDecoder(
         &videoFormat_, std::move(decoder_));
   }
@@ -590,49 +587,55 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   // the NPP stream before any color conversion.
   // Re types: we get a cudaStream_t from PyTorch but it's interchangeable with
   // CUstream
-  procParams.output_stream =
-      reinterpret_cast<CUstream>(getCurrentCudaStream(device_.index()));
+  cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
+  procParams.output_stream = reinterpret_cast<CUstream>(nvdecStream);
 
   CUdeviceptr framePtr = 0;
   unsigned int pitch = 0;
 
-  // We know the frame we want was sent to the hardware decoder, but now we need
-  // to "map" it to an "output surface" before we can use its data. This is a
-  // blocking calls that waits until the frame is fully decoded and ready to be
-  // used.
-  // When a frame is mapped to an output surface, it needs to be unmapped
-  // eventually, so that the decoder can re-use the output surface. Failing to
-  // unmap will cause map to eventually fail. DALI unmaps frames almost
-  // immediately  after mapping them: they do the color-conversion in-between,
-  // which involves a copy of the data, so that works.
-  // We, OTOH, will do the color-conversion later, outside of ReceiveFrame(). So
-  // we unmap here: just before mapping a new frame. At that point we know that
-  // the previously-mapped frame is no longer needed: it was either
-  // color-converted (with a copy), or that's a frame that was discarded in
-  // SingleStreamDecoder. Either way, the underlying output surface can be
-  // safely re-used.
-  unmapPreviousFrame();
   CUresult result = cuvidMapVideoFrame(
       *decoder_.get(), dispInfo.picture_index, &framePtr, &pitch, &procParams);
   if (result != CUDA_SUCCESS) {
     return AVERROR_EXTERNAL;
   }
-  previouslyMappedFrame_ = framePtr;
 
   avFrame = convertCudaFrameToAVFrame(framePtr, pitch, dispInfo);
 
-  return AVSUCCESS;
-}
+  // Do the NV12→RGB conversion immediately while the frame is still mapped,
+  // then unmap right away. This avoids the need to track the mapped frame
+  // across calls.
+  lastDecodedRGBTensor_ = convertNV12FrameToRGB(
+      avFrame,
+      device_,
+      nppCtx_,
+      nvdecStream,
+      /*preAllocatedOutputTensor=*/std::nullopt);
 
-void BetaCudaDeviceInterface::unmapPreviousFrame() {
-  if (previouslyMappedFrame_ == 0) {
-    return;
+  if (rotation_ != Rotation::NONE) {
+    int k = 0;
+    switch (rotation_) {
+      case Rotation::CCW90:
+        k = 1;
+        break;
+      case Rotation::ROTATE180:
+        k = 2;
+        break;
+      case Rotation::CW90:
+        k = 3;
+        break;
+      default:
+        STD_TORCH_CHECK(false, "Unexpected rotation value");
+        break;
+    }
+    lastDecodedRGBTensor_ =
+        torch::stable::contiguous(stableRot90(lastDecodedRGBTensor_, k, 0, 1));
   }
-  CUresult result =
-      cuvidUnmapVideoFrame(*decoder_.get(), previouslyMappedFrame_);
+
+  result = cuvidUnmapVideoFrame(*decoder_.get(), framePtr);
   STD_TORCH_CHECK(
-      result == CUDA_SUCCESS, "Failed to unmap previous frame: ", result);
-  previouslyMappedFrame_ = 0;
+      result == CUDA_SUCCESS, "Failed to unmap frame: ", result);
+
+  return AVSUCCESS;
 }
 
 UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
@@ -872,34 +875,40 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
-  UniqueAVFrame gpuFrame =
-      cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
+  if (cpuFallback_) {
+    UniqueAVFrame gpuFrame = transferCpuFrameToGpuNV12(avFrame);
 
-  // TODONVDEC P2: we may need to handle 10bit videos the same way the CUDA
-  // ffmpeg interface does it with maybeConvertAVFrameToNV12OrRGB24().
-  STD_TORCH_CHECK(
-      gpuFrame->format == AV_PIX_FMT_CUDA,
-      "Expected CUDA format frame from BETA CUDA interface");
+    // TODONVDEC P2: we may need to handle 10bit videos the same way the CUDA
+    // ffmpeg interface does it with maybeConvertAVFrameToNV12OrRGB24().
+    STD_TORCH_CHECK(
+        gpuFrame->format == AV_PIX_FMT_CUDA,
+        "Expected CUDA format frame from BETA CUDA interface");
 
-  cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
+    cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
-  if (rotation_ == Rotation::NONE) {
-    validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
-    frameOutput.data = convertNV12FrameToRGB(
-        gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+    if (rotation_ == Rotation::NONE) {
+      validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
+      frameOutput.data = convertNV12FrameToRGB(
+          gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+    } else {
+      frameOutput.data = convertNV12FrameToRGB(
+          gpuFrame,
+          device_,
+          nppCtx_,
+          nvdecStream,
+          /*preAllocatedOutputTensor=*/std::nullopt);
+      applyRotation(frameOutput, preAllocatedOutputTensor);
+    }
+    return;
+  }
+
+  // NVDEC path: the RGB tensor was already computed in receiveFrame().
+  if (preAllocatedOutputTensor.has_value()) {
+    torch::stable::copy_(
+        preAllocatedOutputTensor.value(), lastDecodedRGBTensor_);
+    frameOutput.data = preAllocatedOutputTensor.value();
   } else {
-    // preAllocatedOutputTensor has post-rotation dimensions, but NV12->RGB
-    // conversion outputs pre-rotation dimensions, so we can't use it as the
-    // conversion destination or validate it against the frame shape.
-    // Once we support native transforms on the beta CUDA interface, rotation
-    // should be handled as part of the transform pipeline instead.
-    frameOutput.data = convertNV12FrameToRGB(
-        gpuFrame,
-        device_,
-        nppCtx_,
-        nvdecStream,
-        /*preAllocatedOutputTensor=*/std::nullopt);
-    applyRotation(frameOutput, preAllocatedOutputTensor);
+    frameOutput.data = lastDecodedRGBTensor_;
   }
 }
 
