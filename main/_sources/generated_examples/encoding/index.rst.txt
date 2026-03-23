@@ -19,7 +19,7 @@ Encoding
 
 .. only:: html
 
-  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_audio_encoding_thumb.png
+  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_audio_encoding_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/encoding/audio_encoding`
@@ -36,7 +36,7 @@ Encoding
 
 .. only:: html
 
-  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_video_encoding_thumb.png
+  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_video_encoding_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/encoding/video_encoding`

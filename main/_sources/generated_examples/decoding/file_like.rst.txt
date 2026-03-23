@@ -70,7 +70,7 @@ from a given URL, and another to time the execution of a given function.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 56-68
+.. GENERATED FROM PYTHON SOURCE LINES 57-69
 
 Performance: downloading first vs. streaming
 --------------------------------------------
@@ -85,7 +85,7 @@ The video we're going to use in this tutorial is publicly available on the
 internet. We perform an initial download of it so that we can understand
 its size and content:
 
-.. GENERATED FROM PYTHON SOURCE LINES 68-79
+.. GENERATED FROM PYTHON SOURCE LINES 69-80
 
 .. code-block:: Python
 
@@ -138,7 +138,7 @@ its size and content:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 80-100
+.. GENERATED FROM PYTHON SOURCE LINES 81-101
 
 We can see that the video is about 253 MB, has the resolution 1920x1080, is
 about 30 frames per second and is almost 3 and a half minutes long. As we
@@ -161,7 +161,7 @@ this to avoid scanning the entire video during initialization, which would
 require downloading the entire video even if we only want to decode the first
 frame. See :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py` for more.
 
-.. GENERATED FROM PYTHON SOURCE LINES 100-138
+.. GENERATED FROM PYTHON SOURCE LINES 101-139
 
 .. code-block:: Python
 
@@ -212,18 +212,18 @@ frame. See :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py` for m
  .. code-block:: none
 
     Decode from existing download:
-    med = 194.98ms +- 0.12
+    med = 195.41ms +- 0.38
 
     Download before decode:
-    med = 1048.05ms +- 131.66
+    med = 1047.50ms +- 94.70
 
     Direct url to FFmpeg:
-    med = 241.82ms +- 5.55
+    med = 242.69ms +- 10.29
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 139-152
+.. GENERATED FROM PYTHON SOURCE LINES 140-153
 
 Decoding the already downloaded video is clearly the fastest. Having to
 download the entire video each time we want to decode just the first frame
@@ -239,7 +239,7 @@ Note that using these capabilities from the fsspec library also requires the
 `aiohttp <https://docs.aiohttp.org/en/stable/>`_ module. You can install both with
 `pip install fsspec aiohttp`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 152-169
+.. GENERATED FROM PYTHON SOURCE LINES 153-170
 
 .. code-block:: Python
 
@@ -269,12 +269,12 @@ Note that using these capabilities from the fsspec library also requires the
  .. code-block:: none
 
     Stream while decode: 
-    med = 213.17ms +- 3.01
+    med = 210.88ms +- 0.85
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 170-177
+.. GENERATED FROM PYTHON SOURCE LINES 171-178
 
 Streaming the data through a file-like object is much faster than
 downloading the video first. And not only is it also faster than
@@ -284,7 +284,7 @@ kinds of protocols supported are determined by what that version of FFmpeg
 supports. A file-like object can adapt any kind of resource, including ones
 that are specific to your own infrastructure and are unknown to FFmpeg.
 
-.. GENERATED FROM PYTHON SOURCE LINES 180-195
+.. GENERATED FROM PYTHON SOURCE LINES 181-196
 
 How it works
 ------------
@@ -302,7 +302,7 @@ method signature needed is in the example below. Rather than wrap a novel
 resource, we demonstrate this capability by wrapping an actual file while
 counting how often each method is called.
 
-.. GENERATED FROM PYTHON SOURCE LINES 195-242
+.. GENERATED FROM PYTHON SOURCE LINES 196-243
 
 .. code-block:: Python
 
@@ -367,7 +367,7 @@ counting how often each method is called.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 243-258
+.. GENERATED FROM PYTHON SOURCE LINES 244-259
 
 While we defined a simple class primarily for demonstration, it's actually
 useful for diagnosing how much reading and seeking are required for different
@@ -385,7 +385,7 @@ during decoding to user-define functions. The
 connecting the Python methods you define to FFmpeg. All you have to do is
 define your methods in Python, and we do the rest.
 
-.. GENERATED FROM PYTHON SOURCE LINES 260-272
+.. GENERATED FROM PYTHON SOURCE LINES 261-273
 
 Performance: local file path vs. local file-like object
 -------------------------------------------------------
@@ -400,7 +400,7 @@ have two means of providing a local file to :class:`~torchcodec.decoders.VideoDe
 
 An obvious question is: which is faster? The code below tests that question.
 
-.. GENERATED FROM PYTHON SOURCE LINES 272-292
+.. GENERATED FROM PYTHON SOURCE LINES 273-293
 
 .. code-block:: Python
 
@@ -433,15 +433,15 @@ An obvious question is: which is faster? The code below tests that question.
  .. code-block:: none
 
     Decode from existing file path:
-    med = 194.54ms +- 0.70
+    med = 194.71ms +- 1.26
 
     Decode from existing open file object:
-    med = 194.71ms +- 0.19
+    med = 194.78ms +- 0.17
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 293-298
+.. GENERATED FROM PYTHON SOURCE LINES 294-299
 
 Thankfully, the answer is both means of decoding from a local file take about
 the same amount of time. This result means that in your own code, you can use
@@ -449,11 +449,11 @@ whichever method is more convienient. What this result implies is that the
 cost of actually reading and copying data dominates the cost of calling Python
 methods while decoding.
 
-.. GENERATED FROM PYTHON SOURCE LINES 300-301
+.. GENERATED FROM PYTHON SOURCE LINES 301-302
 
 Finally, let's clean up the local resources we created.
 
-.. GENERATED FROM PYTHON SOURCE LINES 301-303
+.. GENERATED FROM PYTHON SOURCE LINES 302-304
 
 .. code-block:: Python
 
@@ -469,7 +469,7 @@ Finally, let's clean up the local resources we created.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 27.565 seconds)
+   **Total running time of the script:** (0 minutes 27.277 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_file_like.py:

@@ -53,7 +53,7 @@ Decoding
 
 .. only:: html
 
-  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_audio_decoding_thumb.png
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_audio_decoding_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/decoding/audio_decoding`
@@ -87,7 +87,7 @@ Decoding
 
 .. only:: html
 
-  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_file_like_thumb.png
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_file_like_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/decoding/file_like`
@@ -104,7 +104,7 @@ Decoding
 
 .. only:: html
 
-  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_approximate_mode_thumb.png
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_approximate_mode_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/decoding/approximate_mode`
@@ -138,7 +138,7 @@ Decoding
 
 .. only:: html
 
-  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_parallel_decoding_thumb.png
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_parallel_decoding_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/decoding/parallel_decoding`
@@ -155,7 +155,7 @@ Decoding
 
 .. only:: html
 
-  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_performance_tips_thumb.png
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_performance_tips_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/decoding/performance_tips`
@@ -172,7 +172,7 @@ Decoding
 
 .. only:: html
 
-  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_custom_frame_mappings_thumb.png
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_custom_frame_mappings_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/decoding/custom_frame_mappings`
@@ -223,7 +223,7 @@ Encoding
 
 .. only:: html
 
-  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_audio_encoding_thumb.png
+  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_audio_encoding_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/encoding/audio_encoding`
@@ -240,7 +240,7 @@ Encoding
 
 .. only:: html
 
-  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_video_encoding_thumb.png
+  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_video_encoding_thumb.jpg
     :alt:
 
   :doc:`/generated_examples/encoding/video_encoding`

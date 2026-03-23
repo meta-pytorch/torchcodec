@@ -67,7 +67,7 @@ also just come from an :class:`~torchcodec.decoders.AudioDecoder`!
     <br />
     <br />
 
-.. GENERATED FROM PYTHON SOURCE LINES 37-48
+.. GENERATED FROM PYTHON SOURCE LINES 38-49
 
 We first instantiate an :class:`~torchcodec.encoders.AudioEncoder`. We pass it
 the samples to be encoded. The samples must be a 2D tensors of shape
@@ -81,7 +81,7 @@ normalized in ``[-1, 1]``: this is also what the
     The ``sample_rate`` parameter corresponds to the sample rate of the
     *input*, not the desired encoded sample rate.
 
-.. GENERATED FROM PYTHON SOURCE LINES 48-53
+.. GENERATED FROM PYTHON SOURCE LINES 49-54
 
 .. code-block:: Python
 
@@ -97,7 +97,7 @@ normalized in ``[-1, 1]``: this is also what the
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 54-61
+.. GENERATED FROM PYTHON SOURCE LINES 55-62
 
 :class:`~torchcodec.encoders.AudioEncoder` supports encoding samples into a
 file via the :meth:`~torchcodec.encoders.AudioEncoder.to_file` method, or to
@@ -107,7 +107,7 @@ purpose of this tutorial we'll use
 re-decode the encoded samples and check their properies. The
 :meth:`~torchcodec.encoders.AudioEncoder.to_file` method works very similarly.
 
-.. GENERATED FROM PYTHON SOURCE LINES 61-66
+.. GENERATED FROM PYTHON SOURCE LINES 62-67
 
 .. code-block:: Python
 
@@ -129,14 +129,14 @@ re-decode the encoded samples and check their properies. The
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 67-71
+.. GENERATED FROM PYTHON SOURCE LINES 68-72
 
 That's it!
 
 Now that we have our encoded data, we can decode it back, to make sure it
 looks and sounds as expected:
 
-.. GENERATED FROM PYTHON SOURCE LINES 71-78
+.. GENERATED FROM PYTHON SOURCE LINES 72-79
 
 .. code-block:: Python
 
@@ -176,13 +176,13 @@ looks and sounds as expected:
     <br />
     <br />
 
-.. GENERATED FROM PYTHON SOURCE LINES 79-82
+.. GENERATED FROM PYTHON SOURCE LINES 80-83
 
 The encoder supports some encoding options that allow you to change how to
 data is encoded. For example, we can decide to encode our mono data (1
 channel) into stereo data (2 channels), and to specify an output sample rate:
 
-.. GENERATED FROM PYTHON SOURCE LINES 82-91
+.. GENERATED FROM PYTHON SOURCE LINES 83-92
 
 .. code-block:: Python
 
@@ -224,7 +224,7 @@ channel) into stereo data (2 channels), and to specify an output sample rate:
     <br />
     <br />
 
-.. GENERATED FROM PYTHON SOURCE LINES 92-94
+.. GENERATED FROM PYTHON SOURCE LINES 93-95
 
 Check the docstring of the encoding methods to learn about the different
 encoding options.

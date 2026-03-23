@@ -83,7 +83,7 @@ You can ignore this part and skip below to :ref:`frame_mappings_creation`.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 63-75
+.. GENERATED FROM PYTHON SOURCE LINES 64-76
 
 .. _frame_mappings_creation:
 
@@ -98,7 +98,7 @@ The following frame metadata fields are needed
 - ``duration`` / ``pkt_duration``: Duration of each frame
 - ``key_frame``: Boolean indicating which frames are key frames
 
-.. GENERATED FROM PYTHON SOURCE LINES 75-112
+.. GENERATED FROM PYTHON SOURCE LINES 76-113
 
 .. code-block:: Python
 
@@ -148,10 +148,10 @@ The following frame metadata fields are needed
  .. code-block:: none
 
     Running ffprobe:
-    ffprobe -i /tmp/tmpig7q_9er/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+    ffprobe -i /tmp/tmpqoxcxfcf/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
     Running ffprobe:
-    ffprobe -i /tmp/tmpig7q_9er/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+    ffprobe -i /tmp/tmpqoxcxfcf/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
     Sample of fields in custom frame mappings:
     frame['key_frame'] = 1, frame['pts'] = 0, frame['duration'] = 1
@@ -161,7 +161,7 @@ The following frame metadata fields are needed
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 113-121
+.. GENERATED FROM PYTHON SOURCE LINES 114-122
 
 .. _custom_frame_mappings_perf_creation:
 
@@ -172,7 +172,7 @@ Custom frame mappings affect the **creation** of a :class:`~torchcodec.decoders.
 object. As video length or resolution increases, the performance gain compared to exact mode increases.
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 121-158
+.. GENERATED FROM PYTHON SOURCE LINES 122-159
 
 .. code-block:: Python
 
@@ -226,18 +226,18 @@ object. As video length or resolution increases, the performance gain compared t
     Creating a VideoDecoder object with custom_frame_mappings:
     med = 6.14ms +- 0.02
     Creating a VideoDecoder object with seek_mode='exact':
-    med = 6.34ms +- 0.03
+    med = 6.37ms +- 0.03
 
     Running benchmarks on long_video.mp4
     Creating a VideoDecoder object with custom_frame_mappings:
-    med = 27.27ms +- 0.08
+    med = 26.86ms +- 0.11
     Creating a VideoDecoder object with seek_mode='exact':
-    med = 40.57ms +- 0.56
+    med = 40.61ms +- 0.35
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 159-166
+.. GENERATED FROM PYTHON SOURCE LINES 160-167
 
 Performance: Frame decoding with custom frame mappings
 ------------------------------------------------------
@@ -247,7 +247,7 @@ Although using ``custom_frame_mappings`` only impacts the initialization speed o
 involve creating a :class:`~torchcodec.decoders.VideoDecoder` instance,
 so the performance benefits are realized.
 
-.. GENERATED FROM PYTHON SOURCE LINES 166-186
+.. GENERATED FROM PYTHON SOURCE LINES 167-187
 
 .. code-block:: Python
 
@@ -282,20 +282,20 @@ so the performance benefits are realized.
 
     Running benchmarks on short_video.mp4
     Decoding frames with custom_frame_mappings:
-    med = 18.22ms +- 0.05
+    med = 18.47ms +- 0.04
     Decoding frames with seek_mode='exact':
-    med = 18.47ms +- 0.05
+    med = 18.68ms +- 0.04
 
     Running benchmarks on long_video.mp4
     Decoding frames with custom_frame_mappings:
-    med = 39.69ms +- 0.07
+    med = 39.24ms +- 0.12
     Decoding frames with seek_mode='exact':
-    med = 53.57ms +- 0.24
+    med = 53.72ms +- 0.22
 
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 187-193
+.. GENERATED FROM PYTHON SOURCE LINES 188-194
 
 Accuracy: Metadata and frame retrieval
 --------------------------------------
@@ -304,7 +304,7 @@ In addition to the instantiation speed up compared to ``seek_mode="exact"``, usi
 also retains the benefit of exact metadata and frame seeking.
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 193-211
+.. GENERATED FROM PYTHON SOURCE LINES 194-212
 
 .. code-block:: Python
 
@@ -391,7 +391,7 @@ also retains the benefit of exact metadata and frame seeking.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 212-231
+.. GENERATED FROM PYTHON SOURCE LINES 213-232
 
 How do custom_frame_mappings help?
 ----------------------------------
@@ -416,7 +416,7 @@ Which mode should I use?
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 23.508 seconds)
+   **Total running time of the script:** (0 minutes 23.703 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_custom_frame_mappings.py:
