@@ -41,6 +41,7 @@ from .utils import (
     H265_10BITS,
     H265_VIDEO,
     in_fbcode,
+    IS_WINDOWS,
     make_video_decoder,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
@@ -1605,9 +1606,27 @@ class TestVideoDecoder:
         "asset",
         (
             H264_10BITS,
-            H265_10BITS,
-            NASA_VIDEO_HDR,
-            TEST_SRC_2_720P_HDR,
+            pytest.param(
+                H265_10BITS,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                NASA_VIDEO_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                TEST_SRC_2_720P_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                ),
+            ),
         ),
     )
     def test_output_dtype_uint8_vs_uint16_on_10bit(self, asset):
@@ -1692,7 +1711,23 @@ class TestVideoDecoder:
 
     @pytest.mark.parametrize(
         "asset",
-        (H264_10BITS, H265_10BITS, NASA_VIDEO_HDR),
+        (
+            H264_10BITS,
+            pytest.param(
+                H265_10BITS,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                NASA_VIDEO_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                ),
+            ),
+        ),
     )
     @pytest.mark.parametrize(
         "transforms",
