@@ -168,10 +168,11 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
     header_.subFormat = readValue<uint16_t>(fmtData, 24);
   }
 
-  // TODO WavDecoder: Find data chunk
+  ChunkInfo dataChunk = findChunk("data", RIFF_HEADER_SIZE, fileSize);
+  header_.dataSize = dataChunk.size;
 }
 
-void WavDecoder::validateHeader() const {
+void WavDecoder::validateHeader() {
   uint16_t effectiveFormat = (header_.audioFormat == WAV_FORMAT_EXTENSIBLE)
       ? header_.subFormat
       : header_.audioFormat;
@@ -191,6 +192,15 @@ void WavDecoder::validateHeader() const {
 
   STD_TORCH_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
   STD_TORCH_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
+
+  if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 32) {
+    sampleFormat_ = "s32";
+    codecName_ = "pcm_s32le";
+  } else {
+    STD_TORCH_CHECK(
+        false,
+        "Unsupported format after validation. That's unexpected, please report this to the TorchCodec repo.");
+  }
 }
 
 // Given a chunkId, read through each chunk until we find a match, then return
@@ -225,4 +235,23 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
   STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
 }
 
+StreamMetadata WavDecoder::getStreamMetadata() const {
+  StreamMetadata metadata;
+  metadata.streamIndex = 0; // WAV files have single audio stream
+  metadata.sampleRate = static_cast<int64_t>(header_.sampleRate);
+  metadata.numChannels = static_cast<int64_t>(header_.numChannels);
+  metadata.sampleFormat = sampleFormat_;
+  metadata.codecName = codecName_;
+
+  // Calculate duration from data size
+  double bitRate = static_cast<double>(header_.sampleRate) *
+      static_cast<double>(header_.numChannels) *
+      static_cast<double>(header_.bitsPerSample);
+  metadata.bitRate = bitRate;
+  metadata.durationSecondsFromHeader =
+      static_cast<double>(header_.dataSize) * 8 / bitRate;
+  metadata.beginStreamPtsSecondsFromContent = 0.0;
+
+  return metadata;
+}
 } // namespace facebook::torchcodec
