@@ -43,7 +43,6 @@ from .ops import (
     get_frames_by_pts_in_range_audio,
     get_frames_in_range,
     get_json_metadata,
-    get_next_frame,
     get_nvdec_cache_capacity,
     get_wav_all_samples,
     get_wav_metadata_from_decoder,

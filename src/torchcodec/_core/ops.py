@@ -110,7 +110,6 @@ def add_video_stream(
 
 add_audio_stream = torch.ops.torchcodec_ns.add_audio_stream.default
 seek_to_pts = torch.ops.torchcodec_ns.seek_to_pts.default
-get_next_frame = torch.ops.torchcodec_ns.get_next_frame.default
 get_frame_at_pts = torch.ops.torchcodec_ns.get_frame_at_pts.default
 get_frame_at_index = torch.ops.torchcodec_ns.get_frame_at_index.default
 _get_frames_at_indices_tensor_input = (
@@ -425,20 +424,6 @@ def add_audio_stream_abstract(
 @register_fake("torchcodec_ns::seek_to_pts")
 def seek_abstract(decoder: torch.Tensor, seconds: float) -> None:
     return
-
-
-@register_fake("torchcodec_ns::get_next_frame")
-def get_next_frame_abstract(
-    decoder: torch.Tensor,
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    # Images are 3 dimensions: height, width, channels.
-    # The exact permutation depends on the constructor options passed in.
-    image_size = [get_ctx().new_dynamic_size() for _ in range(3)]
-    return (
-        torch.empty(image_size),
-        torch.empty([], dtype=torch.float),
-        torch.empty([], dtype=torch.float),
-    )
 
 
 @register_fake("torchcodec_ns::get_frame_at_pts")

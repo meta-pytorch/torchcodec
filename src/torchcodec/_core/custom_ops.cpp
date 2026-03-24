@@ -57,7 +57,6 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
   m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
-  m.def("get_next_frame(Tensor(a!) decoder) -> (Tensor, Tensor, Tensor)");
   m.def(
       "get_frame_at_pts(Tensor(a!) decoder, float seconds) -> (Tensor, Tensor, Tensor)");
   m.def(
@@ -577,19 +576,6 @@ void seek_to_pts(torch::stable::Tensor& decoder, double seconds) {
   auto videoDecoder =
       static_cast<SingleStreamDecoder*>(decoder.mutable_data_ptr());
   videoDecoder->setCursorPtsInSeconds(seconds);
-}
-
-// Get the next frame from the video as a tuple that has the frame data, pts and
-// duration as tensors.
-OpsFrameOutput get_next_frame(torch::stable::Tensor& decoder) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  FrameOutput result;
-  try {
-    result = videoDecoder->getNextFrame();
-  } catch (const SingleStreamDecoder::EndOfFileException& e) {
-    STABLE_CHECK_INDEX(false, e.what());
-  }
-  return makeOpsFrameOutput(result);
 }
 
 // Return the frame that is visible at a given timestamp in seconds. Each frame
@@ -1226,7 +1212,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("add_video_stream", TORCH_BOX(&add_video_stream));
   m.impl("_add_video_stream", TORCH_BOX(&_add_video_stream));
   m.impl("add_audio_stream", TORCH_BOX(&add_audio_stream));
-  m.impl("get_next_frame", TORCH_BOX(&get_next_frame));
   m.impl("_get_key_frame_indices", TORCH_BOX(&_get_key_frame_indices));
   m.impl("get_json_metadata", TORCH_BOX(&get_json_metadata));
   m.impl(

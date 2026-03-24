@@ -1,4 +1,5 @@
 import argparse
+import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -42,11 +43,14 @@ def decode_full_video(video_path, decode_device_string, resize_device_string):
         transform_specs=resize_spec,
     )
 
+    metadata = json.loads(torchcodec._core.get_json_metadata(decoder))
+    num_frames = metadata.get("numFrames", metadata.get("numFramesFromHeader", 0))
+
     start_time = time.time()
     frame_count = 0
-    while True:
+    for i in range(num_frames):
         try:
-            frame, *_ = torchcodec._core.get_next_frame(decoder)
+            frame, *_ = torchcodec._core.get_frame_at_index(decoder, frame_index=i)
             if resize_device_string != "none" and "native" not in resize_device_string:
                 frame = transfer_and_resize_frame(frame, resize_device_string)
 

@@ -13,15 +13,13 @@ from typing import Any
 
 import torch
 from torch import nn, Tensor
-
 from torchcodec._core import (
     add_video_stream,
     create_from_tensor,
+    get_frame_at_pts,
     get_frames_at_indices,
     get_json_metadata,
-    get_next_frame,
     scan_all_streams_to_update_metadata,
-    seek_to_pts,
 )
 
 
@@ -318,14 +316,27 @@ class DEPRECATED_VideoClipSampler(nn.Module):
         Returns:
             `clip` (`list[Tensor]`): clip is list of frame tensor. Dimension of each frame tensor is user specified, by default it's HWC.
         """
-        seek_to_pts(video_decoder, start_second)
+        # Get the first frame at the given PTS to find the starting position
+        first_frame, _, _ = get_frame_at_pts(video_decoder, start_second)
+
+        # Estimate the starting frame index from PTS using metadata
+        metadata_json = json.loads(get_json_metadata(video_decoder))
+        fps = metadata_json.get("averageFpsFromHeader", 30)
+        start_index = int(start_second * fps)
+
         frames_needed_per_clip = (
             self.sampler_args.frames_per_clip - 1
         ) * video_frame_dilation + 1
-        clip = []
-        for _ in range(frames_needed_per_clip):
-            frame, _, _ = get_next_frame(video_decoder)
-            clip.append(frame)
+
+        # Build indices for all frames we need
+        indices = [start_index + i for i in range(frames_needed_per_clip)]
+        frames, *_ = get_frames_at_indices(
+            video_decoder,
+            frame_indices=indices,
+        )
+
+        # Convert to list of individual frame tensors
+        clip = [frames[i] for i in range(frames.shape[0])]
 
         # slice the list of tensor with frame_dilation and stack to tensor
         clip = clip[::video_frame_dilation]
