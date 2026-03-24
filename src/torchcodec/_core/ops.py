@@ -143,6 +143,9 @@ create_wav_decoder_from_file = (
     torch.ops.torchcodec_ns.create_wav_decoder_from_file.default
 )
 get_wav_all_samples = torch.ops.torchcodec_ns.get_wav_all_samples.default
+get_wav_metadata_from_decoder = (
+    torch.ops.torchcodec_ns.get_wav_metadata_from_decoder.default
+)
 
 
 # =============================
@@ -594,3 +597,8 @@ def get_nvdec_cache_capacity_abstract() -> int:
 @register_fake("torchcodec_ns::_get_nvdec_cache_size")
 def _get_nvdec_cache_size_abstract(device_index: int) -> int:
     return 0
+
+
+@register_fake("torchcodec_ns::get_wav_metadata_from_decoder")
+def get_wav_metadata_from_decoder_abstract(decoder: torch.Tensor) -> str:
+    return ""
