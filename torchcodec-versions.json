@@ -6,10 +6,15 @@
         "preferred": true
     },
     {
-        "name": "0.10 (stable)",
-        "version": "0.10",
+        "name": "0.11 (stable)",
+        "version": "0.11",
         "url": "https://meta-pytorch.org/torchcodec/stable/",
         "preferred": true
+    },
+    {
+        "name": "0.10",
+        "version": "0.10",
+        "url": "https://meta-pytorch.org/torchcodec/0.10/"
     },
     {
         "name": "0.9",
