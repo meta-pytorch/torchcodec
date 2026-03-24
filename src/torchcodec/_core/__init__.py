@@ -38,5 +38,6 @@ from .ops import (
     get_next_frame,
     get_nvdec_cache_capacity,
     get_wav_all_samples,
+    get_wav_metadata_from_decoder,
     set_nvdec_cache_capacity,
 )
