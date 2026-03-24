@@ -13,7 +13,9 @@ import json
 
 import numpy as np
 import pytest
+
 import torch
+
 from torchcodec._core import (
     _test_frame_pts_equality,
     encode_audio_to_file,
