@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>FrameBatch &#8212; TorchCodec 0.11.0.dev20260323+cu126 Documentation</title>
+    <title>FrameBatch &#8212; TorchCodec 0.11.0.dev20260324+cu126 Documentation</title>
   
   
   
@@ -1447,7 +1447,7 @@ document.write(`
 <h1>FrameBatch<a class="headerlink" href="#framebatch" title="Link to this heading">#</a></h1>
 <dl class="py class">
 <dt class="sig sig-object py" id="torchcodec.FrameBatch">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.</span></span><span class="sig-name descname"><span class="pre">FrameBatch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">pts_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">duration_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/_frame.html#FrameBatch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.FrameBatch" title="Link to this definition">#</a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.</span></span><span class="sig-name descname"><span class="pre">FrameBatch</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.11)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">pts_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.11)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">duration_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.11)"><span class="pre">Tensor</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/_frame.html#FrameBatch"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.FrameBatch" title="Link to this definition">#</a></dt>
 <dd><p>Multiple video frames with associated metadata.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">data</span></code> tensor is typically 4D for sequences of frames (NHWC or NCHW),
 or 5D for sequences of clips, as returned by the <a class="reference internal" href="../generated_examples/decoding/sampling.html#sphx-glr-generated-examples-decoding-sampling-py"><span class="std std-ref">samplers</span></a>. When <code class="docutils literal notranslate"><span class="pre">data</span></code> is 4D (resp.  5D)
@@ -1469,19 +1469,19 @@ on CPU, even if <code class="docutils literal notranslate"><span class="pre">dat
   <div class="sphx-glr-thumbnail-title">How to sample video clips</div>
 </div></div><dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.FrameBatch.data">
-<span class="sig-name descname"><span class="pre">data</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.FrameBatch.data" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">data</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.11)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.FrameBatch.data" title="Link to this definition">#</a></dt>
 <dd><p>The frames data (<code class="docutils literal notranslate"><span class="pre">torch.Tensor</span></code> of uint8).</p>
 </dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.FrameBatch.duration_seconds">
-<span class="sig-name descname"><span class="pre">duration_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.FrameBatch.duration_seconds" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">duration_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.11)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.FrameBatch.duration_seconds" title="Link to this definition">#</a></dt>
 <dd><p>The duration of the frame, in seconds (<code class="docutils literal notranslate"><span class="pre">torch.Tensor</span></code> of floats).</p>
 </dd></dl>
 
 <dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.FrameBatch.pts_seconds">
-<span class="sig-name descname"><span class="pre">pts_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.10)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.FrameBatch.pts_seconds" title="Link to this definition">#</a></dt>
+<span class="sig-name descname"><span class="pre">pts_seconds</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.11)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.FrameBatch.pts_seconds" title="Link to this definition">#</a></dt>
 <dd><p>The <a class="reference internal" href="../glossary.html#term-pts"><span class="xref std std-term">pts</span></a> of the frame, in seconds (<code class="docutils literal notranslate"><span class="pre">torch.Tensor</span></code> of floats).</p>
 </dd></dl>
 

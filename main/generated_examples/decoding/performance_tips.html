@@ -9,7 +9,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta content="Learn how to optimize TorchCodec video decoding performance with batch APIs, approximate seeking, multi-threading, and CUDA acceleration." name="description" />
 
-    <title>TorchCodec Performance Tips and Best Practices &#8212; TorchCodec 0.11.0.dev20260323+cu126 Documentation</title>
+    <title>TorchCodec Performance Tips and Best Practices &#8212; TorchCodec 0.11.0.dev20260324+cu126 Documentation</title>
   
   
   
@@ -1582,7 +1582,7 @@ This can lead to significant memory savings, especially when decoding
 high-resolution videos that will be resized to smaller dimensions.</p>
 <p><a class="reference internal" href="../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> accepts both TorchCodec
 <a class="reference internal" href="../../generated/torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform" title="torchcodec.transforms.DecoderTransform"><code class="xref py py-class docutils literal notranslate"><span class="pre">DecoderTransform</span></code></a> objects and TorchVision
-<a class="reference external" href="https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.v2.Transform.html#torchvision.transforms.v2.Transform" title="(in Torchvision v0.25)"><code class="xref py py-class docutils literal notranslate"><span class="pre">Transform</span></code></a> objects as transform
+<a class="reference external" href="https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.v2.Transform.html#torchvision.transforms.v2.Transform" title="(in Torchvision vmain (0.26.0+4ab3324))"><code class="xref py py-class docutils literal notranslate"><span class="pre">Transform</span></code></a> objects as transform
 specifications. TorchVision is <strong>not required</strong> to use decoder transforms.</p>
 <p><strong>Example:</strong></p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec.decoders</span><span class="w"> </span><span class="kn">import</span> <span class="n">VideoDecoder</span>
