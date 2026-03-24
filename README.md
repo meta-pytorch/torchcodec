@@ -106,7 +106,7 @@ ffmpeg -f lavfi -i \
    versions, refer to the table below for compatibility between versions of
    `torch` and `torchcodec`.
 
-2. Install FFmpeg, if it's not already installed. TorchCodec supports supports
+2. Install FFmpeg, if it's not already installed. TorchCodec supports
    all major FFmpeg versions in [4, 8].
    Linux distributions usually come with FFmpeg pre-installed. You'll need
    FFmpeg that comes with separate shared libraries. This is especially relevant
@@ -124,7 +124,7 @@ ffmpeg -f lavfi -i \
 3. Install TorchCodec:
 
    ```bash
-   pip install torchcodec
+   pip install torchcodec --index-url=https://download.pytorch.org/whl/cpu
    ```
 
 The following table indicates the compatibility between versions of
@@ -185,20 +185,21 @@ format you want. Refer to Nvidia's GPU support matrix for more details
    need the `libnpp` and `libnvrtc` CUDA libraries, which are usually part of
    the CUDA Toolkit.
 
-
 3. Install TorchCodec
 
-   Pass in an `--index-url` parameter that corresponds to your CUDA Toolkit
-   version, for example:
+   On Linux, `pip install torchcodec` defaults to a CUDA wheel,
+   matching the default behavior of `pip install torch`.
 
    ```bash
-   # This corresponds to CUDA Toolkit version 12.6. It should be the same one
-   # you used when you installed PyTorch (If you installed PyTorch with pip).
-   pip install torchcodec --index-url=https://download.pytorch.org/whl/cu126
+   pip install torchcodec
    ```
+   Use `--index-url` to select a different CUDA Toolkit version:
 
-   Note that without passing in the `--index-url` parameter, `pip` installs
-   the CPU-only version of TorchCodec.
+   ```bash
+   # This corresponds to CUDA Toolkit version 13.0. It should be the same one
+   # you used when you installed PyTorch (If you installed PyTorch with pip).
+   pip install torchcodec --index-url=https://download.pytorch.org/whl/cu130
+   ```
 
 #### Windows
 
