@@ -580,17 +580,31 @@ void SingleStreamDecoder::addVideoStream(
   // Set preRotationDims_ for the active stream. These are the raw encoded
   // dimensions from FFmpeg, used as a fallback for tensor pre-allocation when
   // no resize/rotation transforms are applied.
-  int bitDepth = 8;
+  int sourceBitDepth = 8;
   {
     const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(
         static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
     if (desc && desc->nb_components > 0) {
-      bitDepth = desc->comp[0].depth;
+      sourceBitDepth = desc->comp[0].depth;
     }
   }
-  // Apply user override if set: force output to 8-bit or >8-bit path.
-  if (videoStreamOptions.outputBitDepth > 0) {
-    bitDepth = (videoStreamOptions.outputBitDepth > 8) ? 10 : 8;
+  // Determine bitDepth based on outputDtype setting.
+  // bitDepth controls the FFmpeg pixel format (RGB24 vs RGB48) and output
+  // tensor dtype (uint8 vs uint16). Float32 conversion is done in Python.
+  int bitDepth = sourceBitDepth;
+  switch (videoStreamOptions.outputDtype) {
+    case OutputDtype::UINT8:
+      bitDepth = 8;
+      break;
+    case OutputDtype::FLOAT32:
+      // Keep source bitDepth for best precision; Python converts to float32.
+      break;
+    case OutputDtype::AUTO:
+      if (sourceBitDepth <= 8) {
+        bitDepth = 8;
+      }
+      // else: keep source bitDepth, Python converts to float32.
+      break;
   }
   preRotationDims_ = FrameDims(
       streamInfo.stream->codecpar->height,

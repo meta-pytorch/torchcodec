@@ -117,8 +117,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   // Bit depth of the source video. 8 for standard, 10+ for HDR.
   int bitDepth_ = 8;
-  // User-requested output bit depth override. 0 = auto (use bitDepth_).
-  int outputBitDepthOverride_ = 0;
+  // User-requested output dtype.
+  OutputDtype outputDtype_ = OutputDtype::UINT8;
 };
 
 } // namespace facebook::torchcodec

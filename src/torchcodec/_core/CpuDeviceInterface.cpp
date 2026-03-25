@@ -216,10 +216,27 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   // can still work in such situations, so they should.
   auto inputDims = FrameDims(avFrame->height, avFrame->width);
   auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
-  int bitDepth = getBitDepthFromAVPixelFormat(avFrameFormat);
-  // Apply user override if set.
-  if (videoStreamOptions_.outputBitDepth > 0) {
-    bitDepth = (videoStreamOptions_.outputBitDepth > 8) ? 10 : 8;
+  int sourceBitDepth = getBitDepthFromAVPixelFormat(avFrameFormat);
+
+  // Determine output bit depth based on outputDtype setting.
+  // UINT8: always force 8-bit (RGB24).
+  // FLOAT32 / AUTO with HDR: preserve source bit depth (RGB48 for >8-bit).
+  //   The actual float32 conversion is done in Python.
+  // AUTO with SDR: force 8-bit.
+  int bitDepth = sourceBitDepth;
+  switch (videoStreamOptions_.outputDtype) {
+    case OutputDtype::UINT8:
+      bitDepth = 8;
+      break;
+    case OutputDtype::FLOAT32:
+      // Keep source bitDepth for best precision; Python converts to float32.
+      break;
+    case OutputDtype::AUTO:
+      if (sourceBitDepth <= 8) {
+        bitDepth = 8;
+      }
+      // else: keep source bitDepth, Python converts to float32.
+      break;
   }
   AVPixelFormat outputPixelFormat = getOutputPixelFormat(bitDepth);
 

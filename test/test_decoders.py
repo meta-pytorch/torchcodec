@@ -1610,103 +1610,110 @@ class TestVideoDecoder:
                 H265_10BITS,
                 marks=pytest.mark.skipif(
                     IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                    reason="uint8 vs float32 HDR color conversion differs on Windows + FFmpeg 4",
                 ),
             ),
             pytest.param(
                 NASA_VIDEO_HDR,
                 marks=pytest.mark.skipif(
                     IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                    reason="uint8 vs float32 HDR color conversion differs on Windows + FFmpeg 4",
                 ),
             ),
             pytest.param(
                 TEST_SRC_2_720P_HDR,
                 marks=pytest.mark.skipif(
                     IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                    reason="uint8 vs float32 HDR color conversion differs on Windows + FFmpeg 4",
                 ),
             ),
         ),
     )
-    def test_output_dtype_uint8_vs_uint16_on_10bit(self, asset):
+    def test_output_dtype_uint8_vs_float32_on_10bit(self, asset):
         # For 10-bit sources, the two paths go through different swscale
-        # conversions (YUV10->RGB24 vs YUV10->RGB48), so there are small
-        # rounding differences. We compare uint16 >> 8 against uint8 with a
-        # tolerance that accounts for these color conversion differences.
+        # conversions (YUV10->RGB24 vs YUV10->RGB48->float32), so there are
+        # small rounding differences. We compare float32 * 255 against uint8
+        # with a tolerance that accounts for these color conversion differences.
         decoder_u8 = VideoDecoder(asset.path, output_dtype=torch.uint8)
-        decoder_u16 = VideoDecoder(asset.path, output_dtype=torch.uint16)
+        decoder_f32 = VideoDecoder(asset.path, output_dtype=torch.float32)
         num_frames = len(decoder_u8)
 
-        def assert_u8_close_to_u16(u8, u16):
+        def assert_u8_close_to_f32(u8, f32):
             assert u8.dtype == torch.uint8
-            assert u16.dtype == torch.uint16
-            u16_as_u8 = (u16.to(torch.int32) >> 8).to(torch.uint8)
-            torch.testing.assert_close(u16_as_u8, u8, rtol=0, atol=7)
+            assert f32.dtype == torch.float32
+            assert f32.min() >= 0.0
+            assert f32.max() <= 1.0
+            # Convert float32 (which went through RGB48) back to approximate
+            # uint8 range for comparison. The float32 values are normalized
+            # from 16-bit, so we scale by 65535 then shift down to 8-bit.
+            f32_as_u8 = (f32 * 65535).to(torch.int32).clamp(0, 65535)
+            f32_as_u8 = (f32_as_u8 >> 8).to(torch.uint8)
+            torch.testing.assert_close(f32_as_u8, u8, rtol=0, atol=7)
 
         # __getitem__
         for idx in [0, min(10, num_frames - 1)]:
-            assert_u8_close_to_u16(decoder_u8[idx].data, decoder_u16[idx].data)
+            assert_u8_close_to_f32(decoder_u8[idx].data, decoder_f32[idx].data)
 
         # get_frame_at
-        assert_u8_close_to_u16(
+        assert_u8_close_to_f32(
             decoder_u8.get_frame_at(0).data,
-            decoder_u16.get_frame_at(0).data,
+            decoder_f32.get_frame_at(0).data,
         )
 
         # get_frame_played_at
         pts = decoder_u8.metadata.begin_stream_seconds
-        assert_u8_close_to_u16(
+        assert_u8_close_to_f32(
             decoder_u8.get_frame_played_at(pts).data,
-            decoder_u16.get_frame_played_at(pts).data,
+            decoder_f32.get_frame_played_at(pts).data,
         )
 
         # get_frames_at
         indices = [0, min(5, num_frames - 1)]
-        assert_u8_close_to_u16(
+        assert_u8_close_to_f32(
             decoder_u8.get_frames_at(indices).data,
-            decoder_u16.get_frames_at(indices).data,
+            decoder_f32.get_frames_at(indices).data,
         )
 
         # get_frames_in_range
         stop = min(3, num_frames)
-        assert_u8_close_to_u16(
+        assert_u8_close_to_f32(
             decoder_u8.get_frames_in_range(start=0, stop=stop).data,
-            decoder_u16.get_frames_in_range(start=0, stop=stop).data,
+            decoder_f32.get_frames_in_range(start=0, stop=stop).data,
         )
 
-    def test_output_dtype_uint8_vs_uint16_on_8bit(self):
-        # For 8-bit sources, the two paths go through different swscale
-        # conversions (YUV8->RGB24 vs YUV8->RGB48). We compare
-        # uint16 >> 8 against uint8 with tolerance for rounding diffs.
+    def test_output_dtype_uint8_vs_float32_on_8bit(self):
+        # For 8-bit sources, float32 goes through RGB24->float32/255.
+        # We compare float32 * 255 against uint8.
         decoder_u8 = VideoDecoder(NASA_VIDEO.path, output_dtype=torch.uint8)
-        decoder_u16 = VideoDecoder(NASA_VIDEO.path, output_dtype=torch.uint16)
+        decoder_f32 = VideoDecoder(NASA_VIDEO.path, output_dtype=torch.float32)
 
-        def assert_u8_close_to_u16(u8, u16):
+        def assert_u8_close_to_f32(u8, f32):
             assert u8.dtype == torch.uint8
-            assert u16.dtype == torch.uint16
-            u16_as_u8 = (u16.to(torch.int32) >> 8).to(torch.uint8)
-            torch.testing.assert_close(u16_as_u8, u8, rtol=0, atol=7)
+            assert f32.dtype == torch.float32
+            assert f32.min() >= 0.0
+            assert f32.max() <= 1.0
+            f32_as_u8 = (f32 * 255).round().to(torch.uint8)
+            torch.testing.assert_close(f32_as_u8, u8, rtol=0, atol=1)
 
         # __getitem__
-        assert_u8_close_to_u16(decoder_u8[0].data, decoder_u16[0].data)
+        assert_u8_close_to_f32(decoder_u8[0].data, decoder_f32[0].data)
 
         # get_frame_at
-        assert_u8_close_to_u16(
+        assert_u8_close_to_f32(
             decoder_u8.get_frame_at(0).data,
-            decoder_u16.get_frame_at(0).data,
+            decoder_f32.get_frame_at(0).data,
         )
 
         # get_frames_at
-        assert_u8_close_to_u16(
+        assert_u8_close_to_f32(
             decoder_u8.get_frames_at([0, 5, 10]).data,
-            decoder_u16.get_frames_at([0, 5, 10]).data,
+            decoder_f32.get_frames_at([0, 5, 10]).data,
         )
 
         # get_frames_in_range
-        assert_u8_close_to_u16(
+        assert_u8_close_to_f32(
             decoder_u8.get_frames_in_range(start=0, stop=3).data,
-            decoder_u16.get_frames_in_range(start=0, stop=3).data,
+            decoder_f32.get_frames_in_range(start=0, stop=3).data,
         )
 
     @pytest.mark.parametrize(
@@ -1717,14 +1724,14 @@ class TestVideoDecoder:
                 H265_10BITS,
                 marks=pytest.mark.skipif(
                     IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                    reason="uint8 vs float32 HDR color conversion differs on Windows + FFmpeg 4",
                 ),
             ),
             pytest.param(
                 NASA_VIDEO_HDR,
                 marks=pytest.mark.skipif(
                     IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                    reason="uint8 vs float32 HDR color conversion differs on Windows + FFmpeg 4",
                 ),
             ),
         ),
@@ -1737,85 +1744,92 @@ class TestVideoDecoder:
             [Resize((100, 120)), CenterCrop((80, 80))],
         ),
     )
-    def test_output_dtype_uint8_vs_uint16_with_transforms(self, asset, transforms):
+    def test_output_dtype_uint8_vs_float32_with_transforms(self, asset, transforms):
         # Verify that native decoder transforms produce consistent results
-        # across uint8 and uint16 output paths.
+        # across uint8 and float32 output paths.
         decoder_u8 = VideoDecoder(
             asset.path, output_dtype=torch.uint8, transforms=transforms
         )
-        decoder_u16 = VideoDecoder(
-            asset.path, output_dtype=torch.uint16, transforms=transforms
+        decoder_f32 = VideoDecoder(
+            asset.path, output_dtype=torch.float32, transforms=transforms
         )
 
         u8 = decoder_u8[0].data
-        u16 = decoder_u16[0].data
+        f32 = decoder_f32[0].data
         assert u8.dtype == torch.uint8
-        assert u16.dtype == torch.uint16
-        assert u8.shape == u16.shape
+        assert f32.dtype == torch.float32
+        assert u8.shape == f32.shape
 
-        u16_as_u8 = (u16.to(torch.int32) >> 8).to(torch.uint8)
-        torch.testing.assert_close(u16_as_u8, u8, rtol=0, atol=7)
+        # float32 from 10-bit source goes through RGB48, so convert back
+        f32_as_u8 = (f32 * 65535).to(torch.int32).clamp(0, 65535)
+        f32_as_u8 = (f32_as_u8 >> 8).to(torch.uint8)
+        torch.testing.assert_close(f32_as_u8, u8, rtol=0, atol=7)
 
         # Batch API
         batch_u8 = decoder_u8.get_frames_in_range(
             start=0, stop=min(3, len(decoder_u8))
         ).data
-        batch_u16 = decoder_u16.get_frames_in_range(
-            start=0, stop=min(3, len(decoder_u16))
+        batch_f32 = decoder_f32.get_frames_in_range(
+            start=0, stop=min(3, len(decoder_f32))
         ).data
-        assert batch_u8.shape == batch_u16.shape
+        assert batch_u8.shape == batch_f32.shape
+        batch_f32_as_u8 = (batch_f32 * 65535).to(torch.int32).clamp(0, 65535)
+        batch_f32_as_u8 = (batch_f32_as_u8 >> 8).to(torch.uint8)
         torch.testing.assert_close(
-            (batch_u16.to(torch.int32) >> 8).to(torch.uint8),
+            batch_f32_as_u8,
             batch_u8,
             rtol=0,
             atol=7,
         )
 
-    def test_output_dtype_uint8_vs_uint16_with_rotation(self):
-        # Verify that rotation is applied consistently across uint8/uint16.
+    def test_output_dtype_uint8_vs_float32_with_rotation(self):
+        # Verify that rotation is applied consistently across uint8/float32.
+        # NASA_VIDEO_ROTATED is an 8-bit source, so float32 goes through
+        # RGB24->float32/255.
         decoder_u8 = VideoDecoder(NASA_VIDEO_ROTATED.path, output_dtype=torch.uint8)
-        decoder_u16 = VideoDecoder(NASA_VIDEO_ROTATED.path, output_dtype=torch.uint16)
+        decoder_f32 = VideoDecoder(NASA_VIDEO_ROTATED.path, output_dtype=torch.float32)
 
         u8 = decoder_u8[0].data
-        u16 = decoder_u16[0].data
+        f32 = decoder_f32[0].data
         assert u8.dtype == torch.uint8
-        assert u16.dtype == torch.uint16
-        assert u8.shape == u16.shape
+        assert f32.dtype == torch.float32
+        assert u8.shape == f32.shape
 
-        u16_as_u8 = (u16.to(torch.int32) >> 8).to(torch.uint8)
-        torch.testing.assert_close(u16_as_u8, u8, rtol=0, atol=7)
+        f32_as_u8 = (f32 * 255).round().to(torch.uint8)
+        torch.testing.assert_close(f32_as_u8, u8, rtol=0, atol=1)
 
-    def test_output_dtype_uint8_vs_uint16_with_rotation_and_transforms(self):
-        # Verify rotation + transforms work consistently across uint8/uint16.
+    def test_output_dtype_uint8_vs_float32_with_rotation_and_transforms(self):
+        # Verify rotation + transforms work consistently across uint8/float32.
         transforms = [Resize((100, 120)), CenterCrop((80, 80))]
         decoder_u8 = VideoDecoder(
             NASA_VIDEO_ROTATED.path,
             output_dtype=torch.uint8,
             transforms=transforms,
         )
-        decoder_u16 = VideoDecoder(
+        decoder_f32 = VideoDecoder(
             NASA_VIDEO_ROTATED.path,
-            output_dtype=torch.uint16,
+            output_dtype=torch.float32,
             transforms=transforms,
         )
 
         u8 = decoder_u8[0].data
-        u16 = decoder_u16[0].data
+        f32 = decoder_f32[0].data
         assert u8.dtype == torch.uint8
-        assert u16.dtype == torch.uint16
-        assert u8.shape == u16.shape
+        assert f32.dtype == torch.float32
+        assert u8.shape == f32.shape
 
-        u16_as_u8 = (u16.to(torch.int32) >> 8).to(torch.uint8)
-        torch.testing.assert_close(u16_as_u8, u8, rtol=0, atol=7)
+        f32_as_u8 = (f32 * 255).round().to(torch.uint8)
+        torch.testing.assert_close(f32_as_u8, u8, rtol=0, atol=1)
 
         # Batch API
         batch_u8 = decoder_u8.get_frames_at([0, 1]).data
-        batch_u16 = decoder_u16.get_frames_at([0, 1]).data
+        batch_f32 = decoder_f32.get_frames_at([0, 1]).data
+        batch_f32_as_u8 = (batch_f32 * 255).round().to(torch.uint8)
         torch.testing.assert_close(
-            (batch_u16.to(torch.int32) >> 8).to(torch.uint8),
+            batch_f32_as_u8,
             batch_u8,
             rtol=0,
-            atol=7,
+            atol=1,
         )
 
     def setup_frame_mappings(tmp_path, file, stream_index):

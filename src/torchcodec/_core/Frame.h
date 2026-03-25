@@ -17,8 +17,10 @@ struct FrameDims {
   int height = 0;
   int width = 0;
   // Bit depth per channel of the source video. 8 for standard video,
-  // 10 or 12 for HDR. Used to determine output tensor dtype:
-  // uint8 for bitDepth <= 8, uint16 for bitDepth > 8.
+  // 10 or 12 for HDR. Controls the intermediate FFmpeg pixel format:
+  // RGB24 for bitDepth <= 8, RGB48 for bitDepth > 8.
+  // Also controls the output tensor dtype: uint8 for <= 8, uint16 for > 8.
+  // Float32 conversion (normalization to [0,1]) is handled in Python.
   int bitDepth = 8;
 
   FrameDims() = default;

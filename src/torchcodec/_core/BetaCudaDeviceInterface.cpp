@@ -303,7 +303,7 @@ void BetaCudaDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resizedOutputDims) {
-  outputBitDepthOverride_ = videoStreamOptions.outputBitDepth;
+  outputDtype_ = videoStreamOptions.outputDtype;
   if (cpuFallback_) {
     cpuFallback_->initializeVideo(
         videoStreamOptions, transforms, resizedOutputDims);
@@ -1007,9 +1007,21 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
-  int effectiveBitDepth =
-      (outputBitDepthOverride_ > 0) ? outputBitDepthOverride_ : bitDepth_;
-  bool is10Bit = (effectiveBitDepth > 8);
+  // Determine whether to use 10-bit decode path.
+  // UINT8: always 8-bit NV12 path.
+  // FLOAT32: preserve source bit depth (P016 for >8-bit). Python converts to
+  // float32. AUTO: P016 for HDR sources, NV12 for SDR.
+  bool is10Bit = false;
+  switch (outputDtype_) {
+    case OutputDtype::UINT8:
+      break;
+    case OutputDtype::FLOAT32:
+      is10Bit = (bitDepth_ > 8);
+      break;
+    case OutputDtype::AUTO:
+      is10Bit = (bitDepth_ > 8);
+      break;
+  }
 
   UniqueAVFrame gpuFrame;
   if (cpuFallback_) {
@@ -1027,8 +1039,6 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   if (is10Bit) {
     // P016 path: convert to uint16 RGB using NPP 16-bit ColorTwist.
-    // TODO: preAllocatedOutputTensor is currently ignored here. We should
-    // either support it (for uint16 tensors) or assert that it's not passed.
     frameOutput.data =
         convertP016FrameToRGB(gpuFrame, device_, nppCtx_, nvdecStream);
     if (rotation_ != Rotation::NONE) {
