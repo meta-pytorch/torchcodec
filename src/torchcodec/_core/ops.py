@@ -603,7 +603,7 @@ def _create_streaming_encoder_to_file_abstract(
 
 
 @register_fake("torchcodec_ns::_create_streaming_encoder_to_file_like")
-def create_streaming_encoder_to_file_like_abstract(
+def _create_streaming_encoder_to_file_like_abstract(
     file_like_context: int,
     format: str,
 ) -> torch.Tensor:

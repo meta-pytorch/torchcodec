@@ -675,7 +675,6 @@ void sortCodecOptions(
     }
   }
 }
-
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
@@ -1014,6 +1013,7 @@ void VideoEncoder::flushBuffers() {
 }
 
 MultiStreamEncoder::~MultiStreamEncoder() {
+  // TODO MultiStreamEncoder: Reconsider if the closed_ attribute is needed
   if (!closed_) {
     close();
   }
