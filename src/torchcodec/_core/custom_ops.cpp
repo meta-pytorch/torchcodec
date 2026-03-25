@@ -160,6 +160,12 @@ SingleStreamDecoder* unwrapTensorToGetDecoder(torch::stable::Tensor& tensor) {
   return decoder;
 }
 
+// TODO_STABLE_ABI: use previous deleter pattern with a lambda, once
+// https://github.com/pytorch/pytorch/pull/175089 is available.
+void multiStreamEncoderDeleter(void* data) {
+  delete static_cast<MultiStreamEncoder*>(data);
+}
+
 torch::stable::Tensor wrapMultiStreamEncoderPointerToTensor(
     std::unique_ptr<MultiStreamEncoder> uniqueEncoder) {
   MultiStreamEncoder* encoder = uniqueEncoder.release();
@@ -171,7 +177,7 @@ torch::stable::Tensor wrapMultiStreamEncoderPointerToTensor(
       {strides, 1},
       StableDevice(kStableCPU),
       kStableInt64,
-      [encoder](void*) { delete encoder; });
+      &multiStreamEncoderDeleter);
   auto multiStreamEncoder =
       static_cast<MultiStreamEncoder*>(tensor.mutable_data_ptr());
   STD_TORCH_CHECK(
