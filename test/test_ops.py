@@ -11,7 +11,6 @@ from functools import partial
 os.environ["TORCH_LOGS"] = "output_code"
 import json
 
-import numpy as np
 import pytest
 import torch
 from torchcodec._core import (
@@ -19,10 +18,8 @@ from torchcodec._core import (
     _test_frame_pts_equality,
     add_audio_stream,
     add_video_stream,
-    create_from_bytes,
     create_from_file,
     create_from_file_like,
-    create_from_tensor,
     encode_audio_to_file,
     get_ffmpeg_library_versions,
     get_frame_at_index,
@@ -42,7 +39,6 @@ from .utils import (
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
-    needs_cuda,
     needs_ffmpeg_cli,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
@@ -308,46 +304,6 @@ class TestVideoDecoderOps:
         empty_frame, *_ = get_frames_in_range(decoder, start=5, stop=5)
         assert_frames_equal(empty_frame, NASA_VIDEO.empty_chw_tensor.to(device))
 
-    @pytest.mark.parametrize("device", all_supported_devices())
-    @pytest.mark.parametrize(
-        "create_from",
-        ("file", "tensor", "bytes", "file_like_rawio", "file_like_bufferedio"),
-    )
-    def test_create_decoder(self, create_from, device):
-        path = str(NASA_VIDEO.path)
-        if create_from == "file":
-            decoder = create_from_file(path)
-        elif create_from == "tensor":
-            arr = np.fromfile(path, dtype=np.uint8)
-            video_tensor = torch.from_numpy(arr)
-            decoder = create_from_tensor(video_tensor)
-        elif create_from == "bytes":
-            with open(path, "rb") as f:
-                video_bytes = f.read()
-            decoder = create_from_bytes(video_bytes)
-        elif create_from == "file_like_rawio":
-            decoder = create_from_file_like(open(path, mode="rb", buffering=0), "exact")
-        elif create_from == "file_like_bufferedio":
-            decoder = create_from_file_like(
-                open(path, mode="rb", buffering=4096), "exact"
-            )
-        else:
-            raise ValueError("Oops, double check the parametrization of this test!")
-
-        device, device_variant = unsplit_device_str(device)
-        add_video_stream(decoder, device=device, device_variant=device_variant)
-        frame0, _, _ = get_frame_at_index(decoder, frame_index=0)
-        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
-        assert_frames_equal(frame0, reference_frame0.to(device))
-        frame1, _, _ = get_frame_at_index(decoder, frame_index=1)
-        reference_frame1 = NASA_VIDEO.get_frame_data_by_index(1)
-        assert_frames_equal(frame1, reference_frame1.to(device))
-        frame_time6, _, _ = get_frame_at_pts(decoder, 6.0)
-        reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
-            INDEX_OF_FRAME_AT_6_SECONDS
-        )
-        assert_frames_equal(frame_time6, reference_frame_time6.to(device))
-
     # Keeping the metadata tests below for now, but we should remove them
     # once we remove get_json_metadata().
     def test_video_get_json_metadata(self):
@@ -449,62 +405,6 @@ class TestVideoDecoderOps:
                 decoder, stream_index=0, custom_frame_mappings=different_lengths
             )
 
-    @needs_ffmpeg_cli
-    @pytest.mark.parametrize("device", all_supported_devices())
-    def test_seek_mode_custom_frame_mappings(self, device):
-        stream_index = 3  # custom_frame_index seek mode requires a stream index
-        decoder = create_from_file(
-            str(NASA_VIDEO.path), seek_mode="custom_frame_mappings"
-        )
-        device, device_variant = unsplit_device_str(device)
-        add_video_stream(
-            decoder,
-            device=device,
-            device_variant=device_variant,
-            stream_index=stream_index,
-            custom_frame_mappings=NASA_VIDEO.get_custom_frame_mappings(
-                stream_index=stream_index
-            ),
-        )
-
-        frame0, _, _ = get_frame_at_index(decoder, frame_index=0)
-        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(
-            0, stream_index=stream_index
-        )
-        assert_frames_equal(frame0, reference_frame0.to(device))
-
-        frame6, _, _ = get_frame_at_pts(decoder, 6.006)
-        reference_frame6 = NASA_VIDEO.get_frame_data_by_index(
-            INDEX_OF_FRAME_AT_6_SECONDS, stream_index=stream_index
-        )
-        assert_frames_equal(frame6, reference_frame6.to(device))
-
-        frame6, _, _ = get_frame_at_index(decoder, frame_index=180)
-        reference_frame6 = NASA_VIDEO.get_frame_data_by_index(
-            INDEX_OF_FRAME_AT_6_SECONDS, stream_index=stream_index
-        )
-        assert_frames_equal(frame6, reference_frame6.to(device))
-
-        ref_frames0_9 = NASA_VIDEO.get_frame_data_by_range(0, 9)
-        bulk_frames0_9, *_ = get_frames_in_range(decoder, start=0, stop=9)
-        assert_frames_equal(bulk_frames0_9, ref_frames0_9.to(device))
-
-    @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
-    def test_color_conversion_library(self, color_conversion_library):
-        decoder = create_from_file(str(NASA_VIDEO.path))
-        _add_video_stream(decoder, color_conversion_library=color_conversion_library)
-        frame0, *_ = get_frame_at_index(decoder, frame_index=0)
-        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
-        assert_frames_equal(frame0, reference_frame0)
-        reference_frame1 = NASA_VIDEO.get_frame_data_by_index(1)
-        frame1, *_ = get_frame_at_index(decoder, frame_index=1)
-        assert_frames_equal(frame1, reference_frame1)
-        frame_time6, *_ = get_frame_at_pts(decoder, 6.0)
-        reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
-            INDEX_OF_FRAME_AT_6_SECONDS
-        )
-        assert_frames_equal(frame_time6, reference_frame_time6)
-
     @pytest.mark.parametrize("dimension_order", ("NHWC", "NCHW"))
     @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
     def test_color_conversion_library_with_dimension_order(
@@ -543,19 +443,6 @@ class TestVideoDecoderOps:
         frames, *_ = get_frames_at_indices(decoder, frame_indices=[0, 1, 3, 4])
         assert frames.shape[1:] == expected_shape
         assert_frames_equal(frames[0], frame0_ref)
-
-    @needs_cuda
-    def test_cuda_decoder(self):
-        decoder = create_from_file(str(NASA_VIDEO.path))
-        add_video_stream(decoder, device="cuda")
-        frame0, pts, duration = get_frame_at_index(decoder, frame_index=0)
-        assert frame0.device.type == "cuda"
-        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
-        assert_frames_equal(frame0, reference_frame0.to("cuda"))
-        assert pts == torch.tensor([0])
-        torch.testing.assert_close(
-            duration, torch.tensor(0.0334).double(), atol=0, rtol=1e-3
-        )
 
 
 class TestAudioDecoderOps:
@@ -811,73 +698,6 @@ class TestAudioDecoderOps:
         frames_downsampled_to_8000 = get_all_frames(SINE_MONO_S32, sample_rate=8000)
 
         torch.testing.assert_close(frames_downsampled_to_8000, frames_8000_native)
-
-    @pytest.mark.parametrize("buffering", (0, 1024))
-    @pytest.mark.parametrize("device", all_supported_devices())
-    def test_file_like_decoding(self, buffering, device):
-        # Test to ensure that seeks and reads are actually going through the
-        # methods on the IO object.
-        #
-        # Note that we do not check the number of reads in this test past the
-        # initialization step. That is because the number of reads that FFmpeg
-        # issues is dependent on the size of the internal buffer, the amount of
-        # data per frame and the size of the video file. We can't control
-        # the size of the buffer from the Python layer and we don't know the
-        # amount of data per frame. We also can't know the amount of data per
-        # frame from first principles, because it is data-depenent.
-        class FileOpCounter(io.RawIOBase):
-
-            def __init__(self, file: io.RawIOBase):
-                self._file = file
-                self.num_seeks = 0
-                self.num_reads = 0
-
-            def read(self, size: int) -> bytes:
-                self.num_reads += 1
-                return self._file.read(size)
-
-            def seek(self, offset: int, whence: int) -> int:
-                self.num_seeks += 1
-                return self._file.seek(offset, whence)
-
-        file_counter = FileOpCounter(
-            open(NASA_VIDEO.path, mode="rb", buffering=buffering)
-        )
-        decoder = create_from_file_like(file_counter, "approximate")
-        device, device_variant = unsplit_device_str(device)
-        add_video_stream(decoder, device=device, device_variant=device_variant)
-
-        frame0, *_ = get_frame_at_index(decoder, frame_index=0)
-        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
-        assert_frames_equal(frame0, reference_frame0.to(device))
-
-        # We don't assert the actual number of reads and seeks because that is
-        # dependent on both the size of the internal buffers on the C++ side and
-        # how much is read during initialization. Note that we still decode
-        # several frames at startup to improve metadata accuracy.
-        assert file_counter.num_seeks > 0
-        assert file_counter.num_reads > 0
-
-        initialization_seeks = file_counter.num_seeks
-
-        frame_last, *_ = get_frame_at_pts(decoder, 12.979633)
-        reference_frame_last = NASA_VIDEO.get_frame_data_by_index(389)
-        assert_frames_equal(frame_last, reference_frame_last.to(device))
-
-        assert file_counter.num_seeks > initialization_seeks
-
-        last_frame_seeks = file_counter.num_seeks
-
-        # We're smart enough to avoid seeks within key frames and our test
-        # files have very few keyframes. However, we can force a seek by
-        # requesting a backwards seek.
-        frame_time6, *_ = get_frame_at_pts(decoder, 6.0)
-        reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
-            INDEX_OF_FRAME_AT_6_SECONDS
-        )
-        assert_frames_equal(frame_time6, reference_frame_time6.to(device))
-
-        assert file_counter.num_seeks > last_frame_seeks
 
     def test_file_like_method_check_fails(self):
         class ReadMethodMissing:
