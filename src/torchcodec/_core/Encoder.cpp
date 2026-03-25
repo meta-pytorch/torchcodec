@@ -1013,10 +1013,7 @@ void VideoEncoder::flushBuffers() {
 }
 
 MultiStreamEncoder::~MultiStreamEncoder() {
-  // TODO MultiStreamEncoder: Reconsider if the closed_ attribute is needed
-  if (!closed_) {
-    close();
-  }
+  close();
 }
 
 MultiStreamEncoder::MultiStreamEncoder(std::string_view fileName) {
