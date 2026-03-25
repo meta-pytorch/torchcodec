@@ -78,9 +78,6 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
   m.def("create_streaming_encoder_to_file(str filename) -> Tensor");
-  m.def(
-      "_create_streaming_encoder_to_file_like(int file_like_context, "
-      "str format) -> Tensor");
   m.def("streaming_encoder_close(Tensor(a!) encoder) -> ()");
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
   m.def("get_nvdec_cache_capacity() -> int");
@@ -1128,21 +1125,6 @@ torch::stable::Tensor create_streaming_encoder_to_file(std::string file_name) {
   return wrapMultiStreamEncoderPointerToTensor(std::move(encoder));
 }
 
-torch::stable::Tensor _create_streaming_encoder_to_file_like(
-    int64_t file_like_context,
-    std::string format) {
-  auto fileLikeContext =
-      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
-  STD_TORCH_CHECK(
-      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
-  std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
-
-  auto encoder = std::make_unique<MultiStreamEncoder>(
-      format, std::move(avioContextHolder));
-
-  return wrapMultiStreamEncoderPointerToTensor(std::move(encoder));
-}
-
 void streaming_encoder_close(torch::stable::Tensor& encoder) {
   unwrapTensorToGetMultiStreamEncoder(encoder)->close();
 }
@@ -1182,9 +1164,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl(
       "create_streaming_encoder_to_file",
       TORCH_BOX(&create_streaming_encoder_to_file));
-  m.impl(
-      "_create_streaming_encoder_to_file_like",
-      TORCH_BOX(&_create_streaming_encoder_to_file_like));
   m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
   m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
   m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
@@ -1225,9 +1204,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "create_streaming_encoder_to_file",
       TORCH_BOX(&create_streaming_encoder_to_file));
-  m.impl(
-      "_create_streaming_encoder_to_file_like",
-      TORCH_BOX(&_create_streaming_encoder_to_file_like));
   m.impl("streaming_encoder_close", TORCH_BOX(&streaming_encoder_close));
 }
 

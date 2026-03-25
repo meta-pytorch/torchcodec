@@ -188,10 +188,6 @@ class MultiStreamEncoder {
 
   MultiStreamEncoder(std::string_view fileName);
 
-  MultiStreamEncoder(
-      std::string_view formatName,
-      std::unique_ptr<AVIOContextHolder> avioContextHolder);
-
   void close();
 
  private:

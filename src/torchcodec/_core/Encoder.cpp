@@ -1044,29 +1044,6 @@ MultiStreamEncoder::MultiStreamEncoder(std::string_view fileName) {
       getFFMPEGErrorStringFromErrorCode(status));
 }
 
-MultiStreamEncoder::MultiStreamEncoder(
-    std::string_view formatName,
-    std::unique_ptr<AVIOContextHolder> avioContextHolder)
-    : avioContextHolder_(std::move(avioContextHolder)) {
-  setFFmpegLogLevel();
-  // Map mkv -> matroska when used as format name
-  formatName = (formatName == "mkv") ? "matroska" : formatName;
-  AVFormatContext* avFormatContext = nullptr;
-  int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, formatName.data(), nullptr);
-
-  STD_TORCH_CHECK(
-      avFormatContext != nullptr,
-      "Couldn't allocate AVFormatContext. ",
-      "Check the desired format? Got format=",
-      formatName,
-      ". ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  avFormatContext_.reset(avFormatContext);
-
-  avFormatContext_->pb = avioContextHolder_->getAVIOContext();
-}
-
 void MultiStreamEncoder::close() {
   if (closed_) {
     return;

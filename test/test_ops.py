@@ -26,7 +26,6 @@ from torchcodec._core import (
     create_from_file_like,
     create_from_tensor,
     create_streaming_encoder_to_file,
-    create_streaming_encoder_to_file_like,
     encode_audio_to_file,
     get_ffmpeg_library_versions,
     get_frame_at_index,
@@ -1149,12 +1148,6 @@ class TestMultiStreamEncoderOps:
         streaming_encoder_close(encoder_tensor)
         streaming_encoder_close(encoder_tensor)  # double close is a no-op
 
-        # TODO MultiStreamEncoder: Test if closing the file before closing the streaming encoder causes any issues.
-        with open(tmp_path / "test2.mp4", "wb") as f:
-            encoder_tensor = create_streaming_encoder_to_file_like(f, "mp4")
-            streaming_encoder_close(encoder_tensor)
-            streaming_encoder_close(encoder_tensor)  # double close is a no-op
-
     def test_create_invalid_path(self):
         with pytest.raises(RuntimeError, match="make sure it's a valid path"):
             create_streaming_encoder_to_file("/nonexistent/dir/test.mp4")
@@ -1162,9 +1155,6 @@ class TestMultiStreamEncoderOps:
     def test_create_invalid_format(self, tmp_path):
         with pytest.raises(RuntimeError, match="check the desired extension"):
             create_streaming_encoder_to_file(str(tmp_path / "test.bad_extension"))
-        with open(tmp_path / "test.mp4", "wb") as f:
-            with pytest.raises(RuntimeError, match="Check the desired format"):
-                create_streaming_encoder_to_file_like(f, "not_a_format")
 
 
 if __name__ == "__main__":
