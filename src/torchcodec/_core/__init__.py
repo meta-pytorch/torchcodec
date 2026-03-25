@@ -5,7 +5,6 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from ._decoder_utils import create_audio_decoder, create_video_decoder
 from ._metadata import (
     AudioStreamMetadata,
     ContainerMetadata,
@@ -14,18 +13,11 @@ from ._metadata import (
     VideoStreamMetadata,
 )
 from .ops import (
-    _add_video_stream,
     _get_backend_details,
     _get_key_frame_indices,
     _get_nvdec_cache_size,
     _test_frame_pts_equality,
-    add_audio_stream,
-    add_video_stream,
     core_library_path,
-    create_from_bytes,
-    create_from_file,
-    create_from_file_like,
-    create_from_tensor,
     create_wav_decoder_from_file,
     encode_audio_to_file,
     encode_audio_to_file_like,
@@ -47,7 +39,5 @@ from .ops import (
     get_nvdec_cache_capacity,
     get_wav_all_samples,
     get_wav_metadata_from_decoder,
-    scan_all_streams_to_update_metadata,
-    seek_to_pts,
     set_nvdec_cache_capacity,
 )
