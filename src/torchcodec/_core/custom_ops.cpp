@@ -123,10 +123,10 @@ SingleStreamDecoder* unwrapTensorToGetDecoder(torch::stable::Tensor& tensor) {
   return decoder;
 }
 
-torch::stable::Tensor wrapStreamingEncoderPointerToTensor(
-    std::unique_ptr<StreamingEncoder> uniqueEncoder) {
-  StreamingEncoder* encoder = uniqueEncoder.release();
-  int64_t sizes[] = {static_cast<int64_t>(sizeof(StreamingEncoder*))};
+torch::stable::Tensor wrapMultiStreamEncoderPointerToTensor(
+    std::unique_ptr<MultiStreamEncoder> uniqueEncoder) {
+  MultiStreamEncoder* encoder = uniqueEncoder.release();
+  int64_t sizes[] = {static_cast<int64_t>(sizeof(MultiStreamEncoder*))};
   int64_t strides[] = {1};
   torch::stable::Tensor tensor = torch::stable::from_blob(
       encoder,
@@ -135,19 +135,20 @@ torch::stable::Tensor wrapStreamingEncoderPointerToTensor(
       StableDevice(kStableCPU),
       kStableInt64,
       [encoder](void*) { delete encoder; });
-  auto streamingEncoder =
-      static_cast<StreamingEncoder*>(tensor.mutable_data_ptr());
-  STD_TORCH_CHECK(streamingEncoder == encoder, "streamingEncoder != encoder");
+  auto multiStreamEncoder =
+      static_cast<MultiStreamEncoder*>(tensor.mutable_data_ptr());
+  STD_TORCH_CHECK(
+      multiStreamEncoder == encoder, "multiStreamEncoder != encoder");
   return tensor;
 }
 
-StreamingEncoder* unwrapTensorToGetStreamingEncoder(
+MultiStreamEncoder* unwrapTensorToGetMultiStreamEncoder(
     torch::stable::Tensor& tensor) {
   STD_TORCH_CHECK(
       tensor.is_contiguous(),
       "fake encoder tensor must be contiguous! This is an internal error, please report on the torchcodec issue tracker.");
   void* buffer = tensor.mutable_data_ptr();
-  StreamingEncoder* encoder = static_cast<StreamingEncoder*>(buffer);
+  MultiStreamEncoder* encoder = static_cast<MultiStreamEncoder*>(buffer);
   return encoder;
 }
 
@@ -1123,8 +1124,8 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
 }
 
 torch::stable::Tensor create_streaming_encoder_to_file(std::string file_name) {
-  auto encoder = std::make_unique<StreamingEncoder>(file_name);
-  return wrapStreamingEncoderPointerToTensor(std::move(encoder));
+  auto encoder = std::make_unique<MultiStreamEncoder>(file_name);
+  return wrapMultiStreamEncoderPointerToTensor(std::move(encoder));
 }
 
 torch::stable::Tensor _create_streaming_encoder_to_file_like(
@@ -1136,14 +1137,14 @@ torch::stable::Tensor _create_streaming_encoder_to_file_like(
       fileLikeContext != nullptr, "file_like_context must be a valid pointer");
   std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
 
-  auto encoder =
-      std::make_unique<StreamingEncoder>(format, std::move(avioContextHolder));
+  auto encoder = std::make_unique<MultiStreamEncoder>(
+      format, std::move(avioContextHolder));
 
-  return wrapStreamingEncoderPointerToTensor(std::move(encoder));
+  return wrapMultiStreamEncoderPointerToTensor(std::move(encoder));
 }
 
 void streaming_encoder_close(torch::stable::Tensor& encoder) {
-  unwrapTensorToGetStreamingEncoder(encoder)->close();
+  unwrapTensorToGetMultiStreamEncoder(encoder)->close();
 }
 
 void set_nvdec_cache_capacity(int64_t capacity) {

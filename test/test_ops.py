@@ -1143,13 +1143,13 @@ class TestAudioEncoderOps:
             )
 
 
-class TestStreamingEncoderOps:
+class TestMultiStreamEncoderOps:
     def test_create_and_close(self, tmp_path):
         encoder_tensor = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
         streaming_encoder_close(encoder_tensor)
         streaming_encoder_close(encoder_tensor)  # double close is a no-op
 
-        # TODO StreamingEncoder: Test if closing the file before closing the streaming encoder causes any issues.
+        # TODO MultiStreamEncoder: Test if closing the file before closing the streaming encoder causes any issues.
         with open(tmp_path / "test2.mp4", "wb") as f:
             encoder_tensor = create_streaming_encoder_to_file_like(f, "mp4")
             streaming_encoder_close(encoder_tensor)

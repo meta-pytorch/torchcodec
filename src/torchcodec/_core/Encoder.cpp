@@ -1013,13 +1013,13 @@ void VideoEncoder::flushBuffers() {
   encodeFrame(autoAVPacket, UniqueAVFrame(nullptr));
 }
 
-StreamingEncoder::~StreamingEncoder() {
+MultiStreamEncoder::~MultiStreamEncoder() {
   if (!closed_) {
     close();
   }
 }
 
-StreamingEncoder::StreamingEncoder(std::string_view fileName) {
+MultiStreamEncoder::MultiStreamEncoder(std::string_view fileName) {
   setFFmpegLogLevel();
 
   AVFormatContext* avFormatContext = nullptr;
@@ -1044,7 +1044,7 @@ StreamingEncoder::StreamingEncoder(std::string_view fileName) {
       getFFMPEGErrorStringFromErrorCode(status));
 }
 
-StreamingEncoder::StreamingEncoder(
+MultiStreamEncoder::MultiStreamEncoder(
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder)
     : avioContextHolder_(std::move(avioContextHolder)) {
@@ -1067,13 +1067,13 @@ StreamingEncoder::StreamingEncoder(
   avFormatContext_->pb = avioContextHolder_->getAVIOContext();
 }
 
-void StreamingEncoder::close() {
+void MultiStreamEncoder::close() {
   if (closed_) {
     return;
   }
-  // TODO StreamingEncoder: Revisit if "closed_" flag is useful
+  // TODO MultiStreamEncoder: Revisit if "closed_" flag is useful
   closed_ = true;
-  // TODO StreamingEncoder: Once addFrame is implemented, close() will need to
+  // TODO MultiStreamEncoder: Once addFrame is implemented, close() will need to
   // flush the encoder and call av_write_trailer.
   closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }

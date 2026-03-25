@@ -177,18 +177,18 @@ class FORCE_PUBLIC_VISIBILITY VideoEncoder {
   UniqueAVDictionary avFormatOptions_;
 };
 
-class StreamingEncoder {
+class MultiStreamEncoder {
  public:
-  ~StreamingEncoder();
+  ~MultiStreamEncoder();
 
-  StreamingEncoder(const StreamingEncoder&) = delete;
-  StreamingEncoder& operator=(const StreamingEncoder&) = delete;
-  StreamingEncoder(StreamingEncoder&&) = delete;
-  StreamingEncoder& operator=(StreamingEncoder&&) = delete;
+  MultiStreamEncoder(const MultiStreamEncoder&) = delete;
+  MultiStreamEncoder& operator=(const MultiStreamEncoder&) = delete;
+  MultiStreamEncoder(MultiStreamEncoder&&) = delete;
+  MultiStreamEncoder& operator=(MultiStreamEncoder&&) = delete;
 
-  StreamingEncoder(std::string_view fileName);
+  MultiStreamEncoder(std::string_view fileName);
 
-  StreamingEncoder(
+  MultiStreamEncoder(
       std::string_view formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder);
 
