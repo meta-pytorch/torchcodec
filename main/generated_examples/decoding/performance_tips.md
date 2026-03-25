@@ -1,0 +1,222 @@
+# TorchCodec Performance Tips and Best Practices
+
+This tutorial consolidates performance optimization techniques for video
+decoding with TorchCodec. Learn when and how to apply various strategies
+to increase performance.
+
+## Overview
+
+When decoding videos with TorchCodec, several techniques can significantly
+improve performance depending on your use case. This guide covers:
+
+1. **Batch APIs** - Decode multiple frames at once
+2. **Approximate Mode & Keyframe Mappings** - Trade accuracy for speed
+3. **Multi-threading** - Parallelize decoding across videos or chunks
+4. **CUDA Acceleration** - Use GPU decoding for supported formats
+5. **Decoder Native Transforms** - Apply transforms during decoding for memory efficiency
+
+We'll explore each technique and when to use it.
+
+## 1. Use Batch APIs When Possible
+
+If you need to decode multiple frames at once, the batch methods are faster than calling single-frame decoding methods multiple times.
+For example, [`get_frames_at()`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frames_at) is faster than calling [`get_frame_at()`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frame_at) multiple times.
+TorchCodec's batch APIs reduce overhead and can leverage internal optimizations.
+
+**Key Methods:**
+
+For index-based frame retrieval:
+
+- [`get_frames_at()`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frames_at) for specific indices
+- [`get_frames_in_range()`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frames_in_range) for ranges
+
+For timestamp-based frame retrieval:
+
+- [`get_frames_played_at()`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frames_played_at) for timestamps
+- [`get_frames_played_in_range()`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder.get_frames_played_in_range) for time ranges
+
+**When to use:**
+
+- Decoding multiple frames
+
+Note
+
+For complete examples with runnable code demonstrating batch decoding,
+iteration, and frame retrieval, see [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py)
+
+## 2. Approximate Mode & Keyframe Mappings
+
+By default, TorchCodec uses `seek_mode="exact"`, which performs a [scan](../../glossary.html#term-scan) when
+you create the decoder to build an accurate internal index of frames. This
+ensures frame-accurate seeking but takes longer for decoder initialization,
+especially on long videos.
+
+### **Approximate Mode**
+
+Setting `seek_mode="approximate"` skips the initial [scan](../../glossary.html#term-scan) and relies on the
+video file's metadata headers. This dramatically speeds up
+[`VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) creation, particularly for long
+videos, but may result in slightly less accurate seeking in some cases.
+
+**Which mode should you use:**
+
+- If you care about exactness of frame seeking, use "exact".
+- If the video is long and you're only decoding a small amount of frames, approximate mode should be faster.
+
+### **Custom Frame Mappings**
+
+For advanced use cases, you can pre-compute a custom mapping between desired
+frame indices and actual keyframe locations. This allows you to speed up [`VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)
+instantiation while maintaining the frame seeking accuracy of `seek_mode="exact"`
+
+**When to use:**
+
+- Frame accuracy is critical, so you cannot use approximate mode
+- You can preprocess videos once and then decode them many times
+
+**Performance impact:** speeds up decoder instantiation, similarly to `seek_mode="approximate"`.
+
+Note
+
+For complete benchmarks showing actual speedup numbers, accuracy comparisons,
+and implementation examples, see [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py)
+and [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py)
+
+## 3. Multi-threading for Parallel Decoding
+
+When decoding multiple videos or decoding a large number of frames from a single video, there are a few parallelization strategies to speed up the decoding process:
+
+- **FFmpeg-based parallelism** - Using FFmpeg's internal threading capabilities for intra-frame parallelism, where parallelization happens within individual frames rather than across frames. For that, use the num_ffmpeg_threads parameter of the [`VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder)
+- **Multiprocessing** - Distributing work across multiple processes
+- **Multithreading** - Using multiple threads within a single process
+
+You can use both multiprocessing and multithreading to decode multiple videos in parallel, or to decode a single long video in parallel by splitting it into chunks.
+
+Note
+
+For complete examples comparing
+sequential, ffmpeg-based parallelism, multi-process, and multi-threaded approaches, see
+[Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py)
+
+## 4. CUDA Acceleration
+
+TorchCodec supports GPU-accelerated decoding using NVIDIA's hardware decoder
+(NVDEC) on supported hardware. This keeps decoded tensors in GPU memory,
+avoiding expensive CPU-GPU transfers for downstream GPU operations.
+
+### **Recommended: use the Beta Interface!!**
+
+We recommend you use the new "beta" CUDA interface which is significantly faster than the previous one, and supports the same features:
+
+```
+with set_cuda_backend("beta"):
+ decoder = VideoDecoder("file.mp4", device="cuda")
+```
+
+**When to use:**
+
+- Decoding large resolution videos
+- Large batch of videos saturating the CPU
+
+**When NOT to use:**
+
+- You need bit-exact results with CPU decoding
+- Small resolution videos and the PCI-e transfer latency is large
+- GPU is already busy and CPU is idle
+
+**Performance impact:** CUDA decoding can significantly outperform CPU decoding,
+especially for high-resolution videos and when decoding a lot of frames.
+Actual speedup varies by hardware, resolution, and codec.
+
+### **Checking for CPU Fallback**
+
+In some cases, CUDA decoding may silently fall back to CPU decoding when the
+video codec or format is not supported by NVDEC. You can detect this using
+the `cpu_fallback` attribute:
+
+```
+with set_cuda_backend("beta"):
+ decoder = VideoDecoder("file.mp4", device="cuda")
+
+# Print detailed fallback status
+print(decoder.cpu_fallback)
+```
+
+Note
+
+The timing of when you can detect CPU fallback differs between backends:
+with the **FFmpeg backend**, you can only check fallback status after decoding at
+least one frame, because FFmpeg determines codec support lazily during decoding;
+with the **BETA backend**, you can check fallback status immediately after
+decoder creation, as the backend checks codec support upfront.
+
+For installation instructions, detailed examples, and visual comparisons
+between CPU and CUDA decoding, see [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py)
+
+## 5. Decoder Native Transforms
+
+TorchCodec supports applying transforms like resize and crop *during* the
+decoding process itself, rather than as a separate post-processing step.
+This can lead to significant memory savings, especially when decoding
+high-resolution videos that will be resized to smaller dimensions.
+
+[`VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) accepts both TorchCodec
+[`DecoderTransform`](../../generated/torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform) objects and TorchVision
+[`Transform`](https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.v2.Transform.html#torchvision.transforms.v2.Transform) objects as transform
+specifications. TorchVision is **not required** to use decoder transforms.
+
+**Example:**
+
+```
+from torchcodec.decoders import VideoDecoder
+from torchcodec.transforms import Resize
+
+decoder = VideoDecoder(
+ "file.mp4",
+ transforms=[Resize(size=(480, 640))]
+)
+```
+
+**When to use:**
+
+- If you are applying a transform pipeline that significantly reduces the
+dimensions of your input frames and memory efficiency matters.
+- If you are using multiple FFmpeg threads, decoder transforms may be faster.
+Experiment with your setup to verify.
+
+Note
+
+For complete examples with memory benchmarks, transform pipelines, and
+detailed comparisons between decoder transforms and TorchVision transforms,
+see [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py)
+
+## Conclusion
+
+TorchCodec offers multiple performance optimization strategies, each suited to
+different scenarios. Use batch APIs for multi-frame decoding, approximate mode
+for faster initialization, parallel processing for high throughput, CUDA
+acceleration to offload the CPU, and decoder native transforms for memory efficiency.
+
+The best results often come from combining techniques. Profile your specific
+use case and apply optimizations incrementally, using the benchmarks in the
+linked examples as a guide.
+
+For more information, see:
+
+- [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) - Basic decoding examples
+- [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) - Approximate mode benchmarks
+- [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) - Custom frame mappings
+- [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) - Parallel decoding strategies
+- [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) - CUDA acceleration guide
+- [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) - Decoder transforms guide
+- [`torchcodec.decoders.VideoDecoder`](../../generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) - Full API reference
+
+**Total running time of the script:** (0 minutes 0.000 seconds)
+
+[`Download Jupyter notebook: performance_tips.ipynb`](../../_downloads/20e7e469334f67ade4ee46f4d170e11e/performance_tips.ipynb)
+
+[`Download Python source code: performance_tips.py`](../../_downloads/77dc1193697afb879051a747e6afd214/performance_tips.py)
+
+[`Download zipped: performance_tips.zip`](../../_downloads/b82661e7c871ef75b018031bba55f295/performance_tips.zip)
+
+[Gallery generated by Sphinx-Gallery](https://sphinx-gallery.github.io)
