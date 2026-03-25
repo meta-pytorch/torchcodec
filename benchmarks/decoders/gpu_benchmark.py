@@ -5,7 +5,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
+
 import torch.utils.benchmark as benchmark
+
 import torchvision.transforms.v2.functional as F
 from torchcodec._core.ops import _add_video_stream, create_from_file
 
