@@ -87,6 +87,7 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("_get_nvdec_cache_size(int device_index) -> int");
   m.def("create_wav_decoder_from_file(str filename) -> Tensor");
   m.def("get_wav_all_samples(Tensor decoder) -> Tensor");
+  m.def("get_wav_metadata_from_decoder(Tensor(a!) decoder) -> str");
 }
 
 namespace {
@@ -1160,6 +1161,28 @@ torch::stable::Tensor get_wav_all_samples(torch::stable::Tensor& decoder) {
   STD_TORCH_CHECK(false, "get_wav_all_samples not yet implemented");
 }
 
+std::string get_wav_metadata_from_decoder(torch::stable::Tensor& decoder) {
+  auto wavDecoder = unwrapTensorToGetWavDecoder(decoder);
+  StreamMetadata streamMetadata = wavDecoder->getStreamMetadata();
+
+  std::map<std::string, std::string> metadataMap;
+
+  metadataMap["sampleRate"] = std::to_string(*streamMetadata.sampleRate);
+  metadataMap["numChannels"] = std::to_string(*streamMetadata.numChannels);
+  metadataMap["sampleFormat"] = quoteValue(*streamMetadata.sampleFormat);
+  metadataMap["codec"] = quoteValue(*streamMetadata.codecName);
+  metadataMap["durationSeconds"] =
+      fmt::to_string(*streamMetadata.durationSecondsFromHeader);
+  metadataMap["durationSecondsFromHeader"] =
+      fmt::to_string(*streamMetadata.durationSecondsFromHeader);
+  metadataMap["bitRate"] = fmt::to_string(*streamMetadata.bitRate);
+  metadataMap["streamIndex"] = std::to_string(streamMetadata.streamIndex);
+  metadataMap["mediaType"] = quoteValue("audio");
+  metadataMap["beginStreamSeconds"] =
+      fmt::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
+  return mapToJson(metadataMap);
+}
+
 void set_nvdec_cache_capacity(int64_t capacity) {
   int capacityInt = validateInt64ToInt(capacity, "capacity");
   STD_TORCH_CHECK(
@@ -1198,6 +1221,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl(
       "create_wav_decoder_from_file", TORCH_BOX(&create_wav_decoder_from_file));
   m.impl("get_wav_all_samples", TORCH_BOX(&get_wav_all_samples));
+  m.impl(
+      "get_wav_metadata_from_decoder",
+      TORCH_BOX(&get_wav_metadata_from_decoder));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

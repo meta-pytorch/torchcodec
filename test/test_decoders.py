@@ -2881,6 +2881,15 @@ class TestAudioDecoder:
 
 
 class TestWavDecoder:
+    def test_metadata(self):
+        asset = SINE_MONO_S32
+        wav_decoder = WavDecoder(asset.path)
+        audio_decoder = AudioDecoder(asset.path)
+
+        assert isinstance(wav_decoder.metadata, AudioStreamMetadata)
+        assert wav_decoder.stream_index == audio_decoder.metadata.stream_index
+        assert wav_decoder.metadata == audio_decoder.metadata
+
     def test_tensor_handle_creation(self):
         wav_dec = WavDecoder(SINE_MONO_S32.path)
         assert wav_dec._decoder is not None
