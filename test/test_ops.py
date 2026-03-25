@@ -14,12 +14,7 @@ import json
 import pytest
 import torch
 from torchcodec._core import (
-    _add_video_stream,
     _test_frame_pts_equality,
-    add_audio_stream,
-    add_video_stream,
-    create_from_file,
-    create_from_file_like,
     encode_audio_to_file,
     get_ffmpeg_library_versions,
     get_frame_at_index,
@@ -30,6 +25,13 @@ from torchcodec._core import (
     get_frames_by_pts_in_range_audio,
     get_frames_in_range,
     get_json_metadata,
+)
+from torchcodec._core.ops import (
+    _add_video_stream,
+    add_audio_stream,
+    add_video_stream,
+    create_from_file,
+    create_from_file_like,
     seek_to_pts,
 )
 

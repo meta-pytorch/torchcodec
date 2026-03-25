@@ -10,17 +10,14 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
 import torch
 import torch.utils.benchmark as benchmark
-
-from torchcodec._core import (
+from torchcodec._core import get_frames_at_indices, get_frames_by_pts
+from torchcodec._core.ops import (
     _add_video_stream,
     create_from_file,
     get_frame_at_index,
     get_frame_at_pts,
-    get_frames_at_indices,
-    get_frames_by_pts,
 )
 from torchcodec._frame import FrameBatch
 from torchcodec.decoders import VideoDecoder, VideoStreamMetadata
