@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Computation times &#8212; TorchCodec 0.12.0.dev20260324+cu126 Documentation</title>
+    <title>Computation times &#8212; TorchCodec 0.12.0.dev20260325+cu126 Documentation</title>
   
   
   
@@ -107,6 +107,32 @@
   });
 </script>
 <!-- Conditional CSS for header and footer height adjustment -->
+
+<style>
+  :root {
+    --header-height: 0px !important;
+    --header-height-desktop: 0px !important;
+  }
+  /* Ensure proper mobile layout when LF header is hidden */
+  @media (max-width: 960px) {
+    .bd-header {
+      top: 0 !important;
+      position: sticky !important;
+      z-index: 1020 !important;
+    }
+    .bd-main {
+      padding-top: 0 !important;
+      margin-top: 0 !important;
+    }
+    .bd-article-container {
+      padding-top: 0 !important;
+    }
+    .header-article__inner {
+      padding-top: 1rem !important;
+    }
+
+  }
+</style>
 
 
 <link rel="stylesheet" type="text/css" href="_static/css/theme.css" crossorigin="anonymous">
@@ -297,350 +323,6 @@
   
 
 
-  
-    <div class="container-fluid header-holder tutorials-header" id="header-holder">
-   <div class="header-container-wrapper">
-    <div class="header-container">
-      <a class="header-logo" href="https://pytorch.org/" aria-label="PyTorch"></a>
-
-      <div class="main-menu">
-        <ul>
-
-          <li class="main-menu-item">
-          <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-                <span>Learn</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/get-started/locally">
-                  <span class=dropdown-title>Get Started</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://docs.pytorch.org/tutorials">
-                  <span class="dropdown-title">Tutorials</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tutorials/beginner/basics/intro.html">
-                  <span class="dropdown-title">Learn the Basics</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tutorials/recipes/recipes_index.html">
-                  <span class="dropdown-title">PyTorch Recipes</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tutorials/beginner/introyt.html">
-                  <span class="dropdown-title">Intro to PyTorch - YouTube Series</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/webinars/">
-                  <span class="dropdown-title">Webinars</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-          <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>Community</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://landscape.pytorch.org/" target="_blank">
-                  <span class="dropdown-title">Landscape</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/join-ecosystem">
-                  <span class="dropdown-title">Join the Ecosystem</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/community-hub/">
-                  <span class="dropdown-title">Community Hub</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://discuss.pytorch.org/">
-                  <span class="dropdown-title">Forums</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/resources">
-                  <span class=dropdown-title>Developer Resources</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/contributor-awards/">
-                  <span class="dropdown-title">Contributor Awards</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/community-events/">
-                  <span class="dropdown-title">Community Events</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/programs/ambassadors/">
-                  <span class="dropdown-title">PyTorch Ambassadors</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-          <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>Projects</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/pytorch/">
-                  <span class="dropdown-title">PyTorch</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/vllm/">
-                  <span class="dropdown-title">vLLM</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/deepspeed/">
-                  <span class="dropdown-title">DeepSpeed</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/host-your-project/">
-                  <span class="dropdown-title">Host Your Project</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/ray/">
-                  <span class="dropdown-title">RAY</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span> Docs</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://docs.pytorch.org/docs/stable/index.html">
-                  <span class="dropdown-title">PyTorch</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/domains">
-                  <span class="dropdown-title">Domains</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>Blogs & News</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/blog/">
-                  <span class="dropdown-title">Blog</span>
-                </a>
-                 <a class="nav-dropdown-item" href="https://pytorch.org/announcements">
-                  <span class="dropdown-title">Announcements</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/case-studies/">
-                  <span class="dropdown-title">Case Studies</span>
-                <a class="nav-dropdown-item" href="https://pytorch.org/events">
-                  <span class="dropdown-title">Events</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/newsletter">
-                  <span class="dropdown-title">Newsletter</span>
-                </a>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>About</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/foundation">
-                  <span class="dropdown-title">PyTorch Foundation</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/members">
-                  <span class="dropdown-title">Members</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/governing-board">
-                  <span class="dropdown-title">Governing Board</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tac">
-                  <span class="dropdown-title">Technical Advisory Council</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/credits">
-                  <span class="dropdown-title">Cloud Credit Program</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/staff">
-                  <span class="dropdown-title">Staff</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/contact">
-                  <span class="dropdown-title">Contact</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/wp-content/uploads/2025/09/pytorch_brand_guide_091925a.pdf">
-                  <span class="dropdown-title">Brand Guidelines</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div class="no-dropdown main-menu-button">
-              <a href="https://pytorch.org/join" data-cta="join">
-                JOIN
-              </a>
-            </div>
-          </li>
-        </ul>
-      </div>
-
-      <a class="main-menu-open-button" href="#" data-behavior="open-mobile-menu">
-        <i class="fa-solid fa-ellipsis"></i>
-      </a>
-    </div>
-  </div>
- </div>
-
- <!-- Begin Mobile Menu -->
-
-<div class="mobile-main-menu">
-  <div class="container-fluid">
-    <div class="header-container-wrapper">
-      <div class="mobile-main-menu-header-container">
-        <a class="main-menu-close-button" href="#" data-behavior="close-mobile-menu">
-        </a>
-      </div>
-    </div>
-  </div>
-
-  <div class="mobile-main-menu-links-container">
-    <div class="main-menu">
-      <ul>
-         <li class="resources-mobile-menu-title">
-           <a>Learn</a>
-         </li>
-         <ul class="resources-mobile-menu-items">
-           <li>
-             <a href="https://pytorch.org/get-started/locally">Get Started</a>
-           </li>
-           <li>
-             <a href="https://docs.pytorch.org/tutorials">Tutorials</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/tutorials/beginner/basics/intro.html">Learn the Basics</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/tutorials/recipes/recipes_index.html">PyTorch Recipes</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/tutorials/beginner/introyt.html">Introduction to PyTorch - YouTube Series</a>
-           </li>
-           <li>
-            <a href="https://pytorch.org/webinars/">Webinars</a>
-          </li>
-        </ul>
-         <li class="resources-mobile-menu-title">
-           <a>Community</a>
-         </li>
-         <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://landscape.pytorch.org/">Landscape</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/join-ecosystem">Join the Ecosystem</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/community-hub/">Community Hub</a>
-           </li>
-           <li>
-             <a href="https://discuss.pytorch.org/">Forums</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/resources">Developer Resources</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/contributor-awards/">Contributor Awards</a>
-           </li>
-           <li>
-            <a href="https://pytorch.org/community-events/">Community Events</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/programs/ambassadors/">PyTorch Ambassadors</a>
-          </li>
-       </ul>
-
-         <li class="resources-mobile-menu-title">
-           <a>Projects</a>
-         </li>
-
-         <ul class="resources-mobile-menu-items">
-           <li>
-             <a href="https://pytorch.org/projects/pytorch/">PyTorch</a>
-           </li>
-
-           <li>
-             <a href="https://pytorch.org/projects/vllm/">vLLM</a>
-           </li>
-           <li>
-            <a href="https://pytorch.org/projects/deepspeed/">DeepSpeed</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/projects/host-your-project/">Host Your Project</a>
-           </li>
-         </ul>
-
-         <li class="resources-mobile-menu-title">
-           <a>Docs</a>
-         </li>
-
-         <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://docs.pytorch.org/docs/stable/index.html">PyTorch</a>
-          </li>
-
-          <li>
-            <a href="https://pytorch.org/domains">Domains</a>
-          </li>
-        </ul>
-
-        <li class="resources-mobile-menu-title">
-          <a>Blog & News</a>
-        </li>
-
-         <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://pytorch.org/blog/">Blog</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/announcements">Announcements</a>
-          </li>
-
-          <li>
-            <a href="https://pytorch.org/case-studies/">Case Studies</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/events">Events</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/newsletter">Newsletter</a>
-           </li>
-        </ul>
-
-        <li class="resources-mobile-menu-title">
-          <a>About</a>
-        </li>
-
-        <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://pytorch.org/foundation">PyTorch Foundation</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/members">Members</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/governing-board">Governing Board</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/tac">Technical Advisory Council</a>
-         </li>
-         <li>
-             <a href="https://pytorch.org/credits">Cloud Credit Program</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/staff">Staff</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/contact">Contact</a>
-          </li>
-        </ul>
-      </ul>
-    </div>
-  </div>
-</div>
-
-<!-- End Mobile Menu -->
   
   
   
@@ -1380,7 +1062,7 @@ document.write(`
                   
   <section id="computation-times">
 <span id="sphx-glr-sg-execution-times"></span><h1>Computation times<a class="headerlink" href="#computation-times" title="Link to this heading">#</a></h1>
-<p><strong>05:51.706</strong> total execution time for 12 files <strong>from all galleries</strong>:</p>
+<p><strong>05:50.667</strong> total execution time for 12 files <strong>from all galleries</strong>:</p>
 <div class="docutils container">
 <style scoped>
 <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet" />
@@ -1402,39 +1084,39 @@ $(document).ready( function () {
 </thead>
 <tbody>
 <tr class="row-even"><td><p><a class="reference internal" href="generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py"><span class="std std-ref">Decoder Transforms: Applying transforms during decoding</span></a> (<code class="docutils literal notranslate"><span class="pre">../../examples/decoding/transforms.py</span></code>)</p></td>
-<td><p>02:27.773</p></td>
+<td><p>02:27.027</p></td>
 <td><p>0.0</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated_examples/decoding/parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py"><span class="std std-ref">Parallel video decoding: multi-processing and multi-threading</span></a> (<code class="docutils literal notranslate"><span class="pre">../../examples/decoding/parallel_decoding.py</span></code>)</p></td>
-<td><p>01:33.317</p></td>
+<td><p>01:32.995</p></td>
 <td><p>0.0</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py"><span class="std std-ref">Encoding video frames with VideoEncoder</span></a> (<code class="docutils literal notranslate"><span class="pre">../../examples/encoding/video_encoding.py</span></code>)</p></td>
-<td><p>00:27.078</p></td>
+<td><p>00:27.095</p></td>
 <td><p>0.0</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py"><span class="std std-ref">Streaming data through file-like support</span></a> (<code class="docutils literal notranslate"><span class="pre">../../examples/decoding/file_like.py</span></code>)</p></td>
-<td><p>00:26.771</p></td>
+<td><p>00:27.019</p></td>
 <td><p>0.0</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="generated_examples/decoding/approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py"><span class="std std-ref">Exact vs Approximate seek mode: Performance and accuracy comparison</span></a> (<code class="docutils literal notranslate"><span class="pre">../../examples/decoding/approximate_mode.py</span></code>)</p></td>
-<td><p>00:24.678</p></td>
+<td><p>00:24.259</p></td>
 <td><p>0.0</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated_examples/decoding/custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py"><span class="std std-ref">Decoding with custom frame mappings</span></a> (<code class="docutils literal notranslate"><span class="pre">../../examples/decoding/custom_frame_mappings.py</span></code>)</p></td>
-<td><p>00:23.546</p></td>
+<td><p>00:23.598</p></td>
 <td><p>0.0</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="generated_examples/decoding/basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py"><span class="std std-ref">Accelerated video decoding on GPUs with CUDA and NVDEC</span></a> (<code class="docutils literal notranslate"><span class="pre">../../examples/decoding/basic_cuda_example.py</span></code>)</p></td>
-<td><p>00:04.628</p></td>
+<td><p>00:04.782</p></td>
 <td><p>0.0</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py"><span class="std std-ref">Decoding a video with VideoDecoder</span></a> (<code class="docutils literal notranslate"><span class="pre">../../examples/decoding/basic_example.py</span></code>)</p></td>
-<td><p>00:02.076</p></td>
+<td><p>00:02.062</p></td>
 <td><p>0.0</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py"><span class="std std-ref">Decoding audio streams with AudioDecoder</span></a> (<code class="docutils literal notranslate"><span class="pre">../../examples/decoding/audio_decoding.py</span></code>)</p></td>
-<td><p>00:01.384</p></td>
+<td><p>00:01.374</p></td>
 <td><p>0.0</p></td>
 </tr>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated_examples/decoding/sampling.html#sphx-glr-generated-examples-decoding-sampling-py"><span class="std std-ref">How to sample video clips</span></a> (<code class="docutils literal notranslate"><span class="pre">../../examples/decoding/sampling.py</span></code>)</p></td>
@@ -1750,7 +1432,7 @@ $(document).ready( function () {
        "headline": "Computation times",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/sg_execution_times.html",
-       "articleBody": "Computation times# 05:51.706 total execution time for 12 files from all galleries: $(document).ready( function () { $(\u0027table.sg-datatable\u0027).DataTable({order: [[1, \u0027desc\u0027]]}); } ); Example Time Mem (MB) Decoder Transforms: Applying transforms during decoding (../../examples/decoding/transforms.py) 02:27.773 0.0 Parallel video decoding: multi-processing and multi-threading (../../examples/decoding/parallel_decoding.py) 01:33.317 0.0 Encoding video frames with VideoEncoder (../../examples/encoding/video_encoding.py) 00:27.078 0.0 Streaming data through file-like support (../../examples/decoding/file_like.py) 00:26.771 0.0 Exact vs Approximate seek mode: Performance and accuracy comparison (../../examples/decoding/approximate_mode.py) 00:24.678 0.0 Decoding with custom frame mappings (../../examples/decoding/custom_frame_mappings.py) 00:23.546 0.0 Accelerated video decoding on GPUs with CUDA and NVDEC (../../examples/decoding/basic_cuda_example.py) 00:04.628 0.0 Decoding a video with VideoDecoder (../../examples/decoding/basic_example.py) 00:02.076 0.0 Decoding audio streams with AudioDecoder (../../examples/decoding/audio_decoding.py) 00:01.384 0.0 How to sample video clips (../../examples/decoding/sampling.py) 00:00.426 0.0 Encoding audio samples with AudioEncoder (../../examples/encoding/audio_encoding.py) 00:00.029 0.0 TorchCodec Performance Tips and Best Practices (../../examples/decoding/performance_tips.py) 00:00.000 0.0",
+       "articleBody": "Computation times# 05:50.667 total execution time for 12 files from all galleries: $(document).ready( function () { $(\u0027table.sg-datatable\u0027).DataTable({order: [[1, \u0027desc\u0027]]}); } ); Example Time Mem (MB) Decoder Transforms: Applying transforms during decoding (../../examples/decoding/transforms.py) 02:27.027 0.0 Parallel video decoding: multi-processing and multi-threading (../../examples/decoding/parallel_decoding.py) 01:32.995 0.0 Encoding video frames with VideoEncoder (../../examples/encoding/video_encoding.py) 00:27.095 0.0 Streaming data through file-like support (../../examples/decoding/file_like.py) 00:27.019 0.0 Exact vs Approximate seek mode: Performance and accuracy comparison (../../examples/decoding/approximate_mode.py) 00:24.259 0.0 Decoding with custom frame mappings (../../examples/decoding/custom_frame_mappings.py) 00:23.598 0.0 Accelerated video decoding on GPUs with CUDA and NVDEC (../../examples/decoding/basic_cuda_example.py) 00:04.782 0.0 Decoding a video with VideoDecoder (../../examples/decoding/basic_example.py) 00:02.062 0.0 Decoding audio streams with AudioDecoder (../../examples/decoding/audio_decoding.py) 00:01.374 0.0 How to sample video clips (../../examples/decoding/sampling.py) 00:00.426 0.0 Encoding audio samples with AudioEncoder (../../examples/encoding/audio_encoding.py) 00:00.029 0.0 TorchCodec Performance Tips and Best Practices (../../examples/decoding/performance_tips.py) 00:00.000 0.0",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

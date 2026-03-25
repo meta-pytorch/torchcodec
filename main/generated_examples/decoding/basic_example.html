@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Decoding a video with VideoDecoder &#8212; TorchCodec 0.12.0.dev20260324+cu126 Documentation</title>
+    <title>Decoding a video with VideoDecoder &#8212; TorchCodec 0.12.0.dev20260325+cu126 Documentation</title>
   
   
   
@@ -109,6 +109,32 @@
   });
 </script>
 <!-- Conditional CSS for header and footer height adjustment -->
+
+<style>
+  :root {
+    --header-height: 0px !important;
+    --header-height-desktop: 0px !important;
+  }
+  /* Ensure proper mobile layout when LF header is hidden */
+  @media (max-width: 960px) {
+    .bd-header {
+      top: 0 !important;
+      position: sticky !important;
+      z-index: 1020 !important;
+    }
+    .bd-main {
+      padding-top: 0 !important;
+      margin-top: 0 !important;
+    }
+    .bd-article-container {
+      padding-top: 0 !important;
+    }
+    .header-article__inner {
+      padding-top: 1rem !important;
+    }
+
+  }
+</style>
 
 
 <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css" crossorigin="anonymous">
@@ -299,350 +325,6 @@
   
 
 
-  
-    <div class="container-fluid header-holder tutorials-header" id="header-holder">
-   <div class="header-container-wrapper">
-    <div class="header-container">
-      <a class="header-logo" href="https://pytorch.org/" aria-label="PyTorch"></a>
-
-      <div class="main-menu">
-        <ul>
-
-          <li class="main-menu-item">
-          <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-                <span>Learn</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/get-started/locally">
-                  <span class=dropdown-title>Get Started</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://docs.pytorch.org/tutorials">
-                  <span class="dropdown-title">Tutorials</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tutorials/beginner/basics/intro.html">
-                  <span class="dropdown-title">Learn the Basics</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tutorials/recipes/recipes_index.html">
-                  <span class="dropdown-title">PyTorch Recipes</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tutorials/beginner/introyt.html">
-                  <span class="dropdown-title">Intro to PyTorch - YouTube Series</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/webinars/">
-                  <span class="dropdown-title">Webinars</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-          <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>Community</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://landscape.pytorch.org/" target="_blank">
-                  <span class="dropdown-title">Landscape</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/join-ecosystem">
-                  <span class="dropdown-title">Join the Ecosystem</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/community-hub/">
-                  <span class="dropdown-title">Community Hub</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://discuss.pytorch.org/">
-                  <span class="dropdown-title">Forums</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/resources">
-                  <span class=dropdown-title>Developer Resources</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/contributor-awards/">
-                  <span class="dropdown-title">Contributor Awards</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/community-events/">
-                  <span class="dropdown-title">Community Events</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/programs/ambassadors/">
-                  <span class="dropdown-title">PyTorch Ambassadors</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-          <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>Projects</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/pytorch/">
-                  <span class="dropdown-title">PyTorch</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/vllm/">
-                  <span class="dropdown-title">vLLM</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/deepspeed/">
-                  <span class="dropdown-title">DeepSpeed</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/host-your-project/">
-                  <span class="dropdown-title">Host Your Project</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/ray/">
-                  <span class="dropdown-title">RAY</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span> Docs</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://docs.pytorch.org/docs/stable/index.html">
-                  <span class="dropdown-title">PyTorch</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/domains">
-                  <span class="dropdown-title">Domains</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>Blogs & News</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/blog/">
-                  <span class="dropdown-title">Blog</span>
-                </a>
-                 <a class="nav-dropdown-item" href="https://pytorch.org/announcements">
-                  <span class="dropdown-title">Announcements</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/case-studies/">
-                  <span class="dropdown-title">Case Studies</span>
-                <a class="nav-dropdown-item" href="https://pytorch.org/events">
-                  <span class="dropdown-title">Events</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/newsletter">
-                  <span class="dropdown-title">Newsletter</span>
-                </a>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>About</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/foundation">
-                  <span class="dropdown-title">PyTorch Foundation</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/members">
-                  <span class="dropdown-title">Members</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/governing-board">
-                  <span class="dropdown-title">Governing Board</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tac">
-                  <span class="dropdown-title">Technical Advisory Council</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/credits">
-                  <span class="dropdown-title">Cloud Credit Program</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/staff">
-                  <span class="dropdown-title">Staff</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/contact">
-                  <span class="dropdown-title">Contact</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/wp-content/uploads/2025/09/pytorch_brand_guide_091925a.pdf">
-                  <span class="dropdown-title">Brand Guidelines</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div class="no-dropdown main-menu-button">
-              <a href="https://pytorch.org/join" data-cta="join">
-                JOIN
-              </a>
-            </div>
-          </li>
-        </ul>
-      </div>
-
-      <a class="main-menu-open-button" href="#" data-behavior="open-mobile-menu">
-        <i class="fa-solid fa-ellipsis"></i>
-      </a>
-    </div>
-  </div>
- </div>
-
- <!-- Begin Mobile Menu -->
-
-<div class="mobile-main-menu">
-  <div class="container-fluid">
-    <div class="header-container-wrapper">
-      <div class="mobile-main-menu-header-container">
-        <a class="main-menu-close-button" href="#" data-behavior="close-mobile-menu">
-        </a>
-      </div>
-    </div>
-  </div>
-
-  <div class="mobile-main-menu-links-container">
-    <div class="main-menu">
-      <ul>
-         <li class="resources-mobile-menu-title">
-           <a>Learn</a>
-         </li>
-         <ul class="resources-mobile-menu-items">
-           <li>
-             <a href="https://pytorch.org/get-started/locally">Get Started</a>
-           </li>
-           <li>
-             <a href="https://docs.pytorch.org/tutorials">Tutorials</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/tutorials/beginner/basics/intro.html">Learn the Basics</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/tutorials/recipes/recipes_index.html">PyTorch Recipes</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/tutorials/beginner/introyt.html">Introduction to PyTorch - YouTube Series</a>
-           </li>
-           <li>
-            <a href="https://pytorch.org/webinars/">Webinars</a>
-          </li>
-        </ul>
-         <li class="resources-mobile-menu-title">
-           <a>Community</a>
-         </li>
-         <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://landscape.pytorch.org/">Landscape</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/join-ecosystem">Join the Ecosystem</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/community-hub/">Community Hub</a>
-           </li>
-           <li>
-             <a href="https://discuss.pytorch.org/">Forums</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/resources">Developer Resources</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/contributor-awards/">Contributor Awards</a>
-           </li>
-           <li>
-            <a href="https://pytorch.org/community-events/">Community Events</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/programs/ambassadors/">PyTorch Ambassadors</a>
-          </li>
-       </ul>
-
-         <li class="resources-mobile-menu-title">
-           <a>Projects</a>
-         </li>
-
-         <ul class="resources-mobile-menu-items">
-           <li>
-             <a href="https://pytorch.org/projects/pytorch/">PyTorch</a>
-           </li>
-
-           <li>
-             <a href="https://pytorch.org/projects/vllm/">vLLM</a>
-           </li>
-           <li>
-            <a href="https://pytorch.org/projects/deepspeed/">DeepSpeed</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/projects/host-your-project/">Host Your Project</a>
-           </li>
-         </ul>
-
-         <li class="resources-mobile-menu-title">
-           <a>Docs</a>
-         </li>
-
-         <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://docs.pytorch.org/docs/stable/index.html">PyTorch</a>
-          </li>
-
-          <li>
-            <a href="https://pytorch.org/domains">Domains</a>
-          </li>
-        </ul>
-
-        <li class="resources-mobile-menu-title">
-          <a>Blog & News</a>
-        </li>
-
-         <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://pytorch.org/blog/">Blog</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/announcements">Announcements</a>
-          </li>
-
-          <li>
-            <a href="https://pytorch.org/case-studies/">Case Studies</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/events">Events</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/newsletter">Newsletter</a>
-           </li>
-        </ul>
-
-        <li class="resources-mobile-menu-title">
-          <a>About</a>
-        </li>
-
-        <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://pytorch.org/foundation">PyTorch Foundation</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/members">Members</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/governing-board">Governing Board</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/tac">Technical Advisory Council</a>
-         </li>
-         <li>
-             <a href="https://pytorch.org/credits">Cloud Credit Program</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/staff">Staff</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/contact">Contact</a>
-          </li>
-        </ul>
-      </ul>
-    </div>
-  </div>
-</div>
-
-<!-- End Mobile Menu -->
   
   
   
@@ -1650,7 +1332,7 @@ FrameBatch:
 <li><img src="../../_images/sphx_glr_basic_example_005.png" srcset="../../_images/sphx_glr_basic_example_005.png" alt="Frame played at 2 seconds" class = "sphx-glr-multi-img"/></li>
 <li><img src="../../_images/sphx_glr_basic_example_006.png" srcset="../../_images/sphx_glr_basic_example_006.png" alt="Other frames" class = "sphx-glr-multi-img"/></li>
 </ul>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 2.076 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 2.062 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-decoding-basic-example-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../../_downloads/c8852e7e664672bdb64c6ba771a9bd30/basic_example.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">basic_example.ipynb</span></code></a></p>
@@ -2013,7 +1695,7 @@ FrameBatch:
        "headline": "Decoding a video with VideoDecoder",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated_examples/decoding/basic_example.html",
-       "articleBody": "Decoding a video with VideoDecoder# In this example, we\u2019ll learn how to decode a video using the VideoDecoder class. First, a bit of boilerplate: we\u2019ll download a video from the web, and define a plotting utility. You can ignore that part and jump right below to Creating a decoder. import torch import requests # Video source: https://www.pexels.com/video/dog-eating-854132/ # License: CC0. Author: Coverr. url = \"https://videos.pexels.com/video-files/854132/854132-sd_640_360_25fps.mp4\" response = requests.get(url, headers={\"User-Agent\": \"\"}) if response.status_code != 200: raise RuntimeError(f\"Failed to download video. {response.status_code = }.\") raw_video_bytes = response.content def plot(frames: torch.Tensor, title: str | None = None): try: from torchvision.utils import make_grid from torchvision.transforms.v2.functional import to_pil_image import matplotlib.pyplot as plt except ImportError: print(\"Cannot plot, please run `pip install torchvision matplotlib`\") return plt.rcParams[\"savefig.bbox\"] = \u0027tight\u0027 fig, ax = plt.subplots() ax.imshow(to_pil_image(make_grid(frames))) ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[]) if title is not None: ax.set_title(title) plt.tight_layout() Creating a decoder# We can now create a decoder from the raw (encoded) video bytes. You can of course use a local video file and pass the path as input, rather than download a video. from torchcodec.decoders import VideoDecoder # You can also pass a path to a local file! decoder = VideoDecoder(raw_video_bytes) The video has not yet been decoded by the decoder, but we already have access to some metadata via the metadata attribute which is a VideoStreamMetadata object. print(decoder.metadata) VideoStreamMetadata: duration_seconds_from_header: 13.8 begin_stream_seconds_from_header: 0 bit_rate: 505790 codec: h264 stream_index: 0 duration_seconds: 13.8 begin_stream_seconds: 0 begin_stream_seconds_from_content: 0 end_stream_seconds_from_content: 13.8 width: 640 height: 360 num_frames_from_header: 345 num_frames_from_content: 345 average_fps_from_header: 25 pixel_aspect_ratio: 1 rotation: None color_primaries: smpte170m color_space: smpte170m color_transfer_characteristic: smpte170m pixel_format: yuv420p end_stream_seconds: 13.8 num_frames: 345 average_fps: 25 Decoding frames by indexing the decoder# first_frame = decoder[0] # using a single int index every_twenty_frame = decoder[0 : -1 : 20] # using slices print(f\"{first_frame.shape = }\") print(f\"{first_frame.dtype = }\") print(f\"{every_twenty_frame.shape = }\") print(f\"{every_twenty_frame.dtype = }\") first_frame.shape = torch.Size([3, 360, 640]) first_frame.dtype = torch.uint8 every_twenty_frame.shape = torch.Size([18, 3, 360, 640]) every_twenty_frame.dtype = torch.uint8 Indexing the decoder returns the frames as torch.Tensor objects. By default, the shape of the frames is (N, C, H, W) where N is the batch size C the number of channels, H is the height, and W is the width of the frames. The batch dimension N is only present when we\u2019re decoding more than one frame. The dimension order can be changed to N, H, W, C using the dimension_order parameter of VideoDecoder. Frames are always of torch.uint8 dtype. Note If you need to decode multiple frames, we recommend using the batch methods instead, since they are faster: get_frames_at(), get_frames_in_range(), get_frames_played_at(), and get_frames_played_in_range(). They are described below. plot(first_frame, \"First frame\") plot(every_twenty_frame, \"Every 20 frame\") Iterating over frames# The decoder is a normal iterable object and can be iterated over like so: for frame in decoder: assert ( isinstance(frame, torch.Tensor) and frame.shape == (3, decoder.metadata.height, decoder.metadata.width) ) Retrieving pts and duration of frames# Indexing the decoder returns pure torch.Tensor objects. Sometimes, it can be useful to retrieve additional information about the frames, such as their pts (Presentation Time Stamp), and their duration. This can be achieved using the get_frame_at() and get_frames_at() methods, which will return a Frame and FrameBatch objects respectively. last_frame = decoder.get_frame_at(len(decoder) - 1) print(f\"{type(last_frame) = }\") print(last_frame) type(last_frame) = \u003cclass \u0027torchcodec._frame.Frame\u0027\u003e Frame: data (shape): torch.Size([3, 360, 640]) pts_seconds: 13.76 duration_seconds: 0.04 other_frames = decoder.get_frames_at([10, 0, 50]) print(f\"{type(other_frames) = }\") print(other_frames) type(other_frames) = \u003cclass \u0027torchcodec._frame.FrameBatch\u0027\u003e FrameBatch: data (shape): torch.Size([3, 3, 360, 640]) pts_seconds: tensor([0.4000, 0.0000, 2.0000], dtype=torch.float64) duration_seconds: tensor([0.0400, 0.0400, 0.0400], dtype=torch.float64) plot(last_frame.data, \"Last frame\") plot(other_frames.data, \"Other frames\") Both Frame and FrameBatch have a data field, which contains the decoded tensor data. They also have the pts_seconds and duration_seconds fields which are single ints for Frame, and 1-D torch.Tensor for FrameBatch (one value per frame in the batch). Using time-based indexing# So far, we have retrieved frames based on their index. We can also retrieve frames based on when they are played with get_frame_played_at() and get_frames_played_at(), which also returns Frame and FrameBatch respectively. frame_at_2_seconds = decoder.get_frame_played_at(seconds=2) print(f\"{type(frame_at_2_seconds) = }\") print(frame_at_2_seconds) type(frame_at_2_seconds) = \u003cclass \u0027torchcodec._frame.Frame\u0027\u003e Frame: data (shape): torch.Size([3, 360, 640]) pts_seconds: 2.0 duration_seconds: 0.04 other_frames = decoder.get_frames_played_at(seconds=[10.1, 0.3, 5]) print(f\"{type(other_frames) = }\") print(other_frames) type(other_frames) = \u003cclass \u0027torchcodec._frame.FrameBatch\u0027\u003e FrameBatch: data (shape): torch.Size([3, 3, 360, 640]) pts_seconds: tensor([10.0800, 0.2800, 5.0000], dtype=torch.float64) duration_seconds: tensor([0.0400, 0.0400, 0.0400], dtype=torch.float64) plot(frame_at_2_seconds.data, \"Frame played at 2 seconds\") plot(other_frames.data, \"Other frames\") Total running time of the script: (0 minutes 2.076 seconds) Download Jupyter notebook: basic_example.ipynb Download Python source code: basic_example.py Download zipped: basic_example.zip Gallery generated by Sphinx-Gallery",
+       "articleBody": "Decoding a video with VideoDecoder# In this example, we\u2019ll learn how to decode a video using the VideoDecoder class. First, a bit of boilerplate: we\u2019ll download a video from the web, and define a plotting utility. You can ignore that part and jump right below to Creating a decoder. import torch import requests # Video source: https://www.pexels.com/video/dog-eating-854132/ # License: CC0. Author: Coverr. url = \"https://videos.pexels.com/video-files/854132/854132-sd_640_360_25fps.mp4\" response = requests.get(url, headers={\"User-Agent\": \"\"}) if response.status_code != 200: raise RuntimeError(f\"Failed to download video. {response.status_code = }.\") raw_video_bytes = response.content def plot(frames: torch.Tensor, title: str | None = None): try: from torchvision.utils import make_grid from torchvision.transforms.v2.functional import to_pil_image import matplotlib.pyplot as plt except ImportError: print(\"Cannot plot, please run `pip install torchvision matplotlib`\") return plt.rcParams[\"savefig.bbox\"] = \u0027tight\u0027 fig, ax = plt.subplots() ax.imshow(to_pil_image(make_grid(frames))) ax.set(xticklabels=[], yticklabels=[], xticks=[], yticks=[]) if title is not None: ax.set_title(title) plt.tight_layout() Creating a decoder# We can now create a decoder from the raw (encoded) video bytes. You can of course use a local video file and pass the path as input, rather than download a video. from torchcodec.decoders import VideoDecoder # You can also pass a path to a local file! decoder = VideoDecoder(raw_video_bytes) The video has not yet been decoded by the decoder, but we already have access to some metadata via the metadata attribute which is a VideoStreamMetadata object. print(decoder.metadata) VideoStreamMetadata: duration_seconds_from_header: 13.8 begin_stream_seconds_from_header: 0 bit_rate: 505790 codec: h264 stream_index: 0 duration_seconds: 13.8 begin_stream_seconds: 0 begin_stream_seconds_from_content: 0 end_stream_seconds_from_content: 13.8 width: 640 height: 360 num_frames_from_header: 345 num_frames_from_content: 345 average_fps_from_header: 25 pixel_aspect_ratio: 1 rotation: None color_primaries: smpte170m color_space: smpte170m color_transfer_characteristic: smpte170m pixel_format: yuv420p end_stream_seconds: 13.8 num_frames: 345 average_fps: 25 Decoding frames by indexing the decoder# first_frame = decoder[0] # using a single int index every_twenty_frame = decoder[0 : -1 : 20] # using slices print(f\"{first_frame.shape = }\") print(f\"{first_frame.dtype = }\") print(f\"{every_twenty_frame.shape = }\") print(f\"{every_twenty_frame.dtype = }\") first_frame.shape = torch.Size([3, 360, 640]) first_frame.dtype = torch.uint8 every_twenty_frame.shape = torch.Size([18, 3, 360, 640]) every_twenty_frame.dtype = torch.uint8 Indexing the decoder returns the frames as torch.Tensor objects. By default, the shape of the frames is (N, C, H, W) where N is the batch size C the number of channels, H is the height, and W is the width of the frames. The batch dimension N is only present when we\u2019re decoding more than one frame. The dimension order can be changed to N, H, W, C using the dimension_order parameter of VideoDecoder. Frames are always of torch.uint8 dtype. Note If you need to decode multiple frames, we recommend using the batch methods instead, since they are faster: get_frames_at(), get_frames_in_range(), get_frames_played_at(), and get_frames_played_in_range(). They are described below. plot(first_frame, \"First frame\") plot(every_twenty_frame, \"Every 20 frame\") Iterating over frames# The decoder is a normal iterable object and can be iterated over like so: for frame in decoder: assert ( isinstance(frame, torch.Tensor) and frame.shape == (3, decoder.metadata.height, decoder.metadata.width) ) Retrieving pts and duration of frames# Indexing the decoder returns pure torch.Tensor objects. Sometimes, it can be useful to retrieve additional information about the frames, such as their pts (Presentation Time Stamp), and their duration. This can be achieved using the get_frame_at() and get_frames_at() methods, which will return a Frame and FrameBatch objects respectively. last_frame = decoder.get_frame_at(len(decoder) - 1) print(f\"{type(last_frame) = }\") print(last_frame) type(last_frame) = \u003cclass \u0027torchcodec._frame.Frame\u0027\u003e Frame: data (shape): torch.Size([3, 360, 640]) pts_seconds: 13.76 duration_seconds: 0.04 other_frames = decoder.get_frames_at([10, 0, 50]) print(f\"{type(other_frames) = }\") print(other_frames) type(other_frames) = \u003cclass \u0027torchcodec._frame.FrameBatch\u0027\u003e FrameBatch: data (shape): torch.Size([3, 3, 360, 640]) pts_seconds: tensor([0.4000, 0.0000, 2.0000], dtype=torch.float64) duration_seconds: tensor([0.0400, 0.0400, 0.0400], dtype=torch.float64) plot(last_frame.data, \"Last frame\") plot(other_frames.data, \"Other frames\") Both Frame and FrameBatch have a data field, which contains the decoded tensor data. They also have the pts_seconds and duration_seconds fields which are single ints for Frame, and 1-D torch.Tensor for FrameBatch (one value per frame in the batch). Using time-based indexing# So far, we have retrieved frames based on their index. We can also retrieve frames based on when they are played with get_frame_played_at() and get_frames_played_at(), which also returns Frame and FrameBatch respectively. frame_at_2_seconds = decoder.get_frame_played_at(seconds=2) print(f\"{type(frame_at_2_seconds) = }\") print(frame_at_2_seconds) type(frame_at_2_seconds) = \u003cclass \u0027torchcodec._frame.Frame\u0027\u003e Frame: data (shape): torch.Size([3, 360, 640]) pts_seconds: 2.0 duration_seconds: 0.04 other_frames = decoder.get_frames_played_at(seconds=[10.1, 0.3, 5]) print(f\"{type(other_frames) = }\") print(other_frames) type(other_frames) = \u003cclass \u0027torchcodec._frame.FrameBatch\u0027\u003e FrameBatch: data (shape): torch.Size([3, 3, 360, 640]) pts_seconds: tensor([10.0800, 0.2800, 5.0000], dtype=torch.float64) duration_seconds: tensor([0.0400, 0.0400, 0.0400], dtype=torch.float64) plot(frame_at_2_seconds.data, \"Frame played at 2 seconds\") plot(other_frames.data, \"Other frames\") Total running time of the script: (0 minutes 2.062 seconds) Download Jupyter notebook: basic_example.ipynb Download Python source code: basic_example.py Download zipped: basic_example.zip Gallery generated by Sphinx-Gallery",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

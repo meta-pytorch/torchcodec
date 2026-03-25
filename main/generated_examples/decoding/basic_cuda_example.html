@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Accelerated video decoding on GPUs with CUDA and NVDEC &#8212; TorchCodec 0.12.0.dev20260324+cu126 Documentation</title>
+    <title>Accelerated video decoding on GPUs with CUDA and NVDEC &#8212; TorchCodec 0.12.0.dev20260325+cu126 Documentation</title>
   
   
   
@@ -109,6 +109,32 @@
   });
 </script>
 <!-- Conditional CSS for header and footer height adjustment -->
+
+<style>
+  :root {
+    --header-height: 0px !important;
+    --header-height-desktop: 0px !important;
+  }
+  /* Ensure proper mobile layout when LF header is hidden */
+  @media (max-width: 960px) {
+    .bd-header {
+      top: 0 !important;
+      position: sticky !important;
+      z-index: 1020 !important;
+    }
+    .bd-main {
+      padding-top: 0 !important;
+      margin-top: 0 !important;
+    }
+    .bd-article-container {
+      padding-top: 0 !important;
+    }
+    .header-article__inner {
+      padding-top: 1rem !important;
+    }
+
+  }
+</style>
 
 
 <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css" crossorigin="anonymous">
@@ -299,350 +325,6 @@
   
 
 
-  
-    <div class="container-fluid header-holder tutorials-header" id="header-holder">
-   <div class="header-container-wrapper">
-    <div class="header-container">
-      <a class="header-logo" href="https://pytorch.org/" aria-label="PyTorch"></a>
-
-      <div class="main-menu">
-        <ul>
-
-          <li class="main-menu-item">
-          <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-                <span>Learn</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/get-started/locally">
-                  <span class=dropdown-title>Get Started</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://docs.pytorch.org/tutorials">
-                  <span class="dropdown-title">Tutorials</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tutorials/beginner/basics/intro.html">
-                  <span class="dropdown-title">Learn the Basics</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tutorials/recipes/recipes_index.html">
-                  <span class="dropdown-title">PyTorch Recipes</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tutorials/beginner/introyt.html">
-                  <span class="dropdown-title">Intro to PyTorch - YouTube Series</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/webinars/">
-                  <span class="dropdown-title">Webinars</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-          <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>Community</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://landscape.pytorch.org/" target="_blank">
-                  <span class="dropdown-title">Landscape</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/join-ecosystem">
-                  <span class="dropdown-title">Join the Ecosystem</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/community-hub/">
-                  <span class="dropdown-title">Community Hub</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://discuss.pytorch.org/">
-                  <span class="dropdown-title">Forums</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/resources">
-                  <span class=dropdown-title>Developer Resources</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/contributor-awards/">
-                  <span class="dropdown-title">Contributor Awards</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/community-events/">
-                  <span class="dropdown-title">Community Events</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/programs/ambassadors/">
-                  <span class="dropdown-title">PyTorch Ambassadors</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-          <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>Projects</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/pytorch/">
-                  <span class="dropdown-title">PyTorch</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/vllm/">
-                  <span class="dropdown-title">vLLM</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/deepspeed/">
-                  <span class="dropdown-title">DeepSpeed</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/host-your-project/">
-                  <span class="dropdown-title">Host Your Project</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/projects/ray/">
-                  <span class="dropdown-title">RAY</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span> Docs</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://docs.pytorch.org/docs/stable/index.html">
-                  <span class="dropdown-title">PyTorch</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/domains">
-                  <span class="dropdown-title">Domains</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>Blogs & News</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/blog/">
-                  <span class="dropdown-title">Blog</span>
-                </a>
-                 <a class="nav-dropdown-item" href="https://pytorch.org/announcements">
-                  <span class="dropdown-title">Announcements</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/case-studies/">
-                  <span class="dropdown-title">Case Studies</span>
-                <a class="nav-dropdown-item" href="https://pytorch.org/events">
-                  <span class="dropdown-title">Events</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/newsletter">
-                  <span class="dropdown-title">Newsletter</span>
-                </a>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div id="resourcesDropdownButton" data-toggle="resources-dropdown" class="resources-dropdown">
-              <a class="with-down-arrow">
-              <span>About</span>
-              </a>
-              <div class="resources-dropdown-menu">
-                <a class="nav-dropdown-item" href="https://pytorch.org/foundation">
-                  <span class="dropdown-title">PyTorch Foundation</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/members">
-                  <span class="dropdown-title">Members</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/governing-board">
-                  <span class="dropdown-title">Governing Board</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/tac">
-                  <span class="dropdown-title">Technical Advisory Council</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/credits">
-                  <span class="dropdown-title">Cloud Credit Program</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/staff">
-                  <span class="dropdown-title">Staff</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/contact">
-                  <span class="dropdown-title">Contact</span>
-                </a>
-                <a class="nav-dropdown-item" href="https://pytorch.org/wp-content/uploads/2025/09/pytorch_brand_guide_091925a.pdf">
-                  <span class="dropdown-title">Brand Guidelines</span>
-                </a>
-              </div>
-            </div>
-          </li>
-
-          <li class="main-menu-item">
-            <div class="no-dropdown main-menu-button">
-              <a href="https://pytorch.org/join" data-cta="join">
-                JOIN
-              </a>
-            </div>
-          </li>
-        </ul>
-      </div>
-
-      <a class="main-menu-open-button" href="#" data-behavior="open-mobile-menu">
-        <i class="fa-solid fa-ellipsis"></i>
-      </a>
-    </div>
-  </div>
- </div>
-
- <!-- Begin Mobile Menu -->
-
-<div class="mobile-main-menu">
-  <div class="container-fluid">
-    <div class="header-container-wrapper">
-      <div class="mobile-main-menu-header-container">
-        <a class="main-menu-close-button" href="#" data-behavior="close-mobile-menu">
-        </a>
-      </div>
-    </div>
-  </div>
-
-  <div class="mobile-main-menu-links-container">
-    <div class="main-menu">
-      <ul>
-         <li class="resources-mobile-menu-title">
-           <a>Learn</a>
-         </li>
-         <ul class="resources-mobile-menu-items">
-           <li>
-             <a href="https://pytorch.org/get-started/locally">Get Started</a>
-           </li>
-           <li>
-             <a href="https://docs.pytorch.org/tutorials">Tutorials</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/tutorials/beginner/basics/intro.html">Learn the Basics</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/tutorials/recipes/recipes_index.html">PyTorch Recipes</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/tutorials/beginner/introyt.html">Introduction to PyTorch - YouTube Series</a>
-           </li>
-           <li>
-            <a href="https://pytorch.org/webinars/">Webinars</a>
-          </li>
-        </ul>
-         <li class="resources-mobile-menu-title">
-           <a>Community</a>
-         </li>
-         <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://landscape.pytorch.org/">Landscape</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/join-ecosystem">Join the Ecosystem</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/community-hub/">Community Hub</a>
-           </li>
-           <li>
-             <a href="https://discuss.pytorch.org/">Forums</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/resources">Developer Resources</a>
-           </li>
-           <li>
-             <a href="https://pytorch.org/contributor-awards/">Contributor Awards</a>
-           </li>
-           <li>
-            <a href="https://pytorch.org/community-events/">Community Events</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/programs/ambassadors/">PyTorch Ambassadors</a>
-          </li>
-       </ul>
-
-         <li class="resources-mobile-menu-title">
-           <a>Projects</a>
-         </li>
-
-         <ul class="resources-mobile-menu-items">
-           <li>
-             <a href="https://pytorch.org/projects/pytorch/">PyTorch</a>
-           </li>
-
-           <li>
-             <a href="https://pytorch.org/projects/vllm/">vLLM</a>
-           </li>
-           <li>
-            <a href="https://pytorch.org/projects/deepspeed/">DeepSpeed</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/projects/host-your-project/">Host Your Project</a>
-           </li>
-         </ul>
-
-         <li class="resources-mobile-menu-title">
-           <a>Docs</a>
-         </li>
-
-         <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://docs.pytorch.org/docs/stable/index.html">PyTorch</a>
-          </li>
-
-          <li>
-            <a href="https://pytorch.org/domains">Domains</a>
-          </li>
-        </ul>
-
-        <li class="resources-mobile-menu-title">
-          <a>Blog & News</a>
-        </li>
-
-         <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://pytorch.org/blog/">Blog</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/announcements">Announcements</a>
-          </li>
-
-          <li>
-            <a href="https://pytorch.org/case-studies/">Case Studies</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/events">Events</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/newsletter">Newsletter</a>
-           </li>
-        </ul>
-
-        <li class="resources-mobile-menu-title">
-          <a>About</a>
-        </li>
-
-        <ul class="resources-mobile-menu-items">
-          <li>
-            <a href="https://pytorch.org/foundation">PyTorch Foundation</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/members">Members</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/governing-board">Governing Board</a>
-          </li>
-          <li>
-            <a href="https://pytorch.org/tac">Technical Advisory Council</a>
-         </li>
-         <li>
-             <a href="https://pytorch.org/credits">Cloud Credit Program</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/staff">Staff</a>
-          </li>
-          <li>
-             <a href="https://pytorch.org/contact">Contact</a>
-          </li>
-        </ul>
-      </ul>
-    </div>
-  </div>
-</div>
-
-<!-- End Mobile Menu -->
   
   
   
@@ -1454,9 +1136,9 @@ CUDA decoding also uses less PCI-e bandwidth.</p>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><a href="https://docs.pytorch.org/docs/stable/generated/torch.cuda.get_device_properties.html#torch.cuda.get_device_properties" title="torch.cuda.get_device_properties" class="sphx-glr-backref-module-torch-cuda sphx-glr-backref-type-py-function"><span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">get_device_properties</span></a><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="si">=}</span><span class="s2">&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>torch.__version__=&#39;2.12.0.dev20260324+cu126&#39;
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>torch.__version__=&#39;2.12.0.dev20260325+cu126&#39;
 torch.cuda.is_available()=True
-torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name=&#39;NVIDIA A10G&#39;, major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=4d035091-4aad-6f06-f14f-74b676336f4a, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
+torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name=&#39;NVIDIA A10G&#39;, major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=0beb899b-b7c1-10a5-02e0-0b7849307641, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
 </pre></div>
 </div>
 </section>
@@ -1480,7 +1162,7 @@ torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name=&#39;NVIDIA A10G&
 <span class="p">)</span>
 </pre></div>
 </div>
-<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>(&#39;video.mp4&#39;, &lt;http.client.HTTPMessage object at 0x7f5ff758bc40&gt;)
+<div class="sphx-glr-script-out highlight-none notranslate"><div class="highlight"><pre><span></span>(&#39;video.mp4&#39;, &lt;http.client.HTTPMessage object at 0x7f8e82b73880&gt;)
 </pre></div>
 </div>
 </section>
@@ -1579,7 +1261,7 @@ mean_abs_diff=tensor(0.5636, device=&#39;cuda:0&#39;)
 max_abs_diff=tensor(2., device=&#39;cuda:0&#39;)
 </pre></div>
 </div>
-<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 4.628 seconds)</p>
+<p class="sphx-glr-timing"><strong>Total running time of the script:</strong> (0 minutes 4.782 seconds)</p>
 <div class="sphx-glr-footer sphx-glr-footer-example docutils container" id="sphx-glr-download-generated-examples-decoding-basic-cuda-example-py">
 <div class="sphx-glr-download sphx-glr-download-jupyter docutils container">
 <p><a class="reference download internal" download="" href="../../_downloads/0d9d7e92cb34559510d86a36f73e1e53/basic_cuda_example.ipynb"><code class="xref download docutils literal notranslate"><span class="pre">Download</span> <span class="pre">Jupyter</span> <span class="pre">notebook:</span> <span class="pre">basic_cuda_example.ipynb</span></code></a></p>
@@ -1943,7 +1625,7 @@ max_abs_diff=tensor(2., device=&#39;cuda:0&#39;)
        "headline": "Accelerated video decoding on GPUs with CUDA and NVDEC",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated_examples/decoding/basic_cuda_example.html",
-       "articleBody": "Accelerated video decoding on GPUs with CUDA and NVDEC# TorchCodec can use supported Nvidia hardware (see support matrix here) to speed-up video decoding. This is called \u201cCUDA Decoding\u201d and it uses Nvidia\u2019s NVDEC hardware decoder and CUDA kernels to respectively decompress and convert to RGB. CUDA Decoding can be faster than CPU Decoding for the actual decoding step and also for subsequent transform steps like scaling, cropping or rotating. This is because the decode step leaves the decoded tensor in GPU memory so the GPU doesn\u2019t have to fetch from main memory before running the transform steps. Encoded packets are often much smaller than decoded frames so CUDA decoding also uses less PCI-e bandwidth. Installing TorchCodec with CUDA Enabled# Refer to the installation guide in the README. Checking if Pytorch has CUDA enabled# Note This tutorial requires FFmpeg libraries compiled with CUDA support. import torch print(f\"{torch.__version__=}\") print(f\"{torch.cuda.is_available()=}\") print(f\"{torch.cuda.get_device_properties(0)=}\") torch.__version__=\u00272.12.0.dev20260324+cu126\u0027 torch.cuda.is_available()=True torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name=\u0027NVIDIA A10G\u0027, major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=4d035091-4aad-6f06-f14f-74b676336f4a, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB) Downloading the video# We will use the following video which has the following properties: Codec: H.264 Resolution: 960x540 FPS: 29.97 Pixel format: YUV420P import urllib.request video_file = \"video.mp4\" urllib.request.urlretrieve( \"https://download.pytorch.org/torchaudio/tutorial-assets/stream-api/NASAs_Most_Scientifically_Complex_Space_Observatory_Requires_Precision-MP4_small.mp4\", video_file, ) (\u0027video.mp4\u0027, \u003chttp.client.HTTPMessage object at 0x7f5ff758bc40\u003e) CUDA Decoding using VideoDecoder# To use CUDA decoder, you need to pass in a cuda device to the decoder. from torchcodec.decoders import set_cuda_backend, VideoDecoder with set_cuda_backend(\"beta\"): # Use the BETA backend, it\u0027s faster! decoder = VideoDecoder(video_file, device=\"cuda\") frame = decoder[0] The video frames are decoded and returned as tensor of NCHW format. print(frame.shape, frame.dtype) torch.Size([3, 540, 960]) torch.uint8 The video frames are left on the GPU memory. print(frame.data.device) cuda:0 Checking for CPU Fallback# In some cases, CUDA decoding may fall back to CPU decoding. This can happen when the video codec or format is not supported by the NVDEC hardware decoder, or when NVCUVID wasn\u2019t found. TorchCodec provides the CpuFallbackStatus class to help you detect when this fallback occurs. You can access the fallback status via the cpu_fallback attribute: with set_cuda_backend(\"beta\"): decoder = VideoDecoder(video_file, device=\"cuda\") # Check and print the CPU fallback status print(decoder.cpu_fallback) [Beta CUDA] Fallback status: No fallback required Visualizing Frames# Let\u2019s look at the frames decoded by CUDA decoder and compare them against equivalent results from the CPU decoders. timestamps = [12, 19, 45, 131, 180] cpu_decoder = VideoDecoder(video_file, device=\"cpu\") with set_cuda_backend(\"beta\"): cuda_decoder = VideoDecoder(video_file, device=\"cuda\") cpu_frames = cpu_decoder.get_frames_played_at(timestamps).data cuda_frames = cuda_decoder.get_frames_played_at(timestamps).data def plot_cpu_and_cuda_frames(cpu_frames: torch.Tensor, cuda_frames: torch.Tensor): try: import matplotlib.pyplot as plt from torchvision.transforms.v2.functional import to_pil_image except ImportError: print(\"Cannot plot, please run `pip install torchvision matplotlib`\") return n_rows = len(timestamps) fig, axes = plt.subplots(n_rows, 2, figsize=[12.8, 16.0]) for i in range(n_rows): axes[i][0].imshow(to_pil_image(cpu_frames[i].to(\"cpu\"))) axes[i][1].imshow(to_pil_image(cuda_frames[i].to(\"cpu\"))) axes[0][0].set_title(\"CPU decoder\", fontsize=24) axes[0][1].set_title(\"CUDA decoder\", fontsize=24) plt.setp(axes, xticks=[], yticks=[]) plt.tight_layout() plot_cpu_and_cuda_frames(cpu_frames, cuda_frames) They look visually similar to the human eye but there may be subtle differences because CUDA math is not bit-exact with respect to CPU math. frames_equal = torch.equal(cpu_frames.to(\"cuda\"), cuda_frames) mean_abs_diff = torch.mean( torch.abs(cpu_frames.float().to(\"cuda\") - cuda_frames.float()) ) max_abs_diff = torch.max(torch.abs(cpu_frames.to(\"cuda\").float() - cuda_frames.float())) print(f\"{frames_equal=}\") print(f\"{mean_abs_diff=}\") print(f\"{max_abs_diff=}\") frames_equal=False mean_abs_diff=tensor(0.5636, device=\u0027cuda:0\u0027) max_abs_diff=tensor(2., device=\u0027cuda:0\u0027) Total running time of the script: (0 minutes 4.628 seconds) Download Jupyter notebook: basic_cuda_example.ipynb Download Python source code: basic_cuda_example.py Download zipped: basic_cuda_example.zip Gallery generated by Sphinx-Gallery",
+       "articleBody": "Accelerated video decoding on GPUs with CUDA and NVDEC# TorchCodec can use supported Nvidia hardware (see support matrix here) to speed-up video decoding. This is called \u201cCUDA Decoding\u201d and it uses Nvidia\u2019s NVDEC hardware decoder and CUDA kernels to respectively decompress and convert to RGB. CUDA Decoding can be faster than CPU Decoding for the actual decoding step and also for subsequent transform steps like scaling, cropping or rotating. This is because the decode step leaves the decoded tensor in GPU memory so the GPU doesn\u2019t have to fetch from main memory before running the transform steps. Encoded packets are often much smaller than decoded frames so CUDA decoding also uses less PCI-e bandwidth. Installing TorchCodec with CUDA Enabled# Refer to the installation guide in the README. Checking if Pytorch has CUDA enabled# Note This tutorial requires FFmpeg libraries compiled with CUDA support. import torch print(f\"{torch.__version__=}\") print(f\"{torch.cuda.is_available()=}\") print(f\"{torch.cuda.get_device_properties(0)=}\") torch.__version__=\u00272.12.0.dev20260325+cu126\u0027 torch.cuda.is_available()=True torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name=\u0027NVIDIA A10G\u0027, major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=0beb899b-b7c1-10a5-02e0-0b7849307641, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB) Downloading the video# We will use the following video which has the following properties: Codec: H.264 Resolution: 960x540 FPS: 29.97 Pixel format: YUV420P import urllib.request video_file = \"video.mp4\" urllib.request.urlretrieve( \"https://download.pytorch.org/torchaudio/tutorial-assets/stream-api/NASAs_Most_Scientifically_Complex_Space_Observatory_Requires_Precision-MP4_small.mp4\", video_file, ) (\u0027video.mp4\u0027, \u003chttp.client.HTTPMessage object at 0x7f8e82b73880\u003e) CUDA Decoding using VideoDecoder# To use CUDA decoder, you need to pass in a cuda device to the decoder. from torchcodec.decoders import set_cuda_backend, VideoDecoder with set_cuda_backend(\"beta\"): # Use the BETA backend, it\u0027s faster! decoder = VideoDecoder(video_file, device=\"cuda\") frame = decoder[0] The video frames are decoded and returned as tensor of NCHW format. print(frame.shape, frame.dtype) torch.Size([3, 540, 960]) torch.uint8 The video frames are left on the GPU memory. print(frame.data.device) cuda:0 Checking for CPU Fallback# In some cases, CUDA decoding may fall back to CPU decoding. This can happen when the video codec or format is not supported by the NVDEC hardware decoder, or when NVCUVID wasn\u2019t found. TorchCodec provides the CpuFallbackStatus class to help you detect when this fallback occurs. You can access the fallback status via the cpu_fallback attribute: with set_cuda_backend(\"beta\"): decoder = VideoDecoder(video_file, device=\"cuda\") # Check and print the CPU fallback status print(decoder.cpu_fallback) [Beta CUDA] Fallback status: No fallback required Visualizing Frames# Let\u2019s look at the frames decoded by CUDA decoder and compare them against equivalent results from the CPU decoders. timestamps = [12, 19, 45, 131, 180] cpu_decoder = VideoDecoder(video_file, device=\"cpu\") with set_cuda_backend(\"beta\"): cuda_decoder = VideoDecoder(video_file, device=\"cuda\") cpu_frames = cpu_decoder.get_frames_played_at(timestamps).data cuda_frames = cuda_decoder.get_frames_played_at(timestamps).data def plot_cpu_and_cuda_frames(cpu_frames: torch.Tensor, cuda_frames: torch.Tensor): try: import matplotlib.pyplot as plt from torchvision.transforms.v2.functional import to_pil_image except ImportError: print(\"Cannot plot, please run `pip install torchvision matplotlib`\") return n_rows = len(timestamps) fig, axes = plt.subplots(n_rows, 2, figsize=[12.8, 16.0]) for i in range(n_rows): axes[i][0].imshow(to_pil_image(cpu_frames[i].to(\"cpu\"))) axes[i][1].imshow(to_pil_image(cuda_frames[i].to(\"cpu\"))) axes[0][0].set_title(\"CPU decoder\", fontsize=24) axes[0][1].set_title(\"CUDA decoder\", fontsize=24) plt.setp(axes, xticks=[], yticks=[]) plt.tight_layout() plot_cpu_and_cuda_frames(cpu_frames, cuda_frames) They look visually similar to the human eye but there may be subtle differences because CUDA math is not bit-exact with respect to CPU math. frames_equal = torch.equal(cpu_frames.to(\"cuda\"), cuda_frames) mean_abs_diff = torch.mean( torch.abs(cpu_frames.float().to(\"cuda\") - cuda_frames.float()) ) max_abs_diff = torch.max(torch.abs(cpu_frames.to(\"cuda\").float() - cuda_frames.float())) print(f\"{frames_equal=}\") print(f\"{mean_abs_diff=}\") print(f\"{max_abs_diff=}\") frames_equal=False mean_abs_diff=tensor(0.5636, device=\u0027cuda:0\u0027) max_abs_diff=tensor(2., device=\u0027cuda:0\u0027) Total running time of the script: (0 minutes 4.782 seconds) Download Jupyter notebook: basic_cuda_example.ipynb Download Python source code: basic_cuda_example.py Download zipped: basic_cuda_example.zip Gallery generated by Sphinx-Gallery",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",
