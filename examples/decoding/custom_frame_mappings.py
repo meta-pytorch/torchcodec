@@ -32,6 +32,7 @@ from pathlib import Path
 import subprocess
 import requests
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_frame_mappings.jpg'
 # Video source: https://www.pexels.com/video/dog-eating-854132/
 # License: CC0. Author: Coverr.
 url = "https://videos.pexels.com/video-files/854132/854132-sd_640_360_25fps.mp4"

@@ -7,8 +7,12 @@
 #include <fmt/format.h>
 #include <pybind11/pybind11.h>
 #include <cstdint>
-#include <sstream>
 #include <string>
+
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
@@ -16,6 +20,7 @@
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
+#include "WavDecoder.h"
 
 namespace facebook::torchcodec {
 
@@ -82,6 +87,9 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
   m.def("get_nvdec_cache_capacity() -> int");
   m.def("_get_nvdec_cache_size(int device_index) -> int");
+  m.def("create_wav_decoder_from_file(str filename) -> Tensor");
+  m.def("get_wav_all_samples(Tensor decoder) -> Tensor");
+  m.def("get_wav_metadata_from_decoder(Tensor(a!) decoder) -> str");
 }
 
 namespace {
@@ -109,6 +117,38 @@ torch::stable::Tensor wrapDecoderPointerToTensor(
       static_cast<SingleStreamDecoder*>(tensor.mutable_data_ptr());
   STD_TORCH_CHECK(videoDecoder == decoder, "videoDecoder != decoder");
   return tensor;
+}
+
+// TODO_STABLE_ABI: use previous deleter pattern with a lambda, once
+// https://github.com/pytorch/pytorch/pull/175089 is available.
+void wavDecoderDeleter(void* data) {
+  delete static_cast<WavDecoder*>(data);
+}
+
+torch::stable::Tensor wrapWavDecoderPointerToTensor(
+    std::unique_ptr<WavDecoder> uniqueDecoder) {
+  WavDecoder* decoder = uniqueDecoder.release();
+
+  int64_t sizes[] = {static_cast<int64_t>(sizeof(WavDecoder*))};
+  int64_t strides[] = {1};
+  torch::stable::Tensor tensor = torch::stable::from_blob(
+      decoder,
+      {sizes, 1},
+      {strides, 1},
+      StableDevice(kStableCPU),
+      kStableInt64,
+      &wavDecoderDeleter);
+  auto wavDecoder = static_cast<WavDecoder*>(tensor.mutable_data_ptr());
+  STD_TORCH_CHECK(wavDecoder == decoder, "wavDecoder != decoder");
+  return tensor;
+}
+
+WavDecoder* unwrapTensorToGetWavDecoder(torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(
+      tensor.is_contiguous(),
+      "fake decoder tensor must be contiguous! This is an internal error, please report on the torchcodec issue tracker.");
+  WavDecoder* decoder = static_cast<WavDecoder*>(tensor.mutable_data_ptr());
+  return decoder;
 }
 
 SingleStreamDecoder* unwrapTensorToGetDecoder(torch::stable::Tensor& tensor) {
@@ -468,11 +508,10 @@ void _add_video_stream(
   videoStreamOptions.ffmpegThreadCount = num_threads;
 
   if (dimension_order.has_value()) {
-    const std::string& stdDimensionOrder = dimension_order.value();
     STD_TORCH_CHECK(
-        stdDimensionOrder == "NHWC" || stdDimensionOrder == "NCHW",
+        *dimension_order == "NHWC" || *dimension_order == "NCHW",
         "dimension_order must be NHWC or NCHW");
-    videoStreamOptions.dimensionOrder = stdDimensionOrder;
+    videoStreamOptions.dimensionOrder = std::move(*dimension_order);
   }
   if (color_conversion_library.has_value()) {
     const std::string& stdColorConversionLibrary =
@@ -494,10 +533,11 @@ void _add_video_stream(
 
   validateDeviceInterface(device, device_variant);
 
-  videoStreamOptions.device = StableDevice(device);
-  videoStreamOptions.deviceVariant = device_variant;
+  videoStreamOptions.device = StableDevice(std::move(device));
+  videoStreamOptions.deviceVariant = std::move(device_variant);
 
-  std::vector<Transform*> transforms = makeTransforms(transform_specs);
+  std::vector<Transform*> transforms =
+      makeTransforms(std::move(transform_specs));
 
   bool hasPts = custom_frame_mappings_pts.has_value();
   bool hasDuration = custom_frame_mappings_duration.has_value();
@@ -510,9 +550,9 @@ void _add_video_stream(
 
   std::optional<SingleStreamDecoder::FrameMappings> converted_mappings = hasPts
       ? std::make_optional(SingleStreamDecoder::FrameMappings{
-            custom_frame_mappings_pts.value(),
-            custom_frame_mappings_keyframe_indices.value(),
-            custom_frame_mappings_duration.value()})
+            std::move(*custom_frame_mappings_pts),
+            std::move(*custom_frame_mappings_keyframe_indices),
+            std::move(*custom_frame_mappings_duration)})
       : std::nullopt;
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   videoDecoder->addVideoStream(
@@ -540,14 +580,14 @@ void add_video_stream(
   _add_video_stream(
       decoder,
       num_threads,
-      dimension_order,
+      std::move(dimension_order),
       stream_index,
-      device,
-      device_variant,
-      transform_specs,
-      custom_frame_mappings_pts,
-      custom_frame_mappings_duration,
-      custom_frame_mappings_keyframe_indices);
+      std::move(device),
+      std::move(device_variant),
+      std::move(transform_specs),
+      std::move(custom_frame_mappings_pts),
+      std::move(custom_frame_mappings_duration),
+      std::move(custom_frame_mappings_keyframe_indices));
 }
 
 void add_audio_stream(
@@ -1018,6 +1058,15 @@ std::string get_stream_json_metadata(
   if (streamMetadata.rotation.has_value()) {
     map["rotation"] = std::to_string(*streamMetadata.rotation);
   }
+  if (auto name = streamMetadata.getColorPrimariesName()) {
+    map["colorPrimaries"] = quoteValue(*name);
+  }
+  if (auto name = streamMetadata.getColorSpaceName()) {
+    map["colorSpace"] = quoteValue(*name);
+  }
+  if (auto name = streamMetadata.getColorTransferCharacteristicName()) {
+    map["colorTransferCharacteristic"] = quoteValue(*name);
+  }
   if (streamMetadata.pixelFormat.has_value()) {
     map["pixelFormat"] = quoteValue(streamMetadata.pixelFormat.value());
   }
@@ -1129,6 +1178,40 @@ void streaming_encoder_close(torch::stable::Tensor& encoder) {
   unwrapTensorToGetMultiStreamEncoder(encoder)->close();
 }
 
+torch::stable::Tensor create_wav_decoder_from_file(
+    const std::string& filename) {
+  auto decoder = std::make_unique<WavDecoder>(filename);
+  return wrapWavDecoderPointerToTensor(std::move(decoder));
+}
+
+torch::stable::Tensor get_wav_all_samples(torch::stable::Tensor& decoder) {
+  auto wavDecoder = unwrapTensorToGetWavDecoder(decoder);
+  (void)wavDecoder; // Suppress unused variable warning
+  STD_TORCH_CHECK(false, "get_wav_all_samples not yet implemented");
+}
+
+std::string get_wav_metadata_from_decoder(torch::stable::Tensor& decoder) {
+  auto wavDecoder = unwrapTensorToGetWavDecoder(decoder);
+  StreamMetadata streamMetadata = wavDecoder->getStreamMetadata();
+
+  std::map<std::string, std::string> metadataMap;
+
+  metadataMap["sampleRate"] = std::to_string(*streamMetadata.sampleRate);
+  metadataMap["numChannels"] = std::to_string(*streamMetadata.numChannels);
+  metadataMap["sampleFormat"] = quoteValue(*streamMetadata.sampleFormat);
+  metadataMap["codec"] = quoteValue(*streamMetadata.codecName);
+  metadataMap["durationSeconds"] =
+      fmt::to_string(*streamMetadata.durationSecondsFromHeader);
+  metadataMap["durationSecondsFromHeader"] =
+      fmt::to_string(*streamMetadata.durationSecondsFromHeader);
+  metadataMap["bitRate"] = fmt::to_string(*streamMetadata.bitRate);
+  metadataMap["streamIndex"] = std::to_string(streamMetadata.streamIndex);
+  metadataMap["mediaType"] = quoteValue("audio");
+  metadataMap["beginStreamSeconds"] =
+      fmt::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
+  return mapToJson(metadataMap);
+}
+
 void set_nvdec_cache_capacity(int64_t capacity) {
   int capacityInt = validateInt64ToInt(capacity, "capacity");
   STD_TORCH_CHECK(
@@ -1167,6 +1250,12 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
   m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
   m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
+  m.impl(
+      "create_wav_decoder_from_file", TORCH_BOX(&create_wav_decoder_from_file));
+  m.impl("get_wav_all_samples", TORCH_BOX(&get_wav_all_samples));
+  m.impl(
+      "get_wav_metadata_from_decoder",
+      TORCH_BOX(&get_wav_metadata_from_decoder));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
