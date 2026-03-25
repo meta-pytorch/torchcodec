@@ -5,11 +5,14 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
-
 import torch.utils.benchmark as benchmark
-
 import torchvision.transforms.v2.functional as F
-from torchcodec._core.ops import _add_video_stream, create_from_file
+from torchcodec._core.ops import (
+    _add_video_stream,
+    create_from_file,
+    get_frame_at_index,
+    get_json_metadata,
+)
 
 RESIZED_WIDTH = 256
 RESIZED_HEIGHT = 256
@@ -43,14 +46,14 @@ def decode_full_video(video_path, decode_device_string, resize_device_string):
         transform_specs=resize_spec,
     )
 
-    metadata = json.loads(torchcodec._core.get_json_metadata(decoder))
+    metadata = json.loads(get_json_metadata(decoder))
     num_frames = metadata.get("numFrames", metadata.get("numFramesFromHeader", 0))
 
     start_time = time.time()
     frame_count = 0
     for i in range(num_frames):
         try:
-            frame, *_ = torchcodec._core.get_frame_at_index(decoder, frame_index=i)
+            frame, *_ = get_frame_at_index(decoder, frame_index=i)
             if resize_device_string != "none" and "native" not in resize_device_string:
                 frame = transfer_and_resize_frame(frame, resize_device_string)
 
