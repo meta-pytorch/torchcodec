@@ -30,7 +30,7 @@ constexpr uint32_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
 constexpr uint32_t MAX_FMT_CHUNK_SIZE = 200;
 // Double FFmpeg's default max packet size. See
 // https://github.com/FFmpeg/FFmpeg/blob/0f600cbc16b7903703b47d23981b636c94a41c71/libavformat/wavdec.c#L82-L88
-constexpr size_t CHUNK_SIZE = 8192;
+constexpr size_t DEFAULT_CHUNK_BUFFER_SIZE = 8192;
 constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
 
 // See standard format codes and Wav file format used in WavHeader:
@@ -279,7 +279,7 @@ void WavDecoder::convertToFloatBuffer(
   size_t bytesPerSample = header_.bitsPerSample / 8;
 
   STD_TORCH_CHECK(
-      totalSamples <= static_cast<int64_t>(SIZE_MAX / bytesPerSample),
+      static_cast<size_t>(totalSamples) <= SIZE_MAX / bytesPerSample,
       "totalSamples * bytesPerSample would overflow");
   STD_TORCH_CHECK(
       chunkData.size() >= totalSamples * bytesPerSample,
@@ -291,7 +291,8 @@ void WavDecoder::convertToFloatBuffer(
 
   switch (header_.bitsPerSample) {
     case 32: {
-      // Normalize 32-bit PCM samples to [-1.0, 1.0] range using 2^31 divisor
+      // Normalize 32-bit PCM samples to [-1.0, 1.0] range using max val for
+      // int32
       constexpr float scale = 1.0f / (1LL << 31);
       const int32_t* intData = getAlignedData<int32_t>(chunkData);
       for (int64_t i = 0; i < totalSamples; ++i) {
@@ -313,6 +314,7 @@ void WavDecoder::convertToFloatBuffer(
 std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
     double startSeconds,
     std::optional<double> stopSecondsOptional) {
+  // Calculate and validate the number of samples to decode
   const uint64_t totalSamples = header_.dataSize / header_.blockAlign;
   STD_TORCH_CHECK(
       startSeconds <= INT64_MAX / header_.sampleRate,
@@ -361,16 +363,13 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
   const int64_t dataPosition =
       static_cast<int64_t>(header_.dataOffset) + byteOffset;
 
-  const double actualPtsSeconds =
-      static_cast<double>(startSample) / header_.sampleRate;
-
   file_.seekg(dataPosition, std::ios::beg);
   STD_TORCH_CHECK(!file_.fail(), "Failed to seek in WAV file");
 
   // We need to align chunk size to actual boundaries of samples to avoid
   // reading partial samples. See
   // https://github.com/FFmpeg/FFmpeg/blob/0f600cbc16b7903703b47d23981b636c94a41c71/libavformat/wavdec.c#L786-L791
-  size_t alignedChunkSize = CHUNK_SIZE;
+  size_t alignedChunkSize = DEFAULT_CHUNK_BUFFER_SIZE;
   if (header_.blockAlign > 1) {
     if (alignedChunkSize < header_.blockAlign) {
       alignedChunkSize = header_.blockAlign;
@@ -379,6 +378,7 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
         (alignedChunkSize / header_.blockAlign) * header_.blockAlign;
   }
 
+  // Allocate buffer and read samples in chunks
   STD_TORCH_CHECK(
       alignedChunkSize <= MAX_TENSOR_SIZE,
       "We tried to allocate a chunk buffer larger than ",
@@ -399,8 +399,8 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
   while (totalBytesRead < bytesToRead) {
     const int64_t bytesToReadThisChunk = std::min(
         bytesToRead - totalBytesRead, static_cast<int64_t>(alignedChunkSize));
-    // A partial read is possible, so we don't use safeReadFileExact
-    // which checks for the exact number of bytes read.
+    // A partial read is possible if we hit EOF unexpectedly, so we don't use
+    // safeReadFileExact.
     file_.read(
         reinterpret_cast<char*>(chunkBuffer.data()),
         static_cast<std::streamsize>(bytesToReadThisChunk));
@@ -431,8 +431,10 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
   if (samplesProcessed < numSamples) {
     samples = torch::stable::narrow(samples, 0, 0, samplesProcessed);
   }
+  // Convert to [channels, samples]
   samples = torch::stable::transpose(samples, 0, 1);
-
+  const double actualPtsSeconds =
+      static_cast<double>(startSample) / header_.sampleRate;
   return std::make_tuple(samples, actualPtsSeconds);
 }
 
