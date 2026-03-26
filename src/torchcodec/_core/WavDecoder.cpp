@@ -363,8 +363,10 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
   const int64_t dataPosition =
       static_cast<int64_t>(header_.dataOffset) + byteOffset;
 
-  file_.seekg(dataPosition, std::ios::beg);
-  STD_TORCH_CHECK(!file_.fail(), "Failed to seek in WAV file");
+  safeSeek(
+      file_,
+      validateUint64ToStreampos(dataPosition, "dataPosition"),
+      std::ios::beg);
 
   // We need to align chunk size to actual boundaries of samples to avoid
   // reading partial samples. See
