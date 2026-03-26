@@ -138,6 +138,7 @@ function(make_torchcodec_libraries
         Metadata.cpp
         SwScale.cpp
         NVDECCacheConfig.cpp
+        Logging.cpp
     )
 
     if(ENABLE_CUDA)

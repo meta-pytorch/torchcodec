@@ -7,6 +7,7 @@
 
 import io
 import json
+import logging
 import numbers
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -19,6 +20,8 @@ from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec._core._decoder_utils import create_video_decoder
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.transforms import DecoderTransform
+
+_LG = logging.getLogger("torchcodec")
 
 
 @dataclass
@@ -260,6 +263,7 @@ class VideoDecoder:
                 self._cpu_fallback.status_known = True
 
                 if "CPU fallback" in backend_details:
+                    _LG.info("CUDA decoding fell back to CPU.")
                     self._cpu_fallback._is_fallback = True
                     if self._cpu_fallback._backend == "Beta CUDA":
                         # Only the beta interface can provide details.
