@@ -9,7 +9,7 @@ import json
 from pathlib import Path
 
 import torch
-from torchcodec import _core
+from torchcodec import _core, AudioSamples
 from torchcodec._core._decoder_utils import create_wav_decoder
 from torchcodec._core._metadata import AudioStreamMetadata
 
@@ -39,5 +39,25 @@ class WavDecoder:
             begin_stream_seconds_from_header=None,  # WAV format lacks stream start time metadata
         )
 
-    def get_all_samples(self):
-        return _core.get_wav_all_samples(self._decoder)
+    def get_all_samples(self) -> AudioSamples:
+        return self.get_samples_played_in_range()
+
+    def get_samples_played_in_range(
+        self, start_seconds: float = 0.0, stop_seconds: float | None = None
+    ) -> AudioSamples:
+        if stop_seconds is not None and not start_seconds <= stop_seconds:
+            raise ValueError(
+                f"Invalid start seconds: {start_seconds}. It must be less than or equal to stop seconds ({stop_seconds})."
+            )
+
+        actual_start_seconds = max(0.0, start_seconds)
+        frames = _core.get_wav_samples_in_range(
+            self._decoder, actual_start_seconds, stop_seconds
+        )
+        duration_seconds = frames.shape[1] / self.metadata.sample_rate
+        return AudioSamples(
+            data=frames,
+            pts_seconds=actual_start_seconds,
+            duration_seconds=duration_seconds,
+            sample_rate=self.metadata.sample_rate,
+        )

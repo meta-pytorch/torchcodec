@@ -38,8 +38,10 @@ from .ops import (
     get_json_metadata,
     get_next_frame,
     get_nvdec_cache_capacity,
-    get_wav_all_samples,
     get_wav_metadata_from_decoder,
+    get_wav_samples_in_range,
+    scan_all_streams_to_update_metadata,
+    seek_to_pts,
     set_nvdec_cache_capacity,
     streaming_encoder_close,
 )

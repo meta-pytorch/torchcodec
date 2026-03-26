@@ -10,12 +10,13 @@
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <vector>
 #include "Metadata.h"
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
-class WavDecoder {
+class FORCE_PUBLIC_VISIBILITY WavDecoder {
  public:
   explicit WavDecoder(const std::string& path);
   // Delete copy constructor and copy assignment operator since std::ifstream
@@ -26,6 +27,10 @@ class WavDecoder {
   WavDecoder& operator=(WavDecoder&&) noexcept = default;
   ~WavDecoder() = default;
 
+  std::tuple<torch::stable::Tensor, double> getSamplesInRange(
+      double startSeconds,
+      std::optional<double> stopSecondsOptional = std::nullopt);
+
   StreamMetadata getStreamMetadata() const;
 
  private:
@@ -33,7 +38,9 @@ class WavDecoder {
     uint16_t audioFormat = 0;
     uint16_t numChannels = 0;
     uint32_t sampleRate = 0;
+    uint16_t blockAlign = 0;
     uint16_t bitsPerSample = 0;
+    uint64_t dataOffset = 0;
     // Extended format fields (WAVE_FORMAT_EXTENSIBLE)
     uint16_t subFormat = 0; // Extracted from SubFormat GUID (first 2 bytes)
     uint32_t dataSize = 0; // Size of audio data in bytes
@@ -52,6 +59,10 @@ class WavDecoder {
       uint64_t fileSizeLimit);
   void parseHeader(uint64_t actualFileSize);
   void validateHeader();
+  void convertToFloatBuffer(
+      const std::vector<uint8_t>& chunkData,
+      int64_t samplesInChunk,
+      float* outputPtr) const;
 
   std::ifstream file_;
   WavHeader header_;

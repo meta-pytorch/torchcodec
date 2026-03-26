@@ -2635,3 +2635,64 @@ class TestWavDecoder:
     def test_non_wav_file_raises_error(self):
         with pytest.raises(RuntimeError, match="Missing RIFF header"):
             WavDecoder(NASA_AUDIO.path)
+
+    @pytest.mark.parametrize(
+        "start_seconds,stop_seconds",
+        [
+            (0.0, 1.0),
+            (0.0, None),
+            (None, None),
+        ],
+    )
+    def test_get_samples_played_in_range_vs_audio_decoder(
+        self, start_seconds, stop_seconds
+    ):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        audio_dec = AudioDecoder(SINE_MONO_S32.path)
+
+        start_seconds = 0.5
+        stop_seconds = 1.5
+        wav_samples = wav_dec.get_samples_played_in_range(
+            start_seconds, stop_seconds
+        ).data
+        audio_samples = audio_dec.get_samples_played_in_range(
+            start_seconds, stop_seconds
+        ).data
+        torch.testing.assert_close(wav_samples, audio_samples, rtol=0, atol=0)
+
+    def test_get_all_sampless_vs_audio_decoder(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        audio_dec = AudioDecoder(SINE_MONO_S32.path)
+
+        wav_samples = wav_dec.get_all_samples().data
+        audio_samples = audio_dec.get_all_samples().data
+        torch.testing.assert_close(wav_samples, audio_samples, rtol=0, atol=0)
+
+    def test_get_samples_played_in_range_errors(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        with pytest.raises(
+            ValueError,
+            match="Invalid start seconds: 2.0. It must be less than or equal to stop seconds \\(1.0\\).",
+        ):
+            wav_dec.get_samples_played_in_range(2.0, 1.0)
+
+        with pytest.raises(
+            RuntimeError,
+            match="No samples to decode. This is probably because start_seconds is too high\\(10\\)",
+        ):
+            wav_dec.get_samples_played_in_range(10.0, None)
+
+        with pytest.raises(
+            RuntimeError,
+            match="No samples to decode. This is probably because start_seconds is too high\\(10\\)",
+        ):
+            wav_dec.get_samples_played_in_range(10.0, 12.0)
+
+    def test_get_samples_played_in_range_negative_start(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+
+        samples_negative = wav_dec.get_samples_played_in_range(start_seconds=-1300)
+        samples_zero = wav_dec.get_samples_played_in_range(start_seconds=0)
+
+        torch.testing.assert_close(samples_negative.data, samples_zero.data)
+        assert samples_negative.pts_seconds == samples_zero.pts_seconds

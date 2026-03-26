@@ -146,7 +146,7 @@ _get_nvdec_cache_size = torch.ops.torchcodec_ns._get_nvdec_cache_size.default
 create_wav_decoder_from_file = (
     torch.ops.torchcodec_ns.create_wav_decoder_from_file.default
 )
-get_wav_all_samples = torch.ops.torchcodec_ns.get_wav_all_samples.default
+get_wav_samples_in_range = torch.ops.torchcodec_ns.get_wav_samples_in_range.default
 get_wav_metadata_from_decoder = (
     torch.ops.torchcodec_ns.get_wav_metadata_from_decoder.default
 )
@@ -613,6 +613,21 @@ def get_nvdec_cache_capacity_abstract() -> int:
 @register_fake("torchcodec_ns::_get_nvdec_cache_size")
 def _get_nvdec_cache_size_abstract(device_index: int) -> int:
     return 0
+
+
+@register_fake("torchcodec_ns::create_wav_decoder_from_file")
+def create_wav_decoder_from_file_abstract(filename: str) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::get_wav_samples_in_range")
+def get_wav_samples_in_range_abstract(
+    decoder: torch.Tensor, start_seconds: float, stop_seconds: float | None
+) -> torch.Tensor:
+    sample_size = [
+        get_ctx().new_dynamic_size() for _ in range(2)
+    ]  # [channels, samples]
+    return torch.empty(sample_size)
 
 
 @register_fake("torchcodec_ns::get_wav_metadata_from_decoder")
