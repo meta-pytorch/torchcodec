@@ -2660,7 +2660,7 @@ class TestWavDecoder:
         ).data
         torch.testing.assert_close(wav_samples, audio_samples, rtol=0, atol=0)
 
-    def test_get_all_sampless_vs_audio_decoder(self):
+    def test_get_all_samples_vs_audio_decoder(self):
         wav_dec = WavDecoder(SINE_MONO_S32.path)
         audio_dec = AudioDecoder(SINE_MONO_S32.path)
 

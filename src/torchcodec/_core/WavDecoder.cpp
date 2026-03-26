@@ -110,7 +110,6 @@ void safeSeek(
 
 template <typename T>
 inline const T* getAlignedData(const std::vector<uint8_t>& chunkData) {
-  // Verify buffer has correct alignment for type T
   STD_TORCH_CHECK(
       reinterpret_cast<uintptr_t>(chunkData.data()) % alignof(T) == 0,
       "Buffer not properly aligned for direct access to ",
@@ -302,7 +301,7 @@ void WavDecoder::convertToFloatBuffer(
       break;
     }
     default:
-      // TODO: Handle 8, 16, 24 bit PCM
+      // TODO WavDecoder: Handle 8, 16, 24 bit PCM
       STD_TORCH_CHECK(
           false,
           "Unsupported PCM bit depth: ",
@@ -368,8 +367,8 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
   file_.seekg(dataPosition, std::ios::beg);
   STD_TORCH_CHECK(!file_.fail(), "Failed to seek in WAV file");
 
-  // We need to align chunk size to actual boundaries of sample frames to avoid
-  // reading partial frames. See
+  // We need to align chunk size to actual boundaries of samples to avoid
+  // reading partial samples. See
   // https://github.com/FFmpeg/FFmpeg/blob/0f600cbc16b7903703b47d23981b636c94a41c71/libavformat/wavdec.c#L786-L791
   size_t alignedChunkSize = CHUNK_SIZE;
   if (header_.blockAlign > 1) {
@@ -385,8 +384,8 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
       "We tried to allocate a chunk buffer larger than ",
       MAX_TENSOR_SIZE,
       " bytes. If you think this should be supported, please report.");
-
   std::vector<uint8_t> chunkBuffer(alignedChunkSize);
+
   int64_t totalBytesRead = 0;
   int64_t samplesProcessed = 0;
   auto samples =
