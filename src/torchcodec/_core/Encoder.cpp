@@ -1012,4 +1012,44 @@ void VideoEncoder::flushBuffers() {
   encodeFrame(autoAVPacket, UniqueAVFrame(nullptr));
 }
 
+MultiStreamEncoder::~MultiStreamEncoder() {
+  close();
+}
+
+MultiStreamEncoder::MultiStreamEncoder(std::string_view fileName) {
+  setFFmpegLogLevel();
+
+  AVFormatContext* avFormatContext = nullptr;
+  int status = avformat_alloc_output_context2(
+      &avFormatContext, nullptr, nullptr, fileName.data());
+
+  STD_TORCH_CHECK(
+      avFormatContext != nullptr,
+      "Couldn't allocate AVFormatContext. ",
+      "The destination file is ",
+      fileName,
+      ", check the desired extension? ",
+      getFFMPEGErrorStringFromErrorCode(status));
+  avFormatContext_.reset(avFormatContext);
+
+  status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
+  STD_TORCH_CHECK(
+      status >= 0,
+      "avio_open failed. The destination file is ",
+      fileName,
+      ", make sure it's a valid path? ",
+      getFFMPEGErrorStringFromErrorCode(status));
+}
+
+void MultiStreamEncoder::close() {
+  if (closed_) {
+    return;
+  }
+  // TODO MultiStreamEncoder: Revisit if "closed_" flag is useful
+  closed_ = true;
+  // TODO MultiStreamEncoder: Once addFrame is implemented, close() will need to
+  // flush the encoder and call av_write_trailer.
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
+}
+
 } // namespace facebook::torchcodec

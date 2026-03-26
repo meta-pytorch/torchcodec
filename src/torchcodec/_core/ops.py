@@ -135,6 +135,10 @@ _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
 _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
+create_streaming_encoder_to_file = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.create_streaming_encoder_to_file.default
+)
+streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.default
 set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
 get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
 _get_nvdec_cache_size = torch.ops.torchcodec_ns._get_nvdec_cache_size.default
@@ -567,6 +571,18 @@ def get_ffmpeg_library_versions():
 @register_fake("torchcodec_ns::_get_backend_details")
 def _get_backend_details_abstract(decoder: torch.Tensor) -> str:
     return ""
+
+
+@register_fake("torchcodec_ns::create_streaming_encoder_to_file")
+def _create_streaming_encoder_to_file_abstract(
+    filename: str,
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::streaming_encoder_close")
+def streaming_encoder_close_abstract(encoder: torch.Tensor) -> None:
+    return
 
 
 @register_fake("torchcodec_ns::set_nvdec_cache_capacity")
