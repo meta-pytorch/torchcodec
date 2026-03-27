@@ -204,19 +204,16 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
-        _dtype_to_str = {
-            None: None,
-            torch.uint8: "uint8",
-            torch.float32: "float32",
-        }
-        if output_dtype == "auto":
+        if output_dtype is None or output_dtype == torch.uint8:
+            _output_dtype_str = "uint8"
+        elif output_dtype == torch.float32:
+            _output_dtype_str = "float32"
+        elif output_dtype == "auto":
             _output_dtype_str = "auto"
-        elif output_dtype in _dtype_to_str:
-            _output_dtype_str = _dtype_to_str[output_dtype]
         else:
             raise ValueError(
                 f"Invalid output_dtype ({output_dtype}). "
-                f'Supported values are None, "auto", torch.uint8, and torch.float32.'
+                f'Supported values are "auto", torch.uint8, and torch.float32.'
             )
 
         device_variant = _get_cuda_backend()
