@@ -28,8 +28,8 @@ constexpr uint32_t MIN_FMT_CHUNK_SIZE = 16;
 constexpr uint32_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
 // Arbitrary max for fmt chunk allocation - set to 5x extended format size
 constexpr uint32_t MAX_FMT_CHUNK_SIZE = 200;
-// Double FFmpeg's default max packet size. See
-// https://github.com/FFmpeg/FFmpeg/blob/0f600cbc16b7903703b47d23981b636c94a41c71/libavformat/wavdec.c#L82-L88
+// Soundfile's default chunk size. See
+// https://github.com/libsndfile/libsndfile/blob/master/src/common.h#L77
 constexpr size_t DEFAULT_CHUNK_BUFFER_SIZE = 8192;
 constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
 
@@ -293,7 +293,7 @@ void WavDecoder::convertToFloatBuffer(
     case 32: {
       // Normalize 32-bit PCM samples to [-1.0, 1.0] range using max val for
       // int32
-      constexpr float scale = 1.0f / (1LL << 31);
+      constexpr float scale = 1.0f / (std::numeric_limits<int32_t>::max());
       const int32_t* intData = getAlignedData<int32_t>(chunkData);
       for (int64_t i = 0; i < totalSamples; ++i) {
         int32_t sample = intData[i];
