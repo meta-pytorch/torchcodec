@@ -623,11 +623,13 @@ def create_wav_decoder_from_file_abstract(filename: str) -> torch.Tensor:
 @register_fake("torchcodec_ns::get_wav_samples_in_range")
 def get_wav_samples_in_range_abstract(
     decoder: torch.Tensor, start_seconds: float, stop_seconds: float | None
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, torch.Tensor]:
     sample_size = [
         get_ctx().new_dynamic_size() for _ in range(2)
     ]  # [channels, samples]
-    return torch.empty(sample_size)
+    frames = torch.empty(sample_size)
+    pts = torch.empty([], dtype=torch.float64)
+    return frames, pts
 
 
 @register_fake("torchcodec_ns::get_wav_metadata_from_decoder")

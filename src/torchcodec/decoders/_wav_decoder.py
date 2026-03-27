@@ -51,14 +51,15 @@ class WavDecoder:
             )
 
         actual_start_seconds = max(0.0, start_seconds)
-        frames = _core.get_wav_samples_in_range(
+        frames, actual_pts = _core.get_wav_samples_in_range(
             self._decoder, actual_start_seconds, stop_seconds
         )
+        actual_pts = actual_pts.item()
         assert self.metadata.sample_rate is not None  # make mypy happy
         duration_seconds = frames.shape[1] / self.metadata.sample_rate
         return AudioSamples(
             data=frames,
-            pts_seconds=actual_start_seconds,
+            pts_seconds=actual_pts,
             duration_seconds=duration_seconds,
             sample_rate=self.metadata.sample_rate,
         )

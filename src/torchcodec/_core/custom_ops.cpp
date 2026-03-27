@@ -89,7 +89,7 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("_get_nvdec_cache_size(int device_index) -> int");
   m.def("create_wav_decoder_from_file(str filename) -> Tensor");
   m.def(
-      "get_wav_samples_in_range(Tensor(a!) decoder, float start_seconds, float? stop_seconds) -> Tensor");
+      "get_wav_samples_in_range(Tensor(a!) decoder, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def("get_wav_metadata_from_decoder(Tensor(a!) decoder) -> str");
 }
 
@@ -1191,14 +1191,15 @@ torch::stable::Tensor create_wav_decoder_from_file(
   return wrapWavDecoderPointerToTensor(std::move(decoder));
 }
 
-torch::stable::Tensor get_wav_samples_in_range(
+OpsAudioFramesOutput get_wav_samples_in_range(
     torch::stable::Tensor& decoder,
     double start_seconds,
     std::optional<double> stop_seconds) {
   auto wavDecoder = unwrapTensorToGetWavDecoder(decoder);
   std::tuple<torch::stable::Tensor, double> result =
       wavDecoder->getSamplesInRange(start_seconds, stop_seconds);
-  return std::get<0>(result);
+  AudioFramesOutput audioFrames{std::get<0>(result), std::get<1>(result)};
+  return makeOpsAudioFramesOutput(audioFrames);
 }
 
 std::string get_wav_metadata_from_decoder(torch::stable::Tensor& decoder) {

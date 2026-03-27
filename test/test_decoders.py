@@ -2652,21 +2652,21 @@ class TestWavDecoder:
 
         start_seconds = 0.5
         stop_seconds = 1.5
-        wav_samples = wav_dec.get_samples_played_in_range(
-            start_seconds, stop_seconds
-        ).data
+        wav_samples = wav_dec.get_samples_played_in_range(start_seconds, stop_seconds)
         audio_samples = audio_dec.get_samples_played_in_range(
             start_seconds, stop_seconds
-        ).data
-        torch.testing.assert_close(wav_samples, audio_samples, rtol=0, atol=0)
+        )
+        torch.testing.assert_close(wav_samples.data, audio_samples.data, rtol=0, atol=0)
+        assert wav_samples.pts_seconds == audio_samples.pts_seconds
 
     def test_get_all_samples_vs_audio_decoder(self):
         wav_dec = WavDecoder(SINE_MONO_S32.path)
         audio_dec = AudioDecoder(SINE_MONO_S32.path)
 
-        wav_samples = wav_dec.get_all_samples().data
-        audio_samples = audio_dec.get_all_samples().data
-        torch.testing.assert_close(wav_samples, audio_samples, rtol=0, atol=0)
+        wav_samples = wav_dec.get_all_samples()
+        audio_samples = audio_dec.get_all_samples()
+        torch.testing.assert_close(wav_samples.data, audio_samples.data, rtol=0, atol=0)
+        assert wav_samples.pts_seconds == audio_samples.pts_seconds
 
     def test_get_samples_played_in_range_errors(self):
         wav_dec = WavDecoder(SINE_MONO_S32.path)
