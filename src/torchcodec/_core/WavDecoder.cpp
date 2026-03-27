@@ -238,9 +238,10 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     std::string_view chunkId,
     uint64_t startPos,
     uint64_t fileSize) {
-  if (fileSize < CHUNK_HEADER_SIZE) {
-    STD_TORCH_CHECK(false, "File too small to contain chunk:", chunkId);
-  }
+  STD_TORCH_CHECK(
+      fileSize >= CHUNK_HEADER_SIZE,
+      "File too small to contain chunk:",
+      chunkId);
   while (startPos <= fileSize - CHUNK_HEADER_SIZE) {
     safeSeek(
         file_, validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
@@ -265,7 +266,8 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
         "File position arithmetic would overflow");
     startPos += numBytesToSkip;
   }
-  STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
+  STD_TORCH_CHECK(
+      startPos <= fileSize - CHUNK_HEADER_SIZE, "Chunk not found: ", chunkId);
 }
 
 void WavDecoder::convertToFloatBuffer(
@@ -314,15 +316,15 @@ void WavDecoder::convertToFloatBuffer(
 std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
     double startSeconds,
     std::optional<double> stopSecondsOptional) {
-  // Calculate and validate the number of samples to decode
-  const uint64_t totalSamples = header_.dataSize / header_.blockAlign;
+  // Calculate and validate the range of samples to decode
   STD_TORCH_CHECK(
       startSeconds <= INT64_MAX / header_.sampleRate,
-      "totalSamples calculation would overflow: startSeconds * sampleRate");
+      "startSample calculation would overflow: startSeconds * sampleRate");
   const int64_t startSample =
-      static_cast<int64_t>(startSeconds * header_.sampleRate);
+      static_cast<int64_t>(std::round(startSeconds * header_.sampleRate));
 
-  int64_t endSample = static_cast<int64_t>(totalSamples);
+  int64_t endSample =
+      static_cast<int64_t>(header_.dataSize / header_.blockAlign);
   if (stopSecondsOptional.has_value()) {
     STD_TORCH_CHECK(
         startSeconds <= stopSecondsOptional.value(),
@@ -336,8 +338,8 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
     STD_TORCH_CHECK(
         stopSecondsOptional.value() <= INT64_MAX / header_.sampleRate,
         "End sample calculation would overflow: stopSeconds * sampleRate");
-    int64_t requestedEndSample =
-        static_cast<int64_t>(stopSecondsOptional.value() * header_.sampleRate);
+    int64_t requestedEndSample = static_cast<int64_t>(
+        std::round(stopSecondsOptional.value() * header_.sampleRate));
     endSample = std::min(requestedEndSample, endSample);
   }
 
