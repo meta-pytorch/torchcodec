@@ -108,15 +108,6 @@ if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
                 ffmpeg_dir = Path(ffmpeg_path).parent
                 return os.add_dll_directory(str(ffmpeg_dir))  # that's the actual CM
 
-            if chocolateyInstall := os.environ.get("ChocolateyInstall"):
-                # Chocolatey creates shim so we need to get the actual path to the FFmpeg executable.
-                chocolateyInstallPath = Path(chocolateyInstall)
-                if Path(ffmpeg_path).parent.parent == chocolateyInstallPath and (chocolateyFFmpegSharedPaths := list(chocolateyInstallPath.rglob("lib/ffmpeg-shared/tools/ffmpeg-*-shared/bin"))):
-                    chocolateyFFmpegSharedPath = chocolateyFFmpegSharedPaths[0]
-                    def expose_ffmpeg_dlls():  # noqa: F811
-                        return os.add_dll_directory(str(chocolateyFFmpegSharedPath))
-
-
 with expose_ffmpeg_dlls():
     ffmpeg_major_version, core_library_path = load_torchcodec_shared_libraries()
 
