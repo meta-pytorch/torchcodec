@@ -15,15 +15,10 @@ from typing import Literal
 
 import torch
 from torch import device as torch_device, nn, Tensor
-
 from torchcodec import _core as core, Frame, FrameBatch
-from torchcodec.decoders._decoder_utils import (
-    _get_cuda_backend,
-    create_decoder,
-    ERROR_REPORTING_INSTRUCTIONS,
-)
+from torchcodec._core._decoder_utils import create_video_decoder
+from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.transforms import DecoderTransform
-from torchcodec.transforms._decoder_transforms import _make_transform_specs
 
 
 @dataclass
@@ -104,7 +99,8 @@ class VideoDecoder:
                 cheap no-copy operation that allows these frames to be
                 transformed using the `torchvision transforms
                 <https://pytorch.org/vision/stable/transforms.html>`_.
-        num_ffmpeg_threads (int, optional): The number of threads to use for decoding.
+        num_ffmpeg_threads (int, optional): The number of threads to use for CPU decoding.
+            This has no effect when using GPU decoding.
             Use 1 for single-threaded decoding which may be best if you are running multiple
             instances of ``VideoDecoder`` in parallel. Use a higher number for multi-threaded
             decoding which is best if you are running a single instance of ``VideoDecoder``.
@@ -197,18 +193,6 @@ class VideoDecoder:
                 custom_frame_mappings
             )
 
-        self._decoder = create_decoder(source=source, seek_mode=seek_mode)
-
-        (
-            self.metadata,
-            self.stream_index,
-            self._begin_stream_seconds,
-            self._end_stream_seconds,
-            self._num_frames,
-        ) = _get_and_validate_stream_metadata(
-            decoder=self._decoder, stream_index=stream_index
-        )
-
         allowed_dimension_orders = ("NCHW", "NHWC")
         if dimension_order not in allowed_dimension_orders:
             raise ValueError(
@@ -219,27 +203,34 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
+        device_variant = _get_cuda_backend()
         if device is None:
             device = str(torch.get_default_device())
         elif isinstance(device, torch_device):
             device = str(device)
-
-        device_variant = _get_cuda_backend()
-        transform_specs = _make_transform_specs(
-            transforms,
-            input_dims=(self.metadata.height, self.metadata.width),
-        )
-
-        core.add_video_stream(
+        (
             self._decoder,
-            stream_index=self.stream_index,
+            self.stream_index,
+            self.metadata,
+        ) = create_video_decoder(
+            source=source,
+            seek_mode=seek_mode,
+            stream_index=stream_index,
             dimension_order=dimension_order,
-            num_threads=num_ffmpeg_threads,
+            num_ffmpeg_threads=num_ffmpeg_threads,
             device=device,
             device_variant=device_variant,
-            transform_specs=transform_specs,
+            transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
         )
+
+        assert self.metadata.begin_stream_seconds is not None  # mypy.
+        assert self.metadata.end_stream_seconds is not None  # mypy.
+        assert self.metadata.num_frames is not None  # mypy.
+
+        self._begin_stream_seconds = self.metadata.begin_stream_seconds
+        self._end_stream_seconds = self.metadata.end_stream_seconds
+        self._num_frames = self.metadata.num_frames
 
         self._cpu_fallback = CpuFallbackStatus()
         if device.startswith("cuda"):
@@ -452,7 +443,7 @@ class VideoDecoder:
         )
 
     def get_frames_played_in_range(
-        self, start_seconds: float, stop_seconds: float
+        self, start_seconds: float, stop_seconds: float, fps: float | None = None
     ) -> FrameBatch:
         """Returns multiple frames in the given range.
 
@@ -461,23 +452,26 @@ class VideoDecoder:
         range.
 
         Args:
-            start_seconds (float): Time, in seconds, of the start of the
-                range.
-            stop_seconds (float): Time, in seconds, of the end of the
-                range. As a half open range, the end is excluded.
+            start_seconds (float): Time, in seconds, of the start of the range.
+            stop_seconds (float): Time, in seconds, of the end of the range.
+                As a half open range, the end is excluded.
+            fps (float, optional): If specified, resample output to this frame
+                rate by duplicating or dropping frames as necessary. If None
+                (default), returns frames at the source video's frame rate.
 
         Returns:
             FrameBatch: The frames within the specified range.
         """
         if not start_seconds <= stop_seconds:
             raise ValueError(
-                f"Invalid start seconds: {start_seconds}. It must be less than or equal to stop seconds ({stop_seconds})."
+                f"Invalid start seconds: {start_seconds}. "
+                f"It must be less than or equal to stop seconds ({stop_seconds})."
             )
         if not self._begin_stream_seconds <= start_seconds < self._end_stream_seconds:
             raise ValueError(
                 f"Invalid start seconds: {start_seconds}. "
                 f"It must be greater than or equal to {self._begin_stream_seconds} "
-                f"and less than or equal to {self._end_stream_seconds}."
+                f"and less than {self._end_stream_seconds}."
             )
         if not stop_seconds <= self._end_stream_seconds:
             raise ValueError(
@@ -488,59 +482,26 @@ class VideoDecoder:
             self._decoder,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
+            fps=fps,
         )
         return FrameBatch(*frames)
 
+    def get_all_frames(self, fps: float | None = None) -> FrameBatch:
+        """Returns all frames in the video.
 
-def _get_and_validate_stream_metadata(
-    *,
-    decoder: Tensor,
-    stream_index: int | None = None,
-) -> tuple[core._metadata.VideoStreamMetadata, int, float, float, int]:
+        Args:
+            fps (float, optional): If specified, resample output to this frame
+                rate by duplicating or dropping frames as necessary. If None
+                (default), returns frames at the source video's frame rate.
 
-    container_metadata = core.get_container_metadata(decoder)
-
-    if stream_index is None:
-        if (stream_index := container_metadata.best_video_stream_index) is None:
-            raise ValueError(
-                "The best video stream is unknown and there is no specified stream. "
-                + ERROR_REPORTING_INSTRUCTIONS
-            )
-
-    if stream_index >= len(container_metadata.streams):
-        raise ValueError(f"The stream index {stream_index} is not a valid stream.")
-
-    metadata = container_metadata.streams[stream_index]
-    if not isinstance(metadata, core._metadata.VideoStreamMetadata):
-        raise ValueError(f"The stream at index {stream_index} is not a video stream. ")
-
-    if metadata.begin_stream_seconds is None:
-        raise ValueError(
-            "The minimum pts value in seconds is unknown. "
-            + ERROR_REPORTING_INSTRUCTIONS
+        Returns:
+            FrameBatch: All frames in the video.
+        """
+        return self.get_frames_played_in_range(
+            start_seconds=self._begin_stream_seconds,
+            stop_seconds=self._end_stream_seconds,
+            fps=fps,
         )
-    begin_stream_seconds = metadata.begin_stream_seconds
-
-    if metadata.end_stream_seconds is None:
-        raise ValueError(
-            "The maximum pts value in seconds is unknown. "
-            + ERROR_REPORTING_INSTRUCTIONS
-        )
-    end_stream_seconds = metadata.end_stream_seconds
-
-    if metadata.num_frames is None:
-        raise ValueError(
-            "The number of frames is unknown. " + ERROR_REPORTING_INSTRUCTIONS
-        )
-    num_frames = metadata.num_frames
-
-    return (
-        metadata,
-        stream_index,
-        begin_stream_seconds,
-        end_stream_seconds,
-        num_frames,
-    )
 
 
 def _read_custom_frame_mappings(

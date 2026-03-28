@@ -115,6 +115,9 @@ class CMakeBuild(build_ext):
         torchcodec_disable_compile_warning_as_error = os.environ.get(
             "TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR", "OFF"
         )
+        torchcodec_disable_homebrew_rpath = os.environ.get(
+            "TORCHCODEC_DISABLE_HOMEBREW_RPATH", "OFF"
+        )
         python_version = sys.version_info
         cmake_args = [
             f"-DCMAKE_INSTALL_PREFIX={self._install_prefix}",
@@ -124,6 +127,7 @@ class CMakeBuild(build_ext):
             f"-DPYTHON_VERSION={python_version.major}.{python_version.minor}",
             f"-DENABLE_CUDA={enable_cuda}",
             f"-DTORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR={torchcodec_disable_compile_warning_as_error}",
+            f"-DTORCHCODEC_DISABLE_HOMEBREW_RPATH={torchcodec_disable_homebrew_rpath}",
         ]
 
         self.build_temp = os.getenv("TORCHCODEC_CMAKE_BUILD_DIR", self.build_temp)
@@ -198,14 +202,12 @@ def _write_version_files():
         # the content of `version.txt` plus some suffix like "+cpu" or "+cu112".
         # See
         # https://github.com/pytorch/test-infra/blob/61e6da7a6557152eb9879e461a26ad667c15f0fd/tools/pkg-helpers/pytorch_pkg_helpers/version.py#L113
-        version = version.replace("+cpu", "")
         with open(_ROOT_DIR / "version.txt", "w") as f:
             f.write(f"{version}")
     else:
         with open(_ROOT_DIR / "version.txt") as f:
             version = f.readline().strip()
         try:
-            version = version.replace("+cpu", "")
             sha = (
                 subprocess.check_output(
                     ["git", "rev-parse", "HEAD"], cwd=str(_ROOT_DIR)

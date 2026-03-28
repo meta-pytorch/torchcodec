@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include <torch/types.h>
 #include <cstdint>
 #include <memory>
 #include <ostream>
@@ -17,6 +16,7 @@
 #include "FFMPEGCommon.h"
 #include "Frame.h"
 #include "Metadata.h"
+#include "StableABICompat.h"
 #include "StreamOptions.h"
 #include "Transform.h"
 
@@ -25,7 +25,7 @@ namespace facebook::torchcodec {
 // The SingleStreamDecoder class can be used to decode video frames to Tensors.
 // Note that SingleStreamDecoder is not thread-safe.
 // Do not call non-const APIs concurrently on the same object.
-class SingleStreamDecoder {
+class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
  public:
   // --------------------------------------------------------------------------
   // CONSTRUCTION API
@@ -67,7 +67,7 @@ class SingleStreamDecoder {
 
   // Returns the key frame indices as a tensor. The tensor is 1D and contains
   // int64 values, where each value is the frame index for a key frame.
-  torch::Tensor getKeyFrameIndices();
+  torch::stable::Tensor getKeyFrameIndices();
 
   // FrameMappings is used for the custom_frame_mappings seek mode to store
   // metadata of frames in a stream. The size of all tensors in this struct must
@@ -78,13 +78,13 @@ class SingleStreamDecoder {
   // --------------------------------------------------------------------------
   struct FrameMappings {
     // 1D tensor of int64, each value is the PTS of a frame in timebase units.
-    torch::Tensor all_frames;
+    torch::stable::Tensor all_frames;
     // 1D tensor of bool, each value indicates if the corresponding frame in
     // all_frames is a key frame.
-    torch::Tensor is_key_frame;
+    torch::stable::Tensor is_key_frame;
     // 1D tensor of int64, each value is the duration of the corresponding frame
     // in all_frames in timebase units.
-    torch::Tensor duration;
+    torch::stable::Tensor duration;
   };
 
   void addVideoStream(
@@ -113,7 +113,8 @@ class SingleStreamDecoder {
 
   // Returns frames at the given indices for a given stream as a single stacked
   // Tensor.
-  FrameBatchOutput getFramesAtIndices(const torch::Tensor& frameIndices);
+  FrameBatchOutput getFramesAtIndices(
+      const torch::stable::Tensor& frameIndices);
 
   // Returns frames within a given range. The range is defined by [start, stop).
   // The values retrieved from the range are: [start, start+step,
@@ -128,7 +129,7 @@ class SingleStreamDecoder {
   // seconds=5.999, etc.
   FrameOutput getFramePlayedAt(double seconds);
 
-  FrameBatchOutput getFramesPlayedAt(const torch::Tensor& timestamps);
+  FrameBatchOutput getFramesPlayedAt(const torch::stable::Tensor& timestamps);
 
   // Returns frames within a given pts range. The range is defined by
   // [startSeconds, stopSeconds) with respect to the pts values for frames. The
@@ -147,9 +148,13 @@ class SingleStreamDecoder {
   // Valid values for startSeconds and stopSeconds are:
   //
   //   [beginStreamPtsSecondsFromContent, endStreamPtsSecondsFromContent)
+  //
+  // If fps is specified, frames are resampled to match the target frame
+  // rate by duplicating or dropping frames as necessary.
   FrameBatchOutput getFramesPlayedInRange(
       double startSeconds,
-      double stopSeconds);
+      double stopSeconds,
+      std::optional<double> fps = std::nullopt);
 
   AudioFramesOutput getFramesPlayedInRangeAudio(
       double startSeconds,
@@ -171,7 +176,8 @@ class SingleStreamDecoder {
   // can move it back to private.
   FrameOutput getFrameAtIndexInternal(
       int64_t frameIndex,
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+          std::nullopt);
 
   // Exposed for _test_frame_pts_equality, which is used to test non-regression
   // of pts resolution (64 to 32 bit floats)
@@ -265,18 +271,15 @@ class SingleStreamDecoder {
       std::function<bool(const UniqueAVFrame&)> filterFunction);
 
   FrameOutput getNextFrameInternal(
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+          std::nullopt);
 
-  torch::Tensor maybePermuteHWC2CHW(torch::Tensor& hwcTensor);
+  torch::stable::Tensor maybePermuteHWC2CHW(torch::stable::Tensor& hwcTensor);
 
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
-
-  void convertAVFrameToFrameOutputOnCPU(
-      UniqueAVFrame& avFrame,
-      FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+          std::nullopt);
 
   // --------------------------------------------------------------------------
   // PTS <-> INDEX CONVERSIONS
@@ -297,6 +300,16 @@ class SingleStreamDecoder {
 
   int64_t getPts(int64_t frameIndex);
 
+  // Returns the output frame dimensions for video frames.
+  // If resizedOutputDims_ is set (via resize, crop, or rotation transforms),
+  // returns that. Otherwise, returns preRotationDims_.
+  //
+  // Note: if resizedOutputDims_ is null, there is no rotation (the
+  // rotation transform would have set it), so preRotationDims_ ==
+  // postRotationDims_. This makes it safe to use preRotationDims_ as the
+  // fallback.
+  FrameDims getOutputDims() const;
+
   // --------------------------------------------------------------------------
   // STREAM AND METADATA APIS
   // --------------------------------------------------------------------------
@@ -304,7 +317,7 @@ class SingleStreamDecoder {
   void addStream(
       int streamIndex,
       AVMediaType mediaType,
-      const torch::Device& device = torch::kCPU,
+      const StableDevice& device = StableDevice(kStableCPU),
       const std::string_view deviceVariant = "ffmpeg",
       std::optional<int> ffmpegThreadCount = std::nullopt);
 
@@ -344,7 +357,16 @@ class SingleStreamDecoder {
   // pts to the user when they request a frame.
   int64_t cursor_ = INT64_MIN;
   bool cursorWasJustSet_ = false;
-  int64_t lastDecodedAvFramePts_ = 0;
+  // Initialized to INT64_MIN instead of 0. With 0, canWeAvoidSeeking() could
+  // incorrectly skip a seek when the internal FFmpeg frame index (used by
+  // av_index_search_timestamp() in approximate mode) had not yet been built,
+  // as some formats (mkv, webm) delay building it until the first seek.
+  // With INT64_MIN, we always seek when retrieving the first frame. This
+  // means we correctly seek when the first requested frame is far into the
+  // video, at the cost of an unnecessary (likely cheap) seek when the first
+  // requested frame is near the start.
+  // See: https://github.com/meta-pytorch/torchcodec/pull/1259
+  int64_t lastDecodedAvFramePts_ = INT64_MIN;
   int64_t lastDecodedAvFrameDuration_ = 0;
   int64_t lastDecodedFrameIndex_ = INT64_MIN;
 
@@ -363,18 +385,21 @@ class SingleStreamDecoder {
   // resizedOutputDims_. If resizedOutputDims_ has no value, that means there
   // are no transforms that change the output frame dimensions.
   //
-  // The priority order for output frame dimension is:
+  // The priority order for output frame dimensions is:
   //
-  // 1. resizedOutputDims_; the resize requested by the user always takes
-  //    priority.
-  // 2. The dimemnsions of the actual decoded AVFrame. This can change
+  // 1. resizedOutputDims_; the resize requested by the user (or rotation)
+  //    always takes priority.
+  // 2. The dimensions of the actual decoded AVFrame. This can change
   //    per-decoded frame, and is unknown in SingleStreamDecoder. Only the
   //    DeviceInterface learns it immediately after decoding a raw frame but
-  //    before the color transformation.
-  // 3. metdataDims_; the dimensions we learned from the metadata.
+  //    before the color conversion.
+  // 3. preRotationDims_; the raw encoded dimensions from FFmpeg metadata
+  //    (before any rotation is applied). Used as fallback for tensor
+  //    allocation when resizedOutputDims_ is not set, which only happens
+  //    when no rotation is needed, so preRotationDims_ is the correct value.
   std::vector<std::unique_ptr<Transform>> transforms_;
   std::optional<FrameDims> resizedOutputDims_;
-  FrameDims metadataDims_;
+  FrameDims preRotationDims_;
 
   // Whether or not we have already scanned all streams to update the metadata.
   bool scannedAllStreams_ = false;

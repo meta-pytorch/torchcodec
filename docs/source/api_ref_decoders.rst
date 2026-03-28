@@ -22,15 +22,27 @@ For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_decoding_a
 .. autosummary::
     :toctree: generated/
     :nosignatures:
+    :template: dataclass.rst
+
+    VideoStreamMetadata
+    AudioStreamMetadata
+
+
+CUDA decoding utils
+-------------------
+
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
     :template: function.rst
 
     set_cuda_backend
+    set_nvdec_cache_capacity
+    get_nvdec_cache_capacity
 
 .. autosummary::
     :toctree: generated/
     :nosignatures:
     :template: dataclass.rst
 
-    VideoStreamMetadata
-    AudioStreamMetadata
     CpuFallbackStatus

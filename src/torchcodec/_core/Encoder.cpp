@@ -2,7 +2,7 @@
 
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
-#include "torch/types.h"
+#include "StableABICompat.h"
 
 extern "C" {
 #include <libavutil/hwcontext.h>
@@ -14,12 +14,12 @@ namespace facebook::torchcodec {
 
 namespace {
 
-torch::Tensor validateSamples(const torch::Tensor& samples) {
-  TORCH_CHECK(
-      samples.dtype() == torch::kFloat32,
+torch::stable::Tensor validateSamples(const torch::stable::Tensor& samples) {
+  STD_TORCH_CHECK(
+      samples.scalar_type() == kStableFloat32,
       "samples must have float32 dtype, got ",
-      samples.dtype());
-  TORCH_CHECK(
+      (samples.scalar_type()));
+  STD_TORCH_CHECK(
       samples.dim() == 2,
       "samples must have 2 dimensions, got ",
       samples.dim());
@@ -27,7 +27,7 @@ torch::Tensor validateSamples(const torch::Tensor& samples) {
   // We enforce this, but if we get user reports we should investigate whether
   // that's actually needed.
   int numChannels = static_cast<int>(samples.sizes()[0]);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       numChannels <= AV_NUM_DATA_POINTERS,
       "Trying to encode ",
       numChannels,
@@ -35,7 +35,7 @@ torch::Tensor validateSamples(const torch::Tensor& samples) {
       AV_NUM_DATA_POINTERS,
       " channels per frame.");
 
-  return samples.contiguous();
+  return torch::stable::contiguous(samples);
 }
 
 void validateSampleRate(const AVCodec& avCodec, int sampleRate) {
@@ -57,7 +57,7 @@ void validateSampleRate(const AVCodec& avCodec, int sampleRate) {
     supportedRates << supportedSampleRates[i];
   }
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       false,
       "invalid sample rate=",
       sampleRate,
@@ -133,7 +133,7 @@ AudioEncoder::~AudioEncoder() {
 }
 
 AudioEncoder::AudioEncoder(
-    const torch::Tensor& samples,
+    const torch::stable::Tensor& samples,
     int sampleRate,
     std::string_view fileName,
     const AudioStreamOptions& audioStreamOptions)
@@ -143,7 +143,7 @@ AudioEncoder::AudioEncoder(
   int status = avformat_alloc_output_context2(
       &avFormatContext, nullptr, nullptr, fileName.data());
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       avFormatContext != nullptr,
       "Couldn't allocate AVFormatContext. ",
       "The destination file is ",
@@ -153,7 +153,7 @@ AudioEncoder::AudioEncoder(
   avFormatContext_.reset(avFormatContext);
 
   status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       status >= 0,
       "avio_open failed. The destination file is ",
       fileName,
@@ -164,7 +164,7 @@ AudioEncoder::AudioEncoder(
 }
 
 AudioEncoder::AudioEncoder(
-    const torch::Tensor& samples,
+    const torch::stable::Tensor& samples,
     int sampleRate,
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
@@ -177,7 +177,7 @@ AudioEncoder::AudioEncoder(
   int status = avformat_alloc_output_context2(
       &avFormatContext, nullptr, formatName.data(), nullptr);
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       avFormatContext != nullptr,
       "Couldn't allocate AVFormatContext. ",
       "Check the desired format? Got format=",
@@ -197,15 +197,16 @@ void AudioEncoder::initializeEncoder(
   // specific format/container.
   const AVCodec* avCodec =
       avcodec_find_encoder(avFormatContext_->oformat->audio_codec);
-  TORCH_CHECK(avCodec != nullptr, "Codec not found");
+  STD_TORCH_CHECK(avCodec != nullptr, "Codec not found");
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
-  TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
+  STD_TORCH_CHECK(
+      avCodecContext != nullptr, "Couldn't allocate codec context.");
   avCodecContext_.reset(avCodecContext);
 
   auto desiredBitRate = audioStreamOptions.bitRate;
   if (desiredBitRate.has_value()) {
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         *desiredBitRate >= 0, "bit_rate=", *desiredBitRate, " must be >= 0.");
   }
   // bit_rate=None defaults to 0, which is what the FFmpeg CLI seems to use as
@@ -229,7 +230,7 @@ void AudioEncoder::initializeEncoder(
   avCodecContext_->sample_fmt = findBestOutputSampleFormat(*avCodec);
 
   int status = avcodec_open2(avCodecContext_.get(), avCodec, nullptr);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_open2 failed: ",
       getFFMPEGErrorStringFromErrorCode(status));
@@ -238,10 +239,10 @@ void AudioEncoder::initializeEncoder(
   // avformat_free_context(avFormatContext), which we call in the
   // avFormatContext_'s destructor.
   AVStream* avStream = avformat_new_stream(avFormatContext_.get(), nullptr);
-  TORCH_CHECK(avStream != nullptr, "Couldn't create new stream.");
+  STD_TORCH_CHECK(avStream != nullptr, "Couldn't create new stream.");
   status = avcodec_parameters_from_context(
       avStream->codecpar, avCodecContext_.get());
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_parameters_from_context failed: ",
       getFFMPEGErrorStringFromErrorCode(status));
@@ -258,19 +259,20 @@ void AudioEncoder::initializeEncoder(
         avCodecContext_->sample_fmt,
         outNumChannels_,
         avCodecContext_->frame_size * 2);
-    TORCH_CHECK(avAudioFifo != nullptr, "Couldn't create AVAudioFifo.");
+    STD_TORCH_CHECK(avAudioFifo != nullptr, "Couldn't create AVAudioFifo.");
     avAudioFifo_.reset(avAudioFifo);
   }
 }
 
-torch::Tensor AudioEncoder::encodeToTensor() {
-  TORCH_CHECK(
+torch::stable::Tensor AudioEncoder::encodeToTensor() {
+  STD_TORCH_CHECK(
       avioContextHolder_ != nullptr,
       "Cannot encode to tensor, avio tensor context doesn't exist.");
   encode();
   auto avioToTensorContext =
       dynamic_cast<AVIOToTensorContext*>(avioContextHolder_.get());
-  TORCH_CHECK(avioToTensorContext != nullptr, "Invalid AVIO context holder.");
+  STD_TORCH_CHECK(
+      avioToTensorContext != nullptr, "Invalid AVIO context holder.");
   return avioToTensorContext->getOutputTensor();
 }
 
@@ -278,7 +280,7 @@ void AudioEncoder::encode() {
   // To be on the safe side we enforce that encode() can only be called once on
   // an encoder object. Whether this is actually necessary is unknown, so this
   // may be relaxed if needed.
-  TORCH_CHECK(!encodeWasCalled_, "Cannot call encode() twice.");
+  STD_TORCH_CHECK(!encodeWasCalled_, "Cannot call encode() twice.");
   encodeWasCalled_ = true;
 
   //  Default to 256 like in torchaudio
@@ -293,14 +295,15 @@ void AudioEncoder::encode() {
 
   AutoAVPacket autoAVPacket;
 
-  uint8_t* psamples = static_cast<uint8_t*>(samples_.data_ptr());
+  const uint8_t* psamples =
+      static_cast<const uint8_t*>(samples_.const_data_ptr());
   int numSamples = static_cast<int>(samples_.sizes()[1]); // per channel
   int numEncodedSamples = 0; // per channel
   int numBytesPerSample = static_cast<int>(samples_.element_size());
   int numBytesPerChannel = numSamples * numBytesPerSample;
 
   auto status = avformat_write_header(avFormatContext_.get(), nullptr);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error in avformat_write_header: ",
       getFFMPEGErrorStringFromErrorCode(status));
@@ -330,12 +333,13 @@ void AudioEncoder::encode() {
 
     numEncodedSamples += numSamplesToEncode;
   }
-  TORCH_CHECK(numEncodedSamples == numSamples, "Hmmmmmm something went wrong.");
+  STD_TORCH_CHECK(
+      numEncodedSamples == numSamples, "Hmmmmmm something went wrong.");
 
   flushBuffers();
 
   status = av_write_trailer(avFormatContext_.get());
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error in: av_write_trailer",
       getFFMPEGErrorStringFromErrorCode(status));
@@ -361,6 +365,12 @@ UniqueAVFrame AudioEncoder::maybeConvertAVFrame(const UniqueAVFrame& avFrame) {
         avFrame,
         outNumChannels_));
   }
+  // convertAudioAVFrameSamples uses avFrame's extended_data field, so we ensure
+  // it's the same as data. This should always be the case since we validated
+  // earlier that we have less than AV_NUM_DATA_POINTERS channels.
+  STD_TORCH_CHECK(
+      avFrame->data == avFrame->extended_data,
+      "Codec context data and extended_data pointers differ, this is unexpected.");
   UniqueAVFrame convertedAVFrame = convertAudioAVFrameSamples(
       swrContext_,
       avFrame,
@@ -369,7 +379,7 @@ UniqueAVFrame AudioEncoder::maybeConvertAVFrame(const UniqueAVFrame& avFrame) {
       outNumChannels_);
 
   if (avFrame->sample_rate == outSampleRate_) {
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         convertedAVFrame->nb_samples == avFrame->nb_samples,
         "convertedAVFrame->nb_samples=",
         convertedAVFrame->nb_samples,
@@ -396,7 +406,7 @@ void AudioEncoder::encodeFrameThroughFifo(
       avAudioFifo_.get(),
       reinterpret_cast<void**>(avFrame->data),
       avFrame->nb_samples);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       numSamplesWritten == avFrame->nb_samples,
       "Tried to write ",
       avFrame->nb_samples,
@@ -429,7 +439,7 @@ void AudioEncoder::encodeFrameThroughFifo(
         avAudioFifo_.get(),
         reinterpret_cast<void**>(newavFrame->data),
         samplesToRead);
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         numSamplesRead == samplesToRead,
         "Tried to read ",
         samplesToRead,
@@ -450,7 +460,7 @@ void AudioEncoder::encodeFrame(
   }
 
   auto status = avcodec_send_frame(avCodecContext_.get(), avFrame.get());
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error while sending frame: ",
       getFFMPEGErrorStringFromErrorCode(status));
@@ -465,14 +475,14 @@ void AudioEncoder::encodeFrame(
         // TorchAudio:
         // https://github.com/pytorch/audio/blob/d60ce09e2c532d5bf2e05619e700ab520543465e/src/libtorio/ffmpeg/stream_writer/encoder.cpp#L21
         status = av_interleaved_write_frame(avFormatContext_.get(), nullptr);
-        TORCH_CHECK(
+        STD_TORCH_CHECK(
             status == AVSUCCESS,
             "Failed to flush packet: ",
             getFFMPEGErrorStringFromErrorCode(status));
       }
       return;
     }
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         status >= 0,
         "Error receiving packet: ",
         getFFMPEGErrorStringFromErrorCode(status));
@@ -480,7 +490,7 @@ void AudioEncoder::encodeFrame(
     packet->stream_index = streamIndex_;
 
     status = av_interleaved_write_frame(avFormatContext_.get(), packet.get());
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         status == AVSUCCESS,
         "Error in av_interleaved_write_frame: ",
         getFFMPEGErrorStringFromErrorCode(status));
@@ -494,7 +504,7 @@ void AudioEncoder::maybeFlushSwrBuffers(AutoAVPacket& autoAVPacket) {
   if (swrContext_ == nullptr && inSampleRate_ == outSampleRate_) {
     return;
   }
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       swrContext_ != nullptr,
       "swrContext is null, but sample rate conversion is needed. ",
       "This is unexpected, please report on the TorchCodec bug tracker.");
@@ -528,20 +538,20 @@ void AudioEncoder::flushBuffers() {
 
 namespace {
 
-torch::Tensor validateFrames(const torch::Tensor& frames) {
-  TORCH_CHECK(
-      frames.dtype() == torch::kUInt8,
+torch::stable::Tensor validateFrames(const torch::stable::Tensor& frames) {
+  STD_TORCH_CHECK(
+      frames.scalar_type() == kStableUInt8,
       "frames must have uint8 dtype, got ",
-      frames.dtype());
-  TORCH_CHECK(
+      frames.scalar_type());
+  STD_TORCH_CHECK(
       frames.dim() == 4,
       "frames must have 4 dimensions (N, C, H, W), got ",
       frames.dim());
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       frames.sizes()[1] == 3,
       "frame must have 3 channels (R, G, B), got ",
       frames.sizes()[1]);
-  return frames.contiguous();
+  return torch::stable::contiguous(frames);
 }
 
 AVPixelFormat validatePixelFormat(
@@ -572,7 +582,7 @@ AVPixelFormat validatePixelFormat(
   for (int i = 0; supportedFormats[i] != AV_PIX_FMT_NONE; ++i) {
     errorMsg << " " << av_get_pix_fmt_name(supportedFormats[i]);
   }
-  TORCH_CHECK(false, errorMsg.str());
+  STD_TORCH_CHECK(false, errorMsg.str());
 }
 
 void tryToValidateCodecOption(
@@ -600,7 +610,7 @@ void tryToValidateCodecOption(
       option->type == AV_OPT_TYPE_FLOAT || option->type == AV_OPT_TYPE_DOUBLE) {
     try {
       double numericValue = std::stod(value);
-      TORCH_CHECK(
+      STD_TORCH_CHECK(
           numericValue >= option->min && numericValue <= option->max,
           optionName,
           "=",
@@ -613,7 +623,7 @@ void tryToValidateCodecOption(
           avCodec.name,
           "'");
     } catch (const std::invalid_argument&) {
-      TORCH_CHECK(
+      STD_TORCH_CHECK(
           false,
           "Option ",
           optionName,
@@ -625,13 +635,17 @@ void tryToValidateCodecOption(
 }
 
 void sortCodecOptions(
+    const AVFormatContext* avFormatContext,
     const std::map<std::string, std::string>& extraOptions,
     UniqueAVDictionary& codecDict,
     UniqueAVDictionary& formatDict) {
   // Accepts a map of options as input, then sorts them into codec options and
   // format options. The sorted options are returned into two separate dicts.
   const AVClass* formatClass = avformat_get_class();
+  const AVClass* muxerClass =
+      avFormatContext->oformat ? avFormatContext->oformat->priv_class : nullptr;
   for (const auto& [key, value] : extraOptions) {
+    // Check if option is generic format option
     const AVOption* fmtOpt = av_opt_find2(
         &formatClass,
         key.c_str(),
@@ -639,10 +653,24 @@ void sortCodecOptions(
         0,
         AV_OPT_SEARCH_CHILDREN | AV_OPT_SEARCH_FAKE_OBJ,
         nullptr);
-    if (fmtOpt) {
+    // Check if option is muxer-specific option
+    // (Returned from `ffmpeg -h muxer=mp4`)
+    const AVOption* muxerOpt = nullptr;
+    if (muxerClass) {
+      muxerOpt = av_opt_find2(
+          &muxerClass,
+          key.c_str(),
+          nullptr,
+          0,
+          AV_OPT_SEARCH_FAKE_OBJ,
+          nullptr);
+    }
+    if (fmtOpt || muxerOpt) {
+      // Pass container-format options to formatDict to be used in
+      // avformat_write_header
       av_dict_set(formatDict.getAddress(), key.c_str(), value.c_str(), 0);
     } else {
-      // Default to codec option (includes AVCodecContext + encoder-private)
+      // By default, pass as codec option to be used in avcodec_open2
       av_dict_set(codecDict.getAddress(), key.c_str(), value.c_str(), 0);
     }
   }
@@ -654,7 +682,7 @@ VideoEncoder::~VideoEncoder() {
 }
 
 VideoEncoder::VideoEncoder(
-    const torch::Tensor& frames,
+    const torch::stable::Tensor& frames,
     double frameRate,
     std::string_view fileName,
     const VideoStreamOptions& videoStreamOptions)
@@ -666,7 +694,7 @@ VideoEncoder::VideoEncoder(
   int status = avformat_alloc_output_context2(
       &avFormatContext, nullptr, nullptr, fileName.data());
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       avFormatContext != nullptr,
       "Couldn't allocate AVFormatContext. ",
       "The destination file is ",
@@ -676,7 +704,7 @@ VideoEncoder::VideoEncoder(
   avFormatContext_.reset(avFormatContext);
 
   status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       status >= 0,
       "avio_open failed. The destination file is ",
       fileName,
@@ -686,7 +714,7 @@ VideoEncoder::VideoEncoder(
 }
 
 VideoEncoder::VideoEncoder(
-    const torch::Tensor& frames,
+    const torch::stable::Tensor& frames,
     double frameRate,
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
@@ -701,7 +729,7 @@ VideoEncoder::VideoEncoder(
   int status = avformat_alloc_output_context2(
       &avFormatContext, nullptr, formatName.data(), nullptr);
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       avFormatContext != nullptr,
       "Couldn't allocate AVFormatContext. ",
       "Check the desired format? Got format=",
@@ -717,11 +745,10 @@ VideoEncoder::VideoEncoder(
 
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
-  // Only create device interface when frames are on a CUDA device.
-  // Encoding on CPU is implemented in this file.
-  if (frames_.device().is_cuda()) {
-    deviceInterface_ = createDeviceInterface(frames_.device());
-  }
+  auto tensorDevice = frames_.device();
+  deviceInterface_ = createDeviceInterface(StableDevice(
+      static_cast<StableDeviceType>(tensorDevice.type()),
+      tensorDevice.index()));
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
@@ -738,26 +765,21 @@ void VideoEncoder::initializeEncoder(
       }
     }
   } else {
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         avFormatContext_->oformat != nullptr,
         "Output format is null, unable to find default codec.");
-    // If frames are on a CUDA device, try to substitute the default codec
-    // with its hardware equivalent
-    if (frames_.device().is_cuda()) {
-      TORCH_CHECK(
-          deviceInterface_ != nullptr,
-          "Device interface is undefined when input frames are on a CUDA device. This should never happen, please report this to the TorchCodec repo.");
-      auto hwCodec = deviceInterface_->findCodec(
-          avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
-      if (hwCodec.has_value()) {
-        avCodec = hwCodec.value();
-      }
+    // Try to substitute the default codec with its hardware equivalent
+    // This will return std::nullopt when device is CPU.
+    auto hwCodec = deviceInterface_->findCodec(
+        avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
+    if (hwCodec.has_value()) {
+      avCodec = hwCodec.value();
     }
     if (!avCodec) {
       avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
     }
   }
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       avCodec != nullptr,
       "Video codec ",
       videoStreamOptions.codec.has_value()
@@ -766,43 +788,44 @@ void VideoEncoder::initializeEncoder(
       "not found. To see available codecs, run: ffmpeg -encoders");
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
-  TORCH_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
+  STD_TORCH_CHECK(
+      avCodecContext != nullptr, "Couldn't allocate codec context.");
   avCodecContext_.reset(avCodecContext);
 
-  // Store dimension order and input pixel format
-  // TODO-VideoEncoder: Remove assumption that tensor in NCHW format
+  // Store dimensions of input frames
+  // TODO-VideoEncoder: (P2) Enable tensors in NHWC shape
   auto sizes = frames_.sizes();
-  inPixelFormat_ = AV_PIX_FMT_GBRP;
-  inHeight_ = static_cast<int>(sizes[2]);
-  inWidth_ = static_cast<int>(sizes[3]);
+  int inHeight = static_cast<int>(sizes[2]);
+  int inWidth = static_cast<int>(sizes[3]);
 
-  // Use specified dimensions or input dimensions
-  // TODO-VideoEncoder: Allow height and width to be set
-  outWidth_ = inWidth_;
-  outHeight_ = inHeight_;
+  // Always use input dimensions as output dimensions
+  // TODO-VideoEncoder: (P2) Allow height and width to be set
+  int outWidth = inWidth;
+  int outHeight = inHeight;
+  AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
-    // TODO-VideoEncoder: Enable pixel formats to be set by user
+    // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user on GPU
     // and handled with the appropriate NPP function on GPU.
-    if (frames_.device().is_cuda()) {
-      TORCH_CHECK(
+    if (frames_.device().type() == kStableCUDA) {
+      STD_TORCH_CHECK(
           false,
           "Video encoding on GPU currently only supports the nv12 pixel format. "
           "Do not set pixel_format to use nv12 by default.");
     }
-    outPixelFormat_ =
+    outPixelFormat =
         validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
   } else {
-    if (frames_.device().is_cuda()) {
+    if (frames_.device().type() == kStableCUDA) {
       // Default to nv12 pixel format when encoding on GPU.
-      outPixelFormat_ = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
+      outPixelFormat = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
     } else {
       const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
       // Use first listed pixel format as default (often yuv420p).
       // This is similar to FFmpeg's logic:
       // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
       // If pixel formats are undefined for some reason, try yuv420p
-      outPixelFormat_ = (formats && formats[0] != AV_PIX_FMT_NONE)
+      outPixelFormat = (formats && formats[0] != AV_PIX_FMT_NONE)
           ? formats[0]
           : AV_PIX_FMT_YUV420P;
     }
@@ -810,10 +833,10 @@ void VideoEncoder::initializeEncoder(
 
   // Configure codec parameters
   avCodecContext_->codec_id = avCodec->id;
-  avCodecContext_->width = outWidth_;
-  avCodecContext_->height = outHeight_;
-  avCodecContext_->pix_fmt = outPixelFormat_;
-  // TODO-VideoEncoder: Add and utilize output frame_rate option
+  avCodecContext_->width = outWidth;
+  avCodecContext_->height = outHeight;
+  avCodecContext_->pix_fmt = outPixelFormat;
+  // TODO-VideoEncoder: (P1) Add and utilize output frame_rate option
   avCodecContext_->framerate = av_d2q(inFrameRate_, INT_MAX);
   avCodecContext_->time_base = av_inv_q(avCodecContext_->framerate);
 
@@ -829,6 +852,7 @@ void VideoEncoder::initializeEncoder(
       tryToValidateCodecOption(*avCodec, key.c_str(), value);
     }
     sortCodecOptions(
+        avFormatContext_.get(),
         videoStreamOptions.extraOptions.value(),
         avCodecOptions,
         avFormatOptions_);
@@ -847,8 +871,7 @@ void VideoEncoder::initializeEncoder(
         0);
   }
 
-  // When frames are on a CUDA device, deviceInterface_ will be defined.
-  if (frames_.device().is_cuda() && deviceInterface_) {
+  if (frames_.device().type() == kStableCUDA) {
     deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
     deviceInterface_->setupHardwareFrameContextForEncoding(
         avCodecContext_.get());
@@ -857,13 +880,13 @@ void VideoEncoder::initializeEncoder(
   int status = avcodec_open2(
       avCodecContext_.get(), avCodec, avCodecOptions.getAddress());
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_open2 failed: ",
       getFFMPEGErrorStringFromErrorCode(status));
 
   avStream_ = avformat_new_stream(avFormatContext_.get(), nullptr);
-  TORCH_CHECK(avStream_ != nullptr, "Couldn't create new stream.");
+  STD_TORCH_CHECK(avStream_ != nullptr, "Couldn't create new stream.");
 
   // Set the stream time base to encode correct frame timestamps
   avStream_->time_base = avCodecContext_->time_base;
@@ -873,7 +896,7 @@ void VideoEncoder::initializeEncoder(
 
   status = avcodec_parameters_from_context(
       avStream_->codecpar, avCodecContext_.get());
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_parameters_from_context failed: ",
       getFFMPEGErrorStringFromErrorCode(status));
@@ -881,12 +904,12 @@ void VideoEncoder::initializeEncoder(
 
 void VideoEncoder::encode() {
   // To be on the safe side we enforce that encode() can only be called once
-  TORCH_CHECK(!encodeWasCalled_, "Cannot call encode() twice.");
+  STD_TORCH_CHECK(!encodeWasCalled_, "Cannot call encode() twice.");
   encodeWasCalled_ = true;
 
   int status = avformat_write_header(
       avFormatContext_.get(), avFormatOptions_.getAddress());
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error in avformat_write_header: ",
       getFFMPEGErrorStringFromErrorCode(status));
@@ -894,107 +917,45 @@ void VideoEncoder::encode() {
   AutoAVPacket autoAVPacket;
   int numFrames = static_cast<int>(frames_.sizes()[0]);
   for (int i = 0; i < numFrames; ++i) {
-    torch::Tensor currFrame = frames_[i];
-    UniqueAVFrame avFrame;
-    if (frames_.device().is_cuda() && deviceInterface_) {
-      auto cudaFrame = deviceInterface_->convertCUDATensorToAVFrameForEncoding(
-          currFrame, i, avCodecContext_.get());
-      TORCH_CHECK(
-          cudaFrame != nullptr,
-          "convertCUDATensorToAVFrameForEncoding failed for frame ",
-          i,
-          " on device: ",
-          frames_.device());
-      avFrame = std::move(cudaFrame);
-    } else {
-      avFrame = convertTensorToAVFrame(currFrame, i);
-    }
+    torch::stable::Tensor currFrame = selectRow(frames_, i);
+    UniqueAVFrame avFrame = deviceInterface_->convertTensorToAVFrameForEncoding(
+        currFrame, i, avCodecContext_.get());
+    STD_TORCH_CHECK(
+        avFrame != nullptr,
+        "convertTensorToAVFrameForEncoding failed for frame ",
+        i,
+        " on device: ",
+        deviceTypeName(frames_.device().type()));
     encodeFrame(autoAVPacket, avFrame);
   }
 
   flushBuffers();
 
   status = av_write_trailer(avFormatContext_.get());
-  TORCH_CHECK(
+  // av_write_trailer returns mfra atom size (positive) for fragmented
+  // containers, which we'd misinterpret as an error, since all FFmpeg errors
+  // are negative (see AVERROR definition:
+  // http://ffmpeg.org/doxygen/8.0/error_8h_source.html) So we replace positive
+  // values with AVSUCCESS. See:
+  // https://github.com/FFmpeg/FFmpeg/blob/n8.0/libavformat/movenc.c#L8666
+  if (status > 0) {
+    status = AVSUCCESS;
+  }
+  STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error in av_write_trailer: ",
       getFFMPEGErrorStringFromErrorCode(status));
 }
 
-UniqueAVFrame VideoEncoder::convertTensorToAVFrame(
-    const torch::Tensor& frame,
-    int frameIndex) {
-  // Initialize and cache scaling context if it does not exist
-  if (!swsContext_) {
-    swsContext_.reset(sws_getContext(
-        inWidth_,
-        inHeight_,
-        inPixelFormat_,
-        outWidth_,
-        outHeight_,
-        outPixelFormat_,
-        SWS_BICUBIC, // Used by FFmpeg CLI
-        nullptr,
-        nullptr,
-        nullptr));
-    TORCH_CHECK(swsContext_ != nullptr, "Failed to create scaling context");
-  }
-
-  UniqueAVFrame avFrame(av_frame_alloc());
-  TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
-
-  // Set output frame properties
-  avFrame->format = outPixelFormat_;
-  avFrame->width = outWidth_;
-  avFrame->height = outHeight_;
-  avFrame->pts = frameIndex;
-
-  int status = av_frame_get_buffer(avFrame.get(), 0);
-  TORCH_CHECK(status >= 0, "Failed to allocate frame buffer");
-
-  // Need to convert/scale the frame
-  // Create temporary frame with input format
-  UniqueAVFrame inputFrame(av_frame_alloc());
-  TORCH_CHECK(inputFrame != nullptr, "Failed to allocate input AVFrame");
-
-  inputFrame->format = inPixelFormat_;
-  inputFrame->width = inWidth_;
-  inputFrame->height = inHeight_;
-
-  uint8_t* tensorData = static_cast<uint8_t*>(frame.data_ptr());
-
-  // TODO-VideoEncoder: Reorder tensor if in NHWC format
-  int channelSize = inHeight_ * inWidth_;
-  // Reorder RGB -> GBR for AV_PIX_FMT_GBRP format
-  // TODO-VideoEncoder: Determine if FFmpeg supports planar RGB input format
-  inputFrame->data[0] = tensorData + channelSize;
-  inputFrame->data[1] = tensorData + (2 * channelSize);
-  inputFrame->data[2] = tensorData;
-
-  inputFrame->linesize[0] = inWidth_;
-  inputFrame->linesize[1] = inWidth_;
-  inputFrame->linesize[2] = inWidth_;
-
-  status = sws_scale(
-      swsContext_.get(),
-      inputFrame->data,
-      inputFrame->linesize,
-      0,
-      inputFrame->height,
-      avFrame->data,
-      avFrame->linesize);
-  TORCH_CHECK(status == outHeight_, "sws_scale failed");
-  return avFrame;
-}
-
-torch::Tensor VideoEncoder::encodeToTensor() {
-  TORCH_CHECK(
+torch::stable::Tensor VideoEncoder::encodeToTensor() {
+  STD_TORCH_CHECK(
       avioContextHolder_ != nullptr,
       "Cannot encode to tensor, avio tensor context doesn't exist.");
   encode();
   auto avioToTensorContext =
       dynamic_cast<AVIOToTensorContext*>(avioContextHolder_.get());
-  TORCH_CHECK(avioToTensorContext != nullptr, "Invalid AVIO context holder.");
+  STD_TORCH_CHECK(
+      avioToTensorContext != nullptr, "Invalid AVIO context holder.");
   return avioToTensorContext->getOutputTensor();
 }
 
@@ -1002,7 +963,7 @@ void VideoEncoder::encodeFrame(
     AutoAVPacket& autoAVPacket,
     const UniqueAVFrame& avFrame) {
   auto status = avcodec_send_frame(avCodecContext_.get(), avFrame.get());
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error while sending frame: ",
       getFFMPEGErrorStringFromErrorCode(status));
@@ -1014,14 +975,14 @@ void VideoEncoder::encodeFrame(
       if (status == AVERROR_EOF) {
         // Flush remaining buffered packets
         status = av_interleaved_write_frame(avFormatContext_.get(), nullptr);
-        TORCH_CHECK(
+        STD_TORCH_CHECK(
             status == AVSUCCESS,
             "Failed to flush packet: ",
             getFFMPEGErrorStringFromErrorCode(status));
       }
       return;
     }
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         status >= 0,
         "Error receiving packet: ",
         getFFMPEGErrorStringFromErrorCode(status));
@@ -1038,7 +999,7 @@ void VideoEncoder::encodeFrame(
     packet->stream_index = avStream_->index;
 
     status = av_interleaved_write_frame(avFormatContext_.get(), packet.get());
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         status == AVSUCCESS,
         "Error in av_interleaved_write_frame: ",
         getFFMPEGErrorStringFromErrorCode(status));
@@ -1049,6 +1010,46 @@ void VideoEncoder::flushBuffers() {
   AutoAVPacket autoAVPacket;
   // Send null frame to signal end of input
   encodeFrame(autoAVPacket, UniqueAVFrame(nullptr));
+}
+
+MultiStreamEncoder::~MultiStreamEncoder() {
+  close();
+}
+
+MultiStreamEncoder::MultiStreamEncoder(std::string_view fileName) {
+  setFFmpegLogLevel();
+
+  AVFormatContext* avFormatContext = nullptr;
+  int status = avformat_alloc_output_context2(
+      &avFormatContext, nullptr, nullptr, fileName.data());
+
+  STD_TORCH_CHECK(
+      avFormatContext != nullptr,
+      "Couldn't allocate AVFormatContext. ",
+      "The destination file is ",
+      fileName,
+      ", check the desired extension? ",
+      getFFMPEGErrorStringFromErrorCode(status));
+  avFormatContext_.reset(avFormatContext);
+
+  status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
+  STD_TORCH_CHECK(
+      status >= 0,
+      "avio_open failed. The destination file is ",
+      fileName,
+      ", make sure it's a valid path? ",
+      getFFMPEGErrorStringFromErrorCode(status));
+}
+
+void MultiStreamEncoder::close() {
+  if (closed_) {
+    return;
+  }
+  // TODO MultiStreamEncoder: Revisit if "closed_" flag is useful
+  closed_ = true;
+  // TODO MultiStreamEncoder: Once addFrame is implemented, close() will need to
+  // flush the encoder and call av_write_trailer.
+  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
 }
 
 } // namespace facebook::torchcodec

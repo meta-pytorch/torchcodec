@@ -5,7 +5,10 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "CUDACommon.h"
+#include <torch/csrc/inductor/aoti_torch/c/shim.h>
 #include "Cache.h" // for PerGpuCache
+#include "StableABICompat.h"
+#include "ValidationUtils.h"
 
 namespace facebook::torchcodec {
 
@@ -21,12 +24,48 @@ PerGpuCache<NppStreamContext> g_cached_npp_ctxs(
 
 } // namespace
 
-void initializeCudaContextWithPytorch(const torch::Device& device) {
+cudaStream_t getCurrentCudaStream(int32_t deviceIndex) {
+  // This is the documented and blessed way to get the current CUDA stream with
+  // the stable ABI. aoti_torch_get_current_cuda_stream, TORCH_ERROR_CODE_CHECK,
+  // and the corresponding torch/csrc/inductor/aoti_torch/c/shim.h header are
+  // all safe to use:
+  // https://github.com/pytorch/pytorch/blob/7bc8d4b0648e1d364dce0104c3aea2e7e3c1640a/docs/cpp/source/stable.rst?plain=1#L172-L179
+  void* stream = nullptr;
+  TORCH_ERROR_CODE_CHECK(
+      aoti_torch_get_current_cuda_stream(deviceIndex, &stream));
+  // Note: no need for checking against nullptr stream, it's a valid default
+  // stream value.
+  return static_cast<cudaStream_t>(stream);
+}
+
+// Make waitingStream wait until all work currently enqueued on runningStream
+// has completed.
+void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream) {
+  cudaEvent_t event;
+  cudaError_t err = cudaEventCreate(&event);
+  STD_TORCH_CHECK(
+      err == cudaSuccess, "cudaEventCreate failed: ", cudaGetErrorString(err));
+
+  err = cudaEventRecord(event, runningStream);
+  STD_TORCH_CHECK(
+      err == cudaSuccess, "cudaEventRecord failed: ", cudaGetErrorString(err));
+
+  err = cudaStreamWaitEvent(waitingStream, event, 0);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "cudaStreamWaitEvent failed: ",
+      cudaGetErrorString(err));
+
+  cudaEventDestroy(event);
+}
+
+void initializeCudaContextWithPytorch(const StableDevice& device) {
   // It is important for pytorch itself to create the cuda context. If ffmpeg
   // creates the context it may not be compatible with pytorch.
   // This is a dummy tensor to initialize the cuda context.
-  torch::Tensor dummyTensorForCudaInitialization = torch::zeros(
-      {1}, torch::TensorOptions().dtype(torch::kUInt8).device(device));
+  torch::stable::Tensor dummyTensorForCudaInitialization = torch::stable::empty(
+      {1}, kStableUInt8, std::nullopt, StableDevice(device));
+  torch::stable::zero_(dummyTensorForCudaInitialization);
 }
 
 /* clang-format off */
@@ -146,24 +185,111 @@ void initializeCudaContextWithPytorch(const torch::Device& device) {
 //         [ 1.0000e+00, -1.8732e-01, -4.6812e-01,     -128]
 //         [ 1.0000e+00,  1.8556e+00,  4.6231e-09 ,    -128]])
 //
-// And that's what we need to pass for BT701, full range.
+// And that's what we need to pass for BT709, full range.
 /* clang-format on */
 
 // BT.709 full range color conversion matrix for YUV to RGB conversion.
 // See Note [YUV -> RGB Color Conversion, color space and color range]
+#if CUDART_VERSION >= 13000
 const Npp32f bt709FullRangeColorTwist[3][4] = {
     {1.0f, 0.0f, 1.5748f, 0.0f},
     {1.0f, -0.187324273f, -0.468124273f, -128.0f},
     {1.0f, 1.8556f, 0.0f, -128.0f}};
+#else
+// The note above about nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx
+// offsets is actually only true for CUDA 13+. For CUDA 12, the behavior is
+// different and still undocumented.
+// See https://github.com/meta-pytorch/torchcodec/issues/1262#issue-3989049538
+// for how these offsets need to be derived.
+const Npp32f bt709FullRangeColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.5748f, -201.5744f},
+    {1.0f, -0.187324273f, -0.468124273f, 83.8974f},
+    {1.0f, 1.8556f, 0.0f, -237.5168f}};
+#endif
 
-torch::Tensor convertNV12FrameToRGB(
+// BT.601 full range color conversion matrix for YUV to RGB conversion.
+// Luma coefficients for BT.601: kr=0.299, kg=0.587, kb=0.114
+// See Note [YUV -> RGB Color Conversion, color space and color range]
+#if CUDART_VERSION >= 13000
+const Npp32f bt601FullRangeColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.402f, 0.0f},
+    {1.0f, -0.344136286f, -0.714136286f, -128.0f},
+    {1.0f, 1.772f, 0.0f, -128.0f}};
+#else
+const Npp32f bt601FullRangeColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.402f, -179.456f},
+    {1.0f, -0.344136286f, -0.714136286f, 135.4589f},
+    {1.0f, 1.772f, 0.0f, -226.816f}};
+#endif
+
+// BT.601 limited range color conversion matrix for YUV to RGB conversion.
+// Same luma coefficients as above, but Y is scaled from [16, 235] to [0, 255]
+// (factor 255/219 = 1.16438356) and UV from [16, 240] (factor 255/224).
+// NPP provides a pre-defined color conversion function for BT.601 limited
+// range: nppiNV12ToRGB_8u_P2C3R_Ctx. But it's not closely matching the
+// results we have on CPU. So we're using a custom color conversion matrix,
+// which provides more accurate results.
+// See Note [YUV -> RGB Color Conversion, color space and color range]
+#if CUDART_VERSION >= 13000
+const Npp32f bt601LimitedRangeColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.59602679f, -16.0f},
+    {1.16438356f, -0.39176229f, -0.81296765f, -128.0f},
+    {1.16438356f, 2.01723214f, 0.0f, -128.0f}};
+#else
+const Npp32f bt601LimitedRangeColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.59602679f, -222.9216f},
+    {1.16438356f, -0.39176229f, -0.81296765f, 135.5753f},
+    {1.16438356f, 2.01723214f, 0.0f, -276.8358f}};
+#endif
+
+// BT.2020 color conversion matrices for YUV to RGB conversion.
+// BT.2020 uses Kr=0.2627, Kb=0.0593, Kg=1-Kr-Kb=0.6780
+// Derived the same way as BT.709 above (see the Note).
+// The 3x3 coefficients come from inverting the RGB->YUV matrix:
+//   R = Y + 0*Cb       + 1.4746*Cr
+//   G = Y - 0.164553*Cb - 0.571353*Cr
+//   B = Y + 1.8814*Cb  + 0*Cr
+//
+// The 4th column (offset) depends on the CUDA version, because NPP changed
+// the ColorTwist convention in CUDA 13. See the Note above and PR #1265.
+// On CUDA >= 13: NPP internally centers U/V by subtracting 128.
+// On CUDA < 13: NPP does NOT center U/V, so the offset must encode the full
+//   Cb/Cr centering contribution expanded into the constant term.
+#if CUDART_VERSION >= 13000
+const Npp32f bt2020FullRangeColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.4746f, 0.0f},
+    {1.0f, -0.164553127f, -0.571353127f, -128.0f},
+    {1.0f, 1.8814f, 0.0f, -128.0f}};
+
+const Npp32f bt2020LimitedRangeColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.67867411f, -16.0f},
+    {1.16438356f, -0.187326105f, -0.650424319f, -128.0f},
+    {1.16438356f, 2.14177232f, 0.0f, -128.0f}};
+#else
+// CUDA < 13: expand Cb/Cr centering into the offset column.
+// Full range offset_R = -(1.4746*128) = -188.7488
+// Full range offset_G = 0.164553127*128 + 0.571353127*128 = 94.196
+// Full range offset_B = -(1.8814*128) = -240.8192
+const Npp32f bt2020FullRangeColorTwist[3][4] = {
+    {1.0f, 0.0f, 1.4746f, -188.7488f},
+    {1.0f, -0.164553127f, -0.571353127f, 94.196f},
+    {1.0f, 1.8814f, 0.0f, -240.8192f}};
+
+// Limited range: Y offset = -(1.16438356*16), plus Cb/Cr centering.
+const Npp32f bt2020LimitedRangeColorTwist[3][4] = {
+    {1.16438356f, 0.0f, 1.67867411f, -233.5004f},
+    {1.16438356f, -0.187326105f, -0.650424319f, 88.6019f},
+    {1.16438356f, 2.14177232f, 0.0f, -292.7770f}};
+#endif
+
+torch::stable::Tensor convertNV12FrameToRGB(
     UniqueAVFrame& avFrame,
-    const torch::Device& device,
+    const StableDevice& device,
     const UniqueNppContext& nppCtx,
-    at::cuda::CUDAStream nvdecStream,
-    std::optional<torch::Tensor> preAllocatedOutputTensor) {
+    cudaStream_t nvdecStream,
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   auto frameDims = FrameDims(avFrame->height, avFrame->width);
-  torch::Tensor dst;
+  torch::stable::Tensor dst;
   if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
@@ -173,15 +299,12 @@ torch::Tensor convertNV12FrameToRGB(
   // We need to make sure NVDEC has finished decoding a frame before
   // color-converting it with NPP.
   // So we make the NPP stream wait for NVDEC to finish.
-  at::cuda::CUDAStream nppStream =
-      at::cuda::getCurrentCUDAStream(device.index());
-  at::cuda::CUDAEvent nvdecDoneEvent;
-  nvdecDoneEvent.record(nvdecStream);
-  nvdecDoneEvent.block(nppStream);
+  cudaStream_t nppStream = getCurrentCudaStream(device.index());
+  syncStreams(/*runningStream=*/nvdecStream, /*waitingStream=*/nppStream);
 
-  nppCtx->hStream = nppStream.stream();
+  nppCtx->hStream = nppStream;
   cudaError_t err = cudaStreamGetFlags(nppCtx->hStream, &nppCtx->nStreamFlags);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       err == cudaSuccess,
       "cudaStreamGetFlags failed: ",
       cudaGetErrorString(err));
@@ -206,7 +329,7 @@ torch::Tensor convertNV12FrameToRGB(
       status = nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
           yuvData,
           srcStep,
-          static_cast<Npp8u*>(dst.data_ptr()),
+          dst.mutable_data_ptr<Npp8u>(),
           dst.stride(0),
           oSizeROI,
           bt709FullRangeColorTwist,
@@ -224,29 +347,67 @@ torch::Tensor convertNV12FrameToRGB(
       status = nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx(
           yuvData,
           avFrame->linesize[0],
-          static_cast<Npp8u*>(dst.data_ptr()),
+          dst.mutable_data_ptr<Npp8u>(),
           dst.stride(0),
           oSizeROI,
           *nppCtx);
     }
-  } else {
-    // TODO we're assuming BT.601 color space (and probably limited range) by
-    // calling nppiNV12ToRGB_8u_P2C3R_Ctx. We should handle BT.601 full range,
-    // and other color-spaces like 2020.
-    status = nppiNV12ToRGB_8u_P2C3R_Ctx(
+  } else if (
+      avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT2020_NCL ||
+      avFrame->colorspace == AVColorSpace::AVCOL_SPC_BT2020_CL) {
+    int srcStep[2] = {avFrame->linesize[0], avFrame->linesize[1]};
+
+    const Npp32f(*matrix)[4] =
+        (avFrame->color_range == AVColorRange::AVCOL_RANGE_JPEG)
+        ? bt2020FullRangeColorTwist
+        : bt2020LimitedRangeColorTwist;
+
+    status = nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
         yuvData,
-        avFrame->linesize[0],
-        static_cast<Npp8u*>(dst.data_ptr()),
+        srcStep,
+        dst.mutable_data_ptr<Npp8u>(),
         dst.stride(0),
         oSizeROI,
+        matrix,
         *nppCtx);
+  } else {
+    // When the colorspace is unspecified, we default to BT.601. This matches
+    // FFmpeg's swscale behavior: sws_getCoefficients(SWS_CS_DEFAULT) returns
+    // BT.601 coefficients
+    // https://github.com/FFmpeg/FFmpeg/blob/5b8a4a0e14cde74704b13493eb33cce3be260283/libswscale/swscale.h#L396-L403
+    if (avFrame->color_range == AVColorRange::AVCOL_RANGE_JPEG) {
+      // BT.601 full range via custom color twist
+      int srcStep[2] = {avFrame->linesize[0], avFrame->linesize[1]};
+      status = nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
+          yuvData,
+          srcStep,
+          dst.mutable_data_ptr<Npp8u>(),
+          validateInt64ToInt(dst.stride(0), "dst.stride(0)"),
+          oSizeROI,
+          bt601FullRangeColorTwist,
+          *nppCtx);
+    } else {
+      // NPP provides a pre-defined color conversion function for BT.601
+      // limited range: nppiNV12ToRGB_8u_P2C3R_Ctx. But it's not closely
+      // matching the results we have on CPU. So we're using a custom color
+      // conversion matrix, which provides more accurate results.
+      int srcStep[2] = {avFrame->linesize[0], avFrame->linesize[1]};
+      status = nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
+          yuvData,
+          srcStep,
+          dst.mutable_data_ptr<Npp8u>(),
+          validateInt64ToInt(dst.stride(0), "dst.stride(0)"),
+          oSizeROI,
+          bt601LimitedRangeColorTwist,
+          *nppCtx);
+    }
   }
-  TORCH_CHECK(status == NPP_SUCCESS, "Failed to convert NV12 frame.");
+  STD_TORCH_CHECK(status == NPP_SUCCESS, "Failed to convert NV12 frame.");
 
   return dst;
 }
 
-UniqueNppContext getNppStreamContext(const torch::Device& device) {
+UniqueNppContext getNppStreamContext(const StableDevice& device) {
   int deviceIndex = getDeviceIndex(device);
 
   UniqueNppContext nppCtx = g_cached_npp_ctxs.get(device);
@@ -265,7 +426,7 @@ UniqueNppContext getNppStreamContext(const torch::Device& device) {
   nppCtx = std::make_unique<NppStreamContext>();
   cudaDeviceProp prop{};
   cudaError_t err = cudaGetDeviceProperties(&prop, deviceIndex);
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       err == cudaSuccess,
       "cudaGetDeviceProperties failed: ",
       cudaGetErrorString(err));
@@ -282,7 +443,7 @@ UniqueNppContext getNppStreamContext(const torch::Device& device) {
 }
 
 void returnNppStreamContextToCache(
-    const torch::Device& device,
+    const StableDevice& device,
     UniqueNppContext nppCtx) {
   if (nppCtx) {
     g_cached_npp_ctxs.addIfCacheHasCapacity(device, std::move(nppCtx));
@@ -290,7 +451,7 @@ void returnNppStreamContextToCache(
 }
 
 void validatePreAllocatedTensorShape(
-    const std::optional<torch::Tensor>& preAllocatedOutputTensor,
+    const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,
     const UniqueAVFrame& avFrame) {
   // Note that CUDA does not yet support transforms, so the only possible
   // frame dimensions are the raw decoded frame's dimensions.
@@ -298,7 +459,7 @@ void validatePreAllocatedTensorShape(
 
   if (preAllocatedOutputTensor.has_value()) {
     auto shape = preAllocatedOutputTensor.value().sizes();
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         (shape.size() == 3) && (shape[0] == frameDims.height) &&
             (shape[1] == frameDims.width) && (shape[2] == 3),
         "Expected tensor of shape ",
@@ -306,21 +467,21 @@ void validatePreAllocatedTensorShape(
         "x",
         frameDims.width,
         "x3, got ",
-        shape);
+        intArrayRefToString(shape));
   }
 }
 
-int getDeviceIndex(const torch::Device& device) {
+int getDeviceIndex(const StableDevice& device) {
   // PyTorch uses int8_t as its torch::DeviceIndex, but FFmpeg and CUDA
   // libraries use int. So we use int, too.
   int deviceIndex = static_cast<int>(device.index());
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       deviceIndex >= -1 && deviceIndex < MAX_CUDA_GPUS,
       "Invalid device index = ",
       deviceIndex);
 
   if (deviceIndex == -1) {
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         cudaGetDevice(&deviceIndex) == cudaSuccess,
         "Failed to get current CUDA device.");
   }

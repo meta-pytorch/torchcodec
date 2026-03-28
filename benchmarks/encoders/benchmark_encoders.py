@@ -71,7 +71,7 @@ def report_stats(times, num_frames, nvenc_metrics=None, prefix="", unit="ms"):
             f"GPU memory used:      med = {mem_used_median:.1f} MB, max = {mem_used_max:.1f} MB"
         )
         print(
-            f"NVENC utilization:    med = {nvenc_metrics["utilization"].median():.1f}%,     max = {util_max:.1f}%"
+            f"NVENC utilization:    med = {nvenc_metrics['utilization'].median():.1f}%,     max = {util_max:.1f}%"
         )
 
 

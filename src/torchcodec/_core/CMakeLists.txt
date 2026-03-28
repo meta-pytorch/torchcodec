@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 project(TorchCodec)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PYBIND11_FINDPYTHON ON)
@@ -22,6 +22,8 @@ endif()
 if (WIN32)
   # Avoid warnings about non-ASCII characters in source files.
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /wd4819")
+  # Required for Unicode support in fmt library (bundled with PyTorch).
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
   # Important for when we add Windows CUDA: exporting all symbols is limited to
   # 65535 symbols, which (apparently) will not work for CUDA.
   # https://github.com/pytorch/pytorch/pull/3650
@@ -42,16 +44,53 @@ function(make_torchcodec_sublibrary
     library_dependencies)
 
     add_library(${library_name} ${type} ${sources})
-    set_target_properties(${library_name} PROPERTIES CXX_STANDARD 17)
+    set_target_properties(${library_name} PROPERTIES CXX_STANDARD 20)
     target_include_directories(${library_name}
         PRIVATE
         ./../../../
         "${TORCH_INSTALL_PREFIX}/include"
         ${Python3_INCLUDE_DIRS}
     )
+    # Use fmt library in header-only mode (bundled with PyTorch): the fmt
+    # library is bundled with PyTorch and the headers are available in
+    # TORCH_INSTALL_PREFIX/include/, which we add above. To be compatible with
+    # torch, we want to rely on the "header-only" mode of these headers and hit
+    # all the `#ifdef FMT_HEADER_ONLY` paths, so we define FMT_HEADER_ONLY here.```
+    target_compile_definitions(${library_name} PRIVATE FMT_HEADER_ONLY)
 
     # Avoid adding the "lib" prefix which we already add explicitly.
     set_target_properties(${library_name} PROPERTIES PREFIX "")
+
+    # On macOS, for wheels, add Homebrew's FFmpeg library path to the rpath so
+    # that users with Homebrew-installed FFmpeg can use torchcodec without
+    # setting DYLD_LIBRARY_PATH. See
+    # https://github.com/pytorch/torchcodec/issues/570.
+    # That's the behavior we enable by default when building TorchCodec wheels
+    # which we'll ship on PyPI.
+    # Note that this means homebrew-FFmpeg will always take precedence over
+    # conda-FFmpeg. For this reason, this behavior can (and should!) be disabled
+    # when building TorchCodec for conda, by setting
+    # TORCHCODEC_DISABLE_HOMEBREW_RPATH.
+    # We should have the following behavior for users:
+    # - For TorchCodec installed from PyPI (pip or uv): Users don't have to use
+    #   a conda env, and by default the homebrew-ffmpeg should be found. For
+    #   users who do use a conda env, they should be able to use the
+    #   conda-installed FFmpeg, but only if HomeBrew FFmpeg doesn't exist since
+    #   homebrew will take precedence.
+    # - For TorchCodec installed from conda, users must install FFmpeg from
+    #   conda as well (it should be a dependency of the TorchCodec conda
+    #   package). Homebrew FFmpeg shouldn't be used.
+    if(APPLE AND NOT (DEFINED TORCHCODEC_DISABLE_HOMEBREW_RPATH AND TORCHCODEC_DISABLE_HOMEBREW_RPATH))
+        if(DEFINED ENV{HOMEBREW_PREFIX})
+            set(HOMEBREW_FFMPEG_LIB "$ENV{HOMEBREW_PREFIX}/opt/ffmpeg/lib")
+        else()
+            # Default Homebrew location on Apple Silicon
+            set(HOMEBREW_FFMPEG_LIB "/opt/homebrew/opt/ffmpeg/lib")
+        endif()
+        set_target_properties(${library_name} PROPERTIES
+            INSTALL_RPATH "${HOMEBREW_FFMPEG_LIB}"
+        )
+    endif()
 
     target_link_libraries(
         ${library_name}
@@ -97,6 +136,9 @@ function(make_torchcodec_libraries
         ValidationUtils.cpp
         Transform.cpp
         Metadata.cpp
+        SwScale.cpp
+        WavDecoder.cpp
+        NVDECCacheConfig.cpp
     )
 
     if(ENABLE_CUDA)
@@ -121,6 +163,15 @@ function(make_torchcodec_libraries
         "${core_sources}"
         "${core_library_dependencies}"
     )
+
+    if(ENABLE_CUDA)
+        # We define USE_CUDA to guard CUDA-specific code paths (e.g.
+        # NVDECCache usage in NVDECCacheConfig.cpp) and because some torch
+        # APIs like aoti_torch_get_current_cuda_stream are only exposed when
+        # USE_CUDA is defined.
+        # https://github.com/pytorch/pytorch/blob/98e36864e640023a716e058d894ea2d20e76e5f7/torch/csrc/inductor/aoti_torch/c/shim.h#L573-L602
+        target_compile_definitions(${core_library_name} PRIVATE USE_CUDA)
+    endif()
 
     # 2. Create libtorchcodec_custom_opsN.{ext}.
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
@@ -196,8 +247,36 @@ function(make_torchcodec_libraries
         )
     endif()
 
-    # The value we use here must match the value we return from
-    # _get_pybind_ops_module_name() on the Python side. If the values do not
+    # We disable the "attributes" warning in the core library.
+    # This warning is triggered when, e.g., a class has "default" (i.e.
+    # public) visibility but a member of that class has "hidden" visibility.
+    # We have such a pattern in the core library with the VideoStreamOptions
+    # class and its StableDevice field:
+    # - VideoStreamOptions has "default" (public) visibility because it is part
+    #   of the core library, and the core library must have public symbols
+    #   because it is depended on by other libraries (the pybind ops library and
+    #   the custom ops library)
+    # - the StableDevice field has "hidden" visibility because this is how
+    #   torch::stable exports it.
+    # This creates this mismatch where a class has "higher" visibility than its
+    # member, hence the warning.
+    #
+    # We choose to silence this warning here. A possibly better solution would
+    # be to have a more fine-grained visibility control where each
+    # class/function would be "hidden" unless explicitly marked as public, e.g.
+    # through a TORCHCODEC_API annotation. In this case, it is likely that
+    # VideoStreamOptions could be in fact "hidden" as well.
+    # TODO_STABLE_ABI: do that!
+    if (LINUX)
+        target_compile_options(
+            ${core_library_name}
+            PRIVATE
+            "-Wno-attributes"
+        )
+    endif()
+
+    # The value we use here must match _PYBIND_OPS_MODULE_NAME in
+    # torchcodec/_internally_replaced_utils.py. If the values do not
     # match, then we will be unable to import the C++ shared library as a
     # Python module at runtime.
     target_compile_definitions(
