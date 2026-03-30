@@ -375,6 +375,13 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
     // Round down to nearest multiple of block_align to avoid partial samples
     alignedChunkSize =
         (alignedChunkSize / header_.blockAlign) * header_.blockAlign;
+    STD_TORCH_CHECK(
+        alignedChunkSize > 0,
+        "WAV block alignment (",
+        header_.blockAlign,
+        ") exceeds buffer size (",
+        DEFAULT_CHUNK_BUFFER_SIZE,
+        ")");
   }
 
   // Allocate buffer and read samples in chunks
@@ -397,9 +404,6 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
     const int64_t bytesReadThisChunk = file_.gcount();
 
     const int64_t samplesInChunk = bytesReadThisChunk / header_.blockAlign;
-    if (samplesInChunk <= 0) {
-      break; // No more complete samples to process, likely EOF
-    }
     STD_TORCH_CHECK(
         samplesProcessed <= INT64_MAX / header_.numChannels,
         "Offset calculation would overflow");
