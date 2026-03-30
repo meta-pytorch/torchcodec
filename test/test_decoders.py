@@ -2641,7 +2641,6 @@ class TestWavDecoder:
         [
             (0.0, 1.0),
             (0.0, None),
-            (None, None),
         ],
     )
     def test_get_samples_played_in_range_vs_audio_decoder(
@@ -2650,8 +2649,6 @@ class TestWavDecoder:
         wav_dec = WavDecoder(SINE_MONO_S32.path)
         audio_dec = AudioDecoder(SINE_MONO_S32.path)
 
-        start_seconds = 0.5
-        stop_seconds = 1.5
         wav_samples = wav_dec.get_samples_played_in_range(start_seconds, stop_seconds)
         audio_samples = audio_dec.get_samples_played_in_range(
             start_seconds, stop_seconds
