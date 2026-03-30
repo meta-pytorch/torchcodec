@@ -343,15 +343,13 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   }
 
   const int64_t numSamples = endSample - startSample;
-  if (numSamples <= 0) {
-    STD_TORCH_CHECK(
-        false,
-        "No samples to decode. ",
-        "This is probably because start_seconds is too high(",
-        startSeconds,
-        "), ",
-        "or because stop_seconds is too low.");
-  }
+  STD_TORCH_CHECK(
+      numSamples > 0,
+      "No samples to decode. ",
+      "This is probably because start_seconds is too high(",
+      startSeconds,
+      "), ",
+      "or because stop_seconds is too low.");
 
   STD_TORCH_CHECK(
       startSample <= INT64_MAX / header_.blockAlign,
