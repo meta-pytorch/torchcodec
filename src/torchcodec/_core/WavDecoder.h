@@ -38,7 +38,7 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
     uint16_t audioFormat = 0;
     uint16_t numChannels = 0;
     uint32_t sampleRate = 0;
-    uint16_t blockAlign = 0;
+    uint16_t blockAlign = 0; // Bytes per sample across all channels
     uint16_t bitsPerSample = 0;
     uint64_t dataOffset = 0;
     // Extended format fields (WAVE_FORMAT_EXTENSIBLE)

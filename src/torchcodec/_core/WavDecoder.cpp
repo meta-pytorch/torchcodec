@@ -77,10 +77,11 @@ bool matchesFourCC(
 }
 
 template <typename Container>
-void safeReadFileExact(
+void safeReadFile(
     std::ifstream& file,
     Container& buffer,
-    uint32_t bytesToRead) {
+    uint32_t bytesToRead,
+    bool allowPartialRead = false) {
   static_assert(
       sizeof(typename Container::value_type) == 1,
       "Container value_type must be a 1-byte type for safe reinterpret_cast to char*");
@@ -90,14 +91,16 @@ void safeReadFileExact(
   file.read(
       reinterpret_cast<char*>(buffer.data()),
       static_cast<std::streamsize>(bytesToRead));
-  STD_TORCH_CHECK(
-      !file.fail() &&
-          file.gcount() == static_cast<std::streamsize>(bytesToRead),
-      "WAV: unexpected end of data (expected ",
-      bytesToRead,
-      " bytes, got ",
-      file.gcount(),
-      ")");
+  STD_TORCH_CHECK(!file.fail(), "WAV: file read error");
+  if (!allowPartialRead) {
+    STD_TORCH_CHECK(
+        file.gcount() == static_cast<std::streamsize>(bytesToRead),
+        "WAV: unexpected end of data (expected ",
+        bytesToRead,
+        " bytes, got ",
+        file.gcount(),
+        ")");
+  }
 }
 
 void safeSeek(
@@ -150,7 +153,7 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
   safeSeek(file_, 0, std::ios::beg);
 
   std::array<uint8_t, RIFF_HEADER_SIZE> riffHeader;
-  safeReadFileExact(file_, riffHeader, RIFF_HEADER_SIZE);
+  safeReadFile(file_, riffHeader, RIFF_HEADER_SIZE);
 
   STD_TORCH_CHECK(
       matchesFourCC(riffHeader.data(), riffHeader.size(), 0, "RIFF"),
@@ -180,7 +183,7 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
       MAX_FMT_CHUNK_SIZE,
       " bytes");
   std::vector<uint8_t> fmtData(fmtChunk.size);
-  safeReadFileExact(file_, fmtData, fmtChunk.size);
+  safeReadFile(file_, fmtData, fmtChunk.size);
 
   header_.audioFormat = readValue<uint16_t>(fmtData, 0);
   header_.numChannels = readValue<uint16_t>(fmtData, 2);
@@ -247,7 +250,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
         file_, validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
 
     std::array<uint8_t, CHUNK_HEADER_SIZE> chunkHeader;
-    safeReadFileExact(file_, chunkHeader, CHUNK_HEADER_SIZE);
+    safeReadFile(file_, chunkHeader, CHUNK_HEADER_SIZE);
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4);
 
@@ -266,8 +269,8 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
         "File position arithmetic would overflow");
     startPos += numBytesToSkip;
   }
-  STD_TORCH_CHECK(
-      startPos <= fileSize - CHUNK_HEADER_SIZE, "Chunk not found: ", chunkId);
+  // If this code is reached, the required chunk was not found, so we error
+  STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
 }
 
 void WavDecoder::convertToFloatBuffer(
@@ -375,19 +378,12 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
   // https://github.com/FFmpeg/FFmpeg/blob/0f600cbc16b7903703b47d23981b636c94a41c71/libavformat/wavdec.c#L786-L791
   size_t alignedChunkSize = DEFAULT_CHUNK_BUFFER_SIZE;
   if (header_.blockAlign > 1) {
-    if (alignedChunkSize < header_.blockAlign) {
-      alignedChunkSize = header_.blockAlign;
-    }
+    // Round down to nearest multiple of block_align to avoid partial samples
     alignedChunkSize =
         (alignedChunkSize / header_.blockAlign) * header_.blockAlign;
   }
 
   // Allocate buffer and read samples in chunks
-  STD_TORCH_CHECK(
-      alignedChunkSize <= MAX_TENSOR_SIZE,
-      "We tried to allocate a chunk buffer larger than ",
-      MAX_TENSOR_SIZE,
-      " bytes. If you think this should be supported, please report.");
   std::vector<uint8_t> chunkBuffer(alignedChunkSize);
 
   int64_t totalBytesRead = 0;
@@ -403,33 +399,28 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
   while (totalBytesRead < bytesToRead) {
     const int64_t bytesToReadThisChunk = std::min(
         bytesToRead - totalBytesRead, static_cast<int64_t>(alignedChunkSize));
-    // A partial read is possible if we hit EOF unexpectedly, so we don't use
-    // safeReadFileExact.
-    file_.read(
-        reinterpret_cast<char*>(chunkBuffer.data()),
-        static_cast<std::streamsize>(bytesToReadThisChunk));
+    safeReadFile(
+        file_, chunkBuffer, bytesToReadThisChunk, /*allowPartialRead=*/true);
     STD_TORCH_CHECK(
         !file_.fail(), "WAV file read error during chunk processing");
     const int64_t bytesReadThisChunk = file_.gcount();
 
-    if (bytesReadThisChunk <= 0)
-      break;
-
     const int64_t samplesInChunk = bytesReadThisChunk / header_.blockAlign;
-    if (samplesInChunk > 0) {
-      STD_TORCH_CHECK(
-          samplesProcessed <= INT64_MAX / header_.numChannels,
-          "Offset calculation would overflow");
-      float* outputPtr = samples.mutable_data_ptr<float>() +
-          (samplesProcessed * header_.numChannels);
-      // Convert and write complete samples to the output buffer
-      convertToFloatBuffer(chunkBuffer, samplesInChunk, outputPtr);
-      samplesProcessed += samplesInChunk;
+    if (samplesInChunk <= 0) {
+      break; // No more complete samples, likely EOF
     }
+    STD_TORCH_CHECK(
+        samplesProcessed <= INT64_MAX / header_.numChannels,
+        "Offset calculation would overflow");
+    float* outputPtr = samples.mutable_data_ptr<float>() +
+        (samplesProcessed * header_.numChannels);
+    convertToFloatBuffer(chunkBuffer, samplesInChunk, outputPtr);
+    samplesProcessed += samplesInChunk;
 
     totalBytesRead += bytesReadThisChunk;
-    if (bytesReadThisChunk < bytesToReadThisChunk)
-      break;
+    if (bytesReadThisChunk < bytesToReadThisChunk) {
+      break; // Incomplete chunk read, likely EOF
+    }
   }
 
   if (samplesProcessed < numSamples) {
@@ -437,9 +428,10 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
   }
   // Convert to [channels, samples]
   samples = torch::stable::transpose(samples, 0, 1);
-  const double actualPtsSeconds =
+  // We return the actual sample start time, not the requested startSeconds.
+  const double actualStartSeconds =
       static_cast<double>(startSample) / header_.sampleRate;
-  return std::make_tuple(samples, actualPtsSeconds);
+  return std::make_tuple(samples, actualStartSeconds);
 }
 
 StreamMetadata WavDecoder::getStreamMetadata() const {
