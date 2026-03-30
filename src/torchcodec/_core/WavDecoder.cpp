@@ -269,7 +269,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
   STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
 }
 
-void WavDecoder::convertToFloatBuffer(
+void WavDecoder::convertSamplesToFloat(
     const std::vector<uint8_t>& chunkData,
     int64_t samplesInChunk,
     float* outputPtr) const {
@@ -398,20 +398,16 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
 
     const int64_t samplesInChunk = bytesReadThisChunk / header_.blockAlign;
     if (samplesInChunk <= 0) {
-      break; // No more complete samples, likely EOF
+      break; // No more complete samples to process, likely EOF
     }
     STD_TORCH_CHECK(
         samplesProcessed <= INT64_MAX / header_.numChannels,
         "Offset calculation would overflow");
     float* outputPtr = samples.mutable_data_ptr<float>() +
         (samplesProcessed * header_.numChannels);
-    convertToFloatBuffer(chunkBuffer, samplesInChunk, outputPtr);
+    convertSamplesToFloat(chunkBuffer, samplesInChunk, outputPtr);
     samplesProcessed += samplesInChunk;
-
     totalBytesRead += bytesReadThisChunk;
-    if (bytesReadThisChunk < bytesToReadThisChunk) {
-      break; // Incomplete chunk read, likely EOF
-    }
   }
 
   if (samplesProcessed < numSamples) {
