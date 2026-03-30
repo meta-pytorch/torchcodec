@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "Frame.h"
 #include "Metadata.h"
 #include "StableABICompat.h"
 
@@ -27,7 +28,7 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
   WavDecoder& operator=(WavDecoder&&) noexcept = default;
   ~WavDecoder() = default;
 
-  std::tuple<torch::stable::Tensor, double> getSamplesInRange(
+  AudioFramesOutput getSamplesInRange(
       double startSeconds,
       std::optional<double> stopSecondsOptional = std::nullopt);
 

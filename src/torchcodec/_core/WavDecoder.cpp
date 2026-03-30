@@ -31,7 +31,6 @@ constexpr uint32_t MAX_FMT_CHUNK_SIZE = 200;
 // Soundfile's default chunk size. See
 // https://github.com/libsndfile/libsndfile/blob/master/src/common.h#L77
 constexpr size_t DEFAULT_CHUNK_BUFFER_SIZE = 8192;
-constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
 
 // See standard format codes and Wav file format used in WavHeader:
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
@@ -313,7 +312,7 @@ void WavDecoder::convertToFloatBuffer(
   }
 }
 
-std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
+AudioFramesOutput WavDecoder::getSamplesInRange(
     double startSeconds,
     std::optional<double> stopSecondsOptional) {
   // Calculate and validate the range of samples to decode
@@ -332,8 +331,8 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
             ") must be less than or equal to stop seconds (" +
             std::to_string(stopSecondsOptional.value()) + ").");
     if (startSeconds == stopSecondsOptional.value()) {
-      return std::make_tuple(
-          torch::stable::empty({header_.numChannels, 0}, kStableFloat32), 0.0);
+      return AudioFramesOutput{
+          torch::stable::empty({header_.numChannels, 0}, kStableFloat32), 0.0};
     }
     STD_TORCH_CHECK(
         stopSecondsOptional.value() <= INT64_MAX / header_.sampleRate,
@@ -425,7 +424,7 @@ std::tuple<torch::stable::Tensor, double> WavDecoder::getSamplesInRange(
   // We return the actual sample start time, not the requested startSeconds.
   const double actualStartSeconds =
       static_cast<double>(startSample) / header_.sampleRate;
-  return std::make_tuple(samples, actualStartSeconds);
+  return AudioFramesOutput{samples, actualStartSeconds};
 }
 
 StreamMetadata WavDecoder::getStreamMetadata() const {

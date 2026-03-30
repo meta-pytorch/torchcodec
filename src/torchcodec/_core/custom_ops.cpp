@@ -1196,9 +1196,8 @@ OpsAudioFramesOutput get_wav_samples_in_range(
     double start_seconds,
     std::optional<double> stop_seconds) {
   auto wavDecoder = unwrapTensorToGetWavDecoder(decoder);
-  std::tuple<torch::stable::Tensor, double> result =
+  AudioFramesOutput audioFrames =
       wavDecoder->getSamplesInRange(start_seconds, stop_seconds);
-  AudioFramesOutput audioFrames{std::get<0>(result), std::get<1>(result)};
   return makeOpsAudioFramesOutput(audioFrames);
 }
 
