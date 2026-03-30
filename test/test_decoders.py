@@ -2641,6 +2641,8 @@ class TestWavDecoder:
         [
             (0.0, 1.0),
             (0.0, None),
+            (-1.0, 1.0),
+            (-1.0, None),
         ],
     )
     def test_get_samples_played_in_range_vs_audio_decoder(
@@ -2684,12 +2686,3 @@ class TestWavDecoder:
             match="No samples to decode. This is probably because start_seconds is too high\\(10\\)",
         ):
             wav_dec.get_samples_played_in_range(10.0, 12.0)
-
-    def test_get_samples_played_in_range_negative_start(self):
-        wav_dec = WavDecoder(SINE_MONO_S32.path)
-
-        samples_negative = wav_dec.get_samples_played_in_range(start_seconds=-1300)
-        samples_zero = wav_dec.get_samples_played_in_range(start_seconds=0)
-
-        torch.testing.assert_close(samples_negative.data, samples_zero.data)
-        assert samples_negative.pts_seconds == samples_zero.pts_seconds
