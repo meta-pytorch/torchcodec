@@ -84,6 +84,10 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
   m.def("create_streaming_encoder_to_file(str filename) -> Tensor");
   m.def("streaming_encoder_close(Tensor(a!) encoder) -> ()");
+  m.def(
+      "streaming_encoder_add_video_stream(Tensor(a!) encoder, float frame_rate) -> ()");
+  m.def(
+      "streaming_encoder_add_frames(Tensor(a!) encoder, Tensor frames) -> ()");
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
   m.def("get_nvdec_cache_capacity() -> int");
   m.def("_get_nvdec_cache_size(int device_index) -> int");
@@ -1184,6 +1188,18 @@ void streaming_encoder_close(torch::stable::Tensor& encoder) {
   unwrapTensorToGetMultiStreamEncoder(encoder)->close();
 }
 
+void streaming_encoder_add_video_stream(
+    torch::stable::Tensor& encoder,
+    double frame_rate) {
+  unwrapTensorToGetMultiStreamEncoder(encoder)->addVideoStream(frame_rate);
+}
+
+void streaming_encoder_add_frames(
+    torch::stable::Tensor& encoder,
+    const torch::stable::Tensor& frames) {
+  unwrapTensorToGetMultiStreamEncoder(encoder)->addFrames(frames);
+}
+
 torch::stable::Tensor create_wav_decoder_from_file(
     const std::string& filename) {
   auto decoder = std::make_unique<WavDecoder>(filename);
@@ -1253,6 +1269,11 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl(
       "create_streaming_encoder_to_file",
       TORCH_BOX(&create_streaming_encoder_to_file));
+  m.impl(
+      "streaming_encoder_add_video_stream",
+      TORCH_BOX(&streaming_encoder_add_video_stream));
+  m.impl(
+      "streaming_encoder_add_frames", TORCH_BOX(&streaming_encoder_add_frames));
   m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
   m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
   m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
@@ -1300,6 +1321,11 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "create_streaming_encoder_to_file",
       TORCH_BOX(&create_streaming_encoder_to_file));
   m.impl("streaming_encoder_close", TORCH_BOX(&streaming_encoder_close));
+  m.impl(
+      "streaming_encoder_add_video_stream",
+      TORCH_BOX(&streaming_encoder_add_video_stream));
+  m.impl(
+      "streaming_encoder_add_frames", TORCH_BOX(&streaming_encoder_add_frames));
 }
 
 } // namespace facebook::torchcodec
