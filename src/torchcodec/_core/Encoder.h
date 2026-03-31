@@ -177,7 +177,7 @@ class FORCE_PUBLIC_VISIBILITY VideoEncoder {
   UniqueAVDictionary avFormatOptions_;
 };
 
-class MultiStreamEncoder {
+class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
  public:
   ~MultiStreamEncoder();
 
