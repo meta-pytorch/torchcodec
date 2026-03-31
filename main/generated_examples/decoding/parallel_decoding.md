@@ -187,7 +187,7 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} FFmpeg th
 ```
 
 ```
-median = 5.66s ± 0.06
+median = 5.65s ± 0.05
 Speedup compared to sequential: 1.89x with 16 FFmpeg threads.
 ```
 
@@ -218,8 +218,8 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} processes
 ```
 
 ```
-median = 4.36s ± 0.06
-Speedup compared to sequential: 2.45x with 16 processes.
+median = 4.38s ± 0.08
+Speedup compared to sequential: 2.44x with 16 processes.
 ```
 
 ## Method 4: Joblib multithreading
@@ -250,8 +250,8 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} threads."
 ```
 
 ```
-median = 1.42s ± 0.05
-Speedup compared to sequential: 7.51x with 16 threads.
+median = 1.43s ± 0.05
+Speedup compared to sequential: 7.50x with 16 threads.
 ```
 
 ## Validation and correctness check
@@ -274,7 +274,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (1 minutes 32.977 seconds)
+**Total running time of the script:** (1 minutes 33.077 seconds)
 
 [`Download Jupyter notebook: parallel_decoding.ipynb`](../../_downloads/1cff79ade5aa64baf192aceab5e06959/parallel_decoding.ipynb)
 

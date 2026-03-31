@@ -302,7 +302,7 @@ encoder.to_file(
 )
 ```
 
-**Total running time of the script:** (0 minutes 27.179 seconds)
+**Total running time of the script:** (0 minutes 26.543 seconds)
 
 [`Download Jupyter notebook: video_encoding.ipynb`](../../_downloads/e8868f804bffbeae56ed6b335353e809/video_encoding.ipynb)
 
