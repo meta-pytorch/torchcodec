@@ -177,7 +177,7 @@ class FORCE_PUBLIC_VISIBILITY VideoEncoder {
   UniqueAVDictionary avFormatOptions_;
 };
 
-class MultiStreamEncoder {
+class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
  public:
   ~MultiStreamEncoder();
 
@@ -188,10 +188,24 @@ class MultiStreamEncoder {
 
   MultiStreamEncoder(std::string_view fileName);
 
+  void addVideoStream(double frameRate);
+  void addFrames(const torch::stable::Tensor& frames);
   void close();
 
  private:
+  void initializeVideoStream(const torch::stable::Tensor& frames);
+  void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
+  void flushBuffers();
+
   UniqueEncodingAVFormatContext avFormatContext_;
+  UniqueAVCodecContext avCodecContext_;
+  AVStream* avStream_ = nullptr;
+  double inFrameRate_ = 0;
+  std::unique_ptr<DeviceInterface> deviceInterface_;
+  bool headerWritten_ = false;
+  int numEncodedFrames_ = 0;
+  UniqueAVDictionary avFormatOptions_;
+
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
   bool closed_ = false;
 };
