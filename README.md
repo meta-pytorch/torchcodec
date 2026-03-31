@@ -212,8 +212,7 @@ format you want. Refer to Nvidia's GPU support matrix for more details
    ```
 
 ### Specify FFmpeg Path Manually
-
-If torchcodec cannot detect the FFmpeg installation correctly, you can set the `TORCHCODEC_FFMPEG_DIR` environment variable to the directory containing the FFmpeg DLLs.
+If torchcodec cannot detect the FFmpeg installation correctly, you can set the `TORCHCODEC_FFMPEG_DIR` environment variable to the directory containing the FFmpeg shared libraries.
 
 ## Benchmark Results
 
