@@ -50,6 +50,7 @@ from torchcodec.decoders import VideoDecoder
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    assert_tensor_close_on_at_least,
     get_python_version,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
@@ -1149,6 +1150,11 @@ class TestAudioEncoderOps:
 
 
 class TestMultiStreamEncoderOps:
+    def test_double_close(self, tmp_path):
+        encoder_tensor = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
+        streaming_encoder_close(encoder_tensor)
+        streaming_encoder_close(encoder_tensor)  # double close is a no-op
+
     def test_add_video_stream_and_encode_frames(self, tmp_path):
         source_decoder = VideoDecoder(str(NASA_VIDEO.path))
         source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
@@ -1165,7 +1171,9 @@ class TestMultiStreamEncoderOps:
             VideoDecoder(output_file).get_frames_in_range(start=0, stop=10).data
         )
         # TODO MultiStreamEncoder reduce tolerance once we support CRF and pixel format
-        torch.testing.assert_close(decoded_frames, source_frames, atol=50, rtol=0)
+        assert_tensor_close_on_at_least(
+            decoded_frames, source_frames, percentage=99, atol=10
+        )
 
     def test_create_invalid_path(self):
         with pytest.raises(RuntimeError, match="make sure it's a valid path"):

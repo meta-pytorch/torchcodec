@@ -1054,6 +1054,9 @@ void MultiStreamEncoder::addVideoStream(double frameRate) {
 void MultiStreamEncoder::initializeVideoStream(
     const torch::stable::Tensor& frames) {
   auto tensorDevice = frames.device();
+  // TODO MultiStreamEncoder: Enable CUDA support
+  STD_TORCH_CHECK(
+      tensorDevice.is_cpu(), "Only CPU tensors are supported for encoding.");
   deviceInterface_ = createDeviceInterface(StableDevice(
       static_cast<StableDeviceType>(tensorDevice.type()),
       tensorDevice.index()));
@@ -1146,6 +1149,8 @@ void MultiStreamEncoder::addFrames(const torch::stable::Tensor& frames) {
   }
 
   AutoAVPacket autoAVPacket;
+  // TODO MultiStreamEncoder: Consider using accessor for potential performance
+  // improvement
   int numFrames = static_cast<int>(validatedFrames.sizes()[0]);
   for (int i = 0; i < numFrames; ++i) {
     torch::stable::Tensor currFrame = selectRow(validatedFrames, i);
