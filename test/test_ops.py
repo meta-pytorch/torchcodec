@@ -1203,6 +1203,7 @@ class TestMultiStreamEncoderOps:
             crf=0,
             # In addition to the fragmentation flag, I found "flush_packets" and "threads" to be necessary to decode frames before close().
             # See other frag flags: https://ffmpeg.org/ffmpeg-formats.html#Fragmentation
+            # TODO MultiStreamEncoder: Get a better understanding of which options are necessary for reading fragmented mp4s
             extra_options=[
                 "movflags",
                 "+frag_every_frame+empty_moov",
