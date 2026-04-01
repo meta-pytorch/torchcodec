@@ -138,6 +138,12 @@ create_streaming_encoder_to_file = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_streaming_encoder_to_file.default
 )
 streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.default
+streaming_encoder_add_video_stream = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_video_stream.default
+)
+streaming_encoder_add_frames = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_frames.default
+)
 set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
 get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
 _get_nvdec_cache_size = torch.ops.torchcodec_ns._get_nvdec_cache_size.default
@@ -576,6 +582,20 @@ def _create_streaming_encoder_to_file_abstract(
 
 @register_fake("torchcodec_ns::streaming_encoder_close")
 def streaming_encoder_close_abstract(encoder: torch.Tensor) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_add_video_stream")
+def streaming_encoder_add_video_stream_abstract(
+    encoder: torch.Tensor, frame_rate: float
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_add_frames")
+def streaming_encoder_add_frames_abstract(
+    encoder: torch.Tensor, frames: torch.Tensor
+) -> None:
     return
 
 
