@@ -2640,6 +2640,7 @@ class TestWavDecoder:
         "start_seconds,stop_seconds",
         [
             (0.0, 1.0),
+            (1.0, 1.0),
             (0.0, None),
             (-1.0, 1.0),
             (-1.0, None),
