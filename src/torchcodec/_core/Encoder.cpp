@@ -538,7 +538,9 @@ void AudioEncoder::flushBuffers() {
 
 namespace {
 
-torch::stable::Tensor validateFrames(const torch::stable::Tensor& frames) {
+torch::stable::Tensor validateFrames(
+    const torch::stable::Tensor& frames,
+    const AVCodecContext* avCodecContext = nullptr) {
   STD_TORCH_CHECK(
       frames.scalar_type() == kStableUInt8,
       "frames must have uint8 dtype, got ",
@@ -551,6 +553,19 @@ torch::stable::Tensor validateFrames(const torch::stable::Tensor& frames) {
       frames.sizes()[1] == 3,
       "frame must have 3 channels (R, G, B), got ",
       frames.sizes()[1]);
+  if (avCodecContext) {
+    STD_TORCH_CHECK(
+        static_cast<int>(frames.sizes()[2]) == avCodecContext->height &&
+            static_cast<int>(frames.sizes()[3]) == avCodecContext->width,
+        "All frames must have the same dimensions. Expected height=",
+        avCodecContext->height,
+        " width=",
+        avCodecContext->width,
+        ", got height=",
+        frames.sizes()[2],
+        " width=",
+        frames.sizes()[3]);
+  }
   return torch::stable::contiguous(frames);
 }
 
@@ -1041,14 +1056,23 @@ MultiStreamEncoder::MultiStreamEncoder(std::string_view fileName) {
       getFFMPEGErrorStringFromErrorCode(status));
 }
 
-// TODO MultiStreamEncoder: Accept and store VideoStreamOptions argument
-// For now, only frame_rate is supported.
-void MultiStreamEncoder::addVideoStream(double frameRate) {
+void MultiStreamEncoder::addVideoStream(
+    double frameRate,
+    std::optional<std::string> codec,
+    std::optional<std::string> pixelFormat,
+    std::optional<double> crf,
+    std::optional<std::string> preset,
+    std::optional<std::map<std::string, std::string>> extraOptions) {
   STD_TORCH_CHECK(
       inFrameRate_ == 0,
       "A video stream has already been added. Cannot add another.");
   STD_TORCH_CHECK(frameRate > 0, "frame_rate must be > 0, got ", frameRate);
   inFrameRate_ = frameRate;
+  videoStreamOptions_.codec = std::move(codec);
+  videoStreamOptions_.pixelFormat = std::move(pixelFormat);
+  videoStreamOptions_.crf = crf;
+  videoStreamOptions_.preset = std::move(preset);
+  videoStreamOptions_.extraOptions = std::move(extraOptions);
 }
 
 void MultiStreamEncoder::initializeVideoStream(
@@ -1060,16 +1084,36 @@ void MultiStreamEncoder::initializeVideoStream(
   deviceInterface_ = createDeviceInterface(StableDevice(
       static_cast<StableDeviceType>(tensorDevice.type()),
       tensorDevice.index()));
-
-  STD_TORCH_CHECK(
-      avFormatContext_->oformat != nullptr,
-      "Output format is null, unable to find default codec.");
-  // TODO MultiStreamEncoder: Support codec selection and HW enabled codecs
-  const AVCodec* avCodec =
-      avcodec_find_encoder(avFormatContext_->oformat->video_codec);
+  const AVCodec* avCodec = nullptr;
+  // If codec arg is provided, find codec using logic similar to FFmpeg:
+  // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
+  if (videoStreamOptions_.codec.has_value()) {
+    const std::string& codec = videoStreamOptions_.codec.value();
+    // Try to find codec by name ("libx264", "libsvtav1")
+    avCodec = avcodec_find_encoder_by_name(codec.c_str());
+    // Try to find by codec descriptor ("h264", "av1")
+    if (!avCodec) {
+      const AVCodecDescriptor* desc =
+          avcodec_descriptor_get_by_name(codec.c_str());
+      if (desc) {
+        avCodec = avcodec_find_encoder(desc->id);
+      }
+    }
+  } else {
+    STD_TORCH_CHECK(
+        avFormatContext_->oformat != nullptr,
+        "Output format is null, unable to find default codec.");
+    // TODO MultiStreamEncoder: When CUDA support is enabled, substitute codec
+    // with hardware equivalent
+    avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
+  }
   STD_TORCH_CHECK(
       avCodec != nullptr,
-      "Video codec not found. To see available codecs, run: ffmpeg -encoders");
+      "Video codec ",
+      videoStreamOptions_.codec.has_value()
+          ? videoStreamOptions_.codec.value() + " "
+          : "",
+      "not found. To see available codecs, run: ffmpeg -encoders");
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
   STD_TORCH_CHECK(
@@ -1086,11 +1130,20 @@ void MultiStreamEncoder::initializeVideoStream(
   // TODO MultiStreamEncoder: Allow height and width to be set
   int outWidth = inWidth;
   int outHeight = inHeight;
-  // TODO MultiStreamEncoder: Support pixel_format from VideoStreamOptions
-  const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
-  AVPixelFormat outPixelFormat = (formats && formats[0] != AV_PIX_FMT_NONE)
-      ? formats[0]
-      : AV_PIX_FMT_YUV420P;
+  AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
+  if (videoStreamOptions_.pixelFormat.has_value()) {
+    outPixelFormat =
+        validatePixelFormat(*avCodec, videoStreamOptions_.pixelFormat.value());
+  } else {
+    const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
+    // Use first listed pixel format as default (often yuv420p).
+    // This is similar to FFmpeg's logic:
+    // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
+    // If pixel formats are undefined for some reason, try yuv420p
+    outPixelFormat = (formats && formats[0] != AV_PIX_FMT_NONE)
+        ? formats[0]
+        : AV_PIX_FMT_YUV420P;
+  }
 
   // Configure codec parameters
   avCodecContext_->codec_id = avCodec->id;
@@ -1106,8 +1159,36 @@ void MultiStreamEncoder::initializeVideoStream(
     avCodecContext_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
 
-  // TODO MultiStreamEncoder: Apply videoStreamOptions
-  int status = avcodec_open2(avCodecContext_.get(), avCodec, nullptr);
+  // Apply videoStreamOptions
+  UniqueAVDictionary avCodecOptions;
+  if (videoStreamOptions_.extraOptions.has_value()) {
+    for (const auto& [key, value] : videoStreamOptions_.extraOptions.value()) {
+      tryToValidateCodecOption(*avCodec, key.c_str(), value);
+    }
+    sortCodecOptions(
+        avFormatContext_.get(),
+        videoStreamOptions_.extraOptions.value(),
+        avCodecOptions,
+        avFormatOptions_);
+  }
+
+  if (videoStreamOptions_.crf.has_value()) {
+    std::string crfValue = std::to_string(videoStreamOptions_.crf.value());
+    tryToValidateCodecOption(*avCodec, "crf", crfValue);
+    av_dict_set(avCodecOptions.getAddress(), "crf", crfValue.c_str(), 0);
+  }
+
+  if (videoStreamOptions_.preset.has_value()) {
+    av_dict_set(
+        avCodecOptions.getAddress(),
+        "preset",
+        videoStreamOptions_.preset.value().c_str(),
+        0);
+  }
+
+  int status = avcodec_open2(
+      avCodecContext_.get(), avCodec, avCodecOptions.getAddress());
+
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_open2 failed: ",
@@ -1142,7 +1223,7 @@ void MultiStreamEncoder::addFrames(const torch::stable::Tensor& frames) {
   STD_TORCH_CHECK(
       inFrameRate_ > 0,
       "No video stream has been added. Call addVideoStream() first.");
-  auto validatedFrames = validateFrames(frames);
+  auto validatedFrames = validateFrames(frames, avCodecContext_.get());
 
   if (!headerWritten_) {
     initializeVideoStream(validatedFrames);
