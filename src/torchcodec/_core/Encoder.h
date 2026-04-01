@@ -188,7 +188,14 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
 
   MultiStreamEncoder(std::string_view fileName);
 
-  void addVideoStream(double frameRate);
+  void addVideoStream(
+      double frameRate,
+      std::optional<std::string> codec = std::nullopt,
+      std::optional<std::string> pixelFormat = std::nullopt,
+      std::optional<double> crf = std::nullopt,
+      std::optional<std::string> preset = std::nullopt,
+      std::optional<std::map<std::string, std::string>> extraOptions =
+          std::nullopt);
   void addFrames(const torch::stable::Tensor& frames);
   void close();
 
@@ -201,6 +208,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   UniqueAVCodecContext avCodecContext_;
   AVStream* avStream_ = nullptr;
   double inFrameRate_ = 0;
+  VideoStreamOptions videoStreamOptions_;
   std::unique_ptr<DeviceInterface> deviceInterface_;
   bool headerWritten_ = false;
   int numEncodedFrames_ = 0;
