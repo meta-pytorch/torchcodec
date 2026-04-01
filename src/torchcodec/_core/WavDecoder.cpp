@@ -335,8 +335,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       {sizes, 2},
       {strides, 2},
       StableDevice(kStableCPU),
-      kStableInt32,
-      nullptr);
+      kStableInt32);
 
   auto samples = torch::stable::to(rawTensor, kStableFloat32);
   auto zeros = torch::stable::new_zeros(samples, samples.sizes());
