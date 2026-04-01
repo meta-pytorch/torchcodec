@@ -84,15 +84,16 @@ void safeReadFile(std::ifstream& file, Container& buffer, int64_t bytesToRead) {
   static_assert(
       sizeof(typename Container::value_type) == 1,
       "Container value_type must be a 1-byte type for safe reinterpret_cast to char*");
+  // bytesToRead is always non-negative, so casting to size_t is safe
   STD_TORCH_CHECK(
       static_cast<size_t>(bytesToRead) <= buffer.size(),
       "Read size exceeds buffer length");
   file.read(
       reinterpret_cast<char*>(buffer.data()),
       static_cast<std::streamsize>(bytesToRead));
-  STD_TORCH_CHECK(!file.fail(), "WAV: file read error");
   STD_TORCH_CHECK(
-      file.gcount() == static_cast<std::streamsize>(bytesToRead),
+      !file.fail() &&
+          file.gcount() == static_cast<std::streamsize>(bytesToRead),
       "WAV: unexpected end of data (expected ",
       bytesToRead,
       " bytes, got ",
