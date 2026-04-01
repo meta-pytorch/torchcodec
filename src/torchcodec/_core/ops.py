@@ -139,6 +139,9 @@ _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
 create_streaming_encoder_to_file = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_streaming_encoder_to_file.default
 )
+_create_streaming_encoder_to_file_like = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.create_streaming_encoder_to_file_like.default
+)
 streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.default
 streaming_encoder_add_video_stream = (
     torch.ops.torchcodec_ns.streaming_encoder_add_video_stream.default
@@ -254,6 +257,17 @@ def encode_video_to_file_like(
         crf,
         preset,
         extra_options,
+    )
+
+
+def create_streaming_encoder_to_file_like(
+    format: str,
+    file_like: io.RawIOBase | io.BufferedIOBase,
+) -> torch.Tensor:
+    assert _pybind_ops is not None
+    return _create_streaming_encoder_to_file_like(
+        format,
+        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
     )
 
 
@@ -597,6 +611,14 @@ def _get_backend_details_abstract(decoder: torch.Tensor) -> str:
 @register_fake("torchcodec_ns::create_streaming_encoder_to_file")
 def _create_streaming_encoder_to_file_abstract(
     filename: str,
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::create_streaming_encoder_to_file_like")
+def _create_streaming_encoder_to_file_like_abstract(
+    format: str,
+    file_like_context: int,
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
