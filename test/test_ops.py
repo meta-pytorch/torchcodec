@@ -12,7 +12,9 @@ os.environ["TORCH_LOGS"] = "output_code"
 import json
 
 import pytest
+
 import torch
+
 from torchcodec._core import (
     _test_frame_pts_equality,
     create_streaming_encoder_to_file,
@@ -49,6 +51,7 @@ from .utils import (
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
+    needs_cuda,
     needs_ffmpeg_cli,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
