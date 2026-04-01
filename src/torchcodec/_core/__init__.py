@@ -41,5 +41,7 @@ from .ops import (
     get_wav_all_samples,
     get_wav_metadata_from_decoder,
     set_nvdec_cache_capacity,
+    streaming_encoder_add_frames,
+    streaming_encoder_add_video_stream,
     streaming_encoder_close,
 )

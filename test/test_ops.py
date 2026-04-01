@@ -30,6 +30,8 @@ from torchcodec._core import (
     get_frames_in_range,
     get_json_metadata,
     get_next_frame,
+    streaming_encoder_add_frames,
+    streaming_encoder_add_video_stream,
     streaming_encoder_close,
 )
 from torchcodec._core.ops import (
@@ -43,9 +45,12 @@ from torchcodec._core.ops import (
     seek_to_pts,
 )
 
+from torchcodec.decoders import VideoDecoder
+
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    assert_tensor_close_on_at_least,
     get_python_version,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
@@ -1145,10 +1150,30 @@ class TestAudioEncoderOps:
 
 
 class TestMultiStreamEncoderOps:
-    def test_create_and_close(self, tmp_path):
+    def test_double_close(self, tmp_path):
         encoder_tensor = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
         streaming_encoder_close(encoder_tensor)
         streaming_encoder_close(encoder_tensor)  # double close is a no-op
+
+    def test_add_video_stream_and_encode_frames(self, tmp_path):
+        source_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+        frame_rate = source_decoder.metadata.average_fps
+
+        output_file = str(tmp_path / "test.mp4")
+        encoder = create_streaming_encoder_to_file(output_file)
+        streaming_encoder_add_video_stream(encoder, frame_rate=frame_rate)
+        streaming_encoder_add_frames(encoder, source_frames[:5])
+        streaming_encoder_add_frames(encoder, source_frames[5:])
+        streaming_encoder_close(encoder)
+
+        decoded_frames = (
+            VideoDecoder(output_file).get_frames_in_range(start=0, stop=10).data
+        )
+        # TODO MultiStreamEncoder reduce tolerance once we support CRF and pixel format
+        assert_tensor_close_on_at_least(
+            decoded_frames, source_frames, percentage=99, atol=10
+        )
 
     def test_create_invalid_path(self):
         with pytest.raises(RuntimeError, match="make sure it's a valid path"):
@@ -1157,6 +1182,18 @@ class TestMultiStreamEncoderOps:
     def test_create_invalid_format(self, tmp_path):
         with pytest.raises(RuntimeError, match="check the desired extension"):
             create_streaming_encoder_to_file(str(tmp_path / "test.bad_extension"))
+
+    def test_add_video_stream_twice_errors(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
+        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        with pytest.raises(RuntimeError, match="already been added"):
+            streaming_encoder_add_video_stream(encoder, frame_rate=24.0)
+
+    def test_add_frames_without_stream_errors(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
+        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match="No video stream"):
+            streaming_encoder_add_frames(encoder, frames)
 
 
 if __name__ == "__main__":
