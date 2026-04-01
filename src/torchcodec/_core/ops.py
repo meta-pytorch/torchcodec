@@ -109,7 +109,6 @@ def add_video_stream(
 
 
 add_audio_stream = torch.ops.torchcodec_ns.add_audio_stream.default
-seek_to_pts = torch.ops.torchcodec_ns.seek_to_pts.default
 get_frame_at_pts = torch.ops.torchcodec_ns.get_frame_at_pts.default
 get_frame_at_index = torch.ops.torchcodec_ns.get_frame_at_index.default
 _get_frames_at_indices_tensor_input = (
@@ -422,11 +421,6 @@ def add_audio_stream_abstract(
     sample_rate: int | None = None,
     num_channels: int | None = None,
 ) -> None:
-    return
-
-
-@register_fake("torchcodec_ns::seek_to_pts")
-def seek_abstract(decoder: torch.Tensor, seconds: float) -> None:
     return
 
 

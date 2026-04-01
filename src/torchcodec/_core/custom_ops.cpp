@@ -56,7 +56,6 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None) -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
-  m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
   m.def(
       "get_frame_at_pts(Tensor(a!) decoder, float seconds) -> (Tensor, Tensor, Tensor)");
   m.def(
@@ -606,13 +605,6 @@ void add_audio_stream(
 
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   videoDecoder->addAudioStream(stream_index.value_or(-1), audioStreamOptions);
-}
-
-// Seek to a particular presentation timestamp in the video in seconds.
-void seek_to_pts(torch::stable::Tensor& decoder, double seconds) {
-  auto videoDecoder =
-      static_cast<SingleStreamDecoder*>(decoder.mutable_data_ptr());
-  videoDecoder->setCursorPtsInSeconds(seconds);
 }
 
 // Return the frame that is visible at a given timestamp in seconds. Each frame
@@ -1257,7 +1249,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
   m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
-  m.impl("seek_to_pts", TORCH_BOX(&seek_to_pts));
   m.impl("add_video_stream", TORCH_BOX(&add_video_stream));
   m.impl("_add_video_stream", TORCH_BOX(&_add_video_stream));
   m.impl("add_audio_stream", TORCH_BOX(&add_audio_stream));
