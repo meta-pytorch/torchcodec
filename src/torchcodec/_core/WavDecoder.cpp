@@ -180,7 +180,8 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
     header_.subFormat = readValue<uint16_t>(fmtData, 24);
   }
 
-  ChunkInfo dataChunk = findChunk("data", RIFF_HEADER_SIZE, fileSize);
+  ChunkInfo dataChunk =
+      findChunk("data", static_cast<uint64_t>(RIFF_HEADER_SIZE), fileSize);
   header_.dataOffset = dataChunk.offset;
   header_.dataSize = dataChunk.size;
 }
@@ -294,13 +295,12 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   STD_TORCH_CHECK(
       startSample <= INT64_MAX / header_.numBytesPerSample,
       "byteOffset calculation would overflow: startSample * numBytesPerSample ");
-  const int64_t byteOffset = startSample * header_.numBytesPerSample;
+  int64_t byteOffset = startSample * header_.numBytesPerSample;
 
   STD_TORCH_CHECK(
       header_.dataOffset <= static_cast<uint64_t>(INT64_MAX - byteOffset),
       "dataPosition calculation would overflow: dataOffset + byteOffset ");
-  const int64_t dataPosition =
-      static_cast<int64_t>(header_.dataOffset) + byteOffset;
+  byteOffset += static_cast<int64_t>(header_.dataOffset);
 
   // Calculate total bytes to read and read all at once
   STD_TORCH_CHECK(
@@ -321,7 +321,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
 
   safeSeek(
       file_,
-      validateUint64ToStreampos(dataPosition, "dataPosition"),
+      validateUint64ToStreampos(byteOffset, "byteOffset"),
       std::ios::beg);
 
   // Cast is safe: bytesToRead <= MAX_TENSOR_SIZE (320MB)
@@ -351,7 +351,8 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   // Convert to [channels, samples]
   samples = torch::stable::transpose(samples, 0, 1);
 
-  // We return the actual sample start time, not the requested startSeconds.
+  // We return the actual sample start time
+  // (rounded to nearest sample boundary to startSeconds).
   const double actualStartSeconds =
       static_cast<double>(startSample) / header_.sampleRate;
   return AudioFramesOutput{samples, actualStartSeconds};
