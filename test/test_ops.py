@@ -32,14 +32,17 @@ from torchcodec._core.ops import (
     _add_video_stream,
     add_audio_stream,
     add_video_stream,
+    create_from_bytes,
     create_from_file,
     create_from_file_like,
+    create_from_tensor,
     seek_to_pts,
 )
 
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    get_python_version,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
@@ -307,6 +310,98 @@ class TestVideoDecoderOps:
         # an empty range is valid!
         empty_frame, *_ = get_frames_in_range(decoder, start=5, stop=5)
         assert_frames_equal(empty_frame, NASA_VIDEO.empty_chw_tensor.to(device))
+
+    @pytest.mark.skipif(
+        get_python_version() >= (3, 14),
+        reason="torch.compile is not supported on Python 3.14+",
+    )
+    @pytest.mark.parametrize("device", all_supported_devices())
+    def test_compile_seek_and_next(self, device):
+        # TODO_OPEN_ISSUE Scott (T180277797): Get this to work with the inductor stack. Right now
+        # compilation fails because it can't handle tensors of size unknown at
+        # compile-time.
+        device, device_variant = unsplit_device_str(device)
+
+        @torch.compile(fullgraph=True, backend="eager")
+        def get_frame0_and_frame_time6(decoder):
+            add_video_stream(decoder, device=device, device_variant=device_variant)
+            frame0, _, _ = get_frame_at_index(decoder, frame_index=0)
+            frame_time6, _, _ = get_frame_at_pts(decoder, 6.0)
+            return frame0, frame_time6
+
+        # NB: create needs to happen outside the torch.compile region,
+        # for now. Otherwise torch.compile constant-props it.
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        frame0, frame_time6 = get_frame0_and_frame_time6(decoder)
+        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
+        reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
+            INDEX_OF_FRAME_AT_6_SECONDS
+        )
+        assert_frames_equal(frame0, reference_frame0.to(device))
+        assert_frames_equal(frame_time6, reference_frame_time6.to(device))
+
+    @pytest.mark.parametrize("device", all_supported_devices())
+    @pytest.mark.parametrize(
+        "create_from",
+        ("file", "tensor", "bytes", "file_like_rawio", "file_like_bufferedio"),
+    )
+    def test_create_decoder(self, create_from, device):
+        path = str(NASA_VIDEO.path)
+        if create_from == "file":
+            decoder = create_from_file(path)
+        elif create_from == "tensor":
+            arr = np.fromfile(path, dtype=np.uint8)
+            video_tensor = torch.from_numpy(arr)
+            decoder = create_from_tensor(video_tensor)
+        elif create_from == "bytes":
+            with open(path, "rb") as f:
+                video_bytes = f.read()
+            decoder = create_from_bytes(video_bytes)
+        elif create_from == "file_like_rawio":
+            decoder = create_from_file_like(open(path, mode="rb", buffering=0), "exact")
+        elif create_from == "file_like_bufferedio":
+            decoder = create_from_file_like(
+                open(path, mode="rb", buffering=4096), "exact"
+            )
+        else:
+            raise ValueError("Oops, double check the parametrization of this test!")
+
+        device, device_variant = unsplit_device_str(device)
+        add_video_stream(decoder, device=device, device_variant=device_variant)
+        frame0, _, _ = get_frame_at_index(decoder, frame_index=0)
+        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
+        assert_frames_equal(frame0, reference_frame0.to(device))
+        frame6, _, _ = get_frame_at_pts(decoder, 6.0)
+        reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
+            INDEX_OF_FRAME_AT_6_SECONDS
+        )
+        assert_frames_equal(frame6, reference_frame_time6.to(device))
+
+    @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
+    def test_color_conversion_library(self, color_conversion_library):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        _add_video_stream(decoder, color_conversion_library=color_conversion_library)
+        frame0, *_ = get_frame_at_index(decoder, frame_index=0)
+        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
+        assert_frames_equal(frame0, reference_frame0)
+        frame6, *_ = get_frame_at_pts(decoder, 6.0)
+        reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
+            INDEX_OF_FRAME_AT_6_SECONDS
+        )
+        assert_frames_equal(frame6, reference_frame_time6)
+
+    @needs_cuda
+    def test_cuda_decoder(self):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder, device="cuda")
+        frame0, pts, duration = get_frame_at_index(decoder, frame_index=0)
+        assert frame0.device.type == "cuda"
+        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
+        assert_frames_equal(frame0, reference_frame0.to("cuda"))
+        assert pts == torch.tensor([0])
+        torch.testing.assert_close(
+            duration, torch.tensor(0.0334).double(), atol=0, rtol=1e-3
+        )
 
     # Keeping the metadata tests below for now, but we should remove them
     # once we remove get_json_metadata().
