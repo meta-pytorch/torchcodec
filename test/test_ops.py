@@ -11,10 +11,9 @@ from functools import partial
 os.environ["TORCH_LOGS"] = "output_code"
 import json
 
+import numpy as np
 import pytest
-
 import torch
-
 from torchcodec._core import (
     _test_frame_pts_equality,
     create_streaming_encoder_to_file,
@@ -332,7 +331,9 @@ class TestVideoDecoderOps:
         def get_frame0_and_frame_time6(decoder):
             add_video_stream(decoder, device=device, device_variant=device_variant)
             frame0, _, _ = get_frame_at_index(decoder, frame_index=0)
-            frame_time6, _, _ = get_frame_at_pts(decoder, 6.0)
+            frame_time6, _, _ = get_frame_at_index(
+                decoder, frame_index=INDEX_OF_FRAME_AT_6_SECONDS
+            )
             return frame0, frame_time6
 
         # NB: create needs to happen outside the torch.compile region,
@@ -377,7 +378,9 @@ class TestVideoDecoderOps:
         frame0, _, _ = get_frame_at_index(decoder, frame_index=0)
         reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
         assert_frames_equal(frame0, reference_frame0.to(device))
-        frame6, _, _ = get_frame_at_pts(decoder, 6.0)
+        frame6, _, _ = get_frame_at_index(
+            decoder, frame_index=INDEX_OF_FRAME_AT_6_SECONDS
+        )
         reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
             INDEX_OF_FRAME_AT_6_SECONDS
         )
@@ -390,7 +393,9 @@ class TestVideoDecoderOps:
         frame0, *_ = get_frame_at_index(decoder, frame_index=0)
         reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
         assert_frames_equal(frame0, reference_frame0)
-        frame6, *_ = get_frame_at_pts(decoder, 6.0)
+        frame6, *_ = get_frame_at_index(
+            decoder, frame_index=INDEX_OF_FRAME_AT_6_SECONDS
+        )
         reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
             INDEX_OF_FRAME_AT_6_SECONDS
         )
