@@ -1206,6 +1206,8 @@ class TestMultiStreamEncoderOps:
             extra_options=[
                 "movflags",
                 "+frag_every_frame+empty_moov",
+                "tune",
+                "zerolatency",
                 "flush_packets",
                 "1",
                 "threads",
