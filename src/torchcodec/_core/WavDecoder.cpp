@@ -42,7 +42,7 @@ bool isLittleEndian() {
   return firstByte == 1;
 }
 
-template <typename InType, typename OutType>
+template <typename OutType, typename InType>
 OutType readValue(const InType& data, int64_t offset) {
   static_assert(std::is_trivially_copyable_v<OutType>);
   static_assert(
