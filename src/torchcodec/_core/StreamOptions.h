@@ -47,6 +47,11 @@ struct VideoStreamOptions {
   // Device variant (e.g., "ffmpeg", "beta", etc.)
   std::string_view deviceVariant = "ffmpeg";
 
+  // 0 = auto (default): detect from source bit depth.
+  // 8 = force uint8 output (RGB24).
+  // 16 = force uint16 output (RGB48).
+  int outputBitDepth = 0;
+
   // Encoding options
   std::optional<std::string> codec;
   // Optional pixel format for video encoding (e.g., "yuv420p", "yuv444p")

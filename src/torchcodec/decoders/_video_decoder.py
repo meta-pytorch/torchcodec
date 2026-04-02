@@ -169,6 +169,7 @@ class VideoDecoder:
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
+        output_dtype: "torch.dtype | None" = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
@@ -203,6 +204,14 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
+        _allowed_output_dtypes = {None: 0, torch.uint8: 8, torch.uint16: 16}
+        if output_dtype not in _allowed_output_dtypes:
+            raise ValueError(
+                f"Invalid output_dtype ({output_dtype}). "
+                f"Supported values are None, torch.uint8, and torch.uint16."
+            )
+        output_bit_depth = _allowed_output_dtypes[output_dtype]
+
         device_variant = _get_cuda_backend()
         if device is None:
             device = str(torch.get_default_device())
@@ -222,6 +231,7 @@ class VideoDecoder:
             device_variant=device_variant,
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
+            output_bit_depth=output_bit_depth,
         )
 
         assert self.metadata.begin_stream_seconds is not None  # mypy.

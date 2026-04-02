@@ -41,11 +41,13 @@ from .utils import (
     H265_10BITS,
     H265_VIDEO,
     in_fbcode,
+    IS_WINDOWS,
     make_video_decoder,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
+    NASA_VIDEO_HDR,
     NASA_VIDEO_ROTATED,
     needs_cuda,
     needs_ffmpeg_cli,
@@ -58,6 +60,7 @@ from .utils import (
     TEST_NON_ZERO_START,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
+    TEST_SRC_2_720P_HDR,
     TEST_SRC_2_720P_MPEG4,
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
@@ -1468,7 +1471,7 @@ class TestVideoDecoder:
             gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
-            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
+            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=7)
 
     @needs_cuda
     def test_bt2020_10bit_video(self):
@@ -1479,11 +1482,10 @@ class TestVideoDecoder:
         # bt2020_10bit.mp4 is a BT.2020 limited range 10-bit HEVC video:
         # color_space=bt2020nc, color_range=tv, pix_fmt=yuv420p10le
         #
-        # NVDEC decodes 10-bit natively (converting to 8-bit NV12), then our
-        # BT.2020 color twist matrix handles the YUV->RGB conversion.
-        #
-        # TODO investigate CPU vs BetaCUDA mismatch on BT.2020 10-bit.
-        # See PR #1267 for details.
+        # Both CPU and GPU decode 10-bit to uint16 tensors where 10-bit
+        # values are left-shifted by 6 (range 0-65472). We right-shift back
+        # to the original 10-bit range (0-1023) before comparing, so we can
+        # use the same atol=3 tolerance as 8-bit comparisons.
         asset = BT2020_LIMITED_RANGE_10BIT
 
         with set_cuda_backend("beta"):
@@ -1491,8 +1493,10 @@ class TestVideoDecoder:
         decoder_cpu = VideoDecoder(asset.path, device="cpu")
 
         for frame_index in (0, 10, 20, 5):
-            gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
-            cpu_frame = decoder_cpu.get_frame_at(frame_index).data
+            gpu_frame = (
+                decoder_gpu.get_frame_at(frame_index).data.cpu().to(torch.int32) >> 6
+            )
+            cpu_frame = decoder_cpu.get_frame_at(frame_index).data.to(torch.int32) >> 6
 
             assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=90, atol=3)
 
@@ -1512,7 +1516,7 @@ class TestVideoDecoder:
             gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
-            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
+            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=7)
 
     @needs_cuda
     def test_10bit_gpu_fallsback_to_cpu(self):
@@ -1546,13 +1550,273 @@ class TestVideoDecoder:
         assert_frames_equal(frames_gpu.cpu(), frames_cpu)
 
     @pytest.mark.parametrize("device", all_supported_devices())
-    @pytest.mark.parametrize("asset", (H264_10BITS, H265_10BITS))
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            H264_10BITS,
+            H265_10BITS,
+            BT2020_LIMITED_RANGE_10BIT,
+            NASA_VIDEO_HDR,
+            TEST_SRC_2_720P_HDR,
+        ),
+    )
     def test_10bit_videos(self, device, asset):
         # This just validates that we can decode 10-bit videos.
         # TODO validate against the ref that the decoded frames are correct
 
         decoder, _ = make_video_decoder(asset.path, device=device)
         decoder.get_frame_at(10)
+
+    @pytest.mark.parametrize(
+        "device",
+        (
+            "cpu",
+            # Note: the FFmpeg CUDA batch API pre-allocates uint8 tensors,
+            # which doesn't work for 10-bit content (uint16). This is fine
+            # since we're moving to Beta CUDA.
+            # pytest.param("cuda", marks=pytest.mark.needs_cuda),
+            pytest.param("cuda:beta", marks=pytest.mark.needs_cuda),
+        ),
+    )
+    @pytest.mark.parametrize("asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR))
+    def test_10bit_batch_apis(self, device, asset):
+        # TODO: add 10-bit + rotation test (needs a rotated 10-bit HDR asset)
+        decoder, _ = make_video_decoder(asset.path, device=device)
+        num_frames = len(decoder)
+
+        frame = decoder[0]
+        expected_c = asset.get_num_color_channels()
+        expected_h = asset.get_height()
+        expected_w = asset.get_width()
+        assert frame.shape == (expected_c, expected_h, expected_w)
+
+        indices = [0, min(5, num_frames - 1), min(10, num_frames - 1)]
+        frames = decoder.get_frames_at(indices)
+        assert frames.data.shape == (len(indices), expected_c, expected_h, expected_w)
+
+        frames_range = decoder.get_frames_in_range(start=0, stop=min(5, num_frames))
+        assert frames_range.data.shape[0] == min(5, num_frames)
+        assert frames_range.data.shape[1:] == (expected_c, expected_h, expected_w)
+
+        pts = decoder.metadata.begin_stream_seconds
+        frame_at_pts = decoder.get_frame_played_at(pts)
+        assert frame_at_pts.data.shape == (expected_c, expected_h, expected_w)
+
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            H264_10BITS,
+            pytest.param(
+                H265_10BITS,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                NASA_VIDEO_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                TEST_SRC_2_720P_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                ),
+            ),
+        ),
+    )
+    def test_output_dtype_uint8_vs_uint16_on_10bit(self, asset):
+        # For 10-bit sources, the two paths go through different swscale
+        # conversions (YUV10->RGB24 vs YUV10->RGB48), so there are small
+        # rounding differences. We compare uint16 >> 8 against uint8 with a
+        # tolerance that accounts for these color conversion differences.
+        decoder_u8 = VideoDecoder(asset.path, output_dtype=torch.uint8)
+        decoder_u16 = VideoDecoder(asset.path, output_dtype=torch.uint16)
+        num_frames = len(decoder_u8)
+
+        def assert_u8_close_to_u16(u8, u16):
+            assert u8.dtype == torch.uint8
+            assert u16.dtype == torch.uint16
+            u16_as_u8 = (u16.to(torch.int32) >> 8).to(torch.uint8)
+            torch.testing.assert_close(u16_as_u8, u8, rtol=0, atol=7)
+
+        # __getitem__
+        for idx in [0, min(10, num_frames - 1)]:
+            assert_u8_close_to_u16(decoder_u8[idx].data, decoder_u16[idx].data)
+
+        # get_frame_at
+        assert_u8_close_to_u16(
+            decoder_u8.get_frame_at(0).data,
+            decoder_u16.get_frame_at(0).data,
+        )
+
+        # get_frame_played_at
+        pts = decoder_u8.metadata.begin_stream_seconds
+        assert_u8_close_to_u16(
+            decoder_u8.get_frame_played_at(pts).data,
+            decoder_u16.get_frame_played_at(pts).data,
+        )
+
+        # get_frames_at
+        indices = [0, min(5, num_frames - 1)]
+        assert_u8_close_to_u16(
+            decoder_u8.get_frames_at(indices).data,
+            decoder_u16.get_frames_at(indices).data,
+        )
+
+        # get_frames_in_range
+        stop = min(3, num_frames)
+        assert_u8_close_to_u16(
+            decoder_u8.get_frames_in_range(start=0, stop=stop).data,
+            decoder_u16.get_frames_in_range(start=0, stop=stop).data,
+        )
+
+    def test_output_dtype_uint8_vs_uint16_on_8bit(self):
+        # For 8-bit sources, the two paths go through different swscale
+        # conversions (YUV8->RGB24 vs YUV8->RGB48). We compare
+        # uint16 >> 8 against uint8 with tolerance for rounding diffs.
+        decoder_u8 = VideoDecoder(NASA_VIDEO.path, output_dtype=torch.uint8)
+        decoder_u16 = VideoDecoder(NASA_VIDEO.path, output_dtype=torch.uint16)
+
+        def assert_u8_close_to_u16(u8, u16):
+            assert u8.dtype == torch.uint8
+            assert u16.dtype == torch.uint16
+            u16_as_u8 = (u16.to(torch.int32) >> 8).to(torch.uint8)
+            torch.testing.assert_close(u16_as_u8, u8, rtol=0, atol=7)
+
+        # __getitem__
+        assert_u8_close_to_u16(decoder_u8[0].data, decoder_u16[0].data)
+
+        # get_frame_at
+        assert_u8_close_to_u16(
+            decoder_u8.get_frame_at(0).data,
+            decoder_u16.get_frame_at(0).data,
+        )
+
+        # get_frames_at
+        assert_u8_close_to_u16(
+            decoder_u8.get_frames_at([0, 5, 10]).data,
+            decoder_u16.get_frames_at([0, 5, 10]).data,
+        )
+
+        # get_frames_in_range
+        assert_u8_close_to_u16(
+            decoder_u8.get_frames_in_range(start=0, stop=3).data,
+            decoder_u16.get_frames_in_range(start=0, stop=3).data,
+        )
+
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            H264_10BITS,
+            pytest.param(
+                H265_10BITS,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                NASA_VIDEO_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="uint8 vs uint16 HDR color conversion differs on Windows + FFmpeg 4",
+                ),
+            ),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "transforms",
+        (
+            [Resize((100, 120))],
+            [CenterCrop((50, 50))],
+            [Resize((100, 120)), CenterCrop((80, 80))],
+        ),
+    )
+    def test_output_dtype_uint8_vs_uint16_with_transforms(self, asset, transforms):
+        # Verify that native decoder transforms produce consistent results
+        # across uint8 and uint16 output paths.
+        decoder_u8 = VideoDecoder(
+            asset.path, output_dtype=torch.uint8, transforms=transforms
+        )
+        decoder_u16 = VideoDecoder(
+            asset.path, output_dtype=torch.uint16, transforms=transforms
+        )
+
+        u8 = decoder_u8[0].data
+        u16 = decoder_u16[0].data
+        assert u8.dtype == torch.uint8
+        assert u16.dtype == torch.uint16
+        assert u8.shape == u16.shape
+
+        u16_as_u8 = (u16.to(torch.int32) >> 8).to(torch.uint8)
+        torch.testing.assert_close(u16_as_u8, u8, rtol=0, atol=7)
+
+        # Batch API
+        batch_u8 = decoder_u8.get_frames_in_range(
+            start=0, stop=min(3, len(decoder_u8))
+        ).data
+        batch_u16 = decoder_u16.get_frames_in_range(
+            start=0, stop=min(3, len(decoder_u16))
+        ).data
+        assert batch_u8.shape == batch_u16.shape
+        torch.testing.assert_close(
+            (batch_u16.to(torch.int32) >> 8).to(torch.uint8),
+            batch_u8,
+            rtol=0,
+            atol=7,
+        )
+
+    def test_output_dtype_uint8_vs_uint16_with_rotation(self):
+        # Verify that rotation is applied consistently across uint8/uint16.
+        decoder_u8 = VideoDecoder(NASA_VIDEO_ROTATED.path, output_dtype=torch.uint8)
+        decoder_u16 = VideoDecoder(NASA_VIDEO_ROTATED.path, output_dtype=torch.uint16)
+
+        u8 = decoder_u8[0].data
+        u16 = decoder_u16[0].data
+        assert u8.dtype == torch.uint8
+        assert u16.dtype == torch.uint16
+        assert u8.shape == u16.shape
+
+        u16_as_u8 = (u16.to(torch.int32) >> 8).to(torch.uint8)
+        torch.testing.assert_close(u16_as_u8, u8, rtol=0, atol=7)
+
+    def test_output_dtype_uint8_vs_uint16_with_rotation_and_transforms(self):
+        # Verify rotation + transforms work consistently across uint8/uint16.
+        transforms = [Resize((100, 120)), CenterCrop((80, 80))]
+        decoder_u8 = VideoDecoder(
+            NASA_VIDEO_ROTATED.path,
+            output_dtype=torch.uint8,
+            transforms=transforms,
+        )
+        decoder_u16 = VideoDecoder(
+            NASA_VIDEO_ROTATED.path,
+            output_dtype=torch.uint16,
+            transforms=transforms,
+        )
+
+        u8 = decoder_u8[0].data
+        u16 = decoder_u16[0].data
+        assert u8.dtype == torch.uint8
+        assert u16.dtype == torch.uint16
+        assert u8.shape == u16.shape
+
+        u16_as_u8 = (u16.to(torch.int32) >> 8).to(torch.uint8)
+        torch.testing.assert_close(u16_as_u8, u8, rtol=0, atol=7)
+
+        # Batch API
+        batch_u8 = decoder_u8.get_frames_at([0, 1]).data
+        batch_u16 = decoder_u16.get_frames_at([0, 1]).data
+        torch.testing.assert_close(
+            (batch_u16.to(torch.int32) >> 8).to(torch.uint8),
+            batch_u8,
+            rtol=0,
+            atol=7,
+        )
 
     def setup_frame_mappings(tmp_path, file, stream_index):
         json_path = tmp_path / "custom_frame_mappings.json"

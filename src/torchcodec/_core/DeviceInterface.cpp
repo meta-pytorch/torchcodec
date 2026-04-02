@@ -10,6 +10,10 @@
 #include <mutex>
 #include "StableABICompat.h"
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 namespace facebook::torchcodec {
 
 namespace {
@@ -118,12 +122,14 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
 }
 
 torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
-  STD_TORCH_CHECK(avFrame->format == AV_PIX_FMT_RGB24, "Expected RGB24 format");
+  auto format = static_cast<AVPixelFormat>(avFrame->format);
+  STD_TORCH_CHECK(
+      format == AV_PIX_FMT_RGB24 || format == AV_PIX_FMT_RGB48,
+      "Expected RGB24 or RGB48 format, got ",
+      av_get_pix_fmt_name(format));
 
   int height = avFrame->height;
   int width = avFrame->width;
-  std::vector<int64_t> shape = {height, width, 3};
-  std::vector<int64_t> strides = {avFrame->linesize[0], 3, 1};
   AVFrame* avFrameClone = av_frame_clone(avFrame.get());
 
   // TODO_STABLE_ABI: we're still using the non-stable ABI here. That's because
@@ -134,8 +140,25 @@ torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
     UniqueAVFrame avFrameToDelete(avFrameClone);
   };
 
-  at::Tensor tensor = at::from_blob(
-      avFrameClone->data[0], shape, strides, deleter, {at::kByte});
+  at::Tensor tensor;
+  if (format == AV_PIX_FMT_RGB48) {
+    // RGB48: 6 bytes per pixel (3 channels x 2 bytes each).
+    // Strides are in uint16 elements: linesize is in bytes, so divide by 2.
+    std::vector<int64_t> shape = {height, width, 3};
+    std::vector<int64_t> strides = {avFrameClone->linesize[0] / 2, 3, 1};
+    tensor = at::from_blob(
+        avFrameClone->data[0],
+        shape,
+        strides,
+        deleter,
+        {at::ScalarType::UInt16});
+  } else {
+    // RGB24: 3 bytes per pixel.
+    std::vector<int64_t> shape = {height, width, 3};
+    std::vector<int64_t> strides = {avFrameClone->linesize[0], 3, 1};
+    tensor = at::from_blob(
+        avFrameClone->data[0], shape, strides, deleter, {at::kByte});
+  }
 
   // We got an at::Tensor, we have to convert it to a torch::stable::Tensor.
   // This is safe, there won't be any memory leak, i.e. the at::Tensor's deleter

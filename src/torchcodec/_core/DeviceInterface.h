@@ -184,6 +184,8 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
     const StableDevice& device,
     const std::string_view variant = "ffmpeg");
 
+// Wraps an RGB AVFrame (RGB24 or RGB48) as a torch tensor without copying.
+// For RGB24: returns uint8 tensor. For RGB48: returns uint16 tensor.
 torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 
 } // namespace facebook::torchcodec

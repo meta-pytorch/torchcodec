@@ -97,15 +97,13 @@ static UniqueCUvideodecoder createDecoder(CUVIDEOFORMAT* videoFormat) {
   CUVIDDECODECREATEINFO decoderParams = {};
   decoderParams.bitDepthMinus8 = videoFormat->bit_depth_luma_minus8;
   decoderParams.ChromaFormat = videoFormat->chroma_format;
-  // We explicitly request NV12 format, which means 10bit videos will be
-  // automatically converted to 8bits by NVDEC itself. That is, the raw frames
-  // we get back from cuvidMapVideoFrame will already be in 8bit format.  We
-  // won't need to do the conversion ourselves, so that's a lot easier.
-  // In the ffmpeg CUDA interface, we have to do the 10 -> 8bits conversion
-  // ourselves later in convertAVFrameToFrameOutput(), because FFmpeg explicitly
-  // requests 10 or 16bits output formats for >8-bit videos!
-  // https://github.com/FFmpeg/FFmpeg/blob/e05f8acabff468c1382277c1f31fa8e9d90c3202/libavcodec/nvdec.c#L376-L403
-  decoderParams.OutputFormat = cudaVideoSurfaceFormat_NV12;
+  // For >8-bit videos (e.g. 10-bit HDR), we request P016 format to preserve
+  // the full bit depth. For 8-bit videos, we use NV12 as before.
+  if (videoFormat->bit_depth_luma_minus8 > 0) {
+    decoderParams.OutputFormat = cudaVideoSurfaceFormat_P016;
+  } else {
+    decoderParams.OutputFormat = cudaVideoSurfaceFormat_NV12;
+  }
   decoderParams.ulCreationFlags = cudaVideoCreate_Default;
   decoderParams.CodecType = videoFormat->codec;
   decoderParams.ulHeight = videoFormat->coded_height;
@@ -241,15 +239,20 @@ bool nativeNVDECSupport(
     return false;
   }
 
-  // We'll set the decoderParams.OutputFormat to NV12, so we need to make
-  // sure it's actually supported.
-  // TODO: If this fail, we could consider decoding to something else than NV12
-  // (like cudaVideoSurfaceFormat_P016) instead of falling back to CPU. This is
-  // what FFmpeg does.
-  bool supportsNV12Output =
-      (caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1;
-  if (!supportsNV12Output) {
-    return false;
+  // Check that the hardware supports the output format we need.
+  // For >8-bit content we use P016, for 8-bit we use NV12.
+  if (bitDepthMinus8 > 0) {
+    bool supportsP016Output =
+        (caps.nOutputFormatMask >> cudaVideoSurfaceFormat_P016) & 1;
+    if (!supportsP016Output) {
+      return false;
+    }
+  } else {
+    bool supportsNV12Output =
+        (caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1;
+    if (!supportsNV12Output) {
+      return false;
+    }
   }
 
   return true;
@@ -294,6 +297,17 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
   }
 
   returnNppStreamContextToCache(device_, std::move(nppCtx_));
+}
+
+void BetaCudaDeviceInterface::initializeVideo(
+    const VideoStreamOptions& videoStreamOptions,
+    const std::vector<std::unique_ptr<Transform>>& transforms,
+    const std::optional<FrameDims>& resizedOutputDims) {
+  outputBitDepthOverride_ = videoStreamOptions.outputBitDepth;
+  if (cpuFallback_) {
+    cpuFallback_->initializeVideo(
+        videoStreamOptions, transforms, resizedOutputDims);
+  }
 }
 
 void BetaCudaDeviceInterface::initialize(
@@ -441,6 +455,7 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
   STD_TORCH_CHECK(videoFormat != nullptr, "Invalid video format");
 
   videoFormat_ = *videoFormat;
+  bitDepth_ = videoFormat_.bit_depth_luma_minus8 + 8;
 
   if (videoFormat_.min_num_decode_surfaces == 0) {
     // Same as DALI's fallback
@@ -868,38 +883,172 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
   return gpuFrame;
 }
 
+UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuP016(
+    UniqueAVFrame& cpuFrame) {
+  // Similar to transferCpuFrameToGpuNV12, but for 10-bit content.
+  // Converts CPU frame to P016 (16-bit YUV 4:2:0) and uploads to GPU.
+  STD_TORCH_CHECK(cpuFrame != nullptr, "CPU frame cannot be null");
+
+  int width = cpuFrame->width;
+  int height = cpuFrame->height;
+
+  // Intermediate P016 CPU frame
+  UniqueAVFrame p016CpuFrame(av_frame_alloc());
+  STD_TORCH_CHECK(p016CpuFrame != nullptr, "Failed to allocate P016 CPU frame");
+
+  p016CpuFrame->format = AV_PIX_FMT_P016LE;
+  p016CpuFrame->width = width;
+  p016CpuFrame->height = height;
+
+  int ret = av_frame_get_buffer(p016CpuFrame.get(), 0);
+  STD_TORCH_CHECK(
+      ret >= 0,
+      "Failed to allocate P016 CPU frame buffer: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
+
+  SwsConfig swsConfig(
+      width,
+      height,
+      static_cast<AVPixelFormat>(cpuFrame->format),
+      cpuFrame->colorspace,
+      width,
+      height);
+
+  if (!swsContext_ || prevSwsConfig_ != swsConfig) {
+    swsContext_ = createSwsContext(swsConfig, AV_PIX_FMT_P016LE, SWS_BILINEAR);
+    prevSwsConfig_ = swsConfig;
+  }
+
+  int convertedHeight = sws_scale(
+      swsContext_.get(),
+      cpuFrame->data,
+      cpuFrame->linesize,
+      0,
+      height,
+      p016CpuFrame->data,
+      p016CpuFrame->linesize);
+  STD_TORCH_CHECK(
+      convertedHeight == height, "sws_scale failed for CPU->P016 conversion");
+
+  // P016: Y plane is width * height * 2 bytes (16-bit per sample)
+  // UV plane is width * (height/2) * 2 bytes (interleaved 16-bit U/V, half
+  // height)
+  int ySize = width * height * 2;
+  STD_TORCH_CHECK(
+      height % 2 == 0,
+      "height must be even for P016. Please report on TorchCodec repo.");
+  int uvSize = width * (height / 2) * 2;
+  size_t totalSize = static_cast<size_t>(ySize + uvSize);
+
+  uint8_t* cudaBuffer = nullptr;
+  cudaError_t err =
+      cudaMalloc(reinterpret_cast<void**>(&cudaBuffer), totalSize);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to allocate CUDA memory: ",
+      cudaGetErrorString(err));
+
+  UniqueAVFrame gpuFrame(av_frame_alloc());
+  STD_TORCH_CHECK(gpuFrame != nullptr, "Failed to allocate GPU AVFrame");
+
+  gpuFrame->format = AV_PIX_FMT_CUDA;
+  gpuFrame->width = width;
+  gpuFrame->height = height;
+  gpuFrame->data[0] = cudaBuffer;
+  gpuFrame->data[1] = cudaBuffer + ySize;
+  // For P016, linesize is width * 2 (2 bytes per sample)
+  gpuFrame->linesize[0] = width * 2;
+  gpuFrame->linesize[1] = width * 2;
+
+  // Copy Y plane
+  err = cudaMemcpy2D(
+      gpuFrame->data[0],
+      gpuFrame->linesize[0],
+      p016CpuFrame->data[0],
+      p016CpuFrame->linesize[0],
+      width * 2, // width in bytes
+      height,
+      cudaMemcpyHostToDevice);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy Y plane to GPU: ",
+      cudaGetErrorString(err));
+
+  // Copy UV plane
+  err = cudaMemcpy2D(
+      gpuFrame->data[1],
+      gpuFrame->linesize[1],
+      p016CpuFrame->data[1],
+      p016CpuFrame->linesize[1],
+      width * 2, // width in bytes (interleaved U/V, same width as Y)
+      height / 2,
+      cudaMemcpyHostToDevice);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy UV plane to GPU: ",
+      cudaGetErrorString(err));
+
+  ret = av_frame_copy_props(gpuFrame.get(), cpuFrame.get());
+  STD_TORCH_CHECK(
+      ret >= 0,
+      "Failed to copy frame properties: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
+
+  gpuFrame->opaque_ref =
+      av_buffer_create(nullptr, 0, cudaBufferFreeCallback, cudaBuffer, 0);
+  STD_TORCH_CHECK(
+      gpuFrame->opaque_ref != nullptr,
+      "Failed to create GPU memory cleanup reference");
+
+  return gpuFrame;
+}
+
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
-  UniqueAVFrame gpuFrame =
-      cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
+  int effectiveBitDepth =
+      (outputBitDepthOverride_ > 0) ? outputBitDepthOverride_ : bitDepth_;
+  bool is10Bit = (effectiveBitDepth > 8);
 
-  // TODONVDEC P2: we may need to handle 10bit videos the same way the CUDA
-  // ffmpeg interface does it with maybeConvertAVFrameToNV12OrRGB24().
+  UniqueAVFrame gpuFrame;
+  if (cpuFallback_) {
+    gpuFrame = is10Bit ? transferCpuFrameToGpuP016(avFrame)
+                       : transferCpuFrameToGpuNV12(avFrame);
+  } else {
+    gpuFrame = std::move(avFrame);
+  }
+
   STD_TORCH_CHECK(
       gpuFrame->format == AV_PIX_FMT_CUDA,
       "Expected CUDA format frame from BETA CUDA interface");
 
   cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
-  if (rotation_ == Rotation::NONE) {
-    validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
-    frameOutput.data = convertNV12FrameToRGB(
-        gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+  if (is10Bit) {
+    // P016 path: convert to uint16 RGB using NPP 16-bit ColorTwist.
+    // TODO: preAllocatedOutputTensor is currently ignored here. We should
+    // either support it (for uint16 tensors) or assert that it's not passed.
+    frameOutput.data =
+        convertP016FrameToRGB(gpuFrame, device_, nppCtx_, nvdecStream);
+    if (rotation_ != Rotation::NONE) {
+      applyRotation(frameOutput, preAllocatedOutputTensor);
+    }
   } else {
-    // preAllocatedOutputTensor has post-rotation dimensions, but NV12->RGB
-    // conversion outputs pre-rotation dimensions, so we can't use it as the
-    // conversion destination or validate it against the frame shape.
-    // Once we support native transforms on the beta CUDA interface, rotation
-    // should be handled as part of the transform pipeline instead.
-    frameOutput.data = convertNV12FrameToRGB(
-        gpuFrame,
-        device_,
-        nppCtx_,
-        nvdecStream,
-        /*preAllocatedOutputTensor=*/std::nullopt);
-    applyRotation(frameOutput, preAllocatedOutputTensor);
+    // NV12 path: existing 8-bit conversion using NPP.
+    if (rotation_ == Rotation::NONE) {
+      validatePreAllocatedTensorShape(preAllocatedOutputTensor, gpuFrame);
+      frameOutput.data = convertNV12FrameToRGB(
+          gpuFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+    } else {
+      frameOutput.data = convertNV12FrameToRGB(
+          gpuFrame,
+          device_,
+          nppCtx_,
+          nvdecStream,
+          /*preAllocatedOutputTensor=*/std::nullopt);
+      applyRotation(frameOutput, preAllocatedOutputTensor);
+    }
   }
 }
 
