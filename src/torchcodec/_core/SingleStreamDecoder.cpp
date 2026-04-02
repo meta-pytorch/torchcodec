@@ -171,6 +171,16 @@ void SingleStreamDecoder::initializeDecoder() {
       streamMetadata.sampleAspectRatio =
           avStream->codecpar->sample_aspect_ratio;
 
+      if (avStream->codecpar->color_primaries != AVCOL_PRI_UNSPECIFIED) {
+        streamMetadata.colorPrimaries = avStream->codecpar->color_primaries;
+      }
+      if (avStream->codecpar->color_space != AVCOL_SPC_UNSPECIFIED) {
+        streamMetadata.colorSpace = avStream->codecpar->color_space;
+      }
+      if (avStream->codecpar->color_trc != AVCOL_TRC_UNSPECIFIED) {
+        streamMetadata.colorTransferCharacteristic =
+            avStream->codecpar->color_trc;
+      }
       AVPixelFormat pixelFormat =
           static_cast<AVPixelFormat>(avStream->codecpar->format);
       // If the AVPixelFormat is not recognized, we get back nullptr. We have
