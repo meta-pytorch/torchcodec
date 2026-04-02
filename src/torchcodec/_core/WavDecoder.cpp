@@ -42,25 +42,25 @@ bool isLittleEndian() {
   return firstByte == 1;
 }
 
-template <typename T, typename Container>
-T readValue(const Container& data, int64_t offset) {
-  static_assert(std::is_trivially_copyable_v<T>);
+template <typename InType, typename OutType>
+OutType readValue(const InType& data, int64_t offset) {
+  static_assert(std::is_trivially_copyable_v<OutType>);
   static_assert(
-      sizeof(typename Container::value_type) == 1,
-      "Container value_type must be a 1-byte type for safe byte access");
-  // readValue is always called with positive offset, so casting to size_t is
-  // safe
+      sizeof(typename InType::value_type) == 1,
+      "InType value_type must be a 1-byte type for safe byte access");
+  STD_TORCH_CHECK(offset >= 0);
   STD_TORCH_CHECK(
-      data.size() >= sizeof(T) &&
-          static_cast<size_t>(offset) <= data.size() - sizeof(T),
+      data.size() >= sizeof(OutType) &&
+          static_cast<size_t>(offset) <= data.size() - sizeof(OutType),
       "Reading ",
-      sizeof(T),
+      sizeof(OutType),
       " bytes at offset ",
       offset,
       ": exceeds buffer length ",
       data.size());
-  T value;
-  std::memcpy(&value, data.data() + static_cast<size_t>(offset), sizeof(T));
+  OutType value;
+  std::memcpy(
+      &value, data.data() + static_cast<size_t>(offset), sizeof(OutType));
   return value;
 }
 
@@ -73,8 +73,7 @@ bool matchesFourCC(
       dataSize >= 4 && offset <= dataSize - 4,
       "Data array too small for FourCC comparison at offset ",
       offset);
-  // matchesFourCC is always called with non-negative offset, so casting to
-  // size_t is safe
+  STD_TORCH_CHECK(offset >= 0);
   return std::memcmp(data + static_cast<size_t>(offset), expected.data(), 4) ==
       0;
 }
@@ -84,7 +83,7 @@ void safeReadFile(std::ifstream& file, Container& buffer, int64_t bytesToRead) {
   static_assert(
       sizeof(typename Container::value_type) == 1,
       "Container value_type must be a 1-byte type for safe reinterpret_cast to char*");
-  // bytesToRead is always non-negative, so casting to size_t is safe
+  STD_TORCH_CHECK(bytesToRead >= 0);
   STD_TORCH_CHECK(
       static_cast<size_t>(bytesToRead) <= buffer.size(),
       "Read size exceeds buffer length");
@@ -162,8 +161,7 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
       " bytes, maximum allowed is ",
       MAX_FMT_CHUNK_SIZE,
       " bytes");
-  // Cast is safe since fmtChunk.size is uint32_t, and size_t is always at least
-  // 32 bits
+  STD_TORCH_CHECK(fmtChunk.size <= SIZE_MAX);
   std::vector<uint8_t> fmtData(static_cast<size_t>(fmtChunk.size));
   safeReadFile(file_, fmtData, fmtChunk.size);
 
@@ -324,8 +322,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       validateUint64ToStreampos(byteOffset, "byteOffset"),
       std::ios::beg);
 
-  // Cast is safe: bytesToRead <= MAX_TENSOR_SIZE (320MB)
-  // which fits in size_t which is at least 32 bits
+  STD_TORCH_CHECK(bytesToRead >= 0);
   std::vector<uint8_t> rawData(static_cast<std::size_t>(bytesToRead));
   safeReadFile(file_, rawData, bytesToRead);
 
