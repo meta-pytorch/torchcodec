@@ -28,7 +28,9 @@ constexpr int64_t MIN_FMT_CHUNK_SIZE = 16;
 constexpr int64_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
 // Arbitrary max for fmt chunk allocation - set to 5x extended format size
 constexpr int64_t MAX_FMT_CHUNK_SIZE = 200;
-constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
+// Soundfile's default chunk size. See
+// https://github.com/libsndfile/libsndfile/blob/master/src/common.h#L77
+constexpr size_t DEFAULT_CHUNK_BUFFER_SIZE = 8192;
 
 // See standard format codes and Wav file format used in WavHeader:
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
@@ -106,6 +108,24 @@ void safeSeek(
     std::ios_base::seekdir whence = std::ios::beg) {
   file.seekg(pos, whence);
   STD_TORCH_CHECK(!file.fail(), "Failed to seek to ", pos, " in WAV file");
+}
+
+template <typename T>
+inline const T* getAlignedData(const std::vector<uint8_t>& bufferData) {
+  STD_TORCH_CHECK(
+      reinterpret_cast<uintptr_t>(bufferData.data()) % alignof(T) == 0,
+      "Buffer not properly aligned for direct access to ",
+      typeid(T).name());
+
+  STD_TORCH_CHECK(
+      bufferData.size() % sizeof(T) == 0,
+      "Buffer size (",
+      bufferData.size(),
+      ") is not a multiple of sizeof(",
+      typeid(T).name(),
+      "). Malformed data?");
+
+  return reinterpret_cast<const T*>(bufferData.data());
 }
 
 } // namespace
@@ -250,10 +270,51 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
   STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
 }
 
+void WavDecoder::convertSamplesToFloat(
+    const std::vector<uint8_t>& bufferData,
+    int64_t samplesInBuffer,
+    float* outputPtr) const {
+  STD_TORCH_CHECK(
+      samplesInBuffer <= INT64_MAX / header_.numChannels,
+      "samplesInBuffer * numChannels would overflow");
+  int64_t totalSamples = samplesInBuffer * header_.numChannels;
+  size_t bytesPerSample = header_.bitsPerSample / 8;
+
+  STD_TORCH_CHECK(
+      static_cast<size_t>(totalSamples) <= SIZE_MAX / bytesPerSample,
+      "totalSamples * bytesPerSample would overflow");
+  STD_TORCH_CHECK(
+      bufferData.size() >= totalSamples * bytesPerSample,
+      "Insufficient raw data for requested samples: need ",
+      totalSamples * bytesPerSample,
+      " bytes, have ",
+      bufferData.size(),
+      ". That's unexpected, please report this to the TorchCodec repo.");
+
+  // Currently only supporting 32-bit PCM
+  STD_TORCH_CHECK(
+      header_.bitsPerSample == 32,
+      "Unsupported PCM bit depth in conversion: ",
+      header_.bitsPerSample,
+      ". Currently supported: 32");
+
+  // Normalize 32-bit PCM samples to [-1.0, 1.0] range
+  constexpr float scale =
+      1.0f / static_cast<float>(std::numeric_limits<int32_t>::max());
+  const int32_t* intData = getAlignedData<int32_t>(bufferData);
+  for (int64_t i = 0; i < totalSamples; ++i) {
+    int32_t sample = intData[i];
+    outputPtr[i] = static_cast<float>(sample) * scale;
+  }
+}
+
 AudioFramesOutput WavDecoder::getSamplesInRange(
     double startSeconds,
     std::optional<double> stopSecondsOptional) {
   // Calculate the range of samples to decode
+  STD_TORCH_CHECK(
+      startSeconds <= INT64_MAX / header_.sampleRate,
+      "startSample calculation would overflow: startSeconds * sampleRate");
   // Sample boundary alignment: round to nearest sample to avoid partial samples
   // See corresponding logic in AudioDecoder:
   // https://github.com/meta-pytorch/torchcodec/blob/910005cf5328d9d44ff8123ad540a51db9ce15b5/src/torchcodec/decoders/_audio_decoder.py#L142
@@ -275,6 +336,9 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
           torch::stable::empty({header_.numChannels, 0}, kStableFloat32),
           startSeconds};
     }
+    STD_TORCH_CHECK(
+        stopSecondsOptional.value() <= INT64_MAX / header_.sampleRate,
+        "End sample calculation would overflow: stopSeconds * sampleRate");
     int64_t requestedEndSample = static_cast<int64_t>(
         std::round(stopSecondsOptional.value() * header_.sampleRate));
     endSample = std::min(requestedEndSample, endSample);
@@ -299,51 +363,68 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       "dataPosition calculation would overflow: dataOffset + byteOffset ");
   byteOffset += static_cast<int64_t>(header_.dataOffset);
 
-  // Calculate total bytes to read and read all at once
-  STD_TORCH_CHECK(
-      numSamples <= INT64_MAX / header_.numBytesPerSample,
-      "bytesToRead calculation overflow: numSamples * numBytesPerSample");
-  const int64_t bytesToRead = numSamples * header_.numBytesPerSample;
-
-  // TODO WavDecoder: Optimize decoding and converison by processing samples in
-  // fixed size buffer. For now, we use a simpler implementation: create a
-  // tensor from raw bytes and convert tensor to float32
-  STD_TORCH_CHECK(
-      bytesToRead <= MAX_TENSOR_SIZE,
-      "Audio data too large: ",
-      bytesToRead,
-      " bytes, maximum allowed is ",
-      MAX_TENSOR_SIZE,
-      " bytes");
-
   safeSeek(
       file_,
       validateUint64ToStreampos(byteOffset, "byteOffset"),
       std::ios::beg);
 
-  STD_TORCH_CHECK(bytesToRead >= 0);
-  std::vector<uint8_t> rawData(static_cast<std::size_t>(bytesToRead));
-  safeReadFile(file_, rawData, bytesToRead);
+  // We need to align buffer size to actual boundaries of samples to avoid
+  // reading partial samples. See
+  // https://github.com/FFmpeg/FFmpeg/blob/0f600cbc16b7903703b47d23981b636c94a41c71/libavformat/wavdec.c#L786-L791
+  size_t alignedBufferSize = DEFAULT_CHUNK_BUFFER_SIZE;
+  // Round down to nearest multiple of numBytesPerSample to avoid partial
+  // samples
+  alignedBufferSize = (alignedBufferSize / header_.numBytesPerSample) *
+      header_.numBytesPerSample;
+  STD_TORCH_CHECK(
+      alignedBufferSize > 0,
+      "WAV bytes per sample (",
+      header_.numBytesPerSample,
+      ") exceeds buffer size (",
+      DEFAULT_CHUNK_BUFFER_SIZE,
+      ")");
 
-  int64_t sizes[] = {numSamples, header_.numChannels};
-  int64_t strides[] = {header_.numChannels, 1};
-  auto rawTensor = torch::stable::from_blob(
-      rawData.data(),
-      {sizes, 2},
-      {strides, 2},
-      StableDevice(kStableCPU),
-      kStableInt32);
+  // Allocate buffer and read samples in chunks
+  // max_align_t is used to guarantee alignment with any scalar type
+  alignas(std::max_align_t) std::vector<uint8_t> buffer(alignedBufferSize);
 
-  auto samples = torch::stable::to(rawTensor, kStableFloat32);
-  auto zeros = torch::stable::new_zeros(samples, samples.sizes());
-  constexpr double scale =
-      1.0 / static_cast<double>(std::numeric_limits<int32_t>::max());
-  // Multiplication is not in the stable ABI, we use subtract with alpha as a
-  // workaround. We will remove this hack once we implement buffered reading
-  // optimization.
-  samples = torch::stable::subtract(
-      zeros, samples, -scale); // 0 - (-scale) * samples = scale * samples
+  int64_t totalBytesRead = 0;
+  int64_t samplesProcessed = 0;
+  auto samples =
+      torch::stable::empty({numSamples, header_.numChannels}, kStableFloat32);
 
+  STD_TORCH_CHECK(
+      numSamples <= INT64_MAX / header_.numBytesPerSample,
+      "bytesToRead calculation overflow: numSamples * header_.numBytesPerSample");
+  const int64_t bytesToRead = numSamples * header_.numBytesPerSample;
+
+  while (totalBytesRead < bytesToRead) {
+    const int64_t bytesToReadThisIteration = std::min(
+        bytesToRead - totalBytesRead, static_cast<int64_t>(alignedBufferSize));
+    safeReadFile(file_, buffer, bytesToReadThisIteration);
+
+    const int64_t samplesInBuffer =
+        bytesToReadThisIteration / header_.numBytesPerSample;
+    STD_TORCH_CHECK(
+        samplesProcessed + samplesInBuffer <= numSamples,
+        "Output pointer would exceed tensor bounds: trying to write ",
+        samplesProcessed + samplesInBuffer,
+        " samples, but tensor only allocated for ",
+        numSamples,
+        " samples");
+    STD_TORCH_CHECK(
+        samplesProcessed <= INT64_MAX / header_.numChannels,
+        "Pointer offset calculation would overflow");
+    float* outputPtr = samples.mutable_data_ptr<float>() +
+        (samplesProcessed * header_.numChannels);
+    convertSamplesToFloat(buffer, samplesInBuffer, outputPtr);
+    samplesProcessed += samplesInBuffer;
+    totalBytesRead += bytesToReadThisIteration;
+  }
+
+  if (samplesProcessed < numSamples) {
+    samples = torch::stable::narrow(samples, 0, 0, samplesProcessed);
+  }
   // Convert to [channels, samples]
   samples = torch::stable::transpose(samples, 0, 1);
 

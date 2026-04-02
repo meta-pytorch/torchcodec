@@ -61,6 +61,10 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
       uint64_t fileSizeLimit);
   void parseHeader(uint64_t actualFileSize);
   void validateHeader();
+  void convertSamplesToFloat(
+      const std::vector<uint8_t>& bufferData,
+      int64_t samplesInBuffer,
+      float* outputPtr) const;
 
   std::ifstream file_;
   WavHeader header_;
