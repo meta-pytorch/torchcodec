@@ -587,7 +587,13 @@ def streaming_encoder_close_abstract(encoder: torch.Tensor) -> None:
 
 @register_fake("torchcodec_ns::streaming_encoder_add_video_stream")
 def streaming_encoder_add_video_stream_abstract(
-    encoder: torch.Tensor, frame_rate: float
+    encoder: torch.Tensor,
+    frame_rate: float,
+    codec: str | None = None,
+    pixel_format: str | None = None,
+    crf: float | None = None,
+    preset: str | None = None,
+    extra_options: list[str] | None = None,
 ) -> None:
     return
 

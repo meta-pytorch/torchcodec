@@ -83,7 +83,7 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("create_streaming_encoder_to_file(str filename) -> Tensor");
   m.def("streaming_encoder_close(Tensor(a!) encoder) -> ()");
   m.def(
-      "streaming_encoder_add_video_stream(Tensor(a!) encoder, float frame_rate) -> ()");
+      "streaming_encoder_add_video_stream(Tensor(a!) encoder, float frame_rate, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
   m.def(
       "streaming_encoder_add_frames(Tensor(a!) encoder, Tensor frames) -> ()");
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
@@ -1168,8 +1168,23 @@ void streaming_encoder_close(torch::stable::Tensor& encoder) {
 
 void streaming_encoder_add_video_stream(
     torch::stable::Tensor& encoder,
-    double frame_rate) {
-  unwrapTensorToGetMultiStreamEncoder(encoder)->addVideoStream(frame_rate);
+    double frame_rate,
+    std::optional<std::string> codec = std::nullopt,
+    std::optional<std::string> pixel_format = std::nullopt,
+    std::optional<double> crf = std::nullopt,
+    std::optional<std::string> preset = std::nullopt,
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
+  std::optional<std::map<std::string, std::string>> extraOptionsMap;
+  if (extra_options.has_value()) {
+    extraOptionsMap = unflattenExtraOptions(extra_options.value());
+  }
+  unwrapTensorToGetMultiStreamEncoder(encoder)->addVideoStream(
+      frame_rate,
+      std::move(codec),
+      std::move(pixel_format),
+      crf,
+      std::move(preset),
+      std::move(extraOptionsMap));
 }
 
 void streaming_encoder_add_frames(
