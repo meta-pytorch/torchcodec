@@ -161,7 +161,6 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
       " bytes, maximum allowed is ",
       MAX_FMT_CHUNK_SIZE,
       " bytes");
-  STD_TORCH_CHECK(fmtChunk.size <= SIZE_MAX);
   std::vector<uint8_t> fmtData(static_cast<size_t>(fmtChunk.size));
   safeReadFile(file_, fmtData, fmtChunk.size);
 
