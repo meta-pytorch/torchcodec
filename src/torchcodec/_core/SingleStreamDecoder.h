@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <ostream>
 #include <string_view>
@@ -34,7 +35,8 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   // Creates a SingleStreamDecoder from the video at videoFilePath.
   explicit SingleStreamDecoder(
       const std::string& videoFilePath,
-      SeekMode seekMode = SeekMode::exact);
+      SeekMode seekMode = SeekMode::exact,
+      const std::map<std::string, std::string>& inputOptions = {});
 
   // Creates a SingleStreamDecoder using the provided AVIOContext inside the
   // AVIOContextHolder. The AVIOContextHolder is the base class, and the

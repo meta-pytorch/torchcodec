@@ -33,7 +33,8 @@ namespace facebook::torchcodec {
 // calls to these functions. For more detail, see:
 //   https://github.com/pytorch/pytorch/tree/main/aten/src/ATen/native#readme
 STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
-  m.def("create_from_file(str filename, str? seek_mode=None) -> Tensor");
+  m.def(
+      "create_from_file(str filename, str? seek_mode=None, str[]? extra_options=None) -> Tensor");
   m.def(
       "encode_audio_to_file(Tensor samples, int sample_rate, str filename, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
   m.def(
@@ -442,14 +443,19 @@ std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
 // Create a SingleStreamDecoder from file and wrap the pointer in a tensor.
 torch::stable::Tensor create_from_file(
     std::string filename,
-    std::optional<std::string> seek_mode = std::nullopt) {
+    std::optional<std::string> seek_mode = std::nullopt,
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
   SeekMode realSeek = SeekMode::exact;
   if (seek_mode.has_value()) {
     realSeek = seekModeFromString(seek_mode.value());
   }
 
   std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
-      std::make_unique<SingleStreamDecoder>(filename, realSeek);
+      std::make_unique<SingleStreamDecoder>(
+          filename,
+          realSeek,
+          unflattenExtraOptions(
+              extra_options.value_or(std::vector<std::string>{})));
 
   return wrapDecoderPointerToTensor(std::move(uniqueDecoder));
 }
@@ -559,10 +565,11 @@ void _add_video_stream(
       "None. This is a bug in TorchCodec, please report it.");
 
   std::optional<SingleStreamDecoder::FrameMappings> converted_mappings = hasPts
-      ? std::make_optional(SingleStreamDecoder::FrameMappings{
-            std::move(*custom_frame_mappings_pts),
-            std::move(*custom_frame_mappings_keyframe_indices),
-            std::move(*custom_frame_mappings_duration)})
+      ? std::make_optional(
+            SingleStreamDecoder::FrameMappings{
+                std::move(*custom_frame_mappings_pts),
+                std::move(*custom_frame_mappings_keyframe_indices),
+                std::move(*custom_frame_mappings_duration)})
       : std::nullopt;
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   videoDecoder->addVideoStream(

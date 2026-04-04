@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
+#include <map>
 #include <string_view>
 #include "Metadata.h"
 #include "StableABICompat.h"
@@ -33,6 +34,14 @@ int64_t getPtsOrDts(const UniqueAVFrame& avFrame) {
   return avFrame->pts == INT64_MIN ? avFrame->pkt_dts : avFrame->pts;
 }
 
+void populateInputOptionsDictionary(
+    UniqueAVDictionary& options,
+    const std::map<std::string, std::string>& inputOptions) {
+  for (const auto& [key, value] : inputOptions) {
+    av_dict_set(options.getAddress(), key.c_str(), value.c_str(), 0);
+  }
+}
+
 } // namespace
 
 // --------------------------------------------------------------------------
@@ -41,13 +50,16 @@ int64_t getPtsOrDts(const UniqueAVFrame& avFrame) {
 
 SingleStreamDecoder::SingleStreamDecoder(
     const std::string& videoFilePath,
-    SeekMode seekMode)
+    SeekMode seekMode,
+    const std::map<std::string, std::string>& inputOptions)
     : seekMode_(seekMode) {
   setFFmpegLogLevel();
 
   AVFormatContext* rawContext = nullptr;
-  int status =
-      avformat_open_input(&rawContext, videoFilePath.c_str(), nullptr, nullptr);
+  UniqueAVDictionary avInputOptions;
+  populateInputOptionsDictionary(avInputOptions, inputOptions);
+  int status = avformat_open_input(
+      &rawContext, videoFilePath.c_str(), nullptr, avInputOptions.getAddress());
   STD_TORCH_CHECK(
       status == 0,
       "Could not open input file: " + videoFilePath + " " +

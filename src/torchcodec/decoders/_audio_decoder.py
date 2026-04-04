@@ -7,6 +7,7 @@
 
 import io
 from pathlib import Path
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -37,6 +38,9 @@ class AudioDecoder:
         stream_index (int, optional): Specifies which stream in the file to decode samples from.
             Note that this index is absolute across all media types. If left unspecified, then
             the :term:`best stream` is used.
+        extra_options (dict[str, Any], optional): A dictionary of additional
+            FFmpeg options to pass when opening the source. This is useful for
+            tuning remote inputs and probing.
         sample_rate (int, optional): The desired output sample rate of the decoded samples.
             By default, the sample rate of the source is used.
         num_channels (int, optional): The desired number of channels of the decoded samples.
@@ -54,6 +58,7 @@ class AudioDecoder:
         source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
         *,
         stream_index: int | None = None,
+        extra_options: dict[str, Any] | None = None,
         sample_rate: int | None = None,
         num_channels: int | None = None,
     ):
@@ -66,6 +71,7 @@ class AudioDecoder:
         ) = create_audio_decoder(
             source=source,
             seek_mode="approximate",
+            extra_options=extra_options,
             stream_index=stream_index,
             sample_rate=sample_rate,
             num_channels=num_channels,
