@@ -22,19 +22,17 @@ from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchco
 
 
 expose_ffmpeg_dlls = nullcontext
-if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+if hasattr(os, "add_dll_directory") and (ffmpeg_dir := os.getenv("TORCHCODEC_FFMPEG_DIR")):
+    def expose_ffmpeg_dlls():
+        return os.add_dll_directory(str(ffmpeg_dir))
+elif sys.platform == "win32" and hasattr(os, "add_dll_directory"):
     # On windows we try to locate the FFmpeg DLLs and temporarily add them to
     # the DLL search path. This seems to be needed on some users machine, but
     # not on our CI. We don't know why.
-    if ffmpeg_dir := os.getenv("TORCHCODEC_FFMPEG_DIR"):
-        def expose_ffmpeg_dlls():
-            return os.add_dll_directory(str(ffmpeg_dir))
-    else:
-        if ffmpeg_path := shutil.which("ffmpeg"):
-
-            def expose_ffmpeg_dlls():  # noqa: F811
-                ffmpeg_dir = Path(ffmpeg_path).parent
-                return os.add_dll_directory(str(ffmpeg_dir))  # that's the actual CM
+    if ffmpeg_path := shutil.which("ffmpeg"):
+        def expose_ffmpeg_dlls():  # noqa: F811
+            ffmpeg_dir = Path(ffmpeg_path).parent
+            return os.add_dll_directory(str(ffmpeg_dir))  # that's the actual CM
 
 with expose_ffmpeg_dlls():
     ffmpeg_major_version, core_library_path, _pybind_ops = (
