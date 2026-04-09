@@ -180,10 +180,14 @@ FORCE_PUBLIC_VISIBILITY void validateDeviceInterface(
     const std::string& device,
     const std::string& variant);
 
-std::unique_ptr<DeviceInterface> createDeviceInterface(
+FORCE_PUBLIC_VISIBILITY std::unique_ptr<DeviceInterface> createDeviceInterface(
     const StableDevice& device,
     const std::string_view variant = "ffmpeg");
 
-torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
+// Note: FORCE_PUBLIC_VISIBILITY is needed because torch::stable types have
+// hidden visibility, which propagates to functions using them. These functions
+// must be exported for the CUDA library to call them from the core library.
+FORCE_PUBLIC_VISIBILITY torch::stable::Tensor rgbAVFrameToTensor(
+    const UniqueAVFrame& avFrame);
 
 } // namespace facebook::torchcodec

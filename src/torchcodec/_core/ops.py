@@ -17,6 +17,7 @@ from pathlib import Path
 import torch
 from torch.library import get_ctx, register_fake
 from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchcodec/src:internally_replaced_utils
+    load_torchcodec_cuda_library,
     load_torchcodec_shared_libraries,
 )
 
@@ -37,6 +38,16 @@ with expose_ffmpeg_dlls():
     ffmpeg_major_version, core_library_path, _pybind_ops = (
         load_torchcodec_shared_libraries()
     )
+
+_cuda_loaded = False
+
+
+def _ensure_cuda_loaded():
+    global _cuda_loaded
+    if _cuda_loaded:
+        return
+    load_torchcodec_cuda_library(ffmpeg_major_version)
+    _cuda_loaded = True
 
 
 # Note: We use disallow_in_graph because PyTorch does constant propagation of
@@ -88,6 +99,8 @@ def add_video_stream(
     custom_frame_mappings_pts: torch.Tensor | None = None
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None
     custom_frame_mappings_duration: torch.Tensor | None = None
+    if device.startswith("cuda"):
+        _ensure_cuda_loaded()
     if custom_frame_mappings is not None:
         (
             custom_frame_mappings_pts,

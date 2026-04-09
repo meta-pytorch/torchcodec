@@ -126,3 +126,14 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
         """
         f"{traceback_info}"
     )
+
+
+def load_torchcodec_cuda_library(ffmpeg_major_version: int) -> None:
+    """Load the CUDA extension library for the given FFmpeg major version.
+
+    This is called lazily when the user first requests a CUDA device.
+    Raises ImportError if the CUDA library is not available (e.g. CPU-only build).
+    """
+    cuda_library_name = f"libtorchcodec_core_cuda{ffmpeg_major_version}"
+    cuda_library_path = _get_extension_path(cuda_library_name)
+    torch.ops.load_library(cuda_library_path)

@@ -15,6 +15,18 @@ namespace facebook::torchcodec {
 // capacity == maximum number of cached instances allowed.
 constexpr int DEFAULT_NVDEC_CACHE_CAPACITY = 20;
 
+// Callback function types for the NVDEC cache. The CUDA library registers
+// these callbacks when it is loaded, allowing NVDECCacheConfig (which lives in
+// the core library without CUDA dependencies) to interact with NVDECCache
+// (which lives in the CUDA library).
+using EvictCacheEntriesFn = void (*)(int);
+using GetCacheSizeFn = int (*)(int);
+
+// Register callbacks from the CUDA library. Called once at CUDA .so load time.
+void registerNVDECCacheCallbacks(
+    EvictCacheEntriesFn evict,
+    GetCacheSizeFn getSize);
+
 // Set the capacity of the per-device NVDEC decoder cache.
 // capacity must be non-negative.
 void setNVDECCacheCapacity(int capacity);

@@ -7,12 +7,23 @@
 #include "CUDACommon.h"
 #include <torch/csrc/inductor/aoti_torch/c/shim.h>
 #include "Cache.h" // for PerGpuCache
+#include "NVDECCache.h"
+#include "NVDECCacheConfig.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
 
 namespace facebook::torchcodec {
 
 namespace {
+
+// Register NVDEC cache callbacks so that NVDECCacheConfig (in the core library)
+// can interact with NVDECCache (in this CUDA library).
+static bool g_nvdec_callbacks_registered = [] {
+  registerNVDECCacheCallbacks(
+      NVDECCache::evictExcessEntriesAcrossDevices,
+      NVDECCache::getCacheSizeForDevice);
+  return true;
+}();
 
 // Set to -1 to have an infinitely sized cache. Set it to 0 to disable caching.
 // Set to a positive number to have a cache of that size.
