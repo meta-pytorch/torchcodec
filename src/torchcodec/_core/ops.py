@@ -5,6 +5,8 @@
 # LICENSE file in the root directory of this source tree.
 
 
+import ctypes
+import glob
 import io
 import json
 import os
@@ -22,17 +24,33 @@ from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchco
 
 
 expose_ffmpeg_dlls = nullcontext
-if hasattr(os, "add_dll_directory") and (ffmpeg_dir := os.getenv("TORCHCODEC_FFMPEG_DIR")):
-    def expose_ffmpeg_dlls():
-        return os.add_dll_directory(str(ffmpeg_dir))
+if ffmpeg_dir := os.getenv("TORCHCODEC_FFMPEG_DIR"):
+    if hasattr(os, "add_dll_directory"):
+
+        def expose_ffmpeg_dlls():  # noqa: F811
+            return os.add_dll_directory(str(ffmpeg_dir))
+
+    else:
+        ffmpeg_library_glob = "*.dylib" if sys.platform == "darwin" else "*.so*"
+        ffmpeg_library_paths = glob.glob(os.path.join(ffmpeg_dir, ffmpeg_library_glob))
+        if not ffmpeg_library_paths:
+            raise RuntimeError(
+                "TORCHCODEC_FFMPEG_DIR is set, but no FFmpeg shared libraries "
+                f"were found in {repr(ffmpeg_dir)}."
+            )
+        for ffmpeg_library_path in ffmpeg_library_paths:
+            ctypes.CDLL(ffmpeg_library_path)
+
 elif sys.platform == "win32" and hasattr(os, "add_dll_directory"):
     # On windows we try to locate the FFmpeg DLLs and temporarily add them to
     # the DLL search path. This seems to be needed on some users machine, but
     # not on our CI. We don't know why.
     if ffmpeg_path := shutil.which("ffmpeg"):
+
         def expose_ffmpeg_dlls():  # noqa: F811
             ffmpeg_dir = Path(ffmpeg_path).parent
             return os.add_dll_directory(str(ffmpeg_dir))  # that's the actual CM
+
 
 with expose_ffmpeg_dlls():
     ffmpeg_major_version, core_library_path, _pybind_ops = (
