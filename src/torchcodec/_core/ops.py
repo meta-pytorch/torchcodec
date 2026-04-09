@@ -17,6 +17,7 @@ from pathlib import Path
 import torch
 from torch.library import get_ctx, register_fake
 from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchcodec/src:internally_replaced_utils
+    load_torchcodec_cuda_library,
     load_torchcodec_shared_libraries,
 )
 
@@ -37,6 +38,15 @@ with expose_ffmpeg_dlls():
     ffmpeg_major_version, core_library_path, _pybind_ops = (
         load_torchcodec_shared_libraries()
     )
+
+# Try to load the CUDA extension library. This will silently fail on
+# CPU-only machines or CPU-only builds, which is fine: the CUDA device
+# interfaces simply won't be registered, and users will get a clear error
+# if they try to use device="cuda".
+try:
+    load_torchcodec_cuda_library(ffmpeg_major_version)
+except Exception:
+    pass
 
 
 # Note: We use disallow_in_graph because PyTorch does constant propagation of

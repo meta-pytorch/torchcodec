@@ -11,11 +11,6 @@
 
 #include "c10/util/Exception.h"
 
-#ifdef USE_CUDA
-#include "CUDACommon.h"
-#include "NVDECCache.h"
-#endif
-
 namespace facebook::torchcodec {
 
 static std::atomic<int> g_nvdecCacheCapacity{DEFAULT_NVDEC_CACHE_CAPACITY};
@@ -29,6 +24,17 @@ static std::atomic<int> g_nvdecCacheCapacity{DEFAULT_NVDEC_CACHE_CAPACITY};
 // returnDecoder() or setNVDECCacheCapacity() call.
 static std::mutex g_nvdecCacheCapacityMutex;
 
+// Callbacks registered by the CUDA library at load time.
+static EvictCacheEntriesFn g_evictFn = nullptr;
+static GetCacheSizeFn g_getCacheSizeFn = nullptr;
+
+void registerNVDECCacheCallbacks(
+    EvictCacheEntriesFn evict,
+    GetCacheSizeFn getSize) {
+  g_evictFn = evict;
+  g_getCacheSizeFn = getSize;
+}
+
 void setNVDECCacheCapacity(int capacity) {
   TORCH_CHECK(
       capacity >= 0,
@@ -36,9 +42,9 @@ void setNVDECCacheCapacity(int capacity) {
       capacity);
   std::lock_guard<std::mutex> lock(g_nvdecCacheCapacityMutex);
   g_nvdecCacheCapacity.store(capacity);
-#ifdef USE_CUDA
-  NVDECCache::evictExcessEntriesAcrossDevices(capacity);
-#endif
+  if (g_evictFn) {
+    g_evictFn(capacity);
+  }
 }
 
 int getNVDECCacheCapacity() {
@@ -46,17 +52,10 @@ int getNVDECCacheCapacity() {
 }
 
 int getNVDECCacheSize([[maybe_unused]] int device_index) {
-#ifdef USE_CUDA
-  TORCH_CHECK(
-      device_index >= 0 && device_index < MAX_CUDA_GPUS,
-      "device_index must be between 0 and ",
-      MAX_CUDA_GPUS - 1,
-      ", got ",
-      device_index);
-  return NVDECCache::getCacheSizeForDevice(device_index);
-#else
+  if (g_getCacheSizeFn) {
+    return g_getCacheSizeFn(device_index);
+  }
   return 0;
-#endif
 }
 
 } // namespace facebook::torchcodec

@@ -64,7 +64,11 @@ struct AudioFramesOutput {
 // assume HWC tensors, since this is what FFmpeg natively handles. It's up to
 // the high-level decoding entry-points to permute that back to CHW, by calling
 // maybePermuteHWC2CHW().
-torch::stable::Tensor allocateEmptyHWCTensor(
+//
+// Note: FORCE_PUBLIC_VISIBILITY is needed because torch::stable types have
+// hidden visibility, which propagates to functions using them. This function
+// must be exported for the CUDA library to call it from the core library.
+FORCE_PUBLIC_VISIBILITY torch::stable::Tensor allocateEmptyHWCTensor(
     const FrameDims& frameDims,
     const StableDevice& device,
     std::optional<int> numFrames = std::nullopt);

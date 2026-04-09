@@ -48,8 +48,13 @@ function(make_torchcodec_sublibrary
     target_include_directories(${library_name}
         PRIVATE
         ./../../../
-        "${TORCH_INSTALL_PREFIX}/include"
         ${Python3_INCLUDE_DIRS}
+    )
+    # Torch headers are added as SYSTEM includes to suppress warnings from
+    # third-party headers (e.g. unused parameter in stableivalue_conversions.h).
+    target_include_directories(${library_name}
+        SYSTEM PRIVATE
+        "${TORCH_INSTALL_PREFIX}/include"
     )
     # Use fmt library in header-only mode (bundled with PyTorch): the fmt
     # library is bundled with PyTorch and the headers are available in
@@ -141,21 +146,24 @@ function(make_torchcodec_libraries
         NVDECCacheConfig.cpp
     )
 
-    if(ENABLE_CUDA)
-	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp)
-    endif()
+    # Filter out CUDA-specific libraries from ${TORCH_LIBRARIES} so that the
+    # core library can be loaded on CPU-only machines. CUDA code lives in the
+    # separate libtorchcodec_core_cudaN library.
+    #
+    # We can't use the `torch` imported CMake target directly because it
+    # transitively pulls in torch_cuda, c10_cuda, cudart, etc. via its
+    # INTERFACE_LINK_LIBRARIES. Instead, we link against the individual CPU
+    # library files by path.
+    find_library(_TORCH_LIB torch PATHS "${TORCH_INSTALL_PREFIX}/lib" REQUIRED)
+    find_library(_TORCH_CPU_LIB torch_cpu PATHS "${TORCH_INSTALL_PREFIX}/lib" REQUIRED)
+    find_library(_C10_LIB c10 PATHS "${TORCH_INSTALL_PREFIX}/lib" REQUIRED)
 
     set(core_library_dependencies
         ${ffmpeg_target}
-        ${TORCH_LIBRARIES}
+        ${_TORCH_LIB}
+        ${_TORCH_CPU_LIB}
+        ${_C10_LIB}
     )
-
-    if(ENABLE_CUDA)
-        list(APPEND core_library_dependencies
-            ${CUDA_nppi_LIBRARY}
-            ${CUDA_nppicc_LIBRARY}
-        )
-    endif()
 
     make_torchcodec_sublibrary(
         "${core_library_name}"
@@ -164,13 +172,37 @@ function(make_torchcodec_libraries
         "${core_library_dependencies}"
     )
 
+    # 1b. Optionally create libtorchcodec_core_cudaN.{ext}.
+    # CUDA code is in a separate library so that the core library does not
+    # link against CUDA libraries. This allows `import torchcodec` to succeed
+    # on CPU-only machines. The CUDA library is loaded lazily when the user
+    # requests device="cuda".
     if(ENABLE_CUDA)
-        # We define USE_CUDA to guard CUDA-specific code paths (e.g.
-        # NVDECCache usage in NVDECCacheConfig.cpp) and because some torch
-        # APIs like aoti_torch_get_current_cuda_stream are only exposed when
-        # USE_CUDA is defined.
+        set(core_cuda_library_name "libtorchcodec_core_cuda${ffmpeg_major_version}")
+        set(core_cuda_sources
+            CudaDeviceInterface.cpp
+            BetaCudaDeviceInterface.cpp
+            NVDECCache.cpp
+            CUDACommon.cpp
+            NVCUVIDRuntimeLoader.cpp
+        )
+        set(core_cuda_library_dependencies
+            ${core_library_name}
+            ${TORCH_LIBRARIES}
+            ${CUDA_nppi_LIBRARY}
+            ${CUDA_nppicc_LIBRARY}
+        )
+        make_torchcodec_sublibrary(
+            "${core_cuda_library_name}"
+            SHARED
+            "${core_cuda_sources}"
+            "${core_cuda_library_dependencies}"
+        )
+        # We define USE_CUDA because some torch APIs like
+        # aoti_torch_get_current_cuda_stream are only exposed when USE_CUDA
+        # is defined.
         # https://github.com/pytorch/pytorch/blob/98e36864e640023a716e058d894ea2d20e76e5f7/torch/csrc/inductor/aoti_torch/c/shim.h#L573-L602
-        target_compile_definitions(${core_library_name} PRIVATE USE_CUDA)
+        target_compile_definitions(${core_cuda_library_name} PRIVATE USE_CUDA)
     endif()
 
     # 2. Create libtorchcodec_custom_opsN.{ext}.
@@ -273,6 +305,13 @@ function(make_torchcodec_libraries
             PRIVATE
             "-Wno-attributes"
         )
+        if(ENABLE_CUDA)
+            target_compile_options(
+                ${core_cuda_library_name}
+                PRIVATE
+                "-Wno-attributes"
+            )
+        endif()
     endif()
 
     # The value we use here must match _PYBIND_OPS_MODULE_NAME in
@@ -303,6 +342,9 @@ function(make_torchcodec_libraries
         ${custom_ops_library_name}
         ${pybind_ops_library_name}
     )
+    if(ENABLE_CUDA)
+        list(APPEND all_libraries ${core_cuda_library_name})
+    endif()
 
     # The install step is invoked within CMakeBuild.build_library() in
     # setup.py and just copies the built files from the temp
