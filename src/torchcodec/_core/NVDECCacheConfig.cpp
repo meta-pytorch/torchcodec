@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "NVDECCacheConfig.h"
+#include "StableABICompat.h"
 
 #include <atomic>
 #include <mutex>
