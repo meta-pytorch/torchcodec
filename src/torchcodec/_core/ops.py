@@ -39,15 +39,14 @@ with expose_ffmpeg_dlls():
         load_torchcodec_shared_libraries()
     )
 
-_cuda_loaded = False
-
-
-def _ensure_cuda_loaded():
-    global _cuda_loaded
-    if _cuda_loaded:
-        return
+# Try to load the CUDA extension library. This will silently fail on
+# CPU-only machines or CPU-only builds, which is fine: the CUDA device
+# interfaces simply won't be registered, and users will get a clear error
+# if they try to use device="cuda".
+try:
     load_torchcodec_cuda_library(ffmpeg_major_version)
-    _cuda_loaded = True
+except Exception:
+    pass
 
 
 # Note: We use disallow_in_graph because PyTorch does constant propagation of
@@ -99,8 +98,6 @@ def add_video_stream(
     custom_frame_mappings_pts: torch.Tensor | None = None
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None
     custom_frame_mappings_duration: torch.Tensor | None = None
-    if device.startswith("cuda"):
-        _ensure_cuda_loaded()
     if custom_frame_mappings is not None:
         (
             custom_frame_mappings_pts,
