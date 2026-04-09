@@ -15,13 +15,8 @@ import pytest
 import torch
 import torchcodec
 
-from torchcodec._core import (
-    _add_video_stream,
-    add_video_stream,
-    create_from_file,
-    get_frame_at_index,
-    get_json_metadata,
-)
+from torchcodec._core import get_frame_at_index, get_json_metadata
+from torchcodec._core.ops import _add_video_stream, add_video_stream, create_from_file
 from torchcodec.decoders import VideoDecoder
 
 from torchvision.transforms import v2
@@ -34,6 +29,7 @@ from .utils import (
     H265_VIDEO,
     NASA_VIDEO,
     needs_cuda,
+    TEST_NON_ZERO_START as NON_32_ALIGNED_WIDTH_VIDEO,
     TEST_SRC_2_720P,
 )
 
@@ -152,6 +148,14 @@ class TestPublicVideoDecoderTransformOps:
                 NASA_VIDEO.path,
                 transforms=[torchcodec.transforms.Resize(size=(100, 100, 100))],
             )
+
+    def test_resize_non_32_aligned_input_width(self):
+        assert NON_32_ALIGNED_WIDTH_VIDEO.get_width() % 32 != 0
+        decoder = VideoDecoder(
+            NON_32_ALIGNED_WIDTH_VIDEO.path,
+            transforms=[torchcodec.transforms.Resize(size=(224, 224))],
+        )
+        assert decoder[0].shape == (3, 224, 224)
 
     @pytest.mark.parametrize(
         "height_scaling_factor, width_scaling_factor",

@@ -192,7 +192,8 @@ def _generic_time_based_sampler(
         # torch.rand() returns in [0, 1)
         # which ensures all clip starts are < sampling_range_end
         clip_start_seconds = (
-            torch.rand(num_clips) * sampling_range_width + sampling_range_start
+            torch.rand(num_clips, dtype=torch.float64) * sampling_range_width
+            + sampling_range_start
         )
     else:
         assert seconds_between_clip_starts is not None  # appease type-checker
@@ -200,6 +201,7 @@ def _generic_time_based_sampler(
             sampling_range_start,
             sampling_range_end,  # excluded
             seconds_between_clip_starts,
+            dtype=torch.float64,
         )
         # As mentioned in the docs, torch.arange may return values
         # equal to or above `end` because of floating precision errors.

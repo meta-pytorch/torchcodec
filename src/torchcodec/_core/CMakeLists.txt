@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 project(TorchCodec)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PYBIND11_FINDPYTHON ON)
@@ -44,7 +44,7 @@ function(make_torchcodec_sublibrary
     library_dependencies)
 
     add_library(${library_name} ${type} ${sources})
-    set_target_properties(${library_name} PROPERTIES CXX_STANDARD 17)
+    set_target_properties(${library_name} PROPERTIES CXX_STANDARD 20)
     target_include_directories(${library_name}
         PRIVATE
         ./../../../
@@ -139,6 +139,7 @@ function(make_torchcodec_libraries
         Transform.cpp
         Metadata.cpp
         SwScale.cpp
+        WavDecoder.cpp
         NVDECCacheConfig.cpp
     )
 

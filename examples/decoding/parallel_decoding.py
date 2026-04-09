@@ -43,6 +43,7 @@ from joblib import Parallel, delayed, cpu_count
 from torchcodec.decoders import VideoDecoder
 
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_parallel.jpg'
 def bench(f, *args, num_exp=3, warmup=1, **kwargs):
     """Benchmark a function by running it multiple times and measuring execution time."""
     for _ in range(warmup):
