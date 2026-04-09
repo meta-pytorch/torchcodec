@@ -27,7 +27,7 @@ expose_ffmpeg_dlls = nullcontext
 if ffmpeg_dir := os.getenv("TORCHCODEC_FFMPEG_DIR"):
     if hasattr(os, "add_dll_directory"):
 
-        def expose_ffmpeg_dlls():  # noqa: F811
+        def expose_ffmpeg_dlls():  # type: ignore[no-redef]  # noqa: F811
             return os.add_dll_directory(str(ffmpeg_dir))
 
     else:
@@ -47,8 +47,8 @@ elif sys.platform == "win32" and hasattr(os, "add_dll_directory"):
     # not on our CI. We don't know why.
     if ffmpeg_path := shutil.which("ffmpeg"):
 
-        def expose_ffmpeg_dlls():  # noqa: F811
-            ffmpeg_dir = Path(ffmpeg_path).parent
+        def expose_ffmpeg_dlls():  # type: ignore[no-redef]  # noqa: F811
+            ffmpeg_dir = Path(ffmpeg_path).parent.absolute()
             return os.add_dll_directory(str(ffmpeg_dir))  # that's the actual CM
 
 
