@@ -20,6 +20,9 @@ defaults:
   run:
     shell: bash -l -eo pipefail {0}
 
+env:
+  ARM_BUILD_FFMPEG_VERSION: "7.0.1"
+
 jobs:
   build-paddlecodec-wheel-arm:
     # If your repo does not have GitHub-hosted ARM runners enabled,
@@ -59,10 +62,17 @@ jobs:
         run: |
           bash packaging/pre_build_script.sh
 
+      - name: Install build-time FFmpeg
+        run: |
+          conda install "ffmpeg=${{ env.ARM_BUILD_FFMPEG_VERSION }}" pkg-config -c conda-forge -y
+          ffmpeg -version
+          pkg-config --modversion libavcodec
+
       - name: Build wheel
         run: |
-          # Use pre-built FFmpeg from PyTorch S3
-          export BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1
+          # Linux ARM does not have pre-built multi-version FFmpeg tarballs in the
+          # upstream S3 bucket, so build against the native conda FFmpeg install.
+          export I_CONFIRM_THIS_IS_NOT_A_LICENSE_VIOLATION=1
           export TORCHCODEC_CMAKE_BUILD_DIR=$(pwd)/build_cmake
           python -m build --wheel -vvv --no-isolation
 
@@ -76,15 +86,15 @@ jobs:
           unzip -j dist/*.whl "torchcodec/*.so" -d temp_libs || true
 
           # 2. Prepare LD_LIBRARY_PATH
-          # FFmpeg libraries
-          FFMPEG_LIB_PATHS=$(find $(pwd)/build_cmake/_deps -type d -name "lib" | tr '\n' ':')
+          # FFmpeg libraries from the active conda environment
+          FFMPEG_LIB_PATHS="${CONDA_PREFIX}/lib"
           # PaddlePaddle libraries
           PADDLE_PATH=$(python -c "import paddle; print(paddle.__path__[0])")
           PADDLE_LIB_PATHS="$PADDLE_PATH/base:$PADDLE_PATH/libs"
           # Wheel internal libraries
           INTERNAL_LIB_PATH=$(pwd)/temp_libs
 
-          export LD_LIBRARY_PATH=${FFMPEG_LIB_PATHS}${PADDLE_LIB_PATHS}:${INTERNAL_LIB_PATH}:${LD_LIBRARY_PATH}
+          export LD_LIBRARY_PATH=${FFMPEG_LIB_PATHS}:${PADDLE_LIB_PATHS}:${INTERNAL_LIB_PATH}:${LD_LIBRARY_PATH}
 
           # 3. Repair wheel with auditwheel
           # We exclude all external libraries because we want to rely on system libraries (like FFmpeg)
@@ -121,10 +131,9 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
-        # FFmpeg 8.0 depends on libopenvino.so.2520, PaddlePaddle CPU depends on libopenvino.so.2500
-        # There has some conflict causing test failures, but it works with PaddlePaddle GPU.
-        # We skip FFmpeg 8.0 tests for PaddlePaddle CPU builds for now.
-        ffmpeg-version: ["4.4.2", "5.1.2", "6.1.1", "7.0.1"]
+        # ARM wheels currently build against a single native FFmpeg major because
+        # the pre-built multi-version Linux FFmpeg bundle is only published for x86_64.
+        ffmpeg-version: ["7.0.1"]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
