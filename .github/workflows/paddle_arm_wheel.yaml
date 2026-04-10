@@ -127,6 +127,9 @@ jobs:
   test-paddlecodec-wheel-arm:
     needs: build-paddlecodec-wheel-arm
     runs-on: ubuntu-24.04-arm
+    env:
+      PADDLECODEC_TEST_VIDEO: test/resources/testsrc2.mp4
+      PADDLECODEC_TEST_NUM_FRAMES: "8"
     strategy:
       fail-fast: false
       matrix:

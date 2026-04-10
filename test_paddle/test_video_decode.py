@@ -10,6 +10,8 @@ import os
 import httpx
 import numpy as np
 
+DEFAULT_TEST_VIDEO = "https://paddlenlp.bj.bcebos.com/datasets/paddlemix/demo_video/example_video.mp4"
+
 
 @dataclass
 class VideoMetadata(Mapping):
@@ -168,14 +170,48 @@ def load_video(
     return video, metadata
 
 
+def _get_optional_int_env(name: str) -> Optional[int]:
+    value = os.getenv(name)
+    return int(value) if value else None
+
+
+def _assert_video_decode_smoke(
+    video,
+    metadata: VideoMetadata,
+    expected_num_frames: Optional[int] = None,
+):
+    assert video.ndim == 4
+    assert len(metadata.frames_indices) == video.shape[0]
+    if expected_num_frames is not None:
+        assert video.shape[0] == expected_num_frames
+    assert metadata.total_num_frames >= video.shape[0] >= 1
+    assert metadata.fps is not None and metadata.fps > 0
+    assert metadata.width is not None and metadata.width > 0
+    assert metadata.height is not None and metadata.height > 0
+    assert metadata.duration is not None and metadata.duration > 0
+    assert tuple(video.shape[-2:]) == (metadata.height, metadata.width)
+    assert video.shape[-3] == 3
+    assert video.to(paddle.int64).sum().item() > 0
+
+
 def test_video_decode():
-    url = "https://paddlenlp.bj.bcebos.com/datasets/paddlemix/demo_video/example_video.mp4"
-    video, metadata = load_video(url, backend="torchcodec")
-    assert video.to(paddle.int64).sum().item() == 247759890390
-    assert metadata.total_num_frames == 263
-    assert metadata.fps == pytest.approx(29.99418249715141)
-    assert metadata.width == 1920
-    assert metadata.height == 1080
-    assert metadata.duration == pytest.approx(8.768367)
-    for i, idx in enumerate(metadata.frames_indices):
-        assert idx == i
+    video_path = os.getenv("PADDLECODEC_TEST_VIDEO", DEFAULT_TEST_VIDEO)
+    num_frames = _get_optional_int_env("PADDLECODEC_TEST_NUM_FRAMES")
+
+    video, metadata = load_video(
+        video_path,
+        backend="torchcodec",
+        num_frames=num_frames,
+    )
+
+    if video_path == DEFAULT_TEST_VIDEO and num_frames is None:
+        assert video.to(paddle.int64).sum().item() == 247759890390
+        assert metadata.total_num_frames == 263
+        assert metadata.fps == pytest.approx(29.99418249715141)
+        assert metadata.width == 1920
+        assert metadata.height == 1080
+        assert metadata.duration == pytest.approx(8.768367)
+        for i, idx in enumerate(metadata.frames_indices):
+            assert idx == i
+    else:
+        _assert_video_decode_smoke(video, metadata, expected_num_frames=num_frames)
