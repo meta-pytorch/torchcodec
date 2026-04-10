@@ -1,0 +1,219 @@
+name: Build ARM Wheels for Paddle
+
+on:
+  push:
+    branches: [paddle]
+    tags: ["v*"]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref_name }}-${{ github.ref_type == 'branch' && github.sha }}-${{ github.event_name == 'workflow_dispatch' }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: write
+
+defaults:
+  run:
+    shell: bash -l -eo pipefail {0}
+
+jobs:
+  build-paddlecodec-wheel-arm:
+    # If your repo does not have GitHub-hosted ARM runners enabled,
+    # replace this with self-hosted labels, e.g. [self-hosted, Linux, ARM64].
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: quay.io/pypa/manylinux_2_28_aarch64
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup conda environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          miniforge-version: latest
+          activate-environment: build
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build wheel setuptools
+
+      - name: Install PaddlePaddle nightly
+        run: |
+          pip install --pre paddlepaddle -i https://www.paddlepaddle.org.cn/packages/nightly/cpu/
+
+      - name: Run pre-build script
+        run: |
+          bash packaging/pre_build_script.sh
+
+      - name: Build wheel
+        run: |
+          # Use pre-built FFmpeg from PyTorch S3
+          export BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1
+          export TORCHCODEC_CMAKE_BUILD_DIR=$(pwd)/build_cmake
+          python -m build --wheel -vvv --no-isolation
+
+      - name: Repair wheel
+        run: |
+          pip install auditwheel
+
+          # 1. Extract internal libraries from the wheel to a temporary directory
+          # This allows auditwheel to find them when checking dependencies
+          mkdir -p temp_libs
+          unzip -j dist/*.whl "torchcodec/*.so" -d temp_libs || true
+
+          # 2. Prepare LD_LIBRARY_PATH
+          # FFmpeg libraries
+          FFMPEG_LIB_PATHS=$(find $(pwd)/build_cmake/_deps -type d -name "lib" | tr '\n' ':')
+          # PaddlePaddle libraries
+          PADDLE_PATH=$(python -c "import paddle; print(paddle.__path__[0])")
+          PADDLE_LIB_PATHS="$PADDLE_PATH/base:$PADDLE_PATH/libs"
+          # Wheel internal libraries
+          INTERNAL_LIB_PATH=$(pwd)/temp_libs
+
+          export LD_LIBRARY_PATH=${FFMPEG_LIB_PATHS}${PADDLE_LIB_PATHS}:${INTERNAL_LIB_PATH}:${LD_LIBRARY_PATH}
+
+          # 3. Repair wheel with auditwheel
+          # We exclude all external libraries because we want to rely on system libraries (like FFmpeg)
+          # or libraries provided by other packages (like PaddlePaddle).
+          # auditwheel 6.1.0+ supports wildcards in --exclude.
+          auditwheel repair dist/*.whl --plat manylinux_2_28_aarch64 -w wheelhouse/ --exclude "*"
+
+          # Cleanup
+          rm -rf temp_libs
+          rm dist/*.whl
+          mv wheelhouse/*.whl dist/
+          rmdir wheelhouse
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: paddlecodec-wheel-linux-arm64-py${{ matrix.python-version }}
+          path: dist/*.whl
+
+      - name: Run post-build script
+        run: |
+          bash packaging/post_build_script.sh
+
+      - name: List wheel contents
+        run: |
+          wheel_path=$(find dist -type f -name "*.whl")
+          echo "Wheel path: $wheel_path"
+          unzip -l $wheel_path
+
+  test-paddlecodec-wheel-arm:
+    needs: build-paddlecodec-wheel-arm
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        # FFmpeg 8.0 depends on libopenvino.so.2520, PaddlePaddle CPU depends on libopenvino.so.2500
+        # There has some conflict causing test failures, but it works with PaddlePaddle GPU.
+        # We skip FFmpeg 8.0 tests for PaddlePaddle CPU builds for now.
+        ffmpeg-version: ["4.4.2", "5.1.2", "6.1.1", "7.0.1"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: paddlecodec-wheel-linux-arm64-py${{ matrix.python-version }}
+          path: dist/
+
+      - name: Install FFmpeg via conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          miniforge-version: latest
+          activate-environment: test
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install FFmpeg from conda-forge
+        run: |
+          conda install "ffmpeg=${{ matrix.ffmpeg-version }}" -c conda-forge -y
+          ffmpeg -version
+
+      - name: Install PaddlePaddle nightly in conda env
+        run: |
+          pip install --pre paddlepaddle -i https://www.paddlepaddle.org.cn/packages/nightly/cpu/
+
+      - name: Install paddlecodec from wheel
+        run: |
+          wheel_path=$(find dist -type f -name "*.whl")
+          echo "Installing $wheel_path"
+          pip install $wheel_path -vvv
+
+      - name: Install test dependencies
+        run: |
+          pip install numpy pytest pillow
+
+      - name: Delete src folder
+        run: |
+          # Delete src/ to ensure we're testing the installed wheel, not source code
+          rm -rf src/
+          ls -la
+
+      - name: Run tests
+        run: |
+          pytest --override-ini="addopts=-v" -s test_paddle
+
+  publish-pypi-arm:
+    runs-on: ubuntu-latest
+    name: Publish ARM Wheels to PyPI
+    if: "startsWith(github.ref, 'refs/tags/')"
+    needs:
+      - test-paddlecodec-wheel-arm
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Retrieve ARM release distributions
+        uses: actions/download-artifact@v6
+        with:
+          pattern: paddlecodec-wheel-linux-arm64-*
+          path: dist/
+          merge-multiple: true
+
+      - name: Publish ARM release distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-release-arm:
+    runs-on: ubuntu-latest
+    name: Publish ARM Wheels to GitHub
+    if: "startsWith(github.ref, 'refs/tags/')"
+    needs:
+      - test-paddlecodec-wheel-arm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: paddlecodec-wheel-linux-arm64-*
+          path: dist/
+          merge-multiple: true
+      - name: Publish ARM wheels to GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: dist/*
+          tag_name: ${{ github.ref_name }}
