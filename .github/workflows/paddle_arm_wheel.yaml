@@ -29,7 +29,7 @@ jobs:
     # replace this with self-hosted labels, e.g. [self-hosted, Linux, ARM64].
     runs-on: ubuntu-24.04-arm
     container:
-      image: quay.io/pypa/manylinux_2_28_aarch64
+      image: pytorch/manylinux2_28_aarch64-builder:cpu-aarch64
     strategy:
       fail-fast: false
       matrix:
