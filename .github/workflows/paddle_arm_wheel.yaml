@@ -92,7 +92,7 @@ jobs:
   build:
     needs: generate-matrix
     name: Build and Upload ARM wheel
-    runs-on: linux.arm64.2xlarge
+    runs-on: ubuntu-24.04-arm
     container:
       image: pytorch/manylinux2_28_aarch64-builder:cpu-aarch64
     strategy:
@@ -186,7 +186,7 @@ jobs:
   install-and-test:
     needs: [generate-matrix, prepare-test-video, build]
     name: Install and test ARM wheel
-    runs-on: linux.arm64.2xlarge
+    runs-on: ubuntu-24.04-arm
     container:
       image: pytorch/manylinux2_28_aarch64-builder:cpu-aarch64
     env:
