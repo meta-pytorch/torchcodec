@@ -48,6 +48,33 @@ jobs:
         mkdir -p "${artifact_dir}"
         mv ffmpeg.tar.gz "${artifact_dir}/${FFMPEG_VERSION}.tar.gz"
 
+  LGPL-Linux-aarch64:
+    strategy:
+      fail-fast: false
+      matrix:
+        ffmpeg-version: ["4.4.4", "5.1.4", "6.1.1", "7.0.1", "8.0"]
+    uses: pytorch/test-infra/.github/workflows/linux_job_v2.yml@main
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      job-name: Build
+      upload-artifact: ffmpeg-lgpl-linux_aarch64-${{ matrix.ffmpeg-version }}
+      repository: meta-pytorch/torchcodec
+      runner: linux.arm64.2xlarge
+      docker-image: pytorch/manylinux2_28_aarch64-builder:cpu-aarch64
+      script: |
+        export FFMPEG_VERSION="${{ matrix.ffmpeg-version }}"
+        export FFMPEG_ROOT="${PWD}/ffmpeg"
+
+        packaging/build_ffmpeg.sh
+
+        tar -cf ffmpeg.tar.gz ffmpeg/include ffmpeg/lib
+
+        artifact_dir="${RUNNER_ARTIFACT_DIR}/$(date +%Y-%m-%d)/linux_aarch64"
+        mkdir -p "${artifact_dir}"
+        mv ffmpeg.tar.gz "${artifact_dir}/${FFMPEG_VERSION}.tar.gz"
+
   LGPL-macOS:
     strategy:
       fail-fast: false

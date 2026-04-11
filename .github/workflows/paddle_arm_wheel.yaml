@@ -21,19 +21,36 @@ defaults:
     shell: bash -l -eo pipefail {0}
 
 env:
-  ARM_BUILD_FFMPEG_VERSION: "7.0.1"
+  ARM_TEST_PYTHON_VERSION: "3.10"
 
 jobs:
-  build-paddlecodec-wheel-arm:
+  generate-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      build-matrix: ${{ steps.set-matrix.outputs.build-matrix }}
+      test-matrix: ${{ steps.set-matrix.outputs.test-matrix }}
+    steps:
+      - name: Generate ARM build and test matrix
+        id: set-matrix
+        run: |
+          printf '%s\n' \
+            'build-matrix={"python-version":["3.9","3.10","3.11","3.12","3.13"]}' \
+            >> "$GITHUB_OUTPUT"
+          printf '%s\n' \
+            'test-matrix={"include":[{"python-version":"'"${ARM_TEST_PYTHON_VERSION}"'","ffmpeg-version":"4.4.2"},{"python-version":"'"${ARM_TEST_PYTHON_VERSION}"'","ffmpeg-version":"5.1.2"},{"python-version":"'"${ARM_TEST_PYTHON_VERSION}"'","ffmpeg-version":"6.1.1"},{"python-version":"'"${ARM_TEST_PYTHON_VERSION}"'","ffmpeg-version":"7.0.1"}]}' \
+            >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: generate-matrix
     # If your repo does not have GitHub-hosted ARM runners enabled,
     # replace this with self-hosted labels, e.g. [self-hosted, Linux, ARM64].
+    name: Build and Upload ARM wheel
     runs-on: ubuntu-24.04-arm
     container:
       image: pytorch/manylinux2_28_aarch64-builder:cpu-aarch64
     strategy:
       fail-fast: false
-      matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.build-matrix) }}
     permissions:
       id-token: write
       contents: read
@@ -62,16 +79,11 @@ jobs:
         run: |
           bash packaging/pre_build_script.sh
 
-      - name: Install build-time FFmpeg
-        run: |
-          conda install "ffmpeg=${{ env.ARM_BUILD_FFMPEG_VERSION }}" pkg-config -c conda-forge -y
-          ffmpeg -version
-          pkg-config --modversion libavcodec
-
       - name: Build wheel
         run: |
-          # Linux ARM does not have pre-built multi-version FFmpeg tarballs in the
-          # upstream S3 bucket, so build against the native conda FFmpeg install.
+          # Match upstream's Linux workflow and build the ARM wheel against the
+          # pre-built non-GPL FFmpeg bundles published on S3.
+          export BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1
           export I_CONFIRM_THIS_IS_NOT_A_LICENSE_VIOLATION=1
           export TORCHCODEC_CMAKE_BUILD_DIR=$(pwd)/build_cmake
           python -m build --wheel -vvv --no-isolation
@@ -86,8 +98,8 @@ jobs:
           unzip -j dist/*.whl "torchcodec/*.so" -d temp_libs || true
 
           # 2. Prepare LD_LIBRARY_PATH
-          # FFmpeg libraries from the active conda environment
-          FFMPEG_LIB_PATHS="${CONDA_PREFIX}/lib"
+          # FFmpeg libraries fetched from the build-time S3 bundles
+          FFMPEG_LIB_PATHS=$(find "$(pwd)/build_cmake/_deps" -type d -name "lib" -print | paste -sd: -)
           # PaddlePaddle libraries
           PADDLE_PATH=$(python -c "import paddle; print(paddle.__path__[0])")
           PADDLE_LIB_PATHS="$PADDLE_PATH/base:$PADDLE_PATH/libs"
@@ -124,27 +136,21 @@ jobs:
           echo "Wheel path: $wheel_path"
           unzip -l $wheel_path
 
-  test-paddlecodec-wheel-arm:
-    needs: build-paddlecodec-wheel-arm
+  install-and-test:
+    needs: [generate-matrix, build]
+    name: Install and test ARM wheel
     runs-on: ubuntu-24.04-arm
     env:
       PADDLECODEC_TEST_VIDEO: test/resources/testsrc2.mp4
       PADDLECODEC_TEST_NUM_FRAMES: "8"
     strategy:
       fail-fast: false
-      matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
-        # ARM wheels currently build against a single native FFmpeg major because
-        # the pre-built multi-version Linux FFmpeg bundle is only published for x86_64.
-        ffmpeg-version: ["7.0.1"]
+      # Match upstream's staged Linux wheel flow: build all Python variants, then
+      # smoke-test one representative ARM wheel across multiple runtime FFmpeg majors.
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.test-matrix) }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
 
       - name: Download wheel artifact
         uses: actions/download-artifact@v4
@@ -194,7 +200,7 @@ jobs:
     name: Publish ARM Wheels to PyPI
     if: "startsWith(github.ref, 'refs/tags/')"
     needs:
-      - test-paddlecodec-wheel-arm
+      - install-and-test
     permissions:
       id-token: write
 
@@ -214,7 +220,7 @@ jobs:
     name: Publish ARM Wheels to GitHub
     if: "startsWith(github.ref, 'refs/tags/')"
     needs:
-      - test-paddlecodec-wheel-arm
+      - install-and-test
     permissions:
       contents: write
     steps:
