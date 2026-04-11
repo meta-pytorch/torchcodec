@@ -20,6 +20,7 @@ import torch
 from IPython.display import Audio as play_audio
 
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_audio2.jpg'
 def make_sinewave() -> tuple[torch.Tensor, int]:
     freq_A = 440  # Hz
     sample_rate = 16000  # Hz

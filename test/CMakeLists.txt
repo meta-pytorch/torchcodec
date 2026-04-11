@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 include(CMakePrintHelpers)
 project(TorchCodecTests)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED)
 
 find_package(Torch REQUIRED)
@@ -34,3 +34,22 @@ target_link_libraries(
 
 include(GoogleTest)
 gtest_discover_tests(VideoDecoderTest)
+
+
+add_executable(
+  MetadataTest
+  MetadataTest.cpp
+)
+
+target_include_directories(MetadataTest SYSTEM PRIVATE ${TORCH_INCLUDE_DIRS})
+target_include_directories(MetadataTest SYSTEM PRIVATE ${libav_include_dirs})
+target_include_directories(MetadataTest PRIVATE ../)
+
+target_link_libraries(
+  MetadataTest
+  ${libtorchcodec_library_name}
+  ${libtorchcodec_custom_ops_name}
+  GTest::gtest_main
+)
+
+gtest_discover_tests(MetadataTest)

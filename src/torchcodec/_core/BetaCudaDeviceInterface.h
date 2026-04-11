@@ -15,27 +15,27 @@
 
 #pragma once
 
-#include "src/torchcodec/_core/CUDACommon.h"
-#include "src/torchcodec/_core/Cache.h"
-#include "src/torchcodec/_core/DeviceInterface.h"
-#include "src/torchcodec/_core/FFMPEGCommon.h"
-#include "src/torchcodec/_core/NVDECCache.h"
+#include "CUDACommon.h"
+#include "Cache.h"
+#include "DeviceInterface.h"
+#include "FFMPEGCommon.h"
+#include "NVDECCache.h"
+#include "Transform.h"
 
-#include <map>
 #include <memory>
 #include <mutex>
 #include <queue>
 #include <unordered_map>
 #include <vector>
 
-#include "src/torchcodec/_core/nvcuvid_include/cuviddec.h"
-#include "src/torchcodec/_core/nvcuvid_include/nvcuvid.h"
+#include "nvcuvid_include/cuviddec.h"
+#include "nvcuvid_include/nvcuvid.h"
 
 namespace facebook::torchcodec {
 
 class BetaCudaDeviceInterface : public DeviceInterface {
  public:
-  explicit BetaCudaDeviceInterface(const torch::Device& device);
+  explicit BetaCudaDeviceInterface(const StableDevice& device);
   virtual ~BetaCudaDeviceInterface();
 
   void initialize(
@@ -46,8 +46,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor =
-          std::nullopt) override;
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor) override;
 
   int sendPacket(ReferenceAVPacket& packet) override;
   int sendEOFPacket() override;
@@ -83,6 +82,10 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
 
+  void applyRotation(
+      FrameOutput& frameOutput,
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor);
+
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;
   CUVIDEOFORMAT videoFormat_ = {};
@@ -102,7 +105,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   std::unique_ptr<DeviceInterface> cpuFallback_;
   bool nvcuvidAvailable_ = false;
   UniqueSwsContext swsContext_;
-  SwsFrameContext prevSwsFrameContext_;
+
+  SwsConfig prevSwsConfig_;
+  Rotation rotation_ = Rotation::NONE;
 };
 
 } // namespace facebook::torchcodec

@@ -558,12 +558,12 @@ def test_time_based_sampler_errors(sampler):
     decoder = VideoDecoder(NASA_VIDEO.path)
 
     with pytest.raises(
-        ValueError, match=re.escape("sampling_range_start (-1) must be at least 0.0")
+        ValueError, match=re.escape("sampling_range_start (-1) must be at least 0")
     ):
         sampler(decoder, sampling_range_start=-1)
 
     with pytest.raises(
-        ValueError, match=re.escape("sampling_range_end (-1) must be at least 0.0")
+        ValueError, match=re.escape("sampling_range_end (-1) must be at least 0")
     ):
         sampler(decoder, sampling_range_end=-1)
 
@@ -595,6 +595,7 @@ def test_time_based_sampler_errors(sampler):
         decoder.metadata.num_frames_from_header = (
             None  # Set to none to prevent fallback calculation
         )
+        decoder.metadata.end_stream_seconds = None
         with pytest.raises(
             ValueError, match="Could not infer stream end from video metadata"
         ):
@@ -603,6 +604,7 @@ def test_time_based_sampler_errors(sampler):
     with restore_metadata():
         decoder.metadata.end_stream_seconds_from_content = None
         decoder.metadata.average_fps_from_header = None
+        decoder.metadata.average_fps = None
         with pytest.raises(ValueError, match="Could not infer average fps"):
             sampler(decoder)
 

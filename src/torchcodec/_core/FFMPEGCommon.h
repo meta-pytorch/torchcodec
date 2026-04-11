@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include <torch/types.h>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -104,6 +104,39 @@ using UniqueAVBufferSrcParameters = std::unique_ptr<
     AVBufferSrcParameters,
     Deleterv<AVBufferSrcParameters, void, av_freep>>;
 
+// Wrapper class for AVDictionary, similar to unique_ptr, to support FFmpeg's
+// functions that require a double-pointer to AVDictionary, such as av_dict_set.
+// https://ffmpeg.org/doxygen/trunk/group__lavu__dict.html#ga8d9c2de72b310cef8e6a28c9cd3acbbe
+class UniqueAVDictionary {
+ private:
+  AVDictionary* dict_ = nullptr;
+
+ public:
+  UniqueAVDictionary() = default;
+
+  ~UniqueAVDictionary() {
+    if (dict_) {
+      av_dict_free(&dict_);
+    }
+  }
+
+  // Explicitly delete copy operator similar to unique_ptr
+  UniqueAVDictionary(const UniqueAVDictionary&) = delete;
+  UniqueAVDictionary& operator=(const UniqueAVDictionary&) = delete;
+  // Explicitly delete move operator, as it is not needed at this time.
+  UniqueAVDictionary(UniqueAVDictionary&&) = delete;
+  UniqueAVDictionary& operator=(UniqueAVDictionary&&) = delete;
+
+  // FFmpeg's AVDictionary functions require a AVDictionary** argument.
+  // However, unique_ptr's get() function returns a **temporary** pointer to the
+  // object, so we cannot get a pointer to the internal AVDictionary pointer.
+  // As a result, we implement getAddress() to return a pointer to the internal
+  // AVDictionary pointer.
+  AVDictionary** getAddress() {
+    return &dict_;
+  }
+};
+
 // These 2 classes share the same underlying AVPacket object. They are meant to
 // be used in tandem, like so:
 //
@@ -181,6 +214,7 @@ const AVPixelFormat* getSupportedPixelFormats(const AVCodec& avCodec);
 
 int getNumChannels(const UniqueAVFrame& avFrame);
 int getNumChannels(const SharedAVCodecContext& avCodecContext);
+int getNumChannels(const AVCodecParameters* codecpar);
 
 void setDefaultChannelLayout(
     UniqueAVCodecContext& avCodecContext,
@@ -247,34 +281,41 @@ int64_t computeSafeDuration(
     const AVRational& frameRate,
     const AVRational& timeBase);
 
-AVFilterContext* createBuffersinkFilter(
-    AVFilterGraph* filterGraph,
-    enum AVPixelFormat outputFormat);
+// Extracts the rotation angle in degrees from the stream's display matrix
+// side data. The display matrix is used to specify how the video should be
+// rotated for correct display.
+std::optional<double> getRotationFromStream(const AVStream* avStream);
 
-struct SwsFrameContext {
+AVFilterContext* createAVFilterContextWithOptions(
+    AVFilterGraph* filterGraph,
+    const AVFilter* buffer,
+    const enum AVPixelFormat outputFormat);
+
+struct SwsConfig {
   int inputWidth = 0;
   int inputHeight = 0;
   AVPixelFormat inputFormat = AV_PIX_FMT_NONE;
+  AVColorSpace inputColorspace = AVCOL_SPC_UNSPECIFIED;
   int outputWidth = 0;
   int outputHeight = 0;
 
-  SwsFrameContext() = default;
-  SwsFrameContext(
+  SwsConfig() = default;
+  SwsConfig(
       int inputWidth,
       int inputHeight,
       AVPixelFormat inputFormat,
+      AVColorSpace inputColorspace,
       int outputWidth,
       int outputHeight);
 
-  bool operator==(const SwsFrameContext& other) const;
-  bool operator!=(const SwsFrameContext& other) const;
+  bool operator==(const SwsConfig& other) const;
+  bool operator!=(const SwsConfig& other) const;
 };
 
 // Utility functions for swscale context management
 UniqueSwsContext createSwsContext(
-    const SwsFrameContext& swsFrameContext,
-    AVColorSpace colorspace,
-    AVPixelFormat outputFormat = AV_PIX_FMT_RGB24,
-    int swsFlags = SWS_BILINEAR);
+    const SwsConfig& swsConfig,
+    AVPixelFormat outputFormat,
+    int swsFlags);
 
 } // namespace facebook::torchcodec

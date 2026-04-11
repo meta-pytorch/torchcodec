@@ -6,19 +6,21 @@
 
 #pragma once
 
-#include "src/torchcodec/_core/CUDACommon.h"
-#include "src/torchcodec/_core/DeviceInterface.h"
-#include "src/torchcodec/_core/FilterGraph.h"
+#include "CUDACommon.h"
+#include "DeviceInterface.h"
+#include "FilterGraph.h"
 
 namespace facebook::torchcodec {
 
 class CudaDeviceInterface : public DeviceInterface {
  public:
-  CudaDeviceInterface(const torch::Device& device);
+  CudaDeviceInterface(const StableDevice& device);
 
   virtual ~CudaDeviceInterface();
 
-  std::optional<const AVCodec*> findCodec(const AVCodecID& codecId) override;
+  std::optional<const AVCodec*> findCodec(
+      const AVCodecID& codecId,
+      bool isDecoder = true) override;
 
   void initialize(
       const AVStream* avStream,
@@ -37,10 +39,17 @@ class CudaDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor =
-          std::nullopt) override;
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor) override;
 
   std::string getDetails() override;
+
+  UniqueAVFrame convertTensorToAVFrameForEncoding(
+      const torch::stable::Tensor& tensor,
+      int frameIndex,
+      AVCodecContext* codecContext) override;
+
+  void setupHardwareFrameContextForEncoding(
+      AVCodecContext* codecContext) override;
 
  private:
   // Our CUDA decoding code assumes NV12 format. In order to handle other
@@ -60,10 +69,11 @@ class CudaDeviceInterface : public DeviceInterface {
 
   // This filtergraph instance is only used for NV12 format conversion in
   // maybeConvertAVFrameToNV12().
-  std::unique_ptr<FiltersContext> nv12ConversionContext_;
+  std::unique_ptr<FiltersConfig> nv12ConversionConfig_;
   std::unique_ptr<FilterGraph> nv12Conversion_;
 
   bool usingCPUFallback_ = false;
+  bool hasDecodedFrame_ = false;
 };
 
 } // namespace facebook::torchcodec

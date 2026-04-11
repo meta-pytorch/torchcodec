@@ -4,14 +4,14 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include "src/torchcodec/_core/ValidationUtils.h"
+#include "ValidationUtils.h"
 #include <limits>
-#include "c10/util/Exception.h"
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
 int validateInt64ToInt(int64_t value, const std::string& parameterName) {
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       value >= std::numeric_limits<int>::min() &&
           value <= std::numeric_limits<int>::max(),
       parameterName,
@@ -30,6 +30,23 @@ std::optional<int> validateOptionalInt64ToInt(
   } else {
     return std::nullopt;
   }
+}
+
+std::streampos validateUint64ToStreampos(
+    uint64_t value,
+    const std::string& parameterName) {
+  // We validate against streamoff limits because streampos
+  // (std::fpos<state_type>) stores the actual position as streamoff internally.
+  // https://en.cppreference.com/w/cpp/io/fpos.html
+  STD_TORCH_CHECK(
+      value <=
+          static_cast<uint64_t>(std::numeric_limits<std::streamoff>::max()),
+      parameterName,
+      "=",
+      value,
+      " is out of range for streampos type.");
+
+  return static_cast<std::streampos>(value);
 }
 
 } // namespace facebook::torchcodec

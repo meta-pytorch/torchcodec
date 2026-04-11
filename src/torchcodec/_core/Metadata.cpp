@@ -1,0 +1,164 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+// All rights reserved.
+//
+// This source code is licensed under the BSD-style license found in the
+// LICENSE file in the root directory of this source tree.
+
+#include "Metadata.h"
+#include "StableABICompat.h"
+
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
+namespace facebook::torchcodec {
+
+std::optional<double> StreamMetadata::getDurationSeconds(
+    SeekMode seekMode) const {
+  switch (seekMode) {
+    case SeekMode::custom_frame_mappings:
+    case SeekMode::exact:
+      STD_TORCH_CHECK(
+          endStreamPtsSecondsFromContent.has_value() &&
+              beginStreamPtsSecondsFromContent.has_value(),
+          "Missing beginStreamPtsSecondsFromContent or endStreamPtsSecondsFromContent");
+      return endStreamPtsSecondsFromContent.value() -
+          beginStreamPtsSecondsFromContent.value();
+    case SeekMode::approximate:
+      if (durationSecondsFromHeader.has_value()) {
+        return durationSecondsFromHeader.value();
+      }
+      if (numFramesFromHeader.has_value() && averageFpsFromHeader.has_value() &&
+          averageFpsFromHeader.value() != 0.0) {
+        return static_cast<double>(numFramesFromHeader.value()) /
+            averageFpsFromHeader.value();
+      }
+      if (durationSecondsFromContainer.has_value()) {
+        return durationSecondsFromContainer.value();
+      }
+      return std::nullopt;
+    default:
+      STD_TORCH_CHECK(false, "Unknown SeekMode");
+  }
+}
+
+double StreamMetadata::getBeginStreamSeconds(SeekMode seekMode) const {
+  switch (seekMode) {
+    case SeekMode::custom_frame_mappings:
+    case SeekMode::exact:
+      STD_TORCH_CHECK(
+          beginStreamPtsSecondsFromContent.has_value(),
+          "Missing beginStreamPtsSecondsFromContent");
+      return beginStreamPtsSecondsFromContent.value();
+    case SeekMode::approximate:
+      if (beginStreamSecondsFromHeader.has_value()) {
+        return beginStreamSecondsFromHeader.value();
+      }
+      return 0.0;
+    default:
+      STD_TORCH_CHECK(false, "Unknown SeekMode");
+  }
+}
+
+std::optional<double> StreamMetadata::getEndStreamSeconds(
+    SeekMode seekMode) const {
+  switch (seekMode) {
+    case SeekMode::custom_frame_mappings:
+    case SeekMode::exact:
+      STD_TORCH_CHECK(
+          endStreamPtsSecondsFromContent.has_value(),
+          "Missing endStreamPtsSecondsFromContent");
+      return endStreamPtsSecondsFromContent.value();
+    case SeekMode::approximate: {
+      auto dur = getDurationSeconds(seekMode);
+      if (dur.has_value()) {
+        return getBeginStreamSeconds(seekMode) + dur.value();
+      }
+      return std::nullopt;
+    }
+    default:
+      STD_TORCH_CHECK(false, "Unknown SeekMode");
+  }
+}
+
+std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
+  switch (seekMode) {
+    case SeekMode::custom_frame_mappings:
+    case SeekMode::exact:
+      STD_TORCH_CHECK(
+          numFramesFromContent.has_value(), "Missing numFramesFromContent");
+      return numFramesFromContent.value();
+    case SeekMode::approximate: {
+      auto durationSeconds = getDurationSeconds(seekMode);
+      if (numFramesFromHeader.has_value()) {
+        return numFramesFromHeader.value();
+      }
+      if (averageFpsFromHeader.has_value() && durationSeconds.has_value()) {
+        return static_cast<int64_t>(
+            averageFpsFromHeader.value() * durationSeconds.value());
+      }
+      return std::nullopt;
+    }
+    default:
+      STD_TORCH_CHECK(false, "Unknown SeekMode");
+  }
+}
+
+std::optional<double> StreamMetadata::getAverageFps(SeekMode seekMode) const {
+  switch (seekMode) {
+    case SeekMode::custom_frame_mappings:
+    case SeekMode::exact: {
+      auto numFrames = getNumFrames(seekMode);
+      if (numFrames.has_value() &&
+          beginStreamPtsSecondsFromContent.has_value() &&
+          endStreamPtsSecondsFromContent.has_value()) {
+        double duration = endStreamPtsSecondsFromContent.value() -
+            beginStreamPtsSecondsFromContent.value();
+        if (duration != 0.0) {
+          return static_cast<double>(numFrames.value()) / duration;
+        }
+      }
+      return averageFpsFromHeader;
+    }
+    case SeekMode::approximate:
+      return averageFpsFromHeader;
+    default:
+      STD_TORCH_CHECK(false, "Unknown SeekMode");
+  }
+}
+
+std::optional<std::string> StreamMetadata::getColorPrimariesName() const {
+  if (!colorPrimaries.has_value()) {
+    return std::nullopt;
+  }
+  const char* name = av_color_primaries_name(*colorPrimaries);
+  if (name == nullptr) {
+    return std::nullopt;
+  }
+  return std::string(name);
+}
+
+std::optional<std::string> StreamMetadata::getColorSpaceName() const {
+  if (!colorSpace.has_value()) {
+    return std::nullopt;
+  }
+  const char* name = av_color_space_name(*colorSpace);
+  if (name == nullptr) {
+    return std::nullopt;
+  }
+  return std::string(name);
+}
+
+std::optional<std::string> StreamMetadata::getColorTransferCharacteristicName()
+    const {
+  if (!colorTransferCharacteristic.has_value()) {
+    return std::nullopt;
+  }
+  const char* name = av_color_transfer_name(*colorTransferCharacteristic);
+  if (name == nullptr) {
+    return std::nullopt;
+  }
+  return std::string(name);
+}
+
+} // namespace facebook::torchcodec

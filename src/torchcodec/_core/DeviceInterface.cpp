@@ -4,9 +4,11 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include "src/torchcodec/_core/DeviceInterface.h"
+#include "DeviceInterface.h"
+#include <ATen/ops/from_blob.h>
 #include <map>
 #include <mutex>
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -20,12 +22,28 @@ DeviceInterfaceMap& getDeviceMap() {
   return deviceMap;
 }
 
-std::string getDeviceType(const std::string& device) {
+std::string getDeviceTypeString(const std::string& device) {
   size_t pos = device.find(':');
   if (pos == std::string::npos) {
     return device;
   }
   return device.substr(0, pos);
+}
+
+// Parse device type from string (e.g., "cpu", "cuda")
+// TODO_STABLE_ABI: we might need to support more device types, i.e. those from
+// https://github.com/pytorch/pytorch/blob/main/torch/headeronly/core/DeviceType.h
+// Ideally we'd remove this helper?
+StableDeviceType parseDeviceType(const std::string& deviceType) {
+  if (deviceType == "cpu") {
+    return kStableCPU;
+  } else if (deviceType == "cuda") {
+    return kStableCUDA;
+  } else if (deviceType == "xpu") {
+    return kStableXPU;
+  } else {
+    STD_TORCH_CHECK(false, "Unknown device type: ", deviceType);
+  }
 }
 
 } // namespace
@@ -36,10 +54,10 @@ bool registerDeviceInterface(
   std::scoped_lock lock(g_interface_mutex);
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       deviceMap.find(key) == deviceMap.end(),
       "Device interface already registered for device type ",
-      key.deviceType,
+      static_cast<int>(key.deviceType),
       " variant '",
       key.variant,
       "'");
@@ -49,15 +67,15 @@ bool registerDeviceInterface(
 }
 
 void validateDeviceInterface(
-    const std::string device,
-    const std::string variant) {
+    const std::string& device,
+    const std::string& variant) {
   std::scoped_lock lock(g_interface_mutex);
-  std::string deviceType = getDeviceType(device);
+  std::string deviceType = getDeviceTypeString(device);
 
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
   // Find device interface that matches device type and variant
-  torch::DeviceType deviceTypeEnum = torch::Device(deviceType).type();
+  StableDeviceType deviceTypeEnum = parseDeviceType(deviceType);
 
   auto deviceInterface = std::find_if(
       deviceMap.begin(),
@@ -67,7 +85,7 @@ void validateDeviceInterface(
             arg.first.variant == variant;
       });
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       deviceInterface != deviceMap.end(),
       "Unsupported device: ",
       device,
@@ -79,7 +97,7 @@ void validateDeviceInterface(
 }
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
-    const torch::Device& device,
+    const StableDevice& device,
     const std::string_view variant) {
   DeviceInterfaceKey key(device.type(), variant);
   std::scoped_lock lock(g_interface_mutex);
@@ -90,28 +108,40 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
     return std::unique_ptr<DeviceInterface>(it->second(device));
   }
 
-  TORCH_CHECK(
+  STD_TORCH_CHECK(
       false,
       "No device interface found for device type: ",
-      device.type(),
+      static_cast<int>(device.type()),
       " variant: '",
       variant,
       "'");
 }
 
-torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
-  TORCH_CHECK_EQ(avFrame->format, AV_PIX_FMT_RGB24);
+torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
+  STD_TORCH_CHECK(avFrame->format == AV_PIX_FMT_RGB24, "Expected RGB24 format");
 
   int height = avFrame->height;
   int width = avFrame->width;
   std::vector<int64_t> shape = {height, width, 3};
   std::vector<int64_t> strides = {avFrame->linesize[0], 3, 1};
   AVFrame* avFrameClone = av_frame_clone(avFrame.get());
+
+  // TODO_STABLE_ABI: we're still using the non-stable ABI here. That's because
+  // stable::from_blob doesn't yet support a capturing lambda deleter. We need
+  // to land https://github.com/pytorch/pytorch/pull/175089.
+  // TC won't be able stable until this is resolved.
   auto deleter = [avFrameClone](void*) {
     UniqueAVFrame avFrameToDelete(avFrameClone);
   };
-  return torch::from_blob(
-      avFrameClone->data[0], shape, strides, deleter, {torch::kUInt8});
+
+  at::Tensor tensor = at::from_blob(
+      avFrameClone->data[0], shape, strides, deleter, {at::kByte});
+
+  // We got an at::Tensor, we have to convert it to a torch::stable::Tensor.
+  // This is safe, there won't be any memory leak, i.e. the at::Tensor's deleter
+  // will properly be passed down to the torch::stable::Tensor.
+  at::Tensor* p = new at::Tensor(std::move(tensor));
+  return torch::stable::Tensor(reinterpret_cast<AtenTensorHandle>(p));
 }
 
 } // namespace facebook::torchcodec

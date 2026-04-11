@@ -8,8 +8,8 @@
 
 #include <optional>
 #include <string>
-#include "src/torchcodec/_core/Frame.h"
-#include "src/torchcodec/_core/Metadata.h"
+#include "Frame.h"
+#include "Metadata.h"
 
 namespace facebook::torchcodec {
 
@@ -29,8 +29,8 @@ class Transform {
     return std::nullopt;
   }
 
-  // The ResizeTransform is special, because it is the only transform that
-  // swscale can handle.
+  // The ResizeTransform is special because it is the only transform
+  // that swscale can handle.
   virtual bool isResize() const {
     return false;
   }
@@ -42,15 +42,14 @@ class Transform {
   //
   // Note that the validation function does not return anything. We expect
   // invalid configurations to throw an exception.
-  virtual void validate(
-      [[maybe_unused]] const StreamMetadata& streamMetadata) const {}
+  virtual void validate([[maybe_unused]] const FrameDims& inputDims) const {}
 };
 
 class ResizeTransform : public Transform {
  public:
   enum class InterpolationMode { BILINEAR };
 
-  ResizeTransform(const FrameDims& dims)
+  explicit ResizeTransform(const FrameDims& dims)
       : outputDims_(dims), interpolationMode_(InterpolationMode::BILINEAR) {}
 
   ResizeTransform(const FrameDims& dims, InterpolationMode interpolationMode)
@@ -71,14 +70,49 @@ class CropTransform : public Transform {
  public:
   CropTransform(const FrameDims& dims, int x, int y);
 
+  // Becomes a center crop if x and y are not specified.
+  explicit CropTransform(const FrameDims& dims);
+
   std::string getFilterGraphCpu() const override;
   std::optional<FrameDims> getOutputFrameDims() const override;
-  void validate(const StreamMetadata& streamMetadata) const override;
+  void validate(const FrameDims& inputDims) const override;
 
  private:
   FrameDims outputDims_;
-  int x_;
-  int y_;
+  std::optional<int> x_;
+  std::optional<int> y_;
+};
+
+// Rotation values for RotationTransform.
+// These correspond to video metadata rotation angles.
+enum class Rotation {
+  NONE, // 0°
+  CCW90, // 90° counter-clockwise
+  CW90, // 90° clockwise (or -90°)
+  ROTATE180 // 180° (or -180°)
+};
+
+// Converts rotation degrees from video metadata to Rotation enum.
+// Input is expected in the range [-180, 180].
+// Rounds to nearest multiple of 90 degrees before converting.
+// Returns Rotation::NONE for nullopt.
+Rotation rotationFromDegrees(std::optional<double> degrees);
+
+// Applies rotation in multiples of 90 degrees using FFmpeg's transpose/flip
+// filters. Note: this does not support arbitrary angle rotation
+// like TorchVision's RandomRotation transform.
+// Handles rotation in the filter graph so that user transforms
+// operate in post-rotation coordinate space.
+class RotationTransform : public Transform {
+ public:
+  RotationTransform(Rotation rotation, const FrameDims& inputDims);
+
+  std::string getFilterGraphCpu() const override;
+  std::optional<FrameDims> getOutputFrameDims() const override;
+
+ private:
+  Rotation rotation_;
+  FrameDims outputDims_;
 };
 
 } // namespace facebook::torchcodec

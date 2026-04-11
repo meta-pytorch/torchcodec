@@ -1,22 +1,29 @@
 #pragma once
-#include <torch/types.h>
-#include "src/torchcodec/_core/AVIOContextHolder.h"
-#include "src/torchcodec/_core/FFMPEGCommon.h"
-#include "src/torchcodec/_core/StreamOptions.h"
+#include <map>
+#include <string>
+#include "AVIOContextHolder.h"
+#include "DeviceInterface.h"
+#include "FFMPEGCommon.h"
+#include "StableABICompat.h"
+#include "StreamOptions.h"
+
+extern "C" {
+#include <libavutil/dict.h>
+}
 
 namespace facebook::torchcodec {
-class AudioEncoder {
+class FORCE_PUBLIC_VISIBILITY AudioEncoder {
  public:
   ~AudioEncoder();
 
   AudioEncoder(
-      const torch::Tensor& samples,
+      const torch::stable::Tensor& samples,
       int sampleRate,
       std::string_view fileName,
       const AudioStreamOptions& audioStreamOptions);
 
   AudioEncoder(
-      const torch::Tensor& samples,
+      const torch::stable::Tensor& samples,
       int sampleRate,
       std::string_view formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder,
@@ -24,7 +31,7 @@ class AudioEncoder {
 
   void encode();
 
-  torch::Tensor encodeToTensor();
+  torch::stable::Tensor encodeToTensor();
 
  private:
   void initializeEncoder(const AudioStreamOptions& audioStreamOptions);
@@ -36,7 +43,6 @@ class AudioEncoder {
   void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
   void maybeFlushSwrBuffers(AutoAVPacket& autoAVPacket);
   void flushBuffers();
-  void close_avio();
 
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;
@@ -44,7 +50,7 @@ class AudioEncoder {
   UniqueSwrContext swrContext_;
   AudioStreamOptions audioStreamOptions;
 
-  const torch::Tensor samples_;
+  const torch::stable::Tensor samples_;
 
   int outNumChannels_ = -1;
   int outSampleRate_ = -1;
@@ -121,7 +127,7 @@ class AudioEncoder {
 //
 /* clang-format on */
 
-class VideoEncoder {
+class FORCE_PUBLIC_VISIBILITY VideoEncoder {
  public:
   ~VideoEncoder();
 
@@ -131,54 +137,85 @@ class VideoEncoder {
   VideoEncoder(const VideoEncoder&) = delete;
   VideoEncoder& operator=(const VideoEncoder&) = delete;
 
-  // Move assignment operator deleted since we have a const member
-  VideoEncoder(VideoEncoder&&) = default;
+  // Move operators deleted since UniqueAVDictionary member is not movable
+  VideoEncoder(VideoEncoder&&) = delete;
   VideoEncoder& operator=(VideoEncoder&&) = delete;
 
   VideoEncoder(
-      const torch::Tensor& frames,
-      int frameRate,
+      const torch::stable::Tensor& frames,
+      double frameRate,
       std::string_view fileName,
       const VideoStreamOptions& videoStreamOptions);
 
   VideoEncoder(
-      const torch::Tensor& frames,
-      int frameRate,
+      const torch::stable::Tensor& frames,
+      double frameRate,
       std::string_view formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder,
       const VideoStreamOptions& videoStreamOptions);
 
   void encode();
 
-  torch::Tensor encodeToTensor();
+  torch::stable::Tensor encodeToTensor();
 
  private:
   void initializeEncoder(const VideoStreamOptions& videoStreamOptions);
-  UniqueAVFrame convertTensorToAVFrame(
-      const torch::Tensor& frame,
-      int frameIndex);
   void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
   void flushBuffers();
 
   UniqueEncodingAVFormatContext avFormatContext_;
   UniqueAVCodecContext avCodecContext_;
   AVStream* avStream_ = nullptr;
-  UniqueSwsContext swsContext_;
 
-  const torch::Tensor frames_;
-  int inFrameRate_;
-
-  int inWidth_ = -1;
-  int inHeight_ = -1;
-  AVPixelFormat inPixelFormat_ = AV_PIX_FMT_NONE;
-
-  int outWidth_ = -1;
-  int outHeight_ = -1;
-  AVPixelFormat outPixelFormat_ = AV_PIX_FMT_NONE;
+  const torch::stable::Tensor frames_;
+  double inFrameRate_;
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
+  std::unique_ptr<DeviceInterface> deviceInterface_;
 
   bool encodeWasCalled_ = false;
+  UniqueAVDictionary avFormatOptions_;
+};
+
+class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
+ public:
+  ~MultiStreamEncoder();
+
+  MultiStreamEncoder(const MultiStreamEncoder&) = delete;
+  MultiStreamEncoder& operator=(const MultiStreamEncoder&) = delete;
+  MultiStreamEncoder(MultiStreamEncoder&&) = delete;
+  MultiStreamEncoder& operator=(MultiStreamEncoder&&) = delete;
+
+  MultiStreamEncoder(std::string_view fileName);
+
+  void addVideoStream(
+      double frameRate,
+      std::optional<std::string> codec = std::nullopt,
+      std::optional<std::string> pixelFormat = std::nullopt,
+      std::optional<double> crf = std::nullopt,
+      std::optional<std::string> preset = std::nullopt,
+      std::optional<std::map<std::string, std::string>> extraOptions =
+          std::nullopt);
+  void addFrames(const torch::stable::Tensor& frames);
+  void close();
+
+ private:
+  void initializeVideoStream(const torch::stable::Tensor& frames);
+  void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
+  void flushBuffers();
+
+  UniqueEncodingAVFormatContext avFormatContext_;
+  UniqueAVCodecContext avCodecContext_;
+  AVStream* avStream_ = nullptr;
+  double inFrameRate_ = 0;
+  VideoStreamOptions videoStreamOptions_;
+  std::unique_ptr<DeviceInterface> deviceInterface_;
+  bool headerWritten_ = false;
+  int numEncodedFrames_ = 0;
+  UniqueAVDictionary avFormatOptions_;
+
+  std::unique_ptr<AVIOContextHolder> avioContextHolder_;
+  bool closed_ = false;
 };
 
 } // namespace facebook::torchcodec

@@ -2,7 +2,7 @@
 name = "paddlecodec"
 description = "A video decoder for PyTorch"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 license-files = ["LICENSE"]
 authors = [
     { name = "PaddlePaddle Team", email = "Paddle-better@baidu.com" },
@@ -32,7 +32,7 @@ dev = [
 first_party_detection = false
 
 [tool.black]
-target-version = ["py38"]
+target-version = ["py310"]
 
 [tool.ufmt]
 
@@ -45,6 +45,10 @@ markers = [
     # defines a 'slow' mark to mark slow tests with `@pytest.mark.slow`
     "slow: mark test as slow"
 ]
+
+# Tells pytest not to run tests within this directory by default.
+# These tests can still be run by manually specifying the path.
+norecursedirs = ["third-party-interface"]
 
 # We don't want to run the slow tests by default. These options are ignored in
 # the CI, where we definitely want the 'slow' tests to run.

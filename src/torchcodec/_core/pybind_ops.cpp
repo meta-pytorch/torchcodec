@@ -8,7 +8,7 @@
 #include <pybind11/stl.h>
 #include <cstdint>
 
-#include "src/torchcodec/_core/AVIOFileLikeContext.h"
+#include "AVIOFileLikeContext.h"
 
 namespace py = pybind11;
 

@@ -1,4 +1,4 @@
-[**Installation**](#installing-torchcodec) | [**Simple Example**](#using-torchcodec) | [**Detailed Example**](https://pytorch.org/torchcodec/stable/generated_examples/) | [**Documentation**](https://pytorch.org/torchcodec) | [**Contributing**](CONTRIBUTING.md) | [**License**](#license)
+[**Installation**](#installing-torchcodec) | [**Simple Example**](#using-torchcodec) | [**Detailed Example**](https://meta-pytorch.org/torchcodec/stable/generated_examples/) | [**Documentation**](https://meta-pytorch.org/torchcodec) | [**Contributing**](CONTRIBUTING.md) | [**License**](#license)
 
 # PaddleCodec
 
@@ -26,9 +26,9 @@ The original README.md content is as follows:
 ---
 
 TorchCodec is a Python library for decoding video and audio data into PyTorch
-tensors, on CPU and CUDA GPU. It also supports audio encoding, and video
-encoding will come soon! It aims to be fast, easy to use, and well integrated
-into the PyTorch ecosystem. If you want to use PyTorch to train ML models on
+tensors, on CPU and CUDA GPU. It also supports video and audio encoding on CPU!
+It aims to be fast, easy to use, and well integrated
+into the PyTorch ecosystem.  If you want to use PyTorch to train ML models on
 videos and audio, TorchCodec is how you turn these into data.
 
 We achieve these capabilities through:
@@ -46,7 +46,7 @@ We achieve these capabilities through:
 
 Here's a condensed summary of what you can do with TorchCodec. For more detailed
 examples, [check out our
-documentation](https://pytorch.org/torchcodec/stable/generated_examples/)!
+documentation](https://meta-pytorch.org/torchcodec/stable/generated_examples/)!
 
 #### Decoding
 
@@ -130,40 +130,45 @@ ffmpeg -f lavfi -i \
    versions, refer to the table below for compatibility between versions of
    `torch` and `torchcodec`.
 
-2. Install FFmpeg, if it's not already installed. Linux distributions usually
-   come with FFmpeg pre-installed. TorchCodec supports major FFmpeg versions
-   in [4, 7] on all platforms, and FFmpeg version 8 is supported on Mac and Linux.
+2. Install FFmpeg, if it's not already installed. TorchCodec supports
+   all major FFmpeg versions in [4, 8].
+   Linux distributions usually come with FFmpeg pre-installed. You'll need
+   FFmpeg that comes with separate shared libraries. This is especially relevant
+   for Windows users: these are usually called the "shared" releases.
 
    If FFmpeg is not already installed, or you need a more recent version, an
    easy way to install it is to use `conda`:
 
    ```bash
-   conda install "ffmpeg<8"
+   conda install "ffmpeg"
    # or
-   conda install "ffmpeg<8" -c conda-forge
+   conda install "ffmpeg" -c conda-forge
    ```
 
 3. Install TorchCodec:
 
    ```bash
-   pip install torchcodec
+   pip install torchcodec --index-url=https://download.pytorch.org/whl/cpu
    ```
 
 The following table indicates the compatibility between versions of
 `torchcodec`, `torch` and Python.
 
-| `torchcodec`       | `torch`            | Python             |
-| ------------------ | ------------------ | ------------------ |
-| `main` / `nightly` | `main` / `nightly` | `>=3.10`, `<=3.13` |
-| `0.8`              | `2.9`              | `>=3.10`, `<=3.13` |
-| `0.7`              | `2.8`              | `>=3.9`, `<=3.13`  |
-| `0.6`              | `2.8`              | `>=3.9`, `<=3.13`  |
-| `0.5`              | `2.7`              | `>=3.9`, `<=3.13`  |
-| `0.4`              | `2.7`              | `>=3.9`, `<=3.13`  |
-| `0.3`              | `2.7`              | `>=3.9`, `<=3.13`  |
-| `0.2`              | `2.6`              | `>=3.9`, `<=3.13`  |
-| `0.1`              | `2.5`              | `>=3.9`, `<=3.12`  |
-| `0.0.3`            | `2.4`              | `>=3.8`, `<=3.12`  |
+| `torchcodec`       | `torch`            | Python              |
+| ------------------ | ------------------ | ------------------- |
+| `main` / `nightly` | `main` / `nightly` | `>=3.10`, `<=3.14`   |
+| `0.11`             | `2.11`             | `>=3.10`, `<=3.14`   |
+| `0.10`             | `2.10`             | `>=3.10`, `<=3.14`   |
+| `0.9`              | `2.9`              | `>=3.10`, `<=3.14`   |
+| `0.8`              | `2.9`              | `>=3.10`, `<=3.13`   |
+| `0.7`              | `2.8`              | `>=3.9`, `<=3.13`   |
+| `0.6`              | `2.8`              | `>=3.9`, `<=3.13`   |
+| `0.5`              | `2.7`              | `>=3.9`, `<=3.13`   |
+| `0.4`              | `2.7`              | `>=3.9`, `<=3.13`   |
+| `0.3`              | `2.7`              | `>=3.9`, `<=3.13`   |
+| `0.2`              | `2.6`              | `>=3.9`, `<=3.13`   |
+| `0.1`              | `2.5`              | `>=3.9`, `<=3.12`   |
+| `0.0.3`            | `2.4`              | `>=3.8`, `<=3.12`   |
 
 ### Installing CUDA-enabled TorchCodec
 
@@ -172,16 +177,15 @@ format you want. Refer to Nvidia's GPU support matrix for more details
 [here](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new).
 
 1. Install FFmpeg with NVDEC support.
-   TorchCodec with CUDA should work with FFmpeg versions in [4, 7] on all platforms,
-   and FFmpeg version 8 is supported on Linux.
+   TorchCodec with CUDA should work with FFmpeg versions in [4, 8].
 
    If FFmpeg is not already installed, or you need a more recent version, an
    easy way to install it is to use `conda`:
 
    ```bash
-   conda install "ffmpeg<8"
+   conda install "ffmpeg"
    # or
-   conda install "ffmpeg<8" -c conda-forge
+   conda install "ffmpeg" -c conda-forge
    ```
 
    After installing FFmpeg make sure it has NVDEC support when you list the supported
@@ -208,17 +212,19 @@ format you want. Refer to Nvidia's GPU support matrix for more details
 
 3. Install TorchCodec
 
-   Pass in an `--index-url` parameter that corresponds to your CUDA Toolkit
-   version, for example:
+   On Linux, `pip install torchcodec` defaults to a CUDA wheel,
+   matching the default behavior of `pip install torch`.
 
    ```bash
-   # This corresponds to CUDA Toolkit version 12.6. It should be the same one
-   # you used when you installed PyTorch (If you installed PyTorch with pip).
-   pip install torchcodec --index-url=https://download.pytorch.org/whl/cu126
+   pip install torchcodec
    ```
+   Use `--index-url` to select a different CUDA Toolkit version:
 
-   Note that without passing in the `--index-url` parameter, `pip` installs
-   the CPU-only version of TorchCodec.
+   ```bash
+   # This corresponds to CUDA Toolkit version 13.0. It should be the same one
+   # you used when you installed PyTorch (If you installed PyTorch with pip).
+   pip install torchcodec --index-url=https://download.pytorch.org/whl/cu130
+   ```
 
 #### Windows
 
@@ -242,7 +248,7 @@ The bottom row is [promotional video from NASA](https://download.pytorch.org/tor
 that has a resolution of 960x540 at 29.7 fps and is 206 seconds long. Both videos were
 encoded with libx264 and yuv420p pixel format. All decoders, except for TorchVision, used FFmpeg 6.1.2. TorchVision used FFmpeg 4.2.2.
 
-For TorchCodec, the "approx" label means that it was using [approximate mode](https://pytorch.org/torchcodec/stable/generated_examples/approximate_mode.html)
+For TorchCodec, the "approx" label means that it was using [approximate mode](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/approximate_mode.html)
 for seeking.
 
 ## Contributing

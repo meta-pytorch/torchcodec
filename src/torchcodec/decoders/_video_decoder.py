@@ -4,21 +4,71 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+
 import io
 import json
 import numbers
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Optional, Tuple, Union
+from typing import Literal
 
 import torch
-from torch import device as torch_device, Tensor
-
+from torch import device as torch_device, nn, Tensor
 from torchcodec import _core as core, Frame, FrameBatch
-from torchcodec.decoders._decoder_utils import (
-    _get_cuda_backend,
-    create_decoder,
-    ERROR_REPORTING_INSTRUCTIONS,
-)
+from torchcodec._core._decoder_utils import create_video_decoder
+from torchcodec.decoders._decoder_utils import _get_cuda_backend
+from torchcodec.transforms import DecoderTransform
+
+
+@dataclass
+class CpuFallbackStatus:
+    """Information about CPU fallback status.
+
+    This class tracks whether the decoder fell back to CPU decoding.
+    Users should not instantiate this class directly; instead, access it
+    via the :attr:`VideoDecoder.cpu_fallback` attribute.
+
+    Usage:
+
+    - Use ``str(cpu_fallback_status)`` or ``print(cpu_fallback_status)`` to see the cpu fallback status
+    - Use ``if cpu_fallback_status:`` to check if any fallback occurred
+    """
+
+    status_known: bool = False
+    """Whether the fallback status has been determined.
+    For the Beta CUDA backend (see :func:`~torchcodec.decoders.set_cuda_backend`),
+    this is always ``True`` immediately after decoder creation.
+    For the FFmpeg CUDA backend, this becomes ``True`` after decoding
+    the first frame."""
+    _nvcuvid_unavailable: bool = field(default=False, init=False)
+    _video_not_supported: bool = field(default=False, init=False)
+    _is_fallback: bool = field(default=False, init=False)
+    _backend: str = field(default="", init=False)
+
+    def __bool__(self):
+        """Returns True if fallback occurred."""
+        return self.status_known and self._is_fallback
+
+    def __str__(self):
+        """Returns a human-readable string representation of the cpu fallback status."""
+        if not self.status_known:
+            return f"[{self._backend}] Fallback status: Unknown"
+
+        reasons = []
+        if self._nvcuvid_unavailable:
+            reasons.append("NVcuvid unavailable")
+        elif self._video_not_supported:
+            reasons.append("Video not supported")
+        elif self._is_fallback:
+            reasons.append("Unknown reason - try the Beta interface to know more!")
+
+        if reasons:
+            return (
+                f"[{self._backend}] Fallback status: Falling back due to: "
+                + ", ".join(reasons)
+            )
+        return f"[{self._backend}] Fallback status: No fallback required"
 
 
 class VideoDecoder:
@@ -49,13 +99,15 @@ class VideoDecoder:
                 cheap no-copy operation that allows these frames to be
                 transformed using the `torchvision transforms
                 <https://pytorch.org/vision/stable/transforms.html>`_.
-        num_ffmpeg_threads (int, optional): The number of threads to use for decoding.
+        num_ffmpeg_threads (int, optional): The number of threads to use for CPU decoding.
+            This has no effect when using GPU decoding.
             Use 1 for single-threaded decoding which may be best if you are running multiple
             instances of ``VideoDecoder`` in parallel. Use a higher number for multi-threaded
             decoding which is best if you are running a single instance of ``VideoDecoder``.
             Passing 0 lets FFmpeg decide on the number of threads.
             Default: 1.
-        device (str or torch.device, optional): The device to use for decoding. Default: "cpu".
+        device (str or torch.device, optional): The device to use for decoding.
+            If ``None`` (default), uses the current default device.
             If you pass a CUDA device, we recommend trying the "beta" CUDA
             backend which is faster! See :func:`~torchcodec.decoders.set_cuda_backend`.
         seek_mode (str, optional): Determines if frame access will be "exact" or
@@ -66,6 +118,11 @@ class VideoDecoder:
             probably is. Default: "exact".
             Read more about this parameter in:
             :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py`
+        transforms (sequence of transform objects, optional): Sequence of transforms to be
+            applied to the decoded frames by the decoder itself, in order. Accepts both
+            :class:`~torchcodec.transforms.DecoderTransform` and
+            :class:`~torchvision.transforms.v2.Transform`
+            objects. Read more about this parameter in: TODO_DECODER_TRANSFORMS_TUTORIAL.
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
@@ -93,20 +150,25 @@ class VideoDecoder:
         stream_index (int): The stream index that this decoder is retrieving frames from. If a
             stream index was provided at initialization, this is the same value. If it was left
             unspecified, this is the :term:`best stream`.
+        cpu_fallback (CpuFallbackStatus): Information about whether the decoder fell back to CPU
+            decoding. Use ``bool(cpu_fallback)`` to check if fallback occurred, or
+            ``str(cpu_fallback)`` to get a human-readable status message. The status is only
+            determined after at least one frame has been decoded.
     """
 
     def __init__(
         self,
-        source: Union[str, Path, io.RawIOBase, io.BufferedReader, bytes, Tensor],
+        source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
         dimension_order: Literal["NCHW", "NHWC"] = "NCHW",
         num_ffmpeg_threads: int = 1,
         device: Optional[Union[str, "torch_device"]] = "cpu",
         seek_mode: Literal["exact", "approximate"] = "exact",
-        custom_frame_mappings: Optional[
-            Union[str, bytes, io.RawIOBase, io.BufferedReader]
-        ] = None,
+        transforms: Sequence[DecoderTransform | nn.Module] | None = None,
+        custom_frame_mappings: (
+            str | bytes | io.RawIOBase | io.BufferedReader | None
+        ) = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
@@ -131,8 +193,6 @@ class VideoDecoder:
                 custom_frame_mappings
             )
 
-        self._decoder = create_decoder(source=source, seek_mode=seek_mode)
-
         allowed_dimension_orders = ("NCHW", "NHWC")
         if dimension_order not in allowed_dimension_orders:
             raise ValueError(
@@ -155,8 +215,11 @@ class VideoDecoder:
                 raise NotImplementedError(f"{device} is not supported yet")
 
         device_variant = _get_cuda_backend()
-
-        core.add_video_stream(
+        if device is None:
+            device = str(torch.get_default_device())
+        elif isinstance(device, torch_device):
+            device = str(device)
+        (
             self._decoder,
             num_threads=num_ffmpeg_threads,
             dimension_order=dimension_order,
@@ -167,18 +230,52 @@ class VideoDecoder:
             custom_frame_mappings=custom_frame_mappings_data,
         )
 
-        (
-            self.metadata,
-            self.stream_index,
-            self._begin_stream_seconds,
-            self._end_stream_seconds,
-            self._num_frames,
-        ) = _get_and_validate_stream_metadata(
-            decoder=self._decoder, stream_index=stream_index
-        )
+        assert self.metadata.begin_stream_seconds is not None  # mypy.
+        assert self.metadata.end_stream_seconds is not None  # mypy.
+        assert self.metadata.num_frames is not None  # mypy.
+
+        self._begin_stream_seconds = self.metadata.begin_stream_seconds
+        self._end_stream_seconds = self.metadata.end_stream_seconds
+        self._num_frames = self.metadata.num_frames
+
+        self._cpu_fallback = CpuFallbackStatus()
+        if device.startswith("cuda"):
+            if device_variant == "beta":
+                self._cpu_fallback._backend = "Beta CUDA"
+            else:
+                self._cpu_fallback._backend = "FFmpeg CUDA"
+        else:
+            self._cpu_fallback._backend = "CPU"
 
     def __len__(self) -> int:
         return self._num_frames
+
+    @property
+    def cpu_fallback(self) -> CpuFallbackStatus:
+        # We only query the CPU fallback info if status is unknown. That happens
+        # either when:
+        # - this @property has never been called before
+        # - no frame has been decoded yet on the FFmpeg interface.
+        # Note that for the beta interface, we're able to know the fallback status
+        # right when the VideoDecoder is instantiated, but the status_known
+        # attribute is initialized to False.
+        if not self._cpu_fallback.status_known:
+            backend_details = core._get_backend_details(self._decoder)
+
+            if "status unknown" not in backend_details:
+                self._cpu_fallback.status_known = True
+
+                if "CPU fallback" in backend_details:
+                    self._cpu_fallback._is_fallback = True
+                    if self._cpu_fallback._backend == "Beta CUDA":
+                        # Only the beta interface can provide details.
+                        # if it's not that nvcuvid is missing, it must be video-specific
+                        if "NVCUVID not available" in backend_details:
+                            self._cpu_fallback._nvcuvid_unavailable = True
+                        else:
+                            self._cpu_fallback._video_not_supported = True
+
+        return self._cpu_fallback
 
     def _getitem_int(self, key: int) -> Tensor:
         assert isinstance(key, int)
@@ -198,7 +295,7 @@ class VideoDecoder:
         )
         return frame_data
 
-    def __getitem__(self, key: Union[numbers.Integral, slice]) -> Tensor:
+    def __getitem__(self, key: numbers.Integral | slice) -> Tensor:
         """Return frame or frames as tensors, at the given index or range.
 
         .. note::
@@ -255,7 +352,7 @@ class VideoDecoder:
             duration_seconds=duration_seconds.item(),
         )
 
-    def get_frames_at(self, indices: Union[torch.Tensor, list[int]]) -> FrameBatch:
+    def get_frames_at(self, indices: torch.Tensor | list[int]) -> FrameBatch:
         """Return frames at the given indices.
 
         Args:
@@ -335,9 +432,7 @@ class VideoDecoder:
             duration_seconds=duration_seconds.item(),
         )
 
-    def get_frames_played_at(
-        self, seconds: Union[torch.Tensor, list[float]]
-    ) -> FrameBatch:
+    def get_frames_played_at(self, seconds: torch.Tensor | list[float]) -> FrameBatch:
         """Return frames played at the given timestamps in seconds.
 
         Args:
@@ -360,7 +455,7 @@ class VideoDecoder:
         )
 
     def get_frames_played_in_range(
-        self, start_seconds: float, stop_seconds: float
+        self, start_seconds: float, stop_seconds: float, fps: float | None = None
     ) -> FrameBatch:
         """Returns multiple frames in the given range.
 
@@ -369,23 +464,26 @@ class VideoDecoder:
         range.
 
         Args:
-            start_seconds (float): Time, in seconds, of the start of the
-                range.
-            stop_seconds (float): Time, in seconds, of the end of the
-                range. As a half open range, the end is excluded.
+            start_seconds (float): Time, in seconds, of the start of the range.
+            stop_seconds (float): Time, in seconds, of the end of the range.
+                As a half open range, the end is excluded.
+            fps (float, optional): If specified, resample output to this frame
+                rate by duplicating or dropping frames as necessary. If None
+                (default), returns frames at the source video's frame rate.
 
         Returns:
             FrameBatch: The frames within the specified range.
         """
         if not start_seconds <= stop_seconds:
             raise ValueError(
-                f"Invalid start seconds: {start_seconds}. It must be less than or equal to stop seconds ({stop_seconds})."
+                f"Invalid start seconds: {start_seconds}. "
+                f"It must be less than or equal to stop seconds ({stop_seconds})."
             )
         if not self._begin_stream_seconds <= start_seconds < self._end_stream_seconds:
             raise ValueError(
                 f"Invalid start seconds: {start_seconds}. "
                 f"It must be greater than or equal to {self._begin_stream_seconds} "
-                f"and less than or equal to {self._end_stream_seconds}."
+                f"and less than {self._end_stream_seconds}."
             )
         if not stop_seconds <= self._end_stream_seconds:
             raise ValueError(
@@ -396,59 +494,30 @@ class VideoDecoder:
             self._decoder,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
+            fps=fps,
         )
         return FrameBatch(*frames)
 
+    def get_all_frames(self, fps: float | None = None) -> FrameBatch:
+        """Returns all frames in the video.
 
-def _get_and_validate_stream_metadata(
-    *,
-    decoder: Tensor,
-    stream_index: Optional[int] = None,
-) -> Tuple[core._metadata.VideoStreamMetadata, int, float, float, int]:
+        Args:
+            fps (float, optional): If specified, resample output to this frame
+                rate by duplicating or dropping frames as necessary. If None
+                (default), returns frames at the source video's frame rate.
 
-    container_metadata = core.get_container_metadata(decoder)
-
-    if stream_index is None:
-        if (stream_index := container_metadata.best_video_stream_index) is None:
-            raise ValueError(
-                "The best video stream is unknown and there is no specified stream. "
-                + ERROR_REPORTING_INSTRUCTIONS
-            )
-
-    metadata = container_metadata.streams[stream_index]
-    assert isinstance(metadata, core._metadata.VideoStreamMetadata)  # mypy
-
-    if metadata.begin_stream_seconds is None:
-        raise ValueError(
-            "The minimum pts value in seconds is unknown. "
-            + ERROR_REPORTING_INSTRUCTIONS
+        Returns:
+            FrameBatch: All frames in the video.
+        """
+        return self.get_frames_played_in_range(
+            start_seconds=self._begin_stream_seconds,
+            stop_seconds=self._end_stream_seconds,
+            fps=fps,
         )
-    begin_stream_seconds = metadata.begin_stream_seconds
-
-    if metadata.end_stream_seconds is None:
-        raise ValueError(
-            "The maximum pts value in seconds is unknown. "
-            + ERROR_REPORTING_INSTRUCTIONS
-        )
-    end_stream_seconds = metadata.end_stream_seconds
-
-    if metadata.num_frames is None:
-        raise ValueError(
-            "The number of frames is unknown. " + ERROR_REPORTING_INSTRUCTIONS
-        )
-    num_frames = metadata.num_frames
-
-    return (
-        metadata,
-        stream_index,
-        begin_stream_seconds,
-        end_stream_seconds,
-        num_frames,
-    )
 
 
 def _read_custom_frame_mappings(
-    custom_frame_mappings: Union[str, bytes, io.RawIOBase, io.BufferedReader]
+    custom_frame_mappings: str | bytes | io.RawIOBase | io.BufferedReader,
 ) -> tuple[Tensor, Tensor, Tensor]:
     """Parse custom frame mappings from JSON data and extract frame metadata.
 

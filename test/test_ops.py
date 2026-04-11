@@ -10,7 +10,6 @@ from functools import partial
 
 os.environ["TORCH_LOGS"] = "output_code"
 import json
-import subprocess
 
 import numpy as np
 import pytest
@@ -18,18 +17,9 @@ import pytest
 import torch
 
 from torchcodec._core import (
-    _add_video_stream,
     _test_frame_pts_equality,
-    add_audio_stream,
-    add_video_stream,
-    create_from_bytes,
-    create_from_file,
-    create_from_file_like,
-    create_from_tensor,
+    create_streaming_encoder_to_file,
     encode_audio_to_file,
-    encode_video_to_file,
-    encode_video_to_file_like,
-    encode_video_to_tensor,
     get_ffmpeg_library_versions,
     get_frame_at_index,
     get_frame_at_pts,
@@ -40,26 +30,36 @@ from torchcodec._core import (
     get_frames_in_range,
     get_json_metadata,
     get_next_frame,
+    streaming_encoder_add_frames,
+    streaming_encoder_add_video_stream,
+    streaming_encoder_close,
+)
+from torchcodec._core.ops import (
+    _add_video_stream,
+    add_audio_stream,
+    add_video_stream,
+    create_from_bytes,
+    create_from_file,
+    create_from_file_like,
+    create_from_tensor,
     seek_to_pts,
 )
+
 from torchcodec.decoders import VideoDecoder
 
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
     assert_tensor_close_on_at_least,
-    get_ffmpeg_major_version,
-    in_fbcode,
-    IS_WINDOWS,
+    get_python_version,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
     needs_cuda,
-    psnr,
+    needs_ffmpeg_cli,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
-    TEST_SRC_2_720P,
     unsplit_device_str,
 )
 
@@ -378,6 +378,10 @@ class TestVideoDecoderOps:
         with pytest.raises(IndexError, match="no more frames"):
             get_next_frame(decoder)
 
+    @pytest.mark.skipif(
+        get_python_version() >= (3, 14),
+        reason="torch.compile is not supported on Python 3.14+",
+    )
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_compile_seek_and_next(self, device):
         # TODO_OPEN_ISSUE Scott (T180277797): Get this to work with the inductor stack. Right now
@@ -505,10 +509,7 @@ class TestVideoDecoderOps:
             )
             assert pts_is_equal
 
-    @pytest.mark.skipif(
-        in_fbcode(),
-        reason="ffprobe not available internally",
-    )
+    @needs_ffmpeg_cli
     def test_seek_mode_custom_frame_mappings_fails(self):
         with pytest.raises(
             RuntimeError,
@@ -549,10 +550,7 @@ class TestVideoDecoderOps:
                 decoder, stream_index=0, custom_frame_mappings=different_lengths
             )
 
-    @pytest.mark.skipif(
-        in_fbcode(),
-        reason="ffprobe not available internally",
-    )
+    @needs_ffmpeg_cli
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_seek_mode_custom_frame_mappings(self, device):
         stream_index = 3  # custom_frame_index seek mode requires a stream index
@@ -1016,7 +1014,7 @@ class TestAudioDecoderOps:
 
         class SeekMethodMissing:
             def read(self, size: int) -> bytes:
-                return bytes()
+                return b""
 
         with pytest.raises(RuntimeError, match="must implement a seek method"):
             create_from_file_like(SeekMethodMissing(), "approximate")
@@ -1027,7 +1025,7 @@ class TestAudioDecoderOps:
 
             # io.RawIOBase says we should accept a single int; wrong signature on purpose
             def read(self) -> bytes:
-                return bytes()
+                return b""
 
             def seek(self, offset: int, whence: int) -> int:
                 return self._file.seeK(offset, whence)
@@ -1128,7 +1126,7 @@ class TestAudioEncoderOps:
 
         valid_output_file = str(tmp_path / ".mp3")
 
-        with pytest.raises(RuntimeError, match="must have float32 dtype, got int"):
+        with pytest.raises(RuntimeError, match="must have float32 dtype, got Int"):
             encode_audio_to_file(
                 samples=torch.arange(10, dtype=torch.int),
                 sample_rate=10,
@@ -1151,273 +1149,114 @@ class TestAudioEncoderOps:
             )
 
 
-class TestVideoEncoderOps:
-    def decode(self, source=None) -> torch.Tensor:
-        return VideoDecoder(source).get_frames_in_range(start=0, stop=60)
+class TestMultiStreamEncoderOps:
+    def test_double_close(self, tmp_path):
+        encoder_tensor = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
+        streaming_encoder_close(encoder_tensor)
+        streaming_encoder_close(encoder_tensor)  # double close is a no-op
 
-    @pytest.mark.parametrize(
-        "format", ("mov", "mp4", "mkv", pytest.param("webm", marks=pytest.mark.slow))
-    )
-    @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
-    def test_video_encoder_round_trip(self, tmp_path, format, method):
-        # Test that decode(encode(decode(frames))) == decode(frames)
-        ffmpeg_version = get_ffmpeg_major_version()
-        # In FFmpeg6, the default codec's best pixel format is lossy for all container formats but webm.
-        # As a result, we skip the round trip test.
-        if ffmpeg_version == 6 and format != "webm":
-            pytest.skip(
-                f"FFmpeg6 defaults to lossy encoding for {format}, skipping round-trip test."
-            )
-        if format == "webm" and (
-            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
-        ):
-            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
+    @pytest.mark.parametrize("format", ["mp4", "mov", "mkv"])
+    def test_add_video_stream_and_encode_frames(self, tmp_path, format):
+        source_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+        frame_rate = source_decoder.metadata.average_fps
 
-        params = dict(
-            frame_rate=30, crf=0
-        )  # Frame rate is fixed with num frames decoded
-        if method == "to_file":
-            encoded_path = str(tmp_path / f"encoder_output.{format}")
-            encode_video_to_file(
-                frames=source_frames,
-                filename=encoded_path,
-                **params,
-            )
-            round_trip_frames = self.decode(encoded_path).data
-        elif method == "to_tensor":
-            encoded_tensor = encode_video_to_tensor(
-                source_frames, format=format, **params
-            )
-            round_trip_frames = self.decode(encoded_tensor).data
-        elif method == "to_file_like":
-            file_like = io.BytesIO()
-            encode_video_to_file_like(
-                frames=source_frames,
-                format=format,
-                file_like=file_like,
-                **params,
-            )
-            round_trip_frames = self.decode(file_like.getvalue()).data
-        else:
-            raise ValueError(f"Unknown method: {method}")
-
-        assert source_frames.shape == round_trip_frames.shape
-        assert source_frames.dtype == round_trip_frames.dtype
-
-        # If FFmpeg selects a codec or pixel format that does lossy encoding, assert 99% of pixels
-        # are within a higher tolerance.
-        if ffmpeg_version == 6:
-            assert_close = partial(assert_tensor_close_on_at_least, percentage=99)
-            atol = 15
-        else:
-            assert_close = torch.testing.assert_close
-            atol = 2
-        for s_frame, rt_frame in zip(source_frames, round_trip_frames):
-            assert psnr(s_frame, rt_frame) > 30
-            assert_close(s_frame, rt_frame, atol=atol, rtol=0)
-
-    @pytest.mark.parametrize(
-        "format",
-        (
-            "mov",
-            "mp4",
-            "avi",
-            "mkv",
-            "flv",
-            "gif",
-            pytest.param("webm", marks=pytest.mark.slow),
-        ),
-    )
-    @pytest.mark.parametrize("method", ("to_tensor", "to_file_like"))
-    def test_against_to_file(self, tmp_path, format, method):
-        # Test that to_file, to_tensor, and to_file_like produce the same results
-        ffmpeg_version = get_ffmpeg_major_version()
-        if format == "webm" and (
-            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
-        ):
-            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
-
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
-        params = dict(frame_rate=30, crf=0)
-
-        encoded_file = tmp_path / f"output.{format}"
-        encode_video_to_file(frames=source_frames, filename=str(encoded_file), **params)
-
-        if method == "to_tensor":
-            encoded_output = encode_video_to_tensor(
-                source_frames, format=format, **params
-            )
-        else:  # to_file_like
-            file_like = io.BytesIO()
-            encode_video_to_file_like(
-                frames=source_frames,
-                file_like=file_like,
-                format=format,
-                **params,
-            )
-            encoded_output = file_like.getvalue()
-
-        torch.testing.assert_close(
-            self.decode(encoded_file).data,
-            self.decode(encoded_output).data,
-            atol=0,
-            rtol=0,
-        )
-
-    @pytest.mark.skipif(in_fbcode(), reason="ffmpeg CLI not available")
-    @pytest.mark.parametrize(
-        "format",
-        (
-            "mov",
-            "mp4",
-            "avi",
-            "mkv",
-            "flv",
-            "gif",
-            pytest.param("webm", marks=pytest.mark.slow),
-        ),
-    )
-    def test_video_encoder_against_ffmpeg_cli(self, tmp_path, format):
-        ffmpeg_version = get_ffmpeg_major_version()
-        if format == "webm" and (
-            ffmpeg_version == 4 or (IS_WINDOWS and ffmpeg_version in (6, 7))
-        ):
-            pytest.skip("Codec for webm is not available in this FFmpeg installation.")
-
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
-
-        # Encode with FFmpeg CLI
-        temp_raw_path = str(tmp_path / "temp_input.raw")
-        with open(temp_raw_path, "wb") as f:
-            f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
-
-        ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
-        frame_rate = 30
-        crf = 0
-        # Some codecs (ex. MPEG4) do not support CRF.
-        # Flags not supported by the selected codec will be ignored.
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "rgb24",
-            "-s",
-            f"{source_frames.shape[3]}x{source_frames.shape[2]}",
-            "-r",
-            str(frame_rate),
-            "-i",
-            temp_raw_path,
-            "-crf",
-            str(crf),
-            ffmpeg_encoded_path,
-        ]
-        subprocess.run(ffmpeg_cmd, check=True)
-
-        # Encode with our video encoder
-        encoder_output_path = str(tmp_path / f"encoder_output.{format}")
-        encode_video_to_file(
-            frames=source_frames,
+        output_file = str(tmp_path / f"test.{format}")
+        encoder = create_streaming_encoder_to_file(output_file)
+        streaming_encoder_add_video_stream(
+            encoder,
             frame_rate=frame_rate,
-            filename=encoder_output_path,
-            crf=crf,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        streaming_encoder_add_frames(encoder, source_frames[:5])
+        streaming_encoder_add_frames(encoder, source_frames[5:])
+        streaming_encoder_close(encoder)
+
+        decoded_frames = (
+            VideoDecoder(output_file).get_frames_in_range(start=0, stop=10).data
+        )
+        assert_tensor_close_on_at_least(
+            decoded_frames, source_frames, percentage=99, atol=2
         )
 
-        ffmpeg_frames = self.decode(ffmpeg_encoded_path).data
-        encoder_frames = self.decode(encoder_output_path).data
+    def test_create_invalid_path(self):
+        with pytest.raises(RuntimeError, match="make sure it's a valid path"):
+            create_streaming_encoder_to_file("/nonexistent/dir/test.mp4")
 
-        assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
+    def test_create_invalid_format(self, tmp_path):
+        with pytest.raises(RuntimeError, match="check the desired extension"):
+            create_streaming_encoder_to_file(str(tmp_path / "test.bad_extension"))
 
-        # If FFmpeg selects a codec or pixel format that uses qscale (not crf),
-        # the VideoEncoder outputs *slightly* different frames.
-        # There may be additional subtle differences in the encoder.
-        percentage = 94 if ffmpeg_version == 6 or format == "avi" else 99
+    @pytest.mark.parametrize("format", ["mp4", "mov"])
+    def test_fragmented_mp4(self, format, tmp_path):
+        source_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+        frame_rate = source_decoder.metadata.average_fps
 
-        # Check that PSNR between both encoded versions is high
-        for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
-            res = psnr(ff_frame, enc_frame)
-            assert res > 30
+        output_file = str(tmp_path / f"test.{format}")
+        encoder = create_streaming_encoder_to_file(output_file)
+        streaming_encoder_add_video_stream(
+            encoder,
+            frame_rate=frame_rate,
+            pixel_format="yuv444p",
+            crf=0,
+            # In addition to the fragmentation flag, I found "flush_packets" and "threads" to be necessary to decode frames before close().
+            # See other frag flags: https://ffmpeg.org/ffmpeg-formats.html#Fragmentation
+            # TODO MultiStreamEncoder: Get a better understanding of which options are necessary for reading fragmented mp4s
+            extra_options=[
+                "movflags",
+                "+frag_every_frame+empty_moov",
+                "tune",
+                "zerolatency",
+                "flush_packets",
+                "1",
+                "threads",
+                "1",
+            ],
+        )
+        # Here, we decode the available fragmented mp4 frames before calling close()
+        for batch in [source_frames[:5], source_frames[5:]]:
+            streaming_encoder_add_frames(encoder, batch)
+            mid_decoder = VideoDecoder(output_file)
+            num_available = len(mid_decoder)
+            assert num_available > 0
             assert_tensor_close_on_at_least(
-                ff_frame, enc_frame, percentage=percentage, atol=2
+                mid_decoder.get_frames_in_range(start=0, stop=num_available).data,
+                source_frames[:num_available],
+                percentage=99,
+                atol=2,
             )
 
-    def test_to_file_like_custom_file_object(self):
-        """Test to_file_like with a custom file-like object that implements write and seek."""
-
-        class CustomFileObject:
-            def __init__(self):
-                self._file = io.BytesIO()
-
-            def write(self, data):
-                return self._file.write(data)
-
-            def seek(self, offset, whence=0):
-                return self._file.seek(offset, whence)
-
-            def get_encoded_data(self):
-                return self._file.getvalue()
-
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
-        file_like = CustomFileObject()
-        encode_video_to_file_like(
-            source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
-        )
-        decoded_samples = self.decode(file_like.get_encoded_data())
-
-        torch.testing.assert_close(
-            decoded_samples.data,
+        streaming_encoder_close(encoder)
+        # After close, all frames must be decodable
+        assert_tensor_close_on_at_least(
+            VideoDecoder(output_file).get_frames_in_range(start=0, stop=10).data,
             source_frames,
+            percentage=99,
             atol=2,
-            rtol=0,
         )
 
-    def test_to_file_like_real_file(self, tmp_path):
-        """Test to_file_like with a real file opened in binary write mode."""
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
-        file_path = tmp_path / "test_file_like.mp4"
+    def test_add_video_stream_twice_errors(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
+        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        with pytest.raises(RuntimeError, match="already been added"):
+            streaming_encoder_add_video_stream(encoder, frame_rate=24.0)
 
-        with open(file_path, "wb") as file_like:
-            encode_video_to_file_like(
-                source_frames, frame_rate=30, crf=0, format="mp4", file_like=file_like
-            )
-        decoded_samples = self.decode(str(file_path))
+    def test_add_frames_different_sizes_errors(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
+        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        frames_64 = torch.randint(0, 256, (2, 3, 64, 64), dtype=torch.uint8)
+        frames_128 = torch.randint(0, 256, (2, 3, 128, 128), dtype=torch.uint8)
+        streaming_encoder_add_frames(encoder, frames_64)
+        with pytest.raises(RuntimeError, match="same dimensions"):
+            streaming_encoder_add_frames(encoder, frames_128)
 
-        torch.testing.assert_close(
-            decoded_samples.data,
-            source_frames,
-            atol=2,
-            rtol=0,
-        )
-
-    def test_to_file_like_bad_methods(self):
-        source_frames = self.decode(TEST_SRC_2_720P.path).data
-
-        class NoWriteMethod:
-            def seek(self, offset, whence=0):
-                return 0
-
-        with pytest.raises(
-            RuntimeError, match="File like object must implement a write method"
-        ):
-            encode_video_to_file_like(
-                source_frames,
-                frame_rate=30,
-                format="mp4",
-                file_like=NoWriteMethod(),
-            )
-
-        class NoSeekMethod:
-            def write(self, data):
-                return len(data)
-
-        with pytest.raises(
-            RuntimeError, match="File like object must implement a seek method"
-        ):
-            encode_video_to_file_like(
-                source_frames, frame_rate=30, format="mp4", file_like=NoSeekMethod()
-            )
+    def test_add_frames_without_stream_errors(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
+        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match="No video stream"):
+            streaming_encoder_add_frames(encoder, frames)
 
 
 if __name__ == "__main__":

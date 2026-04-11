@@ -1,12 +1,15 @@
-sphinx-gallery>0.11
-sphinx==5.0.0
-sphinx_design
+sphinx==7.2.6
+-e git+https://github.com/pytorch/pytorch_sphinx_theme.git@pytorch_sphinx_theme2#egg=pytorch_sphinx_theme2
+sphinx-gallery>=0.14.0
+sphinx_design>=0.6.1
 sphinx_copybutton
 sphinx-tabs
+sphinx-sitemap>=2.7.1
+sphinxcontrib-mermaid>=1.0.0
+docutils>=0.18.1,<0.21
 matplotlib
 torchvision
 ipython
 fsspec
 aiohttp
 joblib
--e git+https://github.com/pytorch/pytorch_sphinx_theme.git#egg=pytorch_sphinx_theme

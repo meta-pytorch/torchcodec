@@ -1,8 +1,8 @@
-from typing import Callable, Union
+from collections.abc import Callable
 
 from torchcodec import FrameBatch
 
-_LIST_OF_INT_OR_FLOAT = Union[list[int], list[float]]
+_LIST_OF_INT_OR_FLOAT = list[int] | list[float]
 
 
 def _repeat_last_policy(

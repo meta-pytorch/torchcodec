@@ -4,15 +4,14 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+
 import dataclasses
 import json
 import pathlib
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import List, Optional, Union
 
 import torch
-
 from torchcodec._core.ops import (
     _get_container_json_metadata,
     _get_stream_json_metadata,
@@ -25,18 +24,34 @@ SPACES = "  "
 
 @dataclass
 class StreamMetadata:
-    duration_seconds_from_header: Optional[float]
+    duration_seconds_from_header: float | None
     """Duration of the stream, in seconds, obtained from the header (float or
     None). This could be inaccurate."""
-    begin_stream_seconds_from_header: Optional[float]
+    begin_stream_seconds_from_header: float | None
     """Beginning of the stream, in seconds, obtained from the header (float or
     None). Usually, this is equal to 0."""
-    bit_rate: Optional[float]
+    bit_rate: float | None
     """Bit rate of the stream, in seconds (float or None)."""
-    codec: Optional[str]
+    codec: str | None
     """Codec (str or None)."""
     stream_index: int
     """Index of the stream that this metadata refers to (int)."""
+
+    # Computed fields (computed in C++ with fallback logic)
+    duration_seconds: float | None
+    """Duration of the stream in seconds. We try to calculate the duration
+    from the actual frames if a :term:`scan` was performed. Otherwise we
+    fall back to ``duration_seconds_from_header``. If that value is also None,
+    we instead calculate the duration from ``num_frames_from_header`` and
+    ``average_fps_from_header``. If all of those are unavailable, we fall back
+    to the container-level ``duration_seconds_from_header``.
+    """
+    begin_stream_seconds: float | None
+    """Beginning of the stream, in seconds (float). Conceptually, this
+    corresponds to the first frame's :term:`pts`. If a :term:`scan` was performed
+    and ``begin_stream_seconds_from_content`` is not None, then it is returned.
+    Otherwise, this value is 0.
+    """
 
     def __repr__(self):
         s = self.__class__.__name__ + ":\n"
@@ -49,12 +64,12 @@ class StreamMetadata:
 class VideoStreamMetadata(StreamMetadata):
     """Metadata of a single video stream."""
 
-    begin_stream_seconds_from_content: Optional[float]
+    begin_stream_seconds_from_content: float | None
     """Beginning of the stream, in seconds (float or None).
     Conceptually, this corresponds to the first frame's :term:`pts`. It is only
     computed when a :term:`scan` is done as min(frame.pts) across all frames in
     the stream. Usually, this is equal to 0."""
-    end_stream_seconds_from_content: Optional[float]
+    end_stream_seconds_from_content: float | None
     """End of the stream, in seconds (float or None).
     Conceptually, this corresponds to last_frame.pts + last_frame.duration. It
     is only computed when a :term:`scan` is done as max(frame.pts +
@@ -65,136 +80,87 @@ class VideoStreamMetadata(StreamMetadata):
     simply indexing the :class:`~torchcodec.decoders.VideoDecoder` object with
     ``[-1]``.
     """
-    width: Optional[int]
+    width: int | None
     """Width of the frames (int or None)."""
-    height: Optional[int]
+    height: int | None
     """Height of the frames (int or None)."""
-    num_frames_from_header: Optional[int]
+    num_frames_from_header: int | None
     """Number of frames, from the stream's metadata. This is potentially
     inaccurate. We recommend using the ``num_frames`` attribute instead.
     (int or None)."""
-    num_frames_from_content: Optional[int]
+    num_frames_from_content: int | None
     """Number of frames computed by TorchCodec by scanning the stream's
     content (the scan doesn't involve decoding). This is more accurate
     than ``num_frames_from_header``. We recommend using the
     ``num_frames`` attribute instead. (int or None)."""
-    average_fps_from_header: Optional[float]
+    average_fps_from_header: float | None
     """Averate fps of the stream, obtained from the header (float or None).
     We recommend using the ``average_fps`` attribute instead."""
-    pixel_aspect_ratio: Optional[Fraction]
+    pixel_aspect_ratio: Fraction | None
     """Pixel Aspect Ratio (PAR), also known as Sample Aspect Ratio
     (SAR --- not to be confused with Storage Aspect Ratio, also SAR),
     is the ratio between the width and height of each pixel
     (``fractions.Fraction`` or None)."""
+    rotation: float | None
+    """Rotation angle in degrees (counter-clockwise rounded to the nearest
+    multiple of 90 degrees) from the display matrix metadata. This indicates
+    how the video should be rotated for correct display. TorchCodec automatically
+    applies this rotation during decoding, so the returned frames are in the
+    correct orientation (float or None).
 
-    @property
-    def duration_seconds(self) -> Optional[float]:
-        """Duration of the stream in seconds. We try to calculate the duration
-        from the actual frames if a :term:`scan` was performed. Otherwise we
-        fall back to ``duration_seconds_from_header``. If that value is also None,
-        we  instead calculate the duration from ``num_frames_from_header`` and
-        ``average_fps_from_header``.
-        """
-        if (
-            self.end_stream_seconds_from_content is not None
-            and self.begin_stream_seconds_from_content is not None
-        ):
-            return (
-                self.end_stream_seconds_from_content
-                - self.begin_stream_seconds_from_content
-            )
-        elif self.duration_seconds_from_header is not None:
-            return self.duration_seconds_from_header
-        elif (
-            self.num_frames_from_header is not None
-            and self.average_fps_from_header is not None
-        ):
-            return self.num_frames_from_header / self.average_fps_from_header
-        else:
-            return None
+    .. note::
 
-    @property
-    def begin_stream_seconds(self) -> float:
-        """Beginning of the stream, in seconds (float). Conceptually, this
-        corresponds to the first frame's :term:`pts`. If
-        ``begin_stream_seconds_from_content`` is not None, then it is returned.
-        Otherwise, this value is 0.
-        """
-        if self.begin_stream_seconds_from_content is None:
-            return 0
-        else:
-            return self.begin_stream_seconds_from_content
+        The :attr:`~torchcodec.decoders.VideoStreamMetadata.width` and
+        :attr:`~torchcodec.decoders.VideoStreamMetadata.height` attributes report
+        the **post-rotation** dimensions, i.e., the dimensions of frames as they
+        will be returned by TorchCodec's decoding methods. For videos with 90
+        or -90 degree rotation, this means width and height are swapped
+        compared to the raw encoded dimensions in the container.
+    """
+    color_primaries: str | None
+    """Color primaries as reported by FFmpeg. E.g. ``"bt709"``, ``"bt2020"``."""
+    color_space: str | None
+    """Color space as reported by FFmpeg. E.g. ``"bt709"``,
+    ``"bt2020nc"``."""
+    color_transfer_characteristic: str | None
+    """Color transfer characteristic as reported by FFmpeg
+    E.g. ``"bt709"``, ``"smpte2084"`` (PQ), ``"arib-std-b67"`` (HLG)."""
+    pixel_format: str | None
+    """The source pixel format of the video as reported by FFmpeg.
+    E.g. ``'yuv420p'``, ``'yuv444p'``, etc."""
 
-    @property
-    def end_stream_seconds(self) -> Optional[float]:
-        """End of the stream, in seconds (float or None).
-        Conceptually, this corresponds to last_frame.pts + last_frame.duration.
-        If ``end_stream_seconds_from_content`` is not None, then that value is
-        returned. Otherwise, returns ``duration_seconds``.
-        """
-        if self.end_stream_seconds_from_content is None:
-            return self.duration_seconds
-        else:
-            return self.end_stream_seconds_from_content
-
-    @property
-    def num_frames(self) -> Optional[int]:
-        """Number of frames in the stream (int or None).
-        This corresponds to ``num_frames_from_content`` if a :term:`scan` was made,
-        otherwise it corresponds to ``num_frames_from_header``. If that value is also
-        None, the number of frames is calculated from the duration and the average fps.
-        """
-        if self.num_frames_from_content is not None:
-            return self.num_frames_from_content
-        elif self.num_frames_from_header is not None:
-            return self.num_frames_from_header
-        elif (
-            self.average_fps_from_header is not None
-            and self.duration_seconds_from_header is not None
-        ):
-            return int(self.average_fps_from_header * self.duration_seconds_from_header)
-        else:
-            return None
-
-    @property
-    def average_fps(self) -> Optional[float]:
-        """Average fps of the stream. If a :term:`scan` was perfomed, this is
-        computed from the number of frames and the duration of the stream.
-        Otherwise we fall back to ``average_fps_from_header``.
-        """
-        if (
-            self.end_stream_seconds_from_content is None
-            or self.begin_stream_seconds_from_content is None
-            or self.num_frames is None
-            # Should never happen, but prevents ZeroDivisionError:
-            or self.end_stream_seconds_from_content
-            == self.begin_stream_seconds_from_content
-        ):
-            return self.average_fps_from_header
-        return self.num_frames / (
-            self.end_stream_seconds_from_content
-            - self.begin_stream_seconds_from_content
-        )
+    # Computed fields (computed in C++ with fallback logic)
+    end_stream_seconds: float | None
+    """End of the stream, in seconds (float or None).
+    Conceptually, this corresponds to last_frame.pts + last_frame.duration.
+    If :term:`scan` was performed and``end_stream_seconds_from_content`` is not None, then that value is
+    returned. Otherwise, returns ``duration_seconds``.
+    """
+    num_frames: int | None
+    """Number of frames in the stream (int or None).
+    This corresponds to ``num_frames_from_content`` if a :term:`scan` was made,
+    otherwise it corresponds to ``num_frames_from_header``. If that value is also
+    None, the number of frames is calculated from the duration and the average fps.
+    """
+    average_fps: float | None
+    """Average fps of the stream. If a :term:`scan` was perfomed, this is
+    computed from the number of frames and the duration of the stream.
+    Otherwise we fall back to ``average_fps_from_header``.
+    """
 
     def __repr__(self):
-        s = super().__repr__()
-        s += f"{SPACES}duration_seconds: {self.duration_seconds}\n"
-        s += f"{SPACES}begin_stream_seconds: {self.begin_stream_seconds}\n"
-        s += f"{SPACES}end_stream_seconds: {self.end_stream_seconds}\n"
-        s += f"{SPACES}num_frames: {self.num_frames}\n"
-        s += f"{SPACES}average_fps: {self.average_fps}\n"
-        return s
+        return super().__repr__()
 
 
 @dataclass
 class AudioStreamMetadata(StreamMetadata):
     """Metadata of a single audio stream."""
 
-    sample_rate: Optional[int]
+    sample_rate: int | None
     """The original sample rate."""
-    num_channels: Optional[int]
+    num_channels: int | None
     """The number of channels (1 for mono, 2 for stereo, etc.)"""
-    sample_format: Optional[str]
+    sample_format: str | None
     """The original sample format, as described by FFmpeg. E.g. 'fltp', 's32', etc."""
 
     def __repr__(self):
@@ -203,19 +169,19 @@ class AudioStreamMetadata(StreamMetadata):
 
 @dataclass
 class ContainerMetadata:
-    duration_seconds_from_header: Optional[float]
-    bit_rate_from_header: Optional[float]
-    best_video_stream_index: Optional[int]
-    best_audio_stream_index: Optional[int]
+    duration_seconds_from_header: float | None
+    bit_rate_from_header: float | None
+    best_video_stream_index: int | None
+    best_audio_stream_index: int | None
 
-    streams: List[StreamMetadata]
+    streams: list[StreamMetadata]
 
     @property
-    def duration_seconds(self) -> Optional[float]:
+    def duration_seconds(self) -> float | None:
         raise NotImplementedError("Decide on logic and implement this!")
 
     @property
-    def bit_rate(self) -> Optional[float]:
+    def bit_rate(self) -> float | None:
         raise NotImplementedError("Decide on logic and implement this!")
 
     @property
@@ -255,15 +221,17 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
     """
 
     container_dict = json.loads(_get_container_json_metadata(decoder))
-    streams_metadata: List[StreamMetadata] = []
+    streams_metadata: list[StreamMetadata] = []
     for stream_index in range(container_dict["numStreams"]):
         stream_dict = json.loads(_get_stream_json_metadata(decoder, stream_index))
         common_meta = dict(
             duration_seconds_from_header=stream_dict.get("durationSecondsFromHeader"),
+            duration_seconds=stream_dict.get("durationSeconds"),
             bit_rate=stream_dict.get("bitRate"),
             begin_stream_seconds_from_header=stream_dict.get(
                 "beginStreamSecondsFromHeader"
             ),
+            begin_stream_seconds=stream_dict.get("beginStreamSeconds"),
             codec=stream_dict.get("codec"),
             stream_index=stream_index,
         )
@@ -276,12 +244,22 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
                     end_stream_seconds_from_content=stream_dict.get(
                         "endStreamSecondsFromContent"
                     ),
+                    end_stream_seconds=stream_dict.get("endStreamSeconds"),
+                    num_frames=stream_dict.get("numFrames"),
+                    average_fps=stream_dict.get("averageFps"),
                     width=stream_dict.get("width"),
                     height=stream_dict.get("height"),
                     num_frames_from_header=stream_dict.get("numFramesFromHeader"),
                     num_frames_from_content=stream_dict.get("numFramesFromContent"),
                     average_fps_from_header=stream_dict.get("averageFpsFromHeader"),
                     pixel_aspect_ratio=_get_optional_par_fraction(stream_dict),
+                    rotation=stream_dict.get("rotation"),
+                    color_primaries=stream_dict.get("colorPrimaries"),
+                    color_space=stream_dict.get("colorSpace"),
+                    color_transfer_characteristic=stream_dict.get(
+                        "colorTransferCharacteristic"
+                    ),
+                    pixel_format=stream_dict.get("pixelFormat"),
                     **common_meta,
                 )
             )
@@ -310,7 +288,7 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
 
 
 def get_container_metadata_from_header(
-    filename: Union[str, pathlib.Path]
+    filename: str | pathlib.Path,
 ) -> ContainerMetadata:
     return get_container_metadata(
         create_from_file(str(filename), seek_mode="approximate")

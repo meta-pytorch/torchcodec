@@ -2,22 +2,22 @@ import importlib
 import json
 import os
 import pathlib
+import platform
 import subprocess
 import sys
-
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pytest
-
 import torch
 
+from torchcodec import ffmpeg_major_version
 from torchcodec._core import get_ffmpeg_library_versions
 from torchcodec.decoders import set_cuda_backend, VideoDecoder
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
+IN_GITHUB_CI = bool(os.getenv("GITHUB_ACTIONS"))
 
 
 # Decorator for skipping CUDA tests when CUDA isn't available. The tests are
@@ -25,6 +25,13 @@ IS_WINDOWS = sys.platform in ("win32", "cygwin")
 # conftest.py
 def needs_cuda(test_item):
     return pytest.mark.needs_cuda(test_item)
+
+
+# Decorator for skipping ffmpeg tests when ffmpeg cli isn't available. The tests are
+# effectively marked to be skipped in pytest_collection_modifyitems() of
+# conftest.py
+def needs_ffmpeg_cli(test_item):
+    return pytest.mark.needs_ffmpeg_cli(test_item)
 
 
 # This is a special device string that we use to test the "beta" CUDA backend.
@@ -40,6 +47,13 @@ _CUDA_BETA_DEVICE_STR = "cuda:beta"
 def all_supported_devices():
     return (
         "cpu",
+        pytest.param("cuda", marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
+    )
+
+
+def cuda_devices():
+    return (
         pytest.param("cuda", marks=pytest.mark.needs_cuda),
         pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
     )
@@ -76,28 +90,21 @@ def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
     return dec, clean_device
 
 
-def _get_ffmpeg_version_string():
+def get_ffmpeg_minor_version():
     ffmpeg_version = get_ffmpeg_library_versions()["ffmpeg_version"]
     # When building FFmpeg from source there can be a `n` prefix in the version
     # string.  This is quite brittle as we're using av_version_info(), which has
     # no stable format. See https://github.com/pytorch/torchcodec/issues/100
     if ffmpeg_version.startswith("n"):
         ffmpeg_version = ffmpeg_version.removeprefix("n")
-
-    return ffmpeg_version
-
-
-def get_ffmpeg_major_version():
-    ffmpeg_version = _get_ffmpeg_version_string()
-    return int(ffmpeg_version.split(".")[0])
-
-
-def get_ffmpeg_minor_version():
-    ffmpeg_version = _get_ffmpeg_version_string()
     return int(ffmpeg_version.split(".")[1])
 
 
-def cuda_version_used_for_building_torch() -> Optional[tuple[int, int]]:
+def get_python_version() -> tuple[int, int]:
+    return (sys.version_info.major, sys.version_info.minor)
+
+
+def cuda_version_used_for_building_torch() -> tuple[int, int | None]:
     # Return the CUDA version that was used to build PyTorch. That's not always
     # the same as the CUDA version that is currently installed on the running
     # machine, which is what we actually want. On the CI though, these are the
@@ -128,10 +135,10 @@ def psnr(a, b, max_val=255) -> float:
 # not guarantee bit-for-bit equality across systems and architectures, so we
 # also cannot. We currently use Linux on x86_64 as our reference system.
 def assert_frames_equal(*args, **kwargs):
-    if sys.platform == "linux":
+    if sys.platform == "linux" and "x86" in platform.machine().lower():
         if args[0].device.type == "cuda":
             atol = 3 if cuda_version_used_for_building_torch() >= (13, 0) else 2
-            if get_ffmpeg_major_version() == 4:
+            if ffmpeg_major_version == 4:
                 assert_tensor_close_on_at_least(
                     args[0], args[1], percentage=95, atol=atol
                 )
@@ -140,6 +147,7 @@ def assert_frames_equal(*args, **kwargs):
         else:
             torch.testing.assert_close(*args, **kwargs, atol=0, rtol=0)
     else:
+        # Here: Windows, MacOS, and Linux for non-x86 architectures like aarch64
         torch.testing.assert_close(*args, **kwargs, atol=3, rtol=0)
 
 
@@ -219,10 +227,10 @@ class TestContainerFile:
     filename: str
 
     default_stream_index: int
-    stream_infos: Dict[int, Union[TestVideoStreamInfo, TestAudioStreamInfo]]
-    frames: Dict[int, Dict[int, TestFrameInfo]]
-    _custom_frame_mappings_data: Dict[
-        int, Optional[tuple[torch.Tensor, torch.Tensor, torch.Tensor]]
+    stream_infos: dict[int, TestVideoStreamInfo | TestAudioStreamInfo]
+    frames: dict[int, dict[int, TestFrameInfo]]
+    _custom_frame_mappings_data: dict[
+        int, tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]
     ] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -252,7 +260,7 @@ class TestContainerFile:
                     "You need to submit this file, or specify the `frames` field manually."
                 )
 
-            with open(frames_info_path, "r") as f:
+            with open(frames_info_path) as f:
                 frames_info = json.loads(f.read())
             self.frames[stream_index] = {
                 frame_index: TestFrameInfo(
@@ -271,7 +279,7 @@ class TestContainerFile:
         return torch.from_numpy(arr)
 
     def get_frame_data_by_index(
-        self, idx: int, *, stream_index: Optional[int] = None
+        self, idx: int, *, stream_index: int | None = None
     ) -> torch.Tensor:
         raise NotImplementedError("Override in child classes")
 
@@ -281,7 +289,7 @@ class TestContainerFile:
         stop: int,
         step: int = 1,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
     ) -> torch.Tensor:
         raise NotImplementedError("Override in child classes")
 
@@ -291,7 +299,7 @@ class TestContainerFile:
         stop: int,
         step: int = 1,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -307,7 +315,7 @@ class TestContainerFile:
         stop: int,
         step: int = 1,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -319,7 +327,7 @@ class TestContainerFile:
         return torch.tensor(all_durations, dtype=torch.float64)
 
     def get_frame_info(
-        self, idx: int, *, stream_index: Optional[int] = None
+        self, idx: int, *, stream_index: int | None = None
     ) -> TestFrameInfo:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -328,7 +336,7 @@ class TestContainerFile:
 
     # This function is used to get the frame mappings for the custom_frame_mappings seek mode.
     def get_custom_frame_mappings(
-        self, stream_index: Optional[int] = None
+        self, stream_index: int | None = None
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -372,7 +380,7 @@ class TestVideo(TestContainerFile):
     """Base class for the *video* streams of a video container"""
 
     def get_base_path_by_index(
-        self, idx: int, *, stream_index: int, filters: Optional[str] = None
+        self, idx: int, *, stream_index: int, filters: str | None = None
     ) -> pathlib.Path:
         stream_and_frame = f"stream{stream_index}.frame{idx:06d}"
         if filters is not None:
@@ -386,8 +394,8 @@ class TestVideo(TestContainerFile):
         self,
         idx: int,
         *,
-        stream_index: Optional[int] = None,
-        filters: Optional[str] = None,
+        stream_index: int | None = None,
+        filters: str | None = None,
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -404,7 +412,7 @@ class TestVideo(TestContainerFile):
         stop: int,
         step: int = 1,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
     ) -> torch.Tensor:
         tensors = [
             self.get_frame_data_by_index(i, stream_index=stream_index)
@@ -430,19 +438,19 @@ class TestVideo(TestContainerFile):
             [0, self.num_color_channels, self.height, self.width], dtype=torch.uint8
         )
 
-    def get_width(self, *, stream_index: Optional[int]) -> int:
+    def get_width(self, *, stream_index: int | None = None) -> int:
         if stream_index is None:
             stream_index = self.default_stream_index
 
         return self.stream_infos[stream_index].width
 
-    def get_height(self, *, stream_index: Optional[int] = None) -> int:
+    def get_height(self, *, stream_index: int | None = None) -> int:
         if stream_index is None:
             stream_index = self.default_stream_index
 
         return self.stream_infos[stream_index].height
 
-    def get_num_color_channels(self, *, stream_index: Optional[int] = None) -> int:
+    def get_num_color_channels(self, *, stream_index: int | None = None) -> int:
         if stream_index is None:
             stream_index = self.default_stream_index
 
@@ -466,6 +474,18 @@ NASA_VIDEO = TestVideo(
     stream_infos={
         0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
         3: TestVideoStreamInfo(width=480, height=270, num_color_channels=3),
+    },
+    frames={},  # Automatically loaded from json file
+)
+
+NASA_VIDEO_ROTATED = TestVideo(
+    filename="nasa_13013_rotated.mp4",
+    default_stream_index=0,
+    stream_infos={
+        # Post-rotation dimensions: 90-degree rotation swaps width/height
+        # This is a short video (~15 frames) extracted from nasa_13013.mp4 stream 3
+        # with 90-degree rotation metadata added
+        0: TestVideoStreamInfo(width=270, height=480, num_color_channels=3),
     },
     frames={},  # Automatically loaded from json file
 )
@@ -544,6 +564,68 @@ BT709_FULL_RANGE = TestVideo(
     frames={0: {}},  # Not needed for now
 )
 
+# BT.2020 10-bit video with limited range (tv), generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x240:rate=30 -c:v libx265 \
+# -pix_fmt yuv420p10le -color_primaries bt2020 -color_trc smpte2084 \
+# -colorspace bt2020nc -color_range tv bt2020_10bit.mp4
+#
+# Confirm color space with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/bt2020_10bit.mp4
+# color_range=tv
+# color_space=bt2020nc
+# color_transfer=smpte2084
+# color_primaries=bt2020
+BT2020_LIMITED_RANGE_10BIT = TestVideo(
+    filename="bt2020_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# Full range BT.601 video, generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x240:rate=30 -c:v libx264
+# -profile:v high -pix_fmt yuv420p
+# -vf "setparams=color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m:range=pc"
+# bt601_full_range.mp4
+#
+# Confirm color space with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/bt601_full_range.mp4
+# color_range=pc
+# color_space=smpte170m
+# color_transfer=smpte170m
+# color_primaries=smpte170m
+BT601_FULL_RANGE = TestVideo(
+    filename="bt601_full_range.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# Limited range BT.601 video, generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x240:rate=30 -c:v libx264
+# -profile:v baseline -pix_fmt yuv420p
+# -vf "setparams=color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m:range=tv"
+# bt601_limited_range.mp4
+#
+# Confirm color space with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/bt601_limited_range.mp4
+# color_range=tv
+# color_space=smpte170m
+# color_transfer=smpte170m
+# color_primaries=smpte170m
+BT601_LIMITED_RANGE = TestVideo(
+    filename="bt601_limited_range.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
 # ffmpeg -f lavfi -i testsrc2=duration=2:size=1280x720:rate=30 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -b:v 2500k -r 30 -movflags +faststart output_720p_2s.mp4
 TEST_SRC_2_720P = TestVideo(
     filename="testsrc2.mp4",
@@ -593,6 +675,18 @@ TEST_SRC_2_720P_MPEG4 = TestVideo(
     frames={0: {}},  # Not needed for now
 )
 
+# Video with non-zero start time (start_time ~8.333s)
+# Used to test that PTS values are correctly reported for videos that don't
+# start at time 0.
+TEST_NON_ZERO_START = TestVideo(
+    filename="test_non_zero_start.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=200, height=112, num_color_channels=3),
+    },
+    frames={},  # Automatically loaded from json file
+)
+
 
 def supports_approximate_mode(asset: TestVideo) -> bool:
     # Those are missing the `duration` field so they fail in approximate mode (on all devices).
@@ -606,10 +700,10 @@ class TestAudio(TestContainerFile):
     """Base class for the *audio* streams of a container (potentially a video),
     or a pure audio file"""
 
-    stream_infos: Dict[int, TestAudioStreamInfo]
+    stream_infos: dict[int, TestAudioStreamInfo]
     # stream_index -> list of 2D frame tensors of shape (num_channels, num_samples_in_that_frame)
     # num_samples_in_that_frame isn't necessarily constant for a given stream.
-    _reference_frames: Dict[int, List[torch.Tensor]] = field(default_factory=dict)
+    _reference_frames: dict[int, list[torch.Tensor]] = field(default_factory=dict)
 
     # Storing each individual frame is too expensive for audio, because there's
     # a massive overhead in the binary format saved by pytorch. Saving all the
@@ -633,7 +727,7 @@ class TestAudio(TestContainerFile):
                 )
 
     def get_frame_data_by_index(
-        self, idx: int, *, stream_index: Optional[int] = None
+        self, idx: int, *, stream_index: int | None = None
     ) -> torch.Tensor:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -646,7 +740,7 @@ class TestAudio(TestContainerFile):
         stop: int,
         step: int = 1,
         *,
-        stream_index: Optional[int] = None,
+        stream_index: int | None = None,
     ) -> torch.Tensor:
         tensors = [
             self.get_frame_data_by_index(i, stream_index=stream_index)
@@ -655,7 +749,7 @@ class TestAudio(TestContainerFile):
         return torch.cat(tensors, dim=-1)
 
     def get_frame_index(
-        self, *, pts_seconds: float, stream_index: Optional[int] = None
+        self, *, pts_seconds: float, stream_index: int | None = None
     ) -> int:
         if stream_index is None:
             stream_index = self.default_stream_index
@@ -810,6 +904,23 @@ SINE_MONO_S16 = TestAudio(
             num_channels=1,
             duration_seconds=4,
             num_frames=63,
+            sample_format="s16",
+        )
+    },
+)
+
+# 16-channel audio for testing support for >8 channels. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -t 1 -filter_complex "[0]asplit=16[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15];[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15]amerge=inputs=16" -c:a pcm_s16le test/resources/sine_16ch_s16.wav
+SINE_16_CHANNEL_S16 = TestAudio(
+    filename="sine_16ch_s16.wav",
+    default_stream_index=0,
+    frames={},  # Automatically loaded from json file
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=16,
+            duration_seconds=1,
+            num_frames=16,
             sample_format="s16",
         )
     },

@@ -6,10 +6,11 @@
 
 #pragma once
 
-#include <torch/types.h>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -40,14 +41,20 @@ struct VideoStreamOptions {
       ColorConversionLibrary::FILTERGRAPH;
 
   // By default we use CPU for decoding for both C++ and python users.
-  torch::Device device = torch::kCPU;
+  // Note: This is not used for video encoding, because device is determined by
+  // the device of the input frame tensor.
+  StableDevice device = StableDevice(kStableCPU);
   // Device variant (e.g., "ffmpeg", "beta", etc.)
   std::string_view deviceVariant = "ffmpeg";
 
   // Encoding options
-  // TODO-VideoEncoder: Consider adding other optional fields here
-  // (bit rate, gop size, max b frames, preset)
-  std::optional<int> crf;
+  std::optional<std::string> codec;
+  // Optional pixel format for video encoding (e.g., "yuv420p", "yuv444p")
+  // If not specified, uses codec's default format.
+  std::optional<std::string> pixelFormat;
+  std::optional<double> crf;
+  std::optional<std::string> preset;
+  std::optional<std::map<std::string, std::string>> extraOptions;
 };
 
 struct AudioStreamOptions {

@@ -37,7 +37,7 @@ if response.status_code != 200:
 raw_video_bytes = response.content
 
 
-def plot(frames: torch.Tensor, title : Optional[str] = None):
+def plot(frames: torch.Tensor, title: str | None = None):
     try:
         from torchvision.utils import make_grid
         from torchvision.transforms.v2.functional import to_pil_image

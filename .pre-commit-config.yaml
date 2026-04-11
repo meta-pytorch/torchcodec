@@ -14,6 +14,14 @@ repos:
       - id: check-added-large-files
         args: ['--maxkb=1000']
 
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.21.2
+    hooks:
+    -   id: pyupgrade
+        args: [--py310-plus]
+        files: ^(test|src)/
+        exclude: ^examples/
+
   - repo: https://github.com/omnilib/ufmt
     rev: v2.6.0
     hooks:

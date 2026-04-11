@@ -18,4 +18,8 @@ std::optional<int> validateOptionalInt64ToInt(
     const std::optional<int64_t>& value,
     const std::string& parameterName);
 
+std::streampos validateUint64ToStreampos(
+    uint64_t value,
+    const std::string& parameterName);
+
 } // namespace facebook::torchcodec

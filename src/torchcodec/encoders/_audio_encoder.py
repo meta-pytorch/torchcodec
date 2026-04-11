@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional, Union
 
 import torch
 from torch import Tensor
@@ -44,11 +43,11 @@ class AudioEncoder:
 
     def to_file(
         self,
-        dest: Union[str, Path],
+        dest: str | Path,
         *,
-        bit_rate: Optional[int] = None,
-        num_channels: Optional[int] = None,
-        sample_rate: Optional[int] = None,
+        bit_rate: int | None = None,
+        num_channels: int | None = None,
+        sample_rate: int | None = None,
     ) -> None:
         """Encode samples into a file.
 
@@ -79,9 +78,9 @@ class AudioEncoder:
         self,
         format: str,
         *,
-        bit_rate: Optional[int] = None,
-        num_channels: Optional[int] = None,
-        sample_rate: Optional[int] = None,
+        bit_rate: int | None = None,
+        num_channels: int | None = None,
+        sample_rate: int | None = None,
     ) -> Tensor:
         """Encode samples into raw bytes, as a 1D uint8 Tensor.
 
@@ -115,9 +114,9 @@ class AudioEncoder:
         file_like,
         format: str,
         *,
-        bit_rate: Optional[int] = None,
-        num_channels: Optional[int] = None,
-        sample_rate: Optional[int] = None,
+        bit_rate: int | None = None,
+        num_channels: int | None = None,
+        sample_rate: int | None = None,
     ) -> None:
         """Encode samples into a file-like object.
 
