@@ -20,9 +20,6 @@ defaults:
   run:
     shell: bash -l -eo pipefail {0}
 
-env:
-  ARM_TEST_PYTHON_VERSION: "3.10"
-
 jobs:
   generate-matrix:
     runs-on: ubuntu-latest
@@ -33,12 +30,33 @@ jobs:
       - name: Generate ARM build and test matrix
         id: set-matrix
         run: |
-          printf '%s\n' \
-            'build-matrix={"python-version":["3.9","3.10","3.11","3.12","3.13"]}' \
-            >> "$GITHUB_OUTPUT"
-          printf '%s\n' \
-            'test-matrix={"include":[{"python-version":"'"${ARM_TEST_PYTHON_VERSION}"'","ffmpeg-version":"4.4.2"},{"python-version":"'"${ARM_TEST_PYTHON_VERSION}"'","ffmpeg-version":"5.1.2"},{"python-version":"'"${ARM_TEST_PYTHON_VERSION}"'","ffmpeg-version":"6.1.1"},{"python-version":"'"${ARM_TEST_PYTHON_VERSION}"'","ffmpeg-version":"7.0.1"}]}' \
-            >> "$GITHUB_OUTPUT"
+          python - <<'PY'
+          import itertools
+          import json
+          import os
+
+          python_versions = ["3.9", "3.10", "3.11", "3.12", "3.13"]
+          # FFmpeg 8.0 is intentionally excluded for Paddle CPU builds to match
+          # the existing x86 workflow and avoid the current OpenVINO conflict.
+          ffmpeg_versions = ["4.4.2", "5.1.2", "6.1.1", "7.0.1"]
+
+          build_matrix = {"python-version": python_versions}
+          test_matrix = {
+              "include": [
+                  {
+                      "python-version": python_version,
+                      "ffmpeg-version": ffmpeg_version,
+                  }
+                  for python_version, ffmpeg_version in itertools.product(
+                      python_versions, ffmpeg_versions
+                  )
+              ]
+          }
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+              f.write(f"build-matrix={json.dumps(build_matrix)}\n")
+              f.write(f"test-matrix={json.dumps(test_matrix)}\n")
+          PY
 
   build:
     needs: generate-matrix
@@ -145,8 +163,8 @@ jobs:
       PADDLECODEC_TEST_NUM_FRAMES: "8"
     strategy:
       fail-fast: false
-      # Match upstream's staged Linux wheel flow: build all Python variants, then
-      # smoke-test one representative ARM wheel across multiple runtime FFmpeg majors.
+      # Match the existing Paddle x86 flow while keeping the upstream-style staged
+      # build/test split: exercise every Python and FFmpeg combination post-build.
       matrix: ${{ fromJson(needs.generate-matrix.outputs.test-matrix) }}
     steps:
       - name: Checkout repository
