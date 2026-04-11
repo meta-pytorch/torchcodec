@@ -140,9 +140,6 @@ jobs:
     needs: [generate-matrix, build]
     name: Install and test ARM wheel
     runs-on: ubuntu-24.04-arm
-    env:
-      PADDLECODEC_TEST_VIDEO: test/resources/testsrc2.mp4
-      PADDLECODEC_TEST_NUM_FRAMES: "8"
     strategy:
       fail-fast: false
       # Match upstream's staged Linux wheel flow: build all Python variants, then
