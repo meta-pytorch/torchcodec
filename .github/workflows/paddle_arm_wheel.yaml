@@ -20,6 +20,11 @@ defaults:
   run:
     shell: bash -l -eo pipefail {0}
 
+env:
+  PADDLECODEC_TEST_VIDEO_URL: https://paddlenlp.bj.bcebos.com/datasets/paddlemix/demo_video/example_video.mp4
+  PADDLECODEC_TEST_VIDEO_CACHE_KEY: paddlecodec-test-video-v1-example-video
+  PADDLECODEC_TEST_VIDEO_PATH: .github/test-assets/example_video.mp4
+
 jobs:
   generate-matrix:
     runs-on: ubuntu-latest
@@ -57,6 +62,32 @@ jobs:
               f.write(f"build-matrix={json.dumps(build_matrix)}\n")
               f.write(f"test-matrix={json.dumps(test_matrix)}\n")
           PY
+
+  prepare-test-video:
+    runs-on: ubuntu-latest
+    name: Prepare cached Paddle test video
+    steps:
+      - name: Restore cached test video
+        id: cache-test-video
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PADDLECODEC_TEST_VIDEO_PATH }}
+          key: ${{ env.PADDLECODEC_TEST_VIDEO_CACHE_KEY }}
+
+      - name: Download test video
+        if: steps.cache-test-video.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$(dirname "${PADDLECODEC_TEST_VIDEO_PATH}")"
+          curl --fail --location --retry 5 --retry-all-errors \
+            --output "${PADDLECODEC_TEST_VIDEO_PATH}" \
+            "${PADDLECODEC_TEST_VIDEO_URL}"
+
+      - name: Upload cached test video artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: paddlecodec-test-video
+          path: ${{ env.PADDLECODEC_TEST_VIDEO_PATH }}
+          if-no-files-found: error
 
   build:
     needs: generate-matrix
@@ -155,12 +186,11 @@ jobs:
           unzip -l $wheel_path
 
   install-and-test:
-    needs: [generate-matrix, build]
+    needs: [generate-matrix, prepare-test-video, build]
     name: Install and test ARM wheel
     runs-on: ubuntu-24.04-arm
     env:
-      PADDLECODEC_TEST_VIDEO: test/resources/testsrc2.mp4
-      PADDLECODEC_TEST_NUM_FRAMES: "8"
+      PADDLECODEC_TEST_VIDEO: .github/test-assets/example_video.mp4
     strategy:
       fail-fast: false
       # Match the existing Paddle x86 flow while keeping the upstream-style staged
@@ -175,6 +205,12 @@ jobs:
         with:
           name: paddlecodec-wheel-linux-arm64-py${{ matrix.python-version }}
           path: dist/
+
+      - name: Download cached test video artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: paddlecodec-test-video
+          path: .github/test-assets/
 
       - name: Install FFmpeg via conda
         uses: conda-incubator/setup-miniconda@v3
