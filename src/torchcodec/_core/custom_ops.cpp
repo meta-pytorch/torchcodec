@@ -4,8 +4,14 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+// fmt and pybind11 headers from torch error out if TORCH_TARGET_VERSION is
+// defined, so we temporarily undefine it.
+// See https://github.com/pytorch/pytorch/pull/174372 for context
+#pragma push_macro("TORCH_TARGET_VERSION")
+#undef TORCH_TARGET_VERSION
 #include <fmt/format.h>
 #include <pybind11/pybind11.h>
+#pragma pop_macro("TORCH_TARGET_VERSION")
 #include <cstdint>
 #include <string>
 
@@ -82,6 +88,12 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
+  m.def("create_streaming_encoder_to_file(str filename) -> Tensor");
+  m.def("streaming_encoder_close(Tensor(a!) encoder) -> ()");
+  m.def(
+      "streaming_encoder_add_video_stream(Tensor(a!) encoder, float frame_rate, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
+  m.def(
+      "streaming_encoder_add_frames(Tensor(a!) encoder, Tensor frames) -> ()");
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
   m.def("get_nvdec_cache_capacity() -> int");
   m.def("_get_nvdec_cache_size(int device_index) -> int");
@@ -92,16 +104,11 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
 
 namespace {
 
-// TODO_STABLE_ABI: use previous deleter pattern with a lambda, once
-// https://github.com/pytorch/pytorch/pull/175089 is available.
-void decoderDeleter(void* data) {
-  delete static_cast<SingleStreamDecoder*>(data);
-}
-
 torch::stable::Tensor wrapDecoderPointerToTensor(
     std::unique_ptr<SingleStreamDecoder> uniqueDecoder) {
   SingleStreamDecoder* decoder = uniqueDecoder.release();
 
+  auto deleter = [decoder](void*) { delete decoder; };
   int64_t sizes[] = {static_cast<int64_t>(sizeof(SingleStreamDecoder*))};
   int64_t strides[] = {1};
   torch::stable::Tensor tensor = torch::stable::from_blob(
@@ -110,7 +117,7 @@ torch::stable::Tensor wrapDecoderPointerToTensor(
       {strides, 1},
       StableDevice(kStableCPU),
       kStableInt64,
-      &decoderDeleter);
+      deleter);
   auto videoDecoder =
       static_cast<SingleStreamDecoder*>(tensor.mutable_data_ptr());
   STD_TORCH_CHECK(videoDecoder == decoder, "videoDecoder != decoder");
@@ -156,6 +163,41 @@ SingleStreamDecoder* unwrapTensorToGetDecoder(torch::stable::Tensor& tensor) {
   void* buffer = tensor.mutable_data_ptr();
   SingleStreamDecoder* decoder = static_cast<SingleStreamDecoder*>(buffer);
   return decoder;
+}
+
+// TODO_STABLE_ABI: use previous deleter pattern with a lambda, once
+// https://github.com/pytorch/pytorch/pull/175089 is available.
+void multiStreamEncoderDeleter(void* data) {
+  delete static_cast<MultiStreamEncoder*>(data);
+}
+
+torch::stable::Tensor wrapMultiStreamEncoderPointerToTensor(
+    std::unique_ptr<MultiStreamEncoder> uniqueEncoder) {
+  MultiStreamEncoder* encoder = uniqueEncoder.release();
+  int64_t sizes[] = {static_cast<int64_t>(sizeof(MultiStreamEncoder*))};
+  int64_t strides[] = {1};
+  torch::stable::Tensor tensor = torch::stable::from_blob(
+      encoder,
+      {sizes, 1},
+      {strides, 1},
+      StableDevice(kStableCPU),
+      kStableInt64,
+      &multiStreamEncoderDeleter);
+  auto multiStreamEncoder =
+      static_cast<MultiStreamEncoder*>(tensor.mutable_data_ptr());
+  STD_TORCH_CHECK(
+      multiStreamEncoder == encoder, "multiStreamEncoder != encoder");
+  return tensor;
+}
+
+MultiStreamEncoder* unwrapTensorToGetMultiStreamEncoder(
+    torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(
+      tensor.is_contiguous(),
+      "fake encoder tensor must be contiguous! This is an internal error, please report on the torchcodec issue tracker.");
+  void* buffer = tensor.mutable_data_ptr();
+  MultiStreamEncoder* encoder = static_cast<MultiStreamEncoder*>(buffer);
+  return encoder;
 }
 
 // The elements of this tuple are all tensors that represent a single frame:
@@ -1159,6 +1201,42 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
+torch::stable::Tensor create_streaming_encoder_to_file(std::string file_name) {
+  auto encoder = std::make_unique<MultiStreamEncoder>(file_name);
+  return wrapMultiStreamEncoderPointerToTensor(std::move(encoder));
+}
+
+void streaming_encoder_close(torch::stable::Tensor& encoder) {
+  unwrapTensorToGetMultiStreamEncoder(encoder)->close();
+}
+
+void streaming_encoder_add_video_stream(
+    torch::stable::Tensor& encoder,
+    double frame_rate,
+    std::optional<std::string> codec = std::nullopt,
+    std::optional<std::string> pixel_format = std::nullopt,
+    std::optional<double> crf = std::nullopt,
+    std::optional<std::string> preset = std::nullopt,
+    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
+  std::optional<std::map<std::string, std::string>> extraOptionsMap;
+  if (extra_options.has_value()) {
+    extraOptionsMap = unflattenExtraOptions(extra_options.value());
+  }
+  unwrapTensorToGetMultiStreamEncoder(encoder)->addVideoStream(
+      frame_rate,
+      std::move(codec),
+      std::move(pixel_format),
+      crf,
+      std::move(preset),
+      std::move(extraOptionsMap));
+}
+
+void streaming_encoder_add_frames(
+    torch::stable::Tensor& encoder,
+    const torch::stable::Tensor& frames) {
+  unwrapTensorToGetMultiStreamEncoder(encoder)->addFrames(frames);
+}
+
 torch::stable::Tensor create_wav_decoder_from_file(
     const std::string& filename) {
   auto decoder = std::make_unique<WavDecoder>(filename);
@@ -1225,6 +1303,14 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
   m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
+  m.impl(
+      "create_streaming_encoder_to_file",
+      TORCH_BOX(&create_streaming_encoder_to_file));
+  m.impl(
+      "streaming_encoder_add_video_stream",
+      TORCH_BOX(&streaming_encoder_add_video_stream));
+  m.impl(
+      "streaming_encoder_add_frames", TORCH_BOX(&streaming_encoder_add_frames));
   m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
   m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
   m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
@@ -1268,6 +1354,15 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       TORCH_BOX(&scan_all_streams_to_update_metadata));
 
   m.impl("_get_backend_details", TORCH_BOX(&get_backend_details));
+  m.impl(
+      "create_streaming_encoder_to_file",
+      TORCH_BOX(&create_streaming_encoder_to_file));
+  m.impl("streaming_encoder_close", TORCH_BOX(&streaming_encoder_close));
+  m.impl(
+      "streaming_encoder_add_video_stream",
+      TORCH_BOX(&streaming_encoder_add_video_stream));
+  m.impl(
+      "streaming_encoder_add_frames", TORCH_BOX(&streaming_encoder_add_frames));
 }
 
 } // namespace facebook::torchcodec

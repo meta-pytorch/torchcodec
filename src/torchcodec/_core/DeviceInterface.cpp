@@ -5,7 +5,6 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "DeviceInterface.h"
-#include <ATen/ops/from_blob.h>
 #include <map>
 #include <mutex>
 #include "StableABICompat.h"
@@ -132,39 +131,34 @@ torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   int width = avFrame->width;
   AVFrame* avFrameClone = av_frame_clone(avFrame.get());
 
-  // TODO_STABLE_ABI: we're still using the non-stable ABI here. That's because
-  // stable::from_blob doesn't yet support a capturing lambda deleter. We need
-  // to land https://github.com/pytorch/pytorch/pull/175089.
-  // TC won't be able stable until this is resolved.
   auto deleter = [avFrameClone](void*) {
     UniqueAVFrame avFrameToDelete(avFrameClone);
   };
 
-  at::Tensor tensor;
+  std::vector<int64_t> shape = {height, width, 3};
+
   if (format == AV_PIX_FMT_RGB48) {
     // RGB48: 6 bytes per pixel (3 channels x 2 bytes each).
     // Strides are in uint16 elements: linesize is in bytes, so divide by 2.
-    std::vector<int64_t> shape = {height, width, 3};
     std::vector<int64_t> strides = {avFrameClone->linesize[0] / 2, 3, 1};
-    tensor = at::from_blob(
+    return torch::stable::from_blob(
         avFrameClone->data[0],
         shape,
         strides,
-        deleter,
-        {at::ScalarType::UInt16});
+        StableDevice(kStableCPU),
+        kStableUInt16,
+        deleter);
   } else {
     // RGB24: 3 bytes per pixel.
-    std::vector<int64_t> shape = {height, width, 3};
     std::vector<int64_t> strides = {avFrameClone->linesize[0], 3, 1};
-    tensor = at::from_blob(
-        avFrameClone->data[0], shape, strides, deleter, {at::kByte});
+    return torch::stable::from_blob(
+        avFrameClone->data[0],
+        shape,
+        strides,
+        StableDevice(kStableCPU),
+        kStableUInt8,
+        deleter);
   }
-
-  // We got an at::Tensor, we have to convert it to a torch::stable::Tensor.
-  // This is safe, there won't be any memory leak, i.e. the at::Tensor's deleter
-  // will properly be passed down to the torch::stable::Tensor.
-  at::Tensor* p = new at::Tensor(std::move(tensor));
-  return torch::stable::Tensor(reinterpret_cast<AtenTensorHandle>(p));
 }
 
 } // namespace facebook::torchcodec
