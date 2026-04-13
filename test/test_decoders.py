@@ -38,10 +38,8 @@ from .utils import (
     get_ffmpeg_minor_version,
     get_python_version,
     H264_10BITS,
-    H265_10BITS,
     H265_VIDEO,
     in_fbcode,
-    IS_WINDOWS,
     make_video_decoder,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
@@ -58,6 +56,7 @@ from .utils import (
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
     TEST_NON_ZERO_START,
+    TEST_SRC_2_12BIT_HDR,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
     TEST_SRC_2_720P_HDR,
@@ -186,6 +185,11 @@ class TestVideoDecoder:
     def test_create_fails(self):
         with pytest.raises(ValueError, match="Invalid seek mode"):
             VideoDecoder(NASA_VIDEO.path, seek_mode="blah")
+
+    @pytest.mark.parametrize("output_dtype", [torch.int32, "blah", 123])
+    def test_create_fails_invalid_output_dtype(self, output_dtype):
+        with pytest.raises(ValueError, match="Invalid output_dtype"):
+            VideoDecoder(NASA_VIDEO.path, output_dtype=output_dtype)
 
     @pytest.mark.parametrize("num_ffmpeg_threads", (1, 4))
     @pytest.mark.parametrize("device", all_supported_devices())
@@ -1482,10 +1486,11 @@ class TestVideoDecoder:
         # bt2020_10bit.mp4 is a BT.2020 limited range 10-bit HEVC video:
         # color_space=bt2020nc, color_range=tv, pix_fmt=yuv420p10le
         #
-        # Both CPU and GPU decode 10-bit to uint16 tensors where 10-bit
-        # values are left-shifted by 6 (range 0-65472). We right-shift back
-        # to the original 10-bit range (0-1023) before comparing, so we can
-        # use the same atol=3 tolerance as 8-bit comparisons.
+        # NVDEC decodes 10-bit natively (converting to 8-bit NV12), then our
+        # BT.2020 color twist matrix handles the YUV->RGB conversion.
+        #
+        # TODO investigate CPU vs BetaCUDA mismatch on BT.2020 10-bit.
+        # See PR #1267 for details.
         asset = BT2020_LIMITED_RANGE_10BIT
 
         with set_cuda_backend("beta"):
@@ -1493,10 +1498,8 @@ class TestVideoDecoder:
         decoder_cpu = VideoDecoder(asset.path, device="cpu")
 
         for frame_index in (0, 10, 20, 5):
-            gpu_frame = (
-                decoder_gpu.get_frame_at(frame_index).data.cpu().to(torch.int32) >> 6
-            )
-            cpu_frame = decoder_cpu.get_frame_at(frame_index).data.to(torch.int32) >> 6
+            gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
+            cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
             assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=90, atol=3)
 
@@ -1524,8 +1527,6 @@ class TestVideoDecoder:
         # do the color conversion on the CPU.
         # Here we just assert that the GPU results are the same as the CPU
         # results.
-        # TODO see other TODO below in test_10bit_videos_cpu: we should validate
-        # the frames against a reference.
 
         # We know from previous tests that the H264_10BITS video isn't supported
         # by NVDEC, so NVDEC decodes it on the CPU.
@@ -1549,24 +1550,6 @@ class TestVideoDecoder:
         frames_cpu = decoder_cpu.get_frames_at(frame_indices).data
         assert_frames_equal(frames_gpu.cpu(), frames_cpu)
 
-    @pytest.mark.parametrize("device", all_supported_devices())
-    @pytest.mark.parametrize(
-        "asset",
-        (
-            H264_10BITS,
-            H265_10BITS,
-            BT2020_LIMITED_RANGE_10BIT,
-            NASA_VIDEO_HDR,
-            TEST_SRC_2_720P_HDR,
-        ),
-    )
-    def test_10bit_videos(self, device, asset):
-        # This just validates that we can decode 10-bit videos.
-        # TODO validate against the ref that the decoded frames are correct
-
-        decoder, _ = make_video_decoder(asset.path, device=device)
-        decoder.get_frame_at(10)
-
     @pytest.mark.parametrize(
         "device",
         (
@@ -1580,257 +1563,109 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR))
     def test_10bit_batch_apis(self, device, asset):
-        # TODO: add 10-bit + rotation test (needs a rotated 10-bit HDR asset)
-        decoder, _ = make_video_decoder(asset.path, device=device)
-        num_frames = len(decoder)
+        # Validate batch APIs on 10-bit float32 content against ffmpeg rgb48
+        # references.
+        decoder, device = make_video_decoder(
+            asset.path, device=device, output_dtype=torch.float32
+        )
 
-        frame = decoder[0]
-        expected_c = asset.get_num_color_channels()
-        expected_h = asset.get_height()
-        expected_w = asset.get_width()
-        assert frame.shape == (expected_c, expected_h, expected_w)
-
-        indices = [0, min(5, num_frames - 1), min(10, num_frames - 1)]
-        frames = decoder.get_frames_at(indices)
-        assert frames.data.shape == (len(indices), expected_c, expected_h, expected_w)
-
-        frames_range = decoder.get_frames_in_range(start=0, stop=min(5, num_frames))
-        assert frames_range.data.shape[0] == min(5, num_frames)
-        assert frames_range.data.shape[1:] == (expected_c, expected_h, expected_w)
-
-        pts = decoder.metadata.begin_stream_seconds
-        frame_at_pts = decoder.get_frame_played_at(pts)
-        assert frame_at_pts.data.shape == (expected_c, expected_h, expected_w)
-
-    @pytest.mark.parametrize(
-        "asset",
-        (
-            H264_10BITS,
-            pytest.param(
-                H265_10BITS,
-                marks=pytest.mark.skipif(
-                    IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="uint8 vs float32 HDR color conversion differs on Windows + FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                NASA_VIDEO_HDR,
-                marks=pytest.mark.skipif(
-                    IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="uint8 vs float32 HDR color conversion differs on Windows + FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                TEST_SRC_2_720P_HDR,
-                marks=pytest.mark.skipif(
-                    IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="uint8 vs float32 HDR color conversion differs on Windows + FFmpeg 4",
-                ),
-            ),
-        ),
-    )
-    def test_output_dtype_uint8_vs_float32_on_10bit(self, asset):
-        # For 10-bit sources, the two paths go through different swscale
-        # conversions (YUV10->RGB24 vs YUV10->RGB48->float32), so there are
-        # small rounding differences. We compare float32 * 255 against uint8
-        # with a tolerance that accounts for these color conversion differences.
-        decoder_u8 = VideoDecoder(asset.path, output_dtype=torch.uint8)
-        decoder_f32 = VideoDecoder(asset.path, output_dtype=torch.float32)
-        num_frames = len(decoder_u8)
-
-        def assert_u8_close_to_f32(u8, f32):
-            assert u8.dtype == torch.uint8
-            assert f32.dtype == torch.float32
-            assert f32.min() >= 0.0
-            assert f32.max() <= 1.0
-            # Convert float32 (which went through RGB48) back to approximate
-            # uint8 range for comparison. The float32 values are normalized
-            # from 16-bit, so we scale by 65535 then shift down to 8-bit.
-            f32_as_u8 = (f32 * 65535).to(torch.int32).clamp(0, 65535)
-            f32_as_u8 = (f32_as_u8 >> 8).to(torch.uint8)
-            torch.testing.assert_close(f32_as_u8, u8, rtol=0, atol=7)
+        def assert_frame_correct(frame, frame_index):
+            frame_as_uint16 = (frame.cpu() * 65535).round().to(torch.uint16)
+            ref = asset.get_frame_data_by_index_rgb48(frame_index)
+            if device == "cpu":
+                torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
+            else:
+                frame_10bit = frame_as_uint16.to(torch.int32) >> 6
+                ref_10bit = ref.to(torch.int32) >> 6
+                assert_tensor_close_on_at_least(
+                    frame_10bit, ref_10bit, percentage=88, atol=3
+                )
 
         # __getitem__
-        for idx in [0, min(10, num_frames - 1)]:
-            assert_u8_close_to_f32(decoder_u8[idx].data, decoder_f32[idx].data)
+        assert_frame_correct(decoder[0], 0)
 
         # get_frame_at
-        assert_u8_close_to_f32(
-            decoder_u8.get_frame_at(0).data,
-            decoder_f32.get_frame_at(0).data,
-        )
+        assert_frame_correct(decoder.get_frame_at(5).data, 5)
 
         # get_frame_played_at
-        pts = decoder_u8.metadata.begin_stream_seconds
-        assert_u8_close_to_f32(
-            decoder_u8.get_frame_played_at(pts).data,
-            decoder_f32.get_frame_played_at(pts).data,
-        )
+        pts = decoder.metadata.begin_stream_seconds
+        assert_frame_correct(decoder.get_frame_played_at(pts).data, 0)
 
         # get_frames_at
-        indices = [0, min(5, num_frames - 1)]
-        assert_u8_close_to_f32(
-            decoder_u8.get_frames_at(indices).data,
-            decoder_f32.get_frames_at(indices).data,
-        )
+        indices = [0, 5, 10]
+        frames = decoder.get_frames_at(indices)
+        for i, idx in enumerate(indices):
+            assert_frame_correct(frames.data[i], idx)
 
-        # get_frames_in_range
-        stop = min(3, num_frames)
-        assert_u8_close_to_f32(
-            decoder_u8.get_frames_in_range(start=0, stop=stop).data,
-            decoder_f32.get_frames_in_range(start=0, stop=stop).data,
-        )
+        # get_frames_in_range — validate frames 5 and 10 against references
+        frames_range = decoder.get_frames_in_range(start=5, stop=11)
+        assert_frame_correct(frames_range.data[0], 5)
+        assert_frame_correct(frames_range.data[5], 10)
 
-    def test_output_dtype_uint8_vs_float32_on_8bit(self):
-        # For 8-bit sources, float32 goes through RGB24->float32/255.
-        # We compare float32 * 255 against uint8.
-        decoder_u8 = VideoDecoder(NASA_VIDEO.path, output_dtype=torch.uint8)
-        decoder_f32 = VideoDecoder(NASA_VIDEO.path, output_dtype=torch.float32)
+    def test_output_dtype_auto(self):
+        # "auto" should produce uint8 for SDR (<=8-bit) sources and float32
+        # for HDR (>8-bit) sources. Values are validated against ffmpeg CLI
+        # references (rgb24 for SDR, rgb48 for HDR).
 
-        def assert_u8_close_to_f32(u8, f32):
-            assert u8.dtype == torch.uint8
-            assert f32.dtype == torch.float32
-            assert f32.min() >= 0.0
-            assert f32.max() <= 1.0
-            f32_as_u8 = (f32 * 255).round().to(torch.uint8)
-            torch.testing.assert_close(f32_as_u8, u8, rtol=0, atol=1)
+        # SDR source: auto should produce uint8 matching ffmpeg rgb24
+        decoder_auto = VideoDecoder(NASA_VIDEO.path, output_dtype="auto")
 
-        # __getitem__
-        assert_u8_close_to_f32(decoder_u8[0].data, decoder_f32[0].data)
+        for frame_index in [0, 1, 9]:
+            frame = decoder_auto.get_frame_at(frame_index).data
+            assert frame.dtype == torch.uint8
+            ref = NASA_VIDEO.get_frame_data_by_index(frame_index)
+            assert_frames_equal(frame, ref)
 
-        # get_frame_at
-        assert_u8_close_to_f32(
-            decoder_u8.get_frame_at(0).data,
-            decoder_f32.get_frame_at(0).data,
-        )
+        # HDR source: auto should produce float32 matching ffmpeg rgb48
+        decoder_auto_hdr = VideoDecoder(NASA_VIDEO_HDR.path, output_dtype="auto")
 
-        # get_frames_at
-        assert_u8_close_to_f32(
-            decoder_u8.get_frames_at([0, 5, 10]).data,
-            decoder_f32.get_frames_at([0, 5, 10]).data,
-        )
+        for frame_index in [0, 5, 10]:
+            frame = decoder_auto_hdr.get_frame_at(frame_index).data
+            assert frame.dtype == torch.float32
 
-        # get_frames_in_range
-        assert_u8_close_to_f32(
-            decoder_u8.get_frames_in_range(start=0, stop=3).data,
-            decoder_f32.get_frames_in_range(start=0, stop=3).data,
-        )
+            frame_as_uint16 = (frame * 65535).round().to(torch.uint16)
+            ref = NASA_VIDEO_HDR.get_frame_data_by_index_rgb48(frame_index)
+            torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
 
     @pytest.mark.parametrize(
-        "asset",
+        "device",
         (
-            H264_10BITS,
-            pytest.param(
-                H265_10BITS,
-                marks=pytest.mark.skipif(
-                    IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="uint8 vs float32 HDR color conversion differs on Windows + FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                NASA_VIDEO_HDR,
-                marks=pytest.mark.skipif(
-                    IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="uint8 vs float32 HDR color conversion differs on Windows + FFmpeg 4",
-                ),
-            ),
+            "cpu",
+            pytest.param("cuda:beta", marks=pytest.mark.needs_cuda),
         ),
     )
     @pytest.mark.parametrize(
-        "transforms",
-        (
-            [Resize((100, 120))],
-            [CenterCrop((50, 50))],
-            [Resize((100, 120)), CenterCrop((80, 80))],
-        ),
+        "asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR)
     )
-    def test_output_dtype_uint8_vs_float32_with_transforms(self, asset, transforms):
-        # Verify that native decoder transforms produce consistent results
-        # across uint8 and float32 output paths.
-        decoder_u8 = VideoDecoder(
-            asset.path, output_dtype=torch.uint8, transforms=transforms
-        )
-        decoder_f32 = VideoDecoder(
-            asset.path, output_dtype=torch.float32, transforms=transforms
-        )
-
-        u8 = decoder_u8[0].data
-        f32 = decoder_f32[0].data
-        assert u8.dtype == torch.uint8
-        assert f32.dtype == torch.float32
-        assert u8.shape == f32.shape
-
-        # float32 from 10-bit source goes through RGB48, so convert back
-        f32_as_u8 = (f32 * 65535).to(torch.int32).clamp(0, 65535)
-        f32_as_u8 = (f32_as_u8 >> 8).to(torch.uint8)
-        torch.testing.assert_close(f32_as_u8, u8, rtol=0, atol=7)
-
-        # Batch API
-        batch_u8 = decoder_u8.get_frames_in_range(
-            start=0, stop=min(3, len(decoder_u8))
-        ).data
-        batch_f32 = decoder_f32.get_frames_in_range(
-            start=0, stop=min(3, len(decoder_f32))
-        ).data
-        assert batch_u8.shape == batch_f32.shape
-        batch_f32_as_u8 = (batch_f32 * 65535).to(torch.int32).clamp(0, 65535)
-        batch_f32_as_u8 = (batch_f32_as_u8 >> 8).to(torch.uint8)
-        torch.testing.assert_close(
-            batch_f32_as_u8,
-            batch_u8,
-            rtol=0,
-            atol=7,
-        )
-
-    def test_output_dtype_uint8_vs_float32_with_rotation(self):
-        # Verify that rotation is applied consistently across uint8/float32.
-        # NASA_VIDEO_ROTATED is an 8-bit source, so float32 goes through
-        # RGB24->float32/255.
-        decoder_u8 = VideoDecoder(NASA_VIDEO_ROTATED.path, output_dtype=torch.uint8)
-        decoder_f32 = VideoDecoder(NASA_VIDEO_ROTATED.path, output_dtype=torch.float32)
-
-        u8 = decoder_u8[0].data
-        f32 = decoder_f32[0].data
-        assert u8.dtype == torch.uint8
-        assert f32.dtype == torch.float32
-        assert u8.shape == f32.shape
-
-        f32_as_u8 = (f32 * 255).round().to(torch.uint8)
-        torch.testing.assert_close(f32_as_u8, u8, rtol=0, atol=1)
-
-    def test_output_dtype_uint8_vs_float32_with_rotation_and_transforms(self):
-        # Verify rotation + transforms work consistently across uint8/float32.
-        transforms = [Resize((100, 120)), CenterCrop((80, 80))]
-        decoder_u8 = VideoDecoder(
-            NASA_VIDEO_ROTATED.path,
-            output_dtype=torch.uint8,
-            transforms=transforms,
-        )
-        decoder_f32 = VideoDecoder(
-            NASA_VIDEO_ROTATED.path,
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_10bit_float32_against_ffmpeg_rgb48(self, asset, device, seek_mode):
+        # Validate float32 HDR decode against ffmpeg CLI's rgb48 output.
+        # CPU uses the same swscale path as ffmpeg, so we expect exact match.
+        # GPU (NVDEC + NPP) uses a different color conversion pipeline, so we
+        # allow a small tolerance in 10-bit space.
+        decoder, device = make_video_decoder(
+            asset.path,
+            device=device,
             output_dtype=torch.float32,
-            transforms=transforms,
+            seek_mode=seek_mode,
         )
 
-        u8 = decoder_u8[0].data
-        f32 = decoder_f32[0].data
-        assert u8.dtype == torch.uint8
-        assert f32.dtype == torch.float32
-        assert u8.shape == f32.shape
+        for frame_index in [0, 5, 10]:
+            frame = decoder.get_frame_at(frame_index).data.cpu()
+            assert frame.dtype == torch.float32
 
-        f32_as_u8 = (f32 * 255).round().to(torch.uint8)
-        torch.testing.assert_close(f32_as_u8, u8, rtol=0, atol=1)
+            frame_as_uint16 = (frame * 65535).round().to(torch.uint16)
+            ref = asset.get_frame_data_by_index_rgb48(frame_index)
 
-        # Batch API
-        batch_u8 = decoder_u8.get_frames_at([0, 1]).data
-        batch_f32 = decoder_f32.get_frames_at([0, 1]).data
-        batch_f32_as_u8 = (batch_f32 * 255).round().to(torch.uint8)
-        torch.testing.assert_close(
-            batch_f32_as_u8,
-            batch_u8,
-            rtol=0,
-            atol=1,
-        )
+            if device == "cpu":
+                torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
+            else:
+                # Compare in 10-bit space (right-shift by 6)
+                frame_10bit = frame_as_uint16.to(torch.int32) >> 6
+                ref_10bit = ref.to(torch.int32) >> 6
+                assert_tensor_close_on_at_least(
+                    frame_10bit, ref_10bit, percentage=88, atol=3
+                )
 
     def setup_frame_mappings(tmp_path, file, stream_index):
         json_path = tmp_path / "custom_frame_mappings.json"

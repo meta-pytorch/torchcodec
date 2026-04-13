@@ -44,7 +44,9 @@ torch::stable::Tensor convertP016FrameToRGB(
     UniqueAVFrame& avFrame,
     const StableDevice& device,
     const UniqueNppContext& nppCtx,
-    cudaStream_t nvdecStream);
+    cudaStream_t nvdecStream,
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+        std::nullopt);
 
 UniqueNppContext getNppStreamContext(const StableDevice& device);
 void returnNppStreamContextToCache(

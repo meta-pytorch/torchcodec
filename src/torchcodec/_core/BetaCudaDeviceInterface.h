@@ -41,7 +41,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void initialize(
       const AVStream* avStream,
       const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) override;
+      const SharedAVCodecContext& codecContext,
+      OutputDtype outputDtype = OutputDtype::UINT8) override;
 
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
@@ -119,6 +120,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   int bitDepth_ = 8;
   // User-requested output dtype.
   OutputDtype outputDtype_ = OutputDtype::UINT8;
+  // NVDEC output surface format (NV12 for 8-bit, P016 for >8-bit HDR output).
+  cudaVideoSurfaceFormat surfaceFormat_ = cudaVideoSurfaceFormat_NV12;
 };
 
 } // namespace facebook::torchcodec

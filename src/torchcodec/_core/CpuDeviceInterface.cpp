@@ -56,7 +56,8 @@ CpuDeviceInterface::CpuDeviceInterface(const StableDevice& device)
 void CpuDeviceInterface::initialize(
     const AVStream* avStream,
     [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx,
-    const SharedAVCodecContext& codecContext) {
+    const SharedAVCodecContext& codecContext,
+    [[maybe_unused]] OutputDtype outputDtype) {
   STD_TORCH_CHECK(avStream != nullptr, "avStream is null");
   codecContext_ = codecContext;
   timeBase_ = avStream->time_base;

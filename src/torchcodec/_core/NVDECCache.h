@@ -52,10 +52,15 @@ class NVDECCache {
   static NVDECCache& getCache(const StableDevice& device);
 
   // Get decoder from cache - returns nullptr if none available.
-  UniqueCUvideodecoder getDecoder(CUVIDEOFORMAT* videoFormat);
+  UniqueCUvideodecoder getDecoder(
+      CUVIDEOFORMAT* videoFormat,
+      cudaVideoSurfaceFormat surfaceFormat);
 
   // Return decoder to cache using LRU eviction.
-  void returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder);
+  void returnDecoder(
+      CUVIDEOFORMAT* videoFormat,
+      cudaVideoSurfaceFormat surfaceFormat,
+      UniqueCUvideodecoder decoder);
 
   // Iterates all per-device cache instances and evicts LRU entries until each
   // cache's size is at most capacity. Called from setNVDECCacheCapacity().
@@ -74,10 +79,11 @@ class NVDECCache {
     cudaVideoChromaFormat chromaFormat;
     uint32_t bitDepthLumaMinus8;
     uint8_t numDecodeSurfaces;
+    cudaVideoSurfaceFormat outputFormat;
 
     CacheKey() = delete;
 
-    explicit CacheKey(CUVIDEOFORMAT* videoFormat) {
+    CacheKey(CUVIDEOFORMAT* videoFormat, cudaVideoSurfaceFormat surfaceFormat) {
       STD_TORCH_CHECK(videoFormat != nullptr, "videoFormat must not be null");
       codecType = videoFormat->codec;
       width = videoFormat->coded_width;
@@ -85,6 +91,7 @@ class NVDECCache {
       chromaFormat = videoFormat->chroma_format;
       bitDepthLumaMinus8 = videoFormat->bit_depth_luma_minus8;
       numDecodeSurfaces = videoFormat->min_num_decode_surfaces;
+      outputFormat = surfaceFormat;
     }
 
     CacheKey(const CacheKey&) = default;
@@ -97,14 +104,16 @@ class NVDECCache {
                  height,
                  chromaFormat,
                  bitDepthLumaMinus8,
-                 numDecodeSurfaces) <
+                 numDecodeSurfaces,
+                 outputFormat) <
           std::tie(
                  other.codecType,
                  other.width,
                  other.height,
                  other.chromaFormat,
                  other.bitDepthLumaMinus8,
-                 other.numDecodeSurfaces);
+                 other.numDecodeSurfaces,
+                 other.outputFormat);
     }
   };
 
