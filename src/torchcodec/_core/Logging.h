@@ -7,6 +7,10 @@
 #pragma once
 
 namespace facebook::torchcodec {
+
+void setLoggingEnabled(bool enabled);
+bool isLoggingEnabled();
+
 namespace internal {
 void log(const char* file, int line, const char* fmt, ...)
     __attribute__((format(printf, 3, 4)));
@@ -14,7 +18,9 @@ void log(const char* file, int line, const char* fmt, ...)
 } // namespace facebook::torchcodec
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
-#define TC_LOG(...)                                                         \
-  do {                                                                      \
-    ::facebook::torchcodec::internal::log(__FILE__, __LINE__, __VA_ARGS__); \
+#define TC_LOG(...)                                                           \
+  do {                                                                        \
+    if (::facebook::torchcodec::isLoggingEnabled()) {                         \
+      ::facebook::torchcodec::internal::log(__FILE__, __LINE__, __VA_ARGS__); \
+    }                                                                         \
   } while (0)

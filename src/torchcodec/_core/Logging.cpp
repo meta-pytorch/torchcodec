@@ -6,11 +6,23 @@
 
 #include "Logging.h"
 
+#include <atomic>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
 
 namespace facebook::torchcodec {
+
+static std::atomic<bool> gLoggingEnabled{false};
+
+void setLoggingEnabled(bool enabled) {
+  gLoggingEnabled.store(enabled, std::memory_order_relaxed);
+}
+
+bool isLoggingEnabled() {
+  return gLoggingEnabled.load(std::memory_order_relaxed);
+}
+
 namespace internal {
 
 void log(const char* file, int line, const char* fmt, ...) {
