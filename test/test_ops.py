@@ -65,6 +65,15 @@ INDEX_OF_FRAME_AT_6_SECONDS = 180
 
 class TestVideoDecoderOps:
     @pytest.mark.parametrize("device", all_supported_devices())
+    def test_seek_to_negative_pts(self, device):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        device, device_variant = unsplit_device_str(device)
+        add_video_stream(decoder, device=device, device_variant=device_variant)
+        frame0, _, _ = get_frame_at_pts(decoder, -1e-4)
+        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
+        assert_frames_equal(frame0, reference_frame0.to(device))
+
+    @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frame_at_pts(self, device):
         decoder = create_from_file(str(NASA_VIDEO.path))
         device, device_variant = unsplit_device_str(device)
