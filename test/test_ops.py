@@ -30,6 +30,8 @@ from torchcodec._core import (
     get_frames_in_range,
     get_json_metadata,
     get_next_frame,
+    streaming_encoder_add_frames,
+    streaming_encoder_add_video_stream,
     streaming_encoder_close,
 )
 from torchcodec._core.ops import (
@@ -43,9 +45,12 @@ from torchcodec._core.ops import (
     seek_to_pts,
 )
 
+from torchcodec.decoders import VideoDecoder
+
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    assert_tensor_close_on_at_least,
     get_python_version,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
@@ -1145,10 +1150,35 @@ class TestAudioEncoderOps:
 
 
 class TestMultiStreamEncoderOps:
-    def test_create_and_close(self, tmp_path):
+    def test_double_close(self, tmp_path):
         encoder_tensor = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
         streaming_encoder_close(encoder_tensor)
         streaming_encoder_close(encoder_tensor)  # double close is a no-op
+
+    @pytest.mark.parametrize("format", ["mp4", "mov", "mkv"])
+    def test_add_video_stream_and_encode_frames(self, tmp_path, format):
+        source_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+        frame_rate = source_decoder.metadata.average_fps
+
+        output_file = str(tmp_path / f"test.{format}")
+        encoder = create_streaming_encoder_to_file(output_file)
+        streaming_encoder_add_video_stream(
+            encoder,
+            frame_rate=frame_rate,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        streaming_encoder_add_frames(encoder, source_frames[:5])
+        streaming_encoder_add_frames(encoder, source_frames[5:])
+        streaming_encoder_close(encoder)
+
+        decoded_frames = (
+            VideoDecoder(output_file).get_frames_in_range(start=0, stop=10).data
+        )
+        assert_tensor_close_on_at_least(
+            decoded_frames, source_frames, percentage=99, atol=2
+        )
 
     def test_create_invalid_path(self):
         with pytest.raises(RuntimeError, match="make sure it's a valid path"):
@@ -1157,6 +1187,76 @@ class TestMultiStreamEncoderOps:
     def test_create_invalid_format(self, tmp_path):
         with pytest.raises(RuntimeError, match="check the desired extension"):
             create_streaming_encoder_to_file(str(tmp_path / "test.bad_extension"))
+
+    @pytest.mark.parametrize("format", ["mp4", "mov"])
+    def test_fragmented_mp4(self, format, tmp_path):
+        source_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+        frame_rate = source_decoder.metadata.average_fps
+
+        output_file = str(tmp_path / f"test.{format}")
+        encoder = create_streaming_encoder_to_file(output_file)
+        streaming_encoder_add_video_stream(
+            encoder,
+            frame_rate=frame_rate,
+            pixel_format="yuv444p",
+            crf=0,
+            # In addition to the fragmentation flag, I found "flush_packets" and "threads" to be necessary to decode frames before close().
+            # See other frag flags: https://ffmpeg.org/ffmpeg-formats.html#Fragmentation
+            # TODO MultiStreamEncoder: Get a better understanding of which options are necessary for reading fragmented mp4s
+            extra_options=[
+                "movflags",
+                "+frag_every_frame+empty_moov",
+                "tune",
+                "zerolatency",
+                "flush_packets",
+                "1",
+                "threads",
+                "1",
+            ],
+        )
+        # Here, we decode the available fragmented mp4 frames before calling close()
+        for batch in [source_frames[:5], source_frames[5:]]:
+            streaming_encoder_add_frames(encoder, batch)
+            mid_decoder = VideoDecoder(output_file)
+            num_available = len(mid_decoder)
+            assert num_available > 0
+            assert_tensor_close_on_at_least(
+                mid_decoder.get_frames_in_range(start=0, stop=num_available).data,
+                source_frames[:num_available],
+                percentage=99,
+                atol=2,
+            )
+
+        streaming_encoder_close(encoder)
+        # After close, all frames must be decodable
+        assert_tensor_close_on_at_least(
+            VideoDecoder(output_file).get_frames_in_range(start=0, stop=10).data,
+            source_frames,
+            percentage=99,
+            atol=2,
+        )
+
+    def test_add_video_stream_twice_errors(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
+        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        with pytest.raises(RuntimeError, match="already been added"):
+            streaming_encoder_add_video_stream(encoder, frame_rate=24.0)
+
+    def test_add_frames_different_sizes_errors(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
+        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        frames_64 = torch.randint(0, 256, (2, 3, 64, 64), dtype=torch.uint8)
+        frames_128 = torch.randint(0, 256, (2, 3, 128, 128), dtype=torch.uint8)
+        streaming_encoder_add_frames(encoder, frames_64)
+        with pytest.raises(RuntimeError, match="same dimensions"):
+            streaming_encoder_add_frames(encoder, frames_128)
+
+    def test_add_frames_without_stream_errors(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
+        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match="No video stream"):
+            streaming_encoder_add_frames(encoder, frames)
 
 
 if __name__ == "__main__":
