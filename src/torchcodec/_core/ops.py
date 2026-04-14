@@ -136,11 +136,28 @@ _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
 _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
+create_streaming_encoder_to_file = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.create_streaming_encoder_to_file.default
+)
+streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.default
+streaming_encoder_add_video_stream = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_video_stream.default
+)
+streaming_encoder_add_frames = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_frames.default
+)
 set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
 get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
 _get_nvdec_cache_size = torch.ops.torchcodec_ns._get_nvdec_cache_size.default
 _set_logging_enabled = torch.ops.torchcodec_ns._set_logging_enabled.default
 _is_logging_enabled = torch.ops.torchcodec_ns._is_logging_enabled.default
+create_wav_decoder_from_file = (
+    torch.ops.torchcodec_ns.create_wav_decoder_from_file.default
+)
+get_wav_all_samples = torch.ops.torchcodec_ns.get_wav_all_samples.default
+get_wav_metadata_from_decoder = (
+    torch.ops.torchcodec_ns.get_wav_metadata_from_decoder.default
+)
 
 
 # =============================
@@ -579,6 +596,38 @@ def _get_backend_details_abstract(decoder: torch.Tensor) -> str:
     return ""
 
 
+@register_fake("torchcodec_ns::create_streaming_encoder_to_file")
+def _create_streaming_encoder_to_file_abstract(
+    filename: str,
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::streaming_encoder_close")
+def streaming_encoder_close_abstract(encoder: torch.Tensor) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_add_video_stream")
+def streaming_encoder_add_video_stream_abstract(
+    encoder: torch.Tensor,
+    frame_rate: float,
+    codec: str | None = None,
+    pixel_format: str | None = None,
+    crf: float | None = None,
+    preset: str | None = None,
+    extra_options: list[str] | None = None,
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_add_frames")
+def streaming_encoder_add_frames_abstract(
+    encoder: torch.Tensor, frames: torch.Tensor
+) -> None:
+    return
+
+
 @register_fake("torchcodec_ns::set_nvdec_cache_capacity")
 def set_nvdec_cache_capacity_abstract(capacity: int) -> None:
     return
@@ -602,3 +651,6 @@ def _set_logging_enabled_abstract(enabled: bool) -> None:
 @register_fake("torchcodec_ns::_is_logging_enabled")
 def _is_logging_enabled_abstract() -> bool:
     return False
+@register_fake("torchcodec_ns::get_wav_metadata_from_decoder")
+def get_wav_metadata_from_decoder_abstract(decoder: torch.Tensor) -> str:
+    return ""

@@ -17,7 +17,6 @@ decoding with TorchCodec. Learn when and how to apply various strategies
 to increase performance.
 """
 
-
 # %%
 # Overview
 # --------
@@ -251,3 +250,5 @@ to increase performance.
 # - :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py` - CUDA acceleration guide
 # - :ref:`sphx_glr_generated_examples_decoding_transforms.py` - Decoder transforms guide
 # - :class:`torchcodec.decoders.VideoDecoder` - Full API reference
+
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_brrrr.jpg'
