@@ -9,27 +9,22 @@ import logging
 from torchcodec._core.ops import _is_logging_enabled, _set_logging_enabled
 
 _LG = logging.getLogger("torchcodec")
+_LG.setLevel(logging.DEBUG)
 
-# Add a stderr handler so logs are visible when logging is enabled.
-if not _LG.handlers:
-    _handler = logging.StreamHandler()
-    _handler.setFormatter(
-        logging.Formatter("[torchcodec %(filename)s:%(lineno)d] %(message)s")
-    )
-    _LG.addHandler(_handler)
-
-# Logging is disabled by default. The Python logger level is set high enough
-# to suppress all messages; it gets lowered when the user enables logging.
-_LG.setLevel(logging.CRITICAL + 1)
+_handler = logging.StreamHandler()
+_handler.setFormatter(
+    logging.Formatter("[torchcodec %(filename)s:%(lineno)d] %(message)s")
+)
 
 
 def set_logging_enabled(enabled: bool) -> None:
     """Enable or disable torchcodec logging (both Python and C++ sides)."""
     _set_logging_enabled(enabled)
     if enabled:
-        _LG.setLevel(logging.DEBUG)
+        if _handler not in _LG.handlers:
+            _LG.addHandler(_handler)
     else:
-        _LG.setLevel(logging.CRITICAL + 1)
+        _LG.removeHandler(_handler)
 
 
 def is_logging_enabled() -> bool:
