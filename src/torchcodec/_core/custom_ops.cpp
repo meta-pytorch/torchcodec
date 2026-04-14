@@ -17,6 +17,7 @@ extern "C" {
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
+#include "Logging.h"
 #include "NVDECCacheConfig.h"
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
@@ -85,6 +86,8 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
   m.def("get_nvdec_cache_capacity() -> int");
   m.def("_get_nvdec_cache_size(int device_index) -> int");
+  m.def("_set_logging_enabled(bool enabled) -> ()");
+  m.def("_is_logging_enabled() -> bool");
 }
 
 namespace {
@@ -1125,6 +1128,14 @@ int64_t _get_nvdec_cache_size(int64_t device_index) {
   return static_cast<int64_t>(getNVDECCacheSize(deviceIndexInt));
 }
 
+void _set_logging_enabled(bool enabled) {
+  setLoggingEnabled(enabled);
+}
+
+bool _is_logging_enabled() {
+  return isLoggingEnabled();
+}
+
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
@@ -1138,6 +1149,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
   m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
   m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
+  m.impl("_set_logging_enabled", TORCH_BOX(&_set_logging_enabled));
+  m.impl("_is_logging_enabled", TORCH_BOX(&_is_logging_enabled));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

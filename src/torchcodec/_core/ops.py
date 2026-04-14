@@ -139,6 +139,8 @@ _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
 set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
 get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
 _get_nvdec_cache_size = torch.ops.torchcodec_ns._get_nvdec_cache_size.default
+_set_logging_enabled = torch.ops.torchcodec_ns._set_logging_enabled.default
+_is_logging_enabled = torch.ops.torchcodec_ns._is_logging_enabled.default
 
 
 # =============================
@@ -590,3 +592,13 @@ def get_nvdec_cache_capacity_abstract() -> int:
 @register_fake("torchcodec_ns::_get_nvdec_cache_size")
 def _get_nvdec_cache_size_abstract(device_index: int) -> int:
     return 0
+
+
+@register_fake("torchcodec_ns::_set_logging_enabled")
+def _set_logging_enabled_abstract(enabled: bool) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::_is_logging_enabled")
+def _is_logging_enabled_abstract() -> bool:
+    return False
