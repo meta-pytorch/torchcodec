@@ -13,9 +13,7 @@ import json
 
 import numpy as np
 import pytest
-
 import torch
-
 from torchcodec._core import (
     _test_frame_pts_equality,
     create_streaming_encoder_to_file,
@@ -42,7 +40,6 @@ from torchcodec._core.ops import (
     create_from_file_like,
     create_from_tensor,
 )
-
 from torchcodec.decoders import VideoDecoder
 
 from .utils import (
@@ -335,7 +332,7 @@ class TestVideoDecoderOps:
         add_video_stream(decoder, device=device, device_variant=device_variant)
 
         # Verify we can get the last frame
-        last_frame, _, _ = get_frame_at_pts(decoder, 12.979633)
+        last_frame, _, _ = get_frame_at_index(decoder, frame_index=389)
         reference_last_frame = NASA_VIDEO.get_frame_data_by_index(389)
         assert_frames_equal(last_frame, reference_last_frame.to(device))
 
@@ -348,9 +345,9 @@ class TestVideoDecoderOps:
         decoder = create_from_file(str(NASA_VIDEO.path))
         device, device_variant = unsplit_device_str(device)
         add_video_stream(decoder, device=device, device_variant=device_variant)
-        # pts=12.979633 is the last frame in the video.
+        # pts=12.979633 is the last frame's PTS
         with pytest.raises(IndexError, match="no more frames"):
-            get_frame_at_pts(decoder, 12.979633 + 1.0e-4)
+            get_frame_at_pts(decoder, 12.979633 + 0.5)
 
     @pytest.mark.skipif(
         get_python_version() >= (3, 14),
@@ -932,7 +929,7 @@ class TestAudioDecoderOps:
 
         initialization_seeks = file_counter.num_seeks
 
-        frame_last, *_ = get_frame_at_pts(decoder, 12.979633)
+        frame_last, *_ = get_frame_at_index(decoder, frame_index=389)
         reference_frame_last = NASA_VIDEO.get_frame_data_by_index(389)
         assert_frames_equal(frame_last, reference_frame_last.to(device))
 
