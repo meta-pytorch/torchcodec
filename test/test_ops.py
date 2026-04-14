@@ -943,7 +943,9 @@ class TestAudioDecoderOps:
         # We're smart enough to avoid seeks within key frames and our test
         # files have very few keyframes. However, we can force a seek by
         # requesting a backwards seek.
-        frame_time6, *_ = get_frame_at_pts(decoder, 6.0)
+        frame_time6, *_ = get_frame_at_index(
+            decoder, frame_index=INDEX_OF_FRAME_AT_6_SECONDS
+        )
         reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
             INDEX_OF_FRAME_AT_6_SECONDS
         )
