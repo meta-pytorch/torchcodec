@@ -18,7 +18,7 @@ class TestLogging:
         script = textwrap.dedent(
             """\
             import torchcodec
-            torchcodec.set_logging_enabled(True)
+            torchcodec.set_log_level("ALL")
             from torchcodec.decoders import VideoDecoder, set_cuda_backend
             from test.utils import H265_VIDEO
             with set_cuda_backend("beta"):
@@ -40,7 +40,7 @@ class TestLogging:
         script = textwrap.dedent(
             """\
             import torchcodec
-            torchcodec.set_logging_enabled(True)
+            torchcodec.set_log_level("ALL")
             from torchcodec.decoders import VideoDecoder, set_cuda_backend
             from test.utils import H265_VIDEO
             with set_cuda_backend("beta"):
@@ -62,7 +62,7 @@ class TestLogging:
         script = textwrap.dedent(
             """\
             import torchcodec
-            torchcodec.set_logging_enabled(True)
+            torchcodec.set_log_level("ALL")
             from torchcodec.decoders import VideoDecoder, set_cuda_backend
             from test.utils import H265_VIDEO
             with set_cuda_backend("beta"):

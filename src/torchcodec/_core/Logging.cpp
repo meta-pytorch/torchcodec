@@ -13,14 +13,17 @@
 
 namespace facebook::torchcodec {
 
-static std::atomic<bool> gLoggingEnabled{false};
+// Log level: 0 = OFF (default), >0 = enabled.
+// Currently only OFF and ALL (1) are used; more granular levels can be added
+// later without changing this interface.
+static std::atomic<int> gLogLevel{0};
 
-void setLoggingEnabled(bool enabled) {
-  gLoggingEnabled.store(enabled, std::memory_order_relaxed);
+void setLogLevel(int level) {
+  gLogLevel.store(level, std::memory_order_relaxed);
 }
 
-bool isLoggingEnabled() {
-  return gLoggingEnabled.load(std::memory_order_relaxed);
+int getLogLevel() {
+  return gLogLevel.load(std::memory_order_relaxed);
 }
 
 namespace internal {

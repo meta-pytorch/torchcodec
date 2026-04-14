@@ -8,8 +8,8 @@
 
 namespace facebook::torchcodec {
 
-void setLoggingEnabled(bool enabled);
-bool isLoggingEnabled();
+void setLogLevel(int level);
+int getLogLevel();
 
 namespace internal {
 void log(const char* file, int line, const char* fmt, ...)
@@ -20,7 +20,7 @@ void log(const char* file, int line, const char* fmt, ...)
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define TC_LOG(...)                                                           \
   do {                                                                        \
-    if (::facebook::torchcodec::isLoggingEnabled()) {                         \
+    if (::facebook::torchcodec::getLogLevel() > 0) {                          \
       ::facebook::torchcodec::internal::log(__FILE__, __LINE__, __VA_ARGS__); \
     }                                                                         \
   } while (0)
