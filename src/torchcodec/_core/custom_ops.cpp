@@ -4,8 +4,14 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
+// fmt and pybind11 headers from torch error out if TORCH_TARGET_VERSION is
+// defined, so we temporarily undefine it.
+// See https://github.com/pytorch/pytorch/pull/174372 for context
+#pragma push_macro("TORCH_TARGET_VERSION")
+#undef TORCH_TARGET_VERSION
 #include <fmt/format.h>
 #include <pybind11/pybind11.h>
+#pragma pop_macro("TORCH_TARGET_VERSION")
 #include <cstdint>
 #include <string>
 
@@ -98,16 +104,11 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
 
 namespace {
 
-// TODO_STABLE_ABI: use previous deleter pattern with a lambda, once
-// https://github.com/pytorch/pytorch/pull/175089 is available.
-void decoderDeleter(void* data) {
-  delete static_cast<SingleStreamDecoder*>(data);
-}
-
 torch::stable::Tensor wrapDecoderPointerToTensor(
     std::unique_ptr<SingleStreamDecoder> uniqueDecoder) {
   SingleStreamDecoder* decoder = uniqueDecoder.release();
 
+  auto deleter = [decoder](void*) { delete decoder; };
   int64_t sizes[] = {static_cast<int64_t>(sizeof(SingleStreamDecoder*))};
   int64_t strides[] = {1};
   torch::stable::Tensor tensor = torch::stable::from_blob(
@@ -116,7 +117,7 @@ torch::stable::Tensor wrapDecoderPointerToTensor(
       {strides, 1},
       StableDevice(kStableCPU),
       kStableInt64,
-      &decoderDeleter);
+      deleter);
   auto videoDecoder =
       static_cast<SingleStreamDecoder*>(tensor.mutable_data_ptr());
   STD_TORCH_CHECK(videoDecoder == decoder, "videoDecoder != decoder");
