@@ -263,6 +263,10 @@ class VideoDecoder:
                 self._cpu_fallback.status_known = True
 
                 if "CPU fallback" in backend_details:
+                    # TODO(mollyxu): Remove this Python-side log before
+                    # release. The fallback should only be logged from C++
+                    # (where it actually happens). This is kept temporarily
+                    # for testing the Python logging path.
                     _LG.info("CUDA decoding fell back to CPU.")
                     self._cpu_fallback._is_fallback = True
                     if self._cpu_fallback._backend == "Beta CUDA":

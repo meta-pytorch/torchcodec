@@ -13,16 +13,17 @@ from .utils import needs_cuda
 
 class TestLogging:
     @needs_cuda
-    def test_cpp_logging_cuda_fallback(self):
-        """Test that C++ TC_LOG fires when BetaCuda falls back to CPU."""
+    def test_logging_cuda_fallback(self):
+        """Test that both C++ and Python logs fire for CUDA fallback."""
         script = textwrap.dedent(
             """\
-            import torchcodec
-            torchcodec.set_log_level("ALL")
+            from torchcodec._core._logging import set_log_level
+            set_log_level("ALL")
             from torchcodec.decoders import VideoDecoder, set_cuda_backend
             from test.utils import H265_VIDEO
             with set_cuda_backend("beta"):
                 decoder = VideoDecoder(H265_VIDEO.path, device="cuda")
+            _ = decoder.cpu_fallback
         """
         )
         result = subprocess.run(
@@ -32,50 +33,6 @@ class TestLogging:
         )
         assert result.returncode == 0, result.stderr
         assert "[torchcodec" in result.stderr
-        assert "falling back to CPU" in result.stderr
-
-    @needs_cuda
-    def test_python_logging_cuda_fallback(self):
-        """Test that Python logging fires when CPU fallback is detected."""
-        script = textwrap.dedent(
-            """\
-            import torchcodec
-            torchcodec.set_log_level("ALL")
-            from torchcodec.decoders import VideoDecoder, set_cuda_backend
-            from test.utils import H265_VIDEO
-            with set_cuda_backend("beta"):
-                decoder = VideoDecoder(H265_VIDEO.path, device="cuda")
-            _ = decoder.cpu_fallback
-        """
-        )
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, result.stderr
-        assert "CUDA decoding fell back to CPU" in result.stderr
-
-    @needs_cuda
-    def test_both_logs_cuda_fallback(self):
-        """Test that both C++ and Python logs fire for CUDA fallback."""
-        script = textwrap.dedent(
-            """\
-            import torchcodec
-            torchcodec.set_log_level("ALL")
-            from torchcodec.decoders import VideoDecoder, set_cuda_backend
-            from test.utils import H265_VIDEO
-            with set_cuda_backend("beta"):
-                decoder = VideoDecoder(H265_VIDEO.path, device="cuda")
-            _ = decoder.cpu_fallback
-        """
-        )
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, result.stderr
         assert "falling back to CPU" in result.stderr
         assert "CUDA decoding fell back to CPU" in result.stderr
 
@@ -97,5 +54,4 @@ class TestLogging:
             text=True,
         )
         assert result.returncode == 0, result.stderr
-        assert "falling back to CPU" not in result.stderr
-        assert "CUDA decoding fell back to CPU" not in result.stderr
+        assert not result.stderr
