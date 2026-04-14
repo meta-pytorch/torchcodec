@@ -13,7 +13,9 @@ import json
 
 import numpy as np
 import pytest
+
 import torch
+
 from torchcodec._core import (
     _test_frame_pts_equality,
     create_streaming_encoder_to_file,
@@ -40,6 +42,7 @@ from torchcodec._core.ops import (
     create_from_file_like,
     create_from_tensor,
 )
+
 from torchcodec.decoders import VideoDecoder
 
 from .utils import (
