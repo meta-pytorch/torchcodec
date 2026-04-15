@@ -6,6 +6,7 @@
 
 import io
 import os
+import subprocess
 from functools import partial
 
 os.environ["TORCH_LOGS"] = "output_code"
@@ -30,7 +31,9 @@ from torchcodec._core import (
     get_frames_in_range,
     get_json_metadata,
     get_next_frame,
+    streaming_encoder_add_audio_stream,
     streaming_encoder_add_frames,
+    streaming_encoder_add_samples,
     streaming_encoder_add_video_stream,
     streaming_encoder_close,
 )
@@ -45,7 +48,7 @@ from torchcodec._core.ops import (
     seek_to_pts,
 )
 
-from torchcodec.decoders import VideoDecoder
+from torchcodec.decoders import AudioDecoder, VideoDecoder
 
 from .utils import (
     all_supported_devices,
@@ -66,6 +69,12 @@ from .utils import (
 torch._dynamo.config.capture_dynamic_output_shape_ops = True
 
 INDEX_OF_FRAME_AT_6_SECONDS = 180
+
+COMMON_MUXED_FORMATS = [
+    pytest.param("mp4", "aac", id="mp4-aac"),
+    pytest.param("mov", "aac", id="mov-aac"),
+    pytest.param("mkv", "flac", id="mkv-flac"),
+]
 
 
 class TestVideoDecoderOps:
@@ -1150,6 +1159,32 @@ class TestAudioEncoderOps:
 
 
 class TestMultiStreamEncoderOps:
+    @staticmethod
+    def decode_audio(source):
+        return AudioDecoder(source).get_all_samples().data
+
+    @staticmethod
+    def ffprobe_frames(source, stream_spec, frame_fields):
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                stream_spec,
+                "-show_frames",
+                "-show_entries",
+                f"frame={','.join(frame_fields)}",
+                "-of",
+                "json",
+                str(source),
+            ],
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        return json.loads(result.stdout)["frames"]
+
     def test_double_close(self, tmp_path):
         encoder_tensor = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
         streaming_encoder_close(encoder_tensor)
@@ -1163,14 +1198,14 @@ class TestMultiStreamEncoderOps:
 
         output_file = str(tmp_path / f"test.{format}")
         encoder = create_streaming_encoder_to_file(output_file)
-        streaming_encoder_add_video_stream(
+        vid_idx = streaming_encoder_add_video_stream(
             encoder,
             frame_rate=frame_rate,
             pixel_format="yuv444p",
             crf=0,
         )
-        streaming_encoder_add_frames(encoder, source_frames[:5])
-        streaming_encoder_add_frames(encoder, source_frames[5:])
+        streaming_encoder_add_frames(encoder, source_frames[:5], vid_idx)
+        streaming_encoder_add_frames(encoder, source_frames[5:], vid_idx)
         streaming_encoder_close(encoder)
 
         decoded_frames = (
@@ -1188,45 +1223,216 @@ class TestMultiStreamEncoderOps:
         with pytest.raises(RuntimeError, match="check the desired extension"):
             create_streaming_encoder_to_file(str(tmp_path / "test.bad_extension"))
 
-    @pytest.mark.parametrize("format", ["mp4", "mov"])
-    def test_fragmented_mp4(self, format, tmp_path):
-        source_decoder = VideoDecoder(str(NASA_VIDEO.path))
-        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
-        frame_rate = source_decoder.metadata.average_fps
+    def test_add_audio_stream_and_encode_samples(self, tmp_path):
+        source_samples = self.decode_audio(str(NASA_AUDIO.path))
+        output_file = str(tmp_path / "test.flac")
 
-        output_file = str(tmp_path / f"test.{format}")
         encoder = create_streaming_encoder_to_file(output_file)
-        streaming_encoder_add_video_stream(
+        aud_idx = streaming_encoder_add_audio_stream(
+            encoder,
+            sample_rate=NASA_AUDIO.stream_infos[
+                NASA_AUDIO.default_stream_index
+            ].sample_rate,
+        )
+        midpoint = source_samples.shape[1] // 2
+        streaming_encoder_add_samples(encoder, source_samples[:, :midpoint], aud_idx)
+        streaming_encoder_add_samples(encoder, source_samples[:, midpoint:], aud_idx)
+        streaming_encoder_close(encoder)
+
+        decoded_samples = self.decode_audio(output_file)
+        torch.testing.assert_close(decoded_samples, source_samples)
+
+    def test_add_audio_and_video_streams_and_encode(self, tmp_path):
+        source_video_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        num_frames = max(1, len(source_video_decoder) // 4)
+        source_frames = source_video_decoder.get_frames_in_range(
+            start=0, stop=num_frames
+        ).data
+        frame_rate = source_video_decoder.metadata.average_fps
+        sample_rate = NASA_AUDIO.stream_infos[
+            NASA_AUDIO.default_stream_index
+        ].sample_rate
+        num_audio_samples = round(source_frames.shape[0] * sample_rate / frame_rate)
+        source_samples = self.decode_audio(str(NASA_AUDIO.path))[:, :num_audio_samples]
+
+        output_file = str(tmp_path / "test.mkv")
+        encoder = create_streaming_encoder_to_file(output_file)
+        vid_idx = streaming_encoder_add_video_stream(
             encoder,
             frame_rate=frame_rate,
             pixel_format="yuv444p",
             crf=0,
-            # In addition to the fragmentation flag, I found "flush_packets" and "threads" to be necessary to decode frames before close().
-            # See other frag flags: https://ffmpeg.org/ffmpeg-formats.html#Fragmentation
-            # TODO MultiStreamEncoder: Get a better understanding of which options are necessary for reading fragmented mp4s
+        )
+        aud_idx = streaming_encoder_add_audio_stream(
+            encoder,
+            sample_rate=sample_rate,
+            codec="flac",
+        )
+
+        frame_midpoint = source_frames.shape[0] // 2
+        sample_midpoint = source_samples.shape[1] // 2
+        streaming_encoder_add_frames(encoder, source_frames[:frame_midpoint], vid_idx)
+        streaming_encoder_add_samples(
+            encoder, source_samples[:, :sample_midpoint], aud_idx
+        )
+        streaming_encoder_add_frames(encoder, source_frames[frame_midpoint:], vid_idx)
+        streaming_encoder_add_samples(
+            encoder, source_samples[:, sample_midpoint:], aud_idx
+        )
+        streaming_encoder_close(encoder)
+
+        decoded_frames = (
+            VideoDecoder(output_file)
+            .get_frames_in_range(start=0, stop=source_frames.shape[0])
+            .data
+        )
+        assert_tensor_close_on_at_least(
+            decoded_frames, source_frames, percentage=99, atol=2
+        )
+        decoded_samples = self.decode_audio(output_file)
+        torch.testing.assert_close(decoded_samples, source_samples)
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize(("container", "audio_codec"), COMMON_MUXED_FORMATS)
+    def test_add_audio_and_video_streams_preserve_authored_timeline(
+        self, tmp_path, container, audio_codec
+    ):
+        source_video_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        source_frames = source_video_decoder.get_frames_in_range(start=0, stop=10).data
+        frame_rate = source_video_decoder.metadata.average_fps
+        sample_rate = NASA_AUDIO.stream_infos[
+            NASA_AUDIO.default_stream_index
+        ].sample_rate
+        num_audio_samples = round(source_frames.shape[0] * sample_rate / frame_rate)
+        source_samples = self.decode_audio(str(NASA_AUDIO.path))[:, :num_audio_samples]
+
+        output_file = str(tmp_path / f"test_sync.{container}")
+        encoder = create_streaming_encoder_to_file(output_file)
+        vid_idx = streaming_encoder_add_video_stream(
+            encoder,
+            frame_rate=frame_rate,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        aud_idx = streaming_encoder_add_audio_stream(
+            encoder,
+            sample_rate=sample_rate,
+            codec=audio_codec,
+        )
+        streaming_encoder_add_frames(encoder, source_frames[:5], vid_idx)
+        streaming_encoder_add_samples(
+            encoder, source_samples[:, : num_audio_samples // 2], aud_idx
+        )
+        streaming_encoder_add_frames(encoder, source_frames[5:], vid_idx)
+        streaming_encoder_add_samples(
+            encoder, source_samples[:, num_audio_samples // 2 :], aud_idx
+        )
+        streaming_encoder_close(encoder)
+
+        video_frames = self.ffprobe_frames(
+            output_file, "v:0", ["best_effort_timestamp_time"]
+        )
+        actual_video_pts = [
+            float(frame["best_effort_timestamp_time"]) for frame in video_frames
+        ]
+        expected_video_pts = [i / frame_rate for i in range(source_frames.shape[0])]
+        assert len(actual_video_pts) == len(expected_video_pts)
+        for actual_pts, expected_pts in zip(actual_video_pts, expected_video_pts):
+            assert actual_pts == pytest.approx(expected_pts, abs=1e-3)
+
+        audio_frames = self.ffprobe_frames(
+            output_file, "a:0", ["best_effort_timestamp_time", "nb_samples"]
+        )
+        actual_audio_pts = [
+            float(frame["best_effort_timestamp_time"]) for frame in audio_frames
+        ]
+        expected_audio_pts = []
+        cumulative_samples = 0
+        for frame in audio_frames:
+            expected_audio_pts.append(cumulative_samples / sample_rate)
+            cumulative_samples += int(frame["nb_samples"])
+
+        for actual_pts, expected_pts in zip(actual_audio_pts, expected_audio_pts):
+            assert actual_pts == pytest.approx(expected_pts, abs=1e-5)
+
+        assert actual_video_pts[0] == pytest.approx(actual_audio_pts[0], abs=1e-6)
+
+        video_end_time = source_frames.shape[0] / frame_rate
+        audio_end_time = source_samples.shape[1] / sample_rate
+        max_audio_frame_duration = (
+            max(int(frame["nb_samples"]) for frame in audio_frames) / sample_rate
+        )
+        actual_audio_end_time = (
+            actual_audio_pts[-1] + int(audio_frames[-1]["nb_samples"]) / sample_rate
+        )
+        if audio_codec == "flac":
+            assert cumulative_samples == source_samples.shape[1]
+            assert actual_audio_end_time == pytest.approx(audio_end_time, abs=1e-5)
+        else:
+            assert cumulative_samples >= source_samples.shape[1]
+            assert actual_audio_end_time >= audio_end_time
+            assert (
+                actual_audio_end_time - audio_end_time
+                <= max_audio_frame_duration + 1e-5
+            )
+        assert actual_video_pts[-1] == pytest.approx(expected_video_pts[-1], abs=1e-3)
+        assert abs(video_end_time - actual_audio_end_time) <= max(
+            1 / frame_rate, max_audio_frame_duration
+        )
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("format", ["mp4", "mov"])
+    def test_fragmented_mp4(self, format, tmp_path):
+        source_video_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        source_frames = source_video_decoder.get_frames_in_range(start=0, stop=10).data
+        frame_rate = source_video_decoder.metadata.average_fps
+        sample_rate = NASA_AUDIO.stream_infos[
+            NASA_AUDIO.default_stream_index
+        ].sample_rate
+        num_audio_samples = round(source_frames.shape[0] * sample_rate / frame_rate)
+        source_samples = self.decode_audio(str(NASA_AUDIO.path))[:, :num_audio_samples]
+
+        output_file = str(tmp_path / f"test.{format}")
+        encoder = create_streaming_encoder_to_file(output_file)
+        vid_idx = streaming_encoder_add_video_stream(
+            encoder,
+            frame_rate=frame_rate,
+            pixel_format="yuv444p",
+            crf=0,
             extra_options=[
                 "movflags",
-                "+frag_every_frame+empty_moov",
+                "+frag_keyframe+empty_moov+default_base_moof",
                 "tune",
                 "zerolatency",
                 "flush_packets",
                 "1",
                 "threads",
                 "1",
+                "g",
+                "1",
             ],
         )
-        # Here, we decode the available fragmented mp4 frames before calling close()
-        for batch in [source_frames[:5], source_frames[5:]]:
-            streaming_encoder_add_frames(encoder, batch)
-            mid_decoder = VideoDecoder(output_file)
-            num_available = len(mid_decoder)
-            assert num_available > 0
-            assert_tensor_close_on_at_least(
-                mid_decoder.get_frames_in_range(start=0, stop=num_available).data,
-                source_frames[:num_available],
-                percentage=99,
-                atol=2,
-            )
+        aud_idx = streaming_encoder_add_audio_stream(
+            encoder,
+            sample_rate=sample_rate,
+            codec="aac",
+        )
+        for frame_batch, sample_batch in [
+            (source_frames[:5], source_samples[:, : num_audio_samples // 2]),
+            (source_frames[5:], source_samples[:, num_audio_samples // 2 :]),
+        ]:
+            streaming_encoder_add_frames(encoder, frame_batch, vid_idx)
+            streaming_encoder_add_samples(encoder, sample_batch, aud_idx)
+
+        mid_decoder = VideoDecoder(output_file)
+        num_available = len(mid_decoder)
+        assert num_available > 0
+        assert_tensor_close_on_at_least(
+            mid_decoder.get_frames_in_range(start=0, stop=num_available).data,
+            source_frames[:num_available],
+            percentage=99,
+            atol=2,
+        )
 
         streaming_encoder_close(encoder)
         # After close, all frames must be decodable
@@ -1237,26 +1443,83 @@ class TestMultiStreamEncoderOps:
             atol=2,
         )
 
+        audio_frames = self.ffprobe_frames(
+            output_file, "a:0", ["best_effort_timestamp_time", "nb_samples"]
+        )
+        assert len(audio_frames) > 0
+        cumulative_samples = sum(int(frame["nb_samples"]) for frame in audio_frames)
+        actual_audio_pts = [
+            float(frame["best_effort_timestamp_time"]) for frame in audio_frames
+        ]
+        authored_audio_end_time = source_samples.shape[1] / sample_rate
+        max_audio_frame_duration = (
+            max(int(frame["nb_samples"]) for frame in audio_frames) / sample_rate
+        )
+        actual_audio_end_time = (
+            actual_audio_pts[-1] + int(audio_frames[-1]["nb_samples"]) / sample_rate
+        )
+        assert cumulative_samples >= source_samples.shape[1]
+        assert actual_audio_end_time >= authored_audio_end_time
+        # Fragmented AAC outputs can retain up to an additional packet of tail
+        # padding compared to the non-fragmented path.
+        assert (
+            actual_audio_end_time - authored_audio_end_time
+            <= 2 * max_audio_frame_duration + 1e-5
+        )
+
     def test_add_video_stream_twice_errors(self, tmp_path):
         encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
         streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
         with pytest.raises(RuntimeError, match="already been added"):
             streaming_encoder_add_video_stream(encoder, frame_rate=24.0)
 
+    def test_add_audio_stream_twice_errors(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.flac"))
+        streaming_encoder_add_audio_stream(encoder, sample_rate=16_000)
+        with pytest.raises(RuntimeError, match="already been added"):
+            streaming_encoder_add_audio_stream(encoder, sample_rate=16_000)
+
     def test_add_frames_different_sizes_errors(self, tmp_path):
         encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
-        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        vid_idx = streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
         frames_64 = torch.randint(0, 256, (2, 3, 64, 64), dtype=torch.uint8)
         frames_128 = torch.randint(0, 256, (2, 3, 128, 128), dtype=torch.uint8)
-        streaming_encoder_add_frames(encoder, frames_64)
+        streaming_encoder_add_frames(encoder, frames_64, vid_idx)
         with pytest.raises(RuntimeError, match="same dimensions"):
-            streaming_encoder_add_frames(encoder, frames_128)
+            streaming_encoder_add_frames(encoder, frames_128, vid_idx)
 
     def test_add_frames_without_stream_errors(self, tmp_path):
         encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
         frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8)
-        with pytest.raises(RuntimeError, match="No video stream"):
-            streaming_encoder_add_frames(encoder, frames)
+        with pytest.raises(RuntimeError, match="Invalid video stream index"):
+            streaming_encoder_add_frames(encoder, frames, 0)
+
+    def test_add_samples_different_channels_errors(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.flac"))
+        aud_idx = streaming_encoder_add_audio_stream(encoder, sample_rate=16_000)
+        streaming_encoder_add_samples(encoder, torch.rand(2, 100), aud_idx)
+        with pytest.raises(RuntimeError, match="same number of channels"):
+            streaming_encoder_add_samples(encoder, torch.rand(1, 100), aud_idx)
+
+    def test_add_samples_without_stream_errors(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.flac"))
+        samples = torch.rand(2, 100)
+        with pytest.raises(RuntimeError, match="Invalid audio stream index"):
+            streaming_encoder_add_samples(encoder, samples, 0)
+
+    def test_operations_on_closed_encoder_error(self, tmp_path):
+        encoder = create_streaming_encoder_to_file(str(tmp_path / "test.mp4"))
+        streaming_encoder_close(encoder)
+        with pytest.raises(RuntimeError, match="closed"):
+            streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        with pytest.raises(RuntimeError, match="closed"):
+            streaming_encoder_add_audio_stream(encoder, sample_rate=16_000)
+        with pytest.raises(RuntimeError, match="closed"):
+            streaming_encoder_add_frames(
+                encoder, torch.randint(0, 256, (1, 3, 64, 64), dtype=torch.uint8), 0
+            )
+        with pytest.raises(RuntimeError, match="closed"):
+            streaming_encoder_add_samples(encoder, torch.rand(2, 100), 0)
 
 
 if __name__ == "__main__":

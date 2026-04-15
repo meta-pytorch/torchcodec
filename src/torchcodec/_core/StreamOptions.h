@@ -60,6 +60,7 @@ struct VideoStreamOptions {
 struct AudioStreamOptions {
   AudioStreamOptions() {}
 
+  std::optional<std::string> codec;
   // Encoding only
   std::optional<int> bitRate;
   // Decoding and encoding:

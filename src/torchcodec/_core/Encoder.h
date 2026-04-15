@@ -1,6 +1,8 @@
 #pragma once
 #include <map>
+#include <optional>
 #include <string>
+#include <vector>
 #include "AVIOContextHolder.h"
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
@@ -188,7 +190,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
 
   MultiStreamEncoder(std::string_view fileName);
 
-  void addVideoStream(
+  int addVideoStream(
       double frameRate,
       std::optional<std::string> codec = std::nullopt,
       std::optional<std::string> pixelFormat = std::nullopt,
@@ -196,22 +198,86 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
       std::optional<std::string> preset = std::nullopt,
       std::optional<std::map<std::string, std::string>> extraOptions =
           std::nullopt);
-  void addFrames(const torch::stable::Tensor& frames);
+  int addAudioStream(
+      int sampleRate,
+      std::optional<std::string> codec = std::nullopt,
+      std::optional<int> bitRate = std::nullopt,
+      std::optional<int> numChannels = std::nullopt,
+      std::optional<int> desiredSampleRate = std::nullopt);
+  void addFrames(const torch::stable::Tensor& frames, int streamIndex);
+  void addSamples(const torch::stable::Tensor& samples, int streamIndex);
   void close();
 
  private:
-  void initializeVideoStream(const torch::stable::Tensor& frames);
-  void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
+  struct VideoStream {
+    double inFrameRate = 0;
+    VideoStreamOptions options;
+    UniqueAVCodecContext avCodecContext_;
+    AVStream* avStream = nullptr;
+    std::unique_ptr<DeviceInterface> deviceInterface;
+    int numEncodedFrames = 0;
+  };
+
+  struct AudioStream {
+    int inSampleRate = -1;
+    int inNumChannels = -1;
+    int outSampleRate = -1;
+    int outNumChannels = -1;
+    int64_t lastEncodedAVFramePts = 0;
+    AudioStreamOptions options;
+    UniqueAVCodecContext avCodecContext_;
+    AVStream* avStream = nullptr;
+    UniqueSwrContext swrContext_;
+    UniqueAVAudioFifo avAudioFifo_;
+  };
+
+  void initializeVideoStream(
+      const torch::stable::Tensor& frames,
+      int streamIndex);
+  void initializeAudioStream(
+      const torch::stable::Tensor& samples,
+      int streamIndex);
+  void maybeWriteHeaderAndFlushInitialWrites();
+  void encodeVideoFrames(const torch::stable::Tensor& frames, int streamIndex);
+  void encodeAudioSamples(
+      const torch::stable::Tensor& samples,
+      int streamIndex);
+  void encodeVideoFrame(
+      AutoAVPacket& autoAVPacket,
+      const UniqueAVFrame& avFrame,
+      VideoStream& videoStream);
+  UniqueAVFrame maybeConvertAudioAVFrame(
+      const UniqueAVFrame& avFrame,
+      AudioStream& audioStream);
+  void encodeAudioFrameThroughFifo(
+      AutoAVPacket& autoAVPacket,
+      const UniqueAVFrame& avFrame,
+      AudioStream& audioStream,
+      bool flushFifo = false);
+  void encodeAudioFrame(
+      AutoAVPacket& autoAVPacket,
+      const UniqueAVFrame& avFrame,
+      AudioStream& audioStream);
+  void maybeFlushAudioSwrBuffers(
+      AutoAVPacket& autoAVPacket,
+      AudioStream& audioStream);
+  void flushAudioFifo(AutoAVPacket& autoAVPacket, AudioStream& audioStream);
   void flushBuffers();
 
   UniqueEncodingAVFormatContext avFormatContext_;
-  UniqueAVCodecContext avCodecContext_;
-  AVStream* avStream_ = nullptr;
-  double inFrameRate_ = 0;
-  VideoStreamOptions videoStreamOptions_;
-  std::unique_ptr<DeviceInterface> deviceInterface_;
+  std::vector<VideoStream> videoStreams_;
+  std::vector<AudioStream> audioStreams_;
   bool headerWritten_ = false;
-  int numEncodedFrames_ = 0;
+  bool hasReceivedData_ = false;
+  enum class StreamType { Video, Audio };
+
+  struct InitialWrite {
+    StreamType type;
+    int streamIndex;
+    torch::stable::Tensor data;
+  };
+
+  std::vector<InitialWrite> initialWrites_;
   UniqueAVDictionary avFormatOptions_;
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;

@@ -140,11 +140,17 @@ create_streaming_encoder_to_file = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_streaming_encoder_to_file.default
 )
 streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.default
+streaming_encoder_add_audio_stream = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_audio_stream.default
+)
 streaming_encoder_add_video_stream = (
     torch.ops.torchcodec_ns.streaming_encoder_add_video_stream.default
 )
 streaming_encoder_add_frames = (
     torch.ops.torchcodec_ns.streaming_encoder_add_frames.default
+)
+streaming_encoder_add_samples = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_samples.default
 )
 set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
 get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
@@ -606,6 +612,18 @@ def streaming_encoder_close_abstract(encoder: torch.Tensor) -> None:
     return
 
 
+@register_fake("torchcodec_ns::streaming_encoder_add_audio_stream")
+def streaming_encoder_add_audio_stream_abstract(
+    encoder: torch.Tensor,
+    sample_rate: int,
+    codec: str | None = None,
+    bit_rate: int | None = None,
+    num_channels: int | None = None,
+    desired_sample_rate: int | None = None,
+) -> int:
+    return 0
+
+
 @register_fake("torchcodec_ns::streaming_encoder_add_video_stream")
 def streaming_encoder_add_video_stream_abstract(
     encoder: torch.Tensor,
@@ -615,13 +633,20 @@ def streaming_encoder_add_video_stream_abstract(
     crf: float | None = None,
     preset: str | None = None,
     extra_options: list[str] | None = None,
-) -> None:
-    return
+) -> int:
+    return 0
 
 
 @register_fake("torchcodec_ns::streaming_encoder_add_frames")
 def streaming_encoder_add_frames_abstract(
-    encoder: torch.Tensor, frames: torch.Tensor
+    encoder: torch.Tensor, frames: torch.Tensor, stream_index: int = 0
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_add_samples")
+def streaming_encoder_add_samples_abstract(
+    encoder: torch.Tensor, samples: torch.Tensor, stream_index: int = 0
 ) -> None:
     return
 
