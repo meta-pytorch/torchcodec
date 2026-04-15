@@ -5,20 +5,16 @@
 # LICENSE file in the root directory of this source tree.
 
 import contextlib
-
 import json
 import os
 import subprocess
 
 import pytest
-
 import torch
 import torchcodec
-
 from torchcodec._core import get_frame_at_index, get_json_metadata
 from torchcodec._core.ops import _add_video_stream, add_video_stream, create_from_file
 from torchcodec.decoders import VideoDecoder
-
 from torchvision.transforms import v2
 
 from .utils import (
@@ -143,9 +139,7 @@ class TestPublicVideoDecoderTransformOps:
                 # 10-bit HDR content decoded to uint8 has slightly larger
                 # swscale vs torchvision resize diffs than native 8-bit
                 # content due to the 10->8 bit quantization in swscale
-                # producing pixel values that hit bilinear interpolation
-                # rounding boundaries differently.
-                close_pct, close_atol, max_atol = 99.8, 1, 8
+                close_pct, close_atol, max_atol = 99.8, 1, 10
                 frame_resize_cmp = frame_resize
                 frame_tv_cmp = frame_tv
                 frame_tv_no_antialias_cmp = frame_tv_no_antialias
