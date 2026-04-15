@@ -66,7 +66,8 @@ class CpuDeviceInterface : public DeviceInterface {
 
   torch::stable::Tensor convertAVFrameToTensorUsingFilterGraph(
       const UniqueAVFrame& avFrame,
-      const FrameDims& outputDims);
+      const FrameDims& outputDims,
+      int bitDepth);
 
   ColorConversionLibrary getColorConversionLibrary(
       const FrameDims& inputDims,

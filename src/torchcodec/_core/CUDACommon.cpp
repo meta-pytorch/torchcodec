@@ -489,12 +489,12 @@ torch::stable::Tensor convertP016FrameToRGB(
     const UniqueNppContext& nppCtx,
     cudaStream_t nvdecStream,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
-  auto frameDims = FrameDims(avFrame->height, avFrame->width, /*bitDepth=*/16);
+  auto frameDims = FrameDims(avFrame->height, avFrame->width);
   torch::stable::Tensor dst;
   if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
-    dst = allocateEmptyHWCTensor(frameDims, device);
+    dst = allocateEmptyHWCTensor(frameDims, device, /*bitDepth=*/16);
   }
 
   // Sync streams: make sure NVDEC has finished before we run NPP.

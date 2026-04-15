@@ -310,7 +310,6 @@ void BetaCudaDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resizedOutputDims) {
-  outputDtype_ = videoStreamOptions.outputDtype;
   if (cpuFallback_) {
     cpuFallback_->initializeVideo(
         videoStreamOptions, transforms, resizedOutputDims);
@@ -1021,21 +1020,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
-  // Determine whether to use 10-bit decode path.
-  // UINT8: always 8-bit NV12 path.
-  // FLOAT32: preserve source bit depth (P016 for >8-bit). Python converts to
-  // float32. AUTO: P016 for HDR sources, NV12 for SDR.
-  bool is10Bit = false;
-  switch (outputDtype_) {
-    case OutputDtype::UINT8:
-      break;
-    case OutputDtype::FLOAT32:
-      is10Bit = (bitDepth_ > 8);
-      break;
-    case OutputDtype::AUTO:
-      is10Bit = (bitDepth_ > 8);
-      break;
-  }
+  bool is10Bit = resolvedBitDepth(bitDepth_, outputDtype_) > 8;
 
   UniqueAVFrame gpuFrame;
   if (cpuFallback_) {

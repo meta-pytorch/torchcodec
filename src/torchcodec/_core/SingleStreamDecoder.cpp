@@ -590,28 +590,10 @@ void SingleStreamDecoder::addVideoStream(
       sourceBitDepth = desc->comp[0].depth;
     }
   }
-  // Determine bitDepth based on outputDtype setting.
-  // bitDepth controls the FFmpeg pixel format (RGB24 vs RGB48) and output
-  // tensor dtype (uint8 vs uint16). Float32 conversion is done in Python.
-  int bitDepth = sourceBitDepth;
-  switch (videoStreamOptions.outputDtype) {
-    case OutputDtype::UINT8:
-      bitDepth = 8;
-      break;
-    case OutputDtype::FLOAT32:
-      // Keep source bitDepth for best precision; Python converts to float32.
-      break;
-    case OutputDtype::AUTO:
-      if (sourceBitDepth <= 8) {
-        bitDepth = 8;
-      }
-      // else: keep source bitDepth, Python converts to float32.
-      break;
-  }
+  outputBitDepth_ =
+      resolvedBitDepth(sourceBitDepth, videoStreamOptions.outputDtype);
   preRotationDims_ = FrameDims(
-      streamInfo.stream->codecpar->height,
-      streamInfo.stream->codecpar->width,
-      bitDepth);
+      streamInfo.stream->codecpar->height, streamInfo.stream->codecpar->width);
 
   FrameDims currInputDims = preRotationDims_;
 
@@ -649,12 +631,6 @@ void SingleStreamDecoder::addVideoStream(
       currInputDims = resizedOutputDims_.value();
     }
     transforms_.push_back(std::unique_ptr<Transform>(transform));
-  }
-
-  // Propagate bitDepth from the source to resizedOutputDims_, since transforms
-  // (rotation, resize) don't change the bit depth.
-  if (resizedOutputDims_.has_value()) {
-    resizedOutputDims_->bitDepth = preRotationDims_.bitDepth;
   }
 
   deviceInterface_->initializeVideo(
@@ -784,7 +760,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   const auto& streamInfo = streamInfos_[activeStreamIndex_];
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
-      frameIndices.numel(), getOutputDims(), videoStreamOptions.device);
+      frameIndices.numel(),
+      getOutputDims(),
+      videoStreamOptions.device,
+      outputBitDepth_);
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -849,7 +828,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   int64_t numOutputFrames = std::ceil((stop - start) / double(step));
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
-      numOutputFrames, getOutputDims(), videoStreamOptions.device);
+      numOutputFrames,
+      getOutputDims(),
+      videoStreamOptions.device,
+      outputBitDepth_);
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -986,7 +968,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
   // below. Hence, we need this special case below.
   if (startSeconds == stopSeconds) {
     FrameBatchOutput frameBatchOutput(
-        0, getOutputDims(), videoStreamOptions.device);
+        0, getOutputDims(), videoStreamOptions.device, outputBitDepth_);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     return frameBatchOutput;
   }
@@ -1029,7 +1011,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
 
     FrameBatchOutput frameBatchOutput(
-        numOutputFrames, getOutputDims(), videoStreamOptions.device);
+        numOutputFrames,
+        getOutputDims(),
+        videoStreamOptions.device,
+        outputBitDepth_);
 
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -1075,7 +1060,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     int64_t numFrames = stopFrameIndex - startFrameIndex;
 
     FrameBatchOutput frameBatchOutput(
-        numFrames, getOutputDims(), videoStreamOptions.device);
+        numFrames, getOutputDims(), videoStreamOptions.device, outputBitDepth_);
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
     auto frameBatchOutputDurationSeconds =

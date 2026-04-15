@@ -17,6 +17,7 @@ from .utils import (
     H265_VIDEO,
     NASA_VIDEO,
     NASA_VIDEO_HDR,
+    TEST_SRC_2_12BIT_HDR,
     TEST_SRC_2_720P_HDR,
     TestVideo,
 )
@@ -215,7 +216,7 @@ def generate_av1_video_references():
 
 def generate_hdr_references_rgb48():
     frames = [0, 5, 10]
-    for video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR):
+    for video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR):
         for frame in frames:
             generate_frame_by_index_rgb48(video, frame_index=frame, stream_index=0)
 
