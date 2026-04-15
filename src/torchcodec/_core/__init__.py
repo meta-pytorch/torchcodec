@@ -15,9 +15,7 @@ from ._metadata import (
 from .ops import (
     _get_backend_details,
     _get_key_frame_indices,
-    _get_log_level,
     _get_nvdec_cache_size,
-    _set_log_level,
     _test_frame_pts_equality,
     core_library_path,
     create_streaming_encoder_to_file,

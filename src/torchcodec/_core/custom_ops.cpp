@@ -1276,7 +1276,7 @@ int64_t _get_nvdec_cache_size(int64_t device_index) {
 }
 
 void _set_log_level(int64_t level) {
-  setLogLevel(static_cast<int>(level));
+  setLogLevel(static_cast<LogLevel>(level));
 }
 
 int64_t _get_log_level() {

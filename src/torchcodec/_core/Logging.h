@@ -8,8 +8,14 @@
 
 namespace facebook::torchcodec {
 
-void setLogLevel(int level);
-int getLogLevel();
+// Keep in sync with _LogLevel in torchcodec/_logging.py.
+enum class LogLevel : int {
+  OFF = 0,
+  ALL = 1,
+};
+
+void setLogLevel(LogLevel level);
+LogLevel getLogLevel();
 
 namespace internal {
 void log(const char* file, int line, const char* fmt, ...)
@@ -20,10 +26,10 @@ void log(const char* file, int line, const char* fmt, ...)
 } // namespace internal
 } // namespace facebook::torchcodec
 
-// NOLINTNEXTLINE(cppcoreguidelines-macro-usage)
 #define TC_LOG(...)                                                           \
   do {                                                                        \
-    if (::facebook::torchcodec::getLogLevel() > 0) {                          \
+    if (::facebook::torchcodec::getLogLevel() !=                              \
+        ::facebook::torchcodec::LogLevel::OFF) {                              \
       ::facebook::torchcodec::internal::log(__FILE__, __LINE__, __VA_ARGS__); \
     }                                                                         \
   } while (0)

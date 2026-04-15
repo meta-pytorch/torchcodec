@@ -149,7 +149,7 @@ streaming_encoder_add_frames = (
 set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
 get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
 _get_nvdec_cache_size = torch.ops.torchcodec_ns._get_nvdec_cache_size.default
-_set_log_level = torch.ops.torchcodec_ns._set_log_level.default
+_set_cpp_log_level = torch.ops.torchcodec_ns._set_log_level.default
 _get_log_level = torch.ops.torchcodec_ns._get_log_level.default
 create_wav_decoder_from_file = (
     torch.ops.torchcodec_ns.create_wav_decoder_from_file.default
