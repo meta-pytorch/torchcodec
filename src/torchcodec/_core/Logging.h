@@ -13,7 +13,10 @@ int getLogLevel();
 
 namespace internal {
 void log(const char* file, int line, const char* fmt, ...)
-    __attribute__((format(printf, 3, 4)));
+#ifndef _WIN32
+    __attribute__((format(printf, 3, 4)))
+#endif
+    ;
 } // namespace internal
 } // namespace facebook::torchcodec
 
