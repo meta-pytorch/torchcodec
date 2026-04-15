@@ -1475,7 +1475,7 @@ class TestVideoDecoder:
             gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
-            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=7)
+            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
 
     @needs_cuda
     def test_bt2020_10bit_video(self):
@@ -1519,7 +1519,7 @@ class TestVideoDecoder:
             gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
-            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=7)
+            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
 
     @needs_cuda
     def test_10bit_gpu_fallsback_to_cpu(self):
