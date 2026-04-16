@@ -127,16 +127,11 @@ torch::stable::Tensor wrapDecoderPointerToTensor(
   return tensor;
 }
 
-// TODO_STABLE_ABI: use previous deleter pattern with a lambda, once
-// https://github.com/pytorch/pytorch/pull/175089 is available.
-void wavDecoderDeleter(void* data) {
-  delete static_cast<WavDecoder*>(data);
-}
-
 torch::stable::Tensor wrapWavDecoderPointerToTensor(
     std::unique_ptr<WavDecoder> uniqueDecoder) {
   WavDecoder* decoder = uniqueDecoder.release();
 
+  auto deleter = [decoder](void*) { delete decoder; };
   int64_t sizes[] = {static_cast<int64_t>(sizeof(WavDecoder*))};
   int64_t strides[] = {1};
   torch::stable::Tensor tensor = torch::stable::from_blob(
@@ -145,7 +140,7 @@ torch::stable::Tensor wrapWavDecoderPointerToTensor(
       {strides, 1},
       StableDevice(kStableCPU),
       kStableInt64,
-      &wavDecoderDeleter);
+      deleter);
   auto wavDecoder = static_cast<WavDecoder*>(tensor.mutable_data_ptr());
   STD_TORCH_CHECK(wavDecoder == decoder, "wavDecoder != decoder");
   return tensor;
@@ -168,15 +163,10 @@ SingleStreamDecoder* unwrapTensorToGetDecoder(torch::stable::Tensor& tensor) {
   return decoder;
 }
 
-// TODO_STABLE_ABI: use previous deleter pattern with a lambda, once
-// https://github.com/pytorch/pytorch/pull/175089 is available.
-void multiStreamEncoderDeleter(void* data) {
-  delete static_cast<MultiStreamEncoder*>(data);
-}
-
 torch::stable::Tensor wrapMultiStreamEncoderPointerToTensor(
     std::unique_ptr<MultiStreamEncoder> uniqueEncoder) {
   MultiStreamEncoder* encoder = uniqueEncoder.release();
+  auto deleter = [encoder](void*) { delete encoder; };
   int64_t sizes[] = {static_cast<int64_t>(sizeof(MultiStreamEncoder*))};
   int64_t strides[] = {1};
   torch::stable::Tensor tensor = torch::stable::from_blob(
@@ -185,7 +175,7 @@ torch::stable::Tensor wrapMultiStreamEncoderPointerToTensor(
       {strides, 1},
       StableDevice(kStableCPU),
       kStableInt64,
-      &multiStreamEncoderDeleter);
+      deleter);
   auto multiStreamEncoder =
       static_cast<MultiStreamEncoder*>(tensor.mutable_data_ptr());
   STD_TORCH_CHECK(
