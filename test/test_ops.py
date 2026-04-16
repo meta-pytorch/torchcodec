@@ -1189,7 +1189,7 @@ class TestMultiStreamEncoderOps:
             device
         )
         frame_rate = source_decoder.metadata.average_fps
-        percentage, atol = (95, 3) if device == "cuda" else (99, 2)
+        percentage, atol = (96, 2) if device == "cuda" else (99, 2)
 
         encoder, encoder_output = self._create_encoder(method, tmp_path, format)
         add_video_stream_kwargs = {"frame_rate": frame_rate}
@@ -1241,7 +1241,7 @@ class TestMultiStreamEncoderOps:
             device
         )
         frame_rate = source_decoder.metadata.average_fps
-        percentage, atol = (95, 3) if device == "cuda" else (99, 2)
+        percentage, atol = (96, 2) if device == "cuda" else (99, 2)
 
         encoder, encoder_output = self._create_encoder(method, tmp_path, format)
         # In addition to the fragmentation flag, "flush_packets" and "threads"
