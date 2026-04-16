@@ -139,7 +139,16 @@ _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
 create_streaming_encoder_to_file = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_streaming_encoder_to_file.default
 )
+_create_streaming_encoder_to_file_like = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.create_streaming_encoder_to_file_like.default
+)
 streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.default
+streaming_encoder_add_video_stream = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_video_stream.default
+)
+streaming_encoder_add_frames = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_frames.default
+)
 set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
 get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
 _get_nvdec_cache_size = torch.ops.torchcodec_ns._get_nvdec_cache_size.default
@@ -248,6 +257,17 @@ def encode_video_to_file_like(
         crf,
         preset,
         extra_options,
+    )
+
+
+def create_streaming_encoder_to_file_like(
+    format: str,
+    file_like: io.RawIOBase | io.BufferedIOBase,
+) -> torch.Tensor:
+    assert _pybind_ops is not None
+    return _create_streaming_encoder_to_file_like(
+        format,
+        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
     )
 
 
@@ -595,8 +615,36 @@ def _create_streaming_encoder_to_file_abstract(
     return torch.empty([], dtype=torch.long)
 
 
+@register_fake("torchcodec_ns::create_streaming_encoder_to_file_like")
+def _create_streaming_encoder_to_file_like_abstract(
+    format: str,
+    file_like_context: int,
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
 @register_fake("torchcodec_ns::streaming_encoder_close")
 def streaming_encoder_close_abstract(encoder: torch.Tensor) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_add_video_stream")
+def streaming_encoder_add_video_stream_abstract(
+    encoder: torch.Tensor,
+    frame_rate: float,
+    codec: str | None = None,
+    pixel_format: str | None = None,
+    crf: float | None = None,
+    preset: str | None = None,
+    extra_options: list[str] | None = None,
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_add_frames")
+def streaming_encoder_add_frames_abstract(
+    encoder: torch.Tensor, frames: torch.Tensor
+) -> None:
     return
 
 

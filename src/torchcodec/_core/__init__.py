@@ -19,6 +19,7 @@ from .ops import (
     _test_frame_pts_equality,
     core_library_path,
     create_streaming_encoder_to_file,
+    create_streaming_encoder_to_file_like,
     create_wav_decoder_from_file,
     encode_audio_to_file,
     encode_audio_to_file_like,
@@ -41,5 +42,7 @@ from .ops import (
     get_wav_metadata_from_decoder,
     get_wav_samples_in_range,
     set_nvdec_cache_capacity,
+    streaming_encoder_add_frames,
+    streaming_encoder_add_video_stream,
     streaming_encoder_close,
 )

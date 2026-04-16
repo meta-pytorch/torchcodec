@@ -49,6 +49,18 @@ def validate_frames_properties(*, actual: Path, expected: Path):
     # `ffprobe` on both, and assert that the frame properties match (pts,
     # duration, etc.)
 
+    # non-exhaustive list of the props we want to test for:
+    required_props = (
+        "pts",
+        "pts_time",
+        "sample_fmt",
+        "nb_samples",
+        "channels",
+        "duration",
+        "duration_time",
+    )
+    show_entries = "frame=" + ",".join(required_props)
+
     frames_actual, frames_expected = (
         json.loads(
             subprocess.run(
@@ -60,6 +72,8 @@ def validate_frames_properties(*, actual: Path, expected: Path):
                     "-select_streams",
                     "a:0",
                     "-show_frames",
+                    "-show_entries",
+                    show_entries,
                     "-of",
                     "json",
                     f"{f}",
@@ -80,17 +94,6 @@ def validate_frames_properties(*, actual: Path, expected: Path):
 
     assert len(frames_actual) > 3  # arbitrary sanity check
     assert len(frames_actual) == len(frames_expected)
-
-    # non-exhaustive list of the props we want to test for:
-    required_props = (
-        "pts",
-        "pts_time",
-        "sample_fmt",
-        "nb_samples",
-        "channels",
-        "duration",
-        "duration_time",
-    )
 
     for frame_index, (d_actual, d_expected) in enumerate(
         zip(frames_actual, frames_expected)
