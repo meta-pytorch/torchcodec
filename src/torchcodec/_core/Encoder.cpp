@@ -540,7 +540,8 @@ namespace {
 
 torch::stable::Tensor validateFrames(
     const torch::stable::Tensor& frames,
-    const AVCodecContext* avCodecContext = nullptr) {
+    const AVCodecContext* avCodecContext = nullptr,
+    DeviceInterface* deviceInterface = nullptr) {
   STD_TORCH_CHECK(
       frames.scalar_type() == kStableUInt8,
       "frames must have uint8 dtype, got ",
@@ -553,6 +554,22 @@ torch::stable::Tensor validateFrames(
       frames.sizes()[1] == 3,
       "frame must have 3 channels (R, G, B), got ",
       frames.sizes()[1]);
+  if (deviceInterface != nullptr) {
+    auto& expectedDevice = deviceInterface->device();
+    auto framesDevice = frames.device();
+    STD_TORCH_CHECK(
+        static_cast<StableDeviceType>(framesDevice.type()) ==
+                expectedDevice.type() &&
+            framesDevice.index() == expectedDevice.index(),
+        "All frames must be on the same device. Expected device type=",
+        deviceTypeName(expectedDevice.type()),
+        " index=",
+        expectedDevice.index(),
+        ", got device type=",
+        deviceTypeName(static_cast<StableDeviceType>(framesDevice.type())),
+        " index=",
+        framesDevice.index());
+  }
   if (avCodecContext) {
     STD_TORCH_CHECK(
         static_cast<int>(frames.sizes()[2]) == avCodecContext->height &&
@@ -1101,9 +1118,6 @@ void MultiStreamEncoder::addVideoStream(
 void MultiStreamEncoder::initializeVideoStream(
     const torch::stable::Tensor& frames) {
   auto tensorDevice = frames.device();
-  // TODO MultiStreamEncoder: Enable CUDA support
-  STD_TORCH_CHECK(
-      tensorDevice.is_cpu(), "Only CPU tensors are supported for encoding.");
   deviceInterface_ = createDeviceInterface(StableDevice(
       static_cast<StableDeviceType>(tensorDevice.type()),
       tensorDevice.index()));
@@ -1126,9 +1140,16 @@ void MultiStreamEncoder::initializeVideoStream(
     STD_TORCH_CHECK(
         avFormatContext_->oformat != nullptr,
         "Output format is null, unable to find default codec.");
-    // TODO MultiStreamEncoder: When CUDA support is enabled, substitute codec
-    // with hardware equivalent
-    avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
+    // Try to substitute the default codec with its hardware equivalent
+    // This will return std::nullopt when device is CPU.
+    auto hwCodec = deviceInterface_->findCodec(
+        avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
+    if (hwCodec.has_value()) {
+      avCodec = hwCodec.value();
+    }
+    if (!avCodec) {
+      avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
+    }
   }
   STD_TORCH_CHECK(
       avCodec != nullptr,
@@ -1154,18 +1175,32 @@ void MultiStreamEncoder::initializeVideoStream(
   int outWidth = inWidth;
   int outHeight = inHeight;
   AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
+
   if (videoStreamOptions_.pixelFormat.has_value()) {
+    // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user on GPU
+    // and handled with the appropriate NPP function on GPU.
+    if (frames.device().type() == kStableCUDA) {
+      STD_TORCH_CHECK(
+          false,
+          "Video encoding on GPU currently only supports the nv12 pixel format. "
+          "Do not set pixel_format to use nv12 by default.");
+    }
     outPixelFormat =
         validatePixelFormat(*avCodec, videoStreamOptions_.pixelFormat.value());
   } else {
-    const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
-    // Use first listed pixel format as default (often yuv420p).
-    // This is similar to FFmpeg's logic:
-    // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
-    // If pixel formats are undefined for some reason, try yuv420p
-    outPixelFormat = (formats && formats[0] != AV_PIX_FMT_NONE)
-        ? formats[0]
-        : AV_PIX_FMT_YUV420P;
+    if (frames.device().type() == kStableCUDA) {
+      // Default to nv12 pixel format when encoding on GPU.
+      outPixelFormat = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
+    } else {
+      const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
+      // Use first listed pixel format as default (often yuv420p).
+      // This is similar to FFmpeg's logic:
+      // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
+      // If pixel formats are undefined for some reason, try yuv420p
+      outPixelFormat = (formats && formats[0] != AV_PIX_FMT_NONE)
+          ? formats[0]
+          : AV_PIX_FMT_YUV420P;
+    }
   }
 
   // Configure codec parameters
@@ -1209,6 +1244,12 @@ void MultiStreamEncoder::initializeVideoStream(
         0);
   }
 
+  if (frames.device().type() == kStableCUDA) {
+    deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
+    deviceInterface_->setupHardwareFrameContextForEncoding(
+        avCodecContext_.get());
+  }
+
   int status = avcodec_open2(
       avCodecContext_.get(), avCodec, avCodecOptions.getAddress());
 
@@ -1246,7 +1287,8 @@ void MultiStreamEncoder::addFrames(const torch::stable::Tensor& frames) {
   STD_TORCH_CHECK(
       inFrameRate_ > 0,
       "No video stream has been added. Call addVideoStream() first.");
-  auto validatedFrames = validateFrames(frames, avCodecContext_.get());
+  auto validatedFrames =
+      validateFrames(frames, avCodecContext_.get(), deviceInterface_.get());
 
   if (!headerWritten_) {
     initializeVideoStream(validatedFrames);
