@@ -1253,7 +1253,7 @@ class TestMultiStreamEncoderOps:
             "1",
         ]
         if device == "cuda":
-            extra_options.extend(["qp", "1"])
+            extra_options.extend(["qp", "1", "delay", "0"])
             streaming_encoder_add_video_stream(
                 encoder,
                 frame_rate=frame_rate,
