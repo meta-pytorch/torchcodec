@@ -19,6 +19,7 @@ from .ops import (
     _test_frame_pts_equality,
     core_library_path,
     create_streaming_encoder_to_file,
+    create_streaming_encoder_to_file_like,
     create_wav_decoder_from_file,
     encode_audio_to_file,
     encode_audio_to_file_like,
