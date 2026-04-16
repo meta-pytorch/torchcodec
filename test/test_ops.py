@@ -1154,19 +1154,22 @@ class TestMultiStreamEncoderOps:
     @staticmethod
     def _create_encoder(method, tmp_path, format):
         if method == "to_file":
-            output = tmp_path / f"test.{format}"
-            return create_streaming_encoder_to_file(str(output)), output
+            encoder_output = tmp_path / f"test.{format}"
+            return create_streaming_encoder_to_file(str(encoder_output)), encoder_output
         elif method == "to_file_like":
-            output = io.BytesIO()
-            return create_streaming_encoder_to_file_like(format, output), output
+            encoder_output = io.BytesIO()
+            return (
+                create_streaming_encoder_to_file_like(format, encoder_output),
+                encoder_output,
+            )
         else:
             raise ValueError(f"Unknown method: {method}")
 
     @staticmethod
-    def _get_decoder_source(output):
-        if isinstance(output, io.BytesIO):
-            return output.getvalue()
-        return str(output)
+    def _get_decoder_source(encoder_output):
+        if isinstance(encoder_output, io.BytesIO):
+            return encoder_output.getvalue()
+        return str(encoder_output)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_double_close(self, tmp_path, method):
@@ -1181,7 +1184,7 @@ class TestMultiStreamEncoderOps:
         source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
         frame_rate = source_decoder.metadata.average_fps
 
-        encoder, output = self._create_encoder(method, tmp_path, format)
+        encoder, encoder_output = self._create_encoder(method, tmp_path, format)
         streaming_encoder_add_video_stream(
             encoder,
             frame_rate=frame_rate,
@@ -1193,7 +1196,7 @@ class TestMultiStreamEncoderOps:
         streaming_encoder_close(encoder)
 
         decoded_frames = (
-            VideoDecoder(self._get_decoder_source(output))
+            VideoDecoder(self._get_decoder_source(encoder_output))
             .get_frames_in_range(start=0, stop=10)
             .data
         )
@@ -1226,7 +1229,7 @@ class TestMultiStreamEncoderOps:
         source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
         frame_rate = source_decoder.metadata.average_fps
 
-        encoder, output = self._create_encoder(method, tmp_path, format)
+        encoder, encoder_output = self._create_encoder(method, tmp_path, format)
         streaming_encoder_add_video_stream(
             encoder,
             frame_rate=frame_rate,
@@ -1249,7 +1252,7 @@ class TestMultiStreamEncoderOps:
         # Here, we decode the available fragmented mp4 frames before calling close()
         for batch in [source_frames[:5], source_frames[5:]]:
             streaming_encoder_add_frames(encoder, batch)
-            mid_decoder = VideoDecoder(self._get_decoder_source(output))
+            mid_decoder = VideoDecoder(self._get_decoder_source(encoder_output))
             num_available = len(mid_decoder)
             assert num_available > 0
             assert_tensor_close_on_at_least(
@@ -1262,7 +1265,7 @@ class TestMultiStreamEncoderOps:
         streaming_encoder_close(encoder)
         # After close, all frames must be decodable
         assert_tensor_close_on_at_least(
-            VideoDecoder(self._get_decoder_source(output))
+            VideoDecoder(self._get_decoder_source(encoder_output))
             .get_frames_in_range(start=0, stop=10)
             .data,
             source_frames,
