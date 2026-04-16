@@ -1244,6 +1244,11 @@ class TestMultiStreamEncoderOps:
         percentage, atol = (95, 3) if device == "cuda" else (99, 2)
 
         encoder, encoder_output = self._create_encoder(method, tmp_path, format)
+        # In addition to the fragmentation flag, "flush_packets" and "threads"
+        # are necessary to decode frames before close().
+        # See frag flags: https://ffmpeg.org/ffmpeg-formats.html#Fragmentation
+        # TODO MultiStreamEncoder: Get a better understanding of which options
+        # are necessary for reading fragmented mp4s
         extra_options = [
             "movflags",
             "+frag_every_frame+empty_moov",
@@ -1254,23 +1259,17 @@ class TestMultiStreamEncoderOps:
         ]
         if device == "cuda":
             extra_options.extend(["qp", "1", "delay", "0"])
-            streaming_encoder_add_video_stream(
-                encoder,
-                frame_rate=frame_rate,
-                extra_options=extra_options,
-            )
+            pixel_format, crf = None, None
         else:
             extra_options.extend(["tune", "zerolatency"])
-            streaming_encoder_add_video_stream(
-                encoder,
-                frame_rate=frame_rate,
-                pixel_format="yuv444p",
-                crf=0,
-                # In addition to the fragmentation flag, I found "flush_packets" and "threads" to be necessary to decode frames before close().
-                # See other frag flags: https://ffmpeg.org/ffmpeg-formats.html#Fragmentation
-                # TODO MultiStreamEncoder: Get a better understanding of which options are necessary for reading fragmented mp4s
-                extra_options=extra_options,
-            )
+            pixel_format, crf = "yuv444p", 0
+        streaming_encoder_add_video_stream(
+            encoder,
+            frame_rate=frame_rate,
+            pixel_format=pixel_format,
+            crf=crf,
+            extra_options=extra_options,
+        )
         # Here, we decode the available fragmented mp4 frames before calling close()
         for batch in [source_frames[:5], source_frames[5:]]:
             streaming_encoder_add_frames(encoder, batch)
