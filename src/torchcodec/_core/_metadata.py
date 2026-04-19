@@ -117,6 +117,17 @@ class VideoStreamMetadata(StreamMetadata):
         or -90 degree rotation, this means width and height are swapped
         compared to the raw encoded dimensions in the container.
     """
+    color_primaries: str | None
+    """Color primaries as reported by FFmpeg. E.g. ``"bt709"``, ``"bt2020"``."""
+    color_space: str | None
+    """Color space as reported by FFmpeg. E.g. ``"bt709"``,
+    ``"bt2020nc"``."""
+    color_transfer_characteristic: str | None
+    """Color transfer characteristic as reported by FFmpeg
+    E.g. ``"bt709"``, ``"smpte2084"`` (PQ), ``"arib-std-b67"`` (HLG)."""
+    pixel_format: str | None
+    """The source pixel format of the video as reported by FFmpeg.
+    E.g. ``'yuv420p'``, ``'yuv444p'``, etc."""
 
     # Computed fields (computed in C++ with fallback logic)
     end_stream_seconds: float | None
@@ -243,6 +254,12 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
                     average_fps_from_header=stream_dict.get("averageFpsFromHeader"),
                     pixel_aspect_ratio=_get_optional_par_fraction(stream_dict),
                     rotation=stream_dict.get("rotation"),
+                    color_primaries=stream_dict.get("colorPrimaries"),
+                    color_space=stream_dict.get("colorSpace"),
+                    color_transfer_characteristic=stream_dict.get(
+                        "colorTransferCharacteristic"
+                    ),
+                    pixel_format=stream_dict.get("pixelFormat"),
                     **common_meta,
                 )
             )

@@ -542,11 +542,19 @@ ReferenceAVPacket& BetaCudaDeviceInterface::applyBSF(
 // Parser triggers this callback within cuvidParseVideoData when a frame is
 // ready to be decoded, i.e. the parser received all the necessary packets for a
 // given frame. It means we can send that frame to be decoded by the hardware
-// NVDEC decoder by calling cuvidDecodePicture which is non-blocking.
+// NVDEC decoder by calling cuvidDecodePicture.
 int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* picParams) {
   STD_TORCH_CHECK(picParams != nullptr, "Invalid picture parameters");
   STD_TORCH_CHECK(decoder_, "Decoder not initialized before picture decode");
-  // Send frame to be decoded by NVDEC - non-blocking call.
+  // Send frame to be decoded by NVDEC. This may or may not block, depending on
+  // the internal state of the NVDEC. Presumably, when it blocks, it gets
+  // automatically unblocked once a frame has been decoded, although how and
+  // when it happens is unclear. The docs say:
+  // > cuvidDecodePicture() will stall if wait queue on NVDEC inside driver is
+  //   full.
+  // and cuviddec.h says:
+  // > cuvidDecodePicture may block the calling thread if there are too many
+  //   pictures pending in the decode queue.
   CUresult result = cuvidDecodePicture(*decoder_.get(), picParams);
 
   // Yes, you're reading that right, 0 means error, 1 means success
@@ -673,6 +681,12 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
       break;
     case 6:
       avFrame->colorspace = AVCOL_SPC_SMPTE170M; // BT.601
+      break;
+    case 9:
+      avFrame->colorspace = AVCOL_SPC_BT2020_NCL;
+      break;
+    case 10:
+      avFrame->colorspace = AVCOL_SPC_BT2020_CL;
       break;
     default:
       // Default to BT.601

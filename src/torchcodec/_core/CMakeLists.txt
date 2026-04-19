@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 project(TorchCodec)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PYBIND11_FINDPYTHON ON)
@@ -44,7 +44,7 @@ function(make_torchcodec_sublibrary
     library_dependencies)
 
     add_library(${library_name} ${type} ${sources})
-    set_target_properties(${library_name} PROPERTIES CXX_STANDARD 17)
+    set_target_properties(${library_name} PROPERTIES CXX_STANDARD 20)
     target_include_directories(${library_name}
         PRIVATE
         ./../../../
@@ -57,6 +57,8 @@ function(make_torchcodec_sublibrary
     # torch, we want to rely on the "header-only" mode of these headers and hit
     # all the `#ifdef FMT_HEADER_ONLY` paths, so we define FMT_HEADER_ONLY here.```
     target_compile_definitions(${library_name} PRIVATE FMT_HEADER_ONLY)
+    # TC is ABI-stable w.r.t. torch since torch 2.11
+    target_compile_definitions(${library_name} PRIVATE TORCH_TARGET_VERSION=0x020b000000000000)
 
     # Avoid adding the "lib" prefix which we already add explicitly.
     set_target_properties(${library_name} PROPERTIES PREFIX "")
@@ -137,6 +139,8 @@ function(make_torchcodec_libraries
         Transform.cpp
         Metadata.cpp
         SwScale.cpp
+        WavDecoder.cpp
+        NVDECCacheConfig.cpp
     )
 
     if(ENABLE_CUDA)
@@ -163,9 +167,10 @@ function(make_torchcodec_libraries
     )
 
     if(ENABLE_CUDA)
-        # We have to define USE_CUDA because we rely on some APIs like
-        # aoti_torch_get_current_cuda_stream, which are only exposed in torch
-        # headers if is defined!
+        # We define USE_CUDA to guard CUDA-specific code paths (e.g.
+        # NVDECCache usage in NVDECCacheConfig.cpp) and because some torch
+        # APIs like aoti_torch_get_current_cuda_stream are only exposed when
+        # USE_CUDA is defined.
         # https://github.com/pytorch/pytorch/blob/98e36864e640023a716e058d894ea2d20e76e5f7/torch/csrc/inductor/aoti_torch/c/shim.h#L573-L602
         target_compile_definitions(${core_library_name} PRIVATE USE_CUDA)
     endif()

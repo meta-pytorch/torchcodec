@@ -12,6 +12,10 @@
 #include "Metadata.h"
 #include "StableABICompat.h"
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 namespace facebook::torchcodec {
 namespace {
 
@@ -166,6 +170,28 @@ void SingleStreamDecoder::initializeDecoder() {
 
       streamMetadata.sampleAspectRatio =
           avStream->codecpar->sample_aspect_ratio;
+
+      if (avStream->codecpar->color_primaries != AVCOL_PRI_UNSPECIFIED) {
+        streamMetadata.colorPrimaries = avStream->codecpar->color_primaries;
+      }
+      if (avStream->codecpar->color_space != AVCOL_SPC_UNSPECIFIED) {
+        streamMetadata.colorSpace = avStream->codecpar->color_space;
+      }
+      if (avStream->codecpar->color_trc != AVCOL_TRC_UNSPECIFIED) {
+        streamMetadata.colorTransferCharacteristic =
+            avStream->codecpar->color_trc;
+      }
+      AVPixelFormat pixelFormat =
+          static_cast<AVPixelFormat>(avStream->codecpar->format);
+      // If the AVPixelFormat is not recognized, we get back nullptr. We have
+      // to make sure we don't initialize a std::string with nullptr. There's
+      // nothing to do on the else branch because we're already using an
+      // optional; it'll just remain empty.
+      const char* rawPixelFormat = av_get_pix_fmt_name(pixelFormat);
+      if (rawPixelFormat != nullptr) {
+        streamMetadata.pixelFormat = std::string(rawPixelFormat);
+      }
+
       containerMetadata_.numVideoStreams++;
     } else if (avStream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
       AVSampleFormat format =
@@ -612,7 +638,11 @@ void SingleStreamDecoder::addAudioStream(
         *audioStreamOptions.numChannels);
   }
 
-  addStream(streamIndex, AVMEDIA_TYPE_AUDIO);
+  // We hardcode ffmpegThreadCount=1 for audio, see
+  // https://github.com/pytorch/torchcodec/issues/1253 and
+  // https://github.com/pytorch/torchcodec/pull/1254
+  addStream(
+      streamIndex, AVMEDIA_TYPE_AUDIO, StableDevice(kStableCPU), "ffmpeg", 1);
 
   auto& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.audioStreamOptions = audioStreamOptions;

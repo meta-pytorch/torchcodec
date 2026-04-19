@@ -15,20 +15,26 @@ from torchcodec import _core, ffmpeg_major_version, FrameBatch
 from torchcodec.decoders import (
     AudioDecoder,
     AudioStreamMetadata,
+    get_nvdec_cache_capacity,
     set_cuda_backend,
+    set_nvdec_cache_capacity,
     VideoDecoder,
     VideoStreamMetadata,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
+from torchcodec.decoders._wav_decoder import WavDecoder
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    assert_tensor_close_on_at_least,
     AV1_VIDEO,
+    BT2020_LIMITED_RANGE_10BIT,
+    BT601_FULL_RANGE,
+    BT601_LIMITED_RANGE,
     BT709_FULL_RANGE,
     cuda_devices,
-    cuda_version_used_for_building_torch,
     get_ffmpeg_minor_version,
     get_python_version,
     H264_10BITS,
@@ -1462,12 +1468,51 @@ class TestVideoDecoder:
             gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
-            if cuda_version_used_for_building_torch() >= (13, 0):
-                torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
-            elif cuda_version_used_for_building_torch() >= (12, 9):
-                torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=2)
-            elif cuda_version_used_for_building_torch() == (12, 8):
-                assert psnr(gpu_frame, cpu_frame) > 20
+            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
+
+    @needs_cuda
+    def test_bt2020_10bit_video(self):
+        # Test ensuring result consistency between CPU and beta CUDA (NVDEC)
+        # decoder on a BT.2020 10-bit video (limited range). This is a
+        # non-regression test for BT.2020 color conversion support.
+        #
+        # bt2020_10bit.mp4 is a BT.2020 limited range 10-bit HEVC video:
+        # color_space=bt2020nc, color_range=tv, pix_fmt=yuv420p10le
+        #
+        # NVDEC decodes 10-bit natively (converting to 8-bit NV12), then our
+        # BT.2020 color twist matrix handles the YUV->RGB conversion.
+        #
+        # TODO investigate CPU vs BetaCUDA mismatch on BT.2020 10-bit.
+        # See PR #1267 for details.
+        asset = BT2020_LIMITED_RANGE_10BIT
+
+        with set_cuda_backend("beta"):
+            decoder_gpu = VideoDecoder(asset.path, device="cuda")
+        decoder_cpu = VideoDecoder(asset.path, device="cpu")
+
+        for frame_index in (0, 10, 20, 5):
+            gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
+            cpu_frame = decoder_cpu.get_frame_at(frame_index).data
+
+            assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=90, atol=3)
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset",
+        (BT601_FULL_RANGE, BT601_LIMITED_RANGE),
+    )
+    def test_bt601_colorspace(self, asset):
+        # Test ensuring result consistency between CPU and beta CUDA (NVDEC)
+        # decoder on BT.601 videos with full and limited range.
+        with set_cuda_backend("beta"):
+            decoder_gpu = VideoDecoder(asset.path, device="cuda")
+        decoder_cpu = VideoDecoder(asset.path, device="cpu")
+
+        for frame_index in (0, 10, 20, 5):
+            gpu_frame = decoder_gpu.get_frame_at(frame_index).data.cpu()
+            cpu_frame = decoder_cpu.get_frame_at(frame_index).data
+
+            torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
 
     @needs_cuda
     def test_10bit_gpu_fallsback_to_cpu(self):
@@ -1646,8 +1691,8 @@ class TestVideoDecoder:
     #   assert_tensor_close_on_at_least or something like that.
     # - unskip equality assertion checks for MPEG4 asset. The frames are decoded
     #   fine, it's the color conversion that's different. The frame from the
-    #   BETA interface is assumed to be 701 while the one from the default
-    #   interface is 601.
+    #   BETA interface is mapped to 709 by the matrix coefficient using NVCUVID
+    #   while the one from the default interface is 601.
 
     @needs_cuda
     @pytest.mark.parametrize(
@@ -1954,6 +1999,62 @@ class TestVideoDecoder:
             with pytest.raises(RuntimeError, match="torch_call_dispatcher"):
                 with set_cuda_backend(backend):
                     VideoDecoder(H265_VIDEO.path, device=f"cuda:{bad_device_number}")
+
+    @contextlib.contextmanager
+    def restore_nvdec_cache_capacity(self):
+        try:
+            original = get_nvdec_cache_capacity()
+            yield
+        finally:
+            set_nvdec_cache_capacity(original)
+            assert get_nvdec_cache_capacity() == original
+
+    def test_nvdec_cache_capacity(self):
+        with self.restore_nvdec_cache_capacity():
+            set_nvdec_cache_capacity(42)
+            assert get_nvdec_cache_capacity() == 42
+
+            set_nvdec_cache_capacity(0)
+            assert get_nvdec_cache_capacity() == 0
+
+            set_nvdec_cache_capacity(1)
+            assert get_nvdec_cache_capacity() == 1
+
+            with pytest.raises(
+                RuntimeError, match="NVDEC cache capacity must be non-negative"
+            ):
+                set_nvdec_cache_capacity(-1)
+
+            # Capacity is unchanged after the failed call above.
+            assert get_nvdec_cache_capacity() == 1
+
+    @needs_cuda
+    def test_nvdec_cache_capacity_eviction(self):
+
+        def create_decoder():
+            with set_cuda_backend("beta"):
+                dec = VideoDecoder(NASA_VIDEO.path, device="cuda")
+            dec[0]
+            del dec
+            gc.collect()
+
+        with self.restore_nvdec_cache_capacity():
+            assert _core._get_nvdec_cache_size(device_index=0) == 0
+
+            # Create decoder, it should be in the cache
+            create_decoder()
+            assert _core._get_nvdec_cache_size(device_index=0) == 1
+
+            # Set capacity to 1, decoder should still be there
+            set_nvdec_cache_capacity(1)
+            assert _core._get_nvdec_cache_size(device_index=0) == 1
+            # Set capacity to 0, this should evict it
+            set_nvdec_cache_capacity(0)
+            assert _core._get_nvdec_cache_size(device_index=0) == 0
+
+            # Create a new decoder, it's not cached since capacity is 0
+            create_decoder()
+            assert _core._get_nvdec_cache_size(device_index=0) == 0
 
     def test_cpu_fallback_no_fallback_on_cpu_device(self):
         """Test that CPU device doesn't trigger fallback (it's not a fallback scenario)."""
@@ -2513,3 +2614,76 @@ class TestAudioDecoder:
                 # FFmpeg fails to find a default layout for certain channel counts,
                 # which causes SwrContext to fail to initialize.
                 decoder.get_all_samples()
+
+
+class TestWavDecoder:
+    def test_metadata(self):
+        asset = SINE_MONO_S32
+        wav_decoder = WavDecoder(asset.path)
+        audio_decoder = AudioDecoder(asset.path)
+
+        assert isinstance(wav_decoder.metadata, AudioStreamMetadata)
+        assert wav_decoder.stream_index == audio_decoder.metadata.stream_index
+        assert wav_decoder.metadata == audio_decoder.metadata
+
+    def test_tensor_handle_creation(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        assert wav_dec._decoder is not None
+        assert wav_dec.stream_index == 0
+        assert wav_dec._source == SINE_MONO_S32.path
+
+    def test_non_wav_file_raises_error(self):
+        with pytest.raises(RuntimeError, match="Missing RIFF header"):
+            WavDecoder(NASA_AUDIO.path)
+
+    @pytest.mark.parametrize(
+        "start_seconds,stop_seconds",
+        [
+            (0.0, 1.0),
+            (1.0, 1.0),
+            (0.0, None),
+            (-1.0, 1.0),
+            (-1.0, None),
+        ],
+    )
+    def test_get_samples_played_in_range_vs_audio_decoder(
+        self, start_seconds, stop_seconds
+    ):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        audio_dec = AudioDecoder(SINE_MONO_S32.path)
+
+        wav_samples = wav_dec.get_samples_played_in_range(start_seconds, stop_seconds)
+        audio_samples = audio_dec.get_samples_played_in_range(
+            start_seconds, stop_seconds
+        )
+        torch.testing.assert_close(wav_samples.data, audio_samples.data, rtol=0, atol=0)
+        assert wav_samples.pts_seconds == audio_samples.pts_seconds
+
+    def test_get_all_samples_vs_audio_decoder(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        audio_dec = AudioDecoder(SINE_MONO_S32.path)
+
+        wav_samples = wav_dec.get_all_samples()
+        audio_samples = audio_dec.get_all_samples()
+        torch.testing.assert_close(wav_samples.data, audio_samples.data, rtol=0, atol=0)
+        assert wav_samples.pts_seconds == audio_samples.pts_seconds
+
+    def test_get_samples_played_in_range_errors(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        with pytest.raises(
+            ValueError,
+            match="Invalid start seconds: 2.0. It must be less than or equal to stop seconds \\(1.0\\).",
+        ):
+            wav_dec.get_samples_played_in_range(2.0, 1.0)
+
+        with pytest.raises(
+            RuntimeError,
+            match="No samples to decode. This is probably because start_seconds is too high\\(10\\)",
+        ):
+            wav_dec.get_samples_played_in_range(10.0, None)
+
+        with pytest.raises(
+            RuntimeError,
+            match="No samples to decode. This is probably because start_seconds is too high\\(10\\)",
+        ):
+            wav_dec.get_samples_played_in_range(10.0, 12.0)

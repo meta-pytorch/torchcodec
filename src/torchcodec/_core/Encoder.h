@@ -177,4 +177,48 @@ class FORCE_PUBLIC_VISIBILITY VideoEncoder {
   UniqueAVDictionary avFormatOptions_;
 };
 
+class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
+ public:
+  ~MultiStreamEncoder();
+
+  MultiStreamEncoder(const MultiStreamEncoder&) = delete;
+  MultiStreamEncoder& operator=(const MultiStreamEncoder&) = delete;
+  MultiStreamEncoder(MultiStreamEncoder&&) = delete;
+  MultiStreamEncoder& operator=(MultiStreamEncoder&&) = delete;
+
+  MultiStreamEncoder(std::string_view fileName);
+  MultiStreamEncoder(
+      std::string_view formatName,
+      std::unique_ptr<AVIOContextHolder> avioContextHolder);
+
+  void addVideoStream(
+      double frameRate,
+      std::optional<std::string> codec = std::nullopt,
+      std::optional<std::string> pixelFormat = std::nullopt,
+      std::optional<double> crf = std::nullopt,
+      std::optional<std::string> preset = std::nullopt,
+      std::optional<std::map<std::string, std::string>> extraOptions =
+          std::nullopt);
+  void addFrames(const torch::stable::Tensor& frames);
+  void close();
+
+ private:
+  void initializeVideoStream(const torch::stable::Tensor& frames);
+  void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
+  void flushBuffers();
+
+  UniqueEncodingAVFormatContext avFormatContext_;
+  UniqueAVCodecContext avCodecContext_;
+  AVStream* avStream_ = nullptr;
+  double inFrameRate_ = 0;
+  VideoStreamOptions videoStreamOptions_;
+  std::unique_ptr<DeviceInterface> deviceInterface_;
+  bool headerWritten_ = false;
+  int numEncodedFrames_ = 0;
+  UniqueAVDictionary avFormatOptions_;
+
+  std::unique_ptr<AVIOContextHolder> avioContextHolder_;
+  bool closed_ = false;
+};
+
 } // namespace facebook::torchcodec
