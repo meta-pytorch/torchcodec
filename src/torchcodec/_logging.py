@@ -11,12 +11,14 @@ from typing import Literal
 from torchcodec._core.ops import _get_log_level, _set_cpp_log_level
 
 _LG = logging.getLogger("torchcodec")
-_LG.setLevel(logging.DEBUG)
-
 _handler = logging.StreamHandler()
 _handler.setFormatter(
     logging.Formatter("[torchcodec %(filename)s:%(lineno)d] %(message)s")
 )
+_LG.addHandler(_handler)
+
+_OFF_LEVEL = logging.CRITICAL + 1
+_LG.setLevel(_OFF_LEVEL)
 
 
 # Keep in sync with LogLevel in torchcodec/_core/Logging.h.
@@ -39,11 +41,10 @@ def set_log_level(level: Literal["OFF", "ALL"]) -> None:
         )
     _set_cpp_log_level(log_level.value)
     # Probably not thread-safe, and probably OK still.
-    if log_level != _LogLevel.OFF:
-        if _handler not in _LG.handlers:
-            _LG.addHandler(_handler)
+    if log_level == _LogLevel.OFF:
+        _LG.setLevel(_OFF_LEVEL)
     else:
-        _LG.removeHandler(_handler)
+        _LG.setLevel(logging.DEBUG)
 
 
 def get_log_level() -> str:
