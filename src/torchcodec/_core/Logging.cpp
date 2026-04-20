@@ -9,7 +9,7 @@
 #include <atomic>
 #include <cstdarg>
 #include <cstdio>
-#include <cstring>
+#include <filesystem>
 
 namespace facebook::torchcodec {
 
@@ -26,15 +26,9 @@ LogLevel getLogLevel() {
 namespace internal {
 
 void log(const char* file, int line, const char* fmt, ...) {
-  // Strip path prefix to show only the filename.
-  const char* basename = std::strrchr(file, '/');
-  if (basename != nullptr) {
-    basename += 1;
-  } else {
-    basename = file;
-  }
+  auto basename = std::filesystem::path(file).filename().string();
 
-  std::fprintf(stderr, "[torchcodec %s:%d] ", basename, line);
+  std::fprintf(stderr, "[torchcodec %s:%d] ", basename.c_str(), line);
 
   va_list args;
   va_start(args, fmt);

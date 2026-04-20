@@ -653,6 +653,23 @@ def _get_log_level_abstract() -> int:
     return 0
 
 
+@register_fake("torchcodec_ns::create_wav_decoder_from_file")
+def create_wav_decoder_from_file_abstract(filename: str) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::get_wav_samples_in_range")
+def get_wav_samples_in_range_abstract(
+    decoder: torch.Tensor, start_seconds: float, stop_seconds: float | None
+) -> tuple[torch.Tensor, torch.Tensor]:
+    sample_size = [
+        get_ctx().new_dynamic_size() for _ in range(2)
+    ]  # [channels, samples]
+    frames = torch.empty(sample_size)
+    pts = torch.empty([], dtype=torch.float64)
+    return frames, pts
+
+
 @register_fake("torchcodec_ns::get_wav_metadata_from_decoder")
 def get_wav_metadata_from_decoder_abstract(decoder: torch.Tensor) -> str:
     return ""

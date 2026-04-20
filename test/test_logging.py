@@ -41,7 +41,7 @@ class TestLogging:
         )
         assert result.returncode == 0, result.stderr
         expected = (
-            r"\[torchcodec \S+:\d+\] NVDEC not available or codec not supported; falling back to CPU decoding\.\n"
+            r"\[torchcodec \S+:\d+\] Video stream not supported by NVDEC; falling back to CPU decoding\.\n"
             # TODO: Remove once Python-side fallback log is removed.
             r"\[torchcodec \S+:\d+\] CUDA decoding fell back to CPU\.\n"
         )
