@@ -23,7 +23,6 @@ from .utils import (
     AV1_VIDEO,
     get_ffmpeg_minor_version,
     H265_VIDEO,
-    IS_WINDOWS,
     NASA_VIDEO,
     NASA_VIDEO_HDR,
     needs_cuda,
@@ -50,15 +49,15 @@ class TestPublicVideoDecoderTransformOps:
             pytest.param(
                 NASA_VIDEO_HDR,
                 marks=pytest.mark.skipif(
-                    IS_WINDOWS and torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on Windows + FFmpeg 4",
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
                 ),
             ),
             pytest.param(
                 TEST_SRC_2_720P_HDR,
                 marks=pytest.mark.skipif(
-                    IS_WINDOWS and torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on Windows + FFmpeg 4",
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
                 ),
             ),
         ],
@@ -249,15 +248,15 @@ class TestPublicVideoDecoderTransformOps:
             pytest.param(
                 NASA_VIDEO_HDR,
                 marks=pytest.mark.skipif(
-                    IS_WINDOWS and torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on Windows + FFmpeg 4",
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
                 ),
             ),
             pytest.param(
                 TEST_SRC_2_720P_HDR,
                 marks=pytest.mark.skipif(
-                    IS_WINDOWS and torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on Windows + FFmpeg 4",
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
                 ),
             ),
         ],
@@ -335,15 +334,15 @@ class TestPublicVideoDecoderTransformOps:
             pytest.param(
                 NASA_VIDEO_HDR,
                 marks=pytest.mark.skipif(
-                    IS_WINDOWS and torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on Windows + FFmpeg 4",
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
                 ),
             ),
             pytest.param(
                 TEST_SRC_2_720P_HDR,
                 marks=pytest.mark.skipif(
-                    IS_WINDOWS and torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on Windows + FFmpeg 4",
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
                 ),
             ),
         ],
