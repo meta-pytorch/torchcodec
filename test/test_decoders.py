@@ -40,6 +40,7 @@ from .utils import (
     H264_10BITS,
     H265_VIDEO,
     in_fbcode,
+    IS_WINDOWS,
     make_video_decoder,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
@@ -1561,7 +1562,25 @@ class TestVideoDecoder:
             pytest.param("cuda:beta", marks=pytest.mark.needs_cuda),
         ),
     )
-    @pytest.mark.parametrize("asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR))
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            pytest.param(
+                NASA_VIDEO_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                TEST_SRC_2_720P_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
+                ),
+            ),
+        ),
+    )
     def test_10bit_batch_apis(self, device, asset):
         # Validate batch APIs on 10-bit float32 content against ffmpeg rgb48
         # references.
@@ -1623,6 +1642,10 @@ class TestVideoDecoder:
             frame = decoder_auto_hdr.get_frame_at(frame_index).data
             assert frame.dtype == torch.float32
 
+            if IS_WINDOWS and ffmpeg_major_version < 5:
+                # swscale YUV10->RGB48 differs on Windows + FFmpeg 4
+                continue
+
             frame_as_uint16 = (frame * 65535).round().to(torch.uint16)
             ref = NASA_VIDEO_HDR.get_frame_data_by_index_rgb48(frame_index)
             torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
@@ -1635,7 +1658,30 @@ class TestVideoDecoder:
         ),
     )
     @pytest.mark.parametrize(
-        "asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR)
+        "asset",
+        (
+            pytest.param(
+                NASA_VIDEO_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                TEST_SRC_2_720P_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                TEST_SRC_2_12BIT_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
+                ),
+            ),
+        ),
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_10bit_float32_against_ffmpeg_rgb48(self, asset, device, seek_mode):

@@ -117,10 +117,6 @@ class CpuDeviceInterface : public DeviceInterface {
   //
   // See also [Tranform and Format Conversion Order] for more on filters.
   std::string filters_ = "copy";
-  // The user transform filters without the format prefix. Empty if no user
-  // transforms. Used to dynamically build filters_ with the correct format
-  // prefix based on source bit depth.
-  std::string userTransformFilters_;
 
   // Values set during initialization and referred to in
   // getColorConversionLibrary().

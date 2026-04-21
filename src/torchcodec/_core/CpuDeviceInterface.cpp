@@ -128,11 +128,15 @@ void CpuDeviceInterface::initializeVideo(
     // default, it will insert it after the user filters. We need an explicit
     // format conversion to get the behavior we want.
     //
-    // We store the user transforms without the format prefix here. The format
-    // prefix is added dynamically in convertVideoAVFrameToFrameOutput()
-    // based on the source bit depth.
-    userTransformFilters_ = filters.str();
-    filters_ = userTransformFilters_;
+    // Build the final filters_ string with the format prefix based on the
+    // resolved output bit depth. The format prefix ensures user transforms
+    // run in the correct output color space (RGB24 or RGB48).
+    int sourceBitDepth = getBitDepthFromAVPixelFormat(
+        static_cast<AVPixelFormat>(codecContext_->pix_fmt));
+    int bitDepth =
+        resolvedBitDepth(sourceBitDepth, videoStreamOptions.outputDtype);
+    AVPixelFormat outputPixelFormat = getOutputPixelFormat(bitDepth);
+    filters_ = getFormatFilterString(outputPixelFormat) + filters.str();
   }
 
   initialized_ = true;
@@ -224,12 +228,6 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
 
   auto outputDims =
       resizedOutputDims_.value_or(FrameDims(avFrame->height, avFrame->width));
-
-  // Update the filters_ string dynamically based on bit depth, so that
-  // user transforms run in the correct output color space.
-  if (!userTransformFilters_.empty()) {
-    filters_ = getFormatFilterString(outputPixelFormat) + userTransformFilters_;
-  }
 
   if (preAllocatedOutputTensor.has_value()) {
     auto shape = preAllocatedOutputTensor.value().sizes();
