@@ -114,16 +114,17 @@ template <typename T>
 inline const T* getAlignedData(const std::vector<uint8_t>& bufferData) {
   STD_TORCH_CHECK(
       reinterpret_cast<uintptr_t>(bufferData.data()) % alignof(T) == 0,
-      "Buffer not properly aligned for direct access to ",
-      typeid(T).name());
+      "Buffer is not aligned to ",
+      alignof(T),
+      " bytes");
 
   STD_TORCH_CHECK(
       bufferData.size() % sizeof(T) == 0,
       "Buffer size (",
       bufferData.size(),
-      ") is not a multiple of sizeof(",
-      typeid(T).name(),
-      "). Malformed data?");
+      ") is not a multiple of ",
+      sizeof(T),
+      " bytes");
 
   return reinterpret_cast<const T*>(bufferData.data());
 }
@@ -278,7 +279,7 @@ void WavDecoder::convertSamplesToFloat(
   int64_t bytesPerSample = header_.bitsPerSample / 8;
 
   STD_TORCH_CHECK(
-      bufferData.size() >= totalSamples * bytesPerSample,
+      static_cast<int64_t>(bufferData.size()) >= totalSamples * bytesPerSample,
       "WAV block alignment mismatch: ",
       totalSamples,
       " samples require ",
