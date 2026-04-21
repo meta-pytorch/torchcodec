@@ -274,15 +274,9 @@ void WavDecoder::convertSamplesToFloat(
     const std::vector<uint8_t>& bufferData,
     int64_t samplesInBuffer,
     float* outputPtr) const {
-  STD_TORCH_CHECK(
-      samplesInBuffer <= INT64_MAX / header_.numChannels,
-      "samplesInBuffer * numChannels would overflow");
   int64_t totalSamples = samplesInBuffer * header_.numChannels;
   size_t bytesPerSample = header_.bitsPerSample / 8;
 
-  STD_TORCH_CHECK(
-      static_cast<size_t>(totalSamples) <= SIZE_MAX / bytesPerSample,
-      "totalSamples * bytesPerSample would overflow");
   STD_TORCH_CHECK(
       bufferData.size() >= totalSamples * bytesPerSample,
       "Insufficient raw data for requested samples: need ",
@@ -385,17 +379,13 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       ")");
 
   // Allocate buffer and read samples in chunks
-  // max_align_t is used to guarantee alignment with any scalar type
-  alignas(std::max_align_t) std::vector<uint8_t> buffer(alignedBufferSize);
+  std::vector<uint8_t> buffer(alignedBufferSize);
 
   int64_t totalBytesRead = 0;
   int64_t samplesProcessed = 0;
   auto samples =
       torch::stable::empty({numSamples, header_.numChannels}, kStableFloat32);
 
-  STD_TORCH_CHECK(
-      numSamples <= INT64_MAX / header_.numBytesPerSample,
-      "bytesToRead calculation overflow: numSamples * header_.numBytesPerSample");
   const int64_t bytesToRead = numSamples * header_.numBytesPerSample;
 
   while (totalBytesRead < bytesToRead) {
@@ -405,16 +395,6 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
 
     const int64_t samplesInBuffer =
         bytesToReadThisIteration / header_.numBytesPerSample;
-    STD_TORCH_CHECK(
-        samplesProcessed + samplesInBuffer <= numSamples,
-        "Output pointer would exceed tensor bounds: trying to write ",
-        samplesProcessed + samplesInBuffer,
-        " samples, but tensor only allocated for ",
-        numSamples,
-        " samples");
-    STD_TORCH_CHECK(
-        samplesProcessed <= INT64_MAX / header_.numChannels,
-        "Pointer offset calculation would overflow");
     float* outputPtr = samples.mutable_data_ptr<float>() +
         (samplesProcessed * header_.numChannels);
     convertSamplesToFloat(buffer, samplesInBuffer, outputPtr);
