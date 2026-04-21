@@ -275,15 +275,17 @@ void WavDecoder::convertSamplesToFloat(
     int64_t samplesInBuffer,
     float* outputPtr) const {
   int64_t totalSamples = samplesInBuffer * header_.numChannels;
-  size_t bytesPerSample = header_.bitsPerSample / 8;
+  int64_t bytesPerSample = header_.bitsPerSample / 8;
 
   STD_TORCH_CHECK(
       bufferData.size() >= totalSamples * bytesPerSample,
-      "Insufficient raw data for requested samples: need ",
+      "WAV block alignment mismatch: ",
+      totalSamples,
+      " samples require ",
       totalSamples * bytesPerSample,
-      " bytes, have ",
+      " bytes, but only ",
       bufferData.size(),
-      ". That's unexpected, please report this to the TorchCodec repo.");
+      " bytes were read.");
 
   // Currently only supporting 32-bit PCM
   STD_TORCH_CHECK(
