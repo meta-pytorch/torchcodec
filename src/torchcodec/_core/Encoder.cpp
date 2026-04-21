@@ -558,16 +558,14 @@ torch::stable::Tensor validateFrames(
     auto& expectedDevice = deviceInterface->device();
     auto framesDevice = frames.device();
     STD_TORCH_CHECK(
-        static_cast<StableDeviceType>(framesDevice.type()) ==
-                expectedDevice.type() &&
-            framesDevice.index() == expectedDevice.index(),
-        "All frames must be on the same device. Expected device type=",
+        framesDevice == expectedDevice,
+        "All frames must be on the same device. Expected ",
         deviceTypeName(expectedDevice.type()),
-        " index=",
+        ":",
         expectedDevice.index(),
-        ", got device type=",
-        deviceTypeName(static_cast<StableDeviceType>(framesDevice.type())),
-        " index=",
+        ", got ",
+        deviceTypeName(framesDevice.type()),
+        ":",
         framesDevice.index());
   }
   if (avCodecContext) {
@@ -1177,8 +1175,8 @@ void MultiStreamEncoder::initializeVideoStream(
   AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
 
   if (videoStreamOptions_.pixelFormat.has_value()) {
-    // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user on GPU
-    // and handled with the appropriate NPP function on GPU.
+    // TODO-MultiStreamEncoder: (P2) Enable pixel formats to be set by user on
+    // GPU and handled with the appropriate NPP function on GPU.
     if (frames.device().type() == kStableCUDA) {
       STD_TORCH_CHECK(
           false,
