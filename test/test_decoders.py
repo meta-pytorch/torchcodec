@@ -2794,3 +2794,55 @@ class TestWavDecoder:
     def test_non_wav_file_raises_error(self):
         with pytest.raises(RuntimeError, match="Missing RIFF header"):
             WavDecoder(NASA_AUDIO.path)
+
+    @pytest.mark.parametrize(
+        "start_seconds,stop_seconds",
+        [
+            (0.0, 1.0),
+            (1.0, 1.0),
+            (0.0, None),
+            (-1.0, 1.0),
+            (-1.0, None),
+        ],
+    )
+    def test_get_samples_played_in_range_vs_audio_decoder(
+        self, start_seconds, stop_seconds
+    ):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        audio_dec = AudioDecoder(SINE_MONO_S32.path)
+
+        wav_samples = wav_dec.get_samples_played_in_range(start_seconds, stop_seconds)
+        audio_samples = audio_dec.get_samples_played_in_range(
+            start_seconds, stop_seconds
+        )
+        torch.testing.assert_close(wav_samples.data, audio_samples.data, rtol=0, atol=0)
+        assert wav_samples.pts_seconds == audio_samples.pts_seconds
+
+    def test_get_all_samples_vs_audio_decoder(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        audio_dec = AudioDecoder(SINE_MONO_S32.path)
+
+        wav_samples = wav_dec.get_all_samples()
+        audio_samples = audio_dec.get_all_samples()
+        torch.testing.assert_close(wav_samples.data, audio_samples.data, rtol=0, atol=0)
+        assert wav_samples.pts_seconds == audio_samples.pts_seconds
+
+    def test_get_samples_played_in_range_errors(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        with pytest.raises(
+            ValueError,
+            match="Invalid start seconds: 2.0. It must be less than or equal to stop seconds \\(1.0\\).",
+        ):
+            wav_dec.get_samples_played_in_range(2.0, 1.0)
+
+        with pytest.raises(
+            RuntimeError,
+            match="No samples to decode. This is probably because start_seconds is too high\\(10\\)",
+        ):
+            wav_dec.get_samples_played_in_range(10.0, None)
+
+        with pytest.raises(
+            RuntimeError,
+            match="No samples to decode. This is probably because start_seconds is too high\\(10\\)",
+        ):
+            wav_dec.get_samples_played_in_range(10.0, 12.0)
