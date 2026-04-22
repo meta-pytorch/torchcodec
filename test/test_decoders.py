@@ -185,16 +185,14 @@ class TestVideoDecoder:
             VideoDecoder(NASA_VIDEO.path, seek_mode="blah")
 
     def test_output_dtype_float32_sdr(self):
-        # float32 on an 8-bit source should normalize uint8 -> float32 in [0, 1].
-        ref_uint8 = NASA_VIDEO.get_frame_data_by_index(0)
-        assert ref_uint8.dtype == torch.uint8
+        # float32 on an 8-bit source should be exactly (uint8_output / 255.0).
 
-        decoder = VideoDecoder(NASA_VIDEO.path, output_dtype=torch.float32)
-        frame = decoder[0]
+        uint8_frame = VideoDecoder(NASA_VIDEO.path)[0]
+        float_frame = VideoDecoder(NASA_VIDEO.path, output_dtype=torch.float32)[0]
 
-        assert frame.dtype == torch.float32
-        assert frame.min().item() >= 0.0 and frame.max().item() <= 1.0
-        torch.testing.assert_close(frame, ref_uint8.to(torch.float32) / 255.0)
+        assert uint8_frame.dtype == torch.uint8
+        assert float_frame.dtype == torch.float32
+        torch.testing.assert_close(float_frame, uint8_frame.to(torch.float32) / 255.0)
 
     def test_output_dtype_auto_sdr_is_uint8(self):
         # "auto" on an 8-bit source should stay uint8 (no HDR path yet).
