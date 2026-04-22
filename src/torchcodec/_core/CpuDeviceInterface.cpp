@@ -6,22 +6,9 @@
 
 #include "CpuDeviceInterface.h"
 
-extern "C" {
-#include <libavutil/pixdesc.h>
-}
-
 namespace facebook::torchcodec {
 
 namespace {
-
-// Returns the bit depth per channel for the given pixel format.
-int getBitDepthFromAVPixelFormat(AVPixelFormat format) {
-  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(format);
-  if (desc && desc->nb_components > 0) {
-    return desc->comp[0].depth;
-  }
-  return 8;
-}
 
 // Returns the appropriate RGB output format based on source bit depth.
 // RGB24 is 8 bits per channel, RGB48 is 16 bits per channel. For >8-bit

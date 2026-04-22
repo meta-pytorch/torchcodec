@@ -319,10 +319,16 @@ void BetaCudaDeviceInterface::initializeVideo(
 void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
-    [[maybe_unused]] const SharedAVCodecContext& codecContext,
+    const SharedAVCodecContext& codecContext,
     OutputDtype outputDtype) {
   STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   outputDtype_ = outputDtype;
+
+  // Set bitDepth_ from the codec context so it's correct on both paths. On
+  // the native NVDEC path, streamPropertyChange used to also set this from the
+  // parser; we now rely on this initialization for both paths.
+  bitDepth_ = getBitDepthFromAVPixelFormat(codecContext->pix_fmt);
+
   rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
   if (!nvcuvidAvailable_ ||
       !nativeNVDECSupport(device_, codecContext, outputDtype)) {
@@ -464,7 +470,7 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
   STD_TORCH_CHECK(videoFormat != nullptr, "Invalid video format");
 
   videoFormat_ = *videoFormat;
-  bitDepth_ = videoFormat_.bit_depth_luma_minus8 + 8;
+  // bitDepth_ is already set in initialize() from codecContext->pix_fmt.
 
   if (videoFormat_.min_num_decode_surfaces == 0) {
     // Same as DALI's fallback
@@ -472,7 +478,7 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
   }
 
   if (!decoder_) {
-    bool useP016 = (bitDepth_ > 8) && (outputDtype_ != OutputDtype::UINT8);
+    bool useP016 = resolvedBitDepth(bitDepth_, outputDtype_) > 8;
     surfaceFormat_ =
         useP016 ? cudaVideoSurfaceFormat_P016 : cudaVideoSurfaceFormat_NV12;
     decoder_ =

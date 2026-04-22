@@ -582,14 +582,8 @@ void SingleStreamDecoder::addVideoStream(
   // Set preRotationDims_ for the active stream. These are the raw encoded
   // dimensions from FFmpeg, used as a fallback for tensor pre-allocation when
   // no resize/rotation transforms are applied.
-  int sourceBitDepth = 8;
-  {
-    const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(
-        static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
-    if (desc && desc->nb_components > 0) {
-      sourceBitDepth = desc->comp[0].depth;
-    }
-  }
+  int sourceBitDepth = getBitDepthFromAVPixelFormat(
+      static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
   outputBitDepth_ =
       resolvedBitDepth(sourceBitDepth, videoStreamOptions.outputDtype);
   preRotationDims_ = FrameDims(

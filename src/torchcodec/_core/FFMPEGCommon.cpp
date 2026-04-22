@@ -11,6 +11,7 @@
 extern "C" {
 #include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
+#include <libavutil/pixdesc.h>
 }
 
 namespace facebook::torchcodec {
@@ -536,6 +537,14 @@ UniqueAVFrame convertAudioAVFrameSamples(
   convertedAVFrame->nb_samples = numConvertedSamples;
 
   return convertedAVFrame;
+}
+
+int getBitDepthFromAVPixelFormat(AVPixelFormat format) {
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(format);
+  if (desc && desc->nb_components > 0) {
+    return desc->comp[0].depth;
+  }
+  return 8;
 }
 
 void setFFmpegLogLevel() {
