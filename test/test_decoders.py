@@ -184,6 +184,31 @@ class TestVideoDecoder:
         with pytest.raises(ValueError, match="Invalid seek mode"):
             VideoDecoder(NASA_VIDEO.path, seek_mode="blah")
 
+    def test_output_dtype_float32_sdr(self):
+        # float32 on an 8-bit source should normalize uint8 -> float32 in [0, 1].
+        ref_uint8 = NASA_VIDEO.get_frame_data_by_index(0)
+        assert ref_uint8.dtype == torch.uint8
+
+        decoder = VideoDecoder(NASA_VIDEO.path, output_dtype=torch.float32)
+        frame = decoder[0]
+
+        assert frame.dtype == torch.float32
+        assert frame.min().item() >= 0.0 and frame.max().item() <= 1.0
+        torch.testing.assert_close(frame, ref_uint8.to(torch.float32) / 255.0)
+
+    def test_output_dtype_auto_sdr_is_uint8(self):
+        # "auto" on an 8-bit source should stay uint8 (no HDR path yet).
+        ref_uint8 = NASA_VIDEO.get_frame_data_by_index(0)
+        decoder = VideoDecoder(NASA_VIDEO.path, output_dtype="auto")
+        frame = decoder[0]
+        assert frame.dtype == torch.uint8
+        assert_frames_equal(ref_uint8, frame)
+
+    @pytest.mark.parametrize("bad_dtype", ("not_a_dtype", torch.int32))
+    def test_output_dtype_invalid(self, bad_dtype):
+        with pytest.raises(ValueError, match="Invalid output_dtype"):
+            VideoDecoder(NASA_VIDEO.path, output_dtype=bad_dtype)
+
     @pytest.mark.parametrize("num_ffmpeg_threads", (1, 4))
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
