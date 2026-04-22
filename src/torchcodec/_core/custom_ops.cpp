@@ -62,8 +62,6 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"ffmpeg\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None) -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
-  m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
-  m.def("get_next_frame(Tensor(a!) decoder) -> (Tensor, Tensor, Tensor)");
   m.def(
       "get_frame_at_pts(Tensor(a!) decoder, float seconds) -> (Tensor, Tensor, Tensor)");
   m.def(
@@ -605,26 +603,6 @@ void add_audio_stream(
 
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   videoDecoder->addAudioStream(stream_index.value_or(-1), audioStreamOptions);
-}
-
-// Seek to a particular presentation timestamp in the video in seconds.
-void seek_to_pts(torch::stable::Tensor& decoder, double seconds) {
-  auto videoDecoder =
-      static_cast<SingleStreamDecoder*>(decoder.mutable_data_ptr());
-  videoDecoder->setCursorPtsInSeconds(seconds);
-}
-
-// Get the next frame from the video as a tuple that has the frame data, pts and
-// duration as tensors.
-OpsFrameOutput get_next_frame(torch::stable::Tensor& decoder) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  FrameOutput result;
-  try {
-    result = videoDecoder->getNextFrame();
-  } catch (const SingleStreamDecoder::EndOfFileException& e) {
-    STABLE_CHECK_INDEX(false, e.what());
-  }
-  return makeOpsFrameOutput(result);
 }
 
 // Return the frame that is visible at a given timestamp in seconds. Each frame
@@ -1322,11 +1300,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
   m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
-  m.impl("seek_to_pts", TORCH_BOX(&seek_to_pts));
   m.impl("add_video_stream", TORCH_BOX(&add_video_stream));
   m.impl("_add_video_stream", TORCH_BOX(&_add_video_stream));
   m.impl("add_audio_stream", TORCH_BOX(&add_audio_stream));
-  m.impl("get_next_frame", TORCH_BOX(&get_next_frame));
   m.impl("_get_key_frame_indices", TORCH_BOX(&_get_key_frame_indices));
   m.impl("get_json_metadata", TORCH_BOX(&get_json_metadata));
   m.impl(

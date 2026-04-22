@@ -30,7 +30,6 @@ from torchcodec._core import (
     get_frames_by_pts_in_range_audio,
     get_frames_in_range,
     get_json_metadata,
-    get_next_frame,
     streaming_encoder_add_frames,
     streaming_encoder_add_video_stream,
     streaming_encoder_close,
@@ -43,7 +42,6 @@ from torchcodec._core.ops import (
     create_from_file,
     create_from_file_like,
     create_from_tensor,
-    seek_to_pts,
 )
 
 from torchcodec.decoders import VideoDecoder
@@ -72,34 +70,12 @@ INDEX_OF_FRAME_AT_6_SECONDS = 180
 
 class TestVideoDecoderOps:
     @pytest.mark.parametrize("device", all_supported_devices())
-    def test_seek_and_next(self, device):
-        decoder = create_from_file(str(NASA_VIDEO.path))
-        device, device_variant = unsplit_device_str(device)
-        add_video_stream(decoder, device=device, device_variant=device_variant)
-        frame0, _, _ = get_next_frame(decoder)
-        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
-        assert_frames_equal(frame0, reference_frame0.to(device))
-        reference_frame1 = NASA_VIDEO.get_frame_data_by_index(1)
-        frame1, _, _ = get_next_frame(decoder)
-        assert_frames_equal(frame1, reference_frame1.to(device))
-        seek_to_pts(decoder, 6.0)
-        frame_time6, _, _ = get_next_frame(decoder)
-        reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
-            INDEX_OF_FRAME_AT_6_SECONDS
-        )
-        assert_frames_equal(frame_time6, reference_frame_time6.to(device))
-
-    @pytest.mark.parametrize("device", all_supported_devices())
     def test_seek_to_negative_pts(self, device):
         decoder = create_from_file(str(NASA_VIDEO.path))
         device, device_variant = unsplit_device_str(device)
         add_video_stream(decoder, device=device, device_variant=device_variant)
-        frame0, _, _ = get_next_frame(decoder)
+        frame0, _, _ = get_frame_at_pts(decoder, -1e-4)
         reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
-        assert_frames_equal(frame0, reference_frame0.to(device))
-
-        seek_to_pts(decoder, -1e-4)
-        frame0, _, _ = get_next_frame(decoder)
         assert_frames_equal(frame0, reference_frame0.to(device))
 
     @pytest.mark.parametrize("device", all_supported_devices())
@@ -360,13 +336,12 @@ class TestVideoDecoderOps:
         device, device_variant = unsplit_device_str(device)
         add_video_stream(decoder, device=device, device_variant=device_variant)
 
-        seek_to_pts(decoder, 12.979633)
-        last_frame, _, _ = get_next_frame(decoder)
+        # Verify we can get the last frame
+        last_frame, _, _ = get_frame_at_index(decoder, frame_index=389)
         reference_last_frame = NASA_VIDEO.get_frame_data_by_index(389)
         assert_frames_equal(last_frame, reference_last_frame.to(device))
-        with pytest.raises(IndexError, match="no more frames"):
-            get_next_frame(decoder)
 
+        # Verify that requesting a frame beyond the end raises IndexError
         with pytest.raises(IndexError, match="no more frames"):
             get_frame_at_pts(decoder, seconds=1000.0)
 
@@ -375,10 +350,9 @@ class TestVideoDecoderOps:
         decoder = create_from_file(str(NASA_VIDEO.path))
         device, device_variant = unsplit_device_str(device)
         add_video_stream(decoder, device=device, device_variant=device_variant)
-        # pts=12.979633 is the last frame in the video.
-        seek_to_pts(decoder, 12.979633 + 1.0e-4)
+        # pts=12.979633 is the last frame's PTS
         with pytest.raises(IndexError, match="no more frames"):
-            get_next_frame(decoder)
+            get_frame_at_pts(decoder, 12.979633 + 0.5)
 
     @pytest.mark.skipif(
         get_python_version() >= (3, 14),
@@ -392,17 +366,18 @@ class TestVideoDecoderOps:
         device, device_variant = unsplit_device_str(device)
 
         @torch.compile(fullgraph=True, backend="eager")
-        def get_frame1_and_frame_time6(decoder):
+        def get_frame0_and_frame_time6(decoder):
             add_video_stream(decoder, device=device, device_variant=device_variant)
-            frame0, _, _ = get_next_frame(decoder)
-            seek_to_pts(decoder, 6.0)
-            frame_time6, _, _ = get_next_frame(decoder)
+            frame0, _, _ = get_frame_at_index(decoder, frame_index=0)
+            frame_time6, _, _ = get_frame_at_index(
+                decoder, frame_index=INDEX_OF_FRAME_AT_6_SECONDS
+            )
             return frame0, frame_time6
 
         # NB: create needs to happen outside the torch.compile region,
         # for now. Otherwise torch.compile constant-props it.
         decoder = create_from_file(str(NASA_VIDEO.path))
-        frame0, frame_time6 = get_frame1_and_frame_time6(decoder)
+        frame0, frame_time6 = get_frame0_and_frame_time6(decoder)
         reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
         reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
             INDEX_OF_FRAME_AT_6_SECONDS
@@ -438,18 +413,44 @@ class TestVideoDecoderOps:
 
         device, device_variant = unsplit_device_str(device)
         add_video_stream(decoder, device=device, device_variant=device_variant)
-        frame0, _, _ = get_next_frame(decoder)
+        frame0, _, _ = get_frame_at_index(decoder, frame_index=0)
         reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
         assert_frames_equal(frame0, reference_frame0.to(device))
-        reference_frame1 = NASA_VIDEO.get_frame_data_by_index(1)
-        frame1, _, _ = get_next_frame(decoder)
-        assert_frames_equal(frame1, reference_frame1.to(device))
-        seek_to_pts(decoder, 6.0)
-        frame_time6, _, _ = get_next_frame(decoder)
+        frame6, _, _ = get_frame_at_index(
+            decoder, frame_index=INDEX_OF_FRAME_AT_6_SECONDS
+        )
         reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
             INDEX_OF_FRAME_AT_6_SECONDS
         )
-        assert_frames_equal(frame_time6, reference_frame_time6.to(device))
+        assert_frames_equal(frame6, reference_frame_time6.to(device))
+
+    @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
+    def test_color_conversion_library(self, color_conversion_library):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        _add_video_stream(decoder, color_conversion_library=color_conversion_library)
+        frame0, *_ = get_frame_at_index(decoder, frame_index=0)
+        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
+        assert_frames_equal(frame0, reference_frame0)
+        frame6, *_ = get_frame_at_index(
+            decoder, frame_index=INDEX_OF_FRAME_AT_6_SECONDS
+        )
+        reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
+            INDEX_OF_FRAME_AT_6_SECONDS
+        )
+        assert_frames_equal(frame6, reference_frame_time6)
+
+    @needs_cuda
+    def test_cuda_decoder(self):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder, device="cuda")
+        frame0, pts, duration = get_frame_at_index(decoder, frame_index=0)
+        assert frame0.device.type == "cuda"
+        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
+        assert_frames_equal(frame0, reference_frame0.to("cuda"))
+        assert pts == torch.tensor([0])
+        torch.testing.assert_close(
+            duration, torch.tensor(0.0334).double(), atol=0, rtol=1e-3
+        )
 
     # Keeping the metadata tests below for now, but we should remove them
     # once we remove get_json_metadata().
@@ -570,7 +571,7 @@ class TestVideoDecoderOps:
             ),
         )
 
-        frame0, _, _ = get_next_frame(decoder)
+        frame0, _, _ = get_frame_at_index(decoder, frame_index=0)
         reference_frame0 = NASA_VIDEO.get_frame_data_by_index(
             0, stream_index=stream_index
         )
@@ -591,23 +592,6 @@ class TestVideoDecoderOps:
         ref_frames0_9 = NASA_VIDEO.get_frame_data_by_range(0, 9)
         bulk_frames0_9, *_ = get_frames_in_range(decoder, start=0, stop=9)
         assert_frames_equal(bulk_frames0_9, ref_frames0_9.to(device))
-
-    @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
-    def test_color_conversion_library(self, color_conversion_library):
-        decoder = create_from_file(str(NASA_VIDEO.path))
-        _add_video_stream(decoder, color_conversion_library=color_conversion_library)
-        frame0, *_ = get_next_frame(decoder)
-        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
-        assert_frames_equal(frame0, reference_frame0)
-        reference_frame1 = NASA_VIDEO.get_frame_data_by_index(1)
-        frame1, *_ = get_next_frame(decoder)
-        assert_frames_equal(frame1, reference_frame1)
-        seek_to_pts(decoder, 6.0)
-        frame_time6, *_ = get_next_frame(decoder)
-        reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
-            INDEX_OF_FRAME_AT_6_SECONDS
-        )
-        assert_frames_equal(frame_time6, reference_frame_time6)
 
     @pytest.mark.parametrize("dimension_order", ("NHWC", "NCHW"))
     @pytest.mark.parametrize("color_conversion_library", ("filtergraph", "swscale"))
@@ -648,19 +632,6 @@ class TestVideoDecoderOps:
         assert frames.shape[1:] == expected_shape
         assert_frames_equal(frames[0], frame0_ref)
 
-    @needs_cuda
-    def test_cuda_decoder(self):
-        decoder = create_from_file(str(NASA_VIDEO.path))
-        add_video_stream(decoder, device="cuda")
-        frame0, pts, duration = get_next_frame(decoder)
-        assert frame0.device.type == "cuda"
-        reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
-        assert_frames_equal(frame0, reference_frame0.to("cuda"))
-        assert pts == torch.tensor([0])
-        torch.testing.assert_close(
-            duration, torch.tensor(0.0334).double(), atol=0, rtol=1e-3
-        )
-
 
 class TestAudioDecoderOps:
     @pytest.mark.parametrize(
@@ -671,7 +642,6 @@ class TestAudioDecoderOps:
             partial(get_frames_in_range, start=4, stop=5),
             partial(get_frame_at_pts, seconds=2),
             partial(get_frames_by_pts, timestamps=[0, 1.5]),
-            partial(seek_to_pts, seconds=5),
         ),
     )
     def test_audio_bad_method(self, method):
@@ -686,25 +656,6 @@ class TestAudioDecoderOps:
             RuntimeError, match="seek_mode must be 'approximate' for audio"
         ):
             add_audio_stream(decoder)
-
-    @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
-    def test_next(self, asset):
-        decoder = create_from_file(str(asset.path), seek_mode="approximate")
-        add_audio_stream(decoder)
-
-        frame_index = 0
-        while True:
-            try:
-                frame, pts_seconds, duration_seconds = get_next_frame(decoder)
-            except IndexError:
-                break
-            torch.testing.assert_close(
-                frame, asset.get_frame_data_by_index(frame_index)
-            )
-            frame_info = asset.get_frame_info(frame_index)
-            assert pts_seconds == frame_info.pts_seconds
-            assert duration_seconds == frame_info.duration_seconds
-            frame_index += 1
 
     @pytest.mark.parametrize(
         "range",
@@ -970,7 +921,7 @@ class TestAudioDecoderOps:
         device, device_variant = unsplit_device_str(device)
         add_video_stream(decoder, device=device, device_variant=device_variant)
 
-        frame0, *_ = get_next_frame(decoder)
+        frame0, *_ = get_frame_at_index(decoder, frame_index=0)
         reference_frame0 = NASA_VIDEO.get_frame_data_by_index(0)
         assert_frames_equal(frame0, reference_frame0.to(device))
 
@@ -983,9 +934,7 @@ class TestAudioDecoderOps:
 
         initialization_seeks = file_counter.num_seeks
 
-        seek_to_pts(decoder, 12.979633)
-
-        frame_last, *_ = get_next_frame(decoder)
+        frame_last, *_ = get_frame_at_index(decoder, frame_index=389)
         reference_frame_last = NASA_VIDEO.get_frame_data_by_index(389)
         assert_frames_equal(frame_last, reference_frame_last.to(device))
 
@@ -996,9 +945,9 @@ class TestAudioDecoderOps:
         # We're smart enough to avoid seeks within key frames and our test
         # files have very few keyframes. However, we can force a seek by
         # requesting a backwards seek.
-        seek_to_pts(decoder, 6.0)
-
-        frame_time6, *_ = get_next_frame(decoder)
+        frame_time6, *_ = get_frame_at_index(
+            decoder, frame_index=INDEX_OF_FRAME_AT_6_SECONDS
+        )
         reference_frame_time6 = NASA_VIDEO.get_frame_data_by_index(
             INDEX_OF_FRAME_AT_6_SECONDS
         )

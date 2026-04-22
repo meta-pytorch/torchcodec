@@ -14,8 +14,13 @@ import pandas as pd
 import torch
 import torch.utils.benchmark as benchmark
 
-from torchcodec._core import get_frames_at_indices, get_frames_by_pts, get_next_frame
-from torchcodec._core.ops import _add_video_stream, create_from_file, seek_to_pts
+from torchcodec._core import get_frames_at_indices, get_frames_by_pts
+from torchcodec._core.ops import (
+    _add_video_stream,
+    create_from_file,
+    get_frame_at_index,
+    get_frame_at_pts,
+)
 from torchcodec._frame import FrameBatch
 from torchcodec.decoders import VideoDecoder, VideoStreamMetadata
 
@@ -249,8 +254,8 @@ class TorchCodecCore(AbstractDecoder):
         )
 
         frames = []
-        for _ in range(n):
-            frame = get_next_frame(decoder)
+        for i in range(n):
+            frame = get_frame_at_index(decoder, frame_index=i)
             frames.append(frame)
 
         return frames
@@ -284,8 +289,7 @@ class TorchCodecCoreNonBatch(AbstractDecoder):
 
         frames = []
         for pts in pts_list:
-            seek_to_pts(decoder, pts)
-            frame = get_next_frame(decoder)
+            frame = get_frame_at_pts(decoder, pts)
             frames.append(frame)
 
         return frames
@@ -301,8 +305,8 @@ class TorchCodecCoreNonBatch(AbstractDecoder):
         )
 
         frames = []
-        for _ in range(n):
-            frame = get_next_frame(decoder)
+        for i in range(n):
+            frame = get_frame_at_index(decoder, frame_index=i)
             frames.append(frame)
 
         return frames
@@ -319,8 +323,7 @@ class TorchCodecCoreNonBatch(AbstractDecoder):
 
         frames = []
         for pts in pts_list:
-            seek_to_pts(decoder, pts)
-            frame, *_ = get_next_frame(decoder)
+            frame, *_ = get_frame_at_pts(decoder, pts)
             frames.append(frame)
 
         frames = [
@@ -511,13 +514,12 @@ class TorchCodecPublicNonBatch(AbstractDecoder):
 
 @torch.compile(fullgraph=True, backend="eager")
 def compiled_seek_and_next(decoder, pts):
-    seek_to_pts(decoder, pts)
-    return get_next_frame(decoder)
+    return get_frame_at_pts(decoder, pts)
 
 
 @torch.compile(fullgraph=True, backend="eager")
-def compiled_next(decoder):
-    return get_next_frame(decoder)
+def compiled_next(decoder, frame_index):
+    return get_frame_at_index(decoder, frame_index=frame_index)
 
 
 class TorchCodecCoreCompiled(AbstractDecoder):
@@ -537,8 +539,8 @@ class TorchCodecCoreCompiled(AbstractDecoder):
         decoder = create_from_file(video_file)
         _add_video_stream(decoder)
         frames = []
-        for _ in range(n):
-            frame = compiled_next(decoder)
+        for i in range(n):
+            frame = compiled_next(decoder, i)
             frames.append(frame)
         return frames
 
@@ -611,7 +613,7 @@ class TorchAudioDecoder(AbstractDecoder):
 def create_torchcodec_core_decode_first_frame(video_file):
     video_decoder = create_from_file(video_file)
     _add_video_stream(video_decoder)
-    get_next_frame(video_decoder)
+    get_frame_at_index(video_decoder, frame_index=0)
     return video_decoder
 
 
