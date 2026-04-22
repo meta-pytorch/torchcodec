@@ -1119,7 +1119,7 @@ void MultiStreamEncoder::initializeVideoStream(
     const torch::stable::Tensor& frames) {
   auto& videoStream = *videoStream_;
   auto tensorDevice = frames.device();
-  videoStream.deviceInterface = createDeviceInterface(StableDevice(
+  deviceInterface_ = createDeviceInterface(StableDevice(
       static_cast<StableDeviceType>(tensorDevice.type()),
       tensorDevice.index()));
   const AVCodec* avCodec = nullptr;
@@ -1143,7 +1143,7 @@ void MultiStreamEncoder::initializeVideoStream(
         "Output format is null, unable to find default codec.");
     // Try to substitute the default codec with its hardware equivalent
     // This will return std::nullopt when device is CPU.
-    auto hwCodec = videoStream.deviceInterface->findCodec(
+    auto hwCodec = deviceInterface_->findCodec(
         avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
     if (hwCodec.has_value()) {
       avCodec = hwCodec.value();
@@ -1163,7 +1163,7 @@ void MultiStreamEncoder::initializeVideoStream(
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
   STD_TORCH_CHECK(
       avCodecContext != nullptr, "Couldn't allocate codec context.");
-  videoStream.avCodecContext_.reset(avCodecContext);
+  videoStream.avCodecContext.reset(avCodecContext);
 
   // Store dimensions of input frames
   // TODO MultiStreamEncoder: Enable tensors in NHWC shape
@@ -1178,6 +1178,8 @@ void MultiStreamEncoder::initializeVideoStream(
   AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
 
   if (videoStream.options.pixelFormat.has_value()) {
+    // TODO-MultiStreamEncoder: (P2) Enable pixel formats to be set by user on
+    // GPU and handled with the appropriate NPP function on GPU.
     if (frames.device().type() == kStableCUDA) {
       STD_TORCH_CHECK(
           false,
@@ -1203,19 +1205,19 @@ void MultiStreamEncoder::initializeVideoStream(
   }
 
   // Configure codec parameters
-  videoStream.avCodecContext_->codec_id = avCodec->id;
-  videoStream.avCodecContext_->width = outWidth;
-  videoStream.avCodecContext_->height = outHeight;
-  videoStream.avCodecContext_->pix_fmt = outPixelFormat;
+  videoStream.avCodecContext->codec_id = avCodec->id;
+  videoStream.avCodecContext->width = outWidth;
+  videoStream.avCodecContext->height = outHeight;
+  videoStream.avCodecContext->pix_fmt = outPixelFormat;
   // TODO MultiStreamEncoder: Add and utilize output frame_rate option
-  videoStream.avCodecContext_->framerate =
+  videoStream.avCodecContext->framerate =
       av_d2q(videoStream.inFrameRate, INT_MAX);
-  videoStream.avCodecContext_->time_base =
-      av_inv_q(videoStream.avCodecContext_->framerate);
+  videoStream.avCodecContext->time_base =
+      av_inv_q(videoStream.avCodecContext->framerate);
 
   // Set flag for containers that require extradata to be in the codec context
   if (avFormatContext_->oformat->flags & AVFMT_GLOBALHEADER) {
-    videoStream.avCodecContext_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+    videoStream.avCodecContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
 
   // Apply videoStreamOptions
@@ -1246,14 +1248,14 @@ void MultiStreamEncoder::initializeVideoStream(
   }
 
   if (frames.device().type() == kStableCUDA) {
-    videoStream.deviceInterface->registerHardwareDeviceWithCodec(
-        videoStream.avCodecContext_.get());
-    videoStream.deviceInterface->setupHardwareFrameContextForEncoding(
-        videoStream.avCodecContext_.get());
+    deviceInterface_->registerHardwareDeviceWithCodec(
+        videoStream.avCodecContext.get());
+    deviceInterface_->setupHardwareFrameContextForEncoding(
+        videoStream.avCodecContext.get());
   }
 
   int status = avcodec_open2(
-      videoStream.avCodecContext_.get(), avCodec, avCodecOptions.getAddress());
+      videoStream.avCodecContext.get(), avCodec, avCodecOptions.getAddress());
 
   STD_TORCH_CHECK(
       status == AVSUCCESS,
@@ -1265,13 +1267,13 @@ void MultiStreamEncoder::initializeVideoStream(
       videoStream.avStream != nullptr, "Couldn't create new stream.");
 
   // Set the stream time base to encode correct frame timestamps
-  videoStream.avStream->time_base = videoStream.avCodecContext_->time_base;
+  videoStream.avStream->time_base = videoStream.avCodecContext->time_base;
   // Set the stream frame rate to store correct frame durations for some
   // containers (webm, mkv)
-  videoStream.avStream->r_frame_rate = videoStream.avCodecContext_->framerate;
+  videoStream.avStream->r_frame_rate = videoStream.avCodecContext->framerate;
 
   status = avcodec_parameters_from_context(
-      videoStream.avStream->codecpar, videoStream.avCodecContext_.get());
+      videoStream.avStream->codecpar, videoStream.avCodecContext.get());
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_parameters_from_context failed: ",
@@ -1290,38 +1292,31 @@ void MultiStreamEncoder::addFrames(const torch::stable::Tensor& frames) {
   STD_TORCH_CHECK(
       videoStream_.has_value(),
       "No video stream has been added. Call addVideoStream() first.");
-  auto& videoStream = *videoStream_;
   auto validatedFrames = validateFrames(
       frames,
-      videoStream.avStream ? videoStream.avCodecContext_.get() : nullptr,
-      videoStream.deviceInterface.get());
+      videoStream_->avStream ? videoStream_->avCodecContext.get() : nullptr,
+      deviceInterface_.get());
 
   if (!headerWritten_) {
     initializeVideoStream(validatedFrames);
   }
 
-  encodeVideoFrames(validatedFrames);
-}
-
-void MultiStreamEncoder::encodeVideoFrames(
-    const torch::stable::Tensor& frames) {
   auto& videoStream = *videoStream_;
   AutoAVPacket autoAVPacket;
   // TODO MultiStreamEncoder: Consider using accessor for potential performance
   // improvement
-  int numFrames = static_cast<int>(frames.sizes()[0]);
+  int numFrames = static_cast<int>(validatedFrames.sizes()[0]);
   for (int i = 0; i < numFrames; ++i) {
-    torch::stable::Tensor currFrame = selectRow(frames, i);
+    torch::stable::Tensor currFrame = selectRow(validatedFrames, i);
     int frameIndex = videoStream.numEncodedFrames + i;
-    UniqueAVFrame avFrame =
-        videoStream.deviceInterface->convertTensorToAVFrameForEncoding(
-            currFrame, frameIndex, videoStream.avCodecContext_.get());
+    UniqueAVFrame avFrame = deviceInterface_->convertTensorToAVFrameForEncoding(
+        currFrame, frameIndex, videoStream.avCodecContext.get());
     STD_TORCH_CHECK(
         avFrame != nullptr,
         "convertTensorToAVFrameForEncoding failed for frame ",
         frameIndex,
         " on device: ",
-        deviceTypeName(frames.device().type()));
+        deviceTypeName(validatedFrames.device().type()));
     encodeVideoFrame(autoAVPacket, avFrame);
   }
   videoStream.numEncodedFrames += numFrames;
@@ -1332,7 +1327,7 @@ void MultiStreamEncoder::encodeVideoFrame(
     const UniqueAVFrame& avFrame) {
   auto& videoStream = *videoStream_;
   auto status =
-      avcodec_send_frame(videoStream.avCodecContext_.get(), avFrame.get());
+      avcodec_send_frame(videoStream.avCodecContext.get(), avFrame.get());
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error while sending frame: ",
@@ -1341,7 +1336,7 @@ void MultiStreamEncoder::encodeVideoFrame(
   while (status >= 0) {
     ReferenceAVPacket packet(autoAVPacket);
     status =
-        avcodec_receive_packet(videoStream.avCodecContext_.get(), packet.get());
+        avcodec_receive_packet(videoStream.avCodecContext.get(), packet.get());
     if (status == AVERROR(EAGAIN) || status == AVERROR_EOF) {
       if (status == AVERROR_EOF) {
         // Flush remaining buffered packets
@@ -1362,19 +1357,12 @@ void MultiStreamEncoder::encodeVideoFrame(
     // https://github.com/pytorch/audio/blob/b6a3368a45aaafe05f1a6a9f10c68adc5e944d9e/src/libtorio/ffmpeg/stream_writer/encoder.cpp#L46
     // Setting packet->duration to 1 allows the last frame to be properly
     // encoded, and needs to be set before calling av_packet_rescale_ts.
-    // Some fragmented muxing paths can surface negative durations here as well.
-    if (packet->duration <= 0) {
+    if (packet->duration == 0) {
       packet->duration = 1;
-    }
-    if (packet->pts == AV_NOPTS_VALUE) {
-      packet->pts = packet->dts;
-    }
-    if (packet->dts == AV_NOPTS_VALUE) {
-      packet->dts = packet->pts;
     }
     av_packet_rescale_ts(
         packet.get(),
-        videoStream.avCodecContext_->time_base,
+        videoStream.avCodecContext->time_base,
         videoStream.avStream->time_base);
     packet->stream_index = videoStream.avStream->index;
 

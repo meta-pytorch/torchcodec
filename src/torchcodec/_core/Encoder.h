@@ -207,14 +207,12 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   struct VideoStream {
     double inFrameRate = 0;
     VideoStreamOptions options;
-    UniqueAVCodecContext avCodecContext_;
+    UniqueAVCodecContext avCodecContext;
     AVStream* avStream = nullptr;
-    std::unique_ptr<DeviceInterface> deviceInterface;
     int numEncodedFrames = 0;
   };
 
   void initializeVideoStream(const torch::stable::Tensor& frames);
-  void encodeVideoFrames(const torch::stable::Tensor& frames);
   void encodeVideoFrame(
       AutoAVPacket& autoAVPacket,
       const UniqueAVFrame& avFrame);
@@ -222,6 +220,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
 
   UniqueEncodingAVFormatContext avFormatContext_;
   std::optional<VideoStream> videoStream_;
+  std::unique_ptr<DeviceInterface> deviceInterface_;
   bool headerWritten_ = false;
   UniqueAVDictionary avFormatOptions_;
 
