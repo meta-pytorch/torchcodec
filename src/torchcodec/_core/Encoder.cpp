@@ -1372,6 +1372,7 @@ void MultiStreamEncoder::encodeVideoFrame(
 void MultiStreamEncoder::flushBuffers() {
   if (videoStream_.has_value() && videoStream_->avStream != nullptr) {
     AutoAVPacket videoAVPacket;
+    // Send null frame to signal end of input
     encodeVideoFrame(videoAVPacket, UniqueAVFrame(nullptr));
   }
 }
