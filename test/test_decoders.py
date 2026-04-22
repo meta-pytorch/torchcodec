@@ -140,6 +140,10 @@ class TestDecoder:
             Decoder(open(NASA_VIDEO.path))
 
 
+def _subfile_url(path) -> str:
+    return f"subfile,,start,0,end,0,,:{path}"
+
+
 class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_metadata(self, seek_mode):
@@ -153,6 +157,22 @@ class TestVideoDecoder:
         assert decoder.metadata.num_frames == 390
         assert decoder.metadata.height == 270
         assert decoder.metadata.width == 480
+
+    def test_metadata_from_subfile_protocol(self):
+        decoder = VideoDecoder(
+            _subfile_url(NASA_VIDEO.path),
+            extra_options={"protocol_whitelist": "file,subfile"},
+        )
+
+        assert isinstance(decoder.metadata, VideoStreamMetadata)
+        assert len(decoder) == decoder.metadata.num_frames == 390
+
+    def test_subfile_protocol_rejected_by_file_protocol_blacklist(self):
+        with pytest.raises(RuntimeError, match="Could not open input file"):
+            VideoDecoder(
+                _subfile_url(NASA_VIDEO.path),
+                extra_options={"protocol_blacklist": "file"},
+            )
 
     def test_create_bytes_ownership(self):
         # Non-regression test for https://github.com/pytorch/torchcodec/issues/720
@@ -2269,6 +2289,16 @@ class TestAudioDecoder:
         assert decoder.metadata.sample_rate == asset.sample_rate
         assert decoder.metadata.num_channels == asset.num_channels
         assert decoder.metadata.sample_format == asset.sample_format
+
+    def test_metadata_from_subfile_protocol(self):
+        decoder = AudioDecoder(
+            _subfile_url(NASA_AUDIO_MP3.path),
+            extra_options={"protocol_whitelist": "file,subfile"},
+        )
+
+        assert isinstance(decoder.metadata, AudioStreamMetadata)
+        assert decoder.metadata.sample_rate == NASA_AUDIO_MP3.sample_rate
+        assert decoder.metadata.num_channels == NASA_AUDIO_MP3.num_channels
 
     @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
     def test_error(self, asset):

@@ -8,6 +8,7 @@
 import io
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from torch import nn, Tensor
 from torchcodec._core._metadata import (
@@ -27,7 +28,6 @@ from torchcodec._core.ops import (
 from torchcodec.transforms import DecoderTransform
 from torchcodec.transforms._decoder_transforms import _make_transform_specs
 
-
 _ERROR_REPORTING_INSTRUCTIONS = """
 This should never happen. Please report an issue following the steps in
 https://github.com/pytorch/torchcodec/issues/new?assignees=&labels=&projects=&template=bug-report.yml.
@@ -38,11 +38,20 @@ def create_decoder(
     *,
     source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
     seek_mode: str,
+    extra_options: dict[str, Any] | None = None,
 ) -> Tensor:
     if isinstance(source, str):
-        return create_from_file(source, seek_mode)
+        return create_from_file(
+            source,
+            seek_mode,
+            [str(x) for k, v in (extra_options or {}).items() for x in (k, v)],
+        )
     elif isinstance(source, Path):
-        return create_from_file(str(source), seek_mode)
+        return create_from_file(
+            str(source),
+            seek_mode,
+            [str(x) for k, v in (extra_options or {}).items() for x in (k, v)],
+        )
     elif isinstance(source, io.RawIOBase) or isinstance(source, io.BufferedReader):
         return create_from_file_like(source, seek_mode)
     elif isinstance(source, bytes):
@@ -68,12 +77,15 @@ def create_audio_decoder(
     *,
     source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
     seek_mode: str,
+    extra_options: dict[str, Any] | None = None,
     stream_index: int | None = None,
     sample_rate: int | None = None,
     num_channels: int | None = None,
 ) -> tuple[Tensor, int, AudioStreamMetadata]:
 
-    decoder = create_decoder(source=source, seek_mode=seek_mode)
+    decoder = create_decoder(
+        source=source, seek_mode=seek_mode, extra_options=extra_options
+    )
 
     container_metadata = get_container_metadata(decoder)
 
@@ -159,6 +171,7 @@ def create_video_decoder(
     *,
     source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
     seek_mode: str,
+    extra_options: dict[str, Any] | None = None,
     stream_index: int | None = None,
     dimension_order: str = "NCHW",
     num_ffmpeg_threads: int = 1,
@@ -168,7 +181,9 @@ def create_video_decoder(
     custom_frame_mappings: tuple[Tensor, Tensor, Tensor] | None = None,
 ) -> tuple[Tensor, int, VideoStreamMetadata]:
 
-    decoder = create_decoder(source=source, seek_mode=seek_mode)
+    decoder = create_decoder(
+        source=source, seek_mode=seek_mode, extra_options=extra_options
+    )
 
     (
         metadata,

@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
+from typing import Any
 
 import torch
 from torch import device as torch_device, nn, Tensor
@@ -106,6 +107,9 @@ class VideoDecoder:
             decoding which is best if you are running a single instance of ``VideoDecoder``.
             Passing 0 lets FFmpeg decide on the number of threads.
             Default: 1.
+        extra_options (dict[str, Any], optional): A dictionary of additional
+            FFmpeg options to pass when opening the source. This is useful for
+            tuning remote inputs and probing.
         device (str or torch.device, optional): The device to use for decoding.
             If ``None`` (default), uses the current default device.
             If you pass a CUDA device, we recommend trying the "beta" CUDA
@@ -163,6 +167,7 @@ class VideoDecoder:
         stream_index: int | None = None,
         dimension_order: Literal["NCHW", "NHWC"] = "NCHW",
         num_ffmpeg_threads: int = 1,
+        extra_options: dict[str, Any] | None = None,
         device: str | torch_device | None = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
         transforms: Sequence[DecoderTransform | nn.Module] | None = None,
@@ -215,6 +220,7 @@ class VideoDecoder:
         ) = create_video_decoder(
             source=source,
             seek_mode=seek_mode,
+            extra_options=extra_options,
             stream_index=stream_index,
             dimension_order=dimension_order,
             num_ffmpeg_threads=num_ffmpeg_threads,
