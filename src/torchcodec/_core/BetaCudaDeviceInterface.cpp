@@ -299,14 +299,16 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
 void BetaCudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
-    [[maybe_unused]] const SharedAVCodecContext& codecContext) {
+    [[maybe_unused]] const SharedAVCodecContext& codecContext,
+    [[maybe_unused]] OutputDtype outputDtype) {
   STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
   if (!nvcuvidAvailable_ || !nativeNVDECSupport(device_, codecContext)) {
     cpuFallback_ = createDeviceInterface(kStableCPU);
     STD_TORCH_CHECK(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
-    cpuFallback_->initialize(avStream, avFormatCtx, codecContext);
+    cpuFallback_->initialize(
+        avStream, avFormatCtx, codecContext, OutputDtype::UINT8);
     cpuFallback_->initializeVideo(
         VideoStreamOptions(),
         {},

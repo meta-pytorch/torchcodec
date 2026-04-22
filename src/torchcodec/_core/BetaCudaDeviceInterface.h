@@ -41,7 +41,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void initialize(
       const AVStream* avStream,
       const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) override;
+      const SharedAVCodecContext& codecContext,
+      OutputDtype outputDtype) override;
 
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,

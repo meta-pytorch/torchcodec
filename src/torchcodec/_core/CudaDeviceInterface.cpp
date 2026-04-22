@@ -111,7 +111,8 @@ CudaDeviceInterface::~CudaDeviceInterface() {
 void CudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
-    const SharedAVCodecContext& codecContext) {
+    const SharedAVCodecContext& codecContext,
+    [[maybe_unused]] OutputDtype outputDtype) {
   STD_TORCH_CHECK(avStream != nullptr, "avStream is null");
   codecContext_ = codecContext;
   timeBase_ = avStream->time_base;
@@ -120,7 +121,8 @@ void CudaDeviceInterface::initialize(
   cpuInterface_ = createDeviceInterface(kStableCPU);
   STD_TORCH_CHECK(
       cpuInterface_ != nullptr, "Failed to create CPU device interface");
-  cpuInterface_->initialize(avStream, avFormatCtx, codecContext);
+  cpuInterface_->initialize(
+      avStream, avFormatCtx, codecContext, OutputDtype::UINT8);
   cpuInterface_->initializeVideo(
       VideoStreamOptions(),
       {},

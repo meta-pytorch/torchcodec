@@ -452,7 +452,8 @@ void SingleStreamDecoder::addStream(
     AVMediaType mediaType,
     const StableDevice& device,
     const std::string_view deviceVariant,
-    std::optional<int> ffmpegThreadCount) {
+    std::optional<int> ffmpegThreadCount,
+    OutputDtype outputDtype) {
   STD_TORCH_CHECK(
       activeStreamIndex_ == NO_ACTIVE_STREAM,
       "Can only add one single stream.");
@@ -524,7 +525,7 @@ void SingleStreamDecoder::addStream(
 
   // Initialize the device interface with the codec context
   deviceInterface_->initialize(
-      streamInfo.stream, formatContext_, streamInfo.codecContext);
+      streamInfo.stream, formatContext_, streamInfo.codecContext, outputDtype);
 
   containerMetadata_.allStreamMetadata[activeStreamIndex_].codecName =
       std::string(avcodec_get_name(streamInfo.codecContext->codec_id));
@@ -554,7 +555,8 @@ void SingleStreamDecoder::addVideoStream(
       AVMEDIA_TYPE_VIDEO,
       videoStreamOptions.device,
       videoStreamOptions.deviceVariant,
-      videoStreamOptions.ffmpegThreadCount);
+      videoStreamOptions.ffmpegThreadCount,
+      videoStreamOptions.outputDtype);
 
   auto& streamMetadata =
       containerMetadata_.allStreamMetadata[activeStreamIndex_];
@@ -581,6 +583,10 @@ void SingleStreamDecoder::addVideoStream(
   // Set preRotationDims_ for the active stream. These are the raw encoded
   // dimensions from FFmpeg, used as a fallback for tensor pre-allocation when
   // no resize/rotation transforms are applied.
+  int sourceBitDepth = getBitDepthFromAVPixelFormat(
+      static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
+  outputBitDepth_ =
+      resolvedBitDepth(sourceBitDepth, videoStreamOptions.outputDtype);
   preRotationDims_ = FrameDims(
       streamInfo.stream->codecpar->height, streamInfo.stream->codecpar->width);
 
@@ -751,7 +757,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   const auto& streamInfo = streamInfos_[activeStreamIndex_];
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
-      frameIndices.numel(), getOutputDims(), videoStreamOptions.device);
+      frameIndices.numel(),
+      getOutputDims(),
+      videoStreamOptions.device,
+      outputBitDepth_);
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -817,7 +826,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   int64_t numOutputFrames = std::ceil((stop - start) / double(step));
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
-      numOutputFrames, getOutputDims(), videoStreamOptions.device);
+      numOutputFrames,
+      getOutputDims(),
+      videoStreamOptions.device,
+      outputBitDepth_);
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -956,7 +968,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
   // below. Hence, we need this special case below.
   if (startSeconds == stopSeconds) {
     FrameBatchOutput frameBatchOutput(
-        0, getOutputDims(), videoStreamOptions.device);
+        0, getOutputDims(), videoStreamOptions.device, outputBitDepth_);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
     return frameBatchOutput;
@@ -1000,7 +1012,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
 
     FrameBatchOutput frameBatchOutput(
-        numOutputFrames, getOutputDims(), videoStreamOptions.device);
+        numOutputFrames,
+        getOutputDims(),
+        videoStreamOptions.device,
+        outputBitDepth_);
 
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -1047,7 +1062,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     int64_t numFrames = stopFrameIndex - startFrameIndex;
 
     FrameBatchOutput frameBatchOutput(
-        numFrames, getOutputDims(), videoStreamOptions.device);
+        numFrames, getOutputDims(), videoStreamOptions.device, outputBitDepth_);
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
     auto frameBatchOutputDurationSeconds =

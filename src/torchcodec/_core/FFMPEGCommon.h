@@ -318,4 +318,7 @@ UniqueSwsContext createSwsContext(
     AVPixelFormat outputFormat,
     int swsFlags);
 
+// Returns the bit depth per channel for the given pixel format.
+int getBitDepthFromAVPixelFormat(AVPixelFormat format);
+
 } // namespace facebook::torchcodec

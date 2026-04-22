@@ -324,7 +324,8 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       AVMediaType mediaType,
       const StableDevice& device = StableDevice(kStableCPU),
       const std::string_view deviceVariant = "ffmpeg",
-      std::optional<int> ffmpegThreadCount = std::nullopt);
+      std::optional<int> ffmpegThreadCount = std::nullopt,
+      OutputDtype outputDtype = OutputDtype::UINT8);
 
   // Returns the "best" stream index for a given media type. The "best" is
   // determined by various heuristics in FFMPEG.
@@ -405,6 +406,9 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   std::vector<std::unique_ptr<Transform>> transforms_;
   std::optional<FrameDims> resizedOutputDims_;
   FrameDims preRotationDims_;
+  // Resolved output bit depth (8 for SDR/uint8, >8 for HDR paths).
+  // Separate from FrameDims since transforms are purely geometric.
+  int outputBitDepth_ = 8;
 
   // Whether or not we have already scanned all streams to update the metadata.
   bool scannedAllStreams_ = false;
