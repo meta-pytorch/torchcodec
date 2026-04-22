@@ -169,6 +169,7 @@ class VideoDecoder:
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
+        output_dtype: "torch.dtype | str | None" = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
@@ -203,6 +204,18 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
+        if output_dtype is None or output_dtype == torch.uint8:
+            _output_dtype_str = "uint8"
+        elif output_dtype == torch.float32:
+            _output_dtype_str = "float32"
+        elif output_dtype == "auto":
+            _output_dtype_str = "auto"
+        else:
+            raise ValueError(
+                f"Invalid output_dtype ({output_dtype}). "
+                f'Supported values are "auto", torch.uint8, and torch.float32.'
+            )
+
         device_variant = _get_cuda_backend()
         if device is None:
             device = str(torch.get_default_device())
@@ -222,6 +235,7 @@ class VideoDecoder:
             device_variant=device_variant,
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
+            output_dtype=_output_dtype_str,
         )
 
         assert self.metadata.begin_stream_seconds is not None  # mypy.
@@ -231,6 +245,10 @@ class VideoDecoder:
         self._begin_stream_seconds = self.metadata.begin_stream_seconds
         self._end_stream_seconds = self.metadata.end_stream_seconds
         self._num_frames = self.metadata.num_frames
+
+        # Store whether we need to convert C++ uint16 output to float32.
+        # C++ returns uint8 or uint16; we convert to float32 in Python.
+        self._output_dtype = output_dtype
 
         self._cpu_fallback = CpuFallbackStatus()
         if device.startswith("cuda"):
@@ -271,11 +289,20 @@ class VideoDecoder:
 
         return self._cpu_fallback
 
+    def _maybe_to_float32(self, tensor: Tensor) -> Tensor:
+        """Convert uint8/uint16 tensor to float32 [0, 1] if output_dtype requires it."""
+        if self._output_dtype == torch.float32 or (
+            self._output_dtype == "auto" and tensor.dtype == torch.uint16
+        ):
+            max_val = 65535.0 if tensor.dtype == torch.uint16 else 255.0
+            return tensor.to(torch.float32).div_(max_val)
+        return tensor
+
     def _getitem_int(self, key: int) -> Tensor:
         assert isinstance(key, int)
 
         frame_data, *_ = core.get_frame_at_index(self._decoder, frame_index=key)
-        return frame_data
+        return self._maybe_to_float32(frame_data)
 
     def _getitem_slice(self, key: slice) -> Tensor:
         assert isinstance(key, slice)
@@ -287,7 +314,7 @@ class VideoDecoder:
             stop=stop,
             step=step,
         )
-        return frame_data
+        return self._maybe_to_float32(frame_data)
 
     def __getitem__(self, key: numbers.Integral | slice) -> Tensor:
         """Return frame or frames as tensors, at the given index or range.
@@ -341,7 +368,7 @@ class VideoDecoder:
             self._decoder, frame_index=index
         )
         return Frame(
-            data=data,
+            data=self._maybe_to_float32(data),
             pts_seconds=pts_seconds.item(),
             duration_seconds=duration_seconds.item(),
         )
@@ -361,7 +388,7 @@ class VideoDecoder:
         )
 
         return FrameBatch(
-            data=data,
+            data=self._maybe_to_float32(data),
             pts_seconds=pts_seconds,
             duration_seconds=duration_seconds,
         )
@@ -382,13 +409,17 @@ class VideoDecoder:
         """
         # Adjust start / stop indices to enable indexing semantics, ex. [-10, 1000] returns the last 10 frames
         start, stop, step = slice(start, stop, step).indices(self._num_frames)
-        frames = core.get_frames_in_range(
+        data, pts_seconds, duration_seconds = core.get_frames_in_range(
             self._decoder,
             start=start,
             stop=stop,
             step=step,
         )
-        return FrameBatch(*frames)
+        return FrameBatch(
+            data=self._maybe_to_float32(data),
+            pts_seconds=pts_seconds,
+            duration_seconds=duration_seconds,
+        )
 
     def get_frame_played_at(self, seconds: float) -> Frame:
         """Return a single frame played at the given timestamp in seconds.
@@ -418,7 +449,7 @@ class VideoDecoder:
             self._decoder, seconds
         )
         return Frame(
-            data=data,
+            data=self._maybe_to_float32(data),
             pts_seconds=pts_seconds.item(),
             duration_seconds=duration_seconds.item(),
         )
@@ -437,7 +468,7 @@ class VideoDecoder:
             self._decoder, timestamps=seconds
         )
         return FrameBatch(
-            data=data,
+            data=self._maybe_to_float32(data),
             pts_seconds=pts_seconds,
             duration_seconds=duration_seconds,
         )
@@ -478,13 +509,17 @@ class VideoDecoder:
                 f"Invalid stop seconds: {stop_seconds}. "
                 f"It must be less than or equal to {self._end_stream_seconds}."
             )
-        frames = core.get_frames_by_pts_in_range(
+        data, pts_seconds, duration_seconds = core.get_frames_by_pts_in_range(
             self._decoder,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
             fps=fps,
         )
-        return FrameBatch(*frames)
+        return FrameBatch(
+            data=self._maybe_to_float32(data),
+            pts_seconds=pts_seconds,
+            duration_seconds=duration_seconds,
+        )
 
     def get_all_frames(self, fps: float | None = None) -> FrameBatch:
         """Returns all frames in the video.

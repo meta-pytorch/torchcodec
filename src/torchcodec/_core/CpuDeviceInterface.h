@@ -28,7 +28,8 @@ class CpuDeviceInterface : public DeviceInterface {
   virtual void initialize(
       const AVStream* avStream,
       const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) override;
+      const SharedAVCodecContext& codecContext,
+      OutputDtype outputDtype = OutputDtype::UINT8) override;
 
   virtual void initializeVideo(
       const VideoStreamOptions& videoStreamOptions,
@@ -65,7 +66,8 @@ class CpuDeviceInterface : public DeviceInterface {
 
   torch::stable::Tensor convertAVFrameToTensorUsingFilterGraph(
       const UniqueAVFrame& avFrame,
-      const FrameDims& outputDims);
+      const FrameDims& outputDims,
+      int bitDepth);
 
   ColorConversionLibrary getColorConversionLibrary(
       const FrameDims& inputDims,

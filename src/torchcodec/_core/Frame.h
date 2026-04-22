@@ -46,7 +46,8 @@ struct FrameBatchOutput {
   FrameBatchOutput(
       int64_t numFrames,
       const FrameDims& outputDims,
-      const StableDevice& device);
+      const StableDevice& device,
+      int bitDepth = 8);
 };
 
 struct AudioFramesOutput {
@@ -67,6 +68,7 @@ struct AudioFramesOutput {
 torch::stable::Tensor allocateEmptyHWCTensor(
     const FrameDims& frameDims,
     const StableDevice& device,
+    int bitDepth = 8,
     std::optional<int> numFrames = std::nullopt);
 
 } // namespace facebook::torchcodec

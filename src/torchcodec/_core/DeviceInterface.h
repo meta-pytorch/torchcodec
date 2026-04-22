@@ -53,10 +53,14 @@ class DeviceInterface {
   };
 
   // Initialize the device with parameters generic to all kinds of decoding.
+  // outputDtype is passed here (rather than in initializeVideo) so that
+  // implementations can use it during initialization, e.g. to decide whether
+  // hardware decode supports the required output format.
   virtual void initialize(
       const AVStream* avStream,
       const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) = 0;
+      const SharedAVCodecContext& codecContext,
+      OutputDtype outputDtype = OutputDtype::UINT8) = 0;
 
   // Initialize the device with parameters specific to video decoding. There is
   // a default empty implementation.
@@ -184,6 +188,8 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
     const StableDevice& device,
     const std::string_view variant = "ffmpeg");
 
+// Wraps an RGB AVFrame (RGB24 or RGB48) as a torch tensor without copying.
+// For RGB24: returns uint8 tensor. For RGB48: returns uint16 tensor.
 torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 
 } // namespace facebook::torchcodec
