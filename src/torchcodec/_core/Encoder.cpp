@@ -1105,14 +1105,13 @@ void MultiStreamEncoder::addVideoStream(
       !videoStream_.has_value(),
       "A video stream has already been added. Cannot add another.");
   STD_TORCH_CHECK(frameRate > 0, "frame_rate must be > 0, got ", frameRate);
-  VideoStream videoStream;
-  videoStream.inFrameRate = frameRate;
-  videoStream.options.codec = std::move(codec);
-  videoStream.options.pixelFormat = std::move(pixelFormat);
-  videoStream.options.crf = crf;
-  videoStream.options.preset = std::move(preset);
-  videoStream.options.extraOptions = std::move(extraOptions);
-  videoStream_ = std::move(videoStream);
+  videoStream_.emplace();
+  videoStream_->inFrameRate = frameRate;
+  videoStream_->options.codec = std::move(codec);
+  videoStream_->options.pixelFormat = std::move(pixelFormat);
+  videoStream_->options.crf = crf;
+  videoStream_->options.preset = std::move(preset);
+  videoStream_->options.extraOptions = std::move(extraOptions);
 }
 
 void MultiStreamEncoder::initializeVideoStream(
