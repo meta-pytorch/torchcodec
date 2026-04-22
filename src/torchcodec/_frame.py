@@ -70,7 +70,7 @@ class FrameBatch(Iterable):
     """
 
     data: Tensor
-    """The frames data (``torch.Tensor`` of uint8)."""
+    """The frames data (``torch.Tensor`` of uint8 by default; float32 in ``[0, 1]`` if ``output_dtype`` is ``torch.float32`` or ``"auto"``)."""
     pts_seconds: Tensor
     """The :term:`pts` of the frame, in seconds (``torch.Tensor`` of floats)."""
     duration_seconds: Tensor
