@@ -1293,24 +1293,21 @@ void MultiStreamEncoder::addFrames(const torch::stable::Tensor& frames) {
       videoStream_.has_value(),
       "No video stream has been added. Call addVideoStream() first.");
   auto validatedFrames = validateFrames(
-      frames,
-      videoStream_->avStream ? videoStream_->avCodecContext.get() : nullptr,
-      deviceInterface_.get());
+      frames, videoStream_->avCodecContext.get(), deviceInterface_.get());
 
   if (!headerWritten_) {
     initializeVideoStream(validatedFrames);
   }
 
-  auto& videoStream = *videoStream_;
   AutoAVPacket autoAVPacket;
   // TODO MultiStreamEncoder: Consider using accessor for potential performance
   // improvement
   int numFrames = static_cast<int>(validatedFrames.sizes()[0]);
   for (int i = 0; i < numFrames; ++i) {
     torch::stable::Tensor currFrame = selectRow(validatedFrames, i);
-    int frameIndex = videoStream.numEncodedFrames + i;
+    int frameIndex = videoStream_->numEncodedFrames + i;
     UniqueAVFrame avFrame = deviceInterface_->convertTensorToAVFrameForEncoding(
-        currFrame, frameIndex, videoStream.avCodecContext.get());
+        currFrame, frameIndex, videoStream_->avCodecContext.get());
     STD_TORCH_CHECK(
         avFrame != nullptr,
         "convertTensorToAVFrameForEncoding failed for frame ",
@@ -1319,15 +1316,14 @@ void MultiStreamEncoder::addFrames(const torch::stable::Tensor& frames) {
         deviceTypeName(validatedFrames.device().type()));
     encodeVideoFrame(autoAVPacket, avFrame);
   }
-  videoStream.numEncodedFrames += numFrames;
+  videoStream_->numEncodedFrames += numFrames;
 }
 
 void MultiStreamEncoder::encodeVideoFrame(
     AutoAVPacket& autoAVPacket,
     const UniqueAVFrame& avFrame) {
-  auto& videoStream = *videoStream_;
   auto status =
-      avcodec_send_frame(videoStream.avCodecContext.get(), avFrame.get());
+      avcodec_send_frame(videoStream_->avCodecContext.get(), avFrame.get());
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error while sending frame: ",
@@ -1335,8 +1331,8 @@ void MultiStreamEncoder::encodeVideoFrame(
 
   while (status >= 0) {
     ReferenceAVPacket packet(autoAVPacket);
-    status =
-        avcodec_receive_packet(videoStream.avCodecContext.get(), packet.get());
+    status = avcodec_receive_packet(
+        videoStream_->avCodecContext.get(), packet.get());
     if (status == AVERROR(EAGAIN) || status == AVERROR_EOF) {
       if (status == AVERROR_EOF) {
         // Flush remaining buffered packets
@@ -1362,9 +1358,9 @@ void MultiStreamEncoder::encodeVideoFrame(
     }
     av_packet_rescale_ts(
         packet.get(),
-        videoStream.avCodecContext->time_base,
-        videoStream.avStream->time_base);
-    packet->stream_index = videoStream.avStream->index;
+        videoStream_->avCodecContext->time_base,
+        videoStream_->avStream->time_base);
+    packet->stream_index = videoStream_->avStream->index;
 
     status = av_interleaved_write_frame(avFormatContext_.get(), packet.get());
     STD_TORCH_CHECK(
