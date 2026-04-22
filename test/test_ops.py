@@ -61,6 +61,7 @@ from .utils import (
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    TEST_SRC_2_720P,
     unsplit_device_str,
 )
 
@@ -1179,18 +1180,25 @@ class TestMultiStreamEncoderOps:
 
     @pytest.mark.parametrize("format", ["mp4", "mov", "mkv"])
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_video_stream_and_encode_frames(self, tmp_path, format, method):
-        source_decoder = VideoDecoder(str(NASA_VIDEO.path))
-        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_add_video_stream_and_encode_frames(self, tmp_path, format, method, device):
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data.to(
+            device
+        )
         frame_rate = source_decoder.metadata.average_fps
+        percentage, atol = (96, 2) if device == "cuda" else (99, 2)
 
         encoder, encoder_output = self._create_encoder(method, tmp_path, format)
-        streaming_encoder_add_video_stream(
-            encoder,
-            frame_rate=frame_rate,
-            pixel_format="yuv444p",
-            crf=0,
-        )
+        add_video_stream_kwargs = {"frame_rate": frame_rate}
+        if device == "cpu":
+            add_video_stream_kwargs["pixel_format"] = "yuv444p"
+            add_video_stream_kwargs["crf"] = 0
+        else:
+            add_video_stream_kwargs["extra_options"] = ["qp", "1"]
+        streaming_encoder_add_video_stream(encoder, **add_video_stream_kwargs)
         streaming_encoder_add_frames(encoder, source_frames[:5])
         streaming_encoder_add_frames(encoder, source_frames[5:])
         streaming_encoder_close(encoder)
@@ -1201,7 +1209,7 @@ class TestMultiStreamEncoderOps:
             .data
         )
         assert_tensor_close_on_at_least(
-            decoded_frames, source_frames, percentage=99, atol=2
+            decoded_frames, source_frames.cpu(), percentage=percentage, atol=atol
         )
 
     def test_create_invalid_path(self):
@@ -1224,30 +1232,43 @@ class TestMultiStreamEncoderOps:
 
     @pytest.mark.parametrize("format", ["mp4", "mov"])
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_fragmented_mp4(self, format, tmp_path, method):
-        source_decoder = VideoDecoder(str(NASA_VIDEO.path))
-        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_fragmented_mp4(self, format, tmp_path, method, device):
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data.to(
+            device
+        )
         frame_rate = source_decoder.metadata.average_fps
+        percentage, atol = (96, 2) if device == "cuda" else (99, 2)
 
         encoder, encoder_output = self._create_encoder(method, tmp_path, format)
+        # In addition to the fragmentation flag, "flush_packets" and "threads"
+        # are necessary to decode frames before close().
+        # See frag flags: https://ffmpeg.org/ffmpeg-formats.html#Fragmentation
+        # TODO MultiStreamEncoder: Get a better understanding of which options
+        # are necessary for reading fragmented mp4s
+        extra_options = [
+            "movflags",
+            "+frag_every_frame+empty_moov",
+            "flush_packets",
+            "1",
+            "threads",
+            "1",
+        ]
+        if device == "cuda":
+            extra_options.extend(["qp", "1", "delay", "0"])
+            pixel_format, crf = None, None
+        else:
+            extra_options.extend(["tune", "zerolatency"])
+            pixel_format, crf = "yuv444p", 0
         streaming_encoder_add_video_stream(
             encoder,
             frame_rate=frame_rate,
-            pixel_format="yuv444p",
-            crf=0,
-            # In addition to the fragmentation flag, I found "flush_packets" and "threads" to be necessary to decode frames before close().
-            # See other frag flags: https://ffmpeg.org/ffmpeg-formats.html#Fragmentation
-            # TODO MultiStreamEncoder: Get a better understanding of which options are necessary for reading fragmented mp4s
-            extra_options=[
-                "movflags",
-                "+frag_every_frame+empty_moov",
-                "tune",
-                "zerolatency",
-                "flush_packets",
-                "1",
-                "threads",
-                "1",
-            ],
+            pixel_format=pixel_format,
+            crf=crf,
+            extra_options=extra_options,
         )
         # Here, we decode the available fragmented mp4 frames before calling close()
         for batch in [source_frames[:5], source_frames[5:]]:
@@ -1257,9 +1278,9 @@ class TestMultiStreamEncoderOps:
             assert num_available > 0
             assert_tensor_close_on_at_least(
                 mid_decoder.get_frames_in_range(start=0, stop=num_available).data,
-                source_frames[:num_available],
-                percentage=99,
-                atol=2,
+                source_frames[:num_available].cpu(),
+                percentage=percentage,
+                atol=atol,
             )
 
         streaming_encoder_close(encoder)
@@ -1268,9 +1289,9 @@ class TestMultiStreamEncoderOps:
             VideoDecoder(self._get_decoder_source(encoder_output))
             .get_frames_in_range(start=0, stop=10)
             .data,
-            source_frames,
-            percentage=99,
-            atol=2,
+            source_frames.cpu(),
+            percentage=percentage,
+            atol=atol,
         )
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
@@ -1281,19 +1302,40 @@ class TestMultiStreamEncoderOps:
             streaming_encoder_add_video_stream(encoder, frame_rate=24.0)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_frames_different_sizes_errors(self, tmp_path, method):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_add_frames_different_sizes_errors(self, tmp_path, method, device):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
         streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
-        frames_64 = torch.randint(0, 256, (2, 3, 64, 64), dtype=torch.uint8)
-        frames_128 = torch.randint(0, 256, (2, 3, 128, 128), dtype=torch.uint8)
-        streaming_encoder_add_frames(encoder, frames_64)
+        frames_256 = torch.randint(0, 256, (2, 3, 256, 256), dtype=torch.uint8).to(
+            device
+        )
+        frames_512 = torch.randint(0, 256, (2, 3, 512, 512), dtype=torch.uint8).to(
+            device
+        )
+        streaming_encoder_add_frames(encoder, frames_256)
         with pytest.raises(RuntimeError, match="same dimensions"):
-            streaming_encoder_add_frames(encoder, frames_128)
+            streaming_encoder_add_frames(encoder, frames_512)
+
+    @pytest.mark.needs_cuda
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_frames_different_devices_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        cpu_frames = torch.randint(0, 256, (2, 3, 64, 64), dtype=torch.uint8)
+        cuda_frames = cpu_frames.to("cuda")
+        streaming_encoder_add_frames(encoder, cpu_frames)
+        with pytest.raises(RuntimeError, match="same device"):
+            streaming_encoder_add_frames(encoder, cuda_frames)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_frames_without_stream_errors(self, tmp_path, method):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_add_frames_without_stream_errors(self, tmp_path, method, device):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
-        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8)
+        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8).to(device)
         with pytest.raises(RuntimeError, match="No video stream"):
             streaming_encoder_add_frames(encoder, frames)
 
