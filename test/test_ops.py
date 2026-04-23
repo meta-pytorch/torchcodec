@@ -1313,7 +1313,7 @@ class TestMultiStreamEncoderOps:
         streaming_encoder_add_video_stream(
             encoder, height=64, width=64, frame_rate=30.0
         )
-        with pytest.raises(RuntimeError, match="already been added"):
+        with pytest.raises(RuntimeError, match="Only one video stream is supported"):
             streaming_encoder_add_video_stream(
                 encoder, height=64, width=64, frame_rate=24.0
             )
@@ -1369,13 +1369,17 @@ class TestMultiStreamEncoderOps:
             encoder, height=64, width=64, frame_rate=30.0, device=device
         )
         frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8).to(device)
-        with pytest.raises(RuntimeError, match="not open"):
+        with pytest.raises(
+            RuntimeError, match="Call open\\(\\) before addFrames\\(\\)"
+        ):
             streaming_encoder_add_frames(encoder, frames)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_open_without_stream_errors(self, tmp_path, method):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
-        with pytest.raises(RuntimeError, match="No streams have been added"):
+        with pytest.raises(
+            RuntimeError, match="Call addVideoStream\\(\\) before open\\(\\)"
+        ):
             streaming_encoder_open(encoder)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
@@ -1385,7 +1389,7 @@ class TestMultiStreamEncoderOps:
             encoder, height=64, width=64, frame_rate=30.0
         )
         streaming_encoder_open(encoder)
-        with pytest.raises(RuntimeError, match="already open"):
+        with pytest.raises(RuntimeError, match="open\\(\\) was already called"):
             streaming_encoder_open(encoder)
 
 

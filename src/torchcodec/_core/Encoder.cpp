@@ -569,6 +569,7 @@ torch::stable::Tensor validateFrames(
         framesDevice.index());
   }
   if (avCodecContext) {
+    // TODO MultiStreamEncoder: Enable tensors in NHWC shape
     STD_TORCH_CHECK(
         static_cast<int>(frames.sizes()[2]) == avCodecContext->height &&
             static_cast<int>(frames.sizes()[3]) == avCodecContext->width,
@@ -1105,8 +1106,7 @@ void MultiStreamEncoder::addVideoStream(
     std::optional<std::string> preset,
     std::optional<std::map<std::string, std::string>> extraOptions) {
   STD_TORCH_CHECK(
-      !videoStream_.has_value(),
-      "A video stream has already been added. Cannot add another.");
+      !videoStream_.has_value(), "Only one video stream is supported.");
   STD_TORCH_CHECK(height > 0, "height must be > 0, got ", height);
   STD_TORCH_CHECK(width > 0, "width must be > 0, got ", width);
   STD_TORCH_CHECK(frameRate > 0, "frame_rate must be > 0, got ", frameRate);
@@ -1172,8 +1172,6 @@ void MultiStreamEncoder::initializeVideoStream() {
       avCodecContext != nullptr, "Couldn't allocate codec context.");
   videoStream.avCodecContext.reset(avCodecContext);
 
-  // Store dimensions of input frames
-  // TODO MultiStreamEncoder: Enable tensors in NHWC shape
   int outHeight = videoStream.height;
   int outWidth = videoStream.width;
   AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
@@ -1282,10 +1280,9 @@ void MultiStreamEncoder::initializeVideoStream() {
 }
 
 void MultiStreamEncoder::open() {
-  STD_TORCH_CHECK(!opened_, "Encoder is already open.");
+  STD_TORCH_CHECK(!headerWritten_, "open() was already called.");
   STD_TORCH_CHECK(
-      videoStream_.has_value(),
-      "No streams have been added. Call addVideoStream() before open().");
+      videoStream_.has_value(), "Call addVideoStream() before open().");
 
   initializeVideoStream();
 
@@ -1295,12 +1292,11 @@ void MultiStreamEncoder::open() {
       status == AVSUCCESS,
       "Error in avformat_write_header: ",
       getFFMPEGErrorStringFromErrorCode(status));
-  opened_ = true;
+  headerWritten_ = true;
 }
 
 void MultiStreamEncoder::addFrames(const torch::stable::Tensor& frames) {
-  STD_TORCH_CHECK(
-      opened_, "Encoder is not open. Call open() after adding streams.");
+  STD_TORCH_CHECK(headerWritten_, "Call open() before addFrames().");
   auto validatedFrames = validateFrames(
       frames, videoStream_->avCodecContext.get(), deviceInterface_.get());
 
@@ -1390,7 +1386,7 @@ void MultiStreamEncoder::close() {
   // TODO MultiStreamEncoder: Revisit if "closed_" flag is useful
   closed_ = true;
 
-  if (opened_) {
+  if (headerWritten_) {
     flushBuffers();
 
     int status = av_write_trailer(avFormatContext_.get());

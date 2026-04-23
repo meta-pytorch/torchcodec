@@ -227,7 +227,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   UniqueEncodingAVFormatContext avFormatContext_;
   std::optional<VideoStream> videoStream_;
   std::unique_ptr<DeviceInterface> deviceInterface_;
-  bool opened_ = false;
+  bool headerWritten_ = false;
   UniqueAVDictionary avFormatOptions_;
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
