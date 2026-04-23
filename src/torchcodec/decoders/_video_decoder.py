@@ -126,8 +126,7 @@ class VideoDecoder:
         output_dtype (torch.dtype or str, optional): The dtype of decoded frame
             tensors. One of ``torch.uint8`` (default), ``torch.float32``, or
             ``"auto"``. ``float32`` returns tensors normalized to ``[0, 1]``.
-            ``auto`` returns ``uint8`` for SDR sources; support for higher bit
-            depths will be added in a follow-up.
+            ``auto`` returns ``uint8`` for SDR sources.
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
@@ -251,8 +250,6 @@ class VideoDecoder:
         self._end_stream_seconds = self.metadata.end_stream_seconds
         self._num_frames = self.metadata.num_frames
 
-        self._output_dtype = output_dtype
-
         self._cpu_fallback = CpuFallbackStatus()
         if device.startswith("cuda"):
             if device_variant == "beta":
@@ -292,19 +289,11 @@ class VideoDecoder:
 
         return self._cpu_fallback
 
-    def _maybe_to_float32(self, tensor: Tensor) -> Tensor:
-        if self._output_dtype == torch.float32 or (
-            self._output_dtype == "auto" and tensor.dtype == torch.uint16
-        ):
-            max_val = 65535.0 if tensor.dtype == torch.uint16 else 255.0
-            return tensor.to(torch.float32).div_(max_val)
-        return tensor
-
     def _getitem_int(self, key: int) -> Tensor:
         assert isinstance(key, int)
 
         frame_data, *_ = core.get_frame_at_index(self._decoder, frame_index=key)
-        return self._maybe_to_float32(frame_data)
+        return frame_data
 
     def _getitem_slice(self, key: slice) -> Tensor:
         assert isinstance(key, slice)
@@ -316,7 +305,7 @@ class VideoDecoder:
             stop=stop,
             step=step,
         )
-        return self._maybe_to_float32(frame_data)
+        return frame_data
 
     def __getitem__(self, key: numbers.Integral | slice) -> Tensor:
         """Return frame or frames as tensors, at the given index or range.
@@ -370,7 +359,7 @@ class VideoDecoder:
             self._decoder, frame_index=index
         )
         return Frame(
-            data=self._maybe_to_float32(data),
+            data=data,
             pts_seconds=pts_seconds.item(),
             duration_seconds=duration_seconds.item(),
         )
@@ -390,7 +379,7 @@ class VideoDecoder:
         )
 
         return FrameBatch(
-            data=self._maybe_to_float32(data),
+            data=data,
             pts_seconds=pts_seconds,
             duration_seconds=duration_seconds,
         )
@@ -418,7 +407,7 @@ class VideoDecoder:
             step=step,
         )
         return FrameBatch(
-            data=self._maybe_to_float32(data),
+            data=data,
             pts_seconds=pts_seconds,
             duration_seconds=duration_seconds,
         )
@@ -451,7 +440,7 @@ class VideoDecoder:
             self._decoder, seconds
         )
         return Frame(
-            data=self._maybe_to_float32(data),
+            data=data,
             pts_seconds=pts_seconds.item(),
             duration_seconds=duration_seconds.item(),
         )
@@ -470,7 +459,7 @@ class VideoDecoder:
             self._decoder, timestamps=seconds
         )
         return FrameBatch(
-            data=self._maybe_to_float32(data),
+            data=data,
             pts_seconds=pts_seconds,
             duration_seconds=duration_seconds,
         )
@@ -518,7 +507,7 @@ class VideoDecoder:
             fps=fps,
         )
         return FrameBatch(
-            data=self._maybe_to_float32(data),
+            data=data,
             pts_seconds=pts_seconds,
             duration_seconds=duration_seconds,
         )
