@@ -209,8 +209,8 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
 
  private:
   struct VideoStream {
-    int height = 0;
-    int width = 0;
+    int inHeight = 0;
+    int inWidth = 0;
     double inFrameRate = 0;
     VideoStreamOptions options;
     UniqueAVCodecContext avCodecContext;

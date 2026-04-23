@@ -1193,10 +1193,9 @@ class TestMultiStreamEncoderOps:
         percentage, atol = (96, 2) if device == "cuda" else (99, 2)
 
         encoder, encoder_output = self._create_encoder(method, tmp_path, format)
-        h, w = source_frames.shape[2], source_frames.shape[3]
         add_video_stream_kwargs = {
-            "height": h,
-            "width": w,
+            "height": source_frames.shape[2],
+            "width": source_frames.shape[3],
             "frame_rate": frame_rate,
             "device": device,
         }
@@ -1271,11 +1270,10 @@ class TestMultiStreamEncoderOps:
         else:
             extra_options.extend(["tune", "zerolatency"])
             pixel_format, crf = "yuv444p", 0
-        h, w = source_frames.shape[2], source_frames.shape[3]
         streaming_encoder_add_video_stream(
             encoder,
-            height=h,
-            width=w,
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
             frame_rate=frame_rate,
             device=device,
             pixel_format=pixel_format,
@@ -1313,7 +1311,7 @@ class TestMultiStreamEncoderOps:
         streaming_encoder_add_video_stream(
             encoder, height=64, width=64, frame_rate=30.0
         )
-        with pytest.raises(RuntimeError, match="Only one video stream is supported"):
+        with pytest.raises(RuntimeError, match="already been added"):
             streaming_encoder_add_video_stream(
                 encoder, height=64, width=64, frame_rate=24.0
             )
@@ -1322,7 +1320,7 @@ class TestMultiStreamEncoderOps:
     @pytest.mark.parametrize(
         "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
     )
-    def test_add_frames_different_sizes_errors(self, tmp_path, method, device):
+    def test_add_frames_mismatched_dimensions_errors(self, tmp_path, method, device):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
         streaming_encoder_add_video_stream(
             encoder, height=256, width=256, frame_rate=30.0, device=device

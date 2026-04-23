@@ -1106,16 +1106,16 @@ void MultiStreamEncoder::addVideoStream(
     std::optional<std::string> preset,
     std::optional<std::map<std::string, std::string>> extraOptions) {
   STD_TORCH_CHECK(
-      !videoStream_.has_value(), "Only one video stream is supported.");
+      !videoStream_.has_value(),
+      "A video stream has already been added. Cannot add another.");
   STD_TORCH_CHECK(height > 0, "height must be > 0, got ", height);
   STD_TORCH_CHECK(width > 0, "width must be > 0, got ", width);
   STD_TORCH_CHECK(frameRate > 0, "frame_rate must be > 0, got ", frameRate);
-
   videoStream_.emplace();
   videoStream_->deviceInterface =
       createDeviceInterface(StableDevice(std::move(device)));
-  videoStream_->height = height;
-  videoStream_->width = width;
+  videoStream_->inHeight = height;
+  videoStream_->inWidth = width;
   videoStream_->inFrameRate = frameRate;
   videoStream_->options.codec = std::move(codec);
   videoStream_->options.pixelFormat = std::move(pixelFormat);
@@ -1172,8 +1172,9 @@ void MultiStreamEncoder::initializeVideoStream() {
       avCodecContext != nullptr, "Couldn't allocate codec context.");
   videoStream.avCodecContext.reset(avCodecContext);
 
-  int outHeight = videoStream.height;
-  int outWidth = videoStream.width;
+  // TODO MultiStreamEncoder: Allow output height and width to be set
+  int outHeight = videoStream.inHeight;
+  int outWidth = videoStream.inWidth;
   AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
 
   if (videoStream.options.pixelFormat.has_value()) {
