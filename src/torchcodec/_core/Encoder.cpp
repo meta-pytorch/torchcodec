@@ -1099,7 +1099,7 @@ void MultiStreamEncoder::addVideoStream(
     int height,
     int width,
     double frameRate,
-    std::optional<std::string> device,
+    std::string device,
     std::optional<std::string> codec,
     std::optional<std::string> pixelFormat,
     std::optional<double> crf,
@@ -1111,10 +1111,9 @@ void MultiStreamEncoder::addVideoStream(
   STD_TORCH_CHECK(width > 0, "width must be > 0, got ", width);
   STD_TORCH_CHECK(frameRate > 0, "frame_rate must be > 0, got ", frameRate);
 
-  std::string deviceStr = device.value_or("cpu");
-  deviceInterface_ = createDeviceInterface(StableDevice(std::move(deviceStr)));
-
   videoStream_.emplace();
+  videoStream_->deviceInterface =
+      createDeviceInterface(StableDevice(std::move(device)));
   videoStream_->height = height;
   videoStream_->width = width;
   videoStream_->inFrameRate = frameRate;
@@ -1126,8 +1125,9 @@ void MultiStreamEncoder::addVideoStream(
 }
 
 void MultiStreamEncoder::initializeVideoStream() {
+  // TODO MultiStreamEncoder: Iterate over all video streams
   auto& videoStream = *videoStream_;
-  auto deviceType = deviceInterface_->device().type();
+  auto deviceType = videoStream.deviceInterface->device().type();
 
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
@@ -1150,7 +1150,7 @@ void MultiStreamEncoder::initializeVideoStream() {
         "Output format is null, unable to find default codec.");
     // Try to substitute the default codec with its hardware equivalent
     // This will return std::nullopt when device is CPU.
-    auto hwCodec = deviceInterface_->findCodec(
+    auto hwCodec = videoStream.deviceInterface->findCodec(
         avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
     if (hwCodec.has_value()) {
       avCodec = hwCodec.value();
@@ -1247,9 +1247,9 @@ void MultiStreamEncoder::initializeVideoStream() {
   }
 
   if (deviceType == kStableCUDA) {
-    deviceInterface_->registerHardwareDeviceWithCodec(
+    videoStream.deviceInterface->registerHardwareDeviceWithCodec(
         videoStream.avCodecContext.get());
-    deviceInterface_->setupHardwareFrameContextForEncoding(
+    videoStream.deviceInterface->setupHardwareFrameContextForEncoding(
         videoStream.avCodecContext.get());
   }
 
@@ -1296,9 +1296,12 @@ void MultiStreamEncoder::open() {
 }
 
 void MultiStreamEncoder::addFrames(const torch::stable::Tensor& frames) {
+  // TODO MultiStreamEncoder: Specify which video stream to add frames to
   STD_TORCH_CHECK(headerWritten_, "Call open() before addFrames().");
   auto validatedFrames = validateFrames(
-      frames, videoStream_->avCodecContext.get(), deviceInterface_.get());
+      frames,
+      videoStream_->avCodecContext.get(),
+      videoStream_->deviceInterface.get());
 
   AutoAVPacket autoAVPacket;
   // TODO MultiStreamEncoder: Consider using accessor for potential performance
@@ -1307,8 +1310,9 @@ void MultiStreamEncoder::addFrames(const torch::stable::Tensor& frames) {
   for (int i = 0; i < numFrames; ++i) {
     torch::stable::Tensor currFrame = selectRow(validatedFrames, i);
     int frameIndex = videoStream_->numEncodedFrames + i;
-    UniqueAVFrame avFrame = deviceInterface_->convertTensorToAVFrameForEncoding(
-        currFrame, frameIndex, videoStream_->avCodecContext.get());
+    UniqueAVFrame avFrame =
+        videoStream_->deviceInterface->convertTensorToAVFrameForEncoding(
+            currFrame, frameIndex, videoStream_->avCodecContext.get());
     STD_TORCH_CHECK(
         avFrame != nullptr,
         "convertTensorToAVFrameForEncoding failed for frame ",

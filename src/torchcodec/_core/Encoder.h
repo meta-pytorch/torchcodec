@@ -196,7 +196,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
       int height,
       int width,
       double frameRate,
-      std::optional<std::string> device = std::nullopt,
+      std::string device = "cpu",
       std::optional<std::string> codec = std::nullopt,
       std::optional<std::string> pixelFormat = std::nullopt,
       std::optional<double> crf = std::nullopt,
@@ -216,6 +216,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
     UniqueAVCodecContext avCodecContext;
     AVStream* avStream = nullptr;
     int numEncodedFrames = 0;
+    std::unique_ptr<DeviceInterface> deviceInterface;
   };
 
   void initializeVideoStream();
@@ -226,7 +227,6 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
 
   UniqueEncodingAVFormatContext avFormatContext_;
   std::optional<VideoStream> videoStream_;
-  std::unique_ptr<DeviceInterface> deviceInterface_;
   bool headerWritten_ = false;
   UniqueAVDictionary avFormatOptions_;
 

@@ -635,7 +635,7 @@ def streaming_encoder_add_video_stream_abstract(
     height: int,
     width: int,
     frame_rate: float,
-    device: str | None = None,
+    device: str = "cpu",
     codec: str | None = None,
     pixel_format: str | None = None,
     crf: float | None = None,

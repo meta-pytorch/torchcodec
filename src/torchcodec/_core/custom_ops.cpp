@@ -93,7 +93,7 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "create_streaming_encoder_to_file_like(str format, int file_like_context) -> Tensor");
   m.def("streaming_encoder_close(Tensor(a!) encoder) -> ()");
   m.def(
-      "streaming_encoder_add_video_stream(Tensor(a!) encoder, int height, int width, float frame_rate, str? device=None, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
+      "streaming_encoder_add_video_stream(Tensor(a!) encoder, int height, int width, float frame_rate, str device=\"cpu\", str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
   m.def("streaming_encoder_open(Tensor(a!) encoder) -> ()");
   m.def(
       "streaming_encoder_add_frames(Tensor(a!) encoder, Tensor frames) -> ()");
@@ -1202,7 +1202,7 @@ void streaming_encoder_add_video_stream(
     int64_t height,
     int64_t width,
     double frame_rate,
-    std::optional<std::string> device = std::nullopt,
+    std::string device = "cpu",
     std::optional<std::string> codec = std::nullopt,
     std::optional<std::string> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
