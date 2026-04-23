@@ -1095,7 +1095,10 @@ MultiStreamEncoder::MultiStreamEncoder(
 }
 
 void MultiStreamEncoder::addVideoStream(
+    int height,
+    int width,
     double frameRate,
+    std::optional<std::string> device,
     std::optional<std::string> codec,
     std::optional<std::string> pixelFormat,
     std::optional<double> crf,
@@ -1104,8 +1107,16 @@ void MultiStreamEncoder::addVideoStream(
   STD_TORCH_CHECK(
       !videoStream_.has_value(),
       "A video stream has already been added. Cannot add another.");
+  STD_TORCH_CHECK(height > 0, "height must be > 0, got ", height);
+  STD_TORCH_CHECK(width > 0, "width must be > 0, got ", width);
   STD_TORCH_CHECK(frameRate > 0, "frame_rate must be > 0, got ", frameRate);
+
+  std::string deviceStr = device.value_or("cpu");
+  deviceInterface_ = createDeviceInterface(StableDevice(std::move(deviceStr)));
+
   videoStream_.emplace();
+  videoStream_->height = height;
+  videoStream_->width = width;
   videoStream_->inFrameRate = frameRate;
   videoStream_->options.codec = std::move(codec);
   videoStream_->options.pixelFormat = std::move(pixelFormat);
@@ -1114,13 +1125,10 @@ void MultiStreamEncoder::addVideoStream(
   videoStream_->options.extraOptions = std::move(extraOptions);
 }
 
-void MultiStreamEncoder::initializeVideoStream(
-    const torch::stable::Tensor& frames) {
+void MultiStreamEncoder::initializeVideoStream() {
   auto& videoStream = *videoStream_;
-  auto tensorDevice = frames.device();
-  deviceInterface_ = createDeviceInterface(StableDevice(
-      static_cast<StableDeviceType>(tensorDevice.type()),
-      tensorDevice.index()));
+  auto deviceType = deviceInterface_->device().type();
+
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
@@ -1166,20 +1174,14 @@ void MultiStreamEncoder::initializeVideoStream(
 
   // Store dimensions of input frames
   // TODO MultiStreamEncoder: Enable tensors in NHWC shape
-  auto sizes = frames.sizes();
-  int inHeight = static_cast<int>(sizes[2]);
-  int inWidth = static_cast<int>(sizes[3]);
-
-  // Always use input dimensions as output dimensions
-  // TODO MultiStreamEncoder: Allow height and width to be set
-  int outWidth = inWidth;
-  int outHeight = inHeight;
+  int outHeight = videoStream.height;
+  int outWidth = videoStream.width;
   AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
 
   if (videoStream.options.pixelFormat.has_value()) {
     // TODO-MultiStreamEncoder: (P2) Enable pixel formats to be set by user on
     // GPU and handled with the appropriate NPP function on GPU.
-    if (frames.device().type() == kStableCUDA) {
+    if (deviceType == kStableCUDA) {
       STD_TORCH_CHECK(
           false,
           "Video encoding on GPU currently only supports the nv12 pixel format. "
@@ -1188,7 +1190,7 @@ void MultiStreamEncoder::initializeVideoStream(
     outPixelFormat =
         validatePixelFormat(*avCodec, videoStream.options.pixelFormat.value());
   } else {
-    if (frames.device().type() == kStableCUDA) {
+    if (deviceType == kStableCUDA) {
       // Default to nv12 pixel format when encoding on GPU.
       outPixelFormat = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
     } else {
@@ -1246,7 +1248,7 @@ void MultiStreamEncoder::initializeVideoStream(
         0);
   }
 
-  if (frames.device().type() == kStableCUDA) {
+  if (deviceType == kStableCUDA) {
     deviceInterface_->registerHardwareDeviceWithCodec(
         videoStream.avCodecContext.get());
     deviceInterface_->setupHardwareFrameContextForEncoding(
@@ -1277,26 +1279,30 @@ void MultiStreamEncoder::initializeVideoStream(
       status == AVSUCCESS,
       "avcodec_parameters_from_context failed: ",
       getFFMPEGErrorStringFromErrorCode(status));
+}
 
-  status = avformat_write_header(
+void MultiStreamEncoder::open() {
+  STD_TORCH_CHECK(!opened_, "Encoder is already open.");
+  STD_TORCH_CHECK(
+      videoStream_.has_value(),
+      "No streams have been added. Call addVideoStream() before open().");
+
+  initializeVideoStream();
+
+  int status = avformat_write_header(
       avFormatContext_.get(), avFormatOptions_.getAddress());
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error in avformat_write_header: ",
       getFFMPEGErrorStringFromErrorCode(status));
-  headerWritten_ = true;
+  opened_ = true;
 }
 
 void MultiStreamEncoder::addFrames(const torch::stable::Tensor& frames) {
   STD_TORCH_CHECK(
-      videoStream_.has_value(),
-      "No video stream has been added. Call addVideoStream() first.");
+      opened_, "Encoder is not open. Call open() after adding streams.");
   auto validatedFrames = validateFrames(
       frames, videoStream_->avCodecContext.get(), deviceInterface_.get());
-
-  if (!headerWritten_) {
-    initializeVideoStream(validatedFrames);
-  }
 
   AutoAVPacket autoAVPacket;
   // TODO MultiStreamEncoder: Consider using accessor for potential performance
@@ -1384,7 +1390,7 @@ void MultiStreamEncoder::close() {
   // TODO MultiStreamEncoder: Revisit if "closed_" flag is useful
   closed_ = true;
 
-  if (headerWritten_) {
+  if (opened_) {
     flushBuffers();
 
     int status = av_write_trailer(avFormatContext_.get());

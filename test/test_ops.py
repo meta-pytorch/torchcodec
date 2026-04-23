@@ -34,6 +34,7 @@ from torchcodec._core import (
     streaming_encoder_add_frames,
     streaming_encoder_add_video_stream,
     streaming_encoder_close,
+    streaming_encoder_open,
 )
 from torchcodec._core.ops import (
     _add_video_stream,
@@ -1192,13 +1193,20 @@ class TestMultiStreamEncoderOps:
         percentage, atol = (96, 2) if device == "cuda" else (99, 2)
 
         encoder, encoder_output = self._create_encoder(method, tmp_path, format)
-        add_video_stream_kwargs = {"frame_rate": frame_rate}
+        h, w = source_frames.shape[2], source_frames.shape[3]
+        add_video_stream_kwargs = {
+            "height": h,
+            "width": w,
+            "frame_rate": frame_rate,
+            "device": device,
+        }
         if device == "cpu":
             add_video_stream_kwargs["pixel_format"] = "yuv444p"
             add_video_stream_kwargs["crf"] = 0
         else:
             add_video_stream_kwargs["extra_options"] = ["qp", "1"]
         streaming_encoder_add_video_stream(encoder, **add_video_stream_kwargs)
+        streaming_encoder_open(encoder)
         streaming_encoder_add_frames(encoder, source_frames[:5])
         streaming_encoder_add_frames(encoder, source_frames[5:])
         streaming_encoder_close(encoder)
@@ -1263,13 +1271,18 @@ class TestMultiStreamEncoderOps:
         else:
             extra_options.extend(["tune", "zerolatency"])
             pixel_format, crf = "yuv444p", 0
+        h, w = source_frames.shape[2], source_frames.shape[3]
         streaming_encoder_add_video_stream(
             encoder,
+            height=h,
+            width=w,
             frame_rate=frame_rate,
+            device=device,
             pixel_format=pixel_format,
             crf=crf,
             extra_options=extra_options,
         )
+        streaming_encoder_open(encoder)
         # Here, we decode the available fragmented mp4 frames before calling close()
         for batch in [source_frames[:5], source_frames[5:]]:
             streaming_encoder_add_frames(encoder, batch)
@@ -1297,9 +1310,13 @@ class TestMultiStreamEncoderOps:
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_video_stream_twice_errors(self, tmp_path, method):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
-        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        streaming_encoder_add_video_stream(
+            encoder, height=64, width=64, frame_rate=30.0
+        )
         with pytest.raises(RuntimeError, match="already been added"):
-            streaming_encoder_add_video_stream(encoder, frame_rate=24.0)
+            streaming_encoder_add_video_stream(
+                encoder, height=64, width=64, frame_rate=24.0
+            )
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize(
@@ -1307,7 +1324,17 @@ class TestMultiStreamEncoderOps:
     )
     def test_add_frames_different_sizes_errors(self, tmp_path, method, device):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
-        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        streaming_encoder_add_video_stream(
+            encoder, height=256, width=256, frame_rate=30.0, device=device
+        )
+        streaming_encoder_open(encoder)
+        # addFrames with wrong size errors
+        frames_128 = torch.randint(0, 256, (2, 3, 128, 128), dtype=torch.uint8).to(
+            device
+        )
+        with pytest.raises(RuntimeError, match="same dimensions"):
+            streaming_encoder_add_frames(encoder, frames_128)
+        # addFrames with different size than first also errors
         frames_256 = torch.randint(0, 256, (2, 3, 256, 256), dtype=torch.uint8).to(
             device
         )
@@ -1322,7 +1349,10 @@ class TestMultiStreamEncoderOps:
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_frames_different_devices_errors(self, tmp_path, method):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
-        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        streaming_encoder_add_video_stream(
+            encoder, height=64, width=64, frame_rate=30.0
+        )
+        streaming_encoder_open(encoder)
         cpu_frames = torch.randint(0, 256, (2, 3, 64, 64), dtype=torch.uint8)
         cuda_frames = cpu_frames.to("cuda")
         streaming_encoder_add_frames(encoder, cpu_frames)
@@ -1333,11 +1363,30 @@ class TestMultiStreamEncoderOps:
     @pytest.mark.parametrize(
         "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
     )
-    def test_add_frames_without_stream_errors(self, tmp_path, method, device):
+    def test_add_frames_without_open_errors(self, tmp_path, method, device):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_video_stream(
+            encoder, height=64, width=64, frame_rate=30.0, device=device
+        )
         frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8).to(device)
-        with pytest.raises(RuntimeError, match="No video stream"):
+        with pytest.raises(RuntimeError, match="not open"):
             streaming_encoder_add_frames(encoder, frames)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_open_without_stream_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        with pytest.raises(RuntimeError, match="No streams have been added"):
+            streaming_encoder_open(encoder)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_open_twice_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_video_stream(
+            encoder, height=64, width=64, frame_rate=30.0
+        )
+        streaming_encoder_open(encoder)
+        with pytest.raises(RuntimeError, match="already open"):
+            streaming_encoder_open(encoder)
 
 
 if __name__ == "__main__":

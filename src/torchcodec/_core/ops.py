@@ -146,6 +146,7 @@ streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.defaul
 streaming_encoder_add_video_stream = (
     torch.ops.torchcodec_ns.streaming_encoder_add_video_stream.default
 )
+streaming_encoder_open = torch.ops.torchcodec_ns.streaming_encoder_open.default
 streaming_encoder_add_frames = (
     torch.ops.torchcodec_ns.streaming_encoder_add_frames.default
 )
@@ -631,13 +632,21 @@ def streaming_encoder_close_abstract(encoder: torch.Tensor) -> None:
 @register_fake("torchcodec_ns::streaming_encoder_add_video_stream")
 def streaming_encoder_add_video_stream_abstract(
     encoder: torch.Tensor,
+    height: int,
+    width: int,
     frame_rate: float,
+    device: str | None = None,
     codec: str | None = None,
     pixel_format: str | None = None,
     crf: float | None = None,
     preset: str | None = None,
     extra_options: list[str] | None = None,
 ) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_open")
+def streaming_encoder_open_abstract(encoder: torch.Tensor) -> None:
     return
 
 
