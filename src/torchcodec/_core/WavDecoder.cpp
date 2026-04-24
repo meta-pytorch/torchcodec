@@ -262,14 +262,6 @@ void WavDecoder::convertSamplesToFloat(
     int64_t samplesInBuffer,
     float* outputPtr) const {
   int64_t totalSamples = samplesInBuffer * header_.numChannels;
-  int64_t totalBytes = samplesInBuffer * header_.numBytesPerSample;
-
-  STD_TORCH_CHECK(
-      static_cast<int64_t>(bufferData.size()) >= totalBytes,
-      "Reading ",
-      totalBytes,
-      " bytes: exceeds buffer length ",
-      bufferData.size());
 
   // Currently only supporting 32-bit PCM
   STD_TORCH_CHECK(
