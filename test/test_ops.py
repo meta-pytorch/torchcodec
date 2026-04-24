@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 import torch
+from torchcodec import ffmpeg_major_version
 
 from torchcodec._core import (
     _test_frame_pts_equality,
@@ -53,15 +54,19 @@ from .utils import (
     assert_frames_equal,
     assert_tensor_close_on_at_least,
     get_python_version,
+    IS_WINDOWS,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
+    NASA_VIDEO_HDR,
     needs_cuda,
     needs_ffmpeg_cli,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    TEST_SRC_2_12BIT_HDR,
     TEST_SRC_2_720P,
+    TEST_SRC_2_720P_HDR,
     unsplit_device_str,
 )
 
@@ -677,18 +682,123 @@ class TestVideoDecoderOps:
         assert float_frame.dtype == torch.float32
         torch.testing.assert_close(float_frame, uint8_frame.to(torch.float32) / 255.0)
 
-    def test_output_dtype_auto_sdr_is_uint8(self):
-        # "auto" on an 8-bit source stays uint8 (no HDR path yet).
-        decoder = create_from_file(str(NASA_VIDEO.path))
-        add_video_stream(decoder, output_dtype="auto")
-        frame, *_ = get_frame_at_index(decoder, frame_index=0)
-        assert frame.dtype == torch.uint8
+    def test_output_dtype_auto(self):
+        # "auto" produces uint8 for SDR (<=8-bit) sources and float32 for HDR
+        # (>8-bit) sources. Validated against ffmpeg CLI rgb24/rgb48 refs.
+
+        # SDR source: auto -> uint8 matching ffmpeg rgb24
+        decoder_sdr = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_sdr, output_dtype="auto")
+        for frame_index in [0, 1, 9]:
+            frame, *_ = get_frame_at_index(decoder_sdr, frame_index=frame_index)
+            assert frame.dtype == torch.uint8
+            ref = NASA_VIDEO.get_frame_data_by_index(frame_index)
+            assert_frames_equal(frame, ref)
+
+        # HDR source: auto -> float32 matching ffmpeg rgb48
+        decoder_hdr = create_from_file(str(NASA_VIDEO_HDR.path))
+        add_video_stream(decoder_hdr, output_dtype="auto")
+        for frame_index in [0, 5, 10]:
+            frame, *_ = get_frame_at_index(decoder_hdr, frame_index=frame_index)
+            assert frame.dtype == torch.float32
+
+            if IS_WINDOWS and ffmpeg_major_version < 5:
+                # swscale YUV10->RGB48 differs on Windows + FFmpeg 4
+                continue
+
+            frame_as_uint16 = (frame * 65535).round().to(torch.uint16)
+            ref = NASA_VIDEO_HDR.get_frame_data_by_index_rgb48(frame_index)
+            torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
 
     @pytest.mark.parametrize("bad_dtype", ("not_a_dtype", "blah"))
     def test_output_dtype_invalid(self, bad_dtype):
         decoder = create_from_file(str(NASA_VIDEO.path))
         with pytest.raises(RuntimeError, match="Invalid output_dtype"):
             add_video_stream(decoder, output_dtype=bad_dtype)
+
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            pytest.param(
+                NASA_VIDEO_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                TEST_SRC_2_720P_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                TEST_SRC_2_12BIT_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="swscale YUV12->RGB48 differs on Windows + FFmpeg 4",
+                ),
+            ),
+        ),
+    )
+    def test_10bit_float32_against_ffmpeg_rgb48(self, asset):
+        # Validate float32 HDR decode against ffmpeg CLI's rgb48 output.
+        # CPU uses the same swscale path as ffmpeg, so we expect exact match.
+        decoder = create_from_file(str(asset.path))
+        add_video_stream(decoder, output_dtype="float32")
+
+        for frame_index in [0, 5, 10]:
+            frame, *_ = get_frame_at_index(decoder, frame_index=frame_index)
+            assert frame.dtype == torch.float32
+            frame_as_uint16 = (frame * 65535).round().to(torch.uint16)
+            ref = asset.get_frame_data_by_index_rgb48(frame_index)
+            torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
+
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            pytest.param(
+                NASA_VIDEO_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                TEST_SRC_2_720P_HDR,
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version < 5,
+                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
+                ),
+            ),
+        ),
+    )
+    def test_10bit_batch_apis(self, asset):
+        # Validate batch APIs on 10-bit float32 content against ffmpeg rgb48
+        # references.
+        decoder = create_from_file(str(asset.path))
+        add_video_stream(decoder, output_dtype="float32")
+
+        def assert_frame_correct(frame, frame_index):
+            frame_as_uint16 = (frame * 65535).round().to(torch.uint16)
+            ref = asset.get_frame_data_by_index_rgb48(frame_index)
+            torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
+
+        # get_frame_at_index
+        frame0, *_ = get_frame_at_index(decoder, frame_index=0)
+        assert_frame_correct(frame0, 0)
+
+        # get_frames_at_indices
+        indices = [0, 5, 10]
+        frames, *_ = get_frames_at_indices(decoder, frame_indices=indices)
+        for i, idx in enumerate(indices):
+            assert_frame_correct(frames[i], idx)
+
+        # get_frames_in_range — validate frames 5 and 10 against refs
+        frames_range, *_ = get_frames_in_range(decoder, start=5, stop=11)
+        assert_frame_correct(frames_range[0], 5)
+        assert_frame_correct(frames_range[5], 10)
 
 
 class TestAudioDecoderOps:
