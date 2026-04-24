@@ -1174,7 +1174,7 @@ void MultiStreamEncoder::initializeVideoStream(
   // TODO MultiStreamEncoder: Allow height and width to be set
   int outWidth = inWidth;
   int outHeight = inHeight;
-  AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
+  AVPixelFormat outPixelFormat;
 
   if (videoStream.options.pixelFormat.has_value()) {
     // TODO-MultiStreamEncoder: (P2) Enable pixel formats to be set by user on
