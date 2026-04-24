@@ -1308,11 +1308,11 @@ class TestMultiStreamEncoderOps:
     def test_add_frames_different_sizes_errors(self, tmp_path, method, device):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
         streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
-        frames_256 = torch.randint(0, 256, (2, 3, 256, 256), dtype=torch.uint8).to(
-            device
+        frames_256 = torch.randint(
+            0, 256, (2, 3, 256, 256), dtype=torch.uint8, device=device
         )
-        frames_512 = torch.randint(0, 256, (2, 3, 512, 512), dtype=torch.uint8).to(
-            device
+        frames_512 = torch.randint(
+            0, 256, (2, 3, 512, 512), dtype=torch.uint8, device=device
         )
         streaming_encoder_add_frames(encoder, frames_256)
         with pytest.raises(RuntimeError, match="same dimensions"):
@@ -1335,7 +1335,7 @@ class TestMultiStreamEncoderOps:
     )
     def test_add_frames_without_stream_errors(self, tmp_path, method, device):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
-        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8).to(device)
+        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8, device=device)
         with pytest.raises(RuntimeError, match="No video stream"):
             streaming_encoder_add_frames(encoder, frames)
 
