@@ -21,6 +21,12 @@ enum ColorConversionLibrary {
   SWSCALE
 };
 
+// Controls the dtype of decoded frame tensors.
+// UINT8: Always output uint8 tensors (default, backward compatible).
+// FLOAT32: Always output float32 tensors normalized to [0, 1].
+// AUTO: Output uint8 for SDR (<=8-bit) sources, float32 for HDR (>8-bit).
+enum class OutputDtype { UINT8, FLOAT32, AUTO };
+
 struct VideoStreamOptions {
   VideoStreamOptions() {}
 
@@ -46,6 +52,11 @@ struct VideoStreamOptions {
   StableDevice device = StableDevice(kStableCPU);
   // Device variant (e.g., "ffmpeg", "beta", etc.)
   std::string_view deviceVariant = "ffmpeg";
+
+  // Controls the dtype of decoded frame tensors. Default UINT8 preserves
+  // existing behavior; FLOAT32 and AUTO are used for high-bit-depth output
+  // (e.g. HDR).
+  OutputDtype outputDtype = OutputDtype::UINT8;
 
   // Encoding options
   std::optional<std::string> codec;
