@@ -353,8 +353,6 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   // reading partial samples. See
   // https://github.com/FFmpeg/FFmpeg/blob/0f600cbc16b7903703b47d23981b636c94a41c71/libavformat/wavdec.c#L786-L791
   size_t alignedBufferSize = DEFAULT_CHUNK_BUFFER_SIZE;
-  // Round down to nearest multiple of numBytesPerSample to avoid partial
-  // samples
   alignedBufferSize = (alignedBufferSize / header_.numBytesPerSample) *
       header_.numBytesPerSample;
   STD_TORCH_CHECK(
@@ -368,25 +366,23 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   // Allocate buffer and read samples in chunks
   std::vector<uint8_t> buffer(alignedBufferSize);
 
-  int64_t totalBytesRead = 0;
   int64_t samplesProcessed = 0;
   auto samples =
       torch::stable::empty({numSamples, header_.numChannels}, kStableFloat32);
 
-  const int64_t bytesToRead = numSamples * header_.numBytesPerSample;
+  const int64_t samplesPerBuffer =
+      static_cast<int64_t>(alignedBufferSize) / header_.numBytesPerSample;
 
-  while (totalBytesRead < bytesToRead) {
-    const int64_t bytesToReadThisIteration = std::min(
-        bytesToRead - totalBytesRead, static_cast<int64_t>(alignedBufferSize));
-    safeReadFile(file_, buffer, bytesToReadThisIteration);
+  while (samplesProcessed < numSamples) {
+    const int64_t samplesThisIteration =
+        std::min(numSamples - samplesProcessed, samplesPerBuffer);
+    safeReadFile(
+        file_, buffer, samplesThisIteration * header_.numBytesPerSample);
 
-    const int64_t samplesInBuffer =
-        bytesToReadThisIteration / header_.numBytesPerSample;
     float* outputPtr = samples.mutable_data_ptr<float>() +
         (samplesProcessed * header_.numChannels);
-    convertSamplesToFloat(buffer, samplesInBuffer, outputPtr);
-    samplesProcessed += samplesInBuffer;
-    totalBytesRead += bytesToReadThisIteration;
+    convertSamplesToFloat(buffer, samplesThisIteration, outputPtr);
+    samplesProcessed += samplesThisIteration;
   }
 
   // Convert to [channels, samples]
