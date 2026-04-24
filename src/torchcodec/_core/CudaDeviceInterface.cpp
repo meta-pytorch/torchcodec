@@ -95,7 +95,7 @@ CudaDeviceInterface::CudaDeviceInterface(const StableDevice& device)
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
   // Resolve unspecified device index (-1) to the actual current CUDA device.
-  device_ = StableDevice(kStableCUDA, getDeviceIndex(device_));
+  device_.set_index(getDeviceIndex(device_));
 
   initializeCudaContextWithPytorch(device_);
 
