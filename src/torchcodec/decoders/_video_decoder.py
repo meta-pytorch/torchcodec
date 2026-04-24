@@ -123,10 +123,6 @@ class VideoDecoder:
             :class:`~torchcodec.transforms.DecoderTransform` and
             :class:`~torchvision.transforms.v2.Transform`
             objects. Read more about this parameter in: TODO_DECODER_TRANSFORMS_TUTORIAL.
-        output_dtype (torch.dtype or str, optional): The dtype of decoded frame
-            tensors. One of ``torch.uint8`` (default), ``torch.float32``, or
-            ``"auto"``. ``float32`` returns tensors normalized to ``[0, 1]``.
-            ``auto`` returns ``uint8`` for SDR sources.
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
@@ -173,7 +169,6 @@ class VideoDecoder:
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
-        output_dtype: "torch.dtype | str | None" = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
@@ -208,18 +203,6 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
-        if output_dtype is None or output_dtype == torch.uint8:
-            _output_dtype_str = "uint8"
-        elif output_dtype == torch.float32:
-            _output_dtype_str = "float32"
-        elif output_dtype == "auto":
-            _output_dtype_str = "auto"
-        else:
-            raise ValueError(
-                f"Invalid output_dtype ({output_dtype}). "
-                f'Supported values are "auto", torch.uint8, and torch.float32.'
-            )
-
         device_variant = _get_cuda_backend()
         if device is None:
             device = str(torch.get_default_device())
@@ -239,7 +222,6 @@ class VideoDecoder:
             device_variant=device_variant,
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
-            output_dtype=_output_dtype_str,
         )
 
         assert self.metadata.begin_stream_seconds is not None  # mypy.
@@ -400,17 +382,13 @@ class VideoDecoder:
         """
         # Adjust start / stop indices to enable indexing semantics, ex. [-10, 1000] returns the last 10 frames
         start, stop, step = slice(start, stop, step).indices(self._num_frames)
-        data, pts_seconds, duration_seconds = core.get_frames_in_range(
+        frames = core.get_frames_in_range(
             self._decoder,
             start=start,
             stop=stop,
             step=step,
         )
-        return FrameBatch(
-            data=data,
-            pts_seconds=pts_seconds,
-            duration_seconds=duration_seconds,
-        )
+        return FrameBatch(*frames)
 
     def get_frame_played_at(self, seconds: float) -> Frame:
         """Return a single frame played at the given timestamp in seconds.
@@ -500,17 +478,13 @@ class VideoDecoder:
                 f"Invalid stop seconds: {stop_seconds}. "
                 f"It must be less than or equal to {self._end_stream_seconds}."
             )
-        data, pts_seconds, duration_seconds = core.get_frames_by_pts_in_range(
+        frames = core.get_frames_by_pts_in_range(
             self._decoder,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
             fps=fps,
         )
-        return FrameBatch(
-            data=data,
-            pts_seconds=pts_seconds,
-            duration_seconds=duration_seconds,
-        )
+        return FrameBatch(*frames)
 
     def get_all_frames(self, fps: float | None = None) -> FrameBatch:
         """Returns all frames in the video.

@@ -661,6 +661,35 @@ class TestVideoDecoderOps:
             duration, torch.tensor(0.0334).double(), atol=0, rtol=1e-3
         )
 
+    def test_output_dtype_float32_sdr(self):
+        # float32 on an 8-bit source: C++ produces uint8 and normalizes to
+        # float32 in [0, 1]. Compare against a fresh uint8 decode from the
+        # same machine so the assertion is independent of codec variance.
+        decoder_uint8 = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_uint8)
+        uint8_frame, *_ = get_frame_at_index(decoder_uint8, frame_index=0)
+
+        decoder_float = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_float, output_dtype="float32")
+        float_frame, *_ = get_frame_at_index(decoder_float, frame_index=0)
+
+        assert uint8_frame.dtype == torch.uint8
+        assert float_frame.dtype == torch.float32
+        torch.testing.assert_close(float_frame, uint8_frame.to(torch.float32) / 255.0)
+
+    def test_output_dtype_auto_sdr_is_uint8(self):
+        # "auto" on an 8-bit source stays uint8 (no HDR path yet).
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder, output_dtype="auto")
+        frame, *_ = get_frame_at_index(decoder, frame_index=0)
+        assert frame.dtype == torch.uint8
+
+    @pytest.mark.parametrize("bad_dtype", ("not_a_dtype", "blah"))
+    def test_output_dtype_invalid(self, bad_dtype):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        with pytest.raises(RuntimeError, match="Invalid output_dtype"):
+            add_video_stream(decoder, output_dtype=bad_dtype)
+
 
 class TestAudioDecoderOps:
     @pytest.mark.parametrize(
