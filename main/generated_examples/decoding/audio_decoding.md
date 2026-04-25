@@ -140,7 +140,7 @@ AudioSamples:
  Your browser does not support the audio element.
  
 
-**Total running time of the script:** (0 minutes 1.369 seconds)
+**Total running time of the script:** (0 minutes 1.373 seconds)
 
 [`Download Jupyter notebook: audio_decoding.ipynb`](../../_downloads/f6b4925719fd3f116259f89a204c6888/audio_decoding.ipynb)
 
