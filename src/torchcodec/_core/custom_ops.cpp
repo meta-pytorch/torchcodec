@@ -22,6 +22,7 @@ extern "C" {
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
+#include "Logging.h"
 #include "NVDECCacheConfig.h"
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
@@ -99,6 +100,8 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
   m.def("get_nvdec_cache_capacity() -> int");
   m.def("_get_nvdec_cache_size(int device_index) -> int");
+  m.def("_set_log_level(int level) -> ()");
+  m.def("_get_log_level() -> int");
   m.def("create_wav_decoder_from_file(str filename) -> Tensor");
   m.def(
       "get_wav_samples_in_range(Tensor(a!) decoder, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
@@ -1304,6 +1307,14 @@ int64_t _get_nvdec_cache_size(int64_t device_index) {
   return static_cast<int64_t>(getNVDECCacheSize(deviceIndexInt));
 }
 
+void _set_log_level(int64_t level) {
+  setLogLevel(static_cast<LogLevel>(level));
+}
+
+int64_t _get_log_level() {
+  return static_cast<int64_t>(getLogLevel());
+}
+
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
@@ -1328,6 +1339,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
   m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
   m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
+  m.impl("_set_log_level", TORCH_BOX(&_set_log_level));
+  m.impl("_get_log_level", TORCH_BOX(&_get_log_level));
   m.impl(
       "create_wav_decoder_from_file", TORCH_BOX(&create_wav_decoder_from_file));
   m.impl("get_wav_samples_in_range", TORCH_BOX(&get_wav_samples_in_range));

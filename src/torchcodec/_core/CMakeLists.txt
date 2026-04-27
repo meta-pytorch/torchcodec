@@ -141,6 +141,7 @@ function(make_torchcodec_libraries
         SwScale.cpp
         WavDecoder.cpp
         NVDECCacheConfig.cpp
+        Logging.cpp
     )
 
     if(ENABLE_CUDA)

@@ -13,6 +13,7 @@
 
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
+#include "Logging.h"
 #include "NVDECCache.h"
 
 #include "NVCUVIDRuntimeLoader.h"
@@ -303,6 +304,12 @@ void BetaCudaDeviceInterface::initialize(
   STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
   if (!nvcuvidAvailable_ || !nativeNVDECSupport(device_, codecContext)) {
+    if (!nvcuvidAvailable_) {
+      TC_LOG("NVCUVID library not available; falling back to CPU decoding.");
+    } else {
+      TC_LOG(
+          "Video stream not supported by NVDEC; falling back to CPU decoding.");
+    }
     cpuFallback_ = createDeviceInterface(kStableCPU);
     STD_TORCH_CHECK(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
