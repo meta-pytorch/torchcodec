@@ -33,6 +33,7 @@ torch::stable::Tensor allocateEmptyHWCTensor(
       frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
   STD_TORCH_CHECK(
       frameDims.width > 0, "width must be > 0, got: ", frameDims.width);
+  // 8-bit sources fit in uint8; >8-bit (e.g. 10/12-bit HDR) needs uint16.
   auto dtype = bitDepth > 8 ? kStableUInt16 : kStableUInt8;
   if (numFrames.has_value()) {
     auto numFramesValue = numFrames.value();
