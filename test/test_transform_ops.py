@@ -18,6 +18,7 @@ import torchcodec
 from torchcodec._core import get_frame_at_index, get_json_metadata
 from torchcodec._core.ops import _add_video_stream, add_video_stream, create_from_file
 from torchcodec.decoders import VideoDecoder
+from torchcodec.transforms._decoder_transforms import _make_transform_specs
 
 from torchvision.transforms import v2
 
@@ -72,26 +73,59 @@ class TestPublicVideoDecoderTransformOps:
     ):
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
+        is_hdr = video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR)
 
-        dtype_kwargs = dict(output_dtype=output_dtype) if output_dtype else {}
+        # TODO: output_dtype isn't exposed on VideoDecoder yet (will be added in
+        # the public-API PR). For the float32 case we fall back to the internal
+        # ops layer. Once VideoDecoder.__init__ accepts output_dtype, collapse
+        # this branch back into a single parametrized VideoDecoder-based path.
+        if output_dtype is None:
+            # We're using both the TorchCodec object and the TorchVision object
+            # to ensure that they specify exactly the same thing.
+            decoder_resize = VideoDecoder(
+                video.path,
+                transforms=[torchcodec.transforms.Resize(size=(height, width))],
+            )
+            decoder_resize_tv = VideoDecoder(
+                video.path,
+                transforms=[v2.Resize(size=(height, width))],
+            )
+            decoder_full = VideoDecoder(video.path)
 
-        # We're using both the TorchCodec object and the TorchVision object to
-        # ensure that they specify exactly the same thing.
-        decoder_resize = VideoDecoder(
-            video.path,
-            transforms=[torchcodec.transforms.Resize(size=(height, width))],
-            **dtype_kwargs,
-        )
-        decoder_resize_tv = VideoDecoder(
-            video.path,
-            transforms=[v2.Resize(size=(height, width))],
-            **dtype_kwargs,
-        )
+            num_frames = len(decoder_resize)
+            assert num_frames == len(decoder_full)
 
-        decoder_full = VideoDecoder(video.path, **dtype_kwargs)
+            def get_resize_frame(i):
+                return decoder_resize[i]
 
-        num_frames = len(decoder_resize)
-        assert num_frames == len(decoder_full)
+            def get_resize_tv_frame(i):
+                return decoder_resize_tv[i]
+
+            def get_full_frame(i):
+                return decoder_full[i]
+
+        else:
+            # Ops-level float32 path. We lose the torchcodec-vs-torchvision
+            # class-parity check (that inherently requires VideoDecoder), but
+            # we still validate decoder-time-resize vs post-decode-v2-resize.
+            spec = f"resize,{height},{width}"
+            decoder_resize = create_from_file(str(video.path))
+            add_video_stream(
+                decoder_resize, transform_specs=spec, output_dtype="float32"
+            )
+            decoder_full = create_from_file(str(video.path))
+            add_video_stream(decoder_full, output_dtype="float32")
+            num_frames = len(VideoDecoder(video.path))  # for index computation
+
+            def get_resize_frame(i):
+                data, *_ = get_frame_at_index(decoder_resize, frame_index=i)
+                return data
+
+            get_resize_tv_frame = None  # no class-parity test on this path
+
+            def get_full_frame(i):
+                data, *_ = get_frame_at_index(decoder_full, frame_index=i)
+                return data
 
         for frame_index in [
             0,
@@ -104,11 +138,13 @@ class TestPublicVideoDecoderTransformOps:
             int(num_frames * 0.90),
             num_frames - 1,
         ]:
-            frame_resize_tv = decoder_resize_tv[frame_index]
-            frame_resize = decoder_resize[frame_index]
-            assert_frames_equal(frame_resize_tv, frame_resize)
+            frame_resize = get_resize_frame(frame_index)
 
-            frame_full = decoder_full[frame_index]
+            if get_resize_tv_frame is not None:
+                frame_resize_tv = get_resize_tv_frame(frame_index)
+                assert_frames_equal(frame_resize_tv, frame_resize)
+
+            frame_full = get_full_frame(frame_index)
 
             frame_tv = v2.functional.resize(frame_full, size=(height, width))
             frame_tv_no_antialias = v2.functional.resize(
@@ -119,8 +155,6 @@ class TestPublicVideoDecoderTransformOps:
             assert frame_resize.shape == expected_shape
             assert frame_tv.shape == expected_shape
             assert frame_tv_no_antialias.shape == expected_shape
-
-            is_hdr = video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR)
 
             if output_dtype == torch.float32 and is_hdr:
                 # float32 HDR: compare in uint16 space for cleaner tolerances.
@@ -276,23 +310,47 @@ class TestPublicVideoDecoderTransformOps:
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
 
-        dtype_kwargs = dict(output_dtype=output_dtype) if output_dtype else {}
+        # TODO: see test_resize_torchvision — collapse this branch once
+        # output_dtype is exposed on VideoDecoder.
+        if output_dtype is None:
+            tc_center_crop = torchcodec.transforms.CenterCrop(size=(height, width))
+            decoder_center_crop = VideoDecoder(video.path, transforms=[tc_center_crop])
+            decoder_center_crop_tv = VideoDecoder(
+                video.path,
+                transforms=[v2.CenterCrop(size=(height, width))],
+            )
+            decoder_full = VideoDecoder(video.path)
+            num_frames = len(decoder_center_crop_tv)
+            assert num_frames == len(decoder_full)
 
-        tc_center_crop = torchcodec.transforms.CenterCrop(size=(height, width))
-        decoder_center_crop = VideoDecoder(
-            video.path, transforms=[tc_center_crop], **dtype_kwargs
-        )
+            def get_cc_frame(i):
+                return decoder_center_crop[i]
 
-        decoder_center_crop_tv = VideoDecoder(
-            video.path,
-            transforms=[v2.CenterCrop(size=(height, width))],
-            **dtype_kwargs,
-        )
+            def get_cc_tv_frame(i):
+                return decoder_center_crop_tv[i]
 
-        decoder_full = VideoDecoder(video.path, **dtype_kwargs)
+            def get_full_frame(i):
+                return decoder_full[i]
 
-        num_frames = len(decoder_center_crop_tv)
-        assert num_frames == len(decoder_full)
+        else:
+            spec = f"center_crop,{height},{width}"
+            decoder_center_crop = create_from_file(str(video.path))
+            add_video_stream(
+                decoder_center_crop, transform_specs=spec, output_dtype="float32"
+            )
+            decoder_full = create_from_file(str(video.path))
+            add_video_stream(decoder_full, output_dtype="float32")
+            num_frames = len(VideoDecoder(video.path))
+
+            def get_cc_frame(i):
+                data, *_ = get_frame_at_index(decoder_center_crop, frame_index=i)
+                return data
+
+            get_cc_tv_frame = None
+
+            def get_full_frame(i):
+                data, *_ = get_frame_at_index(decoder_full, frame_index=i)
+                return data
 
         for frame_index in [
             0,
@@ -301,14 +359,16 @@ class TestPublicVideoDecoderTransformOps:
             int(num_frames * 0.75),
             num_frames - 1,
         ]:
-            frame_center_crop = decoder_center_crop[frame_index]
-            frame_center_crop_tv = decoder_center_crop_tv[frame_index]
-            assert_frames_equal(frame_center_crop, frame_center_crop_tv)
+            frame_center_crop = get_cc_frame(frame_index)
+
+            if get_cc_tv_frame is not None:
+                frame_center_crop_tv = get_cc_tv_frame(frame_index)
+                assert_frames_equal(frame_center_crop, frame_center_crop_tv)
 
             expected_shape = (video.get_num_color_channels(), height, width)
-            assert frame_center_crop_tv.shape == expected_shape
+            assert frame_center_crop.shape == expected_shape
 
-            frame_full = decoder_full[frame_index]
+            frame_full = get_full_frame(frame_index)
             frame_tv = v2.CenterCrop(size=(height, width))(frame_full)
             assert_frames_equal(frame_center_crop, frame_tv)
 
@@ -364,32 +424,65 @@ class TestPublicVideoDecoderTransformOps:
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
 
-        dtype_kwargs = dict(output_dtype=output_dtype) if output_dtype else {}
+        # TODO: see test_resize_torchvision — collapse this branch once
+        # output_dtype is exposed on VideoDecoder.
+        if output_dtype is None:
+            # We want both kinds of RandomCrop objects to get arrive at the
+            # same locations to crop, so we need to make sure they get the same
+            # random seed. It's used in RandomCrop's _make_transform_spec()
+            # method, called by the VideoDecoder.
+            torch.manual_seed(seed)
+            tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
+            decoder_random_crop = VideoDecoder(video.path, transforms=[tc_random_crop])
 
-        # We want both kinds of RandomCrop objects to get arrive at the same
-        # locations to crop, so we need to make sure they get the same random
-        # seed. It's used in RandomCrop's _make_transform_spec() method, called
-        # by the VideoDecoder.
-        torch.manual_seed(seed)
-        tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
-        decoder_random_crop = VideoDecoder(
-            video.path, transforms=[tc_random_crop], **dtype_kwargs
-        )
+            # Resetting manual seed for when TorchCodec's RandomCrop, created
+            # from the TorchVision RandomCrop, is used inside of the
+            # VideoDecoder. It needs to match the call above.
+            torch.manual_seed(seed)
+            decoder_random_crop_tv = VideoDecoder(
+                video.path,
+                transforms=[v2.RandomCrop(size=(height, width))],
+            )
 
-        # Resetting manual seed for when TorchCodec's RandomCrop, created from
-        # the TorchVision RandomCrop, is used inside of the VideoDecoder. It
-        # needs to match the call above.
-        torch.manual_seed(seed)
-        decoder_random_crop_tv = VideoDecoder(
-            video.path,
-            transforms=[v2.RandomCrop(size=(height, width))],
-            **dtype_kwargs,
-        )
+            decoder_full = VideoDecoder(video.path)
+            num_frames = len(decoder_random_crop_tv)
+            assert num_frames == len(decoder_full)
 
-        decoder_full = VideoDecoder(video.path, **dtype_kwargs)
+            def get_rc_frame(i):
+                return decoder_random_crop[i]
 
-        num_frames = len(decoder_random_crop_tv)
-        assert num_frames == len(decoder_full)
+            def get_rc_tv_frame(i):
+                return decoder_random_crop_tv[i]
+
+            def get_full_frame(i):
+                return decoder_full[i]
+
+        else:
+            # Generate the spec from a seeded torchcodec RandomCrop, then push
+            # it through the ops layer. Skips the tc-vs-v2 class-parity check.
+            torch.manual_seed(seed)
+            tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
+            spec = _make_transform_specs(
+                [tc_random_crop],
+                input_dims=(video.get_height(), video.get_width()),
+            )
+            decoder_random_crop = create_from_file(str(video.path))
+            add_video_stream(
+                decoder_random_crop, transform_specs=spec, output_dtype="float32"
+            )
+            decoder_full = create_from_file(str(video.path))
+            add_video_stream(decoder_full, output_dtype="float32")
+            num_frames = len(VideoDecoder(video.path))
+
+            def get_rc_frame(i):
+                data, *_ = get_frame_at_index(decoder_random_crop, frame_index=i)
+                return data
+
+            get_rc_tv_frame = None
+
+            def get_full_frame(i):
+                data, *_ = get_frame_at_index(decoder_full, frame_index=i)
+                return data
 
         for frame_index in [
             0,
@@ -398,17 +491,19 @@ class TestPublicVideoDecoderTransformOps:
             int(num_frames * 0.75),
             num_frames - 1,
         ]:
-            frame_random_crop = decoder_random_crop[frame_index]
-            frame_random_crop_tv = decoder_random_crop_tv[frame_index]
-            assert_frames_equal(frame_random_crop, frame_random_crop_tv)
+            frame_random_crop = get_rc_frame(frame_index)
+
+            if get_rc_tv_frame is not None:
+                frame_random_crop_tv = get_rc_tv_frame(frame_index)
+                assert_frames_equal(frame_random_crop, frame_random_crop_tv)
 
             expected_shape = (video.get_num_color_channels(), height, width)
-            assert frame_random_crop_tv.shape == expected_shape
+            assert frame_random_crop.shape == expected_shape
 
             # Resetting manual seed to make sure the invocation of the
-            # TorchVision RandomCrop matches the two calls above.
+            # TorchVision RandomCrop matches the call above.
             torch.manual_seed(seed)
-            frame_full = decoder_full[frame_index]
+            frame_full = get_full_frame(frame_index)
             frame_tv = v2.RandomCrop(size=(height, width))(frame_full)
             assert_frames_equal(frame_random_crop, frame_tv)
 
@@ -499,19 +594,40 @@ class TestPublicVideoDecoderTransformOps:
     )
     @pytest.mark.parametrize("output_dtype", [None, torch.float32])
     def test_transform_pipeline(self, resize, random_crop, video, output_dtype):
-        dtype_kwargs = dict(output_dtype=output_dtype) if output_dtype else {}
-        decoder = VideoDecoder(
-            video.path,
-            transforms=[
-                # resized to bigger than original
-                resize(size=(2160, 3840)),
-                # crop to smaller than the resize, but still bigger than original
-                random_crop(size=(1080, 1920)),
-            ],
-            **dtype_kwargs,
-        )
+        # TODO: see test_resize_torchvision — collapse this branch once
+        # output_dtype is exposed on VideoDecoder.
+        if output_dtype is None:
+            decoder = VideoDecoder(
+                video.path,
+                transforms=[
+                    # resized to bigger than original
+                    resize(size=(2160, 3840)),
+                    # crop to smaller than the resize, but still bigger than original
+                    random_crop(size=(1080, 1920)),
+                ],
+            )
 
-        num_frames = len(decoder)
+            def get_frame(i):
+                return decoder[i]
+
+            num_frames = len(decoder)
+        else:
+            spec = _make_transform_specs(
+                [
+                    resize(size=(2160, 3840)),
+                    random_crop(size=(1080, 1920)),
+                ],
+                input_dims=(video.get_height(), video.get_width()),
+            )
+            decoder = create_from_file(str(video.path))
+            add_video_stream(decoder, transform_specs=spec, output_dtype="float32")
+
+            def get_frame(i):
+                data, *_ = get_frame_at_index(decoder, frame_index=i)
+                return data
+
+            num_frames = len(VideoDecoder(video.path))
+
         for frame_index in [
             0,
             int(num_frames * 0.25),
@@ -519,7 +635,7 @@ class TestPublicVideoDecoderTransformOps:
             int(num_frames * 0.75),
             num_frames - 1,
         ]:
-            frame = decoder[frame_index]
+            frame = get_frame(frame_index)
             assert frame.shape == (video.get_num_color_channels(), 1080, 1920)
 
     def test_transform_fails(self):
