@@ -1,5 +1,6 @@
 #pragma once
 #include <map>
+#include <optional>
 #include <string>
 #include "AVIOContextHolder.h"
 #include "DeviceInterface.h"
@@ -203,18 +204,24 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   void close();
 
  private:
+  struct VideoStream {
+    double inFrameRate = 0;
+    VideoStreamOptions options;
+    UniqueAVCodecContext avCodecContext;
+    AVStream* avStream = nullptr;
+    int numEncodedFrames = 0;
+  };
+
   void initializeVideoStream(const torch::stable::Tensor& frames);
-  void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
+  void encodeVideoFrame(
+      AutoAVPacket& autoAVPacket,
+      const UniqueAVFrame& avFrame);
   void flushBuffers();
 
   UniqueEncodingAVFormatContext avFormatContext_;
-  UniqueAVCodecContext avCodecContext_;
-  AVStream* avStream_ = nullptr;
-  double inFrameRate_ = 0;
-  VideoStreamOptions videoStreamOptions_;
+  std::optional<VideoStream> videoStream_;
   std::unique_ptr<DeviceInterface> deviceInterface_;
   bool headerWritten_ = false;
-  int numEncodedFrames_ = 0;
   UniqueAVDictionary avFormatOptions_;
 
   std::unique_ptr<AVIOContextHolder> avioContextHolder_;
