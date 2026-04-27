@@ -45,4 +45,5 @@ from .ops import (
     streaming_encoder_add_frames,
     streaming_encoder_add_video_stream,
     streaming_encoder_close,
+    streaming_encoder_open,
 )
