@@ -75,10 +75,8 @@ class TestPublicVideoDecoderTransformOps:
         width = int(video.get_width() * width_scaling_factor)
         is_hdr = video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR)
 
-        # TODO: output_dtype isn't exposed on VideoDecoder yet (will be added in
-        # the public-API PR). For the float32 case we fall back to the internal
-        # ops layer. Once VideoDecoder.__init__ accepts output_dtype, collapse
-        # this branch back into a single parametrized VideoDecoder-based path.
+        # TODO: Relocate + parametrize over output_dtype once output_dtype is
+        # exposed on VideoDecoder.
         if output_dtype is None:
             # We're using both the TorchCodec object and the TorchVision object
             # to ensure that they specify exactly the same thing.
@@ -310,8 +308,8 @@ class TestPublicVideoDecoderTransformOps:
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
 
-        # TODO: see test_resize_torchvision — collapse this branch once
-        # output_dtype is exposed on VideoDecoder.
+        # TODO: Relocate + parametrize over output_dtype once output_dtype is
+        # exposed on VideoDecoder.
         if output_dtype is None:
             tc_center_crop = torchcodec.transforms.CenterCrop(size=(height, width))
             decoder_center_crop = VideoDecoder(video.path, transforms=[tc_center_crop])
@@ -424,8 +422,8 @@ class TestPublicVideoDecoderTransformOps:
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
 
-        # TODO: see test_resize_torchvision — collapse this branch once
-        # output_dtype is exposed on VideoDecoder.
+        # TODO: Relocate + parametrize over output_dtype once output_dtype is
+        # exposed on VideoDecoder.
         if output_dtype is None:
             # We want both kinds of RandomCrop objects to get arrive at the
             # same locations to crop, so we need to make sure they get the same
@@ -594,8 +592,8 @@ class TestPublicVideoDecoderTransformOps:
     )
     @pytest.mark.parametrize("output_dtype", [None, torch.float32])
     def test_transform_pipeline(self, resize, random_crop, video, output_dtype):
-        # TODO: see test_resize_torchvision — collapse this branch once
-        # output_dtype is exposed on VideoDecoder.
+        # TODO: Relocate + parametrize over output_dtype once output_dtype is
+        # exposed on VideoDecoder.
         if output_dtype is None:
             decoder = VideoDecoder(
                 video.path,
