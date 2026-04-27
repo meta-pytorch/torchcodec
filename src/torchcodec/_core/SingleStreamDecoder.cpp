@@ -585,8 +585,17 @@ void SingleStreamDecoder::addVideoStream(
   // no resize/rotation transforms are applied.
   int sourceBitDepth = getBitDepthFromAVPixelFormat(
       static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
-  outputBitDepth_ =
-      resolvedBitDepth(sourceBitDepth, videoStreamOptions.outputDtype);
+
+  // Resolve AUTO once based on the source bit depth, so downstream code
+  // that reads streamInfo.videoStreamOptions.outputDtype only has to
+  // handle UINT8 / FLOAT32.
+  if (streamInfo.videoStreamOptions.outputDtype == OutputDtype::AUTO) {
+    streamInfo.videoStreamOptions.outputDtype =
+        (sourceBitDepth > 8) ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
+  }
+
+  outputBitDepth_ = resolvedBitDepth(
+      sourceBitDepth, streamInfo.videoStreamOptions.outputDtype);
   preRotationDims_ = FrameDims(
       streamInfo.stream->codecpar->height, streamInfo.stream->codecpar->width);
 
@@ -1502,14 +1511,14 @@ torch::stable::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
 
 torch::stable::Tensor SingleStreamDecoder::maybeConvertToFloat32(
     torch::stable::Tensor& tensor) {
+  // AUTO has been resolved to UINT8 or FLOAT32 in addVideoStream, so we only
+  // need to handle FLOAT32 here.
   OutputDtype outputDtype =
       streamInfos_[activeStreamIndex_].videoStreamOptions.outputDtype;
-  bool isUInt16 = tensor.scalar_type() == torch::headeronly::ScalarType::UInt16;
-  bool shouldConvert = (outputDtype == OutputDtype::FLOAT32) ||
-      (outputDtype == OutputDtype::AUTO && isUInt16);
-  if (!shouldConvert) {
+  if (outputDtype != OutputDtype::FLOAT32) {
     return tensor;
   }
+  bool isUInt16 = tensor.scalar_type() == torch::headeronly::ScalarType::UInt16;
   double maxVal = static_cast<double>(
       isUInt16 ? std::numeric_limits<uint16_t>::max()
                : std::numeric_limits<uint8_t>::max());

@@ -154,36 +154,30 @@ class TestPublicVideoDecoderTransformOps:
             assert frame_tv.shape == expected_shape
             assert frame_tv_no_antialias.shape == expected_shape
 
-            if output_dtype == torch.float32 and is_hdr:
-                # float32 HDR: compare in uint16 space for cleaner tolerances.
-                # atol=256 in uint16 space ≈ atol=1 in uint8 space.
-                close_pct, close_atol, max_atol = 99.5, 256, 12 * 256
-                frame_resize_cmp = (frame_resize * 65535).round().to(torch.int32)
-                frame_tv_cmp = (frame_tv * 65535).round().to(torch.int32)
-                frame_tv_no_antialias_cmp = (
-                    (frame_tv_no_antialias * 65535).round().to(torch.int32)
+            # Project float32 frames back into integer space so absolute
+            # tolerances are meaningful: uint16 space for HDR (preserves
+            # sub-10-bit precision from resize), uint8 space for SDR.
+            if output_dtype == torch.float32:
+                scale = 65535 if is_hdr else 255
+                frame_resize_cmp, frame_tv_cmp, frame_tv_no_antialias_cmp = (
+                    (t * scale).round().to(torch.int32)
+                    for t in (frame_resize, frame_tv, frame_tv_no_antialias)
                 )
-            elif output_dtype == torch.float32:
-                # float32 SDR: compare in uint8 space.
-                close_pct, close_atol, max_atol = 99.8, 1, 6
-                frame_resize_cmp = (frame_resize * 255).round().to(torch.int32)
-                frame_tv_cmp = (frame_tv * 255).round().to(torch.int32)
-                frame_tv_no_antialias_cmp = (
-                    (frame_tv_no_antialias * 255).round().to(torch.int32)
-                )
-            elif is_hdr:
-                # 10-bit HDR content decoded to uint8 has slightly larger
-                # swscale vs torchvision resize diffs than native 8-bit
-                # content due to the 10->8 bit quantization in swscale
-                close_pct, close_atol, max_atol = 99.8, 1, 10
+            else:
                 frame_resize_cmp = frame_resize
                 frame_tv_cmp = frame_tv
                 frame_tv_no_antialias_cmp = frame_tv_no_antialias
+
+            # Tolerances in the chosen comparison space. atol=256 in uint16
+            # space ≈ atol=1 in uint8 space. The uint8+HDR branch bumps
+            # max_atol because 10->8 bit quantization in swscale enlarges
+            # the swscale-vs-torchvision resize diff.
+            if output_dtype == torch.float32 and is_hdr:
+                close_pct, close_atol, max_atol = 99.5, 256, 12 * 256
+            elif is_hdr:
+                close_pct, close_atol, max_atol = 99.8, 1, 10
             else:
                 close_pct, close_atol, max_atol = 99.8, 1, 6
-                frame_resize_cmp = frame_resize
-                frame_tv_cmp = frame_tv
-                frame_tv_no_antialias_cmp = frame_tv_no_antialias
 
             assert_tensor_close_on_at_least(
                 frame_resize_cmp, frame_tv_cmp, percentage=close_pct, atol=close_atol
