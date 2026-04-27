@@ -581,6 +581,19 @@ void SingleStreamDecoder::addVideoStream(
   // Set preRotationDims_ for the active stream. These are the raw encoded
   // dimensions from FFmpeg, used as a fallback for tensor pre-allocation when
   // no resize/rotation transforms are applied.
+  int sourceBitDepth = getBitDepthFromAVPixelFormat(
+      static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
+
+  // Resolve AUTO once based on the source bit depth, so downstream code
+  // that reads streamInfo.videoStreamOptions.outputDtype only has to
+  // handle UINT8 / FLOAT32.
+  if (streamInfo.videoStreamOptions.outputDtype == OutputDtype::AUTO) {
+    streamInfo.videoStreamOptions.outputDtype =
+        (sourceBitDepth > 8) ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
+  }
+
+  outputBitDepth_ = resolvedBitDepth(
+      sourceBitDepth, streamInfo.videoStreamOptions.outputDtype);
   preRotationDims_ = FrameDims(
       streamInfo.stream->codecpar->height, streamInfo.stream->codecpar->width);
 
@@ -623,7 +636,7 @@ void SingleStreamDecoder::addVideoStream(
   }
 
   deviceInterface_->initializeVideo(
-      videoStreamOptions, transforms_, resizedOutputDims_);
+      videoStreamOptions, transforms_, resizedOutputDims_, outputBitDepth_);
 }
 
 void SingleStreamDecoder::addAudioStream(
@@ -751,7 +764,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
   const auto& streamInfo = streamInfos_[activeStreamIndex_];
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
-      frameIndices.numel(), getOutputDims(), videoStreamOptions.device);
+      frameIndices.numel(),
+      getOutputDims(),
+      videoStreamOptions.device,
+      outputBitDepth_);
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -817,7 +833,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   int64_t numOutputFrames = std::ceil((stop - start) / double(step));
   const auto& videoStreamOptions = streamInfo.videoStreamOptions;
   FrameBatchOutput frameBatchOutput(
-      numOutputFrames, getOutputDims(), videoStreamOptions.device);
+      numOutputFrames,
+      getOutputDims(),
+      videoStreamOptions.device,
+      outputBitDepth_);
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -956,7 +975,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
   // below. Hence, we need this special case below.
   if (startSeconds == stopSeconds) {
     FrameBatchOutput frameBatchOutput(
-        0, getOutputDims(), videoStreamOptions.device);
+        0, getOutputDims(), videoStreamOptions.device, outputBitDepth_);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
     return frameBatchOutput;
@@ -1000,7 +1019,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     int64_t numOutputFrames = static_cast<int64_t>(std::round(product));
 
     FrameBatchOutput frameBatchOutput(
-        numOutputFrames, getOutputDims(), videoStreamOptions.device);
+        numOutputFrames,
+        getOutputDims(),
+        videoStreamOptions.device,
+        outputBitDepth_);
 
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -1047,7 +1069,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     int64_t numFrames = stopFrameIndex - startFrameIndex;
 
     FrameBatchOutput frameBatchOutput(
-        numFrames, getOutputDims(), videoStreamOptions.device);
+        numFrames, getOutputDims(), videoStreamOptions.device, outputBitDepth_);
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
     auto frameBatchOutputDurationSeconds =
@@ -1487,14 +1509,14 @@ torch::stable::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
 
 torch::stable::Tensor SingleStreamDecoder::maybeConvertToFloat32(
     torch::stable::Tensor& tensor) {
+  // AUTO has been resolved to UINT8 or FLOAT32 in addVideoStream, so we only
+  // need to handle FLOAT32 here.
   OutputDtype outputDtype =
       streamInfos_[activeStreamIndex_].videoStreamOptions.outputDtype;
-  bool isUInt16 = tensor.scalar_type() == torch::headeronly::ScalarType::UInt16;
-  bool shouldConvert = (outputDtype == OutputDtype::FLOAT32) ||
-      (outputDtype == OutputDtype::AUTO && isUInt16);
-  if (!shouldConvert) {
+  if (outputDtype != OutputDtype::FLOAT32) {
     return tensor;
   }
+  bool isUInt16 = tensor.scalar_type() == torch::headeronly::ScalarType::UInt16;
   double maxVal = static_cast<double>(
       isUInt16 ? std::numeric_limits<uint16_t>::max()
                : std::numeric_limits<uint8_t>::max());

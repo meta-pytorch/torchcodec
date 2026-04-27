@@ -405,6 +405,8 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   std::vector<std::unique_ptr<Transform>> transforms_;
   std::optional<FrameDims> resizedOutputDims_;
   FrameDims preRotationDims_;
+  // Resolved output bit depth, set once in addVideoStream.
+  int outputBitDepth_;
 
   // Whether or not we have already scanned all streams to update the metadata.
   bool scannedAllStreams_ = false;

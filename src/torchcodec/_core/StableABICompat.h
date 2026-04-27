@@ -62,6 +62,7 @@ constexpr auto kStableXPU = torch::headeronly::DeviceType::XPU;
 
 // Scalar type constants
 constexpr auto kStableUInt8 = torch::headeronly::ScalarType::Byte;
+constexpr auto kStableUInt16 = torch::headeronly::ScalarType::UInt16;
 constexpr auto kStableInt32 = torch::headeronly::ScalarType::Int;
 constexpr auto kStableInt64 = torch::headeronly::ScalarType::Long;
 constexpr auto kStableFloat32 = torch::headeronly::ScalarType::Float;

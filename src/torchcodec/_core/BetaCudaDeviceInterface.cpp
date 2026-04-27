@@ -310,7 +310,8 @@ void BetaCudaDeviceInterface::initialize(
     cpuFallback_->initializeVideo(
         VideoStreamOptions(),
         {},
-        /*resizedOutputDims=*/std::nullopt);
+        /*resizedOutputDims=*/std::nullopt,
+        /*outputBitDepth=*/8);
     // We'll always use the CPU fallback from now on, so we can return early.
     return;
   }

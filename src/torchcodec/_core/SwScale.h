@@ -14,17 +14,22 @@ namespace facebook::torchcodec {
 struct FrameDims;
 
 // SwScale uses a double swscale path:
-// 1. Color conversion (e.g., YUV -> RGB24) at the original frame resolution
-// 2. Resize in RGB24 space (if resizing is needed)
+// 1. Color conversion (e.g., YUV -> RGB24/RGB48) at the original frame
+//    resolution
+// 2. Resize in output RGB space (if resizing is needed)
 //
 // This approach ensures that transforms happen in the output color space
-// (RGB24) rather than the input color space (YUV).
+// (RGB) rather than the input color space (YUV).
 //
 // The caller is responsible for caching SwScale instances and recreating them
 // when the context changes, similar to how FilterGraph is managed.
 class SwScale {
  public:
-  SwScale(const SwsConfig& config, int swsFlags = SWS_BILINEAR);
+  // outputFormat: AV_PIX_FMT_RGB24 for 8-bit, AV_PIX_FMT_RGB48 for >8-bit
+  SwScale(
+      const SwsConfig& config,
+      AVPixelFormat outputFormat = AV_PIX_FMT_RGB24,
+      int swsFlags = SWS_BILINEAR);
 
   int convert(
       const UniqueAVFrame& avFrame,
@@ -34,15 +39,24 @@ class SwScale {
     return config_;
   }
 
+  AVPixelFormat getOutputFormat() const {
+    return outputFormat_;
+  }
+
  private:
   SwsConfig config_;
+  AVPixelFormat outputFormat_;
   int swsFlags_;
   bool needsResize_;
 
-  // Color conversion context (input format -> RGB24 at original resolution).
+  // Bytes per pixel for the output format (3 for RGB24, 6 for RGB48).
+  int bytesPerPixel_;
+
+  // Color conversion context (input format -> output RGB at original
+  // resolution).
   UniqueSwsContext colorConversionSwsContext_;
 
-  // Resize context (RGB24 -> RGB24 at output resolution).
+  // Resize context (output RGB at input res -> output RGB at output res).
   // May be null if no resize is needed.
   UniqueSwsContext resizeSwsContext_;
 };
