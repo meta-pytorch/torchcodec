@@ -662,6 +662,35 @@ class TestVideoDecoderOps:
             duration, torch.tensor(0.0334).double(), atol=0, rtol=1e-3
         )
 
+    def test_output_dtype_float32_sdr(self):
+        # float32 on an 8-bit source: C++ produces uint8 and normalizes to
+        # float32 in [0, 1]. Compare against a fresh uint8 decode from the
+        # same machine so the assertion is independent of codec variance.
+        decoder_uint8 = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_uint8)
+        uint8_frame, *_ = get_frame_at_index(decoder_uint8, frame_index=0)
+
+        decoder_float = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_float, output_dtype="float32")
+        float_frame, *_ = get_frame_at_index(decoder_float, frame_index=0)
+
+        assert uint8_frame.dtype == torch.uint8
+        assert float_frame.dtype == torch.float32
+        torch.testing.assert_close(float_frame, uint8_frame.to(torch.float32) / 255.0)
+
+    def test_output_dtype_auto_sdr_is_uint8(self):
+        # "auto" on an 8-bit source stays uint8 (no HDR path yet).
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder, output_dtype="auto")
+        frame, *_ = get_frame_at_index(decoder, frame_index=0)
+        assert frame.dtype == torch.uint8
+
+    @pytest.mark.parametrize("bad_dtype", ("not_a_dtype", "blah"))
+    def test_output_dtype_invalid(self, bad_dtype):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        with pytest.raises(RuntimeError, match="Invalid output_dtype"):
+            add_video_stream(decoder, output_dtype=bad_dtype)
+
 
 class TestAudioDecoderOps:
     @pytest.mark.parametrize(
@@ -1327,17 +1356,17 @@ class TestMultiStreamEncoderOps:
         )
         streaming_encoder_open(encoder)
         # addFrames with wrong size errors
-        frames_128 = torch.randint(0, 256, (2, 3, 128, 128), dtype=torch.uint8).to(
-            device
+        frames_128 = torch.randint(
+            0, 256, (2, 3, 128, 128), dtype=torch.uint8, device=device
         )
         with pytest.raises(RuntimeError, match="same dimensions"):
             streaming_encoder_add_frames(encoder, frames_128)
         # addFrames with different size than first also errors
-        frames_256 = torch.randint(0, 256, (2, 3, 256, 256), dtype=torch.uint8).to(
-            device
+        frames_256 = torch.randint(
+            0, 256, (2, 3, 256, 256), dtype=torch.uint8, device=device
         )
-        frames_512 = torch.randint(0, 256, (2, 3, 512, 512), dtype=torch.uint8).to(
-            device
+        frames_512 = torch.randint(
+            0, 256, (2, 3, 512, 512), dtype=torch.uint8, device=device
         )
         streaming_encoder_add_frames(encoder, frames_256)
         with pytest.raises(RuntimeError, match="same dimensions"):
@@ -1366,7 +1395,7 @@ class TestMultiStreamEncoderOps:
         streaming_encoder_add_video_stream(
             encoder, height=64, width=64, frame_rate=30.0, device=device
         )
-        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8).to(device)
+        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8, device=device)
         with pytest.raises(
             RuntimeError, match="Call open\\(\\) before addFrames\\(\\)"
         ):

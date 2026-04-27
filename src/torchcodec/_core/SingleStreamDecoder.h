@@ -276,6 +276,11 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
 
   torch::stable::Tensor maybePermuteHWC2CHW(torch::stable::Tensor& hwcTensor);
 
+  // Converts the tensor to float32 and normalizes to [0, 1] when the active
+  // stream's outputDtype calls for it (FLOAT32 always, or AUTO when the tensor
+  // is uint16). Otherwise returns the input unchanged.
+  torch::stable::Tensor maybeConvertToFloat32(torch::stable::Tensor& tensor);
+
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
