@@ -23,10 +23,6 @@ std::string getFormatFilterString(AVPixelFormat outputFormat) {
   return (outputFormat == AV_PIX_FMT_RGB48) ? "format=rgb48," : "format=rgb24,";
 }
 
-} // namespace
-
-namespace {
-
 static bool g_cpu = registerDeviceInterface(
     DeviceInterfaceKey(kStableCPU),
     [](const StableDevice& device) { return new CpuDeviceInterface(device); });
@@ -43,8 +39,7 @@ CpuDeviceInterface::CpuDeviceInterface(const StableDevice& device)
 void CpuDeviceInterface::initialize(
     const AVStream* avStream,
     [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx,
-    const SharedAVCodecContext& codecContext,
-    [[maybe_unused]] OutputDtype outputDtype) {
+    const SharedAVCodecContext& codecContext) {
   STD_TORCH_CHECK(avStream != nullptr, "avStream is null");
   codecContext_ = codecContext;
   timeBase_ = avStream->time_base;
@@ -53,10 +48,12 @@ void CpuDeviceInterface::initialize(
 void CpuDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     const std::vector<std::unique_ptr<Transform>>& transforms,
-    const std::optional<FrameDims>& resizedOutputDims) {
+    const std::optional<FrameDims>& resizedOutputDims,
+    int outputBitDepth) {
   avMediaType_ = AVMEDIA_TYPE_VIDEO;
   videoStreamOptions_ = videoStreamOptions;
   resizedOutputDims_ = resizedOutputDims;
+  outputBitDepth_ = outputBitDepth;
 
   // We can use swscale when we have a single resize transform.
   // With a single resize, we use swscale twice:
@@ -118,11 +115,7 @@ void CpuDeviceInterface::initializeVideo(
     // Build the final filters_ string with the format prefix based on the
     // resolved output bit depth. The format prefix ensures user transforms
     // run in the correct output color space (RGB24 or RGB48).
-    int sourceBitDepth = getBitDepthFromAVPixelFormat(
-        static_cast<AVPixelFormat>(codecContext_->pix_fmt));
-    int bitDepth =
-        resolvedBitDepth(sourceBitDepth, videoStreamOptions.outputDtype);
-    AVPixelFormat outputPixelFormat = getOutputPixelFormat(bitDepth);
+    AVPixelFormat outputPixelFormat = getOutputPixelFormat(outputBitDepth);
     filters_ = getFormatFilterString(outputPixelFormat) + filters.str();
   }
 
@@ -208,9 +201,9 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   // can still work in such situations, so they should.
   auto inputDims = FrameDims(avFrame->height, avFrame->width);
   auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
-  int sourceBitDepth = getBitDepthFromAVPixelFormat(avFrameFormat);
-  int bitDepth =
-      resolvedBitDepth(sourceBitDepth, videoStreamOptions_.outputDtype);
+  // Use outputBitDepth_ (set at stream setup) so output dtype matches the
+  // pre-allocated buffer; avFrameFormat is for input format identification.
+  int bitDepth = outputBitDepth_;
 
   auto outputDims = resizedOutputDims_.value_or(inputDims);
 

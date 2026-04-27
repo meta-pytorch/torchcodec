@@ -111,8 +111,7 @@ CudaDeviceInterface::~CudaDeviceInterface() {
 void CudaDeviceInterface::initialize(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
-    const SharedAVCodecContext& codecContext,
-    [[maybe_unused]] OutputDtype outputDtype) {
+    const SharedAVCodecContext& codecContext) {
   STD_TORCH_CHECK(avStream != nullptr, "avStream is null");
   codecContext_ = codecContext;
   timeBase_ = avStream->time_base;
@@ -121,18 +120,19 @@ void CudaDeviceInterface::initialize(
   cpuInterface_ = createDeviceInterface(kStableCPU);
   STD_TORCH_CHECK(
       cpuInterface_ != nullptr, "Failed to create CPU device interface");
-  cpuInterface_->initialize(
-      avStream, avFormatCtx, codecContext, OutputDtype::UINT8);
+  cpuInterface_->initialize(avStream, avFormatCtx, codecContext);
   cpuInterface_->initializeVideo(
       VideoStreamOptions(),
       {},
-      /*resizedOutputDims=*/std::nullopt);
+      /*resizedOutputDims=*/std::nullopt,
+      /*outputBitDepth=*/8);
 }
 
 void CudaDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
-    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
+    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims,
+    [[maybe_unused]] int outputBitDepth) {
   videoStreamOptions_ = videoStreamOptions;
 }
 

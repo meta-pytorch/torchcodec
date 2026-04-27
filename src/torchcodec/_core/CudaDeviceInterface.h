@@ -25,15 +25,14 @@ class CudaDeviceInterface : public DeviceInterface {
   void initialize(
       const AVStream* avStream,
       const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext,
-      OutputDtype outputDtype) override;
+      const SharedAVCodecContext& codecContext) override;
 
   void initializeVideo(
       const VideoStreamOptions& videoStreamOptions,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
           transforms,
-      [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims)
-      override;
+      [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims,
+      [[maybe_unused]] int outputBitDepth) override;
 
   void registerHardwareDeviceWithCodec(AVCodecContext* codecContext) override;
 

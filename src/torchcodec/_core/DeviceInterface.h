@@ -53,22 +53,20 @@ class DeviceInterface {
   };
 
   // Initialize the device with parameters generic to all kinds of decoding.
-  // outputDtype is passed here (rather than in initializeVideo) so that
-  // implementations can use it during initialization, e.g. to decide whether
-  // hardware decode supports the required output format.
   virtual void initialize(
       const AVStream* avStream,
       const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext,
-      OutputDtype outputDtype) = 0;
+      const SharedAVCodecContext& codecContext) = 0;
 
   // Initialize the device with parameters specific to video decoding. There is
-  // a default empty implementation.
+  // a default empty implementation. outputBitDepth is the resolved output
+  // bit depth (single source of truth, set once at stream setup).
   virtual void initializeVideo(
       [[maybe_unused]] const VideoStreamOptions& videoStreamOptions,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
           transforms,
-      [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {}
+      [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims,
+      [[maybe_unused]] int outputBitDepth) {}
 
   // Initialize the device with parameters specific to audio decoding. There is
   // a default empty implementation.
