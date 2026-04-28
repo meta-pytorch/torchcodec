@@ -180,7 +180,8 @@ FORCE_PUBLIC_VISIBILITY void validateDeviceInterface(
     const std::string& device,
     const std::string& variant);
 
-std::unique_ptr<DeviceInterface> createDeviceInterface(
+TORCHCODEC_THIRD_PARTY_API std::unique_ptr<DeviceInterface>
+createDeviceInterface(
     const StableDevice& device,
     const std::string_view variant = "ffmpeg");
 
