@@ -187,6 +187,13 @@ void WavDecoder::parseHeader() {
       findChunk("data", static_cast<uint64_t>(RIFF_HEADER_SIZE));
   header_.dataOffset = dataChunk.offset;
   header_.dataSize = dataChunk.size;
+  STD_TORCH_CHECK(
+      fileSize_ > header_.dataOffset,
+      "Invalid WAV: data chunk offset (",
+      header_.dataOffset,
+      ") exceeds file size (",
+      fileSize_,
+      ")");
 }
 
 void WavDecoder::validateHeader() {
@@ -285,12 +292,12 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   const int64_t startSample =
       static_cast<int64_t>(std::round(startSeconds * header_.sampleRate));
 
-  // Cap dataSize to actual file size to reduce risk of massive tensor
-  // allocation on corrupted files.
-  uint64_t actualFileBytes =
-      (fileSize_ > header_.dataOffset) ? fileSize_ - header_.dataOffset : 0;
+  // Cap dataSize to the available bytes after dataOffset to reduce risk of
+  // large tensor allocation on malicious files.
   int64_t endSample = static_cast<int64_t>(
-      std::min(static_cast<uint64_t>(header_.dataSize), actualFileBytes) /
+      std::min(
+          static_cast<uint64_t>(header_.dataSize),
+          fileSize_ - header_.dataOffset) /
       header_.numBytesPerSample);
   if (stopSecondsOptional.has_value()) {
     STD_TORCH_CHECK(
