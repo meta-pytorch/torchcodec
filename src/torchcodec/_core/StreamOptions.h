@@ -9,7 +9,6 @@
 #include <map>
 #include <optional>
 #include <string>
-#include <string_view>
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
@@ -50,8 +49,9 @@ struct VideoStreamOptions {
   // Note: This is not used for video encoding, because device is determined by
   // the device of the input frame tensor.
   StableDevice device = StableDevice(kStableCPU);
-  // Device variant (e.g., "ffmpeg", "beta", etc.)
-  std::string_view deviceVariant = "ffmpeg";
+  // Device variant is stored in StreamInfo and reused after the op call
+  // returns, so it must own its contents.
+  std::string deviceVariant = "ffmpeg";
 
   // Controls the dtype of decoded frame tensors. Default UINT8 preserves
   // existing behavior; FLOAT32 and AUTO are used for high-bit-depth output
