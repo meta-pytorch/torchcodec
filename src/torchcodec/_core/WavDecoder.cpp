@@ -124,18 +124,17 @@ WavDecoder::WavDecoder(const std::string& path)
       isLittleEndian(), "WAV decoder requires little-endian architecture");
   STD_TORCH_CHECK(file_.is_open(), "Failed to open WAV file: ", path);
 
-  uint64_t fileSize;
   try {
-    fileSize = std::filesystem::file_size(path);
+    fileSize_ = std::filesystem::file_size(path);
   } catch (const std::filesystem::filesystem_error& e) {
     STD_TORCH_CHECK(
         false, "Failed to get file size for: ", path, ". Error: ", e.what());
   }
-  parseHeader(fileSize);
+  parseHeader();
   validateHeader();
 }
 
-void WavDecoder::parseHeader(uint64_t fileSize) {
+void WavDecoder::parseHeader() {
   safeSeek(file_, 0, std::ios::beg);
 
   std::array<uint8_t, RIFF_HEADER_SIZE> riffHeader;
@@ -149,7 +148,7 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
       "Missing WAVE format identifier");
 
   ChunkInfo fmtChunk =
-      findChunk("fmt ", static_cast<uint64_t>(RIFF_HEADER_SIZE), fileSize);
+      findChunk("fmt ", static_cast<uint64_t>(RIFF_HEADER_SIZE));
   STD_TORCH_CHECK(
       fmtChunk.size >= MIN_FMT_CHUNK_SIZE,
       "Invalid fmt chunk: size must be at least ",
@@ -185,7 +184,7 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
   }
 
   ChunkInfo dataChunk =
-      findChunk("data", static_cast<uint64_t>(RIFF_HEADER_SIZE), fileSize);
+      findChunk("data", static_cast<uint64_t>(RIFF_HEADER_SIZE));
   header_.dataOffset = dataChunk.offset;
   header_.dataSize = dataChunk.size;
 }
@@ -227,13 +226,12 @@ void WavDecoder::validateHeader() {
 // its offset and size.
 WavDecoder::ChunkInfo WavDecoder::findChunk(
     std::string_view chunkId,
-    uint64_t startPos,
-    uint64_t fileSize) {
+    uint64_t startPos) {
   STD_TORCH_CHECK(
-      fileSize >= static_cast<uint64_t>(CHUNK_HEADER_SIZE),
+      fileSize_ >= static_cast<uint64_t>(CHUNK_HEADER_SIZE),
       "File too small to contain chunk:",
       chunkId);
-  while (startPos <= fileSize - CHUNK_HEADER_SIZE) {
+  while (startPos <= fileSize_ - CHUNK_HEADER_SIZE) {
     safeSeek(
         file_, validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
 
@@ -263,13 +261,6 @@ void WavDecoder::convertSamplesToFloat(
     float* outputPtr) const {
   int64_t totalSamples = samplesInBuffer * header_.numChannels;
 
-  // Currently only supporting 32-bit PCM
-  STD_TORCH_CHECK(
-      header_.bitsPerSample == 32,
-      "Unsupported PCM bit depth in conversion: ",
-      header_.bitsPerSample,
-      ". Currently supported: 32");
-
   // Normalize 32-bit PCM samples to [-1.0, 1.0] range.
   // We use readValue because the buffer size is already validated above.
   constexpr float scale =
@@ -294,8 +285,13 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   const int64_t startSample =
       static_cast<int64_t>(std::round(startSeconds * header_.sampleRate));
 
-  int64_t endSample =
-      static_cast<int64_t>(header_.dataSize / header_.numBytesPerSample);
+  // Cap dataSize to actual file size to reduce risk of massive tensor
+  // allocation on corrupted files.
+  uint64_t actualFileBytes =
+      (fileSize_ > header_.dataOffset) ? fileSize_ - header_.dataOffset : 0;
+  int64_t endSample = static_cast<int64_t>(
+      std::min(static_cast<uint64_t>(header_.dataSize), actualFileBytes) /
+      header_.numBytesPerSample);
   if (stopSecondsOptional.has_value()) {
     STD_TORCH_CHECK(
         startSeconds <= stopSecondsOptional.value(),

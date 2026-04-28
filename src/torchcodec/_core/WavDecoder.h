@@ -55,11 +55,8 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
     ChunkInfo(uint64_t offset, uint32_t size) : offset(offset), size(size) {}
   };
 
-  ChunkInfo findChunk(
-      std::string_view chunkId,
-      uint64_t startPos,
-      uint64_t fileSizeLimit);
-  void parseHeader(uint64_t actualFileSize);
+  ChunkInfo findChunk(std::string_view chunkId, uint64_t startPos);
+  void parseHeader();
   void validateHeader();
   void convertSamplesToFloat(
       const std::vector<uint8_t>& bufferData,
@@ -68,6 +65,7 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
 
   std::ifstream file_;
   WavHeader header_;
+  uint64_t fileSize_ = 0;
   std::string sampleFormat_;
   std::string codecName_;
 };
