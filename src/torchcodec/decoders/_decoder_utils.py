@@ -14,7 +14,7 @@ from torchcodec import _core
 
 # Thread-local and async-safe storage for the current CUDA backend
 _CUDA_BACKEND: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "_CUDA_BACKEND", default="ffmpeg"
+    "_CUDA_BACKEND", default="default"
 )
 
 
@@ -24,14 +24,8 @@ def set_cuda_backend(backend: str) -> Generator[None, None, None]:
 
     This context manager allows you to specify which CUDA backend implementation
     to use when creating :class:`~torchcodec.decoders.VideoDecoder` instances
-    with CUDA devices.
-
-    .. note::
-        **We recommend trying the "beta" backend instead of the default "ffmpeg"
-        backend!** The beta backend is faster, and will eventually become the
-        default in future versions. It may have rough edges that we'll polish
-        over time, but it's already quite stable and ready for adoption. Let us
-        know what you think!
+    with CUDA devices. The "default" backend is used unless this context manager
+    is active.
 
     Only the creation of the decoder needs to be inside the context manager, the
     decoding methods can be called outside of it. You still need to pass
@@ -42,21 +36,23 @@ def set_cuda_backend(backend: str) -> Generator[None, None, None]:
     This is thread-safe and async-safe.
 
     Args:
-        backend (str): The CUDA backend to use. Can be "ffmpeg" (default) or
-            "beta". We recommend trying "beta" as it's faster!
+        backend (str): The CUDA backend to use. Can be "default" or "ffmpeg".
 
     Example:
-        >>> with set_cuda_backend("beta"):
+        >>> with set_cuda_backend("ffmpeg"):
         ...     decoder = VideoDecoder("video.mp4", device="cuda")
         ...
         ... # Only the decoder creation needs to be part of the context manager.
-        ... # Decoder will now the beta CUDA implementation:
+        ... # Decoder will use the FFmpeg CUDA implementation:
         ... decoder.get_frame_at(0)
     """
     backend = backend.lower()
-    if backend not in ("ffmpeg", "beta"):
+    # "beta" is kept as a backwards-compatible alias for "default".
+    if backend == "beta":
+        backend = "default"
+    if backend not in ("default", "ffmpeg"):
         raise ValueError(
-            f"Invalid CUDA backend ({backend}). Supported values are 'ffmpeg' and 'beta'."
+            f"Invalid CUDA backend ({backend}). Supported values are 'default' and 'ffmpeg'."
         )
 
     previous_state = _CUDA_BACKEND.set(backend)

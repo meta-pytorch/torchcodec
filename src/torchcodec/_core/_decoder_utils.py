@@ -163,7 +163,7 @@ def create_video_decoder(
     dimension_order: str = "NCHW",
     num_ffmpeg_threads: int = 1,
     device: str,
-    device_variant: str = "ffmpeg",
+    device_variant: str = "default",
     transforms: Sequence[DecoderTransform | nn.Module] | None = None,
     custom_frame_mappings: tuple[Tensor, Tensor, Tensor] | None = None,
 ) -> tuple[Tensor, int, VideoStreamMetadata]:

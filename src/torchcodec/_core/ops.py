@@ -79,7 +79,7 @@ def add_video_stream(
     dimension_order: str | None = None,
     stream_index: int | None = None,
     device: str = "cpu",
-    device_variant: str = "ffmpeg",
+    device_variant: str = "default",
     transform_specs: str = "",
     custom_frame_mappings: (
         tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
@@ -411,7 +411,7 @@ def _add_video_stream_abstract(
     dimension_order: str | None = None,
     stream_index: int | None = None,
     device: str = "cpu",
-    device_variant: str = "ffmpeg",
+    device_variant: str = "default",
     transform_specs: str = "",
     custom_frame_mappings_pts: torch.Tensor | None = None,
     custom_frame_mappings_duration: torch.Tensor | None = None,
@@ -430,7 +430,7 @@ def add_video_stream_abstract(
     dimension_order: str | None = None,
     stream_index: int | None = None,
     device: str = "cpu",
-    device_variant: str = "ffmpeg",
+    device_variant: str = "default",
     transform_specs: str = "",
     custom_frame_mappings_pts: torch.Tensor | None = None,
     custom_frame_mappings_duration: torch.Tensor | None = None,
