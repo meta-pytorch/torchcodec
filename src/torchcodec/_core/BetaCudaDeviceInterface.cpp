@@ -892,8 +892,8 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     // preAllocatedOutputTensor has post-rotation dimensions, but NV12->RGB
     // conversion outputs pre-rotation dimensions, so we can't use it as the
     // conversion destination or validate it against the frame shape.
-    // Once we support native transforms on the beta CUDA interface, rotation
-    // should be handled as part of the transform pipeline instead.
+    // Once we support native transforms on the default CUDA interface,
+    // rotation should be handled as part of the transform pipeline instead.
     frameOutput.data = convertNV12FrameToRGB(
         gpuFrame,
         device_,
