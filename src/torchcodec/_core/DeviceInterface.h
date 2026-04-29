@@ -182,7 +182,7 @@ FORCE_PUBLIC_VISIBILITY void validateDeviceInterface(
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
     const StableDevice& device,
-    const std::string_view variant = "ffmpeg");
+    const std::string_view variant = "default");
 
 torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 
