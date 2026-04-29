@@ -706,6 +706,14 @@ void sortCodecOptions(
     }
   }
 }
+
+// The default CUDA interface is decode-only; encoders need the FFmpeg-based
+// one.
+std::unique_ptr<DeviceInterface> createEncoderDeviceInterface(
+    const StableDevice& device) {
+  return createDeviceInterface(
+      device, device.type() == kStableCUDA ? "ffmpeg" : "default");
+}
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
@@ -777,7 +785,7 @@ VideoEncoder::VideoEncoder(
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
   auto tensorDevice = frames_.device();
-  deviceInterface_ = createDeviceInterface(StableDevice(
+  deviceInterface_ = createEncoderDeviceInterface(StableDevice(
       static_cast<StableDeviceType>(tensorDevice.type()),
       tensorDevice.index()));
   const AVCodec* avCodec = nullptr;
@@ -1113,7 +1121,7 @@ void MultiStreamEncoder::addVideoStream(
   STD_TORCH_CHECK(frameRate > 0, "frame_rate must be > 0, got ", frameRate);
   videoStream_.emplace();
   videoStream_->deviceInterface =
-      createDeviceInterface(StableDevice(std::move(device)));
+      createEncoderDeviceInterface(StableDevice(std::move(device)));
   videoStream_->inHeight = height;
   videoStream_->inWidth = width;
   videoStream_->inFrameRate = frameRate;
