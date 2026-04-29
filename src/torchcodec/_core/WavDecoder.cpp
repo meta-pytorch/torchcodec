@@ -211,6 +211,23 @@ void WavDecoder::validateHeader() {
   STD_TORCH_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
   STD_TORCH_CHECK(
       header_.numBytesPerSample > 0, "Invalid WAV: zero block alignment");
+  // The WAV spec requires numBytesPerSample == numChannels * bitsPerSample / 8.
+  // https://en.wikipedia.org/wiki/WAV#WAV_file_header
+  // Our output tensor has (dataSize / numBytesPerSample) * numChannels
+  // elements. By validating numBytesPerSample is consistent with numChannels,
+  // total tensor size is bounded by the file:
+  //   dataSize / (numChannels * bitsPerSample/8) * numChannels
+  //   = dataSize / (bitsPerSample/8)
+  // Without this check, a corrupt numChannels could multiply tensor size
+  // independently of dataSize.
+  STD_TORCH_CHECK(
+      header_.numBytesPerSample ==
+          header_.numChannels * (header_.bitsPerSample / 8),
+      "Invalid WAV: block alignment (",
+      header_.numBytesPerSample,
+      ") does not match numChannels * bitsPerSample/8 (",
+      header_.numChannels * (header_.bitsPerSample / 8),
+      ")");
 
   if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 32) {
     sampleFormat_ = "s32";
@@ -286,7 +303,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       static_cast<int64_t>(std::round(startSeconds * header_.sampleRate));
 
   // Cap dataSize to file size to reduce risk of large tensor allocation on
-  // malicious files.
+  // corrupt files with incorrect dataSize.
   int64_t endSample = static_cast<int64_t>(
       std::min(static_cast<uint64_t>(header_.dataSize), fileSize_) /
       header_.numBytesPerSample);
