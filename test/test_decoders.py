@@ -238,6 +238,7 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_getitem_slice(self, device, seek_mode):
+        device_param = device  # make_video_decoder shadows `device` below
         decoder, device = make_video_decoder(
             NASA_VIDEO.path, device=device, seek_mode=seek_mode
         )
@@ -387,7 +388,7 @@ class TestVideoDecoder:
             ]
         )
         for sliced, ref in zip(all_frames, decoder):
-            if not (device == "cuda:ffmpeg" and ffmpeg_major_version == 4):
+            if not (device_param == "cuda:ffmpeg" and ffmpeg_major_version == 4):
                 # TODO: remove the "if".
                 # See https://github.com/pytorch/torchcodec/issues/428
                 assert_frames_equal(sliced, ref)

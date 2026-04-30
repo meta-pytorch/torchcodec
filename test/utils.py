@@ -45,23 +45,17 @@ _CUDA_FFMPEG_DEVICE_STR = "cuda:ffmpeg"
 
 
 def all_supported_devices():
-    # Note: the legacy FFmpeg CUDA path is listed before plain "cuda" (the new
-    # NVDEC default) so that when both run in the same process, FFmpeg CUDA
-    # runs first — matching the test ordering used before BetaCuda became the
-    # default. NVDEC state appears to pollute later FFmpeg CUDA runs, causing
-    # otherwise-deterministic tests to drift.
     return (
         "cpu",
-        pytest.param(_CUDA_FFMPEG_DEVICE_STR, marks=pytest.mark.needs_cuda),
         pytest.param("cuda", marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_FFMPEG_DEVICE_STR, marks=pytest.mark.needs_cuda),
     )
 
 
 def cuda_devices():
-    # See note in all_supported_devices() about ordering.
     return (
-        pytest.param(_CUDA_FFMPEG_DEVICE_STR, marks=pytest.mark.needs_cuda),
         pytest.param("cuda", marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_FFMPEG_DEVICE_STR, marks=pytest.mark.needs_cuda),
     )
 
 
