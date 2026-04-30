@@ -387,7 +387,7 @@ class TestVideoDecoder:
             ]
         )
         for sliced, ref in zip(all_frames, decoder):
-            if not (device == "cuda" and ffmpeg_major_version == 4):
+            if not (device == "cuda:ffmpeg" and ffmpeg_major_version == 4):
                 # TODO: remove the "if".
                 # See https://github.com/pytorch/torchcodec/issues/428
                 assert_frames_equal(sliced, ref)
@@ -633,7 +633,7 @@ class TestVideoDecoder:
 
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frame_at_av1(self, device):
-        if device == "cuda" and ffmpeg_major_version == 4:
+        if device == "cuda:ffmpeg" and ffmpeg_major_version == 4:
             return
 
         if "cuda" in device and in_fbcode():
@@ -1147,7 +1147,7 @@ class TestVideoDecoder:
 
         # All duplicated frames should have the same content as frame 0
         frame0_data = decoder.get_frame_at(0).data
-        if not (device == "cuda" and ffmpeg_major_version == 4):
+        if not (device == "cuda:ffmpeg" and ffmpeg_major_version == 4):
             for i in range(len(frames_high_fps)):
                 torch.testing.assert_close(
                     frames_high_fps.data[i], frame0_data, atol=0, rtol=0
@@ -1159,7 +1159,7 @@ class TestVideoDecoder:
             start_seconds, stop_seconds, fps=None
         )
         assert len(frames_no_fps) == len(frames_none_fps)
-        if not (device == "cuda" and ffmpeg_major_version == 4):
+        if not (device == "cuda:ffmpeg" and ffmpeg_major_version == 4):
             torch.testing.assert_close(
                 frames_no_fps.data, frames_none_fps.data, atol=0, rtol=0
             )
@@ -1245,7 +1245,7 @@ class TestVideoDecoder:
         assert len(all_frames) == len(frames_in_range)
         # Use strict bitwise equality, except for FFmpeg 4 + CUDA FFmpeg
         # interface which has known issues (see #428)
-        if not (device == "cuda" and ffmpeg_major_version == 4):
+        if not (device == "cuda:ffmpeg" and ffmpeg_major_version == 4):
             torch.testing.assert_close(
                 all_frames.data, frames_in_range.data, atol=0, rtol=0
             )
@@ -1260,7 +1260,7 @@ class TestVideoDecoder:
         assert len(all_frames_with_fps) == len(frames_in_range_with_fps)
         # Use strict bitwise equality, except for FFmpeg 4 + CUDA FFmpeg
         # interface which has known issues (see #428)
-        if not (device == "cuda" and ffmpeg_major_version == 4):
+        if not (device == "cuda:ffmpeg" and ffmpeg_major_version == 4):
             torch.testing.assert_close(
                 all_frames_with_fps.data, frames_in_range_with_fps.data, atol=0, rtol=0
             )
