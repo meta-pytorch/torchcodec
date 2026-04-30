@@ -1520,12 +1520,19 @@ class TestVideoDecoder:
         # results.
         # TODO see other TODO below in test_10bit_videos_cpu: we should validate
         # the frames against a reference.
+        #
+        # This test exercises the FFmpeg CUDA interface specifically: its CPU
+        # fallback delegates directly to CpuDeviceInterface, so the output
+        # matches a pure CPU decoder bit-for-bit. The default (NVDEC) interface
+        # has a different fallback path that round-trips through GPU NV12 (an
+        # 8-bit format) and produces different output for 10-bit content.
 
         # We know from previous tests that the H264_10BITS video isn't supported
         # by NVDEC, so NVDEC decodes it on the CPU.
         asset = H264_10BITS
 
-        decoder_gpu = VideoDecoder(asset.path, device="cuda")
+        with set_cuda_backend("ffmpeg"):
+            decoder_gpu = VideoDecoder(asset.path, device="cuda")
         decoder_cpu = VideoDecoder(asset.path)
 
         frame_indices = [0, 10, 20, 5]
