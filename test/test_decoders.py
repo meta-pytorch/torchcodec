@@ -678,13 +678,18 @@ class TestVideoDecoder:
         ref_frame6 = H265_VIDEO.get_frame_data_by_index(5)
         assert_frames_equal(ref_frame6, decoder.get_frame_played_at(0.5).data)
 
+    @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
-    def test_get_frames_at_backward_seek_after_eof(self, seek_mode):
+    def test_get_frames_at_backward_seek_after_eof(self, seek_mode, device):
         # Regression test for https://github.com/meta-pytorch/torchcodec/issues/1339.
         # For HEVC codecs (e.g. libx265), decoding a frame near EOF and recieving EOF,
         # then seeking backwards returns a stale frame instead of the requested earlier frame.
-        reference_decoder = VideoDecoder(TEST_SRC_2_720P_H265.path, seek_mode=seek_mode)
-        decoder = VideoDecoder(TEST_SRC_2_720P_H265.path, seek_mode=seek_mode)
+        reference_decoder, _ = make_video_decoder(
+            TEST_SRC_2_720P_H265.path, device=device, seek_mode=seek_mode
+        )
+        decoder, _ = make_video_decoder(
+            TEST_SRC_2_720P_H265.path, device=device, seek_mode=seek_mode
+        )
         expected_frame0 = reference_decoder.get_frame_at(0)
         expected_frame58 = reference_decoder.get_frame_at(58)
 
