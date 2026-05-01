@@ -540,7 +540,14 @@ UniqueAVFrame convertAudioAVFrameSamples(
 }
 
 int getBitDepthFromAVPixelFormat(AVPixelFormat format) {
-  return av_pix_fmt_desc_get(format)->comp[0].depth;
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(format);
+  // Fall back to 8 if the format wasn't probed (codecpar->format can be
+  // AV_PIX_FMT_NONE for streams where avformat_find_stream_info couldn't
+  // determine the format). 8 matches the legacy default (UINT8 output).
+  if (desc == nullptr) {
+    return 8;
+  }
+  return desc->comp[0].depth;
 }
 
 void setFFmpegLogLevel() {
@@ -692,36 +699,36 @@ SwsConfig::SwsConfig(
     AVPixelFormat inputFormat,
     AVColorSpace inputColorspace,
     int outputWidth,
-    int outputHeight)
+    int outputHeight,
+    AVPixelFormat outputFormat)
     : inputWidth(inputWidth),
       inputHeight(inputHeight),
       inputFormat(inputFormat),
       inputColorspace(inputColorspace),
       outputWidth(outputWidth),
-      outputHeight(outputHeight) {}
+      outputHeight(outputHeight),
+      outputFormat(outputFormat) {}
 
 bool SwsConfig::operator==(const SwsConfig& other) const {
   return inputWidth == other.inputWidth && inputHeight == other.inputHeight &&
       inputFormat == other.inputFormat &&
       inputColorspace == other.inputColorspace &&
-      outputWidth == other.outputWidth && outputHeight == other.outputHeight;
+      outputWidth == other.outputWidth && outputHeight == other.outputHeight &&
+      outputFormat == other.outputFormat;
 }
 
 bool SwsConfig::operator!=(const SwsConfig& other) const {
   return !(*this == other);
 }
 
-UniqueSwsContext createSwsContext(
-    const SwsConfig& swsConfig,
-    AVPixelFormat outputFormat,
-    int swsFlags) {
+UniqueSwsContext createSwsContext(const SwsConfig& swsConfig, int swsFlags) {
   SwsContext* swsContext = sws_getContext(
       swsConfig.inputWidth,
       swsConfig.inputHeight,
       swsConfig.inputFormat,
       swsConfig.outputWidth,
       swsConfig.outputHeight,
-      outputFormat,
+      swsConfig.outputFormat,
       swsFlags,
       nullptr,
       nullptr,

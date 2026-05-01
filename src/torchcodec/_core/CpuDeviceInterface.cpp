@@ -228,19 +228,17 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
     outputTensor = preAllocatedOutputTensor.value_or(
         allocateEmptyHWCTensor(outputDims, kStableCPU, bitDepth));
 
-    AVPixelFormat outputPixelFormat = getOutputPixelFormat(bitDepth);
     SwsConfig swsConfig(
         avFrame->width,
         avFrame->height,
         avFrameFormat,
         avFrame->colorspace,
         outputDims.width,
-        outputDims.height);
+        outputDims.height,
+        getOutputPixelFormat(bitDepth));
 
-    if (!swScale_ || swScale_->getConfig() != swsConfig ||
-        swScale_->getOutputFormat() != outputPixelFormat) {
-      swScale_ =
-          std::make_unique<SwScale>(swsConfig, outputPixelFormat, swsFlags_);
+    if (!swScale_ || swScale_->getConfig() != swsConfig) {
+      swScale_ = std::make_unique<SwScale>(swsConfig, swsFlags_);
     }
 
     int resultHeight = swScale_->convert(avFrame, outputTensor);

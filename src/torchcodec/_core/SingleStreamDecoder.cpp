@@ -578,9 +578,6 @@ void SingleStreamDecoder::addVideoStream(
         activeStreamIndex_, customFrameMappings.value());
   }
 
-  // Set preRotationDims_ for the active stream. These are the raw encoded
-  // dimensions from FFmpeg, used as a fallback for tensor pre-allocation when
-  // no resize/rotation transforms are applied.
   int sourceBitDepth = getBitDepthFromAVPixelFormat(
       static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
 
@@ -592,6 +589,9 @@ void SingleStreamDecoder::addVideoStream(
         (sourceBitDepth > 8) ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
   }
 
+  // Single source of truth for output bit depth: resolved here once at stream
+  // setup, then passed to the device interface and used for all downstream
+  // frame allocation and format conversion.
   outputBitDepth_ = resolvedBitDepth(
       sourceBitDepth, streamInfo.videoStreamOptions.outputDtype);
   preRotationDims_ = FrameDims(

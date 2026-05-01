@@ -9,34 +9,31 @@
 
 namespace facebook::torchcodec {
 
-SwScale::SwScale(
-    const SwsConfig& config,
-    AVPixelFormat outputFormat,
-    int swsFlags)
-    : config_(config), outputFormat_(outputFormat), swsFlags_(swsFlags) {
+SwScale::SwScale(const SwsConfig& config, int swsFlags)
+    : config_(config), swsFlags_(swsFlags) {
   needsResize_ =
       (config_.inputHeight != config_.outputHeight ||
        config_.inputWidth != config_.outputWidth);
 
   // RGB24 = 3 channels x 1 byte (uint8); RGB48 = 3 channels x 2 bytes (uint16).
-  bytesPerPixel_ = (outputFormat_ == AV_PIX_FMT_RGB48) ? 6 : 3;
+  bytesPerPixel_ = (config_.outputFormat == AV_PIX_FMT_RGB48) ? 6 : 3;
 
   // Create color conversion context (input format -> output RGB format).
   // Color conversion always outputs at the input resolution.
   // When no resize is needed, input and output resolutions are the same.
+  // See [Transform and Format Conversion Order] for more on the output pixel
+  // format.
   SwsConfig colorConversionFrameConfig(
       config_.inputWidth,
       config_.inputHeight,
       config_.inputFormat,
       config_.inputColorspace,
       config_.inputWidth,
-      config_.inputHeight);
+      config_.inputHeight,
+      config_.outputFormat);
 
   colorConversionSwsContext_ = createSwsContext(
       colorConversionFrameConfig,
-      // See [Transform and Format Conversion Order] for more on the output
-      // pixel format.
-      /*outputFormat=*/outputFormat_,
       // No flags for color conversion. When resizing is needed, we use a
       // separate swscale context with the appropriate resize flags.
       /*swsFlags=*/0);
@@ -47,15 +44,13 @@ SwScale::SwScale(
     SwsConfig resizeFrameConfig(
         config_.inputWidth,
         config_.inputHeight,
-        outputFormat_,
+        config_.outputFormat,
         AVCOL_SPC_RGB,
         config_.outputWidth,
-        config_.outputHeight);
+        config_.outputHeight,
+        config_.outputFormat);
 
-    resizeSwsContext_ = createSwsContext(
-        resizeFrameConfig,
-        /*outputFormat=*/outputFormat_,
-        /*swsFlags=*/swsFlags_);
+    resizeSwsContext_ = createSwsContext(resizeFrameConfig, swsFlags_);
   }
 }
 
@@ -70,7 +65,7 @@ int SwScale::convert(
   // When no resize is needed, we do color conversion directly into the output
   // tensor.
   // RGB48 stores 16-bit per channel (uint16); RGB24 stores 8-bit (uint8).
-  int bitDepth = (outputFormat_ == AV_PIX_FMT_RGB48) ? 16 : 8;
+  int bitDepth = (config_.outputFormat == AV_PIX_FMT_RGB48) ? 16 : 8;
   torch::stable::Tensor colorConvertedTensor = needsResize_
       ? allocateEmptyHWCTensor(
             FrameDims(config_.inputHeight, config_.inputWidth),

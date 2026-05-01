@@ -137,27 +137,20 @@ torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
 
   std::vector<int64_t> shape = {height, width, 3};
 
-  if (format == AV_PIX_FMT_RGB48) {
-    // RGB48: 6 bytes per pixel (3 channels x 2 bytes each).
-    // Strides are in uint16 elements: linesize is in bytes, so divide by 2.
-    std::vector<int64_t> strides = {avFrameClone->linesize[0] / 2, 3, 1};
-    return torch::stable::from_blob(
-        avFrameClone->data[0],
-        shape,
-        strides,
-        StableDevice(kStableCPU),
-        kStableUInt16,
-        deleter);
-  } else {
-    std::vector<int64_t> strides = {avFrameClone->linesize[0], 3, 1};
-    return torch::stable::from_blob(
-        avFrameClone->data[0],
-        shape,
-        strides,
-        StableDevice(kStableCPU),
-        kStableUInt8,
-        deleter);
-  }
+  // RGB48 stores 2 bytes per channel (uint16); RGB24 stores 1 byte (uint8).
+  // linesize is in bytes, but torch strides are in elements, so divide.
+  int bytesPerElement = (format == AV_PIX_FMT_RGB48) ? 2 : 1;
+  auto dtype = (format == AV_PIX_FMT_RGB48) ? kStableUInt16 : kStableUInt8;
+  std::vector<int64_t> strides = {
+      avFrameClone->linesize[0] / bytesPerElement, 3, 1};
+
+  return torch::stable::from_blob(
+      avFrameClone->data[0],
+      shape,
+      strides,
+      StableDevice(kStableCPU),
+      dtype,
+      deleter);
 }
 
 } // namespace facebook::torchcodec

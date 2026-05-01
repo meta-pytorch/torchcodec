@@ -76,6 +76,12 @@ INDEX_OF_FRAME_AT_6_SECONDS = 180
 
 
 class TestVideoDecoderOps:
+    @staticmethod
+    def _assert_float32_matches_rgb48_ref(frame, asset, frame_index):
+        frame_as_uint16 = (frame * 65535).round().to(torch.uint16)
+        ref = asset.get_frame_data_by_index_rgb48(frame_index)
+        torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
+
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_seek_and_next(self, device):
         decoder = create_from_file(str(NASA_VIDEO.path))
@@ -706,9 +712,7 @@ class TestVideoDecoderOps:
                 # swscale YUV10->RGB48 differs on Windows + FFmpeg 4
                 continue
 
-            frame_as_uint16 = (frame * 65535).round().to(torch.uint16)
-            ref = NASA_VIDEO_HDR.get_frame_data_by_index_rgb48(frame_index)
-            torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
+            self._assert_float32_matches_rgb48_ref(frame, NASA_VIDEO_HDR, frame_index)
 
     @pytest.mark.parametrize("bad_dtype", ("not_a_dtype", "blah"))
     def test_output_dtype_invalid(self, bad_dtype):
@@ -717,32 +721,9 @@ class TestVideoDecoderOps:
             add_video_stream(decoder, output_dtype=bad_dtype)
 
     @pytest.mark.parametrize(
-        "asset",
-        (
-            pytest.param(
-                NASA_VIDEO_HDR,
-                marks=pytest.mark.skipif(
-                    IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                TEST_SRC_2_720P_HDR,
-                marks=pytest.mark.skipif(
-                    IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                TEST_SRC_2_12BIT_HDR,
-                marks=pytest.mark.skipif(
-                    IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="swscale YUV12->RGB48 differs on Windows + FFmpeg 4",
-                ),
-            ),
-        ),
+        "asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR)
     )
-    def test_10bit_float32_against_ffmpeg_rgb48(self, asset):
+    def test_output_dtype_float32_hdr(self, asset):
         # Validate float32 HDR decode against ffmpeg CLI's rgb48 output.
         # CPU uses the same swscale path as ffmpeg, so we expect exact match.
         decoder = create_from_file(str(asset.path))
@@ -751,54 +732,34 @@ class TestVideoDecoderOps:
         for frame_index in [0, 5, 10]:
             frame, *_ = get_frame_at_index(decoder, frame_index=frame_index)
             assert frame.dtype == torch.float32
-            frame_as_uint16 = (frame * 65535).round().to(torch.uint16)
-            ref = asset.get_frame_data_by_index_rgb48(frame_index)
-            torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
+            if IS_WINDOWS and ffmpeg_major_version < 5:
+                # swscale YUV->RGB48 differs on Windows + FFmpeg 4
+                continue
+            self._assert_float32_matches_rgb48_ref(frame, asset, frame_index)
 
-    @pytest.mark.parametrize(
-        "asset",
-        (
-            pytest.param(
-                NASA_VIDEO_HDR,
-                marks=pytest.mark.skipif(
-                    IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                TEST_SRC_2_720P_HDR,
-                marks=pytest.mark.skipif(
-                    IS_WINDOWS and ffmpeg_major_version < 5,
-                    reason="swscale YUV10->RGB48 differs on Windows + FFmpeg 4",
-                ),
-            ),
-        ),
-    )
+    @pytest.mark.parametrize("asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR))
     def test_10bit_batch_apis(self, asset):
         # Validate batch APIs on 10-bit float32 content against ffmpeg rgb48
         # references.
+        if IS_WINDOWS and ffmpeg_major_version < 5:
+            pytest.skip("swscale YUV->RGB48 differs on Windows + FFmpeg 4")
         decoder = create_from_file(str(asset.path))
         add_video_stream(decoder, output_dtype="float32")
 
-        def assert_frame_correct(frame, frame_index):
-            frame_as_uint16 = (frame * 65535).round().to(torch.uint16)
-            ref = asset.get_frame_data_by_index_rgb48(frame_index)
-            torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
-
         # get_frame_at_index
         frame0, *_ = get_frame_at_index(decoder, frame_index=0)
-        assert_frame_correct(frame0, 0)
+        self._assert_float32_matches_rgb48_ref(frame0, asset, 0)
 
         # get_frames_at_indices
         indices = [0, 5, 10]
         frames, *_ = get_frames_at_indices(decoder, frame_indices=indices)
         for i, idx in enumerate(indices):
-            assert_frame_correct(frames[i], idx)
+            self._assert_float32_matches_rgb48_ref(frames[i], asset, idx)
 
         # get_frames_in_range — validate frames 5 and 10 against refs
         frames_range, *_ = get_frames_in_range(decoder, start=5, stop=11)
-        assert_frame_correct(frames_range[0], 5)
-        assert_frame_correct(frames_range[5], 10)
+        self._assert_float32_matches_rgb48_ref(frames_range[0], asset, 5)
+        self._assert_float32_matches_rgb48_ref(frames_range[5], asset, 10)
 
 
 class TestAudioDecoderOps:

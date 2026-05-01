@@ -25,11 +25,9 @@ struct FrameDims;
 // when the context changes, similar to how FilterGraph is managed.
 class SwScale {
  public:
-  // outputFormat: AV_PIX_FMT_RGB24 for 8-bit, AV_PIX_FMT_RGB48 for >8-bit
-  SwScale(
-      const SwsConfig& config,
-      AVPixelFormat outputFormat = AV_PIX_FMT_RGB24,
-      int swsFlags = SWS_BILINEAR);
+  // config.outputFormat is AV_PIX_FMT_RGB24 for 8-bit, AV_PIX_FMT_RGB48 for
+  // >8-bit.
+  SwScale(const SwsConfig& config, int swsFlags = SWS_BILINEAR);
 
   int convert(
       const UniqueAVFrame& avFrame,
@@ -39,13 +37,8 @@ class SwScale {
     return config_;
   }
 
-  AVPixelFormat getOutputFormat() const {
-    return outputFormat_;
-  }
-
  private:
   SwsConfig config_;
-  AVPixelFormat outputFormat_;
   int swsFlags_;
   bool needsResize_;
 

@@ -59,8 +59,7 @@ class DeviceInterface {
       const SharedAVCodecContext& codecContext) = 0;
 
   // Initialize the device with parameters specific to video decoding. There is
-  // a default empty implementation. outputBitDepth is the resolved output
-  // bit depth (single source of truth, set once at stream setup).
+  // a default empty implementation.
   virtual void initializeVideo(
       [[maybe_unused]] const VideoStreamOptions& videoStreamOptions,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
