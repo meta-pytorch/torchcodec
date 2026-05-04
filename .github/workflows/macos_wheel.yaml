@@ -32,10 +32,6 @@ jobs:
       os: macos-arm64
       test-infra-repository: pytorch/test-infra
       test-infra-ref: main
-      with-xpu: disable
-      with-rocm: disable
-      with-cuda: disable
-      build-python-only: "disable"
 
   build:
     needs: generate-matrix
