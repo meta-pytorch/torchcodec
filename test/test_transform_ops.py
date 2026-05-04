@@ -141,7 +141,7 @@ class TestPublicVideoDecoderTransformOps:
         # Ops-level float32 path. We lose the torchcodec-vs-torchvision
         # class-parity check (that inherently requires VideoDecoder), but we
         # still validate decoder-time-resize vs post-decode-v2-resize.
-        # TODO: Consolidate with test_resize_torchvision once output_dtype is
+        # TODO HDR: Consolidate with test_resize_torchvision once output_dtype is
         # exposed on VideoDecoder.
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
@@ -154,8 +154,8 @@ class TestPublicVideoDecoderTransformOps:
         add_video_stream(decoder_full, output_dtype="float32")
         num_frames = len(VideoDecoder(video.path))
 
-        # 10-bit sources (the HDR ones here) need a looser tolerance — swscale
-        # and torchvision's bilinear disagree more at higher bit depth.
+        # Video sources greater than 8 bits need a looser tolerance —
+        # swscale and torchvision's bilinear disagree more at higher bit depth.
         max_atol = 12 if is_hdr else 6
 
         for frame_index in [
@@ -334,7 +334,7 @@ class TestPublicVideoDecoderTransformOps:
         # Ops-level float32 path. We lose the torchcodec-vs-torchvision
         # class-parity check (that inherently requires VideoDecoder), but we
         # still validate decoder-time-crop vs post-decode-v2-crop.
-        # TODO: Consolidate with test_center_crop_torchvision once output_dtype
+        # TODO HDR: Consolidate with test_center_crop_torchvision once output_dtype
         # is exposed on VideoDecoder.
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
@@ -471,7 +471,7 @@ class TestPublicVideoDecoderTransformOps:
         # Ops-level float32 path. We lose the torchcodec-vs-torchvision
         # class-parity check (that inherently requires VideoDecoder), but we
         # still validate decoder-time-crop vs post-decode-v2-crop.
-        # TODO: Consolidate with test_random_crop_torchvision once output_dtype
+        # TODO HDR: Consolidate with test_random_crop_torchvision once output_dtype
         # is exposed on VideoDecoder.
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
@@ -629,7 +629,7 @@ class TestPublicVideoDecoderTransformOps:
     )
     def test_transform_pipeline_float32(self, resize, random_crop, video):
         # Ops-level float32 path. Validates pipeline shape only.
-        # TODO: Consolidate with test_transform_pipeline once output_dtype is
+        # TODO HDR: Consolidate with test_transform_pipeline once output_dtype is
         # exposed on VideoDecoder.
         spec = _make_transform_specs(
             [
