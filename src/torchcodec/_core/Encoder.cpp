@@ -1115,7 +1115,7 @@ void MultiStreamEncoder::addVideoStream(
   STD_TORCH_CHECK(height > 0, "height must be > 0, got ", height);
   STD_TORCH_CHECK(width > 0, "width must be > 0, got ", width);
   STD_TORCH_CHECK(frameRate > 0, "frame_rate must be > 0, got ", frameRate);
-  videoStream_.emplace();
+  videoStream_ = VideoStream{};
   StableDevice stableDevice(std::move(device));
   // The default CUDA interface is decode-only; encoders need the FFmpeg-based
   // one.
