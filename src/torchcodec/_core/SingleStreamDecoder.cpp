@@ -1277,14 +1277,14 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
 // This method looks at currentPts and desiredPts and seeks in the
 // AVFormatContext if it is needed. We can skip seeking in certain cases. See
 // the comment of canWeAvoidSeeking() for details.
-void SingleStreamDecoder::maybeSeekToBeforeDesiredPts() {
+bool SingleStreamDecoder::maybeSeekToBeforeDesiredPts() {
   validateActiveStream();
   StreamInfo& streamInfo = streamInfos_[activeStreamIndex_];
 
   decodeStats_.numSeeksAttempted++;
   if (canWeAvoidSeeking()) {
     decodeStats_.numSeeksSkipped++;
-    return;
+    return false;
   }
 
   int64_t desiredPts = cursor_;
@@ -1317,6 +1317,7 @@ void SingleStreamDecoder::maybeSeekToBeforeDesiredPts() {
 
   decodeStats_.numFlushes++;
   deviceInterface_->flush();
+  return true;
 }
 
 // --------------------------------------------------------------------------
@@ -1329,7 +1330,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
 
   resetDecodeStats();
 
-  maybeSeekToBeforeDesiredPts();
+  bool justSeeked = maybeSeekToBeforeDesiredPts();
   cursorWasJustSet_ = false;
 
   UniqueAVFrame avFrame(av_frame_alloc());
@@ -1342,6 +1343,15 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
   // hardware-specific optimizations.
   while (true) {
     status = deviceInterface_->receiveFrame(avFrame);
+
+    if (justSeeked && status == AVSUCCESS) {
+      // If we just seeked and have not sent any new packets after seeking,
+      // but a frame was returned, the frame is stale.
+      // We should continue to receive frames until we get EAGAIN indicating
+      // the decoder is not holding any more stale frames and is raedy for new
+      // packets.
+      continue;
+    }
 
     if (status != AVSUCCESS && status != AVERROR(EAGAIN)) {
       // Non-retriable error
@@ -1408,6 +1418,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
         "Could not push packet to decoder: ",
         getFFMPEGErrorStringFromErrorCode(status));
 
+    justSeeked = false;
     decodeStats_.numPacketsSentToDecoder++;
   }
 
