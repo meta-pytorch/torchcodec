@@ -390,6 +390,12 @@ void BetaCudaDeviceInterface::initializeBSF(
           avFormatCtx->iformat->name ? avFormatCtx->iformat->name : "";
       if (formatName == "avi") {
         filterName = "mpeg4_unpack_bframes";
+      } else {
+        // For MPEG-4 Part 2 in MP4/MOV/etc., codec configuration (VOS/VOL)
+        // lives only in extradata. Unlike H.264/HEVC there's no codec-specific
+        // BSF that injects it inline, so use dump_extra to prepend extradata
+        // to keyframe packets — the NVCUVID parser needs this to initialize.
+        filterName = "dump_extra";
       }
       break;
     }

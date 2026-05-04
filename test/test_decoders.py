@@ -59,6 +59,7 @@ from .utils import (
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
     TEST_SRC_2_720P_MPEG4,
+    TEST_SRC_2_720P_MPEG4_MP4,
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
 )
@@ -1919,6 +1920,30 @@ class TestVideoDecoder:
 
             assert beta_frame.pts_seconds == ref_frame.pts_seconds
             assert beta_frame.duration_seconds == ref_frame.duration_seconds
+
+    @needs_cuda
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_beta_cuda_interface_mpeg4_mp4_first_frame(self, seek_mode):
+        # Regression test for https://github.com/meta-pytorch/torchcodec/issues/1340.
+        # MPEG-4 Part 2 in MP4 stores codec config (VOS/VOL) only in extradata,
+        # never inline. Without the dump_extra BSF, the NVCUVID parser could
+        # not initialize.
+        ref_decoder = VideoDecoder(
+            TEST_SRC_2_720P_MPEG4_MP4.path, device="cuda", seek_mode=seek_mode
+        )
+        with set_cuda_backend("beta"):
+            beta_decoder = VideoDecoder(
+                TEST_SRC_2_720P_MPEG4_MP4.path, device="cuda", seek_mode=seek_mode
+            )
+
+        expected_frame0 = ref_decoder.get_frame_at(0)
+        frame0 = beta_decoder.get_frame_at(0)
+
+        assert frame0.pts_seconds == expected_frame0.pts_seconds
+        assert frame0.duration_seconds == expected_frame0.duration_seconds
+        assert frame0.data.shape == expected_frame0.data.shape
+        # Strict pixel equality is skipped — TODONVDEC P1 above (BT.601 vs
+        # BT.709 color matrix mismatch between the ffmpeg and beta cuda).
 
     @needs_cuda
     def test_beta_cuda_interface_cpu_fallback(self):
