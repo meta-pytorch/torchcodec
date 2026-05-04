@@ -67,63 +67,27 @@ class TestPublicVideoDecoderTransformOps:
             ),
         ],
     )
-    @pytest.mark.parametrize("output_dtype", [None, torch.float32])
     def test_resize_torchvision(
-        self, video, output_dtype, height_scaling_factor, width_scaling_factor
+        self, video, height_scaling_factor, width_scaling_factor
     ):
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
         is_hdr = video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR)
 
-        # TODO: Relocate + parametrize over output_dtype once output_dtype is
-        # exposed on VideoDecoder.
-        if output_dtype is None:
-            # We're using both the TorchCodec object and the TorchVision object
-            # to ensure that they specify exactly the same thing.
-            decoder_resize = VideoDecoder(
-                video.path,
-                transforms=[torchcodec.transforms.Resize(size=(height, width))],
-            )
-            decoder_resize_tv = VideoDecoder(
-                video.path,
-                transforms=[v2.Resize(size=(height, width))],
-            )
-            decoder_full = VideoDecoder(video.path)
+        # We're using both the TorchCodec object and the TorchVision object
+        # to ensure that they specify exactly the same thing.
+        decoder_resize = VideoDecoder(
+            video.path,
+            transforms=[torchcodec.transforms.Resize(size=(height, width))],
+        )
+        decoder_resize_tv = VideoDecoder(
+            video.path,
+            transforms=[v2.Resize(size=(height, width))],
+        )
+        decoder_full = VideoDecoder(video.path)
 
-            num_frames = len(decoder_resize)
-            assert num_frames == len(decoder_full)
-
-            def get_resize_frame(i):
-                return decoder_resize[i]
-
-            def get_resize_tv_frame(i):
-                return decoder_resize_tv[i]
-
-            def get_full_frame(i):
-                return decoder_full[i]
-
-        else:
-            # Ops-level float32 path. We lose the torchcodec-vs-torchvision
-            # class-parity check (that inherently requires VideoDecoder), but
-            # we still validate decoder-time-resize vs post-decode-v2-resize.
-            spec = f"resize,{height},{width}"
-            decoder_resize = create_from_file(str(video.path))
-            add_video_stream(
-                decoder_resize, transform_specs=spec, output_dtype="float32"
-            )
-            decoder_full = create_from_file(str(video.path))
-            add_video_stream(decoder_full, output_dtype="float32")
-            num_frames = len(VideoDecoder(video.path))  # for index computation
-
-            def get_resize_frame(i):
-                data, *_ = get_frame_at_index(decoder_resize, frame_index=i)
-                return data
-
-            get_resize_tv_frame = None  # no class-parity test on this path
-
-            def get_full_frame(i):
-                data, *_ = get_frame_at_index(decoder_full, frame_index=i)
-                return data
+        num_frames = len(decoder_resize)
+        assert num_frames == len(decoder_full)
 
         for frame_index in [
             0,
@@ -136,13 +100,112 @@ class TestPublicVideoDecoderTransformOps:
             int(num_frames * 0.90),
             num_frames - 1,
         ]:
-            frame_resize = get_resize_frame(frame_index)
+            frame_resize = decoder_resize[frame_index]
+            frame_resize_tv = decoder_resize_tv[frame_index]
+            assert_frames_equal(frame_resize_tv, frame_resize)
 
-            if get_resize_tv_frame is not None:
-                frame_resize_tv = get_resize_tv_frame(frame_index)
-                assert_frames_equal(frame_resize_tv, frame_resize)
+            frame_full = decoder_full[frame_index]
+            frame_tv = v2.functional.resize(frame_full, size=(height, width))
+            frame_tv_no_antialias = v2.functional.resize(
+                frame_full, size=(height, width), antialias=False
+            )
 
-            frame_full = get_full_frame(frame_index)
+            expected_shape = (video.get_num_color_channels(), height, width)
+            assert frame_resize.shape == expected_shape
+            assert frame_tv.shape == expected_shape
+            assert frame_tv_no_antialias.shape == expected_shape
+
+            # max_atol is bumped on HDR because 10->8 bit quantization in
+            # swscale enlarges the swscale-vs-torchvision resize diff.
+            close_pct, close_atol = 99.8, 1
+            max_atol = 10 if is_hdr else 6
+
+            assert_tensor_close_on_at_least(
+                frame_resize, frame_tv, percentage=close_pct, atol=close_atol
+            )
+            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=max_atol)
+
+            if height_scaling_factor < 1 or width_scaling_factor < 1:
+                # Antialias only relevant when down-scaling!
+                # For HDR content with mild downscale factors, the
+                # antialias difference may be too small to detect.
+                if not is_hdr:
+                    with pytest.raises(AssertionError, match="Expected at least"):
+                        assert_tensor_close_on_at_least(
+                            frame_resize,
+                            frame_tv_no_antialias,
+                            percentage=99,
+                            atol=close_atol,
+                        )
+                    with pytest.raises(
+                        AssertionError, match="Tensor-likes are not close"
+                    ):
+                        torch.testing.assert_close(
+                            frame_resize,
+                            frame_tv_no_antialias,
+                            rtol=0,
+                            atol=max_atol,
+                        )
+
+    @pytest.mark.parametrize(
+        "height_scaling_factor, width_scaling_factor",
+        ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
+    )
+    @pytest.mark.parametrize(
+        "video",
+        [
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            pytest.param(
+                NASA_VIDEO_HDR,
+                marks=pytest.mark.skipif(
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                TEST_SRC_2_720P_HDR,
+                marks=pytest.mark.skipif(
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
+                ),
+            ),
+        ],
+    )
+    def test_resize_torchvision_float32(
+        self, video, height_scaling_factor, width_scaling_factor
+    ):
+        # Ops-level float32 path. We lose the torchcodec-vs-torchvision
+        # class-parity check (that inherently requires VideoDecoder), but we
+        # still validate decoder-time-resize vs post-decode-v2-resize.
+        # TODO: Consolidate with test_resize_torchvision once output_dtype is
+        # exposed on VideoDecoder.
+        height = int(video.get_height() * height_scaling_factor)
+        width = int(video.get_width() * width_scaling_factor)
+        is_hdr = video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR)
+
+        spec = f"resize,{height},{width}"
+        decoder_resize = create_from_file(str(video.path))
+        add_video_stream(decoder_resize, transform_specs=spec, output_dtype="float32")
+        decoder_full = create_from_file(str(video.path))
+        add_video_stream(decoder_full, output_dtype="float32")
+        num_frames = len(VideoDecoder(video.path))
+
+        for frame_index in [
+            0,
+            int(num_frames * 0.1),
+            int(num_frames * 0.2),
+            int(num_frames * 0.3),
+            int(num_frames * 0.4),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            int(num_frames * 0.90),
+            num_frames - 1,
+        ]:
+            frame_resize, *_ = get_frame_at_index(
+                decoder_resize, frame_index=frame_index
+            )
+            frame_full, *_ = get_frame_at_index(decoder_full, frame_index=frame_index)
 
             frame_tv = v2.functional.resize(frame_full, size=(height, width))
             frame_tv_no_antialias = v2.functional.resize(
@@ -157,25 +220,16 @@ class TestPublicVideoDecoderTransformOps:
             # Project float32 frames back into integer space so absolute
             # tolerances are meaningful: uint16 space for HDR (preserves
             # sub-10-bit precision from resize), uint8 space for SDR.
-            if output_dtype == torch.float32:
-                scale = 65535 if is_hdr else 255
-                frame_resize_cmp, frame_tv_cmp, frame_tv_no_antialias_cmp = (
-                    (t * scale).round().to(torch.int32)
-                    for t in (frame_resize, frame_tv, frame_tv_no_antialias)
-                )
-            else:
-                frame_resize_cmp = frame_resize
-                frame_tv_cmp = frame_tv
-                frame_tv_no_antialias_cmp = frame_tv_no_antialias
+            scale = 65535 if is_hdr else 255
+            frame_resize_cmp, frame_tv_cmp, frame_tv_no_antialias_cmp = (
+                (t * scale).round().to(torch.int32)
+                for t in (frame_resize, frame_tv, frame_tv_no_antialias)
+            )
 
             # Tolerances in the chosen comparison space. atol=256 in uint16
-            # space ≈ atol=1 in uint8 space. The uint8+HDR branch bumps
-            # max_atol because 10->8 bit quantization in swscale enlarges
-            # the swscale-vs-torchvision resize diff.
-            if output_dtype == torch.float32 and is_hdr:
+            # space ≈ atol=1 in uint8 space.
+            if is_hdr:
                 close_pct, close_atol, max_atol = 99.5, 256, 12 * 256
-            elif is_hdr:
-                close_pct, close_atol, max_atol = 99.8, 1, 10
             else:
                 close_pct, close_atol, max_atol = 99.8, 1, 6
 
@@ -291,58 +345,24 @@ class TestPublicVideoDecoderTransformOps:
             ),
         ],
     )
-    @pytest.mark.parametrize("output_dtype", [None, torch.float32])
     def test_center_crop_torchvision(
         self,
         height_scaling_factor,
         width_scaling_factor,
         video,
-        output_dtype,
     ):
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
 
-        # TODO: Relocate + parametrize over output_dtype once output_dtype is
-        # exposed on VideoDecoder.
-        if output_dtype is None:
-            tc_center_crop = torchcodec.transforms.CenterCrop(size=(height, width))
-            decoder_center_crop = VideoDecoder(video.path, transforms=[tc_center_crop])
-            decoder_center_crop_tv = VideoDecoder(
-                video.path,
-                transforms=[v2.CenterCrop(size=(height, width))],
-            )
-            decoder_full = VideoDecoder(video.path)
-            num_frames = len(decoder_center_crop_tv)
-            assert num_frames == len(decoder_full)
-
-            def get_cc_frame(i):
-                return decoder_center_crop[i]
-
-            def get_cc_tv_frame(i):
-                return decoder_center_crop_tv[i]
-
-            def get_full_frame(i):
-                return decoder_full[i]
-
-        else:
-            spec = f"center_crop,{height},{width}"
-            decoder_center_crop = create_from_file(str(video.path))
-            add_video_stream(
-                decoder_center_crop, transform_specs=spec, output_dtype="float32"
-            )
-            decoder_full = create_from_file(str(video.path))
-            add_video_stream(decoder_full, output_dtype="float32")
-            num_frames = len(VideoDecoder(video.path))
-
-            def get_cc_frame(i):
-                data, *_ = get_frame_at_index(decoder_center_crop, frame_index=i)
-                return data
-
-            get_cc_tv_frame = None
-
-            def get_full_frame(i):
-                data, *_ = get_frame_at_index(decoder_full, frame_index=i)
-                return data
+        tc_center_crop = torchcodec.transforms.CenterCrop(size=(height, width))
+        decoder_center_crop = VideoDecoder(video.path, transforms=[tc_center_crop])
+        decoder_center_crop_tv = VideoDecoder(
+            video.path,
+            transforms=[v2.CenterCrop(size=(height, width))],
+        )
+        decoder_full = VideoDecoder(video.path)
+        num_frames = len(decoder_center_crop_tv)
+        assert num_frames == len(decoder_full)
 
         for frame_index in [
             0,
@@ -351,16 +371,80 @@ class TestPublicVideoDecoderTransformOps:
             int(num_frames * 0.75),
             num_frames - 1,
         ]:
-            frame_center_crop = get_cc_frame(frame_index)
-
-            if get_cc_tv_frame is not None:
-                frame_center_crop_tv = get_cc_tv_frame(frame_index)
-                assert_frames_equal(frame_center_crop, frame_center_crop_tv)
+            frame_center_crop = decoder_center_crop[frame_index]
+            frame_center_crop_tv = decoder_center_crop_tv[frame_index]
+            assert_frames_equal(frame_center_crop, frame_center_crop_tv)
 
             expected_shape = (video.get_num_color_channels(), height, width)
             assert frame_center_crop.shape == expected_shape
 
-            frame_full = get_full_frame(frame_index)
+            frame_full = decoder_full[frame_index]
+            frame_tv = v2.CenterCrop(size=(height, width))(frame_full)
+            assert_frames_equal(frame_center_crop, frame_tv)
+
+    @pytest.mark.parametrize(
+        "height_scaling_factor, width_scaling_factor",
+        ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.15, 0.75)),
+    )
+    @pytest.mark.parametrize(
+        "video",
+        [
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            pytest.param(
+                NASA_VIDEO_HDR,
+                marks=pytest.mark.skipif(
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                TEST_SRC_2_720P_HDR,
+                marks=pytest.mark.skipif(
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
+                ),
+            ),
+        ],
+    )
+    def test_center_crop_torchvision_float32(
+        self,
+        height_scaling_factor,
+        width_scaling_factor,
+        video,
+    ):
+        # Ops-level float32 path. We lose the torchcodec-vs-torchvision
+        # class-parity check (that inherently requires VideoDecoder), but we
+        # still validate decoder-time-crop vs post-decode-v2-crop.
+        # TODO: Consolidate with test_center_crop_torchvision once output_dtype
+        # is exposed on VideoDecoder.
+        height = int(video.get_height() * height_scaling_factor)
+        width = int(video.get_width() * width_scaling_factor)
+
+        spec = f"center_crop,{height},{width}"
+        decoder_center_crop = create_from_file(str(video.path))
+        add_video_stream(
+            decoder_center_crop, transform_specs=spec, output_dtype="float32"
+        )
+        decoder_full = create_from_file(str(video.path))
+        add_video_stream(decoder_full, output_dtype="float32")
+        num_frames = len(VideoDecoder(video.path))
+
+        for frame_index in [
+            0,
+            int(num_frames * 0.25),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            num_frames - 1,
+        ]:
+            frame_center_crop, *_ = get_frame_at_index(
+                decoder_center_crop, frame_index=frame_index
+            )
+            frame_full, *_ = get_frame_at_index(decoder_full, frame_index=frame_index)
+
+            expected_shape = (video.get_num_color_channels(), height, width)
+            assert frame_center_crop.shape == expected_shape
+
             frame_tv = v2.CenterCrop(size=(height, width))(frame_full)
             assert_frames_equal(frame_center_crop, frame_tv)
 
@@ -404,77 +488,36 @@ class TestPublicVideoDecoderTransformOps:
         ],
     )
     @pytest.mark.parametrize("seed", [0, 1234])
-    @pytest.mark.parametrize("output_dtype", [None, torch.float32])
     def test_random_crop_torchvision(
         self,
         height_scaling_factor,
         width_scaling_factor,
         video,
         seed,
-        output_dtype,
     ):
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
 
-        # TODO: Relocate + parametrize over output_dtype once output_dtype is
-        # exposed on VideoDecoder.
-        if output_dtype is None:
-            # We want both kinds of RandomCrop objects to get arrive at the
-            # same locations to crop, so we need to make sure they get the same
-            # random seed. It's used in RandomCrop's _make_transform_spec()
-            # method, called by the VideoDecoder.
-            torch.manual_seed(seed)
-            tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
-            decoder_random_crop = VideoDecoder(video.path, transforms=[tc_random_crop])
+        # We want both kinds of RandomCrop objects to get arrive at the
+        # same locations to crop, so we need to make sure they get the same
+        # random seed. It's used in RandomCrop's _make_transform_spec()
+        # method, called by the VideoDecoder.
+        torch.manual_seed(seed)
+        tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
+        decoder_random_crop = VideoDecoder(video.path, transforms=[tc_random_crop])
 
-            # Resetting manual seed for when TorchCodec's RandomCrop, created
-            # from the TorchVision RandomCrop, is used inside of the
-            # VideoDecoder. It needs to match the call above.
-            torch.manual_seed(seed)
-            decoder_random_crop_tv = VideoDecoder(
-                video.path,
-                transforms=[v2.RandomCrop(size=(height, width))],
-            )
+        # Resetting manual seed for when TorchCodec's RandomCrop, created
+        # from the TorchVision RandomCrop, is used inside of the
+        # VideoDecoder. It needs to match the call above.
+        torch.manual_seed(seed)
+        decoder_random_crop_tv = VideoDecoder(
+            video.path,
+            transforms=[v2.RandomCrop(size=(height, width))],
+        )
 
-            decoder_full = VideoDecoder(video.path)
-            num_frames = len(decoder_random_crop_tv)
-            assert num_frames == len(decoder_full)
-
-            def get_rc_frame(i):
-                return decoder_random_crop[i]
-
-            def get_rc_tv_frame(i):
-                return decoder_random_crop_tv[i]
-
-            def get_full_frame(i):
-                return decoder_full[i]
-
-        else:
-            # Generate the spec from a seeded torchcodec RandomCrop, then push
-            # it through the ops layer. Skips the tc-vs-v2 class-parity check.
-            torch.manual_seed(seed)
-            tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
-            spec = _make_transform_specs(
-                [tc_random_crop],
-                input_dims=(video.get_height(), video.get_width()),
-            )
-            decoder_random_crop = create_from_file(str(video.path))
-            add_video_stream(
-                decoder_random_crop, transform_specs=spec, output_dtype="float32"
-            )
-            decoder_full = create_from_file(str(video.path))
-            add_video_stream(decoder_full, output_dtype="float32")
-            num_frames = len(VideoDecoder(video.path))
-
-            def get_rc_frame(i):
-                data, *_ = get_frame_at_index(decoder_random_crop, frame_index=i)
-                return data
-
-            get_rc_tv_frame = None
-
-            def get_full_frame(i):
-                data, *_ = get_frame_at_index(decoder_full, frame_index=i)
-                return data
+        decoder_full = VideoDecoder(video.path)
+        num_frames = len(decoder_random_crop_tv)
+        assert num_frames == len(decoder_full)
 
         for frame_index in [
             0,
@@ -483,11 +526,9 @@ class TestPublicVideoDecoderTransformOps:
             int(num_frames * 0.75),
             num_frames - 1,
         ]:
-            frame_random_crop = get_rc_frame(frame_index)
-
-            if get_rc_tv_frame is not None:
-                frame_random_crop_tv = get_rc_tv_frame(frame_index)
-                assert_frames_equal(frame_random_crop, frame_random_crop_tv)
+            frame_random_crop = decoder_random_crop[frame_index]
+            frame_random_crop_tv = decoder_random_crop_tv[frame_index]
+            assert_frames_equal(frame_random_crop, frame_random_crop_tv)
 
             expected_shape = (video.get_num_color_channels(), height, width)
             assert frame_random_crop.shape == expected_shape
@@ -495,7 +536,85 @@ class TestPublicVideoDecoderTransformOps:
             # Resetting manual seed to make sure the invocation of the
             # TorchVision RandomCrop matches the call above.
             torch.manual_seed(seed)
-            frame_full = get_full_frame(frame_index)
+            frame_full = decoder_full[frame_index]
+            frame_tv = v2.RandomCrop(size=(height, width))(frame_full)
+            assert_frames_equal(frame_random_crop, frame_tv)
+
+    @pytest.mark.parametrize(
+        "height_scaling_factor, width_scaling_factor",
+        ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.15, 0.75)),
+    )
+    @pytest.mark.parametrize(
+        "video",
+        [
+            NASA_VIDEO,
+            TEST_SRC_2_720P,
+            pytest.param(
+                NASA_VIDEO_HDR,
+                marks=pytest.mark.skipif(
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
+                ),
+            ),
+            pytest.param(
+                TEST_SRC_2_720P_HDR,
+                marks=pytest.mark.skipif(
+                    torchcodec.ffmpeg_major_version < 5,
+                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
+                ),
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("seed", [0, 1234])
+    def test_random_crop_torchvision_float32(
+        self,
+        height_scaling_factor,
+        width_scaling_factor,
+        video,
+        seed,
+    ):
+        # Ops-level float32 path. We lose the torchcodec-vs-torchvision
+        # class-parity check (that inherently requires VideoDecoder), but we
+        # still validate decoder-time-crop vs post-decode-v2-crop.
+        # TODO: Consolidate with test_random_crop_torchvision once output_dtype
+        # is exposed on VideoDecoder.
+        height = int(video.get_height() * height_scaling_factor)
+        width = int(video.get_width() * width_scaling_factor)
+
+        # Generate the spec from a seeded torchcodec RandomCrop, then push it
+        # through the ops layer.
+        torch.manual_seed(seed)
+        tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
+        spec = _make_transform_specs(
+            [tc_random_crop],
+            input_dims=(video.get_height(), video.get_width()),
+        )
+        decoder_random_crop = create_from_file(str(video.path))
+        add_video_stream(
+            decoder_random_crop, transform_specs=spec, output_dtype="float32"
+        )
+        decoder_full = create_from_file(str(video.path))
+        add_video_stream(decoder_full, output_dtype="float32")
+        num_frames = len(VideoDecoder(video.path))
+
+        for frame_index in [
+            0,
+            int(num_frames * 0.25),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            num_frames - 1,
+        ]:
+            frame_random_crop, *_ = get_frame_at_index(
+                decoder_random_crop, frame_index=frame_index
+            )
+
+            expected_shape = (video.get_num_color_channels(), height, width)
+            assert frame_random_crop.shape == expected_shape
+
+            # Resetting manual seed to make sure the invocation of the
+            # TorchVision RandomCrop matches the call above.
+            torch.manual_seed(seed)
+            frame_full, *_ = get_frame_at_index(decoder_full, frame_index=frame_index)
             frame_tv = v2.RandomCrop(size=(height, width))(frame_full)
             assert_frames_equal(frame_random_crop, frame_tv)
 
@@ -584,41 +703,52 @@ class TestPublicVideoDecoderTransformOps:
     @pytest.mark.parametrize(
         "video", [TEST_SRC_2_720P, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR]
     )
-    @pytest.mark.parametrize("output_dtype", [None, torch.float32])
-    def test_transform_pipeline(self, resize, random_crop, video, output_dtype):
-        # TODO: Relocate + parametrize over output_dtype once output_dtype is
+    def test_transform_pipeline(self, resize, random_crop, video):
+        decoder = VideoDecoder(
+            video.path,
+            transforms=[
+                # resized to bigger than original
+                resize(size=(2160, 3840)),
+                # crop to smaller than the resize, but still bigger than original
+                random_crop(size=(1080, 1920)),
+            ],
+        )
+
+        num_frames = len(decoder)
+        for frame_index in [
+            0,
+            int(num_frames * 0.25),
+            int(num_frames * 0.5),
+            int(num_frames * 0.75),
+            num_frames - 1,
+        ]:
+            frame = decoder[frame_index]
+            assert frame.shape == (video.get_num_color_channels(), 1080, 1920)
+
+    @pytest.mark.parametrize(
+        "resize, random_crop",
+        [
+            (torchcodec.transforms.Resize, torchcodec.transforms.RandomCrop),
+            (v2.Resize, v2.RandomCrop),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "video", [TEST_SRC_2_720P, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR]
+    )
+    def test_transform_pipeline_float32(self, resize, random_crop, video):
+        # Ops-level float32 path. Validates pipeline shape only.
+        # TODO: Consolidate with test_transform_pipeline once output_dtype is
         # exposed on VideoDecoder.
-        if output_dtype is None:
-            decoder = VideoDecoder(
-                video.path,
-                transforms=[
-                    # resized to bigger than original
-                    resize(size=(2160, 3840)),
-                    # crop to smaller than the resize, but still bigger than original
-                    random_crop(size=(1080, 1920)),
-                ],
-            )
-
-            def get_frame(i):
-                return decoder[i]
-
-            num_frames = len(decoder)
-        else:
-            spec = _make_transform_specs(
-                [
-                    resize(size=(2160, 3840)),
-                    random_crop(size=(1080, 1920)),
-                ],
-                input_dims=(video.get_height(), video.get_width()),
-            )
-            decoder = create_from_file(str(video.path))
-            add_video_stream(decoder, transform_specs=spec, output_dtype="float32")
-
-            def get_frame(i):
-                data, *_ = get_frame_at_index(decoder, frame_index=i)
-                return data
-
-            num_frames = len(VideoDecoder(video.path))
+        spec = _make_transform_specs(
+            [
+                resize(size=(2160, 3840)),
+                random_crop(size=(1080, 1920)),
+            ],
+            input_dims=(video.get_height(), video.get_width()),
+        )
+        decoder = create_from_file(str(video.path))
+        add_video_stream(decoder, transform_specs=spec, output_dtype="float32")
+        num_frames = len(VideoDecoder(video.path))
 
         for frame_index in [
             0,
@@ -627,7 +757,7 @@ class TestPublicVideoDecoderTransformOps:
             int(num_frames * 0.75),
             num_frames - 1,
         ]:
-            frame = get_frame(frame_index)
+            frame, *_ = get_frame_at_index(decoder, frame_index=frame_index)
             assert frame.shape == (video.get_num_color_channels(), 1080, 1920)
 
     def test_transform_fails(self):
