@@ -1261,17 +1261,9 @@ void streaming_encoder_add_audio_stream(
   unwrapTensorToGetMultiStreamEncoder(encoder)->addAudioStream(
       validateInt64ToInt(sample_rate, "sample_rate"),
       validateInt64ToInt(num_channels, "num_channels"),
-      bit_rate.has_value()
-          ? std::optional<int>(validateInt64ToInt(*bit_rate, "bit_rate"))
-          : std::nullopt,
-      desired_num_channels.has_value()
-          ? std::optional<int>(validateInt64ToInt(
-                *desired_num_channels, "desired_num_channels"))
-          : std::nullopt,
-      desired_sample_rate.has_value()
-          ? std::optional<int>(
-                validateInt64ToInt(*desired_sample_rate, "desired_sample_rate"))
-          : std::nullopt);
+      validateOptionalInt64ToInt(bit_rate, "bit_rate"),
+      validateOptionalInt64ToInt(desired_num_channels, "desired_num_channels"),
+      validateOptionalInt64ToInt(desired_sample_rate, "desired_sample_rate"));
 }
 
 void streaming_encoder_add_frames(
