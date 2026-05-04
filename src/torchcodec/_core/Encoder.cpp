@@ -1124,6 +1124,33 @@ void MultiStreamEncoder::addVideoStream(
   videoStream_->options.extraOptions = std::move(extraOptions);
 }
 
+void MultiStreamEncoder::addAudioStream(
+    int sampleRate,
+    int numChannels,
+    std::optional<int> bitRate,
+    std::optional<int> desiredNumChannels,
+    std::optional<int> desiredSampleRate) {
+  STD_TORCH_CHECK(
+      !audioStream_.has_value(),
+      "An audio stream has already been added. Cannot add another.");
+  STD_TORCH_CHECK(sampleRate > 0, "sample_rate must be > 0, got ", sampleRate);
+  STD_TORCH_CHECK(
+      numChannels > 0, "num_channels must be > 0, got ", numChannels);
+  STD_TORCH_CHECK(
+      numChannels <= AV_NUM_DATA_POINTERS,
+      "num_channels must be <= ",
+      AV_NUM_DATA_POINTERS,
+      ", got ",
+      numChannels);
+
+  audioStream_ = AudioStream{};
+  audioStream_->inSampleRate = sampleRate;
+  audioStream_->inNumChannels = numChannels;
+  audioStream_->options.bitRate = bitRate;
+  audioStream_->options.numChannels = desiredNumChannels;
+  audioStream_->options.sampleRate = desiredSampleRate;
+}
+
 void MultiStreamEncoder::initializeVideoStream() {
   // TODO MultiStreamEncoder: Iterate over all video streams
   auto& videoStream = *videoStream_;
@@ -1280,12 +1307,80 @@ void MultiStreamEncoder::initializeVideoStream() {
       getFFMPEGErrorStringFromErrorCode(status));
 }
 
+void MultiStreamEncoder::initializeAudioStream() {
+  auto& audioStream = *audioStream_;
+  // We use the AVFormatContext's default codec for that
+  // specific format/container.
+  const AVCodec* avCodec =
+      avcodec_find_encoder(avFormatContext_->oformat->audio_codec);
+  STD_TORCH_CHECK(avCodec != nullptr, "Codec not found");
+
+  AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
+  STD_TORCH_CHECK(
+      avCodecContext != nullptr, "Couldn't allocate codec context.");
+  audioStream.avCodecContext.reset(avCodecContext);
+
+  auto desiredBitRate = audioStream.options.bitRate;
+  if (desiredBitRate.has_value()) {
+    STD_TORCH_CHECK(
+        *desiredBitRate >= 0, "bit_rate=", *desiredBitRate, " must be >= 0.");
+  }
+  // bit_rate=None defaults to 0, which is what the FFmpeg CLI seems to use as
+  // well when "-b:a" isn't specified.
+  audioStream.avCodecContext->bit_rate = desiredBitRate.value_or(0);
+
+  audioStream.outNumChannels =
+      audioStream.options.numChannels.value_or(audioStream.inNumChannels);
+  validateNumChannels(*avCodec, audioStream.outNumChannels);
+  // The avCodecContext layout defines the layout of the encoded output, it's
+  // not related to the input samples.
+  setDefaultChannelLayout(
+      audioStream.avCodecContext, audioStream.outNumChannels);
+
+  audioStream.outSampleRate =
+      audioStream.options.sampleRate.value_or(audioStream.inSampleRate);
+  validateSampleRate(*avCodec, audioStream.outSampleRate);
+  audioStream.avCodecContext->sample_rate = audioStream.outSampleRate;
+
+  // Input samples are expected to be FLTP. Not all encoders support FLTP, so we
+  // may need to convert the samples into a supported output sample format,
+  // which is what the `.sample_fmt` defines.
+  audioStream.avCodecContext->sample_fmt = findBestOutputSampleFormat(*avCodec);
+
+  int status =
+      avcodec_open2(audioStream.avCodecContext.get(), avCodec, nullptr);
+  STD_TORCH_CHECK(
+      status == AVSUCCESS,
+      "avcodec_open2 failed: ",
+      getFFMPEGErrorStringFromErrorCode(status));
+
+  // We're allocating the stream here. Streams are meant to be freed by
+  // avformat_free_context(avFormatContext), which we call in the
+  // avFormatContext_'s destructor.
+  audioStream.avStream = avformat_new_stream(avFormatContext_.get(), nullptr);
+  STD_TORCH_CHECK(
+      audioStream.avStream != nullptr, "Couldn't create new audio stream.");
+
+  status = avcodec_parameters_from_context(
+      audioStream.avStream->codecpar, audioStream.avCodecContext.get());
+  STD_TORCH_CHECK(
+      status == AVSUCCESS,
+      "avcodec_parameters_from_context failed: ",
+      getFFMPEGErrorStringFromErrorCode(status));
+}
+
 void MultiStreamEncoder::open() {
   STD_TORCH_CHECK(!headerWritten_, "open() was already called.");
   STD_TORCH_CHECK(
-      videoStream_.has_value(), "Call addVideoStream() before open().");
+      videoStream_.has_value() || audioStream_.has_value(),
+      "Call addVideoStream() or addAudioStream() before open().");
 
-  initializeVideoStream();
+  if (videoStream_.has_value()) {
+    initializeVideoStream();
+  }
+  if (audioStream_.has_value()) {
+    initializeAudioStream();
+  }
 
   int status = avformat_write_header(
       avFormatContext_.get(), avFormatOptions_.getAddress());

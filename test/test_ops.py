@@ -31,6 +31,7 @@ from torchcodec._core import (
     get_frames_in_range,
     get_json_metadata,
     get_next_frame,
+    streaming_encoder_add_audio_stream,
     streaming_encoder_add_frames,
     streaming_encoder_add_video_stream,
     streaming_encoder_close,
@@ -1261,6 +1262,20 @@ class TestMultiStreamEncoderOps:
             decoded_frames, source_frames.cpu(), percentage=percentage, atol=atol
         )
 
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_stream_and_open_close(self, tmp_path, method):
+        encoder, encoder_output = self._create_encoder(method, tmp_path, "wav")
+        streaming_encoder_add_audio_stream(
+            encoder,
+            sample_rate=44100,
+            num_channels=2,
+            desired_num_channels=1,
+            desired_sample_rate=16000,
+        )
+        streaming_encoder_open(encoder)
+        streaming_encoder_close(encoder)
+        streaming_encoder_close(encoder)  # double close is a no-op
+
     def test_create_invalid_path(self):
         with pytest.raises(RuntimeError, match="make sure it's a valid path"):
             create_streaming_encoder_to_file("/nonexistent/dir/test.mp4")
@@ -1371,6 +1386,15 @@ class TestMultiStreamEncoderOps:
             )
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_stream_twice_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_audio_stream(encoder, sample_rate=44100, num_channels=2)
+        with pytest.raises(RuntimeError, match="already been added"):
+            streaming_encoder_add_audio_stream(
+                encoder, sample_rate=16000, num_channels=1
+            )
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize(
         "device",
         (
@@ -1442,7 +1466,8 @@ class TestMultiStreamEncoderOps:
     def test_open_without_stream_errors(self, tmp_path, method):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
         with pytest.raises(
-            RuntimeError, match="Call addVideoStream\\(\\) before open\\(\\)"
+            RuntimeError,
+            match="Call addVideoStream\\(\\) or addAudioStream\\(\\) before open\\(\\)",
         ):
             streaming_encoder_open(encoder)
 
@@ -1454,6 +1479,30 @@ class TestMultiStreamEncoderOps:
         )
         streaming_encoder_open(encoder)
         with pytest.raises(RuntimeError, match="open\\(\\) was already called"):
+            streaming_encoder_open(encoder)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_stream_invalid_bit_rate_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_audio_stream(
+            encoder,
+            sample_rate=44100,
+            num_channels=2,
+            bit_rate=-1,
+        )
+        with pytest.raises(RuntimeError, match="bit_rate=-1 must be >= 0"):
+            streaming_encoder_open(encoder)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_stream_invalid_sample_rate_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_audio_stream(
+            encoder,
+            sample_rate=44100,
+            num_channels=2,
+            desired_sample_rate=12345,
+        )
+        with pytest.raises(RuntimeError, match="invalid sample rate=12345"):
             streaming_encoder_open(encoder)
 
 

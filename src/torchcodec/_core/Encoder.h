@@ -203,6 +203,12 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
       std::optional<std::string> preset = std::nullopt,
       std::optional<std::map<std::string, std::string>> extraOptions =
           std::nullopt);
+  void addAudioStream(
+      int sampleRate,
+      int numChannels,
+      std::optional<int> bitRate = std::nullopt,
+      std::optional<int> desiredNumChannels = std::nullopt,
+      std::optional<int> desiredSampleRate = std::nullopt);
   void open();
   void addFrames(const torch::stable::Tensor& frames);
   void close();
@@ -219,14 +225,26 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
     std::unique_ptr<DeviceInterface> deviceInterface;
   };
 
+  struct AudioStream {
+    int inSampleRate = -1;
+    int inNumChannels = -1;
+    int outSampleRate = -1;
+    int outNumChannels = -1;
+    AudioStreamOptions options;
+    UniqueAVCodecContext avCodecContext;
+    AVStream* avStream = nullptr;
+  };
+
   void initializeVideoStream();
   void encodeVideoFrame(
       AutoAVPacket& autoAVPacket,
       const UniqueAVFrame& avFrame);
+  void initializeAudioStream();
   void flushBuffers();
 
   UniqueEncodingAVFormatContext avFormatContext_;
   std::optional<VideoStream> videoStream_;
+  std::optional<AudioStream> audioStream_;
   bool headerWritten_ = false;
   UniqueAVDictionary avFormatOptions_;
 
