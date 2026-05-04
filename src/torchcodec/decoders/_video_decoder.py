@@ -37,7 +37,7 @@ class CpuFallbackStatus:
 
     status_known: bool = False
     """Whether the fallback status has been determined.
-    For the default CUDA backend (see :func:`~torchcodec.decoders.set_cuda_backend`),
+    For the Beta CUDA backend (see :func:`~torchcodec.decoders.set_cuda_backend`),
     this is always ``True`` immediately after decoder creation.
     For the FFmpeg CUDA backend, this becomes ``True`` after decoding
     the first frame."""
@@ -108,8 +108,8 @@ class VideoDecoder:
             Default: 1.
         device (str or torch.device, optional): The device to use for decoding.
             If ``None`` (default), uses the current default device.
-            See :func:`~torchcodec.decoders.set_cuda_backend` to control the
-            CUDA backend implementation.
+            If you pass a CUDA device, we recommend trying the "beta" CUDA
+            backend which is faster! See :func:`~torchcodec.decoders.set_cuda_backend`.
         seek_mode (str, optional): Determines if frame access will be "exact" or
             "approximate". Exact guarantees that requesting frame i will always
             return frame i, but doing so requires an initial :term:`scan` of the
