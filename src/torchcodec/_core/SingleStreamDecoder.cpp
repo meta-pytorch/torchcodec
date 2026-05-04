@@ -643,7 +643,7 @@ void SingleStreamDecoder::addAudioStream(
   // https://github.com/pytorch/torchcodec/issues/1253 and
   // https://github.com/pytorch/torchcodec/pull/1254
   addStream(
-      streamIndex, AVMEDIA_TYPE_AUDIO, StableDevice(kStableCPU), "ffmpeg", 1);
+      streamIndex, AVMEDIA_TYPE_AUDIO, StableDevice(kStableCPU), "default", 1);
 
   auto& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.audioStreamOptions = audioStreamOptions;

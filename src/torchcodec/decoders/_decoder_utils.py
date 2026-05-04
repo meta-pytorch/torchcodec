@@ -14,7 +14,7 @@ from torchcodec import _core
 
 # Thread-local and async-safe storage for the current CUDA backend
 _CUDA_BACKEND: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "_CUDA_BACKEND", default="ffmpeg"
+    "_CUDA_BACKEND", default="default"
 )
 
 
@@ -54,9 +54,12 @@ def set_cuda_backend(backend: str) -> Generator[None, None, None]:
         ... decoder.get_frame_at(0)
     """
     backend = backend.lower()
-    if backend not in ("ffmpeg", "beta"):
+    # "beta" is kept as a backwards-compatible alias for "default".
+    if backend == "beta":
+        backend = "default"
+    if backend not in ("default", "ffmpeg"):
         raise ValueError(
-            f"Invalid CUDA backend ({backend}). Supported values are 'ffmpeg' and 'beta'."
+            f"Invalid CUDA backend ({backend}). Supported values are 'default' and 'ffmpeg'."
         )
 
     previous_state = _CUDA_BACKEND.set(backend)

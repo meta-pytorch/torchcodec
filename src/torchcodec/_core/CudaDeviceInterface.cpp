@@ -16,7 +16,7 @@ namespace facebook::torchcodec {
 namespace {
 
 static bool g_cuda = registerDeviceInterface(
-    DeviceInterfaceKey(kStableCUDA),
+    DeviceInterfaceKey(kStableCUDA, /*variant=*/"ffmpeg"),
     [](const StableDevice& device) { return new CudaDeviceInterface(device); });
 
 // We reuse cuda contexts across VideoDeoder instances. This is because

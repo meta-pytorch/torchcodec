@@ -21,7 +21,7 @@ namespace facebook::torchcodec {
 // Key for device interface registration with device type + variant support
 struct DeviceInterfaceKey {
   StableDeviceType deviceType;
-  std::string_view variant = "ffmpeg"; // e.g., "ffmpeg", "beta", etc.
+  std::string_view variant = "default"; // e.g., "default", "ffmpeg"
 
   bool operator<(const DeviceInterfaceKey& other) const {
     if (deviceType != other.deviceType) {
@@ -182,7 +182,7 @@ FORCE_PUBLIC_VISIBILITY void validateDeviceInterface(
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
     const StableDevice& device,
-    const std::string_view variant = "ffmpeg");
+    const std::string_view variant = "default");
 
 torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 

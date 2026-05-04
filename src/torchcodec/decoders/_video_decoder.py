@@ -61,7 +61,7 @@ class CpuFallbackStatus:
         elif self._video_not_supported:
             reasons.append("Video not supported")
         elif self._is_fallback:
-            reasons.append("Unknown reason - try the Beta interface to know more!")
+            reasons.append("Unknown reason - try the default interface to know more!")
 
         if reasons:
             return (
@@ -234,8 +234,8 @@ class VideoDecoder:
 
         self._cpu_fallback = CpuFallbackStatus()
         if device.startswith("cuda"):
-            if device_variant == "beta":
-                self._cpu_fallback._backend = "Beta CUDA"
+            if device_variant == "default":
+                self._cpu_fallback._backend = "CUDA"
             else:
                 self._cpu_fallback._backend = "FFmpeg CUDA"
         else:
@@ -250,9 +250,9 @@ class VideoDecoder:
         # either when:
         # - this @property has never been called before
         # - no frame has been decoded yet on the FFmpeg interface.
-        # Note that for the beta interface, we're able to know the fallback status
-        # right when the VideoDecoder is instantiated, but the status_known
-        # attribute is initialized to False.
+        # Note that for the default interface, we're able to know the fallback
+        # status right when the VideoDecoder is instantiated, but the
+        # status_known attribute is initialized to False.
         if not self._cpu_fallback.status_known:
             backend_details = core._get_backend_details(self._decoder)
 
@@ -261,8 +261,8 @@ class VideoDecoder:
 
                 if "CPU fallback" in backend_details:
                     self._cpu_fallback._is_fallback = True
-                    if self._cpu_fallback._backend == "Beta CUDA":
-                        # Only the beta interface can provide details.
+                    if self._cpu_fallback._backend == "CUDA":
+                        # Only the default (NVDEC) interface can provide details.
                         # if it's not that nvcuvid is missing, it must be video-specific
                         if "NVCUVID not available" in backend_details:
                             self._cpu_fallback._nvcuvid_unavailable = True

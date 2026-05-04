@@ -68,8 +68,8 @@ static DecoderCapsCache& getDecoderCapsCache() {
   return cache;
 }
 
-static bool g_cuda_beta = registerDeviceInterface(
-    DeviceInterfaceKey(kStableCUDA, /*variant=*/"beta"),
+static bool g_cuda_default = registerDeviceInterface(
+    DeviceInterfaceKey(kStableCUDA, /*variant=*/"default"),
     [](const StableDevice& device) {
       return new BetaCudaDeviceInterface(device);
     });
@@ -265,7 +265,8 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
     : DeviceInterface(device) {
-  STD_TORCH_CHECK(g_cuda_beta, "BetaCudaDeviceInterface was not registered!");
+  STD_TORCH_CHECK(
+      g_cuda_default, "BetaCudaDeviceInterface was not registered!");
   STD_TORCH_CHECK(
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
@@ -891,8 +892,8 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     // preAllocatedOutputTensor has post-rotation dimensions, but NV12->RGB
     // conversion outputs pre-rotation dimensions, so we can't use it as the
     // conversion destination or validate it against the frame shape.
-    // Once we support native transforms on the beta CUDA interface, rotation
-    // should be handled as part of the transform pipeline instead.
+    // Once we support native transforms on the default CUDA interface,
+    // rotation should be handled as part of the transform pipeline instead.
     frameOutput.data = convertNV12FrameToRGB(
         gpuFrame,
         device_,
