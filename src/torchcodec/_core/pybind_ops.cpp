@@ -39,10 +39,21 @@ namespace facebook::torchcodec {
 //       custom_ops.cpp and we do another cast on that side to get a pointer
 //       again. We want to investigate if we can do something cleaner by
 //       defining proper pybind objects.
-int64_t create_file_like_context(py::object file_like, bool is_for_writing) {
+py::capsule create_file_like_context(py::object file_like, bool is_for_writing) {
   AVIOFileLikeContext* context =
       new AVIOFileLikeContext(file_like, is_for_writing);
-  return reinterpret_cast<int64_t>(context);
+  return py::capsule(
+      context,
+      "torchcodec.AVIOFileLikeContext",
+      [](PyObject* capsule) {
+        void* ptr =
+            PyCapsule_GetPointer(capsule, "torchcodec.AVIOFileLikeContext");
+        if (ptr == nullptr) {
+          PyErr_Clear();
+          return;
+        }
+        delete reinterpret_cast<AVIOFileLikeContext*>(ptr);
+      });
 }
 
 #ifndef PYBIND_OPS_MODULE_NAME
