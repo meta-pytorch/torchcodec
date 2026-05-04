@@ -193,26 +193,33 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
       std::unique_ptr<AVIOContextHolder> avioContextHolder);
 
   void addVideoStream(
+      int height,
+      int width,
       double frameRate,
+      std::string device = "cpu",
       std::optional<std::string> codec = std::nullopt,
       std::optional<std::string> pixelFormat = std::nullopt,
       std::optional<double> crf = std::nullopt,
       std::optional<std::string> preset = std::nullopt,
       std::optional<std::map<std::string, std::string>> extraOptions =
           std::nullopt);
+  void open();
   void addFrames(const torch::stable::Tensor& frames);
   void close();
 
  private:
   struct VideoStream {
+    int inHeight = 0;
+    int inWidth = 0;
     double inFrameRate = 0;
     VideoStreamOptions options;
     UniqueAVCodecContext avCodecContext;
     AVStream* avStream = nullptr;
     int numEncodedFrames = 0;
+    std::unique_ptr<DeviceInterface> deviceInterface;
   };
 
-  void initializeVideoStream(const torch::stable::Tensor& frames);
+  void initializeVideoStream();
   void encodeVideoFrame(
       AutoAVPacket& autoAVPacket,
       const UniqueAVFrame& avFrame);
@@ -220,7 +227,6 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
 
   UniqueEncodingAVFormatContext avFormatContext_;
   std::optional<VideoStream> videoStream_;
-  std::unique_ptr<DeviceInterface> deviceInterface_;
   bool headerWritten_ = false;
   UniqueAVDictionary avFormatOptions_;
 

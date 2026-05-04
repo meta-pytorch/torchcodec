@@ -93,7 +93,8 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "create_streaming_encoder_to_file_like(str format, int file_like_context) -> Tensor");
   m.def("streaming_encoder_close(Tensor(a!) encoder) -> ()");
   m.def(
-      "streaming_encoder_add_video_stream(Tensor(a!) encoder, float frame_rate, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
+      "streaming_encoder_add_video_stream(Tensor(a!) encoder, int height, int width, float frame_rate, str device=\"cpu\", str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
+  m.def("streaming_encoder_open(Tensor(a!) encoder) -> ()");
   m.def(
       "streaming_encoder_add_frames(Tensor(a!) encoder, Tensor frames) -> ()");
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
@@ -1219,7 +1220,10 @@ void streaming_encoder_close(torch::stable::Tensor& encoder) {
 
 void streaming_encoder_add_video_stream(
     torch::stable::Tensor& encoder,
+    int64_t height,
+    int64_t width,
     double frame_rate,
+    std::string device = "cpu",
     std::optional<std::string> codec = std::nullopt,
     std::optional<std::string> pixel_format = std::nullopt,
     std::optional<double> crf = std::nullopt,
@@ -1230,12 +1234,19 @@ void streaming_encoder_add_video_stream(
     extraOptionsMap = unflattenExtraOptions(extra_options.value());
   }
   unwrapTensorToGetMultiStreamEncoder(encoder)->addVideoStream(
+      static_cast<int>(height),
+      static_cast<int>(width),
       frame_rate,
+      std::move(device),
       std::move(codec),
       std::move(pixel_format),
       crf,
       std::move(preset),
       std::move(extraOptionsMap));
+}
+
+void streaming_encoder_open(torch::stable::Tensor& encoder) {
+  unwrapTensorToGetMultiStreamEncoder(encoder)->open();
 }
 
 void streaming_encoder_add_frames(
@@ -1323,6 +1334,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl(
       "streaming_encoder_add_video_stream",
       TORCH_BOX(&streaming_encoder_add_video_stream));
+  m.impl("streaming_encoder_open", TORCH_BOX(&streaming_encoder_open));
   m.impl(
       "streaming_encoder_add_frames", TORCH_BOX(&streaming_encoder_add_frames));
   m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
@@ -1378,6 +1390,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "streaming_encoder_add_video_stream",
       TORCH_BOX(&streaming_encoder_add_video_stream));
+  m.impl("streaming_encoder_open", TORCH_BOX(&streaming_encoder_open));
   m.impl(
       "streaming_encoder_add_frames", TORCH_BOX(&streaming_encoder_add_frames));
 }
