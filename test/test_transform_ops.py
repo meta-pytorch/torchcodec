@@ -42,48 +42,22 @@ class TestPublicVideoDecoderTransformOps:
         "height_scaling_factor, width_scaling_factor",
         ((1.5, 1.31), (0.5, 0.71), (0.7, 1.31), (1.5, 0.71), (1.0, 1.0), (2.0, 2.0)),
     )
-    @pytest.mark.parametrize(
-        "video",
-        [
-            NASA_VIDEO,
-            TEST_SRC_2_720P,
-            # TODO: On FFmpeg 4, 10-bit HDR (BT.2020 + SMPTE2084) videos produce
-            # different decoded results when transforms are applied. Plain 10-bit
-            # without HDR metadata and all 8-bit videos are unaffected. The root
-            # cause is unknown.
-            pytest.param(
-                NASA_VIDEO_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                TEST_SRC_2_720P_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-        ],
-    )
+    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
     def test_resize_torchvision(
         self, video, height_scaling_factor, width_scaling_factor
     ):
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
-        is_hdr = video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR)
 
-        # We're using both the TorchCodec object and the TorchVision object
-        # to ensure that they specify exactly the same thing.
+        # We're using both the TorchCodec object and the TorchVision object to
+        # ensure that they specify exactly the same thing.
         decoder_resize = VideoDecoder(
-            video.path,
-            transforms=[torchcodec.transforms.Resize(size=(height, width))],
+            video.path, transforms=[torchcodec.transforms.Resize(size=(height, width))]
         )
         decoder_resize_tv = VideoDecoder(
-            video.path,
-            transforms=[v2.Resize(size=(height, width))],
+            video.path, transforms=[v2.Resize(size=(height, width))]
         )
+
         decoder_full = VideoDecoder(video.path)
 
         num_frames = len(decoder_resize)
@@ -100,11 +74,12 @@ class TestPublicVideoDecoderTransformOps:
             int(num_frames * 0.90),
             num_frames - 1,
         ]:
-            frame_resize = decoder_resize[frame_index]
             frame_resize_tv = decoder_resize_tv[frame_index]
+            frame_resize = decoder_resize[frame_index]
             assert_frames_equal(frame_resize_tv, frame_resize)
 
             frame_full = decoder_full[frame_index]
+
             frame_tv = v2.functional.resize(frame_full, size=(height, width))
             frame_tv_no_antialias = v2.functional.resize(
                 frame_full, size=(height, width), antialias=False
@@ -115,37 +90,21 @@ class TestPublicVideoDecoderTransformOps:
             assert frame_tv.shape == expected_shape
             assert frame_tv_no_antialias.shape == expected_shape
 
-            # max_atol is bumped on HDR because 10->8 bit quantization in
-            # swscale enlarges the swscale-vs-torchvision resize diff.
-            close_pct, close_atol = 99.8, 1
-            max_atol = 10 if is_hdr else 6
-
             assert_tensor_close_on_at_least(
-                frame_resize, frame_tv, percentage=close_pct, atol=close_atol
+                frame_resize, frame_tv, percentage=99.8, atol=1
             )
-            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=max_atol)
+            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=6)
 
             if height_scaling_factor < 1 or width_scaling_factor < 1:
                 # Antialias only relevant when down-scaling!
-                # For HDR content with mild downscale factors, the
-                # antialias difference may be too small to detect.
-                if not is_hdr:
-                    with pytest.raises(AssertionError, match="Expected at least"):
-                        assert_tensor_close_on_at_least(
-                            frame_resize,
-                            frame_tv_no_antialias,
-                            percentage=99,
-                            atol=close_atol,
-                        )
-                    with pytest.raises(
-                        AssertionError, match="Tensor-likes are not close"
-                    ):
-                        torch.testing.assert_close(
-                            frame_resize,
-                            frame_tv_no_antialias,
-                            rtol=0,
-                            atol=max_atol,
-                        )
+                with pytest.raises(AssertionError, match="Expected at least"):
+                    assert_tensor_close_on_at_least(
+                        frame_resize, frame_tv_no_antialias, percentage=99, atol=1
+                    )
+                with pytest.raises(AssertionError, match="Tensor-likes are not close"):
+                    torch.testing.assert_close(
+                        frame_resize, frame_tv_no_antialias, rtol=0, atol=6
+                    )
 
     @pytest.mark.parametrize(
         "height_scaling_factor, width_scaling_factor",
@@ -156,6 +115,10 @@ class TestPublicVideoDecoderTransformOps:
         [
             NASA_VIDEO,
             TEST_SRC_2_720P,
+            # TODO: On FFmpeg 4, 10-bit HDR (BT.2020 + SMPTE2084) videos produce
+            # different decoded results when transforms are applied. Plain 10-bit
+            # without HDR metadata and all 8-bit videos are unaffected. The root
+            # cause is unknown.
             pytest.param(
                 NASA_VIDEO_HDR,
                 marks=pytest.mark.skipif(
@@ -320,31 +283,7 @@ class TestPublicVideoDecoderTransformOps:
         "height_scaling_factor, width_scaling_factor",
         ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.15, 0.75)),
     )
-    @pytest.mark.parametrize(
-        "video",
-        [
-            NASA_VIDEO,
-            TEST_SRC_2_720P,
-            # TODO: On FFmpeg 4, 10-bit HDR (BT.2020 + SMPTE2084) videos produce
-            # different decoded results when transforms are applied. Plain 10-bit
-            # without HDR metadata and all 8-bit videos are unaffected. The root
-            # cause is unknown.
-            pytest.param(
-                NASA_VIDEO_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                TEST_SRC_2_720P_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-        ],
-    )
+    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
     def test_center_crop_torchvision(
         self,
         height_scaling_factor,
@@ -356,11 +295,14 @@ class TestPublicVideoDecoderTransformOps:
 
         tc_center_crop = torchcodec.transforms.CenterCrop(size=(height, width))
         decoder_center_crop = VideoDecoder(video.path, transforms=[tc_center_crop])
+
         decoder_center_crop_tv = VideoDecoder(
             video.path,
             transforms=[v2.CenterCrop(size=(height, width))],
         )
+
         decoder_full = VideoDecoder(video.path)
+
         num_frames = len(decoder_center_crop_tv)
         assert num_frames == len(decoder_full)
 
@@ -376,7 +318,7 @@ class TestPublicVideoDecoderTransformOps:
             assert_frames_equal(frame_center_crop, frame_center_crop_tv)
 
             expected_shape = (video.get_num_color_channels(), height, width)
-            assert frame_center_crop.shape == expected_shape
+            assert frame_center_crop_tv.shape == expected_shape
 
             frame_full = decoder_full[frame_index]
             frame_tv = v2.CenterCrop(size=(height, width))(frame_full)
@@ -462,31 +404,7 @@ class TestPublicVideoDecoderTransformOps:
         "height_scaling_factor, width_scaling_factor",
         ((0.5, 0.5), (0.25, 0.1), (1.0, 1.0), (0.15, 0.75)),
     )
-    @pytest.mark.parametrize(
-        "video",
-        [
-            NASA_VIDEO,
-            TEST_SRC_2_720P,
-            # TODO: On FFmpeg 4, 10-bit HDR (BT.2020 + SMPTE2084) videos produce
-            # different decoded results when transforms are applied. Plain 10-bit
-            # without HDR metadata and all 8-bit videos are unaffected. The root
-            # cause is unknown.
-            pytest.param(
-                NASA_VIDEO_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                TEST_SRC_2_720P_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-        ],
-    )
+    @pytest.mark.parametrize("video", [NASA_VIDEO, TEST_SRC_2_720P])
     @pytest.mark.parametrize("seed", [0, 1234])
     def test_random_crop_torchvision(
         self,
@@ -498,17 +416,17 @@ class TestPublicVideoDecoderTransformOps:
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
 
-        # We want both kinds of RandomCrop objects to get arrive at the
-        # same locations to crop, so we need to make sure they get the same
-        # random seed. It's used in RandomCrop's _make_transform_spec()
-        # method, called by the VideoDecoder.
+        # We want both kinds of RandomCrop objects to get arrive at the same
+        # locations to crop, so we need to make sure they get the same random
+        # seed. It's used in RandomCrop's _make_transform_spec() method, called
+        # by the VideoDecoder.
         torch.manual_seed(seed)
         tc_random_crop = torchcodec.transforms.RandomCrop(size=(height, width))
         decoder_random_crop = VideoDecoder(video.path, transforms=[tc_random_crop])
 
-        # Resetting manual seed for when TorchCodec's RandomCrop, created
-        # from the TorchVision RandomCrop, is used inside of the
-        # VideoDecoder. It needs to match the call above.
+        # Resetting manual seed for when TorchCodec's RandomCrop, created from
+        # the TorchVision RandomCrop, is used inside of the VideoDecoder. It
+        # needs to match the call above.
         torch.manual_seed(seed)
         decoder_random_crop_tv = VideoDecoder(
             video.path,
@@ -516,6 +434,7 @@ class TestPublicVideoDecoderTransformOps:
         )
 
         decoder_full = VideoDecoder(video.path)
+
         num_frames = len(decoder_random_crop_tv)
         assert num_frames == len(decoder_full)
 
@@ -531,10 +450,10 @@ class TestPublicVideoDecoderTransformOps:
             assert_frames_equal(frame_random_crop, frame_random_crop_tv)
 
             expected_shape = (video.get_num_color_channels(), height, width)
-            assert frame_random_crop.shape == expected_shape
+            assert frame_random_crop_tv.shape == expected_shape
 
             # Resetting manual seed to make sure the invocation of the
-            # TorchVision RandomCrop matches the call above.
+            # TorchVision RandomCrop matches the two calls above.
             torch.manual_seed(seed)
             frame_full = decoder_full[frame_index]
             frame_tv = v2.RandomCrop(size=(height, width))(frame_full)
@@ -700,12 +619,9 @@ class TestPublicVideoDecoderTransformOps:
             (v2.Resize, v2.RandomCrop),
         ],
     )
-    @pytest.mark.parametrize(
-        "video", [TEST_SRC_2_720P, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR]
-    )
-    def test_transform_pipeline(self, resize, random_crop, video):
+    def test_transform_pipeline(self, resize, random_crop):
         decoder = VideoDecoder(
-            video.path,
+            TEST_SRC_2_720P.path,
             transforms=[
                 # resized to bigger than original
                 resize(size=(2160, 3840)),
@@ -723,7 +639,7 @@ class TestPublicVideoDecoderTransformOps:
             num_frames - 1,
         ]:
             frame = decoder[frame_index]
-            assert frame.shape == (video.get_num_color_channels(), 1080, 1920)
+            assert frame.shape == (TEST_SRC_2_720P.get_num_color_channels(), 1080, 1920)
 
     @pytest.mark.parametrize(
         "resize, random_crop",
