@@ -154,6 +154,10 @@ class TestPublicVideoDecoderTransformOps:
         add_video_stream(decoder_full, output_dtype="float32")
         num_frames = len(VideoDecoder(video.path))
 
+        # 10-bit sources (the HDR ones here) need a looser tolerance — swscale
+        # and torchvision's bilinear disagree more at higher bit depth.
+        max_atol = 12 if is_hdr else 6
+
         for frame_index in [
             0,
             int(num_frames * 0.1),
@@ -180,50 +184,22 @@ class TestPublicVideoDecoderTransformOps:
             assert frame_tv.shape == expected_shape
             assert frame_tv_no_antialias.shape == expected_shape
 
-            # Project float32 frames back into integer space so absolute
-            # tolerances are meaningful: uint16 space for HDR (preserves
-            # sub-10-bit precision from resize), uint8 space for SDR.
-            scale = 65535 if is_hdr else 255
-            frame_resize_cmp, frame_tv_cmp, frame_tv_no_antialias_cmp = (
-                (t * scale).round().to(torch.int32)
+            # Compare in 8-bit-equivalent rounded space so absolute tolerances
+            # match those of the SDR uint8 test (atol=1 ≈ 1 code value).
+            fr, ft, ft_na = (
+                (t * 255).round()
                 for t in (frame_resize, frame_tv, frame_tv_no_antialias)
             )
 
-            # Tolerances in the chosen comparison space. atol=256 in uint16
-            # space ≈ atol=1 in uint8 space.
-            if is_hdr:
-                close_pct, close_atol, max_atol = 99.5, 256, 12 * 256
-            else:
-                close_pct, close_atol, max_atol = 99.8, 1, 6
-
-            assert_tensor_close_on_at_least(
-                frame_resize_cmp, frame_tv_cmp, percentage=close_pct, atol=close_atol
-            )
-            torch.testing.assert_close(
-                frame_resize_cmp, frame_tv_cmp, rtol=0, atol=max_atol
-            )
+            assert_tensor_close_on_at_least(fr, ft, percentage=99.8, atol=1)
+            torch.testing.assert_close(fr, ft, rtol=0, atol=max_atol)
 
             if height_scaling_factor < 1 or width_scaling_factor < 1:
                 # Antialias only relevant when down-scaling!
-                # For HDR content with mild downscale factors, the
-                # antialias difference may be too small to detect.
-                if not is_hdr:
-                    with pytest.raises(AssertionError, match="Expected at least"):
-                        assert_tensor_close_on_at_least(
-                            frame_resize_cmp,
-                            frame_tv_no_antialias_cmp,
-                            percentage=99,
-                            atol=close_atol,
-                        )
-                    with pytest.raises(
-                        AssertionError, match="Tensor-likes are not close"
-                    ):
-                        torch.testing.assert_close(
-                            frame_resize_cmp,
-                            frame_tv_no_antialias_cmp,
-                            rtol=0,
-                            atol=max_atol,
-                        )
+                with pytest.raises(AssertionError, match="Expected at least"):
+                    assert_tensor_close_on_at_least(fr, ft_na, percentage=99, atol=1)
+                with pytest.raises(AssertionError, match="Tensor-likes are not close"):
+                    torch.testing.assert_close(fr, ft_na, rtol=0, atol=max_atol)
 
     def test_resize_fails(self):
         with pytest.raises(
