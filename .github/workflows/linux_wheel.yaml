@@ -57,6 +57,28 @@ jobs:
       build-platform: "python-build-package"
       build-command: "BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1 python -m build --wheel -vvv --no-isolation"
 
+  resolve-channel:
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.channel.outputs.value }}
+    steps:
+      - uses: pytorch/test-infra/.github/actions/set-channel@main
+      - id: channel
+        run: echo "value=${CHANNEL}" >> "${GITHUB_OUTPUT}"
+
+  upload-cpu-to-xpu:
+    needs: [resolve-channel, generate-matrix, build]
+    uses: pytorch/test-infra/.github/workflows/_binary_upload.yml@main
+    with:
+      repository: meta-pytorch/torchcodec
+      ref: ""
+      test-infra-repository: pytorch/test-infra
+      test-infra-ref: main
+      build-matrix: ${{ needs.generate-matrix.outputs.matrix }}
+      architecture: x86_64
+      trigger-event: ${{ github.event_name }}
+      wheel-upload-path: ${{ needs.resolve-channel.outputs.channel == 'test' && 'whl/test/xpu/' || 'whl/nightly/xpu/' }}
+
   install-and-test:
     runs-on: ubuntu-latest
     strategy:
