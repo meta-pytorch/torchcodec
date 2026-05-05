@@ -54,6 +54,7 @@ from .utils import (
     assert_frames_equal,
     assert_tensor_close_on_at_least,
     get_python_version,
+    in_fbcode,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
@@ -1211,7 +1212,19 @@ class TestMultiStreamEncoderOps:
     @pytest.mark.parametrize("format", ["mp4", "mov", "mkv"])
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize(
-        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                ],
+            ),
+        ),
     )
     def test_add_video_stream_and_encode_frames(self, tmp_path, format, method, device):
         source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
@@ -1269,7 +1282,19 @@ class TestMultiStreamEncoderOps:
     @pytest.mark.parametrize("format", ["mp4", "mov"])
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize(
-        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                ],
+            ),
+        ),
     )
     def test_fragmented_mp4(self, format, tmp_path, method, device):
         source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
@@ -1347,7 +1372,19 @@ class TestMultiStreamEncoderOps:
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize(
-        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                ],
+            ),
+        ),
     )
     def test_add_frames_mismatched_dimensions_errors(self, tmp_path, method, device):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
