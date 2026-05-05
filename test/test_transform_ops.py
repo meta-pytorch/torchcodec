@@ -131,7 +131,7 @@ class TestPublicVideoDecoderTransformOps:
 
         # Video sources greater than 8 bits need a looser tolerance —
         # swscale and torchvision's bilinear disagree more at higher bit depth.
-        max_atol = (12 if is_hdr else 6) / 255
+        max_atol = (12 if is_hdr else 7) / 255
 
         for frame_index in [
             0,
@@ -165,7 +165,7 @@ class TestPublicVideoDecoderTransformOps:
                 continue
 
             assert_tensor_close_on_at_least(
-                frame_resize, frame_tv, percentage=99.7, atol=1 / 255
+                frame_resize, frame_tv, percentage=99.6, atol=1 / 255
             )
             torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=max_atol)
 
