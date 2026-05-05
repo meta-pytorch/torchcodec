@@ -131,7 +131,7 @@ class TestPublicVideoDecoderTransformOps:
 
         # Video sources greater than 8 bits need a looser tolerance —
         # swscale and torchvision's bilinear disagree more at higher bit depth.
-        max_atol = 12 if is_hdr else 6
+        max_atol = (12 if is_hdr else 6) / 255
 
         for frame_index in [
             0,
@@ -164,22 +164,21 @@ class TestPublicVideoDecoderTransformOps:
                 # FFmpeg 4 (root cause unknown).
                 continue
 
-            # Compare in 8-bit-equivalent rounded space so absolute tolerances
-            # match those of the SDR uint8 test (atol=1 ≈ 1 code value).
-            fr, ft, ft_na = (
-                (t * 255).round()
-                for t in (frame_resize, frame_tv, frame_tv_no_antialias)
+            assert_tensor_close_on_at_least(
+                frame_resize, frame_tv, percentage=99.7, atol=1 / 255
             )
-
-            assert_tensor_close_on_at_least(fr, ft, percentage=99.8, atol=1)
-            torch.testing.assert_close(fr, ft, rtol=0, atol=max_atol)
+            torch.testing.assert_close(frame_resize, frame_tv, rtol=0, atol=max_atol)
 
             if height_scaling_factor < 1 or width_scaling_factor < 1:
                 # Antialias only relevant when down-scaling!
                 with pytest.raises(AssertionError, match="Expected at least"):
-                    assert_tensor_close_on_at_least(fr, ft_na, percentage=99, atol=1)
+                    assert_tensor_close_on_at_least(
+                        frame_resize, frame_tv_no_antialias, percentage=99, atol=1 / 255
+                    )
                 with pytest.raises(AssertionError, match="Tensor-likes are not close"):
-                    torch.testing.assert_close(fr, ft_na, rtol=0, atol=max_atol)
+                    torch.testing.assert_close(
+                        frame_resize, frame_tv_no_antialias, rtol=0, atol=max_atol
+                    )
 
     def test_resize_fails(self):
         with pytest.raises(
