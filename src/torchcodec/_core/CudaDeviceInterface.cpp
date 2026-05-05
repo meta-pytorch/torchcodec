@@ -127,13 +127,15 @@ void CudaDeviceInterface::initialize(
   cpuInterface_->initializeVideo(
       VideoStreamOptions(),
       {},
-      /*resizedOutputDims=*/std::nullopt);
+      /*resizedOutputDims=*/std::nullopt,
+      /*outputBitDepth=*/8);
 }
 
 void CudaDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
-    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
+    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims,
+    [[maybe_unused]] int outputBitDepth) {
   videoStreamOptions_ = videoStreamOptions;
 }
 

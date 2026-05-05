@@ -31,8 +31,8 @@ class CudaDeviceInterface : public DeviceInterface {
       const VideoStreamOptions& videoStreamOptions,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
           transforms,
-      [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims)
-      override;
+      [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims,
+      [[maybe_unused]] int outputBitDepth) override;
 
   void registerHardwareDeviceWithCodec(AVCodecContext* codecContext) override;
 

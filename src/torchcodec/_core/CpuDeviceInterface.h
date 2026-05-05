@@ -33,7 +33,8 @@ class CpuDeviceInterface : public DeviceInterface {
   virtual void initializeVideo(
       const VideoStreamOptions& videoStreamOptions,
       const std::vector<std::unique_ptr<Transform>>& transforms,
-      const std::optional<FrameDims>& resizedOutputDims) override;
+      const std::optional<FrameDims>& resizedOutputDims,
+      int outputBitDepth) override;
 
   virtual void initializeAudio(
       const AudioStreamOptions& audioStreamOptions) override;
@@ -73,6 +74,8 @@ class CpuDeviceInterface : public DeviceInterface {
 
   VideoStreamOptions videoStreamOptions_;
   AVRational timeBase_;
+  int outputBitDepth_;
+  AVPixelFormat outputPixelFormat_;
 
   // If the resized output dimensions are present, then we always use those as
   // the output frame's dimensions. If they are not present, then we use the

@@ -12,7 +12,15 @@ import numpy as np
 import torch
 from PIL import Image
 
-from .utils import AV1_VIDEO, H265_VIDEO, NASA_VIDEO, TestVideo
+from .utils import (
+    AV1_VIDEO,
+    H265_VIDEO,
+    NASA_VIDEO,
+    NASA_VIDEO_HDR,
+    TEST_SRC_2_12BIT_HDR,
+    TEST_SRC_2_720P_HDR,
+    TestVideo,
+)
 
 # Run this script to update the resources used in unit tests. The resources are all derived
 # from source media already checked into the repo.
@@ -78,6 +86,47 @@ def generate_frame_by_index(
     ]
     subprocess.run(cmd, check=True)
     convert_image_to_tensor(output_bmp)
+
+
+def generate_frame_by_index_rgb48(
+    video: TestVideo,
+    *,
+    frame_index: int,
+    stream_index: int,
+) -> None:
+    base_path = video.get_base_path_by_index(frame_index, stream_index=stream_index)
+    output_raw = f"{base_path}.rgb48.raw"
+
+    select = f"select='eq(n\\,{frame_index})'"
+    filtergraph = ",".join([select, "format=rgb48"])
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        video.path,
+        "-map",
+        f"0:{stream_index}",
+        "-vf",
+        filtergraph,
+        "-fps_mode",
+        "passthrough",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        "rgb48",
+        "-frames:v",
+        "1",
+        output_raw,
+    ]
+    subprocess.run(cmd, check=True)
+
+    height = video.get_height(stream_index=stream_index)
+    width = video.get_width(stream_index=stream_index)
+    data = np.fromfile(output_raw, dtype=np.uint16).reshape(height, width, 3)
+    tensor = torch.from_numpy(data.copy())
+    torch.save(tensor, f"{base_path}.rgb48.pt", _use_new_zipfile_serialization=True)
+    Path(output_raw).unlink()
 
 
 def generate_frame_by_timestamp(
@@ -165,10 +214,18 @@ def generate_av1_video_references():
         generate_frame_by_index(AV1_VIDEO, frame_index=frame, stream_index=0)
 
 
+def generate_hdr_references_rgb48():
+    frames = [0, 5, 10]
+    for video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR):
+        for frame in frames:
+            generate_frame_by_index_rgb48(video, frame_index=frame, stream_index=0)
+
+
 def main():
     generate_nasa_13013_references()
     generate_h265_video_references()
     generate_av1_video_references()
+    generate_hdr_references_rgb48()
 
 
 if __name__ == "__main__":

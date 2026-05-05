@@ -64,7 +64,8 @@ class DeviceInterface {
       [[maybe_unused]] const VideoStreamOptions& videoStreamOptions,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
           transforms,
-      [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {}
+      [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims,
+      [[maybe_unused]] int outputBitDepth) {}
 
   // Initialize the device with parameters specific to audio decoding. There is
   // a default empty implementation.

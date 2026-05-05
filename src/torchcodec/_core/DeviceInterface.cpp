@@ -9,6 +9,10 @@
 #include <mutex>
 #include "StableABICompat.h"
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 namespace facebook::torchcodec {
 
 namespace {
@@ -117,24 +121,35 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
 }
 
 torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
-  STD_TORCH_CHECK(avFrame->format == AV_PIX_FMT_RGB24, "Expected RGB24 format");
+  auto format = static_cast<AVPixelFormat>(avFrame->format);
+  STD_TORCH_CHECK(
+      format == AV_PIX_FMT_RGB24 || format == AV_PIX_FMT_RGB48,
+      "Expected RGB24 or RGB48 format, got ",
+      (av_get_pix_fmt_name(format) ? av_get_pix_fmt_name(format) : "unknown"));
 
   int height = avFrame->height;
   int width = avFrame->width;
-  std::vector<int64_t> shape = {height, width, 3};
-  std::vector<int64_t> strides = {avFrame->linesize[0], 3, 1};
   AVFrame* avFrameClone = av_frame_clone(avFrame.get());
 
   auto deleter = [avFrameClone](void*) {
     UniqueAVFrame avFrameToDelete(avFrameClone);
   };
 
+  std::vector<int64_t> shape = {height, width, 3};
+
+  // RGB48 stores 2 bytes per channel (uint16); RGB24 stores 1 byte (uint8).
+  // linesize is in bytes, but torch strides are in elements, so divide.
+  int bytesPerElement = (format == AV_PIX_FMT_RGB48) ? 2 : 1;
+  auto dtype = (format == AV_PIX_FMT_RGB48) ? kStableUInt16 : kStableUInt8;
+  std::vector<int64_t> strides = {
+      avFrameClone->linesize[0] / bytesPerElement, 3, 1};
+
   return torch::stable::from_blob(
       avFrameClone->data[0],
       shape,
       strides,
       StableDevice(kStableCPU),
-      kStableUInt8,
+      dtype,
       deleter);
 }
 

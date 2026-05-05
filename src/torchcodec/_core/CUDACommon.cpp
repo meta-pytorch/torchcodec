@@ -293,7 +293,7 @@ torch::stable::Tensor convertNV12FrameToRGB(
   if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
-    dst = allocateEmptyHWCTensor(frameDims, device);
+    dst = allocateEmptyHWCTensor(frameDims, device, /*bitDepth=*/8);
   }
 
   // We need to make sure NVDEC has finished decoding a frame before

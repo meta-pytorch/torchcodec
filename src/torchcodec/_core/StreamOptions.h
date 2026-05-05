@@ -27,6 +27,24 @@ enum ColorConversionLibrary {
 // AUTO: Output uint8 for SDR (<=8-bit) sources, float32 for HDR (>8-bit).
 enum class OutputDtype { UINT8, FLOAT32, AUTO };
 
+// Returns the effective output bit depth given the source bit depth and the
+// user's OutputDtype setting. UINT8: always 8. FLOAT32: preserve source.
+// AUTO is resolved upstream, so it should never reach this function.
+inline int resolvedBitDepth(int sourceBitDepth, OutputDtype outputDtype) {
+  STD_TORCH_CHECK(
+      outputDtype != OutputDtype::AUTO,
+      "AUTO should have been resolved upstream");
+  switch (outputDtype) {
+    case OutputDtype::UINT8:
+      return 8;
+    case OutputDtype::FLOAT32:
+      return sourceBitDepth;
+    default:
+      STD_TORCH_CHECK(
+          false, "Unexpected OutputDtype: ", static_cast<int>(outputDtype));
+  }
+}
+
 struct VideoStreamOptions {
   VideoStreamOptions() {}
 
