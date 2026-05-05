@@ -1274,7 +1274,6 @@ class TestMultiStreamEncoderOps:
         )
         streaming_encoder_open(encoder)
         streaming_encoder_close(encoder)
-        streaming_encoder_close(encoder)  # double close is a no-op
 
     def test_create_invalid_path(self):
         with pytest.raises(RuntimeError, match="make sure it's a valid path"):

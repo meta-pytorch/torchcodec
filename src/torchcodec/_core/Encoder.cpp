@@ -1133,6 +1133,9 @@ void MultiStreamEncoder::addAudioStream(
   STD_TORCH_CHECK(
       !audioStream_.has_value(),
       "An audio stream has already been added. Cannot add another.");
+  STD_TORCH_CHECK(sampleRate > 0, "sample_rate must be > 0, got ", sampleRate);
+  STD_TORCH_CHECK(
+      numChannels > 0, "num_channels must be > 0, got ", numChannels);
 
   audioStream_ = AudioStream{};
   audioStream_->inSampleRate = sampleRate;
