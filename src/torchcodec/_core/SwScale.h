@@ -42,9 +42,6 @@ class SwScale {
   int swsFlags_;
   bool needsResize_;
 
-  // Bytes per pixel for the output format (3 for RGB24, 6 for RGB48).
-  int bytesPerPixel_;
-
   // Color conversion context (input format -> output RGB at original
   // resolution).
   UniqueSwsContext colorConversionSwsContext_;

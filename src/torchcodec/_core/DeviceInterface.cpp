@@ -125,7 +125,7 @@ torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   STD_TORCH_CHECK(
       format == AV_PIX_FMT_RGB24 || format == AV_PIX_FMT_RGB48,
       "Expected RGB24 or RGB48 format, got ",
-      av_get_pix_fmt_name(format));
+      (av_get_pix_fmt_name(format) ? av_get_pix_fmt_name(format) : "unknown"));
 
   int height = avFrame->height;
   int width = avFrame->width;

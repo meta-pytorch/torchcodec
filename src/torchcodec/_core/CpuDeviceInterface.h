@@ -66,8 +66,7 @@ class CpuDeviceInterface : public DeviceInterface {
 
   torch::stable::Tensor convertAVFrameToTensorUsingFilterGraph(
       const UniqueAVFrame& avFrame,
-      const FrameDims& outputDims,
-      int bitDepth);
+      const FrameDims& outputDims);
 
   ColorConversionLibrary getColorConversionLibrary(
       const FrameDims& inputDims,
@@ -75,8 +74,8 @@ class CpuDeviceInterface : public DeviceInterface {
 
   VideoStreamOptions videoStreamOptions_;
   AVRational timeBase_;
-  // Resolved output bit depth, set once via initializeVideo().
   int outputBitDepth_;
+  AVPixelFormat outputPixelFormat_;
 
   // If the resized output dimensions are present, then we always use those as
   // the output frame's dimensions. If they are not present, then we use the

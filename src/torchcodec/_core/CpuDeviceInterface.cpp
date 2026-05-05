@@ -54,6 +54,7 @@ void CpuDeviceInterface::initializeVideo(
   videoStreamOptions_ = videoStreamOptions;
   resizedOutputDims_ = resizedOutputDims;
   outputBitDepth_ = outputBitDepth;
+  outputPixelFormat_ = getOutputPixelFormat(outputBitDepth_);
 
   // We can use swscale when we have a single resize transform.
   // With a single resize, we use swscale twice:
@@ -115,8 +116,7 @@ void CpuDeviceInterface::initializeVideo(
     // Build the final filters_ string with the format prefix based on the
     // resolved output bit depth. The format prefix ensures user transforms
     // run in the correct output color space (RGB24 or RGB48).
-    AVPixelFormat outputPixelFormat = getOutputPixelFormat(outputBitDepth);
-    filters_ = getFormatFilterString(outputPixelFormat) + filters.str();
+    filters_ = getFormatFilterString(outputPixelFormat_) + filters.str();
   }
 
   initialized_ = true;
@@ -201,9 +201,6 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   // can still work in such situations, so they should.
   auto inputDims = FrameDims(avFrame->height, avFrame->width);
   auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
-  // Use outputBitDepth_ (set at stream setup) so output dtype matches the
-  // pre-allocated buffer; avFrameFormat is for input format identification.
-  int bitDepth = outputBitDepth_;
 
   auto outputDims = resizedOutputDims_.value_or(inputDims);
 
@@ -226,7 +223,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
     outputTensor = preAllocatedOutputTensor.value_or(
-        allocateEmptyHWCTensor(outputDims, kStableCPU, bitDepth));
+        allocateEmptyHWCTensor(outputDims, kStableCPU, outputBitDepth_));
 
     SwsConfig swsConfig(
         avFrame->width,
@@ -235,7 +232,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
         avFrame->colorspace,
         outputDims.width,
         outputDims.height,
-        getOutputPixelFormat(bitDepth));
+        outputPixelFormat_);
 
     if (!swScale_ || swScale_->getConfig() != swsConfig) {
       swScale_ = std::make_unique<SwScale>(swsConfig, swsFlags_);
@@ -255,8 +252,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
 
     frameOutput.data = outputTensor;
   } else if (colorConversionLibrary == ColorConversionLibrary::FILTERGRAPH) {
-    outputTensor =
-        convertAVFrameToTensorUsingFilterGraph(avFrame, outputDims, bitDepth);
+    outputTensor = convertAVFrameToTensorUsingFilterGraph(avFrame, outputDims);
 
     // Similarly to above, if this check fails it means the frame wasn't
     // reshaped to its expected dimensions by filtergraph.
@@ -290,10 +286,8 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
 torch::stable::Tensor
 CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
     const UniqueAVFrame& avFrame,
-    const FrameDims& outputDims,
-    int bitDepth) {
+    const FrameDims& outputDims) {
   auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
-  AVPixelFormat outputFormat = getOutputPixelFormat(bitDepth);
 
   FiltersConfig filtersConfig(
       avFrame->width,
@@ -302,7 +296,7 @@ CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
       avFrame->sample_aspect_ratio,
       outputDims.width,
       outputDims.height,
-      /*outputFormat=*/outputFormat,
+      outputPixelFormat_,
       filters_,
       timeBase_);
 

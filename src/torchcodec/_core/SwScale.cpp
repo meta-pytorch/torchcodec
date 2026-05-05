@@ -15,9 +15,6 @@ SwScale::SwScale(const SwsConfig& config, int swsFlags)
       (config_.inputHeight != config_.outputHeight ||
        config_.inputWidth != config_.outputWidth);
 
-  // RGB24 = 3 channels x 1 byte (uint8); RGB48 = 3 channels x 2 bytes (uint16).
-  bytesPerPixel_ = (config_.outputFormat == AV_PIX_FMT_RGB48) ? 6 : 3;
-
   // Create color conversion context (input format -> output RGB format).
   // Color conversion always outputs at the input resolution.
   // When no resize is needed, input and output resolutions are the same.
@@ -66,6 +63,8 @@ int SwScale::convert(
   // tensor.
   // RGB48 stores 16-bit per channel (uint16); RGB24 stores 8-bit (uint8).
   int bitDepth = (config_.outputFormat == AV_PIX_FMT_RGB48) ? 16 : 8;
+  // RGB24 = 3 channels x 1 byte (uint8); RGB48 = 3 channels x 2 bytes (uint16).
+  int bytesPerPixel = (config_.outputFormat == AV_PIX_FMT_RGB48) ? 6 : 3;
   torch::stable::Tensor colorConvertedTensor = needsResize_
       ? allocateEmptyHWCTensor(
             FrameDims(config_.inputHeight, config_.inputWidth),
@@ -81,7 +80,7 @@ int SwScale::convert(
       nullptr};
   int colorConvertedWidth = static_cast<int>(colorConvertedTensor.sizes()[1]);
   int colorConvertedLinesizes[4] = {
-      colorConvertedWidth * bytesPerPixel_, 0, 0, 0};
+      colorConvertedWidth * bytesPerPixel, 0, 0, 0};
 
   int colorConvertedHeight = sws_scale(
       colorConversionSwsContext_.get(),
@@ -105,7 +104,7 @@ int SwScale::convert(
         nullptr,
         nullptr,
         nullptr};
-    int srcLinesizes[4] = {config_.inputWidth * bytesPerPixel_, 0, 0, 0};
+    int srcLinesizes[4] = {config_.inputWidth * bytesPerPixel, 0, 0, 0};
 
     uint8_t* dstPointers[4] = {
         static_cast<uint8_t*>(outputTensor.mutable_data_ptr()),
@@ -113,7 +112,7 @@ int SwScale::convert(
         nullptr,
         nullptr};
     int expectedOutputWidth = static_cast<int>(outputTensor.sizes()[1]);
-    int dstLinesizes[4] = {expectedOutputWidth * bytesPerPixel_, 0, 0, 0};
+    int dstLinesizes[4] = {expectedOutputWidth * bytesPerPixel, 0, 0, 0};
 
     colorConvertedHeight = sws_scale(
         resizeSwsContext_.get(),

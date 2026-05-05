@@ -28,18 +28,21 @@ enum ColorConversionLibrary {
 enum class OutputDtype { UINT8, FLOAT32, AUTO };
 
 // Returns the effective output bit depth given the source bit depth and the
-// user's OutputDtype setting.
-// UINT8: always 8. FLOAT32: preserve source. AUTO: 8 for <=8-bit, else source.
+// user's OutputDtype setting. UINT8: always 8. FLOAT32: preserve source.
+// AUTO is resolved upstream, so it should never reach this function.
 inline int resolvedBitDepth(int sourceBitDepth, OutputDtype outputDtype) {
+  STD_TORCH_CHECK(
+      outputDtype != OutputDtype::AUTO,
+      "AUTO should have been resolved upstream");
   switch (outputDtype) {
     case OutputDtype::UINT8:
       return 8;
     case OutputDtype::FLOAT32:
       return sourceBitDepth;
-    case OutputDtype::AUTO:
-      return (sourceBitDepth <= 8) ? 8 : sourceBitDepth;
+    default:
+      STD_TORCH_CHECK(
+          false, "Unexpected OutputDtype: ", static_cast<int>(outputDtype));
   }
-  return 8;
 }
 
 struct VideoStreamOptions {

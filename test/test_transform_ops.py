@@ -5,21 +5,17 @@
 # LICENSE file in the root directory of this source tree.
 
 import contextlib
-
 import json
 import os
 import subprocess
 
 import pytest
-
 import torch
 import torchcodec
-
 from torchcodec._core import get_frame_at_index, get_json_metadata
 from torchcodec._core.ops import _add_video_stream, add_video_stream, create_from_file
 from torchcodec.decoders import VideoDecoder
 from torchcodec.transforms._decoder_transforms import _make_transform_specs
-
 from torchvision.transforms import v2
 
 from .utils import (
@@ -112,28 +108,7 @@ class TestPublicVideoDecoderTransformOps:
     )
     @pytest.mark.parametrize(
         "video",
-        [
-            NASA_VIDEO,
-            TEST_SRC_2_720P,
-            # TODO: On FFmpeg 4, 10-bit HDR (BT.2020 + SMPTE2084) videos produce
-            # different decoded results when transforms are applied. Plain 10-bit
-            # without HDR metadata and all 8-bit videos are unaffected. The root
-            # cause is unknown.
-            pytest.param(
-                NASA_VIDEO_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                TEST_SRC_2_720P_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-        ],
+        [NASA_VIDEO, TEST_SRC_2_720P, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR],
     )
     def test_resize_torchvision_float32(
         self, video, height_scaling_factor, width_scaling_factor
@@ -183,6 +158,11 @@ class TestPublicVideoDecoderTransformOps:
             assert frame_resize.shape == expected_shape
             assert frame_tv.shape == expected_shape
             assert frame_tv_no_antialias.shape == expected_shape
+
+            if is_hdr and torchcodec.ffmpeg_major_version < 5:
+                # 10-bit HDR + transforms produces different decoded results on
+                # FFmpeg 4 (root cause unknown).
+                continue
 
             # Compare in 8-bit-equivalent rounded space so absolute tolerances
             # match those of the SDR uint8 test (atol=1 ≈ 1 code value).
@@ -306,24 +286,7 @@ class TestPublicVideoDecoderTransformOps:
     )
     @pytest.mark.parametrize(
         "video",
-        [
-            NASA_VIDEO,
-            TEST_SRC_2_720P,
-            pytest.param(
-                NASA_VIDEO_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                TEST_SRC_2_720P_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-        ],
+        [NASA_VIDEO, TEST_SRC_2_720P, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR],
     )
     def test_center_crop_torchvision_float32(
         self,
@@ -338,6 +301,7 @@ class TestPublicVideoDecoderTransformOps:
         # is exposed on VideoDecoder.
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
+        is_hdr = video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR)
 
         spec = f"center_crop,{height},{width}"
         decoder_center_crop = create_from_file(str(video.path))
@@ -362,6 +326,11 @@ class TestPublicVideoDecoderTransformOps:
 
             expected_shape = (video.get_num_color_channels(), height, width)
             assert frame_center_crop.shape == expected_shape
+
+            if is_hdr and torchcodec.ffmpeg_major_version < 5:
+                # 10-bit HDR + transforms produces different decoded results on
+                # FFmpeg 4 (root cause unknown).
+                continue
 
             frame_tv = v2.CenterCrop(size=(height, width))(frame_full)
             assert_frames_equal(frame_center_crop, frame_tv)
@@ -441,24 +410,7 @@ class TestPublicVideoDecoderTransformOps:
     )
     @pytest.mark.parametrize(
         "video",
-        [
-            NASA_VIDEO,
-            TEST_SRC_2_720P,
-            pytest.param(
-                NASA_VIDEO_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-            pytest.param(
-                TEST_SRC_2_720P_HDR,
-                marks=pytest.mark.skipif(
-                    torchcodec.ffmpeg_major_version < 5,
-                    reason="10-bit HDR produces different results with transforms on FFmpeg 4",
-                ),
-            ),
-        ],
+        [NASA_VIDEO, TEST_SRC_2_720P, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR],
     )
     @pytest.mark.parametrize("seed", [0, 1234])
     def test_random_crop_torchvision_float32(
@@ -475,6 +427,7 @@ class TestPublicVideoDecoderTransformOps:
         # is exposed on VideoDecoder.
         height = int(video.get_height() * height_scaling_factor)
         width = int(video.get_width() * width_scaling_factor)
+        is_hdr = video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR)
 
         # Generate the spec from a seeded torchcodec RandomCrop, then push it
         # through the ops layer.
@@ -505,6 +458,11 @@ class TestPublicVideoDecoderTransformOps:
 
             expected_shape = (video.get_num_color_channels(), height, width)
             assert frame_random_crop.shape == expected_shape
+
+            if is_hdr and torchcodec.ffmpeg_major_version < 5:
+                # 10-bit HDR + transforms produces different decoded results on
+                # FFmpeg 4 (root cause unknown).
+                continue
 
             # Resetting manual seed to make sure the invocation of the
             # TorchVision RandomCrop matches the call above.
