@@ -206,9 +206,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   void addAudioStream(
       int sampleRate,
       int numChannels,
-      std::optional<int> bitRate = std::nullopt,
-      std::optional<int> desiredNumChannels = std::nullopt,
-      std::optional<int> desiredSampleRate = std::nullopt);
+      std::optional<int> bitRate = std::nullopt);
   void open();
   void addFrames(const torch::stable::Tensor& frames);
   void close();
@@ -228,8 +226,6 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   struct AudioStream {
     int inSampleRate = -1;
     int inNumChannels = -1;
-    int outSampleRate = -1;
-    int outNumChannels = -1;
     AudioStreamOptions options;
     UniqueAVCodecContext avCodecContext;
     AVStream* avStream = nullptr;

@@ -1127,9 +1127,7 @@ void MultiStreamEncoder::addVideoStream(
 void MultiStreamEncoder::addAudioStream(
     int sampleRate,
     int numChannels,
-    std::optional<int> bitRate,
-    std::optional<int> desiredNumChannels,
-    std::optional<int> desiredSampleRate) {
+    std::optional<int> bitRate) {
   STD_TORCH_CHECK(
       !audioStream_.has_value(),
       "An audio stream has already been added. Cannot add another.");
@@ -1141,8 +1139,6 @@ void MultiStreamEncoder::addAudioStream(
   audioStream_->inSampleRate = sampleRate;
   audioStream_->inNumChannels = numChannels;
   audioStream_->options.bitRate = bitRate;
-  audioStream_->options.numChannels = desiredNumChannels;
-  audioStream_->options.sampleRate = desiredSampleRate;
 }
 
 void MultiStreamEncoder::initializeVideoStream() {
@@ -1323,18 +1319,13 @@ void MultiStreamEncoder::initializeAudioStream() {
   // well when "-b:a" isn't specified.
   audioStream.avCodecContext->bit_rate = desiredBitRate.value_or(0);
 
-  audioStream.outNumChannels =
-      audioStream.options.numChannels.value_or(audioStream.inNumChannels);
-  validateNumChannels(*avCodec, audioStream.outNumChannels);
-  // The avCodecContext layout defines the layout of the encoded output, it's
-  // not related to the input samples.
+  // TODO MultiStreamEncoder: support output numChannels and sampleRate
+  validateNumChannels(*avCodec, audioStream.inNumChannels);
   setDefaultChannelLayout(
-      audioStream.avCodecContext, audioStream.outNumChannels);
+      audioStream.avCodecContext, audioStream.inNumChannels);
 
-  audioStream.outSampleRate =
-      audioStream.options.sampleRate.value_or(audioStream.inSampleRate);
-  validateSampleRate(*avCodec, audioStream.outSampleRate);
-  audioStream.avCodecContext->sample_rate = audioStream.outSampleRate;
+  validateSampleRate(*avCodec, audioStream.inSampleRate);
+  audioStream.avCodecContext->sample_rate = audioStream.inSampleRate;
 
   // Input samples are expected to be FLTP. Not all encoders support FLTP, so we
   // may need to convert the samples into a supported output sample format,

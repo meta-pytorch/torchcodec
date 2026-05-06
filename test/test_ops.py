@@ -1269,8 +1269,6 @@ class TestMultiStreamEncoderOps:
             encoder,
             sample_rate=44100,
             num_channels=2,
-            desired_num_channels=1,
-            desired_sample_rate=16000,
         )
         streaming_encoder_open(encoder)
         streaming_encoder_close(encoder)
@@ -1490,33 +1488,6 @@ class TestMultiStreamEncoderOps:
             bit_rate=-1,
         )
         with pytest.raises(RuntimeError, match="bit_rate=-1 must be >= 0"):
-            streaming_encoder_open(encoder)
-
-    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_audio_stream_invalid_num_channels_errors(self, tmp_path, method):
-        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
-        streaming_encoder_add_audio_stream(
-            encoder,
-            sample_rate=44100,
-            num_channels=2,
-            desired_num_channels=100,
-        )
-        with pytest.raises(
-            RuntimeError,
-            match="Desired number of channels.*is not supported|avcodec_open2 failed",
-        ):
-            streaming_encoder_open(encoder)
-
-    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_audio_stream_invalid_sample_rate_errors(self, tmp_path, method):
-        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
-        streaming_encoder_add_audio_stream(
-            encoder,
-            sample_rate=44100,
-            num_channels=2,
-            desired_sample_rate=12345,
-        )
-        with pytest.raises(RuntimeError, match="invalid sample rate=12345"):
             streaming_encoder_open(encoder)
 
 
