@@ -59,9 +59,9 @@ from .utils import (
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
     TEST_SRC_2_720P_MPEG4,
-    TEST_SRC_2_720P_MPEG4_MP4,
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
+    TEST_SRC_2_MPEG4_MP4,
 )
 
 
@@ -1929,11 +1929,11 @@ class TestVideoDecoder:
         # never inline. Without the dump_extra BSF, the NVCUVID parser could
         # not initialize.
         ref_decoder = VideoDecoder(
-            TEST_SRC_2_720P_MPEG4_MP4.path, device="cuda", seek_mode=seek_mode
+            TEST_SRC_2_MPEG4_MP4.path, device="cuda", seek_mode=seek_mode
         )
         with set_cuda_backend("beta"):
             beta_decoder = VideoDecoder(
-                TEST_SRC_2_720P_MPEG4_MP4.path, device="cuda", seek_mode=seek_mode
+                TEST_SRC_2_MPEG4_MP4.path, device="cuda", seek_mode=seek_mode
             )
 
         expected_frame0 = ref_decoder.get_frame_at(0)

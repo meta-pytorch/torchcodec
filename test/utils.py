@@ -679,7 +679,7 @@ TEST_SRC_2_720P_MPEG4 = TestVideo(
 # MPEG-4 Part 2 in MP4 stores codec config (VOS/VOL) in extradata only, with
 # no inline copies in the bitstream — exercises the dump_extra BSF path on
 # the beta CUDA backend.
-TEST_SRC_2_720P_MPEG4_MP4 = TestVideo(
+TEST_SRC_2_MPEG4_MP4 = TestVideo(
     filename="testsrc2_mpeg4.mp4",
     default_stream_index=0,
     stream_infos={
