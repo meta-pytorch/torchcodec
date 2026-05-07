@@ -62,12 +62,14 @@ int SwScale::convert(
   // When no resize is needed, we do color conversion directly into the output
   // tensor.
   // RGB24 = 3 channels x 1 byte (uint8); RGB48 = 3 channels x 2 bytes (uint16).
-  int bytesPerPixel = (config_.outputFormat == AV_PIX_FMT_RGB48) ? 6 : 3;
+  bool isRGB48 = config_.outputFormat == AV_PIX_FMT_RGB48;
+  int bytesPerPixel = isRGB48 ? 6 : 3;
+  auto outputDtype = isRGB48 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
   torch::stable::Tensor colorConvertedTensor = needsResize_
       ? allocateEmptyHWCTensor(
             FrameDims(config_.inputHeight, config_.inputWidth),
             kStableCPU,
-            config_.outputFormat)
+            outputDtype)
       : outputTensor;
 
   // sws_scale always takes uint8_t* pointers regardless of actual bit depth.

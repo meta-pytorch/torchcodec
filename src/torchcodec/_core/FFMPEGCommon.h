@@ -318,7 +318,4 @@ struct SwsConfig {
 // Utility functions for swscale context management
 UniqueSwsContext createSwsContext(const SwsConfig& swsConfig, int swsFlags);
 
-// Returns the bit depth per channel for the given pixel format.
-int getBitDepthFromAVPixelFormat(AVPixelFormat format);
-
 } // namespace facebook::torchcodec

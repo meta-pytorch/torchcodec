@@ -68,7 +68,7 @@ struct AudioFramesOutput {
 torch::stable::Tensor allocateEmptyHWCTensor(
     const FrameDims& frameDims,
     const StableDevice& device,
-    AVPixelFormat pixelFormat,
+    OutputDtype outputDtype,
     std::optional<int> numFrames = std::nullopt);
 
 } // namespace facebook::torchcodec

@@ -539,17 +539,6 @@ UniqueAVFrame convertAudioAVFrameSamples(
   return convertedAVFrame;
 }
 
-int getBitDepthFromAVPixelFormat(AVPixelFormat format) {
-  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(format);
-  // Fall back to 8 if the format wasn't probed (codecpar->format can be
-  // AV_PIX_FMT_NONE for streams where avformat_find_stream_info couldn't
-  // determine the format). 8 matches the legacy default (UINT8 output).
-  if (desc == nullptr) {
-    return 8;
-  }
-  return desc->comp[0].depth;
-}
-
 void setFFmpegLogLevel() {
   auto logLevel = AV_LOG_QUIET;
   const char* logLevelEnvPtr = std::getenv("TORCHCODEC_FFMPEG_LOG_LEVEL");

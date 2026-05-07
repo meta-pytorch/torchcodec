@@ -578,14 +578,17 @@ void SingleStreamDecoder::addVideoStream(
         activeStreamIndex_, customFrameMappings.value());
   }
 
-  int sourceBitDepth = getBitDepthFromAVPixelFormat(
-      static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
-
   // Resolve AUTO once based on the source bit depth, so downstream code
   // only has to handle UINT8 / FLOAT32.
+  //
+  // TODO: programmatically enforce that OutputDtype is "resolved" (i.e. not
+  // AUTO) past this point.
   if (streamInfo.videoStreamOptions.outputDtype == OutputDtype::AUTO) {
+    const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(
+        static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
     streamInfo.videoStreamOptions.outputDtype =
-        (sourceBitDepth > 8) ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
+        (desc != nullptr && desc->comp[0].depth > 8) ? OutputDtype::FLOAT32
+                                                     : OutputDtype::UINT8;
   }
 
   // Set preRotationDims_ for the active stream. These are the raw encoded

@@ -107,10 +107,6 @@ void CpuDeviceInterface::initializeVideo(
     // output frame matches the pixel format specified in the sink. But by
     // default, it will insert it after the user filters. We need an explicit
     // format conversion to get the behavior we want.
-    //
-    // Build the final filters_ string with the format prefix based on the
-    // resolved output bit depth. The format prefix ensures user transforms
-    // run in the correct output color space (RGB24 or RGB48).
     filters_ = getFormatFilterString(outputPixelFormat_) + filters.str();
   }
 
@@ -195,8 +191,6 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   // FrameBatchOutputs based on the the stream metadata. But single-frame APIs
   // can still work in such situations, so they should.
   auto inputDims = FrameDims(avFrame->height, avFrame->width);
-  auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
-
   auto outputDims = resizedOutputDims_.value_or(inputDims);
 
   if (preAllocatedOutputTensor.has_value()) {
@@ -217,9 +211,10 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   torch::stable::Tensor outputTensor;
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
-    outputTensor = preAllocatedOutputTensor.value_or(
-        allocateEmptyHWCTensor(outputDims, kStableCPU, outputPixelFormat_));
+    outputTensor = preAllocatedOutputTensor.value_or(allocateEmptyHWCTensor(
+        outputDims, kStableCPU, videoStreamOptions_.outputDtype));
 
+    auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
     SwsConfig swsConfig(
         avFrame->width,
         avFrame->height,

@@ -21,21 +21,20 @@ FrameBatchOutput::FrameBatchOutput(
     OutputDtype outputDtype)
     : ptsSeconds(torch::stable::empty({numFrames}, kStableFloat64)),
       durationSeconds(torch::stable::empty({numFrames}, kStableFloat64)) {
-  auto pixelFormat =
-      outputDtype == OutputDtype::FLOAT32 ? AV_PIX_FMT_RGB48 : AV_PIX_FMT_RGB24;
-  data = allocateEmptyHWCTensor(outputDims, device, pixelFormat, numFrames);
+  data = allocateEmptyHWCTensor(outputDims, device, outputDtype, numFrames);
 }
 
 torch::stable::Tensor allocateEmptyHWCTensor(
     const FrameDims& frameDims,
     const StableDevice& device,
-    AVPixelFormat pixelFormat,
+    OutputDtype outputDtype,
     std::optional<int> numFrames) {
   STD_TORCH_CHECK(
       frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
   STD_TORCH_CHECK(
       frameDims.width > 0, "width must be > 0, got: ", frameDims.width);
-  auto dtype = pixelFormat == AV_PIX_FMT_RGB48 ? kStableUInt16 : kStableUInt8;
+  auto dtype =
+      outputDtype == OutputDtype::FLOAT32 ? kStableUInt16 : kStableUInt8;
   if (numFrames.has_value()) {
     auto numFramesValue = numFrames.value();
     STD_TORCH_CHECK(
