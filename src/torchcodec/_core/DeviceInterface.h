@@ -134,6 +134,15 @@ class DeviceInterface {
         codecContext_ != nullptr,
         "Codec context not available for default flushing");
     avcodec_flush_buffers(codecContext_.get());
+
+    // We also manually flush any remaining frames in the decoder buffer. We
+    // shouldn't have to do this, because avcodec_flush_buffers should handle
+    // it, but some codecs like HEVC may still have frames buffered internally
+    // in edge cases (ex. hitting EOF) as observed in
+    // https://github.com/meta-pytorch/torchcodec/issues/1339.
+    UniqueAVFrame tmp(av_frame_alloc());
+    while (avcodec_receive_frame(codecContext_.get(), tmp.get()) == AVSUCCESS) {
+    }
   }
 
   virtual std::string getDetails() {
