@@ -16,6 +16,8 @@ import pytest
 
 import torch
 
+from torchcodec import ffmpeg_major_version
+
 from torchcodec._core import (
     _test_frame_pts_equality,
     create_streaming_encoder_to_file,
@@ -48,7 +50,6 @@ from torchcodec._core.ops import (
     create_from_tensor,
     seek_to_pts,
 )
-
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
 from .utils import (
@@ -1531,7 +1532,20 @@ class TestMultiStreamEncoderOps:
         assert decoded.sample_rate == sample_rate
         torch.testing.assert_close(decoded.data, samples, atol=1e-4, rtol=0)
 
-    @pytest.mark.parametrize("format", ("mp4", "mkv", "mov"))
+    @pytest.mark.parametrize(
+        "format",
+        (
+            "mp4",
+            pytest.param(
+                "mkv",
+                marks=pytest.mark.skipif(
+                    ffmpeg_major_version < 6,
+                    reason="Default audio codec for MKV has low accuracy on older FFmpeg versions.",
+                ),
+            ),
+            "mov",
+        ),
+    )
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_audio_and_video_streams_and_encode(self, tmp_path, format, method):
         source_video_decoder = VideoDecoder(str(NASA_VIDEO.path))
@@ -1586,7 +1600,7 @@ class TestMultiStreamEncoderOps:
         assert_tensor_close_on_at_least(
             decoded_audio.data[:, :num_samples_to_compare],
             source_samples[:, :num_samples_to_compare],
-            percentage=99,
+            percentage=96 if format == "mkv" else 99,
             atol=0.1 if format == "mkv" else 0.01,
         )
 
