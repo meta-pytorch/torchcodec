@@ -221,11 +221,19 @@ def generate_hdr_references_rgb48():
             generate_frame_by_index_rgb48(video, frame_index=frame, stream_index=0)
 
 
+def generate_hdr_references_rgb24():
+    frames = [0, 5, 10]
+    for video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR):
+        for frame in frames:
+            generate_frame_by_index(video, frame_index=frame, stream_index=0)
+
+
 def main():
     generate_nasa_13013_references()
     generate_h265_video_references()
     generate_av1_video_references()
     generate_hdr_references_rgb48()
+    generate_hdr_references_rgb24()
 
 
 if __name__ == "__main__":

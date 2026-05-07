@@ -9,10 +9,6 @@
 #include <mutex>
 #include "StableABICompat.h"
 
-extern "C" {
-#include <libavutil/pixdesc.h>
-}
-
 namespace facebook::torchcodec {
 
 namespace {
