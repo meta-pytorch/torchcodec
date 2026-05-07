@@ -20,6 +20,10 @@ torch::stable::Tensor validateSamples(const torch::stable::Tensor& samples) {
       "samples must have float32 dtype, got ",
       (samples.scalar_type()));
   STD_TORCH_CHECK(
+      samples.device().type() == kStableCPU,
+      "samples must be on CPU, got ",
+      deviceTypeName(samples.device().type()));
+  STD_TORCH_CHECK(
       samples.dim() == 2,
       "samples must have 2 dimensions, got ",
       samples.dim());
@@ -1326,6 +1330,8 @@ void MultiStreamEncoder::initializeAudioStream() {
 
   validateSampleRate(*avCodec, audioStream.inSampleRate);
   audioStream.avCodecContext->sample_rate = audioStream.inSampleRate;
+  audioStream.avCodecContext->time_base =
+      AVRational{1, audioStream.inSampleRate};
 
   // Input samples are expected to be FLTP. Not all encoders support FLTP, so we
   // may need to convert the samples into a supported output sample format,
@@ -1456,7 +1462,223 @@ void MultiStreamEncoder::encodeVideoFrame(
   }
 }
 
+void MultiStreamEncoder::addSamples(const torch::stable::Tensor& samples) {
+  STD_TORCH_CHECK(headerWritten_, "Call open() before addSamples().");
+  STD_TORCH_CHECK(
+      audioStream_.has_value(),
+      "No audio stream has been added. Call addAudioStream() first.");
+  auto validatedSamples = validateSamples(samples);
+  STD_TORCH_CHECK(
+      static_cast<int>(validatedSamples.sizes()[0]) ==
+          audioStream_->inNumChannels,
+      "Expected ",
+      audioStream_->inNumChannels,
+      " channels, got ",
+      validatedSamples.sizes()[0]);
+  // TODO MultiStreamEncoder: Support multiple addSamples() calls.
+  // Codecs have frame size requirements, only the final encoded sample batch
+  // can be smaller than the frame size, so to support multiple calls without
+  // requiring the user to know about frame size, we need to encode frames
+  // through a FIFO.
+  STD_TORCH_CHECK(
+      !audioStream_->addSamplesCalled,
+      "Only one addSamples() call is currently supported.");
+  audioStream_->addSamplesCalled = true;
+  encodeAudioSamples(validatedSamples);
+}
+
+void MultiStreamEncoder::encodeAudioSamples(
+    const torch::stable::Tensor& samples) {
+  auto& audioStream = *audioStream_;
+
+  //  Default to 256 like in torchaudio
+  int numSamplesAllocatedPerFrame = audioStream.avCodecContext->frame_size > 0
+      ? audioStream.avCodecContext->frame_size
+      : 256;
+
+  UniqueAVFrame avFrame = allocateAVFrame(
+      numSamplesAllocatedPerFrame,
+      audioStream.inSampleRate,
+      audioStream.inNumChannels,
+      AV_SAMPLE_FMT_FLTP);
+
+  AutoAVPacket autoAVPacket;
+
+  const uint8_t* psamples =
+      static_cast<const uint8_t*>(samples.const_data_ptr());
+  int numSamples = static_cast<int>(samples.sizes()[1]); // per channel
+  int numEncodedSamples = 0; // per channel
+  int numBytesPerSample = static_cast<int>(samples.element_size());
+  int numBytesPerChannel = numSamples * numBytesPerSample;
+
+  while (numEncodedSamples < numSamples) {
+    int numSamplesToEncode =
+        std::min(numSamplesAllocatedPerFrame, numSamples - numEncodedSamples);
+    int numBytesToEncode = numSamplesToEncode * numBytesPerSample;
+
+    for (int ch = 0; ch < audioStream.inNumChannels; ch++) {
+      std::memcpy(
+          avFrame->data[ch],
+          psamples + ch * numBytesPerChannel,
+          numBytesToEncode);
+    }
+    psamples += numBytesToEncode;
+
+    // Above, we set the AVFrame's .nb_samples to AVCodecContext.frame_size so
+    // that the frame buffers are allocated to a big enough size. Here, we reset
+    // it to the exact number of samples that need to be encoded, otherwise the
+    // encoded frame would contain more samples than necessary and our results
+    // wouldn't match the ffmpeg CLI.
+    avFrame->nb_samples = numSamplesToEncode;
+
+    UniqueAVFrame convertedAVFrame =
+        maybeConvertAudioAVFrame(avFrame, audioStream);
+    encodeAudioFrame(autoAVPacket, convertedAVFrame, audioStream);
+
+    numEncodedSamples += numSamplesToEncode;
+  }
+  STD_TORCH_CHECK(
+      numEncodedSamples == numSamples, "Hmmmmmm something went wrong.");
+}
+
+UniqueAVFrame MultiStreamEncoder::maybeConvertAudioAVFrame(
+    const UniqueAVFrame& avFrame,
+    AudioStream& audioStream) {
+  if (static_cast<AVSampleFormat>(avFrame->format) ==
+          audioStream.avCodecContext->sample_fmt &&
+      getNumChannels(avFrame) == audioStream.inNumChannels &&
+      avFrame->sample_rate == audioStream.inSampleRate) {
+    // Note: the clone references the same underlying data, it's a cheap copy.
+    return UniqueAVFrame(av_frame_clone(avFrame.get()));
+  }
+
+  if (!audioStream.swrContext) {
+    audioStream.swrContext.reset(createSwrContext(
+        static_cast<AVSampleFormat>(avFrame->format),
+        audioStream.avCodecContext->sample_fmt,
+        avFrame->sample_rate,
+        audioStream.inSampleRate,
+        avFrame,
+        audioStream.inNumChannels));
+  }
+  // convertAudioAVFrameSamples uses avFrame's extended_data field, so we ensure
+  // it's the same as data. This should always be the case since we validated
+  // earlier that we have less than AV_NUM_DATA_POINTERS channels.
+  STD_TORCH_CHECK(
+      avFrame->data == avFrame->extended_data,
+      "Codec context data and extended_data pointers differ, this is unexpected.");
+  UniqueAVFrame convertedAVFrame = convertAudioAVFrameSamples(
+      audioStream.swrContext,
+      avFrame,
+      audioStream.avCodecContext->sample_fmt,
+      audioStream.inSampleRate,
+      audioStream.inNumChannels);
+
+  if (avFrame->sample_rate == audioStream.inSampleRate) {
+    STD_TORCH_CHECK(
+        convertedAVFrame->nb_samples == avFrame->nb_samples,
+        "convertedAVFrame->nb_samples=",
+        convertedAVFrame->nb_samples,
+        " differs from ",
+        "avFrame->nb_samples=",
+        avFrame->nb_samples,
+        "This is unexpected, please report on the TorchCodec bug tracker.");
+  }
+  return convertedAVFrame;
+}
+
+void MultiStreamEncoder::encodeAudioFrame(
+    AutoAVPacket& autoAVPacket,
+    const UniqueAVFrame& avFrame,
+    AudioStream& audioStream) {
+  if (avFrame != nullptr) {
+    avFrame->pts = audioStream.lastEncodedAVFramePts;
+    audioStream.lastEncodedAVFramePts += avFrame->nb_samples;
+  }
+
+  auto status =
+      avcodec_send_frame(audioStream.avCodecContext.get(), avFrame.get());
+  STD_TORCH_CHECK(
+      status == AVSUCCESS,
+      "Error while sending frame: ",
+      getFFMPEGErrorStringFromErrorCode(status));
+
+  while (status >= 0) {
+    ReferenceAVPacket packet(autoAVPacket);
+    status =
+        avcodec_receive_packet(audioStream.avCodecContext.get(), packet.get());
+    if (status == AVERROR(EAGAIN) || status == AVERROR_EOF) {
+      if (status == AVERROR_EOF) {
+        // Flush the packets that were potentially buffered by
+        // av_interleaved_write_frame(). See corresponding block in
+        // TorchAudio:
+        // https://github.com/pytorch/audio/blob/d60ce09e2c532d5bf2e05619e700ab520543465e/src/libtorio/ffmpeg/stream_writer/encoder.cpp#L21
+        status = av_interleaved_write_frame(avFormatContext_.get(), nullptr);
+        STD_TORCH_CHECK(
+            status == AVSUCCESS,
+            "Failed to flush packet: ",
+            getFFMPEGErrorStringFromErrorCode(status));
+      }
+      return;
+    }
+    STD_TORCH_CHECK(
+        status >= 0,
+        "Error receiving packet: ",
+        getFFMPEGErrorStringFromErrorCode(status));
+
+    packet->stream_index = audioStream.avStream->index;
+    av_packet_rescale_ts(
+        packet.get(),
+        audioStream.avCodecContext->time_base,
+        audioStream.avStream->time_base);
+
+    status = av_interleaved_write_frame(avFormatContext_.get(), packet.get());
+    STD_TORCH_CHECK(
+        status == AVSUCCESS,
+        "Error in av_interleaved_write_frame: ",
+        getFFMPEGErrorStringFromErrorCode(status));
+  }
+}
+
+void MultiStreamEncoder::maybeFlushAudioSwrBuffers(
+    AutoAVPacket& autoAVPacket,
+    AudioStream& audioStream) {
+  // Similar to the decoder's method with the same name, but for encoding this
+  // time. That is, when sample conversion is involved, libswresample may have
+  // buffered some samples that we now need to flush and send to the encoder.
+  if (audioStream.swrContext == nullptr) {
+    return;
+  }
+
+  int numRemainingSamples = // this is an upper bound
+      swr_get_out_samples(audioStream.swrContext.get(), 0);
+  if (numRemainingSamples == 0) {
+    return;
+  }
+
+  UniqueAVFrame avFrame = allocateAVFrame(
+      numRemainingSamples,
+      audioStream.inSampleRate,
+      audioStream.inNumChannels,
+      audioStream.avCodecContext->sample_fmt);
+  int actualNumRemainingSamples = swr_convert(
+      audioStream.swrContext.get(),
+      avFrame->data,
+      avFrame->nb_samples,
+      nullptr,
+      0);
+  avFrame->nb_samples = actualNumRemainingSamples;
+
+  encodeAudioFrame(autoAVPacket, avFrame, audioStream);
+}
+
 void MultiStreamEncoder::flushBuffers() {
+  if (audioStream_.has_value() && audioStream_->avStream != nullptr) {
+    AutoAVPacket audioAVPacket;
+    auto& audioStream = *audioStream_;
+    maybeFlushAudioSwrBuffers(audioAVPacket, audioStream);
+    encodeAudioFrame(audioAVPacket, UniqueAVFrame(nullptr), audioStream);
+  }
   if (videoStream_.has_value() && videoStream_->avStream != nullptr) {
     AutoAVPacket videoAVPacket;
     // Send null frame to signal end of input

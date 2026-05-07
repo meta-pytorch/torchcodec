@@ -155,6 +155,9 @@ streaming_encoder_open = torch.ops.torchcodec_ns.streaming_encoder_open.default
 streaming_encoder_add_frames = (
     torch.ops.torchcodec_ns.streaming_encoder_add_frames.default
 )
+streaming_encoder_add_samples = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_samples.default
+)
 set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
 get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
 _get_nvdec_cache_size = torch.ops.torchcodec_ns._get_nvdec_cache_size.default
@@ -670,6 +673,13 @@ def streaming_encoder_open_abstract(encoder: torch.Tensor) -> None:
 @register_fake("torchcodec_ns::streaming_encoder_add_frames")
 def streaming_encoder_add_frames_abstract(
     encoder: torch.Tensor, frames: torch.Tensor
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_add_samples")
+def streaming_encoder_add_samples_abstract(
+    encoder: torch.Tensor, samples: torch.Tensor
 ) -> None:
     return
 
