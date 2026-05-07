@@ -54,13 +54,13 @@ def set_cuda_backend(backend: str) -> Generator[None, None, None]:
         ... decoder.get_frame_at(0)
     """
     backend = backend.lower()
-    # "beta" is kept as a backwards-compatible alias for "default".
-    if backend == "beta":
-        backend = "default"
-    if backend not in ("default", "ffmpeg"):
+    if backend not in ("nvdec", "ffmpeg"):
         raise ValueError(
-            f"Invalid CUDA backend ({backend}). Supported values are 'default' and 'ffmpeg'."
+            f"Invalid CUDA backend ({backend}). Supported values are 'nvdec' and 'ffmpeg'."
         )
+    # "nvdec" is the public-facing name; internally the variant is "default".
+    if backend == "nvdec":
+        backend = "default"
 
     previous_state = _CUDA_BACKEND.set(backend)
     try:

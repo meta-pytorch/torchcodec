@@ -1982,8 +1982,8 @@ class TestVideoDecoder:
         with set_cuda_backend("FFMPEG"):
             assert _get_cuda_backend() == "ffmpeg"
 
-        # "beta" is a backwards-compatible alias for "default".
-        with set_cuda_backend("beta"):
+        # "nvdec" is the public-facing name for the default CUDA backend.
+        with set_cuda_backend("nvdec"):
             assert _get_cuda_backend() == "default"
 
         # Check that the default backend is "default" (i.e. NVDEC)
@@ -2000,14 +2000,14 @@ class TestVideoDecoder:
             dec = VideoDecoder(H265_VIDEO.path, device="cuda")
         assert _get_cuda_backend() == "default"
         assert "FFmpeg CUDA" in str(dec.cpu_fallback)
-        with set_cuda_backend("default"):
+        with set_cuda_backend("nvdec"):
             assert "FFmpeg CUDA" in str(dec.cpu_fallback)
 
         # Hacky way to ensure passing "cuda:1" is supported by both backends. We
         # just check that there's an error when passing cuda:N where N is too
         # high.
         bad_device_number = torch.cuda.device_count() + 1
-        for backend in ("ffmpeg", "default"):
+        for backend in ("ffmpeg", "nvdec"):
             with pytest.raises(RuntimeError, match="torch_call_dispatcher"):
                 with set_cuda_backend(backend):
                     VideoDecoder(H265_VIDEO.path, device=f"cuda:{bad_device_number}")

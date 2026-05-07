@@ -68,6 +68,7 @@ static DecoderCapsCache& getDecoderCapsCache() {
   return cache;
 }
 
+// TODO: rename private variant "default" to "nvdec" to match public name.
 static bool g_cuda_default = registerDeviceInterface(
     DeviceInterfaceKey(kStableCUDA, /*variant=*/"default"),
     [](const StableDevice& device) {

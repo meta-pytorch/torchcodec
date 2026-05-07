@@ -80,7 +80,7 @@ def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
     if device == _CUDA_FFMPEG_DEVICE_STR:
         clean_device, backend = "cuda", "ffmpeg"
     else:
-        clean_device, backend = device, "default"
+        clean_device, backend = device, "nvdec"
 
     # set_cuda_backend is a no-op if the device is "cpu", so we can use it
     # unconditionally.
