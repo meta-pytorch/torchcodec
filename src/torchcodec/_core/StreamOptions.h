@@ -22,28 +22,16 @@ enum ColorConversionLibrary {
 };
 
 // Controls the dtype of decoded frame tensors.
-// UINT8: Always output uint8 tensors (default, backward compatible).
-// FLOAT32: Always output float32 tensors normalized to [0, 1].
+// UINT8: Always output uint8 tensors (default, backward compatible). Uses an
+//        8-bit / RGB24 intermediate.
+// FLOAT32: Always output float32 tensors normalized to [0, 1]. Uses a 16-bit /
+//          RGB48 intermediate so the YUV->RGB matrix output is preserved at
+//          full precision through the float cast, regardless of source bit
+//          depth.
 // AUTO: Output uint8 for SDR (<=8-bit) sources, float32 for HDR (>8-bit).
+//       Resolved upstream in addVideoStream so downstream code only ever sees
+//       UINT8 / FLOAT32.
 enum class OutputDtype { UINT8, FLOAT32, AUTO };
-
-// Returns the effective output bit depth given the source bit depth and the
-// user's OutputDtype setting. UINT8: always 8. FLOAT32: preserve source.
-// AUTO is resolved upstream, so it should never reach this function.
-inline int resolvedBitDepth(int sourceBitDepth, OutputDtype outputDtype) {
-  STD_TORCH_CHECK(
-      outputDtype != OutputDtype::AUTO,
-      "AUTO should have been resolved upstream");
-  switch (outputDtype) {
-    case OutputDtype::UINT8:
-      return 8;
-    case OutputDtype::FLOAT32:
-      return sourceBitDepth;
-    default:
-      STD_TORCH_CHECK(
-          false, "Unexpected OutputDtype: ", static_cast<int>(outputDtype));
-  }
-}
 
 struct VideoStreamOptions {
   VideoStreamOptions() {}

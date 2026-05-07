@@ -10,12 +10,9 @@ namespace facebook::torchcodec {
 
 namespace {
 
-// Returns the appropriate RGB output format based on source bit depth.
-// RGB24 is 8 bits per channel, RGB48 is 16 bits per channel. For >8-bit
-// sources (e.g. 10-bit HDR), we need RGB48 to preserve the full bit depth;
-// RGB24 would lose the extra precision.
-AVPixelFormat getOutputPixelFormat(int bitDepth) {
-  return (bitDepth > 8) ? AV_PIX_FMT_RGB48 : AV_PIX_FMT_RGB24;
+AVPixelFormat getOutputPixelFormat(OutputDtype outputDtype) {
+  return outputDtype == OutputDtype::FLOAT32 ? AV_PIX_FMT_RGB48
+                                             : AV_PIX_FMT_RGB24;
 }
 
 // Returns the format filter string for the given output pixel format.
@@ -48,13 +45,11 @@ void CpuDeviceInterface::initialize(
 void CpuDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     const std::vector<std::unique_ptr<Transform>>& transforms,
-    const std::optional<FrameDims>& resizedOutputDims,
-    int outputBitDepth) {
+    const std::optional<FrameDims>& resizedOutputDims) {
   avMediaType_ = AVMEDIA_TYPE_VIDEO;
   videoStreamOptions_ = videoStreamOptions;
   resizedOutputDims_ = resizedOutputDims;
-  outputBitDepth_ = outputBitDepth;
-  outputPixelFormat_ = getOutputPixelFormat(outputBitDepth_);
+  outputPixelFormat_ = getOutputPixelFormat(videoStreamOptions_.outputDtype);
 
   // We can use swscale when we have a single resize transform.
   // With a single resize, we use swscale twice:
@@ -223,7 +218,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
     outputTensor = preAllocatedOutputTensor.value_or(
-        allocateEmptyHWCTensor(outputDims, kStableCPU, outputBitDepth_));
+        allocateEmptyHWCTensor(outputDims, kStableCPU, outputPixelFormat_));
 
     SwsConfig swsConfig(
         avFrame->width,

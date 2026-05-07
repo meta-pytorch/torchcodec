@@ -582,18 +582,11 @@ void SingleStreamDecoder::addVideoStream(
       static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
 
   // Resolve AUTO once based on the source bit depth, so downstream code
-  // that reads streamInfo.videoStreamOptions.outputDtype only has to
-  // handle UINT8 / FLOAT32.
+  // only has to handle UINT8 / FLOAT32.
   if (streamInfo.videoStreamOptions.outputDtype == OutputDtype::AUTO) {
     streamInfo.videoStreamOptions.outputDtype =
         (sourceBitDepth > 8) ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
   }
-
-  // Single source of truth for output bit depth: resolved here once at stream
-  // setup, then passed to the device interface and used for all downstream
-  // frame allocation and format conversion.
-  outputBitDepth_ = resolvedBitDepth(
-      sourceBitDepth, streamInfo.videoStreamOptions.outputDtype);
 
   // Set preRotationDims_ for the active stream. These are the raw encoded
   // dimensions from FFmpeg, used as a fallback for tensor pre-allocation when
@@ -639,8 +632,10 @@ void SingleStreamDecoder::addVideoStream(
     transforms_.push_back(std::unique_ptr<Transform>(transform));
   }
 
+  // Pass the resolved options (AUTO -> UINT8/FLOAT32) so the device interface
+  // sees a definite OutputDtype.
   deviceInterface_->initializeVideo(
-      videoStreamOptions, transforms_, resizedOutputDims_, outputBitDepth_);
+      streamInfo.videoStreamOptions, transforms_, resizedOutputDims_);
 }
 
 void SingleStreamDecoder::addAudioStream(
@@ -771,7 +766,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
       frameIndices.numel(),
       getOutputDims(),
       videoStreamOptions.device,
-      outputBitDepth_);
+      videoStreamOptions.outputDtype);
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -840,7 +835,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
       numOutputFrames,
       getOutputDims(),
       videoStreamOptions.device,
-      outputBitDepth_);
+      videoStreamOptions.outputDtype);
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -979,7 +974,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
   // below. Hence, we need this special case below.
   if (startSeconds == stopSeconds) {
     FrameBatchOutput frameBatchOutput(
-        0, getOutputDims(), videoStreamOptions.device, outputBitDepth_);
+        0,
+        getOutputDims(),
+        videoStreamOptions.device,
+        videoStreamOptions.outputDtype);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
     frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
     return frameBatchOutput;
@@ -1026,7 +1024,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         numOutputFrames,
         getOutputDims(),
         videoStreamOptions.device,
-        outputBitDepth_);
+        videoStreamOptions.outputDtype);
 
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -1073,7 +1071,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     int64_t numFrames = stopFrameIndex - startFrameIndex;
 
     FrameBatchOutput frameBatchOutput(
-        numFrames, getOutputDims(), videoStreamOptions.device, outputBitDepth_);
+        numFrames,
+        getOutputDims(),
+        videoStreamOptions.device,
+        videoStreamOptions.outputDtype);
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
     auto frameBatchOutputDurationSeconds =

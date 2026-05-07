@@ -125,17 +125,13 @@ void CudaDeviceInterface::initialize(
       cpuInterface_ != nullptr, "Failed to create CPU device interface");
   cpuInterface_->initialize(avStream, avFormatCtx, codecContext);
   cpuInterface_->initializeVideo(
-      VideoStreamOptions(),
-      {},
-      /*resizedOutputDims=*/std::nullopt,
-      /*outputBitDepth=*/8);
+      VideoStreamOptions(), {}, /*resizedOutputDims=*/std::nullopt);
 }
 
 void CudaDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
-    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims,
-    [[maybe_unused]] int outputBitDepth) {
+    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
   videoStreamOptions_ = videoStreamOptions;
 }
 

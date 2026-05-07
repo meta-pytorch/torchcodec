@@ -675,9 +675,8 @@ class TestVideoDecoderOps:
         )
 
     def test_output_dtype_float32_sdr(self):
-        # float32 on an 8-bit source: C++ produces uint8 and normalizes to
-        # float32 in [0, 1]. Compare against a fresh uint8 decode from the
-        # same machine so the assertion is independent of codec variance.
+        # float32 on an 8-bit source goes via RGB48 (no 8-bit quantization),
+        # so values are close to but not exactly `uint8 / 255`.
         decoder_uint8 = create_from_file(str(NASA_VIDEO.path))
         add_video_stream(decoder_uint8)
         uint8_frame, *_ = get_frame_at_index(decoder_uint8, frame_index=0)
@@ -686,9 +685,10 @@ class TestVideoDecoderOps:
         add_video_stream(decoder_float, output_dtype="float32")
         float_frame, *_ = get_frame_at_index(decoder_float, frame_index=0)
 
-        assert uint8_frame.dtype == torch.uint8
         assert float_frame.dtype == torch.float32
-        torch.testing.assert_close(float_frame, uint8_frame.to(torch.float32) / 255.0)
+        torch.testing.assert_close(
+            float_frame, uint8_frame.to(torch.float32) / 255.0, rtol=0, atol=4 / 255
+        )
 
     def test_output_dtype_auto(self):
         # "auto" produces uint8 for SDR (<=8-bit) sources and float32 for HDR

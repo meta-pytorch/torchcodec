@@ -308,10 +308,7 @@ void BetaCudaDeviceInterface::initialize(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
     cpuFallback_->initialize(avStream, avFormatCtx, codecContext);
     cpuFallback_->initializeVideo(
-        VideoStreamOptions(),
-        {},
-        /*resizedOutputDims=*/std::nullopt,
-        /*outputBitDepth=*/8);
+        VideoStreamOptions(), {}, /*resizedOutputDims=*/std::nullopt);
     // We'll always use the CPU fallback from now on, so we can return early.
     return;
   }
