@@ -16,6 +16,8 @@ import pytest
 
 import torch
 
+from torchcodec import ffmpeg_major_version
+
 from torchcodec._core import (
     _test_frame_pts_equality,
     create_streaming_encoder_to_file,
@@ -33,6 +35,7 @@ from torchcodec._core import (
     get_next_frame,
     streaming_encoder_add_audio_stream,
     streaming_encoder_add_frames,
+    streaming_encoder_add_samples,
     streaming_encoder_add_video_stream,
     streaming_encoder_close,
     streaming_encoder_open,
@@ -47,8 +50,7 @@ from torchcodec._core.ops import (
     create_from_tensor,
     seek_to_pts,
 )
-
-from torchcodec.decoders import VideoDecoder
+from torchcodec.decoders import AudioDecoder, VideoDecoder
 
 from .utils import (
     all_supported_devices,
@@ -58,6 +60,7 @@ from .utils import (
     in_fbcode,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
+    NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
     needs_cuda,
     needs_ffmpeg_cli,
@@ -1262,17 +1265,6 @@ class TestMultiStreamEncoderOps:
             decoded_frames, source_frames.cpu(), percentage=percentage, atol=atol
         )
 
-    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_audio_stream_and_open_close(self, tmp_path, method):
-        encoder, encoder_output = self._create_encoder(method, tmp_path, "wav")
-        streaming_encoder_add_audio_stream(
-            encoder,
-            sample_rate=44100,
-            num_channels=2,
-        )
-        streaming_encoder_open(encoder)
-        streaming_encoder_close(encoder)
-
     def test_create_invalid_path(self):
         with pytest.raises(RuntimeError, match="make sure it's a valid path"):
             create_streaming_encoder_to_file("/nonexistent/dir/test.mp4")
@@ -1444,6 +1436,16 @@ class TestMultiStreamEncoderOps:
         with pytest.raises(RuntimeError, match="same device"):
             streaming_encoder_add_frames(encoder, cuda_frames)
 
+    @pytest.mark.needs_cuda
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_samples_on_cuda_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "wav")
+        streaming_encoder_add_audio_stream(encoder, sample_rate=44100, num_channels=1)
+        streaming_encoder_open(encoder)
+        cuda_samples = torch.randn(1, 1000, device="cuda")
+        with pytest.raises(RuntimeError, match="samples must be on CPU, got cuda"):
+            streaming_encoder_add_samples(encoder, cuda_samples)
+
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize(
         "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
@@ -1458,6 +1460,25 @@ class TestMultiStreamEncoderOps:
             RuntimeError, match="Call open\\(\\) before addFrames\\(\\)"
         ):
             streaming_encoder_add_frames(encoder, frames)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_samples_without_open_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_audio_stream(encoder, sample_rate=44100, num_channels=1)
+        samples = torch.randn(1, 1000)
+        with pytest.raises(
+            RuntimeError, match="Call open\\(\\) before addSamples\\(\\)"
+        ):
+            streaming_encoder_add_samples(encoder, samples)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_samples_mismatched_channels_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "wav")
+        streaming_encoder_add_audio_stream(encoder, sample_rate=44100, num_channels=1)
+        streaming_encoder_open(encoder)
+        samples = torch.randn(2, 1000)  # 2 channels but stream expects 1
+        with pytest.raises(RuntimeError, match="Expected 1 channels, got 2"):
+            streaming_encoder_add_samples(encoder, samples)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_open_without_stream_errors(self, tmp_path, method):
@@ -1489,6 +1510,111 @@ class TestMultiStreamEncoderOps:
         )
         with pytest.raises(RuntimeError, match="bit_rate=-1 must be >= 0"):
             streaming_encoder_open(encoder)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_stream_and_encode_samples(self, tmp_path, method):
+        source_audio = AudioDecoder(str(SINE_MONO_S32.path)).get_all_samples()
+        samples = source_audio.data
+        sample_rate = source_audio.sample_rate
+        num_channels = samples.shape[0]
+
+        encoder, encoder_output = self._create_encoder(method, tmp_path, "wav")
+        streaming_encoder_add_audio_stream(
+            encoder, sample_rate=sample_rate, num_channels=num_channels
+        )
+        streaming_encoder_open(encoder)
+        streaming_encoder_add_samples(encoder, samples)
+        streaming_encoder_close(encoder)
+
+        source = self._get_decoder_source(encoder_output)
+        decoded = AudioDecoder(source).get_all_samples()
+        assert decoded.data.shape[0] == num_channels
+        assert decoded.sample_rate == sample_rate
+        torch.testing.assert_close(decoded.data, samples, atol=1e-4, rtol=0)
+
+    @pytest.mark.parametrize(
+        "format",
+        (
+            "mp4",
+            pytest.param(
+                "mkv",
+                marks=pytest.mark.skipif(
+                    ffmpeg_major_version < 6,
+                    reason="Default audio codec for MKV has low accuracy on older FFmpeg versions.",
+                ),
+            ),
+            "mov",
+        ),
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_and_video_streams_and_encode(self, tmp_path, format, method):
+        source_video_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        source_frames = source_video_decoder.get_frames_in_range(
+            start=0, stop=len(source_video_decoder)
+        ).data
+
+        source_audio = AudioDecoder(str(NASA_AUDIO_MP3_44100.path)).get_all_samples()
+        source_samples = source_audio.data
+        sample_rate = source_audio.sample_rate
+
+        encoder, encoder_output = self._create_encoder(method, tmp_path, format)
+        streaming_encoder_add_video_stream(
+            encoder,
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=source_video_decoder.metadata.average_fps,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        streaming_encoder_add_audio_stream(
+            encoder,
+            sample_rate=sample_rate,
+            num_channels=source_samples.shape[0],
+        )
+        streaming_encoder_open(encoder)
+        half = source_frames.shape[0] // 2
+        streaming_encoder_add_frames(encoder, source_frames[:half])
+        streaming_encoder_add_samples(encoder, source_samples)
+        streaming_encoder_add_frames(encoder, source_frames[half:])
+        streaming_encoder_close(encoder)
+
+        source = self._get_decoder_source(encoder_output)
+
+        decoded_video_decoder = VideoDecoder(source)
+        decoded_frames = decoded_video_decoder.get_frames_in_range(
+            start=0, stop=len(decoded_video_decoder)
+        ).data
+        assert_tensor_close_on_at_least(
+            decoded_frames, source_frames, percentage=99, atol=2
+        )
+
+        audio_decoder = AudioDecoder(source)
+        decoded_audio = audio_decoder.get_all_samples()
+        assert decoded_audio.sample_rate == sample_rate
+        assert decoded_audio.data.shape[0] == source_samples.shape[0]
+        # Codecs for lossy audio formats (not WAV or FLAC) can add padding which causes
+        # sample count to differ, so we only compare the smaller sample count.
+        num_samples_to_compare = min(
+            decoded_audio.data.shape[1], source_samples.shape[1]
+        )
+        assert_tensor_close_on_at_least(
+            decoded_audio.data[:, :num_samples_to_compare],
+            source_samples[:, :num_samples_to_compare],
+            percentage=96 if format == "mkv" else 99,
+            atol=0.1 if format == "mkv" else 0.01,
+        )
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_samples_twice_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "wav")
+        streaming_encoder_add_audio_stream(encoder, sample_rate=44100, num_channels=1)
+        streaming_encoder_open(encoder)
+        streaming_encoder_add_samples(encoder, torch.randn(1, 1000))
+        with pytest.raises(
+            RuntimeError,
+            match="Only one addSamples\\(\\) call is currently supported",
+        ):
+            streaming_encoder_add_samples(encoder, torch.randn(1, 1000))
 
 
 if __name__ == "__main__":
