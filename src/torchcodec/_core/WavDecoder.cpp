@@ -272,6 +272,8 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
   STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
 }
 
+// Callers must ensure outputPtr has space for at least
+// samplesInBuffer * numChannels floats.
 void WavDecoder::convertSamplesToFloat(
     const std::vector<uint8_t>& bufferData,
     int64_t samplesInBuffer,
@@ -292,7 +294,8 @@ void WavDecoder::convertSamplesToFloat(
 AudioFramesOutput WavDecoder::getSamplesInRange(
     double startSeconds,
     std::optional<double> stopSecondsOptional) {
-  // Calculate the range of samples to decode
+  // Calculate the range of samples to decode.
+  // Negative startSeconds is resolved to 0 in the Python layer.
   STD_TORCH_CHECK(
       startSeconds <= INT64_MAX / header_.sampleRate,
       "startSample calculation would overflow: startSeconds * sampleRate");
