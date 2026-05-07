@@ -721,6 +721,10 @@ class TestVideoDecoderOps:
         with pytest.raises(RuntimeError, match="Invalid output_dtype"):
             add_video_stream(decoder, output_dtype=bad_dtype)
 
+    @pytest.mark.xfail(
+        IS_WINDOWS and ffmpeg_major_version < 5,
+        reason="swscale YUV->RGB differs on Windows + FFmpeg 4",
+    )
     @pytest.mark.parametrize(
         "asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR)
     )
