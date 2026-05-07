@@ -323,7 +323,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       int streamIndex,
       AVMediaType mediaType,
       const StableDevice& device = StableDevice(kStableCPU),
-      const std::string_view deviceVariant = "ffmpeg",
+      std::string_view deviceVariant = "ffmpeg",
       std::optional<int> ffmpegThreadCount = std::nullopt);
 
   // Returns the "best" stream index for a given media type. The "best" is

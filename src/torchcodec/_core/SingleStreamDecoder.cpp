@@ -451,7 +451,7 @@ void SingleStreamDecoder::addStream(
     int streamIndex,
     AVMediaType mediaType,
     const StableDevice& device,
-    const std::string_view deviceVariant,
+    std::string_view deviceVariant,
     std::optional<int> ffmpegThreadCount) {
   STD_TORCH_CHECK(
       activeStreamIndex_ == NO_ACTIVE_STREAM,

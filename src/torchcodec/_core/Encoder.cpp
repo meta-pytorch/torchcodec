@@ -135,13 +135,13 @@ AudioEncoder::~AudioEncoder() {
 AudioEncoder::AudioEncoder(
     const torch::stable::Tensor& samples,
     int sampleRate,
-    std::string_view fileName,
+    const std::string& fileName,
     const AudioStreamOptions& audioStreamOptions)
     : samples_(validateSamples(samples)), inSampleRate_(sampleRate) {
   setFFmpegLogLevel();
   AVFormatContext* avFormatContext = nullptr;
   int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, nullptr, fileName.data());
+      &avFormatContext, nullptr, nullptr, fileName.c_str());
 
   STD_TORCH_CHECK(
       avFormatContext != nullptr,
@@ -152,7 +152,7 @@ AudioEncoder::AudioEncoder(
       getFFMPEGErrorStringFromErrorCode(status));
   avFormatContext_.reset(avFormatContext);
 
-  status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
+  status = avio_open(&avFormatContext_->pb, fileName.c_str(), AVIO_FLAG_WRITE);
   STD_TORCH_CHECK(
       status >= 0,
       "avio_open failed. The destination file is ",
@@ -166,7 +166,7 @@ AudioEncoder::AudioEncoder(
 AudioEncoder::AudioEncoder(
     const torch::stable::Tensor& samples,
     int sampleRate,
-    std::string_view formatName,
+    const std::string& formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
     const AudioStreamOptions& audioStreamOptions)
     : samples_(validateSamples(samples)),
@@ -175,7 +175,7 @@ AudioEncoder::AudioEncoder(
   setFFmpegLogLevel();
   AVFormatContext* avFormatContext = nullptr;
   int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, formatName.data(), nullptr);
+      &avFormatContext, nullptr, formatName.c_str(), nullptr);
 
   STD_TORCH_CHECK(
       avFormatContext != nullptr,
@@ -715,7 +715,7 @@ VideoEncoder::~VideoEncoder() {
 VideoEncoder::VideoEncoder(
     const torch::stable::Tensor& frames,
     double frameRate,
-    std::string_view fileName,
+    const std::string& fileName,
     const VideoStreamOptions& videoStreamOptions)
     : frames_(validateFrames(frames)), inFrameRate_(frameRate) {
   setFFmpegLogLevel();
@@ -723,7 +723,7 @@ VideoEncoder::VideoEncoder(
   // Allocate output format context
   AVFormatContext* avFormatContext = nullptr;
   int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, nullptr, fileName.data());
+      &avFormatContext, nullptr, nullptr, fileName.c_str());
 
   STD_TORCH_CHECK(
       avFormatContext != nullptr,
@@ -734,7 +734,7 @@ VideoEncoder::VideoEncoder(
       getFFMPEGErrorStringFromErrorCode(status));
   avFormatContext_.reset(avFormatContext);
 
-  status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
+  status = avio_open(&avFormatContext_->pb, fileName.c_str(), AVIO_FLAG_WRITE);
   STD_TORCH_CHECK(
       status >= 0,
       "avio_open failed. The destination file is ",
@@ -747,7 +747,7 @@ VideoEncoder::VideoEncoder(
 VideoEncoder::VideoEncoder(
     const torch::stable::Tensor& frames,
     double frameRate,
-    std::string_view formatName,
+    const std::string& formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder,
     const VideoStreamOptions& videoStreamOptions)
     : frames_(validateFrames(frames)),
@@ -755,10 +755,11 @@ VideoEncoder::VideoEncoder(
       avioContextHolder_(std::move(avioContextHolder)) {
   setFFmpegLogLevel();
   // Map mkv -> matroska when used as format name
-  formatName = (formatName == "mkv") ? "matroska" : formatName;
+  const std::string normalizedFormatName =
+      (formatName == "mkv") ? "matroska" : formatName;
   AVFormatContext* avFormatContext = nullptr;
   int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, formatName.data(), nullptr);
+      &avFormatContext, nullptr, normalizedFormatName.c_str(), nullptr);
 
   STD_TORCH_CHECK(
       avFormatContext != nullptr,
