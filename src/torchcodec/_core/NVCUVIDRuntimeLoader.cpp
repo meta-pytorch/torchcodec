@@ -72,8 +72,8 @@ namespace facebook::torchcodec {
 // address of the actual code section. If all went well, by now, we can safely
 // call dl_cuvidCreateVideoParser(...);
 // All of that happens at runtime *after* import time, when the first instance
-// of the Beta CUDA interface is created, i.e. only when the user explicitly
-// requests it.
+// of the default CUDA interface is created, i.e. only when the user requests
+// CUDA decoding.
 //
 // At the bottom of this file we have an `extern "C"` section with function
 // definitions like:
@@ -83,12 +83,12 @@ namespace facebook::torchcodec {
 //  CUVIDPARSERPARAMS* parserParams)  {...}
 //
 // These are the actual functions that are compiled against and called by the
-// Beta CUDA interface code. Crucially, these functions signature match exactly
+// default CUDA interface code. Crucially, these functions signature match exactly
 // the NVCUVID functions (as defined in cuviddec.h). Inside of
 // cuvidCreateVideoParser(...) we simply call the dl_cuvidCreateVideoParser
 // function [pointer] that we dynamically loaded earlier.
 //
-// At runtime, within the Beta CUDA interface code we have a fallback mechanism
+// At runtime, within the default CUDA interface code we have a fallback mechanism
 // to switch back to the CPU backend if any of the NVCUVID functions are not
 // available, or if libnvcuvid.so itself couldn't be found. This is what FFmpeg
 // does too.

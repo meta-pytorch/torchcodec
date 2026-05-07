@@ -690,6 +690,7 @@ void sortCodecOptions(
     }
   }
 }
+
 } // namespace
 
 VideoEncoder::~VideoEncoder() {
@@ -761,9 +762,12 @@ VideoEncoder::VideoEncoder(
 void VideoEncoder::initializeEncoder(
     const VideoStreamOptions& videoStreamOptions) {
   auto tensorDevice = frames_.device();
-  deviceInterface_ = createDeviceInterface(StableDevice(
-      static_cast<StableDeviceType>(tensorDevice.type()),
-      tensorDevice.index()));
+  StableDevice stableDevice(
+      static_cast<StableDeviceType>(tensorDevice.type()), tensorDevice.index());
+  // The default CUDA interface is decode-only; encoders need the FFmpeg-based
+  // one.
+  deviceInterface_ = createDeviceInterface(
+      stableDevice, stableDevice.type() == kStableCUDA ? "ffmpeg" : "default");
   const AVCodec* avCodec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
