@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
-#include <limits>
 #include <string_view>
 #include "Metadata.h"
 #include "StableABICompat.h"
@@ -666,7 +665,6 @@ FrameOutput SingleStreamDecoder::getNextFrame() {
   auto output = getNextFrameInternal();
   if (streamInfos_[activeStreamIndex_].avMediaType == AVMEDIA_TYPE_VIDEO) {
     output.data = maybePermuteHWC2CHW(output.data);
-    output.data = maybeConvertToFloat32(output.data);
   }
   return output;
 }
@@ -683,7 +681,6 @@ FrameOutput SingleStreamDecoder::getNextFrameInternal(
 FrameOutput SingleStreamDecoder::getFrameAtIndex(int64_t frameIndex) {
   auto frameOutput = getFrameAtIndexInternal(frameIndex);
   frameOutput.data = maybePermuteHWC2CHW(frameOutput.data);
-  frameOutput.data = maybeConvertToFloat32(frameOutput.data);
   return frameOutput;
 }
 
@@ -785,7 +782,6 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     previousIndexInVideo = indexInVideo;
   }
   frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-  frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
   return frameBatchOutput;
 }
 
@@ -830,7 +826,6 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
     frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
   }
   frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-  frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
   return frameBatchOutput;
 }
 
@@ -872,7 +867,6 @@ FrameOutput SingleStreamDecoder::getFramePlayedAt(double seconds) {
   // Convert the frame to tensor.
   FrameOutput frameOutput = convertAVFrameToFrameOutput(avFrame);
   frameOutput.data = maybePermuteHWC2CHW(frameOutput.data);
-  frameOutput.data = maybeConvertToFloat32(frameOutput.data);
   return frameOutput;
 }
 
@@ -958,7 +952,6 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     FrameBatchOutput frameBatchOutput(
         0, getOutputDims(), videoStreamOptions.device);
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-    frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
     return frameBatchOutput;
   }
 
@@ -1026,7 +1019,6 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
     }
 
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-    frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
     return frameBatchOutput;
   } else {
     // Note that we look at nextPts for a frame, and not its pts or duration.
@@ -1059,7 +1051,6 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
     }
     frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-    frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
 
     return frameBatchOutput;
   }
@@ -1483,27 +1474,6 @@ torch::stable::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
     STD_TORCH_CHECK(
         false, "Expected tensor with 3 or 4 dimensions, got ", numDimensions);
   }
-}
-
-torch::stable::Tensor SingleStreamDecoder::maybeConvertToFloat32(
-    torch::stable::Tensor& tensor) {
-  OutputDtype outputDtype =
-      streamInfos_[activeStreamIndex_].videoStreamOptions.outputDtype;
-  bool isUInt16 = tensor.scalar_type() == torch::headeronly::ScalarType::UInt16;
-  bool shouldConvert = (outputDtype == OutputDtype::FLOAT32) ||
-      (outputDtype == OutputDtype::AUTO && isUInt16);
-  if (!shouldConvert) {
-    return tensor;
-  }
-  double maxVal = static_cast<double>(
-      isUInt16 ? std::numeric_limits<uint16_t>::max()
-               : std::numeric_limits<uint8_t>::max());
-  auto asFloat = torch::stable::to(tensor, kStableFloat32);
-  // Multiplication is not in the stable ABI, so we use subtract with alpha
-  // as a workaround: zeros - (-1/maxVal) * asFloat == asFloat / maxVal.
-  // Same trick as WavDecoder::decode.
-  auto zeros = torch::stable::new_zeros(asFloat, asFloat.sizes());
-  return torch::stable::subtract(zeros, asFloat, -1.0 / maxVal);
 }
 
 // --------------------------------------------------------------------------
