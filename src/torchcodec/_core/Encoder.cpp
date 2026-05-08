@@ -1365,6 +1365,22 @@ void MultiStreamEncoder::initializeAudioStream() {
       status == AVSUCCESS,
       "avcodec_parameters_from_context failed: ",
       getFFMPEGErrorStringFromErrorCode(status));
+
+  // If a codec supports variable frame size, frame_size may not be defined, in
+  // which case we default to 256 like torchaudio.
+  audioStream.frameSize = audioStream.avCodecContext->frame_size > 0
+      ? audioStream.avCodecContext->frame_size
+      : 256;
+
+  // We always create a FIFO so that addSamples() can be called multiple times
+  // with various chunk sizes that are then buffered and encoded in frame_size
+  // sized batches.
+  auto avAudioFifo = av_audio_fifo_alloc(
+      audioStream.avCodecContext->sample_fmt,
+      audioStream.inNumChannels,
+      audioStream.frameSize * 2);
+  STD_TORCH_CHECK(avAudioFifo != nullptr, "Couldn't create AVAudioFifo.");
+  audioStream.avAudioFifo.reset(avAudioFifo);
 }
 
 void MultiStreamEncoder::open() {
@@ -1482,15 +1498,6 @@ void MultiStreamEncoder::addSamples(const torch::stable::Tensor& samples) {
       audioStream_->inNumChannels,
       " channels, got ",
       validatedSamples.sizes()[0]);
-  // TODO MultiStreamEncoder: Support multiple addSamples() calls.
-  // Codecs have frame size requirements, only the final encoded sample batch
-  // can be smaller than the frame size, so to support multiple calls without
-  // requiring the user to know about frame size, we need to encode frames
-  // through a FIFO.
-  STD_TORCH_CHECK(
-      !audioStream_->addSamplesCalled,
-      "Only one addSamples() call is currently supported.");
-  audioStream_->addSamplesCalled = true;
   encodeAudioSamples(validatedSamples);
 }
 
@@ -1498,13 +1505,8 @@ void MultiStreamEncoder::encodeAudioSamples(
     const torch::stable::Tensor& samples) {
   auto& audioStream = *audioStream_;
 
-  //  Default to 256 like in torchaudio
-  int numSamplesAllocatedPerFrame = audioStream.avCodecContext->frame_size > 0
-      ? audioStream.avCodecContext->frame_size
-      : 256;
-
   UniqueAVFrame avFrame = allocateAVFrame(
-      numSamplesAllocatedPerFrame,
+      audioStream.frameSize,
       audioStream.inSampleRate,
       audioStream.inNumChannels,
       AV_SAMPLE_FMT_FLTP);
@@ -1520,7 +1522,7 @@ void MultiStreamEncoder::encodeAudioSamples(
 
   while (numEncodedSamples < numSamples) {
     int numSamplesToEncode =
-        std::min(numSamplesAllocatedPerFrame, numSamples - numEncodedSamples);
+        std::min(audioStream.frameSize, numSamples - numEncodedSamples);
     int numBytesToEncode = numSamplesToEncode * numBytesPerSample;
 
     for (int ch = 0; ch < audioStream.inNumChannels; ch++) {
@@ -1540,7 +1542,7 @@ void MultiStreamEncoder::encodeAudioSamples(
 
     UniqueAVFrame convertedAVFrame =
         maybeConvertAudioAVFrame(avFrame, audioStream);
-    encodeAudioFrame(autoAVPacket, convertedAVFrame, audioStream);
+    encodeAudioFrameThroughFifo(autoAVPacket, convertedAVFrame, audioStream);
 
     numEncodedSamples += numSamplesToEncode;
   }
@@ -1592,6 +1594,66 @@ UniqueAVFrame MultiStreamEncoder::maybeConvertAudioAVFrame(
         "This is unexpected, please report on the TorchCodec bug tracker.");
   }
   return convertedAVFrame;
+}
+
+void MultiStreamEncoder::encodeAudioFrameThroughFifo(
+    AutoAVPacket& autoAVPacket,
+    const UniqueAVFrame& avFrame,
+    AudioStream& audioStream,
+    // flushFifo is only set to true in maybeFlushSwrAndFifo(), i.e. at the very
+    // end of the encoding process when we're flushing buffers. We also want to
+    // flush the FIFO so as to not leave any remaining samples in it.
+    bool flushFifo) {
+  if (avFrame != nullptr) {
+    int numSamplesWritten = av_audio_fifo_write(
+        audioStream.avAudioFifo.get(),
+        reinterpret_cast<void**>(avFrame->data),
+        avFrame->nb_samples);
+    STD_TORCH_CHECK(
+        numSamplesWritten == avFrame->nb_samples,
+        "Tried to write ",
+        avFrame->nb_samples,
+        " samples, but only wrote ",
+        numSamplesWritten);
+  }
+
+  UniqueAVFrame newavFrame = allocateAVFrame(
+      audioStream.frameSize,
+      audioStream.avCodecContext->sample_rate,
+      audioStream.inNumChannels,
+      audioStream.avCodecContext->sample_fmt);
+
+  // Explaining the while bound:
+  // - if we're not flushing the FIFO, i.e. in most cases, we want to pull
+  //   exactly `frame_size` samples from the FIFO, so we have to stop before it
+  //   contains less than `frame_size` samples.
+  // - if we're flushing the FIFO, we want to read from the FIFO until the very
+  //   last sample it contains.
+  //
+  // In both cases, for as long as we can, we're trying to pull exactly
+  // `frame_size` samples from the FIFO and send each `frame_size`-sized avFrame
+  // to encodeAudioFrame(). Only the very last avFrame of the encoding process
+  // is allowed to contain less than frame_size samples. That only happens when
+  // flushFifo is true.
+  while (av_audio_fifo_size(audioStream.avAudioFifo.get()) >=
+         (flushFifo ? 1 : audioStream.frameSize)) {
+    int samplesToRead = std::min(
+        av_audio_fifo_size(audioStream.avAudioFifo.get()),
+        newavFrame->nb_samples);
+    int numSamplesRead = av_audio_fifo_read(
+        audioStream.avAudioFifo.get(),
+        reinterpret_cast<void**>(newavFrame->data),
+        samplesToRead);
+    STD_TORCH_CHECK(
+        numSamplesRead == samplesToRead,
+        "Tried to read ",
+        samplesToRead,
+        " samples, but only read ",
+        numSamplesRead);
+
+    newavFrame->nb_samples = numSamplesRead;
+    encodeAudioFrame(autoAVPacket, newavFrame, audioStream);
+  }
 }
 
 void MultiStreamEncoder::encodeAudioFrame(
@@ -1647,43 +1709,41 @@ void MultiStreamEncoder::encodeAudioFrame(
   }
 }
 
-void MultiStreamEncoder::maybeFlushAudioSwrBuffers(
+void MultiStreamEncoder::maybeFlushSwrAndFifo(
     AutoAVPacket& autoAVPacket,
     AudioStream& audioStream) {
-  // Similar to the decoder's method with the same name, but for encoding this
-  // time. That is, when sample conversion is involved, libswresample may have
-  // buffered some samples that we now need to flush and send to the encoder.
-  if (audioStream.swrContext == nullptr) {
-    return;
+  // When sample conversion is involved, libswresample may have buffered some
+  // samples that we need to flush into the FIFO before draining it.
+  UniqueAVFrame swrFrame(nullptr);
+  if (audioStream.swrContext != nullptr) {
+    int numRemainingSamples = // this is an upper bound
+        swr_get_out_samples(audioStream.swrContext.get(), 0);
+    if (numRemainingSamples > 0) {
+      swrFrame = allocateAVFrame(
+          numRemainingSamples,
+          audioStream.inSampleRate,
+          audioStream.inNumChannels,
+          audioStream.avCodecContext->sample_fmt);
+      int actualNumRemainingSamples = swr_convert(
+          audioStream.swrContext.get(),
+          swrFrame->data,
+          swrFrame->nb_samples,
+          nullptr,
+          0);
+      swrFrame->nb_samples = actualNumRemainingSamples;
+    }
   }
 
-  int numRemainingSamples = // this is an upper bound
-      swr_get_out_samples(audioStream.swrContext.get(), 0);
-  if (numRemainingSamples == 0) {
-    return;
-  }
-
-  UniqueAVFrame avFrame = allocateAVFrame(
-      numRemainingSamples,
-      audioStream.inSampleRate,
-      audioStream.inNumChannels,
-      audioStream.avCodecContext->sample_fmt);
-  int actualNumRemainingSamples = swr_convert(
-      audioStream.swrContext.get(),
-      avFrame->data,
-      avFrame->nb_samples,
-      nullptr,
-      0);
-  avFrame->nb_samples = actualNumRemainingSamples;
-
-  encodeAudioFrame(autoAVPacket, avFrame, audioStream);
+  // Flush any remaining swr samples into the FIFO, then drain it.
+  encodeAudioFrameThroughFifo(
+      autoAVPacket, swrFrame, audioStream, /*flushFifo=*/true);
 }
 
 void MultiStreamEncoder::flushBuffers() {
   if (audioStream_.has_value() && audioStream_->avStream != nullptr) {
     AutoAVPacket audioAVPacket;
     auto& audioStream = *audioStream_;
-    maybeFlushAudioSwrBuffers(audioAVPacket, audioStream);
+    maybeFlushSwrAndFifo(audioAVPacket, audioStream);
     encodeAudioFrame(audioAVPacket, UniqueAVFrame(nullptr), audioStream);
   }
   if (videoStream_.has_value() && videoStream_->avStream != nullptr) {

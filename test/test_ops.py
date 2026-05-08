@@ -1523,7 +1523,12 @@ class TestMultiStreamEncoderOps:
             encoder, sample_rate=sample_rate, num_channels=num_channels
         )
         streaming_encoder_open(encoder)
-        streaming_encoder_add_samples(encoder, samples)
+        chunk_lengths = [1, 50, 1000, 0, 25]
+        offset = 0
+        for length in chunk_lengths:
+            streaming_encoder_add_samples(encoder, samples[:, offset : offset + length])
+            offset += length
+        streaming_encoder_add_samples(encoder, samples[:, offset:])
         streaming_encoder_close(encoder)
 
         source = self._get_decoder_source(encoder_output)
@@ -1572,10 +1577,12 @@ class TestMultiStreamEncoderOps:
             num_channels=source_samples.shape[0],
         )
         streaming_encoder_open(encoder)
-        half = source_frames.shape[0] // 2
-        streaming_encoder_add_frames(encoder, source_frames[:half])
-        streaming_encoder_add_samples(encoder, source_samples)
-        streaming_encoder_add_frames(encoder, source_frames[half:])
+        half_frames = source_frames.shape[0] // 2
+        half_samples = source_samples.shape[1] // 2
+        streaming_encoder_add_frames(encoder, source_frames[:half_frames])
+        streaming_encoder_add_samples(encoder, source_samples[:, :half_samples])
+        streaming_encoder_add_frames(encoder, source_frames[half_frames:])
+        streaming_encoder_add_samples(encoder, source_samples[:, half_samples:])
         streaming_encoder_close(encoder)
 
         source = self._get_decoder_source(encoder_output)
@@ -1594,6 +1601,8 @@ class TestMultiStreamEncoderOps:
         assert decoded_audio.data.shape[0] == source_samples.shape[0]
         # Codecs for lossy audio formats (not WAV or FLAC) can add padding which causes
         # sample count to differ, so we only compare the smaller sample count.
+        # TODO MultiStreamEncoder: The previous AudioEncoder didn't need
+        # padding after introducing a FIFO. Investigate why this is needed.
         num_samples_to_compare = min(
             decoded_audio.data.shape[1], source_samples.shape[1]
         )
@@ -1603,18 +1612,6 @@ class TestMultiStreamEncoderOps:
             percentage=96 if format == "mkv" else 99,
             atol=0.1 if format == "mkv" else 0.01,
         )
-
-    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_samples_twice_errors(self, tmp_path, method):
-        encoder, _ = self._create_encoder(method, tmp_path, "wav")
-        streaming_encoder_add_audio_stream(encoder, sample_rate=44100, num_channels=1)
-        streaming_encoder_open(encoder)
-        streaming_encoder_add_samples(encoder, torch.randn(1, 1000))
-        with pytest.raises(
-            RuntimeError,
-            match="Only one addSamples\\(\\) call is currently supported",
-        ):
-            streaming_encoder_add_samples(encoder, torch.randn(1, 1000))
 
 
 if __name__ == "__main__":
