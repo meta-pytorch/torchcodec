@@ -1601,6 +1601,8 @@ class TestMultiStreamEncoderOps:
         assert decoded_audio.data.shape[0] == source_samples.shape[0]
         # Codecs for lossy audio formats (not WAV or FLAC) can add padding which causes
         # sample count to differ, so we only compare the smaller sample count.
+        # TODO MultiStreamEncoder: The previous AudioEncoder didn't need
+        # padding after introducing a FIFO. Investigate why this is needed.
         num_samples_to_compare = min(
             decoded_audio.data.shape[1], source_samples.shape[1]
         )
