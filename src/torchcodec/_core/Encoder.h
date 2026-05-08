@@ -187,6 +187,9 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   MultiStreamEncoder& operator=(MultiStreamEncoder&&) = delete;
 
   MultiStreamEncoder(std::string_view fileName);
+  MultiStreamEncoder(
+      std::string_view formatName,
+      std::unique_ptr<AVIOContextHolder> avioContextHolder);
 
   void addVideoStream(
       double frameRate,
