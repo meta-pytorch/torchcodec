@@ -7,7 +7,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>torchcodec.decoders._decoder_utils &#8212; TorchCodec 0.12.0.dev20260507+cu126 Documentation</title>
+    <title>torchcodec.decoders._decoder_utils &#8212; TorchCodec 0.12.0.dev20260508+cu126 Documentation</title>
   
   
   
@@ -1395,7 +1395,7 @@ document.write(`
 
 <span class="c1"># Thread-local and async-safe storage for the current CUDA backend</span>
 <span class="n">_CUDA_BACKEND</span><span class="p">:</span> <span class="n">contextvars</span><span class="o">.</span><span class="n">ContextVar</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">contextvars</span><span class="o">.</span><span class="n">ContextVar</span><span class="p">(</span>
-    <span class="s2">&quot;_CUDA_BACKEND&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;ffmpeg&quot;</span>
+    <span class="s2">&quot;_CUDA_BACKEND&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;default&quot;</span>
 <span class="p">)</span>
 
 
@@ -1409,12 +1409,7 @@ document.write(`
 <span class="sd">    to use when creating :class:`~torchcodec.decoders.VideoDecoder` instances</span>
 <span class="sd">    with CUDA devices.</span>
 
-<span class="sd">    .. note::</span>
-<span class="sd">        **We recommend trying the &quot;beta&quot; backend instead of the default &quot;ffmpeg&quot;</span>
-<span class="sd">        backend!** The beta backend is faster, and will eventually become the</span>
-<span class="sd">        default in future versions. It may have rough edges that we&#39;ll polish</span>
-<span class="sd">        over time, but it&#39;s already quite stable and ready for adoption. Let us</span>
-<span class="sd">        know what you think!</span>
+<span class="sd">    The default is ``&quot;nvdec&quot;``. An ``&quot;ffmpeg&quot;`` backend is also available.</span>
 
 <span class="sd">    Only the creation of the decoder needs to be inside the context manager, the</span>
 <span class="sd">    decoding methods can be called outside of it. You still need to pass</span>
@@ -1425,22 +1420,25 @@ document.write(`
 <span class="sd">    This is thread-safe and async-safe.</span>
 
 <span class="sd">    Args:</span>
-<span class="sd">        backend (str): The CUDA backend to use. Can be &quot;ffmpeg&quot; (default) or</span>
-<span class="sd">            &quot;beta&quot;. We recommend trying &quot;beta&quot; as it&#39;s faster!</span>
+<span class="sd">        backend (str): The CUDA backend to use. Can be ``&quot;nvdec&quot;`` (default) or</span>
+<span class="sd">            ``&quot;ffmpeg&quot;``.</span>
 
 <span class="sd">    Example:</span>
-<span class="sd">        &gt;&gt;&gt; with set_cuda_backend(&quot;beta&quot;):</span>
+<span class="sd">        &gt;&gt;&gt; with set_cuda_backend(&quot;ffmpeg&quot;):</span>
 <span class="sd">        ...     decoder = VideoDecoder(&quot;video.mp4&quot;, device=&quot;cuda&quot;)</span>
 <span class="sd">        ...</span>
 <span class="sd">        ... # Only the decoder creation needs to be part of the context manager.</span>
-<span class="sd">        ... # Decoder will now the beta CUDA implementation:</span>
+<span class="sd">        ... # Decoder will use the FFmpeg CUDA implementation:</span>
 <span class="sd">        ... decoder.get_frame_at(0)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">backend</span> <span class="o">=</span> <span class="n">backend</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
-    <span class="k">if</span> <span class="n">backend</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;ffmpeg&quot;</span><span class="p">,</span> <span class="s2">&quot;beta&quot;</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">backend</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;nvdec&quot;</span><span class="p">,</span> <span class="s2">&quot;ffmpeg&quot;</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
-            <span class="sa">f</span><span class="s2">&quot;Invalid CUDA backend (</span><span class="si">{</span><span class="n">backend</span><span class="si">}</span><span class="s2">). Supported values are &#39;ffmpeg&#39; and &#39;beta&#39;.&quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Invalid CUDA backend (</span><span class="si">{</span><span class="n">backend</span><span class="si">}</span><span class="s2">). Supported values are &#39;nvdec&#39; and &#39;ffmpeg&#39;.&quot;</span>
         <span class="p">)</span>
+    <span class="c1"># &quot;nvdec&quot; is the public-facing name; internally the variant is &quot;default&quot;.</span>
+    <span class="k">if</span> <span class="n">backend</span> <span class="o">==</span> <span class="s2">&quot;nvdec&quot;</span><span class="p">:</span>
+        <span class="n">backend</span> <span class="o">=</span> <span class="s2">&quot;default&quot;</span>
 
     <span class="n">previous_state</span> <span class="o">=</span> <span class="n">_CUDA_BACKEND</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">backend</span><span class="p">)</span>
     <span class="k">try</span><span class="p">:</span>
@@ -1754,7 +1752,7 @@ document.write(`
        "headline": "torchcodec.decoders._decoder_utils",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/_modules/torchcodec/decoders/_decoder_utils.html",
-       "articleBody": "Source code for torchcodec.decoders._decoder_utils # Copyright (c) Meta Platforms, Inc. and affiliates. # All rights reserved. # # This source code is licensed under the BSD-style license found in the # LICENSE file in the root directory of this source tree. import contextvars from collections.abc import Generator from contextlib import contextmanager from torchcodec import _core # Thread-local and async-safe storage for the current CUDA backend _CUDA_BACKEND: contextvars.ContextVar[str] = contextvars.ContextVar( \"_CUDA_BACKEND\", default=\"ffmpeg\" ) [docs] @contextmanager def set_cuda_backend(backend: str) -\u003e Generator[None, None, None]: \"\"\"Context Manager to set the CUDA backend for :class:`~torchcodec.decoders.VideoDecoder`. This context manager allows you to specify which CUDA backend implementation to use when creating :class:`~torchcodec.decoders.VideoDecoder` instances with CUDA devices. .. note:: **We recommend trying the \"beta\" backend instead of the default \"ffmpeg\" backend!** The beta backend is faster, and will eventually become the default in future versions. It may have rough edges that we\u0027ll polish over time, but it\u0027s already quite stable and ready for adoption. Let us know what you think! Only the creation of the decoder needs to be inside the context manager, the decoding methods can be called outside of it. You still need to pass ``device=\"cuda\"`` when creating the :class:`~torchcodec.decoders.VideoDecoder` instance. If a CUDA device isn\u0027t specified, this context manager will have no effect. See example below. This is thread-safe and async-safe. Args: backend (str): The CUDA backend to use. Can be \"ffmpeg\" (default) or \"beta\". We recommend trying \"beta\" as it\u0027s faster! Example: \u003e\u003e\u003e with set_cuda_backend(\"beta\"): ... decoder = VideoDecoder(\"video.mp4\", device=\"cuda\") ... ... # Only the decoder creation needs to be part of the context manager. ... # Decoder will now the beta CUDA implementation: ... decoder.get_frame_at(0) \"\"\" backend = backend.lower() if backend not in (\"ffmpeg\", \"beta\"): raise ValueError( f\"Invalid CUDA backend ({backend}). Supported values are \u0027ffmpeg\u0027 and \u0027beta\u0027.\" ) previous_state = _CUDA_BACKEND.set(backend) try: yield finally: _CUDA_BACKEND.reset(previous_state) def _get_cuda_backend() -\u003e str: return _CUDA_BACKEND.get() [docs] def set_nvdec_cache_capacity(capacity: int) -\u003e None: \"\"\"Set the maximum number of NVDEC decoders that can be cached (per GPU). The NVDEC decoder cache stores hardware decoders for reuse, avoiding the overhead of creating and destructing new decoders for subsequent video decoding operations on the same GPU. This function sets the capacity of the cache, i.e. the maximum number of decoders that can be cached per device. The default capacity is 20 decoders per device. If the cache contains more decoders than the target ``capacity``, excess decoders will be evicted using a least-recently-used policy. Generally, a decoder can be re-used from the cache if it matches the same codec and frame dimensions. See also :func:`~torchcodec.decoders.get_nvdec_cache_capacity`. Args: capacity (int): The maximum number of NVDEC decoders that can be cached per GPU device. Must be non-negative. Setting to 0 disables caching. \"\"\" _core.set_nvdec_cache_capacity(capacity) [docs] def get_nvdec_cache_capacity() -\u003e int: \"\"\"Get the capacity of the per-device NVDEC decoder cache. See also :func:`~torchcodec.decoders.set_nvdec_cache_capacity`. Returns: int: The maximum number of NVDEC decoders that can be cached per GPU device. \"\"\" return _core.get_nvdec_cache_capacity()",
+       "articleBody": "Source code for torchcodec.decoders._decoder_utils # Copyright (c) Meta Platforms, Inc. and affiliates. # All rights reserved. # # This source code is licensed under the BSD-style license found in the # LICENSE file in the root directory of this source tree. import contextvars from collections.abc import Generator from contextlib import contextmanager from torchcodec import _core # Thread-local and async-safe storage for the current CUDA backend _CUDA_BACKEND: contextvars.ContextVar[str] = contextvars.ContextVar( \"_CUDA_BACKEND\", default=\"default\" ) [docs] @contextmanager def set_cuda_backend(backend: str) -\u003e Generator[None, None, None]: \"\"\"Context Manager to set the CUDA backend for :class:`~torchcodec.decoders.VideoDecoder`. This context manager allows you to specify which CUDA backend implementation to use when creating :class:`~torchcodec.decoders.VideoDecoder` instances with CUDA devices. The default is ``\"nvdec\"``. An ``\"ffmpeg\"`` backend is also available. Only the creation of the decoder needs to be inside the context manager, the decoding methods can be called outside of it. You still need to pass ``device=\"cuda\"`` when creating the :class:`~torchcodec.decoders.VideoDecoder` instance. If a CUDA device isn\u0027t specified, this context manager will have no effect. See example below. This is thread-safe and async-safe. Args: backend (str): The CUDA backend to use. Can be ``\"nvdec\"`` (default) or ``\"ffmpeg\"``. Example: \u003e\u003e\u003e with set_cuda_backend(\"ffmpeg\"): ... decoder = VideoDecoder(\"video.mp4\", device=\"cuda\") ... ... # Only the decoder creation needs to be part of the context manager. ... # Decoder will use the FFmpeg CUDA implementation: ... decoder.get_frame_at(0) \"\"\" backend = backend.lower() if backend not in (\"nvdec\", \"ffmpeg\"): raise ValueError( f\"Invalid CUDA backend ({backend}). Supported values are \u0027nvdec\u0027 and \u0027ffmpeg\u0027.\" ) # \"nvdec\" is the public-facing name; internally the variant is \"default\". if backend == \"nvdec\": backend = \"default\" previous_state = _CUDA_BACKEND.set(backend) try: yield finally: _CUDA_BACKEND.reset(previous_state) def _get_cuda_backend() -\u003e str: return _CUDA_BACKEND.get() [docs] def set_nvdec_cache_capacity(capacity: int) -\u003e None: \"\"\"Set the maximum number of NVDEC decoders that can be cached (per GPU). The NVDEC decoder cache stores hardware decoders for reuse, avoiding the overhead of creating and destructing new decoders for subsequent video decoding operations on the same GPU. This function sets the capacity of the cache, i.e. the maximum number of decoders that can be cached per device. The default capacity is 20 decoders per device. If the cache contains more decoders than the target ``capacity``, excess decoders will be evicted using a least-recently-used policy. Generally, a decoder can be re-used from the cache if it matches the same codec and frame dimensions. See also :func:`~torchcodec.decoders.get_nvdec_cache_capacity`. Args: capacity (int): The maximum number of NVDEC decoders that can be cached per GPU device. Must be non-negative. Setting to 0 disables caching. \"\"\" _core.set_nvdec_cache_capacity(capacity) [docs] def get_nvdec_cache_capacity() -\u003e int: \"\"\"Get the capacity of the per-device NVDEC decoder cache. See also :func:`~torchcodec.decoders.set_nvdec_cache_capacity`. Returns: int: The maximum number of NVDEC decoders that can be cached per GPU device. \"\"\" return _core.get_nvdec_cache_capacity()",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

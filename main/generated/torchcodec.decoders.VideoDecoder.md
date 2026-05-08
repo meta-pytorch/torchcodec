@@ -42,8 +42,9 @@ Passing 0 lets FFmpeg decide on the number of threads.
 Default: 1.
 - **device** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*or*[*torch.device*](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device)*,**optional*) - The device to use for decoding.
 If `None` (default), uses the current default device.
-If you pass a CUDA device, we recommend trying the "beta" CUDA
-backend which is faster! See [`set_cuda_backend()`](torchcodec.decoders.set_cuda_backend.html#torchcodec.decoders.set_cuda_backend).
+If you pass a CUDA device, decoding uses the `"nvdec"` backend by
+default. See [`set_cuda_backend()`](torchcodec.decoders.set_cuda_backend.html#torchcodec.decoders.set_cuda_backend) to switch
+to the `"ffmpeg"` CUDA backend.
 - **seek_mode** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,**optional*) - Determines if frame access will be "exact" or
 "approximate". Exact guarantees that requesting frame i will always
 return frame i, but doing so requires an initial [scan](../glossary.html#term-scan) of the

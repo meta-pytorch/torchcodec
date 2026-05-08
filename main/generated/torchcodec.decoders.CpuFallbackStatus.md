@@ -24,7 +24,7 @@ Accelerated video decoding on GPUs with CUDA and NVDEC
 status_known*: [bool](https://docs.python.org/3/library/functions.html#bool)**= False*
 
 Whether the fallback status has been determined.
-For the Beta CUDA backend (see [`set_cuda_backend()`](torchcodec.decoders.set_cuda_backend.html#torchcodec.decoders.set_cuda_backend)),
-this is always `True` immediately after decoder creation.
-For the FFmpeg CUDA backend, this becomes `True` after decoding
-the first frame.
+For the NVDEC CUDA backend (the default; see
+[`set_cuda_backend()`](torchcodec.decoders.set_cuda_backend.html#torchcodec.decoders.set_cuda_backend)), this is always `True`
+immediately after decoder creation. For the FFmpeg CUDA backend, this
+becomes `True` after decoding the first frame.

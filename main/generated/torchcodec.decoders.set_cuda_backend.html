@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>set_cuda_backend &#8212; TorchCodec 0.12.0.dev20260507+cu126 Documentation</title>
+    <title>set_cuda_backend &#8212; TorchCodec 0.12.0.dev20260508+cu126 Documentation</title>
   
   
   
@@ -1012,14 +1012,7 @@ document.write(`
 <p>This context manager allows you to specify which CUDA backend implementation
 to use when creating <a class="reference internal" href="torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a> instances
 with CUDA devices.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p><strong>We recommend trying the “beta” backend instead of the default “ffmpeg”
-backend!</strong> The beta backend is faster, and will eventually become the
-default in future versions. It may have rough edges that we’ll polish
-over time, but it’s already quite stable and ready for adoption. Let us
-know what you think!</p>
-</div>
+<p>The default is <code class="docutils literal notranslate"><span class="pre">&quot;nvdec&quot;</span></code>. An <code class="docutils literal notranslate"><span class="pre">&quot;ffmpeg&quot;</span></code> backend is also available.</p>
 <p>Only the creation of the decoder needs to be inside the context manager, the
 decoding methods can be called outside of it. You still need to pass
 <code class="docutils literal notranslate"><span class="pre">device=&quot;cuda&quot;</span></code> when creating the
@@ -1028,24 +1021,20 @@ specified, this context manager will have no effect. See example below.</p>
 <p>This is thread-safe and async-safe.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><p><strong>backend</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – The CUDA backend to use. Can be “ffmpeg” (default) or
-“beta”. We recommend trying “beta” as it’s faster!</p>
+<dd class="field-odd"><p><strong>backend</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a>) – The CUDA backend to use. Can be <code class="docutils literal notranslate"><span class="pre">&quot;nvdec&quot;</span></code> (default) or
+<code class="docutils literal notranslate"><span class="pre">&quot;ffmpeg&quot;</span></code>.</p>
 </dd>
 </dl>
 <p class="rubric">Example</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">set_cuda_backend</span><span class="p">(</span><span class="s2">&quot;beta&quot;</span><span class="p">):</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">set_cuda_backend</span><span class="p">(</span><span class="s2">&quot;ffmpeg&quot;</span><span class="p">):</span>
 <span class="gp">... </span>    <span class="n">decoder</span> <span class="o">=</span> <span class="n">VideoDecoder</span><span class="p">(</span><span class="s2">&quot;video.mp4&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
 <span class="gp">...</span>
 <span class="gp">... </span><span class="c1"># Only the decoder creation needs to be part of the context manager.</span>
-<span class="gp">... </span><span class="c1"># Decoder will now the beta CUDA implementation:</span>
+<span class="gp">... </span><span class="c1"># Decoder will use the FFmpeg CUDA implementation:</span>
 <span class="gp">... </span><span class="n">decoder</span><span class="o">.</span><span class="n">get_frame_at</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
 </pre></div>
 </div>
-<p>Examples using <code class="docutils literal notranslate"><span class="pre">set_cuda_backend</span></code>:</p>
-<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="TorchCodec can use supported Nvidia hardware (see support matrix here) to speed-up video decoding. This is called &quot;CUDA Decoding&quot; and it uses Nvidia&#x27;s NVDEC hardware decoder and CUDA kernels to respectively decompress and convert to RGB. CUDA Decoding can be faster than CPU Decoding for the actual decoding step and also for subsequent transform steps like scaling, cropping or rotating. This is because the decode step leaves the decoded tensor in GPU memory so the GPU doesn&#x27;t have to fetch from main memory before running the transform steps. Encoded packets are often much smaller than decoded frames so CUDA decoding also uses less PCI-e bandwidth."><img alt="" src="../_images/sphx_glr_basic_cuda_example_thumb.png" />
-<p><a class="reference internal" href="../generated_examples/decoding/basic_cuda_example.html"><span class="doc">Accelerated video decoding on GPUs with CUDA and NVDEC</span></a></p>
-  <div class="sphx-glr-thumbnail-title">Accelerated video decoding on GPUs with CUDA and NVDEC</div>
-</div></div></dd></dl>
+</dd></dl>
 
 </section>
 
@@ -1392,7 +1381,7 @@ specified, this context manager will have no effect. See example below.</p>
        "headline": "set_cuda_backend",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders.set_cuda_backend.html",
-       "articleBody": "set_cuda_backend# torchcodec.decoders.set_cuda_backend(backend: str) \u2192 Generator[None, None, None][source]# Context Manager to set the CUDA backend for VideoDecoder. This context manager allows you to specify which CUDA backend implementation to use when creating VideoDecoder instances with CUDA devices. Note We recommend trying the \u201cbeta\u201d backend instead of the default \u201cffmpeg\u201d backend! The beta backend is faster, and will eventually become the default in future versions. It may have rough edges that we\u2019ll polish over time, but it\u2019s already quite stable and ready for adoption. Let us know what you think! Only the creation of the decoder needs to be inside the context manager, the decoding methods can be called outside of it. You still need to pass device=\"cuda\" when creating the VideoDecoder instance. If a CUDA device isn\u2019t specified, this context manager will have no effect. See example below. This is thread-safe and async-safe. Parameters: backend (str) \u2013 The CUDA backend to use. Can be \u201cffmpeg\u201d (default) or \u201cbeta\u201d. We recommend trying \u201cbeta\u201d as it\u2019s faster! Example \u003e\u003e\u003e with set_cuda_backend(\"beta\"): ... decoder = VideoDecoder(\"video.mp4\", device=\"cuda\") ... ... # Only the decoder creation needs to be part of the context manager. ... # Decoder will now the beta CUDA implementation: ... decoder.get_frame_at(0) Examples using set_cuda_backend: Accelerated video decoding on GPUs with CUDA and NVDEC Accelerated video decoding on GPUs with CUDA and NVDEC",
+       "articleBody": "set_cuda_backend# torchcodec.decoders.set_cuda_backend(backend: str) \u2192 Generator[None, None, None][source]# Context Manager to set the CUDA backend for VideoDecoder. This context manager allows you to specify which CUDA backend implementation to use when creating VideoDecoder instances with CUDA devices. The default is \"nvdec\". An \"ffmpeg\" backend is also available. Only the creation of the decoder needs to be inside the context manager, the decoding methods can be called outside of it. You still need to pass device=\"cuda\" when creating the VideoDecoder instance. If a CUDA device isn\u2019t specified, this context manager will have no effect. See example below. This is thread-safe and async-safe. Parameters: backend (str) \u2013 The CUDA backend to use. Can be \"nvdec\" (default) or \"ffmpeg\". Example \u003e\u003e\u003e with set_cuda_backend(\"ffmpeg\"): ... decoder = VideoDecoder(\"video.mp4\", device=\"cuda\") ... ... # Only the decoder creation needs to be part of the context manager. ... # Decoder will use the FFmpeg CUDA implementation: ... decoder.get_frame_at(0)",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

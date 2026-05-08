@@ -104,13 +104,10 @@ TorchCodec supports GPU-accelerated decoding using NVIDIA's hardware decoder
 (NVDEC) on supported hardware. This keeps decoded tensors in GPU memory,
 avoiding expensive CPU-GPU transfers for downstream GPU operations.
 
-### **Recommended: use the Beta Interface!!**
-
-We recommend you use the new "beta" CUDA interface which is significantly faster than the previous one, and supports the same features:
+Pass `device="cuda"` to enable CUDA decoding:
 
 ```
-with set_cuda_backend("beta"):
- decoder = VideoDecoder("file.mp4", device="cuda")
+decoder = VideoDecoder("file.mp4", device="cuda")
 ```
 
 **When to use:**
@@ -135,8 +132,7 @@ video codec or format is not supported by NVDEC. You can detect this using
 the `cpu_fallback` attribute:
 
 ```
-with set_cuda_backend("beta"):
- decoder = VideoDecoder("file.mp4", device="cuda")
+decoder = VideoDecoder("file.mp4", device="cuda")
 
 # Print detailed fallback status
 print(decoder.cpu_fallback)
@@ -144,11 +140,8 @@ print(decoder.cpu_fallback)
 
 Note
 
-The timing of when you can detect CPU fallback differs between backends:
-with the **FFmpeg backend**, you can only check fallback status after decoding at
-least one frame, because FFmpeg determines codec support lazily during decoding;
-with the **BETA backend**, you can check fallback status immediately after
-decoder creation, as the backend checks codec support upfront.
+Fallback status is determined upfront, so you can check
+`decoder.cpu_fallback` immediately after creating the decoder.
 
 For installation instructions, detailed examples, and visual comparisons
 between CPU and CUDA decoding, see [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py)

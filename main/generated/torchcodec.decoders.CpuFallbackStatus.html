@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>CpuFallbackStatus &#8212; TorchCodec 0.12.0.dev20260507+cu126 Documentation</title>
+    <title>CpuFallbackStatus &#8212; TorchCodec 0.12.0.dev20260508+cu126 Documentation</title>
   
   
   
@@ -1025,10 +1025,10 @@ via the <code class="xref py py-attr docutils literal notranslate"><span class="
 <dt class="sig sig-object py" id="torchcodec.decoders.CpuFallbackStatus.status_known">
 <span class="sig-name descname"><span class="pre">status_known</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/functions.html#bool" title="(in Python v3.14)"><span class="pre">bool</span></a></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#torchcodec.decoders.CpuFallbackStatus.status_known" title="Link to this definition">#</a></dt>
 <dd><p>Whether the fallback status has been determined.
-For the Beta CUDA backend (see <a class="reference internal" href="torchcodec.decoders.set_cuda_backend.html#torchcodec.decoders.set_cuda_backend" title="torchcodec.decoders.set_cuda_backend"><code class="xref py py-func docutils literal notranslate"><span class="pre">set_cuda_backend()</span></code></a>),
-this is always <code class="docutils literal notranslate"><span class="pre">True</span></code> immediately after decoder creation.
-For the FFmpeg CUDA backend, this becomes <code class="docutils literal notranslate"><span class="pre">True</span></code> after decoding
-the first frame.</p>
+For the NVDEC CUDA backend (the default; see
+<a class="reference internal" href="torchcodec.decoders.set_cuda_backend.html#torchcodec.decoders.set_cuda_backend" title="torchcodec.decoders.set_cuda_backend"><code class="xref py py-func docutils literal notranslate"><span class="pre">set_cuda_backend()</span></code></a>), this is always <code class="docutils literal notranslate"><span class="pre">True</span></code>
+immediately after decoder creation. For the FFmpeg CUDA backend, this
+becomes <code class="docutils literal notranslate"><span class="pre">True</span></code> after decoding the first frame.</p>
 </dd></dl>
 
 </dd></dl>
@@ -1381,7 +1381,7 @@ the first frame.</p>
        "headline": "CpuFallbackStatus",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders.CpuFallbackStatus.html",
-       "articleBody": "CpuFallbackStatus# class torchcodec.decoders.CpuFallbackStatus(status_known: bool = False)[source]# Information about CPU fallback status. This class tracks whether the decoder fell back to CPU decoding. Users should not instantiate this class directly; instead, access it via the VideoDecoder.cpu_fallback attribute. Usage: Use str(cpu_fallback_status) or print(cpu_fallback_status) to see the cpu fallback status Use if cpu_fallback_status: to check if any fallback occurred Examples using CpuFallbackStatus: Accelerated video decoding on GPUs with CUDA and NVDEC Accelerated video decoding on GPUs with CUDA and NVDEC status_known: bool = False# Whether the fallback status has been determined. For the Beta CUDA backend (see set_cuda_backend()), this is always True immediately after decoder creation. For the FFmpeg CUDA backend, this becomes True after decoding the first frame.",
+       "articleBody": "CpuFallbackStatus# class torchcodec.decoders.CpuFallbackStatus(status_known: bool = False)[source]# Information about CPU fallback status. This class tracks whether the decoder fell back to CPU decoding. Users should not instantiate this class directly; instead, access it via the VideoDecoder.cpu_fallback attribute. Usage: Use str(cpu_fallback_status) or print(cpu_fallback_status) to see the cpu fallback status Use if cpu_fallback_status: to check if any fallback occurred Examples using CpuFallbackStatus: Accelerated video decoding on GPUs with CUDA and NVDEC Accelerated video decoding on GPUs with CUDA and NVDEC status_known: bool = False# Whether the fallback status has been determined. For the NVDEC CUDA backend (the default; see set_cuda_backend()), this is always True immediately after decoder creation. For the FFmpeg CUDA backend, this becomes True after decoding the first frame.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",
