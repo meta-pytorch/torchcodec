@@ -2256,8 +2256,9 @@ class TestVideoDecoder:
             assert decoder.cpu_fallback.status_known
             assert decoder.cpu_fallback
             # FFmpeg interface doesn't know the specific reason
-            assert "Unknown reason - try the default interface to know more" in str(
-                decoder.cpu_fallback
+            assert (
+                "Unknown reason - try the default 'nvdec' backend to know more"
+                in str(decoder.cpu_fallback)
             )
         else:
             # For the default interface, status is known immediately

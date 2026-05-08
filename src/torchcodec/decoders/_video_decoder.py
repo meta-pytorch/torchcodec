@@ -37,10 +37,10 @@ class CpuFallbackStatus:
 
     status_known: bool = False
     """Whether the fallback status has been determined.
-    For the Beta CUDA backend (see :func:`~torchcodec.decoders.set_cuda_backend`),
-    this is always ``True`` immediately after decoder creation.
-    For the FFmpeg CUDA backend, this becomes ``True`` after decoding
-    the first frame."""
+    For the NVDEC CUDA backend (the default; see
+    :func:`~torchcodec.decoders.set_cuda_backend`), this is always ``True``
+    immediately after decoder creation. For the FFmpeg CUDA backend, this
+    becomes ``True`` after decoding the first frame."""
     _nvcuvid_unavailable: bool = field(default=False, init=False)
     _video_not_supported: bool = field(default=False, init=False)
     _is_fallback: bool = field(default=False, init=False)
@@ -61,7 +61,9 @@ class CpuFallbackStatus:
         elif self._video_not_supported:
             reasons.append("Video not supported")
         elif self._is_fallback:
-            reasons.append("Unknown reason - try the default interface to know more!")
+            reasons.append(
+                "Unknown reason - try the default 'nvdec' backend to know more!"
+            )
 
         if reasons:
             return (
@@ -108,8 +110,9 @@ class VideoDecoder:
             Default: 1.
         device (str or torch.device, optional): The device to use for decoding.
             If ``None`` (default), uses the current default device.
-            If you pass a CUDA device, we recommend trying the "beta" CUDA
-            backend which is faster! See :func:`~torchcodec.decoders.set_cuda_backend`.
+            If you pass a CUDA device, decoding uses the ``"nvdec"`` backend by
+            default. See :func:`~torchcodec.decoders.set_cuda_backend` to switch
+            to the ``"ffmpeg"`` CUDA backend.
         seek_mode (str, optional): Determines if frame access will be "exact" or
             "approximate". Exact guarantees that requesting frame i will always
             return frame i, but doing so requires an initial :term:`scan` of the
