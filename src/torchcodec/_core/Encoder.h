@@ -227,12 +227,13 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   struct AudioStream {
     int inSampleRate = -1;
     int inNumChannels = -1;
+    int frameSize = -1;
     int64_t lastEncodedAVFramePts = 0;
-    bool addSamplesCalled = false;
     AudioStreamOptions options;
     UniqueAVCodecContext avCodecContext;
     AVStream* avStream = nullptr;
     UniqueSwrContext swrContext;
+    UniqueAVAudioFifo avAudioFifo;
   };
 
   void initializeVideoStream();
@@ -244,11 +245,16 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   UniqueAVFrame maybeConvertAudioAVFrame(
       const UniqueAVFrame& avFrame,
       AudioStream& audioStream);
+  void encodeAudioFrameThroughFifo(
+      AutoAVPacket& autoAVPacket,
+      const UniqueAVFrame& avFrame,
+      AudioStream& audioStream,
+      bool flushFifo = false);
   void encodeAudioFrame(
       AutoAVPacket& autoAVPacket,
       const UniqueAVFrame& avFrame,
       AudioStream& audioStream);
-  void maybeFlushAudioSwrBuffers(
+  void maybeFlushSwrAndFifo(
       AutoAVPacket& autoAVPacket,
       AudioStream& audioStream);
   void flushBuffers();
