@@ -687,6 +687,33 @@ TEST_NON_ZERO_START = TestVideo(
     frames={},  # Automatically loaded from json file
 )
 
+TESTSRC2_ODD_WIDTH = TestVideo(
+    filename="testsrc2_odd_width.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+TESTSRC2_ODD_HEIGHT = TestVideo(
+    filename="testsrc2_odd_height.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+TESTSRC2_ODD_HEIGHT_AND_WIDTH = TestVideo(
+    filename="testsrc2_odd_height_and_width.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
 
 def supports_approximate_mode(asset: TestVideo) -> bool:
     # Those are missing the `duration` field so they fail in approximate mode (on all devices).

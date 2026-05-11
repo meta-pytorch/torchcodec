@@ -240,7 +240,8 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
-  validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
+  validatePreAllocatedTensorShape(
+      preAllocatedOutputTensor, FrameDims(avFrame->height, avFrame->width));
 
   hasDecodedFrame_ = true;
 
@@ -330,8 +331,21 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   cudaStream_t nvdecStream = // That's always the default stream. Sad.
       cudaDeviceCtx->stream;
 
+  STD_TORCH_CHECK(
+      avFrame->height % 2 == 0 && avFrame->width % 2 == 0,
+      "Expected even dimensions from NVDEC, got ",
+      avFrame->width,
+      "x",
+      avFrame->height,
+      ". Please report this to the TorchCodec repo.");
+
   frameOutput.data = convertNV12FrameToRGB(
-      avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+      avFrame,
+      device_,
+      nppCtx_,
+      nvdecStream,
+      preAllocatedOutputTensor,
+      FrameDims(avFrame->height, avFrame->width));
 }
 
 // inspired by https://github.com/FFmpeg/FFmpeg/commit/ad67ea9
