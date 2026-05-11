@@ -320,11 +320,13 @@ torch::stable::Tensor convertNV12FrameToRGB(
 
   torch::stable::Tensor dst;
   if (needsCrop) {
-    dst = allocateEmptyHWCTensor(FrameDims(nv12Height, nv12Width), device);
+    dst = allocateEmptyHWCTensor(
+        FrameDims(nv12Height, nv12Width), device, OutputDtype::UINT8);
   } else if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
-    dst = allocateEmptyHWCTensor(FrameDims(outHeight, outWidth), device);
+    dst = allocateEmptyHWCTensor(
+        FrameDims(outHeight, outWidth), device, OutputDtype::UINT8);
   }
 
   // We need to make sure NVDEC has finished decoding a frame before
