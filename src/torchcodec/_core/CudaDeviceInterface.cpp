@@ -16,7 +16,7 @@ namespace facebook::torchcodec {
 namespace {
 
 static bool g_cuda = registerDeviceInterface(
-    DeviceInterfaceKey(kStableCUDA),
+    DeviceInterfaceKey(kStableCUDA, /*variant=*/"ffmpeg"),
     [](const StableDevice& device) { return new CudaDeviceInterface(device); });
 
 // We reuse cuda contexts across VideoDeoder instances. This is because
@@ -94,6 +94,9 @@ CudaDeviceInterface::CudaDeviceInterface(const StableDevice& device)
   STD_TORCH_CHECK(
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
+  // Resolve unspecified device index (-1) to the actual current CUDA device.
+  device_.set_index(getDeviceIndex(device_));
+
   initializeCudaContextWithPytorch(device_);
 
   hardwareDeviceCtx_ = getHardwareDeviceContext(device_);
@@ -122,9 +125,7 @@ void CudaDeviceInterface::initialize(
       cpuInterface_ != nullptr, "Failed to create CPU device interface");
   cpuInterface_->initialize(avStream, avFormatCtx, codecContext);
   cpuInterface_->initializeVideo(
-      VideoStreamOptions(),
-      {},
-      /*resizedOutputDims=*/std::nullopt);
+      VideoStreamOptions(), {}, /*resizedOutputDims=*/std::nullopt);
 }
 
 void CudaDeviceInterface::initializeVideo(
