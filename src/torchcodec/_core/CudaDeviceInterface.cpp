@@ -125,9 +125,7 @@ void CudaDeviceInterface::initialize(
       cpuInterface_ != nullptr, "Failed to create CPU device interface");
   cpuInterface_->initialize(avStream, avFormatCtx, codecContext);
   cpuInterface_->initializeVideo(
-      VideoStreamOptions(),
-      {},
-      /*resizedOutputDims=*/std::nullopt);
+      VideoStreamOptions(), {}, /*resizedOutputDims=*/std::nullopt);
 }
 
 void CudaDeviceInterface::initializeVideo(

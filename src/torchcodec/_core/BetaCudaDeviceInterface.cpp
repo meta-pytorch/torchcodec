@@ -310,9 +310,7 @@ void BetaCudaDeviceInterface::initialize(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
     cpuFallback_->initialize(avStream, avFormatCtx, codecContext);
     cpuFallback_->initializeVideo(
-        VideoStreamOptions(),
-        {},
-        /*resizedOutputDims=*/std::nullopt);
+        VideoStreamOptions(), {}, /*resizedOutputDims=*/std::nullopt);
     // We'll always use the CPU fallback from now on, so we can return early.
     return;
   }
@@ -769,10 +767,11 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
       static_cast<AVPixelFormat>(cpuFrame->format),
       cpuFrame->colorspace,
       width,
-      height);
+      height,
+      AV_PIX_FMT_NV12);
 
   if (!swsContext_ || prevSwsConfig_ != swsConfig) {
-    swsContext_ = createSwsContext(swsConfig, AV_PIX_FMT_NV12, SWS_BILINEAR);
+    swsContext_ = createSwsContext(swsConfig, SWS_BILINEAR);
     prevSwsConfig_ = swsConfig;
   }
 
