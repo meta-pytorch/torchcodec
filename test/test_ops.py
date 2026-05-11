@@ -15,7 +15,6 @@ import numpy as np
 import pytest
 
 import torch
-from torchcodec import ffmpeg_major_version
 
 from torchcodec import ffmpeg_major_version
 
