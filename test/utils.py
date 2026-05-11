@@ -406,6 +406,19 @@ class TestVideo(TestContainerFile):
         tensor_file_path = f"{base_path}.pt"
         return torch.load(tensor_file_path, weights_only=True).permute(2, 0, 1)
 
+    def get_frame_data_by_index_rgb48(
+        self,
+        idx: int,
+        *,
+        stream_index: int | None = None,
+    ) -> torch.Tensor:
+        if stream_index is None:
+            stream_index = self.default_stream_index
+
+        base_path = self.get_base_path_by_index(idx, stream_index=stream_index)
+        tensor_file_path = f"{base_path}.rgb48.pt"
+        return torch.load(tensor_file_path, weights_only=True).permute(2, 0, 1)
+
     def get_frame_data_by_range(
         self,
         start: int,
@@ -624,6 +637,46 @@ BT601_LIMITED_RANGE = TestVideo(
         0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
     },
     frames={0: {}},  # Not needed for now
+)
+
+# HDR re-encode of NASA video (10-bit H265 with BT.2020 + PQ), generated with:
+# ffmpeg -i test/resources/nasa_13013.mp4 -map 0:v:0 -c:v libx265 -pix_fmt yuv420p10le \
+# -x265-params "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited" \
+# -preset fast -crf 23 test/resources/nasa_13013_hdr.mp4
+NASA_VIDEO_HDR = TestVideo(
+    filename="nasa_13013_hdr.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# HDR re-encode of testsrc2 (10-bit H265 with BT.2020 + PQ), generated with:
+# ffmpeg -i test/resources/testsrc2.mp4 -c:v libx265 -pix_fmt yuv420p10le \
+# -x265-params "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited" \
+# -preset fast -crf 23 test/resources/testsrc2_hdr.mp4
+TEST_SRC_2_720P_HDR = TestVideo(
+    filename="testsrc2_hdr.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# 12-bit HDR testsrc2 (H265 with BT.2020 + PQ), generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x180:rate=30 -c:v libx265
+# -pix_fmt yuv420p12le -x265-params
+# "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited"
+# -preset fast -crf 23 test/resources/testsrc2_12bit_hdr.mp4
+TEST_SRC_2_12BIT_HDR = TestVideo(
+    filename="testsrc2_12bit_hdr.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
+    },
+    frames={0: {}},
 )
 
 # ffmpeg -f lavfi -i testsrc2=duration=2:size=1280x720:rate=30 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -b:v 2500k -r 30 -movflags +faststart output_720p_2s.mp4
