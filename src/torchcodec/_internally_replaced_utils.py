@@ -6,7 +6,6 @@
 
 import importlib
 import importlib.util
-import logging
 import sys
 import traceback
 from pathlib import Path
@@ -65,9 +64,6 @@ def _load_pybind11_module(module_name: str, library_path: str) -> ModuleType:
     return mod
 
 
-_LOGGER = logging.getLogger("torchcodec")
-
-
 def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
     """
     Successively try to load the shared libraries for each version of FFmpeg
@@ -106,9 +102,6 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
             # Capture the full traceback for this exception
             exc_traceback = traceback.format_exc()
             exceptions.append((ffmpeg_major_version, exc_traceback))
-            _LOGGER.info(
-                f"FFmpeg version {ffmpeg_major_version} failed to load:\n{exc_traceback}"
-            )
 
     traceback_info = (
         "\n[start of libtorchcodec loading traceback]\n"

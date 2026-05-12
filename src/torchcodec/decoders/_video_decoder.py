@@ -17,6 +17,7 @@ import torch
 from torch import device as torch_device, nn, Tensor
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec._core._decoder_utils import create_video_decoder
+from torchcodec._logging import _LG
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.transforms import DecoderTransform
 
@@ -230,6 +231,8 @@ class VideoDecoder:
         assert self.metadata.begin_stream_seconds is not None  # mypy.
         assert self.metadata.end_stream_seconds is not None  # mypy.
         assert self.metadata.num_frames is not None  # mypy.
+
+        _LG.debug(f"VideoDecoder created:\n{self.metadata}")
 
         self._begin_stream_seconds = self.metadata.begin_stream_seconds
         self._end_stream_seconds = self.metadata.end_stream_seconds

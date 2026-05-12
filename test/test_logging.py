@@ -9,10 +9,9 @@ import sys
 import textwrap
 
 import pytest
-from torchcodec import ffmpeg_major_version
 from torchcodec._logging import get_log_level, set_log_level
 
-from .utils import in_fbcode, needs_cuda
+from .utils import needs_cuda
 
 
 @pytest.fixture
@@ -53,8 +52,12 @@ class TestLogging:
     @pytest.mark.parametrize("log_level", ("ALL", "OFF"))
     def test_python_logger(self, log_level):
         script = textwrap.dedent(
-            """\
-            import torchcodec
+            f"""\
+            from torchcodec._logging import set_log_level
+            set_log_level("{log_level}")
+            from torchcodec.decoders import VideoDecoder
+            from test.utils import NASA_VIDEO
+            decoder = VideoDecoder(NASA_VIDEO.path)
         """
         )
         result = subprocess.run(
@@ -64,14 +67,7 @@ class TestLogging:
         )
         assert result.returncode == 0, result.stderr
         if log_level == "ALL":
-            # We log something when we fail to load ffmpeg and we first try
-            # ffmpeg 8, then 7, etc. If we're on ffmpeg 8, we won't log
-            # anything, since the loading will work from the first time, hence
-            # why we skip this check on ffmpeg 8.
-            # Similarly on fbcode, we never log anything here because we don't
-            # hit the same code path
-            if ffmpeg_major_version != 8 and not in_fbcode():
-                assert "failed to load" in result.stderr
+            assert "VideoDecoder created" in result.stderr
         else:
             assert log_level == "OFF"
             assert not result.stderr
