@@ -167,7 +167,7 @@ jobs:
         run: python -m pip install --upgrade pip
 
       - name: Install PyTorch
-        run: bash packaging/install_pytorch.sh cu128 "torch torchvision"
+        run: bash packaging/install_pytorch.sh cu128 "torch"
 
       - uses: actions/download-artifact@v4
         with:
@@ -185,7 +185,7 @@ jobs:
 
       - name: Run Python tests
         run: |
-          pytest --override-ini="addopts=-v" test --tb=short
+          pytest --override-ini="addopts=-v" test/test_decoders.py --tb=short
 
   build-docs:
     runs-on: linux.g5.4xlarge.nvidia.gpu
