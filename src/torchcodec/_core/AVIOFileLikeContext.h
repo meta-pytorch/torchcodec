@@ -6,8 +6,14 @@
 
 #pragma once
 
+// pybind11 headers from torch error out if TORCH_TARGET_VERSION is defined,
+// so we temporarily undefine it.
+// See https://github.com/pytorch/pytorch/pull/174372 for context
+#pragma push_macro("TORCH_TARGET_VERSION")
+#undef TORCH_TARGET_VERSION
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#pragma pop_macro("TORCH_TARGET_VERSION")
 
 #include "AVIOContextHolder.h"
 

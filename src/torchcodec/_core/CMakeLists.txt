@@ -57,6 +57,8 @@ function(make_torchcodec_sublibrary
     # torch, we want to rely on the "header-only" mode of these headers and hit
     # all the `#ifdef FMT_HEADER_ONLY` paths, so we define FMT_HEADER_ONLY here.```
     target_compile_definitions(${library_name} PRIVATE FMT_HEADER_ONLY)
+    # TC is ABI-stable w.r.t. torch since torch 2.11
+    target_compile_definitions(${library_name} PRIVATE TORCH_TARGET_VERSION=0x020b000000000000)
 
     # Avoid adding the "lib" prefix which we already add explicitly.
     set_target_properties(${library_name} PROPERTIES PREFIX "")

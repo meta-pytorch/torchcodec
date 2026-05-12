@@ -16,18 +16,19 @@
 namespace facebook::torchcodec {
 namespace {
 
-constexpr uint32_t RIFF_HEADER_SIZE = 12; // "RIFF" + fileSize + "WAVE"
-constexpr uint32_t CHUNK_HEADER_SIZE = 8; // chunkID + chunkSize
+constexpr int64_t RIFF_HEADER_SIZE = 12; // "RIFF" + fileSize + "WAVE"
+constexpr int64_t CHUNK_HEADER_SIZE = 8; // chunkID + chunkSize
 // Standard WAV fmt chunk is at least 16 bytes:
 // audioFormat(2) + numChannels(2) + sampleRate(4) + byteRate(4) + blockAlign(2)
 // + bitsPerSample(2)
-constexpr uint32_t MIN_FMT_CHUNK_SIZE = 16;
+constexpr int64_t MIN_FMT_CHUNK_SIZE = 16;
 // WAVE_FORMAT_EXTENSIBLE adds to the standard WAV fmt chunk: cbSize(2) +
 // wValidBitsPerSample(2) + dwChannelMask(4) + SubFormat GUID(16) = 24 more
 // bytes, total 40
-constexpr uint32_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
+constexpr int64_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
 // Arbitrary max for fmt chunk allocation - set to 5x extended format size
-constexpr uint32_t MAX_FMT_CHUNK_SIZE = 200;
+constexpr int64_t MAX_FMT_CHUNK_SIZE = 200;
+constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
 
 // See standard format codes and Wav file format used in WavHeader:
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
@@ -35,50 +36,57 @@ constexpr uint16_t WAV_FORMAT_PCM = 1;
 constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
 
 bool isLittleEndian() {
-  uint32_t x = 1;
+  int64_t x = 1;
   uint8_t firstByte;
   std::memcpy(&firstByte, &x, 1);
   return firstByte == 1;
 }
 
-template <typename T, typename Container>
-T readValue(const Container& data, size_t offset) {
-  static_assert(std::is_trivially_copyable_v<T>);
+template <typename OutType, typename InType>
+OutType readValue(const InType& data, int64_t offset) {
+  static_assert(std::is_trivially_copyable_v<OutType>);
   static_assert(
-      sizeof(typename Container::value_type) == 1,
-      "Container value_type must be a 1-byte type for safe byte access");
+      sizeof(typename InType::value_type) == 1,
+      "InType value_type must be a 1-byte type for safe byte access");
+  STD_TORCH_CHECK(offset >= 0);
   STD_TORCH_CHECK(
-      data.size() >= sizeof(T) && offset <= data.size() - sizeof(T),
+      data.size() >= sizeof(OutType) &&
+          static_cast<size_t>(offset) <= data.size() - sizeof(OutType),
       "Reading ",
-      sizeof(T),
+      sizeof(OutType),
       " bytes at offset ",
       offset,
       ": exceeds buffer length ",
       data.size());
-  T value;
-  std::memcpy(&value, data.data() + offset, sizeof(T));
+  OutType value;
+  std::memcpy(
+      &value, data.data() + static_cast<size_t>(offset), sizeof(OutType));
   return value;
 }
 
 bool matchesFourCC(
     const uint8_t* data,
-    size_t dataSize,
-    size_t offset,
+    int64_t dataSize,
+    int64_t offset,
     std::string_view expected) {
   STD_TORCH_CHECK(
       dataSize >= 4 && offset <= dataSize - 4,
       "Data array too small for FourCC comparison at offset ",
       offset);
-  return std::memcmp(data + offset, expected.data(), 4) == 0;
+  STD_TORCH_CHECK(offset >= 0);
+  return std::memcmp(data + static_cast<size_t>(offset), expected.data(), 4) ==
+      0;
 }
 
 template <typename Container>
-void safeReadFile(std::ifstream& file, Container& buffer, size_t bytesToRead) {
+void safeReadFile(std::ifstream& file, Container& buffer, int64_t bytesToRead) {
   static_assert(
       sizeof(typename Container::value_type) == 1,
       "Container value_type must be a 1-byte type for safe reinterpret_cast to char*");
+  STD_TORCH_CHECK(bytesToRead >= 0);
   STD_TORCH_CHECK(
-      bytesToRead <= buffer.size(), "Read size exceeds buffer length");
+      static_cast<size_t>(bytesToRead) <= buffer.size(),
+      "Read size exceeds buffer length");
   file.read(
       reinterpret_cast<char*>(buffer.data()),
       static_cast<std::streamsize>(bytesToRead));
@@ -127,10 +135,10 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
   safeReadFile(file_, riffHeader, RIFF_HEADER_SIZE);
 
   STD_TORCH_CHECK(
-      matchesFourCC(riffHeader.data(), riffHeader.size(), 0, "RIFF"),
+      matchesFourCC(riffHeader.data(), RIFF_HEADER_SIZE, 0, "RIFF"),
       "Missing RIFF header");
   STD_TORCH_CHECK(
-      matchesFourCC(riffHeader.data(), riffHeader.size(), 8, "WAVE"),
+      matchesFourCC(riffHeader.data(), RIFF_HEADER_SIZE, 8, "WAVE"),
       "Missing WAVE format identifier");
 
   ChunkInfo fmtChunk =
@@ -153,12 +161,13 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
       " bytes, maximum allowed is ",
       MAX_FMT_CHUNK_SIZE,
       " bytes");
-  std::vector<uint8_t> fmtData(fmtChunk.size);
+  std::vector<uint8_t> fmtData(static_cast<size_t>(fmtChunk.size));
   safeReadFile(file_, fmtData, fmtChunk.size);
 
   header_.audioFormat = readValue<uint16_t>(fmtData, 0);
   header_.numChannels = readValue<uint16_t>(fmtData, 2);
   header_.sampleRate = readValue<uint32_t>(fmtData, 4);
+  header_.numBytesPerSample = readValue<uint16_t>(fmtData, 12);
   header_.bitsPerSample = readValue<uint16_t>(fmtData, 14);
 
   if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
@@ -168,7 +177,9 @@ void WavDecoder::parseHeader(uint64_t fileSize) {
     header_.subFormat = readValue<uint16_t>(fmtData, 24);
   }
 
-  ChunkInfo dataChunk = findChunk("data", RIFF_HEADER_SIZE, fileSize);
+  ChunkInfo dataChunk =
+      findChunk("data", static_cast<uint64_t>(RIFF_HEADER_SIZE), fileSize);
+  header_.dataOffset = dataChunk.offset;
   header_.dataSize = dataChunk.size;
 }
 
@@ -192,6 +203,8 @@ void WavDecoder::validateHeader() {
 
   STD_TORCH_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
   STD_TORCH_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
+  STD_TORCH_CHECK(
+      header_.numBytesPerSample > 0, "Invalid WAV: zero block alignment");
 
   if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 32) {
     sampleFormat_ = "s32";
@@ -209,9 +222,10 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     std::string_view chunkId,
     uint64_t startPos,
     uint64_t fileSize) {
-  if (fileSize < CHUNK_HEADER_SIZE) {
-    STD_TORCH_CHECK(false, "File too small to contain chunk:", chunkId);
-  }
+  STD_TORCH_CHECK(
+      fileSize >= static_cast<uint64_t>(CHUNK_HEADER_SIZE),
+      "File too small to contain chunk:",
+      chunkId);
   while (startPos <= fileSize - CHUNK_HEADER_SIZE) {
     safeSeek(
         file_, validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
@@ -221,7 +235,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = readValue<uint32_t>(chunkHeader, 4);
 
-    if (matchesFourCC(chunkHeader.data(), chunkHeader.size(), 0, chunkId)) {
+    if (matchesFourCC(chunkHeader.data(), CHUNK_HEADER_SIZE, 0, chunkId)) {
       return {startPos + CHUNK_HEADER_SIZE, chunkSize};
     }
     // Skip this chunk and continue searching (odd chunks are padded)
@@ -232,7 +246,112 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
         "File position arithmetic would overflow");
     startPos += numBytesToSkip;
   }
+  // If this code is reached, the required chunk was not found, so we error
   STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
+}
+
+AudioFramesOutput WavDecoder::getSamplesInRange(
+    double startSeconds,
+    std::optional<double> stopSecondsOptional) {
+  // Calculate the range of samples to decode
+  // Sample boundary alignment: round to nearest sample to avoid partial samples
+  // See corresponding logic in AudioDecoder:
+  // https://github.com/meta-pytorch/torchcodec/blob/910005cf5328d9d44ff8123ad540a51db9ce15b5/src/torchcodec/decoders/_audio_decoder.py#L142
+  const int64_t startSample =
+      static_cast<int64_t>(std::round(startSeconds * header_.sampleRate));
+
+  int64_t endSample =
+      static_cast<int64_t>(header_.dataSize / header_.numBytesPerSample);
+  if (stopSecondsOptional.has_value()) {
+    STD_TORCH_CHECK(
+        startSeconds <= stopSecondsOptional.value(),
+        "Start seconds (",
+        startSeconds,
+        ") must be less than or equal to stop seconds (",
+        stopSecondsOptional.value(),
+        ").");
+    if (startSeconds == stopSecondsOptional.value()) {
+      return AudioFramesOutput{
+          torch::stable::empty({header_.numChannels, 0}, kStableFloat32),
+          startSeconds};
+    }
+    int64_t requestedEndSample = static_cast<int64_t>(
+        std::round(stopSecondsOptional.value() * header_.sampleRate));
+    endSample = std::min(requestedEndSample, endSample);
+  }
+
+  const int64_t numSamples = endSample - startSample;
+  STD_TORCH_CHECK(
+      numSamples > 0,
+      "No samples to decode. ",
+      "This is probably because start_seconds is too high(",
+      startSeconds,
+      "), ",
+      "or because stop_seconds is too low.");
+
+  STD_TORCH_CHECK(
+      startSample <= INT64_MAX / header_.numBytesPerSample,
+      "byteOffset calculation would overflow: startSample * numBytesPerSample ");
+  int64_t byteOffset = startSample * header_.numBytesPerSample;
+
+  STD_TORCH_CHECK(
+      header_.dataOffset <= static_cast<uint64_t>(INT64_MAX - byteOffset),
+      "dataPosition calculation would overflow: dataOffset + byteOffset ");
+  byteOffset += static_cast<int64_t>(header_.dataOffset);
+
+  // Calculate total bytes to read and read all at once
+  STD_TORCH_CHECK(
+      numSamples <= INT64_MAX / header_.numBytesPerSample,
+      "bytesToRead calculation overflow: numSamples * numBytesPerSample");
+  const int64_t bytesToRead = numSamples * header_.numBytesPerSample;
+
+  // TODO WavDecoder: Optimize decoding and converison by processing samples in
+  // fixed size buffer. For now, we use a simpler implementation: create a
+  // tensor from raw bytes and convert tensor to float32
+  STD_TORCH_CHECK(
+      bytesToRead <= MAX_TENSOR_SIZE,
+      "Audio data too large: ",
+      bytesToRead,
+      " bytes, maximum allowed is ",
+      MAX_TENSOR_SIZE,
+      " bytes");
+
+  safeSeek(
+      file_,
+      validateUint64ToStreampos(byteOffset, "byteOffset"),
+      std::ios::beg);
+
+  STD_TORCH_CHECK(bytesToRead >= 0);
+  std::vector<uint8_t> rawData(static_cast<std::size_t>(bytesToRead));
+  safeReadFile(file_, rawData, bytesToRead);
+
+  int64_t sizes[] = {numSamples, header_.numChannels};
+  int64_t strides[] = {header_.numChannels, 1};
+  auto rawTensor = torch::stable::from_blob(
+      rawData.data(),
+      {sizes, 2},
+      {strides, 2},
+      StableDevice(kStableCPU),
+      kStableInt32);
+
+  auto samples = torch::stable::to(rawTensor, kStableFloat32);
+  auto zeros = torch::stable::new_zeros(samples, samples.sizes());
+  constexpr double scale =
+      1.0 / static_cast<double>(std::numeric_limits<int32_t>::max());
+  // Multiplication is not in the stable ABI, we use subtract with alpha as a
+  // workaround. We will remove this hack once we implement buffered reading
+  // optimization.
+  samples = torch::stable::subtract(
+      zeros, samples, -scale); // 0 - (-scale) * samples = scale * samples
+
+  // Convert to [channels, samples]
+  samples = torch::stable::transpose(samples, 0, 1);
+
+  // We return the actual sample start time
+  // (rounded to nearest sample boundary to startSeconds).
+  const double actualStartSeconds =
+      static_cast<double>(startSample) / header_.sampleRate;
+  return AudioFramesOutput{samples, actualStartSeconds};
 }
 
 StreamMetadata WavDecoder::getStreamMetadata() const {

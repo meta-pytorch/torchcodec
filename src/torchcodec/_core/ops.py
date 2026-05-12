@@ -79,11 +79,12 @@ def add_video_stream(
     dimension_order: str | None = None,
     stream_index: int | None = None,
     device: str = "cpu",
-    device_variant: str = "ffmpeg",
+    device_variant: str = "default",
     transform_specs: str = "",
     custom_frame_mappings: (
         tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
     ) = None,
+    output_dtype: str | None = None,
 ) -> None:
     custom_frame_mappings_pts: torch.Tensor | None = None
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None
@@ -105,6 +106,7 @@ def add_video_stream(
         custom_frame_mappings_pts=custom_frame_mappings_pts,
         custom_frame_mappings_duration=custom_frame_mappings_duration,
         custom_frame_mappings_keyframe_indices=custom_frame_mappings_keyframe_indices,
+        output_dtype=output_dtype,
     )
 
 
@@ -139,12 +141,22 @@ _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
 create_streaming_encoder_to_file = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_streaming_encoder_to_file.default
 )
+_create_streaming_encoder_to_file_like = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.create_streaming_encoder_to_file_like.default
+)
 streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.default
 streaming_encoder_add_video_stream = (
     torch.ops.torchcodec_ns.streaming_encoder_add_video_stream.default
 )
+streaming_encoder_add_audio_stream = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_audio_stream.default
+)
+streaming_encoder_open = torch.ops.torchcodec_ns.streaming_encoder_open.default
 streaming_encoder_add_frames = (
     torch.ops.torchcodec_ns.streaming_encoder_add_frames.default
+)
+streaming_encoder_add_samples = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_samples.default
 )
 set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
 get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
@@ -152,7 +164,7 @@ _get_nvdec_cache_size = torch.ops.torchcodec_ns._get_nvdec_cache_size.default
 create_wav_decoder_from_file = (
     torch.ops.torchcodec_ns.create_wav_decoder_from_file.default
 )
-get_wav_all_samples = torch.ops.torchcodec_ns.get_wav_all_samples.default
+get_wav_samples_in_range = torch.ops.torchcodec_ns.get_wav_samples_in_range.default
 get_wav_metadata_from_decoder = (
     torch.ops.torchcodec_ns.get_wav_metadata_from_decoder.default
 )
@@ -254,6 +266,17 @@ def encode_video_to_file_like(
         crf,
         preset,
         extra_options,
+    )
+
+
+def create_streaming_encoder_to_file_like(
+    format: str,
+    file_like: io.RawIOBase | io.BufferedIOBase,
+) -> torch.Tensor:
+    assert _pybind_ops is not None
+    return _create_streaming_encoder_to_file_like(
+        format,
+        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
     )
 
 
@@ -394,12 +417,13 @@ def _add_video_stream_abstract(
     dimension_order: str | None = None,
     stream_index: int | None = None,
     device: str = "cpu",
-    device_variant: str = "ffmpeg",
+    device_variant: str = "default",
     transform_specs: str = "",
     custom_frame_mappings_pts: torch.Tensor | None = None,
     custom_frame_mappings_duration: torch.Tensor | None = None,
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None,
     color_conversion_library: str | None = None,
+    output_dtype: str | None = None,
 ) -> None:
     return
 
@@ -412,11 +436,12 @@ def add_video_stream_abstract(
     dimension_order: str | None = None,
     stream_index: int | None = None,
     device: str = "cpu",
-    device_variant: str = "ffmpeg",
+    device_variant: str = "default",
     transform_specs: str = "",
     custom_frame_mappings_pts: torch.Tensor | None = None,
     custom_frame_mappings_duration: torch.Tensor | None = None,
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None,
+    output_dtype: str | None = None,
 ) -> None:
     return
 
@@ -601,6 +626,14 @@ def _create_streaming_encoder_to_file_abstract(
     return torch.empty([], dtype=torch.long)
 
 
+@register_fake("torchcodec_ns::create_streaming_encoder_to_file_like")
+def _create_streaming_encoder_to_file_like_abstract(
+    format: str,
+    file_like_context: int,
+) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
 @register_fake("torchcodec_ns::streaming_encoder_close")
 def streaming_encoder_close_abstract(encoder: torch.Tensor) -> None:
     return
@@ -609,7 +642,10 @@ def streaming_encoder_close_abstract(encoder: torch.Tensor) -> None:
 @register_fake("torchcodec_ns::streaming_encoder_add_video_stream")
 def streaming_encoder_add_video_stream_abstract(
     encoder: torch.Tensor,
+    height: int,
+    width: int,
     frame_rate: float,
+    device: str = "cpu",
     codec: str | None = None,
     pixel_format: str | None = None,
     crf: float | None = None,
@@ -619,9 +655,31 @@ def streaming_encoder_add_video_stream_abstract(
     return
 
 
+@register_fake("torchcodec_ns::streaming_encoder_add_audio_stream")
+def streaming_encoder_add_audio_stream_abstract(
+    encoder: torch.Tensor,
+    sample_rate: int,
+    num_channels: int,
+    bit_rate: int | None = None,
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_open")
+def streaming_encoder_open_abstract(encoder: torch.Tensor) -> None:
+    return
+
+
 @register_fake("torchcodec_ns::streaming_encoder_add_frames")
 def streaming_encoder_add_frames_abstract(
     encoder: torch.Tensor, frames: torch.Tensor
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_add_samples")
+def streaming_encoder_add_samples_abstract(
+    encoder: torch.Tensor, samples: torch.Tensor
 ) -> None:
     return
 
@@ -639,6 +697,23 @@ def get_nvdec_cache_capacity_abstract() -> int:
 @register_fake("torchcodec_ns::_get_nvdec_cache_size")
 def _get_nvdec_cache_size_abstract(device_index: int) -> int:
     return 0
+
+
+@register_fake("torchcodec_ns::create_wav_decoder_from_file")
+def create_wav_decoder_from_file_abstract(filename: str) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::get_wav_samples_in_range")
+def get_wav_samples_in_range_abstract(
+    decoder: torch.Tensor, start_seconds: float, stop_seconds: float | None
+) -> tuple[torch.Tensor, torch.Tensor]:
+    sample_size = [
+        get_ctx().new_dynamic_size() for _ in range(2)
+    ]  # [channels, samples]
+    frames = torch.empty(sample_size)
+    pts = torch.empty([], dtype=torch.float64)
+    return frames, pts
 
 
 @register_fake("torchcodec_ns::get_wav_metadata_from_decoder")

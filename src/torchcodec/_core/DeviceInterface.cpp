@@ -5,7 +5,6 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "DeviceInterface.h"
-#include <ATen/ops/from_blob.h>
 #include <map>
 #include <mutex>
 #include "StableABICompat.h"
@@ -118,30 +117,36 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
 }
 
 torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
-  STD_TORCH_CHECK(avFrame->format == AV_PIX_FMT_RGB24, "Expected RGB24 format");
+  auto format = static_cast<AVPixelFormat>(avFrame->format);
+  STD_TORCH_CHECK(
+      format == AV_PIX_FMT_RGB24 || format == AV_PIX_FMT_RGB48,
+      "Expected RGB24 or RGB48 format, got ",
+      (av_get_pix_fmt_name(format) ? av_get_pix_fmt_name(format) : "unknown"));
 
   int height = avFrame->height;
   int width = avFrame->width;
-  std::vector<int64_t> shape = {height, width, 3};
-  std::vector<int64_t> strides = {avFrame->linesize[0], 3, 1};
   AVFrame* avFrameClone = av_frame_clone(avFrame.get());
 
-  // TODO_STABLE_ABI: we're still using the non-stable ABI here. That's because
-  // stable::from_blob doesn't yet support a capturing lambda deleter. We need
-  // to land https://github.com/pytorch/pytorch/pull/175089.
-  // TC won't be able stable until this is resolved.
   auto deleter = [avFrameClone](void*) {
     UniqueAVFrame avFrameToDelete(avFrameClone);
   };
 
-  at::Tensor tensor = at::from_blob(
-      avFrameClone->data[0], shape, strides, deleter, {at::kByte});
+  std::vector<int64_t> shape = {height, width, 3};
 
-  // We got an at::Tensor, we have to convert it to a torch::stable::Tensor.
-  // This is safe, there won't be any memory leak, i.e. the at::Tensor's deleter
-  // will properly be passed down to the torch::stable::Tensor.
-  at::Tensor* p = new at::Tensor(std::move(tensor));
-  return torch::stable::Tensor(reinterpret_cast<AtenTensorHandle>(p));
+  // RGB48 stores 2 bytes per channel (uint16); RGB24 stores 1 byte (uint8).
+  // linesize is in bytes, but torch strides are in elements, so divide.
+  int bytesPerElement = (format == AV_PIX_FMT_RGB48) ? 2 : 1;
+  auto dtype = (format == AV_PIX_FMT_RGB48) ? kStableUInt16 : kStableUInt8;
+  std::vector<int64_t> strides = {
+      avFrameClone->linesize[0] / bytesPerElement, 3, 1};
+
+  return torch::stable::from_blob(
+      avFrameClone->data[0],
+      shape,
+      strides,
+      StableDevice(kStableCPU),
+      dtype,
+      deleter);
 }
 
 } // namespace facebook::torchcodec
