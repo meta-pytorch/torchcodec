@@ -4,14 +4,16 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-import re
 import subprocess
 import sys
 import textwrap
-import pytest
 
-from .utils import needs_cuda
+import pytest
+from torchcodec import ffmpeg_major_version
 from torchcodec._logging import get_log_level, set_log_level
+
+from .utils import in_fbcode, needs_cuda
+
 
 @pytest.fixture
 def with_restore_log_level():
@@ -19,26 +21,20 @@ def with_restore_log_level():
     yield
     set_log_level(current_log_level)
 
+
 class TestLogging:
     @needs_cuda
-    def test_logging_cuda_fallback(self):
-        """Test that both C++ and Python logs fire for CUDA fallback,
-        and that set_log_level("OFF") silences them."""
+    @pytest.mark.parametrize("log_level", ("ALL", "OFF", "default"))
+    def test_cpp_logger(self, log_level):
         script = textwrap.dedent(
-            """\
+            f"""\
             from torchcodec._logging import set_log_level
-            set_log_level("ALL")
-            from torchcodec.decoders import VideoDecoder, set_cuda_backend
+            # the if below is a hacky way of validating that logging is off by default
+            if {log_level != "default"}:
+                set_log_level("{log_level}")
+            from torchcodec.decoders import VideoDecoder
             from test.utils import H265_VIDEO
             decoder = VideoDecoder(H265_VIDEO.path, device="cuda")
-            # TODO: Remove this line and the assert below once
-            # the Python-side fallback log in _video_decoder.py is removed.
-            _ = decoder.cpu_fallback
-
-            set_log_level("OFF")
-            decoder2 = VideoDecoder(H265_VIDEO.path, device="cuda")
-            # TODO: Remove this line and the assert below once
-            _ = decoder2.cpu_fallback
         """
         )
         result = subprocess.run(
@@ -47,13 +43,38 @@ class TestLogging:
             text=True,
         )
         assert result.returncode == 0, result.stderr
-        expected = (
-            r"\[torchcodec \S+:\d+\] Video stream not supported by NVDEC; falling back to CPU decoding\.\n"
-            # TODO: Remove once Python-side fallback log is removed.
-            r"\[torchcodec \S+:\d+\] CUDA decoding fell back to CPU\.\n"
+        expected = "Video stream not supported by NVDEC; falling back to CPU decoding"
+        if log_level == "ALL":
+            assert expected in result.stderr
+        else:
+            assert log_level in ("OFF", "default")
+            assert expected not in result.stderr
+
+    @pytest.mark.parametrize("log_level", ("ALL", "OFF"))
+    def test_python_logger(self, log_level):
+        script = textwrap.dedent(
+            """\
+            import torchcodec
+        """
         )
-        # fullmatch also validates that set_log_level("OFF") silenced logging
-        assert re.fullmatch(expected, result.stderr), result.stderr
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        if log_level == "ALL":
+            # We log something when we fail to load ffmpeg and we first try
+            # ffmpeg 8, then 7, etc. If we're on ffmpeg 8, we won't log
+            # anything, since the loading will work from the first time, hence
+            # why we skip this check on ffmpeg 8.
+            # Similarly on fbcode, we never log anything here because we don't
+            # hit the same code path
+            if ffmpeg_major_version != 8 and not in_fbcode():
+                assert "failed to load" in result.stderr
+        else:
+            assert log_level == "OFF"
+            assert not result.stderr
 
     def test_get_set_log_level(self, with_restore_log_level):
         """Test that get_log_level reflects set_log_level changes."""
@@ -63,24 +84,3 @@ class TestLogging:
         assert get_log_level() == "ALL"
         set_log_level("OFF")
         assert get_log_level() == "OFF"
-
-    @needs_cuda
-    def test_logging_disabled_by_default(self):
-        """Test that no logs appear when logging is not explicitly enabled."""
-        script = textwrap.dedent(
-            """\
-            from torchcodec.decoders import VideoDecoder, set_cuda_backend
-            from test.utils import H265_VIDEO
-            decoder = VideoDecoder(H265_VIDEO.path, device="cuda")
-            # TODO: Remove this line once the Python-side
-            # fallback log in _video_decoder.py is removed.
-            _ = decoder.cpu_fallback
-        """
-        )
-        result = subprocess.run(
-            [sys.executable, "-c", script],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, result.stderr
-        assert not result.stderr

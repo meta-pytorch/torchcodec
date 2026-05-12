@@ -7,7 +7,6 @@
 
 import io
 import json
-import logging
 import numbers
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -20,8 +19,6 @@ from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec._core._decoder_utils import create_video_decoder
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.transforms import DecoderTransform
-
-_LG = logging.getLogger("torchcodec")
 
 
 @dataclass
@@ -266,11 +263,6 @@ class VideoDecoder:
                 self._cpu_fallback.status_known = True
 
                 if "CPU fallback" in backend_details:
-                    # TODO: Remove this Python-side log before
-                    # release. The fallback should only be logged from C++
-                    # (where it actually happens). This is kept temporarily
-                    # for testing the Python logging path.
-                    _LG.info("CUDA decoding fell back to CPU.")
                     self._cpu_fallback._is_fallback = True
                     if self._cpu_fallback._backend == "CUDA":
                         # Only the default (NVDEC) interface can provide details.
