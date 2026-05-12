@@ -49,6 +49,8 @@ def set_cuda_backend(backend: str) -> Generator[None, None, None]:
         ... decoder.get_frame_at(0)
     """
     backend = backend.lower()
+    if backend == "beta":  # For BC
+        backend = "nvdec"
     if backend not in ("nvdec", "ffmpeg"):
         raise ValueError(
             f"Invalid CUDA backend ({backend}). Supported values are 'nvdec' and 'ffmpeg'."
