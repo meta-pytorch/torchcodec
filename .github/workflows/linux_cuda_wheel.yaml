@@ -1,4 +1,4 @@
-name: Build and test Linux CUDA wheels and docs
+name: Linux CUDA x86
 
 on:
   pull_request:

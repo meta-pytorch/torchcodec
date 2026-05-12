@@ -1,4 +1,4 @@
-name: Build and test Windows wheel
+name: Windows CPU
 
 on:
   pull_request:
@@ -43,7 +43,7 @@ jobs:
     needs: generate-matrix
     strategy:
       fail-fast: false
-    name: Build and Upload Windows wheel
+    name: Build and Upload wheel
     uses: pytorch/test-infra/.github/workflows/build_wheels_windows.yml@main
     with:
       repository: meta-pytorch/torchcodec
