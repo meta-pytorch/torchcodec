@@ -125,7 +125,7 @@ class VideoDecoder:
             applied to the decoded frames by the decoder itself, in order. Accepts both
             :class:`~torchcodec.transforms.DecoderTransform` and
             :class:`~torchvision.transforms.v2.Transform`
-            objects. Read more about this parameter in: TODO_DECODER_TRANSFORMS_TUTORIAL.
+            objects. Read more about this parameter in :ref:`sphx_glr_generated_examples_decoding_transforms.py`.
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
