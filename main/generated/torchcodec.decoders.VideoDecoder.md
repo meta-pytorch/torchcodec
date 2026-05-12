@@ -57,7 +57,7 @@ Read more about this parameter in:
 applied to the decoded frames by the decoder itself, in order. Accepts both
 [`DecoderTransform`](torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform) and
 [`Transform`](https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.v2.Transform.html#torchvision.transforms.v2.Transform)
-objects. Read more about this parameter in: TODO_DECODER_TRANSFORMS_TUTORIAL.
+objects. Read more about this parameter in [Decoder Transforms: Applying transforms during decoding](../generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py).
 - **custom_frame_mappings** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,*[*bytes*](https://docs.python.org/3/library/stdtypes.html#bytes)*, or**file-like object**,**optional*) - 
 
 Mapping of frames to their metadata, typically generated via ffprobe.
