@@ -740,6 +740,8 @@ TEST_NON_ZERO_START = TestVideo(
     frames={},  # Automatically loaded from json file
 )
 
+# ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_width.mp4
 TESTSRC2_ODD_WIDTH = TestVideo(
     filename="testsrc2_odd_width.mp4",
     default_stream_index=0,
@@ -749,6 +751,8 @@ TESTSRC2_ODD_WIDTH = TestVideo(
     frames={0: {}},
 )
 
+# ffmpeg -f lavfi -i "testsrc2=size=320x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_height.mp4
 TESTSRC2_ODD_HEIGHT = TestVideo(
     filename="testsrc2_odd_height.mp4",
     default_stream_index=0,
@@ -758,6 +762,8 @@ TESTSRC2_ODD_HEIGHT = TestVideo(
     frames={0: {}},
 )
 
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p -profile:v testsrc2_odd_height_and_width.mp4
 TESTSRC2_ODD_HEIGHT_AND_WIDTH = TestVideo(
     filename="testsrc2_odd_height_and_width.mp4",
     default_stream_index=0,
