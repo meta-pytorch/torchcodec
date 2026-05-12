@@ -14,7 +14,10 @@ enum class LogLevel : int {
   ALL = 1,
 };
 
-void setLogLevel(LogLevel level);
+void setCppLogLevel(LogLevel level);
+
+// getLogLevel doesn't have "Cpp" in the name because it's the source of
+// truth for both Python and C++ log levels.
 LogLevel getLogLevel();
 
 namespace internal {

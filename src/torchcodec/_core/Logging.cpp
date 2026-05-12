@@ -15,7 +15,7 @@ namespace facebook::torchcodec {
 
 static std::atomic<int> gLogLevel{static_cast<int>(LogLevel::OFF)};
 
-void setLogLevel(LogLevel level) {
+void setCppLogLevel(LogLevel level) {
   gLogLevel.store(static_cast<int>(level), std::memory_order_relaxed);
 }
 
