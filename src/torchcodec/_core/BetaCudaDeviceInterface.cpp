@@ -16,6 +16,7 @@
 #include "NVDECCache.h"
 
 #include "NVCUVIDRuntimeLoader.h"
+#include "NPPRuntimeLoader.h"
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
 
@@ -272,6 +273,11 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
   initializeCudaContextWithPytorch(device_);
+
+  STD_TORCH_CHECK(
+      loadNPPLibrary(),
+      "Failed to load NPP library. NPP is required for CUDA color conversion.");
+
   nppCtx_ = getNppStreamContext(device_);
 
   nvcuvidAvailable_ = loadNVCUVIDLibrary();
