@@ -4,7 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#ifdef FBCODE_CAFFE2
+#ifdef FBCODE_CAFFE2 // See NVCUVIDRuntimeLoader.cpp.
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
@@ -113,16 +113,13 @@ bool loadNPPLibrary() {
 
   dl_nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx =
       bindFunction<t_nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx>(
-          g_nppicc_handle,
-          "nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx");
+          g_nppicc_handle, "nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx");
   dl_nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx =
       bindFunction<t_nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx>(
-          g_nppicc_handle,
-          "nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx");
+          g_nppicc_handle, "nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx");
   dl_nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx =
       bindFunction<t_nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx>(
-          g_nppicc_handle,
-          "nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx");
+          g_nppicc_handle, "nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx");
 
   return isLoaded();
 }
@@ -175,6 +172,7 @@ NppStatus nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
   return facebook::torchcodec::dl_nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
       pSrc, nSrcStep, pDst, aDstStep, oSizeROI, aTwist, nppStreamCtx);
 }
+
 /* clang-format on */
 
 } // extern "C"
