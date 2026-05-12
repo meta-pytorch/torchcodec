@@ -84,3 +84,7 @@ class TestLogging:
         assert get_log_level() == "ALL"
         set_log_level("OFF")
         assert get_log_level() == "OFF"
+
+    def test_bad_log_level(self):
+        with pytest.raises(ValueError, match="Invalid log level"):
+            set_log_level("INVALID")

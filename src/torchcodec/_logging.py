@@ -35,10 +35,10 @@ def set_log_level(level: Literal["OFF", "ALL"]) -> None:
     level = level.upper()
     try:
         log_level = _LogLevel[level]
-    except KeyError:
+    except KeyError as e:
         raise ValueError(
             f"Invalid log level: {level!r}. Supported levels: {[lvl.name for lvl in _LogLevel]}"
-        )
+        ) from e
     _set_cpp_log_level(log_level.value)
     # Probably not thread-safe, and probably OK still.
     if log_level == _LogLevel.OFF:
@@ -55,4 +55,5 @@ def get_log_level() -> str:
     except ValueError:
         raise RuntimeError(
             f"C++ log level {level_int} has no matching Python level name. "
+            "Please report a bug in the TorchCodec repo"
         )
