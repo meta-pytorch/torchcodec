@@ -11,6 +11,7 @@
 extern "C" {
 #include <libavfilter/avfilter.h>
 #include <libavfilter/buffersink.h>
+#include <libavutil/pixdesc.h>
 }
 
 namespace facebook::torchcodec {
@@ -687,36 +688,36 @@ SwsConfig::SwsConfig(
     AVPixelFormat inputFormat,
     AVColorSpace inputColorspace,
     int outputWidth,
-    int outputHeight)
+    int outputHeight,
+    AVPixelFormat outputFormat)
     : inputWidth(inputWidth),
       inputHeight(inputHeight),
       inputFormat(inputFormat),
       inputColorspace(inputColorspace),
       outputWidth(outputWidth),
-      outputHeight(outputHeight) {}
+      outputHeight(outputHeight),
+      outputFormat(outputFormat) {}
 
 bool SwsConfig::operator==(const SwsConfig& other) const {
   return inputWidth == other.inputWidth && inputHeight == other.inputHeight &&
       inputFormat == other.inputFormat &&
       inputColorspace == other.inputColorspace &&
-      outputWidth == other.outputWidth && outputHeight == other.outputHeight;
+      outputWidth == other.outputWidth && outputHeight == other.outputHeight &&
+      outputFormat == other.outputFormat;
 }
 
 bool SwsConfig::operator!=(const SwsConfig& other) const {
   return !(*this == other);
 }
 
-UniqueSwsContext createSwsContext(
-    const SwsConfig& swsConfig,
-    AVPixelFormat outputFormat,
-    int swsFlags) {
+UniqueSwsContext createSwsContext(const SwsConfig& swsConfig, int swsFlags) {
   SwsContext* swsContext = sws_getContext(
       swsConfig.inputWidth,
       swsConfig.inputHeight,
       swsConfig.inputFormat,
       swsConfig.outputWidth,
       swsConfig.outputHeight,
-      outputFormat,
+      swsConfig.outputFormat,
       swsFlags,
       nullptr,
       nullptr,
