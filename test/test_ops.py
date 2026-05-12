@@ -16,6 +16,8 @@ import pytest
 
 import torch
 
+from torchcodec import ffmpeg_major_version
+
 from torchcodec._core import (
     _test_frame_pts_equality,
     create_streaming_encoder_to_file,
@@ -31,9 +33,12 @@ from torchcodec._core import (
     get_frames_in_range,
     get_json_metadata,
     get_next_frame,
+    streaming_encoder_add_audio_stream,
     streaming_encoder_add_frames,
+    streaming_encoder_add_samples,
     streaming_encoder_add_video_stream,
     streaming_encoder_close,
+    streaming_encoder_open,
 )
 from torchcodec._core.ops import (
     _add_video_stream,
@@ -45,22 +50,28 @@ from torchcodec._core.ops import (
     create_from_tensor,
     seek_to_pts,
 )
-
-from torchcodec.decoders import VideoDecoder
+from torchcodec.decoders import AudioDecoder, VideoDecoder
 
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
     assert_tensor_close_on_at_least,
     get_python_version,
+    in_fbcode,
+    IS_WINDOWS,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
+    NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
+    NASA_VIDEO_HDR,
     needs_cuda,
     needs_ffmpeg_cli,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    TEST_SRC_2_12BIT_HDR,
+    TEST_SRC_2_720P,
+    TEST_SRC_2_720P_HDR,
     unsplit_device_str,
 )
 
@@ -70,6 +81,12 @@ INDEX_OF_FRAME_AT_6_SECONDS = 180
 
 
 class TestVideoDecoderOps:
+    @staticmethod
+    def _assert_float32_matches_rgb48_ref(frame, asset, frame_index):
+        frame_as_uint16 = (frame * 65535).round().to(torch.uint16)
+        ref = asset.get_frame_data_by_index_rgb48(frame_index)
+        torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
+
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_seek_and_next(self, device):
         decoder = create_from_file(str(NASA_VIDEO.path))
@@ -660,6 +677,163 @@ class TestVideoDecoderOps:
             duration, torch.tensor(0.0334).double(), atol=0, rtol=1e-3
         )
 
+    def test_output_dtype_float32_sdr(self):
+        # float32 on an 8-bit source goes via RGB48 (no 8-bit quantization),
+        # so values are close to but not exactly `uint8 / 255`.
+        decoder_uint8 = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_uint8)
+        uint8_frame, *_ = get_frame_at_index(decoder_uint8, frame_index=0)
+
+        decoder_float = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_float, output_dtype="float32")
+        float_frame, *_ = get_frame_at_index(decoder_float, frame_index=0)
+
+        assert float_frame.dtype == torch.float32
+        torch.testing.assert_close(
+            float_frame, uint8_frame.to(torch.float32) / 255.0, rtol=0, atol=4 / 255
+        )
+
+    @pytest.mark.xfail(
+        IS_WINDOWS and ffmpeg_major_version < 5,
+        reason="swscale YUV->RGB48 differs on Windows + FFmpeg 4",
+    )
+    def test_output_dtype_auto(self):
+        # "auto" produces uint8 for SDR (<=8-bit) sources and float32 for HDR
+        # (>8-bit) sources. Validated against ffmpeg CLI rgb24/rgb48 refs.
+
+        # SDR source: auto -> uint8 matching ffmpeg rgb24
+        decoder_sdr = create_from_file(str(NASA_VIDEO.path))
+        add_video_stream(decoder_sdr, output_dtype="auto")
+        for frame_index in [0, 1, 9]:
+            frame, *_ = get_frame_at_index(decoder_sdr, frame_index=frame_index)
+            assert frame.dtype == torch.uint8
+            ref = NASA_VIDEO.get_frame_data_by_index(frame_index)
+            assert_frames_equal(frame, ref)
+
+        # HDR source: auto -> float32 matching ffmpeg rgb48
+        decoder_hdr = create_from_file(str(NASA_VIDEO_HDR.path))
+        add_video_stream(decoder_hdr, output_dtype="auto")
+        for frame_index in [0, 5, 10]:
+            frame, *_ = get_frame_at_index(decoder_hdr, frame_index=frame_index)
+            assert frame.dtype == torch.float32
+            self._assert_float32_matches_rgb48_ref(frame, NASA_VIDEO_HDR, frame_index)
+
+    @pytest.mark.parametrize("bad_dtype", ("not_a_dtype", "blah"))
+    def test_output_dtype_invalid(self, bad_dtype):
+        decoder = create_from_file(str(NASA_VIDEO.path))
+        with pytest.raises(RuntimeError, match="Invalid output_dtype"):
+            add_video_stream(decoder, output_dtype=bad_dtype)
+
+    @pytest.mark.xfail(
+        IS_WINDOWS and ffmpeg_major_version < 5,
+        reason="swscale YUV->RGB differs on Windows + FFmpeg 4",
+    )
+    @pytest.mark.parametrize(
+        "asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR)
+    )
+    def test_output_dtype_uint8_hdr(self, asset):
+        # Validate uint8 HDR decode (lossy 8-bit path) against ffmpeg CLI's
+        # rgb24 output -- backwards-compatible behavior for users on uint8.
+        decoder = create_from_file(str(asset.path))
+        add_video_stream(decoder, output_dtype="uint8")
+        for frame_index in [0, 5, 10]:
+            frame, *_ = get_frame_at_index(decoder, frame_index=frame_index)
+            assert frame.dtype == torch.uint8
+            assert_frames_equal(frame, asset.get_frame_data_by_index(frame_index))
+
+    @pytest.mark.xfail(
+        IS_WINDOWS and ffmpeg_major_version < 5,
+        reason="swscale YUV->RGB48 differs on Windows + FFmpeg 4",
+    )
+    @pytest.mark.parametrize(
+        "asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR)
+    )
+    def test_output_dtype_float32_hdr(self, asset):
+        # Validate float32 HDR decode against ffmpeg CLI's rgb48 output.
+        # CPU uses the same swscale path as ffmpeg, so we expect exact match.
+        decoder = create_from_file(str(asset.path))
+        add_video_stream(decoder, output_dtype="float32")
+
+        for frame_index in [0, 5, 10]:
+            frame, *_ = get_frame_at_index(decoder, frame_index=frame_index)
+            assert frame.dtype == torch.float32
+            self._assert_float32_matches_rgb48_ref(frame, asset, frame_index)
+
+    @pytest.mark.xfail(
+        IS_WINDOWS and ffmpeg_major_version < 5,
+        reason="swscale YUV->RGB48 differs on Windows + FFmpeg 4",
+    )
+    @pytest.mark.parametrize(
+        "asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR)
+    )
+    def test_hdr_float32_batch_apis(self, asset):
+        # Validate batch APIs on float32 content against ffmpeg rgb48
+        # references.
+        decoder = create_from_file(str(asset.path))
+        add_video_stream(decoder, output_dtype="float32")
+
+        # get_frame_at_index
+        frame0, *_ = get_frame_at_index(decoder, frame_index=0)
+        self._assert_float32_matches_rgb48_ref(frame0, asset, 0)
+
+        # get_frames_at_indices
+        indices = [0, 5, 10]
+        frames, *_ = get_frames_at_indices(decoder, frame_indices=indices)
+        for i, idx in enumerate(indices):
+            self._assert_float32_matches_rgb48_ref(frames[i], asset, idx)
+
+        # get_frames_in_range
+        frames_range, *_ = get_frames_in_range(decoder, start=5, stop=11)
+        self._assert_float32_matches_rgb48_ref(frames_range[0], asset, 5)
+        self._assert_float32_matches_rgb48_ref(frames_range[5], asset, 10)
+
+    @pytest.mark.xfail(
+        IS_WINDOWS and ffmpeg_major_version < 5,
+        reason="swscale YUV->RGB48 differs on Windows + FFmpeg 4",
+    )
+    @pytest.mark.parametrize(
+        "asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR)
+    )
+    def test_hdr_float32_pts_apis(self, asset):
+        # Validate pts APIs on float32 content against ffmpeg rgb48 references.
+        decoder = create_from_file(str(asset.path))
+        add_video_stream(decoder, output_dtype="float32")
+
+        indices = [0, 5, 10]
+        _, pts_seconds_ref, _ = zip(
+            *[get_frame_at_index(decoder, frame_index=i) for i in indices]
+        )
+        pts_seconds_ref = list(pts_seconds_ref)
+
+        frames, _, _ = zip(
+            *[get_frame_at_pts(decoder, seconds=pts) for pts in pts_seconds_ref]
+        )
+        for frame, idx in zip(frames, indices):
+            self._assert_float32_matches_rgb48_ref(frame, asset, idx)
+
+        frames, *_ = get_frames_by_pts_in_range(
+            decoder,
+            start_seconds=0,
+            stop_seconds=pts_seconds_ref[-1] + 1e-4,
+        )
+        for idx in indices:
+            self._assert_float32_matches_rgb48_ref(frames[idx], asset, idx)
+
+        frames_per_pts, _, _ = zip(
+            *[
+                get_frames_by_pts_in_range(
+                    decoder, start_seconds=pts, stop_seconds=pts + 1e-4
+                )
+                for pts in pts_seconds_ref
+            ]
+        )
+        for frames_single, idx in zip(frames_per_pts, indices):
+            self._assert_float32_matches_rgb48_ref(frames_single[0], asset, idx)
+
+        frames, *_ = get_frames_by_pts(decoder, timestamps=pts_seconds_ref)
+        for frame, idx in zip(frames, indices):
+            self._assert_float32_matches_rgb48_ref(frame, asset, idx)
+
 
 class TestAudioDecoderOps:
     @pytest.mark.parametrize(
@@ -1179,18 +1353,43 @@ class TestMultiStreamEncoderOps:
 
     @pytest.mark.parametrize("format", ["mp4", "mov", "mkv"])
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_video_stream_and_encode_frames(self, tmp_path, format, method):
-        source_decoder = VideoDecoder(str(NASA_VIDEO.path))
-        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+    @pytest.mark.parametrize(
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                ],
+            ),
+        ),
+    )
+    def test_add_video_stream_and_encode_frames(self, tmp_path, format, method, device):
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data.to(
+            device
+        )
         frame_rate = source_decoder.metadata.average_fps
+        percentage, atol = (96, 2) if device == "cuda" else (99, 2)
 
         encoder, encoder_output = self._create_encoder(method, tmp_path, format)
-        streaming_encoder_add_video_stream(
-            encoder,
-            frame_rate=frame_rate,
-            pixel_format="yuv444p",
-            crf=0,
-        )
+        add_video_stream_kwargs = {
+            "height": source_frames.shape[2],
+            "width": source_frames.shape[3],
+            "frame_rate": frame_rate,
+            "device": device,
+        }
+        if device == "cpu":
+            add_video_stream_kwargs["pixel_format"] = "yuv444p"
+            add_video_stream_kwargs["crf"] = 0
+        else:
+            add_video_stream_kwargs["extra_options"] = ["qp", "1"]
+        streaming_encoder_add_video_stream(encoder, **add_video_stream_kwargs)
+        streaming_encoder_open(encoder)
         streaming_encoder_add_frames(encoder, source_frames[:5])
         streaming_encoder_add_frames(encoder, source_frames[5:])
         streaming_encoder_close(encoder)
@@ -1201,7 +1400,7 @@ class TestMultiStreamEncoderOps:
             .data
         )
         assert_tensor_close_on_at_least(
-            decoded_frames, source_frames, percentage=99, atol=2
+            decoded_frames, source_frames.cpu(), percentage=percentage, atol=atol
         )
 
     def test_create_invalid_path(self):
@@ -1224,31 +1423,60 @@ class TestMultiStreamEncoderOps:
 
     @pytest.mark.parametrize("format", ["mp4", "mov"])
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_fragmented_mp4(self, format, tmp_path, method):
-        source_decoder = VideoDecoder(str(NASA_VIDEO.path))
-        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+    @pytest.mark.parametrize(
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                ],
+            ),
+        ),
+    )
+    def test_fragmented_mp4(self, format, tmp_path, method, device):
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data.to(
+            device
+        )
         frame_rate = source_decoder.metadata.average_fps
+        percentage, atol = (96, 2) if device == "cuda" else (99, 2)
 
         encoder, encoder_output = self._create_encoder(method, tmp_path, format)
+        # In addition to the fragmentation flag, "flush_packets" and "threads"
+        # are necessary to decode frames before close().
+        # See frag flags: https://ffmpeg.org/ffmpeg-formats.html#Fragmentation
+        # TODO MultiStreamEncoder: Get a better understanding of which options
+        # are necessary for reading fragmented mp4s
+        extra_options = [
+            "movflags",
+            "+frag_every_frame+empty_moov",
+            "flush_packets",
+            "1",
+            "threads",
+            "1",
+        ]
+        if device == "cuda":
+            extra_options.extend(["qp", "1", "delay", "0"])
+            pixel_format, crf = None, None
+        else:
+            extra_options.extend(["tune", "zerolatency"])
+            pixel_format, crf = "yuv444p", 0
         streaming_encoder_add_video_stream(
             encoder,
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
             frame_rate=frame_rate,
-            pixel_format="yuv444p",
-            crf=0,
-            # In addition to the fragmentation flag, I found "flush_packets" and "threads" to be necessary to decode frames before close().
-            # See other frag flags: https://ffmpeg.org/ffmpeg-formats.html#Fragmentation
-            # TODO MultiStreamEncoder: Get a better understanding of which options are necessary for reading fragmented mp4s
-            extra_options=[
-                "movflags",
-                "+frag_every_frame+empty_moov",
-                "tune",
-                "zerolatency",
-                "flush_packets",
-                "1",
-                "threads",
-                "1",
-            ],
+            device=device,
+            pixel_format=pixel_format,
+            crf=crf,
+            extra_options=extra_options,
         )
+        streaming_encoder_open(encoder)
         # Here, we decode the available fragmented mp4 frames before calling close()
         for batch in [source_frames[:5], source_frames[5:]]:
             streaming_encoder_add_frames(encoder, batch)
@@ -1257,9 +1485,9 @@ class TestMultiStreamEncoderOps:
             assert num_available > 0
             assert_tensor_close_on_at_least(
                 mid_decoder.get_frames_in_range(start=0, stop=num_available).data,
-                source_frames[:num_available],
-                percentage=99,
-                atol=2,
+                source_frames[:num_available].cpu(),
+                percentage=percentage,
+                atol=atol,
             )
 
         streaming_encoder_close(encoder)
@@ -1268,34 +1496,260 @@ class TestMultiStreamEncoderOps:
             VideoDecoder(self._get_decoder_source(encoder_output))
             .get_frames_in_range(start=0, stop=10)
             .data,
-            source_frames,
-            percentage=99,
-            atol=2,
+            source_frames.cpu(),
+            percentage=percentage,
+            atol=atol,
         )
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_video_stream_twice_errors(self, tmp_path, method):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
-        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
+        streaming_encoder_add_video_stream(
+            encoder, height=64, width=64, frame_rate=30.0
+        )
         with pytest.raises(RuntimeError, match="already been added"):
-            streaming_encoder_add_video_stream(encoder, frame_rate=24.0)
+            streaming_encoder_add_video_stream(
+                encoder, height=64, width=64, frame_rate=24.0
+            )
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_frames_different_sizes_errors(self, tmp_path, method):
+    def test_add_audio_stream_twice_errors(self, tmp_path, method):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
-        streaming_encoder_add_video_stream(encoder, frame_rate=30.0)
-        frames_64 = torch.randint(0, 256, (2, 3, 64, 64), dtype=torch.uint8)
-        frames_128 = torch.randint(0, 256, (2, 3, 128, 128), dtype=torch.uint8)
-        streaming_encoder_add_frames(encoder, frames_64)
+        streaming_encoder_add_audio_stream(encoder, sample_rate=44100, num_channels=2)
+        with pytest.raises(RuntimeError, match="already been added"):
+            streaming_encoder_add_audio_stream(
+                encoder, sample_rate=16000, num_channels=1
+            )
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    @pytest.mark.parametrize(
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                ],
+            ),
+        ),
+    )
+    def test_add_frames_mismatched_dimensions_errors(self, tmp_path, method, device):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_video_stream(
+            encoder, height=256, width=256, frame_rate=30.0, device=device
+        )
+        streaming_encoder_open(encoder)
+        # addFrames with wrong size errors
+        frames_128 = torch.randint(
+            0, 256, (2, 3, 128, 128), dtype=torch.uint8, device=device
+        )
         with pytest.raises(RuntimeError, match="same dimensions"):
             streaming_encoder_add_frames(encoder, frames_128)
+        # addFrames with different size than first also errors
+        frames_256 = torch.randint(
+            0, 256, (2, 3, 256, 256), dtype=torch.uint8, device=device
+        )
+        frames_512 = torch.randint(
+            0, 256, (2, 3, 512, 512), dtype=torch.uint8, device=device
+        )
+        streaming_encoder_add_frames(encoder, frames_256)
+        with pytest.raises(RuntimeError, match="same dimensions"):
+            streaming_encoder_add_frames(encoder, frames_512)
+
+    @pytest.mark.needs_cuda
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_frames_different_devices_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_video_stream(
+            encoder, height=64, width=64, frame_rate=30.0
+        )
+        streaming_encoder_open(encoder)
+        cpu_frames = torch.randint(0, 256, (2, 3, 64, 64), dtype=torch.uint8)
+        cuda_frames = cpu_frames.to("cuda")
+        streaming_encoder_add_frames(encoder, cpu_frames)
+        with pytest.raises(RuntimeError, match="same device"):
+            streaming_encoder_add_frames(encoder, cuda_frames)
+
+    @pytest.mark.needs_cuda
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_samples_on_cuda_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "wav")
+        streaming_encoder_add_audio_stream(encoder, sample_rate=44100, num_channels=1)
+        streaming_encoder_open(encoder)
+        cuda_samples = torch.randn(1, 1000, device="cuda")
+        with pytest.raises(RuntimeError, match="samples must be on CPU, got cuda"):
+            streaming_encoder_add_samples(encoder, cuda_samples)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_frames_without_stream_errors(self, tmp_path, method):
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_add_frames_without_open_errors(self, tmp_path, method, device):
         encoder, _ = self._create_encoder(method, tmp_path, "mp4")
-        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8)
-        with pytest.raises(RuntimeError, match="No video stream"):
+        streaming_encoder_add_video_stream(
+            encoder, height=64, width=64, frame_rate=30.0, device=device
+        )
+        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8, device=device)
+        with pytest.raises(
+            RuntimeError, match="Call open\\(\\) before addFrames\\(\\)"
+        ):
             streaming_encoder_add_frames(encoder, frames)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_samples_without_open_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_audio_stream(encoder, sample_rate=44100, num_channels=1)
+        samples = torch.randn(1, 1000)
+        with pytest.raises(
+            RuntimeError, match="Call open\\(\\) before addSamples\\(\\)"
+        ):
+            streaming_encoder_add_samples(encoder, samples)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_samples_mismatched_channels_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "wav")
+        streaming_encoder_add_audio_stream(encoder, sample_rate=44100, num_channels=1)
+        streaming_encoder_open(encoder)
+        samples = torch.randn(2, 1000)  # 2 channels but stream expects 1
+        with pytest.raises(RuntimeError, match="Expected 1 channels, got 2"):
+            streaming_encoder_add_samples(encoder, samples)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_open_without_stream_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        with pytest.raises(
+            RuntimeError,
+            match="Call addVideoStream\\(\\) or addAudioStream\\(\\) before open\\(\\)",
+        ):
+            streaming_encoder_open(encoder)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_open_twice_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_video_stream(
+            encoder, height=64, width=64, frame_rate=30.0
+        )
+        streaming_encoder_open(encoder)
+        with pytest.raises(RuntimeError, match="open\\(\\) was already called"):
+            streaming_encoder_open(encoder)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_stream_invalid_bit_rate_errors(self, tmp_path, method):
+        encoder, _ = self._create_encoder(method, tmp_path, "mp4")
+        streaming_encoder_add_audio_stream(
+            encoder,
+            sample_rate=44100,
+            num_channels=2,
+            bit_rate=-1,
+        )
+        with pytest.raises(RuntimeError, match="bit_rate=-1 must be >= 0"):
+            streaming_encoder_open(encoder)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_stream_and_encode_samples(self, tmp_path, method):
+        source_audio = AudioDecoder(str(SINE_MONO_S32.path)).get_all_samples()
+        samples = source_audio.data
+        sample_rate = source_audio.sample_rate
+        num_channels = samples.shape[0]
+
+        encoder, encoder_output = self._create_encoder(method, tmp_path, "wav")
+        streaming_encoder_add_audio_stream(
+            encoder, sample_rate=sample_rate, num_channels=num_channels
+        )
+        streaming_encoder_open(encoder)
+        chunk_lengths = [1, 50, 1000, 0, 25]
+        offset = 0
+        for length in chunk_lengths:
+            streaming_encoder_add_samples(encoder, samples[:, offset : offset + length])
+            offset += length
+        streaming_encoder_add_samples(encoder, samples[:, offset:])
+        streaming_encoder_close(encoder)
+
+        source = self._get_decoder_source(encoder_output)
+        decoded = AudioDecoder(source).get_all_samples()
+        assert decoded.data.shape[0] == num_channels
+        assert decoded.sample_rate == sample_rate
+        torch.testing.assert_close(decoded.data, samples, atol=1e-4, rtol=0)
+
+    @pytest.mark.parametrize(
+        "format",
+        (
+            "mp4",
+            pytest.param(
+                "mkv",
+                marks=pytest.mark.skipif(
+                    ffmpeg_major_version < 6,
+                    reason="Default audio codec for MKV has low accuracy on older FFmpeg versions.",
+                ),
+            ),
+            "mov",
+        ),
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_and_video_streams_and_encode(self, tmp_path, format, method):
+        source_video_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        source_frames = source_video_decoder.get_frames_in_range(
+            start=0, stop=len(source_video_decoder)
+        ).data
+
+        source_audio = AudioDecoder(str(NASA_AUDIO_MP3_44100.path)).get_all_samples()
+        source_samples = source_audio.data
+        sample_rate = source_audio.sample_rate
+
+        encoder, encoder_output = self._create_encoder(method, tmp_path, format)
+        streaming_encoder_add_video_stream(
+            encoder,
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=source_video_decoder.metadata.average_fps,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        streaming_encoder_add_audio_stream(
+            encoder,
+            sample_rate=sample_rate,
+            num_channels=source_samples.shape[0],
+        )
+        streaming_encoder_open(encoder)
+        half_frames = source_frames.shape[0] // 2
+        half_samples = source_samples.shape[1] // 2
+        streaming_encoder_add_frames(encoder, source_frames[:half_frames])
+        streaming_encoder_add_samples(encoder, source_samples[:, :half_samples])
+        streaming_encoder_add_frames(encoder, source_frames[half_frames:])
+        streaming_encoder_add_samples(encoder, source_samples[:, half_samples:])
+        streaming_encoder_close(encoder)
+
+        source = self._get_decoder_source(encoder_output)
+
+        decoded_video_decoder = VideoDecoder(source)
+        decoded_frames = decoded_video_decoder.get_frames_in_range(
+            start=0, stop=len(decoded_video_decoder)
+        ).data
+        assert_tensor_close_on_at_least(
+            decoded_frames, source_frames, percentage=99, atol=2
+        )
+
+        audio_decoder = AudioDecoder(source)
+        decoded_audio = audio_decoder.get_all_samples()
+        assert decoded_audio.sample_rate == sample_rate
+        assert decoded_audio.data.shape[0] == source_samples.shape[0]
+        # Codecs for lossy audio formats (not WAV or FLAC) can add padding which causes
+        # sample count to differ, so we only compare the smaller sample count.
+        # TODO MultiStreamEncoder: The previous AudioEncoder didn't need
+        # padding after introducing a FIFO. Investigate why this is needed.
+        num_samples_to_compare = min(
+            decoded_audio.data.shape[1], source_samples.shape[1]
+        )
+        assert_tensor_close_on_at_least(
+            decoded_audio.data[:, :num_samples_to_compare],
+            source_samples[:, :num_samples_to_compare],
+            percentage=96 if format == "mkv" else 99,
+            atol=0.1 if format == "mkv" else 0.01,
+        )
 
 
 if __name__ == "__main__":

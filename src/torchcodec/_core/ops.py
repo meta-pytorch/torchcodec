@@ -79,11 +79,12 @@ def add_video_stream(
     dimension_order: str | None = None,
     stream_index: int | None = None,
     device: str = "cpu",
-    device_variant: str = "ffmpeg",
+    device_variant: str = "default",
     transform_specs: str = "",
     custom_frame_mappings: (
         tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
     ) = None,
+    output_dtype: str | None = None,
 ) -> None:
     custom_frame_mappings_pts: torch.Tensor | None = None
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None
@@ -105,6 +106,7 @@ def add_video_stream(
         custom_frame_mappings_pts=custom_frame_mappings_pts,
         custom_frame_mappings_duration=custom_frame_mappings_duration,
         custom_frame_mappings_keyframe_indices=custom_frame_mappings_keyframe_indices,
+        output_dtype=output_dtype,
     )
 
 
@@ -146,8 +148,15 @@ streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.defaul
 streaming_encoder_add_video_stream = (
     torch.ops.torchcodec_ns.streaming_encoder_add_video_stream.default
 )
+streaming_encoder_add_audio_stream = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_audio_stream.default
+)
+streaming_encoder_open = torch.ops.torchcodec_ns.streaming_encoder_open.default
 streaming_encoder_add_frames = (
     torch.ops.torchcodec_ns.streaming_encoder_add_frames.default
+)
+streaming_encoder_add_samples = (
+    torch.ops.torchcodec_ns.streaming_encoder_add_samples.default
 )
 set_nvdec_cache_capacity = torch.ops.torchcodec_ns.set_nvdec_cache_capacity.default
 get_nvdec_cache_capacity = torch.ops.torchcodec_ns.get_nvdec_cache_capacity.default
@@ -410,12 +419,13 @@ def _add_video_stream_abstract(
     dimension_order: str | None = None,
     stream_index: int | None = None,
     device: str = "cpu",
-    device_variant: str = "ffmpeg",
+    device_variant: str = "default",
     transform_specs: str = "",
     custom_frame_mappings_pts: torch.Tensor | None = None,
     custom_frame_mappings_duration: torch.Tensor | None = None,
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None,
     color_conversion_library: str | None = None,
+    output_dtype: str | None = None,
 ) -> None:
     return
 
@@ -428,11 +438,12 @@ def add_video_stream_abstract(
     dimension_order: str | None = None,
     stream_index: int | None = None,
     device: str = "cpu",
-    device_variant: str = "ffmpeg",
+    device_variant: str = "default",
     transform_specs: str = "",
     custom_frame_mappings_pts: torch.Tensor | None = None,
     custom_frame_mappings_duration: torch.Tensor | None = None,
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None,
+    output_dtype: str | None = None,
 ) -> None:
     return
 
@@ -633,7 +644,10 @@ def streaming_encoder_close_abstract(encoder: torch.Tensor) -> None:
 @register_fake("torchcodec_ns::streaming_encoder_add_video_stream")
 def streaming_encoder_add_video_stream_abstract(
     encoder: torch.Tensor,
+    height: int,
+    width: int,
     frame_rate: float,
+    device: str = "cpu",
     codec: str | None = None,
     pixel_format: str | None = None,
     crf: float | None = None,
@@ -643,9 +657,31 @@ def streaming_encoder_add_video_stream_abstract(
     return
 
 
+@register_fake("torchcodec_ns::streaming_encoder_add_audio_stream")
+def streaming_encoder_add_audio_stream_abstract(
+    encoder: torch.Tensor,
+    sample_rate: int,
+    num_channels: int,
+    bit_rate: int | None = None,
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_open")
+def streaming_encoder_open_abstract(encoder: torch.Tensor) -> None:
+    return
+
+
 @register_fake("torchcodec_ns::streaming_encoder_add_frames")
 def streaming_encoder_add_frames_abstract(
     encoder: torch.Tensor, frames: torch.Tensor
+) -> None:
+    return
+
+
+@register_fake("torchcodec_ns::streaming_encoder_add_samples")
+def streaming_encoder_add_samples_abstract(
+    encoder: torch.Tensor, samples: torch.Tensor
 ) -> None:
     return
 

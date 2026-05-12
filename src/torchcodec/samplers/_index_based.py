@@ -112,7 +112,7 @@ def _build_all_clips_indices(
             range(start_index, frame_index_upper_bound, num_indices_between_frames)
         )
         if len(frame_indices) < num_frames_per_clip:
-            frame_indices = policy_fun(frame_indices, num_frames_per_clip)  # type: ignore[assignment]
+            frame_indices = policy_fun(frame_indices, num_frames_per_clip)
         all_clips_indices += frame_indices
     return all_clips_indices
 
