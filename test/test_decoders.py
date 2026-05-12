@@ -61,6 +61,9 @@ from .utils import (
     TEST_SRC_2_720P_MPEG4,
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
+    TESTSRC2_ODD_HEIGHT,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH,
+    TESTSRC2_ODD_WIDTH,
 )
 
 
@@ -1534,6 +1537,30 @@ class TestVideoDecoder:
             cpu_frame = decoder_cpu.get_frame_at(frame_index).data
 
             torch.testing.assert_close(gpu_frame, cpu_frame, rtol=0, atol=3)
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            TESTSRC2_ODD_WIDTH,
+            TESTSRC2_ODD_HEIGHT,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH,
+        ),
+    )
+    @pytest.mark.parametrize("device", ("cuda", "cuda:ffmpeg"))
+    def test_odd_sized_videos(self, asset, device):
+        decoder_gpu, _ = make_video_decoder(asset.path, device=device)
+        decoder_cpu = VideoDecoder(asset.path, device="cpu")
+
+        gpu_frame = decoder_gpu.get_frame_at(0).data.cpu()
+        cpu_frame = decoder_cpu.get_frame_at(0).data
+        assert gpu_frame.shape == cpu_frame.shape
+        assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=89, atol=3)
+
+        gpu_frames = decoder_gpu.get_frames_at([0, 1, 2]).data.cpu()
+        cpu_frames = decoder_cpu.get_frames_at([0, 1, 2]).data
+        assert gpu_frames.shape == cpu_frames.shape
+        assert_tensor_close_on_at_least(gpu_frames, cpu_frames, percentage=89, atol=3)
 
     @needs_cuda
     def test_10bit_gpu_fallsback_to_cpu(self):

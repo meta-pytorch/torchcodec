@@ -22,9 +22,15 @@ enum ColorConversionLibrary {
 };
 
 // Controls the dtype of decoded frame tensors.
-// UINT8: Always output uint8 tensors (default, backward compatible).
-// FLOAT32: Always output float32 tensors normalized to [0, 1].
+// UINT8: Always output uint8 tensors (default, backward compatible). Uses an
+//        8-bit / RGB24 intermediate.
+// FLOAT32: Always output float32 tensors normalized to [0, 1]. Uses a 16-bit /
+//          RGB48 intermediate so the YUV->RGB matrix output is preserved at
+//          full precision through the float cast, regardless of source bit
+//          depth.
 // AUTO: Output uint8 for SDR (<=8-bit) sources, float32 for HDR (>8-bit).
+//       Resolved upstream in addVideoStream so downstream code only ever sees
+//       UINT8 / FLOAT32.
 enum class OutputDtype { UINT8, FLOAT32, AUTO };
 
 struct VideoStreamOptions {

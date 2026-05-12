@@ -73,6 +73,7 @@ class CpuDeviceInterface : public DeviceInterface {
 
   VideoStreamOptions videoStreamOptions_;
   AVRational timeBase_;
+  AVPixelFormat outputPixelFormat_;
 
   // If the resized output dimensions are present, then we always use those as
   // the output frame's dimensions. If they are not present, then we use the
