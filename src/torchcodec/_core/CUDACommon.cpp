@@ -287,13 +287,46 @@ torch::stable::Tensor convertNV12FrameToRGB(
     const StableDevice& device,
     const UniqueNppContext& nppCtx,
     cudaStream_t nvdecStream,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
-  auto frameDims = FrameDims(avFrame->height, avFrame->width);
+    std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
+    const FrameDims& outputDims) {
+  // avFrame dimensions must be even (NV12 requirement). When the original
+  // video has odd dimensions, the caller pads to even and passes the original
+  // size via outputDims so we can crop after conversion.
+  int nv12Height = avFrame->height;
+  int nv12Width = avFrame->width;
+  STD_TORCH_CHECK(
+      nv12Height % 2 == 0 && nv12Width % 2 == 0,
+      "convertNV12FrameToRGB expects even avFrame dimensions, got ",
+      nv12Height,
+      "x",
+      nv12Width,
+      ". Report a bug if you see this message.");
+
+  int outHeight = outputDims.height;
+  int outWidth = outputDims.width;
+  STD_TORCH_CHECK(
+      roundUpToEven(outHeight) == nv12Height &&
+          roundUpToEven(outWidth) == nv12Width,
+      "outputDims ",
+      outHeight,
+      "x",
+      outWidth,
+      " are not consistent with avFrame dimensions ",
+      nv12Height,
+      "x",
+      nv12Width,
+      ". Report a bug if you see this message.");
+  bool needsCrop = (outHeight != nv12Height) || (outWidth != nv12Width);
+
   torch::stable::Tensor dst;
-  if (preAllocatedOutputTensor.has_value()) {
+  if (needsCrop) {
+    dst = allocateEmptyHWCTensor(
+        FrameDims(nv12Height, nv12Width), device, OutputDtype::UINT8);
+  } else if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
-    dst = allocateEmptyHWCTensor(frameDims, device, OutputDtype::UINT8);
+    dst = allocateEmptyHWCTensor(
+        FrameDims(outHeight, outWidth), device, OutputDtype::UINT8);
   }
 
   // We need to make sure NVDEC has finished decoding a frame before
@@ -309,7 +342,7 @@ torch::stable::Tensor convertNV12FrameToRGB(
       "cudaStreamGetFlags failed: ",
       cudaGetErrorString(err));
 
-  NppiSize oSizeROI = {frameDims.width, frameDims.height};
+  NppiSize oSizeROI = {nv12Width, nv12Height};
   Npp8u* yuvData[2] = {avFrame->data[0], avFrame->data[1]};
 
   NppStatus status;
@@ -402,8 +435,23 @@ torch::stable::Tensor convertNV12FrameToRGB(
           *nppCtx);
     }
   }
-  STD_TORCH_CHECK(status == NPP_SUCCESS, "Failed to convert NV12 frame.");
+  // TODO we should log a warning if status > 0.
+  STD_TORCH_CHECK(status >= 0, "Failed to convert NV12 frame.");
 
+  if (needsCrop) {
+    if (outHeight != nv12Height) {
+      dst = torch::stable::narrow(dst, /*dim=*/0, /*start=*/0, outHeight);
+    }
+    if (outWidth != nv12Width) {
+      dst = torch::stable::narrow(dst, /*dim=*/1, /*start=*/0, outWidth);
+      dst = torch::stable::contiguous(dst);
+    }
+    if (preAllocatedOutputTensor.has_value()) {
+      torch::stable::copy_(preAllocatedOutputTensor.value(), dst);
+      return preAllocatedOutputTensor.value();
+    }
+    return dst;
+  }
   return dst;
 }
 
@@ -452,11 +500,7 @@ void returnNppStreamContextToCache(
 
 void validatePreAllocatedTensorShape(
     const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,
-    const UniqueAVFrame& avFrame) {
-  // Note that CUDA does not yet support transforms, so the only possible
-  // frame dimensions are the raw decoded frame's dimensions.
-  auto frameDims = FrameDims(avFrame->height, avFrame->width);
-
+    const FrameDims& frameDims) {
   if (preAllocatedOutputTensor.has_value()) {
     auto shape = preAllocatedOutputTensor.value().sizes();
     STD_TORCH_CHECK(
