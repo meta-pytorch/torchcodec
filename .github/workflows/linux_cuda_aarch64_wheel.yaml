@@ -1,4 +1,4 @@
-name: Build and test Linux CUDA aarch64 wheels
+name: Linux CUDA aarch64
 
 on:
   pull_request:
