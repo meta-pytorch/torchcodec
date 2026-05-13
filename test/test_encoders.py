@@ -14,6 +14,7 @@ from torchcodec import ffmpeg_major_version
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 
 from torchcodec.encoders import AudioEncoder, VideoEncoder
+from torchcodec.encoders._multi_stream_encoder import StreamingEncoder
 
 from .utils import (
     assert_tensor_close_on_at_least,
@@ -22,6 +23,8 @@ from .utils import (
     IN_GITHUB_CI,
     IS_WINDOWS,
     NASA_AUDIO_MP3,
+    NASA_AUDIO_MP3_44100,
+    NASA_VIDEO,
     needs_ffmpeg_cli,
     psnr,
     SINE_MONO_S32,
@@ -1560,3 +1563,342 @@ class TestVideoEncoder:
             torch.testing.assert_close(
                 truncated_frame.data, reference_frames[i].data, atol=0, rtol=0
             )
+
+
+class TestStreamingEncoder:
+    def test_double_close(self, tmp_path):
+        enc = StreamingEncoder(tmp_path / "test.mp4")
+        enc.close()
+        enc.close()  # double close is a no-op
+
+    @pytest.mark.parametrize("format", ["mp4", "mov", "mkv"])
+    @pytest.mark.parametrize(
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                ],
+            ),
+        ),
+    )
+    def test_add_video_and_encode_frames(self, tmp_path, format, device):
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data.to(
+            device
+        )
+        frame_rate = source_decoder.metadata.average_fps
+        percentage, atol = (96, 2) if device == "cuda" else (99, 2)
+
+        output_path = tmp_path / f"test.{format}"
+        enc = StreamingEncoder(output_path)
+        add_video_kwargs = {
+            "height": source_frames.shape[2],
+            "width": source_frames.shape[3],
+            "frame_rate": frame_rate,
+            "device": device,
+        }
+        if device == "cpu":
+            add_video_kwargs["pixel_format"] = "yuv444p"
+            add_video_kwargs["crf"] = 0
+        else:
+            add_video_kwargs["extra_options"] = {"qp": "1"}
+        video = enc.add_video(**add_video_kwargs)
+        enc.open()
+        video.write(source_frames[:5])
+        video.write(source_frames[5:])
+        enc.close()
+
+        decoded_frames = (
+            VideoDecoder(str(output_path)).get_frames_in_range(start=0, stop=10).data
+        )
+        assert_tensor_close_on_at_least(
+            decoded_frames, source_frames.cpu(), percentage=percentage, atol=atol
+        )
+
+    def test_create_invalid_path(self):
+        with pytest.raises(RuntimeError, match="make sure it's a valid path"):
+            StreamingEncoder("/nonexistent/dir/test.mp4")
+
+    def test_create_invalid_format(self, tmp_path):
+        with pytest.raises(RuntimeError, match="check the desired extension"):
+            StreamingEncoder(tmp_path / "test.bad_extension")
+
+    @pytest.mark.parametrize("format", ["mp4", "mov"])
+    @pytest.mark.parametrize(
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                ],
+            ),
+        ),
+    )
+    def test_fragmented_mp4(self, format, tmp_path, device):
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data.to(
+            device
+        )
+        frame_rate = source_decoder.metadata.average_fps
+        percentage, atol = (96, 2) if device == "cuda" else (99, 2)
+
+        output_path = tmp_path / f"test.{format}"
+        enc = StreamingEncoder(output_path)
+        extra_options = {
+            "movflags": "+frag_every_frame+empty_moov",
+            "flush_packets": "1",
+            "threads": "1",
+        }
+        if device == "cuda":
+            extra_options.update({"qp": "1", "delay": "0"})
+            pixel_format, crf = None, None
+        else:
+            extra_options["tune"] = "zerolatency"
+            pixel_format, crf = "yuv444p", 0
+        video = enc.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=frame_rate,
+            device=device,
+            pixel_format=pixel_format,
+            crf=crf,
+            extra_options=extra_options,
+        )
+        enc.open()
+        for batch in [source_frames[:5], source_frames[5:]]:
+            video.write(batch)
+            mid_decoder = VideoDecoder(str(output_path))
+            num_available = len(mid_decoder)
+            assert num_available > 0
+            assert_tensor_close_on_at_least(
+                mid_decoder.get_frames_in_range(start=0, stop=num_available).data,
+                source_frames[:num_available].cpu(),
+                percentage=percentage,
+                atol=atol,
+            )
+
+        enc.close()
+        assert_tensor_close_on_at_least(
+            VideoDecoder(str(output_path)).get_frames_in_range(start=0, stop=10).data,
+            source_frames.cpu(),
+            percentage=percentage,
+            atol=atol,
+        )
+
+    def test_add_video_twice_errors(self, tmp_path):
+        enc = StreamingEncoder(tmp_path / "test.mp4")
+        enc.add_video(height=64, width=64, frame_rate=30.0)
+        with pytest.raises(RuntimeError, match="already been added"):
+            enc.add_video(height=64, width=64, frame_rate=24.0)
+
+    def test_add_audio_twice_errors(self, tmp_path):
+        enc = StreamingEncoder(tmp_path / "test.mp4")
+        enc.add_audio(sample_rate=44100, num_channels=2)
+        with pytest.raises(RuntimeError, match="already been added"):
+            enc.add_audio(sample_rate=16000, num_channels=1)
+
+    @pytest.mark.parametrize(
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                ],
+            ),
+        ),
+    )
+    def test_write_frames_mismatched_dimensions_errors(self, tmp_path, device):
+        enc = StreamingEncoder(tmp_path / "test.mp4")
+        video = enc.add_video(height=256, width=256, frame_rate=30.0, device=device)
+        enc.open()
+        frames_128 = torch.randint(
+            0, 256, (2, 3, 128, 128), dtype=torch.uint8, device=device
+        )
+        with pytest.raises(RuntimeError, match="same dimensions"):
+            video.write(frames_128)
+        frames_256 = torch.randint(
+            0, 256, (2, 3, 256, 256), dtype=torch.uint8, device=device
+        )
+        frames_512 = torch.randint(
+            0, 256, (2, 3, 512, 512), dtype=torch.uint8, device=device
+        )
+        video.write(frames_256)
+        with pytest.raises(RuntimeError, match="same dimensions"):
+            video.write(frames_512)
+
+    @pytest.mark.needs_cuda
+    def test_write_frames_different_devices_errors(self, tmp_path):
+        enc = StreamingEncoder(tmp_path / "test.mp4")
+        video = enc.add_video(height=64, width=64, frame_rate=30.0)
+        enc.open()
+        cpu_frames = torch.randint(0, 256, (2, 3, 64, 64), dtype=torch.uint8)
+        cuda_frames = cpu_frames.to("cuda")
+        video.write(cpu_frames)
+        with pytest.raises(RuntimeError, match="same device"):
+            video.write(cuda_frames)
+
+    @pytest.mark.needs_cuda
+    def test_write_samples_on_cuda_errors(self, tmp_path):
+        enc = StreamingEncoder(tmp_path / "test.wav")
+        audio = enc.add_audio(sample_rate=44100, num_channels=1)
+        enc.open()
+        cuda_samples = torch.randn(1, 1000, device="cuda")
+        with pytest.raises(RuntimeError, match="samples must be on CPU, got cuda"):
+            audio.write(cuda_samples)
+
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
+    def test_write_frames_without_open_errors(self, tmp_path, device):
+        enc = StreamingEncoder(tmp_path / "test.mp4")
+        video = enc.add_video(height=64, width=64, frame_rate=30.0, device=device)
+        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8, device=device)
+        with pytest.raises(
+            RuntimeError, match="Call open\\(\\) before addFrames\\(\\)"
+        ):
+            video.write(frames)
+
+    def test_write_samples_without_open_errors(self, tmp_path):
+        enc = StreamingEncoder(tmp_path / "test.mp4")
+        audio = enc.add_audio(sample_rate=44100, num_channels=1)
+        samples = torch.randn(1, 1000)
+        with pytest.raises(
+            RuntimeError, match="Call open\\(\\) before addSamples\\(\\)"
+        ):
+            audio.write(samples)
+
+    def test_write_samples_mismatched_channels_errors(self, tmp_path):
+        enc = StreamingEncoder(tmp_path / "test.wav")
+        audio = enc.add_audio(sample_rate=44100, num_channels=1)
+        enc.open()
+        samples = torch.randn(2, 1000)  # 2 channels but stream expects 1
+        with pytest.raises(RuntimeError, match="Expected 1 channels, got 2"):
+            audio.write(samples)
+
+    def test_open_without_stream_errors(self, tmp_path):
+        enc = StreamingEncoder(tmp_path / "test.mp4")
+        with pytest.raises(
+            RuntimeError,
+            match="Call addVideoStream\\(\\) or addAudioStream\\(\\) before open\\(\\)",
+        ):
+            enc.open()
+
+    def test_open_twice_errors(self, tmp_path):
+        enc = StreamingEncoder(tmp_path / "test.mp4")
+        enc.add_video(height=64, width=64, frame_rate=30.0)
+        enc.open()
+        with pytest.raises(RuntimeError, match="Encoder is already open"):
+            enc.open()
+
+    def test_add_audio_invalid_bit_rate_errors(self, tmp_path):
+        enc = StreamingEncoder(tmp_path / "test.mp4")
+        enc.add_audio(sample_rate=44100, num_channels=2, bit_rate=-1)
+        with pytest.raises(RuntimeError, match="bit_rate=-1 must be >= 0"):
+            enc.open()
+
+    def test_add_audio_and_encode_samples(self, tmp_path):
+        source_audio = AudioDecoder(str(SINE_MONO_S32.path)).get_all_samples()
+        samples = source_audio.data
+        sample_rate = source_audio.sample_rate
+        num_channels = samples.shape[0]
+
+        output_path = tmp_path / "test.wav"
+        enc = StreamingEncoder(output_path)
+        audio = enc.add_audio(sample_rate=sample_rate, num_channels=num_channels)
+        enc.open()
+        chunk_lengths = [1, 50, 1000, 0, 25]
+        offset = 0
+        for length in chunk_lengths:
+            audio.write(samples[:, offset : offset + length])
+            offset += length
+        audio.write(samples[:, offset:])
+        enc.close()
+
+        decoded = AudioDecoder(str(output_path)).get_all_samples()
+        assert decoded.data.shape[0] == num_channels
+        assert decoded.sample_rate == sample_rate
+        torch.testing.assert_close(decoded.data, samples, atol=1e-4, rtol=0)
+
+    @pytest.mark.parametrize(
+        "format",
+        (
+            "mp4",
+            pytest.param(
+                "mkv",
+                marks=pytest.mark.skipif(
+                    ffmpeg_major_version < 6,
+                    reason="Default audio codec for MKV has low accuracy on older FFmpeg versions.",
+                ),
+            ),
+            "mov",
+        ),
+    )
+    def test_add_audio_and_video_and_encode(self, tmp_path, format):
+        source_video_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        source_frames = source_video_decoder.get_frames_in_range(
+            start=0, stop=len(source_video_decoder)
+        ).data
+
+        source_audio = AudioDecoder(str(NASA_AUDIO_MP3_44100.path)).get_all_samples()
+        source_samples = source_audio.data
+        sample_rate = source_audio.sample_rate
+
+        output_path = tmp_path / f"test.{format}"
+        enc = StreamingEncoder(output_path)
+        video = enc.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=source_video_decoder.metadata.average_fps,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        audio = enc.add_audio(
+            sample_rate=sample_rate,
+            num_channels=source_samples.shape[0],
+        )
+        enc.open()
+        half_frames = source_frames.shape[0] // 2
+        half_samples = source_samples.shape[1] // 2
+        video.write(source_frames[:half_frames])
+        audio.write(source_samples[:, :half_samples])
+        video.write(source_frames[half_frames:])
+        audio.write(source_samples[:, half_samples:])
+        enc.close()
+
+        decoded_video_decoder = VideoDecoder(str(output_path))
+        decoded_frames = decoded_video_decoder.get_frames_in_range(
+            start=0, stop=len(decoded_video_decoder)
+        ).data
+        assert_tensor_close_on_at_least(
+            decoded_frames, source_frames, percentage=99, atol=2
+        )
+
+        audio_decoder = AudioDecoder(str(output_path))
+        decoded_audio = audio_decoder.get_all_samples()
+        assert decoded_audio.sample_rate == sample_rate
+        assert decoded_audio.data.shape[0] == source_samples.shape[0]
+        num_samples_to_compare = min(
+            decoded_audio.data.shape[1], source_samples.shape[1]
+        )
+        assert_tensor_close_on_at_least(
+            decoded_audio.data[:, :num_samples_to_compare],
+            source_samples[:, :num_samples_to_compare],
+            percentage=96 if format == "mkv" else 99,
+            atol=0.1 if format == "mkv" else 0.01,
+        )
