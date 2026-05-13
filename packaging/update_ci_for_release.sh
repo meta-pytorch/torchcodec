@@ -18,6 +18,7 @@ done
 #    This must NOT touch install-and-test-third-party-interface or build-docs.
 WHEEL_FILES=(
     "${WORKFLOW_DIR}/linux_wheel.yaml"
+    "${WORKFLOW_DIR}/linux_aarch64_wheel.yaml"
     "${WORKFLOW_DIR}/linux_cuda_wheel.yaml"
     "${WORKFLOW_DIR}/linux_cuda_aarch64_wheel.yaml"
     "${WORKFLOW_DIR}/macos_wheel.yaml"
