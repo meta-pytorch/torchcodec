@@ -339,6 +339,21 @@ void BetaCudaDeviceInterface::initialize(
   parserParams.pfnDecodePicture = pfnDecodePictureCallback;
   parserParams.pfnDisplayPicture = pfnDisplayPictureCallback;
 
+  // Some containers (e.g. MP4/MOV) store codec config (H.264 SPS/PPS,
+  // MPEG-4 VOS/VOL, etc.) in extradata rather than inline in the
+  // bitstream. The NVCUVID parser needs this data to initialize, so we
+  // pass it via pExtVideoInfo. Same approach as DALI and FFmpeg cuviddec.
+  // DALI does the same thing
+  // https://github.com/NVIDIA/DALI/blob/ae79f316ae9b14c464d9cb98465f7f783da9ea89/dali/operators/video/frames_decoder_gpu.cc#L402-L408
+  if (codecPar->extradata_size > 0) {
+    auto seqhdrSize = std::min(
+        static_cast<size_t>(codecPar->extradata_size),
+        sizeof(parserExtInfo_.raw_seqhdr_data));
+    parserExtInfo_.format.seqhdr_data_length = seqhdrSize;
+    memcpy(parserExtInfo_.raw_seqhdr_data, codecPar->extradata, seqhdrSize);
+    parserParams.pExtVideoInfo = &parserExtInfo_;
+  }
+
   CUresult result = cuvidCreateVideoParser(&videoParser_, &parserParams);
   STD_TORCH_CHECK(
       result == CUDA_SUCCESS, "Failed to create video parser: ", result);
@@ -390,12 +405,6 @@ void BetaCudaDeviceInterface::initializeBSF(
           avFormatCtx->iformat->name ? avFormatCtx->iformat->name : "";
       if (formatName == "avi") {
         filterName = "mpeg4_unpack_bframes";
-      } else {
-        // For MPEG-4 Part 2 in MP4/MOV/etc., codec configuration (VOS/VOL)
-        // lives only in extradata. Unlike H.264/HEVC there's no codec-specific
-        // BSF that injects it inline, so use dump_extra to prepend extradata
-        // to keyframe packets — the NVCUVID parser needs this to initialize.
-        filterName = "dump_extra";
       }
       break;
     }

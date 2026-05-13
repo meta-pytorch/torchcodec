@@ -1980,9 +1980,7 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_cuda_mpeg4_mp4_first_frame(self, seek_mode):
         # non-regression test for
-        # https://github.com/meta-pytorch/torchcodec/issues/1340.  MPEG-4 Part 2
-        # in MP4 stores codec config (VOS/VOL) only in extradata, never inline.
-        # Without the dump_extra BSF, the NVCUVID parser could not initialize.
+        # https://github.com/meta-pytorch/torchcodec/issues/1340.
         decoder = VideoDecoder(
             TEST_SRC_2_MPEG4_MP4.path, device="cuda", seek_mode=seek_mode
         )
