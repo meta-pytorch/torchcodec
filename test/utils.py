@@ -995,6 +995,49 @@ SINE_MONO_S16 = TestAudio(
     },
 )
 
+# WAV file with an odd-sized data chunk and a trailing metadata chunk.
+# This reproduces https://github.com/meta-pytorch/torchcodec/issues/1378 where
+# FFmpeg seeks past EOF when scanning for trailing chunks, causing a crash
+# when decoding from a bytes tensor (but not from a file path).
+# Generated with:
+#     import struct
+#     path = "test/resources/reproduce_seek_bug.wav"
+#     sample_rate = 48000
+#     block_align = 3  # 24-bit mono
+#     num_samples = 48001  # * 3 = 144003 bytes (odd!)
+#     data_size = num_samples * block_align
+#     sample_data = bytes(data_size)  # silence
+#     trailing_data = b"\x00" * 256
+#     with open(path, "wb") as f:
+#         riff_size = 4 + (8 + 16) + (8 + data_size + 1) + (8 + len(trailing_data))
+#         f.write(b"RIFF")
+#         f.write(struct.pack("<I", riff_size))
+#         f.write(b"WAVE")
+#         f.write(b"fmt ")
+#         f.write(struct.pack("<I", 16))
+#         f.write(struct.pack("<HHIIHH", 1, 1, sample_rate, sample_rate * block_align, block_align, 24))
+#         f.write(b"data")
+#         f.write(struct.pack("<I", data_size))
+#         f.write(sample_data)
+#         f.write(b"\x00")  # RIFF padding byte for odd-sized chunk
+#         f.write(b"_PMX")
+#         f.write(struct.pack("<I", len(trailing_data)))
+#         f.write(trailing_data)
+WAV_ODD_DATA_TRAILING_CHUNK = TestAudio(
+    filename="reproduce_seek_bug.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=48_000,
+            num_channels=1,
+            duration_seconds=1.000021,
+            num_frames=12,
+            sample_format="s32",
+        )
+    },
+)
+
 # 16-channel audio for testing support for >8 channels. Generated with:
 # ffmpeg -i test/resources/sine_mono_s32.wav -t 1 -filter_complex "[0]asplit=16[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15];[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15]amerge=inputs=16" -c:a pcm_s16le test/resources/sine_16ch_s16.wav
 SINE_16_CHANNEL_S16 = TestAudio(

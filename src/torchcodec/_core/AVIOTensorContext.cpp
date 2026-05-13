@@ -17,18 +17,18 @@ constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
 // The signature of this function is defined by FFMPEG.
 int read(void* opaque, uint8_t* buf, int buf_size) {
   auto tensorContext = static_cast<detail::TensorContext*>(opaque);
-  STD_TORCH_CHECK(
-      tensorContext->current_pos <= tensorContext->data.numel(),
-      "Tried to read outside of the buffer: current_pos=",
-      tensorContext->current_pos,
-      ", size=",
-      tensorContext->data.numel());
+
+  if (tensorContext->current_pos >= tensorContext->data.numel()) {
+    return AVERROR_EOF;
+  }
 
   int64_t numBytesRead = std::min(
       static_cast<int64_t>(buf_size),
       tensorContext->data.numel() - tensorContext->current_pos);
 
   STD_TORCH_CHECK(
+      // This should never happen based on the other checks above, but might as
+      // well.
       numBytesRead >= 0,
       "Tried to read negative bytes: numBytesRead=",
       numBytesRead,
