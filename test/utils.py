@@ -728,6 +728,16 @@ TEST_SRC_2_720P_MPEG4 = TestVideo(
     frames={0: {}},  # Not needed for now
 )
 
+# ffmpeg -f lavfi -i color=c=black:s=64x64:d=0.034 -c:v mpeg4 -q:v 31 testsrc2_mpeg4.mp4
+TEST_SRC_2_MPEG4_MP4 = TestVideo(
+    filename="testsrc2_mpeg4.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=64, height=64, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
 # Video with non-zero start time (start_time ~8.333s)
 # Used to test that PTS values are correctly reported for videos that don't
 # start at time 0.
