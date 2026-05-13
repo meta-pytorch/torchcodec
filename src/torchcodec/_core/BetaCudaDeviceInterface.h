@@ -89,6 +89,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;
   CUVIDEOFORMAT videoFormat_ = {};
+  CUVIDEOFORMATEX parserExtInfo_ = {};
 
   std::queue<CUVIDPARSERDISPINFO> readyFrames_;
 

@@ -61,9 +61,11 @@ from .utils import (
     TEST_SRC_2_720P_MPEG4,
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
+    TEST_SRC_2_MPEG4_MP4,
     TESTSRC2_ODD_HEIGHT,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH,
     TESTSRC2_ODD_WIDTH,
+    WAV_ODD_DATA_TRAILING_CHUNK,
 )
 
 
@@ -1976,6 +1978,28 @@ class TestVideoDecoder:
             assert nvdec_frame.duration_seconds == ref_frame.duration_seconds
 
     @needs_cuda
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_cuda_mpeg4_mp4_first_frame(self, seek_mode):
+        # non-regression test for
+        # https://github.com/meta-pytorch/torchcodec/issues/1340.
+        decoder = VideoDecoder(
+            TEST_SRC_2_MPEG4_MP4.path, device="cuda", seek_mode=seek_mode
+        )
+        with set_cuda_backend("ffmpeg"):
+            ref_decoder = VideoDecoder(
+                TEST_SRC_2_MPEG4_MP4.path, device="cuda", seek_mode=seek_mode
+            )
+
+        expected_frame0 = ref_decoder.get_frame_at(0)
+        frame0 = decoder.get_frame_at(0)
+
+        assert frame0.pts_seconds == expected_frame0.pts_seconds
+        assert frame0.duration_seconds == expected_frame0.duration_seconds
+        assert frame0.data.shape == expected_frame0.data.shape
+        # Strict pixel equality is skipped — TODONVDEC P1 above (BT.601 vs
+        # BT.709 color matrix mismatch between the ffmpeg and default cuda).
+
+    @needs_cuda
     def test_nvdec_cuda_interface_cpu_fallback(self):
         # Non-regression test for the CPU fallback behavior of the NVDEC CUDA
         # interface.
@@ -2380,6 +2404,19 @@ class TestAudioDecoder:
         torch.testing.assert_close(
             decoder.get_all_samples().data,
             decoder.get_samples_played_in_range().data,
+        )
+
+    def test_decode_from_tensor_odd_sized_wav(self):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1378
+        # WAV files with an odd-sized data chunk and a trailing metadata chunk
+        # used to crash when decoded from a bytes tensor, because FFmpeg seeks
+        # past EOF and the AVIO read callback threw instead of returning
+        # AVERROR_EOF.
+        asset = WAV_ODD_DATA_TRAILING_CHUNK
+        samples_from_path = AudioDecoder(asset.path).get_all_samples()
+        samples_from_tensor = AudioDecoder(asset.to_tensor()).get_all_samples()
+        torch.testing.assert_close(
+            samples_from_path.data, samples_from_tensor.data, rtol=0, atol=0
         )
 
     @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
