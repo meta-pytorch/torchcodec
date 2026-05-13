@@ -17,6 +17,7 @@ import torch
 from torch import device as torch_device, nn, Tensor
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec._core._decoder_utils import create_video_decoder
+from torchcodec._logging import _LG
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.transforms import DecoderTransform
 
@@ -125,7 +126,7 @@ class VideoDecoder:
             applied to the decoded frames by the decoder itself, in order. Accepts both
             :class:`~torchcodec.transforms.DecoderTransform` and
             :class:`~torchvision.transforms.v2.Transform`
-            objects. Read more about this parameter in: TODO_DECODER_TRANSFORMS_TUTORIAL.
+            objects. Read more about this parameter in :ref:`sphx_glr_generated_examples_decoding_transforms.py`.
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
@@ -230,6 +231,8 @@ class VideoDecoder:
         assert self.metadata.begin_stream_seconds is not None  # mypy.
         assert self.metadata.end_stream_seconds is not None  # mypy.
         assert self.metadata.num_frames is not None  # mypy.
+
+        _LG.debug(f"VideoDecoder created:\n{self.metadata}")
 
         self._begin_stream_seconds = self.metadata.begin_stream_seconds
         self._end_stream_seconds = self.metadata.end_stream_seconds
