@@ -11,7 +11,7 @@ import textwrap
 import pytest
 from torchcodec._logging import get_log_level, set_log_level
 
-from .utils import needs_cuda
+from .utils import in_fbcode, needs_cuda
 
 
 @pytest.fixture
@@ -21,6 +21,8 @@ def with_restore_log_level():
     set_log_level(current_log_level)
 
 
+# checking stderr is impossible in fbcode because it's never empty.
+@pytest.mark.skipif(in_fbcode(), reason="Skipping tests in FBCode environment")
 class TestLogging:
     @needs_cuda
     @pytest.mark.parametrize("log_level", ("ALL", "OFF", "default"))
