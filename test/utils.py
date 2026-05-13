@@ -728,6 +728,16 @@ TEST_SRC_2_720P_MPEG4 = TestVideo(
     frames={0: {}},  # Not needed for now
 )
 
+# ffmpeg -f lavfi -i color=c=black:s=64x64:d=0.034 -c:v mpeg4 -q:v 31 testsrc2_mpeg4.mp4
+TEST_SRC_2_MPEG4_MP4 = TestVideo(
+    filename="testsrc2_mpeg4.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=64, height=64, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
 # Video with non-zero start time (start_time ~8.333s)
 # Used to test that PTS values are correctly reported for videos that don't
 # start at time 0.
@@ -991,6 +1001,49 @@ SINE_MONO_S16 = TestAudio(
             duration_seconds=4,
             num_frames=63,
             sample_format="s16",
+        )
+    },
+)
+
+# WAV file with an odd-sized data chunk and a trailing metadata chunk.
+# This reproduces https://github.com/meta-pytorch/torchcodec/issues/1378 where
+# FFmpeg seeks past EOF when scanning for trailing chunks, causing a crash
+# when decoding from a bytes tensor (but not from a file path).
+# Generated with:
+#     import struct
+#     path = "test/resources/reproduce_seek_bug.wav"
+#     sample_rate = 48000
+#     block_align = 3  # 24-bit mono
+#     num_samples = 48001  # * 3 = 144003 bytes (odd!)
+#     data_size = num_samples * block_align
+#     sample_data = bytes(data_size)  # silence
+#     trailing_data = b"\x00" * 256
+#     with open(path, "wb") as f:
+#         riff_size = 4 + (8 + 16) + (8 + data_size + 1) + (8 + len(trailing_data))
+#         f.write(b"RIFF")
+#         f.write(struct.pack("<I", riff_size))
+#         f.write(b"WAVE")
+#         f.write(b"fmt ")
+#         f.write(struct.pack("<I", 16))
+#         f.write(struct.pack("<HHIIHH", 1, 1, sample_rate, sample_rate * block_align, block_align, 24))
+#         f.write(b"data")
+#         f.write(struct.pack("<I", data_size))
+#         f.write(sample_data)
+#         f.write(b"\x00")  # RIFF padding byte for odd-sized chunk
+#         f.write(b"_PMX")
+#         f.write(struct.pack("<I", len(trailing_data)))
+#         f.write(trailing_data)
+WAV_ODD_DATA_TRAILING_CHUNK = TestAudio(
+    filename="reproduce_seek_bug.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=48_000,
+            num_channels=1,
+            duration_seconds=1.000021,
+            num_frames=12,
+            sample_format="s32",
         )
     },
 )
