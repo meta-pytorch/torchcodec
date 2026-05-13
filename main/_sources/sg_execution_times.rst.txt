@@ -6,7 +6,7 @@
 
 Computation times
 =================
-**05:50.578** total execution time for 12 files **from all galleries**:
+**05:49.735** total execution time for 12 files **from all galleries**:
 
 .. container::
 
@@ -33,34 +33,34 @@ Computation times
      - Time
      - Mem (MB)
    * - :ref:`sphx_glr_generated_examples_decoding_transforms.py` (``../../examples/decoding/transforms.py``)
-     - 02:25.840
+     - 02:25.711
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_parallel_decoding.py` (``../../examples/decoding/parallel_decoding.py``)
-     - 01:34.221
-     - 0.0
-   * - :ref:`sphx_glr_generated_examples_decoding_file_like.py` (``../../examples/decoding/file_like.py``)
-     - 00:27.252
+     - 01:33.192
      - 0.0
    * - :ref:`sphx_glr_generated_examples_encoding_video_encoding.py` (``../../examples/encoding/video_encoding.py``)
-     - 00:26.418
+     - 00:26.733
+     - 0.0
+   * - :ref:`sphx_glr_generated_examples_decoding_file_like.py` (``../../examples/decoding/file_like.py``)
+     - 00:26.654
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py` (``../../examples/decoding/approximate_mode.py``)
-     - 00:24.643
+     - 00:25.198
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py` (``../../examples/decoding/custom_frame_mappings.py``)
-     - 00:23.665
+     - 00:23.779
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py` (``../../examples/decoding/basic_cuda_example.py``)
-     - 00:04.721
+     - 00:04.622
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_basic_example.py` (``../../examples/decoding/basic_example.py``)
-     - 00:02.051
+     - 00:02.075
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_audio_decoding.py` (``../../examples/decoding/audio_decoding.py``)
      - 00:01.325
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_sampling.py` (``../../examples/decoding/sampling.py``)
-     - 00:00.413
+     - 00:00.418
      - 0.0
    * - :ref:`sphx_glr_generated_examples_encoding_audio_encoding.py` (``../../examples/encoding/audio_encoding.py``)
      - 00:00.029
