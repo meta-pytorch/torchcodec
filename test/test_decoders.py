@@ -1998,7 +1998,7 @@ class TestVideoDecoder:
         assert frame0.duration_seconds == expected_frame0.duration_seconds
         assert frame0.data.shape == expected_frame0.data.shape
         # Strict pixel equality is skipped — TODONVDEC P1 above (BT.601 vs
-        # BT.709 color matrix mismatch between the ffmpeg and beta cuda).
+        # BT.709 color matrix mismatch between the ffmpeg and default cuda).
 
     def test_default_cuda_interface_cpu_fallback(self):
         # Non-regression test for the CPU fallback behavior of the default CUDA
