@@ -56,7 +56,7 @@ struct VideoStreamOptions {
   // Note: This is not used for video encoding, because device is determined by
   // the device of the input frame tensor.
   StableDevice device = StableDevice(kStableCPU);
-  // Device variant (e.g., "default", "ffmpeg")
+  // Device variant (e.g., "nvdec", "ffmpeg")
   std::string_view deviceVariant = "default";
 
   // Controls the dtype of decoded frame tensors. Default UINT8 preserves

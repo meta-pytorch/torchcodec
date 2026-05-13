@@ -69,8 +69,7 @@ static DecoderCapsCache& getDecoderCapsCache() {
   return cache;
 }
 
-// TODO: rename private variant "default" to "nvdec" to match public name.
-static bool g_cuda_default = registerDeviceInterface(
+static bool g_cuda_nvdec = registerDeviceInterface(
     DeviceInterfaceKey(kStableCUDA, /*variant=*/"default"),
     [](const StableDevice& device) {
       return new BetaCudaDeviceInterface(device);
@@ -267,8 +266,7 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
     : DeviceInterface(device) {
-  STD_TORCH_CHECK(
-      g_cuda_default, "BetaCudaDeviceInterface was not registered!");
+  STD_TORCH_CHECK(g_cuda_nvdec, "NvdecCudaDeviceInterface was not registered!");
   STD_TORCH_CHECK(
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
@@ -891,7 +889,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
   // ffmpeg interface does it with maybeConvertAVFrameToNV12OrRGB24().
   STD_TORCH_CHECK(
       gpuFrame->format == AV_PIX_FMT_CUDA,
-      "Expected CUDA format frame from BETA CUDA interface");
+      "Expected CUDA format frame from NVDEC CUDA interface");
 
   cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
@@ -908,7 +906,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     // preAllocatedOutputTensor has post-rotation dimensions, but NV12->RGB
     // conversion outputs pre-rotation dimensions, so we can't use it as the
     // conversion destination or validate it against the frame shape.
-    // Once we support native transforms on the default CUDA interface,
+    // Once we support native transforms on the NVDEC CUDA interface,
     // rotation should be handled as part of the transform pipeline instead.
     frameOutput.data = convertNV12FrameToRGB(
         gpuFrame,
@@ -951,7 +949,7 @@ void BetaCudaDeviceInterface::applyRotation(
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {
-  std::string details = "Beta CUDA Device Interface.";
+  std::string details = "NVDEC CUDA Device Interface.";
   if (cpuFallback_) {
     details += " Using CPU fallback.";
     if (!nvcuvidAvailable_) {
