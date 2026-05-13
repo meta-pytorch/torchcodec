@@ -64,6 +64,7 @@ from .utils import (
     TESTSRC2_ODD_HEIGHT,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH,
     TESTSRC2_ODD_WIDTH,
+    WAV_ODD_DATA_TRAILING_CHUNK,
 )
 
 
@@ -2380,6 +2381,19 @@ class TestAudioDecoder:
         torch.testing.assert_close(
             decoder.get_all_samples().data,
             decoder.get_samples_played_in_range().data,
+        )
+
+    def test_decode_from_tensor_odd_sized_wav(self):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1378
+        # WAV files with an odd-sized data chunk and a trailing metadata chunk
+        # used to crash when decoded from a bytes tensor, because FFmpeg seeks
+        # past EOF and the AVIO read callback threw instead of returning
+        # AVERROR_EOF.
+        asset = WAV_ODD_DATA_TRAILING_CHUNK
+        samples_from_path = AudioDecoder(asset.path).get_all_samples()
+        samples_from_tensor = AudioDecoder(asset.to_tensor()).get_all_samples()
+        torch.testing.assert_close(
+            samples_from_path.data, samples_from_tensor.data, rtol=0, atol=0
         )
 
     @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
