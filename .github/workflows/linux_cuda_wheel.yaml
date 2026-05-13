@@ -138,6 +138,7 @@ jobs:
     # Essentially, what we want to make sure is that
     # `pip install torch torchcodec` works on CPU-only machines, and this
     # command should install CUDA-enabled versions of both torch and torchcodec.
+    # It's critical that this job runs on a CPU-only machine.
     runs-on: ubuntu-latest
     needs: build
     env:
@@ -185,6 +186,10 @@ jobs:
 
       - name: Install test dependencies
         run: bash packaging/install_test_dependencies.sh
+
+      - name: Assert CUDA is not available
+        run: |
+          python -c "import torch; assert not torch.cuda.is_available()"
 
       - name: Run Python tests
         run: |
