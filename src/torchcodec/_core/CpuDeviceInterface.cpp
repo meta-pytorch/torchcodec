@@ -7,7 +7,18 @@
 #include "CpuDeviceInterface.h"
 
 namespace facebook::torchcodec {
+
 namespace {
+
+AVPixelFormat getOutputPixelFormat(OutputDtype outputDtype) {
+  return outputDtype == OutputDtype::FLOAT32 ? AV_PIX_FMT_RGB48
+                                             : AV_PIX_FMT_RGB24;
+}
+
+// Returns the format filter string for the given output pixel format.
+std::string getFormatFilterString(AVPixelFormat outputFormat) {
+  return (outputFormat == AV_PIX_FMT_RGB48) ? "format=rgb48," : "format=rgb24,";
+}
 
 static bool g_cpu = registerDeviceInterface(
     DeviceInterfaceKey(kStableCPU),
@@ -38,6 +49,7 @@ void CpuDeviceInterface::initializeVideo(
   avMediaType_ = AVMEDIA_TYPE_VIDEO;
   videoStreamOptions_ = videoStreamOptions;
   resizedOutputDims_ = resizedOutputDims;
+  outputPixelFormat_ = getOutputPixelFormat(videoStreamOptions_.outputDtype);
 
   // We can use swscale when we have a single resize transform.
   // With a single resize, we use swscale twice:
@@ -86,16 +98,16 @@ void CpuDeviceInterface::initializeVideo(
   if (!transforms.empty()) {
     // Note [Transform and Format Conversion Order]
     // We have to ensure that all user filters happen AFTER the explicit format
-    // conversion. That is, we want the filters to be applied in RGB24, not the
-    // pixel format of the input frame.
+    // conversion. That is, we want the filters to be applied in the output RGB
+    // color space, not the pixel format of the input frame.
     //
-    // The ouput frame will always be in RGB24, as we specify the sink node with
-    // AV_PIX_FORMAT_RGB24. Filtergraph will automatically insert a filter
-    // conversion to ensure the output frame matches the pixel format
-    // specified in the sink. But by default, it will insert it after the user
-    // filters. We need an explicit format conversion to get the behavior we
-    // want.
-    filters_ = "format=rgb24," + filters.str();
+    // The output frame will always be in the output RGB format (RGB24 or
+    // RGB48), as we specify the sink node with the appropriate format.
+    // Filtergraph will automatically insert a format conversion to ensure the
+    // output frame matches the pixel format specified in the sink. But by
+    // default, it will insert it after the user filters. We need an explicit
+    // format conversion to get the behavior we want.
+    filters_ = getFormatFilterString(outputPixelFormat_) + filters.str();
   }
 
   initialized_ = true;
@@ -199,19 +211,18 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   torch::stable::Tensor outputTensor;
 
   if (colorConversionLibrary == ColorConversionLibrary::SWSCALE) {
-    outputTensor = preAllocatedOutputTensor.value_or(
-        allocateEmptyHWCTensor(outputDims, kStableCPU));
+    outputTensor = preAllocatedOutputTensor.value_or(allocateEmptyHWCTensor(
+        outputDims, kStableCPU, videoStreamOptions_.outputDtype));
 
-    enum AVPixelFormat avFrameFormat =
-        static_cast<enum AVPixelFormat>(avFrame->format);
-
+    auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
     SwsConfig swsConfig(
         avFrame->width,
         avFrame->height,
         avFrameFormat,
         avFrame->colorspace,
         outputDims.width,
-        outputDims.height);
+        outputDims.height,
+        outputPixelFormat_);
 
     if (!swScale_ || swScale_->getConfig() != swsConfig) {
       swScale_ = std::make_unique<SwScale>(swsConfig, swsFlags_);
@@ -266,8 +277,7 @@ torch::stable::Tensor
 CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
     const UniqueAVFrame& avFrame,
     const FrameDims& outputDims) {
-  enum AVPixelFormat avFrameFormat =
-      static_cast<enum AVPixelFormat>(avFrame->format);
+  auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
 
   FiltersConfig filtersConfig(
       avFrame->width,
@@ -276,7 +286,7 @@ CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
       avFrame->sample_aspect_ratio,
       outputDims.width,
       outputDims.height,
-      /*outputFormat=*/AV_PIX_FMT_RGB24,
+      outputPixelFormat_,
       filters_,
       timeBase_);
 

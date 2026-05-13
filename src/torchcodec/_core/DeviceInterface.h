@@ -21,7 +21,7 @@ namespace facebook::torchcodec {
 // Key for device interface registration with device type + variant support
 struct DeviceInterfaceKey {
   StableDeviceType deviceType;
-  std::string_view variant = "ffmpeg"; // e.g., "ffmpeg", "beta", etc.
+  std::string_view variant = "default"; // e.g., "default", "ffmpeg"
 
   bool operator<(const DeviceInterfaceKey& other) const {
     if (deviceType != other.deviceType) {
@@ -134,6 +134,15 @@ class DeviceInterface {
         codecContext_ != nullptr,
         "Codec context not available for default flushing");
     avcodec_flush_buffers(codecContext_.get());
+
+    // We also manually flush any remaining frames in the decoder buffer. We
+    // shouldn't have to do this, because avcodec_flush_buffers should handle
+    // it, but some codecs like HEVC may still have frames buffered internally
+    // in edge cases (ex. hitting EOF) as observed in
+    // https://github.com/meta-pytorch/torchcodec/issues/1339.
+    UniqueAVFrame tmp(av_frame_alloc());
+    while (avcodec_receive_frame(codecContext_.get(), tmp.get()) == AVSUCCESS) {
+    }
   }
 
   virtual std::string getDetails() {
@@ -180,9 +189,10 @@ FORCE_PUBLIC_VISIBILITY void validateDeviceInterface(
     const std::string& device,
     const std::string& variant);
 
-std::unique_ptr<DeviceInterface> createDeviceInterface(
+TORCHCODEC_THIRD_PARTY_API std::unique_ptr<DeviceInterface>
+createDeviceInterface(
     const StableDevice& device,
-    const std::string_view variant = "ffmpeg");
+    const std::string_view variant = "default");
 
 torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 
