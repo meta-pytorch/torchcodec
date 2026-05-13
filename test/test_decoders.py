@@ -2305,6 +2305,13 @@ class TestVideoDecoder:
         assert not decoder.cpu_fallback
         assert "No fallback required" in str(decoder.cpu_fallback)
 
+    @needs_cuda
+    def test_beta_backend_still_supported_for_bc(self):
+        with set_cuda_backend("beta"):
+            dec = VideoDecoder(NASA_VIDEO.path, device="cuda")
+        dec[0]
+        assert dec.cpu_fallback._backend == "CUDA"
+
 
 class TestAudioDecoder:
     @pytest.mark.parametrize(
