@@ -1,4 +1,4 @@
-name: Build and test Linux aarch64 wheel
+name: Linux CPU aarch64
 
 on:
   pull_request:
