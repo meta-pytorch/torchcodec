@@ -2022,7 +2022,7 @@ class TestStreamingEncoder:
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_audio_output_num_channels(self, tmp_path, method):
-        sample_rate = 16_000
+        sample_rate = 44_100
         source_stereo = torch.rand(2, 1_000)
         source_mono = torch.rand(1, 1_000)
 
