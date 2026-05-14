@@ -1575,7 +1575,7 @@ class TestVideoDecoder:
         #
         # This test exercises the FFmpeg CUDA interface specifically: its CPU
         # fallback delegates directly to CpuDeviceInterface, so the output
-        # matches a pure CPU decoder bit-for-bit. The default (NVDEC) interface
+        # matches a pure CPU decoder bit-for-bit. The NVDEC interface
         # has a different fallback path that round-trips through GPU NV12 (an
         # 8-bit format) and produces different output for 10-bit content.
 
@@ -1748,7 +1748,7 @@ class TestVideoDecoder:
     #   assert_tensor_close_on_at_least or something like that.
     # - unskip equality assertion checks for MPEG4 asset. The frames are decoded
     #   fine, it's the color conversion that's different. The frame from the
-    #   default (NVDEC) interface is mapped to 709 by the matrix coefficient
+    #   NVDEC interface is mapped to 709 by the matrix coefficient
     #   using NVCUVID while the one from the FFmpeg CUDA interface is 601.
 
     @needs_cuda
@@ -1772,14 +1772,14 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("contiguous_indices", (True, False))
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
-    def test_default_cuda_interface_get_frame_at(
+    def test_nvdec_cuda_interface_get_frame_at(
         self, asset, contiguous_indices, seek_mode
     ):
         with set_cuda_backend("ffmpeg"):
             ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
-        default_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        nvdec_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
 
-        assert ref_decoder.metadata == default_decoder.metadata
+        assert ref_decoder.metadata == nvdec_decoder.metadata
 
         if contiguous_indices:
             indices = range(len(ref_decoder))
@@ -1788,15 +1788,15 @@ class TestVideoDecoder:
 
         for frame_index in indices:
             ref_frame = ref_decoder.get_frame_at(frame_index)
-            default_frame = default_decoder.get_frame_at(frame_index)
+            nvdec_frame = nvdec_decoder.get_frame_at(frame_index)
             # TODONVDEC P1 see above
             if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
-                    default_frame.data, ref_frame.data, rtol=0, atol=0
+                    nvdec_frame.data, ref_frame.data, rtol=0, atol=0
                 )
 
-            assert default_frame.pts_seconds == ref_frame.pts_seconds
-            assert default_frame.duration_seconds == ref_frame.duration_seconds
+            assert nvdec_frame.pts_seconds == ref_frame.pts_seconds
+            assert nvdec_frame.duration_seconds == ref_frame.duration_seconds
 
     @needs_cuda
     @pytest.mark.parametrize(
@@ -1819,14 +1819,14 @@ class TestVideoDecoder:
     )
     @pytest.mark.parametrize("contiguous_indices", (True, False))
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
-    def test_default_cuda_interface_get_frames_at(
+    def test_nvdec_cuda_interface_get_frames_at(
         self, asset, contiguous_indices, seek_mode
     ):
         with set_cuda_backend("ffmpeg"):
             ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
-        default_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        nvdec_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
 
-        assert ref_decoder.metadata == default_decoder.metadata
+        assert ref_decoder.metadata == nvdec_decoder.metadata
 
         if contiguous_indices:
             indices = range(len(ref_decoder))
@@ -1835,15 +1835,15 @@ class TestVideoDecoder:
         indices = list(indices)
 
         ref_frames = ref_decoder.get_frames_at(indices)
-        default_frames = default_decoder.get_frames_at(indices)
+        nvdec_frames = nvdec_decoder.get_frames_at(indices)
         # TODONVDEC P1 see above
         if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
-                default_frames.data, ref_frames.data, rtol=0, atol=0
+                nvdec_frames.data, ref_frames.data, rtol=0, atol=0
             )
-        torch.testing.assert_close(default_frames.pts_seconds, ref_frames.pts_seconds)
+        torch.testing.assert_close(nvdec_frames.pts_seconds, ref_frames.pts_seconds)
         torch.testing.assert_close(
-            default_frames.duration_seconds, ref_frames.duration_seconds
+            nvdec_frames.duration_seconds, ref_frames.duration_seconds
         )
 
     @needs_cuda
@@ -1866,27 +1866,27 @@ class TestVideoDecoder:
         ),
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
-    def test_default_cuda_interface_get_frame_played_at(self, asset, seek_mode):
+    def test_nvdec_cuda_interface_get_frame_played_at(self, asset, seek_mode):
         with set_cuda_backend("ffmpeg"):
             ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
-        default_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        nvdec_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
 
-        assert ref_decoder.metadata == default_decoder.metadata
+        assert ref_decoder.metadata == nvdec_decoder.metadata
 
         timestamps = torch.linspace(
             0, ref_decoder.metadata.duration_seconds - 1e-4, steps=10
         )
         for pts in timestamps:
             ref_frame = ref_decoder.get_frame_played_at(pts)
-            default_frame = default_decoder.get_frame_played_at(pts)
+            nvdec_frame = nvdec_decoder.get_frame_played_at(pts)
             # TODONVDEC P1 see above
             if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
-                    default_frame.data, ref_frame.data, rtol=0, atol=0
+                    nvdec_frame.data, ref_frame.data, rtol=0, atol=0
                 )
 
-            assert default_frame.pts_seconds == ref_frame.pts_seconds
-            assert default_frame.duration_seconds == ref_frame.duration_seconds
+            assert nvdec_frame.pts_seconds == ref_frame.pts_seconds
+            assert nvdec_frame.duration_seconds == ref_frame.duration_seconds
 
     @needs_cuda
     @pytest.mark.parametrize(
@@ -1908,27 +1908,27 @@ class TestVideoDecoder:
         ),
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
-    def test_default_cuda_interface_get_frames_played_at(self, asset, seek_mode):
+    def test_nvdec_cuda_interface_get_frames_played_at(self, asset, seek_mode):
         with set_cuda_backend("ffmpeg"):
             ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
-        default_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        nvdec_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
 
-        assert ref_decoder.metadata == default_decoder.metadata
+        assert ref_decoder.metadata == nvdec_decoder.metadata
 
         timestamps = torch.linspace(
             0, ref_decoder.metadata.duration_seconds - 1e-4, steps=10
         ).tolist()
 
         ref_frames = ref_decoder.get_frames_played_at(timestamps)
-        default_frames = default_decoder.get_frames_played_at(timestamps)
+        nvdec_frames = nvdec_decoder.get_frames_played_at(timestamps)
         # TODONVDEC P1 see above
         if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
-                default_frames.data, ref_frames.data, rtol=0, atol=0
+                nvdec_frames.data, ref_frames.data, rtol=0, atol=0
             )
-        torch.testing.assert_close(default_frames.pts_seconds, ref_frames.pts_seconds)
+        torch.testing.assert_close(nvdec_frames.pts_seconds, ref_frames.pts_seconds)
         torch.testing.assert_close(
-            default_frames.duration_seconds, ref_frames.duration_seconds
+            nvdec_frames.duration_seconds, ref_frames.duration_seconds
         )
 
     @needs_cuda
@@ -1951,12 +1951,12 @@ class TestVideoDecoder:
         ),
     )
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
-    def test_default_cuda_interface_backwards(self, asset, seek_mode):
+    def test_nvdec_cuda_interface_backwards(self, asset, seek_mode):
         with set_cuda_backend("ffmpeg"):
             ref_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
-        default_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
+        nvdec_decoder = VideoDecoder(asset.path, device="cuda", seek_mode=seek_mode)
 
-        assert ref_decoder.metadata == default_decoder.metadata
+        assert ref_decoder.metadata == nvdec_decoder.metadata
 
         for frame_index in [0, 1, 2, 1, 0, 100, 10, 50, 20, 200, 150, 150, 150, 389, 2]:
             # This is ugly, but OK: the indices values above are relevant for
@@ -1967,15 +1967,15 @@ class TestVideoDecoder:
             frame_index = min(frame_index, len(ref_decoder) - 1)
 
             ref_frame = ref_decoder.get_frame_at(frame_index)
-            default_frame = default_decoder.get_frame_at(frame_index)
+            nvdec_frame = nvdec_decoder.get_frame_at(frame_index)
             # TODONVDEC P1 see above
             if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
-                    default_frame.data, ref_frame.data, rtol=0, atol=0
+                    nvdec_frame.data, ref_frame.data, rtol=0, atol=0
                 )
 
-            assert default_frame.pts_seconds == ref_frame.pts_seconds
-            assert default_frame.duration_seconds == ref_frame.duration_seconds
+            assert nvdec_frame.pts_seconds == ref_frame.pts_seconds
+            assert nvdec_frame.duration_seconds == ref_frame.duration_seconds
 
     @needs_cuda
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
@@ -2000,8 +2000,8 @@ class TestVideoDecoder:
         # BT.709 color matrix mismatch between the ffmpeg and default cuda).
 
     @needs_cuda
-    def test_default_cuda_interface_cpu_fallback(self):
-        # Non-regression test for the CPU fallback behavior of the default CUDA
+    def test_nvdec_cuda_interface_cpu_fallback(self):
+        # Non-regression test for the CPU fallback behavior of the NVDEC CUDA
         # interface.
         # We know that the H265_VIDEO asset isn't supported by NVDEC, its
         # dimensions are too small. We also know that the FFmpeg CUDA interface
@@ -2020,20 +2020,20 @@ class TestVideoDecoder:
         assert ref_dec.cpu_fallback.status_known
         assert ref_dec.cpu_fallback
 
-        default_dec = VideoDecoder(H265_VIDEO.path, device="cuda")
+        nvdec_dec = VideoDecoder(H265_VIDEO.path, device="cuda")
 
-        assert "CUDA" in str(default_dec.cpu_fallback)
-        assert "FFmpeg CUDA" not in str(default_dec.cpu_fallback)
-        # For the default interface, status is known immediately
-        assert default_dec.cpu_fallback.status_known
-        assert default_dec.cpu_fallback
+        assert "CUDA" in str(nvdec_dec.cpu_fallback)
+        assert "FFmpeg CUDA" not in str(nvdec_dec.cpu_fallback)
+        # For the NVDEC interface, status is known immediately
+        assert nvdec_dec.cpu_fallback.status_known
+        assert nvdec_dec.cpu_fallback
 
-        default_frame = default_dec.get_frame_at(0)
+        nvdec_frame = nvdec_dec.get_frame_at(0)
 
-        assert psnr(ref_frame.data, default_frame.data) > 25
+        assert psnr(ref_frame.data, nvdec_frame.data) > 25
 
     @needs_cuda
-    def test_default_cuda_interface_error(self):
+    def test_nvdec_cuda_interface_error(self):
         with pytest.raises(RuntimeError, match="torch_parse_device_string"):
             VideoDecoder(NASA_VIDEO.path, device="cuda:0:bad_variant")
 
@@ -2055,11 +2055,12 @@ class TestVideoDecoder:
         with set_cuda_backend("FFMPEG"):
             assert _get_cuda_backend() == "ffmpeg"
 
-        # "nvdec" is the public-facing name for the default CUDA backend.
+        # "nvdec" is the public-facing name for the NVDEC CUDA backend.
+        # Internally it maps to the "default" variant value.
         with set_cuda_backend("nvdec"):
             assert _get_cuda_backend() == "default"
 
-        # Check that the default backend is "default" (i.e. NVDEC)
+        # Check that the default backend is NVDEC
         assert _get_cuda_backend() == "default"
         dec = VideoDecoder(H265_VIDEO.path, device="cuda")
         assert "CUDA" in str(dec.cpu_fallback)
@@ -2307,15 +2308,14 @@ class TestVideoDecoder:
             assert decoder.cpu_fallback.status_known
             assert decoder.cpu_fallback
             # FFmpeg interface doesn't know the specific reason
-            assert (
-                "Unknown reason - try the default 'nvdec' backend to know more"
-                in str(decoder.cpu_fallback)
+            assert "Unknown reason - try the 'nvdec' backend to know more" in str(
+                decoder.cpu_fallback
             )
         else:
-            # For the default interface, status is known immediately
+            # For the NVDEC interface, status is known immediately
             assert decoder.cpu_fallback.status_known
             assert decoder.cpu_fallback
-            # The default interface provides the specific reason for fallback
+            # The NVDEC interface provides the specific reason for fallback
             assert "Video not supported" in str(decoder.cpu_fallback)
 
     @needs_cuda

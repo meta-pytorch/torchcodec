@@ -784,7 +784,7 @@ void VideoEncoder::initializeEncoder(
   auto tensorDevice = frames_.device();
   StableDevice stableDevice(
       static_cast<StableDeviceType>(tensorDevice.type()), tensorDevice.index());
-  // The default CUDA interface is decode-only; encoders need the FFmpeg-based
+  // The NVDEC CUDA interface is decode-only; encoders need the FFmpeg-based
   // one.
   deviceInterface_ = createDeviceInterface(
       stableDevice, stableDevice.type() == kStableCUDA ? "ffmpeg" : "default");
@@ -1121,7 +1121,7 @@ void MultiStreamEncoder::addVideoStream(
   STD_TORCH_CHECK(frameRate > 0, "frame_rate must be > 0, got ", frameRate);
   videoStream_ = VideoStream{};
   StableDevice stableDevice(std::move(device));
-  // The default CUDA interface is decode-only; encoders need the FFmpeg-based
+  // The NVDEC CUDA interface is decode-only; encoders need the FFmpeg-based
   // one.
   videoStream_->deviceInterface = createDeviceInterface(
       stableDevice, stableDevice.type() == kStableCUDA ? "ffmpeg" : "default");
