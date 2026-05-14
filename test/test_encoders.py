@@ -1,5 +1,4 @@
 import io
-import json
 import os
 import platform
 import re
@@ -18,6 +17,7 @@ from torchcodec.encoders._multi_stream_encoder import StreamingEncoder
 
 from .utils import (
     assert_tensor_close_on_at_least,
+    call_ffprobe,
     get_ffmpeg_minor_version,
     in_fbcode,
     IN_GITHUB_CI,
@@ -65,27 +65,15 @@ def validate_frames_properties(*, actual: Path, expected: Path):
     show_entries = "frame=" + ",".join(required_props)
 
     frames_actual, frames_expected = (
-        json.loads(
-            subprocess.run(
-                [
-                    "ffprobe",
-                    "-v",
-                    "error",
-                    "-hide_banner",
-                    "-select_streams",
-                    "a:0",
-                    "-show_frames",
-                    "-show_entries",
-                    show_entries,
-                    "-of",
-                    "json",
-                    f"{f}",
-                ],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-            ).stdout
+        call_ffprobe(
+            [
+                "-select_streams",
+                "a:0",
+                "-show_frames",
+                "-show_entries",
+                show_entries,
+                f"{f}",
+            ]
         )["frames"]
         for f in (actual, expected)
     )
@@ -657,25 +645,16 @@ class TestVideoEncoder:
 
     def _get_frames_info(self, file_path, fields):
         """Helper function to get frame info (pts, dts, etc.) using ffprobe."""
-        result = subprocess.run(
+        parsed = call_ffprobe(
             [
-                "ffprobe",
-                "-v",
-                "error",
                 "-select_streams",
                 "v:0",
                 "-show_entries",
                 f"frame={','.join(fields)}",
-                "-of",
-                "json",
                 str(file_path),
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            check=True,
-            text=True,
+            ]
         )
-        frames = json.loads(result.stdout)["frames"]
+        frames = parsed["frames"]
         assert all(field in frame for field in fields for frame in frames)
         return frames
 
