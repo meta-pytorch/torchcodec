@@ -145,7 +145,7 @@ function(make_torchcodec_libraries
     )
 
     if(ENABLE_CUDA)
-	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp)
+	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp NPPRuntimeLoader.cpp)
     endif()
 
     set(core_library_dependencies
@@ -153,12 +153,8 @@ function(make_torchcodec_libraries
         ${TORCH_LIBRARIES}
     )
 
-    if(ENABLE_CUDA)
-        list(APPEND core_library_dependencies
-            ${CUDA_nppi_LIBRARY}
-            ${CUDA_nppicc_LIBRARY}
-        )
-    endif()
+    # Note: NPP (nppi, nppicc) is NOT linked here. It is loaded at runtime
+    # via NPPRuntimeLoader.cpp, following the same pattern as NVCUVID.
 
     make_torchcodec_sublibrary(
         "${core_library_name}"

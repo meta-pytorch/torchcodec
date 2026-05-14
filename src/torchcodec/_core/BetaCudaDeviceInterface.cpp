@@ -16,6 +16,7 @@
 #include "Logging.h"
 #include "NVDECCache.h"
 
+#include "NPPRuntimeLoader.h"
 #include "NVCUVIDRuntimeLoader.h"
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
@@ -69,8 +70,7 @@ static DecoderCapsCache& getDecoderCapsCache() {
   return cache;
 }
 
-// TODO: rename private variant "default" to "nvdec" to match public name.
-static bool g_cuda_default = registerDeviceInterface(
+static bool g_cuda_nvdec = registerDeviceInterface(
     DeviceInterfaceKey(kStableCUDA, /*variant=*/"default"),
     [](const StableDevice& device) {
       return new BetaCudaDeviceInterface(device);
@@ -267,12 +267,20 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
     : DeviceInterface(device) {
-  STD_TORCH_CHECK(
-      g_cuda_default, "BetaCudaDeviceInterface was not registered!");
+  STD_TORCH_CHECK(g_cuda_nvdec, "NvdecCudaDeviceInterface was not registered!");
   STD_TORCH_CHECK(
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
   initializeCudaContextWithPytorch(device_);
+
+  // Note: we could consider *not* erroring when NPP is unavailable, and just
+  // fallback to the CPU for the color-conversion. This would be similar to what
+  // we do when NVCUVID is not available (we fallback to the CPU for the
+  // decoding step).
+  STD_TORCH_CHECK(
+      loadNPPLibrary(),
+      "Failed to load NPP library. NPP is required for CUDA color conversion.");
+
   nppCtx_ = getNppStreamContext(device_);
 
   nvcuvidAvailable_ = loadNVCUVIDLibrary();
@@ -906,7 +914,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
   // ffmpeg interface does it with maybeConvertAVFrameToNV12OrRGB24().
   STD_TORCH_CHECK(
       gpuFrame->format == AV_PIX_FMT_CUDA,
-      "Expected CUDA format frame from BETA CUDA interface");
+      "Expected CUDA format frame from NVDEC CUDA interface");
 
   cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
@@ -923,7 +931,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     // preAllocatedOutputTensor has post-rotation dimensions, but NV12->RGB
     // conversion outputs pre-rotation dimensions, so we can't use it as the
     // conversion destination or validate it against the frame shape.
-    // Once we support native transforms on the default CUDA interface,
+    // Once we support native transforms on the NVDEC CUDA interface,
     // rotation should be handled as part of the transform pipeline instead.
     frameOutput.data = convertNV12FrameToRGB(
         gpuFrame,
@@ -966,7 +974,7 @@ void BetaCudaDeviceInterface::applyRotation(
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {
-  std::string details = "Beta CUDA Device Interface.";
+  std::string details = "NVDEC CUDA Device Interface.";
   if (cpuFallback_) {
     details += " Using CPU fallback.";
     if (!nvcuvidAvailable_) {
