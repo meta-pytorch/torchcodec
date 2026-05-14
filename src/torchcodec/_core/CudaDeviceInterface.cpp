@@ -4,6 +4,7 @@
 #include "Cache.h"
 #include "CudaDeviceInterface.h"
 #include "FFMPEGCommon.h"
+#include "NPPRuntimeLoader.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
 
@@ -98,6 +99,10 @@ CudaDeviceInterface::CudaDeviceInterface(const StableDevice& device)
   device_.set_index(getDeviceIndex(device_));
 
   initializeCudaContextWithPytorch(device_);
+
+  STD_TORCH_CHECK(
+      loadNPPLibrary(),
+      "Failed to load NPP library. NPP is required for CUDA color conversion.");
 
   hardwareDeviceCtx_ = getHardwareDeviceContext(device_);
   nppCtx_ = getNppStreamContext(device_);

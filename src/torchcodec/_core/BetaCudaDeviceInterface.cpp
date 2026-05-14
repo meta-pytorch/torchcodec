@@ -16,6 +16,7 @@
 #include "Logging.h"
 #include "NVDECCache.h"
 
+#include "NPPRuntimeLoader.h"
 #include "NVCUVIDRuntimeLoader.h"
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
@@ -271,6 +272,15 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
   initializeCudaContextWithPytorch(device_);
+
+  // Note: we could consider *not* erroring when NPP is unavailable, and just
+  // fallback to the CPU for the color-conversion. This would be similar to what
+  // we do when NVCUVID is not available (we fallback to the CPU for the
+  // decoding step).
+  STD_TORCH_CHECK(
+      loadNPPLibrary(),
+      "Failed to load NPP library. NPP is required for CUDA color conversion.");
+
   nppCtx_ = getNppStreamContext(device_);
 
   nvcuvidAvailable_ = loadNVCUVIDLibrary();
