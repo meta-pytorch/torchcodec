@@ -1142,21 +1142,20 @@ int MultiStreamEncoder::addVideoStream(
   return static_cast<int>(videoStreams_.size() - 1);
 }
 
-void MultiStreamEncoder::addAudioStream(
+int MultiStreamEncoder::addAudioStream(
     int sampleRate,
     int numChannels,
     std::optional<int> bitRate) {
-  STD_TORCH_CHECK(
-      !audioStream_.has_value(),
-      "An audio stream has already been added. Cannot add another.");
   STD_TORCH_CHECK(sampleRate > 0, "sample_rate must be > 0, got ", sampleRate);
   STD_TORCH_CHECK(
       numChannels > 0, "num_channels must be > 0, got ", numChannels);
 
-  audioStream_ = AudioStream{};
-  audioStream_->inSampleRate = sampleRate;
-  audioStream_->inNumChannels = numChannels;
-  audioStream_->options.bitRate = bitRate;
+  AudioStream audioStream;
+  audioStream.inSampleRate = sampleRate;
+  audioStream.inNumChannels = numChannels;
+  audioStream.options.bitRate = bitRate;
+  audioStreams_.push_back(std::move(audioStream));
+  return static_cast<int>(audioStreams_.size() - 1);
 }
 
 void MultiStreamEncoder::initializeVideoStream(VideoStream& videoStream) {
@@ -1313,8 +1312,7 @@ void MultiStreamEncoder::initializeVideoStream(VideoStream& videoStream) {
       getFFMPEGErrorStringFromErrorCode(status));
 }
 
-void MultiStreamEncoder::initializeAudioStream() {
-  auto& audioStream = *audioStream_;
+void MultiStreamEncoder::initializeAudioStream(AudioStream& audioStream) {
   // We use the AVFormatContext's default codec for that
   // specific format/container.
   const AVCodec* avCodec =
@@ -1390,14 +1388,14 @@ void MultiStreamEncoder::initializeAudioStream() {
 
 void MultiStreamEncoder::openStreamsAndWriteHeader() {
   STD_TORCH_CHECK(
-      !videoStreams_.empty() || audioStream_.has_value(),
+      !videoStreams_.empty() || !audioStreams_.empty(),
       "Call addVideoStream() or addAudioStream() before open().");
 
   for (auto& videoStream : videoStreams_) {
     initializeVideoStream(videoStream);
   }
-  if (audioStream_.has_value()) {
-    initializeAudioStream();
+  for (auto& audioStream : audioStreams_) {
+    initializeAudioStream(audioStream);
   }
 
   int status = avformat_write_header(
@@ -1499,26 +1497,31 @@ void MultiStreamEncoder::encodeVideoFrame(
   }
 }
 
-void MultiStreamEncoder::addSamples(const torch::stable::Tensor& samples) {
+void MultiStreamEncoder::addSamples(
+    const torch::stable::Tensor& samples,
+    int streamIndex) {
   STD_TORCH_CHECK(headerWritten_, "Call open() before addSamples().");
   STD_TORCH_CHECK(
-      audioStream_.has_value(),
-      "No audio stream has been added. Call addAudioStream() first.");
+      streamIndex >= 0 && streamIndex < static_cast<int>(audioStreams_.size()),
+      "Invalid stream index ",
+      streamIndex,
+      ". Number of audio streams: ",
+      audioStreams_.size());
+  auto& audioStream = audioStreams_[streamIndex];
   auto validatedSamples = validateSamples(samples);
   STD_TORCH_CHECK(
       static_cast<int>(validatedSamples.sizes()[0]) ==
-          audioStream_->inNumChannels,
+          audioStream.inNumChannels,
       "Expected ",
-      audioStream_->inNumChannels,
+      audioStream.inNumChannels,
       " channels, got ",
       validatedSamples.sizes()[0]);
-  encodeAudioSamples(validatedSamples);
+  encodeAudioSamples(validatedSamples, audioStream);
 }
 
 void MultiStreamEncoder::encodeAudioSamples(
-    const torch::stable::Tensor& samples) {
-  auto& audioStream = *audioStream_;
-
+    const torch::stable::Tensor& samples,
+    AudioStream& audioStream) {
   UniqueAVFrame avFrame = allocateAVFrame(
       audioStream.frameSize,
       audioStream.inSampleRate,
@@ -1754,11 +1757,12 @@ void MultiStreamEncoder::maybeFlushSwrAndFifo(
 }
 
 void MultiStreamEncoder::flushBuffers() {
-  if (audioStream_.has_value() && audioStream_->avStream != nullptr) {
-    AutoAVPacket audioAVPacket;
-    auto& audioStream = *audioStream_;
-    maybeFlushSwrAndFifo(audioAVPacket, audioStream);
-    encodeAudioFrame(audioAVPacket, UniqueAVFrame(nullptr), audioStream);
+  for (auto& audioStream : audioStreams_) {
+    if (audioStream.avStream != nullptr) {
+      AutoAVPacket audioAVPacket;
+      maybeFlushSwrAndFifo(audioAVPacket, audioStream);
+      encodeAudioFrame(audioAVPacket, UniqueAVFrame(nullptr), audioStream);
+    }
   }
   for (auto& videoStream : videoStreams_) {
     if (videoStream.avStream != nullptr) {
