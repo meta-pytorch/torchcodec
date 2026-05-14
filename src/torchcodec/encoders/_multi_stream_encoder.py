@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any
 
 from torch import Tensor
@@ -23,8 +22,13 @@ class _AudioStream:
 
 
 class StreamingEncoder:
-    def __init__(self, dest: str | Path):
-        self._encoder_tensor = _core.create_streaming_encoder_to_file(str(dest))
+    def __init__(self, dest, *, format: str | None = None):
+        if format is not None:
+            self._encoder_tensor = _core.create_streaming_encoder_to_file_like(
+                format, dest
+            )
+        else:
+            self._encoder_tensor = _core.create_streaming_encoder_to_file(str(dest))
 
     def add_video(
         self,
