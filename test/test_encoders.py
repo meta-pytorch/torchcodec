@@ -1803,7 +1803,7 @@ class TestStreamingEncoder:
         enc = StreamingEncoder(tmp_path / "test.mp4")
         enc.add_video(height=64, width=64, frame_rate=30.0)
         enc.open()
-        with pytest.raises(RuntimeError, match="Encoder is already open"):
+        with pytest.raises(RuntimeError, match="open\\(\\) was already called"):
             enc.open()
 
     def test_add_audio_invalid_bit_rate_errors(self, tmp_path):
