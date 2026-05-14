@@ -1,5 +1,4 @@
 import io
-import json
 import os
 import platform
 import re
@@ -2576,25 +2575,16 @@ class TestStreamingEncoder:
 
     @staticmethod
     def _get_frames_info(file_path, fields):
-        result = subprocess.run(
+        parsed = call_ffprobe(
             [
-                "ffprobe",
-                "-v",
-                "error",
                 "-select_streams",
                 "v:0",
                 "-show_entries",
                 f"frame={','.join(fields)}",
-                "-of",
-                "json",
                 str(file_path),
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            check=True,
-            text=True,
+            ]
         )
-        frames = json.loads(result.stdout)["frames"]
+        frames = parsed["frames"]
         assert all(field in frame for field in fields for frame in frames)
         return frames
 
