@@ -55,7 +55,8 @@ def set_cuda_backend(backend: str) -> Generator[None, None, None]:
         raise ValueError(
             f"Invalid CUDA backend ({backend}). Supported values are 'nvdec' and 'ffmpeg'."
         )
-    # "nvdec" is the public-facing name; internally the variant is "default".
+    # "nvdec" is the public-facing name; internally the variant value is
+    # "default" (meaning "the default CUDA backend").
     if backend == "nvdec":
         backend = "default"
 

@@ -1,4 +1,4 @@
-name: Build and test Linux wheel
+name: Linux CPU x86
 
 on:
   pull_request:
@@ -41,7 +41,7 @@ jobs:
     needs: generate-matrix
     strategy:
       fail-fast: false
-    name: Build and Upload Linux wheel
+    name: Build and Upload wheel
     uses: pytorch/test-infra/.github/workflows/build_wheels_linux.yml@main
     with:
       repository: meta-pytorch/torchcodec
@@ -56,6 +56,7 @@ jobs:
       trigger-event: ${{ github.event_name }}
       build-platform: "python-build-package"
       build-command: "BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1 python -m build --wheel -vvv --no-isolation"
+      also-upload-to-gpu-arch-versions: "xpu"
 
   install-and-test:
     runs-on: ubuntu-latest

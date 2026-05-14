@@ -17,6 +17,7 @@ import torch
 from torch import device as torch_device, nn, Tensor
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec._core._decoder_utils import create_video_decoder
+from torchcodec._logging import _LG
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.transforms import DecoderTransform
 
@@ -61,9 +62,7 @@ class CpuFallbackStatus:
         elif self._video_not_supported:
             reasons.append("Video not supported")
         elif self._is_fallback:
-            reasons.append(
-                "Unknown reason - try the default 'nvdec' backend to know more!"
-            )
+            reasons.append("Unknown reason - try the 'nvdec' backend to know more!")
 
         if reasons:
             return (
@@ -231,6 +230,8 @@ class VideoDecoder:
         assert self.metadata.end_stream_seconds is not None  # mypy.
         assert self.metadata.num_frames is not None  # mypy.
 
+        _LG.debug(f"VideoDecoder created:\n{self.metadata}")
+
         self._begin_stream_seconds = self.metadata.begin_stream_seconds
         self._end_stream_seconds = self.metadata.end_stream_seconds
         self._num_frames = self.metadata.num_frames
@@ -253,7 +254,7 @@ class VideoDecoder:
         # either when:
         # - this @property has never been called before
         # - no frame has been decoded yet on the FFmpeg interface.
-        # Note that for the default interface, we're able to know the fallback
+        # Note that for the NVDEC interface, we're able to know the fallback
         # status right when the VideoDecoder is instantiated, but the
         # status_known attribute is initialized to False.
         if not self._cpu_fallback.status_known:
@@ -265,7 +266,7 @@ class VideoDecoder:
                 if "CPU fallback" in backend_details:
                     self._cpu_fallback._is_fallback = True
                     if self._cpu_fallback._backend == "CUDA":
-                        # Only the default (NVDEC) interface can provide details.
+                        # Only the NVDEC interface can provide details.
                         # if it's not that nvcuvid is missing, it must be video-specific
                         if "NVCUVID not available" in backend_details:
                             self._cpu_fallback._nvcuvid_unavailable = True

@@ -4,7 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-// BETA CUDA device interface that provides direct control over NVDEC
+// NVDEC CUDA device interface that provides direct control over NVDEC
 // while keeping FFmpeg for demuxing. A lot of the logic, particularly the use
 // of a cache for the decoders, is inspired by DALI's implementation which is
 // APACHE 2.0:
@@ -89,6 +89,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;
   CUVIDEOFORMAT videoFormat_ = {};
+  CUVIDEOFORMATEX parserExtInfo_ = {};
 
   std::queue<CUVIDPARSERDISPINFO> readyFrames_;
 
