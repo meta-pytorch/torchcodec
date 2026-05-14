@@ -89,19 +89,19 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_test_frame_pts_equality(Tensor(a!) decoder, *, int frame_index, float pts_seconds_to_test) -> bool");
   m.def("scan_all_streams_to_update_metadata(Tensor(a!) decoder) -> ()");
-  m.def("create_streaming_encoder_to_file(str filename) -> Tensor");
-  m.def(
-      "create_streaming_encoder_to_file_like(str format, int file_like_context) -> Tensor");
+  m.def("create_streaming_encoder() -> Tensor");
   m.def("streaming_encoder_close(Tensor(a!) encoder) -> ()");
   m.def(
-      "streaming_encoder_add_video_stream(Tensor(a!) encoder, int height, int width, float frame_rate, str device=\"cpu\", str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
+      "streaming_encoder_add_video_stream(Tensor(a!) encoder, int height, int width, float frame_rate, str device=\"cpu\", str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> int");
   m.def(
-      "streaming_encoder_add_audio_stream(Tensor(a!) encoder, int sample_rate, int num_channels, int? bit_rate=None) -> ()");
-  m.def("streaming_encoder_open(Tensor(a!) encoder) -> ()");
+      "streaming_encoder_add_audio_stream(Tensor(a!) encoder, int sample_rate, int num_channels, int? bit_rate=None) -> int");
+  m.def("streaming_encoder_open_file(Tensor(a!) encoder, str filename) -> ()");
   m.def(
-      "streaming_encoder_add_frames(Tensor(a!) encoder, Tensor frames) -> ()");
+      "streaming_encoder_open_file_like(Tensor(a!) encoder, str format, int file_like_context) -> ()");
   m.def(
-      "streaming_encoder_add_samples(Tensor(a!) encoder, Tensor samples) -> ()");
+      "streaming_encoder_add_frames(Tensor(a!) encoder, Tensor frames, int stream_index) -> ()");
+  m.def(
+      "streaming_encoder_add_samples(Tensor(a!) encoder, Tensor samples, int stream_index) -> ()");
   m.def("set_nvdec_cache_capacity(int capacity) -> ()");
   m.def("get_nvdec_cache_capacity() -> int");
   m.def("_get_nvdec_cache_size(int device_index) -> int");
@@ -1202,22 +1202,8 @@ void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
   videoDecoder->scanFileAndUpdateMetadataAndIndex();
 }
 
-torch::stable::Tensor create_streaming_encoder_to_file(std::string file_name) {
-  auto encoder = std::make_unique<MultiStreamEncoder>(file_name);
-  return wrapMultiStreamEncoderPointerToTensor(std::move(encoder));
-}
-
-torch::stable::Tensor create_streaming_encoder_to_file_like(
-    std::string format,
-    int64_t file_like_context) {
-  auto fileLikeContext =
-      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
-  STD_TORCH_CHECK(
-      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
-  std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
-
-  auto encoder = std::make_unique<MultiStreamEncoder>(
-      format, std::move(avioContextHolder));
+torch::stable::Tensor create_streaming_encoder() {
+  auto encoder = std::make_unique<MultiStreamEncoder>();
   return wrapMultiStreamEncoderPointerToTensor(std::move(encoder));
 }
 
@@ -1225,7 +1211,7 @@ void streaming_encoder_close(torch::stable::Tensor& encoder) {
   unwrapTensorToGetMultiStreamEncoder(encoder)->close();
 }
 
-void streaming_encoder_add_video_stream(
+int64_t streaming_encoder_add_video_stream(
     torch::stable::Tensor& encoder,
     int64_t height,
     int64_t width,
@@ -1240,43 +1226,64 @@ void streaming_encoder_add_video_stream(
   if (extra_options.has_value()) {
     extraOptionsMap = unflattenExtraOptions(extra_options.value());
   }
-  unwrapTensorToGetMultiStreamEncoder(encoder)->addVideoStream(
-      static_cast<int>(height),
-      static_cast<int>(width),
-      frame_rate,
-      std::move(device),
-      std::move(codec),
-      std::move(pixel_format),
-      crf,
-      std::move(preset),
-      std::move(extraOptionsMap));
+  return static_cast<int64_t>(
+      unwrapTensorToGetMultiStreamEncoder(encoder)->addVideoStream(
+          static_cast<int>(height),
+          static_cast<int>(width),
+          frame_rate,
+          std::move(device),
+          std::move(codec),
+          std::move(pixel_format),
+          crf,
+          std::move(preset),
+          std::move(extraOptionsMap)));
 }
 
-void streaming_encoder_open(torch::stable::Tensor& encoder) {
-  unwrapTensorToGetMultiStreamEncoder(encoder)->open();
+void streaming_encoder_open_file(
+    torch::stable::Tensor& encoder,
+    std::string filename) {
+  unwrapTensorToGetMultiStreamEncoder(encoder)->open(filename);
 }
 
-void streaming_encoder_add_audio_stream(
+void streaming_encoder_open_file_like(
+    torch::stable::Tensor& encoder,
+    std::string format,
+    int64_t file_like_context) {
+  auto fileLikeContext =
+      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+  STD_TORCH_CHECK(
+      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
+  std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
+  unwrapTensorToGetMultiStreamEncoder(encoder)->open(
+      format, std::move(avioContextHolder));
+}
+
+int64_t streaming_encoder_add_audio_stream(
     torch::stable::Tensor& encoder,
     int64_t sample_rate,
     int64_t num_channels,
     std::optional<int64_t> bit_rate = std::nullopt) {
-  unwrapTensorToGetMultiStreamEncoder(encoder)->addAudioStream(
-      validateInt64ToInt(sample_rate, "sample_rate"),
-      validateInt64ToInt(num_channels, "num_channels"),
-      validateOptionalInt64ToInt(bit_rate, "bit_rate"));
+  return static_cast<int64_t>(
+      unwrapTensorToGetMultiStreamEncoder(encoder)->addAudioStream(
+          validateInt64ToInt(sample_rate, "sample_rate"),
+          validateInt64ToInt(num_channels, "num_channels"),
+          validateOptionalInt64ToInt(bit_rate, "bit_rate")));
 }
 
 void streaming_encoder_add_frames(
     torch::stable::Tensor& encoder,
-    const torch::stable::Tensor& frames) {
-  unwrapTensorToGetMultiStreamEncoder(encoder)->addFrames(frames);
+    const torch::stable::Tensor& frames,
+    int64_t stream_index) {
+  unwrapTensorToGetMultiStreamEncoder(encoder)->addFrames(
+      frames, static_cast<int>(stream_index));
 }
 
 void streaming_encoder_add_samples(
     torch::stable::Tensor& encoder,
-    const torch::stable::Tensor& samples) {
-  unwrapTensorToGetMultiStreamEncoder(encoder)->addSamples(samples);
+    const torch::stable::Tensor& samples,
+    int64_t stream_index) {
+  unwrapTensorToGetMultiStreamEncoder(encoder)->addSamples(
+      samples, static_cast<int>(stream_index));
 }
 
 torch::stable::Tensor create_wav_decoder_from_file(
@@ -1357,19 +1364,18 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
   m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
   m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
-  m.impl(
-      "create_streaming_encoder_to_file",
-      TORCH_BOX(&create_streaming_encoder_to_file));
-  m.impl(
-      "create_streaming_encoder_to_file_like",
-      TORCH_BOX(&create_streaming_encoder_to_file_like));
+  m.impl("create_streaming_encoder", TORCH_BOX(&create_streaming_encoder));
   m.impl(
       "streaming_encoder_add_video_stream",
       TORCH_BOX(&streaming_encoder_add_video_stream));
   m.impl(
       "streaming_encoder_add_audio_stream",
       TORCH_BOX(&streaming_encoder_add_audio_stream));
-  m.impl("streaming_encoder_open", TORCH_BOX(&streaming_encoder_open));
+  m.impl(
+      "streaming_encoder_open_file", TORCH_BOX(&streaming_encoder_open_file));
+  m.impl(
+      "streaming_encoder_open_file_like",
+      TORCH_BOX(&streaming_encoder_open_file_like));
   m.impl(
       "streaming_encoder_add_frames", TORCH_BOX(&streaming_encoder_add_frames));
   m.impl(
@@ -1420,12 +1426,12 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       TORCH_BOX(&scan_all_streams_to_update_metadata));
 
   m.impl("_get_backend_details", TORCH_BOX(&get_backend_details));
+  m.impl("create_streaming_encoder", TORCH_BOX(&create_streaming_encoder));
   m.impl(
-      "create_streaming_encoder_to_file",
-      TORCH_BOX(&create_streaming_encoder_to_file));
+      "streaming_encoder_open_file", TORCH_BOX(&streaming_encoder_open_file));
   m.impl(
-      "create_streaming_encoder_to_file_like",
-      TORCH_BOX(&create_streaming_encoder_to_file_like));
+      "streaming_encoder_open_file_like",
+      TORCH_BOX(&streaming_encoder_open_file_like));
   m.impl("streaming_encoder_close", TORCH_BOX(&streaming_encoder_close));
   m.impl(
       "streaming_encoder_add_video_stream",
@@ -1433,7 +1439,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "streaming_encoder_add_audio_stream",
       TORCH_BOX(&streaming_encoder_add_audio_stream));
-  m.impl("streaming_encoder_open", TORCH_BOX(&streaming_encoder_open));
   m.impl(
       "streaming_encoder_add_frames", TORCH_BOX(&streaming_encoder_add_frames));
   m.impl(

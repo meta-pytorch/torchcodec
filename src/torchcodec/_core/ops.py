@@ -138,11 +138,8 @@ _get_json_ffmpeg_library_versions = (
     torch.ops.torchcodec_ns._get_json_ffmpeg_library_versions.default
 )
 _get_backend_details = torch.ops.torchcodec_ns._get_backend_details.default
-create_streaming_encoder_to_file = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.create_streaming_encoder_to_file.default
-)
-_create_streaming_encoder_to_file_like = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.create_streaming_encoder_to_file_like.default
+create_streaming_encoder = torch._dynamo.disallow_in_graph(
+    torch.ops.torchcodec_ns.create_streaming_encoder.default
 )
 streaming_encoder_close = torch.ops.torchcodec_ns.streaming_encoder_close.default
 streaming_encoder_add_video_stream = (
@@ -151,7 +148,12 @@ streaming_encoder_add_video_stream = (
 streaming_encoder_add_audio_stream = (
     torch.ops.torchcodec_ns.streaming_encoder_add_audio_stream.default
 )
-streaming_encoder_open = torch.ops.torchcodec_ns.streaming_encoder_open.default
+streaming_encoder_open_file = (
+    torch.ops.torchcodec_ns.streaming_encoder_open_file.default
+)
+_streaming_encoder_open_file_like = (
+    torch.ops.torchcodec_ns.streaming_encoder_open_file_like.default
+)
 streaming_encoder_add_frames = (
     torch.ops.torchcodec_ns.streaming_encoder_add_frames.default
 )
@@ -271,14 +273,16 @@ def encode_video_to_file_like(
     )
 
 
-def create_streaming_encoder_to_file_like(
+def streaming_encoder_open_file_like(
+    encoder: torch.Tensor,
     format: str,
     file_like: io.RawIOBase | io.BufferedIOBase,
-) -> torch.Tensor:
+) -> None:
     assert _pybind_ops is not None
-    return _create_streaming_encoder_to_file_like(
+    _streaming_encoder_open_file_like(
+        encoder,
         format,
-        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
+        _pybind_ops.create_file_like_context(file_like, True),
     )
 
 
@@ -621,18 +625,8 @@ def _get_backend_details_abstract(decoder: torch.Tensor) -> str:
     return ""
 
 
-@register_fake("torchcodec_ns::create_streaming_encoder_to_file")
-def _create_streaming_encoder_to_file_abstract(
-    filename: str,
-) -> torch.Tensor:
-    return torch.empty([], dtype=torch.long)
-
-
-@register_fake("torchcodec_ns::create_streaming_encoder_to_file_like")
-def _create_streaming_encoder_to_file_like_abstract(
-    format: str,
-    file_like_context: int,
-) -> torch.Tensor:
+@register_fake("torchcodec_ns::create_streaming_encoder")
+def _create_streaming_encoder_abstract() -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
 
@@ -653,8 +647,8 @@ def streaming_encoder_add_video_stream_abstract(
     crf: float | None = None,
     preset: str | None = None,
     extra_options: list[str] | None = None,
-) -> None:
-    return
+) -> int:
+    return 0
 
 
 @register_fake("torchcodec_ns::streaming_encoder_add_audio_stream")
@@ -663,25 +657,32 @@ def streaming_encoder_add_audio_stream_abstract(
     sample_rate: int,
     num_channels: int,
     bit_rate: int | None = None,
-) -> None:
+) -> int:
+    return 0
+
+
+@register_fake("torchcodec_ns::streaming_encoder_open_file")
+def streaming_encoder_open_file_abstract(encoder: torch.Tensor, filename: str) -> None:
     return
 
 
-@register_fake("torchcodec_ns::streaming_encoder_open")
-def streaming_encoder_open_abstract(encoder: torch.Tensor) -> None:
+@register_fake("torchcodec_ns::streaming_encoder_open_file_like")
+def streaming_encoder_open_file_like_abstract(
+    encoder: torch.Tensor, format: str, file_like_context: int
+) -> None:
     return
 
 
 @register_fake("torchcodec_ns::streaming_encoder_add_frames")
 def streaming_encoder_add_frames_abstract(
-    encoder: torch.Tensor, frames: torch.Tensor
+    encoder: torch.Tensor, frames: torch.Tensor, stream_index: int
 ) -> None:
     return
 
 
 @register_fake("torchcodec_ns::streaming_encoder_add_samples")
 def streaming_encoder_add_samples_abstract(
-    encoder: torch.Tensor, samples: torch.Tensor
+    encoder: torch.Tensor, samples: torch.Tensor, stream_index: int
 ) -> None:
     return
 
