@@ -73,12 +73,15 @@ class StreamingEncoder:
         sample_rate: int,
         num_channels: int,
         bit_rate: int | None = None,
+        # TODO MultiStreamEncoder: Decide on public API for 'output' params
+        output_num_channels: int | None = None,
     ) -> _AudioStream:
         stream_index = _core.streaming_encoder_add_audio_stream(
             self._encoder_tensor,
             sample_rate=sample_rate,
             num_channels=num_channels,
             bit_rate=bit_rate,
+            output_num_channels=output_num_channels,
         )
         return _AudioStream(self._encoder_tensor, stream_index)
 
