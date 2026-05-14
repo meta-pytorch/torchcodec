@@ -2060,3 +2060,43 @@ class TestStreamingEncoder:
 
         decoded_2 = AudioDecoder(source, stream_index=2).get_all_samples()
         assert decoded_2.data.shape[0] == 2
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_output_sample_rate(self, tmp_path, method):
+        in_sample_rate = 44_100
+        source_samples = torch.rand(1, 10_000)
+
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mkv")
+        # Stream 0: 44100 -> 48000
+        audio_upsample = enc.add_audio(
+            sample_rate=in_sample_rate,
+            num_channels=1,
+            output_sample_rate=48_000,
+        )
+        # Stream 1: 44100 -> 32000
+        audio_downsample = enc.add_audio(
+            sample_rate=in_sample_rate,
+            num_channels=1,
+            output_sample_rate=32_000,
+        )
+        # Stream 2: 44100 -> no conversion (stays 44100)
+        audio_passthrough = enc.add_audio(
+            sample_rate=in_sample_rate,
+            num_channels=1,
+        )
+        enc.open(**open_kwargs)
+        audio_upsample.write(source_samples)
+        audio_downsample.write(source_samples)
+        audio_passthrough.write(source_samples)
+        enc.close()
+
+        source = self._get_decoder_source(encoder_output)
+
+        decoded_0 = AudioDecoder(source, stream_index=0).get_all_samples()
+        assert decoded_0.sample_rate == 48_000
+
+        decoded_1 = AudioDecoder(source, stream_index=1).get_all_samples()
+        assert decoded_1.sample_rate == 32_000
+
+        decoded_2 = AudioDecoder(source, stream_index=2).get_all_samples()
+        assert decoded_2.sample_rate == 44_100

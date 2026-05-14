@@ -658,6 +658,7 @@ def streaming_encoder_add_audio_stream_abstract(
     num_channels: int,
     bit_rate: int | None = None,
     output_num_channels: int | None = None,
+    output_sample_rate: int | None = None,
 ) -> int:
     return 0
 
