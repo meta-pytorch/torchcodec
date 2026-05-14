@@ -90,6 +90,14 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v6
 
+      - name: Update NVIDIA driver
+        shell: cmd
+        run: |
+          curl --retry 3 -kL https://ossci-windows.s3.amazonaws.com/580.88-data-center-tesla-desktop-win10-win11-64bit-dch-international.exe --output driver_installer.exe
+          start /wait driver_installer.exe -s -noreboot
+          del driver_installer.exe
+          nvidia-smi
+
       - name: Remove src/ folder
         run: bash packaging/remove_src.sh
 
