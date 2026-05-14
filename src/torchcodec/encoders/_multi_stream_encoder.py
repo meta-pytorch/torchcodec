@@ -97,3 +97,9 @@ class StreamingEncoder:
 
     def close(self) -> None:
         _core.streaming_encoder_close(self._encoder_tensor)
+
+    def __enter__(self) -> "StreamingEncoder":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.close()

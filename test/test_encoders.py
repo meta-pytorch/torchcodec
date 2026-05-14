@@ -1584,6 +1584,23 @@ class TestStreamingEncoder:
         enc.close()
         enc.close()  # double close is a no-op
 
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_context_manager(self, tmp_path, method):
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8)
+        video = enc.add_video(height=64, width=64, frame_rate=30.0)
+        enc.open(**open_kwargs)
+        with enc:
+            video.write(frames)
+
+        # The output is valid and decodable, proving close() was called by __exit__.
+        decoded_frames = (
+            VideoDecoder(self._get_decoder_source(encoder_output))
+            .get_frames_in_range(start=0, stop=5)
+            .data
+        )
+        assert decoded_frames.shape == frames.shape
+
     @pytest.mark.parametrize("format", ["mp4", "mov", "mkv"])
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize("device", cpu_and_oss_cuda)
@@ -1801,6 +1818,35 @@ class TestStreamingEncoder:
         enc.open(**open_kwargs)
         with pytest.raises(RuntimeError, match="open\\(\\) was already called"):
             enc.open(**open_kwargs)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_open_after_close_errors(self, tmp_path, method):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        enc.add_video(height=64, width=64, frame_rate=30.0)
+        enc.open(**open_kwargs)
+        enc.close()
+        with pytest.raises(RuntimeError, match="Cannot open after close\\(\\)"):
+            enc.open(**open_kwargs)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_write_frames_after_close_errors(self, tmp_path, method):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        video = enc.add_video(height=64, width=64, frame_rate=30.0)
+        enc.open(**open_kwargs)
+        enc.close()
+        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match="Cannot add frames after close\\(\\)"):
+            video.write(frames)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_write_samples_after_close_errors(self, tmp_path, method):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "wav")
+        audio = enc.add_audio(sample_rate=44100, num_channels=1)
+        enc.open(**open_kwargs)
+        enc.close()
+        samples = torch.randn(1, 1000)
+        with pytest.raises(RuntimeError, match="Cannot add samples after close\\(\\)"):
+            audio.write(samples)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_audio_invalid_bit_rate_errors(self, tmp_path, method):

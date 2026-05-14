@@ -1060,6 +1060,7 @@ MultiStreamEncoder::MultiStreamEncoder() {
 }
 
 void MultiStreamEncoder::open(std::string_view fileName) {
+  STD_TORCH_CHECK(!closed_, "Cannot open after close() was called.");
   STD_TORCH_CHECK(!headerWritten_, "open() was already called.");
 
   AVFormatContext* avFormatContext = nullptr;
@@ -1089,6 +1090,7 @@ void MultiStreamEncoder::open(std::string_view fileName) {
 void MultiStreamEncoder::open(
     std::string_view formatName,
     std::unique_ptr<AVIOContextHolder> avioContextHolder) {
+  STD_TORCH_CHECK(!closed_, "Cannot open after close() was called.");
   STD_TORCH_CHECK(!headerWritten_, "open() was already called.");
 
   avioContextHolder_ = std::move(avioContextHolder);
@@ -1418,6 +1420,7 @@ void MultiStreamEncoder::addFrames(
     const torch::stable::Tensor& frames,
     int streamIndex) {
   // TODO MultiStreamEncoder: Specify which video stream to add frames to
+  STD_TORCH_CHECK(!closed_, "Cannot add frames after close() was called.");
   STD_TORCH_CHECK(headerWritten_, "Call open() before addFrames().");
   STD_TORCH_CHECK(
       streamIndex >= 0 && streamIndex < static_cast<int>(videoStreams_.size()),
@@ -1507,6 +1510,7 @@ void MultiStreamEncoder::encodeVideoFrame(
 void MultiStreamEncoder::addSamples(
     const torch::stable::Tensor& samples,
     int streamIndex) {
+  STD_TORCH_CHECK(!closed_, "Cannot add samples after close() was called.");
   STD_TORCH_CHECK(headerWritten_, "Call open() before addSamples().");
   STD_TORCH_CHECK(
       streamIndex >= 0 && streamIndex < static_cast<int>(audioStreams_.size()),
