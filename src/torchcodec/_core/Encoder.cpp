@@ -573,7 +573,6 @@ torch::stable::Tensor validateFrames(
         framesDevice.index());
   }
   if (avCodecContext) {
-    // TODO MultiStreamEncoder: Enable tensors in NHWC shape
     STD_TORCH_CHECK(
         static_cast<int>(frames.sizes()[2]) == avCodecContext->height &&
             static_cast<int>(frames.sizes()[3]) == avCodecContext->width,
@@ -832,13 +831,11 @@ void VideoEncoder::initializeEncoder(
   avCodecContext_.reset(avCodecContext);
 
   // Store dimensions of input frames
-  // TODO-VideoEncoder: (P2) Enable tensors in NHWC shape
   auto sizes = frames_.sizes();
   int inHeight = static_cast<int>(sizes[2]);
   int inWidth = static_cast<int>(sizes[3]);
 
   // Always use input dimensions as output dimensions
-  // TODO-VideoEncoder: (P2) Allow height and width to be set
   int outWidth = inWidth;
   int outHeight = inHeight;
   AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
@@ -1208,7 +1205,6 @@ void MultiStreamEncoder::initializeVideoStream(VideoStream& videoStream) {
       avCodecContext != nullptr, "Couldn't allocate codec context.");
   videoStream.avCodecContext.reset(avCodecContext);
 
-  // TODO MultiStreamEncoder: Allow output height and width to be set
   int outHeight = videoStream.inHeight;
   int outWidth = videoStream.inWidth;
   AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
@@ -1245,7 +1241,6 @@ void MultiStreamEncoder::initializeVideoStream(VideoStream& videoStream) {
   videoStream.avCodecContext->width = outWidth;
   videoStream.avCodecContext->height = outHeight;
   videoStream.avCodecContext->pix_fmt = outPixelFormat;
-  // TODO MultiStreamEncoder: Add and utilize output frame_rate option
   videoStream.avCodecContext->framerate =
       av_d2q(videoStream.inFrameRate, INT_MAX);
   videoStream.avCodecContext->time_base =
@@ -1417,7 +1412,6 @@ void MultiStreamEncoder::openStreamsAndWriteHeader() {
 void MultiStreamEncoder::addFrames(
     const torch::stable::Tensor& frames,
     int streamIndex) {
-  // TODO MultiStreamEncoder: Specify which video stream to add frames to
   STD_TORCH_CHECK(headerWritten_, "Call open() before addFrames().");
   STD_TORCH_CHECK(
       streamIndex >= 0 && streamIndex < static_cast<int>(videoStreams_.size()),
