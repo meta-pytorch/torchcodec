@@ -2079,3 +2079,206 @@ class TestStreamingEncoder:
 
         decoded_2 = AudioDecoder(source, stream_index=2).get_all_samples()
         assert decoded_2.sample_rate == 44_100
+
+    @staticmethod
+    def _get_video_metadata(file_path, fields):
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                f"stream={','.join(fields)}",
+                "-of",
+                "default=noprint_wrappers=1",
+                str(file_path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=True,
+            text=True,
+        )
+        metadata = {}
+        for line in result.stdout.strip().split("\n"):
+            if "=" in line:
+                key, value = line.split("=", 1)
+                metadata[key] = value
+        assert all(field in metadata for field in fields)
+        return metadata
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    @pytest.mark.parametrize(
+        "format,codec_spec",
+        [
+            ("mp4", "h264"),
+            ("mp4", "hevc"),
+            ("mkv", "av1"),
+            ("avi", "mpeg4"),
+            pytest.param(
+                "webm",
+                "vp9",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS, reason="vp9 codec not available on Windows"
+                ),
+            ),
+        ],
+    )
+    def test_codec_parameter_utilized(self, tmp_path, method, format, codec_spec):
+        enc, encoder_output, open_kwargs = self._create_encoder(
+            method, tmp_path, format
+        )
+        video = enc.add_video(height=64, width=64, frame_rate=30.0, codec=codec_spec)
+        enc.open(**open_kwargs)
+        video.write(torch.zeros((10, 3, 64, 64), dtype=torch.uint8))
+        enc.close()
+
+        if method == "to_file_like":
+            return
+        actual = self._get_video_metadata(encoder_output, fields=["codec_name"])[
+            "codec_name"
+        ]
+        assert actual == codec_spec
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    @pytest.mark.parametrize(
+        "codec_spec,codec_impl",
+        [
+            ("h264", "libx264"),
+            ("av1", "libaom-av1"),
+            pytest.param(
+                "vp9",
+                "libvpx-vp9",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS, reason="vp9 codec not available on Windows"
+                ),
+            ),
+        ],
+    )
+    def test_codec_spec_vs_impl_equivalence(
+        self, tmp_path, method, codec_spec, codec_impl
+    ):
+        frames = torch.randint(0, 256, (10, 3, 64, 64), dtype=torch.uint8)
+
+        def encode_with_codec(codec, suffix):
+            sub = tmp_path / suffix
+            sub.mkdir(exist_ok=True)
+            enc, encoder_output, open_kwargs = self._create_encoder(method, sub, "mp4")
+            video = enc.add_video(height=64, width=64, frame_rate=30.0, codec=codec)
+            enc.open(**open_kwargs)
+            video.write(frames)
+            enc.close()
+            return encoder_output
+
+        spec_output = encode_with_codec(codec_spec, "spec")
+        impl_output = encode_with_codec(codec_impl, "impl")
+
+        spec_decoded = (
+            VideoDecoder(self._get_decoder_source(spec_output))
+            .get_frames_in_range(start=0, stop=10)
+            .data
+        )
+        impl_decoded = (
+            VideoDecoder(self._get_decoder_source(impl_output))
+            .get_frames_in_range(start=0, stop=10)
+            .data
+        )
+        torch.testing.assert_close(spec_decoded, impl_decoded, rtol=0, atol=0)
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize(
+        "profile,colorspace,color_range",
+        [
+            ("baseline", "bt709", "tv"),
+            ("main", "bt470bg", "pc"),
+            ("high", "fcc", "pc"),
+        ],
+    )
+    def test_extra_options_utilized(self, tmp_path, profile, colorspace, color_range):
+        enc = StreamingEncoder()
+        dest = str(tmp_path / "output.mp4")
+        video = enc.add_video(
+            height=64,
+            width=64,
+            frame_rate=30.0,
+            extra_options={
+                "profile": profile,
+                "colorspace": colorspace,
+                "color_range": color_range,
+            },
+        )
+        enc.open(dest=dest)
+        video.write(torch.zeros((5, 3, 64, 64), dtype=torch.uint8))
+        enc.close()
+
+        metadata = self._get_video_metadata(
+            dest, fields=["profile", "color_space", "color_range"]
+        )
+        expected_profile = "constrained baseline" if profile == "baseline" else profile
+        assert metadata["profile"].lower() == expected_profile
+        assert metadata["color_space"] == colorspace
+        assert metadata["color_range"] == color_range
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    @pytest.mark.parametrize("crf", [23, 23.5, -0.9])
+    def test_crf_valid_values(self, method, crf, tmp_path):
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        video = enc.add_video(height=64, width=64, frame_rate=30.0, crf=crf)
+        enc.open(**open_kwargs)
+        video.write(torch.zeros((5, 3, 64, 64), dtype=torch.uint8))
+        enc.close()
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    @pytest.mark.parametrize("bit_rate", [None, 0, 44100, 999999999])
+    def test_audio_bit_rate_positive_values(self, method, bit_rate, tmp_path):
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "wav")
+        audio = enc.add_audio(sample_rate=44100, num_channels=1, bit_rate=bit_rate)
+        enc.open(**open_kwargs)
+        audio.write(torch.randn(1, 1000))
+        enc.close()
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    @pytest.mark.parametrize("format", ["wav", "mp3", "flac"])
+    def test_multiple_audio_formats(self, method, format, tmp_path):
+        enc, encoder_output, open_kwargs = self._create_encoder(
+            method, tmp_path, format
+        )
+        audio = enc.add_audio(sample_rate=44100, num_channels=1)
+        enc.open(**open_kwargs)
+        audio.write(torch.randn(1, 10_000))
+        enc.close()
+
+        decoded = AudioDecoder(
+            self._get_decoder_source(encoder_output)
+        ).get_all_samples()
+        assert decoded.sample_rate == 44100
+        assert decoded.data.shape[0] == 1
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_non_integer_frame_rate(self, method, tmp_path):
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        video = enc.add_video(height=64, width=64, frame_rate=29.97)
+        enc.open(**open_kwargs)
+        video.write(torch.zeros((10, 3, 64, 64), dtype=torch.uint8))
+        enc.close()
+
+        decoded_decoder = VideoDecoder(self._get_decoder_source(encoder_output))
+        assert abs(decoded_decoder.metadata.average_fps - 29.97) < 0.01
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_preset_parameter(self, method, tmp_path):
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        video = enc.add_video(height=64, width=64, frame_rate=30.0, preset="ultrafast")
+        enc.open(**open_kwargs)
+        video.write(torch.zeros((5, 3, 64, 64), dtype=torch.uint8))
+        enc.close()
+
+        decoded = (
+            VideoDecoder(self._get_decoder_source(encoder_output))
+            .get_frames_in_range(start=0, stop=5)
+            .data
+        )
+        assert decoded.shape == (5, 3, 64, 64)
