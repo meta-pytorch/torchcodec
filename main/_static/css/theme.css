@@ -3051,6 +3051,10 @@ nav.bd-links li > a {
   color: var(--pst-color-text-base) !important;
 }
 
+.page-toc .section-nav {
+  display: block;
+}
+
 .toc-entry a.nav-link, .toc-entry a > code {
   color: var(--pst-color-text-base) !important;
 }

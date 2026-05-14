@@ -158,9 +158,18 @@ nav.bd-links li>a {
   color: var(--pst-color-text-base) !important;
 }
 
-// Make right nav links more readable
+// Make right nav links more readable with compact padding
 .toc-entry a.nav-link, .toc-entry a>code {
   color: var(--pst-color-text-base) !important;
+}
+
+.page-toc .section-nav {
+  display: block;
+}
+
+.bd-sidebar-secondary .toc-entry a.nav-link {
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
 }
 
 .bd-sidebar-primary {

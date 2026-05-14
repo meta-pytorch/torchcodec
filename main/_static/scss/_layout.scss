@@ -1,6 +1,12 @@
 // Layout styles
 @use 'variables';
 
+// Prevent navbar items from rendering as a bulleted list when <li> elements
+// appear outside a proper <ul> (e.g. C++ docs with Breathe/Doxygen builds)
+.navbar-header-items__center .navbar-item li.nav-item {
+  list-style: none;
+}
+
 // Header positioning
 .bd-header {
   top: var(--header-height-desktop) !important;
