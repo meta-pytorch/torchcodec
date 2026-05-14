@@ -187,10 +187,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   MultiStreamEncoder(MultiStreamEncoder&&) = delete;
   MultiStreamEncoder& operator=(MultiStreamEncoder&&) = delete;
 
-  MultiStreamEncoder(std::string_view fileName);
-  MultiStreamEncoder(
-      std::string_view formatName,
-      std::unique_ptr<AVIOContextHolder> avioContextHolder);
+  MultiStreamEncoder();
 
   void addVideoStream(
       int height,
@@ -207,7 +204,10 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
       int sampleRate,
       int numChannels,
       std::optional<int> bitRate = std::nullopt);
-  void open();
+  void open(std::string_view fileName);
+  void open(
+      std::string_view formatName,
+      std::unique_ptr<AVIOContextHolder> avioContextHolder);
   void addFrames(const torch::stable::Tensor& frames);
   void addSamples(const torch::stable::Tensor& samples);
   void close();
@@ -237,6 +237,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   };
 
   void initializeVideoStream();
+  void openStreamsAndWriteHeader();
   void encodeVideoFrame(
       AutoAVPacket& autoAVPacket,
       const UniqueAVFrame& avFrame);

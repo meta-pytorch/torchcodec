@@ -1582,14 +1582,16 @@ class TestStreamingEncoder:
 
     @staticmethod
     def _create_encoder(method, tmp_path, format):
+        encoder = StreamingEncoder()
         if method == "to_file":
             encoder_output = tmp_path / f"test.{format}"
-            return StreamingEncoder(encoder_output), encoder_output
+            open_kwargs = dict(dest=encoder_output)
         elif method == "to_file_like":
             encoder_output = io.BytesIO()
-            return StreamingEncoder(encoder_output, format=format), encoder_output
+            open_kwargs = dict(dest=encoder_output, format=format)
         else:
             raise ValueError(f"Unknown method: {method}")
+        return encoder, encoder_output, open_kwargs
 
     @staticmethod
     def _get_decoder_source(encoder_output):
@@ -1599,7 +1601,7 @@ class TestStreamingEncoder:
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_double_close(self, tmp_path, method):
-        enc, _ = self._create_encoder(method, tmp_path, "mp4")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         enc.close()
         enc.close()  # double close is a no-op
 
@@ -1614,7 +1616,9 @@ class TestStreamingEncoder:
         frame_rate = source_decoder.metadata.average_fps
         percentage, atol = (96, 2) if device == "cuda" else (99, 2)
 
-        enc, encoder_output = self._create_encoder(method, tmp_path, format)
+        enc, encoder_output, open_kwargs = self._create_encoder(
+            method, tmp_path, format
+        )
         add_video_kwargs = {
             "height": source_frames.shape[2],
             "width": source_frames.shape[3],
@@ -1627,7 +1631,7 @@ class TestStreamingEncoder:
         else:
             add_video_kwargs["extra_options"] = {"qp": "1"}
         video = enc.add_video(**add_video_kwargs)
-        enc.open()
+        enc.open(**open_kwargs)
         video.write(source_frames[:5])
         video.write(source_frames[5:])
         enc.close()
@@ -1641,21 +1645,25 @@ class TestStreamingEncoder:
             decoded_frames, source_frames.cpu(), percentage=percentage, atol=atol
         )
 
-    def test_create_invalid_path(self):
+    def test_open_invalid_path(self):
+        enc = StreamingEncoder()
+        enc.add_video(height=64, width=64, frame_rate=30.0)
         with pytest.raises(RuntimeError, match="make sure it's a valid path"):
-            StreamingEncoder("/nonexistent/dir/test.mp4")
+            enc.open("/nonexistent/dir/test.mp4")
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_create_invalid_format(self, tmp_path, method):
+    def test_open_invalid_format(self, tmp_path, method):
+        enc = StreamingEncoder()
+        enc.add_video(height=64, width=64, frame_rate=30.0)
         if method == "to_file":
             with pytest.raises(RuntimeError, match="check the desired extension"):
-                StreamingEncoder(tmp_path / "test.bad_extension")
+                enc.open(tmp_path / "test.bad_extension")
         elif method == "to_file_like":
             with pytest.raises(
                 RuntimeError,
                 match=r"Check the desired format\? Got format=bad_extension",
             ):
-                StreamingEncoder(io.BytesIO(), format="bad_extension")
+                enc.open(io.BytesIO(), format="bad_extension")
 
     @pytest.mark.parametrize("format", ["mp4", "mov"])
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
@@ -1668,7 +1676,9 @@ class TestStreamingEncoder:
         frame_rate = source_decoder.metadata.average_fps
         percentage, atol = (96, 2) if device == "cuda" else (99, 2)
 
-        enc, encoder_output = self._create_encoder(method, tmp_path, format)
+        enc, encoder_output, open_kwargs = self._create_encoder(
+            method, tmp_path, format
+        )
         # In addition to the fragmentation flag, "flush_packets" and "threads"
         # are necessary to decode frames before close().
         # See frag flags: https://ffmpeg.org/ffmpeg-formats.html#Fragmentation
@@ -1694,7 +1704,7 @@ class TestStreamingEncoder:
             crf=crf,
             extra_options=extra_options,
         )
-        enc.open()
+        enc.open(**open_kwargs)
         # Here, we decode the available fragmented mp4 frames before calling close()
         for batch in [source_frames[:5], source_frames[5:]]:
             video.write(batch)
@@ -1721,14 +1731,14 @@ class TestStreamingEncoder:
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_video_twice_errors(self, tmp_path, method):
-        enc, _ = self._create_encoder(method, tmp_path, "mp4")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         enc.add_video(height=64, width=64, frame_rate=30.0)
         with pytest.raises(RuntimeError, match="already been added"):
             enc.add_video(height=64, width=64, frame_rate=24.0)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_audio_twice_errors(self, tmp_path, method):
-        enc, _ = self._create_encoder(method, tmp_path, "mp4")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         enc.add_audio(sample_rate=44100, num_channels=2)
         with pytest.raises(RuntimeError, match="already been added"):
             enc.add_audio(sample_rate=16000, num_channels=1)
@@ -1736,9 +1746,9 @@ class TestStreamingEncoder:
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize("device", cpu_and_oss_cuda)
     def test_write_frames_mismatched_dimensions_errors(self, tmp_path, method, device):
-        enc, _ = self._create_encoder(method, tmp_path, "mp4")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         video = enc.add_video(height=256, width=256, frame_rate=30.0, device=device)
-        enc.open()
+        enc.open(**open_kwargs)
         # write with wrong size errors
         frames_128 = torch.randint(
             0, 256, (2, 3, 128, 128), dtype=torch.uint8, device=device
@@ -1759,9 +1769,9 @@ class TestStreamingEncoder:
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_write_frames_different_devices_errors(self, tmp_path, method):
-        enc, _ = self._create_encoder(method, tmp_path, "mp4")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         video = enc.add_video(height=64, width=64, frame_rate=30.0)
-        enc.open()
+        enc.open(**open_kwargs)
         cpu_frames = torch.randint(0, 256, (2, 3, 64, 64), dtype=torch.uint8)
         cuda_frames = cpu_frames.to("cuda")
         video.write(cpu_frames)
@@ -1771,9 +1781,9 @@ class TestStreamingEncoder:
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_write_samples_on_cuda_errors(self, tmp_path, method):
-        enc, _ = self._create_encoder(method, tmp_path, "wav")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "wav")
         audio = enc.add_audio(sample_rate=44100, num_channels=1)
-        enc.open()
+        enc.open(**open_kwargs)
         cuda_samples = torch.randn(1, 1000, device="cuda")
         with pytest.raises(RuntimeError, match="samples must be on CPU, got cuda"):
             audio.write(cuda_samples)
@@ -1783,7 +1793,7 @@ class TestStreamingEncoder:
         "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
     )
     def test_write_frames_without_open_errors(self, tmp_path, method, device):
-        enc, _ = self._create_encoder(method, tmp_path, "mp4")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         video = enc.add_video(height=64, width=64, frame_rate=30.0, device=device)
         frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8, device=device)
         with pytest.raises(
@@ -1793,7 +1803,7 @@ class TestStreamingEncoder:
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_write_samples_without_open_errors(self, tmp_path, method):
-        enc, _ = self._create_encoder(method, tmp_path, "mp4")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         audio = enc.add_audio(sample_rate=44100, num_channels=1)
         samples = torch.randn(1, 1000)
         with pytest.raises(
@@ -1803,36 +1813,36 @@ class TestStreamingEncoder:
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_write_samples_mismatched_channels_errors(self, tmp_path, method):
-        enc, _ = self._create_encoder(method, tmp_path, "wav")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "wav")
         audio = enc.add_audio(sample_rate=44100, num_channels=1)
-        enc.open()
+        enc.open(**open_kwargs)
         samples = torch.randn(2, 1000)  # 2 channels but stream expects 1
         with pytest.raises(RuntimeError, match="Expected 1 channels, got 2"):
             audio.write(samples)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_open_without_stream_errors(self, tmp_path, method):
-        enc, _ = self._create_encoder(method, tmp_path, "mp4")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         with pytest.raises(
             RuntimeError,
             match="Call addVideoStream\\(\\) or addAudioStream\\(\\) before open\\(\\)",
         ):
-            enc.open()
+            enc.open(**open_kwargs)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_open_twice_errors(self, tmp_path, method):
-        enc, _ = self._create_encoder(method, tmp_path, "mp4")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         enc.add_video(height=64, width=64, frame_rate=30.0)
-        enc.open()
+        enc.open(**open_kwargs)
         with pytest.raises(RuntimeError, match="open\\(\\) was already called"):
-            enc.open()
+            enc.open(**open_kwargs)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_audio_invalid_bit_rate_errors(self, tmp_path, method):
-        enc, _ = self._create_encoder(method, tmp_path, "mp4")
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         enc.add_audio(sample_rate=44100, num_channels=2, bit_rate=-1)
         with pytest.raises(RuntimeError, match="bit_rate=-1 must be >= 0"):
-            enc.open()
+            enc.open(**open_kwargs)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_audio_and_encode_samples(self, tmp_path, method):
@@ -1841,9 +1851,9 @@ class TestStreamingEncoder:
         sample_rate = source_audio.sample_rate
         num_channels = samples.shape[0]
 
-        enc, encoder_output = self._create_encoder(method, tmp_path, "wav")
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "wav")
         audio = enc.add_audio(sample_rate=sample_rate, num_channels=num_channels)
-        enc.open()
+        enc.open(**open_kwargs)
         chunk_lengths = [1, 50, 1000, 0, 25]
         offset = 0
         for length in chunk_lengths:
@@ -1884,7 +1894,9 @@ class TestStreamingEncoder:
         source_samples = source_audio.data
         sample_rate = source_audio.sample_rate
 
-        enc, encoder_output = self._create_encoder(method, tmp_path, format)
+        enc, encoder_output, open_kwargs = self._create_encoder(
+            method, tmp_path, format
+        )
         video = enc.add_video(
             height=source_frames.shape[2],
             width=source_frames.shape[3],
@@ -1896,7 +1908,7 @@ class TestStreamingEncoder:
             sample_rate=sample_rate,
             num_channels=source_samples.shape[0],
         )
-        enc.open()
+        enc.open(**open_kwargs)
         half_frames = source_frames.shape[0] // 2
         half_samples = source_samples.shape[1] // 2
         video.write(source_frames[:half_frames])

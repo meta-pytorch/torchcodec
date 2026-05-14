@@ -1055,8 +1055,12 @@ MultiStreamEncoder::~MultiStreamEncoder() {
   close();
 }
 
-MultiStreamEncoder::MultiStreamEncoder(std::string_view fileName) {
+MultiStreamEncoder::MultiStreamEncoder() {
   setFFmpegLogLevel();
+}
+
+void MultiStreamEncoder::open(std::string_view fileName) {
+  STD_TORCH_CHECK(!headerWritten_, "open() was already called.");
 
   AVFormatContext* avFormatContext = nullptr;
   int status = avformat_alloc_output_context2(
@@ -1078,13 +1082,17 @@ MultiStreamEncoder::MultiStreamEncoder(std::string_view fileName) {
       fileName,
       ", make sure it's a valid path? ",
       getFFMPEGErrorStringFromErrorCode(status));
+
+  openStreamsAndWriteHeader();
 }
 
-MultiStreamEncoder::MultiStreamEncoder(
+void MultiStreamEncoder::open(
     std::string_view formatName,
-    std::unique_ptr<AVIOContextHolder> avioContextHolder)
-    : avioContextHolder_(std::move(avioContextHolder)) {
-  setFFmpegLogLevel();
+    std::unique_ptr<AVIOContextHolder> avioContextHolder) {
+  STD_TORCH_CHECK(!headerWritten_, "open() was already called.");
+
+  avioContextHolder_ = std::move(avioContextHolder);
+
   // Map mkv -> matroska when used as format name
   formatName = (formatName == "mkv") ? "matroska" : formatName;
   AVFormatContext* avFormatContext = nullptr;
@@ -1101,6 +1109,8 @@ MultiStreamEncoder::MultiStreamEncoder(
   avFormatContext_.reset(avFormatContext);
 
   avFormatContext_->pb = avioContextHolder_->getAVIOContext();
+
+  openStreamsAndWriteHeader();
 }
 
 void MultiStreamEncoder::addVideoStream(
@@ -1383,8 +1393,7 @@ void MultiStreamEncoder::initializeAudioStream() {
   audioStream.avAudioFifo.reset(avAudioFifo);
 }
 
-void MultiStreamEncoder::open() {
-  STD_TORCH_CHECK(!headerWritten_, "open() was already called.");
+void MultiStreamEncoder::openStreamsAndWriteHeader() {
   STD_TORCH_CHECK(
       videoStream_.has_value() || audioStream_.has_value(),
       "Call addVideoStream() or addAudioStream() before open().");

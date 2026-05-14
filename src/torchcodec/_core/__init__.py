@@ -18,8 +18,7 @@ from .ops import (
     _get_nvdec_cache_size,
     _test_frame_pts_equality,
     core_library_path,
-    create_streaming_encoder_to_file,
-    create_streaming_encoder_to_file_like,
+    create_streaming_encoder,
     create_wav_decoder_from_file,
     encode_audio_to_file,
     encode_audio_to_file_like,
@@ -47,5 +46,6 @@ from .ops import (
     streaming_encoder_add_samples,
     streaming_encoder_add_video_stream,
     streaming_encoder_close,
-    streaming_encoder_open,
+    streaming_encoder_open_file,
+    streaming_encoder_open_file_like,
 )
