@@ -1566,6 +1566,17 @@ class TestVideoEncoder:
 
 
 class TestStreamingEncoder:
+    cpu_and_oss_cuda = (
+        "cpu",
+        pytest.param(
+            "cuda",
+            marks=[
+                pytest.mark.needs_cuda,
+                pytest.mark.skipif(in_fbcode(), reason="NVENC not available in fbcode"),
+            ],
+        ),
+    )
+
     @staticmethod
     def _create_encoder(method, tmp_path, format):
         if method == "to_file":
@@ -1591,21 +1602,7 @@ class TestStreamingEncoder:
 
     @pytest.mark.parametrize("format", ["mp4", "mov", "mkv"])
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    @pytest.mark.parametrize(
-        "device",
-        (
-            "cpu",
-            pytest.param(
-                "cuda",
-                marks=[
-                    pytest.mark.needs_cuda,
-                    pytest.mark.skipif(
-                        in_fbcode(), reason="NVENC not available in fbcode"
-                    ),
-                ],
-            ),
-        ),
-    )
+    @pytest.mark.parametrize("device", cpu_and_oss_cuda)
     def test_add_video_and_encode_frames(self, tmp_path, format, method, device):
         source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
         source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data.to(
@@ -1659,21 +1656,7 @@ class TestStreamingEncoder:
 
     @pytest.mark.parametrize("format", ["mp4", "mov"])
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    @pytest.mark.parametrize(
-        "device",
-        (
-            "cpu",
-            pytest.param(
-                "cuda",
-                marks=[
-                    pytest.mark.needs_cuda,
-                    pytest.mark.skipif(
-                        in_fbcode(), reason="NVENC not available in fbcode"
-                    ),
-                ],
-            ),
-        ),
-    )
+    @pytest.mark.parametrize("device", cpu_and_oss_cuda)
     def test_fragmented_mp4(self, format, tmp_path, method, device):
         source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
         source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data.to(
@@ -1748,21 +1731,7 @@ class TestStreamingEncoder:
             enc.add_audio(sample_rate=16000, num_channels=1)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    @pytest.mark.parametrize(
-        "device",
-        (
-            "cpu",
-            pytest.param(
-                "cuda",
-                marks=[
-                    pytest.mark.needs_cuda,
-                    pytest.mark.skipif(
-                        in_fbcode(), reason="NVENC not available in fbcode"
-                    ),
-                ],
-            ),
-        ),
-    )
+    @pytest.mark.parametrize("device", cpu_and_oss_cuda)
     def test_write_frames_mismatched_dimensions_errors(self, tmp_path, method, device):
         enc, _ = self._create_encoder(method, tmp_path, "mp4")
         video = enc.add_video(height=256, width=256, frame_rate=30.0, device=device)
