@@ -70,6 +70,8 @@ class StreamingEncoder:
         )
         return _AudioStream(self._encoder_tensor)
 
+    # TODO MultiStreamEncoder: Maybe there should 2 separate methods, one for
+    # file, one for file-like.
     def open(self, dest, *, format: str | None = None) -> None:
         if format is not None:
             _core.streaming_encoder_open_file_like(self._encoder_tensor, format, dest)
