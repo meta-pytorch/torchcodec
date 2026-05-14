@@ -2628,34 +2628,6 @@ class TestStreamingEncoder:
         decoded_2 = AudioDecoder(source, stream_index=2).get_all_samples()
         assert decoded_2.sample_rate == 44_100
 
-    @staticmethod
-    def _get_video_metadata(file_path, fields):
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v",
-                "error",
-                "-select_streams",
-                "v:0",
-                "-show_entries",
-                f"stream={','.join(fields)}",
-                "-of",
-                "default=noprint_wrappers=1",
-                str(file_path),
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            check=True,
-            text=True,
-        )
-        metadata = {}
-        for line in result.stdout.strip().split("\n"):
-            if "=" in line:
-                key, value = line.split("=", 1)
-                metadata[key] = value
-        assert all(field in metadata for field in fields)
-        return metadata
-
     @needs_ffmpeg_cli
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize(
