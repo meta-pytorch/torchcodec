@@ -1734,14 +1734,26 @@ class TestStreamingEncoder:
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_write_frames_different_devices_errors(self, tmp_path, method):
-        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
-        video = enc.add_video(height=64, width=64, frame_rate=30.0)
-        enc.open(**open_kwargs)
-        cpu_frames = torch.randint(0, 256, (2, 3, 64, 64), dtype=torch.uint8)
+        cpu_frames = torch.randint(0, 256, (2, 3, 256, 256), dtype=torch.uint8)
         cuda_frames = cpu_frames.to("cuda")
+
+        # CPU stream, write CUDA frames
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        video = enc.add_video(height=256, width=256, frame_rate=30.0)
+        enc.open(**open_kwargs)
         video.write(cpu_frames)
         with pytest.raises(RuntimeError, match="same device"):
             video.write(cuda_frames)
+        enc.close()
+
+        # CUDA stream, write CPU frames
+        cuda_dir = tmp_path / "cuda"
+        cuda_dir.mkdir()
+        enc, _, open_kwargs = self._create_encoder(method, cuda_dir, "mp4")
+        video = enc.add_video(height=256, width=256, frame_rate=30.0, device="cuda")
+        enc.open(**open_kwargs)
+        with pytest.raises(RuntimeError, match="same device"):
+            video.write(cpu_frames)
 
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
@@ -1908,6 +1920,81 @@ class TestStreamingEncoder:
             source_samples[:, :num_samples_to_compare],
             percentage=96 if format == "mkv" else 99,
             atol=0.1 if format == "mkv" else 0.01,
+        )
+
+    @pytest.mark.needs_cuda
+    @pytest.mark.skipif(in_fbcode(), reason="NVENC not available in fbcode")
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_cuda_video_with_cpu_video_and_cpu_audio(self, tmp_path, method):
+        source_video_decoder = VideoDecoder(str(NASA_VIDEO.path))
+        source_frames = source_video_decoder.get_frames_in_range(
+            start=0, stop=len(source_video_decoder)
+        ).data
+
+        source_audio = AudioDecoder(str(NASA_AUDIO_MP3_44100.path)).get_all_samples()
+        source_samples = source_audio.data
+        sample_rate = source_audio.sample_rate
+
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        cuda_video = enc.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=source_video_decoder.metadata.average_fps,
+            device="cuda",
+            extra_options={"qp": "1"},
+        )
+        cpu_video = enc.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=source_video_decoder.metadata.average_fps,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        audio = enc.add_audio(
+            sample_rate=sample_rate,
+            num_channels=source_samples.shape[0],
+        )
+        enc.open(**open_kwargs)
+        half_frames = source_frames.shape[0] // 2
+        half_samples = source_samples.shape[1] // 2
+        cuda_video.write(source_frames[:half_frames].to("cuda"))
+        cpu_video.write(source_frames[:half_frames])
+        audio.write(source_samples[:, :half_samples])
+        cuda_video.write(source_frames[half_frames:].to("cuda"))
+        cpu_video.write(source_frames[half_frames:])
+        audio.write(source_samples[:, half_samples:])
+        enc.close()
+
+        source = self._get_decoder_source(encoder_output)
+
+        decoded_video_decoder = VideoDecoder(source, stream_index=0)
+        decoded_cuda_frames = decoded_video_decoder.get_frames_in_range(
+            start=0, stop=len(decoded_video_decoder)
+        ).data
+        assert_tensor_close_on_at_least(
+            decoded_cuda_frames, source_frames, percentage=90, atol=2
+        )
+
+        decoded_video_decoder = VideoDecoder(source, stream_index=1)
+        decoded_cpu_frames = decoded_video_decoder.get_frames_in_range(
+            start=0, stop=len(decoded_video_decoder)
+        ).data
+        assert_tensor_close_on_at_least(
+            decoded_cpu_frames, source_frames, percentage=99, atol=2
+        )
+
+        audio_decoder = AudioDecoder(source)
+        decoded_audio = audio_decoder.get_all_samples()
+        assert decoded_audio.sample_rate == sample_rate
+        assert decoded_audio.data.shape[0] == source_samples.shape[0]
+        num_samples_to_compare = min(
+            decoded_audio.data.shape[1], source_samples.shape[1]
+        )
+        assert_tensor_close_on_at_least(
+            decoded_audio.data[:, :num_samples_to_compare],
+            source_samples[:, :num_samples_to_compare],
+            percentage=99,
+            atol=0.01,
         )
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
