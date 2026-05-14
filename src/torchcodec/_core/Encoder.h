@@ -2,6 +2,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 #include "AVIOContextHolder.h"
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
@@ -189,7 +190,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
 
   MultiStreamEncoder();
 
-  void addVideoStream(
+  int addVideoStream(
       int height,
       int width,
       double frameRate,
@@ -208,7 +209,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   void open(
       std::string_view formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder);
-  void addFrames(const torch::stable::Tensor& frames);
+  void addFrames(const torch::stable::Tensor& frames, int streamIndex);
   void addSamples(const torch::stable::Tensor& samples);
   void close();
 
@@ -236,11 +237,12 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
     UniqueAVAudioFifo avAudioFifo;
   };
 
-  void initializeVideoStream();
+  void initializeVideoStream(VideoStream& videoStream);
   void openStreamsAndWriteHeader();
   void encodeVideoFrame(
       AutoAVPacket& autoAVPacket,
-      const UniqueAVFrame& avFrame);
+      const UniqueAVFrame& avFrame,
+      VideoStream& videoStream);
   void initializeAudioStream();
   void encodeAudioSamples(const torch::stable::Tensor& samples);
   UniqueAVFrame maybeConvertAudioAVFrame(
@@ -261,7 +263,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   void flushBuffers();
 
   UniqueEncodingAVFormatContext avFormatContext_;
-  std::optional<VideoStream> videoStream_;
+  std::vector<VideoStream> videoStreams_;
   std::optional<AudioStream> audioStream_;
   bool headerWritten_ = false;
   UniqueAVDictionary avFormatOptions_;

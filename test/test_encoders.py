@@ -1730,13 +1730,6 @@ class TestStreamingEncoder:
         )
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_video_twice_errors(self, tmp_path, method):
-        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
-        enc.add_video(height=64, width=64, frame_rate=30.0)
-        with pytest.raises(RuntimeError, match="already been added"):
-            enc.add_video(height=64, width=64, frame_rate=24.0)
-
-    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_audio_twice_errors(self, tmp_path, method):
         enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         enc.add_audio(sample_rate=44100, num_channels=2)
@@ -1943,4 +1936,68 @@ class TestStreamingEncoder:
             source_samples[:, :num_samples_to_compare],
             percentage=96 if format == "mkv" else 99,
             atol=0.1 if format == "mkv" else 0.01,
+        )
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_multiple_video_streams_and_audio(self, tmp_path, method):
+        source_frames_big = torch.randint(0, 256, (5, 3, 256, 256), dtype=torch.uint8)
+        source_frames_small = torch.randint(0, 256, (8, 3, 128, 128), dtype=torch.uint8)
+
+        source_audio = AudioDecoder(str(NASA_AUDIO_MP3_44100.path)).get_all_samples()
+        source_samples = source_audio.data
+        sample_rate = source_audio.sample_rate
+
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        video_big = enc.add_video(
+            height=256, width=256, frame_rate=10.0, pixel_format="yuv444p", crf=0
+        )
+        video_small = enc.add_video(
+            height=128, width=128, frame_rate=25.0, pixel_format="yuv444p", crf=0
+        )
+        audio = enc.add_audio(
+            sample_rate=sample_rate,
+            num_channels=source_samples.shape[0],
+        )
+        enc.open(**open_kwargs)
+        video_big.write(source_frames_big[:3])
+        video_small.write(source_frames_small[:4])
+        audio.write(source_samples[:, : source_samples.shape[1] // 2])
+        video_big.write(source_frames_big[3:])
+        video_small.write(source_frames_small[4:])
+        audio.write(source_samples[:, source_samples.shape[1] // 2 :])
+        enc.close()
+
+        source = self._get_decoder_source(encoder_output)
+
+        decoded_big = VideoDecoder(source, stream_index=0)
+        assert len(decoded_big) == 5
+        decoded_big_frames = decoded_big.get_frames_in_range(
+            start=0, stop=len(decoded_big)
+        ).data
+        assert decoded_big_frames.shape == (5, 3, 256, 256)
+        assert_tensor_close_on_at_least(
+            decoded_big_frames, source_frames_big, percentage=99, atol=2
+        )
+
+        decoded_small = VideoDecoder(source, stream_index=1)
+        assert len(decoded_small) == 8
+        decoded_small_frames = decoded_small.get_frames_in_range(
+            start=0, stop=len(decoded_small)
+        ).data
+        assert decoded_small_frames.shape == (8, 3, 128, 128)
+        assert_tensor_close_on_at_least(
+            decoded_small_frames, source_frames_small, percentage=99, atol=2
+        )
+
+        audio_decoder = AudioDecoder(source)
+        decoded_audio = audio_decoder.get_all_samples()
+        assert decoded_audio.sample_rate == sample_rate
+        num_samples_to_compare = min(
+            decoded_audio.data.shape[1], source_samples.shape[1]
+        )
+        assert_tensor_close_on_at_least(
+            decoded_audio.data[:, :num_samples_to_compare],
+            source_samples[:, :num_samples_to_compare],
+            percentage=99,
+            atol=0.01,
         )
