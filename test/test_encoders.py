@@ -79,7 +79,8 @@ def validate_frames_properties(*, actual: Path, expected: Path):
                     f"{f}",
                 ],
                 check=True,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
                 text=True,
             ).stdout
         )["frames"]
@@ -638,7 +639,8 @@ class TestVideoEncoder:
                 "default=noprint_wrappers=1",
                 str(file_path),
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             check=True,
             text=True,
         )
@@ -665,7 +667,8 @@ class TestVideoEncoder:
                 "json",
                 str(file_path),
             ],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             check=True,
             text=True,
         )

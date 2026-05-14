@@ -361,7 +361,8 @@ class TestContainerFile:
                 "json",
             ],
             check=True,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
             text=True,
         ).stdout
         return result
