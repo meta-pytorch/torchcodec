@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import platform
 import re
@@ -2039,6 +2040,563 @@ class TestStreamingEncoder:
 
         decoded_2 = AudioDecoder(source, stream_index=2).get_all_samples()
         assert decoded_2.data.shape[0] == 2
+
+    @pytest.mark.parametrize(
+        "format",
+        [
+            "mov",
+            "mp4",
+            "mkv",
+        ],
+    )
+    @pytest.mark.parametrize(
+        "encode_params",
+        [
+            {"pixel_format": "yuv444p", "crf": 0, "preset": None},
+            {"pixel_format": "yuv420p", "crf": 30, "preset": None},
+            {"pixel_format": "yuv420p", "crf": None, "preset": "ultrafast"},
+            {"pixel_format": "yuv420p", "crf": None, "preset": None},
+        ],
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    @pytest.mark.parametrize("frame_rate", [30, 29.97])
+    @needs_ffmpeg_cli
+    def test_video_against_ffmpeg_cli(
+        self, tmp_path, format, encode_params, method, frame_rate
+    ):
+        pixel_format = encode_params["pixel_format"]
+        crf = encode_params["crf"]
+        preset = encode_params["preset"]
+
+        source_frames = (
+            VideoDecoder(str(TEST_SRC_2_720P.path))
+            .get_frames_in_range(start=0, stop=30)
+            .data
+        )
+
+        # Encode with FFmpeg CLI
+        temp_raw_path = str(tmp_path / "temp_input.raw")
+        with open(temp_raw_path, "wb") as f:
+            f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
+
+        ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",
+            "-s",
+            f"{source_frames.shape[3]}x{source_frames.shape[2]}",
+            "-r",
+            str(frame_rate),
+            "-i",
+            temp_raw_path,
+        ]
+        if pixel_format is not None:
+            ffmpeg_cmd.extend(["-pix_fmt", pixel_format])
+        if preset is not None:
+            ffmpeg_cmd.extend(["-preset", preset])
+        if crf is not None:
+            ffmpeg_cmd.extend(["-crf", str(crf)])
+        ffmpeg_cmd.append(ffmpeg_encoded_path)
+        subprocess.run(ffmpeg_cmd, check=True)
+        ffmpeg_frames = (
+            VideoDecoder(ffmpeg_encoded_path).get_frames_in_range(start=0, stop=30).data
+        )
+
+        # Encode with StreamingEncoder
+        enc, encoder_output, open_kwargs = self._create_encoder(
+            method, tmp_path, format
+        )
+        video = enc.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=frame_rate,
+            pixel_format=pixel_format,
+            crf=crf,
+            preset=preset,
+        )
+        enc.open(**open_kwargs)
+        video.write(source_frames)
+        enc.close()
+
+        encoder_frames = (
+            VideoDecoder(self._get_decoder_source(encoder_output))
+            .get_frames_in_range(start=0, stop=30)
+            .data
+        )
+
+        assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
+        for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
+            assert psnr(ff_frame, enc_frame) > 30
+            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=99, atol=2)
+
+        if ffmpeg_major_version >= 6 and method == "to_file":
+            fields = [
+                "duration",
+                "duration_ts",
+                "r_frame_rate",
+                "time_base",
+                "nb_frames",
+            ]
+            ffmpeg_metadata = self._get_video_metadata(
+                ffmpeg_encoded_path, fields=fields
+            )
+            encoder_metadata = self._get_video_metadata(
+                str(encoder_output), fields=fields
+            )
+            assert ffmpeg_metadata == encoder_metadata
+
+            fields = ("pts", "pts_time")
+            ffmpeg_frames_info = self._get_frames_info(
+                ffmpeg_encoded_path, fields=fields
+            )
+            encoder_frames_info = self._get_frames_info(
+                str(encoder_output), fields=fields
+            )
+            assert ffmpeg_frames_info == encoder_frames_info
+
+    @needs_ffmpeg_cli
+    @pytest.mark.parametrize("asset", (NASA_AUDIO_MP3, SINE_MONO_S32))
+    @pytest.mark.parametrize("bit_rate", (None, 0, 44_100, 999_999_999))
+    @pytest.mark.parametrize("num_channels", (None, 1, 2))
+    @pytest.mark.parametrize("sample_rate", (8_000, 32_000))
+    @pytest.mark.parametrize(
+        "format",
+        [
+            pytest.param(
+                "mp3",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version <= 5,
+                    reason="Encoding mp3 on Windows is weirdly buggy",
+                ),
+            ),
+            pytest.param(
+                "wav",
+                marks=pytest.mark.skipif(
+                    ffmpeg_major_version == 4,
+                    reason="Swresample with FFmpeg 4 doesn't work on wav files",
+                ),
+            ),
+            "flac",
+        ],
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_audio_against_cli(
+        self,
+        asset,
+        bit_rate,
+        num_channels,
+        sample_rate,
+        format,
+        method,
+        tmp_path,
+    ):
+        source_audio = AudioDecoder(str(asset.path)).get_all_samples()
+        source_samples = source_audio.data
+        in_sample_rate = source_audio.sample_rate
+        in_num_channels = source_samples.shape[0]
+
+        out_num_channels = num_channels if num_channels is not None else in_num_channels
+
+        # Encode with FFmpeg CLI
+        encoded_by_ffmpeg = tmp_path / f"ffmpeg_output.{format}"
+        subprocess.run(
+            ["ffmpeg", "-i", str(asset.path)]
+            + (["-b:a", f"{bit_rate}"] if bit_rate is not None else [])
+            + (["-ac", f"{out_num_channels}"] if num_channels is not None else [])
+            + ["-ar", f"{sample_rate}"]
+            + [str(encoded_by_ffmpeg)],
+            capture_output=True,
+            check=True,
+        )
+
+        # Encode with StreamingEncoder
+        enc, encoder_output, open_kwargs = self._create_encoder(
+            method, tmp_path, format
+        )
+        audio = enc.add_audio(
+            sample_rate=in_sample_rate,
+            num_channels=in_num_channels,
+            bit_rate=bit_rate,
+            output_num_channels=num_channels,
+            output_sample_rate=sample_rate,
+        )
+        enc.open(**open_kwargs)
+        audio.write(source_samples)
+        enc.close()
+
+        if IS_WINDOWS_WITH_FFMPEG_LE_70 and format == "mp3":
+            return
+
+        samples_by_us = AudioDecoder(
+            self._get_decoder_source(encoder_output)
+        ).get_all_samples()
+        samples_by_ffmpeg = AudioDecoder(str(encoded_by_ffmpeg)).get_all_samples()
+
+        assert_close = torch.testing.assert_close
+        if sample_rate != in_sample_rate:
+            if platform.machine().lower() == "aarch64":
+                rtol, atol = 0, 1e-2
+            else:
+                rtol, atol = 0, 1e-3
+            if sys.platform == "darwin":
+                assert_close = partial(assert_tensor_close_on_at_least, percentage=99)
+        elif format == "wav":
+            rtol, atol = 0, 1e-4
+        elif format == "mp3" and asset is SINE_MONO_S32 and num_channels == 2:
+            rtol, atol = 0, 1e-3
+        else:
+            rtol, atol = None, None
+
+        assert_close(
+            samples_by_us.data,
+            samples_by_ffmpeg.data,
+            rtol=rtol,
+            atol=atol,
+        )
+        assert samples_by_us.sample_rate == samples_by_ffmpeg.sample_rate
+
+        if method == "to_file":
+            validate_frames_properties(
+                actual=encoder_output, expected=encoded_by_ffmpeg
+            )
+
+    @pytest.mark.parametrize(
+        "format",
+        [
+            "mov",
+            "mp4",
+            "mkv",
+        ],
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_video_round_trip(self, tmp_path, format, method):
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=30).data
+        frame_rate = source_decoder.metadata.average_fps
+
+        enc, encoder_output, open_kwargs = self._create_encoder(
+            method, tmp_path, format
+        )
+        video = enc.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=frame_rate,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        enc.open(**open_kwargs)
+        video.write(source_frames)
+        enc.close()
+
+        round_trip_frames = (
+            VideoDecoder(self._get_decoder_source(encoder_output))
+            .get_frames_in_range(start=0, stop=30)
+            .data
+        )
+
+        assert source_frames.shape == round_trip_frames.shape
+        assert source_frames.dtype == round_trip_frames.dtype
+
+        for s_frame, rt_frame in zip(source_frames, round_trip_frames):
+            assert psnr(s_frame, rt_frame) > 30
+            torch.testing.assert_close(s_frame, rt_frame, atol=2, rtol=0)
+
+    @pytest.mark.parametrize(
+        "format",
+        [
+            pytest.param(
+                "wav",
+                marks=pytest.mark.skipif(
+                    ffmpeg_major_version == 4,
+                    reason="Swresample with FFmpeg 4 doesn't work on wav files",
+                ),
+            ),
+            "flac",
+        ],
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_audio_round_trip(self, method, format, tmp_path):
+        asset = NASA_AUDIO_MP3
+        source_samples = AudioDecoder(str(asset.path)).get_all_samples().data
+        sample_rate = asset.sample_rate
+        num_channels = source_samples.shape[0]
+
+        enc, encoder_output, open_kwargs = self._create_encoder(
+            method, tmp_path, format
+        )
+        audio = enc.add_audio(sample_rate=sample_rate, num_channels=num_channels)
+        enc.open(**open_kwargs)
+        audio.write(source_samples)
+        enc.close()
+
+        decoded = AudioDecoder(
+            self._get_decoder_source(encoder_output)
+        ).get_all_samples()
+
+        rtol, atol = (0, 1e-4) if format == "wav" else (None, None)
+        torch.testing.assert_close(decoded.data, source_samples, rtol=rtol, atol=atol)
+
+    @pytest.mark.parametrize(
+        "format",
+        [
+            "mov",
+            "mp4",
+            "mkv",
+        ],
+    )
+    def test_video_to_file_vs_to_file_like(self, tmp_path, format):
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+        frame_rate = source_decoder.metadata.average_fps
+
+        # Encode via to_file
+        enc_file = StreamingEncoder()
+        file_path = tmp_path / f"output_file.{format}"
+        video_file = enc_file.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=frame_rate,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        enc_file.open(file_path)
+        video_file.write(source_frames)
+        enc_file.close()
+
+        # Encode via to_file_like
+        enc_fl = StreamingEncoder()
+        file_like = io.BytesIO()
+        video_fl = enc_fl.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=frame_rate,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        enc_fl.open(file_like, format=format)
+        video_fl.write(source_frames)
+        enc_fl.close()
+
+        decoded_from_file = (
+            VideoDecoder(str(file_path)).get_frames_in_range(start=0, stop=10).data
+        )
+        decoded_from_file_like = (
+            VideoDecoder(file_like.getvalue())
+            .get_frames_in_range(start=0, stop=10)
+            .data
+        )
+        torch.testing.assert_close(
+            decoded_from_file, decoded_from_file_like, atol=0, rtol=0
+        )
+
+    @pytest.mark.parametrize(
+        "format",
+        [
+            pytest.param(
+                "wav",
+                marks=pytest.mark.skipif(
+                    ffmpeg_major_version == 4,
+                    reason="Swresample with FFmpeg 4 doesn't work on wav files",
+                ),
+            ),
+            "flac",
+        ],
+    )
+    def test_audio_to_file_vs_to_file_like(self, tmp_path, format):
+        asset = NASA_AUDIO_MP3
+        source_samples = AudioDecoder(str(asset.path)).get_all_samples().data
+        sample_rate = asset.sample_rate
+        num_channels = source_samples.shape[0]
+
+        # Encode via to_file
+        enc_file = StreamingEncoder()
+        file_path = tmp_path / f"output_file.{format}"
+        audio_file = enc_file.add_audio(
+            sample_rate=sample_rate, num_channels=num_channels
+        )
+        enc_file.open(file_path)
+        audio_file.write(source_samples)
+        enc_file.close()
+
+        # Encode via to_file_like
+        enc_fl = StreamingEncoder()
+        file_like = io.BytesIO()
+        audio_fl = enc_fl.add_audio(sample_rate=sample_rate, num_channels=num_channels)
+        enc_fl.open(file_like, format=format)
+        audio_fl.write(source_samples)
+        enc_fl.close()
+
+        decoded_from_file = AudioDecoder(str(file_path)).get_all_samples().data
+        decoded_from_file_like = (
+            AudioDecoder(file_like.getvalue()).get_all_samples().data
+        )
+        torch.testing.assert_close(
+            decoded_from_file, decoded_from_file_like, atol=0, rtol=0
+        )
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    @pytest.mark.parametrize(
+        "device",
+        (
+            "cpu",
+            pytest.param(
+                "cuda",
+                marks=[
+                    pytest.mark.needs_cuda,
+                    pytest.mark.skipif(
+                        in_fbcode(), reason="NVENC not available in fbcode"
+                    ),
+                    pytest.mark.skipif(
+                        ffmpeg_major_version == 4,
+                        reason="CUDA + FFmpeg 4 test is flaky",
+                    ),
+                ],
+            ),
+        ),
+    )
+    def test_video_contiguity(self, method, tmp_path, device):
+        num_frames, channels, height, width = 5, 3, 256, 256
+        contiguous_frames = (
+            torch.randint(
+                0, 256, size=(num_frames, channels, height, width), dtype=torch.uint8
+            )
+            .contiguous()
+            .to(device)
+        )
+        assert contiguous_frames.is_contiguous()
+
+        non_contiguous_frames = (
+            contiguous_frames.permute(0, 2, 3, 1).contiguous().permute(0, 3, 1, 2)
+        )
+        assert not non_contiguous_frames.is_contiguous()
+        assert non_contiguous_frames.is_contiguous(memory_format=torch.channels_last)
+
+        torch.testing.assert_close(
+            contiguous_frames, non_contiguous_frames, rtol=0, atol=0
+        )
+
+        def encode(frames):
+            enc, encoder_output, open_kwargs = self._create_encoder(
+                method, tmp_path, "mp4"
+            )
+            add_video_kwargs = dict(
+                height=height,
+                width=width,
+                frame_rate=30,
+                device=device,
+                crf=0,
+            )
+            if device == "cpu":
+                add_video_kwargs["pixel_format"] = "yuv444p"
+            video = enc.add_video(**add_video_kwargs)
+            enc.open(**open_kwargs)
+            video.write(frames)
+            enc.close()
+            source = self._get_decoder_source(encoder_output)
+            if isinstance(source, str):
+                with open(source, "rb") as f:
+                    return torch.frombuffer(f.read(), dtype=torch.uint8)
+            return torch.frombuffer(source, dtype=torch.uint8)
+
+        encoded_from_contiguous = encode(contiguous_frames)
+        encoded_from_non_contiguous = encode(non_contiguous_frames)
+
+        torch.testing.assert_close(
+            encoded_from_contiguous, encoded_from_non_contiguous, rtol=0, atol=0
+        )
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_audio_contiguity(self, method, tmp_path):
+        num_samples = 10_000
+        contiguous_samples = torch.rand(2, num_samples).contiguous()
+        assert contiguous_samples.stride() == (num_samples, 1)
+
+        non_contiguous_samples = contiguous_samples.T.contiguous().T
+        assert non_contiguous_samples.stride() == (1, 2)
+
+        torch.testing.assert_close(
+            contiguous_samples, non_contiguous_samples, rtol=0, atol=0
+        )
+
+        def encode(samples):
+            enc, encoder_output, open_kwargs = self._create_encoder(
+                method, tmp_path, "flac"
+            )
+            audio = enc.add_audio(
+                sample_rate=16_000,
+                num_channels=2,
+            )
+            enc.open(**open_kwargs)
+            audio.write(samples)
+            enc.close()
+            source = self._get_decoder_source(encoder_output)
+            if isinstance(source, str):
+                with open(source, "rb") as f:
+                    return torch.frombuffer(f.read(), dtype=torch.uint8)
+            return torch.frombuffer(source, dtype=torch.uint8)
+
+        encoded_from_contiguous = encode(contiguous_samples)
+        encoded_from_non_contiguous = encode(non_contiguous_samples)
+
+        torch.testing.assert_close(
+            encoded_from_contiguous, encoded_from_non_contiguous, rtol=0, atol=0
+        )
+
+    @staticmethod
+    def _get_video_metadata(file_path, fields):
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                f"stream={','.join(fields)}",
+                "-of",
+                "default=noprint_wrappers=1",
+                str(file_path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=True,
+            text=True,
+        )
+        metadata = {}
+        for line in result.stdout.strip().split("\n"):
+            if "=" in line:
+                key, value = line.split("=", 1)
+                metadata[key] = value
+        assert all(field in metadata for field in fields)
+        return metadata
+
+    @staticmethod
+    def _get_frames_info(file_path, fields):
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                f"frame={','.join(fields)}",
+                "-of",
+                "json",
+                str(file_path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=True,
+            text=True,
+        )
+        frames = json.loads(result.stdout)["frames"]
+        assert all(field in frame for field in fields for frame in frames)
+        return frames
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_audio_output_sample_rate(self, tmp_path, method):
