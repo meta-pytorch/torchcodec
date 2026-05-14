@@ -22,13 +22,8 @@ class _AudioStream:
 
 
 class StreamingEncoder:
-    def __init__(self, dest, *, format: str | None = None):
-        if format is not None:
-            self._encoder_tensor = _core.create_streaming_encoder_to_file_like(
-                format, dest
-            )
-        else:
-            self._encoder_tensor = _core.create_streaming_encoder_to_file(str(dest))
+    def __init__(self):
+        self._encoder_tensor = _core.create_streaming_encoder()
 
     def add_video(
         self,
@@ -75,8 +70,11 @@ class StreamingEncoder:
         )
         return _AudioStream(self._encoder_tensor)
 
-    def open(self) -> None:
-        _core.streaming_encoder_open(self._encoder_tensor)
+    def open(self, dest, *, format: str | None = None) -> None:
+        if format is not None:
+            _core.streaming_encoder_open_file_like(self._encoder_tensor, format, dest)
+        else:
+            _core.streaming_encoder_open_file(self._encoder_tensor, str(dest))
 
     def close(self) -> None:
         _core.streaming_encoder_close(self._encoder_tensor)
