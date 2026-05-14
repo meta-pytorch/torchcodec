@@ -5,6 +5,12 @@ from torch import Tensor
 from torchcodec import _core
 
 
+# TODO MultiStreamEncoder: the stream_index values here are per media-type,
+# while everywhere else in the code base (and particularly in the public decoder
+# APIs) they are absolute across all media types. That'll quickly becomes
+# confusing, and we should definitely not expose this one as-is. We should either:
+# - keep it private but rename it to something that's not stream_index
+# - make it absolute per container, if we ever want to expose it.
 class _VideoStream:
     def __init__(self, encoder_tensor: Tensor, stream_index: int):
         self._encoder_tensor = encoder_tensor
@@ -17,11 +23,14 @@ class _VideoStream:
 
 
 class _AudioStream:
-    def __init__(self, encoder_tensor: Tensor):
+    def __init__(self, encoder_tensor: Tensor, stream_index: int):
         self._encoder_tensor = encoder_tensor
+        self._stream_index = stream_index
 
     def write(self, samples: Tensor) -> None:
-        _core.streaming_encoder_add_samples(self._encoder_tensor, samples)
+        _core.streaming_encoder_add_samples(
+            self._encoder_tensor, samples, self._stream_index
+        )
 
 
 class StreamingEncoder:
@@ -65,13 +74,13 @@ class StreamingEncoder:
         num_channels: int,
         bit_rate: int | None = None,
     ) -> _AudioStream:
-        _core.streaming_encoder_add_audio_stream(
+        stream_index = _core.streaming_encoder_add_audio_stream(
             self._encoder_tensor,
             sample_rate=sample_rate,
             num_channels=num_channels,
             bit_rate=bit_rate,
         )
-        return _AudioStream(self._encoder_tensor)
+        return _AudioStream(self._encoder_tensor, stream_index)
 
     # TODO MultiStreamEncoder: Maybe there should 2 separate methods, one for
     # file, one for file-like.

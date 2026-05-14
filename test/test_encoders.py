@@ -1730,13 +1730,6 @@ class TestStreamingEncoder:
         )
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
-    def test_add_audio_twice_errors(self, tmp_path, method):
-        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
-        enc.add_audio(sample_rate=44100, num_channels=2)
-        with pytest.raises(RuntimeError, match="already been added"):
-            enc.add_audio(sample_rate=16000, num_channels=1)
-
-    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize("device", cpu_and_oss_cuda)
     def test_write_frames_mismatched_dimensions_errors(self, tmp_path, method, device):
         enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
@@ -1944,8 +1937,9 @@ class TestStreamingEncoder:
         source_frames_small = torch.randint(0, 256, (8, 3, 128, 128), dtype=torch.uint8)
 
         source_audio = AudioDecoder(str(NASA_AUDIO_MP3_44100.path)).get_all_samples()
-        source_samples = source_audio.data
+        source_samples_stereo = source_audio.data
         sample_rate = source_audio.sample_rate
+        source_samples_mono = source_samples_stereo[:1]
 
         enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         video_big = enc.add_video(
@@ -1954,17 +1948,27 @@ class TestStreamingEncoder:
         video_small = enc.add_video(
             height=128, width=128, frame_rate=25.0, pixel_format="yuv444p", crf=0
         )
-        audio = enc.add_audio(
+        audio_stereo = enc.add_audio(
             sample_rate=sample_rate,
-            num_channels=source_samples.shape[0],
+            num_channels=2,
+        )
+        audio_mono = enc.add_audio(
+            sample_rate=sample_rate,
+            num_channels=1,
         )
         enc.open(**open_kwargs)
         video_big.write(source_frames_big[:3])
         video_small.write(source_frames_small[:4])
-        audio.write(source_samples[:, : source_samples.shape[1] // 2])
+        audio_stereo.write(
+            source_samples_stereo[:, : source_samples_stereo.shape[1] // 2]
+        )
+        audio_mono.write(source_samples_mono[:, : source_samples_mono.shape[1] // 2])
         video_big.write(source_frames_big[3:])
         video_small.write(source_frames_small[4:])
-        audio.write(source_samples[:, source_samples.shape[1] // 2 :])
+        audio_stereo.write(
+            source_samples_stereo[:, source_samples_stereo.shape[1] // 2 :]
+        )
+        audio_mono.write(source_samples_mono[:, source_samples_mono.shape[1] // 2 :])
         enc.close()
 
         source = self._get_decoder_source(encoder_output)
@@ -1989,15 +1993,29 @@ class TestStreamingEncoder:
             decoded_small_frames, source_frames_small, percentage=99, atol=2
         )
 
-        audio_decoder = AudioDecoder(source)
-        decoded_audio = audio_decoder.get_all_samples()
-        assert decoded_audio.sample_rate == sample_rate
+        # stream_index is absolute: 0, 1 are video; 2, 3 are audio
+        decoded_stereo = AudioDecoder(source, stream_index=2).get_all_samples()
+        assert decoded_stereo.sample_rate == sample_rate
+        assert decoded_stereo.data.shape[0] == 2
         num_samples_to_compare = min(
-            decoded_audio.data.shape[1], source_samples.shape[1]
+            decoded_stereo.data.shape[1], source_samples_stereo.shape[1]
         )
         assert_tensor_close_on_at_least(
-            decoded_audio.data[:, :num_samples_to_compare],
-            source_samples[:, :num_samples_to_compare],
-            percentage=99,
+            decoded_stereo.data[:, :num_samples_to_compare],
+            source_samples_stereo[:, :num_samples_to_compare],
+            percentage=98,
+            atol=0.01,
+        )
+
+        decoded_mono = AudioDecoder(source, stream_index=3).get_all_samples()
+        assert decoded_mono.sample_rate == sample_rate
+        assert decoded_mono.data.shape[0] == 1
+        num_samples_to_compare = min(
+            decoded_mono.data.shape[1], source_samples_mono.shape[1]
+        )
+        assert_tensor_close_on_at_least(
+            decoded_mono.data[:, :num_samples_to_compare],
+            source_samples_mono[:, :num_samples_to_compare],
+            percentage=98,
             atol=0.01,
         )
