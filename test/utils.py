@@ -8,6 +8,8 @@ import sys
 import tempfile
 from dataclasses import dataclass, field
 
+_IS_WINDOWS = platform.system() == "Windows"
+
 import numpy as np
 import pytest
 import torch
@@ -418,7 +420,9 @@ class TestVideo(TestContainerFile):
             idx, stream_index=stream_index, filters=filters
         )
         tensor_file_path = f"{base_path}.pt"
-        return torch.load(tensor_file_path, weights_only=True).permute(2, 0, 1)
+        return torch.load(tensor_file_path, weights_only=not _IS_WINDOWS).permute(
+            2, 0, 1
+        )
 
     def get_frame_data_by_index_rgb48(
         self,
@@ -431,7 +435,9 @@ class TestVideo(TestContainerFile):
 
         base_path = self.get_base_path_by_index(idx, stream_index=stream_index)
         tensor_file_path = f"{base_path}.rgb48.pt"
-        return torch.load(tensor_file_path, weights_only=True).permute(2, 0, 1)
+        return torch.load(tensor_file_path, weights_only=not _IS_WINDOWS).permute(
+            2, 0, 1
+        )
 
     def get_frame_data_by_range(
         self,
@@ -833,7 +839,7 @@ class TestAudio(TestContainerFile):
                 # exist. It means the asset cannot be used to check validity of
                 # decoded frames.
                 self._reference_frames[stream_index] = torch.load(
-                    frames_data_path, weights_only=True
+                    frames_data_path, weights_only=not _IS_WINDOWS
                 )
 
     def get_frame_data_by_index(
