@@ -1145,7 +1145,9 @@ int MultiStreamEncoder::addVideoStream(
 int MultiStreamEncoder::addAudioStream(
     int sampleRate,
     int numChannels,
-    std::optional<int> bitRate) {
+    std::optional<int> bitRate,
+    std::optional<int> outNumChannels,
+    std::optional<int> outSampleRate) {
   STD_TORCH_CHECK(sampleRate > 0, "sample_rate must be > 0, got ", sampleRate);
   STD_TORCH_CHECK(
       numChannels > 0, "num_channels must be > 0, got ", numChannels);
@@ -1154,6 +1156,8 @@ int MultiStreamEncoder::addAudioStream(
   audioStream.inSampleRate = sampleRate;
   audioStream.inNumChannels = numChannels;
   audioStream.options.bitRate = bitRate;
+  audioStream.options.numChannels = outNumChannels;
+  audioStream.options.sampleRate = outSampleRate;
   audioStreams_.push_back(std::move(audioStream));
   return static_cast<int>(audioStreams_.size() - 1);
 }
@@ -1333,15 +1337,18 @@ void MultiStreamEncoder::initializeAudioStream(AudioStream& audioStream) {
   // well when "-b:a" isn't specified.
   audioStream.avCodecContext->bit_rate = desiredBitRate.value_or(0);
 
-  // TODO MultiStreamEncoder: support output numChannels and sampleRate
-  validateNumChannels(*avCodec, audioStream.inNumChannels);
-  setDefaultChannelLayout(
-      audioStream.avCodecContext, audioStream.inNumChannels);
+  int outNumChannels =
+      audioStream.options.numChannels.value_or(audioStream.inNumChannels);
+  audioStream.outNumChannels = outNumChannels;
+  validateNumChannels(*avCodec, outNumChannels);
+  setDefaultChannelLayout(audioStream.avCodecContext, outNumChannels);
 
-  validateSampleRate(*avCodec, audioStream.inSampleRate);
-  audioStream.avCodecContext->sample_rate = audioStream.inSampleRate;
-  audioStream.avCodecContext->time_base =
-      AVRational{1, audioStream.inSampleRate};
+  int outSampleRate =
+      audioStream.options.sampleRate.value_or(audioStream.inSampleRate);
+  audioStream.outSampleRate = outSampleRate;
+  validateSampleRate(*avCodec, outSampleRate);
+  audioStream.avCodecContext->sample_rate = outSampleRate;
+  audioStream.avCodecContext->time_base = AVRational{1, outSampleRate};
 
   // Input samples are expected to be FLTP. Not all encoders support FLTP, so we
   // may need to convert the samples into a supported output sample format,
@@ -1380,7 +1387,7 @@ void MultiStreamEncoder::initializeAudioStream(AudioStream& audioStream) {
   // sized batches.
   auto avAudioFifo = av_audio_fifo_alloc(
       audioStream.avCodecContext->sample_fmt,
-      audioStream.inNumChannels,
+      outNumChannels,
       audioStream.frameSize * 2);
   STD_TORCH_CHECK(avAudioFifo != nullptr, "Couldn't create AVAudioFifo.");
   audioStream.avAudioFifo.reset(avAudioFifo);
@@ -1572,8 +1579,8 @@ UniqueAVFrame MultiStreamEncoder::maybeConvertAudioAVFrame(
     AudioStream& audioStream) {
   if (static_cast<AVSampleFormat>(avFrame->format) ==
           audioStream.avCodecContext->sample_fmt &&
-      getNumChannels(avFrame) == audioStream.inNumChannels &&
-      avFrame->sample_rate == audioStream.inSampleRate) {
+      getNumChannels(avFrame) == audioStream.outNumChannels &&
+      avFrame->sample_rate == audioStream.outSampleRate) {
     // Note: the clone references the same underlying data, it's a cheap copy.
     return UniqueAVFrame(av_frame_clone(avFrame.get()));
   }
@@ -1583,9 +1590,9 @@ UniqueAVFrame MultiStreamEncoder::maybeConvertAudioAVFrame(
         static_cast<AVSampleFormat>(avFrame->format),
         audioStream.avCodecContext->sample_fmt,
         avFrame->sample_rate,
-        audioStream.inSampleRate,
+        audioStream.outSampleRate,
         avFrame,
-        audioStream.inNumChannels));
+        audioStream.outNumChannels));
   }
   // convertAudioAVFrameSamples uses avFrame's extended_data field, so we ensure
   // it's the same as data. This should always be the case since we validated
@@ -1597,10 +1604,10 @@ UniqueAVFrame MultiStreamEncoder::maybeConvertAudioAVFrame(
       audioStream.swrContext,
       avFrame,
       audioStream.avCodecContext->sample_fmt,
-      audioStream.inSampleRate,
-      audioStream.inNumChannels);
+      audioStream.outSampleRate,
+      audioStream.outNumChannels);
 
-  if (avFrame->sample_rate == audioStream.inSampleRate) {
+  if (avFrame->sample_rate == audioStream.outSampleRate) {
     STD_TORCH_CHECK(
         convertedAVFrame->nb_samples == avFrame->nb_samples,
         "convertedAVFrame->nb_samples=",
@@ -1637,7 +1644,7 @@ void MultiStreamEncoder::encodeAudioFrameThroughFifo(
   UniqueAVFrame newavFrame = allocateAVFrame(
       audioStream.frameSize,
       audioStream.avCodecContext->sample_rate,
-      audioStream.inNumChannels,
+      audioStream.outNumChannels,
       audioStream.avCodecContext->sample_fmt);
 
   // Explaining the while bound:
@@ -1738,8 +1745,8 @@ void MultiStreamEncoder::maybeFlushSwrAndFifo(
     if (numRemainingSamples > 0) {
       swrFrame = allocateAVFrame(
           numRemainingSamples,
-          audioStream.inSampleRate,
-          audioStream.inNumChannels,
+          audioStream.outSampleRate,
+          audioStream.outNumChannels,
           audioStream.avCodecContext->sample_fmt);
       int actualNumRemainingSamples = swr_convert(
           audioStream.swrContext.get(),

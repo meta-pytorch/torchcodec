@@ -204,7 +204,9 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   int addAudioStream(
       int sampleRate,
       int numChannels,
-      std::optional<int> bitRate = std::nullopt);
+      std::optional<int> bitRate = std::nullopt,
+      std::optional<int> outNumChannels = std::nullopt,
+      std::optional<int> outSampleRate = std::nullopt);
   void open(std::string_view fileName);
   void open(
       std::string_view formatName,
@@ -228,6 +230,8 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   struct AudioStream {
     int inSampleRate = -1;
     int inNumChannels = -1;
+    int outNumChannels = -1;
+    int outSampleRate = -1;
     int frameSize = -1;
     int64_t lastEncodedAVFramePts = 0;
     AudioStreamOptions options;

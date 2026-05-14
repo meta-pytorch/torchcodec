@@ -94,7 +94,7 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "streaming_encoder_add_video_stream(Tensor(a!) encoder, int height, int width, float frame_rate, str device=\"cpu\", str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> int");
   m.def(
-      "streaming_encoder_add_audio_stream(Tensor(a!) encoder, int sample_rate, int num_channels, int? bit_rate=None) -> int");
+      "streaming_encoder_add_audio_stream(Tensor(a!) encoder, int sample_rate, int num_channels, int? bit_rate=None, int? output_num_channels=None, int? output_sample_rate=None) -> int");
   m.def("streaming_encoder_open_file(Tensor(a!) encoder, str filename) -> ()");
   m.def(
       "streaming_encoder_open_file_like(Tensor(a!) encoder, str format, int file_like_context) -> ()");
@@ -1262,12 +1262,18 @@ int64_t streaming_encoder_add_audio_stream(
     torch::stable::Tensor& encoder,
     int64_t sample_rate,
     int64_t num_channels,
-    std::optional<int64_t> bit_rate = std::nullopt) {
+    std::optional<int64_t> bit_rate = std::nullopt,
+    std::optional<int64_t> output_num_channels = std::nullopt,
+    std::optional<int64_t> output_sample_rate = std::nullopt) {
   return static_cast<int64_t>(
       unwrapTensorToGetMultiStreamEncoder(encoder)->addAudioStream(
           validateInt64ToInt(sample_rate, "sample_rate"),
           validateInt64ToInt(num_channels, "num_channels"),
-          validateOptionalInt64ToInt(bit_rate, "bit_rate")));
+          validateOptionalInt64ToInt(bit_rate, "bit_rate"),
+          validateOptionalInt64ToInt(
+              output_num_channels, "output_num_channels"),
+          validateOptionalInt64ToInt(
+              output_sample_rate, "output_sample_rate")));
 }
 
 void streaming_encoder_add_frames(
