@@ -340,6 +340,9 @@ class TestStreamingEncoder:
 
     @pytest.mark.needs_cuda
     def test_cuda_encoding(self, tmp_path):
+        if ffmpeg_major_version == 4:
+            pytest.skip("CUDA encoding not supported with FFmpeg 4")
+
         # Use smooth gradient data instead of random noise. Random data is
         # incompressible, causing very different artifacts between nvenc and
         # libx264.
@@ -378,10 +381,7 @@ class TestStreamingEncoder:
         cuda_decoded = VideoDecoder(cuda_path).get_all_frames()
         cpu_decoded = VideoDecoder(cpu_path).get_all_frames()
         assert cuda_decoded.data.shape == (NUM_FRAMES, 3, HEIGHT, WIDTH)
-        if ffmpeg_major_version == 4:
-            percentage, atol = 85, 5
-        else:
-            percentage, atol = 95, 3
-        assert_tensor_close_on_at_least(
-            cuda_decoded.data, cpu_decoded.data, percentage=percentage, atol=atol
-        )
+        if ffmpeg_major_version != 4:
+            assert_tensor_close_on_at_least(
+                cuda_decoded.data, cpu_decoded.data, percentage=95, atol=3
+            )
