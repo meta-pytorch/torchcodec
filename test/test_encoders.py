@@ -2896,6 +2896,8 @@ class TestStreamingEncoder:
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize("format", ["wav", "mp3", "flac"])
     def test_multiple_audio_formats(self, method, format, tmp_path):
+        if IS_WINDOWS and format == "mp3":
+            pytest.skip("mp3 encoding not supported on Windows")
         enc, encoder_output, open_kwargs = self._create_encoder(
             method, tmp_path, format
         )
