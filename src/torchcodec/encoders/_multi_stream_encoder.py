@@ -89,11 +89,12 @@ class StreamingEncoder:
 
     # TODO MultiStreamEncoder: Maybe there should 2 separate methods, one for
     # file, one for file-like.
-    def open(self, dest, *, format: str | None = None) -> None:
+    def open(self, dest, *, format: str | None = None) -> "StreamingEncoder":
         if format is not None:
             _core.streaming_encoder_open_file_like(self._encoder_tensor, format, dest)
         else:
             _core.streaming_encoder_open_file(self._encoder_tensor, str(dest))
+        return self
 
     def close(self) -> None:
         _core.streaming_encoder_close(self._encoder_tensor)
