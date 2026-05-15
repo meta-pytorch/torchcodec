@@ -903,6 +903,33 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
+  if (cpuFallback_) {
+    // When the CPU fallabck happens, we'll try to run the color-conversion on
+    // GPU by sending those CPU frames to the GPU as NV12 (See
+    // transferCpuFrameToGpuNV12() below). However, it's not always possible:
+    // NV12 would downsample 4:4:4 frames and lose chroma resolution, resulting
+    // in poorly decoded frames. So for those, we still do the color conversion
+    // on the CPU and then send the full RGB frame to the GPU.
+    const AVPixFmtDescriptor* desc =
+        av_pix_fmt_desc_get(static_cast<AVPixelFormat>(avFrame->format));
+    if (desc && desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0) {
+      // 4:4:4: converting through NV12 (4:2:0) would lose chroma resolution.
+      FrameOutput cpuFrameOutput;
+      cpuFallback_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
+      if (preAllocatedOutputTensor.has_value()) {
+        torch::stable::copy_(
+            preAllocatedOutputTensor.value(), cpuFrameOutput.data);
+        frameOutput.data = preAllocatedOutputTensor.value();
+      } else {
+        frameOutput.data = torch::stable::to(cpuFrameOutput.data, device_);
+      }
+      if (rotation_ != Rotation::NONE) {
+        applyRotation(frameOutput, preAllocatedOutputTensor);
+      }
+      return;
+    }
+  }
+
   // Capture original dimensions before transferCpuFrameToGpuNV12 may
   // round them up to even for NV12.
   FrameDims originalDims(avFrame->height, avFrame->width);
