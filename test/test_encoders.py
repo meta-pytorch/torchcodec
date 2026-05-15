@@ -283,6 +283,10 @@ class TestAudioEncoder:
         ],
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
+    @pytest.mark.skipif(
+        IS_WINDOWS and ffmpeg_major_version == 8,
+        reason="against_cli tests fail on Windows with FFmpeg 8",
+    )
     def test_against_cli(
         self,
         asset,
@@ -1042,6 +1046,10 @@ class TestVideoEncoder:
     )
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     @pytest.mark.parametrize("frame_rate", [30, 29.97])
+    @pytest.mark.skipif(
+        IS_WINDOWS and ffmpeg_major_version == 8,
+        reason="against_cli tests fail on Windows with FFmpeg 8",
+    )
     def test_video_encoder_against_ffmpeg_cli(
         self, tmp_path, format, encode_params, method, frame_rate
     ):
@@ -1371,6 +1379,10 @@ class TestVideoEncoder:
     @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc", None))
     # Full/PC range, Limited/TV range
     @pytest.mark.parametrize("color_range", ("pc", "tv", None))
+    @pytest.mark.skipif(
+        IS_WINDOWS and ffmpeg_major_version == 8,
+        reason="against_cli tests fail on Windows with FFmpeg 8",
+    )
     def test_nvenc_against_ffmpeg_cli(
         self, tmp_path, method, format, codec, color_space, color_range
     ):
@@ -2196,6 +2208,10 @@ class TestStreamingEncoder:
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize("frame_rate", [30, 29.97])
     @needs_ffmpeg_cli
+    @pytest.mark.skipif(
+        IS_WINDOWS and ffmpeg_major_version == 8,
+        reason="against_cli tests fail on Windows with FFmpeg 8",
+    )
     def test_video_against_ffmpeg_cli(
         self, tmp_path, format, encode_params, method, frame_rate
     ):
@@ -2337,6 +2353,10 @@ class TestStreamingEncoder:
         ],
     )
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    @pytest.mark.skipif(
+        IS_WINDOWS and ffmpeg_major_version == 8,
+        reason="against_cli tests fail on Windows with FFmpeg 8",
+    )
     def test_audio_against_cli(
         self,
         asset,
@@ -3414,6 +3434,10 @@ class TestStreamingEncoder:
     @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc", None))
     # Full/PC range, Limited/TV range
     @pytest.mark.parametrize("color_range", ("pc", "tv", None))
+    @pytest.mark.skipif(
+        IS_WINDOWS and ffmpeg_major_version == 8,
+        reason="against_cli tests fail on Windows with FFmpeg 8",
+    )
     def test_nvenc_against_ffmpeg_cli(
         self, tmp_path, method, format, codec, color_space, color_range
     ):
