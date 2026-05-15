@@ -240,6 +240,7 @@ class TestStreamingEncoder:
         frames = torch.randint(
             0, 256, (NUM_FRAMES, 3, HEIGHT, WIDTH), dtype=torch.uint8
         )
+        sr = 44100
         samples = torch.rand(NUM_AUDIO_CHANNELS, NUM_SAMPLES) * 2 - 1
         path = tmp_path / "av.mkv"
 
@@ -251,7 +252,7 @@ class TestStreamingEncoder:
             pixel_format="yuv444p",
             crf=0,
         )
-        audio = enc.add_audio(sample_rate=SAMPLE_RATE, num_channels=NUM_AUDIO_CHANNELS)
+        audio = enc.add_audio(sample_rate=sr, num_channels=NUM_AUDIO_CHANNELS)
         enc.open(dest=path)
         with enc:
             video.write(frames[:5])
@@ -266,11 +267,11 @@ class TestStreamingEncoder:
 
         audio_dec = AudioDecoder(path)
         assert audio_dec.metadata.num_channels == NUM_AUDIO_CHANNELS
-        assert audio_dec.metadata.sample_rate == SAMPLE_RATE
+        assert audio_dec.metadata.sample_rate == sr
         decoded_samples = audio_dec.get_all_samples()
         assert decoded_samples.data.shape[0] == NUM_AUDIO_CHANNELS
-        assert decoded_samples.sample_rate == SAMPLE_RATE
         # TODO: validate audio on a mostly lossless codec?
+        assert decoded_samples.sample_rate == sr
 
     @pytest.mark.needs_cuda
     def test_cuda_encoding(self, tmp_path):
