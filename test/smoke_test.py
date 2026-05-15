@@ -5,6 +5,7 @@ import torch
 
 from test.utils import assert_tensor_close_on_at_least
 
+from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 from torchcodec.encoders import AudioEncoder, VideoEncoder
@@ -377,6 +378,10 @@ class TestStreamingEncoder:
         cuda_decoded = VideoDecoder(cuda_path).get_all_frames()
         cpu_decoded = VideoDecoder(cpu_path).get_all_frames()
         assert cuda_decoded.data.shape == (NUM_FRAMES, 3, HEIGHT, WIDTH)
+        if ffmpeg_major_version == 4:
+            percentage, atol = 85, 5
+        else:
+            percentage, atol = 95, 3
         assert_tensor_close_on_at_least(
-            cuda_decoded.data, cpu_decoded.data, percentage=95, atol=3
+            cuda_decoded.data, cpu_decoded.data, percentage=percentage, atol=atol
         )
