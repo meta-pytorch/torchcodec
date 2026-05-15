@@ -2134,6 +2134,8 @@ class TestStreamingEncoder:
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_audio_output_num_channels(self, tmp_path, method):
+        # We just check that the output_num_channels parameter is respected.
+        # Correctness is checked in other tests (like test_audio_against_cli())
         sample_rate = 44_100
         source_stereo = torch.rand(2, 1_000)
         source_mono = torch.rand(1, 1_000)
@@ -2178,7 +2180,9 @@ class TestStreamingEncoder:
         [
             "mov",
             "mp4",
+            "avi",
             "mkv",
+            "flv",
         ],
     )
     @pytest.mark.parametrize(
@@ -2200,6 +2204,9 @@ class TestStreamingEncoder:
         crf = encode_params["crf"]
         preset = encode_params["preset"]
 
+        if format in ("avi", "flv") and pixel_format == "yuv444p":
+            pytest.skip(f"Default codec for {format} does not support {pixel_format}")
+
         source_frames = (
             VideoDecoder(str(TEST_SRC_2_720P.path))
             .get_frames_in_range(start=0, stop=30)
@@ -2212,13 +2219,15 @@ class TestStreamingEncoder:
             f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
 
         ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_output.{format}")
+        # Some codecs (ex. MPEG4) do not support CRF or preset.
+        # Flags not supported by the selected codec will be ignored.
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",
             "-f",
             "rawvideo",
             "-pix_fmt",
-            "rgb24",
+            "rgb24",  # Input format
             "-s",
             f"{source_frames.shape[3]}x{source_frames.shape[2]}",
             "-r",
@@ -2226,12 +2235,13 @@ class TestStreamingEncoder:
             "-i",
             temp_raw_path,
         ]
-        if pixel_format is not None:
+        if pixel_format is not None:  # Output format
             ffmpeg_cmd.extend(["-pix_fmt", pixel_format])
         if preset is not None:
             ffmpeg_cmd.extend(["-preset", preset])
         if crf is not None:
             ffmpeg_cmd.extend(["-crf", str(crf)])
+        # Output path must be last
         ffmpeg_cmd.append(ffmpeg_encoded_path)
         subprocess.run(ffmpeg_cmd, check=True)
         ffmpeg_frames = (
@@ -2260,11 +2270,19 @@ class TestStreamingEncoder:
             .data
         )
 
+        # MPEG codec used for avi format does not accept CRF
+        percentage = 94 if format == "avi" else 99
+
         assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
+        # Check that PSNR between both encoded versions is high
         for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
             assert psnr(ff_frame, enc_frame) > 30
-            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=99, atol=2)
+            assert_tensor_close_on_at_least(
+                ff_frame, enc_frame, percentage=percentage, atol=2
+            )
 
+        # Only compare video metadata on ffmpeg versions >= 6, as older versions
+        # are often missing metadata
         if ffmpeg_major_version >= 6 and method == "to_file":
             fields = [
                 "duration",
@@ -2281,7 +2299,10 @@ class TestStreamingEncoder:
             )
             assert ffmpeg_metadata == encoder_metadata
 
+            # Check that frame timestamps and duration are the same
             fields = ("pts", "pts_time")
+            if format != "flv":
+                fields += ("duration", "duration_time")
             ffmpeg_frames_info = self._get_frames_info(
                 ffmpeg_encoded_path, fields=fields
             )
@@ -2298,6 +2319,7 @@ class TestStreamingEncoder:
     @pytest.mark.parametrize(
         "format",
         [
+            # TODO: https://github.com/pytorch/torchcodec/issues/837
             pytest.param(
                 "mp3",
                 marks=pytest.mark.skipif(
@@ -2325,7 +2347,11 @@ class TestStreamingEncoder:
         format,
         method,
         tmp_path,
+        capfd,
+        with_ffmpeg_debug_logs,
     ):
+        # Encodes samples with our encoder and with the FFmpeg CLI, and checks
+        # that both decoded outputs are equal
         source_audio = AudioDecoder(str(asset.path)).get_all_samples()
         source_samples = source_audio.data
         in_sample_rate = source_audio.sample_rate
@@ -2360,7 +2386,20 @@ class TestStreamingEncoder:
         audio.write(source_samples)
         enc.close()
 
+        captured = capfd.readouterr()
+        if format == "wav":
+            assert "Timestamps are unset in a packet" not in captured.err
+        if format == "mp3":
+            assert "Queue input is backward in time" not in captured.err
+        if format in ("flac", "wav"):
+            assert "Encoder did not produce proper pts" not in captured.err
+        if format in ("flac", "mp3"):
+            assert "Application provided invalid" not in captured.err
+
         if IS_WINDOWS_WITH_FFMPEG_LE_70 and format == "mp3":
+            # We're getting a "Could not open input file" on Windows mp3
+            # files when decoding.
+            # TODO: https://github.com/pytorch/torchcodec/issues/837
             return
 
         samples_by_us = AudioDecoder(
@@ -2379,6 +2418,10 @@ class TestStreamingEncoder:
         elif format == "wav":
             rtol, atol = 0, 1e-4
         elif format == "mp3" and asset is SINE_MONO_S32 and num_channels == 2:
+            # Not sure why, this one needs slightly higher tol. With default
+            # tolerances, the check fails on ~1% of the samples, so that's
+            # probably fine. It might be that the FFmpeg CLI doesn't rely on
+            # libswresample for converting channels?
             rtol, atol = 0, 1e-3
         else:
             rtol, atol = None, None
@@ -2406,6 +2449,7 @@ class TestStreamingEncoder:
     )
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_video_round_trip(self, tmp_path, format, method):
+        # Test that decode(encode(decode(frames))) == decode(frames)
         source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
         source_frames = source_decoder.get_frames_in_range(start=0, stop=30).data
         frame_rate = source_decoder.metadata.average_fps
@@ -2452,6 +2496,7 @@ class TestStreamingEncoder:
     )
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_audio_round_trip(self, method, format, tmp_path):
+        # Check that decode(encode(samples)) == samples on lossless formats
         asset = NASA_AUDIO_MP3
         source_samples = AudioDecoder(str(asset.path)).get_all_samples().data
         sample_rate = asset.sample_rate
@@ -2477,13 +2522,19 @@ class TestStreamingEncoder:
         [
             "mov",
             "mp4",
+            "avi",
             "mkv",
+            "flv",
         ],
     )
     def test_video_to_file_vs_to_file_like(self, tmp_path, format):
+        # Test that to_file and to_file_like produce the same results
         source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
         source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
         frame_rate = source_decoder.metadata.average_fps
+
+        pixel_format = "yuv420p" if format in ("avi", "flv") else "yuv444p"
+        crf = 0
 
         # Encode via to_file
         enc_file = StreamingEncoder()
@@ -2492,8 +2543,8 @@ class TestStreamingEncoder:
             height=source_frames.shape[2],
             width=source_frames.shape[3],
             frame_rate=frame_rate,
-            pixel_format="yuv444p",
-            crf=0,
+            pixel_format=pixel_format,
+            crf=crf,
         )
         enc_file.open(file_path)
         video_file.write(source_frames)
@@ -2506,8 +2557,8 @@ class TestStreamingEncoder:
             height=source_frames.shape[2],
             width=source_frames.shape[3],
             frame_rate=frame_rate,
-            pixel_format="yuv444p",
-            crf=0,
+            pixel_format=pixel_format,
+            crf=crf,
         )
         enc_fl.open(file_like, format=format)
         video_fl.write(source_frames)
@@ -2529,6 +2580,13 @@ class TestStreamingEncoder:
         "format",
         [
             pytest.param(
+                "mp3",
+                marks=pytest.mark.skipif(
+                    IS_WINDOWS and ffmpeg_major_version <= 5,
+                    reason="Encoding mp3 on Windows is weirdly buggy",
+                ),
+            ),
+            pytest.param(
                 "wav",
                 marks=pytest.mark.skipif(
                     ffmpeg_major_version == 4,
@@ -2539,6 +2597,7 @@ class TestStreamingEncoder:
         ],
     )
     def test_audio_to_file_vs_to_file_like(self, tmp_path, format):
+        # Test that to_file and to_file_like produce the same results
         asset = NASA_AUDIO_MP3
         source_samples = AudioDecoder(str(asset.path)).get_all_samples().data
         sample_rate = asset.sample_rate
@@ -2591,6 +2650,9 @@ class TestStreamingEncoder:
         ),
     )
     def test_video_contiguity(self, method, tmp_path, device):
+        # Ensure that 2 sets of video frames with the same pixel values are encoded
+        # in the same way, regardless of their memory layout. Here we encode 2 equal
+        # frame tensors, one is contiguous while the other is non-contiguous.
         num_frames, channels, height, width = 5, 3, 256, 256
         contiguous_frames = (
             torch.randint(
@@ -2601,6 +2663,7 @@ class TestStreamingEncoder:
         )
         assert contiguous_frames.is_contiguous()
 
+        # Permute NCHW to NHWC, then update the memory layout, then permute back
         non_contiguous_frames = (
             contiguous_frames.permute(0, 2, 3, 1).contiguous().permute(0, 3, 1, 2)
         )
@@ -2643,6 +2706,9 @@ class TestStreamingEncoder:
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_audio_contiguity(self, method, tmp_path):
+        # Ensure that 2 waveforms with the same values are encoded in the same
+        # way, regardless of their memory layout. Here we encode 2 equal
+        # waveforms, one is row-aligned while the other is column-aligned.
         num_samples = 10_000
         contiguous_samples = torch.rand(2, num_samples).contiguous()
         assert contiguous_samples.stride() == (num_samples, 1)
@@ -2680,6 +2746,7 @@ class TestStreamingEncoder:
 
     @staticmethod
     def _get_video_metadata(file_path, fields):
+        """Helper function to get video metadata from a file using ffprobe."""
         result = subprocess.run(
             [
                 "ffprobe",
@@ -2708,6 +2775,7 @@ class TestStreamingEncoder:
 
     @staticmethod
     def _get_frames_info(file_path, fields):
+        """Helper function to get frame info (pts, dts, etc.) using ffprobe."""
         parsed = call_ffprobe(
             [
                 "-select_streams",
@@ -2875,6 +2943,8 @@ class TestStreamingEncoder:
             enc.add_audio(sample_rate=44100, num_channels=0)
 
     def test_to_file_like_custom_file_object(self, tmp_path):
+        """Test to_file_like with a custom file-like object that implements write and seek."""
+
         class CustomFileObject:
             def __init__(self):
                 self._file = io.BytesIO()
@@ -2944,6 +3014,7 @@ class TestStreamingEncoder:
         torch.testing.assert_close(decoded.data, source_samples, rtol=0, atol=1e-4)
 
     def test_to_file_like_real_file_video(self, tmp_path):
+        """Test to_file_like with a real file opened in binary write mode."""
         source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
         source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
         frame_rate = source_decoder.metadata.average_fps
@@ -2970,6 +3041,7 @@ class TestStreamingEncoder:
         )
 
     def test_to_file_like_real_file_audio(self, tmp_path):
+        """Test to_file_like with a real file opened in binary write mode."""
         asset = NASA_AUDIO_MP3
         source_samples = AudioDecoder(str(asset.path)).get_all_samples().data
         sample_rate = asset.sample_rate
@@ -3051,6 +3123,8 @@ class TestStreamingEncoder:
         ],
     )
     def test_codec_parameter_utilized(self, tmp_path, method, format, codec_spec):
+        # Test the codec parameter is utilized by using ffprobe to check the
+        # encoded file's codec spec
         enc, encoder_output, open_kwargs = self._create_encoder(
             method, tmp_path, format
         )
@@ -3085,6 +3159,9 @@ class TestStreamingEncoder:
     def test_codec_spec_vs_impl_equivalence(
         self, tmp_path, method, codec_spec, codec_impl
     ):
+        # Test that using codec spec gives the same result as using default
+        # codec implementation.
+        # We cannot directly check codec impl used, so we assert frame equality.
         frames = torch.randint(0, 256, (10, 3, 64, 64), dtype=torch.uint8)
 
         def encode_with_codec(codec, suffix):
@@ -3122,6 +3199,8 @@ class TestStreamingEncoder:
         ],
     )
     def test_extra_options_utilized(self, tmp_path, profile, colorspace, color_range):
+        # Test setting profile, colorspace, and color_range via extra_options
+        # is utilized
         enc = StreamingEncoder()
         dest = str(tmp_path / "output.mp4")
         video = enc.add_video(
@@ -3141,6 +3220,8 @@ class TestStreamingEncoder:
         metadata = self._get_video_metadata(
             dest, fields=["profile", "color_space", "color_range"]
         )
+        # Validate profile (case-insensitive, baseline is reported as
+        # "Constrained Baseline")
         expected_profile = "constrained baseline" if profile == "baseline" else profile
         assert metadata["profile"].lower() == expected_profile
         assert metadata["color_space"] == colorspace
@@ -3206,3 +3287,306 @@ class TestStreamingEncoder:
             .data
         )
         assert decoded.shape == (5, 3, 64, 64)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_invalid_codec_name_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        enc.add_video(
+            height=64,
+            width=64,
+            frame_rate=30.0,
+            codec="invalid_codec_name",
+        )
+        with pytest.raises(
+            RuntimeError,
+            match=r"Video codec invalid_codec_name not found.",
+        ):
+            enc.open(**open_kwargs)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_crf_out_of_range_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        enc.add_video(height=64, width=64, frame_rate=30.0, crf=-10)
+        with pytest.raises(RuntimeError, match=r"crf=-10 is out of valid range"):
+            enc.open(**open_kwargs)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_invalid_preset_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        enc.add_video(height=64, width=64, frame_rate=30.0, preset="fake_preset")
+        with pytest.raises(
+            RuntimeError,
+            match=r"avcodec_open2 failed: Invalid argument",
+        ):
+            enc.open(**open_kwargs)
+
+    @pytest.mark.skipif(
+        ffmpeg_major_version == 4,
+        reason="On FFmpeg 4  hitting a truncated packet results in AVERROR_INVALIDDATA, which torchcodec does not handle.",
+    )
+    @pytest.mark.parametrize("format", ["mp4", "mov"])
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_fragmented_mp4_truncation(self, format, method, tmp_path):
+        # Test that StreamingEncoder can write fragmented files using movflags.
+        # Fragmented files store metadata interleaved with data rather than
+        # all at the end, making them decodable even if writing is interrupted.
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=30).data
+        frame_rate = source_decoder.metadata.average_fps
+
+        enc, encoder_output, open_kwargs = self._create_encoder(
+            method, tmp_path, format
+        )
+        video = enc.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=frame_rate,
+            extra_options={"movflags": "+frag_keyframe+empty_moov"},
+        )
+        enc.open(**open_kwargs)
+        video.write(source_frames)
+        enc.close()
+
+        source = self._get_decoder_source(encoder_output)
+
+        reference_decoder = VideoDecoder(source)
+        reference_frames = [reference_decoder.get_frame_at(i) for i in range(10)]
+
+        # Truncate the file to simulate interrupted write
+        if isinstance(encoder_output, io.BytesIO):
+            full_content = encoder_output.getvalue()
+            truncated_size = int(len(full_content) * 0.5)
+            truncated_source = full_content[:truncated_size]
+        else:
+            with open(encoder_output, "rb") as f:
+                full_content = f.read()
+            truncated_size = int(len(full_content) * 0.5)
+            with open(encoder_output, "wb") as f:
+                f.write(full_content[:truncated_size])
+            truncated_source = str(encoder_output)
+
+        # Decode the truncated file and verify first 10 frames match reference
+        truncated_decoder = VideoDecoder(truncated_source)
+        assert len(truncated_decoder) >= 10
+        for i in range(10):
+            truncated_frame = truncated_decoder.get_frame_at(i)
+            torch.testing.assert_close(
+                truncated_frame.data, reference_frames[i].data, atol=0, rtol=0
+            )
+
+    @needs_ffmpeg_cli
+    @pytest.mark.needs_cuda
+    @pytest.mark.skipif(in_fbcode(), reason="NVENC not available in fbcode")
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    @pytest.mark.parametrize(
+        ("format", "codec"),
+        [
+            ("mov", None),  # will default to h264_nvenc
+            ("mov", "h264_nvenc"),
+            ("avi", "h264_nvenc"),
+            ("mp4", "hevc_nvenc"),  # use non-default codec
+            pytest.param(
+                "mkv",
+                "av1_nvenc",
+                marks=[
+                    pytest.mark.skipif(
+                        IN_GITHUB_CI, reason="av1_nvenc is not supported on CI"
+                    ),
+                    pytest.mark.skipif(
+                        ffmpeg_major_version == 4,
+                        reason="av1_nvenc is not supported on FFmpeg 4",
+                    ),
+                ],
+            ),
+        ],
+    )
+    # We test the color space and color range parameters in this test, because
+    # we are required to define matrices specific to these specs when using NPP, see note:
+    # [RGB -> YUV Color Conversion, limited color range]
+    # BT.601, BT.709, BT.2020
+    @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc", None))
+    # Full/PC range, Limited/TV range
+    @pytest.mark.parametrize("color_range", ("pc", "tv", None))
+    def test_nvenc_against_ffmpeg_cli(
+        self, tmp_path, method, format, codec, color_space, color_range
+    ):
+        # TODO-VideoEncoder: (P2) Investigate why FFmpeg 4 and 6 fail with
+        # non-default color space and range.
+        # See https://github.com/meta-pytorch/torchcodec/issues/1140
+        if ffmpeg_major_version in (4, 6) and not (
+            color_space == "bt470bg" and color_range == "tv"
+        ):
+            pytest.skip(
+                "Non-default color space and range have lower accuracy on FFmpeg 4 and 6"
+            )
+
+        # Encode with FFmpeg CLI using nvenc codecs
+        device = "cuda"
+        qp = 1  # Use near lossless encoding to reduce noise and support av1_nvenc
+        source_frames = (
+            VideoDecoder(str(TEST_SRC_2_720P.path))
+            .get_frames_in_range(start=0, stop=30)
+            .data.to(device)
+        )
+        frame_rate = 30
+
+        temp_raw_path = str(tmp_path / "temp_input.raw")
+        with open(temp_raw_path, "wb") as f:
+            f.write(source_frames.permute(0, 2, 3, 1).cpu().numpy().tobytes())
+
+        ffmpeg_encoded_path = str(tmp_path / f"ffmpeg_nvenc_output.{format}")
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            "rgb24",  # Input format
+            "-s",
+            f"{source_frames.shape[3]}x{source_frames.shape[2]}",
+            "-r",
+            str(frame_rate),
+            "-i",
+            temp_raw_path,
+            # CLI requires explicit codec for nvenc
+            # StreamingEncoder will default to h264_nvenc since the frames are
+            # on GPU.
+            "-c:v",
+            codec if codec is not None else "h264_nvenc",
+            "-pix_fmt",
+            "nv12",  # Output format is always NV12
+            "-qp",
+            str(qp),
+        ]
+        if color_space:
+            ffmpeg_cmd.extend(["-colorspace", color_space])
+        if color_range:
+            ffmpeg_cmd.extend(["-color_range", color_range])
+        ffmpeg_cmd.append(ffmpeg_encoded_path)
+        subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+
+        enc, encoder_output, open_kwargs = self._create_encoder(
+            method, tmp_path, format
+        )
+        extra_options = {"qp": qp}
+        if color_space:
+            extra_options["colorspace"] = color_space
+        if color_range:
+            extra_options["color_range"] = color_range
+        video = enc.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=frame_rate,
+            device=device,
+            codec=codec,
+            extra_options=extra_options,
+        )
+        enc.open(**open_kwargs)
+        video.write(source_frames)
+        enc.close()
+
+        ffmpeg_frames = (
+            VideoDecoder(ffmpeg_encoded_path).get_frames_in_range(start=0, stop=30).data
+        )
+        encoder_frames = (
+            VideoDecoder(self._get_decoder_source(encoder_output))
+            .get_frames_in_range(start=0, stop=30)
+            .data
+        )
+
+        assert ffmpeg_frames.shape[0] == encoder_frames.shape[0]
+        for ff_frame, enc_frame in zip(ffmpeg_frames, encoder_frames):
+            assert psnr(ff_frame, enc_frame) > 25
+            assert_tensor_close_on_at_least(ff_frame, enc_frame, percentage=96, atol=2)
+
+        if method == "to_file":
+            metadata_fields = ["pix_fmt", "color_range", "color_space"]
+            ffmpeg_metadata = self._get_video_metadata(
+                ffmpeg_encoded_path, metadata_fields
+            )
+            encoder_metadata = self._get_video_metadata(
+                str(encoder_output), metadata_fields
+            )
+            # pix_fmt nv12 is stored as yuv420p in metadata, unless full
+            # range (pc) is used. In that case, h264 and hevc NVENC codecs
+            # will use yuvj420p automatically.
+            if color_range == "pc" and codec != "av1_nvenc":
+                expected_pix_fmt = "yuvj420p"
+            else:
+                # av1_nvenc does not utilize the yuvj420p pixel format
+                expected_pix_fmt = "yuv420p"
+            assert (
+                encoder_metadata["pix_fmt"]
+                == ffmpeg_metadata["pix_fmt"]
+                == expected_pix_fmt
+            )
+            assert encoder_metadata["color_range"] == ffmpeg_metadata["color_range"]
+            assert encoder_metadata["color_space"] == ffmpeg_metadata["color_space"]
+            # Default values vary by codec, so we only assert when
+            # color_range and color_space are not None.
+            if color_range is not None:
+                # FFmpeg and torchcodec encode color_range as 'unknown' for
+                # mov and avi when color_range='tv' and color_space=None on
+                # FFmpeg 7/8. Since this failure is rare, I suspect its a bug
+                # related to these older container formats on newer FFmpeg
+                # versions.
+                if not (
+                    ffmpeg_major_version in (7, 8)
+                    and color_range == "tv"
+                    and color_space is None
+                    and format in ("mov", "avi")
+                ):
+                    assert color_range == encoder_metadata["color_range"]
+            if color_space is not None:
+                assert color_space == encoder_metadata["color_space"]
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_write_samples_wrong_dtype_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "wav")
+        audio = enc.add_audio(sample_rate=44100, num_channels=1)
+        enc.open(**open_kwargs)
+        float64_samples = torch.randn(1, 1000, dtype=torch.float64)
+        with pytest.raises(RuntimeError, match="must have float32 dtype"):
+            audio.write(float64_samples)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_write_samples_wrong_ndim_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "wav")
+        audio = enc.add_audio(sample_rate=44100, num_channels=1)
+        enc.open(**open_kwargs)
+        samples_3d = torch.randn(1, 1, 1000)
+        with pytest.raises(RuntimeError, match="must have 2 dimensions"):
+            audio.write(samples_3d)
+        samples_1d = torch.randn(1000)
+        with pytest.raises(RuntimeError, match="must have 2 dimensions"):
+            audio.write(samples_1d)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_unsupported_num_channels_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp3")
+        enc.add_audio(sample_rate=44100, num_channels=1, output_num_channels=3)
+        with pytest.raises(
+            RuntimeError,
+            match=re.escape("Desired number of channels (3) is not supported"),
+        ):
+            enc.open(**open_kwargs)
+
+        sub = tmp_path / "ten_ch"
+        sub.mkdir()
+        enc2, _, open_kwargs2 = self._create_encoder(method, sub, "wav")
+        audio2 = enc2.add_audio(sample_rate=44100, num_channels=10)
+        enc2.open(**open_kwargs2)
+        samples = torch.randn(10, 1000)
+        with pytest.raises(RuntimeError, match="Trying to encode 10 channels"):
+            audio2.write(samples)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_invalid_output_sample_rate_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp3")
+        enc.add_audio(
+            sample_rate=44100,
+            num_channels=1,
+            output_sample_rate=10,
+        )
+        with pytest.raises(RuntimeError, match="invalid sample rate=10"):
+            enc.open(**open_kwargs)
