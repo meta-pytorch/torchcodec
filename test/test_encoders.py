@@ -1589,8 +1589,7 @@ class TestStreamingEncoder:
         enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
         frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8)
         video = enc.add_video(height=64, width=64, frame_rate=30.0)
-        enc.open(**open_kwargs)
-        with enc:
+        with enc.open(**open_kwargs):
             video.write(frames)
 
         # The output is valid and decodable, proving close() was called by __exit__.
