@@ -2620,6 +2620,12 @@ class TestStreamingEncoder:
         audio_fl.write(source_samples)
         enc_fl.close()
 
+        if IS_WINDOWS_WITH_FFMPEG_LE_70 and format == "mp3":
+            # We're getting a "Could not open input file" on Windows mp3
+            # files when decoding.
+            # TODO: https://github.com/pytorch/torchcodec/issues/837
+            return
+
         decoded_from_file = AudioDecoder(str(file_path)).get_all_samples().data
         decoded_from_file_like = (
             AudioDecoder(file_like.getvalue()).get_all_samples().data
@@ -3578,11 +3584,8 @@ class TestStreamingEncoder:
         sub = tmp_path / "ten_ch"
         sub.mkdir()
         enc2, _, open_kwargs2 = self._create_encoder(method, sub, "wav")
-        audio2 = enc2.add_audio(sample_rate=44100, num_channels=10)
-        enc2.open(**open_kwargs2)
-        samples = torch.randn(10, 1000)
         with pytest.raises(RuntimeError, match="Trying to encode 10 channels"):
-            audio2.write(samples)
+            enc2.add_audio(sample_rate=44100, num_channels=10)
 
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_add_audio_invalid_output_sample_rate_errors(self, method, tmp_path):
