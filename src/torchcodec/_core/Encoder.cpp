@@ -1153,6 +1153,13 @@ int MultiStreamEncoder::addAudioStream(
   STD_TORCH_CHECK(sampleRate > 0, "sample_rate must be > 0, got ", sampleRate);
   STD_TORCH_CHECK(
       numChannels > 0, "num_channels must be > 0, got ", numChannels);
+  STD_TORCH_CHECK(
+      numChannels <= AV_NUM_DATA_POINTERS,
+      "Trying to encode ",
+      numChannels,
+      " channels, but FFmpeg only supports ",
+      AV_NUM_DATA_POINTERS,
+      " channels per frame.");
 
   AudioStream audioStream;
   audioStream.inSampleRate = sampleRate;
