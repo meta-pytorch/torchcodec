@@ -12,19 +12,19 @@ from torchcodec.encoders._multi_stream_encoder import StreamingEncoder
 
 
 NUM_FRAMES = 10
-HEIGHT = 64
-WIDTH = 32
+HEIGHT = 256
+WIDTH = 256
 FRAME_RATE = 30
 NUM_AUDIO_CHANNELS = 2
 SAMPLE_RATE = 16_000
 NUM_SAMPLES = 10_000
 
 
-def _make_video_file(tmp_path, **encoder_kwargs):
+def _make_video_file(tmp_path, pixel_format="yuv444p", **encoder_kwargs):
     frames = torch.randint(0, 256, (NUM_FRAMES, 3, HEIGHT, WIDTH), dtype=torch.uint8)
     path = tmp_path / "test.mp4"
     VideoEncoder(frames, frame_rate=FRAME_RATE).to_file(
-        path, pixel_format="yuv444p", crf=0, **encoder_kwargs
+        path, pixel_format=pixel_format, crf=0, **encoder_kwargs
     )
     return path, frames
 
@@ -43,13 +43,6 @@ def _get_devices():
     )
 
 
-def _assert_frames_close(actual, expected, device):
-    if device == "cpu":
-        torch.testing.assert_close(actual, expected, atol=2, rtol=0)
-    else:
-        assert_tensor_close_on_at_least(actual, expected, percentage=95, atol=3)
-
-
 class TestVideoDecoder:
     @pytest.mark.parametrize("device", _get_devices())
     def test_basics(self, tmp_path, device):
@@ -62,24 +55,51 @@ class TestVideoDecoder:
 
     @pytest.mark.parametrize("device", _get_devices())
     def test_get_frame_at(self, tmp_path, device):
-        path, source_frames = _make_video_file(tmp_path)
-        decoder = VideoDecoder(path, device=device)
-
-        frame = decoder.get_frame_at(0)
-        assert isinstance(frame, Frame)
-        assert frame.data.shape == (3, HEIGHT, WIDTH)
-        assert frame.data.dtype == torch.uint8
-        _assert_frames_close(frame.data.cpu(), source_frames[0], device)
+        if device == "cpu":
+            path, source_frames = _make_video_file(tmp_path, pixel_format="yuv444p")
+            decoder = VideoDecoder(path, device=device)
+            frame = decoder.get_frame_at(0)
+            assert isinstance(frame, Frame)
+            assert frame.data.shape == (3, HEIGHT, WIDTH)
+            assert frame.data.dtype == torch.uint8
+            torch.testing.assert_close(frame.data, source_frames[0], atol=2, rtol=0)
+        else:
+            path, _ = _make_video_file(tmp_path, pixel_format="yuv420p")
+            cpu_decoder = VideoDecoder(path, device="cpu")
+            cuda_decoder = VideoDecoder(path, device="cuda")
+            cpu_frame = cpu_decoder.get_frame_at(0).data
+            cuda_frame = cuda_decoder.get_frame_at(0).data.cpu()
+            assert isinstance(cuda_decoder.get_frame_at(0), Frame)
+            assert cuda_frame.shape == (3, HEIGHT, WIDTH)
+            assert cuda_frame.dtype == torch.uint8
+            assert_tensor_close_on_at_least(
+                cuda_frame, cpu_frame, percentage=95, atol=3
+            )
 
     @pytest.mark.parametrize("device", _get_devices())
     def test_get_frames_in_range(self, tmp_path, device):
-        path, source_frames = _make_video_file(tmp_path)
-        decoder = VideoDecoder(path, device=device)
-
-        batch = decoder.get_frames_in_range(start=0, stop=5)
-        assert isinstance(batch, FrameBatch)
-        assert batch.data.shape == (5, 3, HEIGHT, WIDTH)
-        _assert_frames_close(batch.data.cpu(), source_frames[:5], device)
+        if device == "cpu":
+            path, source_frames = _make_video_file(tmp_path, pixel_format="yuv444p")
+            decoder = VideoDecoder(path, device=device)
+            batch = decoder.get_frames_in_range(start=0, stop=5)
+            assert isinstance(batch, FrameBatch)
+            assert batch.data.shape == (5, 3, HEIGHT, WIDTH)
+            torch.testing.assert_close(
+                batch.data, source_frames[:5], atol=2, rtol=0
+            )
+        else:
+            path, _ = _make_video_file(tmp_path, pixel_format="yuv420p")
+            cpu_decoder = VideoDecoder(path, device="cpu")
+            cuda_decoder = VideoDecoder(path, device="cuda")
+            cpu_batch = cpu_decoder.get_frames_in_range(start=0, stop=5).data
+            cuda_batch = cuda_decoder.get_frames_in_range(start=0, stop=5).data.cpu()
+            assert isinstance(
+                cuda_decoder.get_frames_in_range(start=0, stop=5), FrameBatch
+            )
+            assert cuda_batch.shape == (5, 3, HEIGHT, WIDTH)
+            assert_tensor_close_on_at_least(
+                cuda_batch, cpu_batch, percentage=95, atol=3
+            )
 
     @pytest.mark.parametrize("device", _get_devices())
     def test_get_frame_played_at(self, tmp_path, device):
@@ -92,25 +112,54 @@ class TestVideoDecoder:
 
     @pytest.mark.parametrize("device", _get_devices())
     def test_getitem(self, tmp_path, device):
-        path, source_frames = _make_video_file(tmp_path)
-        decoder = VideoDecoder(path, device=device)
-
-        tensor = decoder[0]
-        assert tensor.shape == (3, HEIGHT, WIDTH)
-        _assert_frames_close(tensor.cpu(), source_frames[0], device)
-
-        tensors = decoder[2:5]
-        assert tensors.shape == (3, 3, HEIGHT, WIDTH)
-        _assert_frames_close(tensors.cpu(), source_frames[2:5], device)
+        if device == "cpu":
+            path, source_frames = _make_video_file(tmp_path, pixel_format="yuv444p")
+            decoder = VideoDecoder(path, device=device)
+            tensor = decoder[0]
+            assert tensor.shape == (3, HEIGHT, WIDTH)
+            torch.testing.assert_close(tensor, source_frames[0], atol=2, rtol=0)
+            tensors = decoder[2:5]
+            assert tensors.shape == (3, 3, HEIGHT, WIDTH)
+            torch.testing.assert_close(
+                tensors, source_frames[2:5], atol=2, rtol=0
+            )
+        else:
+            path, _ = _make_video_file(tmp_path, pixel_format="yuv420p")
+            cpu_decoder = VideoDecoder(path, device="cpu")
+            cuda_decoder = VideoDecoder(path, device="cuda")
+            cpu_tensor = cpu_decoder[0]
+            cuda_tensor = cuda_decoder[0].cpu()
+            assert cuda_tensor.shape == (3, HEIGHT, WIDTH)
+            assert_tensor_close_on_at_least(
+                cuda_tensor, cpu_tensor, percentage=95, atol=3
+            )
+            cpu_tensors = cpu_decoder[2:5]
+            cuda_tensors = cuda_decoder[2:5].cpu()
+            assert cuda_tensors.shape == (3, 3, HEIGHT, WIDTH)
+            assert_tensor_close_on_at_least(
+                cuda_tensors, cpu_tensors, percentage=95, atol=3
+            )
 
     @pytest.mark.parametrize("device", _get_devices())
     def test_get_all_frames(self, tmp_path, device):
-        path, source_frames = _make_video_file(tmp_path)
-        decoder = VideoDecoder(path, device=device)
-
-        all_frames = decoder.get_all_frames()
-        assert all_frames.data.shape == (NUM_FRAMES, 3, HEIGHT, WIDTH)
-        _assert_frames_close(all_frames.data.cpu(), source_frames, device)
+        if device == "cpu":
+            path, source_frames = _make_video_file(tmp_path, pixel_format="yuv444p")
+            decoder = VideoDecoder(path, device=device)
+            all_frames = decoder.get_all_frames()
+            assert all_frames.data.shape == (NUM_FRAMES, 3, HEIGHT, WIDTH)
+            torch.testing.assert_close(
+                all_frames.data, source_frames, atol=2, rtol=0
+            )
+        else:
+            path, _ = _make_video_file(tmp_path, pixel_format="yuv420p")
+            cpu_decoder = VideoDecoder(path, device="cpu")
+            cuda_decoder = VideoDecoder(path, device="cuda")
+            cpu_all = cpu_decoder.get_all_frames().data
+            cuda_all = cuda_decoder.get_all_frames().data.cpu()
+            assert cuda_all.shape == (NUM_FRAMES, 3, HEIGHT, WIDTH)
+            assert_tensor_close_on_at_least(
+                cuda_all, cpu_all, percentage=95, atol=3
+            )
 
     @pytest.mark.parametrize("device", _get_devices())
     def test_iteration(self, tmp_path, device):
@@ -284,27 +333,44 @@ class TestStreamingEncoder:
 
     @pytest.mark.needs_cuda
     def test_cuda_encoding(self, tmp_path):
-        frames = torch.randint(
-            0, 256, (NUM_FRAMES, 3, HEIGHT, WIDTH), dtype=torch.uint8, device="cuda"
-        )
-        path = tmp_path / "cuda.mp4"
+        # Use smooth gradient data instead of random noise. Random data is
+        # incompressible, causing very different artifacts between nvenc and
+        # libx264.
+        frames = torch.zeros(NUM_FRAMES, 3, HEIGHT, WIDTH, dtype=torch.uint8)
+        for i in range(NUM_FRAMES):
+            for c in range(3):
+                vals = (
+                    torch.linspace(0, 255, WIDTH).unsqueeze(0).expand(HEIGHT, -1)
+                    + i * 20
+                    + c * 80
+                ) % 256
+                frames[i, c] = vals.to(torch.uint8)
+        frames = frames.cuda()
 
+        cuda_path = tmp_path / "cuda.mp4"
         enc = StreamingEncoder()
         video = enc.add_video(
             height=HEIGHT,
             width=WIDTH,
             frame_rate=FRAME_RATE,
             device="cuda",
-            extra_options={"qp": "1"},
         )
-        enc.open(dest=path)
-        with enc:
+        with enc.open(dest=cuda_path):
             video.write(frames)
 
-        decoder = VideoDecoder(path)
-        assert len(decoder) == NUM_FRAMES
-        decoded = decoder.get_all_frames()
-        assert decoded.data.shape == (NUM_FRAMES, 3, HEIGHT, WIDTH)
+        cpu_path = tmp_path / "cpu.mp4"
+        cpu_enc = StreamingEncoder()
+        cpu_video = cpu_enc.add_video(
+            height=HEIGHT,
+            width=WIDTH,
+            frame_rate=FRAME_RATE,
+        )
+        with cpu_enc.open(dest=cpu_path):
+            cpu_video.write(frames.cpu())
+
+        cuda_decoded = VideoDecoder(cuda_path).get_all_frames()
+        cpu_decoded = VideoDecoder(cpu_path).get_all_frames()
+        assert cuda_decoded.data.shape == (NUM_FRAMES, 3, HEIGHT, WIDTH)
         assert_tensor_close_on_at_least(
-            decoded.data, frames.cpu(), percentage=95, atol=3
+            cuda_decoded.data, cpu_decoded.data, percentage=95, atol=3
         )
