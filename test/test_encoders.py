@@ -2761,6 +2761,277 @@ class TestStreamingEncoder:
         decoded_2 = AudioDecoder(source, stream_index=2).get_all_samples()
         assert decoded_2.sample_rate == 44_100
 
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_pixel_format_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        enc.add_video(
+            height=64,
+            width=64,
+            frame_rate=30.0,
+            pixel_format="invalid_pix_fmt",
+        )
+        with pytest.raises(
+            RuntimeError,
+            match=r"Unknown pixel format: invalid_pix_fmt[\s\S]*Supported pixel formats.*yuv420p",
+        ):
+            enc.open(**open_kwargs)
+
+        enc2, _, open_kwargs2 = self._create_encoder(method, tmp_path, "mp4")
+        enc2.add_video(
+            height=64,
+            width=64,
+            frame_rate=30.0,
+            pixel_format="rgb24",
+        )
+        with pytest.raises(
+            RuntimeError,
+            match=r"Specified pixel format rgb24 is not supported[\s\S]*Supported pixel formats.*yuv420p",
+        ):
+            enc2.open(**open_kwargs2)
+
+    @pytest.mark.needs_cuda
+    @pytest.mark.skipif(in_fbcode(), reason="NVENC not available in fbcode")
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_pixel_format_gpu_override_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        enc.add_video(
+            height=64,
+            width=64,
+            frame_rate=30.0,
+            device="cuda",
+            pixel_format="yuv444p",
+        )
+        with pytest.raises(
+            RuntimeError,
+            match="Video encoding on GPU currently only supports the nv12 pixel format",
+        ):
+            enc.open(**open_kwargs)
+
+    @pytest.mark.parametrize(
+        "extra_options,error",
+        [
+            ({"qp": -10}, "qp=-10 is out of valid range"),
+            ({"qp": ""}, "Option qp expects a numeric value but got"),
+            (
+                {"direct-pred": "a"},
+                "Option direct-pred expects a numeric value but got 'a'",
+            ),
+            ({"tune": "not_a_real_tune"}, "avcodec_open2 failed: Invalid argument"),
+        ],
+    )
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_extra_options_errors(self, method, tmp_path, extra_options, error):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        enc.add_video(
+            height=64,
+            width=64,
+            frame_rate=30.0,
+            extra_options=extra_options,
+        )
+        with pytest.raises(RuntimeError, match=error):
+            enc.open(**open_kwargs)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_write_frames_wrong_dtype_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        video = enc.add_video(height=64, width=64, frame_rate=30.0)
+        enc.open(**open_kwargs)
+        float_frames = torch.rand(2, 3, 64, 64, dtype=torch.float32)
+        with pytest.raises(RuntimeError, match="must have uint8 dtype"):
+            video.write(float_frames)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_write_frames_wrong_ndim_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        video = enc.add_video(height=64, width=64, frame_rate=30.0)
+        enc.open(**open_kwargs)
+        frames_1d = torch.randint(0, 256, (100,), dtype=torch.uint8)
+        with pytest.raises(RuntimeError):
+            video.write(frames_1d)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_write_frames_wrong_num_channels_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        video = enc.add_video(height=64, width=64, frame_rate=30.0)
+        enc.open(**open_kwargs)
+        frames_2ch = torch.randint(0, 256, (2, 2, 64, 64), dtype=torch.uint8)
+        with pytest.raises(RuntimeError):
+            video.write(frames_2ch)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_invalid_sample_rate_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "wav")
+        with pytest.raises(RuntimeError, match="sample_rate must be > 0"):
+            enc.add_audio(sample_rate=0, num_channels=1)
+
+        enc2, _, open_kwargs2 = self._create_encoder(method, tmp_path, "wav")
+        with pytest.raises(RuntimeError, match="sample_rate must be > 0"):
+            enc2.add_audio(sample_rate=-1, num_channels=1)
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_add_audio_invalid_num_channels_errors(self, method, tmp_path):
+        enc, _, open_kwargs = self._create_encoder(method, tmp_path, "wav")
+        with pytest.raises(RuntimeError, match="num_channels must be > 0"):
+            enc.add_audio(sample_rate=44100, num_channels=0)
+
+    def test_to_file_like_custom_file_object(self, tmp_path):
+        class CustomFileObject:
+            def __init__(self):
+                self._file = io.BytesIO()
+
+            def write(self, data):
+                return self._file.write(data)
+
+            def seek(self, offset, whence=0):
+                return self._file.seek(offset, whence)
+
+            def get_encoded_data(self):
+                return self._file.getvalue()
+
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+        frame_rate = source_decoder.metadata.average_fps
+
+        enc = StreamingEncoder()
+        file_like = CustomFileObject()
+        video = enc.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=frame_rate,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        enc.open(file_like, format="mp4")
+        video.write(source_frames)
+        enc.close()
+
+        decoded_frames = (
+            VideoDecoder(file_like.get_encoded_data())
+            .get_frames_in_range(start=0, stop=10)
+            .data
+        )
+        assert_tensor_close_on_at_least(
+            decoded_frames, source_frames, percentage=99, atol=2
+        )
+
+    def test_to_file_like_custom_file_object_audio(self, tmp_path):
+        class CustomFileObject:
+            def __init__(self):
+                self._file = io.BytesIO()
+
+            def write(self, data):
+                return self._file.write(data)
+
+            def seek(self, offset, whence=0):
+                return self._file.seek(offset, whence)
+
+            def get_encoded_data(self):
+                return self._file.getvalue()
+
+        asset = NASA_AUDIO_MP3
+        source_samples = AudioDecoder(str(asset.path)).get_all_samples().data
+        sample_rate = asset.sample_rate
+        num_channels = source_samples.shape[0]
+
+        enc = StreamingEncoder()
+        file_like = CustomFileObject()
+        audio = enc.add_audio(sample_rate=sample_rate, num_channels=num_channels)
+        enc.open(file_like, format="flac")
+        audio.write(source_samples)
+        enc.close()
+
+        decoded = AudioDecoder(file_like.get_encoded_data()).get_all_samples()
+        torch.testing.assert_close(decoded.data, source_samples, rtol=0, atol=1e-4)
+
+    def test_to_file_like_real_file_video(self, tmp_path):
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=10).data
+        frame_rate = source_decoder.metadata.average_fps
+
+        file_path = tmp_path / "test_real_file.mp4"
+        enc = StreamingEncoder()
+        video = enc.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=frame_rate,
+            pixel_format="yuv444p",
+            crf=0,
+        )
+        with open(file_path, "wb") as f:
+            enc.open(f, format="mp4")
+            video.write(source_frames)
+            enc.close()
+
+        decoded_frames = (
+            VideoDecoder(str(file_path)).get_frames_in_range(start=0, stop=10).data
+        )
+        assert_tensor_close_on_at_least(
+            decoded_frames, source_frames, percentage=99, atol=2
+        )
+
+    def test_to_file_like_real_file_audio(self, tmp_path):
+        asset = NASA_AUDIO_MP3
+        source_samples = AudioDecoder(str(asset.path)).get_all_samples().data
+        sample_rate = asset.sample_rate
+        num_channels = source_samples.shape[0]
+
+        file_path = tmp_path / "test_real_file.flac"
+        enc = StreamingEncoder()
+        audio = enc.add_audio(sample_rate=sample_rate, num_channels=num_channels)
+        with open(file_path, "wb") as f:
+            enc.open(f, format="flac")
+            audio.write(source_samples)
+            enc.close()
+
+        decoded = AudioDecoder(str(file_path)).get_all_samples()
+        torch.testing.assert_close(decoded.data, source_samples, rtol=0, atol=1e-4)
+
+    def test_to_file_like_bad_methods_video(self):
+        class NoWriteMethod:
+            def seek(self, offset, whence=0):
+                return 0
+
+        enc = StreamingEncoder()
+        enc.add_video(height=64, width=64, frame_rate=30.0)
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a write method"
+        ):
+            enc.open(NoWriteMethod(), format="mp4")
+
+        class NoSeekMethod:
+            def write(self, data):
+                return len(data)
+
+        enc2 = StreamingEncoder()
+        enc2.add_video(height=64, width=64, frame_rate=30.0)
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a seek method"
+        ):
+            enc2.open(NoSeekMethod(), format="mp4")
+
+    def test_to_file_like_bad_methods_audio(self):
+        class NoWriteMethod:
+            def seek(self, offset, whence=0):
+                return 0
+
+        enc = StreamingEncoder()
+        enc.add_audio(sample_rate=44100, num_channels=1)
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a write method"
+        ):
+            enc.open(NoWriteMethod(), format="wav")
+
+        class NoSeekMethod:
+            def write(self, data):
+                return len(data)
+
+        enc2 = StreamingEncoder()
+        enc2.add_audio(sample_rate=44100, num_channels=1)
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a seek method"
+        ):
+            enc2.open(NoSeekMethod(), format="wav")
+
     @needs_ffmpeg_cli
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize(
