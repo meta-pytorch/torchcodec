@@ -23,6 +23,7 @@ from torchcodec.decoders import (
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.decoders._wav_decoder import WavDecoder
+from torchcodec.encoders import VideoEncoder
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
 from .utils import (
@@ -2031,6 +2032,25 @@ class TestVideoDecoder:
         nvdec_frame = nvdec_dec.get_frame_at(0)
 
         assert psnr(ref_frame.data, nvdec_frame.data) > 25
+
+    @needs_cuda
+    def test_nvdec_cpu_fallback_yuv444(self, tmp_path):
+
+        num_frames = 5
+        frames = torch.randint(0, 256, size=(num_frames, 3, 64, 64), dtype=torch.uint8)
+        path = str(tmp_path / "yuv444.mp4")
+        VideoEncoder(frames=frames, frame_rate=30).to_file(
+            path, pixel_format="yuv444p", crf=0
+        )
+
+        cpu_decoder = VideoDecoder(path, device="cpu")
+        cuda_decoder = VideoDecoder(path, device="cuda")
+        assert cuda_decoder.cpu_fallback
+
+        cpu_frames = cpu_decoder.get_frames_in_range(start=0, stop=num_frames).data
+        cuda_frames = cuda_decoder.get_frames_in_range(start=0, stop=num_frames).data
+
+        torch.testing.assert_close(cpu_frames, cuda_frames.cpu(), rtol=0, atol=0)
 
     @needs_cuda
     def test_nvdec_cuda_interface_error(self):
