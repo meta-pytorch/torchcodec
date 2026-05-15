@@ -1,9 +1,10 @@
+import io
 from pathlib import Path
 
 import torch
 from torch import Tensor
 
-from torchcodec import _core
+from torchcodec.encoders._multi_stream_encoder import StreamingEncoder
 
 
 class AudioEncoder:
@@ -21,15 +22,11 @@ class AudioEncoder:
 
     def __init__(self, samples: Tensor, *, sample_rate: int):
         torch._C._log_api_usage_once("torchcodec.encoders.AudioEncoder")
-        # Some of these checks are also done in C++: it's OK, they're cheap, and
-        # doing them here allows to surface them when the AudioEncoder is
-        # instantiated, rather than later when the encoding methods are called.
         if not isinstance(samples, Tensor):
             raise ValueError(
                 f"Expected samples to be a Tensor, got {type(samples) = }."
             )
         if samples.ndim == 1:
-            # make it 2D and assume 1 channel
             samples = torch.unsqueeze(samples, 0)
         if samples.ndim != 2:
             raise ValueError(f"Expected 1D or 2D samples, got {samples.shape = }.")
@@ -40,6 +37,23 @@ class AudioEncoder:
 
         self._samples = samples
         self._sample_rate = sample_rate
+
+    def _make_encoder(
+        self,
+        *,
+        bit_rate: int | None = None,
+        num_channels: int | None = None,
+        sample_rate: int | None = None,
+    ) -> tuple[StreamingEncoder, object]:
+        enc = StreamingEncoder()
+        audio_stream = enc.add_audio(
+            sample_rate=self._sample_rate,
+            num_channels=self._samples.shape[0],
+            bit_rate=bit_rate,
+            output_num_channels=num_channels,
+            output_sample_rate=sample_rate,
+        )
+        return enc, audio_stream
 
     def to_file(
         self,
@@ -65,14 +79,13 @@ class AudioEncoder:
             sample_rate (int, optional): The sample rate of the encoded output.
                 By default, the sample rate of the input ``samples`` is used.
         """
-        _core.encode_audio_to_file(
-            samples=self._samples,
-            sample_rate=self._sample_rate,
-            filename=str(dest),
+        enc, audio_stream = self._make_encoder(
             bit_rate=bit_rate,
             num_channels=num_channels,
-            desired_sample_rate=sample_rate,
+            sample_rate=sample_rate,
         )
+        with enc.open(str(dest)):
+            audio_stream.write(self._samples)
 
     def to_tensor(
         self,
@@ -100,14 +113,15 @@ class AudioEncoder:
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor.
         """
-        return _core.encode_audio_to_tensor(
-            samples=self._samples,
-            sample_rate=self._sample_rate,
-            format=format,
+        enc, audio_stream = self._make_encoder(
             bit_rate=bit_rate,
             num_channels=num_channels,
-            desired_sample_rate=sample_rate,
+            sample_rate=sample_rate,
         )
+        buf = io.BytesIO()
+        with enc.open(buf, format=format):
+            audio_stream.write(self._samples)
+        return torch.frombuffer(buf.getbuffer(), dtype=torch.uint8)
 
     def to_file_like(
         self,
@@ -138,12 +152,10 @@ class AudioEncoder:
             sample_rate (int, optional): The sample rate of the encoded output.
                 By default, the sample rate of the input ``samples`` is used.
         """
-        _core.encode_audio_to_file_like(
-            samples=self._samples,
-            sample_rate=self._sample_rate,
-            format=format,
-            file_like=file_like,
+        enc, audio_stream = self._make_encoder(
             bit_rate=bit_rate,
             num_channels=num_channels,
-            desired_sample_rate=sample_rate,
+            sample_rate=sample_rate,
         )
+        with enc.open(file_like, format=format):
+            audio_stream.write(self._samples)

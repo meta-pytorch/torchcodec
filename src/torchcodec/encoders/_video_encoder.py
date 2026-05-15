@@ -1,10 +1,11 @@
+import io
 from pathlib import Path
 from typing import Any
 
 import torch
 from torch import Tensor
 
-from torchcodec import _core
+from torchcodec.encoders._multi_stream_encoder import StreamingEncoder
 
 
 class VideoEncoder:
@@ -33,6 +34,30 @@ class VideoEncoder:
 
         self._frames = frames
         self._frame_rate = frame_rate
+
+    def _make_encoder(
+        self,
+        *,
+        codec: str | None = None,
+        pixel_format: str | None = None,
+        crf: int | float | None = None,
+        preset: str | int | None = None,
+        extra_options: dict[str, Any] | None = None,
+    ) -> tuple[StreamingEncoder, object]:
+        enc = StreamingEncoder()
+        _, _, h, w = self._frames.shape
+        video_stream = enc.add_video(
+            height=h,
+            width=w,
+            frame_rate=self._frame_rate,
+            device=str(self._frames.device),
+            codec=codec,
+            pixel_format=pixel_format,
+            crf=crf,
+            preset=preset,
+            extra_options=extra_options,
+        )
+        return enc, video_stream
 
     def to_file(
         self,
@@ -71,19 +96,15 @@ class VideoEncoder:
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 See :ref:`extra_options` for details.
         """
-        preset = str(preset) if isinstance(preset, int) else preset
-        _core.encode_video_to_file(
-            frames=self._frames,
-            frame_rate=self._frame_rate,
-            filename=str(dest),
+        enc, video_stream = self._make_encoder(
             codec=codec,
             pixel_format=pixel_format,
             crf=crf,
             preset=preset,
-            extra_options=[
-                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
-            ],
+            extra_options=extra_options,
         )
+        with enc.open(str(dest)):
+            video_stream.write(self._frames)
 
     def to_tensor(
         self,
@@ -124,19 +145,17 @@ class VideoEncoder:
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor on CPU regardless of the device of the input frames.
         """
-        preset_value = str(preset) if isinstance(preset, int) else preset
-        return _core.encode_video_to_tensor(
-            frames=self._frames,
-            frame_rate=self._frame_rate,
-            format=format,
+        enc, video_stream = self._make_encoder(
             codec=codec,
             pixel_format=pixel_format,
             crf=crf,
-            preset=preset_value,
-            extra_options=[
-                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
-            ],
+            preset=preset,
+            extra_options=extra_options,
         )
+        buf = io.BytesIO()
+        with enc.open(buf, format=format):
+            video_stream.write(self._frames)
+        return torch.frombuffer(buf.getbuffer(), dtype=torch.uint8)
 
     def to_file_like(
         self,
@@ -180,17 +199,12 @@ class VideoEncoder:
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 See :ref:`extra_options` for details.
         """
-        preset = str(preset) if isinstance(preset, int) else preset
-        _core.encode_video_to_file_like(
-            frames=self._frames,
-            frame_rate=self._frame_rate,
-            format=format,
-            file_like=file_like,
+        enc, video_stream = self._make_encoder(
             codec=codec,
             pixel_format=pixel_format,
             crf=crf,
             preset=preset,
-            extra_options=[
-                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
-            ],
+            extra_options=extra_options,
         )
+        with enc.open(file_like, format=format):
+            video_stream.write(self._frames)
