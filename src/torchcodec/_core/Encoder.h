@@ -2,6 +2,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 #include "AVIOContextHolder.h"
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
@@ -189,7 +190,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
 
   MultiStreamEncoder();
 
-  void addVideoStream(
+  int addVideoStream(
       int height,
       int width,
       double frameRate,
@@ -200,16 +201,18 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
       std::optional<std::string> preset = std::nullopt,
       std::optional<std::map<std::string, std::string>> extraOptions =
           std::nullopt);
-  void addAudioStream(
+  int addAudioStream(
       int sampleRate,
       int numChannels,
-      std::optional<int> bitRate = std::nullopt);
+      std::optional<int> bitRate = std::nullopt,
+      std::optional<int> outNumChannels = std::nullopt,
+      std::optional<int> outSampleRate = std::nullopt);
   void open(std::string_view fileName);
   void open(
       std::string_view formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder);
-  void addFrames(const torch::stable::Tensor& frames);
-  void addSamples(const torch::stable::Tensor& samples);
+  void addFrames(const torch::stable::Tensor& frames, int streamIndex);
+  void addSamples(const torch::stable::Tensor& samples, int streamIndex);
   void close();
 
  private:
@@ -227,6 +230,8 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   struct AudioStream {
     int inSampleRate = -1;
     int inNumChannels = -1;
+    int outNumChannels = -1;
+    int outSampleRate = -1;
     int frameSize = -1;
     int64_t lastEncodedAVFramePts = 0;
     AudioStreamOptions options;
@@ -236,13 +241,16 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
     UniqueAVAudioFifo avAudioFifo;
   };
 
-  void initializeVideoStream();
+  void initializeVideoStream(VideoStream& videoStream);
   void openStreamsAndWriteHeader();
   void encodeVideoFrame(
       AutoAVPacket& autoAVPacket,
-      const UniqueAVFrame& avFrame);
-  void initializeAudioStream();
-  void encodeAudioSamples(const torch::stable::Tensor& samples);
+      const UniqueAVFrame& avFrame,
+      VideoStream& videoStream);
+  void initializeAudioStream(AudioStream& audioStream);
+  void encodeAudioSamples(
+      const torch::stable::Tensor& samples,
+      AudioStream& audioStream);
   UniqueAVFrame maybeConvertAudioAVFrame(
       const UniqueAVFrame& avFrame,
       AudioStream& audioStream);
@@ -261,8 +269,8 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   void flushBuffers();
 
   UniqueEncodingAVFormatContext avFormatContext_;
-  std::optional<VideoStream> videoStream_;
-  std::optional<AudioStream> audioStream_;
+  std::vector<VideoStream> videoStreams_;
+  std::vector<AudioStream> audioStreams_;
   bool headerWritten_ = false;
   UniqueAVDictionary avFormatOptions_;
 

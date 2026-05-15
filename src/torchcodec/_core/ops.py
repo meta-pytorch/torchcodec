@@ -647,8 +647,8 @@ def streaming_encoder_add_video_stream_abstract(
     crf: float | None = None,
     preset: str | None = None,
     extra_options: list[str] | None = None,
-) -> None:
-    return
+) -> int:
+    return 0
 
 
 @register_fake("torchcodec_ns::streaming_encoder_add_audio_stream")
@@ -657,8 +657,10 @@ def streaming_encoder_add_audio_stream_abstract(
     sample_rate: int,
     num_channels: int,
     bit_rate: int | None = None,
-) -> None:
-    return
+    output_num_channels: int | None = None,
+    output_sample_rate: int | None = None,
+) -> int:
+    return 0
 
 
 @register_fake("torchcodec_ns::streaming_encoder_open_file")
@@ -675,14 +677,14 @@ def streaming_encoder_open_file_like_abstract(
 
 @register_fake("torchcodec_ns::streaming_encoder_add_frames")
 def streaming_encoder_add_frames_abstract(
-    encoder: torch.Tensor, frames: torch.Tensor
+    encoder: torch.Tensor, frames: torch.Tensor, stream_index: int
 ) -> None:
     return
 
 
 @register_fake("torchcodec_ns::streaming_encoder_add_samples")
 def streaming_encoder_add_samples_abstract(
-    encoder: torch.Tensor, samples: torch.Tensor
+    encoder: torch.Tensor, samples: torch.Tensor, stream_index: int
 ) -> None:
     return
 

@@ -5,6 +5,7 @@ import pathlib
 import platform
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -18,6 +19,25 @@ from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
 IN_GITHUB_CI = bool(os.getenv("GITHUB_ACTIONS"))
+
+
+def call_ffprobe(args):
+    # We write ffprobe's output to a temp file instead of capturing via
+    # subprocess pipe, to avoid sporadic JSON truncation on Windows.
+    with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as f:
+        tmp_path = f.name
+    try:
+        with open(tmp_path, "w") as stdout_file:
+            subprocess.run(
+                ["ffprobe", "-v", "error", "-hide_banner"] + args + ["-of", "json"],
+                check=True,
+                stdout=stdout_file,
+                stderr=subprocess.DEVNULL,
+            )
+        with open(tmp_path) as f:
+            return json.loads(f.read())
+    finally:
+        os.unlink(tmp_path)
 
 
 # Decorator for skipping CUDA tests when CUDA isn't available. The tests are
@@ -349,23 +369,16 @@ class TestContainerFile:
         return self._custom_frame_mappings_data[stream_index]
 
     def generate_custom_frame_mappings(self, stream_index: int) -> str:
-        result = subprocess.run(
+        parsed = call_ffprobe(
             [
-                "ffprobe",
                 "-i",
                 f"{self.path}",
                 "-select_streams",
                 f"{stream_index}",
                 "-show_frames",
-                "-of",
-                "json",
             ],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).stdout
-        return result
+        )
+        return json.dumps(parsed)
 
     @property
     def empty_pts_seconds(self) -> torch.Tensor:
