@@ -3565,10 +3565,13 @@ class TestStreamingEncoder:
     def test_add_audio_unsupported_num_channels_errors(self, method, tmp_path):
         enc, _, open_kwargs = self._create_encoder(method, tmp_path, "mp3")
         enc.add_audio(sample_rate=44100, num_channels=1, output_num_channels=3)
-        with pytest.raises(
-            RuntimeError,
-            match=re.escape("Desired number of channels (3) is not supported"),
-        ):
+        avcodec_open2_failed_msg = "avcodec_open2 failed: Invalid argument"
+        match = (
+            avcodec_open2_failed_msg
+            if IS_WINDOWS_WITH_FFMPEG_LE_70
+            else re.escape("Desired number of channels (3) is not supported")
+        )
+        with pytest.raises(RuntimeError, match=match):
             enc.open(**open_kwargs)
 
         sub = tmp_path / "ten_ch"
@@ -3588,5 +3591,13 @@ class TestStreamingEncoder:
             num_channels=1,
             output_sample_rate=10,
         )
-        with pytest.raises(RuntimeError, match="invalid sample rate=10"):
+        avcodec_open2_failed_msg = "avcodec_open2 failed: Invalid argument"
+        with pytest.raises(
+            RuntimeError,
+            match=(
+                avcodec_open2_failed_msg
+                if IS_WINDOWS_WITH_FFMPEG_LE_70
+                else "invalid sample rate=10"
+            ),
+        ):
             enc.open(**open_kwargs)
