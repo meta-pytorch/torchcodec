@@ -2035,7 +2035,7 @@ class TestVideoDecoder:
 
     @needs_cuda
     def test_nvdec_cpu_fallback_yuv444(self, tmp_path):
-
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1414
         num_frames = 5
         frames = torch.randint(0, 256, size=(num_frames, 3, 64, 64), dtype=torch.uint8)
         path = str(tmp_path / "yuv444.mp4")
