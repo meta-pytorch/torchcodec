@@ -59,7 +59,7 @@
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/api_ref_encoders.html" />
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="AudioEncoder" href="generated/torchcodec.encoders.AudioEncoder.html" />
+    <link rel="next" title="Encoder" href="generated/torchcodec.encoders.Encoder.html" />
     <link rel="prev" title="CpuFallbackStatus" href="generated/torchcodec.decoders.CpuFallbackStatus.html" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -1010,8 +1010,11 @@ document.write(`
 </ul>
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">torchcodec.encoders</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.encoders.AudioEncoder.html">AudioEncoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.encoders.Encoder.html">Encoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.encoders.VideoStream.html">VideoStream</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.encoders.AudioStream.html">AudioStream</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.encoders.VideoEncoder.html">VideoEncoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.encoders.AudioEncoder.html">AudioEncoder</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="api_ref_samplers.html">torchcodec.samplers</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -1132,18 +1135,38 @@ document.write(`
                   
   <section id="torchcodec-encoders">
 <span id="encoders"></span><h1>torchcodec.encoders<a class="headerlink" href="#torchcodec-encoders" title="Link to this heading">#</a></h1>
-<p>For an audio decoder tutorial, see: <a class="reference internal" href="generated_examples/encoding/audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py"><span class="std std-ref">Encoding audio samples with AudioEncoder</span></a>.</p>
+<section id="multi-stream-encoder">
+<h2>Multi-stream encoder<a class="headerlink" href="#multi-stream-encoder" title="Link to this heading">#</a></h2>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
 <tbody>
-<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder" title="torchcodec.encoders.AudioEncoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AudioEncoder</span></code></a></p></td>
-<td><p>An audio encoder.</p></td>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder" title="torchcodec.encoders.Encoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Encoder</span></code></a></p></td>
+<td><p>A multi-stream encoder for encoding video and/or audio into a file or file-like object.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder" title="torchcodec.encoders.VideoEncoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">VideoEncoder</span></code></a></p></td>
-<td><p>A video encoder on CPU or CUDA..</p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.encoders.VideoStream.html#torchcodec.encoders.VideoStream" title="torchcodec.encoders.VideoStream"><code class="xref py py-obj docutils literal notranslate"><span class="pre">VideoStream</span></code></a></p></td>
+<td><p>A video stream within an <a class="reference internal" href="generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder" title="torchcodec.encoders.Encoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">Encoder</span></code></a>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.encoders.AudioStream.html#torchcodec.encoders.AudioStream" title="torchcodec.encoders.AudioStream"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AudioStream</span></code></a></p></td>
+<td><p>An audio stream within an <a class="reference internal" href="generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder" title="torchcodec.encoders.Encoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">Encoder</span></code></a>.</p></td>
 </tr>
 </tbody>
 </table>
 </div>
+</section>
+<section id="single-stream-encoders">
+<h2>Single-stream encoders<a class="headerlink" href="#single-stream-encoders" title="Link to this heading">#</a></h2>
+<p>For an audio decoder tutorial, see: <a class="reference internal" href="generated_examples/encoding/audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py"><span class="std std-ref">Encoding audio samples with AudioEncoder</span></a>.</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder" title="torchcodec.encoders.VideoEncoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">VideoEncoder</span></code></a></p></td>
+<td><p>A video encoder on CPU or CUDA..</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder" title="torchcodec.encoders.AudioEncoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AudioEncoder</span></code></a></p></td>
+<td><p>An audio encoder.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
 </section>
 
 
@@ -1198,11 +1221,11 @@ document.write(`
       </div>
     </a>
     <a class="right-next"
-       href="generated/torchcodec.encoders.AudioEncoder.html"
+       href="generated/torchcodec.encoders.Encoder.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">AudioEncoder</p>
+        <p class="prev-next-title">Encoder</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1237,11 +1260,11 @@ document.write(`
       </div>
     </a>
     <a class="right-next"
-       href="generated/torchcodec.encoders.AudioEncoder.html"
+       href="generated/torchcodec.encoders.Encoder.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">AudioEncoder</p>
+        <p class="prev-next-title">Encoder</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1254,6 +1277,19 @@ document.write(`
               
                 <div class="bd-sidebar-secondary bd-toc">
 <div class="sidebar-secondary-items sidebar-secondary__inner">
+    
+       <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="visible nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#multi-stream-encoder">Multi-stream encoder</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#single-stream-encoders">Single-stream encoders</a></li>
+</ul>
+  </nav></div>
     
        <div class="sidebar-secondary-item">
 
@@ -1477,7 +1513,7 @@ document.write(`
        "headline": "torchcodec.encoders",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/api_ref_encoders.html",
-       "articleBody": "torchcodec.encoders# For an audio decoder tutorial, see: Encoding audio samples with AudioEncoder. AudioEncoder An audio encoder. VideoEncoder A video encoder on CPU or CUDA..",
+       "articleBody": "torchcodec.encoders# Multi-stream encoder# Encoder A multi-stream encoder for encoding video and/or audio into a file or file-like object. VideoStream A video stream within an Encoder. AudioStream An audio stream within an Encoder. Single-stream encoders# For an audio decoder tutorial, see: Encoding audio samples with AudioEncoder. VideoEncoder A video encoder on CPU or CUDA.. AudioEncoder An audio encoder.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",
