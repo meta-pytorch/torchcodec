@@ -1863,6 +1863,7 @@ class TestEncoder:
         assert decoded_frames.shape == source_frames.shape
 
     @pytest.mark.needs_cuda
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_write_samples_on_cuda_errors(self, tmp_path, method):
         enc, _, open_kwargs = self._create_encoder(method, tmp_path, "wav")
         audio = enc.add_audio(sample_rate=44100, num_channels=1)
