@@ -10,6 +10,8 @@ torchcodec.encoders
 Multi-stream encoder
 --------------------
 
+For a tutorial, see: :ref:`sphx_glr_generated_examples_encoding_multi_stream_encoding.py`.
+
 .. autosummary::
     :toctree: generated/
     :nosignatures:
@@ -23,7 +25,9 @@ Multi-stream encoder
 Single-stream encoders
 ----------------------
 
-For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_encoding_audio_encoding.py`.
+For a video encoder tutorial, see: :ref:`sphx_glr_generated_examples_encoding_video_encoding.py`.
+
+For an audio encoder tutorial, see: :ref:`sphx_glr_generated_examples_encoding_audio_encoding.py`.
 
 .. autosummary::
     :toctree: generated/

@@ -85,6 +85,7 @@ class CustomGalleryExampleSortKey:
             order = [
                 "audio_encoding.py",
                 "video_encoding.py",
+                "multi_stream_encoding.py",
             ]
 
         try:
