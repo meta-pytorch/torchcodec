@@ -12,6 +12,11 @@ from torchcodec.encoders import AudioEncoder, VideoEncoder
 from torchcodec.encoders._multi_stream_encoder import StreamingEncoder
 
 
+@pytest.fixture(autouse=True)
+def seed_rng():
+    torch.manual_seed(0)
+
+
 NUM_FRAMES = 10
 HEIGHT = 256
 WIDTH = 256
