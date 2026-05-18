@@ -7,6 +7,14 @@ An audio stream within an [`Encoder`](torchcodec.encoders.Encoder.html#torchcode
 Returned by [`Encoder.add_audio()`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.add_audio). Use `add_samples()` to feed
 audio samples into this stream.
 
+Examples using `AudioStream`:
+
+![](../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
+
+[Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html)
+
+Encoding audio and video streams with the Encoder
+
 add_samples(*samples: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#AudioStream.add_samples)
 
 Add audio samples to this stream.

@@ -2,7 +2,13 @@
 
 *class*torchcodec.encoders.VideoEncoder(*frames: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *frame_rate: [float](https://docs.python.org/3/library/functions.html#float)*)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder)
 
-A video encoder on CPU or CUDA..
+A single-stream video encoder on CPU or CUDA.
+
+This is a convenience class for simple, one-shot video encoding. For
+multi-stream encoding (e.g. video + audio), incremental encoding, or mixing
+CPU and CUDA streams, use [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder) instead.
+See [Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) for a
+tutorial.
 
 Parameters:
 
@@ -18,9 +24,9 @@ Examples using `VideoEncoder`:
 
 ![](../_images/sphx_glr_video_encoding_thumb.jpg)
 
-[Encoding video frames with VideoEncoder](../generated_examples/encoding/video_encoding.html)
+[Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
 
-Encoding video frames with VideoEncoder
+Encoding video with the Encoder
 
 to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *codec: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *pixel_format: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *crf: [int](https://docs.python.org/3/library/functions.html#int) | [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *preset: [str](https://docs.python.org/3/library/stdtypes.html#str) | [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *extra_options: [dict](https://docs.python.org/3/library/stdtypes.html#dict)[[str](https://docs.python.org/3/library/stdtypes.html#str), [Any](https://docs.python.org/3/library/typing.html#typing.Any)] | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder.to_file)
 

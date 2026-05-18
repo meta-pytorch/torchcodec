@@ -18,13 +18,40 @@ finally call `close()` (or use the encoder as a context manager).
 Example
 
 ```
-with Encoder() as encoder:
- video_stream = encoder.add_video(height=256, width=256, frame_rate=30)
- audio_stream = encoder.add_audio(sample_rate=16000, num_channels=1)
- encoder.open_file("output.mp4")
+encoder = Encoder()
+video_stream = encoder.add_video(height=256, width=256, frame_rate=30)
+audio_stream = encoder.add_audio(sample_rate=16000, num_channels=1)
+with encoder.open_file("output.mp4"):
  video_stream.add_frames(frames_tensor)
  audio_stream.add_samples(samples_tensor)
 ```
+
+To encode to a file-like object (e.g. `io.BytesIO()`), use
+`open_file_like()` instead:
+
+```
+import io
+
+buf = io.BytesIO()
+encoder = Encoder()
+video_stream = encoder.add_video(height=256, width=256, frame_rate=30)
+with encoder.open_file_like(buf, format="mp4"):
+ video_stream.add_frames(frames_tensor)
+encoded_bytes = buf.getvalue()
+```
+
+Examples using `Encoder`:
+
+![](../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
+
+[Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html)
+
+Encoding audio and video streams with the Encoder
+![](../_images/sphx_glr_video_encoding_thumb.jpg)
+
+[Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
+
+Encoding video with the Encoder
 
 add_audio(***, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int)*, *num_channels: [int](https://docs.python.org/3/library/functions.html#int)*, *bit_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *out_num_channels: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *out_sample_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [AudioStream](torchcodec.encoders.AudioStream.html#torchcodec.encoders.AudioStream)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.add_audio)
 

@@ -2,7 +2,13 @@
 
 *class*torchcodec.encoders.AudioEncoder(*samples: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder)
 
-An audio encoder.
+A single-stream audio encoder.
+
+This is a convenience class for simple, one-shot audio encoding. For
+multi-stream encoding (e.g. video + audio), incremental encoding, or
+encoding multiple audio streams, use [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder)
+instead. See [Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py)
+for a tutorial.
 
 Parameters:
 
@@ -21,6 +27,11 @@ Examples using `AudioEncoder`:
 [Encoding audio samples with AudioEncoder](../generated_examples/encoding/audio_encoding.html)
 
 Encoding audio samples with AudioEncoder
+![](../_images/sphx_glr_video_encoding_thumb.jpg)
+
+[Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
+
+Encoding video with the Encoder
 
 to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *bit_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *num_channels: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder.to_file)
 

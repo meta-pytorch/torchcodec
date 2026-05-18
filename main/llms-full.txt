@@ -44,6 +44,8 @@ For an audio decoder tutorial, see: [Decoding audio streams with AudioDecoder](g
 
 ## Multi-stream encoder
 
+For a tutorial, see: [Encoding audio and video streams with the Encoder](generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py).
+
 | [`Encoder`](generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder) | A multi-stream encoder for encoding video and/or audio into a file or file-like object. |
 | --- | --- |
 | [`VideoStream`](generated/torchcodec.encoders.VideoStream.html#torchcodec.encoders.VideoStream) | A video stream within an [`Encoder`](generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder). |
@@ -51,11 +53,13 @@ For an audio decoder tutorial, see: [Decoding audio streams with AudioDecoder](g
 
 ## Single-stream encoders
 
-For an audio decoder tutorial, see: [Encoding audio samples with AudioEncoder](generated_examples/encoding/audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py).
+For a video encoder tutorial, see: [Encoding video with the Encoder](generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py).
 
-| [`VideoEncoder`](generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder) | A video encoder on CPU or CUDA.. |
+For an audio encoder tutorial, see: [Encoding audio samples with AudioEncoder](generated_examples/encoding/audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py).
+
+| [`VideoEncoder`](generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder) | A single-stream video encoder on CPU or CUDA. |
 | --- | --- |
-| [`AudioEncoder`](generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder) | An audio encoder. |
+| [`AudioEncoder`](generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder) | A single-stream audio encoder. |
 
 ---
 
@@ -579,11 +583,16 @@ How to sample video clips
 [Decoder Transforms: Applying transforms during decoding](../generated_examples/decoding/transforms.html)
 
 Decoder Transforms: Applying transforms during decoding
+![](../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
+
+[Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html)
+
+Encoding audio and video streams with the Encoder
 ![](../_images/sphx_glr_video_encoding_thumb.jpg)
 
-[Encoding video frames with VideoEncoder](../generated_examples/encoding/video_encoding.html)
+[Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
 
-Encoding video frames with VideoEncoder
+Encoding video with the Encoder
 
 __getitem__(*key: [Integral](https://docs.python.org/3/library/numbers.html#numbers.Integral) | [slice](https://docs.python.org/3/library/functions.html#slice)*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.__getitem__)
 
@@ -1006,7 +1015,13 @@ per GPU device. Must be non-negative. Setting to 0 disables caching.
 
 *class*torchcodec.encoders.AudioEncoder(*samples: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder)
 
-An audio encoder.
+A single-stream audio encoder.
+
+This is a convenience class for simple, one-shot audio encoding. For
+multi-stream encoding (e.g. video + audio), incremental encoding, or
+encoding multiple audio streams, use [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder)
+instead. See [Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py)
+for a tutorial.
 
 Parameters:
 
@@ -1025,6 +1040,11 @@ Examples using `AudioEncoder`:
 [Encoding audio samples with AudioEncoder](../generated_examples/encoding/audio_encoding.html)
 
 Encoding audio samples with AudioEncoder
+![](../_images/sphx_glr_video_encoding_thumb.jpg)
+
+[Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
+
+Encoding video with the Encoder
 
 to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *bit_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *num_channels: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_audio_encoder.html#AudioEncoder.to_file)
 
@@ -1105,6 +1125,14 @@ An audio stream within an [`Encoder`](torchcodec.encoders.Encoder.html#torchcode
 Returned by [`Encoder.add_audio()`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.add_audio). Use `add_samples()` to feed
 audio samples into this stream.
 
+Examples using `AudioStream`:
+
+![](../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
+
+[Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html)
+
+Encoding audio and video streams with the Encoder
+
 add_samples(*samples: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#AudioStream.add_samples)
 
 Add audio samples to this stream.
@@ -1138,13 +1166,40 @@ finally call `close()` (or use the encoder as a context manager).
 Example
 
 ```
-with Encoder() as encoder:
- video_stream = encoder.add_video(height=256, width=256, frame_rate=30)
- audio_stream = encoder.add_audio(sample_rate=16000, num_channels=1)
- encoder.open_file("output.mp4")
+encoder = Encoder()
+video_stream = encoder.add_video(height=256, width=256, frame_rate=30)
+audio_stream = encoder.add_audio(sample_rate=16000, num_channels=1)
+with encoder.open_file("output.mp4"):
  video_stream.add_frames(frames_tensor)
  audio_stream.add_samples(samples_tensor)
 ```
+
+To encode to a file-like object (e.g. `io.BytesIO()`), use
+`open_file_like()` instead:
+
+```
+import io
+
+buf = io.BytesIO()
+encoder = Encoder()
+video_stream = encoder.add_video(height=256, width=256, frame_rate=30)
+with encoder.open_file_like(buf, format="mp4"):
+ video_stream.add_frames(frames_tensor)
+encoded_bytes = buf.getvalue()
+```
+
+Examples using `Encoder`:
+
+![](../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
+
+[Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html)
+
+Encoding audio and video streams with the Encoder
+![](../_images/sphx_glr_video_encoding_thumb.jpg)
+
+[Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
+
+Encoding video with the Encoder
 
 add_audio(***, *sample_rate: [int](https://docs.python.org/3/library/functions.html#int)*, *num_channels: [int](https://docs.python.org/3/library/functions.html#int)*, *bit_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *out_num_channels: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *out_sample_rate: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [AudioStream](torchcodec.encoders.AudioStream.html#torchcodec.encoders.AudioStream)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder.add_audio)
 
@@ -1270,7 +1325,13 @@ Encoder
 
 *class*torchcodec.encoders.VideoEncoder(*frames: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *frame_rate: [float](https://docs.python.org/3/library/functions.html#float)*)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder)
 
-A video encoder on CPU or CUDA..
+A single-stream video encoder on CPU or CUDA.
+
+This is a convenience class for simple, one-shot video encoding. For
+multi-stream encoding (e.g. video + audio), incremental encoding, or mixing
+CPU and CUDA streams, use [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder) instead.
+See [Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) for a
+tutorial.
 
 Parameters:
 
@@ -1286,9 +1347,9 @@ Examples using `VideoEncoder`:
 
 ![](../_images/sphx_glr_video_encoding_thumb.jpg)
 
-[Encoding video frames with VideoEncoder](../generated_examples/encoding/video_encoding.html)
+[Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
 
-Encoding video frames with VideoEncoder
+Encoding video with the Encoder
 
 to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *codec: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *pixel_format: [str](https://docs.python.org/3/library/stdtypes.html#str) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *crf: [int](https://docs.python.org/3/library/functions.html#int) | [float](https://docs.python.org/3/library/functions.html#float) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *preset: [str](https://docs.python.org/3/library/stdtypes.html#str) | [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *extra_options: [dict](https://docs.python.org/3/library/stdtypes.html#dict)[[str](https://docs.python.org/3/library/stdtypes.html#str), [Any](https://docs.python.org/3/library/typing.html#typing.Any)] | [None](https://docs.python.org/3/library/constants.html#None) = None*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_video_encoder.html#VideoEncoder.to_file)
 
@@ -1401,6 +1462,19 @@ A video stream within an [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec
 
 Returned by [`Encoder.add_video()`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.add_video). Use `add_frames()` to feed
 video frames into this stream.
+
+Examples using `VideoStream`:
+
+![](../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
+
+[Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html)
+
+Encoding audio and video streams with the Encoder
+![](../_images/sphx_glr_video_encoding_thumb.jpg)
+
+[Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
+
+Encoding video with the Encoder
 
 add_frames(*frames: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#VideoStream.add_frames)
 
@@ -1940,14 +2014,14 @@ bench(VideoDecoder, source=long_video_path, seek_mode="approximate")
 
 ```
 Creating a VideoDecoder object with seek_mode='exact' on a short video:
-med = 6.41ms +- 0.09
+med = 6.47ms +- 0.03
 Creating a VideoDecoder object with seek_mode='approximate' on a short video:
-med = 5.75ms +- 0.08
+med = 5.77ms +- 0.01
 
 Creating a VideoDecoder object with seek_mode='exact' on a long video:
-med = 72.31ms +- 0.73
+med = 78.19ms +- 1.15
 Creating a VideoDecoder object with seek_mode='approximate' on a long video:
-med = 8.37ms +- 0.18
+med = 8.37ms +- 0.02
 ```
 
 ## Performance: frame decoding and clip sampling
@@ -1981,9 +2055,9 @@ bench(sample_clips, seek_mode="approximate")
 
 ```
 Sampling clips with seek_mode='exact':
-med = 204.34ms +- 26.53
+med = 220.56ms +- 26.85
 Sampling clips with seek_mode='approximate':
-med = 135.27ms +- 21.58
+med = 142.19ms +- 23.84
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -2097,7 +2171,7 @@ is usually the case when doing clip sampling, consider using "approximate".
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 24.240 seconds)
+**Total running time of the script:** (0 minutes 25.319 seconds)
 
 [`Download Jupyter notebook: approximate_mode.ipynb`](../../_downloads/4bf13eb02a73a239a7e7af99b5c000a9/approximate_mode.ipynb)
 
@@ -2251,7 +2325,7 @@ AudioSamples:
  Your browser does not support the audio element.
  
 
-**Total running time of the script:** (0 minutes 1.318 seconds)
+**Total running time of the script:** (0 minutes 1.320 seconds)
 
 [`Download Jupyter notebook: audio_decoding.ipynb`](../../_downloads/f6b4925719fd3f116259f89a204c6888/audio_decoding.ipynb)
 
@@ -2297,7 +2371,7 @@ print(f"{torch.cuda.get_device_properties(0)=}")
 ```
 torch.__version__='2.13.0.dev20260516+cu126'
 torch.cuda.is_available()=True
-torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=68429b14-4268-9ae7-7b68-58706a928e3f, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
+torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=5bef730e-5787-474b-42a3-0a535c4c1563, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
 ```
 
 ## Downloading the video
@@ -2320,7 +2394,7 @@ urllib.request.urlretrieve(
 ```
 
 ```
-('video.mp4', <http.client.HTTPMessage object at 0x7efb397eb9a0>)
+('video.mp4', <http.client.HTTPMessage object at 0x7fc96e5d6bc0>)
 ```
 
 ## CUDA Decoding using VideoDecoder
@@ -2430,7 +2504,7 @@ mean_abs_diff=tensor(0.5636, device='cuda:0')
 max_abs_diff=tensor(2., device='cuda:0')
 ```
 
-**Total running time of the script:** (0 minutes 4.653 seconds)
+**Total running time of the script:** (0 minutes 4.661 seconds)
 
 [`Download Jupyter notebook: basic_cuda_example.ipynb`](../../_downloads/0d9d7e92cb34559510d86a36f73e1e53/basic_cuda_example.ipynb)
 
@@ -2691,7 +2765,7 @@ plot(other_frames.data, "Other frames")
 - ![Frame played at 2 seconds](../../_images/sphx_glr_basic_example_005.png)
 - ![Other frames](../../_images/sphx_glr_basic_example_006.png)
 
-**Total running time of the script:** (0 minutes 2.107 seconds)
+**Total running time of the script:** (0 minutes 2.082 seconds)
 
 [`Download Jupyter notebook: basic_example.ipynb`](../../_downloads/c8852e7e664672bdb64c6ba771a9bd30/basic_example.ipynb)
 
@@ -2808,10 +2882,10 @@ for frame in sample_data["frames"][:3]:
 
 ```
 Running ffprobe:
-ffprobe -i /tmp/tmpa1mn1bdp/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmpwrce8ej_/long_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Running ffprobe:
-ffprobe -i /tmp/tmpa1mn1bdp/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
+ffprobe -i /tmp/tmpwrce8ej_/short_video.mp4 -select_streams 0 -show_frames -show_entries frame=pts,duration,key_frame -of json
 
 Sample of fields in custom frame mappings:
 frame['key_frame'] = 1, frame['pts'] = 0, frame['duration'] = 1
@@ -2863,15 +2937,15 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 ```
 Running benchmarks on short_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 6.24ms +- 0.02
+med = 6.23ms +- 0.02
 Creating a VideoDecoder object with seek_mode='exact':
-med = 6.42ms +- 0.02
+med = 6.45ms +- 0.03
 
 Running benchmarks on long_video.mp4
 Creating a VideoDecoder object with custom_frame_mappings:
-med = 28.07ms +- 0.15
+med = 28.04ms +- 0.13
 Creating a VideoDecoder object with seek_mode='exact':
-med = 40.66ms +- 0.53
+med = 41.75ms +- 0.51
 ```
 
 ## Performance: Frame decoding with custom frame mappings
@@ -2903,15 +2977,15 @@ for video_path, json_path in ((short_video_path, short_json_path), (long_video_p
 ```
 Running benchmarks on short_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 18.29ms +- 0.05
+med = 18.40ms +- 0.04
 Decoding frames with seek_mode='exact':
-med = 18.45ms +- 0.04
+med = 18.62ms +- 0.04
 
 Running benchmarks on long_video.mp4
 Decoding frames with custom_frame_mappings:
-med = 40.19ms +- 0.07
+med = 40.37ms +- 0.13
 Decoding frames with seek_mode='exact':
-med = 53.41ms +- 0.21
+med = 53.33ms +- 0.26
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -3010,7 +3084,7 @@ accuracy benefits.
 same videos are decoded repeatedly, and some preprocessing work can be done.
 - For exact frame seeking without preprocessing, use "exact" mode.
 
-**Total running time of the script:** (0 minutes 23.575 seconds)
+**Total running time of the script:** (0 minutes 23.622 seconds)
 
 [`Download Jupyter notebook: custom_frame_mappings.ipynb`](../../_downloads/515bb6477ed8fb530cccbe1b67ef6f0c/custom_frame_mappings.ipynb)
 
@@ -3174,13 +3248,13 @@ bench(direct_url_to_ffmpeg)
 
 ```
 Decode from existing download:
-med = 194.88ms +- 0.19
+med = 195.09ms +- 0.30
 
 Download before decode:
-med = 1051.30ms +- 71.69
+med = 921.32ms +- 105.52
 
 Direct url to FFmpeg:
-med = 240.37ms +- 4.42
+med = 246.29ms +- 8.46
 ```
 
 Decoding the already downloaded video is clearly the fastest. Having to
@@ -3215,7 +3289,7 @@ bench(stream_while_decode)
 
 ```
 Stream while decode:
-med = 213.76ms +- 1.61
+med = 212.36ms +- 2.16
 ```
 
 Streaming the data through a file-like object is much faster than
@@ -3341,10 +3415,10 @@ bench(decode_from_existing_open_file_object)
 
 ```
 Decode from existing file path:
-med = 196.60ms +- 0.81
+med = 195.18ms +- 0.27
 
 Decode from existing open file object:
-med = 194.79ms +- 0.10
+med = 195.42ms +- 0.07
 ```
 
 Thankfully, the answer is both means of decoding from a local file take about
@@ -3360,7 +3434,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 27.269 seconds)
+**Total running time of the script:** (0 minutes 26.036 seconds)
 
 [`Download Jupyter notebook: file_like.ipynb`](../../_downloads/f0caa5fce0f20da68647d009fb8dd8d0/file_like.ipynb)
 
@@ -3588,7 +3662,7 @@ sequential_time = report_stats(times, unit="s")
 ```
 
 ```
-median = 10.73s ± 0.06
+median = 10.78s ± 0.07
 ```
 
 ## Method 2: FFmpeg-based parallelism
@@ -3616,8 +3690,8 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} FFmpeg th
 ```
 
 ```
-median = 5.67s ± 0.06
-Speedup compared to sequential: 1.89x with 16 FFmpeg threads.
+median = 5.66s ± 0.06
+Speedup compared to sequential: 1.90x with 16 FFmpeg threads.
 ```
 
 ## Method 3: multiprocessing
@@ -3647,7 +3721,7 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} processes
 ```
 
 ```
-median = 4.35s ± 0.06
+median = 4.37s ± 0.05
 Speedup compared to sequential: 2.47x with 16 processes.
 ```
 
@@ -3679,8 +3753,8 @@ print(f"Speedup compared to sequential: {speedup:.2f}x with {NUM_CPUS} threads."
 ```
 
 ```
-median = 1.43s ± 0.06
-Speedup compared to sequential: 7.49x with 16 threads.
+median = 1.43s ± 0.05
+Speedup compared to sequential: 7.55x with 16 threads.
 ```
 
 ## Validation and correctness check
@@ -3703,7 +3777,7 @@ import shutil
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (1 minutes 33.442 seconds)
+**Total running time of the script:** (1 minutes 33.594 seconds)
 
 [`Download Jupyter notebook: parallel_decoding.ipynb`](../../_downloads/1cff79ade5aa64baf192aceab5e06959/parallel_decoding.ipynb)
 
@@ -4243,7 +4317,7 @@ default value ensures that clips start early enough before the end. This means
 that by default, the policy parameter rarely comes into action, and most users
 probably don't need to worry too much about it.
 
-**Total running time of the script:** (0 minutes 0.419 seconds)
+**Total running time of the script:** (0 minutes 0.428 seconds)
 
 [`Download Jupyter notebook: sampling.ipynb`](../../_downloads/98c8aa10d85bcd2ddc4f4456ad29dcbe/sampling.ipynb)
 
@@ -4257,19 +4331,19 @@ probably don't need to worry too much about it.
 
 # Computation times
 
-**05:22.484** total execution time for 10 files **from generated_examples/decoding**:
+**05:23.564** total execution time for 10 files **from generated_examples/decoding**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`transforms.py`) | 02:25.462 | 0.0 |
-| [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`parallel_decoding.py`) | 01:33.442 | 0.0 |
-| [Streaming data through file-like support](file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`file_like.py`) | 00:27.269 | 0.0 |
-| [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`approximate_mode.py`) | 00:24.240 | 0.0 |
-| [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`custom_frame_mappings.py`) | 00:23.575 | 0.0 |
-| [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`basic_cuda_example.py`) | 00:04.653 | 0.0 |
-| [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`basic_example.py`) | 00:02.107 | 0.0 |
-| [Decoding audio streams with AudioDecoder](audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`audio_decoding.py`) | 00:01.318 | 0.0 |
-| [How to sample video clips](sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`sampling.py`) | 00:00.419 | 0.0 |
+| [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`transforms.py`) | 02:26.501 | 0.0 |
+| [Parallel video decoding: multi-processing and multi-threading](parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`parallel_decoding.py`) | 01:33.594 | 0.0 |
+| [Streaming data through file-like support](file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`file_like.py`) | 00:26.036 | 0.0 |
+| [Exact vs Approximate seek mode: Performance and accuracy comparison](approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`approximate_mode.py`) | 00:25.319 | 0.0 |
+| [Decoding with custom frame mappings](custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`custom_frame_mappings.py`) | 00:23.622 | 0.0 |
+| [Accelerated video decoding on GPUs with CUDA and NVDEC](basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`basic_cuda_example.py`) | 00:04.661 | 0.0 |
+| [Decoding a video with VideoDecoder](basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`basic_example.py`) | 00:02.082 | 0.0 |
+| [Decoding audio streams with AudioDecoder](audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`audio_decoding.py`) | 00:01.320 | 0.0 |
+| [How to sample video clips](sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`sampling.py`) | 00:00.428 | 0.0 |
 | [TorchCodec Performance Tips and Best Practices](performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) (`performance_tips.py`) | 00:00.000 | 0.0 |
 
 ---
@@ -4610,8 +4684,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 1972.03ms +- 20.28
-torchvision transform: times_med = 4109.54ms +- 121.15
+decoder transforms: times_med = 1961.73ms +- 12.86
+torchvision transform: times_med = 4053.37ms +- 85.48
 ```
 
 The reason is that FFmpeg is applying the decoder transforms in parallel.
@@ -4625,8 +4699,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 10680.44ms +- 9.48
-torchvision transform: times_med = 12508.69ms +- 10.48
+decoder transforms: times_med = 10756.45ms +- 14.22
+torchvision transform: times_med = 12566.72ms +- 25.38
 ```
 
 In brief, our performance guidance is:
@@ -4643,7 +4717,7 @@ In brief, our performance guidance is:
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (2 minutes 25.462 seconds)
+**Total running time of the script:** (2 minutes 26.501 seconds)
 
 [`Download Jupyter notebook: transforms.ipynb`](../../_downloads/f189e474be55fc74900ac94fda37f6f0/transforms.ipynb)
 
@@ -4796,41 +4870,277 @@ encoding options.
 Encoding audio samples with AudioEncoder
 ![](../../_images/sphx_glr_video_encoding_thumb.jpg)
 
-[Encoding video frames with VideoEncoder](video_encoding.html)
+[Encoding video with the Encoder](video_encoding.html)
 
-Encoding video frames with VideoEncoder
+Encoding video with the Encoder
+![](../../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
+
+[Encoding audio and video streams with the Encoder](multi_stream_encoding.html)
+
+Encoding audio and video streams with the Encoder
+
+---
+
+# Encoding audio and video streams with the Encoder
+
+In this example, we'll learn how to encode multiple video and audio streams
+into a single container using the [`Encoder`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder) class.
+We'll also see how to feed audio samples and video frames incrementally, and how
+to mix CPU and CUDA video streams.
+
+For details on video encoding parameters (codec, CRF, preset, etc.), see
+[Encoding video with the Encoder](video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py).
+
+## Video + audio encoding
+
+Let's start by encoding a video alongside an audio track into the same MP4
+file. We'll decode some video frames from an existing video and generate a
+simple sine-wave audio tone.
+
+```
+import subprocess
+import tempfile
+from pathlib import Path
+
+import requests
+import torch
+from torchcodec.decoders import VideoDecoder
+from torchcodec.encoders import Encoder
+
+# Video source: https://www.pexels.com/video/adorable-cats-on-the-lawn-4977395/
+# Author: Altaf Shah.
+url = "https://videos.pexels.com/video-files/4977395/4977395-hd_1920_1080_24fps.mp4"
+
+response = requests.get(url, headers={"User-Agent": ""})
+if response.status_code != 200:
+ raise RuntimeError(f"Failed to download video. {response.status_code = }.")
+
+decoder = VideoDecoder(response.content)
+frames = decoder.get_frames_in_range(0, 60).data
+frame_rate = decoder.metadata.average_fps
+
+# Generate a 440 Hz sine wave that lasts as long as the video
+audio_sample_rate = 16000
+duration_seconds = len(frames) / frame_rate
+t = torch.linspace(
+ 0, duration_seconds, int(audio_sample_rate * duration_seconds),
+ dtype=torch.float32,
+)
+audio_samples = torch.sin(2 * torch.pi * 440 * t).unsqueeze(0) # shape: (1, num_samples)
+```
+
+Now we create an [`Encoder`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder), add one video stream
+and one audio stream, and encode everything into a single file. Each call to
+[`add_video()`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.add_video) or
+[`add_audio()`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.add_audio) returns a stream object that
+we use to feed data.
+
+```
+output_path = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+encoder = Encoder()
+video_stream = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3], frame_rate=frame_rate,
+)
+audio_stream = encoder.add_audio(sample_rate=audio_sample_rate, num_channels=1)
+
+with encoder.open_file(output_path):
+ video_stream.add_frames(frames)
+ audio_stream.add_samples(audio_samples)
+
+print(f"Encoded video + audio to {output_path}")
+print(f"Output size: {Path(output_path).stat().st_size} bytes")
+```
+
+```
+Encoded video + audio to /tmp/tmp_w88x5l2.mp4
+Output size: 2526289 bytes
+```
+
+Let's verify that both streams are present in the output file:
+
+```
+result = subprocess.run(
+ [
+ "ffprobe", "-v", "error",
+ "-show_entries", "stream=index,codec_type,codec_name",
+ "-of", "default=noprint_wrappers=1", output_path,
+ ],
+ capture_output=True, text=True,
+)
+print(result.stdout)
+```
+
+```
+index=0
+codec_name=h264
+codec_type=video
+index=1
+codec_name=aac
+codec_type=audio
+```
+
+## Incremental encoding
+
+You don't need to have all your data ready upfront. You can call
+[`add_frames()`](../../generated/torchcodec.encoders.VideoStream.html#torchcodec.encoders.VideoStream.add_frames) and
+[`add_samples()`](../../generated/torchcodec.encoders.AudioStream.html#torchcodec.encoders.AudioStream.add_samples) multiple times to feed
+data incrementally. This is useful when frames or samples are generated
+on-the-fly (e.g. from a model or a processing pipeline).
+
+Here, we'll split our frames and audio into chunks and feed them one batch at
+a time:
+
+```
+chunk_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+encoder = Encoder()
+video_stream = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3], frame_rate=frame_rate,
+)
+audio_stream = encoder.add_audio(sample_rate=audio_sample_rate, num_channels=1)
+
+video_chunk_size = 10
+samples_per_video_chunk = int(audio_sample_rate / frame_rate * video_chunk_size)
+
+with encoder.open_file(chunk_output):
+ for i in range(0, len(frames), video_chunk_size):
+ video_chunk = frames[i : i + video_chunk_size]
+ video_stream.add_frames(video_chunk)
+
+ audio_start = int(i / frame_rate * audio_sample_rate)
+ audio_chunk = audio_samples[:, audio_start : audio_start + samples_per_video_chunk]
+ audio_stream.add_samples(audio_chunk)
+
+print(f"Incrementally encoded to {chunk_output}")
+print(f"Output size: {Path(chunk_output).stat().st_size} bytes")
+```
+
+```
+Incrementally encoded to /tmp/tmpa1muj3v0.mp4
+Output size: 2526660 bytes
+```
+
+## Multiple video streams, multiple audio streams
+
+You can add as many video and audio streams as you need. Each video stream can
+independently target CPU or CUDA encoding -- just pass the desired `device`
+to [`add_video()`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.add_video). This means you can mix CPU
+and CUDA video streams in the same container, for example encoding a
+high-resolution stream on GPU for speed and a low-resolution stream on CPU.
+
+Similarly, you can add multiple audio streams with different settings (sample
+rate, number of channels, bit rate, etc.).
+
+Here's an example with two video streams and two audio streams:
+
+```
+encoder = Encoder()
+
+# Two video streams: one on CPU, one on CUDA
+cpu_video = encoder.add_video(
+ height=1080, width=1920, frame_rate=30,
+ device="cpu",
+)
+cuda_video = encoder.add_video(
+ height=720, width=1280, frame_rate=30,
+ device="cuda",
+)
+
+# Two audio streams with different settings
+audio_en = encoder.add_audio(sample_rate=44100, num_channels=2)
+audio_fr = encoder.add_audio(sample_rate=44100, num_channels=2)
+
+with encoder.open_file("multi_stream_output.mkv"):
+ cpu_video.add_frames(cpu_frames)
+ cuda_video.add_frames(cuda_frames)
+ audio_en.add_samples(english_samples)
+ audio_fr.add_samples(french_samples)
+```
+
+## Encoding to a file-like object
+
+Instead of encoding to a file path, you can encode to any file-like object
+(e.g. `io.BytesIO()`) using
+[`open_file_like()`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.open_file_like). In this case, you must
+specify the container `format` explicitly since there is no file extension to
+infer it from.
+
+```
+import io
+
+buf = io.BytesIO()
+encoder = Encoder()
+video_stream = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3], frame_rate=frame_rate,
+)
+audio_stream = encoder.add_audio(sample_rate=audio_sample_rate, num_channels=1)
+
+with encoder.open_file_like(buf, format="mp4"):
+ video_stream.add_frames(frames)
+ audio_stream.add_samples(audio_samples)
+
+encoded_bytes = buf.getvalue()
+print(f"Encoded to BytesIO, size: {len(encoded_bytes)} bytes")
+```
+
+```
+Encoded to BytesIO, size: 2526289 bytes
+```
+
+**Total running time of the script:** (0 minutes 6.262 seconds)
+
+[`Download Jupyter notebook: multi_stream_encoding.ipynb`](../../_downloads/ccd7596cf7d161af13c32c87cfc7f878/multi_stream_encoding.ipynb)
+
+[`Download Python source code: multi_stream_encoding.py`](../../_downloads/58074f3e1629f5cce08951c5ae1a0c35/multi_stream_encoding.py)
+
+[`Download zipped: multi_stream_encoding.zip`](../../_downloads/03779dae39d11b141b20f09aaaa72f1b/multi_stream_encoding.zip)
+
+[Gallery generated by Sphinx-Gallery](https://sphinx-gallery.github.io)
 
 ---
 
 # Computation times
 
-**00:26.845** total execution time for 2 files **from generated_examples/encoding**:
+**00:32.462** total execution time for 3 files **from generated_examples/encoding**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Encoding video frames with VideoEncoder](video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`video_encoding.py`) | 00:26.816 | 0.0 |
+| [Encoding video with the Encoder](video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`video_encoding.py`) | 00:26.171 | 0.0 |
+| [Encoding audio and video streams with the Encoder](multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`multi_stream_encoding.py`) | 00:06.262 | 0.0 |
 | [Encoding audio samples with AudioEncoder](audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py) (`audio_encoding.py`) | 00:00.029 | 0.0 |
 
 ---
 
-# Encoding video frames with VideoEncoder
+# Encoding video with the Encoder
 
-In this example, we'll learn how to encode video frames to a file or to raw
-bytes using the [`VideoEncoder`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder) class.
+In this example, we'll learn how to encode video frames using the
+[`Encoder`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder) class, and we'll explore the different
+encoding parameters available.
 
-First, we'll download a video and decode some frames to tensors.
-These will be the input to the [`VideoEncoder`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder). For more details on decoding,
+Tip
+
+[`VideoEncoder`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder) and
+[`AudioEncoder`](../../generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder) are simpler, single-stream
+encoders. They are convenient for simple one-shot encoding, but the
+[`Encoder`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder) class is more flexible and supports
+the same encoding options. See
+[Encoding audio and video streams with the Encoder](multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) for a
+multi-stream encoding tutorial.
+
+First, let's download a video and decode some frames to tensors.
+These will be the input for our encoder. For more details on decoding,
 see [Decoding a video with VideoDecoder](../decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py).
-Otherwise, skip ahead to Creating an encoder.
+Otherwise, skip ahead to Creating an encoder and encoding to a file.
 
 ```
+import io
+
 import requests
 from torchcodec.decoders import VideoDecoder
 from IPython.display import Video
 
 def play_video(encoded_bytes):
  return Video(
- data=encoded_bytes.numpy().tobytes(),
+ data=encoded_bytes,
  embed=True,
  width=640,
  height=360,
@@ -4852,73 +5162,49 @@ frames = decoder.get_frames_in_range(0, 60).data # Get first 60 frames
 frame_rate = decoder.metadata.average_fps
 ```
 
-## Creating an encoder
+## Creating an encoder and encoding to a file
 
-Let's instantiate a [`VideoEncoder`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder). We will need to provide
-the frames to be encoded as a 4D tensor of shape
-`(num_frames, num_channels, height, width)` with values in the `[0, 255]`
-range and `torch.uint8` dtype. We will also need to provide the frame rate of the input
-video.
+Let's instantiate an [`Encoder`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder), add a video
+stream, and encode to a file. We use the
+[`open_file()`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.open_file) method as a context manager to
+ensure the output is properly flushed and closed.
 
 Note
 
 The `frame_rate` parameter corresponds to the frame rate of the
-*input* video. It will also be used for the frame rate of the *output* encoded video.
+*input* video. It will also be used for the frame rate of the *output*
+encoded video.
 
 ```
-from torchcodec.encoders import VideoEncoder
+import tempfile
+from pathlib import Path
+from torchcodec.encoders import Encoder
 
 print(f"{frames.shape = }, {frames.dtype = }")
 print(f"{frame_rate = } fps")
 
-encoder = VideoEncoder(frames=frames, frame_rate=frame_rate)
+output_path = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+encoder = Encoder()
+video_stream = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3], frame_rate=frame_rate
+)
+with encoder.open_file(output_path):
+ video_stream.add_frames(frames)
+
+print(f"Encoded to {output_path}, size: {Path(output_path).stat().st_size} bytes")
 ```
 
 ```
 frames.shape = torch.Size([60, 3, 1080, 1920]), frames.dtype = torch.uint8
 frame_rate = 24 fps
+Encoded to /tmp/tmpx99zvz47.mp4, size: 2509001 bytes
 ```
 
-## CUDA Encoding
-
-To encode on GPU, pass the frames as a CUDA tensor. This can result in significantly
-faster encoding than CPU. The encoder will automatically select a CUDA-compatible
-codec when frames are on a CUDA device, such as `h264_nvenc` or `hevc_nvenc`.
-
-Note
-
-On GPU, the pixel format is always set to `nv12` (which does equivalent chroma subsampling
-to `yuv420p`). The `pixel_format` parameter is not supported for GPU encoding.
-
-```
-gpu_frames = frames.to("cuda") # Move frames to GPU
-gpu_encoder = VideoEncoder(frames=gpu_frames, frame_rate=frame_rate)
-```
-
-That's it! The rest of the encoding process is the same as on CPU.
-
-## Encoding to file, bytes, or file-like
-
-[`VideoEncoder`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder) supports encoding frames into a
-file via the [`to_file()`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder.to_file) method, to
-file-like objects via the [`to_file_like()`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder.to_file_like)
-method, or to raw bytes via [`to_tensor()`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder.to_tensor).
-For now we will use [`to_tensor()`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder.to_tensor), so we
-can easily inspect and display the encoded video.
-
-```
-encoded_frames = encoder.to_tensor(format="mp4")
-play_video(encoded_frames)
-```
-
- Your browser does not support the video tag.
- 
-
-Now that we have encoded data, we can decode it back to verify the
+Now that we have encoded data, let's decode it back to verify the
 round-trip encode/decode process works as expected:
 
 ```
-decoder_verify = VideoDecoder(encoded_frames)
+decoder_verify = VideoDecoder(output_path)
 decoded_frames = decoder_verify.get_frames_in_range(0, 60).data
 
 print(f"Re-decoded video: {decoded_frames.shape = }")
@@ -4930,20 +5216,44 @@ Re-decoded video: decoded_frames.shape = torch.Size([60, 3, 1080, 1920])
 Original frames: frames.shape = torch.Size([60, 3, 1080, 1920])
 ```
 
+## CUDA Encoding
+
+To encode on GPU, pass `device="cuda"` to
+[`add_video()`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.add_video), and feed CUDA tensors to
+[`add_frames()`](../../generated/torchcodec.encoders.VideoStream.html#torchcodec.encoders.VideoStream.add_frames). This can result in
+significantly faster encoding than CPU. The encoder will automatically select
+a CUDA-compatible codec like `h264_nvenc` or `hevc_nvenc`.
+
+Note
+
+On GPU, the pixel format is always set to `nv12` (which does equivalent
+chroma subsampling to `yuv420p`). The `pixel_format` parameter is not
+supported for GPU encoding.
+
+```
+gpu_frames = frames.to("cuda") # Move frames to GPU
+encoder = Encoder()
+video_stream = encoder.add_video(
+ height=gpu_frames.shape[2], width=gpu_frames.shape[3],
+ frame_rate=frame_rate, device="cuda",
+)
+with encoder.open_file("output.mp4"):
+ video_stream.add_frames(gpu_frames)
+```
+
+That's it! The rest of the encoding process is the same as on CPU.
+
 ## Codec Selection
 
-By default, the codec used is selected automatically using the file extension provided
-in the `dest` parameter for the [`to_file()`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder.to_file) method,
-or using the `format` parameter for the
-[`to_file_like()`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder.to_file_like) and
-[`to_tensor()`](../../generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder.to_tensor) methods.
+By default, the codec is selected automatically based on the container format.
+For example, when encoding to MP4 format, the default codec is typically
+`H.264`.
 
-For example, when encoding to MP4 format, the default codec is typically `H.264`.
-
-To use a codec other than the default, use the `codec` parameter.
-You can specify either a specific codec implementation (e.g., `"libx264"`)
-or a codec specification (e.g., `"h264"`). Different codecs offer
-different tradeoffs between quality, file size, and encoding speed.
+To use a codec other than the default, use the `codec` parameter in
+[`add_video()`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.add_video). You can specify either a
+specific codec implementation (e.g., `"libx264"`) or a codec specification
+(e.g., `"h264"`). Different codecs offer different tradeoffs between
+quality, file size, and encoding speed.
 
 Note
 
@@ -4952,16 +5262,25 @@ To see available encoders on your system, run `ffmpeg -encoders`.
 Let's encode the same frames using different codecs:
 
 ```
-import tempfile
-from pathlib import Path
-
 # H.264 encoding
 h264_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-encoder.to_file(h264_output, codec="libx264")
+encoder = Encoder()
+vs = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3],
+ frame_rate=frame_rate, codec="libx264",
+)
+with encoder.open_file(h264_output):
+ vs.add_frames(frames)
 
 # H.265 encoding
 hevc_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-encoder.to_file(hevc_output, codec="hevc")
+encoder = Encoder()
+vs = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3],
+ frame_rate=frame_rate, codec="hevc",
+)
+with encoder.open_file(hevc_output):
+ vs.add_frames(frames)
 
 # Now let's use ffprobe to verify the codec used in the output files
 import subprocess
@@ -5011,10 +5330,16 @@ to check available options for your selected codec.
 
 ```
 # Standard pixel format
-yuv420_encoded_frames = encoder.to_tensor(
- format="mp4", codec="libx264", pixel_format="yuv420p"
+buf = io.BytesIO()
+encoder = Encoder()
+vs = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3],
+ frame_rate=frame_rate, codec="libx264", pixel_format="yuv420p",
 )
-play_video(yuv420_encoded_frames)
+with encoder.open_file_like(buf, format="mp4"):
+ vs.add_frames(frames)
+
+play_video(buf.getvalue())
 ```
 
  Your browser does not support the video tag.
@@ -5037,8 +5362,16 @@ check available options for your selected codec.
 
 ```
 # High quality (low CRF)
-high_quality_output = encoder.to_tensor(format="mp4", codec="libx264", crf=0)
-play_video(high_quality_output)
+buf = io.BytesIO()
+encoder = Encoder()
+vs = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3],
+ frame_rate=frame_rate, codec="libx264", crf=0,
+)
+with encoder.open_file_like(buf, format="mp4"):
+ vs.add_frames(frames)
+
+play_video(buf.getvalue())
 ```
 
  Your browser does not support the video tag.
@@ -5046,8 +5379,16 @@ play_video(high_quality_output)
 
 ```
 # Low quality (high CRF)
-low_quality_output = encoder.to_tensor(format="mp4", codec="libx264", crf=50)
-play_video(low_quality_output)
+buf = io.BytesIO()
+encoder = Encoder()
+vs = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3],
+ frame_rate=frame_rate, codec="libx264", crf=50,
+)
+with encoder.open_file_like(buf, format="mp4"):
+ vs.add_frames(frames)
+
+play_video(buf.getvalue())
 ```
 
  Your browser does not support the video tag.
@@ -5073,12 +5414,26 @@ to check available options for your selected codec.
 ```
 # Fast encoding with a larger file size
 fast_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-encoder.to_file(fast_output, codec="libx264", preset="ultrafast")
+encoder = Encoder()
+vs = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3],
+ frame_rate=frame_rate, codec="libx264", preset="ultrafast",
+)
+with encoder.open_file(fast_output):
+ vs.add_frames(frames)
+
 print(f"Size of fast encoded file: {Path(fast_output).stat().st_size} bytes")
 
 # Slow encoding for a smaller file size
 slow_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-encoder.to_file(slow_output, codec="libx264", preset="veryslow")
+encoder = Encoder()
+vs = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3],
+ frame_rate=frame_rate, codec="libx264", preset="veryslow",
+)
+with encoder.open_file(slow_output):
+ vs.add_frames(frames)
+
 print(f"Size of slow encoded file: {Path(slow_output).stat().st_size} bytes")
 ```
 
@@ -5106,18 +5461,21 @@ a specific codec.
 
 ```
 custom_output = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-encoder.to_file(
- custom_output,
- codec="libx264",
+encoder = Encoder()
+vs = encoder.add_video(
+ height=frames.shape[2], width=frames.shape[3],
+ frame_rate=frame_rate, codec="libx264",
  extra_options={
  "g": 50, # Keyframe every 50 frames
  "max_b_frames": 0, # Disable B-frames for faster decoding
  "tune": "fastdecode", # Optimize for fast decoding
- }
+ },
 )
+with encoder.open_file(custom_output):
+ vs.add_frames(frames)
 ```
 
-**Total running time of the script:** (0 minutes 26.816 seconds)
+**Total running time of the script:** (0 minutes 26.171 seconds)
 
 [`Download Jupyter notebook: video_encoding.ipynb`](../../_downloads/e8868f804bffbeae56ed6b335353e809/video_encoding.ipynb)
 
@@ -5193,9 +5551,14 @@ Decoder Transforms: Applying transforms during decoding
 Encoding audio samples with AudioEncoder
 ![](../_images/sphx_glr_video_encoding_thumb.jpg)
 
-[Encoding video frames with VideoEncoder](encoding/video_encoding.html)
+[Encoding video with the Encoder](encoding/video_encoding.html)
 
-Encoding video frames with VideoEncoder
+Encoding video with the Encoder
+![](../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
+
+[Encoding audio and video streams with the Encoder](encoding/multi_stream_encoding.html)
+
+Encoding audio and video streams with the Encoder
 
 [`Download all examples in Python source code: generated_examples_python.zip`](../_downloads/b2d9639062e3afd5d3a8b3bdfff773cf/generated_examples_python.zip)
 
@@ -5342,19 +5705,20 @@ How to encode video frames
 
 # Computation times
 
-**05:49.329** total execution time for 12 files **from all galleries**:
+**05:56.026** total execution time for 13 files **from all galleries**:
 
 | Example | Time | Mem (MB) |
 | --- | --- | --- |
-| [Decoder Transforms: Applying transforms during decoding](generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`../../examples/decoding/transforms.py`) | 02:25.462 | 0.0 |
-| [Parallel video decoding: multi-processing and multi-threading](generated_examples/decoding/parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`../../examples/decoding/parallel_decoding.py`) | 01:33.442 | 0.0 |
-| [Streaming data through file-like support](generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`../../examples/decoding/file_like.py`) | 00:27.269 | 0.0 |
-| [Encoding video frames with VideoEncoder](generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`../../examples/encoding/video_encoding.py`) | 00:26.816 | 0.0 |
-| [Exact vs Approximate seek mode: Performance and accuracy comparison](generated_examples/decoding/approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`../../examples/decoding/approximate_mode.py`) | 00:24.240 | 0.0 |
-| [Decoding with custom frame mappings](generated_examples/decoding/custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`../../examples/decoding/custom_frame_mappings.py`) | 00:23.575 | 0.0 |
-| [Accelerated video decoding on GPUs with CUDA and NVDEC](generated_examples/decoding/basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`../../examples/decoding/basic_cuda_example.py`) | 00:04.653 | 0.0 |
-| [Decoding a video with VideoDecoder](generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`../../examples/decoding/basic_example.py`) | 00:02.107 | 0.0 |
-| [Decoding audio streams with AudioDecoder](generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`../../examples/decoding/audio_decoding.py`) | 00:01.318 | 0.0 |
-| [How to sample video clips](generated_examples/decoding/sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`../../examples/decoding/sampling.py`) | 00:00.419 | 0.0 |
+| [Decoder Transforms: Applying transforms during decoding](generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py) (`../../examples/decoding/transforms.py`) | 02:26.501 | 0.0 |
+| [Parallel video decoding: multi-processing and multi-threading](generated_examples/decoding/parallel_decoding.html#sphx-glr-generated-examples-decoding-parallel-decoding-py) (`../../examples/decoding/parallel_decoding.py`) | 01:33.594 | 0.0 |
+| [Encoding video with the Encoder](generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) (`../../examples/encoding/video_encoding.py`) | 00:26.171 | 0.0 |
+| [Streaming data through file-like support](generated_examples/decoding/file_like.html#sphx-glr-generated-examples-decoding-file-like-py) (`../../examples/decoding/file_like.py`) | 00:26.036 | 0.0 |
+| [Exact vs Approximate seek mode: Performance and accuracy comparison](generated_examples/decoding/approximate_mode.html#sphx-glr-generated-examples-decoding-approximate-mode-py) (`../../examples/decoding/approximate_mode.py`) | 00:25.319 | 0.0 |
+| [Decoding with custom frame mappings](generated_examples/decoding/custom_frame_mappings.html#sphx-glr-generated-examples-decoding-custom-frame-mappings-py) (`../../examples/decoding/custom_frame_mappings.py`) | 00:23.622 | 0.0 |
+| [Encoding audio and video streams with the Encoder](generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) (`../../examples/encoding/multi_stream_encoding.py`) | 00:06.262 | 0.0 |
+| [Accelerated video decoding on GPUs with CUDA and NVDEC](generated_examples/decoding/basic_cuda_example.html#sphx-glr-generated-examples-decoding-basic-cuda-example-py) (`../../examples/decoding/basic_cuda_example.py`) | 00:04.661 | 0.0 |
+| [Decoding a video with VideoDecoder](generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py) (`../../examples/decoding/basic_example.py`) | 00:02.082 | 0.0 |
+| [Decoding audio streams with AudioDecoder](generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py) (`../../examples/decoding/audio_decoding.py`) | 00:01.320 | 0.0 |
+| [How to sample video clips](generated_examples/decoding/sampling.html#sphx-glr-generated-examples-decoding-sampling-py) (`../../examples/decoding/sampling.py`) | 00:00.428 | 0.0 |
 | [Encoding audio samples with AudioEncoder](generated_examples/encoding/audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py) (`../../examples/encoding/audio_encoding.py`) | 00:00.029 | 0.0 |
 | [TorchCodec Performance Tips and Best Practices](generated_examples/decoding/performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) (`../../examples/decoding/performance_tips.py`) | 00:00.000 | 0.0 |

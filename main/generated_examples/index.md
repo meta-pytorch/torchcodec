@@ -62,9 +62,14 @@ Decoder Transforms: Applying transforms during decoding
 Encoding audio samples with AudioEncoder
 ![](../_images/sphx_glr_video_encoding_thumb.jpg)
 
-[Encoding video frames with VideoEncoder](encoding/video_encoding.html)
+[Encoding video with the Encoder](encoding/video_encoding.html)
 
-Encoding video frames with VideoEncoder
+Encoding video with the Encoder
+![](../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
+
+[Encoding audio and video streams with the Encoder](encoding/multi_stream_encoding.html)
+
+Encoding audio and video streams with the Encoder
 
 [`Download all examples in Python source code: generated_examples_python.zip`](../_downloads/b2d9639062e3afd5d3a8b3bdfff773cf/generated_examples_python.zip)
 

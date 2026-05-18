@@ -1137,6 +1137,7 @@ document.write(`
 <span id="encoders"></span><h1>torchcodec.encoders<a class="headerlink" href="#torchcodec-encoders" title="Link to this heading">#</a></h1>
 <section id="multi-stream-encoder">
 <h2>Multi-stream encoder<a class="headerlink" href="#multi-stream-encoder" title="Link to this heading">#</a></h2>
+<p>For a tutorial, see: <a class="reference internal" href="generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py"><span class="std std-ref">Encoding audio and video streams with the Encoder</span></a>.</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder" title="torchcodec.encoders.Encoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">Encoder</span></code></a></p></td>
@@ -1154,14 +1155,15 @@ document.write(`
 </section>
 <section id="single-stream-encoders">
 <h2>Single-stream encoders<a class="headerlink" href="#single-stream-encoders" title="Link to this heading">#</a></h2>
-<p>For an audio decoder tutorial, see: <a class="reference internal" href="generated_examples/encoding/audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py"><span class="std std-ref">Encoding audio samples with AudioEncoder</span></a>.</p>
+<p>For a video encoder tutorial, see: <a class="reference internal" href="generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py"><span class="std std-ref">Encoding video with the Encoder</span></a>.</p>
+<p>For an audio encoder tutorial, see: <a class="reference internal" href="generated_examples/encoding/audio_encoding.html#sphx-glr-generated-examples-encoding-audio-encoding-py"><span class="std std-ref">Encoding audio samples with AudioEncoder</span></a>.</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder" title="torchcodec.encoders.VideoEncoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">VideoEncoder</span></code></a></p></td>
-<td><p>A video encoder on CPU or CUDA..</p></td>
+<td><p>A single-stream video encoder on CPU or CUDA.</p></td>
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder" title="torchcodec.encoders.AudioEncoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AudioEncoder</span></code></a></p></td>
-<td><p>An audio encoder.</p></td>
+<td><p>A single-stream audio encoder.</p></td>
 </tr>
 </tbody>
 </table>
@@ -1513,7 +1515,7 @@ document.write(`
        "headline": "torchcodec.encoders",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/api_ref_encoders.html",
-       "articleBody": "torchcodec.encoders# Multi-stream encoder# Encoder A multi-stream encoder for encoding video and/or audio into a file or file-like object. VideoStream A video stream within an Encoder. AudioStream An audio stream within an Encoder. Single-stream encoders# For an audio decoder tutorial, see: Encoding audio samples with AudioEncoder. VideoEncoder A video encoder on CPU or CUDA.. AudioEncoder An audio encoder.",
+       "articleBody": "torchcodec.encoders# Multi-stream encoder# For a tutorial, see: Encoding audio and video streams with the Encoder. Encoder A multi-stream encoder for encoding video and/or audio into a file or file-like object. VideoStream A video stream within an Encoder. AudioStream An audio stream within an Encoder. Single-stream encoders# For a video encoder tutorial, see: Encoding video with the Encoder. For an audio encoder tutorial, see: Encoding audio samples with AudioEncoder. VideoEncoder A single-stream video encoder on CPU or CUDA. AudioEncoder A single-stream audio encoder.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

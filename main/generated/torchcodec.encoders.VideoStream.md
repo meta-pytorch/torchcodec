@@ -7,6 +7,19 @@ A video stream within an [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec
 Returned by [`Encoder.add_video()`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.add_video). Use `add_frames()` to feed
 video frames into this stream.
 
+Examples using `VideoStream`:
+
+![](../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
+
+[Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html)
+
+Encoding audio and video streams with the Encoder
+![](../_images/sphx_glr_video_encoding_thumb.jpg)
+
+[Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
+
+Encoding video with the Encoder
+
 add_frames(*frames: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#VideoStream.add_frames)
 
 Add video frames to this stream.

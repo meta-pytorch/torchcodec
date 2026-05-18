@@ -139,11 +139,16 @@ How to sample video clips
 [Decoder Transforms: Applying transforms during decoding](../generated_examples/decoding/transforms.html)
 
 Decoder Transforms: Applying transforms during decoding
+![](../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
+
+[Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html)
+
+Encoding audio and video streams with the Encoder
 ![](../_images/sphx_glr_video_encoding_thumb.jpg)
 
-[Encoding video frames with VideoEncoder](../generated_examples/encoding/video_encoding.html)
+[Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html)
 
-Encoding video frames with VideoEncoder
+Encoding video with the Encoder
 
 __getitem__(*key: [Integral](https://docs.python.org/3/library/numbers.html#numbers.Integral) | [slice](https://docs.python.org/3/library/functions.html#slice)*) → [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder.__getitem__)
 
