@@ -83,12 +83,26 @@ class Encoder:
 
         .. code-block:: python
 
-            with Encoder() as encoder:
-                video_stream = encoder.add_video(height=256, width=256, frame_rate=30)
-                audio_stream = encoder.add_audio(sample_rate=16000, num_channels=1)
-                encoder.open_file("output.mp4")
+            encoder = Encoder()
+            video_stream = encoder.add_video(height=256, width=256, frame_rate=30)
+            audio_stream = encoder.add_audio(sample_rate=16000, num_channels=1)
+            with encoder.open_file("output.mp4"):
                 video_stream.add_frames(frames_tensor)
                 audio_stream.add_samples(samples_tensor)
+
+        To encode to a file-like object (e.g. ``io.BytesIO()``), use
+        :meth:`open_file_like` instead:
+
+        .. code-block:: python
+
+            import io
+
+            buf = io.BytesIO()
+            encoder = Encoder()
+            video_stream = encoder.add_video(height=256, width=256, frame_rate=30)
+            with encoder.open_file_like(buf, format="mp4"):
+                video_stream.add_frames(frames_tensor)
+            encoded_bytes = buf.getvalue()
     """
 
     def __init__(self):
