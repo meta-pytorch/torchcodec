@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from test.utils import assert_tensor_close_on_at_least
+from test.utils import assert_tensor_close_on_at_least, needs_cuda
 
 from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
@@ -337,7 +337,7 @@ class TestEncoder:
         # TODO: validate audio on a mostly lossless codec?
         assert decoded_samples.sample_rate == sr
 
-    @pytest.mark.needs_cuda
+    @needs_cuda
     def test_cuda_encoding(self, tmp_path):
         if ffmpeg_major_version == 4:
             pytest.skip("CUDA encoding not supported with FFmpeg 4")
