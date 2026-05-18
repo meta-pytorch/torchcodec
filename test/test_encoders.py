@@ -1791,6 +1791,78 @@ class TestEncoder:
 
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_device_None_respects_default_device(self, tmp_path, method):
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=5).data.to(
+            "cuda"
+        )
+        frame_rate = source_decoder.metadata.average_fps
+
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        with torch.device("cuda:0"):
+            video = enc.add_video(
+                height=source_frames.shape[2],
+                width=source_frames.shape[3],
+                frame_rate=frame_rate,
+                device=None,
+            )
+        self._open_encoder(enc, open_kwargs)
+        video.add_frames(source_frames)
+        enc.close()
+
+        decoded_frames = (
+            VideoDecoder(self._get_decoder_source(encoder_output))
+            .get_frames_in_range(start=0, stop=5)
+            .data
+        )
+        assert decoded_frames.shape == source_frames.shape
+
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_device_torch_device_object(self, tmp_path, method):
+        frames = torch.randint(0, 256, (5, 3, 64, 64), dtype=torch.uint8)
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        video = enc.add_video(
+            height=64, width=64, frame_rate=30.0, device=torch.device("cpu")
+        )
+        self._open_encoder(enc, open_kwargs)
+        video.add_frames(frames)
+        enc.close()
+
+        decoded_frames = (
+            VideoDecoder(self._get_decoder_source(encoder_output))
+            .get_frames_in_range(start=0, stop=5)
+            .data
+        )
+        assert decoded_frames.shape == frames.shape
+
+    @pytest.mark.needs_cuda
+    @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
+    def test_device_cuda_0_string(self, tmp_path, method):
+        source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
+        source_frames = source_decoder.get_frames_in_range(start=0, stop=5).data.to(
+            "cuda:0"
+        )
+        frame_rate = source_decoder.metadata.average_fps
+
+        enc, encoder_output, open_kwargs = self._create_encoder(method, tmp_path, "mp4")
+        video = enc.add_video(
+            height=source_frames.shape[2],
+            width=source_frames.shape[3],
+            frame_rate=frame_rate,
+            device="cuda:0",
+        )
+        self._open_encoder(enc, open_kwargs)
+        video.add_frames(source_frames)
+        enc.close()
+
+        decoded_frames = (
+            VideoDecoder(self._get_decoder_source(encoder_output))
+            .get_frames_in_range(start=0, stop=5)
+            .data
+        )
+        assert decoded_frames.shape == source_frames.shape
+
+    @pytest.mark.needs_cuda
     def test_write_samples_on_cuda_errors(self, tmp_path, method):
         enc, _, open_kwargs = self._create_encoder(method, tmp_path, "wav")
         audio = enc.add_audio(sample_rate=44100, num_channels=1)
