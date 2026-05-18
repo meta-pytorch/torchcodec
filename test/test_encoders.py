@@ -24,6 +24,7 @@ from .utils import (
     NASA_AUDIO_MP3,
     NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
+    needs_cuda,
     needs_ffmpeg_cli,
     psnr,
     SINE_MONO_S32,
@@ -1347,7 +1348,7 @@ class TestVideoEncoder:
         assert metadata["color_range"] == color_range
 
     @needs_ffmpeg_cli
-    @pytest.mark.needs_cuda
+    @needs_cuda
     @pytest.mark.parametrize("method", ("to_file", "to_tensor", "to_file_like"))
     @pytest.mark.parametrize(
         ("format", "codec"),
@@ -1765,7 +1766,7 @@ class TestEncoder:
         with pytest.raises(RuntimeError, match="same dimensions"):
             video.add_frames(frames_512)
 
-    @pytest.mark.needs_cuda
+    @needs_cuda
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_write_frames_different_devices_errors(self, tmp_path, method):
         cpu_frames = torch.randint(0, 256, (2, 3, 256, 256), dtype=torch.uint8)
@@ -1789,7 +1790,7 @@ class TestEncoder:
         with pytest.raises(RuntimeError, match="same device"):
             video.add_frames(cpu_frames)
 
-    @pytest.mark.needs_cuda
+    @needs_cuda
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_device_None_respects_default_device(self, tmp_path, method):
         source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
@@ -1835,7 +1836,7 @@ class TestEncoder:
         )
         assert decoded_frames.shape == frames.shape
 
-    @pytest.mark.needs_cuda
+    @needs_cuda
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_device_cuda_0_string(self, tmp_path, method):
         source_decoder = VideoDecoder(str(TEST_SRC_2_720P.path))
@@ -1862,7 +1863,7 @@ class TestEncoder:
         )
         assert decoded_frames.shape == source_frames.shape
 
-    @pytest.mark.needs_cuda
+    @needs_cuda
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_write_samples_on_cuda_errors(self, tmp_path, method):
         enc, _, open_kwargs = self._create_encoder(method, tmp_path, "wav")
@@ -2058,7 +2059,7 @@ class TestEncoder:
             atol=0.1 if format == "mkv" else 0.01,
         )
 
-    @pytest.mark.needs_cuda
+    @needs_cuda
     @pytest.mark.skipif(in_fbcode(), reason="NVENC not available in fbcode")
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_cuda_video_with_cpu_video_and_cpu_audio(self, tmp_path, method):
@@ -2965,7 +2966,7 @@ class TestEncoder:
         ):
             self._open_encoder(enc2, open_kwargs2)
 
-    @pytest.mark.needs_cuda
+    @needs_cuda
     @pytest.mark.skipif(in_fbcode(), reason="NVENC not available in fbcode")
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     def test_pixel_format_gpu_override_errors(self, method, tmp_path):
@@ -3485,7 +3486,7 @@ class TestEncoder:
             )
 
     @needs_ffmpeg_cli
-    @pytest.mark.needs_cuda
+    @needs_cuda
     @pytest.mark.skipif(in_fbcode(), reason="NVENC not available in fbcode")
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.parametrize(
