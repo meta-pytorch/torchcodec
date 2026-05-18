@@ -116,8 +116,11 @@ class Encoder:
             width (int): The width of the **input** video frames.
             frame_rate (float): The frame rate of the **input** video frames.
                 Also defines the encoded **output** frame rate.
-            device (str, optional): The device to use for encoding, e.g.
-                ``"cpu"`` or ``"cuda"``. Default: ``"cpu"``.
+            device (str, optional):
+
+            device (str or torch.device, optional): The device to use for
+                encoding, e.g.  ``"cpu"`` or ``"cuda"``. If ``None`` (default), uses
+                the current default device.
             codec (str, optional): The codec to use for encoding (e.g.,
                 ``"libx264"``). If not specified, the default codec for the
                 container format will be used.
