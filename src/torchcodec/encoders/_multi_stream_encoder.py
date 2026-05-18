@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 
+import torch
 from torch import Tensor
 
 from torchcodec import _core
@@ -99,7 +100,7 @@ class Encoder:
         height: int,
         width: int,
         frame_rate: float,
-        device: str = "cpu",
+        device: str | torch.device | None = None,
         codec: str | None = None,
         pixel_format: str | None = None,
         crf: int | float | None = None,
@@ -115,8 +116,9 @@ class Encoder:
             width (int): The width of the **input** video frames.
             frame_rate (float): The frame rate of the **input** video frames.
                 Also defines the encoded **output** frame rate.
-            device (str, optional): The device to use for encoding, e.g.
-                ``"cpu"`` or ``"cuda"``. Default: ``"cpu"``.
+            device (str or torch.device, optional): The device to use for
+                encoding, e.g.  ``"cpu"`` or ``"cuda"``. If ``None`` (default), uses
+                the current default device.
             codec (str, optional): The codec to use for encoding (e.g.,
                 ``"libx264"``). If not specified, the default codec for the
                 container format will be used.
@@ -142,6 +144,9 @@ class Encoder:
             A video stream object. Use its :meth:`~VideoStream.add_frames`
             method to feed frames into the stream.
         """
+        if device is None:
+            device = torch.get_default_device()
+        device = str(device)
         preset = str(preset) if isinstance(preset, int) else preset
         stream_index = _core.streaming_encoder_add_video_stream(
             self._encoder_tensor,

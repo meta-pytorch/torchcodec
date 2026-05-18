@@ -374,8 +374,8 @@ class TestEncoder:
             width=WIDTH,
             frame_rate=FRAME_RATE,
         )
-        with cpu_enc.open(dest=cpu_path):
-            cpu_video.write(frames.cpu())
+        with cpu_enc.open_file(dest=cpu_path):
+            cpu_video.add_frames(frames.cpu())
 
         cuda_decoded = VideoDecoder(cuda_path).get_all_frames()
         cpu_decoded = VideoDecoder(cpu_path).get_all_frames()
