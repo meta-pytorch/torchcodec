@@ -8,8 +8,7 @@ from test.utils import assert_tensor_close_on_at_least
 from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
 from torchcodec.decoders import AudioDecoder, VideoDecoder
-from torchcodec.encoders import AudioEncoder, VideoEncoder
-from torchcodec.encoders._multi_stream_encoder import StreamingEncoder
+from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
 
 
 NUM_FRAMES = 10
@@ -300,7 +299,7 @@ class TestAudioEncoder:
         assert abs(decoded.data.shape[1] - expected_num_samples) <= 1
 
 
-class TestStreamingEncoder:
+class TestEncoder:
     def test_video_and_audio_chunked(self, tmp_path):
         frames = torch.randint(
             0, 256, (NUM_FRAMES, 3, HEIGHT, WIDTH), dtype=torch.uint8
@@ -309,7 +308,7 @@ class TestStreamingEncoder:
         samples = torch.rand(NUM_AUDIO_CHANNELS, NUM_SAMPLES) * 2 - 1
         path = tmp_path / "av.mkv"
 
-        enc = StreamingEncoder()
+        enc = Encoder()
         video = enc.add_video(
             height=HEIGHT,
             width=WIDTH,
@@ -318,12 +317,12 @@ class TestStreamingEncoder:
             crf=0,
         )
         audio = enc.add_audio(sample_rate=sr, num_channels=NUM_AUDIO_CHANNELS)
-        enc.open(dest=path)
+        enc.open_file(path)
         with enc:
-            video.write(frames[:5])
-            audio.write(samples[:, : NUM_SAMPLES // 2])
-            video.write(frames[5:])
-            audio.write(samples[:, NUM_SAMPLES // 2 :])
+            video.add_frames(frames[:5])
+            audio.add_samples(samples[:, : NUM_SAMPLES // 2])
+            video.add_frames(frames[5:])
+            audio.add_samples(samples[:, NUM_SAMPLES // 2 :])
 
         video_dec = VideoDecoder(path)
         assert len(video_dec) == NUM_FRAMES
@@ -358,18 +357,18 @@ class TestStreamingEncoder:
         frames = frames.cuda()
 
         cuda_path = tmp_path / "cuda.mp4"
-        enc = StreamingEncoder()
+        enc = Encoder()
         video = enc.add_video(
             height=HEIGHT,
             width=WIDTH,
             frame_rate=FRAME_RATE,
             device="cuda",
         )
-        with enc.open(dest=cuda_path):
-            video.write(frames)
+        with enc.open_file(cuda_path):
+            video.add_frames(frames)
 
         cpu_path = tmp_path / "cpu.mp4"
-        cpu_enc = StreamingEncoder()
+        cpu_enc = Encoder()
         cpu_video = cpu_enc.add_video(
             height=HEIGHT,
             width=WIDTH,
