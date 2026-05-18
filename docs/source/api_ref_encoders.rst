@@ -16,4 +16,7 @@ For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_encoding_a
     :template: class.rst
 
     AudioEncoder
+    AudioStream
+    Encoder
     VideoEncoder
+    VideoStream
