@@ -69,7 +69,7 @@ print(f"Output size: {Path(output_path).stat().st_size} bytes")
 ```
 
 ```
-Encoded video + audio to /tmp/tmp_w88x5l2.mp4
+Encoded video + audio to /tmp/tmpksu18lyg.mp4
 Output size: 2526289 bytes
 ```
 
@@ -132,7 +132,7 @@ print(f"Output size: {Path(chunk_output).stat().st_size} bytes")
 ```
 
 ```
-Incrementally encoded to /tmp/tmpa1muj3v0.mp4
+Incrementally encoded to /tmp/tmpl0dlg_3l.mp4
 Output size: 2526660 bytes
 ```
 
@@ -203,7 +203,7 @@ print(f"Encoded to BytesIO, size: {len(encoded_bytes)} bytes")
 Encoded to BytesIO, size: 2526289 bytes
 ```
 
-**Total running time of the script:** (0 minutes 6.262 seconds)
+**Total running time of the script:** (0 minutes 5.897 seconds)
 
 [`Download Jupyter notebook: multi_stream_encoding.ipynb`](../../_downloads/ccd7596cf7d161af13c32c87cfc7f878/multi_stream_encoding.ipynb)
 
