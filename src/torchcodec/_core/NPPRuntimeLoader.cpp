@@ -75,12 +75,16 @@ static T* bindFunction(tHandle handle, const char* functionName) {
 
 static bool _loadLibrary() {
 #if defined(WIN64) || defined(_WIN64)
-#ifdef UNICODE
-  static LPCWSTR nppiccDll = L"nppicc64_12.dll";
-#else
-  static LPCSTR nppiccDll = "nppicc64_12.dll";
-#endif
-  g_nppicc_handle = LoadLibrary(nppiccDll);
+  static LPCSTR nppiccDlls[] = {
+      "nppicc64_12.dll",
+      "nppicc64_13.dll",
+  };
+  for (auto dll : nppiccDlls) {
+    g_nppicc_handle = LoadLibraryA(dll);
+    if (g_nppicc_handle != nullptr) {
+      break;
+    }
+  }
   if (g_nppicc_handle == nullptr) {
     return false;
   }
