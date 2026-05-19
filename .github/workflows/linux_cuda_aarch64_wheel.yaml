@@ -1,7 +1,7 @@
 name: Linux CUDA aarch64
 
 on:
-  # pull_request:
+  pull_request:
   push:
     branches:
       - nightly

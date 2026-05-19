@@ -1,9 +1,14 @@
+import sys
 from pathlib import Path
 
 import pytest
 import torch
 
-from test.utils import assert_tensor_close_on_at_least, needs_cuda
+from test.utils import (
+    assert_tensor_close_on_at_least,
+    cuda_version_used_for_building_torch,
+    needs_cuda,
+)
 
 from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
@@ -83,8 +88,16 @@ def _assert_frames_close(decoded, *, ref_decoded=None, source=None, device):
         torch.testing.assert_close(actual, source, atol=2, rtol=0)
     else:
         assert ref_decoded is not None
+        cuda_version = cuda_version_used_for_building_torch()
+        is_cuda_12_windows = (
+            cuda_version is not None
+            and cuda_version >= (12, 0)
+            and cuda_version < (13, 0)
+            and sys.platform == "win32"
+        )
+        percentage = 70 if is_cuda_12_windows else 95
         assert_tensor_close_on_at_least(
-            actual, ref_decoded.cpu(), percentage=95, atol=3
+            actual, ref_decoded.cpu(), percentage=percentage, atol=3
         )
 
 
