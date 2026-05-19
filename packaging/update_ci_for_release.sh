@@ -23,6 +23,7 @@ WHEEL_FILES=(
     "${WORKFLOW_DIR}/linux_cuda_aarch64_wheel.yaml"
     "${WORKFLOW_DIR}/macos_wheel.yaml"
     "${WORKFLOW_DIR}/windows_wheel.yaml"
+    "${WORKFLOW_DIR}/windows_cuda_wheel.yaml"
 )
 
 for f in "${WHEEL_FILES[@]}"; do
