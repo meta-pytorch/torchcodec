@@ -33,7 +33,7 @@ for f in "${WHEEL_FILES[@]}"; do
     fi
     echo "Updating matrix versions in $f ..."
     sed -i "s|python-version: \[.*\]|python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']|g" "$f"
-    sed -i "s|ffmpeg-version-for-tests: \[.*\]|ffmpeg-version-for-tests: ['4.4.2', '5.1.2', '6.1.1', '7.0.1', '8.0']|g" "$f"
+    sed -i "s|ffmpeg-version-for-tests: \[.*\]|ffmpeg-version-for-tests: ['4', '5', '6', '7', '8']|g" "$f"
     sed -i "s|cuda-version: \[.*\]|cuda-version: ['12.6', '13.0', '13.2']|g" "$f"
 done
 

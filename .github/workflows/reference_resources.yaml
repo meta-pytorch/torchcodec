@@ -56,7 +56,7 @@ jobs:
         # Traditionally we generate the resources locally on FFmpeg 4 or 6.
         # The exact version shouln't matter as long as the unit tests pass
         # across all version for a given generated resource.
-        ffmpeg-version-for-tests: ['6.1.1']
+        ffmpeg-version-for-tests: ['6']
     steps:
       - name: Check out repo
         uses: actions/checkout@v3
