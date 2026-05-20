@@ -3,6 +3,15 @@
 In this example, we'll learn how to encode audio samples to a file or to raw
 bytes using the [`AudioEncoder`](../../generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder) class.
 
+Note
+
+This is a convenience class for simple, one-shot audio encoding. For
+multi-stream encoding (e.g. video + audio), incremental encoding, or
+encoding multiple audio streams, use
+[`Encoder`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder) instead. See
+[Encoding audio and video streams with the Encoder](multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) for
+a tutorial.
+
 Let's first generate some samples to be encoded. The data to be encoded could
 also just come from an [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder)!
 

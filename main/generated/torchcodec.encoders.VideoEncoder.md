@@ -4,10 +4,13 @@
 
 A single-stream video encoder on CPU or CUDA.
 
+Note
+
 This is a convenience class for simple, one-shot video encoding. For
-multi-stream encoding (e.g. video + audio), incremental encoding, or mixing
-CPU and CUDA streams, use [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder) instead.
-See [Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) for a
+multi-stream encoding (e.g. video + audio), incremental encoding, or
+mixing CPU and CUDA streams, use [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder)
+instead. See
+[Encoding video with the Encoder](../generated_examples/encoding/video_encoding.html#sphx-glr-generated-examples-encoding-video-encoding-py) for a
 tutorial.
 
 Parameters:

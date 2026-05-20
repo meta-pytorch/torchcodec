@@ -109,7 +109,7 @@ we use to feed data.
 
  .. code-block:: none
 
-    Encoded video + audio to /tmp/tmp05tt2kvm.mp4
+    Encoded video + audio to /tmp/tmp70v4bt89.mp4
     Output size: 2526289 bytes
 
 
@@ -202,7 +202,7 @@ a time:
 
  .. code-block:: none
 
-    Incrementally encoded to /tmp/tmpv151i26o.mp4
+    Incrementally encoded to /tmp/tmpi2yfmul5.mp4
     Output size: 2526660 bytes
 
 
@@ -248,18 +248,20 @@ Here's an example with two video streams and two audio streams:
         audio_en.add_samples(english_samples)
         audio_fr.add_samples(french_samples)
 
-.. GENERATED FROM PYTHON SOURCE LINES 170-178
+.. GENERATED FROM PYTHON SOURCE LINES 170-180
 
 Encoding to a file-like object
 --------------------------------
 
 Instead of encoding to a file path, you can encode to any file-like object
 (e.g. ``io.BytesIO()``) using
-:meth:`~torchcodec.encoders.Encoder.open_file_like`. In this case, you must
-specify the container ``format`` explicitly since there is no file extension to
-infer it from.
+:meth:`~torchcodec.encoders.Encoder.open_file_like`. This is useful for
+example when you need to upload the encoded data directly to a remote server
+or cloud storage without writing it to disk.  In this case, you must specify
+the container ``format`` explicitly since there is no file extension to infer
+it from.
 
-.. GENERATED FROM PYTHON SOURCE LINES 178-195
+.. GENERATED FROM PYTHON SOURCE LINES 180-200
 
 .. code-block:: Python
 
@@ -280,6 +282,9 @@ infer it from.
     encoded_bytes = buf.getvalue()
     print(f"Encoded to BytesIO, size: {len(encoded_bytes)} bytes")
 
+    # Or convert to a bytes tensor:
+    bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
+
 
 
 
@@ -296,7 +301,7 @@ infer it from.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 6.537 seconds)
+   **Total running time of the script:** (0 minutes 5.632 seconds)
 
 
 .. _sphx_glr_download_generated_examples_encoding_multi_stream_encoding.py:

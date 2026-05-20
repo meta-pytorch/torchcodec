@@ -77,14 +77,8 @@ Tips for optimizing video decoding performance
 
 ## Encoding
 
-Audio Encoding
+Video and Audio Encoding
 
-How encode audio samples
+How encode audio and video streams
 
-[generated_examples/encoding/audio_encoding.html](generated_examples/encoding/audio_encoding.html)
-
-Video Encoding
-
-How to encode video frames
-
-[generated_examples/encoding/video_encoding.html](generated_examples/encoding/video_encoding.html)
+[generated_examples/encoding/multi_stream_encoding.html](generated_examples/encoding/multi_stream_encoding.html)

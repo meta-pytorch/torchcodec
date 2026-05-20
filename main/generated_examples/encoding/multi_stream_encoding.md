@@ -69,7 +69,7 @@ print(f"Output size: {Path(output_path).stat().st_size} bytes")
 ```
 
 ```
-Encoded video + audio to /tmp/tmp05tt2kvm.mp4
+Encoded video + audio to /tmp/tmp70v4bt89.mp4
 Output size: 2526289 bytes
 ```
 
@@ -132,7 +132,7 @@ print(f"Output size: {Path(chunk_output).stat().st_size} bytes")
 ```
 
 ```
-Incrementally encoded to /tmp/tmpv151i26o.mp4
+Incrementally encoded to /tmp/tmpi2yfmul5.mp4
 Output size: 2526660 bytes
 ```
 
@@ -177,9 +177,11 @@ with encoder.open_file("multi_stream_output.mkv"):
 
 Instead of encoding to a file path, you can encode to any file-like object
 (e.g. `io.BytesIO()`) using
-[`open_file_like()`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.open_file_like). In this case, you must
-specify the container `format` explicitly since there is no file extension to
-infer it from.
+[`open_file_like()`](../../generated/torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder.open_file_like). This is useful for
+example when you need to upload the encoded data directly to a remote server
+or cloud storage without writing it to disk. In this case, you must specify
+the container `format` explicitly since there is no file extension to infer
+it from.
 
 ```
 import io
@@ -197,13 +199,16 @@ with encoder.open_file_like(buf, format="mp4"):
 
 encoded_bytes = buf.getvalue()
 print(f"Encoded to BytesIO, size: {len(encoded_bytes)} bytes")
+
+# Or convert to a bytes tensor:
+bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
 ```
 
 ```
 Encoded to BytesIO, size: 2526289 bytes
 ```
 
-**Total running time of the script:** (0 minutes 6.537 seconds)
+**Total running time of the script:** (0 minutes 5.632 seconds)
 
 [`Download Jupyter notebook: multi_stream_encoding.ipynb`](../../_downloads/ccd7596cf7d161af13c32c87cfc7f878/multi_stream_encoding.ipynb)
 

@@ -17,12 +17,20 @@ Encoding audio samples with AudioEncoder
 In this example, we'll learn how to encode audio samples to a file or to raw
 bytes using the :class:`~torchcodec.encoders.AudioEncoder` class.
 
-.. GENERATED FROM PYTHON SOURCE LINES 17-19
+.. note::
+    This is a convenience class for simple, one-shot audio encoding. For
+    multi-stream encoding (e.g. video + audio), incremental encoding, or
+    encoding multiple audio streams, use
+    :class:`~torchcodec.encoders.Encoder` instead. See
+    :ref:`sphx_glr_generated_examples_encoding_multi_stream_encoding.py` for
+    a tutorial.
+
+.. GENERATED FROM PYTHON SOURCE LINES 25-27
 
 Let's first generate some samples to be encoded. The data to be encoded could
 also just come from an :class:`~torchcodec.decoders.AudioDecoder`!
 
-.. GENERATED FROM PYTHON SOURCE LINES 19-36
+.. GENERATED FROM PYTHON SOURCE LINES 27-44
 
 .. code-block:: Python
 
@@ -67,7 +75,7 @@ also just come from an :class:`~torchcodec.decoders.AudioDecoder`!
     <br />
     <br />
 
-.. GENERATED FROM PYTHON SOURCE LINES 38-49
+.. GENERATED FROM PYTHON SOURCE LINES 46-57
 
 We first instantiate an :class:`~torchcodec.encoders.AudioEncoder`. We pass it
 the samples to be encoded. The samples must be a 2D tensors of shape
@@ -81,7 +89,7 @@ normalized in ``[-1, 1]``: this is also what the
     The ``sample_rate`` parameter corresponds to the sample rate of the
     *input*, not the desired encoded sample rate.
 
-.. GENERATED FROM PYTHON SOURCE LINES 49-54
+.. GENERATED FROM PYTHON SOURCE LINES 57-62
 
 .. code-block:: Python
 
@@ -97,7 +105,7 @@ normalized in ``[-1, 1]``: this is also what the
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 55-62
+.. GENERATED FROM PYTHON SOURCE LINES 63-70
 
 :class:`~torchcodec.encoders.AudioEncoder` supports encoding samples into a
 file via the :meth:`~torchcodec.encoders.AudioEncoder.to_file` method, or to
@@ -107,7 +115,7 @@ purpose of this tutorial we'll use
 re-decode the encoded samples and check their properies. The
 :meth:`~torchcodec.encoders.AudioEncoder.to_file` method works very similarly.
 
-.. GENERATED FROM PYTHON SOURCE LINES 62-67
+.. GENERATED FROM PYTHON SOURCE LINES 70-75
 
 .. code-block:: Python
 
@@ -129,14 +137,14 @@ re-decode the encoded samples and check their properies. The
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 68-72
+.. GENERATED FROM PYTHON SOURCE LINES 76-80
 
 That's it!
 
 Now that we have our encoded data, we can decode it back, to make sure it
 looks and sounds as expected:
 
-.. GENERATED FROM PYTHON SOURCE LINES 72-79
+.. GENERATED FROM PYTHON SOURCE LINES 80-87
 
 .. code-block:: Python
 
@@ -176,13 +184,13 @@ looks and sounds as expected:
     <br />
     <br />
 
-.. GENERATED FROM PYTHON SOURCE LINES 80-83
+.. GENERATED FROM PYTHON SOURCE LINES 88-91
 
 The encoder supports some encoding options that allow you to change how to
 data is encoded. For example, we can decide to encode our mono data (1
 channel) into stereo data (2 channels), and to specify an output sample rate:
 
-.. GENERATED FROM PYTHON SOURCE LINES 83-92
+.. GENERATED FROM PYTHON SOURCE LINES 91-100
 
 .. code-block:: Python
 
@@ -224,7 +232,7 @@ channel) into stereo data (2 channels), and to specify an output sample rate:
     <br />
     <br />
 
-.. GENERATED FROM PYTHON SOURCE LINES 93-95
+.. GENERATED FROM PYTHON SOURCE LINES 101-103
 
 Check the docstring of the encoding methods to learn about the different
 encoding options.

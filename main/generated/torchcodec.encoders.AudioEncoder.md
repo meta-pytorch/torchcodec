@@ -4,11 +4,14 @@
 
 A single-stream audio encoder.
 
+Note
+
 This is a convenience class for simple, one-shot audio encoding. For
 multi-stream encoding (e.g. video + audio), incremental encoding, or
-encoding multiple audio streams, use [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder)
-instead. See [Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py)
-for a tutorial.
+encoding multiple audio streams, use
+[`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder) instead. See
+[Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html#sphx-glr-generated-examples-encoding-multi-stream-encoding-py) for
+a tutorial.
 
 Parameters:
 

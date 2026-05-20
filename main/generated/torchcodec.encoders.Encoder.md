@@ -2,7 +2,7 @@
 
 *class*torchcodec.encoders.Encoder[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#Encoder)
 
-A multi-stream encoder for encoding video and/or audio into a file or file-like object.
+A multi-stream encoder for encoding video and/or audio streams.
 
 Unlike [`VideoEncoder`](torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder) and [`AudioEncoder`](torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder) which encode a
 single stream in one shot, `Encoder` supports multiple streams and
@@ -24,6 +24,8 @@ audio_stream = encoder.add_audio(sample_rate=16000, num_channels=1)
 with encoder.open_file("output.mp4"):
  video_stream.add_frames(frames_tensor)
  audio_stream.add_samples(samples_tensor)
+ # Add more frames by calling video_stream.add_frames again
+ # Add more samples by calling audio_stream.add_samples again
 ```
 
 To encode to a file-like object (e.g. `io.BytesIO()`), use
@@ -38,10 +40,17 @@ video_stream = encoder.add_video(height=256, width=256, frame_rate=30)
 with encoder.open_file_like(buf, format="mp4"):
  video_stream.add_frames(frames_tensor)
 encoded_bytes = buf.getvalue()
+# Optionally convert to a uint8 tensor of bytes with
+# bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
 ```
 
 Examples using `Encoder`:
 
+![](../_images/sphx_glr_audio_encoding_thumb.jpg)
+
+[Encoding audio samples with AudioEncoder](../generated_examples/encoding/audio_encoding.html)
+
+Encoding audio samples with AudioEncoder
 ![](../_images/sphx_glr_multi_stream_encoding_thumb.jpg)
 
 [Encoding audio and video streams with the Encoder](../generated_examples/encoding/multi_stream_encoding.html)
