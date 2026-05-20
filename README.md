@@ -25,7 +25,9 @@ Here's a condensed summary of what you can do with TorchCodec. For more detailed
 examples, [check out our
 documentation](https://meta-pytorch.org/torchcodec/stable/generated_examples/)!
 
-#### Decoding
+#### Video Decoding
+
+Note: audio Decoding is also supported!
 
 ```python
 from torchcodec.decoders import VideoDecoder
@@ -61,25 +63,32 @@ decoder.get_frames_played_at(seconds=[0.5, 10.4])
 #   duration_seconds: tensor([0.0334, 0.0334], dtype=torch.float64)
 ```
 
-#### Encoding
-
-```python
-from torchcodec.encoders import VideoEncoder
-
-frames = decoder[:]  # uint8 tensor of shape [N, C, H, W]
-VideoEncoder(frames, frame_rate=decoder.metadata.average_fps).to_file("output.mp4")
-```
-
-TorchCodec also supports [audio
-decoding](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/audio_decoding.html)
-and [audio
-encoding](https://meta-pytorch.org/torchcodec/stable/generated_examples/encoding/audio_encoding.html).
-
 You can use the following snippet to generate a video with FFmpeg and try out
-TorchCodec:
+the `VideoDecoder`:
 
 ```bash
 ffmpeg -f lavfi -i testsrc2=size=640x400:duration=10:rate=25 /tmp/output_video.mp4
+```
+
+
+#### Encoding
+
+```python
+from torchcodec.encoders import Encoder
+
+encoder = Encoder()
+video_stream = encoder.add_video(
+    height=height, width=width, frame_rate=frame_rate,
+)
+audio_stream = encoder.add_audio(
+    sample_rate=sample_rate, num_channels=num_channels,
+)
+with encoder.open_file("output.mp4"):
+    video_stream.add_frames(frames_batch_0)
+    audio_stream.add_samples(samples_batch_0)
+    video_stream.add_frames(frames_batch_1)
+    audio_stream.add_samples(samples_batch_1)
+    # ...
 ```
 
 ## Installing TorchCodec
