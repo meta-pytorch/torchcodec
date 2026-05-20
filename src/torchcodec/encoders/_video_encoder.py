@@ -10,11 +10,13 @@ from torchcodec import _core
 class VideoEncoder:
     """A single-stream video encoder on CPU or CUDA.
 
-    This is a convenience class for simple, one-shot video encoding. For
-    multi-stream encoding (e.g. video + audio), incremental encoding, or mixing
-    CPU and CUDA streams, use :class:`~torchcodec.encoders.Encoder` instead.
-    See :ref:`sphx_glr_generated_examples_encoding_video_encoding.py` for a
-    tutorial.
+    .. note::
+        This is a convenience class for simple, one-shot video encoding. For
+        multi-stream encoding (e.g. video + audio), incremental encoding, or
+        mixing CPU and CUDA streams, use :class:`~torchcodec.encoders.Encoder`
+        instead. See
+        :ref:`sphx_glr_generated_examples_encoding_video_encoding.py` for a
+        tutorial.
 
     Args:
         frames (``torch.Tensor``): The frames to encode. This must be a 4D

@@ -11,6 +11,14 @@ Encoding audio samples with AudioEncoder
 
 In this example, we'll learn how to encode audio samples to a file or to raw
 bytes using the :class:`~torchcodec.encoders.AudioEncoder` class.
+
+.. note::
+    This is a convenience class for simple, one-shot audio encoding. For
+    multi-stream encoding (e.g. video + audio), incremental encoding, or
+    encoding multiple audio streams, use
+    :class:`~torchcodec.encoders.Encoder` instead. See
+    :ref:`sphx_glr_generated_examples_encoding_multi_stream_encoding.py` for
+    a tutorial.
 """
 
 # %%

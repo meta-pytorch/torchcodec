@@ -94,6 +94,7 @@ video_stream = encoder.add_video(
 )
 with encoder.open_file(output_path):
     video_stream.add_frames(frames)
+    # More frames can be submitted by calling video_stream.add_frames
 
 print(f"Encoded to {output_path}, size: {Path(output_path).stat().st_size} bytes")
 
