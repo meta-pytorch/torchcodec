@@ -172,9 +172,11 @@ print(f"Output size: {Path(chunk_output).stat().st_size} bytes")
 #
 # Instead of encoding to a file path, you can encode to any file-like object
 # (e.g. ``io.BytesIO()``) using
-# :meth:`~torchcodec.encoders.Encoder.open_file_like`. In this case, you must
-# specify the container ``format`` explicitly since there is no file extension to
-# infer it from.
+# :meth:`~torchcodec.encoders.Encoder.open_file_like`. This is useful for
+# example when you need to upload the encoded data directly to a remote server
+# or cloud storage without writing it to disk.  In this case, you must specify
+# the container ``format`` explicitly since there is no file extension to infer
+# it from.
 
 import io
 
@@ -191,5 +193,8 @@ with encoder.open_file_like(buf, format="mp4"):
 
 encoded_bytes = buf.getvalue()
 print(f"Encoded to BytesIO, size: {len(encoded_bytes)} bytes")
+
+# Or convert to a bytes tensor:
+bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
 
 # %%
