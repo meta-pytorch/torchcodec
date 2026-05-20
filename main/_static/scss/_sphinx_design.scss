@@ -68,6 +68,20 @@ html[data-theme="dark"] {
       transform: scaleX(1);
     }
   }
+
+  // Dropdowns should span full width, not be constrained like cards
+  &.sd-dropdown {
+    width: 100%;
+    max-width: 100%;
+
+    &:after {
+      display: none;
+    }
+
+    &:hover:after {
+      transform: none;
+    }
+  }
 }
 
 // Sphinx-design grid mobile responsiveness
@@ -121,6 +135,10 @@ html[data-theme="dark"] {
 
   .sd-card {
     max-width: 500px;
+
+    &.sd-dropdown {
+      max-width: 100%;
+    }
   }
 }
 

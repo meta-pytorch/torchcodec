@@ -403,6 +403,10 @@ html[data-theme=dark] {
   margin-left: 5px;
 }
 
+.navbar-header-items__center .navbar-item li.nav-item {
+  list-style: none;
+}
+
 .bd-header {
   top: var(--header-height-desktop) !important;
   position: sticky !important;
@@ -2607,6 +2611,7 @@ a.btn {
   appearance: none;
   background: transparent;
   border: 1px solid var(--pst-color-background);
+  width: 1.3125rem;
   height: 1.3125rem;
   position: absolute;
   bottom: 42px;
@@ -2614,6 +2619,22 @@ a.btn {
   top: 0;
   cursor: pointer;
   outline: none;
+  padding: 0;
+}
+.cookie-banner-wrapper .close-button::before, .cookie-banner-wrapper .close-button::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background-color: #ee4c2a;
+}
+.cookie-banner-wrapper .close-button::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.cookie-banner-wrapper .close-button::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 @media screen and (min-width: 768px) {
   .cookie-banner-wrapper .close-button {
@@ -3051,12 +3072,17 @@ nav.bd-links li > a {
   color: var(--pst-color-text-base) !important;
 }
 
+.toc-entry a.nav-link, .toc-entry a > code {
+  color: var(--pst-color-text-base) !important;
+}
+
 .page-toc .section-nav {
   display: block;
 }
 
-.toc-entry a.nav-link, .toc-entry a > code {
-  color: var(--pst-color-text-base) !important;
+.bd-sidebar-secondary .toc-entry a.nav-link {
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
 }
 
 .bd-sidebar-primary {
@@ -3826,6 +3852,16 @@ html[data-theme=dark] {
 .sd-card:hover:after {
   transform: scaleX(1);
 }
+.sd-card.sd-dropdown {
+  width: 100%;
+  max-width: 100%;
+}
+.sd-card.sd-dropdown:after {
+  display: none;
+}
+.sd-card.sd-dropdown:hover:after {
+  transform: none;
+}
 
 @media (max-width: 767px) {
   .sd-row[class*=sd-row-cols-] {
@@ -3864,6 +3900,9 @@ html[data-theme=dark] {
   }
   .sd-card {
     max-width: 500px;
+  }
+  .sd-card.sd-dropdown {
+    max-width: 100%;
   }
 }
 .sd-card-img {
@@ -4087,6 +4126,64 @@ span.highlighted {
     background-attachment: local, scroll;
   }
 }
+/*
+ * Collapsible "Subclassed by" list styles.
+ * When a paragraph has more than 5 links, it collapses to a single line
+ * with a "See All" button to expand the full list.
+ * Main use case is C++ docs
+ */
+/* Container for the subclassed-by list */
+.subclassed-by-list {
+  position: relative;
+  /* Initially collapsed state - show only 1 line */
+}
+.subclassed-by-list.collapsed {
+  max-height: 1.6em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding-right: 140px; /* Space for the button */
+}
+.subclassed-by-list {
+  /* Expanded state */
+}
+.subclassed-by-list.expanded {
+  max-height: none;
+  overflow: visible;
+  white-space: normal;
+  padding-right: 0;
+  padding-bottom: 2em; /* Space for the button at the bottom */
+}
+.subclassed-by-list.expanded .subclassed-by-toggle {
+  position: absolute;
+  top: auto;
+  bottom: 0;
+  right: 0;
+}
+
+/* The "See All" / "Hide" toggle button */
+.subclassed-by-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 2px 10px;
+  color: #333;
+  cursor: pointer;
+  font-size: 0.85em;
+  text-decoration: none;
+  font-family: inherit;
+  font-weight: 500;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+.subclassed-by-toggle:hover {
+  background-color: #e0e0e0;
+  border-color: #999;
+  text-decoration: none;
+}
+
 /*!
  * Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com
  * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)
