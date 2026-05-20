@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
-find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development)
+find_package(Python3 COMPONENTS Development)
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -303,15 +303,14 @@ function(make_torchcodec_libraries
         ${pybind_ops_library_name}
     )
 
-    # The install step is invoked within CMakeBuild.build_library() in
-    # setup.py and just copies the built files from the temp
-    # cmake/setuptools build folder into the CMAKE_INSTALL_PREFIX folder. We
-    # still need to manually pass "DESTINATION ..." for cmake to copy those
-    # files in CMAKE_INSTALL_PREFIX instead of CMAKE_INSTALL_PREFIX/lib.
+    # The install step copies the built files into the wheel layout.
+    # With scikit-build-core, CMAKE_INSTALL_PREFIX is managed automatically.
+    # We install to "torchcodec/" (relative to the install prefix) so that
+    # the .so files end up next to the Python files in site-packages.
     install(
         TARGETS ${all_libraries}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}  # For Windows
+        LIBRARY DESTINATION torchcodec
+        RUNTIME DESTINATION torchcodec  # For Windows
     )
 
 endfunction()
