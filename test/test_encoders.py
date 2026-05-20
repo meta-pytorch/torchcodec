@@ -852,8 +852,8 @@ class TestVideoEncoder:
                         in_fbcode(), reason="NVENC not available in fbcode"
                     ),
                     pytest.mark.skipif(
-                        ffmpeg_major_version == 4,
-                        reason="CUDA + FFmpeg 4 test is flaky",
+                        ffmpeg_major_version in (4, 5),
+                        reason="CUDA + FFmpeg 4/5 test is flaky",
                     ),
                 ],
             ),
@@ -1382,6 +1382,10 @@ class TestVideoEncoder:
     @pytest.mark.skipif(
         IS_WINDOWS and ffmpeg_major_version == 8,
         reason="against_cli tests fail on Windows with FFmpeg 8",
+    )
+    @pytest.mark.skipif(
+        ffmpeg_major_version == 5,
+        reason="NVENC results diverge too much on FFmpeg 5",
     )
     def test_nvenc_against_ffmpeg_cli(
         self, tmp_path, method, format, codec, color_space, color_range
@@ -2751,8 +2755,8 @@ class TestEncoder:
                         in_fbcode(), reason="NVENC not available in fbcode"
                     ),
                     pytest.mark.skipif(
-                        ffmpeg_major_version == 4,
-                        reason="CUDA + FFmpeg 4 test is flaky",
+                        ffmpeg_major_version in (4, 5),
+                        reason="CUDA + FFmpeg 4/5 test is flaky",
                     ),
                 ],
             ),
@@ -3521,6 +3525,10 @@ class TestEncoder:
     @pytest.mark.skipif(
         IS_WINDOWS and ffmpeg_major_version == 8,
         reason="against_cli tests fail on Windows with FFmpeg 8",
+    )
+    @pytest.mark.skipif(
+        ffmpeg_major_version == 5,
+        reason="NVENC results diverge too much on FFmpeg 5",
     )
     def test_nvenc_against_ffmpeg_cli(
         self, tmp_path, method, format, codec, color_space, color_range

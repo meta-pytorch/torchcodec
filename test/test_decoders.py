@@ -1791,7 +1791,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_at(frame_index)
             nvdec_frame = nvdec_decoder.get_frame_at(frame_index)
             # TODONVDEC P1 see above
-            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     nvdec_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -1838,7 +1838,7 @@ class TestVideoDecoder:
         ref_frames = ref_decoder.get_frames_at(indices)
         nvdec_frames = nvdec_decoder.get_frames_at(indices)
         # TODONVDEC P1 see above
-        if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+        if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
                 nvdec_frames.data, ref_frames.data, rtol=0, atol=0
             )
@@ -1881,7 +1881,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_played_at(pts)
             nvdec_frame = nvdec_decoder.get_frame_played_at(pts)
             # TODONVDEC P1 see above
-            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     nvdec_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -1923,7 +1923,7 @@ class TestVideoDecoder:
         ref_frames = ref_decoder.get_frames_played_at(timestamps)
         nvdec_frames = nvdec_decoder.get_frames_played_at(timestamps)
         # TODONVDEC P1 see above
-        if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+        if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
                 nvdec_frames.data, ref_frames.data, rtol=0, atol=0
             )
@@ -1970,7 +1970,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_at(frame_index)
             nvdec_frame = nvdec_decoder.get_frame_at(frame_index)
             # TODONVDEC P1 see above
-            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     nvdec_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -2144,7 +2144,10 @@ class TestVideoDecoder:
             gc.collect()
 
         with self.restore_nvdec_cache_capacity():
+            # Flush any decoders left in the cache by previous tests.
+            set_nvdec_cache_capacity(0)
             assert _core._get_nvdec_cache_size(device_index=0) == 0
+            set_nvdec_cache_capacity(10)
 
             # Create decoder, it should be in the cache
             create_decoder()

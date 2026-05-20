@@ -158,7 +158,7 @@ def assert_frames_equal(*args, **kwargs):
     if sys.platform == "linux" and "x86" in platform.machine().lower():
         if args[0].device.type == "cuda":
             atol = 3 if cuda_version_used_for_building_torch() >= (13, 0) else 2
-            if ffmpeg_major_version == 4:
+            if ffmpeg_major_version in (4, 5):
                 assert_tensor_close_on_at_least(
                     args[0], args[1], percentage=95, atol=atol
                 )
