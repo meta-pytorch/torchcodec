@@ -98,18 +98,11 @@ Encoding
 .. grid:: 3
 
      .. grid-item-card:: :octicon:`file-code;1em`
-        Audio Encoding
-        :link: generated_examples/encoding/audio_encoding.html
+        Video and Audio Encoding
+        :link: generated_examples/encoding/multi_stream_encoding.html
         :link-type: url
 
-        How encode audio samples
-
-     .. grid-item-card:: :octicon:`file-code;1em`
-        Video Encoding
-        :link: generated_examples/encoding/video_encoding.html
-        :link-type: url
-
-        How to encode video frames
+        How encode audio and video streams
 
 .. toctree::
    :maxdepth: 1

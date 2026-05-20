@@ -66,7 +66,7 @@ class AudioStream:
 
 
 class Encoder:
-    """A multi-stream encoder for encoding video and/or audio into a file or file-like object.
+    """A multi-stream encoder for encoding video and/or audio streams.
 
     Unlike :class:`VideoEncoder` and :class:`AudioEncoder` which encode a
     single stream in one shot, ``Encoder`` supports multiple streams and
@@ -89,6 +89,8 @@ class Encoder:
             with encoder.open_file("output.mp4"):
                 video_stream.add_frames(frames_tensor)
                 audio_stream.add_samples(samples_tensor)
+                # Add more frames by calling video_stream.add_frames again
+                # Add more samples by calling audio_stream.add_samples again
 
         To encode to a file-like object (e.g. ``io.BytesIO()``), use
         :meth:`open_file_like` instead:
@@ -103,6 +105,8 @@ class Encoder:
             with encoder.open_file_like(buf, format="mp4"):
                 video_stream.add_frames(frames_tensor)
             encoded_bytes = buf.getvalue()
+            # Optionally convert to a uint8 tensor of bytes with
+            # bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
     """
 
     def __init__(self):
