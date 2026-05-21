@@ -2816,3 +2816,62 @@ class TestWavDecoder:
             match="No samples to decode. This is probably because start_seconds is too high\\(10\\)",
         ):
             wav_dec.get_samples_played_in_range(10.0, 12.0)
+
+
+class TestVideoDecoderAudio:
+    def test_audio_property_returns_audio_decoder(self):
+        decoder = VideoDecoder(NASA_VIDEO.path)
+        assert isinstance(decoder.audio, AudioDecoder)
+
+    def test_audio_metadata(self):
+        decoder = VideoDecoder(NASA_VIDEO.path)
+        assert decoder.audio is not None
+        assert isinstance(decoder.audio.metadata, AudioStreamMetadata)
+        assert decoder.audio.stream_index == NASA_AUDIO.default_stream_index
+
+    def test_audio_samples_access(self):
+        decoder = VideoDecoder(NASA_VIDEO.path)
+        assert decoder.audio is not None
+        samples = decoder.audio.get_all_samples()
+        assert samples.data.ndim == 2  # (num_channels, num_samples)
+        assert samples.data.shape[0] == NASA_AUDIO.num_channels
+
+    def test_audio_is_none_for_video_only_source(self):
+        decoder = VideoDecoder(H265_VIDEO.path)
+        assert decoder.audio is None
+
+    def test_audio_is_cached(self):
+        decoder = VideoDecoder(NASA_VIDEO.path)
+        assert decoder.audio is decoder.audio
+
+    def test_audio_is_none_for_tensor_source(self):
+        data = torch.frombuffer(NASA_VIDEO.path.read_bytes(), dtype=torch.uint8)
+        decoder = VideoDecoder(data)
+        assert decoder.audio is None
+
+    def test_audio_for_bytes_source(self):
+        decoder = VideoDecoder(NASA_VIDEO.path.read_bytes())
+        assert isinstance(decoder.audio, AudioDecoder)
+
+    def test_audio_for_file_like_source(self):
+        with open(NASA_VIDEO.path, "rb") as f:
+            decoder = VideoDecoder(f)
+        assert isinstance(decoder.audio, AudioDecoder)
+
+    def test_audio_stream_index_kwarg(self):
+        decoder = VideoDecoder(NASA_VIDEO.path, audio_stream_index=NASA_AUDIO.default_stream_index)
+        assert decoder.audio is not None
+        assert decoder.audio.stream_index == NASA_AUDIO.default_stream_index
+
+    def test_audio_sample_rate_kwarg(self):
+        target_rate = 8_000
+        decoder = VideoDecoder(NASA_VIDEO.path, audio_sample_rate=target_rate)
+        assert decoder.audio is not None
+        samples = decoder.audio.get_all_samples()
+        assert samples.sample_rate == target_rate
+
+    def test_audio_num_channels_kwarg(self):
+        decoder = VideoDecoder(NASA_VIDEO.path, audio_num_channels=1)
+        assert decoder.audio is not None
+        samples = decoder.audio.get_all_samples()
+        assert samples.data.shape[0] == 1
