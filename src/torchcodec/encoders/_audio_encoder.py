@@ -9,11 +9,13 @@ from torchcodec import _core
 class AudioEncoder:
     """A single-stream audio encoder.
 
-    This is a convenience class for simple, one-shot audio encoding. For
-    multi-stream encoding (e.g. video + audio), incremental encoding, or
-    encoding multiple audio streams, use :class:`~torchcodec.encoders.Encoder`
-    instead. See :ref:`sphx_glr_generated_examples_encoding_multi_stream_encoding.py`
-    for a tutorial.
+    .. note::
+        This is a convenience class for simple, one-shot audio encoding. For
+        multi-stream encoding (e.g. video + audio), incremental encoding, or
+        encoding multiple audio streams, use
+        :class:`~torchcodec.encoders.Encoder` instead. See
+        :ref:`sphx_glr_generated_examples_encoding_multi_stream_encoding.py` for
+        a tutorial.
 
     Args:
         samples (``torch.Tensor``): The samples to encode. This must be a 2D
