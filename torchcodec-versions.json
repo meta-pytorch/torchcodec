@@ -3,7 +3,6 @@
         "name": "main (unstable)",
         "version": "main",
         "url": "https://meta-pytorch.org/torchcodec/main/",
-        "preferred": true
     },
     {
         "name": "0.13 (stable)",
@@ -15,7 +14,6 @@
         "name": "0.12",
         "version": "0.12",
         "url": "https://meta-pytorch.org/torchcodec/0.12/",
-        "preferred": true
     },
     {
         "name": "0.11",
