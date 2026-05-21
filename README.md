@@ -89,18 +89,12 @@ with encoder.open_file("output.mp4"):
 ```
 
 ## Installing TorchCodec
-### Installing CPU-only TorchCodec
 
-1. Install the latest stable version of PyTorch following the
-   [official instructions](https://pytorch.org/get-started/locally/). For other
-   versions, refer to the table below for compatibility between versions of
-   `torch` and `torchcodec`.
-
-2. Install FFmpeg, if it's not already installed. TorchCodec supports
-   all major FFmpeg versions in [4, 8].
-   Linux distributions usually come with FFmpeg pre-installed. You'll need
-   FFmpeg that comes with separate shared libraries. This is especially relevant
-   for Windows users: these are usually called the "shared" releases.
+1. Install FFmpeg, if it's not already installed. TorchCodec supports all major
+   FFmpeg versions in [4, 8]. Linux distributions usually come with FFmpeg
+   pre-installed. You'll need FFmpeg that comes with separate shared libraries.
+   This is especially relevant for Windows users: these are usually called the
+   "shared" releases.
 
    If FFmpeg is not already installed, or you need a more recent version, an
    easy way to install it is to use `conda`:
@@ -111,11 +105,66 @@ with encoder.open_file("output.mp4"):
    conda install "ffmpeg" -c conda-forge
    ```
 
-3. Install TorchCodec:
+2. Install PyTorch and TorchCodec:
 
    ```bash
-   pip install torchcodec --index-url=https://download.pytorch.org/whl/cpu
+   pip install torch torchcodec
    ```
+
+   That's it! On Linux x86 and aarch64, this will install CUDA-enabled wheels by
+   default (matching the default behavior of `pip install torch`). These wheels
+   should *still* work even if you do not have a GPU on your machine. On macOS
+   and Windows this will install CPU-only wheels. CPU wheels are available for
+   Linux (x86_64 and aarch64), macOS, and Windows.
+
+   For other versions of PyTorch, refer to the compatibility table below.
+
+### CUDA support
+
+CUDA-enabled wheels are installed by default on Linux. For Windows, you'll need
+to pass `--index-url` as described below.
+
+Make sure you have a GPU with NVDEC hardware that can decode the format you
+want. Refer to Nvidia's GPU support matrix
+[here](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new).
+
+You will need the `libnpp` and `libnvrtc` CUDA libraries, which are usually
+part of the CUDA Toolkit.
+
+To select a specific CUDA Toolkit version, use `--index-url`. Make sure to
+install the corresponding PyTorch version as well (refer to the
+[official instructions](https://pytorch.org/get-started/locally/)):
+
+```bash
+# This corresponds to CUDA Toolkit version 13.0.
+pip install torch torchcodec --index-url=https://download.pytorch.org/whl/cu130
+```
+
+Make sure your FFmpeg has NVDEC support:
+
+```bash
+ffmpeg -decoders | grep -i nvidia
+# This should show a line like this:
+# V..... h264_cuvid           Nvidia CUVID H264 decoder (codec h264)
+```
+
+To check that FFmpeg libraries work with NVDEC correctly you can decode a
+generated test video:
+
+```bash
+ffmpeg -hwaccel cuda -hwaccel_output_format cuda -f lavfi -i testsrc2=duration=1 -f null -
+```
+
+### CPU-only installation
+
+To install CPU-only wheels explicitly (e.g. on Linux where CUDA wheels are the
+default):
+
+```bash
+pip install torchcodec --index-url=https://download.pytorch.org/whl/cpu
+```
+
+### Compatibility
 
 The following table indicates the compatibility between versions of
 `torchcodec`, `torch` and Python.
@@ -123,6 +172,7 @@ The following table indicates the compatibility between versions of
 | `torchcodec`       | `torch`            | Python              |
 | ------------------ | ------------------ | ------------------- |
 | `main` / `nightly` | `main` / `nightly` | `>=3.10`, `<=3.14`   |
+| `0.13`             | `>=2.11`             | `>=3.10`, `<=3.14`   |
 | `0.12`             | `>=2.11`             | `>=3.10`, `<=3.14`   |
 | `0.11`             | `2.11`             | `>=3.10`, `<=3.14`   |
 | `0.10`             | `2.10`             | `>=3.10`, `<=3.14`   |
@@ -145,70 +195,6 @@ The following table indicates the compatibility between versions of
 
 </details>
 
-### Installing CUDA-enabled TorchCodec
-
-First, make sure you have a GPU that has NVDEC hardware that can decode the
-format you want. Refer to Nvidia's GPU support matrix for more details
-[here](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new).
-
-1. Install FFmpeg with NVDEC support.
-   TorchCodec with CUDA should work with FFmpeg versions in [4, 8].
-
-   If FFmpeg is not already installed, or you need a more recent version, an
-   easy way to install it is to use `conda`:
-
-   ```bash
-   conda install "ffmpeg"
-   # or
-   conda install "ffmpeg" -c conda-forge
-   ```
-
-   After installing FFmpeg make sure it has NVDEC support when you list the supported
-   decoders:
-
-   ```bash
-   ffmpeg -decoders | grep -i nvidia
-   # This should show a line like this:
-   # V..... h264_cuvid           Nvidia CUVID H264 decoder (codec h264)
-   ```
-
-   To check that FFmpeg libraries work with NVDEC correctly you can decode a sample video:
-
-   ```bash
-   ffmpeg -hwaccel cuda -hwaccel_output_format cuda -i test/resources/nasa_13013.mp4 -f null -
-   ```
-
-#### Linux
-
-2. Install Pytorch corresponding to your CUDA Toolkit using the
-   [official instructions](https://pytorch.org/get-started/locally/). You'll
-   need the `libnpp` and `libnvrtc` CUDA libraries, which are usually part of
-   the CUDA Toolkit.
-
-3. Install TorchCodec
-
-   On Linux, `pip install torchcodec` defaults to a CUDA wheel,
-   matching the default behavior of `pip install torch`.
-
-   ```bash
-   pip install torchcodec
-   ```
-   Use `--index-url` to select a different CUDA Toolkit version:
-
-   ```bash
-   # This corresponds to CUDA Toolkit version 13.0. It should be the same one
-   # you used when you installed PyTorch (If you installed PyTorch with pip).
-   pip install torchcodec --index-url=https://download.pytorch.org/whl/cu130
-   ```
-
-#### Windows
-
-2. On Windows (experimental support), you'll need to rely on `conda` to install
-   both pytorch and TorchCodec:
-
-   ```bash
-   conda install -c conda-forge "torchcodec=*=*cuda*"
-   ```
 
 ## Contributing
 
