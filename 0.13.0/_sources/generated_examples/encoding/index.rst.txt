@@ -1,0 +1,84 @@
+
+
+.. _sphx_glr_generated_examples_encoding:
+
+Encoding
+--------
+
+
+.. raw:: html
+
+  <div id='sg-tag-list' class='sphx-glr-tag-list'></div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbnails">
+
+.. thumbnail-parent-div-open
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode audio samples to a file or to raw bytes using the AudioEncoder class.">
+
+.. only:: html
+
+  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_audio_encoding_thumb.jpg
+    :alt:
+
+  :doc:`/generated_examples/encoding/audio_encoding`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Encoding audio samples with AudioEncoder</div>
+    </div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode video frames using the Encoder class, and we&#x27;ll explore the different encoding parameters available.">
+
+.. only:: html
+
+  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_video_encoding_thumb.jpg
+    :alt:
+
+  :doc:`/generated_examples/encoding/video_encoding`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Encoding video with the Encoder</div>
+    </div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode multiple video and audio streams into a single container using the Encoder class. We&#x27;ll also see how to feed audio samples and video frames incrementally, and how to mix CPU and CUDA video streams.">
+
+.. only:: html
+
+  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_multi_stream_encoding_thumb.jpg
+    :alt:
+
+  :doc:`/generated_examples/encoding/multi_stream_encoding`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Encoding audio and video streams with the Encoder</div>
+    </div>
+
+
+.. thumbnail-parent-div-close
+
+.. raw:: html
+
+    </div>
+
+
+.. toctree::
+   :hidden:
+
+   /generated_examples/encoding/audio_encoding
+   /generated_examples/encoding/video_encoding
+   /generated_examples/encoding/multi_stream_encoding
+
