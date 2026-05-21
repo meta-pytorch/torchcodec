@@ -90,8 +90,8 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
         pybind_ops_library_name = f"libtorchcodec_pybind_ops{ffmpeg_major_version}"
         try:
             core_library_path = _get_extension_path(core_library_name)
-            torch.ops.load_library(core_library_path)
-            torch.ops.load_library(_get_extension_path(custom_ops_library_name))
+            torch.ops.load_library(core_library_path)  # type: ignore[no-untyped-call]
+            torch.ops.load_library(_get_extension_path(custom_ops_library_name))  # type: ignore[no-untyped-call]
 
             pybind_ops_library_path = _get_extension_path(pybind_ops_library_name)
             pybind_ops = _load_pybind11_module(

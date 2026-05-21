@@ -615,7 +615,7 @@ def scan_all_streams_to_update_metadata_abstract(decoder: torch.Tensor) -> None:
     return
 
 
-def get_ffmpeg_library_versions():
+def get_ffmpeg_library_versions() -> dict[str, int]:
     versions_json = _get_json_ffmpeg_library_versions()
     return json.loads(versions_json)
 

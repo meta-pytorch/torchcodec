@@ -8,15 +8,16 @@
 import dataclasses
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from typing import Any
 
 from torch import Tensor
 
 
-def _frame_repr(self):
+def _frame_repr(self: Any) -> str:
     # Utility to replace __repr__ method of dataclasses below. This prints the
     # shape of the .data tensor rather than printing the (potentially very long)
     # data tensor itself.
-    s = self.__class__.__name__ + ":\n"
+    s = f"{self.__class__.__name__}:\n"
     spaces = "  "
     for field in dataclasses.fields(self):
         field_name = field.name
@@ -29,7 +30,7 @@ def _frame_repr(self):
 
 
 @dataclass
-class Frame(Iterable):
+class Frame(Iterable[Tensor | float]):
     """A single video frame with associated metadata."""
 
     data: Tensor
@@ -39,7 +40,7 @@ class Frame(Iterable):
     duration_seconds: float
     """The duration of the frame, in seconds (float)."""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # This is called after __init__() when a Frame is created. We can run
         # input validation checks here.
         if not self.data.ndim == 3:
@@ -51,12 +52,12 @@ class Frame(Iterable):
         for field in dataclasses.fields(self):
             yield getattr(self, field.name)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return _frame_repr(self)
 
 
 @dataclass
-class FrameBatch(Iterable):
+class FrameBatch(Iterable["FrameBatch"]):
     """Multiple video frames with associated metadata.
 
     The ``data`` tensor is typically 4D for sequences of frames (NHWC or NCHW),
@@ -76,7 +77,7 @@ class FrameBatch(Iterable):
     duration_seconds: Tensor
     """The duration of the frame, in seconds (``torch.Tensor`` of floats)."""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # This is called after __init__() when a FrameBatch is created. We can
         # run input validation checks here.
         if self.data.ndim < 3:
@@ -103,22 +104,22 @@ class FrameBatch(Iterable):
                 duration_seconds=duration_seconds,
             )
 
-    def __getitem__(self, key) -> "FrameBatch":
+    def __getitem__(self, key: int | slice) -> "FrameBatch":
         return FrameBatch(
             data=self.data[key],
             pts_seconds=self.pts_seconds[key],
             duration_seconds=self.duration_seconds[key],
         )
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.data)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return _frame_repr(self)
 
 
 @dataclass
-class AudioSamples(Iterable):
+class AudioSamples(Iterable[Tensor | float]):
     """Audio samples with associated metadata."""
 
     data: Tensor
@@ -130,7 +131,7 @@ class AudioSamples(Iterable):
     sample_rate: int
     """The sample rate of the samples, in Hz."""
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         # This is called after __init__() when a Frame is created. We can run
         # input validation checks here.
         if not self.data.ndim == 2:
@@ -142,5 +143,5 @@ class AudioSamples(Iterable):
         for field in dataclasses.fields(self):
             yield getattr(self, field.name)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return _frame_repr(self)

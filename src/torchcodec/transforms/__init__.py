@@ -10,3 +10,10 @@ from ._decoder_transforms import (  # noqa
     RandomCrop,
     Resize,
 )
+
+__all__ = [
+    "CenterCrop",
+    "DecoderTransform",
+    "RandomCrop",
+    "Resize",
+]

@@ -25,3 +25,16 @@ cmake_prefix_path = Path(__file__).parent / "share" / "cmake"
 # Similarly, these are exposed for downstream builds that use torchcodec as a
 # dependency.
 from ._core import core_library_path, ffmpeg_major_version  # usort:skip
+
+__all__ = [
+    "AudioSamples",
+    "Frame",
+    "FrameBatch",
+    "core_library_path",
+    "ffmpeg_major_version",
+    "cmake_prefix_path",
+    "decoders",
+    "encoders",
+    "samplers",
+    "transforms",
+]

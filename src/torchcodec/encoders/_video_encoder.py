@@ -1,5 +1,6 @@
+import io
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import torch
 from torch import Tensor
@@ -133,22 +134,25 @@ class VideoEncoder:
             Tensor: The raw encoded bytes as 1D uint8 Tensor on CPU regardless of the device of the input frames.
         """
         preset_value = str(preset) if isinstance(preset, int) else preset
-        return _core.encode_video_to_tensor(
-            frames=self._frames,
-            frame_rate=self._frame_rate,
-            format=format,
-            codec=codec,
-            pixel_format=pixel_format,
-            crf=crf,
-            preset=preset_value,
-            extra_options=[
-                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
-            ],
+        return cast(
+            Tensor,
+            _core.encode_video_to_tensor(
+                frames=self._frames,
+                frame_rate=self._frame_rate,
+                format=format,
+                codec=codec,
+                pixel_format=pixel_format,
+                crf=crf,
+                preset=preset_value,
+                extra_options=[
+                    str(x) for k, v in (extra_options or {}).items() for x in (k, v)
+                ],
+            ),
         )
 
     def to_file_like(
         self,
-        file_like,
+        file_like: io.RawIOBase | io.BufferedIOBase,
         format: str,
         *,
         codec: str | None = None,
@@ -180,7 +184,7 @@ class VideoEncoder:
                 Defaults to None (which will use encoder's default).
                 See :ref:`crf` for details.
             preset (str or int, optional): Encoder option that controls the tradeoff between
-                encoding encoding speed and compression (output size). Valid on the encoder (commonly
+                encoding speed and compression (output size). Valid on the encoder (commonly
                 a string: "fast", "medium", "slow"). Defaults to None
                 (which will use encoder's default).
                 See :ref:`preset` for details.

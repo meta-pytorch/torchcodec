@@ -8,9 +8,11 @@
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from types import ModuleType
+from typing import cast
 
 import torch
 from torch import nn
+from typing_extensions import Self
 
 
 class DecoderTransform(ABC):
@@ -85,7 +87,7 @@ def import_torchvision_transforms_v2() -> ModuleType:
         raise RuntimeError(
             "Cannot import TorchVision; this should never happen, please report a bug."
         ) from e
-    return v2
+    return cast(ModuleType, v2)
 
 
 class Resize(DecoderTransform):
@@ -114,7 +116,7 @@ class Resize(DecoderTransform):
         return (self.size[0], self.size[1])
 
     @classmethod
-    def _from_torchvision(cls, tv_resize: nn.Module):
+    def _from_torchvision(cls, tv_resize: nn.Module) -> "Resize":
         v2 = import_torchvision_transforms_v2()
 
         assert isinstance(tv_resize, v2.Resize)
@@ -165,7 +167,7 @@ class CenterCrop(DecoderTransform):
     def _from_torchvision(
         cls,
         tv_center_crop: nn.Module,
-    ):
+    ) -> Self:
         v2 = import_torchvision_transforms_v2()
 
         if not isinstance(tv_center_crop, v2.CenterCrop):
@@ -242,7 +244,7 @@ class RandomCrop(DecoderTransform):
     def _from_torchvision(
         cls,
         tv_random_crop: nn.Module,
-    ):
+    ) -> Self:
         v2 = import_torchvision_transforms_v2()
 
         if not isinstance(tv_random_crop, v2.RandomCrop):

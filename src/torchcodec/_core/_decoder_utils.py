@@ -8,6 +8,7 @@
 import io
 from collections.abc import Sequence
 from pathlib import Path
+from typing import cast
 
 from torch import nn, Tensor
 from torchcodec._core._metadata import (
@@ -40,15 +41,15 @@ def create_decoder(
     seek_mode: str,
 ) -> Tensor:
     if isinstance(source, str):
-        return create_from_file(source, seek_mode)
+        return cast(Tensor, create_from_file(source, seek_mode))
     elif isinstance(source, Path):
-        return create_from_file(str(source), seek_mode)
+        return cast(Tensor, create_from_file(str(source), seek_mode))
     elif isinstance(source, io.RawIOBase) or isinstance(source, io.BufferedReader):
         return create_from_file_like(source, seek_mode)
     elif isinstance(source, bytes):
         return create_from_bytes(source, seek_mode)
     elif isinstance(source, Tensor):
-        return create_from_tensor(source, seek_mode)
+        return cast(Tensor, create_from_tensor(source, seek_mode))
     elif isinstance(source, io.TextIOBase):
         raise TypeError(
             "source is for reading text, likely from open(..., 'r'). Try with 'rb' for binary reading?"
@@ -104,9 +105,9 @@ def create_audio_decoder(
 
 def create_wav_decoder(source: str | Path) -> Tensor:
     if isinstance(source, str):
-        return create_wav_decoder_from_file(source)
+        return cast(Tensor, create_wav_decoder_from_file(source))
     elif isinstance(source, Path):
-        return create_wav_decoder_from_file(str(source))
+        return cast(Tensor, create_wav_decoder_from_file(str(source)))
     else:
         raise ValueError(
             "Source is not a supported uncompressed WAV file. "

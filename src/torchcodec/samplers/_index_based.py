@@ -13,7 +13,9 @@ from torchcodec.samplers._common import (
 )
 
 
-def _validate_params_index_based(*, num_clips, num_indices_between_frames):
+def _validate_params_index_based(
+    *, num_clips: int, num_indices_between_frames: int
+) -> None:
     if num_clips <= 0:
         raise ValueError(f"num_clips ({num_clips}) must be > 0")
 
@@ -25,12 +27,12 @@ def _validate_params_index_based(*, num_clips, num_indices_between_frames):
 
 def _validate_sampling_range_index_based(
     *,
-    num_indices_between_frames,
-    num_frames_per_clip,
-    sampling_range_start,
-    sampling_range_end,
-    num_frames_in_video,
-):
+    num_indices_between_frames: int,
+    num_frames_per_clip: int,
+    sampling_range_start: int,
+    sampling_range_end: int | None,
+    num_frames_in_video: int,
+) -> tuple[int, int]:
     if sampling_range_start < 0:
         sampling_range_start = num_frames_in_video + sampling_range_start
 
@@ -67,7 +69,7 @@ def _validate_sampling_range_index_based(
     return sampling_range_start, sampling_range_end
 
 
-def _get_clip_span(*, num_indices_between_frames, num_frames_per_clip):
+def _get_clip_span(*, num_indices_between_frames: int, num_frames_per_clip: int) -> int:
     """Return the span of a clip, i.e. the number of frames (or indices)
     between the first and last frame in the clip, both included.
 
@@ -87,7 +89,7 @@ def _build_all_clips_indices(
     num_frames_per_clip: int,
     num_indices_between_frames: int,
     num_frames_in_video: int,
-    policy_fun: _POLICY_FUNCTION_TYPE,
+    policy_fun: _POLICY_FUNCTION_TYPE,  # type: ignore[type-arg]
 ) -> list[int]:
     # From the clip_start_indices [f_00, f_10, f_20, ...]
     # and from the rest of the parameters, return the list of all the frame

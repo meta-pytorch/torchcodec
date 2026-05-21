@@ -102,4 +102,4 @@ def get_nvdec_cache_capacity() -> int:
     Returns:
         int: The maximum number of NVDEC decoders that can be cached per GPU device.
     """
-    return _core.get_nvdec_cache_capacity()
+    return int(_core.get_nvdec_cache_capacity())

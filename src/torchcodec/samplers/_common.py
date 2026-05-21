@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 from collections.abc import Callable
-from typing import TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from torchcodec import FrameBatch
+
+if TYPE_CHECKING:
+    from torchcodec.decoders import VideoDecoder
 
 _INT_OR_FLOAT = TypeVar("_INT_OR_FLOAT", int, float)
 
@@ -33,14 +38,16 @@ def _error_policy(
 
 _POLICY_FUNCTION_TYPE = Callable[[list[_INT_OR_FLOAT], int], list[_INT_OR_FLOAT]]
 
-_POLICY_FUNCTIONS: dict[str, _POLICY_FUNCTION_TYPE] = {
+_POLICY_FUNCTIONS: dict[str, _POLICY_FUNCTION_TYPE] = {  # type: ignore[type-arg]
     "repeat_last": _repeat_last_policy,
     "wrap": _wrap_policy,
     "error": _error_policy,
 }
 
 
-def _validate_common_params(*, decoder, num_frames_per_clip, policy):
+def _validate_common_params(
+    *, decoder: VideoDecoder, num_frames_per_clip: int, policy: str
+) -> None:
     if len(decoder) < 1:
         raise ValueError(
             f"Decoder must have at least one frame, found {len(decoder)} frames."

@@ -1,4 +1,6 @@
+import io
 from pathlib import Path
+from typing import cast
 
 import torch
 from torch import Tensor
@@ -108,18 +110,21 @@ class AudioEncoder:
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor.
         """
-        return _core.encode_audio_to_tensor(
-            samples=self._samples,
-            sample_rate=self._sample_rate,
-            format=format,
-            bit_rate=bit_rate,
-            num_channels=num_channels,
-            desired_sample_rate=sample_rate,
+        return cast(
+            Tensor,
+            _core.encode_audio_to_tensor(
+                samples=self._samples,
+                sample_rate=self._sample_rate,
+                format=format,
+                bit_rate=bit_rate,
+                num_channels=num_channels,
+                desired_sample_rate=sample_rate,
+            ),
         )
 
     def to_file_like(
         self,
-        file_like,
+        file_like: io.RawIOBase | io.BufferedIOBase,
         format: str,
         *,
         bit_rate: int | None = None,

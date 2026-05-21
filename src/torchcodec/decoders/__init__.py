@@ -14,3 +14,15 @@ from ._decoder_utils import (  # noqa
 from ._video_decoder import CpuFallbackStatus, VideoDecoder  # noqa
 
 SimpleVideoDecoder = VideoDecoder
+
+__all__ = [
+    "AudioDecoder",
+    "AudioStreamMetadata",
+    "CpuFallbackStatus",
+    "VideoDecoder",
+    "VideoStreamMetadata",
+    "SimpleVideoDecoder",
+    "get_nvdec_cache_capacity",
+    "set_cuda_backend",
+    "set_nvdec_cache_capacity",
+]

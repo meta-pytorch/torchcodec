@@ -11,7 +11,7 @@ import numbers
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import cast, Literal
 
 import torch
 from torch import device as torch_device, nn, Tensor
@@ -47,11 +47,11 @@ class CpuFallbackStatus:
     _is_fallback: bool = field(default=False, init=False)
     _backend: str = field(default="", init=False)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         """Returns True if fallback occurred."""
         return self.status_known and self._is_fallback
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Returns a human-readable string representation of the cpu fallback status."""
         if not self.status_known:
             return f"[{self._backend}] Fallback status: Unknown"
@@ -190,7 +190,7 @@ class VideoDecoder:
         # Auto-select custom_frame_mappings seek_mode and process data when mappings are provided
         custom_frame_mappings_data = None
         if custom_frame_mappings is not None:
-            seek_mode = "custom_frame_mappings"  # type: ignore[assignment]
+            seek_mode = "custom_frame_mappings"
             custom_frame_mappings_data = _read_custom_frame_mappings(
                 custom_frame_mappings
             )
@@ -279,7 +279,7 @@ class VideoDecoder:
         assert isinstance(key, int)
 
         frame_data, *_ = core.get_frame_at_index(self._decoder, frame_index=key)
-        return frame_data
+        return cast(Tensor, frame_data)
 
     def _getitem_slice(self, key: slice) -> Tensor:
         assert isinstance(key, slice)
@@ -291,7 +291,7 @@ class VideoDecoder:
             stop=stop,
             step=step,
         )
-        return frame_data
+        return cast(Tensor, frame_data)
 
     def __getitem__(self, key: numbers.Integral | slice) -> Tensor:
         """Return frame or frames as tensors, at the given index or range.
@@ -321,7 +321,7 @@ class VideoDecoder:
         )
 
     def _get_key_frame_indices(self) -> list[int]:
-        return core._get_key_frame_indices(self._decoder)
+        return cast(list[int], core._get_key_frame_indices(self._decoder))
 
     def get_frame_at(self, index: int) -> Frame:
         """Return a single frame at the given index.

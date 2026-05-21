@@ -1,4 +1,6 @@
+import io
 from pathlib import Path
+from types import TracebackType
 from typing import Any
 
 import torch
@@ -109,7 +111,7 @@ class Encoder:
             # bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._encoder_tensor = _core.create_streaming_encoder()
 
     def add_video(
@@ -237,7 +239,9 @@ class Encoder:
         _core.streaming_encoder_open_file(self._encoder_tensor, str(dest))
         return self
 
-    def open_file_like(self, dest, *, format: str) -> "Encoder":
+    def open_file_like(
+        self, dest: io.RawIOBase | io.BufferedIOBase, *, format: str
+    ) -> "Encoder":
         """Open a file-like object for writing the encoded output.
 
         Must be called after all streams have been added via :meth:`add_video`
@@ -270,5 +274,10 @@ class Encoder:
     def __enter__(self) -> "Encoder":
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
         self.close()

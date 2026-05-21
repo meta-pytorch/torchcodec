@@ -1,4 +1,6 @@
-from typing import Literal
+from __future__ import annotations
+
+from typing import Any, Literal, TYPE_CHECKING
 
 import torch
 
@@ -11,14 +13,17 @@ from torchcodec.samplers._common import (
     _validate_common_params,
 )
 
+if TYPE_CHECKING:
+    from torchcodec.decoders import VideoDecoder
+
 
 def _validate_params_time_based(
     *,
-    decoder,
-    num_clips,
-    seconds_between_clip_starts,
-    seconds_between_frames,
-):
+    decoder: Any,
+    num_clips: int | None,
+    seconds_between_clip_starts: float | None,
+    seconds_between_frames: float | None,
+) -> float:
 
     if (num_clips is None and seconds_between_clip_starts is None) or (
         num_clips is not None and seconds_between_clip_starts is not None
@@ -61,13 +66,13 @@ def _validate_params_time_based(
 
 def _validate_sampling_range_time_based(
     *,
-    num_frames_per_clip,
-    seconds_between_frames,
-    sampling_range_start,
-    sampling_range_end,
-    begin_stream_seconds,
-    end_stream_seconds,
-):
+    num_frames_per_clip: int,
+    seconds_between_frames: float,
+    sampling_range_start: float | None,
+    sampling_range_end: float | None,
+    begin_stream_seconds: float,
+    end_stream_seconds: float,
+) -> tuple[float, float]:
 
     if sampling_range_start is None:
         sampling_range_start = begin_stream_seconds
@@ -128,7 +133,7 @@ def _build_all_clips_timestamps(
     num_frames_per_clip: int,
     seconds_between_frames: float,
     end_stream_seconds: float,
-    policy_fun: _POLICY_FUNCTION_TYPE,
+    policy_fun: _POLICY_FUNCTION_TYPE,  # type: ignore[type-arg]
 ) -> list[float]:
 
     all_clips_timestamps: list[float] = []
@@ -149,7 +154,7 @@ def _build_all_clips_timestamps(
 
 def _generic_time_based_sampler(
     kind: Literal["random", "regular"],
-    decoder,
+    decoder: VideoDecoder,
     *,
     num_clips: int | None,  # mutually exclusive with seconds_between_clip_starts
     seconds_between_clip_starts: float | None,
@@ -176,6 +181,12 @@ def _generic_time_based_sampler(
         seconds_between_clip_starts=seconds_between_clip_starts,
         seconds_between_frames=seconds_between_frames,
     )
+
+    if (
+        decoder.metadata.begin_stream_seconds is None
+        or decoder.metadata.end_stream_seconds is None
+    ):
+        raise ValueError("Begin or end stream seconds is None")
 
     sampling_range_start, sampling_range_end = _validate_sampling_range_time_based(
         num_frames_per_clip=num_frames_per_clip,
@@ -230,7 +241,7 @@ def _generic_time_based_sampler(
 
 
 def clips_at_random_timestamps(
-    decoder,
+    decoder: VideoDecoder,
     *,
     num_clips: int = 1,
     num_frames_per_clip: int = 1,
@@ -256,7 +267,7 @@ def clips_at_random_timestamps(
 
 
 def clips_at_regular_timestamps(
-    decoder,
+    decoder: VideoDecoder,
     *,
     seconds_between_clip_starts: float,
     num_frames_per_clip: int = 1,

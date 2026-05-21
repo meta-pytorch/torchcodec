@@ -10,6 +10,7 @@ import json
 import pathlib
 from dataclasses import dataclass
 from fractions import Fraction
+from typing import Any
 
 import torch
 from torchcodec._core.ops import (
@@ -53,7 +54,7 @@ class StreamMetadata:
     Otherwise, this value is 0.
     """
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         s = self.__class__.__name__ + ":\n"
         for field in dataclasses.fields(self):
             s += f"{SPACES}{field.name}: {getattr(self, field.name)}\n"
@@ -148,7 +149,7 @@ class VideoStreamMetadata(StreamMetadata):
     Otherwise we fall back to ``average_fps_from_header``.
     """
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return super().__repr__()
 
 
@@ -163,7 +164,7 @@ class AudioStreamMetadata(StreamMetadata):
     sample_format: str | None
     """The original sample format, as described by FFmpeg. E.g. 'fltp', 's32', etc."""
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return super().__repr__()
 
 
@@ -201,7 +202,7 @@ class ContainerMetadata:
         return metadata
 
 
-def _get_optional_par_fraction(stream_dict):
+def _get_optional_par_fraction(stream_dict: dict[str, Any]) -> Fraction | None:
     try:
         return Fraction(
             stream_dict["sampleAspectRatioNum"],
