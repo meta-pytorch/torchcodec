@@ -46,7 +46,9 @@ from torchcodec._core.ops import (
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
+    cuda_devices,
     get_python_version,
+    H264_10BITS,
     IS_WINDOWS,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
@@ -820,6 +822,64 @@ class TestVideoDecoderOps:
         frames, *_ = get_frames_by_pts(decoder, timestamps=pts_seconds_ref)
         for frame, idx in zip(frames, indices):
             self._assert_float32_matches_rgb48_ref(frame, asset, idx)
+
+    @pytest.mark.parametrize("device", cuda_devices())
+    @pytest.mark.parametrize(
+        "asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR)
+    )
+    def test_output_dtype_float32_hdr_cuda(self, asset, device):
+        # NVDEC native path: NVDEC decodes to P016, our CUDA kernel converts
+        # to uint16 RGB, then to float32. The NVDEC hardware decoder produces
+        # slightly different raw YUV values than FFmpeg's CPU decoder, so we
+        # compare CUDA against CPU with tolerance rather than against the
+        # exact rgb48 reference.
+        device, device_variant = unsplit_device_str(device)
+
+        decoder_cpu = create_from_file(str(asset.path))
+        add_video_stream(decoder_cpu, output_dtype="float32")
+
+        decoder_cuda = create_from_file(str(asset.path))
+        add_video_stream(
+            decoder_cuda,
+            output_dtype="float32",
+            device=device,
+            device_variant=device_variant,
+        )
+
+        for frame_index in [0, 5, 10]:
+            cpu_frame, *_ = get_frame_at_index(decoder_cpu, frame_index=frame_index)
+            cuda_frame, *_ = get_frame_at_index(decoder_cuda, frame_index=frame_index)
+            assert cuda_frame.dtype == torch.float32
+            assert cuda_frame.device.type == "cuda"
+            torch.testing.assert_close(cuda_frame.cpu(), cpu_frame, rtol=0, atol=0.32)
+
+    @needs_cuda
+    def test_output_dtype_float32_cpu_fallback(self):
+        # CPU fallback path: H264 10-bit is not supported by NVDEC, so
+        # BetaCudaDeviceInterface falls back to CPU decoding + CPU color
+        # conversion, then moves the result to GPU. This should give exact
+        # match with pure CPU decoding.
+        asset = H264_10BITS
+
+        decoder_cpu = create_from_file(str(asset.path))
+        add_video_stream(decoder_cpu, output_dtype="float32")
+
+        decoder_cuda = create_from_file(str(asset.path))
+        add_video_stream(decoder_cuda, output_dtype="float32", device="cuda")
+
+        for frame_index in [0, 10, 20, 5]:
+            cpu_frame, *_ = get_frame_at_index(decoder_cpu, frame_index=frame_index)
+            cuda_frame, *_ = get_frame_at_index(decoder_cuda, frame_index=frame_index)
+            assert cuda_frame.dtype == torch.float32
+            assert cuda_frame.device.type == "cuda"
+            assert_frames_equal(cuda_frame.cpu(), cpu_frame)
+
+        # Also check batch API
+        indices = [0, 10, 20, 5]
+        cpu_frames, *_ = get_frames_at_indices(decoder_cpu, frame_indices=indices)
+        cuda_frames, *_ = get_frames_at_indices(decoder_cuda, frame_indices=indices)
+        assert cuda_frames.device.type == "cuda"
+        assert_frames_equal(cuda_frames.cpu(), cpu_frames)
 
 
 class TestAudioDecoderOps:
