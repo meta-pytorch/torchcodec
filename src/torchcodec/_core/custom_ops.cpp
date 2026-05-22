@@ -516,6 +516,15 @@ void _add_video_stream(
     std::optional<torch::stable::Tensor>
         custom_frame_mappings_keyframe_indices = std::nullopt,
     std::optional<std::string> color_conversion_library = std::nullopt,
+    // TODO_HDR: see other TODO, should default be uint8 instead? Maybe it
+    // shoudn't even be optional?
+    // videoStreamOptions.outputDtype defaults to UINT8 so if
+    // output_dtype is nullopt, the videoStreamOptions will default to UINT8.
+    // But that's pretty implicit and suggests maybe this shouldn't be optional
+    // at all.
+    // TODO_UINT8 Also this currently takes strings but surely the public API
+    // will want to support torch.dtype object, we should figure out when to do
+    // the conversion.
     std::optional<std::string> output_dtype = std::nullopt) {
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.ffmpegThreadCount = num_threads;
@@ -523,11 +532,11 @@ void _add_video_stream(
   if (output_dtype.has_value()) {
     const std::string& val = *output_dtype;
     if (val == "uint8") {
-      videoStreamOptions.outputDtype = OutputDtype::UINT8;
+      videoStreamOptions.outputDtypeConfig = OutputDtypeConfig::UINT8;
     } else if (val == "float32") {
-      videoStreamOptions.outputDtype = OutputDtype::FLOAT32;
+      videoStreamOptions.outputDtypeConfig = OutputDtypeConfig::FLOAT32;
     } else if (val == "auto") {
-      videoStreamOptions.outputDtype = OutputDtype::AUTO;
+      videoStreamOptions.outputDtypeConfig = OutputDtypeConfig::AUTO;
     } else {
       STD_TORCH_CHECK(
           false,

@@ -21,7 +21,12 @@ enum ColorConversionLibrary {
   SWSCALE
 };
 
-// Controls the dtype of decoded frame tensors.
+// The resolved output dtype. Only UINT8 or FLOAT32 — no AUTO.
+// All code downstream of addVideoStream() should use this.
+enum class OutputDtype { UINT8, FLOAT32 };
+
+// The user-facing output dtype config, which may include AUTO.
+// AUTO is resolved in addVideoStream() into an OutputDtype.
 // UINT8: Always output uint8 tensors (default, backward compatible). Uses an
 //        8-bit / RGB24 intermediate.
 // FLOAT32: Always output float32 tensors normalized to [0, 1]. Uses a 16-bit /
@@ -29,9 +34,7 @@ enum ColorConversionLibrary {
 //          full precision through the float cast, regardless of source bit
 //          depth.
 // AUTO: Output uint8 for SDR (<=8-bit) sources, float32 for HDR (>8-bit).
-//       Resolved upstream in addVideoStream so downstream code only ever sees
-//       UINT8 / FLOAT32.
-enum class OutputDtype { UINT8, FLOAT32, AUTO };
+enum class OutputDtypeConfig { UINT8, FLOAT32, AUTO };
 
 struct VideoStreamOptions {
   VideoStreamOptions() {}
@@ -59,9 +62,12 @@ struct VideoStreamOptions {
   // Device variant (e.g., "nvdec", "ffmpeg")
   std::string_view deviceVariant = "default";
 
-  // Controls the dtype of decoded frame tensors. Default UINT8 preserves
-  // existing behavior; FLOAT32 and AUTO are used for high-bit-depth output
-  // (e.g. HDR).
+  // The user-specified output dtype config. May be AUTO, which gets resolved
+  // in addVideoStream() into outputDtype below.
+  OutputDtypeConfig outputDtypeConfig = OutputDtypeConfig::UINT8;
+
+  // Set by addVideoStream() after resolving AUTO. All downstream code should
+  // read this field.
   OutputDtype outputDtype = OutputDtype::UINT8;
 
   // Encoding options
