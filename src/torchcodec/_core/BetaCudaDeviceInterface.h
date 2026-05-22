@@ -43,6 +43,11 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const UniqueDecodingAVFormatContext& avFormatCtx,
       const SharedAVCodecContext& codecContext) override;
 
+  void initializeVideo(
+      const VideoStreamOptions& videoStreamOptions,
+      const std::vector<std::unique_ptr<Transform>>& transforms,
+      const std::optional<FrameDims>& resizedOutputDims) override;
+
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
@@ -109,6 +114,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   SwsConfig prevSwsConfig_;
   Rotation rotation_ = Rotation::NONE;
+  OutputDtype outputDtype_ = OutputDtype::UINT8;
+  cudaVideoSurfaceFormat outputSurfaceFormat_ = cudaVideoSurfaceFormat_NV12;
 };
 
 } // namespace facebook::torchcodec

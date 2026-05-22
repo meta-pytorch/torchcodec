@@ -145,7 +145,8 @@ function(make_torchcodec_libraries
     )
 
     if(ENABLE_CUDA)
-	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp NPPRuntimeLoader.cpp)
+        enable_language(CUDA)
+	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp NPPRuntimeLoader.cpp P016ToRGB16.cu)
     endif()
 
     set(core_library_dependencies
@@ -170,6 +171,7 @@ function(make_torchcodec_libraries
         # USE_CUDA is defined.
         # https://github.com/pytorch/pytorch/blob/98e36864e640023a716e058d894ea2d20e76e5f7/torch/csrc/inductor/aoti_torch/c/shim.h#L573-L602
         target_compile_definitions(${core_library_name} PRIVATE USE_CUDA)
+        set_property(TARGET ${core_library_name} PROPERTY CUDA_STANDARD 17)
     endif()
 
     # 2. Create libtorchcodec_custom_opsN.{ext}.
