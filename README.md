@@ -6,7 +6,7 @@ TorchCodec is a Python library for decoding video and audio data into PyTorch
 tensors, on CPU and CUDA GPU. It also supports video and audio encoding on CPU!
 It aims to be fast, easy to use, and well integrated
 into the PyTorch ecosystem.  If you want to use PyTorch to train ML models on
-videos and audio, TorchCodec is how you turn these into data.
+videos and audio, or run inference, TorchCodec is how you turn these into data.
 
 We achieve these capabilities through:
 
@@ -19,13 +19,13 @@ We achieve these capabilities through:
 * Returning data as PyTorch tensors, ready to be fed into PyTorch transforms
   or used directly to train models.
 
-## Using TorchCodec
+## Usage Examples
 
-Here's a condensed summary of what you can do with TorchCodec. For more detailed
-examples, [check out our
+Below are some examples of what you can do with TorchCodec. For more detailed
+examples and more use-cases, [check out our
 documentation](https://meta-pytorch.org/torchcodec/stable/generated_examples/)!
 
-#### Decoding
+#### Video Decoding
 
 ```python
 from torchcodec.decoders import VideoDecoder
@@ -61,56 +61,40 @@ decoder.get_frames_played_at(seconds=[0.5, 10.4])
 #   duration_seconds: tensor([0.0334, 0.0334], dtype=torch.float64)
 ```
 
-#### Clip sampling
-
-```python
-
-from torchcodec.samplers import clips_at_regular_timestamps
-
-clips_at_regular_timestamps(
-    decoder,
-    seconds_between_clip_starts=1.5,
-    num_frames_per_clip=4,
-    seconds_between_frames=0.1
-)
-# FrameBatch:
-#   data (shape): torch.Size([9, 4, 3, 270, 480])
-#   pts_seconds: tensor([[ 0.0000,  0.0667,  0.1668,  0.2669],
-#         [ 1.4681,  1.5682,  1.6683,  1.7684],
-#         [ 2.9696,  3.0697,  3.1698,  3.2699],
-#         ... (truncated), dtype=torch.float64)
-#   duration_seconds: tensor([[0.0334, 0.0334, 0.0334, 0.0334],
-#         [0.0334, 0.0334, 0.0334, 0.0334],
-#         [0.0334, 0.0334, 0.0334, 0.0334],
-#         ... (truncated), dtype=torch.float64)
-```
-
-You can use the following snippet to generate a video with FFmpeg and tryout
-TorchCodec:
+You can use the following snippet to generate a video with FFmpeg and try out
+the `VideoDecoder`:
 
 ```bash
-fontfile=/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono-Bold.ttf
-output_video_file=/tmp/output_video.mp4
+ffmpeg -f lavfi -i testsrc2=size=640x400:duration=10:rate=25 /tmp/output_video.mp4
+```
 
-ffmpeg -f lavfi -i \
-    color=size=640x400:duration=10:rate=25:color=blue \
-    -vf "drawtext=fontfile=${fontfile}:fontsize=30:fontcolor=white:x=(w-text_w)/2:y=(h-text_h)/2:text='Frame %{frame_num}'" \
-    ${output_video_file}
+#### Encoding
+
+```python
+from torchcodec.encoders import Encoder
+
+encoder = Encoder()
+video_stream = encoder.add_video(
+    height=height, width=width, frame_rate=frame_rate,
+)
+audio_stream = encoder.add_audio(
+    sample_rate=sample_rate, num_channels=num_channels,
+)
+with encoder.open_file("output.mp4"):
+    video_stream.add_frames(frames_batch_0)
+    audio_stream.add_samples(samples_batch_0)
+    video_stream.add_frames(frames_batch_1)
+    audio_stream.add_samples(samples_batch_1)
+    # ...
 ```
 
 ## Installing TorchCodec
-### Installing CPU-only TorchCodec
 
-1. Install the latest stable version of PyTorch following the
-   [official instructions](https://pytorch.org/get-started/locally/). For other
-   versions, refer to the table below for compatibility between versions of
-   `torch` and `torchcodec`.
-
-2. Install FFmpeg, if it's not already installed. TorchCodec supports
-   all major FFmpeg versions in [4, 8].
-   Linux distributions usually come with FFmpeg pre-installed. You'll need
-   FFmpeg that comes with separate shared libraries. This is especially relevant
-   for Windows users: these are usually called the "shared" releases.
+1. Install FFmpeg, if it's not already installed. TorchCodec supports all major
+   FFmpeg versions in [4, 8]. Linux distributions usually come with FFmpeg
+   pre-installed. You'll need FFmpeg that comes with separate shared libraries.
+   This is especially relevant for Windows users: these are usually called the
+   "shared" releases.
 
    If FFmpeg is not already installed, or you need a more recent version, an
    easy way to install it is to use `conda`:
@@ -121,11 +105,66 @@ ffmpeg -f lavfi -i \
    conda install "ffmpeg" -c conda-forge
    ```
 
-3. Install TorchCodec:
+2. Install PyTorch and TorchCodec:
 
    ```bash
-   pip install torchcodec --index-url=https://download.pytorch.org/whl/cpu
+   pip install torch torchcodec
    ```
+
+   That's it! On Linux x86 and aarch64, this will install CUDA-enabled wheels by
+   default (matching the default behavior of `pip install torch`). These wheels
+   should *still* work even if you do not have a GPU on your machine. On macOS
+   and Windows this will install CPU-only wheels. CPU wheels are available for
+   Linux (x86_64 and aarch64), macOS, and Windows.
+
+   For other versions of PyTorch, refer to the compatibility table below.
+
+### CUDA support
+
+CUDA-enabled wheels are installed by default on Linux. For Windows, you'll need
+to pass `--index-url` as described below.
+
+Make sure you have a GPU with NVDEC hardware that can decode the format you
+want. Refer to Nvidia's GPU support matrix
+[here](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new).
+
+You will need the `libnpp` and `libnvrtc` CUDA libraries, which are usually
+part of the CUDA Toolkit.
+
+To select a specific CUDA Toolkit version, use `--index-url`. Make sure to
+install the corresponding PyTorch version as well (refer to the
+[official instructions](https://pytorch.org/get-started/locally/)):
+
+```bash
+# This corresponds to CUDA Toolkit version 13.0.
+pip install torch torchcodec --index-url=https://download.pytorch.org/whl/cu130
+```
+
+Make sure your FFmpeg has NVDEC support:
+
+```bash
+ffmpeg -decoders | grep -i nvidia
+# This should show a line like this:
+# V..... h264_cuvid           Nvidia CUVID H264 decoder (codec h264)
+```
+
+To check that FFmpeg libraries work with NVDEC correctly you can decode a
+generated test video:
+
+```bash
+ffmpeg -hwaccel cuda -hwaccel_output_format cuda -f lavfi -i testsrc2=duration=1 -f null -
+```
+
+### CPU-only installation
+
+To install CPU-only wheels explicitly (e.g. on Linux where CUDA wheels are the
+default):
+
+```bash
+pip install torchcodec --index-url=https://download.pytorch.org/whl/cpu
+```
+
+### Compatibility
 
 The following table indicates the compatibility between versions of
 `torchcodec`, `torch` and Python.
@@ -133,6 +172,7 @@ The following table indicates the compatibility between versions of
 | `torchcodec`       | `torch`            | Python              |
 | ------------------ | ------------------ | ------------------- |
 | `main` / `nightly` | `main` / `nightly` | `>=3.10`, `<=3.14`   |
+| `0.13`             | `>=2.11`             | `>=3.10`, `<=3.14`   |
 | `0.12`             | `>=2.11`             | `>=3.10`, `<=3.14`   |
 | `0.11`             | `2.11`             | `>=3.10`, `<=3.14`   |
 | `0.10`             | `2.10`             | `>=3.10`, `<=3.14`   |
@@ -155,86 +195,6 @@ The following table indicates the compatibility between versions of
 
 </details>
 
-### Installing CUDA-enabled TorchCodec
-
-First, make sure you have a GPU that has NVDEC hardware that can decode the
-format you want. Refer to Nvidia's GPU support matrix for more details
-[here](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new).
-
-1. Install FFmpeg with NVDEC support.
-   TorchCodec with CUDA should work with FFmpeg versions in [4, 8].
-
-   If FFmpeg is not already installed, or you need a more recent version, an
-   easy way to install it is to use `conda`:
-
-   ```bash
-   conda install "ffmpeg"
-   # or
-   conda install "ffmpeg" -c conda-forge
-   ```
-
-   After installing FFmpeg make sure it has NVDEC support when you list the supported
-   decoders:
-
-   ```bash
-   ffmpeg -decoders | grep -i nvidia
-   # This should show a line like this:
-   # V..... h264_cuvid           Nvidia CUVID H264 decoder (codec h264)
-   ```
-
-   To check that FFmpeg libraries work with NVDEC correctly you can decode a sample video:
-
-   ```bash
-   ffmpeg -hwaccel cuda -hwaccel_output_format cuda -i test/resources/nasa_13013.mp4 -f null -
-   ```
-
-#### Linux
-
-2. Install Pytorch corresponding to your CUDA Toolkit using the
-   [official instructions](https://pytorch.org/get-started/locally/). You'll
-   need the `libnpp` and `libnvrtc` CUDA libraries, which are usually part of
-   the CUDA Toolkit.
-
-3. Install TorchCodec
-
-   On Linux, `pip install torchcodec` defaults to a CUDA wheel,
-   matching the default behavior of `pip install torch`.
-
-   ```bash
-   pip install torchcodec
-   ```
-   Use `--index-url` to select a different CUDA Toolkit version:
-
-   ```bash
-   # This corresponds to CUDA Toolkit version 13.0. It should be the same one
-   # you used when you installed PyTorch (If you installed PyTorch with pip).
-   pip install torchcodec --index-url=https://download.pytorch.org/whl/cu130
-   ```
-
-#### Windows
-
-2. On Windows (experimental support), you'll need to rely on `conda` to install
-   both pytorch and TorchCodec:
-
-   ```bash
-   conda install -c conda-forge "torchcodec=*=*cuda*"
-   ```
-
-## Benchmark Results
-
-The following was generated by running [our benchmark script](./benchmarks/decoders/generate_readme_data.py) on a lightly loaded 22-core machine with an Nvidia A100 with
-5 [NVDEC decoders](https://docs.nvidia.com/video-technologies/video-codec-sdk/12.1/nvdec-application-note/index.html#).
-
-![benchmark_results](./benchmarks/decoders/benchmark_readme_chart.png)
-
-The top row is a [Mandelbrot](https://ffmpeg.org/ffmpeg-filters.html#mandelbrot) video
-generated from FFmpeg that has a resolution of 1280x720 at 60 fps and is 120 seconds long.
-The bottom row is [promotional video from NASA](https://download.pytorch.org/torchaudio/tutorial-assets/stream-api/NASAs_Most_Scientifically_Complex_Space_Observatory_Requires_Precision-MP4_small.mp4)
-that has a resolution of 960x540 at 29.7 fps and is 206 seconds long. Both videos were
-encoded with libx264 and yuv420p pixel format. All decoders, except for TorchVision, used FFmpeg 6.1.2. TorchVision used FFmpeg 4.2.2.
-
-For TorchCodec, the "approx" label means that it was using [approximate mode](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/approximate_mode.html)
-for seeking.
 
 ## Contributing
 

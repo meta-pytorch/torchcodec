@@ -2143,6 +2143,10 @@ class TestVideoDecoder:
             del dec
             gc.collect()
 
+        # Evict any leftover cached decoders from previous tests
+        with self.restore_nvdec_cache_capacity():
+            set_nvdec_cache_capacity(0)
+
         with self.restore_nvdec_cache_capacity():
             assert _core._get_nvdec_cache_size(device_index=0) == 0
 
