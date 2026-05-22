@@ -84,6 +84,7 @@ def add_video_stream(
     custom_frame_mappings: (
         tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
     ) = None,
+    # TODO_HDR: should default be None or uint8??
     output_dtype: str | None = None,
 ) -> None:
     custom_frame_mappings_pts: torch.Tensor | None = None
