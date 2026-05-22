@@ -578,17 +578,25 @@ void SingleStreamDecoder::addVideoStream(
         activeStreamIndex_, customFrameMappings.value());
   }
 
-  // Resolve AUTO once based on the source bit depth, so downstream code
-  // only has to handle UINT8 / FLOAT32.
-  //
-  // TODO: programmatically enforce that OutputDtype is "resolved" (i.e. not
-  // AUTO) past this point.
-  if (streamInfo.videoStreamOptions.outputDtype == OutputDtype::AUTO) {
-    const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(
-        static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
-    streamInfo.videoStreamOptions.outputDtype =
-        (desc != nullptr && desc->comp[0].depth > 8) ? OutputDtype::FLOAT32
-                                                     : OutputDtype::UINT8;
+  // Resolve the user-facing OutputDtypeConfig (which may be AUTO) into an
+  // OutputDtype that downstream code can use directly.
+  // TODO_HDR: This is basically our heuristic that defines how we identify HDR
+  // videos, we might want to refine it.
+  switch (streamInfo.videoStreamOptions.outputDtypeConfig) {
+    case OutputDtypeConfig::UINT8:
+      streamInfo.videoStreamOptions.outputDtype = OutputDtype::UINT8;
+      break;
+    case OutputDtypeConfig::FLOAT32:
+      streamInfo.videoStreamOptions.outputDtype = OutputDtype::FLOAT32;
+      break;
+    case OutputDtypeConfig::AUTO: {
+      const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(
+          static_cast<AVPixelFormat>(streamInfo.stream->codecpar->format));
+      streamInfo.videoStreamOptions.outputDtype =
+          (desc != nullptr && desc->comp[0].depth > 8) ? OutputDtype::FLOAT32
+                                                       : OutputDtype::UINT8;
+      break;
+    }
   }
 
   // Set preRotationDims_ for the active stream. These are the raw encoded
@@ -1515,10 +1523,9 @@ torch::stable::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
   }
 }
 
+// TODO_HDR: should this be a single call along with maybePermuteHWC2CHW?
 torch::stable::Tensor SingleStreamDecoder::maybeConvertToFloat32(
     torch::stable::Tensor& tensor) {
-  // AUTO has been resolved to UINT8 or FLOAT32 in addVideoStream, so we only
-  // need to handle FLOAT32 here.
   OutputDtype outputDtype =
       streamInfos_[activeStreamIndex_].videoStreamOptions.outputDtype;
   if (outputDtype != OutputDtype::FLOAT32) {

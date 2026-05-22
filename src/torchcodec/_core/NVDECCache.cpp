@@ -21,7 +21,9 @@ extern "C" {
 namespace facebook::torchcodec {
 
 NVDECCache* NVDECCache::getCacheInstances() {
-  static NVDECCache cacheInstances[MAX_CUDA_GPUS];
+  // Intentionally leaked to avoid calling into CUDA/NVCUVID during static
+  // destruction, when the CUDA runtime may already be torn down.
+  static NVDECCache* cacheInstances = new NVDECCache[MAX_CUDA_GPUS];
   return cacheInstances;
 }
 
