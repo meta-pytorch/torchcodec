@@ -1523,6 +1523,7 @@ torch::stable::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
   }
 }
 
+// TODO_HDR: should this be a single call along with maybePermuteHWC2CHW?
 torch::stable::Tensor SingleStreamDecoder::maybeConvertToFloat32(
     torch::stable::Tensor& tensor) {
   OutputDtype outputDtype =
