@@ -292,10 +292,6 @@ void BetaCudaDeviceInterface::initializeVideo(
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
     [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
   outputDtype_ = videoStreamOptions.outputDtype;
-  if (cpuFallback_) {
-    cpuFallback_->initializeVideo(
-        videoStreamOptions, transforms, resizedOutputDims);
-  }
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
@@ -939,19 +935,22 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     FrameOutput& frameOutput,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   if (cpuFallback_) {
+    STD_TORCH_CHECK(
+        outputDtype_ != OutputDtype::FLOAT32,
+        "output_dtype='float32' is not yet supported when NVDEC falls back to "
+        "CPU decoding on CUDA. This can happen when the video codec or format "
+        "is not natively supported by NVDEC hardware.");
+
     // When the CPU fallback happens, we'll try to run the color-conversion on
     // GPU by sending those CPU frames to the GPU as NV12 (See
     // transferCpuFrameToGpuNV12() below). However, it's not always possible:
     // NV12 would downsample 4:4:4 frames and lose chroma resolution, resulting
     // in poorly decoded frames. So for those, we still do the color conversion
     // on the CPU and then send the full RGB frame to the GPU.
-    // Similarly, when outputDtype is FLOAT32, the CPU path uses RGB48 (16-bit)
-    // as intermediate format, and NV12+NPP only handles 8-bit. So we always
-    // use CPU color conversion for FLOAT32.
     const AVPixFmtDescriptor* desc =
         av_pix_fmt_desc_get(static_cast<AVPixelFormat>(avFrame->format));
-    bool is444 = desc && desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0;
-    if (is444 || outputDtype_ == OutputDtype::FLOAT32) {
+    if (desc && desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0) {
+      // 4:4:4: converting through NV12 (4:2:0) would lose chroma resolution.
       FrameOutput cpuFrameOutput;
       cpuFallback_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
       if (preAllocatedOutputTensor.has_value()) {
