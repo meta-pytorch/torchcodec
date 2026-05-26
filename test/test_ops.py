@@ -666,21 +666,38 @@ class TestVideoDecoderOps:
             duration, torch.tensor(0.0334).double(), atol=0, rtol=1e-3
         )
 
-    def test_output_dtype_float32_sdr(self):
+    @pytest.mark.parametrize(
+        "device",
+        ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda)),
+    )
+    def test_output_dtype_float32_sdr(self, device):
         # float32 on an 8-bit source goes via RGB48 (no 8-bit quantization),
         # so values are close to but not exactly `uint8 / 255`.
         decoder_uint8 = create_from_file(str(NASA_VIDEO.path))
-        add_video_stream(decoder_uint8)
+        add_video_stream(decoder_uint8, device=device)
         uint8_frame, *_ = get_frame_at_index(decoder_uint8, frame_index=0)
 
         decoder_float = create_from_file(str(NASA_VIDEO.path))
-        add_video_stream(decoder_float, output_dtype="float32")
+        add_video_stream(decoder_float, output_dtype="float32", device=device)
         float_frame, *_ = get_frame_at_index(decoder_float, frame_index=0)
 
         assert float_frame.dtype == torch.float32
-        torch.testing.assert_close(
-            float_frame, uint8_frame.to(torch.float32) / 255.0, rtol=0, atol=4 / 255
-        )
+        if device == "cpu":
+            torch.testing.assert_close(
+                float_frame,
+                uint8_frame.to(torch.float32) / 255.0,
+                rtol=0,
+                atol=4 / 255,
+            )
+        else:
+            # On CUDA, SDR float32 goes through CPU fallback while uint8
+            # goes through NVDEC, so we compare against CPU float32 instead.
+            decoder_cpu_float = create_from_file(str(NASA_VIDEO.path))
+            add_video_stream(decoder_cpu_float, output_dtype="float32")
+            cpu_float_frame, *_ = get_frame_at_index(decoder_cpu_float, frame_index=0)
+            torch.testing.assert_close(
+                float_frame.cpu(), cpu_float_frame, rtol=0, atol=4 / 255
+            )
 
     @pytest.mark.xfail(
         IS_WINDOWS and ffmpeg_major_version < 5,
@@ -855,6 +872,8 @@ class TestVideoDecoderOps:
 
     @needs_cuda
     def test_output_dtype_float32_cpu_fallback(self):
+        # H264_10BITS triggers CPU fallback on NVDEC. float32 output should
+        # still work via the CPU fallback path.
         asset = H264_10BITS
 
         decoder_cpu = create_from_file(str(asset.path))
@@ -863,10 +882,14 @@ class TestVideoDecoderOps:
         decoder_cuda = create_from_file(str(asset.path))
         add_video_stream(decoder_cuda, output_dtype="float32", device="cuda")
 
-        with pytest.raises(
-            RuntimeError, match="is not yet supported when NVDEC falls back to CPU"
-        ):
-            get_frame_at_index(decoder_cuda, frame_index=0)
+        for frame_index in [0, 5, 10]:
+            cpu_frame, *_ = get_frame_at_index(decoder_cpu, frame_index=frame_index)
+            cuda_frame, *_ = get_frame_at_index(decoder_cuda, frame_index=frame_index)
+            assert cuda_frame.dtype == torch.float32
+            assert cuda_frame.device.type == "cuda"
+            # CPU fallback goes through NV12 (8-bit), so 10-bit content
+            # loses precision. Generous tolerance accordingly.
+            torch.testing.assert_close(cuda_frame.cpu(), cpu_frame, rtol=0, atol=0.32)
 
 
 class TestAudioDecoderOps:

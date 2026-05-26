@@ -116,6 +116,13 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   Rotation rotation_ = Rotation::NONE;
   OutputDtype outputDtype_ = OutputDtype::UINT8;
   cudaVideoSurfaceFormat outputSurfaceFormat_ = cudaVideoSurfaceFormat_NV12;
+
+  // Stored from initialize() for deferred use in initializeVideo(), where
+  // we know the outputDtype and can make the NVDEC-vs-CPU-fallback decision.
+  // These are non-owning: SingleStreamDecoder owns them and outlives us.
+  // codecContext_ is inherited from DeviceInterface.
+  const AVStream* avStream_ = nullptr;
+  const UniqueDecodingAVFormatContext* avFormatCtx_ = nullptr;
 };
 
 } // namespace facebook::torchcodec

@@ -191,7 +191,8 @@ std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
 
 bool nativeNVDECSupport(
     const StableDevice& device,
-    const SharedAVCodecContext& codecContext) {
+    const SharedAVCodecContext& codecContext,
+    OutputDtype outputDtype) {
   // Return true iff the input video stream is supported by our NVDEC
   // implementation.
 
@@ -238,24 +239,17 @@ bool nativeNVDECSupport(
     return false;
   }
 
-  // We check NV12 support here as a baseline. P016 support for HDR is
-  // checked later in streamPropertyChange() when we know the outputDtype.
-  bool supportsNV12Output =
-      (caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1;
-  if (!supportsNV12Output) {
+  // TODO_HDR: when P016 is not supported (e.g. 8-bit content), we fall back
+  // to CPU. Instead, we could use NV12 and convert uint8 to float32 after
+  // NPP color conversion, which would keep decoding on the GPU.
+  auto neededFormat = outputDtype == OutputDtype::FLOAT32
+      ? cudaVideoSurfaceFormat_P016
+      : cudaVideoSurfaceFormat_NV12;
+  if (!((caps.nOutputFormatMask >> neededFormat) & 1)) {
     return false;
   }
 
   return true;
-}
-
-static cudaVideoSurfaceFormat chooseSurfaceFormat(
-    OutputDtype outputDtype,
-    unsigned int bitDepthMinus8) {
-  if (outputDtype == OutputDtype::FLOAT32 && bitDepthMinus8 > 0) {
-    return cudaVideoSurfaceFormat_P016;
-  }
-  return cudaVideoSurfaceFormat_NV12;
 }
 
 // Callback for freeing CUDA memory associated with AVFrame see where it's used
@@ -289,9 +283,70 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
 
 void BetaCudaDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
-    [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
-    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
+    const std::vector<std::unique_ptr<Transform>>& transforms,
+    const std::optional<FrameDims>& resizedOutputDims) {
   outputDtype_ = videoStreamOptions.outputDtype;
+
+  if (!nvcuvidAvailable_ ||
+      !nativeNVDECSupport(device_, codecContext_, outputDtype_)) {
+    if (!nvcuvidAvailable_) {
+      TC_LOG("NVCUVID library not available; falling back to CPU decoding.");
+    } else {
+      TC_LOG(
+          "Video stream not supported by NVDEC; falling back to CPU decoding.");
+    }
+    cpuFallback_ = createDeviceInterface(kStableCPU);
+    STD_TORCH_CHECK(
+        cpuFallback_ != nullptr, "Failed to create CPU device interface");
+    cpuFallback_->initialize(avStream_, *avFormatCtx_, codecContext_);
+    cpuFallback_->initializeVideo(
+        videoStreamOptions, transforms, resizedOutputDims);
+    return;
+  }
+
+  timeBase_ = avStream_->time_base;
+  frameRateAvgFromFFmpeg_ = avStream_->r_frame_rate;
+
+  const AVCodecParameters* codecPar = avStream_->codecpar;
+  STD_TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
+
+  initializeBSF(codecPar, *avFormatCtx_);
+
+  // Create parser. Default values that aren't obvious are taken from DALI.
+  CUVIDPARSERPARAMS parserParams = {};
+  auto codecType = validateCodecSupport(codecPar->codec_id);
+  STD_TORCH_CHECK(
+      codecType.has_value(),
+      "This should never happen, we should be using the CPU fallback by now. "
+      "Please report a bug.");
+  parserParams.CodecType = codecType.value();
+  parserParams.ulMaxNumDecodeSurfaces = 8;
+  parserParams.ulMaxDisplayDelay = 0;
+  // Callback setup, all are triggered by the parser within a call
+  // to cuvidParseVideoData
+  parserParams.pUserData = this;
+  parserParams.pfnSequenceCallback = pfnSequenceCallback;
+  parserParams.pfnDecodePicture = pfnDecodePictureCallback;
+  parserParams.pfnDisplayPicture = pfnDisplayPictureCallback;
+
+  // Some containers (e.g. MP4/MOV) store codec config (H.264 SPS/PPS,
+  // MPEG-4 VOS/VOL, etc.) in extradata rather than inline in the
+  // bitstream. The NVCUVID parser needs this data to initialize, so we
+  // pass it via pExtVideoInfo. Same approach as DALI and FFmpeg cuviddec.
+  // DALI does the same thing
+  // https://github.com/NVIDIA/DALI/blob/ae79f316ae9b14c464d9cb98465f7f783da9ea89/dali/operators/video/frames_decoder_gpu.cc#L402-L408
+  if (codecPar->extradata_size > 0) {
+    auto seqhdrSize = std::min(
+        static_cast<size_t>(codecPar->extradata_size),
+        sizeof(parserExtInfo_.raw_seqhdr_data));
+    parserExtInfo_.format.seqhdr_data_length = seqhdrSize;
+    memcpy(parserExtInfo_.raw_seqhdr_data, codecPar->extradata, seqhdrSize);
+    parserParams.pExtVideoInfo = &parserExtInfo_;
+  }
+
+  CUresult result = cuvidCreateVideoParser(&videoParser_, &parserParams);
+  STD_TORCH_CHECK(
+      result == CUDA_SUCCESS, "Failed to create video parser: ", result);
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
@@ -321,65 +376,9 @@ void BetaCudaDeviceInterface::initialize(
     [[maybe_unused]] const SharedAVCodecContext& codecContext) {
   STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
   rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
-  if (!nvcuvidAvailable_ || !nativeNVDECSupport(device_, codecContext)) {
-    if (!nvcuvidAvailable_) {
-      TC_LOG("NVCUVID library not available; falling back to CPU decoding.");
-    } else {
-      TC_LOG(
-          "Video stream not supported by NVDEC; falling back to CPU decoding.");
-    }
-    cpuFallback_ = createDeviceInterface(kStableCPU);
-    STD_TORCH_CHECK(
-        cpuFallback_ != nullptr, "Failed to create CPU device interface");
-    cpuFallback_->initialize(avStream, avFormatCtx, codecContext);
-    cpuFallback_->initializeVideo(
-        VideoStreamOptions(), {}, /*resizedOutputDims=*/std::nullopt);
-    // We'll always use the CPU fallback from now on, so we can return early.
-    return;
-  }
-
-  timeBase_ = avStream->time_base;
-  frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
-
-  const AVCodecParameters* codecPar = avStream->codecpar;
-  STD_TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
-
-  initializeBSF(codecPar, avFormatCtx);
-
-  // Create parser. Default values that aren't obvious are taken from DALI.
-  CUVIDPARSERPARAMS parserParams = {};
-  auto codecType = validateCodecSupport(codecPar->codec_id);
-  STD_TORCH_CHECK(
-      codecType.has_value(),
-      "This should never happen, we should be using the CPU fallback by now. Please report a bug.");
-  parserParams.CodecType = codecType.value();
-  parserParams.ulMaxNumDecodeSurfaces = 8;
-  parserParams.ulMaxDisplayDelay = 0;
-  // Callback setup, all are triggered by the parser within a call
-  // to cuvidParseVideoData
-  parserParams.pUserData = this;
-  parserParams.pfnSequenceCallback = pfnSequenceCallback;
-  parserParams.pfnDecodePicture = pfnDecodePictureCallback;
-  parserParams.pfnDisplayPicture = pfnDisplayPictureCallback;
-
-  // Some containers (e.g. MP4/MOV) store codec config (H.264 SPS/PPS,
-  // MPEG-4 VOS/VOL, etc.) in extradata rather than inline in the
-  // bitstream. The NVCUVID parser needs this data to initialize, so we
-  // pass it via pExtVideoInfo. Same approach as DALI and FFmpeg cuviddec.
-  // DALI does the same thing
-  // https://github.com/NVIDIA/DALI/blob/ae79f316ae9b14c464d9cb98465f7f783da9ea89/dali/operators/video/frames_decoder_gpu.cc#L402-L408
-  if (codecPar->extradata_size > 0) {
-    auto seqhdrSize = std::min(
-        static_cast<size_t>(codecPar->extradata_size),
-        sizeof(parserExtInfo_.raw_seqhdr_data));
-    parserExtInfo_.format.seqhdr_data_length = seqhdrSize;
-    memcpy(parserExtInfo_.raw_seqhdr_data, codecPar->extradata, seqhdrSize);
-    parserParams.pExtVideoInfo = &parserExtInfo_;
-  }
-
-  CUresult result = cuvidCreateVideoParser(&videoParser_, &parserParams);
-  STD_TORCH_CHECK(
-      result == CUDA_SUCCESS, "Failed to create video parser: ", result);
+  avStream_ = avStream;
+  avFormatCtx_ = &avFormatCtx;
+  codecContext_ = codecContext;
 }
 
 void BetaCudaDeviceInterface::initializeBSF(
@@ -480,27 +479,9 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
 
   videoFormat_ = *videoFormat;
 
-  outputSurfaceFormat_ =
-      chooseSurfaceFormat(outputDtype_, videoFormat_.bit_depth_luma_minus8);
-
-  // Verify P016 hardware support if requested
-  if (outputSurfaceFormat_ == cudaVideoSurfaceFormat_P016) {
-    auto [result, caps] = getDecoderCapsCache().getDecoderCaps(
-        getDeviceIndex(device_),
-        videoFormat_.codec,
-        videoFormat_.chroma_format,
-        videoFormat_.bit_depth_luma_minus8);
-
-    bool supportsP016 = (result == CUDA_SUCCESS) && caps.bIsSupported &&
-        ((caps.nOutputFormatMask >> cudaVideoSurfaceFormat_P016) & 1);
-
-    if (!supportsP016) {
-      TC_LOG(
-          "P016 output not supported by NVDEC for this codec/resolution. "
-          "Falling back to NV12 (HDR precision will be reduced to 8-bit).");
-      outputSurfaceFormat_ = cudaVideoSurfaceFormat_NV12;
-    }
-  }
+  outputSurfaceFormat_ = outputDtype_ == OutputDtype::FLOAT32
+      ? cudaVideoSurfaceFormat_P016
+      : cudaVideoSurfaceFormat_NV12;
 
   if (videoFormat_.min_num_decode_surfaces == 0) {
     // Same as DALI's fallback
@@ -935,12 +916,6 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     FrameOutput& frameOutput,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   if (cpuFallback_) {
-    STD_TORCH_CHECK(
-        outputDtype_ != OutputDtype::FLOAT32,
-        "output_dtype='float32' is not yet supported when NVDEC falls back to "
-        "CPU decoding on CUDA. This can happen when the video codec or format "
-        "is not natively supported by NVDEC hardware.");
-
     // When the CPU fallback happens, we'll try to run the color-conversion on
     // GPU by sending those CPU frames to the GPU as NV12 (See
     // transferCpuFrameToGpuNV12() below). However, it's not always possible:
