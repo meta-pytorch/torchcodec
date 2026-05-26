@@ -855,10 +855,6 @@ class TestVideoDecoderOps:
 
     @needs_cuda
     def test_output_dtype_float32_cpu_fallback(self):
-        # CPU fallback path: H264 10-bit is not supported by NVDEC, so
-        # BetaCudaDeviceInterface falls back to CPU decoding + CPU color
-        # conversion, then moves the result to GPU. This should give exact
-        # match with pure CPU decoding.
         asset = H264_10BITS
 
         decoder_cpu = create_from_file(str(asset.path))
@@ -867,19 +863,10 @@ class TestVideoDecoderOps:
         decoder_cuda = create_from_file(str(asset.path))
         add_video_stream(decoder_cuda, output_dtype="float32", device="cuda")
 
-        for frame_index in [0, 10, 20, 5]:
-            cpu_frame, *_ = get_frame_at_index(decoder_cpu, frame_index=frame_index)
-            cuda_frame, *_ = get_frame_at_index(decoder_cuda, frame_index=frame_index)
-            assert cuda_frame.dtype == torch.float32
-            assert cuda_frame.device.type == "cuda"
-            assert_frames_equal(cuda_frame.cpu(), cpu_frame)
-
-        # Also check batch API
-        indices = [0, 10, 20, 5]
-        cpu_frames, *_ = get_frames_at_indices(decoder_cpu, frame_indices=indices)
-        cuda_frames, *_ = get_frames_at_indices(decoder_cuda, frame_indices=indices)
-        assert cuda_frames.device.type == "cuda"
-        assert_frames_equal(cuda_frames.cpu(), cpu_frames)
+        with pytest.raises(
+            RuntimeError, match="is not yet supported when NVDEC falls back to CPU"
+        ):
+            get_frame_at_index(decoder_cuda, frame_index=0)
 
 
 class TestAudioDecoderOps:
