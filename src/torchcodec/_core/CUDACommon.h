@@ -31,24 +31,14 @@ inline int roundUpToEven(int value) {
 
 cudaStream_t getCurrentCudaStream(int32_t deviceIndex);
 
+// Make waitingStream wait until all work currently enqueued on runningStream
+// has completed.
+void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream);
+
 void initializeCudaContextWithPytorch(const StableDevice& device);
 
 // Unique pointer type for NPP stream context
 using UniqueNppContext = std::unique_ptr<NppStreamContext>;
-
-// Convert a P016 frame (16-bit NV12, on GPU) to an RGB16 (uint16) tensor.
-// Used for HDR / high-bit-depth content where output_dtype is FLOAT32.
-// The avFrame must have P016 data layout (uint16 Y plane + interleaved UV).
-// bitDepth is the actual bit depth (e.g. 10, 12).
-torch::stable::Tensor convertP016FrameToRGB16(
-    UniqueAVFrame& avFrame,
-    const StableDevice& device,
-    cudaStream_t nvdecStream,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
-    const FrameDims& outputDims,
-    int bitDepth,
-    AVColorSpace colorspace,
-    AVColorRange colorRange);
 
 // Convert an NV12 frame (on GPU) to an RGB tensor. The avFrame must have even
 // width/height matching its actual NV12 data layout.

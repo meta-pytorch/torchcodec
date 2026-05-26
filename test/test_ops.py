@@ -61,6 +61,7 @@ from .utils import (
     SINE_MONO_S32_8000,
     TEST_SRC_2_12BIT_HDR,
     TEST_SRC_2_720P_HDR,
+    TESTSRC2_ODD_DIMS_10BIT,
     unsplit_device_str,
 )
 
@@ -889,6 +890,26 @@ class TestVideoDecoderOps:
             assert cuda_frame.device.type == "cuda"
             # CPU fallback goes through NV12 (8-bit), so 10-bit content
             # loses precision. Generous tolerance accordingly.
+            torch.testing.assert_close(cuda_frame.cpu(), cpu_frame, rtol=0, atol=0.32)
+
+    @needs_cuda
+    def test_output_dtype_float32_odd_dims(self):
+        asset = TESTSRC2_ODD_DIMS_10BIT
+
+        decoder_cpu = create_from_file(str(asset.path))
+        add_video_stream(decoder_cpu, output_dtype="float32")
+
+        decoder_cuda = create_from_file(str(asset.path))
+        add_video_stream(decoder_cuda, output_dtype="float32", device="cuda")
+
+        for frame_index in [0, 5, 10]:
+            cpu_frame, *_ = get_frame_at_index(decoder_cpu, frame_index=frame_index)
+            cuda_frame, *_ = get_frame_at_index(decoder_cuda, frame_index=frame_index)
+            assert cuda_frame.dtype == torch.float32
+            assert cuda_frame.device.type == "cuda"
+            assert cuda_frame.shape == cpu_frame.shape
+            assert cuda_frame.shape[1] == 241
+            assert cuda_frame.shape[2] == 321
             torch.testing.assert_close(cuda_frame.cpu(), cpu_frame, rtol=0, atol=0.32)
 
 
