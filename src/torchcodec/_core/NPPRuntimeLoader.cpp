@@ -75,31 +75,24 @@ static T* bindFunction(tHandle handle, const char* functionName) {
 
 static bool _loadLibrary() {
 #if defined(WIN64) || defined(_WIN64)
-  static LPCSTR nppiccDlls[] = {
-      "nppicc64_12.dll",
-      "nppicc64_13.dll",
-  };
-  for (auto dll : nppiccDlls) {
-    g_nppicc_handle = LoadLibraryA(dll);
-    if (g_nppicc_handle != nullptr) {
-      break;
-    }
-  }
-  if (g_nppicc_handle == nullptr) {
-    return false;
-  }
+#if CUDART_VERSION >= 13000
+  g_nppicc_handle = LoadLibraryA("nppicc64_13.dll");
+#else
+  g_nppicc_handle = LoadLibraryA("nppicc64_12.dll");
+#endif
 #else
   g_nppicc_handle = dlopen("libnppicc.so", RTLD_NOW);
   if (g_nppicc_handle == nullptr) {
-    g_nppicc_handle = dlopen("libnppicc.so.12", RTLD_NOW);
-  }
-  if (g_nppicc_handle == nullptr) {
+#if CUDART_VERSION >= 13000
     g_nppicc_handle = dlopen("libnppicc.so.13", RTLD_NOW);
+#else
+    g_nppicc_handle = dlopen("libnppicc.so.12", RTLD_NOW);
+#endif
   }
+#endif
   if (g_nppicc_handle == nullptr) {
     return false;
   }
-#endif
 
   return true;
 }
