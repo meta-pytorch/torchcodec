@@ -1131,6 +1131,11 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
   // round them up to even for NV12.
   FrameDims originalDims(avFrame->height, avFrame->width);
 
+  // TODO_HDR: in case of a CPU fallback, when output_dtype is float32, we
+  // convert the CPU frame to NV12 (8-bit), losing any >8-bit precision.
+  // Instead, we could convert to P016 on CPU and run the GPU P016->RGB16
+  // color conversion, preserving precision and keeping color conversion on
+  // the GPU.
   UniqueAVFrame gpuFrame =
       cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
 
