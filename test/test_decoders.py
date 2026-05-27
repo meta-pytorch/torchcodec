@@ -2547,6 +2547,17 @@ class TestAudioDecoder:
         torch.testing.assert_close(samples.data, reference_samples.data)
         assert samples.pts_seconds == reference_samples.pts_seconds
 
+    def test_fresh_decoder_seek(self, tmp_path):
+        # Non-regression test: on a fresh decoder, get_all_samples() (i.e.
+        # start_seconds=0) must not crash. This used to fail on FLAC with
+        # "Could not seek file to pts=-9223372036854775808" when we
+        # unconditionally seeked on a fresh decoder.
+        from torchcodec.encoders import AudioEncoder
+
+        path = str(tmp_path / "test.flac")
+        AudioEncoder(torch.rand(1, 1000), sample_rate=16000).to_file(path)
+        AudioDecoder(path).get_all_samples()
+
     @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
     @pytest.mark.parametrize("stop_seconds", (None, "duration", 99999999))
     def test_get_all_samples_with_range(self, asset, stop_seconds):

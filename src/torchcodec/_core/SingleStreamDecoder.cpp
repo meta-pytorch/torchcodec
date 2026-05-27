@@ -1201,19 +1201,25 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
   auto targetSeekPts = secondsToClosestPts(
       startSeconds - targetPrerollSeconds, streamInfo.timeBase);
 
-  auto currentEnd = lastDecodedAvFramePts_ + lastDecodedAvFrameDuration_;
-  // We seek if we need to go backwards, or if the target is far enough
-  // forward that decoding every intermediate frame would be wasteful.
-  // On a fresh decoder (lastDecodedAvFramePts_ == INT64_MIN), we're
-  // already at the beginning and don't need to seek at all.
-  bool needsSeek = lastDecodedAvFramePts_ != INT64_MIN &&
-      (startPts < currentEnd ||
-       startPts > currentEnd + (startPts - targetSeekPts));
+  int64_t minPts = streamInfo.stream->start_time != AV_NOPTS_VALUE
+      ? streamInfo.stream->start_time
+      : 0;
+
+  bool needsSeek;
+  if (lastDecodedAvFramePts_ == INT64_MIN) {
+    // Fresh decoder: in theory we'd always seek, but we can't because seeking
+    // to INT64_MIN (the priming-packet path below) fails on some formats like
+    // FLAC, see test_fresh_decoder_seek
+    needsSeek = targetSeekPts > minPts;
+  } else {
+    auto currentEnd = lastDecodedAvFramePts_ + lastDecodedAvFrameDuration_;
+    // We seek if we need to go backwards, or if the target is far enough
+    // forward that decoding every intermediate frame would be wasteful.
+    needsSeek = startPts < currentEnd ||
+        startPts > currentEnd + (startPts - targetSeekPts);
+  }
 
   if (needsSeek) {
-    int64_t minPts = streamInfo.stream->start_time != AV_NOPTS_VALUE
-        ? streamInfo.stream->start_time
-        : 0;
     if (targetSeekPts <= minPts) {
       // Edge case: when seeking to the very beginning of the stream, there
       // are no earlier frames to use as preroll. In that case we seek with
