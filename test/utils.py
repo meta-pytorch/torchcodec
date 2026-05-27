@@ -797,18 +797,6 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH = TestVideo(
     frames={0: {}},
 )
 
-# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
-#  -c:v libx265 -pix_fmt yuv444p10le -color_primaries bt2020 -color_trc smpte2084 \
-#  -colorspace bt2020nc -color_range tv -preset fast -crf 23 testsrc2_odd_dims_10bit.mp4
-TESTSRC2_ODD_DIMS_10BIT = TestVideo(
-    filename="testsrc2_odd_dims_10bit.mp4",
-    default_stream_index=0,
-    stream_infos={
-        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
-    },
-    frames={0: {}},
-)
-
 
 def supports_approximate_mode(asset: TestVideo) -> bool:
     # Those are missing the `duration` field so they fail in approximate mode (on all devices).

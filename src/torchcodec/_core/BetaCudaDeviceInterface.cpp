@@ -399,38 +399,31 @@ static torch::stable::Tensor convertP016FrameToRGB16(
       "x",
       p016Width,
       ". Report a bug if you see this message.");
-
-  int outHeight = outputDims.height;
-  int outWidth = outputDims.width;
   STD_TORCH_CHECK(
-      roundUpToEven(outHeight) == p016Height &&
-          roundUpToEven(outWidth) == p016Width,
+      outputDims.height == p016Height && outputDims.width == p016Width,
       "outputDims ",
-      outHeight,
+      outputDims.height,
       "x",
-      outWidth,
+      outputDims.width,
       " are not consistent with avFrame dimensions ",
       p016Height,
       "x",
       p016Width,
       ". Report a bug if you see this message.");
-  bool needsCrop = (outHeight != p016Height) || (outWidth != p016Width);
 
   torch::stable::Tensor dst;
-  if (needsCrop) {
-    dst = allocateEmptyHWCTensor(
-        FrameDims(p016Height, p016Width), device, OutputDtype::FLOAT32);
-  } else if (preAllocatedOutputTensor.has_value()) {
+  if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
     dst = allocateEmptyHWCTensor(
-        FrameDims(outHeight, outWidth), device, OutputDtype::FLOAT32);
+        FrameDims(p016Height, p016Width), device, OutputDtype::FLOAT32);
   }
 
   cudaStream_t nppStream = getCurrentCudaStream(device.index());
   syncStreams(/*runningStream=*/nvdecStream, /*waitingStream=*/nppStream);
 
   float colorMatrix[3][4];
+  // TODO_HDR this needs to be cached.
   computeP016ColorMatrix(colorspace, colorRange, bitDepth, colorMatrix);
 
   launchP016ToRGB16Kernel(
@@ -446,20 +439,6 @@ static torch::stable::Tensor convertP016FrameToRGB16(
       colorMatrix,
       nppStream);
 
-  if (needsCrop) {
-    if (outHeight != p016Height) {
-      dst = torch::stable::narrow(dst, /*dim=*/0, /*start=*/0, outHeight);
-    }
-    if (outWidth != p016Width) {
-      dst = torch::stable::narrow(dst, /*dim=*/1, /*start=*/0, outWidth);
-      dst = torch::stable::contiguous(dst);
-    }
-    if (preAllocatedOutputTensor.has_value()) {
-      torch::stable::copy_(preAllocatedOutputTensor.value(), dst);
-      return preAllocatedOutputTensor.value();
-    }
-    return dst;
-  }
   return dst;
 }
 
