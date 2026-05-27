@@ -44,7 +44,6 @@ from torchcodec._core.ops import (
 from .utils import (
     all_supported_devices,
     assert_frames_equal,
-    cuda_devices,
     get_python_version,
     NASA_AUDIO,
     NASA_AUDIO_MP3,

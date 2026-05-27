@@ -474,6 +474,9 @@ void BetaCudaDeviceInterface::initializeVideo(
     if (!nvcuvidAvailable_) {
       TC_LOG("NVCUVID library not available; falling back to CPU decoding.");
     } else {
+      // TODO_HDR we might fallback if float32 was requested on a sdr video, the
+      // message logged here as well as the one reported by .cpu_fallback should
+      // be more accurate.
       TC_LOG(
           "Video stream not supported by NVDEC; falling back to CPU decoding.");
     }
