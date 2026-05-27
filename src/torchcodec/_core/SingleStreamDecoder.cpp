@@ -1202,10 +1202,13 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
       startSeconds - targetPrerollSeconds, streamInfo.timeBase);
 
   auto currentEnd = lastDecodedAvFramePts_ + lastDecodedAvFrameDuration_;
-  // We seek if we need to go backwards, or if the target frame is forward and
-  // beyond the pre-roll window.
-  bool needsSeek = startPts < currentEnd ||
-      startPts > currentEnd + (startPts - targetSeekPts);
+  // We seek if we need to go backwards, or if the target is far enough
+  // forward that decoding every intermediate frame would be wasteful.
+  // On a fresh decoder (lastDecodedAvFramePts_ == INT64_MIN), we're
+  // already at the beginning and don't need to seek at all.
+  bool needsSeek = lastDecodedAvFramePts_ != INT64_MIN &&
+      (startPts < currentEnd ||
+       startPts > currentEnd + (startPts - targetSeekPts));
 
   if (needsSeek) {
     int64_t minPts = streamInfo.stream->start_time != AV_NOPTS_VALUE
