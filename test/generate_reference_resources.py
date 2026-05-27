@@ -151,7 +151,7 @@ def generate_nasa_13013_references_by_index():
     # Note: The naming scheme used here must match the naming scheme used to load
     # tensors in ./utils.py.
     streams = [0, 3]
-    frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 20, 25, 30, 35, 386, 387, 388, 389]
+    frames = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 35, 386, 387, 388, 389]
     for stream in streams:
         for frame in frames:
             generate_frame_by_index(NASA_VIDEO, frame_index=frame, stream_index=stream)
@@ -216,9 +216,18 @@ def generate_av1_video_references():
 
 def generate_hdr_references_rgb48():
     frames = [0, 5, 10]
-    for video in (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR):
+    for video in (
+        NASA_VIDEO,
+        NASA_VIDEO_HDR,
+        TEST_SRC_2_720P_HDR,
+        TEST_SRC_2_12BIT_HDR,
+    ):
         for frame in frames:
-            generate_frame_by_index_rgb48(video, frame_index=frame, stream_index=0)
+            generate_frame_by_index_rgb48(
+                video,
+                frame_index=frame,
+                stream_index=video.default_stream_index,
+            )
 
 
 def generate_hdr_references_rgb24():
