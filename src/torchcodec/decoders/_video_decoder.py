@@ -125,6 +125,7 @@ class VideoDecoder:
             :class:`~torchcodec.transforms.DecoderTransform` and
             :class:`~torchvision.transforms.v2.Transform`
             objects. Read more about this parameter in :ref:`sphx_glr_generated_examples_decoding_transforms.py`.
+        output_dtype: TODO_HDR: add docs for output_dtype
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
@@ -168,6 +169,8 @@ class VideoDecoder:
         device: str | torch_device | None = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
         transforms: Sequence[DecoderTransform | nn.Module] | None = None,
+        # TODO_HDR
+        output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
@@ -205,6 +208,15 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
+        _DTYPE_TO_STR = {torch.uint8: "uint8", torch.float32: "float32"}
+        if output_dtype != "auto":
+            if output_dtype not in _DTYPE_TO_STR:
+                raise ValueError(
+                    f"Invalid output_dtype ({output_dtype}). "
+                    f"Supported values are torch.uint8, torch.float32, and 'auto'."
+                )
+            output_dtype = _DTYPE_TO_STR[output_dtype]
+
         device_variant = _get_cuda_backend()
         if device is None:
             device = str(torch.get_default_device())
@@ -224,6 +236,7 @@ class VideoDecoder:
             device_variant=device_variant,
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
+            output_dtype=output_dtype,
         )
 
         assert self.metadata.begin_stream_seconds is not None  # mypy.
