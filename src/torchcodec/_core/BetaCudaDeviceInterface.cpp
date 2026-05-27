@@ -259,25 +259,6 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
   cudaFree(opaque);
 }
 
-// Note: [P016 Color Conversion Matrix]
-//
-// For P016 (16-bit NV12), we compute a 3x4 matrix that operates on raw
-// P016 values (after right-shifting to the actual bit depth). The matrix
-// maps Y, U, V to R, G, B in uint16 [0, 65535] output range.
-//
-// The derivation follows the same math as the NV12 NPP ColorTwist matrices
-// (see Note [YUV -> RGB Color Conversion, color space and color range]),
-// but adapted for arbitrary bit depths and uint16 output.
-//
-// For full range, Y is in [0, maxVal] and U, V are in [0, maxVal] where
-// maxVal = 2^bitDepth - 1. U and V need centering: subtract maxVal/2.
-//
-// For limited range (10-bit example):
-//   Y is in [64, 940], U/V in [64, 960]
-//   Y_norm = (Y - 64) / 876
-//   U_norm = (U - 512) / 896, V_norm = (V - 512) / 896
-//
-// The output is scaled to [0, 65535].
 static void computeP016ColorMatrix(
     AVColorSpace colorspace,
     AVColorRange colorRange,
@@ -304,13 +285,6 @@ static void computeP016ColorMatrix(
       break;
   }
 
-  // YUV->RGB inverse matrix (see the Note referenced above):
-  // R = Y + 0*U + (1-kr)/0.5 * V  (simplified from the inverse)
-  // Actually, the standard inverse is:
-  // R = Y + 0 * Cb + (2 - 2*kr) * Cr
-  // G = Y - (2*kb*(1-kb))/(1-kr-kb) * Cb - (2*kr*(1-kr))/(1-kr-kb) * Cr
-  // B = Y + (2 - 2*kb) * Cb + 0 * Cr
-  // where Cb = U - 0.5, Cr = V - 0.5 (in normalized [0,1] space)
   float vScale = 2.0f * (1.0f - kr);
   float uScale = 2.0f * (1.0f - kb);
   float guCoeff = -(2.0f * kb * (1.0f - kb)) / kg;
@@ -322,13 +296,9 @@ static void computeP016ColorMatrix(
   bool isFullRange = (colorRange == AVCOL_RANGE_JPEG);
 
   if (isFullRange) {
-    // Y in [0, maxVal], U/V in [0, maxVal], center at 2^(bitDepth-1)
     float yScale = outScale / maxVal;
     float uvCenter = static_cast<float>(1 << (bitDepth - 1));
 
-    // R = (Y / maxVal + vScale * (V - uvCenter) / maxVal) * outScale
-    //   = Y * (outScale/maxVal) + V * (vScale * outScale/maxVal)
-    //     + (-vScale * uvCenter * outScale / maxVal)
     outMatrix[0][0] = yScale;
     outMatrix[0][1] = 0.0f;
     outMatrix[0][2] = vScale * outScale / maxVal;
@@ -344,19 +314,12 @@ static void computeP016ColorMatrix(
     outMatrix[2][2] = 0.0f;
     outMatrix[2][3] = -uScale * uvCenter * outScale / maxVal;
   } else {
-    // Limited range:
-    // For N-bit: Y in [16*s, 235*s], U/V in [16*s, 240*s]
-    // where s = 2^(bitDepth-8) (the scale from 8-bit to N-bit boundaries)
     float s = static_cast<float>(1 << (bitDepth - 8));
     float yOff = 16.0f * s;
     float yRange = 219.0f * s;
     float uvOff = 128.0f * s;
     float uvRange = 224.0f * s;
 
-    // Y_norm = (Y - yOff) / yRange  (in [0, 1])
-    // U_norm = (U - uvOff) / uvRange (in [-0.5, 0.5])
-    // V_norm = (V - uvOff) / uvRange
-    // R = (Y_norm + vScale * V_norm) * outScale
     float yCoeff = outScale / yRange;
     float uvCoeff_u = outScale / uvRange;
     float uvCoeff_v = outScale / uvRange;

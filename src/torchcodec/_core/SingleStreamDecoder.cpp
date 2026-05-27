@@ -1578,6 +1578,9 @@ torch::stable::Tensor SingleStreamDecoder::maybeConvertToFloat32(
       isUInt16 ? std::numeric_limits<uint16_t>::max()
                : std::numeric_limits<uint8_t>::max());
   auto asFloat = torch::stable::to(tensor, kStableFloat32);
+  // TODO_HDR benchmark this. Is this OK or very inefficient? We're allocating a
+  // whole new tensor for the zeros, it can't be good.
+
   // Multiplication is not in the stable ABI, so we use subtract with alpha
   // as a workaround: zeros - (-1/maxVal) * asFloat == asFloat / maxVal.
   // Same trick as WavDecoder::decode.

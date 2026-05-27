@@ -8,10 +8,14 @@
 
 namespace facebook::torchcodec {
 
-// Color conversion matrix stored in constant memory for fast broadcast access.
+// Color conversion matrix stored in constant memory for fast access.
+// It'll be available to every single thread (each running p016ToRgb16Kernel
+// individually).
 __constant__ float d_colorMatrix[3][4];
 
 __global__ void p016ToRgb16Kernel(
+    // __restrict__ tells the compiler those pointers never overlap with each
+    // other so it can optimize read and writes more aggressively.
     const uint16_t* __restrict__ yPlane,
     const uint16_t* __restrict__ uvPlane,
     uint16_t* __restrict__ rgbOutput,
@@ -19,7 +23,7 @@ __global__ void p016ToRgb16Kernel(
     int height,
     int yPitchElements,
     int uvPitchElements,
-    int rgbStrideElements,
+    int rgbPitchElements,
     int bitShift) {
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -51,7 +55,7 @@ __global__ void p016ToRgb16Kernel(
       d_colorMatrix[2][2] * vVal + d_colorMatrix[2][3];
 
   // Clamp to [0, 65535] and write RGB output
-  int rgbIdx = y * rgbStrideElements + x * 3;
+  int rgbIdx = y * rgbPitchElements + x * 3;
   rgbOutput[rgbIdx + 0] =
       static_cast<uint16_t>(fminf(fmaxf(r, 0.0f), 65535.0f));
   rgbOutput[rgbIdx + 1] =
@@ -66,20 +70,25 @@ void launchP016ToRGB16Kernel(
     uint16_t* rgbOutput,
     int width,
     int height,
-    int yPitchBytes,
-    int uvPitchBytes,
-    int rgbStrideBytes,
+    int yPitch,
+    int uvPitch,
+    int rgbPitch,
     int bitDepth,
     const float colorMatrix[3][4],
     cudaStream_t stream) {
+
+  // TODO_HDR this is a sync point. We should try to make it non-blocking.
+  // E.g. put it on the `stream`? Make it async? Avoid re-sending the matrix if
+  // it hasn't changed from before (it likely didn't for the same video!!)?
   cudaMemcpyToSymbol(
       d_colorMatrix, colorMatrix, sizeof(float) * 12, 0, cudaMemcpyHostToDevice);
 
-  int yPitchElements = yPitchBytes / static_cast<int>(sizeof(uint16_t));
-  int uvPitchElements = uvPitchBytes / static_cast<int>(sizeof(uint16_t));
-  int rgbStrideElements = rgbStrideBytes / static_cast<int>(sizeof(uint16_t));
+  int yPitchElements = yPitch / static_cast<int>(sizeof(uint16_t));
+  int uvPitchElements = uvPitch / static_cast<int>(sizeof(uint16_t));
+  int rgbPitchElements = rgbPitch / static_cast<int>(sizeof(uint16_t));
   int bitShift = 16 - bitDepth;
 
+  // TODO_HDR: investigate perf implications of the block and grid size?
   dim3 block(16, 16);
   dim3 grid(
       (width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
@@ -92,7 +101,7 @@ void launchP016ToRGB16Kernel(
       height,
       yPitchElements,
       uvPitchElements,
-      rgbStrideElements,
+      rgbPitchElements,
       bitShift);
 }
 

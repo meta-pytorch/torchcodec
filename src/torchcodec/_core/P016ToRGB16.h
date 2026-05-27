@@ -23,9 +23,9 @@ void launchP016ToRGB16Kernel(
     uint16_t* rgbOutput,
     int width,
     int height,
-    int yPitchBytes,
-    int uvPitchBytes,
-    int rgbStrideBytes,
+    int yPitch,
+    int uvPitch,
+    int rgbPitch,
     int bitDepth,
     const float colorMatrix[3][4],
     cudaStream_t stream);
