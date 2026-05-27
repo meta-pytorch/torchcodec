@@ -42,11 +42,13 @@ from .utils import (
     H265_10BITS,
     H265_VIDEO,
     in_fbcode,
+    IS_WINDOWS,
     make_video_decoder,
     NASA_AUDIO,
     NASA_AUDIO_MP3,
     NASA_AUDIO_MP3_44100,
     NASA_VIDEO,
+    NASA_VIDEO_HDR,
     NASA_VIDEO_ROTATED,
     needs_cuda,
     needs_ffmpeg_cli,
@@ -57,8 +59,10 @@ from .utils import (
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
     TEST_NON_ZERO_START,
+    TEST_SRC_2_12BIT_HDR,
     TEST_SRC_2_720P,
     TEST_SRC_2_720P_H265,
+    TEST_SRC_2_720P_HDR,
     TEST_SRC_2_720P_MPEG4,
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
@@ -2359,6 +2363,225 @@ class TestVideoDecoder:
             dec = VideoDecoder(NASA_VIDEO.path, device="cuda")
         dec[0]
         assert dec.cpu_fallback._backend == "CUDA"
+
+    @staticmethod
+    def _assert_float32_frame_matches_rgb48_ref(frame_data, asset, frame_index):
+        frame_as_uint16 = (frame_data * 65535).round().to(torch.uint16)
+        ref = asset.get_frame_data_by_index_rgb48(frame_index)
+        torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
+
+    @pytest.mark.xfail(
+        IS_WINDOWS and ffmpeg_major_version < 5,
+        reason="swscale YUV->RGB differs on Windows + FFmpeg 4",
+    )
+    @pytest.mark.parametrize(
+        "asset",
+        (NASA_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR),
+    )
+    def test_output_dtype_uint8(self, asset):
+        decoder = VideoDecoder(asset.path, output_dtype=torch.uint8)
+        frame_indices = [0, 5, 10]
+        for frame_index in frame_indices:
+            frame = decoder[frame_index]
+            assert frame.dtype == torch.uint8
+            assert_frames_equal(frame.data, asset.get_frame_data_by_index(frame_index))
+
+    @pytest.mark.xfail(
+        IS_WINDOWS and ffmpeg_major_version < 5,
+        reason="swscale YUV->RGB48 differs on Windows + FFmpeg 4",
+    )
+    @pytest.mark.parametrize(
+        "asset",
+        (NASA_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR),
+    )
+    def test_output_dtype_float32(self, asset):
+        decoder = VideoDecoder(asset.path, output_dtype=torch.float32)
+        frame_indices = [0, 5, 10]
+        for frame_index in frame_indices:
+            frame = decoder[frame_index]
+            assert frame.dtype == torch.float32
+
+            self._assert_float32_frame_matches_rgb48_ref(frame.data, asset, frame_index)
+
+    @pytest.mark.xfail(
+        IS_WINDOWS and ffmpeg_major_version < 5,
+        reason="swscale YUV->RGB48 differs on Windows + FFmpeg 4",
+    )
+    @pytest.mark.parametrize(
+        "asset, is_hdr",
+        (
+            (NASA_VIDEO, False),
+            (NASA_VIDEO_HDR, True),
+            (TEST_SRC_2_720P_HDR, True),
+            (TEST_SRC_2_12BIT_HDR, True),
+        ),
+    )
+    def test_output_dtype_auto(self, asset, is_hdr):
+        decoder = VideoDecoder(asset.path, output_dtype="auto")
+        frame_indices = [0, 5, 10]
+        for frame_index in frame_indices:
+            frame = decoder[frame_index]
+
+            if is_hdr:
+                assert frame.dtype == torch.float32
+                frame_as_uint16 = (frame.data * 65535).round().to(torch.uint16)
+                ref = asset.get_frame_data_by_index_rgb48(frame_index)
+                torch.testing.assert_close(frame_as_uint16, ref, rtol=0, atol=0)
+            else:
+                assert frame.dtype == torch.uint8
+                ref = asset.get_frame_data_by_index(frame_index)
+                assert_frames_equal(frame.data, ref)
+
+    @pytest.mark.xfail(
+        IS_WINDOWS and ffmpeg_major_version < 5,
+        reason="swscale YUV->RGB48 differs on Windows + FFmpeg 4",
+    )
+    @pytest.mark.parametrize(
+        "asset",
+        (NASA_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR),
+    )
+    def test_output_dtype_float32_batch_apis(self, asset):
+        decoder = VideoDecoder(asset.path, output_dtype=torch.float32)
+        indices = [0, 5, 10]
+
+        # get_frame_at
+        self._assert_float32_frame_matches_rgb48_ref(
+            decoder.get_frame_at(0).data, asset, 0
+        )
+
+        # get_frames_at
+        frames = decoder.get_frames_at(indices)
+        for i, idx in enumerate(indices):
+            self._assert_float32_frame_matches_rgb48_ref(frames.data[i], asset, idx)
+
+        # get_frames_in_range
+        frames_range = decoder.get_frames_in_range(start=5, stop=11)
+        self._assert_float32_frame_matches_rgb48_ref(frames_range.data[0], asset, 5)
+        self._assert_float32_frame_matches_rgb48_ref(frames_range.data[5], asset, 10)
+
+    @pytest.mark.xfail(
+        IS_WINDOWS and ffmpeg_major_version < 5,
+        reason="swscale YUV->RGB48 differs on Windows + FFmpeg 4",
+    )
+    @pytest.mark.parametrize(
+        "asset",
+        (NASA_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR),
+    )
+    def test_output_dtype_float32_pts_apis(self, asset):
+        decoder = VideoDecoder(asset.path, output_dtype=torch.float32)
+        indices = [0, 5, 10]
+
+        pts_seconds_ref = [decoder.get_frame_at(i).pts_seconds for i in indices]
+
+        # get_frame_played_at
+        for pts, idx in zip(pts_seconds_ref, indices):
+            frame = decoder.get_frame_played_at(pts)
+            self._assert_float32_frame_matches_rgb48_ref(frame.data, asset, idx)
+
+        # get_frames_played_in_range (full range)
+        frames = decoder.get_frames_played_in_range(
+            start_seconds=0,
+            stop_seconds=pts_seconds_ref[-1] + 1e-4,
+        )
+        for idx in indices:
+            self._assert_float32_frame_matches_rgb48_ref(frames.data[idx], asset, idx)
+
+        # get_frames_played_in_range (single-frame ranges)
+        for pts, idx in zip(pts_seconds_ref, indices):
+            frames = decoder.get_frames_played_in_range(
+                start_seconds=pts, stop_seconds=pts + 1e-4
+            )
+            self._assert_float32_frame_matches_rgb48_ref(frames.data[0], asset, idx)
+
+        # get_frames_played_at
+        frames = decoder.get_frames_played_at(pts_seconds_ref)
+        for i, idx in enumerate(indices):
+            self._assert_float32_frame_matches_rgb48_ref(frames.data[i], asset, idx)
+
+    @pytest.mark.parametrize("bad_dtype", (torch.float64, torch.int32, "not_a_dtype"))
+    def test_output_dtype_invalid(self, bad_dtype):
+        with pytest.raises(ValueError, match="Invalid output_dtype"):
+            VideoDecoder(NASA_VIDEO.path, output_dtype=bad_dtype)
+
+    @pytest.mark.parametrize(
+        "device",
+        ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda)),
+    )
+    def test_output_dtype_float32_sdr(self, device):
+        # float32 on an 8-bit source goes via RGB48 (no 8-bit quantization),
+        # so values are close to but not exactly `uint8 / 255`.
+        decoder_uint8 = VideoDecoder(NASA_VIDEO.path, device=device)
+        uint8_frame = decoder_uint8[0]
+
+        decoder_float = VideoDecoder(
+            NASA_VIDEO.path, output_dtype=torch.float32, device=device
+        )
+        float_frame = decoder_float[0]
+
+        assert float_frame.dtype == torch.float32
+        if device == "cpu":
+            torch.testing.assert_close(
+                float_frame.data,
+                uint8_frame.data.to(torch.float32) / 255.0,
+                rtol=0,
+                atol=4 / 255,
+            )
+        else:
+            # On CUDA, SDR float32 goes through CPU fallback while uint8
+            # goes through NVDEC, so we compare against CPU float32 instead.
+            decoder_cpu_float = VideoDecoder(
+                NASA_VIDEO.path, output_dtype=torch.float32
+            )
+            cpu_float_frame = decoder_cpu_float[0]
+            torch.testing.assert_close(
+                float_frame.data.cpu(), cpu_float_frame.data, rtol=0, atol=4 / 255
+            )
+
+    @pytest.mark.parametrize("device", cuda_devices())
+    @pytest.mark.parametrize(
+        "asset", (NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR)
+    )
+    def test_output_dtype_float32_hdr_cuda(self, asset, device):
+        # NVDEC native path: NVDEC decodes to P016, our CUDA kernel converts
+        # to uint16 RGB, then to float32. The NVDEC hardware decoder produces
+        # slightly different raw YUV values than FFmpeg's CPU decoder, so we
+        # compare CUDA against CPU with tolerance rather than against the
+        # exact rgb48 reference.
+        decoder_cpu = VideoDecoder(asset.path, output_dtype=torch.float32)
+        decoder_cuda = VideoDecoder(
+            asset.path, output_dtype=torch.float32, device=device
+        )
+
+        for frame_index in [0, 5, 10]:
+            cpu_frame = decoder_cpu[frame_index]
+            cuda_frame = decoder_cuda[frame_index]
+            assert cuda_frame.dtype == torch.float32
+            assert cuda_frame.data.device.type == "cuda"
+            torch.testing.assert_close(
+                cuda_frame.data.cpu(), cpu_frame.data, rtol=0, atol=0.32
+            )
+
+    @needs_cuda
+    def test_output_dtype_float32_cpu_fallback(self):
+        # H264_10BITS triggers CPU fallback on NVDEC. float32 output should
+        # still work via the CPU fallback path.
+        asset = H264_10BITS
+
+        decoder_cpu = VideoDecoder(asset.path, output_dtype=torch.float32)
+        decoder_cuda = VideoDecoder(
+            asset.path, output_dtype=torch.float32, device="cuda"
+        )
+
+        for frame_index in [0, 5, 10]:
+            cpu_frame = decoder_cpu[frame_index]
+            cuda_frame = decoder_cuda[frame_index]
+            assert cuda_frame.dtype == torch.float32
+            assert cuda_frame.data.device.type == "cuda"
+            # CPU fallback goes through NV12 (8-bit), so 10-bit content
+            # loses precision. Generous tolerance accordingly.
+            torch.testing.assert_close(
+                cuda_frame.data.cpu(), cpu_frame.data, rtol=0, atol=0.32
+            )
 
 
 class TestAudioDecoder:
