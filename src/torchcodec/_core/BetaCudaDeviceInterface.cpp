@@ -259,8 +259,6 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
   cudaFree(opaque);
 }
 
-} // namespace
-
 // Note: [P016 Color Conversion Matrix]
 //
 // For P016 (16-bit NV12), we compute a 3x4 matrix that operates on raw
@@ -380,6 +378,7 @@ static void computeP016ColorMatrix(
     outMatrix[2][3] = -yCoeff * yOff - uScale * uvCoeff_u * uvOff;
   }
 }
+} // namespace
 
 static torch::stable::Tensor convertP016FrameToRGB16(
     UniqueAVFrame& avFrame,
@@ -1109,8 +1108,16 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     // on the CPU and then send the full RGB frame to the GPU.
     const AVPixFmtDescriptor* desc =
         av_pix_fmt_desc_get(static_cast<AVPixelFormat>(avFrame->format));
-    if (desc && desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0) {
-      // 4:4:4: converting through NV12 (4:2:0) would lose chroma resolution.
+    bool is444 = desc && desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0;
+    if (is444 || outputDtype_ == OutputDtype::FLOAT32) {
+      // We do the full color-conversion on CPU and transfer to GPU when:
+      // - 4:4:4: converting through NV12 (4:2:0) would lose chroma
+      //   resolution.
+      // - float32: the NV12 path produces uint8 RGB, but float32 output
+      //   needs uint16 (RGB48). The CPU path handles this correctly.
+      //   TODO_HDR: we could instead convert to P016 on CPU and use the
+      //   GPU P016->RGB16 color conversion, preserving precision while
+      //   keeping color conversion on GPU.
       FrameOutput cpuFrameOutput;
       cpuFallback_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
       if (preAllocatedOutputTensor.has_value()) {
@@ -1131,11 +1138,6 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
   // round them up to even for NV12.
   FrameDims originalDims(avFrame->height, avFrame->width);
 
-  // TODO_HDR: in case of a CPU fallback, when output_dtype is float32, we
-  // convert the CPU frame to NV12 (8-bit), losing any >8-bit precision.
-  // Instead, we could convert to P016 on CPU and run the GPU P016->RGB16
-  // color conversion, preserving precision and keeping color conversion on
-  // the GPU.
   UniqueAVFrame gpuFrame =
       cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
 

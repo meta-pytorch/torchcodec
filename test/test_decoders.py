@@ -2452,11 +2452,15 @@ class TestVideoDecoder:
                 assert frame.dtype == torch.uint8
 
     @pytest.mark.parametrize(
+        "device",
+        ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda)),
+    )
+    @pytest.mark.parametrize(
         "asset",
         (NASA_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR),
     )
-    def test_output_dtype_float32_batch_apis(self, asset):
-        decoder = VideoDecoder(asset.path, output_dtype=torch.float32)
+    def test_output_dtype_float32_batch_apis(self, asset, device):
+        decoder = VideoDecoder(asset.path, output_dtype=torch.float32, device=device)
         indices = [0, 5, 10]
 
         # get_frame_at
@@ -2475,11 +2479,15 @@ class TestVideoDecoder:
         self._assert_float32_frame_matches_rgb48_ref(frames_range.data[5], asset, 10)
 
     @pytest.mark.parametrize(
+        "device",
+        ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda)),
+    )
+    @pytest.mark.parametrize(
         "asset",
         (NASA_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR),
     )
-    def test_output_dtype_float32_pts_apis(self, asset):
-        decoder = VideoDecoder(asset.path, output_dtype=torch.float32)
+    def test_output_dtype_float32_pts_apis(self, asset, device):
+        decoder = VideoDecoder(asset.path, output_dtype=torch.float32, device=device)
         indices = [0, 5, 10]
 
         pts_seconds_ref = [decoder.get_frame_at(i).pts_seconds for i in indices]
