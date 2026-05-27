@@ -68,9 +68,9 @@ int AVIOFileLikeContext::read(void* opaque, uint8_t* buf, int buf_size) {
         numBytesRead,
         " bytes. The given object does not conform to read protocol of file object.");
 
-    std::memcpy(buf, bytesView.data(), numBytesRead);
-    buf += numBytesRead;
-    totalNumRead += numBytesRead;
+    std::memcpy(buf, bytesView.data(), numBytesToRead);
+    buf += numBytesToRead;
+    totalNumRead += numBytesToRead;
   }
 
   return totalNumRead == 0 ? AVERROR_EOF : totalNumRead;
