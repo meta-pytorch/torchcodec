@@ -2523,6 +2523,13 @@ class TestVideoDecoder:
             VideoDecoder(NASA_VIDEO.path, output_dtype=bad_dtype)
 
     @needs_cuda
+    @pytest.mark.parametrize("output_dtype", (torch.float32, "auto"))
+    def test_output_dtype_not_uint8_ffmpeg_cuda_backend(self, output_dtype):
+        with set_cuda_backend("ffmpeg"):
+            with pytest.raises(ValueError, match="not supported with the 'ffmpeg'"):
+                VideoDecoder(NASA_VIDEO.path, output_dtype=output_dtype, device="cuda")
+
+    @needs_cuda
     def test_output_dtype_float32_cpu_fallback(self):
         # H264_10BITS triggers CPU fallback on NVDEC. float32 output should
         # still work via the CPU fallback path.
