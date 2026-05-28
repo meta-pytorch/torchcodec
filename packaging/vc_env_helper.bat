@@ -33,7 +33,7 @@ set DISTUTILS_USE_SDK=1
 set BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1
 
 if "%CU_VERSION:~0,2%" == "cu" set ENABLE_CUDA=1
-if defined CUDA_PATH set CMAKE_CUDA_COMPILER=%CUDA_PATH%\bin\nvcc.exe
+if defined CUDA_PATH set CUDACXX=%CUDA_PATH%\bin\nvcc.exe
 
 set args=%1
 shift
