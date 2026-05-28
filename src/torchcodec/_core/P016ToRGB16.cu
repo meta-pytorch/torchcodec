@@ -39,6 +39,9 @@ __global__ void p016ToRgb16Kernel(
     int uvPitchElements,
     int rgbPitchElements,
     int bitShift) {
+  // TODO_HDR: our implem has each thread write one single pixel, so each UV pair
+  // (corresponding to a 2x2 pixel block) is read by four threads. We could have
+  // each thread handle a 2x2 output block instead, to optimize reads.
   int x = blockIdx.x * blockDim.x + threadIdx.x;
   int y = blockIdx.y * blockDim.y + threadIdx.y;
 
