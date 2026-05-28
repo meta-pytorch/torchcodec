@@ -88,6 +88,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const CUVIDPARSERDISPINFO& dispInfo);
 
   UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
+  UniqueAVFrame transferCpuFrameToGpuP016(UniqueAVFrame& cpuFrame);
 
   void applyRotation(
       FrameOutput& frameOutput,

@@ -1063,29 +1063,143 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
   return gpuFrame;
 }
 
+UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuP016(
+    UniqueAVFrame& cpuFrame) {
+  // Same idea as transferCpuFrameToGpuNV12, but converts to P016 (16-bit
+  // semi-planar YUV 4:2:0) instead of NV12. This is used in the CPU
+  // fallback path when float32 output is requested: we convert to P016 on
+  // CPU, transfer to GPU, and then run the GPU P016->RGB16 color
+  // conversion kernel.
+
+  STD_TORCH_CHECK(cpuFrame != nullptr, "CPU frame cannot be null");
+
+  int width = cpuFrame->width;
+  int height = cpuFrame->height;
+  int evenWidth = roundUpToEven(width);
+  int evenHeight = roundUpToEven(height);
+
+  UniqueAVFrame p016CpuFrame(av_frame_alloc());
+  STD_TORCH_CHECK(p016CpuFrame != nullptr, "Failed to allocate P016 CPU frame");
+
+  p016CpuFrame->format = AV_PIX_FMT_P016LE;
+  p016CpuFrame->width = evenWidth;
+  p016CpuFrame->height = evenHeight;
+
+  int ret = av_frame_get_buffer(p016CpuFrame.get(), 0);
+  STD_TORCH_CHECK(
+      ret >= 0,
+      "Failed to allocate P016 CPU frame buffer: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
+
+  SwsConfig swsConfig(
+      width,
+      height,
+      static_cast<AVPixelFormat>(cpuFrame->format),
+      cpuFrame->colorspace,
+      evenWidth,
+      evenHeight,
+      AV_PIX_FMT_P016LE);
+
+  if (!swsContext_ || prevSwsConfig_ != swsConfig) {
+    swsContext_ = createSwsContext(swsConfig, SWS_BILINEAR);
+    prevSwsConfig_ = swsConfig;
+  }
+
+  int convertedHeight = sws_scale(
+      swsContext_.get(),
+      cpuFrame->data,
+      cpuFrame->linesize,
+      0,
+      height,
+      p016CpuFrame->data,
+      p016CpuFrame->linesize);
+  STD_TORCH_CHECK(
+      convertedHeight == evenHeight,
+      "sws_scale failed for CPU->P016 conversion");
+
+  // P016: 2 bytes per sample. Y plane = evenWidth * evenHeight * 2,
+  // UV plane = evenWidth * (evenHeight / 2) * 2 = evenWidth * evenHeight
+  int ySize = evenWidth * evenHeight * 2;
+  int uvSize = evenWidth * evenHeight;
+  size_t totalSize = static_cast<size_t>(ySize + uvSize);
+
+  uint8_t* cudaBuffer = nullptr;
+  cudaError_t err =
+      cudaMalloc(reinterpret_cast<void**>(&cudaBuffer), totalSize);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to allocate CUDA memory: ",
+      cudaGetErrorString(err));
+
+  UniqueAVFrame gpuFrame(av_frame_alloc());
+  STD_TORCH_CHECK(gpuFrame != nullptr, "Failed to allocate GPU AVFrame");
+
+  gpuFrame->format = AV_PIX_FMT_CUDA;
+  gpuFrame->width = evenWidth;
+  gpuFrame->height = evenHeight;
+  gpuFrame->data[0] = cudaBuffer;
+  gpuFrame->data[1] = cudaBuffer + ySize;
+  // P016: each row is evenWidth * 2 bytes (16 bits per sample)
+  gpuFrame->linesize[0] = evenWidth * 2;
+  gpuFrame->linesize[1] = evenWidth * 2;
+
+  err = cudaMemcpy2D(
+      gpuFrame->data[0],
+      gpuFrame->linesize[0],
+      p016CpuFrame->data[0],
+      p016CpuFrame->linesize[0],
+      evenWidth * 2,
+      evenHeight,
+      cudaMemcpyHostToDevice);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy Y plane to GPU: ",
+      cudaGetErrorString(err));
+
+  err = cudaMemcpy2D(
+      gpuFrame->data[1],
+      gpuFrame->linesize[1],
+      p016CpuFrame->data[1],
+      p016CpuFrame->linesize[1],
+      evenWidth * 2,
+      evenHeight / 2,
+      cudaMemcpyHostToDevice);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy UV plane to GPU: ",
+      cudaGetErrorString(err));
+
+  ret = av_frame_copy_props(gpuFrame.get(), cpuFrame.get());
+  STD_TORCH_CHECK(
+      ret >= 0,
+      "Failed to copy frame properties: ",
+      getFFMPEGErrorStringFromErrorCode(ret));
+
+  gpuFrame->opaque_ref =
+      av_buffer_create(nullptr, 0, cudaBufferFreeCallback, cudaBuffer, 0);
+  STD_TORCH_CHECK(
+      gpuFrame->opaque_ref != nullptr,
+      "Failed to create GPU memory cleanup reference");
+
+  return gpuFrame;
+}
+
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   if (cpuFallback_) {
     // When the CPU fallback happens, we'll try to run the color-conversion on
-    // GPU by sending those CPU frames to the GPU as NV12 (See
-    // transferCpuFrameToGpuNV12() below). However, it's not always possible:
-    // NV12 would downsample 4:4:4 frames and lose chroma resolution, resulting
-    // in poorly decoded frames. So for those, we still do the color conversion
-    // on the CPU and then send the full RGB frame to the GPU.
+    // GPU by sending those CPU frames to the GPU as NV12 or P016 (See
+    // transferCpuFrameToGpuNV12/P016() below). However, it's not always
+    // possible: NV12/P016 would downsample 4:4:4 frames and lose chroma
+    // resolution, resulting in poorly decoded frames. So for those, we still
+    // do the color conversion on the CPU and then send the full RGB frame to
+    // the GPU.
     const AVPixFmtDescriptor* desc =
         av_pix_fmt_desc_get(static_cast<AVPixelFormat>(avFrame->format));
     bool is444 = desc && desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0;
-    if (is444 || outputDtype_ == OutputDtype::FLOAT32) {
-      // We do the full color-conversion on CPU and transfer to GPU when:
-      // - 4:4:4: converting through NV12 (4:2:0) would lose chroma
-      //   resolution.
-      // - float32: the NV12 path produces uint8 RGB, but float32 output
-      //   needs uint16 (RGB48). The CPU path handles this correctly.
-      //   TODO_HDR: we could instead convert to P016 on CPU and use the
-      //   GPU P016->RGB16 color conversion, preserving precision while
-      //   keeping color conversion on GPU.
+    if (is444) {
       FrameOutput cpuFrameOutput;
       cpuFallback_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
       if (preAllocatedOutputTensor.has_value()) {
@@ -1102,12 +1216,24 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     }
   }
 
-  // Capture original dimensions before transferCpuFrameToGpuNV12 may
-  // round them up to even for NV12.
+  // Capture original dimensions before transferCpuFrameToGpu{NV12,P016}
+  // may round them up to even.
   FrameDims originalDims(avFrame->height, avFrame->width);
 
-  UniqueAVFrame gpuFrame =
-      cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
+  bool useP016Path;
+  UniqueAVFrame gpuFrame;
+  if (cpuFallback_) {
+    if (outputDtype_ == OutputDtype::FLOAT32) {
+      gpuFrame = transferCpuFrameToGpuP016(avFrame);
+      useP016Path = true;
+    } else {
+      gpuFrame = transferCpuFrameToGpuNV12(avFrame);
+      useP016Path = false;
+    }
+  } else {
+    gpuFrame = std::move(avFrame);
+    useP016Path = (surfaceFormat_ == cudaVideoSurfaceFormat_P016);
+  }
 
   STD_TORCH_CHECK(
       gpuFrame->format == AV_PIX_FMT_CUDA,
@@ -1117,8 +1243,14 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   auto convertFrame = [&](std::optional<torch::stable::Tensor> preAlloc)
       -> torch::stable::Tensor {
-    if (surfaceFormat_ == cudaVideoSurfaceFormat_P016) {
-      int bitDepth = static_cast<int>(videoFormat_.bit_depth_luma_minus8) + 8;
+    if (useP016Path) {
+      // P016LE left-shifts values to the high bits of 16-bit words, so
+      // the color matrix needs the actual source bit depth. When coming
+      // from NVDEC we get this from videoFormat_; in the CPU fallback
+      // path we get it from the codec context.
+      int bitDepth = cpuFallback_
+          ? codecContext_->bits_per_raw_sample
+          : static_cast<int>(videoFormat_.bit_depth_luma_minus8) + 8;
       AVColorSpace colorspace = gpuFrame->colorspace;
       AVColorRange colorRange = gpuFrame->color_range;
       bool colorMatrixChanged = false;
