@@ -130,6 +130,9 @@ class CMakeBuild(build_ext):
             f"-DTORCHCODEC_DISABLE_HOMEBREW_RPATH={torchcodec_disable_homebrew_rpath}",
         ]
 
+        if sys.platform == "win32" and (cudacxx := os.environ.get("CUDACXX")):
+            cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cudacxx}")
+
         self.build_temp = os.getenv("TORCHCODEC_CMAKE_BUILD_DIR", self.build_temp)
         print(f"Using {self.build_temp = }", flush=True)
         Path(self.build_temp).mkdir(parents=True, exist_ok=True)
