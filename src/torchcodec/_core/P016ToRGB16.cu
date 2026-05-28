@@ -25,8 +25,42 @@ namespace facebook::torchcodec {
 // individually).
 __constant__ float d_colorMatrix[3][4];
 
+// For a *single* pixel, applies the color-conversion matrix to the YUV values
+// and writes the result as uint16 in rgbOutput
+__device__ void computeRGBPixel(float y, float u, float v, uint16_t* rgbOutput){
+  float r = d_colorMatrix[0][0] * y + d_colorMatrix[0][1] * u +
+      d_colorMatrix[0][2] * v + d_colorMatrix[0][3];
+  float g = d_colorMatrix[1][0] * y + d_colorMatrix[1][1] * u +
+      d_colorMatrix[1][2] * v + d_colorMatrix[1][3];
+  float b = d_colorMatrix[2][0] * y + d_colorMatrix[2][1] * u +
+      d_colorMatrix[2][2] * v + d_colorMatrix[2][3];
+
+  rgbOutput[0] =
+      static_cast<uint16_t>(fminf(fmaxf(r, 0.0f), 65535.0f));
+  rgbOutput[1] =
+      static_cast<uint16_t>(fminf(fmaxf(g, 0.0f), 65535.0f));
+  rgbOutput[2] =
+      static_cast<uint16_t>(fminf(fmaxf(b, 0.0f), 65535.0f));
+
+}
+
 // Takes the Y and UV plane as input, applies the color-conversion matrix and
 // fills the RGB plane as output.
+// Each thread, i.e. each invocation of p016ToRgb16Kernel, processes a 2x2 block
+// of pixels: this optimizes the UV plan reads, since each UV pair is
+// responsible for a 2x2 block.
+//
+//   Y plane (one value per pixel):       UV plane (one pair per 2x2 block):
+//   +------+------+                      +----------+
+//   |  y1  |  y2  |  row y               |  u  | v  |
+//   +------+------+                      +----------+
+//   |  y3  |  y4  |  row y+1
+//   +------+------+
+//   col x    col x+1
+//
+// We use ushort2 vectorized loads to read {y1,y2} and {y3,y4} in two
+// 32-bit reads, and {U,V} in one 32-bit read. Then we apply the color
+// matrix to produce 4 RGB pixels.
 __global__ void p016ToRgb16Kernel(
     // __restrict__ tells the compiler those pointers never overlap with each
     // other so it can optimize read and writes more aggressively.
@@ -39,46 +73,37 @@ __global__ void p016ToRgb16Kernel(
     int uvPitchElements,
     int rgbPitchElements,
     int bitShift) {
-  // TODO_HDR: our implem has each thread write one single pixel, so each UV pair
-  // (corresponding to a 2x2 pixel block) is read by four threads. We could have
-  // each thread handle a 2x2 output block instead, to optimize reads.
-  int x = blockIdx.x * blockDim.x + threadIdx.x;
-  int y = blockIdx.y * blockDim.y + threadIdx.y;
-
+  // The kernel operates on 2x2 blocks, so it's called H / 2 * W / 2 times.
+  // We have to multiply back by 2 to retrieve the output pixel coordinates x
+  // and y.
+  int x = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+  int y = (blockIdx.y * blockDim.y + threadIdx.y) * 2;
   if (x >= width || y >= height) {
     return;
   }
 
-  // Read Y value and shift to actual bit depth
-  float yVal =
-      static_cast<float>(yPlane[y * yPitchElements + x] >> bitShift);
+  // ushort2 stores two uint16 values in .x and .y
+  // Here, we read the UV pair in one instruction. Both U and V are 16bits.
+  int uvIdx = (y / 2) * uvPitchElements + x;
+  ushort2 uv= *reinterpret_cast<const ushort2*>(&uvPlane[uvIdx]);
+  float u = static_cast<float>(uv.x >> bitShift);
+  float v = static_cast<float>(uv.y >> bitShift);
 
-  // Read U, V values (4:2:0 chroma subsampling: UV is half resolution)
-  int uvX = x / 2;
-  int uvY = y / 2;
-  int uvIdx = uvY * uvPitchElements + uvX * 2;
-  float uVal = static_cast<float>(uvPlane[uvIdx] >> bitShift);
-  float vVal = static_cast<float>(uvPlane[uvIdx + 1] >> bitShift);
+  // Similarly, we can read 4 Y values in 2 reads
+  ushort2 y1y2 = *reinterpret_cast<const ushort2*>(&yPlane[y * yPitchElements + x]);
+  ushort2 y3y4 = *reinterpret_cast<const ushort2*>(&yPlane[(y + 1) * yPitchElements + x]);
 
-  // Apply 3x4 color conversion matrix:
-  //   R = m[0][0]*Y + m[0][1]*U + m[0][2]*V + m[0][3]
-  //   G = m[1][0]*Y + m[1][1]*U + m[1][2]*V + m[1][3]
-  //   B = m[2][0]*Y + m[2][1]*U + m[2][2]*V + m[2][3]
-  float r = d_colorMatrix[0][0] * yVal + d_colorMatrix[0][1] * uVal +
-      d_colorMatrix[0][2] * vVal + d_colorMatrix[0][3];
-  float g = d_colorMatrix[1][0] * yVal + d_colorMatrix[1][1] * uVal +
-      d_colorMatrix[1][2] * vVal + d_colorMatrix[1][3];
-  float b = d_colorMatrix[2][0] * yVal + d_colorMatrix[2][1] * uVal +
-      d_colorMatrix[2][2] * vVal + d_colorMatrix[2][3];
-
-  // Clamp to [0, 65535] and write RGB output
+  float y1 = static_cast<float>(y1y2.x >> bitShift);
+  float y2 = static_cast<float>(y1y2.y >> bitShift);
   int rgbIdx = y * rgbPitchElements + x * 3;
-  rgbOutput[rgbIdx + 0] =
-      static_cast<uint16_t>(fminf(fmaxf(r, 0.0f), 65535.0f));
-  rgbOutput[rgbIdx + 1] =
-      static_cast<uint16_t>(fminf(fmaxf(g, 0.0f), 65535.0f));
-  rgbOutput[rgbIdx + 2] =
-      static_cast<uint16_t>(fminf(fmaxf(b, 0.0f), 65535.0f));
+  computeRGBPixel(y1, u, v, rgbOutput + rgbIdx);
+  computeRGBPixel(y2, u, v, rgbOutput + rgbIdx + 3);
+
+  float y3 = static_cast<float>(y3y4.x >> bitShift);
+  float y4 = static_cast<float>(y3y4.y >> bitShift);
+  rgbIdx = (y + 1) * rgbPitchElements + x * 3;
+  computeRGBPixel(y3, u, v, rgbOutput + rgbIdx );
+  computeRGBPixel(y4, u, v, rgbOutput + rgbIdx + 3);
 }
 
 void launchP016ToRGB16Kernel(
@@ -113,7 +138,7 @@ void launchP016ToRGB16Kernel(
   // TODO_HDR: investigate perf implications of the block and grid size?
   dim3 block(16, 16);
   dim3 grid(
-      (width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+      (width / 2 + block.x - 1) / block.x, (height / 2 + block.y - 1) / block.y);
 
   p016ToRgb16Kernel<<<grid, block, 0, stream>>>(
       yPlane,
