@@ -88,6 +88,15 @@ class DeviceInterface {
   virtual void registerHardwareDeviceWithCodec(
       [[maybe_unused]] AVCodecContext* codecContext) {}
 
+  // The dtype that should be used for the pre-allocated tensors on batch APIs.
+  // Usually that will just be the user's requested dtype, but not always: on
+  // CUDA with SDR videos when float32 is asked, will fallback from P016 to NV12
+  // to avoid falling back all the way to the CPU. The pre-allocated tensors
+  // then need to be uint8, not float32.
+  virtual OutputDtype getPreAllocationDtype(OutputDtype requestedDtype) const {
+    return requestedDtype;
+  }
+
   virtual void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
