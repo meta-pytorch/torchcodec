@@ -38,12 +38,11 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   explicit BetaCudaDeviceInterface(const StableDevice& device);
   virtual ~BetaCudaDeviceInterface();
 
-  void initialize(
-      const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) override;
+  void initialize(const SharedAVCodecContext& codecContext) override;
 
   void initializeVideo(
+      const AVStream* avStream,
+      const UniqueDecodingAVFormatContext& avFormatCtx,
       const VideoStreamOptions& videoStreamOptions,
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resizedOutputDims) override;
@@ -119,15 +118,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   // want to make things more explicit.
   OutputDtype outputDtype_ = OutputDtype::UINT8;
   cudaVideoSurfaceFormat outputSurfaceFormat_ = cudaVideoSurfaceFormat_NV12;
-
-  // Stored from initialize() for deferred use in initializeVideo(), where
-  // we know the outputDtype and can make the NVDEC-vs-CPU-fallback decision.
-  // These are non-owning: SingleStreamDecoder owns them and outlives us.
-  // codecContext_ is inherited from DeviceInterface.
-  // TODO_HDR: this is nasty, especially the pointer on
-  // UniqueDecodingAVFormatContext. Consider something else.
-  const AVStream* avStream_ = nullptr;
-  const UniqueDecodingAVFormatContext* avFormatCtx_ = nullptr;
 };
 
 } // namespace facebook::torchcodec

@@ -25,12 +25,11 @@ class CpuDeviceInterface : public DeviceInterface {
     return std::nullopt;
   }
 
-  virtual void initialize(
-      const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) override;
+  virtual void initialize(const SharedAVCodecContext& codecContext) override;
 
   virtual void initializeVideo(
+      const AVStream* avStream,
+      const UniqueDecodingAVFormatContext& avFormatCtx,
       const VideoStreamOptions& videoStreamOptions,
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resizedOutputDims) override;

@@ -52,15 +52,15 @@ class DeviceInterface {
     return std::nullopt;
   };
 
-  // Initialize the device with parameters generic to all kinds of decoding.
-  virtual void initialize(
-      const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) = 0;
+  // Initialize the device with the codec context, which is needed for the
+  // default sendPacket/receiveFrame/flush implementations.
+  virtual void initialize(const SharedAVCodecContext& codecContext) = 0;
 
   // Initialize the device with parameters specific to video decoding. There is
   // a default empty implementation.
   virtual void initializeVideo(
+      [[maybe_unused]] const AVStream* avStream,
+      [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx,
       [[maybe_unused]] const VideoStreamOptions& videoStreamOptions,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
           transforms,

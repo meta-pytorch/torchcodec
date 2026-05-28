@@ -116,28 +116,31 @@ CudaDeviceInterface::~CudaDeviceInterface() {
   returnNppStreamContextToCache(device_, std::move(nppCtx_));
 }
 
-void CudaDeviceInterface::initialize(
+void CudaDeviceInterface::initialize(const SharedAVCodecContext& codecContext) {
+  codecContext_ = codecContext;
+}
+
+void CudaDeviceInterface::initializeVideo(
     const AVStream* avStream,
     const UniqueDecodingAVFormatContext& avFormatCtx,
-    const SharedAVCodecContext& codecContext) {
+    const VideoStreamOptions& videoStreamOptions,
+    [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
+    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
   STD_TORCH_CHECK(avStream != nullptr, "avStream is null");
-  codecContext_ = codecContext;
   timeBase_ = avStream->time_base;
+  videoStreamOptions_ = videoStreamOptions;
 
   // TODO: Ideally, we should keep all interface implementations independent.
   cpuInterface_ = createDeviceInterface(kStableCPU);
   STD_TORCH_CHECK(
       cpuInterface_ != nullptr, "Failed to create CPU device interface");
-  cpuInterface_->initialize(avStream, avFormatCtx, codecContext);
+  cpuInterface_->initialize(codecContext_);
   cpuInterface_->initializeVideo(
-      VideoStreamOptions(), {}, /*resizedOutputDims=*/std::nullopt);
-}
-
-void CudaDeviceInterface::initializeVideo(
-    const VideoStreamOptions& videoStreamOptions,
-    [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
-    [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
-  videoStreamOptions_ = videoStreamOptions;
+      avStream,
+      avFormatCtx,
+      VideoStreamOptions(),
+      {},
+      /*resizedOutputDims=*/std::nullopt);
 }
 
 void CudaDeviceInterface::registerHardwareDeviceWithCodec(
