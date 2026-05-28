@@ -688,8 +688,7 @@ void SingleStreamDecoder::addAudioStream(
 FrameOutput SingleStreamDecoder::getNextFrame() {
   auto output = getNextFrameInternal();
   if (streamInfos_[activeStreamIndex_].avMediaType == AVMEDIA_TYPE_VIDEO) {
-    output.data = maybePermuteHWC2CHW(output.data);
-    output.data = maybeConvertToFloat32(output.data);
+    output.data = maybePermuteAndConvertToFloat32(output.data);
   }
   return output;
 }
@@ -705,8 +704,7 @@ FrameOutput SingleStreamDecoder::getNextFrameInternal(
 
 FrameOutput SingleStreamDecoder::getFrameAtIndex(int64_t frameIndex) {
   auto frameOutput = getFrameAtIndexInternal(frameIndex);
-  frameOutput.data = maybePermuteHWC2CHW(frameOutput.data);
-  frameOutput.data = maybeConvertToFloat32(frameOutput.data);
+  frameOutput.data = maybePermuteAndConvertToFloat32(frameOutput.data);
   return frameOutput;
 }
 
@@ -810,8 +808,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     }
     previousIndexInVideo = indexInVideo;
   }
-  frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-  frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
+  frameBatchOutput.data =
+      maybePermuteAndConvertToFloat32(frameBatchOutput.data);
   return frameBatchOutput;
 }
 
@@ -858,8 +856,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
     frameBatchOutputPtsSeconds[f] = frameOutput.ptsSeconds;
     frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
   }
-  frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-  frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
+  frameBatchOutput.data =
+      maybePermuteAndConvertToFloat32(frameBatchOutput.data);
   return frameBatchOutput;
 }
 
@@ -900,8 +898,7 @@ FrameOutput SingleStreamDecoder::getFramePlayedAt(double seconds) {
 
   // Convert the frame to tensor.
   FrameOutput frameOutput = convertAVFrameToFrameOutput(avFrame);
-  frameOutput.data = maybePermuteHWC2CHW(frameOutput.data);
-  frameOutput.data = maybeConvertToFloat32(frameOutput.data);
+  frameOutput.data = maybePermuteAndConvertToFloat32(frameOutput.data);
   return frameOutput;
 }
 
@@ -989,8 +986,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         getOutputDims(),
         videoStreamOptions.device,
         videoStreamOptions.outputDtype);
-    frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-    frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
+    frameBatchOutput.data =
+        maybePermuteAndConvertToFloat32(frameBatchOutput.data);
     return frameBatchOutput;
   }
 
@@ -1060,8 +1057,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       frameBatchOutputDurationSeconds[i] = frameDurationSeconds;
     }
 
-    frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-    frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
+    frameBatchOutput.data =
+        maybePermuteAndConvertToFloat32(frameBatchOutput.data);
     return frameBatchOutput;
   } else {
     // Note that we look at nextPts for a frame, and not its pts or duration.
@@ -1096,8 +1093,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       frameBatchOutputPtsSeconds[f] = frameOutput.ptsSeconds;
       frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
     }
-    frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-    frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
+    frameBatchOutput.data =
+        maybePermuteAndConvertToFloat32(frameBatchOutput.data);
 
     return frameBatchOutput;
   }
@@ -1546,34 +1543,31 @@ FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
 // OUTPUT ALLOCATION AND SHAPE CONVERSION
 // --------------------------------------------------------------------------
 
-// Returns a [N]CHW *view* of a [N]HWC input tensor, if the options require
-// so. The [N] leading batch-dimension is optional i.e. the input tensor can
-// be 3D or 4D.
-torch::stable::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
+torch::stable::Tensor SingleStreamDecoder::maybePermuteAndConvertToFloat32(
     torch::stable::Tensor& hwcTensor) {
-  if (streamInfos_[activeStreamIndex_].videoStreamOptions.dimensionOrder ==
+  // Permute HWC to CHW if needed. Returns a view of the input tensor, the
+  // leading batch-dimension [N] is optional i.e. the input tensor can be 3D or
+  // 4D.
+  torch::stable::Tensor tensor = hwcTensor;
+  if (streamInfos_[activeStreamIndex_].videoStreamOptions.dimensionOrder !=
       "NHWC") {
-    return hwcTensor;
+    auto numDimensions = hwcTensor.dim();
+    auto shape = hwcTensor.sizes();
+    if (numDimensions == 3) {
+      STD_TORCH_CHECK(
+          shape[2] == 3, "Not a HWC tensor: ", intArrayRefToString(shape));
+      tensor = stablePermute(hwcTensor, {2, 0, 1});
+    } else if (numDimensions == 4) {
+      STD_TORCH_CHECK(
+          shape[3] == 3, "Not a NHWC tensor: ", intArrayRefToString(shape));
+      tensor = stablePermute(hwcTensor, {0, 3, 1, 2});
+    } else {
+      STD_TORCH_CHECK(
+          false, "Expected tensor with 3 or 4 dimensions, got ", numDimensions);
+    }
   }
-  auto numDimensions = hwcTensor.dim();
-  auto shape = hwcTensor.sizes();
-  if (numDimensions == 3) {
-    STD_TORCH_CHECK(
-        shape[2] == 3, "Not a HWC tensor: ", intArrayRefToString(shape));
-    return stablePermute(hwcTensor, {2, 0, 1});
-  } else if (numDimensions == 4) {
-    STD_TORCH_CHECK(
-        shape[3] == 3, "Not a NHWC tensor: ", intArrayRefToString(shape));
-    return stablePermute(hwcTensor, {0, 3, 1, 2});
-  } else {
-    STD_TORCH_CHECK(
-        false, "Expected tensor with 3 or 4 dimensions, got ", numDimensions);
-  }
-}
 
-// TODO_HDR: should this be a single call along with maybePermuteHWC2CHW?
-torch::stable::Tensor SingleStreamDecoder::maybeConvertToFloat32(
-    torch::stable::Tensor& tensor) {
+  // Convert to float32 and normalize to [0, 1] if needed.
   OutputDtype outputDtype =
       streamInfos_[activeStreamIndex_].videoStreamOptions.outputDtype;
   if (outputDtype != OutputDtype::FLOAT32) {

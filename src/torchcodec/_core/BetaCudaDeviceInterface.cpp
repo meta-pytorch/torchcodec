@@ -72,6 +72,11 @@ static DecoderCapsCache& getDecoderCapsCache() {
   return cache;
 }
 
+cudaVideoSurfaceFormat getSurfaceFormat(OutputDtype outputDtype) {
+  return outputDtype == OutputDtype::FLOAT32 ? cudaVideoSurfaceFormat_P016
+                                             : cudaVideoSurfaceFormat_NV12;
+}
+
 static bool g_cuda_nvdec = registerDeviceInterface(
     DeviceInterfaceKey(kStableCUDA, /*variant=*/"default"),
     [](const StableDevice& device) {
@@ -506,7 +511,7 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     flush();
     unmapPreviousFrame();
     NVDECCache::getCache(device_).returnDecoder(
-        &videoFormat_, outputSurfaceFormat_, std::move(decoder_));
+        &videoFormat_, getSurfaceFormat(outputDtype_), std::move(decoder_));
   }
 
   if (videoParser_) {
@@ -626,9 +631,7 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
 
   videoFormat_ = *videoFormat;
 
-  outputSurfaceFormat_ = outputDtype_ == OutputDtype::FLOAT32
-      ? cudaVideoSurfaceFormat_P016
-      : cudaVideoSurfaceFormat_NV12;
+  auto surfaceFormat = getSurfaceFormat(outputDtype_);
 
   if (videoFormat_.min_num_decode_surfaces == 0) {
     // Same as DALI's fallback
@@ -636,14 +639,14 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
   }
 
   if (!decoder_) {
-    decoder_ = NVDECCache::getCache(device_).getDecoder(
-        videoFormat, outputSurfaceFormat_);
+    decoder_ =
+        NVDECCache::getCache(device_).getDecoder(videoFormat, surfaceFormat);
 
     if (!decoder_) {
       // TODONVDEC P2: consider re-configuring an existing decoder instead of
       // re-creating one. See docs, see DALI. Re-configuration doesn't seem to
       // be enabled in DALI by default.
-      decoder_ = createDecoder(videoFormat, outputSurfaceFormat_);
+      decoder_ = createDecoder(videoFormat, surfaceFormat);
     }
 
     STD_TORCH_CHECK(decoder_, "Failed to get or create decoder");
@@ -1112,7 +1115,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   auto convertFrame = [&](std::optional<torch::stable::Tensor> preAlloc)
       -> torch::stable::Tensor {
-    if (outputSurfaceFormat_ == cudaVideoSurfaceFormat_P016) {
+    if (outputDtype_ == OutputDtype::FLOAT32) {
       return convertP016FrameToRGB16(
           gpuFrame,
           device_,

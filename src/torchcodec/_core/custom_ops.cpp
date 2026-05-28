@@ -58,9 +58,9 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
   m.def(
-      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str? color_conversion_library=None, str? output_dtype=None) -> ()");
+      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str? color_conversion_library=None, str output_dtype=\"uint8\") -> ()");
   m.def(
-      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str? output_dtype=None) -> ()");
+      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str output_dtype=\"uint8\") -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
   m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
@@ -516,34 +516,22 @@ void _add_video_stream(
     std::optional<torch::stable::Tensor>
         custom_frame_mappings_keyframe_indices = std::nullopt,
     std::optional<std::string> color_conversion_library = std::nullopt,
-    // TODO_HDR: see other TODO, should default be uint8 instead? Maybe it
-    // shoudn't even be optional?
-    // videoStreamOptions.outputDtype defaults to UINT8 so if
-    // output_dtype is nullopt, the videoStreamOptions will default to UINT8.
-    // But that's pretty implicit and suggests maybe this shouldn't be optional
-    // at all.
-    // TODO_UINT8 Also this currently takes strings but surely the public API
-    // will want to support torch.dtype object, we should figure out when to do
-    // the conversion.
-    std::optional<std::string> output_dtype = std::nullopt) {
+    std::string output_dtype = "uint8") {
   VideoStreamOptions videoStreamOptions;
   videoStreamOptions.ffmpegThreadCount = num_threads;
 
-  if (output_dtype.has_value()) {
-    const std::string& val = *output_dtype;
-    if (val == "uint8") {
-      videoStreamOptions.outputDtypeConfig = OutputDtypeConfig::UINT8;
-    } else if (val == "float32") {
-      videoStreamOptions.outputDtypeConfig = OutputDtypeConfig::FLOAT32;
-    } else if (val == "auto") {
-      videoStreamOptions.outputDtypeConfig = OutputDtypeConfig::AUTO;
-    } else {
-      STD_TORCH_CHECK(
-          false,
-          "Invalid output_dtype=",
-          val,
-          ". Supported values are: uint8, float32, auto.");
-    }
+  if (output_dtype == "uint8") {
+    videoStreamOptions.outputDtypeConfig = OutputDtypeConfig::UINT8;
+  } else if (output_dtype == "float32") {
+    videoStreamOptions.outputDtypeConfig = OutputDtypeConfig::FLOAT32;
+  } else if (output_dtype == "auto") {
+    videoStreamOptions.outputDtypeConfig = OutputDtypeConfig::AUTO;
+  } else {
+    STD_TORCH_CHECK(
+        false,
+        "Invalid output_dtype=",
+        output_dtype,
+        ". Supported values are: uint8, float32, auto.");
   }
 
   if (dimension_order.has_value()) {
@@ -616,7 +604,7 @@ void add_video_stream(
         std::nullopt,
     std::optional<torch::stable::Tensor>
         custom_frame_mappings_keyframe_indices = std::nullopt,
-    std::optional<std::string> output_dtype = std::nullopt) {
+    std::string output_dtype = "uint8") {
   _add_video_stream(
       decoder,
       num_threads,

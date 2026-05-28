@@ -114,11 +114,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   SwsConfig prevSwsConfig_;
   Rotation rotation_ = Rotation::NONE;
-  // TODO_HDR: figure out whether we actually need both. This should / could be
-  // a 1:1 mapping? If we need both because of the CPU falback logic, we might
-  // want to make things more explicit.
   OutputDtype outputDtype_ = OutputDtype::UINT8;
-  cudaVideoSurfaceFormat outputSurfaceFormat_ = cudaVideoSurfaceFormat_NV12;
 
   // Stored from initialize() for deferred use in initializeVideo(), where
   // we know the outputDtype and can make the NVDEC-vs-CPU-fallback decision.
