@@ -352,25 +352,25 @@ static torch::stable::Tensor convertP016FrameToRGB16(
     int bitDepth,
     AVColorSpace colorspace,
     AVColorRange colorRange) {
-  int p016Height = avFrame->height;
-  int p016Width = avFrame->width;
+  int height = avFrame->height;
+  int width = avFrame->width;
   STD_TORCH_CHECK(
-      p016Height % 2 == 0 && p016Width % 2 == 0,
+      height % 2 == 0 && width % 2 == 0,
       "convertP016FrameToRGB16 expects even avFrame dimensions, got ",
-      p016Height,
+      height,
       "x",
-      p016Width,
+      width,
       ". Report a bug if you see this message.");
   STD_TORCH_CHECK(
-      outputDims.height == p016Height && outputDims.width == p016Width,
+      outputDims.height == height && outputDims.width == width,
       "outputDims ",
       outputDims.height,
       "x",
       outputDims.width,
       " are not consistent with avFrame dimensions ",
-      p016Height,
+      height,
       "x",
-      p016Width,
+      width,
       ". Report a bug if you see this message.");
 
   torch::stable::Tensor dst;
@@ -378,11 +378,11 @@ static torch::stable::Tensor convertP016FrameToRGB16(
     dst = preAllocatedOutputTensor.value();
   } else {
     dst = allocateEmptyHWCTensor(
-        FrameDims(p016Height, p016Width), device, OutputDtype::FLOAT32);
+        FrameDims(height, width), device, OutputDtype::FLOAT32);
   }
 
-  cudaStream_t nppStream = getCurrentCudaStream(device.index());
-  syncStreams(/*runningStream=*/nvdecStream, /*waitingStream=*/nppStream);
+  cudaStream_t stream = getCurrentCudaStream(device.index());
+  syncStreams(/*runningStream=*/nvdecStream, /*waitingStream=*/stream);
 
   float colorMatrix[3][4];
   // TODO_HDR this needs to be cached.
@@ -392,14 +392,14 @@ static torch::stable::Tensor convertP016FrameToRGB16(
       reinterpret_cast<const uint16_t*>(avFrame->data[0]),
       reinterpret_cast<const uint16_t*>(avFrame->data[1]),
       dst.mutable_data_ptr<uint16_t>(),
-      p016Width,
-      p016Height,
+      width,
+      height,
       avFrame->linesize[0],
       avFrame->linesize[1],
       validateInt64ToInt(dst.stride(0) * 2, "dst.stride(0)*2"),
       bitDepth,
       colorMatrix,
-      nppStream);
+      stream);
 
   return dst;
 }

@@ -8,11 +8,25 @@
 
 namespace facebook::torchcodec {
 
+// P016 is the 16bit equivalent of NV12. Chroma subsampling is 4:2:0 so U,V are
+// subsampled by 2 in both H and W dimensions.
+// The Y plane is YYYYY... where each Y is 16bits and corresponds to a single
+// pixel
+// The UV plane is interleaved as UVUVUVUV... where each U and each V is 16bits,
+// and each UV pair corresponds to a 2x2 block of pixels.
+//
+// The actual data is stored in the most significant bits of each 16-bit word,
+// with the lower bits zero-padded (e.g. 10-bit content occupies the upper 10
+// bits).
+
+
 // Color conversion matrix stored in constant memory for fast access.
 // It'll be available to every single thread (each running p016ToRgb16Kernel
 // individually).
 __constant__ float d_colorMatrix[3][4];
 
+// Takes the Y and UV plane as input, applies the color-conversion matrix and
+// fills the RGB plane as output.
 __global__ void p016ToRgb16Kernel(
     // __restrict__ tells the compiler those pointers never overlap with each
     // other so it can optimize read and writes more aggressively.
