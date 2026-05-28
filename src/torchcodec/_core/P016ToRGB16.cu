@@ -78,7 +78,7 @@ __global__ void p016ToRgb16Kernel(
   // and y.
   int x = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
   int y = (blockIdx.y * blockDim.y + threadIdx.y) * 2;
-  if (x >= width || y >= height) {
+  if (x + 1 >= width || y + 1 >= height) {
     return;
   }
 
