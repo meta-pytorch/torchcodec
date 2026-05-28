@@ -335,14 +335,8 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       kStableInt32);
 
   auto samples = torch::stable::to(rawTensor, kStableFloat32);
-  auto zeros = torch::stable::new_zeros(samples, samples.sizes());
-  constexpr double scale =
-      1.0 / static_cast<double>(std::numeric_limits<int32_t>::max());
-  // Multiplication is not in the stable ABI, we use subtract with alpha as a
-  // workaround. We will remove this hack once we implement buffered reading
-  // optimization.
-  samples = torch::stable::subtract(
-      zeros, samples, -scale); // 0 - (-scale) * samples = scale * samples
+  samples = stableDiv(
+      samples, static_cast<double>(std::numeric_limits<int32_t>::max()));
 
   // Convert to [channels, samples]
   samples = torch::stable::transpose(samples, 0, 1);
