@@ -355,8 +355,7 @@ static torch::stable::Tensor convertP016FrameToRGB16(
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
     const FrameDims& outputDims,
     int bitDepth,
-    AVColorSpace colorspace,
-    AVColorRange colorRange) {
+    const float colorMatrix[3][4]) {
   int height = avFrame->height;
   int width = avFrame->width;
   STD_TORCH_CHECK(
@@ -388,10 +387,6 @@ static torch::stable::Tensor convertP016FrameToRGB16(
 
   cudaStream_t stream = getCurrentCudaStream(device.index());
   syncStreams(/*runningStream=*/nvdecStream, /*waitingStream=*/stream);
-
-  float colorMatrix[3][4];
-  // TODO_HDR this needs to be cached.
-  computeP016ColorMatrix(colorspace, colorRange, bitDepth, colorMatrix);
 
   launchP016ToRGB16Kernel(
       reinterpret_cast<const uint16_t*>(avFrame->data[0]),
@@ -1116,15 +1111,28 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
   auto convertFrame = [&](std::optional<torch::stable::Tensor> preAlloc)
       -> torch::stable::Tensor {
     if (outputDtype_ == OutputDtype::FLOAT32) {
+      int bitDepth = static_cast<int>(videoFormat_.bit_depth_luma_minus8) + 8;
+      AVColorSpace colorspace = gpuFrame->colorspace;
+      AVColorRange colorRange = gpuFrame->color_range;
+      if (!cachedColorMatrix_.valid ||
+          cachedColorMatrix_.colorspace != colorspace ||
+          cachedColorMatrix_.colorRange != colorRange ||
+          cachedColorMatrix_.bitDepth != bitDepth) {
+        computeP016ColorMatrix(
+            colorspace, colorRange, bitDepth, cachedColorMatrix_.matrix);
+        cachedColorMatrix_.colorspace = colorspace;
+        cachedColorMatrix_.colorRange = colorRange;
+        cachedColorMatrix_.bitDepth = bitDepth;
+        cachedColorMatrix_.valid = true;
+      }
       return convertP016FrameToRGB16(
           gpuFrame,
           device_,
           nvdecStream,
           preAlloc,
           originalDims,
-          static_cast<int>(videoFormat_.bit_depth_luma_minus8) + 8,
-          gpuFrame->colorspace,
-          gpuFrame->color_range);
+          bitDepth,
+          cachedColorMatrix_.matrix);
     }
     return convertNV12FrameToRGB(
         gpuFrame, device_, nppCtx_, nvdecStream, preAlloc, originalDims);

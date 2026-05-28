@@ -116,6 +116,16 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   Rotation rotation_ = Rotation::NONE;
   OutputDtype outputDtype_ = OutputDtype::UINT8;
 
+  struct CachedP016ColorMatrix {
+    AVColorSpace colorspace = AVCOL_SPC_UNSPECIFIED;
+    AVColorRange colorRange = AVCOL_RANGE_UNSPECIFIED;
+    int bitDepth = 0;
+    float matrix[3][4] = {};
+    bool valid = false;
+  };
+
+  CachedP016ColorMatrix cachedColorMatrix_;
+
   // Stored from initialize() for deferred use in initializeVideo(), where
   // we know the outputDtype and can make the NVDEC-vs-CPU-fallback decision.
   // These are non-owning: SingleStreamDecoder owns them and outlives us.
