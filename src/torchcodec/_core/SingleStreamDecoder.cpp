@@ -688,8 +688,7 @@ void SingleStreamDecoder::addAudioStream(
 FrameOutput SingleStreamDecoder::getNextFrame() {
   auto output = getNextFrameInternal();
   if (streamInfos_[activeStreamIndex_].avMediaType == AVMEDIA_TYPE_VIDEO) {
-    output.data = maybePermuteHWC2CHW(output.data);
-    output.data = maybeConvertToFloat32(output.data);
+    output.data = maybePermuteAndConvertToFloat32(output.data);
   }
   return output;
 }
@@ -705,8 +704,7 @@ FrameOutput SingleStreamDecoder::getNextFrameInternal(
 
 FrameOutput SingleStreamDecoder::getFrameAtIndex(int64_t frameIndex) {
   auto frameOutput = getFrameAtIndexInternal(frameIndex);
-  frameOutput.data = maybePermuteHWC2CHW(frameOutput.data);
-  frameOutput.data = maybeConvertToFloat32(frameOutput.data);
+  frameOutput.data = maybePermuteAndConvertToFloat32(frameOutput.data);
   return frameOutput;
 }
 
@@ -810,8 +808,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     }
     previousIndexInVideo = indexInVideo;
   }
-  frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-  frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
+  frameBatchOutput.data =
+      maybePermuteAndConvertToFloat32(frameBatchOutput.data);
   return frameBatchOutput;
 }
 
@@ -858,8 +856,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
     frameBatchOutputPtsSeconds[f] = frameOutput.ptsSeconds;
     frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
   }
-  frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-  frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
+  frameBatchOutput.data =
+      maybePermuteAndConvertToFloat32(frameBatchOutput.data);
   return frameBatchOutput;
 }
 
@@ -900,8 +898,7 @@ FrameOutput SingleStreamDecoder::getFramePlayedAt(double seconds) {
 
   // Convert the frame to tensor.
   FrameOutput frameOutput = convertAVFrameToFrameOutput(avFrame);
-  frameOutput.data = maybePermuteHWC2CHW(frameOutput.data);
-  frameOutput.data = maybeConvertToFloat32(frameOutput.data);
+  frameOutput.data = maybePermuteAndConvertToFloat32(frameOutput.data);
   return frameOutput;
 }
 
@@ -989,8 +986,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         getOutputDims(),
         videoStreamOptions.device,
         videoStreamOptions.outputDtype);
-    frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-    frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
+    frameBatchOutput.data =
+        maybePermuteAndConvertToFloat32(frameBatchOutput.data);
     return frameBatchOutput;
   }
 
@@ -1060,8 +1057,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       frameBatchOutputDurationSeconds[i] = frameDurationSeconds;
     }
 
-    frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-    frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
+    frameBatchOutput.data =
+        maybePermuteAndConvertToFloat32(frameBatchOutput.data);
     return frameBatchOutput;
   } else {
     // Note that we look at nextPts for a frame, and not its pts or duration.
@@ -1096,8 +1093,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       frameBatchOutputPtsSeconds[f] = frameOutput.ptsSeconds;
       frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
     }
-    frameBatchOutput.data = maybePermuteHWC2CHW(frameBatchOutput.data);
-    frameBatchOutput.data = maybeConvertToFloat32(frameBatchOutput.data);
+    frameBatchOutput.data =
+        maybePermuteAndConvertToFloat32(frameBatchOutput.data);
 
     return frameBatchOutput;
   }
@@ -1120,11 +1117,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
 //   exposing the concept of audio frame. For now, we think exposing
 //   time-based APIs is more natural.
 // - We never perform a scan for audio streams. We don't need to, since we
-// won't
-//   be converting timestamps to indices. That's why we enforce the seek_mode
-//   to be "approximate" (which is slightly misleading, because technically
-//   the output samples will be at their exact positions. But this
-//   incongruence is only exposed at the C++/core private levels).
+//   won't be converting timestamps to indices. That's why we enforce the
+//   seek_mode to be "approximate" (which is slightly misleading, because
+//   technically the output samples will be at their exact positions. But
+//   this incongruence is only exposed at the C++/core private levels).
 //
 // Audio frames are of variable dimensions: in the same stream, a frame can
 // contain 1024 samples and the next one may contain 512 [1]. This makes it
@@ -1134,28 +1130,31 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
 // batch requires constant (and known) frame dimensions. That's also why
 // *concatenated* along the samples dimension, not stacked.
 //
-// [IMPORTANT!] There is one key invariant that we must respect when decoding
-// audio frames:
+// Note [Audio Seek Preroll]
+// Most lossy audio codecs (AAC, MP3, Vorbis, AC-3, etc.) use MDCT
+// (Modified Discrete Cosine Transform) with overlap-add: the decoded
+// output for frame i depends on internal state accumulated from frame
+// i-1 (sometimes, more than -1). When we seek and call avcodec_flush_buffers(),
+// the internal decoder buffers are flushed, emptying that internal state which
+// we need for correct decoding, so the first frame decoded after a seek
+// produces incorrect samples.
 //
-// BEFORE DECODING FRAME i, WE MUST DECODE ALL FRAMES j < i.
+// To work around this, when seeking we don't seek directly to the
+// target PTS. Instead, we seek to a few frames *before* the target
+// and decode those extra frames to "prime" the codec state. These
+// preroll frames are automatically discarded by the PTS filter in
+// decodeAVFrame(), so they don't appear in the output. This is the same
+// approach used by libmpg123 (the reference MP3 decoder used by libsndfile),
+// which calls these "ignoreframes":
+// -
+// https://github.com/gypified/libmpg123/blob/8cbf2faf994bd999ce2b45869093bd61ecf8416f/src/libmpg123/frame.c#L884-L894
+// -
+// https://github.com/gypified/libmpg123/blob/8cbf2faf994bd999ce2b45869093bd61ecf8416f/src/libmpg123/libmpg123.c#L586
 //
-// Always. Why? We don't know. What we know is that if we don't, we get
-// clipped, incorrect audio as output [2]. All other (correct) libraries like
-// TorchAudio or Decord do something similar, whether it was intended or not.
-// This has a few implications:
-// - The **only** place we're allowed to seek to in an audio stream is the
-//   stream's beginning. This ensures that if we need a frame, we'll have
-//   decoded all previous frames.
-// - Because of that, we don't allow the public APIs to seek. Public APIs can
-//   call next() and `getFramesPlayedInRangeAudio()`, but they cannot manually
-//   seek.
-// - We try not to seek, when we can avoid it. Typically if the next frame we
-//   need is in the future, we don't seek back to the beginning, we just
-//   decode all the frames in-between.
-//
-// [2] If you're brave and curious, you can read the long "Seek offset for
-// audio" note in https://github.com/pytorch/torchcodec/pull/507/files, which
-// sums up past (and failed) attemps at working around this issue.
+// Note: before this pre-roll logic, we had a much more brutal strategy: we
+// would *always* seek back to the beginning of the file. It works, but it's
+// wasteful when multiple seeks are involved, or when only some samples near the
+// end are needed.
 AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
     double startSeconds,
     std::optional<double> stopSecondsOptional) {
@@ -1178,10 +1177,57 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
   }
 
   auto startPts = secondsToClosestPts(startSeconds, streamInfo.timeBase);
-  if (startPts < lastDecodedAvFramePts_ + lastDecodedAvFrameDuration_) {
-    // If we need to seek backwards, then we have to seek back to the
-    // beginning of the stream. See [Audio Decoding Design].
-    setCursor(INT64_MIN);
+
+  // See [Audio Seek Preroll] above.
+  // How many frames do we need to decode before the target one to correctly
+  // prime the internal decoder buffers?  Claude's analysis of the FFmpeg
+  // codebase concludes that 1 frame is enough for aac, vorbis, mp3 and others.
+  // We use 4 to match libmpg123's default, which provides extra safety.
+  // If frame_size is unknown, we fall back to 1 second.
+  // Lossless codecs don't need preroll but the cost should be negligible.
+  static constexpr int kNumPrerollFrames = 4;
+  static constexpr double kFallbackPrerollSeconds = 1.0;
+  int frameSize = streamInfo.codecContext->frame_size;
+  double targetPrerollSeconds;
+  if (frameSize > 0) {
+    targetPrerollSeconds = static_cast<double>(kNumPrerollFrames) * frameSize /
+        streamInfo.codecContext->sample_rate;
+  } else {
+    targetPrerollSeconds = kFallbackPrerollSeconds;
+  }
+  auto targetSeekPts = secondsToClosestPts(
+      startSeconds - targetPrerollSeconds, streamInfo.timeBase);
+
+  int64_t minPts = streamInfo.stream->start_time != AV_NOPTS_VALUE
+      ? streamInfo.stream->start_time
+      : 0;
+
+  bool needsSeek;
+  if (lastDecodedAvFramePts_ == INT64_MIN) {
+    // Fresh decoder: in theory we'd always seek, but we can't because seeking
+    // to INT64_MIN (the priming-packet path below) fails on some formats like
+    // FLAC, see test_fresh_decoder_seek
+    needsSeek = targetSeekPts > minPts;
+  } else {
+    auto currentEnd = lastDecodedAvFramePts_ + lastDecodedAvFrameDuration_;
+    // We seek if we need to go backwards, or if the target is far enough
+    // forward that decoding every intermediate frame would be wasteful.
+    needsSeek = startPts < currentEnd ||
+        startPts > currentEnd + (startPts - targetSeekPts);
+  }
+
+  if (needsSeek) {
+    if (targetSeekPts <= minPts) {
+      // Edge case: when seeking to the very beginning of the stream, there
+      // are no earlier frames to use as preroll. In that case we seek with
+      // INT64_MIN, which lets the demuxer land on the true first packet
+      // (including any priming packets with negative PTS, such as the AAC
+      // priming frame). Not super clear why this is needed, but we have tests
+      // that fail without this.
+      setCursor(INT64_MIN);
+    } else {
+      setCursor(targetSeekPts);
+    }
   }
 
   // TODO-AUDIO Pre-allocate a long-enough tensor instead of creating a vec +
@@ -1244,8 +1290,8 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
 // --------------------------------------------------------------------------
 
 void SingleStreamDecoder::setCursorPtsInSeconds(double seconds) {
-  // We don't allow public audio decoding APIs to seek, see [Audio Decoding
-  // Design]
+  // Audio seeking is handled internally by getFramesPlayedInRangeAudio()
+  // with preroll, see [Audio Seek Preroll].
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   setCursor(
       secondsToClosestPts(seconds, streamInfos_[activeStreamIndex_].timeBase));
@@ -1262,9 +1308,8 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
   // Seeking is expensive, so we try to avoid it when possible.
   const StreamInfo& streamInfo = streamInfos_.at(activeStreamIndex_);
   if (streamInfo.avMediaType == AVMEDIA_TYPE_AUDIO) {
-    // For audio, we only need to seek if a backwards seek was requested
-    // within getFramesPlayedInRangeAudio(), when setCursorPtsInSeconds() was
-    // called. For more context, see [Audio Decoding Design]
+    // For audio, seeking is handled internally by
+    // getFramesPlayedInRangeAudio(). See [Audio Seek Preroll].
     return !cursorWasJustSet_;
   } else if (!cursorWasJustSet_) {
     // For videos, when decoding consecutive frames, we don't need to seek.
@@ -1498,34 +1543,31 @@ FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
 // OUTPUT ALLOCATION AND SHAPE CONVERSION
 // --------------------------------------------------------------------------
 
-// Returns a [N]CHW *view* of a [N]HWC input tensor, if the options require
-// so. The [N] leading batch-dimension is optional i.e. the input tensor can
-// be 3D or 4D.
-torch::stable::Tensor SingleStreamDecoder::maybePermuteHWC2CHW(
+torch::stable::Tensor SingleStreamDecoder::maybePermuteAndConvertToFloat32(
     torch::stable::Tensor& hwcTensor) {
-  if (streamInfos_[activeStreamIndex_].videoStreamOptions.dimensionOrder ==
+  // Permute HWC to CHW if needed. Returns a view of the input tensor, the
+  // leading batch-dimension [N] is optional i.e. the input tensor can be 3D or
+  // 4D.
+  torch::stable::Tensor tensor = hwcTensor;
+  if (streamInfos_[activeStreamIndex_].videoStreamOptions.dimensionOrder !=
       "NHWC") {
-    return hwcTensor;
+    auto numDimensions = hwcTensor.dim();
+    auto shape = hwcTensor.sizes();
+    if (numDimensions == 3) {
+      STD_TORCH_CHECK(
+          shape[2] == 3, "Not a HWC tensor: ", intArrayRefToString(shape));
+      tensor = stablePermute(hwcTensor, {2, 0, 1});
+    } else if (numDimensions == 4) {
+      STD_TORCH_CHECK(
+          shape[3] == 3, "Not a NHWC tensor: ", intArrayRefToString(shape));
+      tensor = stablePermute(hwcTensor, {0, 3, 1, 2});
+    } else {
+      STD_TORCH_CHECK(
+          false, "Expected tensor with 3 or 4 dimensions, got ", numDimensions);
+    }
   }
-  auto numDimensions = hwcTensor.dim();
-  auto shape = hwcTensor.sizes();
-  if (numDimensions == 3) {
-    STD_TORCH_CHECK(
-        shape[2] == 3, "Not a HWC tensor: ", intArrayRefToString(shape));
-    return stablePermute(hwcTensor, {2, 0, 1});
-  } else if (numDimensions == 4) {
-    STD_TORCH_CHECK(
-        shape[3] == 3, "Not a NHWC tensor: ", intArrayRefToString(shape));
-    return stablePermute(hwcTensor, {0, 3, 1, 2});
-  } else {
-    STD_TORCH_CHECK(
-        false, "Expected tensor with 3 or 4 dimensions, got ", numDimensions);
-  }
-}
 
-// TODO_HDR: should this be a single call along with maybePermuteHWC2CHW?
-torch::stable::Tensor SingleStreamDecoder::maybeConvertToFloat32(
-    torch::stable::Tensor& tensor) {
+  // Convert to float32 and normalize to [0, 1] if needed.
   OutputDtype outputDtype =
       streamInfos_[activeStreamIndex_].videoStreamOptions.outputDtype;
   if (outputDtype != OutputDtype::FLOAT32) {
@@ -1536,6 +1578,9 @@ torch::stable::Tensor SingleStreamDecoder::maybeConvertToFloat32(
       isUInt16 ? std::numeric_limits<uint16_t>::max()
                : std::numeric_limits<uint8_t>::max());
   auto asFloat = torch::stable::to(tensor, kStableFloat32);
+  // TODO_HDR benchmark this. Is this OK or very inefficient? We're allocating a
+  // whole new tensor for the zeros, it can't be good.
+
   // Multiplication is not in the stable ABI, so we use subtract with alpha
   // as a workaround: zeros - (-1/maxVal) * asFloat == asFloat / maxVal.
   // Same trick as WavDecoder::decode.

@@ -125,7 +125,18 @@ class VideoDecoder:
             :class:`~torchcodec.transforms.DecoderTransform` and
             :class:`~torchvision.transforms.v2.Transform`
             objects. Read more about this parameter in :ref:`sphx_glr_generated_examples_decoding_transforms.py`.
-        output_dtype: TODO_HDR: add docs for output_dtype
+        output_dtype (torch.dtype or ``"auto"``, optional): The dtype of the
+            output frames. Supported values are ``torch.uint8`` with values in
+            [0, 255] (default), ``torch.float32`` with values in [0, 1], and
+            ``"auto"``. When ``"auto"`` is specified, the output dtype is
+            determined automatically based on the video content: uint8 for SDR
+            content, float32 for HDR content.
+
+            .. note::
+                On ``"auto"``: since detecting whether a video is SDR or HDR is
+                difficult, the heuristic is subject to change and improve across
+                versions.
+
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
@@ -169,7 +180,6 @@ class VideoDecoder:
         device: str | torch_device | None = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
         transforms: Sequence[DecoderTransform | nn.Module] | None = None,
-        # TODO_HDR
         output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
@@ -222,6 +232,18 @@ class VideoDecoder:
             device = str(torch.get_default_device())
         elif isinstance(device, torch_device):
             device = str(device)
+
+        if (
+            device.startswith("cuda")
+            and device_variant == "ffmpeg"
+            and output_dtype != "uint8"
+        ):
+            raise ValueError(
+                f"output_dtype={output_dtype} is not supported with the 'ffmpeg' "
+                f"CUDA backend. Only torch.uint8 is supported. Use the default "
+                f"'nvdec' CUDA backend for non-uint8 output dtypes."
+            )
+
         (
             self._decoder,
             self.stream_index,
