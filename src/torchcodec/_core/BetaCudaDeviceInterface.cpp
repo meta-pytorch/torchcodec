@@ -355,7 +355,8 @@ static torch::stable::Tensor convertP016FrameToRGB16(
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
     const FrameDims& outputDims,
     int bitDepth,
-    const float colorMatrix[3][4]) {
+    const float colorMatrix[3][4],
+    bool colorMatrixChanged) {
   int height = avFrame->height;
   int width = avFrame->width;
   STD_TORCH_CHECK(
@@ -399,6 +400,7 @@ static torch::stable::Tensor convertP016FrameToRGB16(
       validateInt64ToInt(dst.stride(0) * 2, "dst.stride(0)*2"),
       bitDepth,
       colorMatrix,
+      colorMatrixChanged,
       stream);
 
   return dst;
@@ -1114,6 +1116,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       int bitDepth = static_cast<int>(videoFormat_.bit_depth_luma_minus8) + 8;
       AVColorSpace colorspace = gpuFrame->colorspace;
       AVColorRange colorRange = gpuFrame->color_range;
+      bool colorMatrixChanged = false;
       if (!cachedColorMatrix_.valid ||
           cachedColorMatrix_.colorspace != colorspace ||
           cachedColorMatrix_.colorRange != colorRange ||
@@ -1124,6 +1127,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
         cachedColorMatrix_.colorRange = colorRange;
         cachedColorMatrix_.bitDepth = bitDepth;
         cachedColorMatrix_.valid = true;
+        colorMatrixChanged = true;
       }
       return convertP016FrameToRGB16(
           gpuFrame,
@@ -1132,7 +1136,8 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
           preAlloc,
           originalDims,
           bitDepth,
-          cachedColorMatrix_.matrix);
+          cachedColorMatrix_.matrix,
+          colorMatrixChanged);
     }
     return convertNV12FrameToRGB(
         gpuFrame, device_, nppCtx_, nvdecStream, preAlloc, originalDims);
