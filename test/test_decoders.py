@@ -2406,7 +2406,7 @@ class TestVideoDecoder:
                     frame.data.cpu(), cpu_ref, atol=atol, percentage=90
                 )
             else:
-                torch.testing.assert_close(frame.data, ffmpeg_ref, rtol=0, atol=0)
+                assert_frames_equal(frame.data, ffmpeg_ref)
 
     @pytest.mark.parametrize(
         "device",
