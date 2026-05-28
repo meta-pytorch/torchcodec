@@ -31,8 +31,10 @@ NVDECCache& NVDECCache::getCache(const StableDevice& device) {
   return getCacheInstances()[getDeviceIndex(device)];
 }
 
-UniqueCUvideodecoder NVDECCache::getDecoder(CUVIDEOFORMAT* videoFormat) {
-  CacheKey key(videoFormat);
+UniqueCUvideodecoder NVDECCache::getDecoder(
+    CUVIDEOFORMAT* videoFormat,
+    cudaVideoSurfaceFormat surfaceFormat) {
+  CacheKey key(videoFormat, surfaceFormat);
   std::lock_guard<std::mutex> lock(cacheLock_);
 
   // Find an entry with matching key
@@ -63,10 +65,11 @@ void NVDECCache::evictLRUEntry() {
 
 void NVDECCache::returnDecoder(
     CUVIDEOFORMAT* videoFormat,
+    cudaVideoSurfaceFormat surfaceFormat,
     UniqueCUvideodecoder decoder) {
   STD_TORCH_CHECK(decoder != nullptr, "decoder must not be null");
 
-  CacheKey key(videoFormat);
+  CacheKey key(videoFormat, surfaceFormat);
   std::lock_guard<std::mutex> lock(cacheLock_);
 
   int capacity = getNVDECCacheCapacity();

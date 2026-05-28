@@ -52,10 +52,15 @@ class NVDECCache {
   static NVDECCache& getCache(const StableDevice& device);
 
   // Get decoder from cache - returns nullptr if none available.
-  UniqueCUvideodecoder getDecoder(CUVIDEOFORMAT* videoFormat);
+  UniqueCUvideodecoder getDecoder(
+      CUVIDEOFORMAT* videoFormat,
+      cudaVideoSurfaceFormat surfaceFormat);
 
   // Return decoder to cache using LRU eviction.
-  void returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder);
+  void returnDecoder(
+      CUVIDEOFORMAT* videoFormat,
+      cudaVideoSurfaceFormat surfaceFormat,
+      UniqueCUvideodecoder decoder);
 
   // Iterates all per-device cache instances and evicts LRU entries until each
   // cache's size is at most capacity. Called from setNVDECCacheCapacity().
@@ -74,10 +79,13 @@ class NVDECCache {
     cudaVideoChromaFormat chromaFormat;
     uint32_t bitDepthLumaMinus8;
     uint8_t numDecodeSurfaces;
+    cudaVideoSurfaceFormat outputSurfaceFormat;
 
     CacheKey() = delete;
 
-    explicit CacheKey(CUVIDEOFORMAT* videoFormat) {
+    explicit CacheKey(
+        CUVIDEOFORMAT* videoFormat,
+        cudaVideoSurfaceFormat surfaceFmt) {
       STD_TORCH_CHECK(videoFormat != nullptr, "videoFormat must not be null");
       codecType = videoFormat->codec;
       width = videoFormat->coded_width;
@@ -85,6 +93,7 @@ class NVDECCache {
       chromaFormat = videoFormat->chroma_format;
       bitDepthLumaMinus8 = videoFormat->bit_depth_luma_minus8;
       numDecodeSurfaces = videoFormat->min_num_decode_surfaces;
+      outputSurfaceFormat = surfaceFmt;
     }
 
     CacheKey(const CacheKey&) = default;
@@ -97,14 +106,16 @@ class NVDECCache {
                  height,
                  chromaFormat,
                  bitDepthLumaMinus8,
-                 numDecodeSurfaces) <
+                 numDecodeSurfaces,
+                 outputSurfaceFormat) <
           std::tie(
                  other.codecType,
                  other.width,
                  other.height,
                  other.chromaFormat,
                  other.bitDepthLumaMinus8,
-                 other.numDecodeSurfaces);
+                 other.numDecodeSurfaces,
+                 other.outputSurfaceFormat);
     }
   };
 

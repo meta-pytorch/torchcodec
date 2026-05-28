@@ -31,6 +31,10 @@ inline int roundUpToEven(int value) {
 
 cudaStream_t getCurrentCudaStream(int32_t deviceIndex);
 
+// Make waitingStream wait until all work currently enqueued on runningStream
+// has completed.
+void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream);
+
 void initializeCudaContextWithPytorch(const StableDevice& device);
 
 // Unique pointer type for NPP stream context

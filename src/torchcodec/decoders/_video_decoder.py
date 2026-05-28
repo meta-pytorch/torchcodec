@@ -209,6 +209,7 @@ class VideoDecoder:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
         _DTYPE_TO_STR = {torch.uint8: "uint8", torch.float32: "float32"}
+        # TODO_HDR: raise error on ffmpeg interface.
         if output_dtype != "auto":
             if output_dtype not in _DTYPE_TO_STR:
                 raise ValueError(
