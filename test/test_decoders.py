@@ -2418,10 +2418,16 @@ class TestVideoDecoder:
     )
     def test_output_dtype_float32(self, asset, device):
         decoder = VideoDecoder(asset.path, output_dtype=torch.float32, device=device)
-        if asset is NASA_VIDEO and device == "cuda":
-            # Asking for float32 on a SDR video triggers CPU fallback
-            assert decoder.cpu_fallback
         frame_indices = [0, 5, 10]
+
+        # None of those should go through the CPU fallback. This assert is
+        # particularly important for NASA_VIDEO which is an SDR video. NVDEC
+        # will typically not support P016 on SDR videos, so in such cases we
+        # fallback to NV12 instead of falling back to the CPU. This NV12
+        # fallback can only be done for SDR videos, not HDR videos where we'd be
+        # losing precision.
+        assert not decoder.cpu_fallback
+
         for frame_index in frame_indices:
             frame = decoder[frame_index]
             assert frame.dtype == torch.float32

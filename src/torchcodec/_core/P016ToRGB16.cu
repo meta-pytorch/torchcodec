@@ -92,13 +92,18 @@ void launchP016ToRGB16Kernel(
     int rgbPitch,
     int bitDepth,
     const float colorMatrix[3][4],
+    bool colorMatrixChanged,
     cudaStream_t stream) {
 
-  // TODO_HDR this is a sync point. We should try to make it non-blocking.
-  // E.g. put it on the `stream`? Make it async? Avoid re-sending the matrix if
-  // it hasn't changed from before (it likely didn't for the same video!!)?
-  cudaMemcpyToSymbol(
-      d_colorMatrix, colorMatrix, sizeof(float) * 12, 0, cudaMemcpyHostToDevice);
+  if (colorMatrixChanged) {
+    // We only send the color-matrix from CPU to GPU if it changed.
+    // In practice it probably doesn't impact perf that much since decoding is
+    // bottlenecked by NVDEC's frame mapping, not color-conversion. But it's a
+    // simple optimization, so we do it anyway.
+    cudaMemcpyToSymbol(
+        d_colorMatrix, colorMatrix, sizeof(float) * 12, 0,
+        cudaMemcpyHostToDevice);
+  }
 
   int yPitchElements = yPitch / static_cast<int>(sizeof(uint16_t));
   int uvPitchElements = uvPitch / static_cast<int>(sizeof(uint16_t));

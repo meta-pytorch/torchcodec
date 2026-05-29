@@ -775,7 +775,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
       frameIndices.numel(),
       getOutputDims(),
       videoStreamOptions.device,
-      videoStreamOptions.outputDtype);
+      deviceInterface_->getPreAllocationDtype(videoStreamOptions.outputDtype));
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -844,7 +844,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
       numOutputFrames,
       getOutputDims(),
       videoStreamOptions.device,
-      videoStreamOptions.outputDtype);
+      deviceInterface_->getPreAllocationDtype(videoStreamOptions.outputDtype));
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -985,7 +985,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         0,
         getOutputDims(),
         videoStreamOptions.device,
-        videoStreamOptions.outputDtype);
+        deviceInterface_->getPreAllocationDtype(
+            videoStreamOptions.outputDtype));
     frameBatchOutput.data =
         maybePermuteAndConvertToFloat32(frameBatchOutput.data);
     return frameBatchOutput;
@@ -1032,7 +1033,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         numOutputFrames,
         getOutputDims(),
         videoStreamOptions.device,
-        videoStreamOptions.outputDtype);
+        deviceInterface_->getPreAllocationDtype(
+            videoStreamOptions.outputDtype));
 
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -1082,7 +1084,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         numFrames,
         getOutputDims(),
         videoStreamOptions.device,
-        videoStreamOptions.outputDtype);
+        deviceInterface_->getPreAllocationDtype(
+            videoStreamOptions.outputDtype));
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
     auto frameBatchOutputDurationSeconds =
@@ -1578,14 +1581,7 @@ torch::stable::Tensor SingleStreamDecoder::maybePermuteAndConvertToFloat32(
       isUInt16 ? std::numeric_limits<uint16_t>::max()
                : std::numeric_limits<uint8_t>::max());
   auto asFloat = torch::stable::to(tensor, kStableFloat32);
-  // TODO_HDR benchmark this. Is this OK or very inefficient? We're allocating a
-  // whole new tensor for the zeros, it can't be good.
-
-  // Multiplication is not in the stable ABI, so we use subtract with alpha
-  // as a workaround: zeros - (-1/maxVal) * asFloat == asFloat / maxVal.
-  // Same trick as WavDecoder::decode.
-  auto zeros = torch::stable::new_zeros(asFloat, asFloat.sizes());
-  return torch::stable::subtract(zeros, asFloat, -1.0 / maxVal);
+  return stableDiv(asFloat, maxVal);
 }
 
 // --------------------------------------------------------------------------

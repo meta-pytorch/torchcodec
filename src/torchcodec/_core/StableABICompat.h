@@ -117,6 +117,19 @@ inline torch::stable::Tensor stableRot90(
   return torch::stable::detail::to<torch::stable::Tensor>(stack[0]);
 }
 
+// TODO_STABLE_ABI: upstream?
+inline torch::stable::Tensor stableDiv(
+    const torch::stable::Tensor& self,
+    double other) {
+  auto divisor = torch::stable::full({}, other);
+  const auto num_args = 2;
+  std::array<StableIValue, num_args> stack{
+      torch::stable::detail::from(self), torch::stable::detail::from(divisor)};
+  TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
+      "aten::div", "Tensor", stack.data(), TORCH_ABI_VERSION));
+  return torch::stable::detail::to<torch::stable::Tensor>(stack[0]);
+}
+
 // Shorthand for torch::stable::select(tensor, 0, index), i.e. tensor[index].
 inline torch::stable::Tensor selectRow(
     const torch::stable::Tensor& tensor,
