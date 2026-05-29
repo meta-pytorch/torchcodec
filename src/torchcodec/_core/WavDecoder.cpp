@@ -28,13 +28,14 @@ constexpr int64_t MIN_FMT_CHUNK_SIZE = 16;
 constexpr int64_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
 // Arbitrary max for fmt chunk allocation - set to 5x extended format size
 constexpr int64_t MAX_FMT_CHUNK_SIZE = 200;
-// Soundfile's default chunk size. See
+// Soundfile's default buffer size. See
 // https://github.com/libsndfile/libsndfile/blob/master/src/common.h#L77
-constexpr size_t DEFAULT_CHUNK_BUFFER_SIZE = 8192;
+constexpr size_t TMP_BUFFER_SIZE = 8192;
 
 // See standard format codes and Wav file format used in WavHeader:
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
 constexpr uint16_t WAV_FORMAT_PCM = 1;
+constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 3;
 constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
 
 bool isLittleEndian() {
@@ -193,19 +194,27 @@ void WavDecoder::validateHeader() {
   uint16_t effectiveFormat = (header_.audioFormat == WAV_FORMAT_EXTENSIBLE)
       ? header_.subFormat
       : header_.audioFormat;
-  // TODO WavDecoder: Support WAV_FORMAT_IEEE_FLOAT 32, 64 bit
   STD_TORCH_CHECK(
-      effectiveFormat == WAV_FORMAT_PCM,
+      effectiveFormat == WAV_FORMAT_PCM ||
+          effectiveFormat == WAV_FORMAT_IEEE_FLOAT,
       "Unsupported WAV format: ",
       effectiveFormat,
-      ". Only PCM format is supported.");
+      ". Only PCM and IEEE float formats are supported.");
 
-  // TODO WavDecoder: support 8, 16, 24 bits
-  STD_TORCH_CHECK(
-      effectiveFormat != WAV_FORMAT_PCM || header_.bitsPerSample == 32,
-      "Unsupported PCM bit depth: ",
-      header_.bitsPerSample,
-      ". Currently supported bit depths are: 32");
+  if (effectiveFormat == WAV_FORMAT_PCM) {
+    STD_TORCH_CHECK(
+        header_.bitsPerSample == 8 || header_.bitsPerSample == 16 ||
+            header_.bitsPerSample == 24 || header_.bitsPerSample == 32,
+        "Unsupported PCM bit depth: ",
+        header_.bitsPerSample,
+        ". Currently supported bit depths are: 8, 16, 24, 32");
+  } else {
+    STD_TORCH_CHECK(
+        header_.bitsPerSample == 32 || header_.bitsPerSample == 64,
+        "Unsupported IEEE float bit depth: ",
+        header_.bitsPerSample,
+        ". Currently supported bit depths are: 32, 64");
+  }
 
   STD_TORCH_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
   STD_TORCH_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
@@ -232,10 +241,29 @@ void WavDecoder::validateHeader() {
   if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 32) {
     sampleFormat_ = "s32";
     codecName_ = "pcm_s32le";
+  } else if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 24) {
+    // FFmpeg decodes s24 into s32 samples (no native 24-bit type).
+    sampleFormat_ = "s32";
+    codecName_ = "pcm_s24le";
+  } else if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 16) {
+    sampleFormat_ = "s16";
+    codecName_ = "pcm_s16le";
+  } else if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 8) {
+    sampleFormat_ = "u8";
+    codecName_ = "pcm_u8";
+  } else if (
+      effectiveFormat == WAV_FORMAT_IEEE_FLOAT && header_.bitsPerSample == 32) {
+    sampleFormat_ = "flt";
+    codecName_ = "pcm_f32le";
+  } else if (
+      effectiveFormat == WAV_FORMAT_IEEE_FLOAT && header_.bitsPerSample == 64) {
+    sampleFormat_ = "dbl";
+    codecName_ = "pcm_f64le";
   } else {
     STD_TORCH_CHECK(
         false,
-        "Unsupported format after validation. That's unexpected, please report this to the TorchCodec repo.");
+        "Unsupported format after validation. "
+        "This is a bug in TorchCodec, please report it.");
   }
 }
 
@@ -280,14 +308,57 @@ void WavDecoder::convertSamplesToFloat(
     float* outputPtr) const {
   int64_t totalSamples = samplesInBuffer * header_.numChannels;
 
-  // Normalize 32-bit PCM samples to [-1.0, 1.0] range.
-  // We use readValue because the buffer size is already validated above.
-  constexpr float scale =
-      1.0f / static_cast<float>(std::numeric_limits<int32_t>::max());
-  for (int64_t i = 0; i < totalSamples; ++i) {
-    int32_t sample = readValue<int32_t>(
-        bufferData, i * static_cast<int64_t>(sizeof(int32_t)));
-    outputPtr[i] = static_cast<float>(sample) * scale;
+  // Normalize PCM samples to [-1.0, 1.0] range. The convention across
+  // implementations is to divide by 2^(N - 1) where N is the bitdepth.
+  // We use readValue because the buffer size is already validated earlier.
+  // Float32 is handled directly in getSamplesInRange (no conversion
+  // needed), so it doesn't appear here.
+  if (header_.bitsPerSample == 64) {
+    for (int64_t i = 0; i < totalSamples; ++i) {
+      double sample = readValue<double>(
+          bufferData, i * static_cast<int64_t>(sizeof(double)));
+      outputPtr[i] = static_cast<float>(sample);
+    }
+  } else if (header_.bitsPerSample == 32) {
+    constexpr float scale = 1.0f / static_cast<float>(1U << 31);
+    for (int64_t i = 0; i < totalSamples; ++i) {
+      int32_t sample = readValue<int32_t>(
+          bufferData, i * static_cast<int64_t>(sizeof(int32_t)));
+      outputPtr[i] = static_cast<float>(sample) * scale;
+    }
+  } else if (header_.bitsPerSample == 24) {
+    // 24-bit samples are 3 bytes each. We shift into the *upper* 24
+    // bits of an int32 so that sign extension happens naturally, then
+    // reuse the same 1/(2^31) scale as 32-bit.
+    constexpr float scale = 1.0f / static_cast<float>(1U << 31);
+    for (int64_t i = 0; i < totalSamples; ++i) {
+      int64_t offset = i * 3;
+      auto b0 = static_cast<uint32_t>(bufferData[offset]);
+      auto b1 = static_cast<uint32_t>(bufferData[offset + 1]);
+      auto b2 = static_cast<uint32_t>(bufferData[offset + 2]);
+      auto sample = static_cast<int32_t>((b0 << 8) | (b1 << 16) | (b2 << 24));
+      outputPtr[i] = static_cast<float>(sample) * scale;
+    }
+  } else if (header_.bitsPerSample == 16) {
+    constexpr float scale = 1.0f / static_cast<float>(1U << 15);
+    for (int64_t i = 0; i < totalSamples; ++i) {
+      int16_t sample = readValue<int16_t>(
+          bufferData, i * static_cast<int64_t>(sizeof(int16_t)));
+      outputPtr[i] = static_cast<float>(sample) * scale;
+    }
+  } else {
+    STD_TORCH_CHECK(
+        header_.bitsPerSample == 8,
+        "Unsupported bit depth in convertSamplesToFloat: ",
+        header_.bitsPerSample,
+        ". This is a bug in TorchCodec, please report it.");
+    // 8-bit WAV is *unsigned*, so we first have to center the data (- 128)
+    // before scaling it.
+    constexpr float scale = 1.0f / static_cast<float>(1U << 7);
+    for (int64_t i = 0; i < totalSamples; ++i) {
+      uint8_t sample = readValue<uint8_t>(bufferData, i);
+      outputPtr[i] = (static_cast<float>(sample) - 128.0f) * scale;
+    }
   }
 }
 
@@ -355,40 +426,55 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       validateUint64ToStreampos(byteOffset, "byteOffset"),
       std::ios::beg);
 
-  // We need to align buffer size to actual boundaries of samples to avoid
-  // reading partial samples. See
-  // https://github.com/FFmpeg/FFmpeg/blob/0f600cbc16b7903703b47d23981b636c94a41c71/libavformat/wavdec.c#L786-L791
-  size_t alignedBufferSize = DEFAULT_CHUNK_BUFFER_SIZE;
-  alignedBufferSize = (alignedBufferSize / header_.numBytesPerSample) *
-      header_.numBytesPerSample;
-  STD_TORCH_CHECK(
-      alignedBufferSize > 0,
-      "WAV bytes per sample (",
-      header_.numBytesPerSample,
-      ") exceeds buffer size (",
-      DEFAULT_CHUNK_BUFFER_SIZE,
-      ")");
-
-  // Allocate buffer and read samples in chunks
-  std::vector<uint8_t> buffer(alignedBufferSize);
-
-  int64_t samplesProcessed = 0;
   auto samples =
       torch::stable::empty({numSamples, header_.numChannels}, kStableFloat32);
 
-  const int64_t samplesPerBuffer =
-      static_cast<int64_t>(alignedBufferSize) / header_.numBytesPerSample;
+  if (header_.audioFormat == WAV_FORMAT_IEEE_FLOAT &&
+      header_.bitsPerSample == 32) {
+    // Float32 samples can be read directly into the output tensor.
+    int64_t totalBytes = numSamples * header_.numBytesPerSample;
+    file_.read(
+        reinterpret_cast<char*>(samples.mutable_data_ptr<float>()),
+        static_cast<std::streamsize>(totalBytes));
+    STD_TORCH_CHECK(
+        !file_.fail() &&
+            file_.gcount() == static_cast<std::streamsize>(totalBytes),
+        "WAV: unexpected end of data (expected ",
+        totalBytes,
+        " bytes, got ",
+        file_.gcount(),
+        ")");
+  } else {
+    // We need to align buffer size to actual boundaries of samples to
+    // avoid reading partial samples. See
+    // https://github.com/FFmpeg/FFmpeg/blob/0f600cbc16b7903703b47d23981b636c94a41c71/libavformat/wavdec.c#L786-L791
+    size_t alignedBufferSize = TMP_BUFFER_SIZE;
+    alignedBufferSize = (alignedBufferSize / header_.numBytesPerSample) *
+        header_.numBytesPerSample;
+    STD_TORCH_CHECK(
+        alignedBufferSize > 0,
+        "WAV bytes per sample (",
+        header_.numBytesPerSample,
+        ") exceeds buffer size (",
+        TMP_BUFFER_SIZE,
+        ")");
 
-  while (samplesProcessed < numSamples) {
-    const int64_t samplesThisIteration =
-        std::min(numSamples - samplesProcessed, samplesPerBuffer);
-    safeReadFile(
-        file_, buffer, samplesThisIteration * header_.numBytesPerSample);
+    std::vector<uint8_t> buffer(alignedBufferSize);
+    int64_t samplesProcessed = 0;
+    const int64_t samplesPerBuffer =
+        static_cast<int64_t>(alignedBufferSize) / header_.numBytesPerSample;
 
-    float* outputPtr = samples.mutable_data_ptr<float>() +
-        (samplesProcessed * header_.numChannels);
-    convertSamplesToFloat(buffer, samplesThisIteration, outputPtr);
-    samplesProcessed += samplesThisIteration;
+    while (samplesProcessed < numSamples) {
+      const int64_t samplesThisIteration =
+          std::min(numSamples - samplesProcessed, samplesPerBuffer);
+      safeReadFile(
+          file_, buffer, samplesThisIteration * header_.numBytesPerSample);
+
+      float* outputPtr = samples.mutable_data_ptr<float>() +
+          (samplesProcessed * header_.numChannels);
+      convertSamplesToFloat(buffer, samplesThisIteration, outputPtr);
+      samplesProcessed += samplesThisIteration;
+    }
   }
 
   // Convert to [channels, samples]
