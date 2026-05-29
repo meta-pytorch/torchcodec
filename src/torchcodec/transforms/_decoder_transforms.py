@@ -119,7 +119,7 @@ class Resize(DecoderTransform):
 
         assert isinstance(tv_resize, v2.Resize)
 
-        if tv_resize.interpolation is not v2.InterpolationMode.BILINEAR:
+        if tv_resize.interpolation not in (v2.InterpolationMode.BILINEAR, "bilinear"):
             raise ValueError(
                 "TorchVision Resize transform must use bilinear interpolation."
             )

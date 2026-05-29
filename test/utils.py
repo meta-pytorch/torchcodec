@@ -5,6 +5,7 @@ import pathlib
 import platform
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -18,6 +19,25 @@ from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
 IN_GITHUB_CI = bool(os.getenv("GITHUB_ACTIONS"))
+
+
+def call_ffprobe(args):
+    # We write ffprobe's output to a temp file instead of capturing via
+    # subprocess pipe, to avoid sporadic JSON truncation on Windows.
+    with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as f:
+        tmp_path = f.name
+    try:
+        with open(tmp_path, "w") as stdout_file:
+            subprocess.run(
+                ["ffprobe", "-v", "error", "-hide_banner"] + args + ["-of", "json"],
+                check=True,
+                stdout=stdout_file,
+                stderr=subprocess.DEVNULL,
+            )
+        with open(tmp_path) as f:
+            return json.loads(f.read())
+    finally:
+        os.unlink(tmp_path)
 
 
 # Decorator for skipping CUDA tests when CUDA isn't available. The tests are
@@ -34,53 +54,53 @@ def needs_ffmpeg_cli(test_item):
     return pytest.mark.needs_ffmpeg_cli(test_item)
 
 
-# This is a special device string that we use to test the "beta" CUDA backend.
-# It only exists here, in this test utils file. Public and core APIs have no
-# idea that this is how we're tesing them. That is, that's not a supported
-# `device` parameter for the VideoDecoder or for the _core APIs.
+# This is a special device string that we use to test the legacy "ffmpeg" CUDA
+# backend. It only exists here, in this test utils file. Public and core APIs
+# have no idea that this is how we're testing them. That is, that's not a
+# supported `device` parameter for the VideoDecoder or for the _core APIs.
 # Tests using all_supported_devices() will get this device string, and the test
 # need to clean it up by calling either make_video_decoder for VideoDecoder, or
 # unsplit_device_str for core APIs.
-_CUDA_BETA_DEVICE_STR = "cuda:beta"
+_CUDA_FFMPEG_DEVICE_STR = "cuda:ffmpeg"
 
 
 def all_supported_devices():
     return (
         "cpu",
         pytest.param("cuda", marks=pytest.mark.needs_cuda),
-        pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_FFMPEG_DEVICE_STR, marks=pytest.mark.needs_cuda),
     )
 
 
 def cuda_devices():
     return (
         pytest.param("cuda", marks=pytest.mark.needs_cuda),
-        pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_FFMPEG_DEVICE_STR, marks=pytest.mark.needs_cuda),
     )
 
 
 def unsplit_device_str(device_str: str) -> str:
     # helper meant to be used as
     # device, device_variant = unsplit_device_str(device)
-    # when `device` comes from all_supported_devices() and may be _CUDA_BETA_DEVICE_STR.
+    # when `device` comes from all_supported_devices() and may be _CUDA_FFMPEG_DEVICE_STR.
     # It is used:
-    # - before calling `.to(device)` where device can't be _CUDA_BETA_DEVICE_STR.
+    # - before calling `.to(device)` where device can't be _CUDA_FFMPEG_DEVICE_STR.
     # - before calling add_video_stream(device=device, device_variant=device_variant)
-    if device_str == _CUDA_BETA_DEVICE_STR:
-        return "cuda", "beta"
+    if device_str == _CUDA_FFMPEG_DEVICE_STR:
+        return "cuda", "ffmpeg"
     else:
-        return device_str, "ffmpeg"
+        return device_str, "default"
 
 
 def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
     # Helper to create a VideoDecoder with the right cuda backend if needed.
     # kwargs is expected to have a "device" key which comes from
-    # all_supported_devices(), and can be _CUDA_BETA_DEVICE_STR.
+    # all_supported_devices(), and can be _CUDA_FFMPEG_DEVICE_STR.
     device = kwargs.pop("device", "cpu")
-    if device == _CUDA_BETA_DEVICE_STR:
-        clean_device, backend = "cuda", "beta"
+    if device == _CUDA_FFMPEG_DEVICE_STR:
+        clean_device, backend = "cuda", "ffmpeg"
     else:
-        clean_device, backend = device, "ffmpeg"
+        clean_device, backend = device, "nvdec"
 
     # set_cuda_backend is a no-op if the device is "cpu", so we can use it
     # unconditionally.
@@ -349,22 +369,16 @@ class TestContainerFile:
         return self._custom_frame_mappings_data[stream_index]
 
     def generate_custom_frame_mappings(self, stream_index: int) -> str:
-        result = subprocess.run(
+        parsed = call_ffprobe(
             [
-                "ffprobe",
                 "-i",
                 f"{self.path}",
                 "-select_streams",
                 f"{stream_index}",
                 "-show_frames",
-                "-of",
-                "json",
             ],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
-        return result
+        )
+        return json.dumps(parsed)
 
     @property
     def empty_pts_seconds(self) -> torch.Tensor:
@@ -404,6 +418,19 @@ class TestVideo(TestContainerFile):
             idx, stream_index=stream_index, filters=filters
         )
         tensor_file_path = f"{base_path}.pt"
+        return torch.load(tensor_file_path, weights_only=True).permute(2, 0, 1)
+
+    def get_frame_data_by_index_rgb48(
+        self,
+        idx: int,
+        *,
+        stream_index: int | None = None,
+    ) -> torch.Tensor:
+        if stream_index is None:
+            stream_index = self.default_stream_index
+
+        base_path = self.get_base_path_by_index(idx, stream_index=stream_index)
+        tensor_file_path = f"{base_path}.rgb48.pt"
         return torch.load(tensor_file_path, weights_only=True).permute(2, 0, 1)
 
     def get_frame_data_by_range(
@@ -626,6 +653,46 @@ BT601_LIMITED_RANGE = TestVideo(
     frames={0: {}},  # Not needed for now
 )
 
+# HDR re-encode of NASA video (10-bit H265 with BT.2020 + PQ), generated with:
+# ffmpeg -i test/resources/nasa_13013.mp4 -map 0:v:0 -c:v libx265 -pix_fmt yuv420p10le \
+# -x265-params "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited" \
+# -preset fast -crf 23 test/resources/nasa_13013_hdr.mp4
+NASA_VIDEO_HDR = TestVideo(
+    filename="nasa_13013_hdr.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# HDR re-encode of testsrc2 (10-bit H265 with BT.2020 + PQ), generated with:
+# ffmpeg -i test/resources/testsrc2.mp4 -c:v libx265 -pix_fmt yuv420p10le \
+# -x265-params "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited" \
+# -preset fast -crf 23 test/resources/testsrc2_hdr.mp4
+TEST_SRC_2_720P_HDR = TestVideo(
+    filename="testsrc2_hdr.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# 12-bit HDR testsrc2 (H265 with BT.2020 + PQ), generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x180:rate=30 -c:v libx265
+# -pix_fmt yuv420p12le -x265-params
+# "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited"
+# -preset fast -crf 23 test/resources/testsrc2_12bit_hdr.mp4
+TEST_SRC_2_12BIT_HDR = TestVideo(
+    filename="testsrc2_12bit_hdr.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
 # ffmpeg -f lavfi -i testsrc2=duration=2:size=1280x720:rate=30 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -b:v 2500k -r 30 -movflags +faststart output_720p_2s.mp4
 TEST_SRC_2_720P = TestVideo(
     filename="testsrc2.mp4",
@@ -675,6 +742,16 @@ TEST_SRC_2_720P_MPEG4 = TestVideo(
     frames={0: {}},  # Not needed for now
 )
 
+# ffmpeg -f lavfi -i color=c=black:s=64x64:d=0.034 -c:v mpeg4 -q:v 31 testsrc2_mpeg4.mp4
+TEST_SRC_2_MPEG4_MP4 = TestVideo(
+    filename="testsrc2_mpeg4.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=64, height=64, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
 # Video with non-zero start time (start_time ~8.333s)
 # Used to test that PTS values are correctly reported for videos that don't
 # start at time 0.
@@ -685,6 +762,39 @@ TEST_NON_ZERO_START = TestVideo(
         0: TestVideoStreamInfo(width=200, height=112, num_color_channels=3),
     },
     frames={},  # Automatically loaded from json file
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_width.mp4
+TESTSRC2_ODD_WIDTH = TestVideo(
+    filename="testsrc2_odd_width.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=320x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_height.mp4
+TESTSRC2_ODD_HEIGHT = TestVideo(
+    filename="testsrc2_odd_height.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p -profile:v testsrc2_odd_height_and_width.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH = TestVideo(
+    filename="testsrc2_odd_height_and_width.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
 )
 
 
@@ -905,6 +1015,49 @@ SINE_MONO_S16 = TestAudio(
             duration_seconds=4,
             num_frames=63,
             sample_format="s16",
+        )
+    },
+)
+
+# WAV file with an odd-sized data chunk and a trailing metadata chunk.
+# This reproduces https://github.com/meta-pytorch/torchcodec/issues/1378 where
+# FFmpeg seeks past EOF when scanning for trailing chunks, causing a crash
+# when decoding from a bytes tensor (but not from a file path).
+# Generated with:
+#     import struct
+#     path = "test/resources/reproduce_seek_bug.wav"
+#     sample_rate = 48000
+#     block_align = 3  # 24-bit mono
+#     num_samples = 48001  # * 3 = 144003 bytes (odd!)
+#     data_size = num_samples * block_align
+#     sample_data = bytes(data_size)  # silence
+#     trailing_data = b"\x00" * 256
+#     with open(path, "wb") as f:
+#         riff_size = 4 + (8 + 16) + (8 + data_size + 1) + (8 + len(trailing_data))
+#         f.write(b"RIFF")
+#         f.write(struct.pack("<I", riff_size))
+#         f.write(b"WAVE")
+#         f.write(b"fmt ")
+#         f.write(struct.pack("<I", 16))
+#         f.write(struct.pack("<HHIIHH", 1, 1, sample_rate, sample_rate * block_align, block_align, 24))
+#         f.write(b"data")
+#         f.write(struct.pack("<I", data_size))
+#         f.write(sample_data)
+#         f.write(b"\x00")  # RIFF padding byte for odd-sized chunk
+#         f.write(b"_PMX")
+#         f.write(struct.pack("<I", len(trailing_data)))
+#         f.write(trailing_data)
+WAV_ODD_DATA_TRAILING_CHUNK = TestAudio(
+    filename="reproduce_seek_bug.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=48_000,
+            num_channels=1,
+            duration_seconds=1.000021,
+            num_frames=12,
+            sample_format="s32",
         )
     },
 )

@@ -21,7 +21,7 @@ namespace facebook::torchcodec {
 // Key for device interface registration with device type + variant support
 struct DeviceInterfaceKey {
   StableDeviceType deviceType;
-  std::string_view variant = "ffmpeg"; // e.g., "ffmpeg", "beta", etc.
+  std::string_view variant = "default"; // e.g., "default", "ffmpeg"
 
   bool operator<(const DeviceInterfaceKey& other) const {
     if (deviceType != other.deviceType) {
@@ -88,6 +88,15 @@ class DeviceInterface {
   virtual void registerHardwareDeviceWithCodec(
       [[maybe_unused]] AVCodecContext* codecContext) {}
 
+  // The dtype that should be used for the pre-allocated tensors on batch APIs.
+  // Usually that will just be the user's requested dtype, but not always: on
+  // CUDA with SDR videos when float32 is asked, will fallback from P016 to NV12
+  // to avoid falling back all the way to the CPU. The pre-allocated tensors
+  // then need to be uint8, not float32.
+  virtual OutputDtype getPreAllocationDtype(OutputDtype requestedDtype) const {
+    return requestedDtype;
+  }
+
   virtual void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
@@ -134,6 +143,15 @@ class DeviceInterface {
         codecContext_ != nullptr,
         "Codec context not available for default flushing");
     avcodec_flush_buffers(codecContext_.get());
+
+    // We also manually flush any remaining frames in the decoder buffer. We
+    // shouldn't have to do this, because avcodec_flush_buffers should handle
+    // it, but some codecs like HEVC may still have frames buffered internally
+    // in edge cases (ex. hitting EOF) as observed in
+    // https://github.com/meta-pytorch/torchcodec/issues/1339.
+    UniqueAVFrame tmp(av_frame_alloc());
+    while (avcodec_receive_frame(codecContext_.get(), tmp.get()) == AVSUCCESS) {
+    }
   }
 
   virtual std::string getDetails() {
@@ -180,9 +198,10 @@ FORCE_PUBLIC_VISIBILITY void validateDeviceInterface(
     const std::string& device,
     const std::string& variant);
 
-std::unique_ptr<DeviceInterface> createDeviceInterface(
+TORCHCODEC_THIRD_PARTY_API std::unique_ptr<DeviceInterface>
+createDeviceInterface(
     const StableDevice& device,
-    const std::string_view variant = "ffmpeg");
+    const std::string_view variant = "default");
 
 torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 

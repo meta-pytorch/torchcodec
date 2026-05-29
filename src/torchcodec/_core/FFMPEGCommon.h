@@ -24,6 +24,7 @@ extern "C" {
 #include <libavutil/display.h>
 #include <libavutil/file.h>
 #include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/version.h>
 #include <libswresample/swresample.h>
@@ -298,6 +299,7 @@ struct SwsConfig {
   AVColorSpace inputColorspace = AVCOL_SPC_UNSPECIFIED;
   int outputWidth = 0;
   int outputHeight = 0;
+  AVPixelFormat outputFormat = AV_PIX_FMT_NONE;
 
   SwsConfig() = default;
   SwsConfig(
@@ -306,16 +308,14 @@ struct SwsConfig {
       AVPixelFormat inputFormat,
       AVColorSpace inputColorspace,
       int outputWidth,
-      int outputHeight);
+      int outputHeight,
+      AVPixelFormat outputFormat);
 
   bool operator==(const SwsConfig& other) const;
   bool operator!=(const SwsConfig& other) const;
 };
 
 // Utility functions for swscale context management
-UniqueSwsContext createSwsContext(
-    const SwsConfig& swsConfig,
-    AVPixelFormat outputFormat,
-    int swsFlags);
+UniqueSwsContext createSwsContext(const SwsConfig& swsConfig, int swsFlags);
 
 } // namespace facebook::torchcodec

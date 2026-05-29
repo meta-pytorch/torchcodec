@@ -4,7 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-// BETA CUDA device interface that provides direct control over NVDEC
+// NVDEC CUDA device interface that provides direct control over NVDEC
 // while keeping FFmpeg for demuxing. A lot of the logic, particularly the use
 // of a cache for the decoders, is inspired by DALI's implementation which is
 // APACHE 2.0:
@@ -42,6 +42,13 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const AVStream* avStream,
       const UniqueDecodingAVFormatContext& avFormatCtx,
       const SharedAVCodecContext& codecContext) override;
+
+  void initializeVideo(
+      const VideoStreamOptions& videoStreamOptions,
+      const std::vector<std::unique_ptr<Transform>>& transforms,
+      const std::optional<FrameDims>& resizedOutputDims) override;
+
+  OutputDtype getPreAllocationDtype(OutputDtype requestedDtype) const override;
 
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
@@ -89,6 +96,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;
   CUVIDEOFORMAT videoFormat_ = {};
+  CUVIDEOFORMATEX parserExtInfo_ = {};
 
   std::queue<CUVIDPARSERDISPINFO> readyFrames_;
 
@@ -108,6 +116,27 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   SwsConfig prevSwsConfig_;
   Rotation rotation_ = Rotation::NONE;
+  OutputDtype outputDtype_ = OutputDtype::UINT8;
+  cudaVideoSurfaceFormat surfaceFormat_ = cudaVideoSurfaceFormat_NV12;
+
+  struct CachedP016ColorMatrix {
+    AVColorSpace colorspace = AVCOL_SPC_UNSPECIFIED;
+    AVColorRange colorRange = AVCOL_RANGE_UNSPECIFIED;
+    int bitDepth = 0;
+    float matrix[3][4] = {};
+    bool valid = false;
+  };
+
+  CachedP016ColorMatrix cachedColorMatrix_;
+
+  // Stored from initialize() for deferred use in initializeVideo(), where
+  // we know the outputDtype and can make the NVDEC-vs-CPU-fallback decision.
+  // These are non-owning: SingleStreamDecoder owns them and outlives us.
+  // codecContext_ is inherited from DeviceInterface.
+  // TODO_HDR: this is nasty, especially the pointer on
+  // UniqueDecodingAVFormatContext. Consider something else.
+  const AVStream* avStream_ = nullptr;
+  const UniqueDecodingAVFormatContext* avFormatCtx_ = nullptr;
 };
 
 } // namespace facebook::torchcodec

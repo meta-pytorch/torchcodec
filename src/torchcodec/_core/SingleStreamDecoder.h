@@ -274,7 +274,10 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
           std::nullopt);
 
-  torch::stable::Tensor maybePermuteHWC2CHW(torch::stable::Tensor& hwcTensor);
+  // Permutes HWC to CHW if needed, then converts to float32 and normalizes to
+  // [0, 1] if the active stream's outputDtype is FLOAT32.
+  torch::stable::Tensor maybePermuteAndConvertToFloat32(
+      torch::stable::Tensor& tensor);
 
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
@@ -318,7 +321,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       int streamIndex,
       AVMediaType mediaType,
       const StableDevice& device = StableDevice(kStableCPU),
-      const std::string_view deviceVariant = "ffmpeg",
+      const std::string_view deviceVariant = "default",
       std::optional<int> ffmpegThreadCount = std::nullopt);
 
   // Returns the "best" stream index for a given media type. The "best" is

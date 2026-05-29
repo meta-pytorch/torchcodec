@@ -4,6 +4,7 @@
 #include "Cache.h"
 #include "CudaDeviceInterface.h"
 #include "FFMPEGCommon.h"
+#include "NPPRuntimeLoader.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
 
@@ -16,7 +17,7 @@ namespace facebook::torchcodec {
 namespace {
 
 static bool g_cuda = registerDeviceInterface(
-    DeviceInterfaceKey(kStableCUDA),
+    DeviceInterfaceKey(kStableCUDA, /*variant=*/"ffmpeg"),
     [](const StableDevice& device) { return new CudaDeviceInterface(device); });
 
 // We reuse cuda contexts across VideoDeoder instances. This is because
@@ -94,7 +95,14 @@ CudaDeviceInterface::CudaDeviceInterface(const StableDevice& device)
   STD_TORCH_CHECK(
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
+  // Resolve unspecified device index (-1) to the actual current CUDA device.
+  device_.set_index(getDeviceIndex(device_));
+
   initializeCudaContextWithPytorch(device_);
+
+  STD_TORCH_CHECK(
+      loadNPPLibrary(),
+      "Failed to load NPP library. NPP is required for CUDA color conversion.");
 
   hardwareDeviceCtx_ = getHardwareDeviceContext(device_);
   nppCtx_ = getNppStreamContext(device_);
@@ -122,9 +130,7 @@ void CudaDeviceInterface::initialize(
       cpuInterface_ != nullptr, "Failed to create CPU device interface");
   cpuInterface_->initialize(avStream, avFormatCtx, codecContext);
   cpuInterface_->initializeVideo(
-      VideoStreamOptions(),
-      {},
-      /*resizedOutputDims=*/std::nullopt);
+      VideoStreamOptions(), {}, /*resizedOutputDims=*/std::nullopt);
 }
 
 void CudaDeviceInterface::initializeVideo(
@@ -237,7 +243,8 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
-  validatePreAllocatedTensorShape(preAllocatedOutputTensor, avFrame);
+  validatePreAllocatedTensorShape(
+      preAllocatedOutputTensor, FrameDims(avFrame->height, avFrame->width));
 
   hasDecodedFrame_ = true;
 
@@ -327,8 +334,21 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   cudaStream_t nvdecStream = // That's always the default stream. Sad.
       cudaDeviceCtx->stream;
 
+  STD_TORCH_CHECK(
+      avFrame->height % 2 == 0 && avFrame->width % 2 == 0,
+      "Expected even dimensions from NVDEC, got ",
+      avFrame->width,
+      "x",
+      avFrame->height,
+      ". Please report this to the TorchCodec repo.");
+
   frameOutput.data = convertNV12FrameToRGB(
-      avFrame, device_, nppCtx_, nvdecStream, preAllocatedOutputTensor);
+      avFrame,
+      device_,
+      nppCtx_,
+      nvdecStream,
+      preAllocatedOutputTensor,
+      FrameDims(avFrame->height, avFrame->width));
 }
 
 // inspired by https://github.com/FFmpeg/FFmpeg/commit/ad67ea9

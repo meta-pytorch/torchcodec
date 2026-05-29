@@ -7,13 +7,28 @@ torchcodec.encoders
 .. currentmodule:: torchcodec.encoders
 
 
-For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_encoding_audio_encoding.py`.
+Multi-stream encoder for audio and video
+----------------------------------------
 
+For a tutorial, see: :ref:`sphx_glr_generated_examples_encoding_multi_stream_encoding.py`.
 
 .. autosummary::
     :toctree: generated/
     :nosignatures:
     :template: class.rst
 
-    AudioEncoder
+    Encoder
+    VideoStream
+    AudioStream
+
+
+Single-stream encoders
+----------------------
+
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
+    :template: class.rst
+
     VideoEncoder
+    AudioEncoder

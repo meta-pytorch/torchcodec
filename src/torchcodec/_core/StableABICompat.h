@@ -62,6 +62,7 @@ constexpr auto kStableXPU = torch::headeronly::DeviceType::XPU;
 
 // Scalar type constants
 constexpr auto kStableUInt8 = torch::headeronly::ScalarType::Byte;
+constexpr auto kStableUInt16 = torch::headeronly::ScalarType::UInt16;
 constexpr auto kStableInt32 = torch::headeronly::ScalarType::Int;
 constexpr auto kStableInt64 = torch::headeronly::ScalarType::Long;
 constexpr auto kStableFloat32 = torch::headeronly::ScalarType::Float;
@@ -113,6 +114,19 @@ inline torch::stable::Tensor stableRot90(
       torch::stable::detail::from(std::vector<int64_t>{dim0, dim1})};
   TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
       "aten::rot90", "", stack.data(), TORCH_ABI_VERSION));
+  return torch::stable::detail::to<torch::stable::Tensor>(stack[0]);
+}
+
+// TODO_STABLE_ABI: upstream?
+inline torch::stable::Tensor stableDiv(
+    const torch::stable::Tensor& self,
+    double other) {
+  auto divisor = torch::stable::full({}, other);
+  const auto num_args = 2;
+  std::array<StableIValue, num_args> stack{
+      torch::stable::detail::from(self), torch::stable::detail::from(divisor)};
+  TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
+      "aten::div", "Tensor", stack.data(), TORCH_ABI_VERSION));
   return torch::stable::detail::to<torch::stable::Tensor>(stack[0]);
 }
 
