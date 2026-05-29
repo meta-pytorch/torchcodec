@@ -2956,24 +2956,6 @@ class TestAudioDecoder:
 
 
 class TestWavDecoder:
-    @pytest.mark.parametrize(
-        "asset",
-        (
-            SINE_MONO_S32,
-            SINE_MONO_S24,
-            SINE_MONO_S16,
-            SINE_MONO_U8,
-            SINE_MONO_F32,
-            SINE_MONO_F64,
-        ),
-    )
-    def test_metadata(self, asset):
-        wav_decoder = WavDecoder(asset.path)
-        audio_decoder = AudioDecoder(asset.path)
-
-        assert isinstance(wav_decoder.metadata, AudioStreamMetadata)
-        assert wav_decoder.stream_index == audio_decoder.metadata.stream_index
-        assert wav_decoder.metadata == audio_decoder.metadata
 
     def test_non_wav_file_raises_error(self):
         with pytest.raises(RuntimeError, match="Missing RIFF header"):
@@ -3003,7 +2985,7 @@ class TestWavDecoder:
         ),
     )
     @pytest.mark.parametrize("source_kind", ("path", "bytes", "tensor", "file_like"))
-    def test_get_samples_played_in_range_vs_audio_decoder(
+    def test_against_audio_decoder(
         self, asset, start_seconds, stop_seconds, source_kind
     ):
         file_handle = None
@@ -3019,6 +3001,10 @@ class TestWavDecoder:
 
         wav_dec = WavDecoder(source)
         audio_dec = AudioDecoder(asset.path)
+
+        assert isinstance(wav_dec.metadata, AudioStreamMetadata)
+        assert wav_dec.stream_index == audio_dec.metadata.stream_index
+        assert wav_dec.metadata == audio_dec.metadata
 
         if start_seconds is None and stop_seconds is None:
             wav_samples = wav_dec.get_all_samples()
