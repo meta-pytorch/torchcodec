@@ -72,7 +72,7 @@ static DecoderCapsCache& getDecoderCapsCache() {
   return cache;
 }
 
-cudaVideoSurfaceFormat getSurfaceFormat(OutputDtype outputDtype) {
+cudaVideoSurfaceFormat getPreferredSurfaceFormat(OutputDtype outputDtype) {
   return outputDtype == OutputDtype::FLOAT32 ? cudaVideoSurfaceFormat_P016
                                              : cudaVideoSurfaceFormat_NV12;
 }
@@ -195,26 +195,26 @@ std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
   }
 }
 
-bool nativeNVDECSupport(
+std::optional<cudaVideoSurfaceFormat> getNVDECSurfaceFormat(
     const StableDevice& device,
     const SharedAVCodecContext& codecContext,
     OutputDtype outputDtype) {
-  // Return true iff the input video stream is supported by our NVDEC
-  // implementation.
+  // Return the surface format to use for NVDEC decoding if the stream is
+  // supported, or nullopt to fall back to CPU.
 
   auto codecType = validateCodecSupport(codecContext->codec_id);
   if (!codecType.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(codecContext->pix_fmt);
   if (!desc) {
-    return false;
+    return std::nullopt;
   }
 
   auto chromaFormat = validateChromaSupport(desc);
   if (!chromaFormat.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   auto bitDepthMinus8 = static_cast<unsigned int>(desc->comp[0].depth - 8);
@@ -224,11 +224,11 @@ bool nativeNVDECSupport(
       chromaFormat.value(),
       bitDepthMinus8);
   if (result != CUDA_SUCCESS) {
-    return false;
+    return std::nullopt;
   }
 
   if (!caps.bIsSupported) {
-    return false;
+    return std::nullopt;
   }
 
   auto coded_width = static_cast<unsigned int>(codecContext->coded_width);
@@ -236,26 +236,31 @@ bool nativeNVDECSupport(
   if (coded_width < static_cast<unsigned int>(caps.nMinWidth) ||
       coded_height < static_cast<unsigned int>(caps.nMinHeight) ||
       coded_width > caps.nMaxWidth || coded_height > caps.nMaxHeight) {
-    return false;
+    return std::nullopt;
   }
 
   // See nMaxMBCount in cuviddec.h
   constexpr unsigned int macroblockConstant = 256;
   if (coded_width * coded_height / macroblockConstant > caps.nMaxMBCount) {
-    return false;
+    return std::nullopt;
   }
 
-  // TODO_HDR: when P016 is not supported (e.g. 8-bit content), we fall back
-  // to CPU. Instead, we could use NV12 and convert uint8 to float32 after
-  // NPP color conversion, which would keep decoding on the GPU.
-  auto neededFormat = outputDtype == OutputDtype::FLOAT32
-      ? cudaVideoSurfaceFormat_P016
-      : cudaVideoSurfaceFormat_NV12;
-  if (!((caps.nOutputFormatMask >> neededFormat) & 1)) {
-    return false;
+  auto preferredFormat = getPreferredSurfaceFormat(outputDtype);
+  if ((caps.nOutputFormatMask >> preferredFormat) & 1) {
+    return preferredFormat;
   }
 
-  return true;
+  // P016 is typically not supported on 8-bit SDR content. In such cases, we
+  // try to fall back to NV12 if supported:
+  // NVDEC will decode to NV12, NPP will do NV12 -> RGB producing uint8, and
+  // maybePermuteAndConvertToFloat32 will cast uint8 -> float32.
+  // For HDR content, NV12 would lose precision, so we fall back to CPU instead.
+  if (preferredFormat == cudaVideoSurfaceFormat_P016 && bitDepthMinus8 == 0 &&
+      ((caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1)) {
+    return cudaVideoSurfaceFormat_NV12;
+  }
+
+  return std::nullopt;
 }
 
 // Callback for freeing CUDA memory associated with AVFrame see where it's used
@@ -433,14 +438,14 @@ void BetaCudaDeviceInterface::initializeVideo(
     const std::optional<FrameDims>& resizedOutputDims) {
   outputDtype_ = videoStreamOptions.outputDtype;
 
-  if (!nvcuvidAvailable_ ||
-      !nativeNVDECSupport(device_, codecContext_, outputDtype_)) {
+  auto maybeSurfaceFormat = nvcuvidAvailable_
+      ? getNVDECSurfaceFormat(device_, codecContext_, outputDtype_)
+      : std::nullopt;
+
+  if (!maybeSurfaceFormat.has_value()) {
     if (!nvcuvidAvailable_) {
       TC_LOG("NVCUVID library not available; falling back to CPU decoding.");
     } else {
-      // TODO_HDR we might fallback if float32 was requested on a sdr video, the
-      // message logged here as well as the one reported by .cpu_fallback should
-      // be more accurate.
       TC_LOG(
           "Video stream not supported by NVDEC; falling back to CPU decoding.");
     }
@@ -452,6 +457,8 @@ void BetaCudaDeviceInterface::initializeVideo(
         videoStreamOptions, transforms, resizedOutputDims);
     return;
   }
+
+  surfaceFormat_ = maybeSurfaceFormat.value();
 
   timeBase_ = avStream_->time_base;
   frameRateAvgFromFFmpeg_ = avStream_->r_frame_rate;
@@ -508,7 +515,7 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     flush();
     unmapPreviousFrame();
     NVDECCache::getCache(device_).returnDecoder(
-        &videoFormat_, getSurfaceFormat(outputDtype_), std::move(decoder_));
+        &videoFormat_, surfaceFormat_, std::move(decoder_));
   }
 
   if (videoParser_) {
@@ -628,8 +635,6 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
 
   videoFormat_ = *videoFormat;
 
-  auto surfaceFormat = getSurfaceFormat(outputDtype_);
-
   if (videoFormat_.min_num_decode_surfaces == 0) {
     // Same as DALI's fallback
     videoFormat_.min_num_decode_surfaces = 20;
@@ -637,13 +642,13 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
 
   if (!decoder_) {
     decoder_ =
-        NVDECCache::getCache(device_).getDecoder(videoFormat, surfaceFormat);
+        NVDECCache::getCache(device_).getDecoder(videoFormat, surfaceFormat_);
 
     if (!decoder_) {
       // TODONVDEC P2: consider re-configuring an existing decoder instead of
       // re-creating one. See docs, see DALI. Re-configuration doesn't seem to
       // be enabled in DALI by default.
-      decoder_ = createDecoder(videoFormat, surfaceFormat);
+      decoder_ = createDecoder(videoFormat, surfaceFormat_);
     }
 
     STD_TORCH_CHECK(decoder_, "Failed to get or create decoder");
@@ -1112,7 +1117,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   auto convertFrame = [&](std::optional<torch::stable::Tensor> preAlloc)
       -> torch::stable::Tensor {
-    if (outputDtype_ == OutputDtype::FLOAT32) {
+    if (surfaceFormat_ == cudaVideoSurfaceFormat_P016) {
       int bitDepth = static_cast<int>(videoFormat_.bit_depth_luma_minus8) + 8;
       AVColorSpace colorspace = gpuFrame->colorspace;
       AVColorRange colorRange = gpuFrame->color_range;
@@ -1184,6 +1189,15 @@ void BetaCudaDeviceInterface::applyRotation(
     torch::stable::copy_(preAllocatedOutputTensor.value(), frameOutput.data);
     frameOutput.data = preAllocatedOutputTensor.value();
   }
+}
+
+OutputDtype BetaCudaDeviceInterface::getPreAllocationDtype(
+    OutputDtype requestedDtype) const {
+  if (requestedDtype == OutputDtype::FLOAT32 &&
+      surfaceFormat_ == cudaVideoSurfaceFormat_NV12) {
+    return OutputDtype::UINT8;
+  }
+  return requestedDtype;
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {

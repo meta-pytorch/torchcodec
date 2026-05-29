@@ -775,7 +775,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
       frameIndices.numel(),
       getOutputDims(),
       videoStreamOptions.device,
-      videoStreamOptions.outputDtype);
+      deviceInterface_->getPreAllocationDtype(videoStreamOptions.outputDtype));
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -844,7 +844,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
       numOutputFrames,
       getOutputDims(),
       videoStreamOptions.device,
-      videoStreamOptions.outputDtype);
+      deviceInterface_->getPreAllocationDtype(videoStreamOptions.outputDtype));
 
   auto frameBatchOutputPtsSeconds =
       mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -985,7 +985,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         0,
         getOutputDims(),
         videoStreamOptions.device,
-        videoStreamOptions.outputDtype);
+        deviceInterface_->getPreAllocationDtype(
+            videoStreamOptions.outputDtype));
     frameBatchOutput.data =
         maybePermuteAndConvertToFloat32(frameBatchOutput.data);
     return frameBatchOutput;
@@ -1032,7 +1033,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         numOutputFrames,
         getOutputDims(),
         videoStreamOptions.device,
-        videoStreamOptions.outputDtype);
+        deviceInterface_->getPreAllocationDtype(
+            videoStreamOptions.outputDtype));
 
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
@@ -1082,7 +1084,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         numFrames,
         getOutputDims(),
         videoStreamOptions.device,
-        videoStreamOptions.outputDtype);
+        deviceInterface_->getPreAllocationDtype(
+            videoStreamOptions.outputDtype));
     auto frameBatchOutputPtsSeconds =
         mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
     auto frameBatchOutputDurationSeconds =

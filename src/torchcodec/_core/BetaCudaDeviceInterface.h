@@ -48,6 +48,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resizedOutputDims) override;
 
+  OutputDtype getPreAllocationDtype(OutputDtype requestedDtype) const override;
+
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
@@ -115,6 +117,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   SwsConfig prevSwsConfig_;
   Rotation rotation_ = Rotation::NONE;
   OutputDtype outputDtype_ = OutputDtype::UINT8;
+  cudaVideoSurfaceFormat surfaceFormat_ = cudaVideoSurfaceFormat_NV12;
 
   struct CachedP016ColorMatrix {
     AVColorSpace colorspace = AVCOL_SPC_UNSPECIFIED;
