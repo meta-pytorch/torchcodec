@@ -2550,6 +2550,8 @@ class TestVideoDecoder:
             asset.path, output_dtype=torch.float32, device="cuda"
         )
 
+        assert decoder_cuda.cpu_fallback
+
         for frame_index in [0, 5, 10]:
             cpu_frame = decoder_cpu[frame_index]
             cuda_frame = decoder_cuda[frame_index]

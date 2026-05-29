@@ -849,7 +849,9 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
 
   avFrame->width = width;
   avFrame->height = height;
-  avFrame->format = AV_PIX_FMT_CUDA;
+  avFrame->format = (surfaceFormat_ == cudaVideoSurfaceFormat_P016)
+      ? AV_PIX_FMT_P016LE
+      : AV_PIX_FMT_NV12;
   avFrame->pts = dispInfo.timestamp;
 
   // TODONVDEC P2: We compute the duration based on average frame rate info, so
@@ -1009,7 +1011,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpu(
   UniqueAVFrame gpuFrame(av_frame_alloc());
   STD_TORCH_CHECK(gpuFrame != nullptr, "Failed to allocate GPU AVFrame");
 
-  gpuFrame->format = AV_PIX_FMT_CUDA;
+  gpuFrame->format = targetPixFmt;
   gpuFrame->width = evenWidth;
   gpuFrame->height = evenHeight;
   gpuFrame->data[0] = cudaBuffer;
@@ -1104,34 +1106,26 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
   // may round them up to even.
   FrameDims originalDims(avFrame->height, avFrame->width);
 
-  bool useP016Path;
   UniqueAVFrame gpuFrame;
   if (cpuFallback_) {
-    if (outputDtype_ == OutputDtype::FLOAT32) {
-      gpuFrame = transferCpuFrameToGpu(avFrame, AV_PIX_FMT_P016LE);
-      useP016Path = true;
-    } else {
-      gpuFrame = transferCpuFrameToGpu(avFrame, AV_PIX_FMT_NV12);
-      useP016Path = false;
-    }
+    AVPixelFormat targetPixFmt = (outputDtype_ == OutputDtype::FLOAT32)
+        ? AV_PIX_FMT_P016LE
+        : AV_PIX_FMT_NV12;
+    gpuFrame = transferCpuFrameToGpu(avFrame, targetPixFmt);
   } else {
     gpuFrame = std::move(avFrame);
-    useP016Path = (surfaceFormat_ == cudaVideoSurfaceFormat_P016);
   }
 
   STD_TORCH_CHECK(
-      gpuFrame->format == AV_PIX_FMT_CUDA,
-      "Expected CUDA format frame from NVDEC CUDA interface");
+      gpuFrame->format == AV_PIX_FMT_NV12 ||
+          gpuFrame->format == AV_PIX_FMT_P016LE,
+      "Expected NV12 or P016LE format frame");
 
   cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
   auto convertFrame = [&](std::optional<torch::stable::Tensor> preAlloc)
       -> torch::stable::Tensor {
-    if (useP016Path) {
-      // P016LE left-shifts values to the high bits of 16-bit words, so
-      // the color matrix needs the actual source bit depth. When coming
-      // from NVDEC we get this from videoFormat_; in the CPU fallback
-      // path we get it from the codec context.
+    if (gpuFrame->format == AV_PIX_FMT_P016LE) {
       int bitDepth = cpuFallback_
           ? codecContext_->bits_per_raw_sample
           : static_cast<int>(videoFormat_.bit_depth_luma_minus8) + 8;
