@@ -53,6 +53,8 @@ from .utils import (
     needs_ffmpeg_cli,
     psnr,
     SINE_16_CHANNEL_S16,
+    SINE_MONO_F32,
+    SINE_MONO_F64,
     SINE_MONO_S16,
     SINE_MONO_S24,
     SINE_MONO_S32,
@@ -2955,7 +2957,15 @@ class TestAudioDecoder:
 
 class TestWavDecoder:
     @pytest.mark.parametrize(
-        "asset", (SINE_MONO_S32, SINE_MONO_S24, SINE_MONO_S16, SINE_MONO_U8)
+        "asset",
+        (
+            SINE_MONO_S32,
+            SINE_MONO_S24,
+            SINE_MONO_S16,
+            SINE_MONO_U8,
+            SINE_MONO_F32,
+            SINE_MONO_F64,
+        ),
     )
     def test_metadata(self, asset):
         wav_decoder = WavDecoder(asset.path)
@@ -2980,7 +2990,15 @@ class TestWavDecoder:
         ],
     )
     @pytest.mark.parametrize(
-        "asset", (SINE_MONO_S32, SINE_MONO_S24, SINE_MONO_S16, SINE_MONO_U8)
+        "asset",
+        (
+            SINE_MONO_S32,
+            SINE_MONO_S24,
+            SINE_MONO_S16,
+            SINE_MONO_U8,
+            SINE_MONO_F32,
+            SINE_MONO_F64,
+        ),
     )
     def test_get_samples_played_in_range_vs_audio_decoder(
         self, asset, start_seconds, stop_seconds
@@ -2996,7 +3014,15 @@ class TestWavDecoder:
         assert wav_samples.pts_seconds == audio_samples.pts_seconds
 
     @pytest.mark.parametrize(
-        "asset", (SINE_MONO_S32, SINE_MONO_S24, SINE_MONO_S16, SINE_MONO_U8)
+        "asset",
+        (
+            SINE_MONO_S32,
+            SINE_MONO_S24,
+            SINE_MONO_S16,
+            SINE_MONO_U8,
+            SINE_MONO_F32,
+            SINE_MONO_F64,
+        ),
     )
     def test_get_all_samples_vs_audio_decoder(self, asset):
         wav_dec = WavDecoder(asset.path)
