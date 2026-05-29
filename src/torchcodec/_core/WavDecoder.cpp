@@ -28,9 +28,9 @@ constexpr int64_t MIN_FMT_CHUNK_SIZE = 16;
 constexpr int64_t MIN_WAVEX_FMT_CHUNK_SIZE = 40;
 // Arbitrary max for fmt chunk allocation - set to 5x extended format size
 constexpr int64_t MAX_FMT_CHUNK_SIZE = 200;
-// Soundfile's default chunk size. See
+// Soundfile's default buffer size. See
 // https://github.com/libsndfile/libsndfile/blob/master/src/common.h#L77
-constexpr size_t DEFAULT_CHUNK_BUFFER_SIZE = 8192;
+constexpr size_t TMP_BUFFER_SIZE = 8192;
 
 // See standard format codes and Wav file format used in WavHeader:
 // https://www.mmsp.ece.mcgill.ca/Documents/AudioFormats/WAVE/WAVE.html
@@ -200,12 +200,13 @@ void WavDecoder::validateHeader() {
       effectiveFormat,
       ". Only PCM format is supported.");
 
-  // TODO WavDecoder: support 8, 16, 24 bits
   STD_TORCH_CHECK(
-      effectiveFormat != WAV_FORMAT_PCM || header_.bitsPerSample == 32,
+      effectiveFormat != WAV_FORMAT_PCM || header_.bitsPerSample == 8 ||
+          header_.bitsPerSample == 16 || header_.bitsPerSample == 24 ||
+          header_.bitsPerSample == 32,
       "Unsupported PCM bit depth: ",
       header_.bitsPerSample,
-      ". Currently supported bit depths are: 32");
+      ". Currently supported bit depths are: 8, 16, 24, 32");
 
   STD_TORCH_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
   STD_TORCH_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
@@ -232,10 +233,20 @@ void WavDecoder::validateHeader() {
   if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 32) {
     sampleFormat_ = "s32";
     codecName_ = "pcm_s32le";
+  } else if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 24) {
+    sampleFormat_ = "s32"; // That's not a bug, that's what FFmpeg reports too.
+    codecName_ = "pcm_s24le";
+  } else if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 16) {
+    sampleFormat_ = "s16";
+    codecName_ = "pcm_s16le";
+  } else if (effectiveFormat == WAV_FORMAT_PCM && header_.bitsPerSample == 8) {
+    sampleFormat_ = "u8";
+    codecName_ = "pcm_u8";
   } else {
     STD_TORCH_CHECK(
         false,
-        "Unsupported format after validation. That's unexpected, please report this to the TorchCodec repo.");
+        "Unsupported format after validation. "
+        "This is a bug in TorchCodec, please report it.");
   }
 }
 
@@ -280,14 +291,49 @@ void WavDecoder::convertSamplesToFloat(
     float* outputPtr) const {
   int64_t totalSamples = samplesInBuffer * header_.numChannels;
 
-  // Normalize 32-bit PCM samples to [-1.0, 1.0] range.
-  // We use readValue because the buffer size is already validated above.
-  constexpr float scale =
-      1.0f / static_cast<float>(std::numeric_limits<int32_t>::max());
-  for (int64_t i = 0; i < totalSamples; ++i) {
-    int32_t sample = readValue<int32_t>(
-        bufferData, i * static_cast<int64_t>(sizeof(int32_t)));
-    outputPtr[i] = static_cast<float>(sample) * scale;
+  // Normalize PCM samples to [-1.0, 1.0] range. The convention across
+  // implementations is to divide by 2^(N - 1) where N is the bitdepth.
+  // We use readValue because the buffer size is already validated earlier.
+  if (header_.bitsPerSample == 32) {
+    constexpr float scale = 1.0f / static_cast<float>(1U << 31);
+    for (int64_t i = 0; i < totalSamples; ++i) {
+      int32_t sample = readValue<int32_t>(
+          bufferData, i * static_cast<int64_t>(sizeof(int32_t)));
+      outputPtr[i] = static_cast<float>(sample) * scale;
+    }
+  } else if (header_.bitsPerSample == 24) {
+    // 24-bit samples are 3 bytes each. We shift into the *upper* 24
+    // bits of an int32 so that sign extension happens naturally, then
+    // reuse the same 1/(2^31) scale as 32-bit.
+    constexpr float scale = 1.0f / static_cast<float>(1U << 31);
+    for (int64_t i = 0; i < totalSamples; ++i) {
+      int64_t offset = i * 3;
+      auto b0 = static_cast<uint32_t>(bufferData[offset]);
+      auto b1 = static_cast<uint32_t>(bufferData[offset + 1]);
+      auto b2 = static_cast<uint32_t>(bufferData[offset + 2]);
+      auto sample = static_cast<int32_t>((b0 << 8) | (b1 << 16) | (b2 << 24));
+      outputPtr[i] = static_cast<float>(sample) * scale;
+    }
+  } else if (header_.bitsPerSample == 16) {
+    constexpr float scale = 1.0f / static_cast<float>(1U << 15);
+    for (int64_t i = 0; i < totalSamples; ++i) {
+      int16_t sample = readValue<int16_t>(
+          bufferData, i * static_cast<int64_t>(sizeof(int16_t)));
+      outputPtr[i] = static_cast<float>(sample) * scale;
+    }
+  } else {
+    STD_TORCH_CHECK(
+        header_.bitsPerSample == 8,
+        "Unsupported bit depth in convertSamplesToFloat: ",
+        header_.bitsPerSample,
+        ". This is a bug in TorchCodec, please report it.");
+    // 8-bit WAV is *unsigned*, so we first have to center the data (- 128)
+    // before scaling it.
+    constexpr float scale = 1.0f / static_cast<float>(1U << 7);
+    for (int64_t i = 0; i < totalSamples; ++i) {
+      uint8_t sample = readValue<uint8_t>(bufferData, i);
+      outputPtr[i] = (static_cast<float>(sample) - 128.0f) * scale;
+    }
   }
 }
 
@@ -358,7 +404,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   // We need to align buffer size to actual boundaries of samples to avoid
   // reading partial samples. See
   // https://github.com/FFmpeg/FFmpeg/blob/0f600cbc16b7903703b47d23981b636c94a41c71/libavformat/wavdec.c#L786-L791
-  size_t alignedBufferSize = DEFAULT_CHUNK_BUFFER_SIZE;
+  size_t alignedBufferSize = TMP_BUFFER_SIZE;
   alignedBufferSize = (alignedBufferSize / header_.numBytesPerSample) *
       header_.numBytesPerSample;
   STD_TORCH_CHECK(
@@ -366,7 +412,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       "WAV bytes per sample (",
       header_.numBytesPerSample,
       ") exceeds buffer size (",
-      DEFAULT_CHUNK_BUFFER_SIZE,
+      TMP_BUFFER_SIZE,
       ")");
 
   // Allocate buffer and read samples in chunks

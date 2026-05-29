@@ -1019,6 +1019,40 @@ SINE_MONO_S16 = TestAudio(
     },
 )
 
+# Same sample rate as SINE_MONO_S32, but encoded as u8 instead of s32. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -c:a pcm_u8 test/resources/sine_mono_u8.wav
+SINE_MONO_U8 = TestAudio(
+    filename="sine_mono_u8.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=1,
+            duration_seconds=4,
+            num_frames=63,
+            sample_format="u8",
+        )
+    },
+)
+
+# Same sample rate as SINE_MONO_S32, but encoded as s24 instead of s32. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -c:a pcm_s24le test/resources/sine_mono_s24.wav
+SINE_MONO_S24 = TestAudio(
+    filename="sine_mono_s24.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=1,
+            duration_seconds=4,
+            num_frames=63,
+            sample_format="s32",
+        )
+    },
+)
+
 # WAV file with an odd-sized data chunk and a trailing metadata chunk.
 # This reproduces https://github.com/meta-pytorch/torchcodec/issues/1378 where
 # FFmpeg seeks past EOF when scanning for trailing chunks, causing a crash

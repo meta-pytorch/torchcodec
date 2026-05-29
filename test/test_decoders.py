@@ -54,9 +54,11 @@ from .utils import (
     psnr,
     SINE_16_CHANNEL_S16,
     SINE_MONO_S16,
+    SINE_MONO_S24,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    SINE_MONO_U8,
     TEST_NON_ZERO_START,
     TEST_SRC_2_12BIT_HDR,
     TEST_SRC_2_720P,
@@ -2952,20 +2954,16 @@ class TestAudioDecoder:
 
 
 class TestWavDecoder:
-    def test_metadata(self):
-        asset = SINE_MONO_S32
+    @pytest.mark.parametrize(
+        "asset", (SINE_MONO_S32, SINE_MONO_S24, SINE_MONO_S16, SINE_MONO_U8)
+    )
+    def test_metadata(self, asset):
         wav_decoder = WavDecoder(asset.path)
         audio_decoder = AudioDecoder(asset.path)
 
         assert isinstance(wav_decoder.metadata, AudioStreamMetadata)
         assert wav_decoder.stream_index == audio_decoder.metadata.stream_index
         assert wav_decoder.metadata == audio_decoder.metadata
-
-    def test_tensor_handle_creation(self):
-        wav_dec = WavDecoder(SINE_MONO_S32.path)
-        assert wav_dec._decoder is not None
-        assert wav_dec.stream_index == 0
-        assert wav_dec._source == SINE_MONO_S32.path
 
     def test_non_wav_file_raises_error(self):
         with pytest.raises(RuntimeError, match="Missing RIFF header"):
@@ -2981,11 +2979,14 @@ class TestWavDecoder:
             (-1.0, None),
         ],
     )
+    @pytest.mark.parametrize(
+        "asset", (SINE_MONO_S32, SINE_MONO_S24, SINE_MONO_S16, SINE_MONO_U8)
+    )
     def test_get_samples_played_in_range_vs_audio_decoder(
-        self, start_seconds, stop_seconds
+        self, asset, start_seconds, stop_seconds
     ):
-        wav_dec = WavDecoder(SINE_MONO_S32.path)
-        audio_dec = AudioDecoder(SINE_MONO_S32.path)
+        wav_dec = WavDecoder(asset.path)
+        audio_dec = AudioDecoder(asset.path)
 
         wav_samples = wav_dec.get_samples_played_in_range(start_seconds, stop_seconds)
         audio_samples = audio_dec.get_samples_played_in_range(
@@ -2994,9 +2995,12 @@ class TestWavDecoder:
         torch.testing.assert_close(wav_samples.data, audio_samples.data, rtol=0, atol=0)
         assert wav_samples.pts_seconds == audio_samples.pts_seconds
 
-    def test_get_all_samples_vs_audio_decoder(self):
-        wav_dec = WavDecoder(SINE_MONO_S32.path)
-        audio_dec = AudioDecoder(SINE_MONO_S32.path)
+    @pytest.mark.parametrize(
+        "asset", (SINE_MONO_S32, SINE_MONO_S24, SINE_MONO_S16, SINE_MONO_U8)
+    )
+    def test_get_all_samples_vs_audio_decoder(self, asset):
+        wav_dec = WavDecoder(asset.path)
+        audio_dec = AudioDecoder(asset.path)
 
         wav_samples = wav_dec.get_all_samples()
         audio_samples = audio_dec.get_all_samples()
