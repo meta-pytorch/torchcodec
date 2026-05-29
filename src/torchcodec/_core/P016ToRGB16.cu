@@ -25,24 +25,40 @@ namespace facebook::torchcodec {
 // individually).
 __constant__ float d_colorMatrix[3][4];
 
-// For a *single* pixel, applies the color-conversion matrix to the YUV values
-// and writes the result as uint16 in rgbOutput
-__device__ void computeRGBPixel(float y, float u, float v, uint16_t* rgbOutput){
-  float r = d_colorMatrix[0][0] * y + d_colorMatrix[0][1] * u +
+// Takes a pair of consecutive Y values, a pair of UV values, and writes the
+// corresponding two RGB values. Instead of writing each ra ga ba and rb gb bb
+// separately as uint16, they are written in pairs as ushort2 for faster writes.
+__device__ void writePairOfRGBPixels(ushort2 yayb, float u, float v, uint16_t* rgbPlaneToWrite, int bitShift){
+
+  float ya = static_cast<float>(yayb.x >> bitShift);
+  float yb = static_cast<float>(yayb.y >> bitShift);
+
+  float ra = d_colorMatrix[0][0] * ya + d_colorMatrix[0][1] * u +
       d_colorMatrix[0][2] * v + d_colorMatrix[0][3];
-  float g = d_colorMatrix[1][0] * y + d_colorMatrix[1][1] * u +
+  float ga = d_colorMatrix[1][0] * ya + d_colorMatrix[1][1] * u +
       d_colorMatrix[1][2] * v + d_colorMatrix[1][3];
-  float b = d_colorMatrix[2][0] * y + d_colorMatrix[2][1] * u +
+
+  ushort2 raga = {static_cast<uint16_t>(fminf(fmaxf(ra, 0.0f), 65535.0f)),
+                   static_cast<uint16_t>(fminf(fmaxf(ga, 0.0f), 65535.0f))};
+  *(reinterpret_cast<ushort2*>(&rgbPlaneToWrite[0])) = raga;
+
+  float ba = d_colorMatrix[2][0] * ya + d_colorMatrix[2][1] * u +
       d_colorMatrix[2][2] * v + d_colorMatrix[2][3];
+  float rb = d_colorMatrix[0][0] * yb + d_colorMatrix[0][1] * u +
+      d_colorMatrix[0][2] * v + d_colorMatrix[0][3];
+  ushort2 barb = {static_cast<uint16_t>(fminf(fmaxf(ba, 0.0f), 65535.0f)),
+                   static_cast<uint16_t>(fminf(fmaxf(rb, 0.0f), 65535.0f))};
+  *(reinterpret_cast<ushort2*>(&rgbPlaneToWrite[2])) = barb;
 
-  rgbOutput[0] =
-      static_cast<uint16_t>(fminf(fmaxf(r, 0.0f), 65535.0f));
-  rgbOutput[1] =
-      static_cast<uint16_t>(fminf(fmaxf(g, 0.0f), 65535.0f));
-  rgbOutput[2] =
-      static_cast<uint16_t>(fminf(fmaxf(b, 0.0f), 65535.0f));
-
+  float gb = d_colorMatrix[1][0] * yb + d_colorMatrix[1][1] * u +
+      d_colorMatrix[1][2] * v + d_colorMatrix[1][3];
+  float bb = d_colorMatrix[2][0] * yb + d_colorMatrix[2][1] * u +
+      d_colorMatrix[2][2] * v + d_colorMatrix[2][3];
+  ushort2 gbbb = {static_cast<uint16_t>(fminf(fmaxf(gb, 0.0f), 65535.0f)),
+                   static_cast<uint16_t>(fminf(fmaxf(bb, 0.0f), 65535.0f))};
+  *(reinterpret_cast<ushort2*>(&rgbPlaneToWrite[4])) = gbbb;
 }
+
 
 // Takes the Y and UV plane as input, applies the color-conversion matrix and
 // fills the RGB plane as output.
@@ -93,17 +109,10 @@ __global__ void p016ToRgb16Kernel(
   ushort2 y1y2 = *reinterpret_cast<const ushort2*>(&yPlane[y * yPitchElements + x]);
   ushort2 y3y4 = *reinterpret_cast<const ushort2*>(&yPlane[(y + 1) * yPitchElements + x]);
 
-  float y1 = static_cast<float>(y1y2.x >> bitShift);
-  float y2 = static_cast<float>(y1y2.y >> bitShift);
-  int rgbIdx = y * rgbPitchElements + x * 3;
-  computeRGBPixel(y1, u, v, rgbOutput + rgbIdx);
-  computeRGBPixel(y2, u, v, rgbOutput + rgbIdx + 3);
-
-  float y3 = static_cast<float>(y3y4.x >> bitShift);
-  float y4 = static_cast<float>(y3y4.y >> bitShift);
-  rgbIdx = (y + 1) * rgbPitchElements + x * 3;
-  computeRGBPixel(y3, u, v, rgbOutput + rgbIdx );
-  computeRGBPixel(y4, u, v, rgbOutput + rgbIdx + 3);
+  uint16_t* rgbPlaneToWrite = rgbOutput + y * rgbPitchElements + x * 3;
+  writePairOfRGBPixels(y1y2, u, v, rgbPlaneToWrite, bitShift);
+  rgbPlaneToWrite += rgbPitchElements;  // go to next line
+  writePairOfRGBPixels(y3y4, u, v, rgbPlaneToWrite, bitShift);
 }
 
 void launchP016ToRGB16Kernel(
@@ -135,8 +144,7 @@ void launchP016ToRGB16Kernel(
   int rgbPitchElements = rgbPitch / static_cast<int>(sizeof(uint16_t));
   int bitShift = 16 - bitDepth;
 
-  // TODO_HDR: investigate perf implications of the block and grid size?
-  dim3 block(16, 16);
+  dim3 block(32, 2);
   dim3 grid(
       (width / 2 + block.x - 1) / block.x, (height / 2 + block.y - 1) / block.y);
 
