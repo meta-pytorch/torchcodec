@@ -8,9 +8,8 @@
 
 #include <cstddef>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
 #include <vector>
+#include "AVIOFileContext.h"
 #include "ValidationUtils.h"
 
 namespace facebook::torchcodec {
@@ -87,59 +86,62 @@ bool matchesFourCC(
 }
 
 template <typename Container>
-void safeReadFile(std::ifstream& file, Container& buffer, int64_t bytesToRead) {
+void safeRead(AVIOContextHolder& avio, Container& buffer, int64_t bytesToRead) {
   static_assert(
       sizeof(typename Container::value_type) == 1,
-      "Container value_type must be a 1-byte type for safe reinterpret_cast to char*");
+      "Container value_type must be a 1-byte type");
   STD_TORCH_CHECK(bytesToRead >= 0);
   STD_TORCH_CHECK(
       static_cast<size_t>(bytesToRead) <= buffer.size(),
       "Read size exceeds buffer length");
-  file.read(
-      reinterpret_cast<char*>(buffer.data()),
-      static_cast<std::streamsize>(bytesToRead));
-  STD_TORCH_CHECK(
-      !file.fail() &&
-          file.gcount() == static_cast<std::streamsize>(bytesToRead),
-      "WAV: unexpected end of data (expected ",
-      bytesToRead,
-      " bytes, got ",
-      file.gcount(),
-      ")");
+  int totalRead = 0;
+  while (totalRead < bytesToRead) {
+    int bytesRead = avio.read(
+        reinterpret_cast<uint8_t*>(buffer.data()) + totalRead,
+        static_cast<int>(bytesToRead - totalRead));
+    STD_TORCH_CHECK(
+        bytesRead > 0,
+        "WAV: unexpected end of data (expected ",
+        bytesToRead,
+        " bytes, got ",
+        totalRead,
+        ")");
+    totalRead += bytesRead;
+  }
 }
 
-void safeSeek(
-    std::ifstream& file,
-    std::streampos pos,
-    std::ios_base::seekdir whence = std::ios::beg) {
-  file.seekg(pos, whence);
-  STD_TORCH_CHECK(!file.fail(), "Failed to seek to ", pos, " in WAV file");
+void safeSeek(AVIOContextHolder& avio, int64_t pos) {
+  int64_t result = avio.seek(pos, SEEK_SET);
+  STD_TORCH_CHECK(result >= 0, "Failed to seek to ", pos, " in WAV file");
 }
 
 } // namespace
 
 WavDecoder::WavDecoder(const std::string& path)
-    : file_(path, std::ios::binary) {
+    : avio_(std::make_unique<AVIOFileContext>(path)) {
   // TODO WavDecoder: Support big-endian host machines
   STD_TORCH_CHECK(
       isLittleEndian(), "WAV decoder requires little-endian architecture");
-  STD_TORCH_CHECK(file_.is_open(), "Failed to open WAV file: ", path);
+  fileSize_ = static_cast<uint64_t>(avio_->getSize());
+  parseHeader();
+  validateHeader();
+}
 
-  try {
-    fileSize_ = std::filesystem::file_size(path);
-  } catch (const std::filesystem::filesystem_error& e) {
-    STD_TORCH_CHECK(
-        false, "Failed to get file size for: ", path, ". Error: ", e.what());
-  }
+WavDecoder::WavDecoder(std::unique_ptr<AVIOContextHolder> avio)
+    : avio_(std::move(avio)) {
+  STD_TORCH_CHECK(
+      isLittleEndian(), "WAV decoder requires little-endian architecture");
+  STD_TORCH_CHECK(avio_ != nullptr, "AVIO context cannot be null");
+  fileSize_ = static_cast<uint64_t>(avio_->getSize());
   parseHeader();
   validateHeader();
 }
 
 void WavDecoder::parseHeader() {
-  safeSeek(file_, 0, std::ios::beg);
+  safeSeek(*avio_, 0);
 
   std::array<uint8_t, RIFF_HEADER_SIZE> riffHeader;
-  safeReadFile(file_, riffHeader, RIFF_HEADER_SIZE);
+  safeRead(*avio_, riffHeader, RIFF_HEADER_SIZE);
 
   STD_TORCH_CHECK(
       matchesFourCC(riffHeader.data(), RIFF_HEADER_SIZE, 0, "RIFF"),
@@ -157,10 +159,7 @@ void WavDecoder::parseHeader() {
       " bytes");
 
   // Use ChunkInfo to seek to and read the fmt chunk data
-  safeSeek(
-      file_,
-      validateUint64ToStreampos(fmtChunk.offset, "fmtChunk.offset"),
-      std::ios::beg);
+  safeSeek(*avio_, static_cast<int64_t>(fmtChunk.offset));
   STD_TORCH_CHECK(
       fmtChunk.size <= MAX_FMT_CHUNK_SIZE,
       "fmt chunk too large for allocation: ",
@@ -169,7 +168,7 @@ void WavDecoder::parseHeader() {
       MAX_FMT_CHUNK_SIZE,
       " bytes");
   std::vector<uint8_t> fmtData(static_cast<size_t>(fmtChunk.size));
-  safeReadFile(file_, fmtData, fmtChunk.size);
+  safeRead(*avio_, fmtData, fmtChunk.size);
 
   header_.audioFormat = safeReadValue<uint16_t>(fmtData, 0);
   header_.numChannels = safeReadValue<uint16_t>(fmtData, 2);
@@ -277,11 +276,10 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
       "File too small to contain chunk:",
       chunkId);
   while (startPos <= fileSize_ - CHUNK_HEADER_SIZE) {
-    safeSeek(
-        file_, validateUint64ToStreampos(startPos, "startPos"), std::ios::beg);
+    safeSeek(*avio_, static_cast<int64_t>(startPos));
 
     std::array<uint8_t, CHUNK_HEADER_SIZE> chunkHeader;
-    safeReadFile(file_, chunkHeader, CHUNK_HEADER_SIZE);
+    safeRead(*avio_, chunkHeader, CHUNK_HEADER_SIZE);
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunkSize = safeReadValue<uint32_t>(chunkHeader, 4);
 
@@ -421,10 +419,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       "dataPosition calculation would overflow: dataOffset + byteOffset ");
   byteOffset += static_cast<int64_t>(header_.dataOffset);
 
-  safeSeek(
-      file_,
-      validateUint64ToStreampos(byteOffset, "byteOffset"),
-      std::ios::beg);
+  safeSeek(*avio_, byteOffset);
 
   auto samples =
       torch::stable::empty({numSamples, header_.numChannels}, kStableFloat32);
@@ -433,17 +428,23 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       header_.bitsPerSample == 32) {
     // Float32 samples can be read directly into the output tensor.
     int64_t totalBytes = numSamples * header_.numBytesPerSample;
-    file_.read(
-        reinterpret_cast<char*>(samples.mutable_data_ptr<float>()),
-        static_cast<std::streamsize>(totalBytes));
-    STD_TORCH_CHECK(
-        !file_.fail() &&
-            file_.gcount() == static_cast<std::streamsize>(totalBytes),
-        "WAV: unexpected end of data (expected ",
-        totalBytes,
-        " bytes, got ",
-        file_.gcount(),
-        ")");
+    int64_t totalRead = 0;
+    auto* outPtr =
+        reinterpret_cast<uint8_t*>(samples.mutable_data_ptr<float>());
+    while (totalRead < totalBytes) {
+      int bytesRead = avio_->read(
+          outPtr + totalRead,
+          static_cast<int>(
+              std::min(totalBytes - totalRead, static_cast<int64_t>(INT_MAX))));
+      STD_TORCH_CHECK(
+          bytesRead > 0,
+          "WAV: unexpected end of data (expected ",
+          totalBytes,
+          " bytes, got ",
+          totalRead,
+          ")");
+      totalRead += bytesRead;
+    }
   } else {
     // We need to align buffer size to actual boundaries of samples to
     // avoid reading partial samples. See
@@ -467,8 +468,8 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
     while (samplesProcessed < numSamples) {
       const int64_t samplesThisIteration =
           std::min(numSamples - samplesProcessed, samplesPerBuffer);
-      safeReadFile(
-          file_, buffer, samplesThisIteration * header_.numBytesPerSample);
+      safeRead(
+          *avio_, buffer, samplesThisIteration * header_.numBytesPerSample);
 
       float* outputPtr = samples.mutable_data_ptr<float>() +
           (samplesProcessed * header_.numChannels);

@@ -39,6 +39,13 @@ class AVIOContextHolder {
   virtual ~AVIOContextHolder();
   AVIOContext* getAVIOContext();
 
+  // Generic I/O primitives used by consumers that don't go through
+  // FFmpeg's AVIO layer (e.g. WavDecoder). Derived classes override
+  // the ones they support.
+  virtual int read(uint8_t* buf, int size);
+  virtual int64_t seek(int64_t offset, int whence);
+  virtual int64_t getSize();
+
  protected:
   // Make constructor protected to prevent anyone from constructing
   // an AVIOContextHolder without deriving it. (Ordinarily this would be

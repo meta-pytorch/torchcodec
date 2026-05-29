@@ -15,39 +15,10 @@ constexpr int64_t INITIAL_TENSOR_SIZE = 10'000'000; // 10 MB
 constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
 
 // The signature of this function is defined by FFMPEG.
-int read(void* opaque, uint8_t* buf, int buf_size) {
-  auto tensorContext = static_cast<detail::TensorContext*>(opaque);
-
-  if (tensorContext->current_pos >= tensorContext->data.numel()) {
-    return AVERROR_EOF;
-  }
-
-  int64_t numBytesRead = std::min(
-      static_cast<int64_t>(buf_size),
-      tensorContext->data.numel() - tensorContext->current_pos);
-
-  STD_TORCH_CHECK(
-      // This should never happen based on the other checks above, but might as
-      // well.
-      numBytesRead >= 0,
-      "Tried to read negative bytes: numBytesRead=",
-      numBytesRead,
-      ", size=",
-      tensorContext->data.numel(),
-      ", current_pos=",
-      tensorContext->current_pos);
-
-  if (numBytesRead == 0) {
-    return AVERROR_EOF;
-  }
-
-  std::memcpy(
-      buf,
-      tensorContext->data.const_data_ptr<uint8_t>() +
-          tensorContext->current_pos,
-      numBytesRead);
-  tensorContext->current_pos += numBytesRead;
-  return numBytesRead;
+int readCallback(void* opaque, uint8_t* buf, int buf_size) {
+  auto self = static_cast<AVIOFromTensorContext*>(opaque);
+  int result = self->read(buf, buf_size);
+  return result < 0 ? AVERROR_EOF : result;
 }
 
 // The signature of this function is defined by FFMPEG.
@@ -84,7 +55,16 @@ int write(void* opaque, const uint8_t* buf, int buf_size) {
 }
 
 // The signature of this function is defined by FFMPEG.
-int64_t seek(void* opaque, int64_t offset, int whence) {
+int64_t seekCallback(void* opaque, int64_t offset, int whence) {
+  auto self = static_cast<AVIOFromTensorContext*>(opaque);
+  if (whence == AVSEEK_SIZE) {
+    return self->getSize();
+  }
+  return self->seek(offset, whence);
+}
+
+// The signature of this function is defined by FFMPEG.
+int64_t seekWrite(void* opaque, int64_t offset, int whence) {
   auto tensorContext = static_cast<detail::TensorContext*>(opaque);
   int64_t ret = -1;
 
@@ -111,7 +91,52 @@ AVIOFromTensorContext::AVIOFromTensorContext(torch::stable::Tensor data)
   STD_TORCH_CHECK(data.is_contiguous(), "data must be contiguous");
   STD_TORCH_CHECK(data.scalar_type() == kStableUInt8, "data must be kUInt8");
   createAVIOContext(
-      &read, nullptr, &seek, &tensorContext_, /*isForWriting=*/false);
+      &readCallback, nullptr, &seekCallback, this, /*isForWriting=*/false);
+}
+
+int AVIOFromTensorContext::read(uint8_t* buf, int size) {
+  if (tensorContext_.current_pos >= tensorContext_.data.numel()) {
+    return -1;
+  }
+
+  int64_t numBytesRead = std::min(
+      static_cast<int64_t>(size),
+      tensorContext_.data.numel() - tensorContext_.current_pos);
+
+  STD_TORCH_CHECK(
+      numBytesRead >= 0,
+      "Tried to read negative bytes: numBytesRead=",
+      numBytesRead,
+      ", size=",
+      tensorContext_.data.numel(),
+      ", current_pos=",
+      tensorContext_.current_pos);
+
+  if (numBytesRead == 0) {
+    return -1;
+  }
+
+  std::memcpy(
+      buf,
+      tensorContext_.data.const_data_ptr<uint8_t>() +
+          tensorContext_.current_pos,
+      numBytesRead);
+  tensorContext_.current_pos += numBytesRead;
+  return static_cast<int>(numBytesRead);
+}
+
+int64_t AVIOFromTensorContext::seek(int64_t offset, int whence) {
+  switch (whence) {
+    case SEEK_SET:
+      tensorContext_.current_pos = offset;
+      return offset;
+    default:
+      return -1;
+  }
+}
+
+int64_t AVIOFromTensorContext::getSize() {
+  return tensorContext_.data.numel();
 }
 
 AVIOToTensorContext::AVIOToTensorContext()
@@ -120,7 +145,7 @@ AVIOToTensorContext::AVIOToTensorContext()
           0,
           0} {
   createAVIOContext(
-      nullptr, &write, &seek, &tensorContext_, /*isForWriting=*/true);
+      nullptr, &write, &seekWrite, &tensorContext_, /*isForWriting=*/true);
 }
 
 torch::stable::Tensor AVIOToTensorContext::getOutputTensor() {

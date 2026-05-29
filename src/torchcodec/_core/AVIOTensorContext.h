@@ -27,6 +27,10 @@ class FORCE_PUBLIC_VISIBILITY AVIOFromTensorContext : public AVIOContextHolder {
  public:
   explicit AVIOFromTensorContext(torch::stable::Tensor data);
 
+  int read(uint8_t* buf, int size) override;
+  int64_t seek(int64_t offset, int whence) override;
+  int64_t getSize() override;
+
  private:
   detail::TensorContext tensorContext_;
 };

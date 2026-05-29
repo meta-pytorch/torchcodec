@@ -7,10 +7,11 @@
 #pragma once
 
 #include <cstdint>
-#include <fstream>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
+#include "AVIOContextHolder.h"
 #include "Frame.h"
 #include "Metadata.h"
 #include "StableABICompat.h"
@@ -20,8 +21,9 @@ namespace facebook::torchcodec {
 class FORCE_PUBLIC_VISIBILITY WavDecoder {
  public:
   explicit WavDecoder(const std::string& path);
-  // Delete copy constructor and copy assignment operator since std::ifstream
-  // is stored as a member variable and is not copyable.
+  explicit WavDecoder(std::unique_ptr<AVIOContextHolder> avio);
+  // Delete copy constructor and copy assignment operator since
+  // unique_ptr is not copyable.
   WavDecoder(const WavDecoder&) = delete;
   WavDecoder& operator=(const WavDecoder&) = delete;
   WavDecoder(WavDecoder&&) noexcept = default;
@@ -55,6 +57,7 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
     ChunkInfo(uint64_t offset, uint32_t size) : offset(offset), size(size) {}
   };
 
+  void initFromAVIO();
   ChunkInfo findChunk(std::string_view chunkId, uint64_t startPos);
   void parseHeader();
   void validateHeader();
@@ -63,7 +66,7 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
       int64_t samplesInBuffer,
       float* outputPtr) const;
 
-  std::ifstream file_;
+  std::unique_ptr<AVIOContextHolder> avio_;
   WavHeader header_;
   uint64_t fileSize_ = 0;
   std::string sampleFormat_;

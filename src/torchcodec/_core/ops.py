@@ -168,6 +168,12 @@ _get_log_level = torch.ops.torchcodec_ns._get_log_level.default
 create_wav_decoder_from_file = (
     torch.ops.torchcodec_ns.create_wav_decoder_from_file.default
 )
+create_wav_decoder_from_tensor = (
+    torch.ops.torchcodec_ns.create_wav_decoder_from_tensor.default
+)
+_create_wav_decoder_from_file_like = (
+    torch.ops.torchcodec_ns._create_wav_decoder_from_file_like.default
+)
 get_wav_samples_in_range = torch.ops.torchcodec_ns.get_wav_samples_in_range.default
 get_wav_metadata_from_decoder = (
     torch.ops.torchcodec_ns.get_wav_metadata_from_decoder.default
@@ -195,6 +201,24 @@ def create_from_file_like(
             file_like, False  # False means not for writing
         ),
         seek_mode,
+    )
+
+
+def create_wav_decoder_from_bytes(wav_bytes: bytes) -> torch.Tensor:
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        buffer = torch.frombuffer(wav_bytes, dtype=torch.uint8)
+    return create_wav_decoder_from_tensor(buffer)
+
+
+def create_wav_decoder_from_file_like(
+    file_like: io.RawIOBase | io.BufferedReader,
+) -> torch.Tensor:
+    assert _pybind_ops is not None
+    return _create_wav_decoder_from_file_like(
+        _pybind_ops.create_file_like_context(
+            file_like, False  # False means not for writing
+        ),
     )
 
 
@@ -716,6 +740,18 @@ def _get_log_level_abstract() -> int:
 
 @register_fake("torchcodec_ns::create_wav_decoder_from_file")
 def create_wav_decoder_from_file_abstract(filename: str) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::create_wav_decoder_from_tensor")
+def create_wav_decoder_from_tensor_abstract(data: torch.Tensor) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::_create_wav_decoder_from_file_like")
+def _create_wav_decoder_from_file_like_abstract(
+    file_like_context: int,
+) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
 
