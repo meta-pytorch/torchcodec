@@ -1575,6 +1575,8 @@ class TestVideoDecoder:
         decoder_gpu, _ = make_video_decoder(
             asset.path, device=device, output_dtype=output_dtype
         )
+        if device == "cuda":
+            assert decoder_gpu.cpu_fallback
         decoder_cpu = VideoDecoder(asset.path, device="cpu", output_dtype=output_dtype)
 
         gpu_frame = decoder_gpu.get_frame_at(0).data.cpu()
@@ -1609,6 +1611,7 @@ class TestVideoDecoder:
         decoder_gpu, _ = make_video_decoder(
             asset.path, device="cuda", output_dtype=output_dtype
         )
+        assert not decoder_gpu.cpu_fallback
         decoder_cpu = VideoDecoder(asset.path, device="cpu", output_dtype=output_dtype)
 
         gpu_frame = decoder_gpu.get_frame_at(0).data.cpu()
