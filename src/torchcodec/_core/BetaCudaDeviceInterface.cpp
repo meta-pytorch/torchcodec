@@ -362,33 +362,27 @@ static torch::stable::Tensor convertP016FrameToRGB16(
     int bitDepth,
     const float colorMatrix[3][4],
     bool colorMatrixChanged) {
-  int height = avFrame->height;
-  int width = avFrame->width;
-  STD_TORCH_CHECK(
-      height % 2 == 0 && width % 2 == 0,
-      "convertP016FrameToRGB16 expects even avFrame dimensions, got ",
-      height,
-      "x",
-      width,
-      ". Report a bug if you see this message.");
-  STD_TORCH_CHECK(
-      outputDims.height == height && outputDims.width == width,
-      "outputDims ",
-      outputDims.height,
-      "x",
-      outputDims.width,
-      " are not consistent with avFrame dimensions ",
-      height,
-      "x",
-      width,
-      ". Report a bug if you see this message.");
+  // avFrame dimensions may be odd (NVDEC display area for VP9 etc.). P016
+  // color conversion requires even dimensions, so we round up to even for the
+  // kernel, then crop to outputDims.
+  int frameHeight = avFrame->height;
+  int frameWidth = avFrame->width;
+  int height = roundUpToEven(frameHeight);
+  int width = roundUpToEven(frameWidth);
+
+  int outHeight = outputDims.height;
+  int outWidth = outputDims.width;
+  bool needsCrop = (outHeight != height) || (outWidth != width);
 
   torch::stable::Tensor dst;
-  if (preAllocatedOutputTensor.has_value()) {
+  if (needsCrop) {
+    dst = allocateEmptyHWCTensor(
+        FrameDims(height, width), device, OutputDtype::FLOAT32);
+  } else if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
     dst = allocateEmptyHWCTensor(
-        FrameDims(height, width), device, OutputDtype::FLOAT32);
+        FrameDims(outHeight, outWidth), device, OutputDtype::FLOAT32);
   }
 
   cudaStream_t stream = getCurrentCudaStream(device.index());
@@ -408,6 +402,20 @@ static torch::stable::Tensor convertP016FrameToRGB16(
       colorMatrixChanged,
       stream);
 
+  if (needsCrop) {
+    if (outHeight != height) {
+      dst = torch::stable::narrow(dst, /*dim=*/0, /*start=*/0, outHeight);
+    }
+    if (outWidth != width) {
+      dst = torch::stable::narrow(dst, /*dim=*/1, /*start=*/0, outWidth);
+      dst = torch::stable::contiguous(dst);
+    }
+    if (preAllocatedOutputTensor.has_value()) {
+      torch::stable::copy_(preAllocatedOutputTensor.value(), dst);
+      return preAllocatedOutputTensor.value();
+    }
+    return dst;
+  }
   return dst;
 }
 
@@ -895,9 +903,13 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
       ? AVCOL_RANGE_JPEG
       : AVCOL_RANGE_MPEG;
 
-  // Below: Ask Claude. I'm not going to even pretend.
+  // NVDEC's surface layout places the UV plane after the Y plane. For
+  // NV12/P016 the Y plane has an even number of rows (NVDEC rounds up
+  // internally), so we must use the rounded-up height for the UV offset.
+  unsigned int evenHeight = roundUpToEven(height);
   avFrame->data[0] = reinterpret_cast<uint8_t*>(framePtr);
-  avFrame->data[1] = reinterpret_cast<uint8_t*>(framePtr + (pitch * height));
+  avFrame->data[1] =
+      reinterpret_cast<uint8_t*>(framePtr + (pitch * evenHeight));
   avFrame->data[2] = nullptr;
   avFrame->data[3] = nullptr;
   avFrame->linesize[0] = pitch;
