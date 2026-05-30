@@ -20,7 +20,6 @@ namespace facebook::torchcodec {
 
 class FORCE_PUBLIC_VISIBILITY WavDecoder {
  public:
-  explicit WavDecoder(const std::string& path);
   explicit WavDecoder(std::unique_ptr<AVIOContextHolder> avio);
   // Delete copy constructor and copy assignment operator since
   // unique_ptr is not copyable.
@@ -57,7 +56,6 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
     ChunkInfo(uint64_t offset, uint32_t size) : offset(offset), size(size) {}
   };
 
-  void initFromAVIO();
   ChunkInfo findChunk(std::string_view chunkId, uint64_t startPos);
   void parseHeader();
   void validateHeader();

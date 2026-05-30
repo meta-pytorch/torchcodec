@@ -9,7 +9,6 @@
 #include <cstddef>
 #include <cstring>
 #include <vector>
-#include "AVIOFileContext.h"
 #include "ValidationUtils.h"
 
 namespace facebook::torchcodec {
@@ -85,20 +84,17 @@ bool matchesFourCC(
       0;
 }
 
-template <typename Container>
-void safeRead(AVIOContextHolder& avio, Container& buffer, int64_t bytesToRead) {
-  static_assert(
-      sizeof(typename Container::value_type) == 1,
-      "Container value_type must be a 1-byte type");
+void safeRead(
+    AVIOContextHolder& avio,
+    uint8_t* buf,
+    int64_t bytesToRead) {
   STD_TORCH_CHECK(bytesToRead >= 0);
-  STD_TORCH_CHECK(
-      static_cast<size_t>(bytesToRead) <= buffer.size(),
-      "Read size exceeds buffer length");
-  int totalRead = 0;
+  int64_t totalRead = 0;
   while (totalRead < bytesToRead) {
     int bytesRead = avio.read(
-        reinterpret_cast<uint8_t*>(buffer.data()) + totalRead,
-        static_cast<int>(bytesToRead - totalRead));
+        buf + totalRead,
+        static_cast<int>(
+            std::min(bytesToRead - totalRead, static_cast<int64_t>(INT_MAX))));
     STD_TORCH_CHECK(
         bytesRead > 0,
         "WAV: unexpected end of data (expected ",
@@ -108,6 +104,26 @@ void safeRead(AVIOContextHolder& avio, Container& buffer, int64_t bytesToRead) {
         ")");
     totalRead += bytesRead;
   }
+  STD_TORCH_CHECK(
+      totalRead == bytesToRead,
+      "Read more bytes than requested: got ",
+      totalRead,
+      ", expected ",
+      bytesToRead);
+}
+
+template <typename Container>
+void safeRead(
+    AVIOContextHolder& avio,
+    Container& buffer,
+    int64_t bytesToRead) {
+  static_assert(
+      sizeof(typename Container::value_type) == 1,
+      "Container value_type must be a 1-byte type");
+  STD_TORCH_CHECK(
+      static_cast<size_t>(bytesToRead) <= buffer.size(),
+      "Read size exceeds buffer length");
+  safeRead(avio, reinterpret_cast<uint8_t*>(buffer.data()), bytesToRead);
 }
 
 void safeSeek(AVIOContextHolder& avio, int64_t pos) {
@@ -116,16 +132,6 @@ void safeSeek(AVIOContextHolder& avio, int64_t pos) {
 }
 
 } // namespace
-
-WavDecoder::WavDecoder(const std::string& path)
-    : avio_(std::make_unique<AVIOFileContext>(path)) {
-  // TODO WavDecoder: Support big-endian host machines
-  STD_TORCH_CHECK(
-      isLittleEndian(), "WAV decoder requires little-endian architecture");
-  fileSize_ = static_cast<uint64_t>(avio_->getSize());
-  parseHeader();
-  validateHeader();
-}
 
 WavDecoder::WavDecoder(std::unique_ptr<AVIOContextHolder> avio)
     : avio_(std::move(avio)) {
@@ -428,23 +434,10 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       header_.bitsPerSample == 32) {
     // Float32 samples can be read directly into the output tensor.
     int64_t totalBytes = numSamples * header_.numBytesPerSample;
-    int64_t totalRead = 0;
-    auto* outPtr =
-        reinterpret_cast<uint8_t*>(samples.mutable_data_ptr<float>());
-    while (totalRead < totalBytes) {
-      int bytesRead = avio_->read(
-          outPtr + totalRead,
-          static_cast<int>(
-              std::min(totalBytes - totalRead, static_cast<int64_t>(INT_MAX))));
-      STD_TORCH_CHECK(
-          bytesRead > 0,
-          "WAV: unexpected end of data (expected ",
-          totalBytes,
-          " bytes, got ",
-          totalRead,
-          ")");
-      totalRead += bytesRead;
-    }
+    safeRead(
+        *avio_,
+        reinterpret_cast<uint8_t*>(samples.mutable_data_ptr<float>()),
+        totalBytes);
   } else {
     // We need to align buffer size to actual boundaries of samples to
     // avoid reading partial samples. See

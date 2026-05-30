@@ -19,6 +19,7 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
+#include "AVIOFileContext.h"
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
@@ -1293,7 +1294,8 @@ void streaming_encoder_add_samples(
 
 torch::stable::Tensor create_wav_decoder_from_file(
     const std::string& filename) {
-  auto decoder = std::make_unique<WavDecoder>(filename);
+  auto avioContext = std::make_unique<AVIOFileContext>(filename);
+  auto decoder = std::make_unique<WavDecoder>(std::move(avioContext));
   return wrapWavDecoderPointerToTensor(std::move(decoder));
 }
 
