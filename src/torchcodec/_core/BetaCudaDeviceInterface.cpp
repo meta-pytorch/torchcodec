@@ -441,9 +441,13 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
 }
 
 void BetaCudaDeviceInterface::initializeVideo(
+    const AVStream* avStream,
+    const UniqueDecodingAVFormatContext& avFormatCtx,
     const VideoStreamOptions& videoStreamOptions,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resizedOutputDims) {
+  STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
+  rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
   outputDtype_ = videoStreamOptions.outputDtype;
 
   auto maybeSurfaceFormat = nvcuvidAvailable_
@@ -460,21 +464,24 @@ void BetaCudaDeviceInterface::initializeVideo(
     cpuFallback_ = createDeviceInterface(kStableCPU);
     STD_TORCH_CHECK(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
-    cpuFallback_->initialize(avStream_, *avFormatCtx_, codecContext_);
+    cpuFallback_->initialize(codecContext_);
     cpuFallback_->initializeVideo(
-        videoStreamOptions, transforms, resizedOutputDims);
+        avStream,
+        avFormatCtx,
+        videoStreamOptions,
+        transforms,
+        resizedOutputDims);
     return;
   }
 
   surfaceFormat_ = maybeSurfaceFormat.value();
+  timeBase_ = avStream->time_base;
+  frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
 
-  timeBase_ = avStream_->time_base;
-  frameRateAvgFromFFmpeg_ = avStream_->r_frame_rate;
-
-  const AVCodecParameters* codecPar = avStream_->codecpar;
+  const AVCodecParameters* codecPar = avStream->codecpar;
   STD_TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
 
-  initializeBSF(codecPar, *avFormatCtx_);
+  initializeBSF(codecPar, avFormatCtx);
 
   // Create parser. Default values that aren't obvious are taken from DALI.
   CUVIDPARSERPARAMS parserParams = {};
@@ -535,13 +542,7 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
 }
 
 void BetaCudaDeviceInterface::initialize(
-    const AVStream* avStream,
-    const UniqueDecodingAVFormatContext& avFormatCtx,
-    [[maybe_unused]] const SharedAVCodecContext& codecContext) {
-  STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
-  rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
-  avStream_ = avStream;
-  avFormatCtx_ = &avFormatCtx;
+    const SharedAVCodecContext& codecContext) {
   codecContext_ = codecContext;
 }
 

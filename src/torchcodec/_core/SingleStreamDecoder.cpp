@@ -523,8 +523,7 @@ void SingleStreamDecoder::addStream(
   streamInfo.codecContext->time_base = streamInfo.stream->time_base;
 
   // Initialize the device interface with the codec context
-  deviceInterface_->initialize(
-      streamInfo.stream, formatContext_, streamInfo.codecContext);
+  deviceInterface_->initialize(streamInfo.codecContext);
 
   containerMetadata_.allStreamMetadata[activeStreamIndex_].codecName =
       std::string(avcodec_get_name(streamInfo.codecContext->codec_id));
@@ -646,7 +645,11 @@ void SingleStreamDecoder::addVideoStream(
   // Pass the resolved options (AUTO -> UINT8/FLOAT32) so the device interface
   // sees a definite OutputDtype.
   deviceInterface_->initializeVideo(
-      streamInfo.videoStreamOptions, transforms_, resizedOutputDims_);
+      streamInfo.stream,
+      formatContext_,
+      streamInfo.videoStreamOptions,
+      transforms_,
+      resizedOutputDims_);
 }
 
 void SingleStreamDecoder::addAudioStream(
