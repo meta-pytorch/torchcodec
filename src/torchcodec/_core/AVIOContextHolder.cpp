@@ -58,4 +58,17 @@ AVIOContext* AVIOContextHolder::getAVIOContext() {
   return avioContext_.get();
 }
 
+int AVIOContextHolder::read(uint8_t*, int) {
+  STD_TORCH_CHECK(false, "read() is not supported by this AVIOContextHolder");
+}
+
+int64_t AVIOContextHolder::seek(int64_t, int) {
+  STD_TORCH_CHECK(false, "seek() is not supported by this AVIOContextHolder");
+}
+
+int64_t AVIOContextHolder::getSize() {
+  STD_TORCH_CHECK(
+      false, "getSize() is not supported by this AVIOContextHolder");
+}
+
 } // namespace facebook::torchcodec

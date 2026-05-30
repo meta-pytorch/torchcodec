@@ -19,6 +19,7 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
+#include "AVIOFileContext.h"
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
@@ -108,6 +109,8 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("_set_cpp_log_level(int level) -> ()");
   m.def("_get_log_level() -> int");
   m.def("create_wav_decoder_from_file(str filename) -> Tensor");
+  m.def("create_wav_decoder_from_tensor(Tensor data) -> Tensor");
+  m.def("_create_wav_decoder_from_file_like(int file_like_context) -> Tensor");
   m.def(
       "get_wav_samples_in_range(Tensor(a!) decoder, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def("get_wav_metadata_from_decoder(Tensor(a!) decoder) -> str");
@@ -1291,7 +1294,24 @@ void streaming_encoder_add_samples(
 
 torch::stable::Tensor create_wav_decoder_from_file(
     const std::string& filename) {
-  auto decoder = std::make_unique<WavDecoder>(filename);
+  auto avioContext = std::make_unique<AVIOFileContext>(filename);
+  auto decoder = std::make_unique<WavDecoder>(std::move(avioContext));
+  return wrapWavDecoderPointerToTensor(std::move(decoder));
+}
+
+torch::stable::Tensor create_wav_decoder_from_tensor(
+    const torch::stable::Tensor& data) {
+  auto avioContext = std::make_unique<AVIOFromTensorContext>(data);
+  auto decoder = std::make_unique<WavDecoder>(std::move(avioContext));
+  return wrapWavDecoderPointerToTensor(std::move(decoder));
+}
+
+torch::stable::Tensor _create_wav_decoder_from_file_like(
+    int64_t file_like_context) {
+  auto fileLikeContext =
+      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+  std::unique_ptr<AVIOFileLikeContext> avioContext(fileLikeContext);
+  auto decoder = std::make_unique<WavDecoder>(std::move(avioContext));
   return wrapWavDecoderPointerToTensor(std::move(decoder));
 }
 
@@ -1391,6 +1411,12 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("_get_log_level", TORCH_BOX(&_get_log_level));
   m.impl(
       "create_wav_decoder_from_file", TORCH_BOX(&create_wav_decoder_from_file));
+  m.impl(
+      "create_wav_decoder_from_tensor",
+      TORCH_BOX(&create_wav_decoder_from_tensor));
+  m.impl(
+      "_create_wav_decoder_from_file_like",
+      TORCH_BOX(&_create_wav_decoder_from_file_like));
   m.impl("get_wav_samples_in_range", TORCH_BOX(&get_wav_samples_in_range));
   m.impl(
       "get_wav_metadata_from_decoder",
