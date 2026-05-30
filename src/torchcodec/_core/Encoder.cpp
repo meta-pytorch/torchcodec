@@ -841,8 +841,6 @@ void VideoEncoder::initializeEncoder(
   AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
 
   if (videoStreamOptions.pixelFormat.has_value()) {
-    // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user on GPU
-    // and handled with the appropriate NPP function on GPU.
     if (frames_.device().type() == kStableCUDA) {
       STD_TORCH_CHECK(
           false,
@@ -1219,8 +1217,6 @@ void MultiStreamEncoder::initializeVideoStream(VideoStream& videoStream) {
   AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
 
   if (videoStream.options.pixelFormat.has_value()) {
-    // TODO-MultiStreamEncoder: (P2) Enable pixel formats to be set by user on
-    // GPU and handled with the appropriate NPP function on GPU.
     if (deviceType == kStableCUDA) {
       STD_TORCH_CHECK(
           false,

@@ -6,23 +6,10 @@
 
 #include "CUDACommon.h"
 #include <torch/csrc/inductor/aoti_torch/c/shim.h>
-#include "Cache.h" // for PerGpuCache
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
 
 namespace facebook::torchcodec {
-
-namespace {
-
-// Set to -1 to have an infinitely sized cache. Set it to 0 to disable caching.
-// Set to a positive number to have a cache of that size.
-const int MAX_CONTEXTS_PER_GPU_IN_CACHE = -1;
-
-PerGpuCache<NppStreamContext> g_cached_npp_ctxs(
-    MAX_CUDA_GPUS,
-    MAX_CONTEXTS_PER_GPU_IN_CACHE);
-
-} // namespace
 
 cudaStream_t getCurrentCudaStream(int32_t deviceIndex) {
   // This is the documented and blessed way to get the current CUDA stream with
@@ -66,49 +53,6 @@ void initializeCudaContextWithPytorch(const StableDevice& device) {
   torch::stable::Tensor dummyTensorForCudaInitialization = torch::stable::empty(
       {1}, kStableUInt8, std::nullopt, StableDevice(device));
   torch::stable::zero_(dummyTensorForCudaInitialization);
-}
-
-UniqueNppContext getNppStreamContext(const StableDevice& device) {
-  int deviceIndex = getDeviceIndex(device);
-
-  UniqueNppContext nppCtx = g_cached_npp_ctxs.get(device);
-  if (nppCtx) {
-    return nppCtx;
-  }
-
-  // From 12.9, NPP recommends using a user-created NppStreamContext and using
-  // the `_Ctx()` calls:
-  // https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#npp-release-12-9-update-1
-  // And the nppGetStreamContext() helper is deprecated. We are explicitly
-  // supposed to create the NppStreamContext manually from the CUDA device
-  // properties:
-  // https://github.com/NVIDIA/CUDALibrarySamples/blob/d97803a40fab83c058bb3d68b6c38bd6eebfff43/NPP/README.md?plain=1#L54-L72
-
-  nppCtx = std::make_unique<NppStreamContext>();
-  cudaDeviceProp prop{};
-  cudaError_t err = cudaGetDeviceProperties(&prop, deviceIndex);
-  STD_TORCH_CHECK(
-      err == cudaSuccess,
-      "cudaGetDeviceProperties failed: ",
-      cudaGetErrorString(err));
-
-  nppCtx->nCudaDeviceId = deviceIndex;
-  nppCtx->nMultiProcessorCount = prop.multiProcessorCount;
-  nppCtx->nMaxThreadsPerMultiProcessor = prop.maxThreadsPerMultiProcessor;
-  nppCtx->nMaxThreadsPerBlock = prop.maxThreadsPerBlock;
-  nppCtx->nSharedMemPerBlock = prop.sharedMemPerBlock;
-  nppCtx->nCudaDevAttrComputeCapabilityMajor = prop.major;
-  nppCtx->nCudaDevAttrComputeCapabilityMinor = prop.minor;
-
-  return nppCtx;
-}
-
-void returnNppStreamContextToCache(
-    const StableDevice& device,
-    UniqueNppContext nppCtx) {
-  if (nppCtx) {
-    g_cached_npp_ctxs.addIfCacheHasCapacity(device, std::move(nppCtx));
-  }
 }
 
 void validatePreAllocatedTensorShape(

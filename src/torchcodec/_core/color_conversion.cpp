@@ -39,34 +39,28 @@ namespace facebook::torchcodec {
 // (bitDepth=10 or 12, outScale=65535).
 /* clang-format on */
 
+LumaCoefficients getLumaCoefficients(AVColorSpace colorspace) {
+  switch (colorspace) {
+    case AVCOL_SPC_BT709:
+      return {0.2126f, 0.7152f, 0.0722f};
+    case AVCOL_SPC_BT2020_NCL:
+    case AVCOL_SPC_BT2020_CL:
+      return {0.2627f, 0.6780f, 0.0593f};
+    default:
+      // BT.601: default for unspecified colorspace, matching FFmpeg's
+      // swscale behavior (sws_getCoefficients(SWS_CS_DEFAULT) returns
+      // BT.601 coefficients).
+      return {0.299f, 0.587f, 0.114f};
+  }
+}
+
 void computeColorConversionMatrix(
     AVColorSpace colorspace,
     AVColorRange colorRange,
     int bitDepth,
     float outScale,
     float outMatrix[3][4]) {
-  float kr, kg, kb;
-  switch (colorspace) {
-    case AVCOL_SPC_BT709:
-      kr = 0.2126f;
-      kg = 0.7152f;
-      kb = 0.0722f;
-      break;
-    case AVCOL_SPC_BT2020_NCL:
-    case AVCOL_SPC_BT2020_CL:
-      kr = 0.2627f;
-      kg = 0.6780f;
-      kb = 0.0593f;
-      break;
-    default:
-      // BT.601: default for unspecified colorspace, matching FFmpeg's
-      // swscale behavior (sws_getCoefficients(SWS_CS_DEFAULT) returns
-      // BT.601 coefficients).
-      kr = 0.299f;
-      kg = 0.587f;
-      kb = 0.114f;
-      break;
-  }
+  auto [kr, kg, kb] = getLumaCoefficients(colorspace);
 
   float vScale = 2.0f * (1.0f - kr);
   float uScale = 2.0f * (1.0f - kb);
@@ -145,6 +139,49 @@ bool maybeUpdateColorMatrix(
   cachedColorMatrix.outScale = outScale;
   cachedColorMatrix.valid = true;
   return true;
+}
+
+void computeRGBToYUVMatrix(
+    AVColorSpace colorspace,
+    AVColorRange colorRange,
+    float outMatrix[3][4]) {
+  auto [kr, kg, kb] = getLumaCoefficients(colorspace);
+
+  float uScale = 2.0f * (1.0f - kb);
+  float vScale = 2.0f * (1.0f - kr);
+
+  // Full-range RGB [0,255] -> YUV forward matrix
+  // Y = kr*R + kg*G + kb*B
+  // U = (-kr*R - kg*G + (1-kb)*B) / uScale
+  // V = ((1-kr)*R - kg*G - kb*B) / vScale
+  float yRow[3] = {kr, kg, kb};
+  float uRow[3] = {-kr / uScale, -kg / uScale, (1.0f - kb) / uScale};
+  float vRow[3] = {(1.0f - kr) / vScale, -kg / vScale, -kb / vScale};
+
+  bool isFullRange = (colorRange == AVCOL_RANGE_JPEG);
+
+  if (isFullRange) {
+    for (int i = 0; i < 3; i++) {
+      outMatrix[0][i] = yRow[i];
+      outMatrix[1][i] = uRow[i];
+      outMatrix[2][i] = vRow[i];
+    }
+    outMatrix[0][3] = 0.0f;
+    outMatrix[1][3] = 128.0f;
+    outMatrix[2][3] = 128.0f;
+  } else {
+    // Limited range: Y scaled to [16, 235], UV scaled to [16, 240]
+    float yScale = 219.0f / 255.0f;
+    float uvLimitedScale = 224.0f / 255.0f;
+    for (int i = 0; i < 3; i++) {
+      outMatrix[0][i] = yRow[i] * yScale;
+      outMatrix[1][i] = uRow[i] * uvLimitedScale;
+      outMatrix[2][i] = vRow[i] * uvLimitedScale;
+    }
+    outMatrix[0][3] = 16.0f;
+    outMatrix[1][3] = 128.0f;
+    outMatrix[2][3] = 128.0f;
+  }
 }
 
 torch::stable::Tensor convertYUVFrameToRGB(
