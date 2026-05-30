@@ -49,6 +49,8 @@ int AVIOFileLikeContext::readCallback(
 int64_t
 AVIOFileLikeContext::seekCallback(void* opaque, int64_t offset, int whence) {
   if (whence == AVSEEK_SIZE) {
+    // Size of file-like is typically unknown, since the data is potentially
+    // streaming.
     return AVERROR(EIO);
   }
   auto self = static_cast<AVIOFileLikeContext*>(opaque);
@@ -109,10 +111,9 @@ int64_t AVIOFileLikeContext::seek(int64_t offset, int whence) {
 }
 
 int64_t AVIOFileLikeContext::getSize() {
-  int64_t currentPos = seek(0, SEEK_CUR);
-  int64_t size = seek(0, SEEK_END);
-  seek(currentPos, SEEK_SET);
-  return size;
+  // Size of file-like is typically unknown, since the data is potentially
+  // streaming.
+  return INT64_MAX;
 }
 
 } // namespace facebook::torchcodec

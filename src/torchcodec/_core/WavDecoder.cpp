@@ -84,10 +84,7 @@ bool matchesFourCC(
       0;
 }
 
-void safeRead(
-    AVIOContextHolder& avio,
-    uint8_t* buf,
-    int64_t bytesToRead) {
+void safeRead(AVIOContextHolder& avio, uint8_t* buf, int64_t bytesToRead) {
   STD_TORCH_CHECK(bytesToRead >= 0);
   int64_t totalRead = 0;
   while (totalRead < bytesToRead) {
@@ -113,10 +110,7 @@ void safeRead(
 }
 
 template <typename Container>
-void safeRead(
-    AVIOContextHolder& avio,
-    Container& buffer,
-    int64_t bytesToRead) {
+void safeRead(AVIOContextHolder& avio, Container& buffer, int64_t bytesToRead) {
   static_assert(
       sizeof(typename Container::value_type) == 1,
       "Container value_type must be a 1-byte type");
@@ -138,7 +132,7 @@ WavDecoder::WavDecoder(std::unique_ptr<AVIOContextHolder> avio)
   STD_TORCH_CHECK(
       isLittleEndian(), "WAV decoder requires little-endian architecture");
   STD_TORCH_CHECK(avio_ != nullptr, "AVIO context cannot be null");
-  fileSize_ = static_cast<uint64_t>(avio_->getSize());
+  sourceSize_ = static_cast<uint64_t>(avio_->getSize());
   parseHeader();
   validateHeader();
 }
@@ -278,10 +272,10 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     std::string_view chunkId,
     uint64_t startPos) {
   STD_TORCH_CHECK(
-      fileSize_ >= static_cast<uint64_t>(CHUNK_HEADER_SIZE),
+      sourceSize_ >= static_cast<uint64_t>(CHUNK_HEADER_SIZE),
       "File too small to contain chunk:",
       chunkId);
-  while (startPos <= fileSize_ - CHUNK_HEADER_SIZE) {
+  while (startPos <= sourceSize_ - CHUNK_HEADER_SIZE) {
     safeSeek(*avio_, static_cast<int64_t>(startPos));
 
     std::array<uint8_t, CHUNK_HEADER_SIZE> chunkHeader;
@@ -383,7 +377,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   // Cap dataSize to file size to reduce risk of large tensor allocation on
   // corrupt files with incorrect dataSize.
   int64_t endSample = static_cast<int64_t>(
-      std::min(static_cast<uint64_t>(header_.dataSize), fileSize_) /
+      std::min(static_cast<uint64_t>(header_.dataSize), sourceSize_) /
       header_.numBytesPerSample);
   if (stopSecondsOptional.has_value()) {
     STD_TORCH_CHECK(

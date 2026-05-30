@@ -66,7 +66,7 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
 
   std::unique_ptr<AVIOContextHolder> avio_;
   WavHeader header_;
-  uint64_t fileSize_ = 0;
+  uint64_t sourceSize_ = 0;
   std::string sampleFormat_;
   std::string codecName_;
 };
