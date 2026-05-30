@@ -70,9 +70,15 @@ from .utils import (
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
     TEST_SRC_2_MPEG4_MP4,
-    TESTSRC2_ODD_HEIGHT,
-    TESTSRC2_ODD_HEIGHT_AND_WIDTH,
-    TESTSRC2_ODD_WIDTH,
+    TESTSRC2_ODD_HEIGHT_444,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT,
+    TESTSRC2_ODD_HEIGHT_VP9,
+    TESTSRC2_ODD_HEIGHT_VP9_10BIT,
+    TESTSRC2_ODD_WIDTH_444,
+    TESTSRC2_ODD_WIDTH_VP9,
+    TESTSRC2_ODD_WIDTH_VP9_10BIT,
     WAV_ODD_DATA_TRAILING_CHUNK,
 )
 
@@ -1552,19 +1558,66 @@ class TestVideoDecoder:
     @pytest.mark.parametrize(
         "asset",
         (
-            TESTSRC2_ODD_WIDTH,
-            TESTSRC2_ODD_HEIGHT,
-            TESTSRC2_ODD_HEIGHT_AND_WIDTH,
+            TESTSRC2_ODD_WIDTH_444,
+            TESTSRC2_ODD_HEIGHT_444,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
         ),
     )
     @pytest.mark.parametrize("device", ("cuda", "cuda:ffmpeg"))
-    def test_odd_sized_videos(self, asset, device):
-        decoder_gpu, _ = make_video_decoder(asset.path, device=device)
-        decoder_cpu = VideoDecoder(asset.path, device="cpu")
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32))
+    def test_odd_sized_videos_444(self, asset, device, output_dtype):
+        # These are yuv444p H264 videos. On the beta CUDA backend, 4:4:4
+        # chroma isn't supported by NVDEC so these go through the CPU
+        # fallback path entirely (decoding + color conversion on CPU).
+        if output_dtype == torch.float32 and device == "cuda:ffmpeg":
+            pytest.skip("float32 output not relevant for cuda:ffmpeg here")
+
+        decoder_gpu, _ = make_video_decoder(
+            asset.path, device=device, output_dtype=output_dtype
+        )
+        if device == "cuda":
+            assert decoder_gpu.cpu_fallback
+        decoder_cpu = VideoDecoder(asset.path, device="cpu", output_dtype=output_dtype)
 
         gpu_frame = decoder_gpu.get_frame_at(0).data.cpu()
         cpu_frame = decoder_cpu.get_frame_at(0).data
         assert gpu_frame.shape == cpu_frame.shape
+        assert gpu_frame.dtype == output_dtype
+        assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=89, atol=3)
+
+        gpu_frames = decoder_gpu.get_frames_at([0, 1, 2]).data.cpu()
+        cpu_frames = decoder_cpu.get_frames_at([0, 1, 2]).data
+        assert gpu_frames.shape == cpu_frames.shape
+        assert_tensor_close_on_at_least(gpu_frames, cpu_frames, percentage=89, atol=3)
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            TESTSRC2_ODD_WIDTH_VP9,
+            TESTSRC2_ODD_HEIGHT_VP9,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
+            TESTSRC2_ODD_WIDTH_VP9_10BIT,
+            TESTSRC2_ODD_HEIGHT_VP9_10BIT,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT,
+        ),
+    )
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32))
+    def test_odd_sized_videos_vp9(self, asset, output_dtype):
+        # These are VP9 yuv420p / yuv420p10le videos. VP9 supports odd
+        # dimensions with 4:2:0 chroma. They are decoded by NVDEC directly
+        # (no CPU fallback), exercising convertNV12FrameToRGB (uint8) and
+        # convertP016FrameToRGB16 (float32) with odd dimensions.
+        decoder_gpu, _ = make_video_decoder(
+            asset.path, device="cuda", output_dtype=output_dtype
+        )
+        assert not decoder_gpu.cpu_fallback
+        decoder_cpu = VideoDecoder(asset.path, device="cpu", output_dtype=output_dtype)
+
+        gpu_frame = decoder_gpu.get_frame_at(0).data.cpu()
+        cpu_frame = decoder_cpu.get_frame_at(0).data
+        assert gpu_frame.shape == cpu_frame.shape
+        assert gpu_frame.dtype == output_dtype
         assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=89, atol=3)
 
         gpu_frames = decoder_gpu.get_frames_at([0, 1, 2]).data.cpu()

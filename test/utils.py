@@ -765,9 +765,9 @@ TEST_NON_ZERO_START = TestVideo(
 )
 
 # ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
-#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_width.mp4
-TESTSRC2_ODD_WIDTH = TestVideo(
-    filename="testsrc2_odd_width.mp4",
+#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_width_444.mp4
+TESTSRC2_ODD_WIDTH_444 = TestVideo(
+    filename="testsrc2_odd_width_444.mp4",
     default_stream_index=0,
     stream_infos={
         0: TestVideoStreamInfo(width=321, height=240, num_color_channels=3),
@@ -776,9 +776,9 @@ TESTSRC2_ODD_WIDTH = TestVideo(
 )
 
 # ffmpeg -f lavfi -i "testsrc2=size=320x241:rate=25:duration=1,format=rgb24" \
-#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_height.mp4
-TESTSRC2_ODD_HEIGHT = TestVideo(
-    filename="testsrc2_odd_height.mp4",
+#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_height_444.mp4
+TESTSRC2_ODD_HEIGHT_444 = TestVideo(
+    filename="testsrc2_odd_height_444.mp4",
     default_stream_index=0,
     stream_infos={
         0: TestVideoStreamInfo(width=320, height=241, num_color_channels=3),
@@ -787,9 +787,75 @@ TESTSRC2_ODD_HEIGHT = TestVideo(
 )
 
 # ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
-#  -c:v libx264 -pix_fmt yuv444p -profile:v testsrc2_odd_height_and_width.mp4
-TESTSRC2_ODD_HEIGHT_AND_WIDTH = TestVideo(
-    filename="testsrc2_odd_height_and_width.mp4",
+#  -c:v libx264 -pix_fmt yuv444p -profile:v testsrc2_odd_height_and_width_444.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_444 = TestVideo(
+    filename="testsrc2_odd_height_and_width_444.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p -b:v 1M testsrc2_odd_width_vp9.mp4
+TESTSRC2_ODD_WIDTH_VP9 = TestVideo(
+    filename="testsrc2_odd_width_vp9.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=320x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p -b:v 1M testsrc2_odd_height_vp9.mp4
+TESTSRC2_ODD_HEIGHT_VP9 = TestVideo(
+    filename="testsrc2_odd_height_vp9.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p -b:v 1M testsrc2_odd_height_and_width_vp9.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9 = TestVideo(
+    filename="testsrc2_odd_height_and_width_vp9.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p10le -b:v 1M testsrc2_odd_width_vp9_10bit.mp4
+TESTSRC2_ODD_WIDTH_VP9_10BIT = TestVideo(
+    filename="testsrc2_odd_width_vp9_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=320x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p10le -b:v 1M testsrc2_odd_height_vp9_10bit.mp4
+TESTSRC2_ODD_HEIGHT_VP9_10BIT = TestVideo(
+    filename="testsrc2_odd_height_vp9_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p10le -b:v 1M testsrc2_odd_height_and_width_vp9_10bit.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT = TestVideo(
+    filename="testsrc2_odd_height_and_width_vp9_10bit.mp4",
     default_stream_index=0,
     stream_infos={
         0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
