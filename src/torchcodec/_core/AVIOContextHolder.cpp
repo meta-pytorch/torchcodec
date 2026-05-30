@@ -31,7 +31,10 @@ int64_t
 AVIOContextHolder::seekCallback(void* opaque, int64_t offset, int whence) {
   auto self = static_cast<AVIOContextHolder*>(opaque);
   if (whence == AVSEEK_SIZE) {
-    return self->getSize();
+    int64_t size = self->getSize();
+    // INT64_MAX means "unknown size" (e.g. streaming file-like objects).
+    // Tell FFmpeg the size is unavailable rather than passing a bogus value.
+    return size == INT64_MAX ? AVERROR(EIO) : size;
   }
   return self->seek(offset, whence);
 }
