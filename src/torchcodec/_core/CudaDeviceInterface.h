@@ -22,12 +22,11 @@ class CudaDeviceInterface : public DeviceInterface {
       const AVCodecID& codecId,
       bool isDecoder = true) override;
 
-  void initialize(
-      const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) override;
+  void initialize(const SharedAVCodecContext& codecContext) override;
 
   void initializeVideo(
+      const AVStream* avStream,
+      const UniqueDecodingAVFormatContext& avFormatCtx,
       const VideoStreamOptions& videoStreamOptions,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
           transforms,

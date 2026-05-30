@@ -128,6 +128,7 @@ function(make_torchcodec_libraries
     set(core_sources
         AVIOContextHolder.cpp
         AVIOTensorContext.cpp
+        AVIOFileContext.cpp
         FFMPEGCommon.cpp
         FilterGraph.cpp
         Frame.cpp
@@ -177,7 +178,6 @@ function(make_torchcodec_libraries
     # 2. Create libtorchcodec_custom_opsN.{ext}.
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
     set(custom_ops_sources
-        AVIOTensorContext.cpp
         custom_ops.cpp
     )
     set(custom_ops_dependencies

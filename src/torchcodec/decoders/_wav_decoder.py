@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+import io
 import json
 from pathlib import Path
 
@@ -16,7 +17,10 @@ from torchcodec._core._metadata import AudioStreamMetadata
 
 class WavDecoder:
     # TODO: Docstrings
-    def __init__(self, source: str | Path):
+    def __init__(
+        self,
+        source: str | Path | io.RawIOBase | io.BufferedReader | bytes | torch.Tensor,
+    ):
         torch._C._log_api_usage_once("torchcodec.decoders.WavDecoder")
 
         self._decoder = create_wav_decoder(source)

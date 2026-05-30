@@ -53,10 +53,14 @@ from .utils import (
     needs_ffmpeg_cli,
     psnr,
     SINE_16_CHANNEL_S16,
+    SINE_MONO_F32,
+    SINE_MONO_F64,
     SINE_MONO_S16,
+    SINE_MONO_S24,
     SINE_MONO_S32,
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
+    SINE_MONO_U8,
     TEST_NON_ZERO_START,
     TEST_SRC_2_12BIT_HDR,
     TEST_SRC_2_720P,
@@ -66,9 +70,15 @@ from .utils import (
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
     TEST_SRC_2_MPEG4_MP4,
-    TESTSRC2_ODD_HEIGHT,
-    TESTSRC2_ODD_HEIGHT_AND_WIDTH,
-    TESTSRC2_ODD_WIDTH,
+    TESTSRC2_ODD_HEIGHT_444,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT,
+    TESTSRC2_ODD_HEIGHT_VP9,
+    TESTSRC2_ODD_HEIGHT_VP9_10BIT,
+    TESTSRC2_ODD_WIDTH_444,
+    TESTSRC2_ODD_WIDTH_VP9,
+    TESTSRC2_ODD_WIDTH_VP9_10BIT,
     WAV_ODD_DATA_TRAILING_CHUNK,
 )
 
@@ -1548,19 +1558,66 @@ class TestVideoDecoder:
     @pytest.mark.parametrize(
         "asset",
         (
-            TESTSRC2_ODD_WIDTH,
-            TESTSRC2_ODD_HEIGHT,
-            TESTSRC2_ODD_HEIGHT_AND_WIDTH,
+            TESTSRC2_ODD_WIDTH_444,
+            TESTSRC2_ODD_HEIGHT_444,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
         ),
     )
     @pytest.mark.parametrize("device", ("cuda", "cuda:ffmpeg"))
-    def test_odd_sized_videos(self, asset, device):
-        decoder_gpu, _ = make_video_decoder(asset.path, device=device)
-        decoder_cpu = VideoDecoder(asset.path, device="cpu")
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32))
+    def test_odd_sized_videos_444(self, asset, device, output_dtype):
+        # These are yuv444p H264 videos. On the beta CUDA backend, 4:4:4
+        # chroma isn't supported by NVDEC so these go through the CPU
+        # fallback path entirely (decoding + color conversion on CPU).
+        if output_dtype == torch.float32 and device == "cuda:ffmpeg":
+            pytest.skip("float32 output not relevant for cuda:ffmpeg here")
+
+        decoder_gpu, _ = make_video_decoder(
+            asset.path, device=device, output_dtype=output_dtype
+        )
+        if device == "cuda":
+            assert decoder_gpu.cpu_fallback
+        decoder_cpu = VideoDecoder(asset.path, device="cpu", output_dtype=output_dtype)
 
         gpu_frame = decoder_gpu.get_frame_at(0).data.cpu()
         cpu_frame = decoder_cpu.get_frame_at(0).data
         assert gpu_frame.shape == cpu_frame.shape
+        assert gpu_frame.dtype == output_dtype
+        assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=89, atol=3)
+
+        gpu_frames = decoder_gpu.get_frames_at([0, 1, 2]).data.cpu()
+        cpu_frames = decoder_cpu.get_frames_at([0, 1, 2]).data
+        assert gpu_frames.shape == cpu_frames.shape
+        assert_tensor_close_on_at_least(gpu_frames, cpu_frames, percentage=89, atol=3)
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            TESTSRC2_ODD_WIDTH_VP9,
+            TESTSRC2_ODD_HEIGHT_VP9,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
+            TESTSRC2_ODD_WIDTH_VP9_10BIT,
+            TESTSRC2_ODD_HEIGHT_VP9_10BIT,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT,
+        ),
+    )
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32))
+    def test_odd_sized_videos_vp9(self, asset, output_dtype):
+        # These are VP9 yuv420p / yuv420p10le videos. VP9 supports odd
+        # dimensions with 4:2:0 chroma. They are decoded by NVDEC directly
+        # (no CPU fallback), exercising convertNV12FrameToRGB (uint8) and
+        # convertP016FrameToRGB16 (float32) with odd dimensions.
+        decoder_gpu, _ = make_video_decoder(
+            asset.path, device="cuda", output_dtype=output_dtype
+        )
+        assert not decoder_gpu.cpu_fallback
+        decoder_cpu = VideoDecoder(asset.path, device="cpu", output_dtype=output_dtype)
+
+        gpu_frame = decoder_gpu.get_frame_at(0).data.cpu()
+        cpu_frame = decoder_cpu.get_frame_at(0).data
+        assert gpu_frame.shape == cpu_frame.shape
+        assert gpu_frame.dtype == output_dtype
         assert_tensor_close_on_at_least(gpu_frame, cpu_frame, percentage=89, atol=3)
 
         gpu_frames = decoder_gpu.get_frames_at([0, 1, 2]).data.cpu()
@@ -2546,6 +2603,8 @@ class TestVideoDecoder:
             asset.path, output_dtype=torch.float32, device="cuda"
         )
 
+        assert decoder_cuda.cpu_fallback
+
         for frame_index in [0, 5, 10]:
             cpu_frame = decoder_cpu[frame_index]
             cuda_frame = decoder_cuda[frame_index]
@@ -2952,20 +3011,6 @@ class TestAudioDecoder:
 
 
 class TestWavDecoder:
-    def test_metadata(self):
-        asset = SINE_MONO_S32
-        wav_decoder = WavDecoder(asset.path)
-        audio_decoder = AudioDecoder(asset.path)
-
-        assert isinstance(wav_decoder.metadata, AudioStreamMetadata)
-        assert wav_decoder.stream_index == audio_decoder.metadata.stream_index
-        assert wav_decoder.metadata == audio_decoder.metadata
-
-    def test_tensor_handle_creation(self):
-        wav_dec = WavDecoder(SINE_MONO_S32.path)
-        assert wav_dec._decoder is not None
-        assert wav_dec.stream_index == 0
-        assert wav_dec._source == SINE_MONO_S32.path
 
     def test_non_wav_file_raises_error(self):
         with pytest.raises(RuntimeError, match="Missing RIFF header"):
@@ -2975,33 +3020,62 @@ class TestWavDecoder:
         "start_seconds,stop_seconds",
         [
             (0.0, 1.0),
+            (0.2, 0.6),
             (1.0, 1.0),
             (0.0, None),
             (-1.0, 1.0),
             (-1.0, None),
+            (None, None),
         ],
     )
-    def test_get_samples_played_in_range_vs_audio_decoder(
-        self, start_seconds, stop_seconds
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            SINE_MONO_S32,
+            SINE_MONO_S24,
+            SINE_MONO_S16,
+            SINE_MONO_U8,
+            SINE_MONO_F32,
+            SINE_MONO_F64,
+        ),
+    )
+    @pytest.mark.parametrize("source_kind", ("path", "bytes", "tensor", "file_like"))
+    def test_against_audio_decoder(
+        self, asset, start_seconds, stop_seconds, source_kind
     ):
-        wav_dec = WavDecoder(SINE_MONO_S32.path)
-        audio_dec = AudioDecoder(SINE_MONO_S32.path)
+        file_handle = None
+        if source_kind == "path":
+            source = asset.path
+        elif source_kind == "bytes":
+            source = asset.path.read_bytes()
+        elif source_kind == "tensor":
+            source = asset.to_tensor()
+        elif source_kind == "file_like":
+            file_handle = open(asset.path, "rb")
+            source = file_handle
 
-        wav_samples = wav_dec.get_samples_played_in_range(start_seconds, stop_seconds)
-        audio_samples = audio_dec.get_samples_played_in_range(
-            start_seconds, stop_seconds
-        )
+        wav_dec = WavDecoder(source)
+        audio_dec = AudioDecoder(asset.path)
+
+        assert isinstance(wav_dec.metadata, AudioStreamMetadata)
+        assert wav_dec.stream_index == audio_dec.metadata.stream_index
+        assert wav_dec.metadata == audio_dec.metadata
+
+        if start_seconds is None and stop_seconds is None:
+            wav_samples = wav_dec.get_all_samples()
+            audio_samples = audio_dec.get_all_samples()
+        else:
+            wav_samples = wav_dec.get_samples_played_in_range(
+                start_seconds, stop_seconds
+            )
+            audio_samples = audio_dec.get_samples_played_in_range(
+                start_seconds, stop_seconds
+            )
         torch.testing.assert_close(wav_samples.data, audio_samples.data, rtol=0, atol=0)
         assert wav_samples.pts_seconds == audio_samples.pts_seconds
 
-    def test_get_all_samples_vs_audio_decoder(self):
-        wav_dec = WavDecoder(SINE_MONO_S32.path)
-        audio_dec = AudioDecoder(SINE_MONO_S32.path)
-
-        wav_samples = wav_dec.get_all_samples()
-        audio_samples = audio_dec.get_all_samples()
-        torch.testing.assert_close(wav_samples.data, audio_samples.data, rtol=0, atol=0)
-        assert wav_samples.pts_seconds == audio_samples.pts_seconds
+        if file_handle is not None:
+            file_handle.close()
 
     def test_get_samples_played_in_range_errors(self):
         wav_dec = WavDecoder(SINE_MONO_S32.path)
