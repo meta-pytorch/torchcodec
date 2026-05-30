@@ -22,7 +22,10 @@ from torchcodec._core.ops import (
     create_from_file,
     create_from_file_like,
     create_from_tensor,
+    create_wav_decoder_from_bytes,
     create_wav_decoder_from_file,
+    create_wav_decoder_from_file_like,
+    create_wav_decoder_from_tensor,
 )
 from torchcodec.transforms import DecoderTransform
 from torchcodec.transforms._decoder_transforms import _make_transform_specs
@@ -102,16 +105,31 @@ def create_audio_decoder(
     return (decoder, stream_index, metadata)
 
 
-def create_wav_decoder(source: str | Path) -> Tensor:
+def create_wav_decoder(
+    source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
+) -> Tensor:
     if isinstance(source, str):
         return create_wav_decoder_from_file(source)
     elif isinstance(source, Path):
         return create_wav_decoder_from_file(str(source))
-    else:
-        raise ValueError(
-            "Source is not a supported uncompressed WAV file. "
-            "For compressed audio formats or non-WAV files, use AudioDecoder instead."
+    elif isinstance(source, bytes):
+        return create_wav_decoder_from_bytes(source)
+    elif isinstance(source, Tensor):
+        return create_wav_decoder_from_tensor(source)
+    elif isinstance(source, (io.RawIOBase, io.BufferedReader)):
+        return create_wav_decoder_from_file_like(source)
+    elif isinstance(source, io.TextIOBase):
+        raise TypeError(
+            "source is for reading text, likely from open(..., 'r'). "
+            "Try with 'rb' for binary reading?"
         )
+    elif hasattr(source, "read") and hasattr(source, "seek"):
+        return create_wav_decoder_from_file_like(source)
+
+    raise TypeError(
+        f"Unknown source type: {type(source)}. "
+        "Supported types are str, Path, bytes, Tensor and file-like objects."
+    )
 
 
 def _get_and_validate_video_stream_metadata(
