@@ -147,16 +147,13 @@ function(make_torchcodec_libraries
 
     if(ENABLE_CUDA)
         enable_language(CUDA)
-	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp NPPRuntimeLoader.cpp color_conversion.cpp color_conversion.cu)
+	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp color_conversion.cpp color_conversion.cu)
     endif()
 
     set(core_library_dependencies
         ${ffmpeg_target}
         ${TORCH_LIBRARIES}
     )
-
-    # Note: NPP (nppi, nppicc) is NOT linked here. It is loaded at runtime
-    # via NPPRuntimeLoader.cpp, following the same pattern as NVCUVID.
 
     make_torchcodec_sublibrary(
         "${core_library_name}"

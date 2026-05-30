@@ -7,7 +7,6 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include <npp.h>
 
 #include "FFMPEGCommon.h"
 #include "Frame.h"
@@ -23,8 +22,7 @@ namespace facebook::torchcodec {
 // https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
 constexpr int MAX_CUDA_GPUS = 128;
 
-// NV12 and NPP require even dimensions. This rounds up to the nearest even
-// value.
+// NV12 requires even dimensions. This rounds up to the nearest even value.
 inline int roundUpToEven(int value) {
   return (value + 1) & ~1;
 }
@@ -36,14 +34,6 @@ cudaStream_t getCurrentCudaStream(int32_t deviceIndex);
 void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream);
 
 void initializeCudaContextWithPytorch(const StableDevice& device);
-
-// Unique pointer type for NPP stream context
-using UniqueNppContext = std::unique_ptr<NppStreamContext>;
-
-UniqueNppContext getNppStreamContext(const StableDevice& device);
-void returnNppStreamContextToCache(
-    const StableDevice& device,
-    UniqueNppContext nppCtx);
 
 void validatePreAllocatedTensorShape(
     const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,

@@ -218,4 +218,136 @@ void launchP016ToRGB16Kernel(
       bitShift);
 }
 
+// RGB -> NV12 kernel for encoding.
+// Each thread processes a 2x2 block: computes Y for all 4 pixels,
+// averages U and V across the block, and writes to the NV12 planes.
+__global__ void rgbToNV12Kernel(
+    const uint8_t* __restrict__ rgbInput,
+    uint8_t* __restrict__ yPlane,
+    uint8_t* __restrict__ uvPlane,
+    int width,
+    int height,
+    int rgbPitchElements,
+    int yPitchElements,
+    int uvPitchElements) {
+  int x = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+  int y = (blockIdx.y * blockDim.y + threadIdx.y) * 2;
+  if (x + 1 >= width || y + 1 >= height) {
+    return;
+  }
+
+  // Read 4 RGB pixels from 2x2 block
+  const uint8_t* row0 = rgbInput + y * rgbPitchElements + x * 3;
+  const uint8_t* row1 =
+      rgbInput + (y + 1) * rgbPitchElements + x * 3;
+
+  float r00 = row0[0], g00 = row0[1], b00 = row0[2];
+  float r01 = row0[3], g01 = row0[4], b01 = row0[5];
+  float r10 = row1[0], g10 = row1[1], b10 = row1[2];
+  float r11 = row1[3], g11 = row1[4], b11 = row1[5];
+
+  // Compute Y for all 4 pixels
+  float y00 = d_colorMatrix[0][0] * r00 +
+      d_colorMatrix[0][1] * g00 + d_colorMatrix[0][2] * b00 +
+      d_colorMatrix[0][3];
+  float y01 = d_colorMatrix[0][0] * r01 +
+      d_colorMatrix[0][1] * g01 + d_colorMatrix[0][2] * b01 +
+      d_colorMatrix[0][3];
+  float y10 = d_colorMatrix[0][0] * r10 +
+      d_colorMatrix[0][1] * g10 + d_colorMatrix[0][2] * b10 +
+      d_colorMatrix[0][3];
+  float y11 = d_colorMatrix[0][0] * r11 +
+      d_colorMatrix[0][1] * g11 + d_colorMatrix[0][2] * b11 +
+      d_colorMatrix[0][3];
+
+  // Write Y plane
+  uchar2 yRow0 = {
+      static_cast<uint8_t>(
+          fminf(fmaxf(roundf(y00), 0.0f), 255.0f)),
+      static_cast<uint8_t>(
+          fminf(fmaxf(roundf(y01), 0.0f), 255.0f))};
+  *(reinterpret_cast<uchar2*>(
+      &yPlane[y * yPitchElements + x])) = yRow0;
+
+  uchar2 yRow1 = {
+      static_cast<uint8_t>(
+          fminf(fmaxf(roundf(y10), 0.0f), 255.0f)),
+      static_cast<uint8_t>(
+          fminf(fmaxf(roundf(y11), 0.0f), 255.0f))};
+  *(reinterpret_cast<uchar2*>(
+      &yPlane[(y + 1) * yPitchElements + x])) = yRow1;
+
+  // Compute U,V for all 4 pixels and average for 4:2:0 subsampling
+  float u00 = d_colorMatrix[1][0] * r00 +
+      d_colorMatrix[1][1] * g00 + d_colorMatrix[1][2] * b00 +
+      d_colorMatrix[1][3];
+  float u01 = d_colorMatrix[1][0] * r01 +
+      d_colorMatrix[1][1] * g01 + d_colorMatrix[1][2] * b01 +
+      d_colorMatrix[1][3];
+  float u10 = d_colorMatrix[1][0] * r10 +
+      d_colorMatrix[1][1] * g10 + d_colorMatrix[1][2] * b10 +
+      d_colorMatrix[1][3];
+  float u11 = d_colorMatrix[1][0] * r11 +
+      d_colorMatrix[1][1] * g11 + d_colorMatrix[1][2] * b11 +
+      d_colorMatrix[1][3];
+
+  float v00 = d_colorMatrix[2][0] * r00 +
+      d_colorMatrix[2][1] * g00 + d_colorMatrix[2][2] * b00 +
+      d_colorMatrix[2][3];
+  float v01 = d_colorMatrix[2][0] * r01 +
+      d_colorMatrix[2][1] * g01 + d_colorMatrix[2][2] * b01 +
+      d_colorMatrix[2][3];
+  float v10 = d_colorMatrix[2][0] * r10 +
+      d_colorMatrix[2][1] * g10 + d_colorMatrix[2][2] * b10 +
+      d_colorMatrix[2][3];
+  float v11 = d_colorMatrix[2][0] * r11 +
+      d_colorMatrix[2][1] * g11 + d_colorMatrix[2][2] * b11 +
+      d_colorMatrix[2][3];
+
+  float uAvg = (u00 + u01 + u10 + u11) * 0.25f;
+  float vAvg = (v00 + v01 + v10 + v11) * 0.25f;
+
+  int uvIdx = (y / 2) * uvPitchElements + x;
+  uchar2 uvPair = {
+      static_cast<uint8_t>(
+          fminf(fmaxf(roundf(uAvg), 0.0f), 255.0f)),
+      static_cast<uint8_t>(
+          fminf(fmaxf(roundf(vAvg), 0.0f), 255.0f))};
+  *(reinterpret_cast<uchar2*>(&uvPlane[uvIdx])) = uvPair;
+}
+
+void launchRGBToNV12Kernel(
+    const uint8_t* rgbInput,
+    uint8_t* yPlane,
+    uint8_t* uvPlane,
+    int width,
+    int height,
+    int rgbPitch,
+    int yPitch,
+    int uvPitch,
+    const float colorMatrix[3][4],
+    cudaStream_t stream) {
+  cudaMemcpyToSymbol(
+      d_colorMatrix,
+      colorMatrix,
+      sizeof(float) * 12,
+      0,
+      cudaMemcpyHostToDevice);
+
+  dim3 block(32, 2);
+  dim3 grid(
+      (width / 2 + block.x - 1) / block.x,
+      (height / 2 + block.y - 1) / block.y);
+
+  rgbToNV12Kernel<<<grid, block, 0, stream>>>(
+      rgbInput,
+      yPlane,
+      uvPlane,
+      width,
+      height,
+      rgbPitch,
+      yPitch,
+      uvPitch);
+}
+
 } // namespace facebook::torchcodec

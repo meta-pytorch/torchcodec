@@ -251,8 +251,8 @@ std::optional<cudaVideoSurfaceFormat> getNVDECSurfaceFormat(
 
   // P016 is typically not supported on 8-bit SDR content. In such cases, we
   // try to fall back to NV12 if supported:
-  // NVDEC will decode to NV12, NPP will do NV12 -> RGB producing uint8, and
-  // maybePermuteAndConvertToFloat32 will cast uint8 -> float32.
+  // NVDEC will decode to NV12, our kernel will do NV12 -> RGB producing
+  // uint8, and maybePermuteAndConvertToFloat32 will cast uint8 -> float32.
   // For HDR content, NV12 would lose precision, so we fall back to CPU instead.
   if (preferredFormat == cudaVideoSurfaceFormat_P016 && bitDepthMinus8 == 0 &&
       ((caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1)) {
@@ -628,8 +628,8 @@ int BetaCudaDeviceInterface::receiveFrame(UniqueAVFrame& avFrame) {
   procParams.progressive_frame = dispInfo.progressive_frame;
   procParams.top_field_first = dispInfo.top_field_first;
   procParams.unpaired_field = dispInfo.repeat_first_field < 0;
-  // We set the NVDEC stream to the current stream. It will be waited upon by
-  // the NPP stream before any color conversion.
+  // We set the NVDEC stream to the current stream. It will be waited upon
+  // by the color conversion stream before any color conversion.
   // Re types: we get a cudaStream_t from PyTorch but it's interchangeable with
   // CUstream
   procParams.output_stream =

@@ -15,6 +15,12 @@
 
 namespace facebook::torchcodec {
 
+struct LumaCoefficients {
+  float kr, kg, kb;
+};
+
+LumaCoefficients getLumaCoefficients(AVColorSpace colorspace);
+
 struct CachedColorMatrix {
   AVColorSpace colorspace = AVCOL_SPC_UNSPECIFIED;
   AVColorRange colorRange = AVCOL_RANGE_UNSPECIFIED;
@@ -90,5 +96,26 @@ torch::stable::Tensor convertYUVFrameToRGB(
     bool isP016,
     int bitDepth,
     CachedColorMatrix& cachedColorMatrix);
+
+// Compute the RGB -> YUV color conversion matrix (for encoding).
+// The matrix operates on uint8 RGB values [0, 255] and produces Y, U, V
+// values. The 4th column encodes offsets (Y pedestal for limited range,
+// UV centering at 128).
+void computeRGBToYUVMatrix(
+    AVColorSpace colorspace,
+    AVColorRange colorRange,
+    float outMatrix[3][4]);
+
+void launchRGBToNV12Kernel(
+    const uint8_t* rgbInput,
+    uint8_t* yPlane,
+    uint8_t* uvPlane,
+    int width,
+    int height,
+    int rgbPitch,
+    int yPitch,
+    int uvPitch,
+    const float colorMatrix[3][4],
+    cudaStream_t stream);
 
 } // namespace facebook::torchcodec
