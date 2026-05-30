@@ -72,6 +72,11 @@ static DecoderCapsCache& getDecoderCapsCache() {
   return cache;
 }
 
+cudaVideoSurfaceFormat getPreferredSurfaceFormat(OutputDtype outputDtype) {
+  return outputDtype == OutputDtype::FLOAT32 ? cudaVideoSurfaceFormat_P016
+                                             : cudaVideoSurfaceFormat_NV12;
+}
+
 static bool g_cuda_nvdec = registerDeviceInterface(
     DeviceInterfaceKey(kStableCUDA, /*variant=*/"default"),
     [](const StableDevice& device) {
@@ -190,26 +195,26 @@ std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
   }
 }
 
-bool nativeNVDECSupport(
+std::optional<cudaVideoSurfaceFormat> getNVDECSurfaceFormat(
     const StableDevice& device,
     const SharedAVCodecContext& codecContext,
     OutputDtype outputDtype) {
-  // Return true iff the input video stream is supported by our NVDEC
-  // implementation.
+  // Return the surface format to use for NVDEC decoding if the stream is
+  // supported, or nullopt to fall back to CPU.
 
   auto codecType = validateCodecSupport(codecContext->codec_id);
   if (!codecType.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(codecContext->pix_fmt);
   if (!desc) {
-    return false;
+    return std::nullopt;
   }
 
   auto chromaFormat = validateChromaSupport(desc);
   if (!chromaFormat.has_value()) {
-    return false;
+    return std::nullopt;
   }
 
   auto bitDepthMinus8 = static_cast<unsigned int>(desc->comp[0].depth - 8);
@@ -219,11 +224,11 @@ bool nativeNVDECSupport(
       chromaFormat.value(),
       bitDepthMinus8);
   if (result != CUDA_SUCCESS) {
-    return false;
+    return std::nullopt;
   }
 
   if (!caps.bIsSupported) {
-    return false;
+    return std::nullopt;
   }
 
   auto coded_width = static_cast<unsigned int>(codecContext->coded_width);
@@ -231,26 +236,31 @@ bool nativeNVDECSupport(
   if (coded_width < static_cast<unsigned int>(caps.nMinWidth) ||
       coded_height < static_cast<unsigned int>(caps.nMinHeight) ||
       coded_width > caps.nMaxWidth || coded_height > caps.nMaxHeight) {
-    return false;
+    return std::nullopt;
   }
 
   // See nMaxMBCount in cuviddec.h
   constexpr unsigned int macroblockConstant = 256;
   if (coded_width * coded_height / macroblockConstant > caps.nMaxMBCount) {
-    return false;
+    return std::nullopt;
   }
 
-  // TODO_HDR: when P016 is not supported (e.g. 8-bit content), we fall back
-  // to CPU. Instead, we could use NV12 and convert uint8 to float32 after
-  // NPP color conversion, which would keep decoding on the GPU.
-  auto neededFormat = outputDtype == OutputDtype::FLOAT32
-      ? cudaVideoSurfaceFormat_P016
-      : cudaVideoSurfaceFormat_NV12;
-  if (!((caps.nOutputFormatMask >> neededFormat) & 1)) {
-    return false;
+  auto preferredFormat = getPreferredSurfaceFormat(outputDtype);
+  if ((caps.nOutputFormatMask >> preferredFormat) & 1) {
+    return preferredFormat;
   }
 
-  return true;
+  // P016 is typically not supported on 8-bit SDR content. In such cases, we
+  // try to fall back to NV12 if supported:
+  // NVDEC will decode to NV12, NPP will do NV12 -> RGB producing uint8, and
+  // maybePermuteAndConvertToFloat32 will cast uint8 -> float32.
+  // For HDR content, NV12 would lose precision, so we fall back to CPU instead.
+  if (preferredFormat == cudaVideoSurfaceFormat_P016 && bitDepthMinus8 == 0 &&
+      ((caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1)) {
+    return cudaVideoSurfaceFormat_NV12;
+  }
+
+  return std::nullopt;
 }
 
 // Callback for freeing CUDA memory associated with AVFrame see where it's used
@@ -350,43 +360,33 @@ static torch::stable::Tensor convertP016FrameToRGB16(
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
     const FrameDims& outputDims,
     int bitDepth,
-    AVColorSpace colorspace,
-    AVColorRange colorRange) {
-  int height = avFrame->height;
-  int width = avFrame->width;
-  STD_TORCH_CHECK(
-      height % 2 == 0 && width % 2 == 0,
-      "convertP016FrameToRGB16 expects even avFrame dimensions, got ",
-      height,
-      "x",
-      width,
-      ". Report a bug if you see this message.");
-  STD_TORCH_CHECK(
-      outputDims.height == height && outputDims.width == width,
-      "outputDims ",
-      outputDims.height,
-      "x",
-      outputDims.width,
-      " are not consistent with avFrame dimensions ",
-      height,
-      "x",
-      width,
-      ". Report a bug if you see this message.");
+    const float colorMatrix[3][4],
+    bool colorMatrixChanged) {
+  // avFrame dimensions may be odd (NVDEC display area for VP9 etc.). P016
+  // color conversion requires even dimensions, so we round up to even for the
+  // kernel, then crop to outputDims.
+  int frameHeight = avFrame->height;
+  int frameWidth = avFrame->width;
+  int height = roundUpToEven(frameHeight);
+  int width = roundUpToEven(frameWidth);
+
+  int outHeight = outputDims.height;
+  int outWidth = outputDims.width;
+  bool needsCrop = (outHeight != height) || (outWidth != width);
 
   torch::stable::Tensor dst;
-  if (preAllocatedOutputTensor.has_value()) {
+  if (needsCrop) {
+    dst = allocateEmptyHWCTensor(
+        FrameDims(height, width), device, OutputDtype::FLOAT32);
+  } else if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
     dst = allocateEmptyHWCTensor(
-        FrameDims(height, width), device, OutputDtype::FLOAT32);
+        FrameDims(outHeight, outWidth), device, OutputDtype::FLOAT32);
   }
 
   cudaStream_t stream = getCurrentCudaStream(device.index());
   syncStreams(/*runningStream=*/nvdecStream, /*waitingStream=*/stream);
-
-  float colorMatrix[3][4];
-  // TODO_HDR this needs to be cached.
-  computeP016ColorMatrix(colorspace, colorRange, bitDepth, colorMatrix);
 
   launchP016ToRGB16Kernel(
       reinterpret_cast<const uint16_t*>(avFrame->data[0]),
@@ -399,8 +399,23 @@ static torch::stable::Tensor convertP016FrameToRGB16(
       validateInt64ToInt(dst.stride(0) * 2, "dst.stride(0)*2"),
       bitDepth,
       colorMatrix,
+      colorMatrixChanged,
       stream);
 
+  if (needsCrop) {
+    if (outHeight != height) {
+      dst = torch::stable::narrow(dst, /*dim=*/0, /*start=*/0, outHeight);
+    }
+    if (outWidth != width) {
+      dst = torch::stable::narrow(dst, /*dim=*/1, /*start=*/0, outWidth);
+      dst = torch::stable::contiguous(dst);
+    }
+    if (preAllocatedOutputTensor.has_value()) {
+      torch::stable::copy_(preAllocatedOutputTensor.value(), dst);
+      return preAllocatedOutputTensor.value();
+    }
+    return dst;
+  }
   return dst;
 }
 
@@ -435,14 +450,14 @@ void BetaCudaDeviceInterface::initializeVideo(
   rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
   outputDtype_ = videoStreamOptions.outputDtype;
 
-  if (!nvcuvidAvailable_ ||
-      !nativeNVDECSupport(device_, codecContext_, outputDtype_)) {
+  auto maybeSurfaceFormat = nvcuvidAvailable_
+      ? getNVDECSurfaceFormat(device_, codecContext_, outputDtype_)
+      : std::nullopt;
+
+  if (!maybeSurfaceFormat.has_value()) {
     if (!nvcuvidAvailable_) {
       TC_LOG("NVCUVID library not available; falling back to CPU decoding.");
     } else {
-      // TODO_HDR we might fallback if float32 was requested on a sdr video, the
-      // message logged here as well as the one reported by .cpu_fallback should
-      // be more accurate.
       TC_LOG(
           "Video stream not supported by NVDEC; falling back to CPU decoding.");
     }
@@ -459,6 +474,7 @@ void BetaCudaDeviceInterface::initializeVideo(
     return;
   }
 
+  surfaceFormat_ = maybeSurfaceFormat.value();
   timeBase_ = avStream->time_base;
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
 
@@ -514,7 +530,7 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     flush();
     unmapPreviousFrame();
     NVDECCache::getCache(device_).returnDecoder(
-        &videoFormat_, outputSurfaceFormat_, std::move(decoder_));
+        &videoFormat_, surfaceFormat_, std::move(decoder_));
   }
 
   if (videoParser_) {
@@ -628,24 +644,20 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
 
   videoFormat_ = *videoFormat;
 
-  outputSurfaceFormat_ = outputDtype_ == OutputDtype::FLOAT32
-      ? cudaVideoSurfaceFormat_P016
-      : cudaVideoSurfaceFormat_NV12;
-
   if (videoFormat_.min_num_decode_surfaces == 0) {
     // Same as DALI's fallback
     videoFormat_.min_num_decode_surfaces = 20;
   }
 
   if (!decoder_) {
-    decoder_ = NVDECCache::getCache(device_).getDecoder(
-        videoFormat, outputSurfaceFormat_);
+    decoder_ =
+        NVDECCache::getCache(device_).getDecoder(videoFormat, surfaceFormat_);
 
     if (!decoder_) {
       // TODONVDEC P2: consider re-configuring an existing decoder instead of
       // re-creating one. See docs, see DALI. Re-configuration doesn't seem to
       // be enabled in DALI by default.
-      decoder_ = createDecoder(videoFormat, outputSurfaceFormat_);
+      decoder_ = createDecoder(videoFormat, surfaceFormat_);
     }
 
     STD_TORCH_CHECK(decoder_, "Failed to get or create decoder");
@@ -846,7 +858,9 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
 
   avFrame->width = width;
   avFrame->height = height;
-  avFrame->format = AV_PIX_FMT_CUDA;
+  avFrame->format = (surfaceFormat_ == cudaVideoSurfaceFormat_P016)
+      ? AV_PIX_FMT_P016LE
+      : AV_PIX_FMT_NV12;
   avFrame->pts = dispInfo.timestamp;
 
   // TODONVDEC P2: We compute the duration based on average frame rate info, so
@@ -890,9 +904,13 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
       ? AVCOL_RANGE_JPEG
       : AVCOL_RANGE_MPEG;
 
-  // Below: Ask Claude. I'm not going to even pretend.
+  // NVDEC's surface layout places the UV plane after the Y plane. For
+  // NV12/P016 the Y plane has an even number of rows (NVDEC rounds up
+  // internally), so we must use the rounded-up height for the UV offset.
+  unsigned int evenHeight = roundUpToEven(height);
   avFrame->data[0] = reinterpret_cast<uint8_t*>(framePtr);
-  avFrame->data[1] = reinterpret_cast<uint8_t*>(framePtr + (pitch * height));
+  avFrame->data[1] =
+      reinterpret_cast<uint8_t*>(framePtr + (pitch * evenHeight));
   avFrame->data[2] = nullptr;
   avFrame->data[3] = nullptr;
   avFrame->linesize[0] = pitch;
@@ -922,39 +940,46 @@ void BetaCudaDeviceInterface::flush() {
   std::swap(readyFrames_, emptyQueue);
 }
 
-UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
-    UniqueAVFrame& cpuFrame) {
+UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpu(
+    UniqueAVFrame& cpuFrame,
+    AVPixelFormat targetPixFmt) {
   // This is called in the context of the CPU fallback: the frame was decoded on
-  // the CPU, and in this function we convert that frame into NV12 format and
-  // send it to the GPU.
+  // the CPU, and in this function we convert that frame into NV12 or P016
+  // format and send it to the GPU.
   // We do that in 2 steps:
-  // - First we convert the input CPU frame into an intermediate NV12 CPU frame
-  //   using sws_scale.
-  // - Then we allocate GPU memory and copy the NV12 CPU frame to the GPU. This
-  //   is what we return
-  // Since NV12 requires even dimensions, the returned NV12 frame will have even
+  // - First we convert the input CPU frame into an intermediate NV12/P016 CPU
+  //   frame using sws_scale.
+  // - Then we allocate GPU memory and copy the CPU frame to the GPU. This
+  //   is what we return.
+  // Since NV12/P016 require even dimensions, the returned frame will have even
   // (rounded up) width and height, even if the original CPU frame had odd
   // dimensions.
 
   STD_TORCH_CHECK(cpuFrame != nullptr, "CPU frame cannot be null");
+  // NV12 = 1 byte per sample, P016 = 2 bytes per sample
+  STD_TORCH_CHECK(
+      targetPixFmt == AV_PIX_FMT_NV12 || targetPixFmt == AV_PIX_FMT_P016LE,
+      "targetPixFmt must be NV12 or P016LE");
+  int bytesPerSample = (targetPixFmt == AV_PIX_FMT_P016LE) ? 2 : 1;
 
   int width = cpuFrame->width;
   int height = cpuFrame->height;
   int evenWidth = roundUpToEven(width);
   int evenHeight = roundUpToEven(height);
 
-  // intermediate NV12 CPU frame. It's not on the GPU yet.
-  UniqueAVFrame nv12CpuFrame(av_frame_alloc());
-  STD_TORCH_CHECK(nv12CpuFrame != nullptr, "Failed to allocate NV12 CPU frame");
+  UniqueAVFrame intermediateCpuFrame(av_frame_alloc());
+  STD_TORCH_CHECK(
+      intermediateCpuFrame != nullptr,
+      "Failed to allocate intermediate CPU frame");
 
-  nv12CpuFrame->format = AV_PIX_FMT_NV12;
-  nv12CpuFrame->width = evenWidth;
-  nv12CpuFrame->height = evenHeight;
+  intermediateCpuFrame->format = targetPixFmt;
+  intermediateCpuFrame->width = evenWidth;
+  intermediateCpuFrame->height = evenHeight;
 
-  int ret = av_frame_get_buffer(nv12CpuFrame.get(), 0);
+  int ret = av_frame_get_buffer(intermediateCpuFrame.get(), 0);
   STD_TORCH_CHECK(
       ret >= 0,
-      "Failed to allocate NV12 CPU frame buffer: ",
+      "Failed to allocate intermediate CPU frame buffer: ",
       getFFMPEGErrorStringFromErrorCode(ret));
 
   SwsConfig swsConfig(
@@ -964,7 +989,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
       cpuFrame->colorspace,
       evenWidth,
       evenHeight,
-      AV_PIX_FMT_NV12);
+      targetPixFmt);
 
   if (!swsContext_ || prevSwsConfig_ != swsConfig) {
     swsContext_ = createSwsContext(swsConfig, SWS_BILINEAR);
@@ -977,14 +1002,15 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
       cpuFrame->linesize,
       0,
       height,
-      nv12CpuFrame->data,
-      nv12CpuFrame->linesize);
+      intermediateCpuFrame->data,
+      intermediateCpuFrame->linesize);
   STD_TORCH_CHECK(
       convertedHeight == evenHeight,
-      "sws_scale failed for CPU->NV12 conversion");
+      "sws_scale failed for CPU->NV12/P016 conversion");
 
-  int ySize = evenWidth * evenHeight;
-  int uvSize = ySize / 2; // NV12: UV plane is half the size of Y plane
+  int rowBytes = evenWidth * bytesPerSample;
+  int ySize = rowBytes * evenHeight;
+  int uvSize = ySize / 2;
   size_t totalSize = static_cast<size_t>(ySize + uvSize);
 
   uint8_t* cudaBuffer = nullptr;
@@ -998,13 +1024,13 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
   UniqueAVFrame gpuFrame(av_frame_alloc());
   STD_TORCH_CHECK(gpuFrame != nullptr, "Failed to allocate GPU AVFrame");
 
-  gpuFrame->format = AV_PIX_FMT_CUDA;
+  gpuFrame->format = targetPixFmt;
   gpuFrame->width = evenWidth;
   gpuFrame->height = evenHeight;
   gpuFrame->data[0] = cudaBuffer;
   gpuFrame->data[1] = cudaBuffer + ySize;
-  gpuFrame->linesize[0] = evenWidth;
-  gpuFrame->linesize[1] = evenWidth;
+  gpuFrame->linesize[0] = rowBytes;
+  gpuFrame->linesize[1] = rowBytes;
 
   // Note that we use cudaMemcpy2D here instead of cudaMemcpy because the
   // linesizes (strides) may be different than the widths for the input CPU
@@ -1012,9 +1038,9 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
   err = cudaMemcpy2D(
       gpuFrame->data[0],
       gpuFrame->linesize[0],
-      nv12CpuFrame->data[0],
-      nv12CpuFrame->linesize[0],
-      evenWidth,
+      intermediateCpuFrame->data[0],
+      intermediateCpuFrame->linesize[0],
+      rowBytes,
       evenHeight,
       cudaMemcpyHostToDevice);
   STD_TORCH_CHECK(
@@ -1025,9 +1051,9 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
   err = cudaMemcpy2D(
       gpuFrame->data[1],
       gpuFrame->linesize[1],
-      nv12CpuFrame->data[1],
-      nv12CpuFrame->linesize[1],
-      evenWidth,
+      intermediateCpuFrame->data[1],
+      intermediateCpuFrame->linesize[1],
+      rowBytes,
       evenHeight / 2,
       cudaMemcpyHostToDevice);
   STD_TORCH_CHECK(
@@ -1041,12 +1067,9 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpuNV12(
       "Failed to copy frame properties: ",
       getFFMPEGErrorStringFromErrorCode(ret));
 
-  // We're almost done, but we need to make sure the CUDA memory is freed
-  // properly. Usually, AVFrame data is freed when av_frame_free() is called
-  // (upon UniqueAVFrame destruction), but since we allocated the CUDA memory
-  // ourselves, FFmpeg doesn't know how to free it. The recommended way to deal
-  // with this is to associate the opaque_ref field of the AVFrame with a `free`
-  // callback that will then be called by av_frame_free().
+  // We need to make sure the CUDA memory is freed properly. Since we allocated
+  // it ourselves, FFmpeg doesn't know how to free it. We associate a `free`
+  // callback via opaque_ref that will be called by av_frame_free().
   gpuFrame->opaque_ref = av_buffer_create(
       nullptr, // data - we don't need any
       0, // data size
@@ -1066,23 +1089,16 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
   if (cpuFallback_) {
     // When the CPU fallback happens, we'll try to run the color-conversion on
-    // GPU by sending those CPU frames to the GPU as NV12 (See
-    // transferCpuFrameToGpuNV12() below). However, it's not always possible:
-    // NV12 would downsample 4:4:4 frames and lose chroma resolution, resulting
-    // in poorly decoded frames. So for those, we still do the color conversion
-    // on the CPU and then send the full RGB frame to the GPU.
+    // GPU by sending those CPU frames to the GPU as NV12 or P016 (See
+    // transferCpuFrameToGpu() below). However, it's not always
+    // possible: NV12/P016 would downsample 4:4:4 frames and lose chroma
+    // resolution, resulting in poorly decoded frames. So for those, we still
+    // do the color conversion on the CPU and then send the full RGB frame to
+    // the GPU.
     const AVPixFmtDescriptor* desc =
         av_pix_fmt_desc_get(static_cast<AVPixelFormat>(avFrame->format));
     bool is444 = desc && desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0;
-    if (is444 || outputDtype_ == OutputDtype::FLOAT32) {
-      // We do the full color-conversion on CPU and transfer to GPU when:
-      // - 4:4:4: converting through NV12 (4:2:0) would lose chroma
-      //   resolution.
-      // - float32: the NV12 path produces uint8 RGB, but float32 output
-      //   needs uint16 (RGB48). The CPU path handles this correctly.
-      //   TODO_HDR: we could instead convert to P016 on CPU and use the
-      //   GPU P016->RGB16 color conversion, preserving precision while
-      //   keeping color conversion on GPU.
+    if (is444) {
       FrameOutput cpuFrameOutput;
       cpuFallback_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
       if (preAllocatedOutputTensor.has_value()) {
@@ -1099,31 +1115,57 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     }
   }
 
-  // Capture original dimensions before transferCpuFrameToGpuNV12 may
-  // round them up to even for NV12.
+  // Capture original dimensions before transferCpuFrameToGpu()
+  // may round them up to even.
   FrameDims originalDims(avFrame->height, avFrame->width);
 
-  UniqueAVFrame gpuFrame =
-      cpuFallback_ ? transferCpuFrameToGpuNV12(avFrame) : std::move(avFrame);
+  UniqueAVFrame gpuFrame;
+  if (cpuFallback_) {
+    AVPixelFormat targetPixFmt = (outputDtype_ == OutputDtype::FLOAT32)
+        ? AV_PIX_FMT_P016LE
+        : AV_PIX_FMT_NV12;
+    gpuFrame = transferCpuFrameToGpu(avFrame, targetPixFmt);
+  } else {
+    gpuFrame = std::move(avFrame);
+  }
 
   STD_TORCH_CHECK(
-      gpuFrame->format == AV_PIX_FMT_CUDA,
-      "Expected CUDA format frame from NVDEC CUDA interface");
+      gpuFrame->format == AV_PIX_FMT_NV12 ||
+          gpuFrame->format == AV_PIX_FMT_P016LE,
+      "Expected NV12 or P016LE format frame");
 
   cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
   auto convertFrame = [&](std::optional<torch::stable::Tensor> preAlloc)
       -> torch::stable::Tensor {
-    if (outputSurfaceFormat_ == cudaVideoSurfaceFormat_P016) {
+    if (gpuFrame->format == AV_PIX_FMT_P016LE) {
+      int bitDepth = cpuFallback_
+          ? codecContext_->bits_per_raw_sample
+          : static_cast<int>(videoFormat_.bit_depth_luma_minus8) + 8;
+      AVColorSpace colorspace = gpuFrame->colorspace;
+      AVColorRange colorRange = gpuFrame->color_range;
+      bool colorMatrixChanged = false;
+      if (!cachedColorMatrix_.valid ||
+          cachedColorMatrix_.colorspace != colorspace ||
+          cachedColorMatrix_.colorRange != colorRange ||
+          cachedColorMatrix_.bitDepth != bitDepth) {
+        computeP016ColorMatrix(
+            colorspace, colorRange, bitDepth, cachedColorMatrix_.matrix);
+        cachedColorMatrix_.colorspace = colorspace;
+        cachedColorMatrix_.colorRange = colorRange;
+        cachedColorMatrix_.bitDepth = bitDepth;
+        cachedColorMatrix_.valid = true;
+        colorMatrixChanged = true;
+      }
       return convertP016FrameToRGB16(
           gpuFrame,
           device_,
           nvdecStream,
           preAlloc,
           originalDims,
-          static_cast<int>(videoFormat_.bit_depth_luma_minus8) + 8,
-          gpuFrame->colorspace,
-          gpuFrame->color_range);
+          bitDepth,
+          cachedColorMatrix_.matrix,
+          colorMatrixChanged);
     }
     return convertNV12FrameToRGB(
         gpuFrame, device_, nppCtx_, nvdecStream, preAlloc, originalDims);
@@ -1170,6 +1212,15 @@ void BetaCudaDeviceInterface::applyRotation(
     torch::stable::copy_(preAllocatedOutputTensor.value(), frameOutput.data);
     frameOutput.data = preAllocatedOutputTensor.value();
   }
+}
+
+OutputDtype BetaCudaDeviceInterface::getPreAllocationDtype(
+    OutputDtype requestedDtype) const {
+  if (requestedDtype == OutputDtype::FLOAT32 &&
+      surfaceFormat_ == cudaVideoSurfaceFormat_NV12) {
+    return OutputDtype::UINT8;
+  }
+  return requestedDtype;
 }
 
 std::string BetaCudaDeviceInterface::getDetails() {

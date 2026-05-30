@@ -25,8 +25,58 @@ namespace facebook::torchcodec {
 // individually).
 __constant__ float d_colorMatrix[3][4];
 
+// Takes a pair of consecutive Y values, a pair of UV values, and writes the
+// corresponding two RGB values. Instead of writing each ra ga ba and rb gb bb
+// separately as uint16, they are written in pairs as ushort2 for faster writes.
+__device__ void writePairOfRGBPixels(ushort2 yayb, float u, float v, uint16_t* rgbPlaneToWrite, int bitShift){
+
+  float ya = static_cast<float>(yayb.x >> bitShift);
+  float yb = static_cast<float>(yayb.y >> bitShift);
+
+  float ra = d_colorMatrix[0][0] * ya + d_colorMatrix[0][1] * u +
+      d_colorMatrix[0][2] * v + d_colorMatrix[0][3];
+  float ga = d_colorMatrix[1][0] * ya + d_colorMatrix[1][1] * u +
+      d_colorMatrix[1][2] * v + d_colorMatrix[1][3];
+
+  ushort2 raga = {static_cast<uint16_t>(fminf(fmaxf(ra, 0.0f), 65535.0f)),
+                   static_cast<uint16_t>(fminf(fmaxf(ga, 0.0f), 65535.0f))};
+  *(reinterpret_cast<ushort2*>(&rgbPlaneToWrite[0])) = raga;
+
+  float ba = d_colorMatrix[2][0] * ya + d_colorMatrix[2][1] * u +
+      d_colorMatrix[2][2] * v + d_colorMatrix[2][3];
+  float rb = d_colorMatrix[0][0] * yb + d_colorMatrix[0][1] * u +
+      d_colorMatrix[0][2] * v + d_colorMatrix[0][3];
+  ushort2 barb = {static_cast<uint16_t>(fminf(fmaxf(ba, 0.0f), 65535.0f)),
+                   static_cast<uint16_t>(fminf(fmaxf(rb, 0.0f), 65535.0f))};
+  *(reinterpret_cast<ushort2*>(&rgbPlaneToWrite[2])) = barb;
+
+  float gb = d_colorMatrix[1][0] * yb + d_colorMatrix[1][1] * u +
+      d_colorMatrix[1][2] * v + d_colorMatrix[1][3];
+  float bb = d_colorMatrix[2][0] * yb + d_colorMatrix[2][1] * u +
+      d_colorMatrix[2][2] * v + d_colorMatrix[2][3];
+  ushort2 gbbb = {static_cast<uint16_t>(fminf(fmaxf(gb, 0.0f), 65535.0f)),
+                   static_cast<uint16_t>(fminf(fmaxf(bb, 0.0f), 65535.0f))};
+  *(reinterpret_cast<ushort2*>(&rgbPlaneToWrite[4])) = gbbb;
+}
+
+
 // Takes the Y and UV plane as input, applies the color-conversion matrix and
 // fills the RGB plane as output.
+// Each thread, i.e. each invocation of p016ToRgb16Kernel, processes a 2x2 block
+// of pixels: this optimizes the UV plan reads, since each UV pair is
+// responsible for a 2x2 block.
+//
+//   Y plane (one value per pixel):       UV plane (one pair per 2x2 block):
+//   +------+------+                      +----------+
+//   |  y1  |  y2  |  row y               |  u  | v  |
+//   +------+------+                      +----------+
+//   |  y3  |  y4  |  row y+1
+//   +------+------+
+//   col x    col x+1
+//
+// We use ushort2 vectorized loads to read {y1,y2} and {y3,y4} in two
+// 32-bit reads, and {U,V} in one 32-bit read. Then we apply the color
+// matrix to produce 4 RGB pixels.
 __global__ void p016ToRgb16Kernel(
     // __restrict__ tells the compiler those pointers never overlap with each
     // other so it can optimize read and writes more aggressively.
@@ -39,46 +89,30 @@ __global__ void p016ToRgb16Kernel(
     int uvPitchElements,
     int rgbPitchElements,
     int bitShift) {
-  // TODO_HDR: our implem has each thread write one single pixel, so each UV pair
-  // (corresponding to a 2x2 pixel block) is read by four threads. We could have
-  // each thread handle a 2x2 output block instead, to optimize reads.
-  int x = blockIdx.x * blockDim.x + threadIdx.x;
-  int y = blockIdx.y * blockDim.y + threadIdx.y;
-
-  if (x >= width || y >= height) {
+  // The kernel operates on 2x2 blocks, so it's called H / 2 * W / 2 times.
+  // We have to multiply back by 2 to retrieve the output pixel coordinates x
+  // and y.
+  int x = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
+  int y = (blockIdx.y * blockDim.y + threadIdx.y) * 2;
+  if (x + 1 >= width || y + 1 >= height) {
     return;
   }
 
-  // Read Y value and shift to actual bit depth
-  float yVal =
-      static_cast<float>(yPlane[y * yPitchElements + x] >> bitShift);
+  // ushort2 stores two uint16 values in .x and .y
+  // Here, we read the UV pair in one instruction. Both U and V are 16bits.
+  int uvIdx = (y / 2) * uvPitchElements + x;
+  ushort2 uv= *reinterpret_cast<const ushort2*>(&uvPlane[uvIdx]);
+  float u = static_cast<float>(uv.x >> bitShift);
+  float v = static_cast<float>(uv.y >> bitShift);
 
-  // Read U, V values (4:2:0 chroma subsampling: UV is half resolution)
-  int uvX = x / 2;
-  int uvY = y / 2;
-  int uvIdx = uvY * uvPitchElements + uvX * 2;
-  float uVal = static_cast<float>(uvPlane[uvIdx] >> bitShift);
-  float vVal = static_cast<float>(uvPlane[uvIdx + 1] >> bitShift);
+  // Similarly, we can read 4 Y values in 2 reads
+  ushort2 y1y2 = *reinterpret_cast<const ushort2*>(&yPlane[y * yPitchElements + x]);
+  ushort2 y3y4 = *reinterpret_cast<const ushort2*>(&yPlane[(y + 1) * yPitchElements + x]);
 
-  // Apply 3x4 color conversion matrix:
-  //   R = m[0][0]*Y + m[0][1]*U + m[0][2]*V + m[0][3]
-  //   G = m[1][0]*Y + m[1][1]*U + m[1][2]*V + m[1][3]
-  //   B = m[2][0]*Y + m[2][1]*U + m[2][2]*V + m[2][3]
-  float r = d_colorMatrix[0][0] * yVal + d_colorMatrix[0][1] * uVal +
-      d_colorMatrix[0][2] * vVal + d_colorMatrix[0][3];
-  float g = d_colorMatrix[1][0] * yVal + d_colorMatrix[1][1] * uVal +
-      d_colorMatrix[1][2] * vVal + d_colorMatrix[1][3];
-  float b = d_colorMatrix[2][0] * yVal + d_colorMatrix[2][1] * uVal +
-      d_colorMatrix[2][2] * vVal + d_colorMatrix[2][3];
-
-  // Clamp to [0, 65535] and write RGB output
-  int rgbIdx = y * rgbPitchElements + x * 3;
-  rgbOutput[rgbIdx + 0] =
-      static_cast<uint16_t>(fminf(fmaxf(r, 0.0f), 65535.0f));
-  rgbOutput[rgbIdx + 1] =
-      static_cast<uint16_t>(fminf(fmaxf(g, 0.0f), 65535.0f));
-  rgbOutput[rgbIdx + 2] =
-      static_cast<uint16_t>(fminf(fmaxf(b, 0.0f), 65535.0f));
+  uint16_t* rgbPlaneToWrite = rgbOutput + y * rgbPitchElements + x * 3;
+  writePairOfRGBPixels(y1y2, u, v, rgbPlaneToWrite, bitShift);
+  rgbPlaneToWrite += rgbPitchElements;  // go to next line
+  writePairOfRGBPixels(y3y4, u, v, rgbPlaneToWrite, bitShift);
 }
 
 void launchP016ToRGB16Kernel(
@@ -92,23 +126,27 @@ void launchP016ToRGB16Kernel(
     int rgbPitch,
     int bitDepth,
     const float colorMatrix[3][4],
+    bool colorMatrixChanged,
     cudaStream_t stream) {
 
-  // TODO_HDR this is a sync point. We should try to make it non-blocking.
-  // E.g. put it on the `stream`? Make it async? Avoid re-sending the matrix if
-  // it hasn't changed from before (it likely didn't for the same video!!)?
-  cudaMemcpyToSymbol(
-      d_colorMatrix, colorMatrix, sizeof(float) * 12, 0, cudaMemcpyHostToDevice);
+  if (colorMatrixChanged) {
+    // We only send the color-matrix from CPU to GPU if it changed.
+    // In practice it probably doesn't impact perf that much since decoding is
+    // bottlenecked by NVDEC's frame mapping, not color-conversion. But it's a
+    // simple optimization, so we do it anyway.
+    cudaMemcpyToSymbol(
+        d_colorMatrix, colorMatrix, sizeof(float) * 12, 0,
+        cudaMemcpyHostToDevice);
+  }
 
   int yPitchElements = yPitch / static_cast<int>(sizeof(uint16_t));
   int uvPitchElements = uvPitch / static_cast<int>(sizeof(uint16_t));
   int rgbPitchElements = rgbPitch / static_cast<int>(sizeof(uint16_t));
   int bitShift = 16 - bitDepth;
 
-  // TODO_HDR: investigate perf implications of the block and grid size?
-  dim3 block(16, 16);
+  dim3 block(32, 2);
   dim3 grid(
-      (width + block.x - 1) / block.x, (height + block.y - 1) / block.y);
+      (width / 2 + block.x - 1) / block.x, (height / 2 + block.y - 1) / block.y);
 
   p016ToRgb16Kernel<<<grid, block, 0, stream>>>(
       yPlane,

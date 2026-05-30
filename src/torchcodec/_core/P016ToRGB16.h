@@ -28,6 +28,7 @@ void launchP016ToRGB16Kernel(
     int rgbPitch,
     int bitDepth,
     const float colorMatrix[3][4],
+    bool colorMatrixChanged,
     cudaStream_t stream);
 
 } // namespace facebook::torchcodec

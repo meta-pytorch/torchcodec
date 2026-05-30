@@ -47,6 +47,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resizedOutputDims) override;
 
+  OutputDtype getPreAllocationDtype(OutputDtype requestedDtype) const override;
+
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
@@ -84,7 +86,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       unsigned int pitch,
       const CUVIDPARSERDISPINFO& dispInfo);
 
-  UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
+  UniqueAVFrame transferCpuFrameToGpu(
+      UniqueAVFrame& cpuFrame,
+      AVPixelFormat targetPixFmt);
 
   void applyRotation(
       FrameOutput& frameOutput,
@@ -113,11 +117,18 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   SwsConfig prevSwsConfig_;
   Rotation rotation_ = Rotation::NONE;
-  // TODO_HDR: figure out whether we actually need both. This should / could be
-  // a 1:1 mapping? If we need both because of the CPU falback logic, we might
-  // want to make things more explicit.
   OutputDtype outputDtype_ = OutputDtype::UINT8;
-  cudaVideoSurfaceFormat outputSurfaceFormat_ = cudaVideoSurfaceFormat_NV12;
+  cudaVideoSurfaceFormat surfaceFormat_ = cudaVideoSurfaceFormat_NV12;
+
+  struct CachedP016ColorMatrix {
+    AVColorSpace colorspace = AVCOL_SPC_UNSPECIFIED;
+    AVColorRange colorRange = AVCOL_RANGE_UNSPECIFIED;
+    int bitDepth = 0;
+    float matrix[3][4] = {};
+    bool valid = false;
+  };
+
+  CachedP016ColorMatrix cachedColorMatrix_;
 };
 
 } // namespace facebook::torchcodec
