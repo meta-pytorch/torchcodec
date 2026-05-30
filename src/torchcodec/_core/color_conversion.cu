@@ -9,42 +9,32 @@
 namespace facebook::torchcodec {
 
 // NV12 and P016 are semi-planar YUV 4:2:0 formats. Chroma subsampling is
-// 4:2:0 so U,V are subsampled by 2 in both H and W dimensions.
-// The Y plane is YYYYY... where each Y is one sample per pixel.
-// The UV plane is interleaved as UVUVUVUV... where each UV pair corresponds
-// to a 2x2 block of pixels.
-// NV12 uses 8-bit samples (uint8_t), P016 uses 16-bit samples (uint16_t)
-// with actual data in the most significant bits (right-shifted by
-// 16 - bitDepth).
+// 4:2:0 so U,V are subsampled by 2 in both H and W dimensions. This means a
+// single UV pair is responsible for a 2x2 pixel block.
+// The Y plane is YYYYY... where each Y corresponds to one pixel.
+// The UV plane is interleaved as UVUVUVUV...
+// NV12 uses 8-bit samples (uint8_t), i.e. the Y, U and V values are 8 bits
+// each. P016 uses 16-bit samples (uint16_t) with actual data in the most
+// significant bits (right-shifted by 16 - bitDepth).
 
 // Color conversion matrix stored in constant memory for fast access.
 // It is available to every single thread.
 __constant__ float d_colorMatrix[3][4];
 
-template <typename T>
-struct YUVVecType;
-
-template <>
-struct YUVVecType<uint8_t> {
-  using type = uchar2;
-};
-
-template <>
-struct YUVVecType<uint16_t> {
-  using type = ushort2;
-};
-
 // Takes a pair of consecutive Y values, a pair of UV values, and writes the
 // corresponding two RGB values. Instead of writing each ra ga ba and rb gb bb
-// separately, they are written in pairs as Vec2 for faster writes.
-template <typename T>
+// separately, they are written in pairs as Vec2T for faster writes.
+//
+// T is the sample type: uint8_t for NV12, uint16_t for P016.
+// Vec2T is the corresponding 2-element vector: uchar2 (2 uint8 values for NV12)
+// or ushort2 (2 uint16 values for P016).
+template <typename T, typename Vec2T>
 __device__ void writePairOfRGBPixels(
-    typename YUVVecType<T>::type yayb,
+    Vec2T yayb,
     float u,
     float v,
     T* rgbPlaneToWrite,
     int bitShift) {
-  using VecT = typename YUVVecType<T>::type;
   constexpr float clampMax = sizeof(T) == 1 ? 255.0f : 65535.0f;
 
   float ya = static_cast<float>(yayb.x >> bitShift);
@@ -55,25 +45,25 @@ __device__ void writePairOfRGBPixels(
   float ga = d_colorMatrix[1][0] * ya + d_colorMatrix[1][1] * u +
       d_colorMatrix[1][2] * v + d_colorMatrix[1][3];
 
-  VecT raga = {static_cast<T>(fminf(fmaxf(ra, 0.0f), clampMax)),
-               static_cast<T>(fminf(fmaxf(ga, 0.0f), clampMax))};
-  *(reinterpret_cast<VecT*>(&rgbPlaneToWrite[0])) = raga;
+  Vec2T raga = {static_cast<T>(fminf(fmaxf(ra, 0.0f), clampMax)),
+                static_cast<T>(fminf(fmaxf(ga, 0.0f), clampMax))};
+  *(reinterpret_cast<Vec2T*>(&rgbPlaneToWrite[0])) = raga;
 
   float ba = d_colorMatrix[2][0] * ya + d_colorMatrix[2][1] * u +
       d_colorMatrix[2][2] * v + d_colorMatrix[2][3];
   float rb = d_colorMatrix[0][0] * yb + d_colorMatrix[0][1] * u +
       d_colorMatrix[0][2] * v + d_colorMatrix[0][3];
-  VecT barb = {static_cast<T>(fminf(fmaxf(ba, 0.0f), clampMax)),
-               static_cast<T>(fminf(fmaxf(rb, 0.0f), clampMax))};
-  *(reinterpret_cast<VecT*>(&rgbPlaneToWrite[2])) = barb;
+  Vec2T barb = {static_cast<T>(fminf(fmaxf(ba, 0.0f), clampMax)),
+                static_cast<T>(fminf(fmaxf(rb, 0.0f), clampMax))};
+  *(reinterpret_cast<Vec2T*>(&rgbPlaneToWrite[2])) = barb;
 
   float gb = d_colorMatrix[1][0] * yb + d_colorMatrix[1][1] * u +
       d_colorMatrix[1][2] * v + d_colorMatrix[1][3];
   float bb = d_colorMatrix[2][0] * yb + d_colorMatrix[2][1] * u +
       d_colorMatrix[2][2] * v + d_colorMatrix[2][3];
-  VecT gbbb = {static_cast<T>(fminf(fmaxf(gb, 0.0f), clampMax)),
-               static_cast<T>(fminf(fmaxf(bb, 0.0f), clampMax))};
-  *(reinterpret_cast<VecT*>(&rgbPlaneToWrite[4])) = gbbb;
+  Vec2T gbbb = {static_cast<T>(fminf(fmaxf(gb, 0.0f), clampMax)),
+                static_cast<T>(fminf(fmaxf(bb, 0.0f), clampMax))};
+  *(reinterpret_cast<Vec2T*>(&rgbPlaneToWrite[4])) = gbbb;
 }
 
 // Takes the Y and UV plane as input, applies the color-conversion matrix and
@@ -90,10 +80,10 @@ __device__ void writePairOfRGBPixels(
 //   +------+------+
 //   col x    col x+1
 //
-// We use Vec2 vectorized loads to read {y1,y2} and {y3,y4} in two
+// We use Vec2T vectorized loads to read {y1,y2} and {y3,y4} in two
 // reads, and {U,V} in one read. Then we apply the color matrix to produce
 // 4 RGB pixels.
-template <typename T>
+template <typename T, typename Vec2T>
 __global__ void yuvToRgbKernel(
     // __restrict__ tells the compiler those pointers never overlap with each
     // other so it can optimize read and writes more aggressively.
@@ -106,8 +96,6 @@ __global__ void yuvToRgbKernel(
     int uvPitchElements,
     int rgbPitchElements,
     int bitShift) {
-  using VecT = typename YUVVecType<T>::type;
-
   // The kernel operates on 2x2 blocks, so it's called H / 2 * W / 2 times.
   // We have to multiply back by 2 to retrieve the output pixel coordinates x
   // and y.
@@ -117,23 +105,25 @@ __global__ void yuvToRgbKernel(
     return;
   }
 
-  // VecT stores two values in .x and .y
+  // Vec2T stores two values in .x and .y
   // Here, we read the UV pair in one instruction.
   int uvIdx = (y / 2) * uvPitchElements + x;
-  VecT uv = *reinterpret_cast<const VecT*>(&uvPlane[uvIdx]);
+  Vec2T uv = *reinterpret_cast<const Vec2T*>(&uvPlane[uvIdx]);
   float u = static_cast<float>(uv.x >> bitShift);
   float v = static_cast<float>(uv.y >> bitShift);
 
   // Similarly, we can read 4 Y values in 2 reads
-  VecT y1y2 =
-      *reinterpret_cast<const VecT*>(&yPlane[y * yPitchElements + x]);
-  VecT y3y4 = *reinterpret_cast<const VecT*>(
+  Vec2T y1y2 =
+      *reinterpret_cast<const Vec2T*>(&yPlane[y * yPitchElements + x]);
+  Vec2T y3y4 = *reinterpret_cast<const Vec2T*>(
       &yPlane[(y + 1) * yPitchElements + x]);
 
   T* rgbPlaneToWrite = rgbOutput + y * rgbPitchElements + x * 3;
-  writePairOfRGBPixels<T>(y1y2, u, v, rgbPlaneToWrite, bitShift);
+  writePairOfRGBPixels<T, Vec2T>(
+      y1y2, u, v, rgbPlaneToWrite, bitShift);
   rgbPlaneToWrite += rgbPitchElements; // go to next line
-  writePairOfRGBPixels<T>(y3y4, u, v, rgbPlaneToWrite, bitShift);
+  writePairOfRGBPixels<T, Vec2T>(
+      y3y4, u, v, rgbPlaneToWrite, bitShift);
 }
 
 namespace {
@@ -176,7 +166,7 @@ void launchNV12ToRGBKernel(
       (width / 2 + block.x - 1) / block.x,
       (height / 2 + block.y - 1) / block.y);
 
-  yuvToRgbKernel<uint8_t><<<grid, block, 0, stream>>>(
+  yuvToRgbKernel<uint8_t, uchar2><<<grid, block, 0, stream>>>(
       yPlane,
       uvPlane,
       rgbOutput,
@@ -216,7 +206,7 @@ void launchP016ToRGB16Kernel(
       (width / 2 + block.x - 1) / block.x,
       (height / 2 + block.y - 1) / block.y);
 
-  yuvToRgbKernel<uint16_t><<<grid, block, 0, stream>>>(
+  yuvToRgbKernel<uint16_t, ushort2><<<grid, block, 0, stream>>>(
       yPlane,
       uvPlane,
       rgbOutput,

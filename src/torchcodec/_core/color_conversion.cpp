@@ -130,8 +130,7 @@ bool maybeUpdateColorMatrix(
     AVColorRange colorRange,
     int bitDepth,
     float outScale) {
-  if (cachedColorMatrix.valid &&
-      cachedColorMatrix.colorspace == colorspace &&
+  if (cachedColorMatrix.valid && cachedColorMatrix.colorspace == colorspace &&
       cachedColorMatrix.colorRange == colorRange &&
       cachedColorMatrix.bitDepth == bitDepth &&
       cachedColorMatrix.outScale == outScale) {
@@ -139,8 +138,7 @@ bool maybeUpdateColorMatrix(
   }
 
   computeColorConversionMatrix(
-      colorspace, colorRange, bitDepth, outScale,
-      cachedColorMatrix.matrix);
+      colorspace, colorRange, bitDepth, outScale, cachedColorMatrix.matrix);
   cachedColorMatrix.colorspace = colorspace;
   cachedColorMatrix.colorRange = colorRange;
   cachedColorMatrix.bitDepth = bitDepth;
@@ -164,18 +162,17 @@ torch::stable::Tensor convertYUVFrameToRGB(
   // Dimensions may be odd (NVDEC display area for VP9 etc.). NV12/P016
   // color conversion requires even dimensions, so we round up to even
   // for the kernel, then crop to outputDims.
-  int frameHeight = avFrame->height;
-  int frameWidth = avFrame->width;
-  int height = roundUpToEven(frameHeight);
-  int width = roundUpToEven(frameWidth);
+  int evenHeight = roundUpToEven(avFrame->height);
+  int evenWidth = roundUpToEven(avFrame->width);
 
   int outHeight = outputDims.height;
   int outWidth = outputDims.width;
-  bool needsCrop = (outHeight != height) || (outWidth != width);
+  bool needsCrop = (outHeight != evenHeight) || (outWidth != evenWidth);
 
   torch::stable::Tensor dst;
   if (needsCrop) {
-    dst = allocateEmptyHWCTensor(FrameDims(height, width), device, outDtype);
+    dst = allocateEmptyHWCTensor(
+        FrameDims(evenHeight, evenWidth), device, outDtype);
   } else if (preAllocatedOutputTensor.has_value()) {
     dst = preAllocatedOutputTensor.value();
   } else {
@@ -199,8 +196,8 @@ torch::stable::Tensor convertYUVFrameToRGB(
         reinterpret_cast<const uint16_t*>(avFrame->data[0]),
         reinterpret_cast<const uint16_t*>(avFrame->data[1]),
         dst.mutable_data_ptr<uint16_t>(),
-        width,
-        height,
+        evenWidth,
+        evenHeight,
         avFrame->linesize[0],
         avFrame->linesize[1],
         validateInt64ToInt(dst.stride(0) * 2, "dst.stride(0)*2"),
@@ -213,8 +210,8 @@ torch::stable::Tensor convertYUVFrameToRGB(
         avFrame->data[0],
         avFrame->data[1],
         dst.mutable_data_ptr<uint8_t>(),
-        width,
-        height,
+        evenWidth,
+        evenHeight,
         avFrame->linesize[0],
         avFrame->linesize[1],
         validateInt64ToInt(dst.stride(0), "dst.stride(0)"),
@@ -224,10 +221,10 @@ torch::stable::Tensor convertYUVFrameToRGB(
   }
 
   if (needsCrop) {
-    if (outHeight != height) {
+    if (outHeight != evenHeight) {
       dst = torch::stable::narrow(dst, /*dim=*/0, /*start=*/0, outHeight);
     }
-    if (outWidth != width) {
+    if (outWidth != evenWidth) {
       dst = torch::stable::narrow(dst, /*dim=*/1, /*start=*/0, outWidth);
       dst = torch::stable::contiguous(dst);
     }
