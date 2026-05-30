@@ -75,7 +75,7 @@ class CudaDeviceInterface : public DeviceInterface {
   bool usingCPUFallback_ = false;
   bool hasDecodedFrame_ = false;
 
-  CachedColorMatrix colorMatrixCache_;
+  CachedColorMatrix cachedColorMatrix_;
 };
 
 } // namespace facebook::torchcodec

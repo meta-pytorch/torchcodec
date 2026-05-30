@@ -125,24 +125,27 @@ void computeColorConversionMatrix(
 }
 
 bool maybeUpdateColorMatrix(
-    CachedColorMatrix& cache,
+    CachedColorMatrix& cachedColorMatrix,
     AVColorSpace colorspace,
     AVColorRange colorRange,
     int bitDepth,
     float outScale) {
-  if (cache.valid && cache.colorspace == colorspace &&
-      cache.colorRange == colorRange && cache.bitDepth == bitDepth &&
-      cache.outScale == outScale) {
+  if (cachedColorMatrix.valid &&
+      cachedColorMatrix.colorspace == colorspace &&
+      cachedColorMatrix.colorRange == colorRange &&
+      cachedColorMatrix.bitDepth == bitDepth &&
+      cachedColorMatrix.outScale == outScale) {
     return false;
   }
 
   computeColorConversionMatrix(
-      colorspace, colorRange, bitDepth, outScale, cache.matrix);
-  cache.colorspace = colorspace;
-  cache.colorRange = colorRange;
-  cache.bitDepth = bitDepth;
-  cache.outScale = outScale;
-  cache.valid = true;
+      colorspace, colorRange, bitDepth, outScale,
+      cachedColorMatrix.matrix);
+  cachedColorMatrix.colorspace = colorspace;
+  cachedColorMatrix.colorRange = colorRange;
+  cachedColorMatrix.bitDepth = bitDepth;
+  cachedColorMatrix.outScale = outScale;
+  cachedColorMatrix.valid = true;
   return true;
 }
 
@@ -154,7 +157,7 @@ torch::stable::Tensor convertYUVFrameToRGB(
     const FrameDims& outputDims,
     bool isP016,
     int bitDepth,
-    CachedColorMatrix& colorMatrixCache) {
+    CachedColorMatrix& cachedColorMatrix) {
   float outScale = isP016 ? 65535.0f : 255.0f;
   OutputDtype outDtype = isP016 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 
@@ -185,7 +188,7 @@ torch::stable::Tensor convertYUVFrameToRGB(
       /*runningStream=*/nvdecStream, /*waitingStream=*/stream);
 
   bool colorMatrixChanged = maybeUpdateColorMatrix(
-      colorMatrixCache,
+      cachedColorMatrix,
       avFrame->colorspace,
       avFrame->color_range,
       bitDepth,
@@ -202,7 +205,7 @@ torch::stable::Tensor convertYUVFrameToRGB(
         avFrame->linesize[1],
         validateInt64ToInt(dst.stride(0) * 2, "dst.stride(0)*2"),
         bitDepth,
-        colorMatrixCache.matrix,
+        cachedColorMatrix.matrix,
         colorMatrixChanged,
         stream);
   } else {
@@ -215,7 +218,7 @@ torch::stable::Tensor convertYUVFrameToRGB(
         avFrame->linesize[0],
         avFrame->linesize[1],
         validateInt64ToInt(dst.stride(0), "dst.stride(0)"),
-        colorMatrixCache.matrix,
+        cachedColorMatrix.matrix,
         colorMatrixChanged,
         stream);
   }

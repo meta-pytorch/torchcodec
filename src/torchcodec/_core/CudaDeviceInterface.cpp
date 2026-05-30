@@ -345,7 +345,7 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
       FrameDims(avFrame->height, avFrame->width),
       /*isP016=*/false,
       /*bitDepth=*/8,
-      colorMatrixCache_);
+      cachedColorMatrix_);
 }
 
 // inspired by https://github.com/FFmpeg/FFmpeg/commit/ad67ea9

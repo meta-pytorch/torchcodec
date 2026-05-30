@@ -42,7 +42,7 @@ void computeColorConversionMatrix(
 // Update the cached color matrix if any parameter changed.
 // Returns true if the matrix was recomputed (and needs re-uploading to GPU).
 bool maybeUpdateColorMatrix(
-    CachedColorMatrix& cache,
+    CachedColorMatrix& cachedColorMatrix,
     AVColorSpace colorspace,
     AVColorRange colorRange,
     int bitDepth,
@@ -89,6 +89,6 @@ torch::stable::Tensor convertYUVFrameToRGB(
     const FrameDims& outputDims,
     bool isP016,
     int bitDepth,
-    CachedColorMatrix& colorMatrixCache);
+    CachedColorMatrix& cachedColorMatrix);
 
 } // namespace facebook::torchcodec
