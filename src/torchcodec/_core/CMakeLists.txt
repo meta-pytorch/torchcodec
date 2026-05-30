@@ -146,7 +146,7 @@ function(make_torchcodec_libraries
 
     if(ENABLE_CUDA)
         enable_language(CUDA)
-	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp NPPRuntimeLoader.cpp P016ToRGB16.cu)
+	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp NPPRuntimeLoader.cpp color_conversion.cpp color_conversion.cu)
     endif()
 
     set(core_library_dependencies

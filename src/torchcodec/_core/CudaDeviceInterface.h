@@ -9,6 +9,7 @@
 #include "CUDACommon.h"
 #include "DeviceInterface.h"
 #include "FilterGraph.h"
+#include "color_conversion.h"
 
 namespace facebook::torchcodec {
 
@@ -73,6 +74,8 @@ class CudaDeviceInterface : public DeviceInterface {
 
   bool usingCPUFallback_ = false;
   bool hasDecodedFrame_ = false;
+
+  CachedColorMatrix colorMatrixCache_;
 };
 
 } // namespace facebook::torchcodec

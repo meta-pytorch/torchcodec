@@ -40,20 +40,6 @@ void initializeCudaContextWithPytorch(const StableDevice& device);
 // Unique pointer type for NPP stream context
 using UniqueNppContext = std::unique_ptr<NppStreamContext>;
 
-// Convert an NV12 frame (on GPU) to an RGB tensor. The avFrame must have even
-// width/height matching its actual NV12 data layout.
-// outputDims is the desired output size. If smaller than the avFrame
-// dimensions, the result is cropped. This is used when the original video has
-// odd dimensions: the NV12 data is padded to even sizes, and outputDims
-// carries the original (odd) size to crop back to.
-torch::stable::Tensor convertNV12FrameToRGB(
-    UniqueAVFrame& avFrame,
-    const StableDevice& device,
-    const UniqueNppContext& nppCtx,
-    cudaStream_t nvdecStream,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
-    const FrameDims& outputDims);
-
 UniqueNppContext getNppStreamContext(const StableDevice& device);
 void returnNppStreamContextToCache(
     const StableDevice& device,
