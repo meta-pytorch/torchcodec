@@ -289,33 +289,16 @@ torch::stable::Tensor convertNV12FrameToRGB(
     cudaStream_t nvdecStream,
     std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
     const FrameDims& outputDims) {
-  // avFrame dimensions must be even (NV12 requirement). When the original
-  // video has odd dimensions, the caller pads to even and passes the original
-  // size via outputDims so we can crop after conversion.
-  int nv12Height = avFrame->height;
-  int nv12Width = avFrame->width;
-  STD_TORCH_CHECK(
-      nv12Height % 2 == 0 && nv12Width % 2 == 0,
-      "convertNV12FrameToRGB expects even avFrame dimensions, got ",
-      nv12Height,
-      "x",
-      nv12Width,
-      ". Report a bug if you see this message.");
+  // avFrame dimensions may be odd (NVDEC display area for VP9 etc.). NV12
+  // color conversion requires even dimensions, so we round up to even for the
+  // conversion, then crop to outputDims.
+  int frameHeight = avFrame->height;
+  int frameWidth = avFrame->width;
+  int nv12Height = roundUpToEven(frameHeight);
+  int nv12Width = roundUpToEven(frameWidth);
 
   int outHeight = outputDims.height;
   int outWidth = outputDims.width;
-  STD_TORCH_CHECK(
-      roundUpToEven(outHeight) == nv12Height &&
-          roundUpToEven(outWidth) == nv12Width,
-      "outputDims ",
-      outHeight,
-      "x",
-      outWidth,
-      " are not consistent with avFrame dimensions ",
-      nv12Height,
-      "x",
-      nv12Width,
-      ". Report a bug if you see this message.");
   bool needsCrop = (outHeight != nv12Height) || (outWidth != nv12Width);
 
   torch::stable::Tensor dst;

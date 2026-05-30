@@ -16,10 +16,7 @@ class DummyDeviceInterface : public DeviceInterface {
 
   virtual ~DummyDeviceInterface() {}
 
-  void initialize(
-      const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) override {
+  void initialize(const SharedAVCodecContext& codecContext) override {
     // Access to CPU device interface is essential for CPU fallback
     // implementation
     std::unique_ptr<DeviceInterface> cpuInterface =

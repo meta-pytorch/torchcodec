@@ -33,19 +33,18 @@ CpuDeviceInterface::CpuDeviceInterface(const StableDevice& device)
       device_.type() == kStableCPU, "Unsupported device: must be CPU");
 }
 
-void CpuDeviceInterface::initialize(
-    const AVStream* avStream,
-    [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx,
-    const SharedAVCodecContext& codecContext) {
-  STD_TORCH_CHECK(avStream != nullptr, "avStream is null");
+void CpuDeviceInterface::initialize(const SharedAVCodecContext& codecContext) {
   codecContext_ = codecContext;
-  timeBase_ = avStream->time_base;
 }
 
 void CpuDeviceInterface::initializeVideo(
+    const AVStream* avStream,
+    [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx,
     const VideoStreamOptions& videoStreamOptions,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resizedOutputDims) {
+  STD_TORCH_CHECK(avStream != nullptr, "avStream is null");
+  timeBase_ = avStream->time_base;
   avMediaType_ = AVMEDIA_TYPE_VIDEO;
   videoStreamOptions_ = videoStreamOptions;
   resizedOutputDims_ = resizedOutputDims;
