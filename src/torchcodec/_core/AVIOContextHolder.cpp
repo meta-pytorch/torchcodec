@@ -27,10 +27,8 @@ int AVIOContextHolder::writeCallback(
   return self->write(buf, buf_size);
 }
 
-int64_t AVIOContextHolder::seekCallback(
-    void* opaque,
-    int64_t offset,
-    int whence) {
+int64_t
+AVIOContextHolder::seekCallback(void* opaque, int64_t offset, int whence) {
   auto self = static_cast<AVIOContextHolder*>(opaque);
   if (whence == AVSEEK_SIZE) {
     return self->getSize();

@@ -103,10 +103,8 @@ int AVIOToTensorContext::write(const uint8_t* buf, int size) {
       "Re-allocation of the output tensor didn't work. ",
       "This should not happen, please report on TorchCodec bug tracker");
 
-  uint8_t* outputTensorData =
-      tensorContext_.data.mutable_data_ptr<uint8_t>();
-  std::memcpy(
-      outputTensorData + tensorContext_.current_pos, buf, bufSize);
+  uint8_t* outputTensorData = tensorContext_.data.mutable_data_ptr<uint8_t>();
+  std::memcpy(outputTensorData + tensorContext_.current_pos, buf, bufSize);
   tensorContext_.current_pos += bufSize;
   // Track the maximum position written so getOutputTensor's narrow() does not
   // truncate the file if final seek was backwards
