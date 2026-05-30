@@ -21,6 +21,7 @@
 #include "FFMPEGCommon.h"
 #include "NVDECCache.h"
 #include "Transform.h"
+#include "color_conversion.h"
 
 #include <memory>
 #include <mutex>
@@ -108,9 +109,6 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   UniqueAVBSFContext bitstreamFilter_;
 
-  // NPP context for color conversion
-  UniqueNppContext nppCtx_;
-
   std::unique_ptr<DeviceInterface> cpuFallback_;
   bool nvcuvidAvailable_ = false;
   UniqueSwsContext swsContext_;
@@ -120,15 +118,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   OutputDtype outputDtype_ = OutputDtype::UINT8;
   cudaVideoSurfaceFormat surfaceFormat_ = cudaVideoSurfaceFormat_NV12;
 
-  struct CachedP016ColorMatrix {
-    AVColorSpace colorspace = AVCOL_SPC_UNSPECIFIED;
-    AVColorRange colorRange = AVCOL_RANGE_UNSPECIFIED;
-    int bitDepth = 0;
-    float matrix[3][4] = {};
-    bool valid = false;
-  };
-
-  CachedP016ColorMatrix cachedColorMatrix_;
+  CachedColorMatrix cachedColorMatrix_;
 };
 
 } // namespace facebook::torchcodec

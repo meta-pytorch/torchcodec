@@ -41,16 +41,10 @@ namespace facebook::torchcodec {
 
 /* clang-format off */
 // Function pointer types
-typedef NppStatus t_nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(const Npp8u* const pSrc[2], int aSrcStep[2], Npp8u* pDst, int nDstStep, NppiSize oSizeROI, const Npp32f aTwist[3][4], NppStreamContext nppStreamCtx);
-typedef NppStatus t_nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx(const Npp8u* const pSrc[2], int rSrcStep, Npp8u* pDst, int nDstStep, NppiSize oSizeROI, NppStreamContext nppStreamCtx);
 typedef NppStatus t_nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(const Npp8u* pSrc, int nSrcStep, Npp8u* pDst[2], int aDstStep[2], NppiSize oSizeROI, const Npp32f aTwist[3][4], NppStreamContext nppStreamCtx);
 /* clang-format on */
 
 // Global function pointers - will be dynamically loaded
-static t_nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx*
-    dl_nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx = nullptr;
-static t_nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx*
-    dl_nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx = nullptr;
 static t_nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx*
     dl_nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx = nullptr;
 
@@ -58,10 +52,7 @@ static tHandle g_nppicc_handle = nullptr;
 static std::mutex g_npp_mutex;
 
 static bool isLoaded() {
-  return (
-      g_nppicc_handle && dl_nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx &&
-      dl_nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx &&
-      dl_nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx);
+  return (g_nppicc_handle && dl_nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx);
 }
 
 template <typename T>
@@ -108,12 +99,6 @@ bool loadNPPLibrary() {
     return false;
   }
 
-  dl_nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx =
-      bindFunction<t_nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx>(
-          g_nppicc_handle, "nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx");
-  dl_nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx =
-      bindFunction<t_nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx>(
-          g_nppicc_handle, "nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx");
   dl_nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx =
       bindFunction<t_nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx>(
           g_nppicc_handle, "nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx");
@@ -126,35 +111,6 @@ bool loadNPPLibrary() {
 extern "C" {
 
 /* clang-format off */
-NppStatus nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
-    const Npp8u* const pSrc[2],
-    int aSrcStep[2],
-    Npp8u* pDst,
-    int nDstStep,
-    NppiSize oSizeROI,
-    const Npp32f aTwist[3][4],
-    NppStreamContext nppStreamCtx) {
-  STD_TORCH_CHECK(
-      facebook::torchcodec::dl_nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx,
-      "nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx called but NPP not loaded!");
-  return facebook::torchcodec::dl_nppiNV12ToRGB_8u_ColorTwist32f_P2C3R_Ctx(
-      pSrc, aSrcStep, pDst, nDstStep, oSizeROI, aTwist, nppStreamCtx);
-}
-
-NppStatus nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx(
-    const Npp8u* const pSrc[2],
-    int rSrcStep,
-    Npp8u* pDst,
-    int nDstStep,
-    NppiSize oSizeROI,
-    NppStreamContext nppStreamCtx) {
-  STD_TORCH_CHECK(
-      facebook::torchcodec::dl_nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx,
-      "nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx called but NPP not loaded!");
-  return facebook::torchcodec::dl_nppiNV12ToRGB_709CSC_8u_P2C3R_Ctx(
-      pSrc, rSrcStep, pDst, nDstStep, oSizeROI, nppStreamCtx);
-}
-
 NppStatus nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
     const Npp8u* pSrc,
     int nSrcStep,

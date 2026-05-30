@@ -17,9 +17,8 @@
 #include "Logging.h"
 #include "NVDECCache.h"
 
-#include "NPPRuntimeLoader.h"
 #include "NVCUVIDRuntimeLoader.h"
-#include "P016ToRGB16.h"
+#include "color_conversion.h"
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
 
@@ -269,155 +268,7 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
   cudaFree(opaque);
 }
 
-static void computeP016ColorMatrix(
-    AVColorSpace colorspace,
-    AVColorRange colorRange,
-    int bitDepth,
-    float outMatrix[3][4]) {
-  float kr, kg, kb;
-  switch (colorspace) {
-    case AVCOL_SPC_BT709:
-      kr = 0.2126f;
-      kg = 0.7152f;
-      kb = 0.0722f;
-      break;
-    case AVCOL_SPC_BT2020_NCL:
-    case AVCOL_SPC_BT2020_CL:
-      kr = 0.2627f;
-      kg = 0.6780f;
-      kb = 0.0593f;
-      break;
-    default:
-      // BT.601
-      kr = 0.299f;
-      kg = 0.587f;
-      kb = 0.114f;
-      break;
-  }
-
-  float vScale = 2.0f * (1.0f - kr);
-  float uScale = 2.0f * (1.0f - kb);
-  float guCoeff = -(2.0f * kb * (1.0f - kb)) / kg;
-  float gvCoeff = -(2.0f * kr * (1.0f - kr)) / kg;
-
-  float maxVal = static_cast<float>((1 << bitDepth) - 1);
-  float outScale = 65535.0f;
-
-  bool isFullRange = (colorRange == AVCOL_RANGE_JPEG);
-
-  if (isFullRange) {
-    float yScale = outScale / maxVal;
-    float uvCenter = static_cast<float>(1 << (bitDepth - 1));
-
-    outMatrix[0][0] = yScale;
-    outMatrix[0][1] = 0.0f;
-    outMatrix[0][2] = vScale * outScale / maxVal;
-    outMatrix[0][3] = -vScale * uvCenter * outScale / maxVal;
-
-    outMatrix[1][0] = yScale;
-    outMatrix[1][1] = guCoeff * outScale / maxVal;
-    outMatrix[1][2] = gvCoeff * outScale / maxVal;
-    outMatrix[1][3] = -(guCoeff + gvCoeff) * uvCenter * outScale / maxVal;
-
-    outMatrix[2][0] = yScale;
-    outMatrix[2][1] = uScale * outScale / maxVal;
-    outMatrix[2][2] = 0.0f;
-    outMatrix[2][3] = -uScale * uvCenter * outScale / maxVal;
-  } else {
-    float s = static_cast<float>(1 << (bitDepth - 8));
-    float yOff = 16.0f * s;
-    float yRange = 219.0f * s;
-    float uvOff = 128.0f * s;
-    float uvRange = 224.0f * s;
-
-    float yCoeff = outScale / yRange;
-    float uvCoeff_u = outScale / uvRange;
-    float uvCoeff_v = outScale / uvRange;
-
-    outMatrix[0][0] = yCoeff;
-    outMatrix[0][1] = 0.0f;
-    outMatrix[0][2] = vScale * uvCoeff_v;
-    outMatrix[0][3] = -yCoeff * yOff - vScale * uvCoeff_v * uvOff;
-
-    outMatrix[1][0] = yCoeff;
-    outMatrix[1][1] = guCoeff * uvCoeff_u;
-    outMatrix[1][2] = gvCoeff * uvCoeff_v;
-    outMatrix[1][3] = -yCoeff * yOff - guCoeff * uvCoeff_u * uvOff -
-        gvCoeff * uvCoeff_v * uvOff;
-
-    outMatrix[2][0] = yCoeff;
-    outMatrix[2][1] = uScale * uvCoeff_u;
-    outMatrix[2][2] = 0.0f;
-    outMatrix[2][3] = -yCoeff * yOff - uScale * uvCoeff_u * uvOff;
-  }
-}
 } // namespace
-
-static torch::stable::Tensor convertP016FrameToRGB16(
-    UniqueAVFrame& avFrame,
-    const StableDevice& device,
-    cudaStream_t nvdecStream,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
-    const FrameDims& outputDims,
-    int bitDepth,
-    const float colorMatrix[3][4],
-    bool colorMatrixChanged) {
-  // avFrame dimensions may be odd (NVDEC display area for VP9 etc.). P016
-  // color conversion requires even dimensions, so we round up to even for the
-  // kernel, then crop to outputDims.
-  int frameHeight = avFrame->height;
-  int frameWidth = avFrame->width;
-  int height = roundUpToEven(frameHeight);
-  int width = roundUpToEven(frameWidth);
-
-  int outHeight = outputDims.height;
-  int outWidth = outputDims.width;
-  bool needsCrop = (outHeight != height) || (outWidth != width);
-
-  torch::stable::Tensor dst;
-  if (needsCrop) {
-    dst = allocateEmptyHWCTensor(
-        FrameDims(height, width), device, OutputDtype::FLOAT32);
-  } else if (preAllocatedOutputTensor.has_value()) {
-    dst = preAllocatedOutputTensor.value();
-  } else {
-    dst = allocateEmptyHWCTensor(
-        FrameDims(outHeight, outWidth), device, OutputDtype::FLOAT32);
-  }
-
-  cudaStream_t stream = getCurrentCudaStream(device.index());
-  syncStreams(/*runningStream=*/nvdecStream, /*waitingStream=*/stream);
-
-  launchP016ToRGB16Kernel(
-      reinterpret_cast<const uint16_t*>(avFrame->data[0]),
-      reinterpret_cast<const uint16_t*>(avFrame->data[1]),
-      dst.mutable_data_ptr<uint16_t>(),
-      width,
-      height,
-      avFrame->linesize[0],
-      avFrame->linesize[1],
-      validateInt64ToInt(dst.stride(0) * 2, "dst.stride(0)*2"),
-      bitDepth,
-      colorMatrix,
-      colorMatrixChanged,
-      stream);
-
-  if (needsCrop) {
-    if (outHeight != height) {
-      dst = torch::stable::narrow(dst, /*dim=*/0, /*start=*/0, outHeight);
-    }
-    if (outWidth != width) {
-      dst = torch::stable::narrow(dst, /*dim=*/1, /*start=*/0, outWidth);
-      dst = torch::stable::contiguous(dst);
-    }
-    if (preAllocatedOutputTensor.has_value()) {
-      torch::stable::copy_(preAllocatedOutputTensor.value(), dst);
-      return preAllocatedOutputTensor.value();
-    }
-    return dst;
-  }
-  return dst;
-}
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
     : DeviceInterface(device) {
@@ -426,16 +277,6 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
   initializeCudaContextWithPytorch(device_);
-
-  // Note: we could consider *not* erroring when NPP is unavailable, and just
-  // fallback to the CPU for the color-conversion. This would be similar to what
-  // we do when NVCUVID is not available (we fallback to the CPU for the
-  // decoding step).
-  STD_TORCH_CHECK(
-      loadNPPLibrary(),
-      "Failed to load NPP library. NPP is required for CUDA color conversion.");
-
-  nppCtx_ = getNppStreamContext(device_);
 
   nvcuvidAvailable_ = loadNVCUVIDLibrary();
 }
@@ -537,8 +378,6 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     cuvidDestroyVideoParser(videoParser_);
     videoParser_ = nullptr;
   }
-
-  returnNppStreamContextToCache(device_, std::move(nppCtx_));
 }
 
 void BetaCudaDeviceInterface::initialize(
@@ -1138,37 +977,22 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   auto convertFrame = [&](std::optional<torch::stable::Tensor> preAlloc)
       -> torch::stable::Tensor {
-    if (gpuFrame->format == AV_PIX_FMT_P016LE) {
-      int bitDepth = cpuFallback_
+    bool isP016 = (gpuFrame->format == AV_PIX_FMT_P016LE);
+    int bitDepth = 8;
+    if (isP016) {
+      bitDepth = cpuFallback_
           ? codecContext_->bits_per_raw_sample
           : static_cast<int>(videoFormat_.bit_depth_luma_minus8) + 8;
-      AVColorSpace colorspace = gpuFrame->colorspace;
-      AVColorRange colorRange = gpuFrame->color_range;
-      bool colorMatrixChanged = false;
-      if (!cachedColorMatrix_.valid ||
-          cachedColorMatrix_.colorspace != colorspace ||
-          cachedColorMatrix_.colorRange != colorRange ||
-          cachedColorMatrix_.bitDepth != bitDepth) {
-        computeP016ColorMatrix(
-            colorspace, colorRange, bitDepth, cachedColorMatrix_.matrix);
-        cachedColorMatrix_.colorspace = colorspace;
-        cachedColorMatrix_.colorRange = colorRange;
-        cachedColorMatrix_.bitDepth = bitDepth;
-        cachedColorMatrix_.valid = true;
-        colorMatrixChanged = true;
-      }
-      return convertP016FrameToRGB16(
-          gpuFrame,
-          device_,
-          nvdecStream,
-          preAlloc,
-          originalDims,
-          bitDepth,
-          cachedColorMatrix_.matrix,
-          colorMatrixChanged);
     }
-    return convertNV12FrameToRGB(
-        gpuFrame, device_, nppCtx_, nvdecStream, preAlloc, originalDims);
+    return convertYUVFrameToRGB(
+        gpuFrame,
+        device_,
+        nvdecStream,
+        preAlloc,
+        originalDims,
+        isP016,
+        bitDepth,
+        cachedColorMatrix_);
   };
 
   if (rotation_ == Rotation::NONE) {
