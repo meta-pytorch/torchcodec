@@ -4,7 +4,6 @@
 #include "Cache.h"
 #include "CudaDeviceInterface.h"
 #include "FFMPEGCommon.h"
-#include "NPPRuntimeLoader.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
 
@@ -100,12 +99,7 @@ CudaDeviceInterface::CudaDeviceInterface(const StableDevice& device)
 
   initializeCudaContextWithPytorch(device_);
 
-  STD_TORCH_CHECK(
-      loadNPPLibrary(),
-      "Failed to load NPP library. NPP is required for CUDA color conversion.");
-
   hardwareDeviceCtx_ = getHardwareDeviceContext(device_);
-  nppCtx_ = getNppStreamContext(device_);
 }
 
 CudaDeviceInterface::~CudaDeviceInterface() {
@@ -113,7 +107,6 @@ CudaDeviceInterface::~CudaDeviceInterface() {
     g_cached_hw_device_ctxs.addIfCacheHasCapacity(
         device_, std::move(hardwareDeviceCtx_));
   }
-  returnNppStreamContextToCache(device_, std::move(nppCtx_));
 }
 
 void CudaDeviceInterface::initialize(const SharedAVCodecContext& codecContext) {
@@ -303,7 +296,7 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
 
   // Above we checked that the AVFrame was on GPU, but that's not enough, we
   // also need to check that the AVFrame is in AV_PIX_FMT_NV12 format (8 bits),
-  // because this is what the NPP color conversion routines expect. This SHOULD
+  // because this is what our color conversion kernel expects. This SHOULD
   // be enforced by our call to maybeConvertAVFrameToNV12OrRGB24() above.
   STD_TORCH_CHECK(
       avFrame->hw_frames_ctx != nullptr,
@@ -337,21 +330,15 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   cudaStream_t nvdecStream = // That's always the default stream. Sad.
       cudaDeviceCtx->stream;
 
-  STD_TORCH_CHECK(
-      avFrame->height % 2 == 0 && avFrame->width % 2 == 0,
-      "Expected even dimensions from NVDEC, got ",
-      avFrame->width,
-      "x",
-      avFrame->height,
-      ". Please report this to the TorchCodec repo.");
-
-  frameOutput.data = convertNV12FrameToRGB(
+  frameOutput.data = convertYUVFrameToRGB(
       avFrame,
       device_,
-      nppCtx_,
       nvdecStream,
       preAllocatedOutputTensor,
-      FrameDims(avFrame->height, avFrame->width));
+      FrameDims(avFrame->height, avFrame->width),
+      /*isP016=*/false,
+      /*bitDepth=*/8,
+      cachedColorMatrix_);
 }
 
 // inspired by https://github.com/FFmpeg/FFmpeg/commit/ad67ea9
@@ -404,122 +391,6 @@ std::string CudaDeviceInterface::getDetails() {
 // --------------------------------------------------------------------------
 // Below are methods exclusive to video encoding:
 // --------------------------------------------------------------------------
-namespace {
-// Note: [RGB -> YUV Color Conversion, limited color range]
-//
-// For context on this subject, first read the note:
-// [YUV -> RGB Color Conversion, color space and color range]
-// https://github.com/meta-pytorch/torchcodec/blob/main/src/torchcodec/_core/CUDACommon.cpp#L63-L65
-//
-// Lets encode RGB -> YUV in the limited color range for BT.601 color space.
-// In limited range, the [0, 255] range is mapped into [16-235] for Y, and into
-// [16-240] for U,V.
-// To implement, we get the full range conversion matrix as before, then scale:
-// - Y channel: scale by (235-16)/255 = 219/255
-// - U,V channels: scale by (240-16)/255 = 224/255
-// https://en.wikipedia.org/wiki/YCbCr#Y%E2%80%B2PbPr_to_Y%E2%80%B2CbCr
-//
-// ```py
-// import torch
-// kr, kg, kb = 0.299, 0.587, 0.114  # BT.601 luma coefficients
-// u_scale = 2 * (1 - kb)
-// v_scale = 2 * (1 - kr)
-//
-// rgb_to_yuv_full = torch.tensor([
-//     [kr, kg, kb],
-//     [-kr/u_scale, -kg/u_scale, (1-kb)/u_scale],
-//     [(1-kr)/v_scale, -kg/v_scale, -kb/v_scale]
-// ])
-//
-// full_to_limited_y_scale = 219.0 / 255.0
-// full_to_limited_uv_scale = 224.0 / 255.0
-//
-// rgb_to_yuv_limited = rgb_to_yuv_full * torch.tensor([
-//     [full_to_limited_y_scale],
-//     [full_to_limited_uv_scale],
-//     [full_to_limited_uv_scale]
-// ])
-//
-// print("RGB->YUV matrix (Limited Range BT.601):")
-// print(rgb_to_yuv_limited)
-// ```
-//
-// This yields:
-// tensor([[ 0.2568,  0.5041,  0.0979],
-//         [-0.1482, -0.2910,  0.4392],
-//         [ 0.4392, -0.3678, -0.0714]])
-//
-// Which matches https://fourcc.org/fccyvrgb.php
-//
-// To perform color conversion in NPP, we are required to provide these color
-// conversion matrices to ColorTwist functions, for example,
-// `nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx`.
-// https://docs.nvidia.com/cuda/npp/image_color_conversion.html
-//
-// These offsets are added in the 4th column of each conversion matrix below.
-// - In limited range, Y is offset by 16 to add the lower margin.
-// - In both color ranges, U,V are offset by 128 to be centered around 0.
-//
-// RGB to YUV conversion matrices to use in NPP color conversion functions
-struct ColorConversionMatrices {
-  static constexpr Npp32f BT601_LIMITED[3][4] = {
-      {0.2568f, 0.5041f, 0.0979f, 16.0f},
-      {-0.1482f, -0.2910f, 0.4392f, 128.0f},
-      {0.4392f, -0.3678f, -0.0714f, 128.0f}};
-
-  static constexpr Npp32f BT601_FULL[3][4] = {
-      {0.2990f, 0.5870f, 0.1140f, 0.0f},
-      {-0.1687f, -0.3313f, 0.5000f, 128.0f},
-      {0.5000f, -0.4187f, -0.0813f, 128.0f}};
-
-  static constexpr Npp32f BT709_LIMITED[3][4] = {
-      {0.1826f, 0.6142f, 0.0620f, 16.0f},
-      {-0.1006f, -0.3386f, 0.4392f, 128.0f},
-      {0.4392f, -0.3989f, -0.0403f, 128.0f}};
-
-  static constexpr Npp32f BT709_FULL[3][4] = {
-      {0.2126f, 0.7152f, 0.0722f, 0.0f},
-      {-0.1146f, -0.3854f, 0.5000f, 128.0f},
-      {0.5000f, -0.4542f, -0.0458f, 128.0f}};
-
-  static constexpr Npp32f BT2020_LIMITED[3][4] = {
-      {0.2256f, 0.5823f, 0.0509f, 16.0f},
-      {-0.1227f, -0.3166f, 0.4392f, 128.0f},
-      {0.4392f, -0.4039f, -0.0353f, 128.0f}};
-
-  static constexpr Npp32f BT2020_FULL[3][4] = {
-      {0.2627f, 0.6780f, 0.0593f, 0.0f},
-      {-0.139630f, -0.360370f, 0.5000f, 128.0f},
-      {0.5000f, -0.459786f, -0.040214f, 128.0f}};
-};
-
-// Returns conversion matrix based on codec context color space and range
-const Npp32f (*getConversionMatrix(AVCodecContext* codecContext))[4] {
-  if (codecContext->color_range == AVCOL_RANGE_MPEG || // limited range
-      codecContext->color_range == AVCOL_RANGE_UNSPECIFIED) {
-    if (codecContext->colorspace == AVCOL_SPC_BT470BG) {
-      return ColorConversionMatrices::BT601_LIMITED;
-    } else if (codecContext->colorspace == AVCOL_SPC_BT709) {
-      return ColorConversionMatrices::BT709_LIMITED;
-    } else if (codecContext->colorspace == AVCOL_SPC_BT2020_NCL) {
-      return ColorConversionMatrices::BT2020_LIMITED;
-    } else { // default to BT.601
-      return ColorConversionMatrices::BT601_LIMITED;
-    }
-  } else if (codecContext->color_range == AVCOL_RANGE_JPEG) { // full range
-    if (codecContext->colorspace == AVCOL_SPC_BT470BG) {
-      return ColorConversionMatrices::BT601_FULL;
-    } else if (codecContext->colorspace == AVCOL_SPC_BT709) {
-      return ColorConversionMatrices::BT709_FULL;
-    } else if (codecContext->colorspace == AVCOL_SPC_BT2020_NCL) {
-      return ColorConversionMatrices::BT2020_FULL;
-    } else { // default to BT.601
-      return ColorConversionMatrices::BT601_FULL;
-    }
-  }
-  return ColorConversionMatrices::BT601_LIMITED;
-}
-} // namespace
 
 UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
     const torch::stable::Tensor& tensor,
@@ -564,26 +435,24 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
   torch::stable::Tensor hwcFrame =
       torch::stable::contiguous(stablePermute(tensor, {1, 2, 0}));
 
-  NppiSize oSizeROI = {width, height};
-  NppStatus status;
-  // Convert to NV12, as CUDA_ENCODING_PIXEL_FORMAT is always NV12 currently
-  status = nppiRGBToNV12_8u_ColorTwist32f_C3P2R_Ctx(
-      hwcFrame.const_data_ptr<Npp8u>(),
+  float rgbToYuvMatrix[3][4];
+  computeRGBToYUVMatrix(
+      codecContext->colorspace, codecContext->color_range, rgbToYuvMatrix);
+
+  cudaStream_t stream = getCurrentCudaStream(device_.index());
+  launchRGBToNV12Kernel(
+      hwcFrame.const_data_ptr<uint8_t>(),
+      avFrame->data[0],
+      avFrame->data[1],
+      width,
+      height,
       validateInt64ToInt(
           hwcFrame.stride(0) * static_cast<int64_t>(hwcFrame.element_size()),
-          "nSrcStep"),
-      avFrame->data,
-      avFrame->linesize,
-      oSizeROI,
-      getConversionMatrix(codecContext),
-      *nppCtx_);
-
-  STD_TORCH_CHECK(
-      status == NPP_SUCCESS,
-      "Failed to convert RGB to ",
-      av_get_pix_fmt_name(DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT),
-      ": NPP error code ",
-      status);
+          "rgbPitch"),
+      avFrame->linesize[0],
+      avFrame->linesize[1],
+      rgbToYuvMatrix,
+      stream);
 
   avFrame->colorspace = codecContext->colorspace;
   avFrame->color_range = codecContext->color_range;

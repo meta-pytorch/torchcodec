@@ -1373,7 +1373,7 @@ class TestVideoEncoder:
         ],
     )
     # We test the color space and color range parameters in this test, because
-    # we are required to define matrices specific to these specs when using NPP, see note:
+    # we are required to define matrices specific to these specs for color conversion, see note:
     # [RGB -> YUV Color Conversion, limited color range]
     # BT.601, BT.709, BT.2020
     @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc", None))
@@ -3512,7 +3512,7 @@ class TestEncoder:
         ],
     )
     # We test the color space and color range parameters in this test, because
-    # we are required to define matrices specific to these specs when using NPP, see note:
+    # we are required to define matrices specific to these specs for color conversion, see note:
     # [RGB -> YUV Color Conversion, limited color range]
     # BT.601, BT.709, BT.2020
     @pytest.mark.parametrize("color_space", ("bt470bg", "bt709", "bt2020nc", None))
