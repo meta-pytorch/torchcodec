@@ -10,35 +10,20 @@
 namespace facebook::torchcodec {
 
 namespace {
-
 constexpr int64_t INITIAL_TENSOR_SIZE = 10'000'000; // 10 MB
 constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
-
-// The signature of this function is defined by FFMPEG.
-int readCallback(void* opaque, uint8_t* buf, int buf_size) {
-  auto self = static_cast<AVIOContextHolder*>(opaque);
-  int result = self->read(buf, buf_size);
-  return result < 0 ? AVERROR_EOF : result;
-}
-
-// The signature of this function is defined by FFMPEG.
-int64_t seekCallback(void* opaque, int64_t offset, int whence) {
-  auto self = static_cast<AVIOContextHolder*>(opaque);
-  if (whence == AVSEEK_SIZE) {
-    return self->getSize();
-  }
-  return self->seek(offset, whence);
-}
-
 } // namespace
+
+// --------------------------------------------------------------------------
+// AVIOFromTensorContext
+// --------------------------------------------------------------------------
 
 AVIOFromTensorContext::AVIOFromTensorContext(torch::stable::Tensor data)
     : tensorContext_{data, 0, 0} {
   STD_TORCH_CHECK(data.numel() > 0, "data must not be empty");
   STD_TORCH_CHECK(data.is_contiguous(), "data must be contiguous");
   STD_TORCH_CHECK(data.scalar_type() == kStableUInt8, "data must be kUInt8");
-  createAVIOContext(
-      &readCallback, nullptr, &seekCallback, this, /*isForWriting=*/false);
+  createAVIOContext(/*isForWriting=*/false);
 }
 
 int AVIOFromTensorContext::read(uint8_t* buf, int size) {
@@ -86,47 +71,48 @@ int64_t AVIOFromTensorContext::getSize() {
   return tensorContext_.data.numel();
 }
 
+// --------------------------------------------------------------------------
+// AVIOToTensorContext
+// --------------------------------------------------------------------------
+
 AVIOToTensorContext::AVIOToTensorContext()
     : tensorContext_{
           torch::stable::empty({INITIAL_TENSOR_SIZE}, kStableUInt8),
           0,
           0} {
-  createAVIOContext(
-      nullptr, &writeCallback, &seekCallback, this, /*isForWriting=*/true);
+  createAVIOContext(/*isForWriting=*/true);
 }
 
-int AVIOToTensorContext::writeCallback(
-    void* opaque,
-    const uint8_t* buf,
-    int buf_size) {
-  auto self = static_cast<AVIOToTensorContext*>(opaque);
-  auto& ctx = self->tensorContext_;
-
-  int64_t bufSize = static_cast<int64_t>(buf_size);
-  if (ctx.current_pos + bufSize > ctx.data.numel()) {
+int AVIOToTensorContext::write(const uint8_t* buf, int size) {
+  int64_t bufSize = static_cast<int64_t>(size);
+  if (tensorContext_.current_pos + bufSize > tensorContext_.data.numel()) {
     STD_TORCH_CHECK(
-        ctx.data.numel() * 2 <= MAX_TENSOR_SIZE,
+        tensorContext_.data.numel() * 2 <= MAX_TENSOR_SIZE,
         "We tried to allocate an output encoded tensor larger than ",
         MAX_TENSOR_SIZE,
         " bytes. If you think this should be supported, please report.");
 
     // We double the size of the outpout tensor. Calling cat() may not be the
     // most efficient, but it's simple.
-    ctx.data = stableCat({ctx.data, ctx.data}, 0);
+    tensorContext_.data =
+        stableCat({tensorContext_.data, tensorContext_.data}, 0);
   }
 
   STD_TORCH_CHECK(
-      ctx.current_pos + bufSize <= ctx.data.numel(),
+      tensorContext_.current_pos + bufSize <= tensorContext_.data.numel(),
       "Re-allocation of the output tensor didn't work. ",
       "This should not happen, please report on TorchCodec bug tracker");
 
-  uint8_t* outputTensorData = ctx.data.mutable_data_ptr<uint8_t>();
-  std::memcpy(outputTensorData + ctx.current_pos, buf, bufSize);
-  ctx.current_pos += bufSize;
+  uint8_t* outputTensorData =
+      tensorContext_.data.mutable_data_ptr<uint8_t>();
+  std::memcpy(
+      outputTensorData + tensorContext_.current_pos, buf, bufSize);
+  tensorContext_.current_pos += bufSize;
   // Track the maximum position written so getOutputTensor's narrow() does not
   // truncate the file if final seek was backwards
-  ctx.max_pos = std::max(ctx.current_pos, ctx.max_pos);
-  return buf_size;
+  tensorContext_.max_pos =
+      std::max(tensorContext_.current_pos, tensorContext_.max_pos);
+  return size;
 }
 
 int64_t AVIOToTensorContext::seek(int64_t offset, int whence) {

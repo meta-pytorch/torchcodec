@@ -33,38 +33,7 @@ AVIOFileLikeContext::AVIOFileLikeContext(
         py::hasattr(fileLike, "seek"),
         "File like object must implement a seek method.");
   }
-  createAVIOContext(
-      &readCallback, &writeCallback, &seekCallback, this, isForWriting);
-}
-
-int AVIOFileLikeContext::readCallback(
-    void* opaque,
-    uint8_t* buf,
-    int buf_size) {
-  auto self = static_cast<AVIOFileLikeContext*>(opaque);
-  int result = self->read(buf, buf_size);
-  return result < 0 ? AVERROR_EOF : result;
-}
-
-int64_t
-AVIOFileLikeContext::seekCallback(void* opaque, int64_t offset, int whence) {
-  if (whence == AVSEEK_SIZE) {
-    // Size of file-like is typically unknown, since the data is potentially
-    // streaming.
-    return AVERROR(EIO);
-  }
-  auto self = static_cast<AVIOFileLikeContext*>(opaque);
-  return self->seek(offset, whence);
-}
-
-int AVIOFileLikeContext::writeCallback(
-    void* opaque,
-    const uint8_t* buf,
-    int buf_size) {
-  auto self = static_cast<AVIOFileLikeContext*>(opaque);
-  py::gil_scoped_acquire gil;
-  py::bytes bytes_obj(reinterpret_cast<const char*>(buf), buf_size);
-  return py::cast<int>(self->fileLike_->attr("write")(bytes_obj));
+  createAVIOContext(isForWriting);
 }
 
 int AVIOFileLikeContext::read(uint8_t* buf, int size) {
@@ -80,7 +49,8 @@ int AVIOFileLikeContext::read(uint8_t* buf, int size) {
     // below. So we convert the bytes to a string_view to get access to
     // the data pointer. Because it's a view and not a copy, it should be
     // cheap.
-    auto bytesRead = static_cast<py::bytes>(fileLike_->attr("read")(request));
+    auto bytesRead =
+        static_cast<py::bytes>(fileLike_->attr("read")(request));
     auto bytesView = static_cast<std::string_view>(bytesRead);
 
     int numBytesRead = static_cast<int>(bytesView.size());
@@ -103,6 +73,12 @@ int AVIOFileLikeContext::read(uint8_t* buf, int size) {
   }
 
   return totalNumRead == 0 ? -1 : totalNumRead;
+}
+
+int AVIOFileLikeContext::write(const uint8_t* buf, int size) {
+  py::gil_scoped_acquire gil;
+  py::bytes bytes_obj(reinterpret_cast<const char*>(buf), size);
+  return py::cast<int>(fileLike_->attr("write")(bytes_obj));
 }
 
 int64_t AVIOFileLikeContext::seek(int64_t offset, int whence) {
