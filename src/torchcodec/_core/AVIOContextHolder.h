@@ -7,6 +7,7 @@
 #pragma once
 
 #include "FFMPEGCommon.h"
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
@@ -34,7 +35,7 @@ namespace facebook::torchcodec {
 //  3. A generic handle for those that just need to manage having access to an
 //     AVIOContext, but aren't necessarily concerned with how it was customized:
 //     typically, the SingleStreamDecoder.
-class AVIOContextHolder {
+class FORCE_PUBLIC_VISIBILITY AVIOContextHolder {
  public:
   virtual ~AVIOContextHolder();
   AVIOContext* getAVIOContext();
