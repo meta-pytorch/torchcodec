@@ -9,6 +9,7 @@
 #include "CUDACommon.h"
 #include "DeviceInterface.h"
 #include "FilterGraph.h"
+#include "color_conversion.h"
 
 namespace facebook::torchcodec {
 
@@ -64,7 +65,6 @@ class CudaDeviceInterface : public DeviceInterface {
   AVRational timeBase_;
 
   UniqueAVBufferRef hardwareDeviceCtx_;
-  UniqueNppContext nppCtx_;
 
   // This filtergraph instance is only used for NV12 format conversion in
   // maybeConvertAVFrameToNV12().
@@ -73,6 +73,8 @@ class CudaDeviceInterface : public DeviceInterface {
 
   bool usingCPUFallback_ = false;
   bool hasDecodedFrame_ = false;
+
+  CachedColorMatrix cachedColorMatrix_;
 };
 
 } // namespace facebook::torchcodec

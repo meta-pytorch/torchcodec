@@ -128,8 +128,8 @@ Make sure you have a GPU with NVDEC hardware that can decode the format you
 want. Refer to Nvidia's GPU support matrix
 [here](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new).
 
-You will need the `libnpp` and `libnvrtc` CUDA libraries, which are usually
-part of the CUDA Toolkit.
+You will need the `libnvrtc` CUDA library, which is usually part of the CUDA
+Toolkit.
 
 To select a specific CUDA Toolkit version, use `--index-url`. Make sure to
 install the corresponding PyTorch version as well (refer to the
