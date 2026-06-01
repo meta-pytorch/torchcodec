@@ -1,4 +1,3 @@
-import gc
 import io
 import os
 import subprocess
@@ -90,7 +89,6 @@ def decode_audio_decoder(raw_bytes):
     return decoder.get_all_samples().data
 
 
-import random
 def decode_soundfile(raw_bytes):
     data, sr = sf.read(io.BytesIO(raw_bytes), dtype="float32")
     return data
