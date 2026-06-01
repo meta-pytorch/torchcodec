@@ -20,9 +20,9 @@ from torchcodec.decoders import (
     set_nvdec_cache_capacity,
     VideoDecoder,
     VideoStreamMetadata,
+    WavDecoder,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
-from torchcodec.decoders._wav_decoder import WavDecoder
 from torchcodec.encoders import VideoEncoder
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
@@ -3037,15 +3037,20 @@ class TestWavDecoder:
             SINE_MONO_U8,
             SINE_MONO_F32,
             SINE_MONO_F64,
+            SINE_16_CHANNEL_S16,
         ),
     )
-    @pytest.mark.parametrize("source_kind", ("path", "bytes", "tensor", "file_like"))
+    @pytest.mark.parametrize(
+        "source_kind", ("path", "str", "bytes", "tensor", "file_like")
+    )
     def test_against_audio_decoder(
         self, asset, start_seconds, stop_seconds, source_kind
     ):
         file_handle = None
         if source_kind == "path":
             source = asset.path
+        elif source_kind == "str":
+            source = str(asset.path)
         elif source_kind == "bytes":
             source = asset.path.read_bytes()
         elif source_kind == "tensor":
@@ -3096,3 +3101,30 @@ class TestWavDecoder:
             match="No samples to decode. This is probably because start_seconds is too high\\(10\\)",
         ):
             wav_dec.get_samples_played_in_range(10.0, 12.0)
+
+    def test_start_equals_stop_returns_empty(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        samples = wav_dec.get_samples_played_in_range(0.5, 0.5)
+        assert samples.data.shape[1] == 0
+        assert samples.pts_seconds == pytest.approx(0.5)
+
+    def test_multiple_calls_with_backward_seeks(self):
+        wav_dec = WavDecoder(SINE_MONO_S32.path)
+        audio_dec = AudioDecoder(SINE_MONO_S32.path)
+
+        ranges = [
+            (0.0, 0.3),
+            (0.5, 0.8),
+            (0.2, 0.4),
+            (0.7, None),
+            (0.0, 0.1),
+            (0.6, 0.9),
+            (0.1, 0.5),
+        ]
+        for start, stop in ranges:
+            wav_samples = wav_dec.get_samples_played_in_range(start, stop)
+            audio_samples = audio_dec.get_samples_played_in_range(start, stop)
+            torch.testing.assert_close(
+                wav_samples.data, audio_samples.data, rtol=0, atol=0
+            )
+            assert wav_samples.pts_seconds == audio_samples.pts_seconds

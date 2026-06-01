@@ -11,7 +11,8 @@ Decoding audio streams with AudioDecoder
 ========================================
 
 In this example, we'll learn how to decode an audio file using the
-:class:`~torchcodec.decoders.AudioDecoder` class.
+:class:`~torchcodec.decoders.AudioDecoder` class. If you're decoding WAV files,
+also check out the :ref:`wav_decoder_section` section below.
 """
 
 # %%
@@ -22,8 +23,10 @@ import requests
 from IPython.display import Audio
 
 
-def play_audio(samples):
-    return Audio(samples.data, rate=samples.sample_rate)
+def play_5s(samples):
+    # Play 5 seconds of the audio. Playing the entire file would take too much
+    # space in our docs (~40Mb!).
+    return Audio(samples.data[:, :5 * samples.sample_rate], rate=samples.sample_rate)
 
 
 # sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_audio.jpg'
@@ -67,7 +70,7 @@ print(decoder.metadata)
 samples = decoder.get_all_samples()
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
 
 # %%
 # The ``.data`` field is a tensor of shape ``(num_channels, num_samples)`` and
@@ -88,7 +91,7 @@ play_audio(samples)
 samples = decoder.get_samples_played_in_range(start_seconds=10, stop_seconds=70)
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
 
 # %%
 # Custom sample rate
@@ -103,4 +106,19 @@ decoder = AudioDecoder(raw_audio_bytes, sample_rate=16_000)
 samples = decoder.get_all_samples()
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
+
+# %%
+# .. _wav_decoder_section:
+#
+# WavDecoder for WAV files
+# ------------------------
+#
+# If your audio source is a WAV file and you don't need resampling or channel
+# remixing, you can use :class:`~torchcodec.decoders.WavDecoder` for
+# significantly faster decoding. It has the same
+# :meth:`~torchcodec.decoders.WavDecoder.get_all_samples` and
+# :meth:`~torchcodec.decoders.WavDecoder.get_samples_played_in_range` methods
+# as :class:`~torchcodec.decoders.AudioDecoder`. See
+# :ref:`sphx_glr_generated_examples_decoding_performance_tips.py` for more
+# details.

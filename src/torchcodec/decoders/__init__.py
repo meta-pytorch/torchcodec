@@ -12,5 +12,6 @@ from ._decoder_utils import (  # noqa
     set_nvdec_cache_capacity,
 )
 from ._video_decoder import CpuFallbackStatus, VideoDecoder  # noqa
+from ._wav_decoder import WavDecoder  # noqa
 
 SimpleVideoDecoder = VideoDecoder
