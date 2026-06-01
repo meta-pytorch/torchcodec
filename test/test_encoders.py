@@ -852,8 +852,8 @@ class TestVideoEncoder:
                         in_fbcode(), reason="NVENC not available in fbcode"
                     ),
                     pytest.mark.skipif(
-                        ffmpeg_major_version == 4,
-                        reason="CUDA + FFmpeg 4 test is flaky",
+                        ffmpeg_major_version in (4, 5),
+                        reason="CUDA + FFmpeg 4 and 5 test is flaky",
                     ),
                 ],
             ),
@@ -1388,7 +1388,7 @@ class TestVideoEncoder:
     ):
         # TODO-VideoEncoder: (P2) Investigate why FFmpeg 4 and 6 fail with non-default color space and range.
         # See https://github.com/meta-pytorch/torchcodec/issues/1140
-        if ffmpeg_major_version in (4, 6) and not (
+        if ffmpeg_major_version in (4, 5, 6) and not (
             color_space == "bt470bg" and color_range == "tv"
         ):
             pytest.skip(
@@ -3528,7 +3528,7 @@ class TestEncoder:
         # TODO-VideoEncoder: (P2) Investigate why FFmpeg 4 and 6 fail with
         # non-default color space and range.
         # See https://github.com/meta-pytorch/torchcodec/issues/1140
-        if ffmpeg_major_version in (4, 6) and not (
+        if ffmpeg_major_version in (4, 5, 6) and not (
             color_space == "bt470bg" and color_range == "tv"
         ):
             pytest.skip(

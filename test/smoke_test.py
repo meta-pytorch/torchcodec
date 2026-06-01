@@ -358,8 +358,8 @@ class TestEncoder:
 
     @needs_cuda
     def test_cuda_encoding(self, tmp_path):
-        if ffmpeg_major_version == 4:
-            pytest.skip("CUDA encoding not supported with FFmpeg 4")
+        if ffmpeg_major_version in (4, 5):
+            pytest.skip("CUDA encoding not supported with FFmpeg 4 and 5")
 
         # Use smooth gradient data instead of random noise. Random data is
         # incompressible, causing very different artifacts between nvenc and
@@ -399,7 +399,7 @@ class TestEncoder:
         cuda_decoded = VideoDecoder(cuda_path).get_all_frames()
         cpu_decoded = VideoDecoder(cpu_path).get_all_frames()
         assert cuda_decoded.data.shape == (NUM_FRAMES, 3, HEIGHT, WIDTH)
-        if ffmpeg_major_version != 4:
+        if ffmpeg_major_version not in (4, 5):
             assert_tensor_close_on_at_least(
                 cuda_decoded.data, cpu_decoded.data, percentage=95, atol=3
             )

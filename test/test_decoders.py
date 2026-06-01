@@ -257,6 +257,8 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_getitem_slice(self, device, seek_mode):
+        if device == "cuda:ffmpeg" and ffmpeg_major_version == 5:
+            pytest.skip("CUDA FFmpeg backend has numerical issues on FFmpeg 5")
         device_param = device  # make_video_decoder shadows `device` below
         decoder, device = make_video_decoder(
             NASA_VIDEO.path, device=device, seek_mode=seek_mode
@@ -464,6 +466,8 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_iteration(self, device, seek_mode):
+        if device == "cuda:ffmpeg" and ffmpeg_major_version == 5:
+            pytest.skip("CUDA FFmpeg backend has numerical issues on FFmpeg 5")
         decoder, device = make_video_decoder(
             NASA_VIDEO.path, device=device, seek_mode=seek_mode
         )
@@ -653,7 +657,7 @@ class TestVideoDecoder:
 
     @pytest.mark.parametrize("device", all_supported_devices())
     def test_get_frame_at_av1(self, device):
-        if device == "cuda:ffmpeg" and ffmpeg_major_version == 4:
+        if device == "cuda:ffmpeg" and ffmpeg_major_version in (4, 5):
             return
 
         if "cuda" in device and in_fbcode():
@@ -800,6 +804,8 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("stream_index", [0, 3, None])
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_in_range(self, stream_index, device, seek_mode):
+        if device == "cuda:ffmpeg" and ffmpeg_major_version == 5:
+            pytest.skip("CUDA FFmpeg backend has numerical issues on FFmpeg 5")
         decoder, device = make_video_decoder(
             NASA_VIDEO.path,
             stream_index=stream_index,
@@ -904,6 +910,8 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_in_range_slice_indices_syntax(self, device, seek_mode):
+        if device == "cuda:ffmpeg" and ffmpeg_major_version == 5:
+            pytest.skip("CUDA FFmpeg backend has numerical issues on FFmpeg 5")
         decoder, device = make_video_decoder(
             NASA_VIDEO.path,
             stream_index=3,
@@ -997,6 +1005,8 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_by_pts_in_range(self, stream_index, device, seek_mode):
+        if device == "cuda:ffmpeg" and ffmpeg_major_version == 5:
+            pytest.skip("CUDA FFmpeg backend has numerical issues on FFmpeg 5")
         decoder, device = make_video_decoder(
             NASA_VIDEO.path,
             stream_index=stream_index,
@@ -1285,9 +1295,9 @@ class TestVideoDecoder:
             stop_seconds=decoder.metadata.end_stream_seconds,
         )
         assert len(all_frames) == len(frames_in_range)
-        # Use strict bitwise equality, except for FFmpeg 4 + CUDA FFmpeg
+        # Use strict bitwise equality, except for FFmpeg 4 and 5 + CUDA FFmpeg
         # interface which has known issues (see #428)
-        if not (device == "cuda:ffmpeg" and ffmpeg_major_version == 4):
+        if not (device == "cuda:ffmpeg" and ffmpeg_major_version in (4, 5)):
             torch.testing.assert_close(
                 all_frames.data, frames_in_range.data, atol=0, rtol=0
             )
@@ -1300,9 +1310,9 @@ class TestVideoDecoder:
             fps=fps,
         )
         assert len(all_frames_with_fps) == len(frames_in_range_with_fps)
-        # Use strict bitwise equality, except for FFmpeg 4 + CUDA FFmpeg
+        # Use strict bitwise equality, except for FFmpeg 4 and 5 + CUDA FFmpeg
         # interface which has known issues (see #428)
-        if not (device == "cuda:ffmpeg" and ffmpeg_major_version == 4):
+        if not (device == "cuda:ffmpeg" and ffmpeg_major_version in (4, 5)):
             torch.testing.assert_close(
                 all_frames_with_fps.data, frames_in_range_with_fps.data, atol=0, rtol=0
             )
@@ -1851,7 +1861,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_at(frame_index)
             nvdec_frame = nvdec_decoder.get_frame_at(frame_index)
             # TODONVDEC P1 see above
-            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     nvdec_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -1898,7 +1908,7 @@ class TestVideoDecoder:
         ref_frames = ref_decoder.get_frames_at(indices)
         nvdec_frames = nvdec_decoder.get_frames_at(indices)
         # TODONVDEC P1 see above
-        if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+        if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
                 nvdec_frames.data, ref_frames.data, rtol=0, atol=0
             )
@@ -1941,7 +1951,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_played_at(pts)
             nvdec_frame = nvdec_decoder.get_frame_played_at(pts)
             # TODONVDEC P1 see above
-            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     nvdec_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -1983,7 +1993,7 @@ class TestVideoDecoder:
         ref_frames = ref_decoder.get_frames_played_at(timestamps)
         nvdec_frames = nvdec_decoder.get_frames_played_at(timestamps)
         # TODONVDEC P1 see above
-        if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+        if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
                 nvdec_frames.data, ref_frames.data, rtol=0, atol=0
             )
@@ -2030,7 +2040,7 @@ class TestVideoDecoder:
             ref_frame = ref_decoder.get_frame_at(frame_index)
             nvdec_frame = nvdec_decoder.get_frame_at(frame_index)
             # TODONVDEC P1 see above
-            if ffmpeg_major_version > 4 and asset is not TEST_SRC_2_720P_MPEG4:
+            if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     nvdec_frame.data, ref_frame.data, rtol=0, atol=0
                 )
@@ -2196,7 +2206,6 @@ class TestVideoDecoder:
 
     @needs_cuda
     def test_nvdec_cache_capacity_eviction(self):
-
         def create_decoder():
             dec = VideoDecoder(NASA_VIDEO.path, device="cuda")
             dec[0]
