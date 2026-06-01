@@ -21,6 +21,12 @@ class AudioDecoder:
     This can be used to decode audio from pure audio files (e.g. mp3, wav,
     etc.), or from videos that contain audio streams (e.g. mp4 videos).
 
+    .. tip::
+
+       If you are decoding WAV files, consider using
+       :class:`~torchcodec.decoders.WavDecoder` instead for significantly faster
+       decoding.
+
     Returned samples are float samples normalized in [-1, 1]
 
     Args:
