@@ -1,6 +1,6 @@
 # VideoDecoder
 
-*class*torchcodec.decoders.VideoDecoder(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *stream_index: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *dimension_order: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['NCHW', 'NHWC'] = 'NCHW'*, *num_ffmpeg_threads: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *device: [str](https://docs.python.org/3/library/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *seek_mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['exact', 'approximate'] = 'exact'*, *transforms: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[DecoderTransform](torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform) | [Module](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module)] | [None](https://docs.python.org/3/library/constants.html#None) = None*, *custom_frame_mappings: [str](https://docs.python.org/3/library/stdtypes.html#str) | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [None](https://docs.python.org/3/library/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder)
+*class*torchcodec.decoders.VideoDecoder(*source: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, ***, *stream_index: [int](https://docs.python.org/3/library/functions.html#int) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *dimension_order: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['NCHW', 'NHWC'] = 'NCHW'*, *num_ffmpeg_threads: [int](https://docs.python.org/3/library/functions.html#int) = 1*, *device: [str](https://docs.python.org/3/library/stdtypes.html#str) | [device](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.device) | [None](https://docs.python.org/3/library/constants.html#None) = None*, *seek_mode: [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['exact', 'approximate'] = 'exact'*, *transforms: [Sequence](https://docs.python.org/3/library/collections.abc.html#collections.abc.Sequence)[[DecoderTransform](torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform) | [Module](https://docs.pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module)] | [None](https://docs.python.org/3/library/constants.html#None) = None*, *output_dtype: [dtype](https://docs.pytorch.org/docs/stable/tensor_attributes.html#torch.dtype) | [Literal](https://docs.python.org/3/library/typing.html#typing.Literal)['auto'] = torch.uint8*, *custom_frame_mappings: [str](https://docs.python.org/3/library/stdtypes.html#str) | [bytes](https://docs.python.org/3/library/stdtypes.html#bytes) | [RawIOBase](https://docs.python.org/3/library/io.html#io.RawIOBase) | BufferedReader | [None](https://docs.python.org/3/library/constants.html#None) = None*)[[source]](../_modules/torchcodec/decoders/_video_decoder.html#VideoDecoder)
 
 A single-stream video decoder.
 
@@ -58,6 +58,20 @@ applied to the decoded frames by the decoder itself, in order. Accepts both
 [`DecoderTransform`](torchcodec.transforms.DecoderTransform.html#torchcodec.transforms.DecoderTransform) and
 [`Transform`](https://docs.pytorch.org/vision/stable/generated/torchvision.transforms.v2.Transform.html#torchvision.transforms.v2.Transform)
 objects. Read more about this parameter in [Decoder Transforms: Applying transforms during decoding](../generated_examples/decoding/transforms.html#sphx-glr-generated-examples-decoding-transforms-py).
+- **output_dtype** (torch.dtype or `"auto"`, optional) - 
+
+The dtype of the
+output frames. Supported values are `torch.uint8` with values in
+[0, 255] (default), `torch.float32` with values in [0, 1], and
+`"auto"`. When `"auto"` is specified, the output dtype is
+determined automatically based on the video content: uint8 for SDR
+content, float32 for HDR content.
+
+Note
+
+On `"auto"`: since detecting whether a video is SDR or HDR is
+difficult, the heuristic is subject to change and improve across
+versions.
 - **custom_frame_mappings** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,*[*bytes*](https://docs.python.org/3/library/stdtypes.html#bytes)*, or**file-like object**,**optional*) - 
 
 Mapping of frames to their metadata, typically generated via ffprobe.
