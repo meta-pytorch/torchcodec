@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>AudioDecoder &#8212; TorchCodec 0.13.0.dev20260601+cu126 Documentation</title>
+    <title>AudioDecoder &#8212; TorchCodec 0.14.0.dev20260601+cu126 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=4334fc52"></script>
+    <script src="../_static/documentation_options.js?v=2617bdf5"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -53,13 +53,13 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.13';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.14';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.decoders.AudioDecoder.html" />
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="VideoStreamMetadata" href="torchcodec.decoders.VideoStreamMetadata.html" />
+    <link rel="next" title="WavDecoder" href="torchcodec.decoders.WavDecoder.html" />
     <link rel="prev" title="VideoDecoder" href="torchcodec.decoders.VideoDecoder.html" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -78,7 +78,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.13">
+<meta name="llm:version" content="0.14">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="api">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -184,7 +184,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.13');
+  document.documentElement.setAttribute('data-version', '0.14');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -1001,6 +1001,7 @@ document.write(`
 <li class="toctree-l1 current active has-children"><a class="reference internal" href="../api_ref_decoders.html">torchcodec.decoders</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoDecoder.html">VideoDecoder</a></li>
 <li class="toctree-l2 current active"><a class="current reference internal" href="#">AudioDecoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.WavDecoder.html">WavDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoStreamMetadata.html">VideoStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioStreamMetadata.html">AudioStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.set_cuda_backend.html">set_cuda_backend</a></li>
@@ -1150,6 +1151,12 @@ document.write(`
 <dd><p>A single-stream audio decoder.</p>
 <p>This can be used to decode audio from pure audio files (e.g. mp3, wav,
 etc.), or from videos that contain audio streams (e.g. mp4 videos).</p>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>If you are decoding WAV files, consider using
+<a class="reference internal" href="torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder" title="torchcodec.decoders.WavDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">WavDecoder</span></code></a> instead for significantly faster
+decoding.</p>
+</div>
 <p>Returned samples are float samples normalized in [-1, 1]</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
@@ -1217,12 +1224,15 @@ unspecified, this is the <a class="reference internal" href="../glossary.html#te
 </dd>
 </dl>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">AudioDecoder</span></code>:</p>
-<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode an audio file using the AudioDecoder class."><img alt="" src="../_images/sphx_glr_audio_decoding_thumb.jpg" />
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode an audio file using the AudioDecoder class. If you&#x27;re decoding WAV files, also check out the wav_decoder_section section below."><img alt="" src="../_images/sphx_glr_audio_decoding_thumb.jpg" />
 <p><a class="reference internal" href="../generated_examples/decoding/audio_decoding.html"><span class="doc">Decoding audio streams with AudioDecoder</span></a></p>
   <div class="sphx-glr-thumbnail-title">Decoding audio streams with AudioDecoder</div>
 </div><div class="sphx-glr-thumbcontainer" tooltip="In this example, we will show how to decode streaming data. That is, when files do not reside locally, we will show how to only download the data segments that are needed to decode the frames you care about. We accomplish this capability with Python file-like objects. Our example uses a video file, so we use the VideoDecoder class to decode it. But all of the lessons here also apply to audio files and the AudioDecoder class as well."><img alt="" src="../_images/sphx_glr_file_like_thumb.jpg" />
 <p><a class="reference internal" href="../generated_examples/decoding/file_like.html"><span class="doc">Streaming data through file-like support</span></a></p>
   <div class="sphx-glr-thumbnail-title">Streaming data through file-like support</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="This tutorial consolidates performance optimization techniques for video decoding with TorchCodec. Learn when and how to apply various strategies to increase performance."><img alt="" src="../_images/sphx_glr_performance_tips_thumb.jpg" />
+<p><a class="reference internal" href="../generated_examples/decoding/performance_tips.html"><span class="doc">TorchCodec Performance Tips and Best Practices</span></a></p>
+  <div class="sphx-glr-thumbnail-title">TorchCodec Performance Tips and Best Practices</div>
 </div><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode audio samples to a file or to raw bytes using the AudioEncoder class."><img alt="" src="../_images/sphx_glr_audio_encoding_thumb.jpg" />
 <p><a class="reference internal" href="../generated_examples/encoding/audio_encoding.html"><span class="doc">Encoding audio samples with AudioEncoder</span></a></p>
   <div class="sphx-glr-thumbnail-title">Encoding audio samples with AudioEncoder</div>
@@ -1327,11 +1337,11 @@ which decodes samples until the end.</p></li>
       </div>
     </a>
     <a class="right-next"
-       href="torchcodec.decoders.VideoStreamMetadata.html"
+       href="torchcodec.decoders.WavDecoder.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">VideoStreamMetadata</p>
+        <p class="prev-next-title">WavDecoder</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1366,11 +1376,11 @@ which decodes samples until the end.</p></li>
       </div>
     </a>
     <a class="right-next"
-       href="torchcodec.decoders.VideoStreamMetadata.html"
+       href="torchcodec.decoders.WavDecoder.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">VideoStreamMetadata</p>
+        <p class="prev-next-title">WavDecoder</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1622,7 +1632,7 @@ which decodes samples until the end.</p></li>
        "headline": "AudioDecoder",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders.AudioDecoder.html",
-       "articleBody": "AudioDecoder# class torchcodec.decoders.AudioDecoder(source: str | Path | RawIOBase | BufferedReader | bytes | Tensor, *, stream_index: int | None = None, sample_rate: int | None = None, num_channels: int | None = None)[source]# A single-stream audio decoder. This can be used to decode audio from pure audio files (e.g. mp3, wav, etc.), or from videos that contain audio streams (e.g. mp4 videos). Returned samples are float samples normalized in [-1, 1] Parameters: (str (source) \u2013 object): The source of the video or audio: If str: a local path or a URL to a video or audio file. If Pathlib.path: a path to a local video or audio file. If bytes object or torch.Tensor: the raw encoded audio data. If file-like object: we read video data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. Read more in: Streaming data through file-like support. Pathlib.path \u2013 object): The source of the video or audio: If str: a local path or a URL to a video or audio file. If Pathlib.path: a path to a local video or audio file. If bytes object or torch.Tensor: the raw encoded audio data. If file-like object: we read video data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. Read more in: Streaming data through file-like support. bytes \u2013 object): The source of the video or audio: If str: a local path or a URL to a video or audio file. If Pathlib.path: a path to a local video or audio file. If bytes object or torch.Tensor: the raw encoded audio data. If file-like object: we read video data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. Read more in: Streaming data through file-like support. file-like (torch.Tensor or) \u2013 object): The source of the video or audio: If str: a local path or a URL to a video or audio file. If Pathlib.path: a path to a local video or audio file. If bytes object or torch.Tensor: the raw encoded audio data. If file-like object: we read video data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. Read more in: Streaming data through file-like support. stream_index (int, optional) \u2013 Specifies which stream in the file to decode samples from. Note that this index is absolute across all media types. If left unspecified, then the best stream is used. sample_rate (int, optional) \u2013 The desired output sample rate of the decoded samples. By default, the sample rate of the source is used. num_channels (int, optional) \u2013 The desired number of channels of the decoded samples. By default, the number of channels of the source is used. Variables: metadata (AudioStreamMetadata) \u2013 Metadata of the audio stream. stream_index (int) \u2013 The stream index that this decoder is retrieving samples from. If a stream index was provided at initialization, this is the same value. If it was left unspecified, this is the best stream. Examples using AudioDecoder: Decoding audio streams with AudioDecoder Decoding audio streams with AudioDecoder Streaming data through file-like support Streaming data through file-like support Encoding audio samples with AudioEncoder Encoding audio samples with AudioEncoder get_all_samples() \u2192 AudioSamples[source]# Returns all the audio samples from the source. To decode samples in a specific range, use get_samples_played_in_range(). Returns: The samples within the file. Return type: AudioSamples get_samples_played_in_range(start_seconds: float = 0.0, stop_seconds: float | None = None) \u2192 AudioSamples[source]# Returns audio samples in the given range. Samples are in the half open range [start_seconds, stop_seconds). To decode all the samples from beginning to end, you can call this method while leaving start_seconds and stop_seconds to their default values, or use get_all_samples() as a more convenient alias. Parameters: start_seconds (float) \u2013 Time, in seconds, of the start of the range. Default: 0. stop_seconds (float or None) \u2013 Time, in seconds, of the end of the range. As a half open range, the end is excluded. Default: None, which decodes samples until the end. Returns: The samples within the specified range. Return type: AudioSamples",
+       "articleBody": "AudioDecoder# class torchcodec.decoders.AudioDecoder(source: str | Path | RawIOBase | BufferedReader | bytes | Tensor, *, stream_index: int | None = None, sample_rate: int | None = None, num_channels: int | None = None)[source]# A single-stream audio decoder. This can be used to decode audio from pure audio files (e.g. mp3, wav, etc.), or from videos that contain audio streams (e.g. mp4 videos). Tip If you are decoding WAV files, consider using WavDecoder instead for significantly faster decoding. Returned samples are float samples normalized in [-1, 1] Parameters: (str (source) \u2013 object): The source of the video or audio: If str: a local path or a URL to a video or audio file. If Pathlib.path: a path to a local video or audio file. If bytes object or torch.Tensor: the raw encoded audio data. If file-like object: we read video data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. Read more in: Streaming data through file-like support. Pathlib.path \u2013 object): The source of the video or audio: If str: a local path or a URL to a video or audio file. If Pathlib.path: a path to a local video or audio file. If bytes object or torch.Tensor: the raw encoded audio data. If file-like object: we read video data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. Read more in: Streaming data through file-like support. bytes \u2013 object): The source of the video or audio: If str: a local path or a URL to a video or audio file. If Pathlib.path: a path to a local video or audio file. If bytes object or torch.Tensor: the raw encoded audio data. If file-like object: we read video data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. Read more in: Streaming data through file-like support. file-like (torch.Tensor or) \u2013 object): The source of the video or audio: If str: a local path or a URL to a video or audio file. If Pathlib.path: a path to a local video or audio file. If bytes object or torch.Tensor: the raw encoded audio data. If file-like object: we read video data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. Read more in: Streaming data through file-like support. stream_index (int, optional) \u2013 Specifies which stream in the file to decode samples from. Note that this index is absolute across all media types. If left unspecified, then the best stream is used. sample_rate (int, optional) \u2013 The desired output sample rate of the decoded samples. By default, the sample rate of the source is used. num_channels (int, optional) \u2013 The desired number of channels of the decoded samples. By default, the number of channels of the source is used. Variables: metadata (AudioStreamMetadata) \u2013 Metadata of the audio stream. stream_index (int) \u2013 The stream index that this decoder is retrieving samples from. If a stream index was provided at initialization, this is the same value. If it was left unspecified, this is the best stream. Examples using AudioDecoder: Decoding audio streams with AudioDecoder Decoding audio streams with AudioDecoder Streaming data through file-like support Streaming data through file-like support TorchCodec Performance Tips and Best Practices TorchCodec Performance Tips and Best Practices Encoding audio samples with AudioEncoder Encoding audio samples with AudioEncoder get_all_samples() \u2192 AudioSamples[source]# Returns all the audio samples from the source. To decode samples in a specific range, use get_samples_played_in_range(). Returns: The samples within the file. Return type: AudioSamples get_samples_played_in_range(start_seconds: float = 0.0, stop_seconds: float | None = None) \u2192 AudioSamples[source]# Returns audio samples in the given range. Samples are in the half open range [start_seconds, stop_seconds). To decode all the samples from beginning to end, you can call this method while leaving start_seconds and stop_seconds to their default values, or use get_all_samples() as a more convenient alias. Parameters: start_seconds (float) \u2013 Time, in seconds, of the start of the range. Default: 0. stop_seconds (float or None) \u2013 Time, in seconds, of the end of the range. As a half open range, the end is excluded. Default: None, which decodes samples until the end. Returns: The samples within the specified range. Return type: AudioSamples",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

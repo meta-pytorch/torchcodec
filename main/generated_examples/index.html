@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Interactive examples &#8212; TorchCodec 0.13.0.dev20260601+cu126 Documentation</title>
+    <title>Interactive examples &#8212; TorchCodec 0.14.0.dev20260601+cu126 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=4334fc52"></script>
+    <script src="../_static/documentation_options.js?v=2617bdf5"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -53,7 +53,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.13';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.14';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated_examples/index.html" />
@@ -78,7 +78,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.13">
+<meta name="llm:version" content="0.14">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="api">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -184,7 +184,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.13');
+  document.documentElement.setAttribute('data-version', '0.14');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -1111,7 +1111,7 @@ document.write(`
 <div id='sg-tag-list' class='sphx-glr-tag-list'></div><div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode a video using the VideoDecoder class."><img alt="" src="../_images/sphx_glr_basic_example_thumb.png" />
 <p><a class="reference internal" href="decoding/basic_example.html"><span class="doc">Decoding a video with VideoDecoder</span></a></p>
   <div class="sphx-glr-thumbnail-title">Decoding a video with VideoDecoder</div>
-</div><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode an audio file using the AudioDecoder class."><img alt="" src="../_images/sphx_glr_audio_decoding_thumb.jpg" />
+</div><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode an audio file using the AudioDecoder class. If you&#x27;re decoding WAV files, also check out the wav_decoder_section section below."><img alt="" src="../_images/sphx_glr_audio_decoding_thumb.jpg" />
 <p><a class="reference internal" href="decoding/audio_decoding.html"><span class="doc">Decoding audio streams with AudioDecoder</span></a></p>
   <div class="sphx-glr-thumbnail-title">Decoding audio streams with AudioDecoder</div>
 </div><div class="sphx-glr-thumbcontainer" tooltip="TorchCodec can use supported Nvidia hardware (see support matrix here) to speed-up video decoding. This is called &quot;CUDA Decoding&quot; and it uses Nvidia&#x27;s NVDEC hardware decoder and CUDA kernels to respectively decompress and convert to RGB. CUDA Decoding can be faster than CPU Decoding for the actual decoding step and also for subsequent transform steps like scaling, cropping or rotating. This is because the decode step leaves the decoded tensor in GPU memory so the GPU doesn&#x27;t have to fetch from main memory before running the transform steps. Encoded packets are often much smaller than decoded frames so CUDA decoding also uses less PCI-e bandwidth."><img alt="" src="../_images/sphx_glr_basic_cuda_example_thumb.png" />

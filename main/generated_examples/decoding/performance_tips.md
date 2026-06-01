@@ -183,12 +183,40 @@ For complete examples with memory benchmarks, transform pipelines, and
 detailed comparisons between decoder transforms and TorchVision transforms,
 see [Decoder Transforms: Applying transforms during decoding](transforms.html#sphx-glr-generated-examples-decoding-transforms-py)
 
+## 6. WavDecoder for WAV Files
+
+If you are decoding WAV files and don't need resampling (`sample_rate`
+parameter) or channel remixing (`num_channels` parameter), consider using
+[`WavDecoder`](../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder) instead of
+[`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder).
+[`WavDecoder`](../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder) bypasses FFmpeg's demuxer and
+decoder and reads WAV data directly, resulting in significantly faster
+decoding.
+
+[`WavDecoder`](../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder) has the same
+[`get_all_samples()`](../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder.get_all_samples) and
+[`get_samples_played_in_range()`](../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder.get_samples_played_in_range) methods
+as [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder), so switching between them is
+straightforward.
+
+**When to use:**
+
+- Decoding WAV files without resampling or channel remixing
+- Latency-sensitive applications
+
+**When NOT to use:**
+
+- Non-WAV audio formats (mp3, flac, etc.)
+- You need resampling or channel remixing
+
 ## Conclusion
 
 TorchCodec offers multiple performance optimization strategies, each suited to
 different scenarios. Use batch APIs for multi-frame decoding, approximate mode
 for faster initialization, parallel processing for high throughput, CUDA
-acceleration to offload the CPU, and decoder native transforms for memory efficiency.
+acceleration to offload the CPU, decoder native transforms for memory
+efficiency, and [`WavDecoder`](../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder) for fast WAV
+decoding.
 
 The best results often come from combining techniques. Profile your specific
 use case and apply optimizations incrementally, using the benchmarks in the

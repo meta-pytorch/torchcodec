@@ -1,0 +1,11 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.decoders
+
+
+WavDecoder
+==========
+
+.. autoclass:: WavDecoder
+    :members:
+    :special-members: __getitem__

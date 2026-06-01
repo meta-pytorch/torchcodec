@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>clips_at_regular_timestamps &#8212; TorchCodec 0.14.0.dev20260601+cu126 Documentation</title>
+    <title>WavDecoder &#8212; TorchCodec 0.14.0.dev20260601+cu126 Documentation</title>
   
   
   
@@ -49,18 +49,18 @@
     <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
     <script src="../_static/copybutton.js?v=f281be69"></script>
     <script src="../_static/design-tabs.js?v=f930bc37"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'generated/torchcodec.samplers.clips_at_regular_timestamps';</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'generated/torchcodec.decoders.WavDecoder';</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
         DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.14';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
-    <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.samplers.clips_at_regular_timestamps.html" />
+    <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.decoders.WavDecoder.html" />
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="clips_at_random_timestamps" href="torchcodec.samplers.clips_at_random_timestamps.html" />
-    <link rel="prev" title="clips_at_random_indices" href="torchcodec.samplers.clips_at_random_indices.html" />
+    <link rel="next" title="VideoStreamMetadata" href="torchcodec.decoders.VideoStreamMetadata.html" />
+    <link rel="prev" title="AudioDecoder" href="torchcodec.decoders.AudioDecoder.html" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -70,7 +70,7 @@
 <meta name="llm:site-type" content="documentation">
 <meta name="llm:framework" content="PyTorch">
 
-<meta name="llm:description" content="clips_at_regular_timestamps - Documentation for Python, part of the PyTorch ecosystem.">
+<meta name="llm:description" content="WavDecoder - Documentation for Python, part of the PyTorch ecosystem.">
 
 
 
@@ -998,10 +998,10 @@ document.write(`
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.AudioSamples.html">AudioSamples</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../api_ref_decoders.html">torchcodec.decoders</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l1 current active has-children"><a class="reference internal" href="../api_ref_decoders.html">torchcodec.decoders</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoDecoder.html">VideoDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioDecoder.html">AudioDecoder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.WavDecoder.html">WavDecoder</a></li>
+<li class="toctree-l2 current active"><a class="current reference internal" href="#">WavDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoStreamMetadata.html">VideoStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioStreamMetadata.html">AudioStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.set_cuda_backend.html">set_cuda_backend</a></li>
@@ -1018,10 +1018,10 @@ document.write(`
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.encoders.AudioEncoder.html">AudioEncoder</a></li>
 </ul>
 </details></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="../api_ref_samplers.html">torchcodec.samplers</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
+<li class="toctree-l1 has-children"><a class="reference internal" href="../api_ref_samplers.html">torchcodec.samplers</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.samplers.clips_at_regular_indices.html">clips_at_regular_indices</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.samplers.clips_at_random_indices.html">clips_at_random_indices</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">clips_at_regular_timestamps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="torchcodec.samplers.clips_at_regular_timestamps.html">clips_at_regular_timestamps</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.samplers.clips_at_random_timestamps.html">clips_at_random_timestamps</a></li>
 </ul>
 </details></li>
@@ -1073,9 +1073,9 @@ document.write(`
     <li class="breadcrumb-item"><a href="../api_ref.html" class="nav-link">API Reference</a></li>
     
     
-    <li class="breadcrumb-item"><a href="../api_ref_samplers.html" class="nav-link">torchcodec.samplers</a></li>
+    <li class="breadcrumb-item"><a href="../api_ref_decoders.html" class="nav-link">torchcodec.decoders</a></li>
     
-    <li class="breadcrumb-item active" aria-current="page">clips_at_reg...</li>
+    <li class="breadcrumb-item active" aria-current="page">WavDecoder</li>
   </ul>
 </nav>
 </div>
@@ -1123,13 +1123,13 @@ document.write(`
     </div>
     
     <div itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-      <link itemprop="item" href="../api_ref_samplers.html">
-      <meta itemprop="name" content="torchcodec.samplers">
+      <link itemprop="item" href="../api_ref_decoders.html">
+      <meta itemprop="name" content="torchcodec.decoders">
       <meta itemprop="position" content="2">
     </div>
     
     <div itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-      <meta itemprop="name" content="clips_at_regular_timestamps">
+      <meta itemprop="name" content="WavDecoder">
       <meta itemprop="position" content="3">
     </div>
   </div>
@@ -1143,88 +1143,130 @@ document.write(`
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="clips-at-regular-timestamps">
-<h1>clips_at_regular_timestamps<a class="headerlink" href="#clips-at-regular-timestamps" title="Link to this heading">#</a></h1>
-<dl class="py function">
-<dt class="sig sig-object py" id="torchcodec.samplers.clips_at_regular_timestamps">
-<span class="sig-prename descclassname"><span class="pre">torchcodec.samplers.</span></span><span class="sig-name descname"><span class="pre">clips_at_regular_timestamps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">decoder</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seconds_between_clip_starts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_frames_per_clip</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seconds_between_frames</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampling_range_start</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampling_range_end</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">policy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'repeat_last'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'wrap'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'error'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'repeat_last'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="torchcodec.FrameBatch.html#torchcodec.FrameBatch" title="torchcodec._frame.FrameBatch"><span class="pre">FrameBatch</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/samplers/_time_based.html#clips_at_regular_timestamps"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.samplers.clips_at_regular_timestamps" title="Link to this definition">#</a></dt>
-<dd><p>Sample <a class="reference internal" href="../glossary.html#term-clips"><span class="xref std std-term">clips</span></a> at regular (equally-spaced) timestamps.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>For consistency with existing sampling APIs (such as torchvision), this
-sampler takes a <code class="docutils literal notranslate"><span class="pre">seconds_between_clip_starts</span></code> parameter instead of
-<code class="docutils literal notranslate"><span class="pre">num_clips</span></code>. If you find that supporting <code class="docutils literal notranslate"><span class="pre">num_clips</span></code> would be
-useful, please let us know by <a class="reference external" href="https://github.com/pytorch/torchcodec/issues?q=is:open+is:issue">opening a feature request</a>.</p>
-</div>
+  <section id="wavdecoder">
+<h1>WavDecoder<a class="headerlink" href="#wavdecoder" title="Link to this heading">#</a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="torchcodec.decoders.WavDecoder">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.decoders.</span></span><span class="sig-name descname"><span class="pre">WavDecoder</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">source</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/io.html#io.RawIOBase" title="(in Python v3.14)"><span class="pre">RawIOBase</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">BufferedReader</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#bytes" title="(in Python v3.14)"><span class="pre">bytes</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.12)"><span class="pre">Tensor</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/decoders/_wav_decoder.html#WavDecoder"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders.WavDecoder" title="Link to this definition">#</a></dt>
+<dd><p>A fast decoder for WAV audio files.</p>
+<p>This is a lightweight, high-performance alternative to
+<a class="reference internal" href="torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a> that is specialized for WAV
+files. See <a class="reference internal" href="../generated_examples/decoding/performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py"><span class="std std-ref">TorchCodec Performance Tips and Best Practices</span></a>
+for more details.</p>
+<p>Unlike <a class="reference internal" href="torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a>, this decoder does not
+support resampling (<code class="docutils literal notranslate"><span class="pre">sample_rate</span></code> parameter) or channel remixing
+(<code class="docutils literal notranslate"><span class="pre">num_channels</span></code> parameter). If you need those features, use
+<a class="reference internal" href="torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a>.</p>
+<p>Returned samples are float samples normalized in [-1, 1].</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters<span class="colon">:</span></dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>decoder</strong> (<a class="reference internal" href="torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><em>VideoDecoder</em></a>) – The <a class="reference internal" href="torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a>
-instance to sample clips from.</p></li>
-<li><p><strong>seconds_between_clip_starts</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – The space (in seconds) between each
-clip start.</p></li>
-<li><p><strong>num_frames_per_clip</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>optional</em>) – The number of frames per clips. Default: 1.</p></li>
-<li><p><strong>seconds_between_frames</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> or </em><em>None</em><em>, </em><em>optional</em>) – The time (in seconds)
-between each frame within a clip. More accurately, this defines the
-time between the <em>frame sampling point</em>, i.e. the timestamps at
-which we sample the frames. Because frames span intervals in time ,
-the resulting start of frames within a clip may not be exactly
-spaced by <code class="docutils literal notranslate"><span class="pre">seconds_between_frames</span></code> - but on average, they will be.
-Default is None, which is set to the average frame duration
-(<code class="docutils literal notranslate"><span class="pre">1/average_fps</span></code>).</p></li>
-<li><p><strong>sampling_range_start</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> or </em><em>None</em><em>, </em><em>optional</em>) – The start of the
-sampling range, which defines the first timestamp (in seconds) that
-a clip may <em>start</em> at. Default: None, which corresponds to the start
-of the video. (Note: some videos start at negative values, which is
-why the default is not 0).</p></li>
-<li><p><strong>sampling_range_end</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> or </em><em>None</em><em>, </em><em>optional</em>) – The end of the sampling
-range, which defines the last timestamp (in seconds) that a clip may
-<em>start</em> at. This value is exclusive, i.e. a clip may only start within
-[<code class="docutils literal notranslate"><span class="pre">sampling_range_start</span></code>, <code class="docutils literal notranslate"><span class="pre">sampling_range_end</span></code>). If None
-(default), the value is set automatically such that the clips never
-span beyond the end of the video, i.e. it is set to
-<code class="docutils literal notranslate"><span class="pre">end_video_seconds</span> <span class="pre">-</span> <span class="pre">(num_frames_per_clip</span> <span class="pre">-</span> <span class="pre">1)</span> <span class="pre">*</span>
-<span class="pre">seconds_between_frames</span></code>. When a clip spans beyond the end of the
-video, the <code class="docutils literal notranslate"><span class="pre">policy</span></code> parameter defines how to construct such clip.</p></li>
-<li><p><strong>policy</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – <p>Defines how to construct clips that span beyond
-the end of the video. This is best described with an example:
-assuming the last valid (seekable) timestamp in a video is 10.9, and
-a clip was sampled to start at timestamp 10.5, with
-<code class="docutils literal notranslate"><span class="pre">num_frames_per_clip=5</span></code> and <code class="docutils literal notranslate"><span class="pre">seconds_between_frames=0.2</span></code>, the
-sampling timestamps of the frames in the clip are supposed to be
-[10.5, 10.7, 10.9, 11.1, 11.2]. But 11.1 and 11.2 are invalid
-timestamps, so the <code class="docutils literal notranslate"><span class="pre">policy</span></code> parameter defines how to replace those
-frames, with valid sampling timestamps:</p>
+<li><p><strong>(</strong><strong>str</strong> (<em>source</em>) – <p>object): The source of the audio:</p>
 <ul>
-<li><p>”repeat_last”: repeats the last valid frame of the clip. We would
-get frames sampled at timestamps [10.5, 10.7, 10.9, 10.9, 10.9].</p></li>
-<li><p>”wrap”: wraps around to the beginning of the clip. We would get
-frames sampled at timestamps [10.5, 10.7, 10.9, 10.5, 10.7].</p></li>
-<li><p>”error”: raises an error.</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">str</span></code>: a path to a local WAV file.</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">Pathlib.path</span></code>: a path to a local WAV file.</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">bytes</span></code> object or <code class="docutils literal notranslate"><span class="pre">torch.Tensor</span></code>: the raw WAV data.</p></li>
+<li><p>If file-like object: we read audio data from the object on
+demand. The object must expose the methods <code class="docutils literal notranslate"><span class="pre">read(self,</span> <span class="pre">size:</span>
+<span class="pre">int)</span> <span class="pre">-&gt;</span> <span class="pre">bytes</span></code> and <code class="docutils literal notranslate"><span class="pre">seek(self,</span> <span class="pre">offset:</span> <span class="pre">int,</span> <span class="pre">whence:</span> <span class="pre">int)</span> <span class="pre">-&gt;</span>
+<span class="pre">int</span></code>.</p></li>
 </ul>
-<p>Default is “repeat_last”. Note that when <code class="docutils literal notranslate"><span class="pre">sampling_range_end=None</span></code>
-(default), this policy parameter is unlikely to be relevant.</p>
+</p></li>
+<li><p><strong>Pathlib.path</strong> – <p>object): The source of the audio:</p>
+<ul>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">str</span></code>: a path to a local WAV file.</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">Pathlib.path</span></code>: a path to a local WAV file.</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">bytes</span></code> object or <code class="docutils literal notranslate"><span class="pre">torch.Tensor</span></code>: the raw WAV data.</p></li>
+<li><p>If file-like object: we read audio data from the object on
+demand. The object must expose the methods <code class="docutils literal notranslate"><span class="pre">read(self,</span> <span class="pre">size:</span>
+<span class="pre">int)</span> <span class="pre">-&gt;</span> <span class="pre">bytes</span></code> and <code class="docutils literal notranslate"><span class="pre">seek(self,</span> <span class="pre">offset:</span> <span class="pre">int,</span> <span class="pre">whence:</span> <span class="pre">int)</span> <span class="pre">-&gt;</span>
+<span class="pre">int</span></code>.</p></li>
+</ul>
+</p></li>
+<li><p><strong>bytes</strong> – <p>object): The source of the audio:</p>
+<ul>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">str</span></code>: a path to a local WAV file.</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">Pathlib.path</span></code>: a path to a local WAV file.</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">bytes</span></code> object or <code class="docutils literal notranslate"><span class="pre">torch.Tensor</span></code>: the raw WAV data.</p></li>
+<li><p>If file-like object: we read audio data from the object on
+demand. The object must expose the methods <code class="docutils literal notranslate"><span class="pre">read(self,</span> <span class="pre">size:</span>
+<span class="pre">int)</span> <span class="pre">-&gt;</span> <span class="pre">bytes</span></code> and <code class="docutils literal notranslate"><span class="pre">seek(self,</span> <span class="pre">offset:</span> <span class="pre">int,</span> <span class="pre">whence:</span> <span class="pre">int)</span> <span class="pre">-&gt;</span>
+<span class="pre">int</span></code>.</p></li>
+</ul>
+</p></li>
+<li><p><strong>file-like</strong> (<em>torch.Tensor or</em>) – <p>object): The source of the audio:</p>
+<ul>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">str</span></code>: a path to a local WAV file.</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">Pathlib.path</span></code>: a path to a local WAV file.</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">bytes</span></code> object or <code class="docutils literal notranslate"><span class="pre">torch.Tensor</span></code>: the raw WAV data.</p></li>
+<li><p>If file-like object: we read audio data from the object on
+demand. The object must expose the methods <code class="docutils literal notranslate"><span class="pre">read(self,</span> <span class="pre">size:</span>
+<span class="pre">int)</span> <span class="pre">-&gt;</span> <span class="pre">bytes</span></code> and <code class="docutils literal notranslate"><span class="pre">seek(self,</span> <span class="pre">offset:</span> <span class="pre">int,</span> <span class="pre">whence:</span> <span class="pre">int)</span> <span class="pre">-&gt;</span>
+<span class="pre">int</span></code>.</p></li>
+</ul>
 </p></li>
 </ul>
 </dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The sampled <a class="reference internal" href="../glossary.html#term-clips"><span class="xref std std-term">clips</span></a>, as a 5D <a class="reference internal" href="torchcodec.FrameBatch.html#torchcodec.FrameBatch" title="torchcodec.FrameBatch"><code class="xref py py-class docutils literal notranslate"><span class="pre">FrameBatch</span></code></a>.
-The shape of the <code class="docutils literal notranslate"><span class="pre">data</span></code> field is (<code class="docutils literal notranslate"><span class="pre">num_clips</span></code>,
-<code class="docutils literal notranslate"><span class="pre">num_frames_per_clips</span></code>, …) where … is (H, W, C) or (C, H, W)
-depending on the <code class="docutils literal notranslate"><span class="pre">dimension_order</span></code> parameter of
-<a class="reference internal" href="torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a>. The shape of the
-<code class="docutils literal notranslate"><span class="pre">pts_seconds</span></code> and <code class="docutils literal notranslate"><span class="pre">duration_seconds</span></code> fields is (<code class="docutils literal notranslate"><span class="pre">num_clips</span></code>,
-<code class="docutils literal notranslate"><span class="pre">num_frames_per_clips</span></code>).</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="torchcodec.FrameBatch.html#torchcodec.FrameBatch" title="torchcodec.FrameBatch">FrameBatch</a></p>
+<dt class="field-even">Variables<span class="colon">:</span></dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>metadata</strong> (<a class="reference internal" href="torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata" title="torchcodec.decoders.AudioStreamMetadata"><em>AudioStreamMetadata</em></a>) – Metadata of the audio stream.</p></li>
+<li><p><strong>stream_index</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a>) – The stream index. Always 0 for WAV files.</p></li>
+</ul>
 </dd>
 </dl>
-<p>Examples using <code class="docutils literal notranslate"><span class="pre">clips_at_regular_timestamps</span></code>:</p>
-<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to sample video clips from a video. A clip generally denotes a sequence or batch of frames, and is typically passed as input to video models."><img alt="" src="../_images/sphx_glr_sampling_thumb.png" />
-<p><a class="reference internal" href="../generated_examples/decoding/sampling.html"><span class="doc">How to sample video clips</span></a></p>
-  <div class="sphx-glr-thumbnail-title">How to sample video clips</div>
-</div></div></dd></dl>
+<p>Examples using <code class="docutils literal notranslate"><span class="pre">WavDecoder</span></code>:</p>
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode an audio file using the AudioDecoder class. If you&#x27;re decoding WAV files, also check out the wav_decoder_section section below."><img alt="" src="../_images/sphx_glr_audio_decoding_thumb.jpg" />
+<p><a class="reference internal" href="../generated_examples/decoding/audio_decoding.html"><span class="doc">Decoding audio streams with AudioDecoder</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Decoding audio streams with AudioDecoder</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="This tutorial consolidates performance optimization techniques for video decoding with TorchCodec. Learn when and how to apply various strategies to increase performance."><img alt="" src="../_images/sphx_glr_performance_tips_thumb.jpg" />
+<p><a class="reference internal" href="../generated_examples/decoding/performance_tips.html"><span class="doc">TorchCodec Performance Tips and Best Practices</span></a></p>
+  <div class="sphx-glr-thumbnail-title">TorchCodec Performance Tips and Best Practices</div>
+</div></div><dl class="py method">
+<dt class="sig sig-object py" id="torchcodec.decoders.WavDecoder.get_all_samples">
+<span class="sig-name descname"><span class="pre">get_all_samples</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="torchcodec.AudioSamples.html#torchcodec.AudioSamples" title="torchcodec._frame.AudioSamples"><span class="pre">AudioSamples</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_wav_decoder.html#WavDecoder.get_all_samples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders.WavDecoder.get_all_samples" title="Link to this definition">#</a></dt>
+<dd><p>Returns all the audio samples from the source.</p>
+<p>To decode samples in a specific range, use
+<a class="reference internal" href="#torchcodec.decoders.WavDecoder.get_samples_played_in_range" title="torchcodec.decoders.WavDecoder.get_samples_played_in_range"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_samples_played_in_range()</span></code></a>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The samples within the file.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p><a class="reference internal" href="torchcodec.AudioSamples.html#torchcodec.AudioSamples" title="torchcodec.AudioSamples">AudioSamples</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="torchcodec.decoders.WavDecoder.get_samples_played_in_range">
+<span class="sig-name descname"><span class="pre">get_samples_played_in_range</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">start_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stop_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="torchcodec.AudioSamples.html#torchcodec.AudioSamples" title="torchcodec._frame.AudioSamples"><span class="pre">AudioSamples</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/decoders/_wav_decoder.html#WavDecoder.get_samples_played_in_range"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.decoders.WavDecoder.get_samples_played_in_range" title="Link to this definition">#</a></dt>
+<dd><p>Returns audio samples in the given range.</p>
+<p>Samples are in the half open range [start_seconds, stop_seconds).</p>
+<p>To decode all the samples from beginning to end, you can call this
+method while leaving <code class="docutils literal notranslate"><span class="pre">start_seconds</span></code> and <code class="docutils literal notranslate"><span class="pre">stop_seconds</span></code> to their
+default values, or use
+<a class="reference internal" href="#torchcodec.decoders.WavDecoder.get_all_samples" title="torchcodec.decoders.WavDecoder.get_all_samples"><code class="xref py py-meth docutils literal notranslate"><span class="pre">get_all_samples()</span></code></a> as a more
+convenient alias.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>start_seconds</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – Time, in seconds, of the start of the
+range. Default: 0.</p></li>
+<li><p><strong>stop_seconds</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> or </em><em>None</em>) – Time, in seconds, of the end of the
+range. As a half open range, the end is excluded. Default: None,
+which decodes samples until the end.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The samples within the specified range.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="torchcodec.AudioSamples.html#torchcodec.AudioSamples" title="torchcodec.AudioSamples">AudioSamples</a></p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
 
 </section>
 
@@ -1271,20 +1313,20 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
 
 <div class="prev-next-area">
     <a class="left-prev"
-       href="torchcodec.samplers.clips_at_random_indices.html"
+       href="torchcodec.decoders.AudioDecoder.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">clips_at_random_indices</p>
+        <p class="prev-next-title">AudioDecoder</p>
       </div>
     </a>
     <a class="right-next"
-       href="torchcodec.samplers.clips_at_random_timestamps.html"
+       href="torchcodec.decoders.VideoStreamMetadata.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">clips_at_random_timestamps</p>
+        <p class="prev-next-title">VideoStreamMetadata</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1310,20 +1352,20 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
                   
 <div class="prev-next-area">
     <a class="left-prev"
-       href="torchcodec.samplers.clips_at_random_indices.html"
+       href="torchcodec.decoders.AudioDecoder.html"
        title="previous page">
       <i class="fa-solid fa-angle-left"></i>
       <div class="prev-next-info">
         <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">clips_at_random_indices</p>
+        <p class="prev-next-title">AudioDecoder</p>
       </div>
     </a>
     <a class="right-next"
-       href="torchcodec.samplers.clips_at_random_timestamps.html"
+       href="torchcodec.decoders.VideoStreamMetadata.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">clips_at_random_timestamps</p>
+        <p class="prev-next-title">VideoStreamMetadata</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1345,7 +1387,11 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.samplers.clips_at_regular_timestamps"><code class="docutils literal notranslate"><span class="pre">clips_at_regular_timestamps()</span></code></a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.WavDecoder"><code class="docutils literal notranslate"><span class="pre">WavDecoder</span></code></a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.WavDecoder.get_all_samples"><code class="docutils literal notranslate"><span class="pre">WavDecoder.get_all_samples()</span></code></a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.decoders.WavDecoder.get_samples_played_in_range"><code class="docutils literal notranslate"><span class="pre">WavDecoder.get_samples_played_in_range()</span></code></a></li>
+</ul>
+</li>
 </ul>
   </nav></div>
     
@@ -1353,7 +1399,7 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
 
   
   <div class="tocsection editthispage">
-    <a href="https://github.com/meta-pytorch/torchcodec/edit/main/docs/source/generated/torchcodec.samplers.clips_at_regular_timestamps.rst">
+    <a href="https://github.com/meta-pytorch/torchcodec/edit/main/docs/source/generated/torchcodec.decoders.WavDecoder.rst">
       <i class="fa-solid fa-pencil"></i>
       
       
@@ -1367,7 +1413,7 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
     
        <div class="sidebar-secondary-item">
     <div class="tocsection sourcelink">
-      <a href="../_sources/generated/torchcodec.samplers.clips_at_regular_timestamps.rst.txt">
+      <a href="../_sources/generated/torchcodec.decoders.WavDecoder.rst.txt">
         <i class="fa-solid fa-file-lines"></i> Show Source
       </a>
     </div>
@@ -1567,11 +1613,11 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
     {
        "@context": "https://schema.org",
        "@type": "Article",
-       "name": "clips_at_regular_timestamps",
-       "headline": "clips_at_regular_timestamps",
+       "name": "WavDecoder",
+       "headline": "WavDecoder",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
-       "url": "/generated/torchcodec.samplers.clips_at_regular_timestamps.html",
-       "articleBody": "clips_at_regular_timestamps# torchcodec.samplers.clips_at_regular_timestamps(decoder, *, seconds_between_clip_starts: float, num_frames_per_clip: int = 1, seconds_between_frames: float | None = None, sampling_range_start: float | None = None, sampling_range_end: float | None = None, policy: Literal[\u0027repeat_last\u0027, \u0027wrap\u0027, \u0027error\u0027] = \u0027repeat_last\u0027) \u2192 FrameBatch[source]# Sample clips at regular (equally-spaced) timestamps. Note For consistency with existing sampling APIs (such as torchvision), this sampler takes a seconds_between_clip_starts parameter instead of num_clips. If you find that supporting num_clips would be useful, please let us know by opening a feature request. Parameters: decoder (VideoDecoder) \u2013 The VideoDecoder instance to sample clips from. seconds_between_clip_starts (float) \u2013 The space (in seconds) between each clip start. num_frames_per_clip (int, optional) \u2013 The number of frames per clips. Default: 1. seconds_between_frames (float or None, optional) \u2013 The time (in seconds) between each frame within a clip. More accurately, this defines the time between the frame sampling point, i.e. the timestamps at which we sample the frames. Because frames span intervals in time , the resulting start of frames within a clip may not be exactly spaced by seconds_between_frames - but on average, they will be. Default is None, which is set to the average frame duration (1/average_fps). sampling_range_start (float or None, optional) \u2013 The start of the sampling range, which defines the first timestamp (in seconds) that a clip may start at. Default: None, which corresponds to the start of the video. (Note: some videos start at negative values, which is why the default is not 0). sampling_range_end (float or None, optional) \u2013 The end of the sampling range, which defines the last timestamp (in seconds) that a clip may start at. This value is exclusive, i.e. a clip may only start within [sampling_range_start, sampling_range_end). If None (default), the value is set automatically such that the clips never span beyond the end of the video, i.e. it is set to end_video_seconds - (num_frames_per_clip - 1) * seconds_between_frames. When a clip spans beyond the end of the video, the policy parameter defines how to construct such clip. policy (str, optional) \u2013 Defines how to construct clips that span beyond the end of the video. This is best described with an example: assuming the last valid (seekable) timestamp in a video is 10.9, and a clip was sampled to start at timestamp 10.5, with num_frames_per_clip=5 and seconds_between_frames=0.2, the sampling timestamps of the frames in the clip are supposed to be [10.5, 10.7, 10.9, 11.1, 11.2]. But 11.1 and 11.2 are invalid timestamps, so the policy parameter defines how to replace those frames, with valid sampling timestamps: \u201drepeat_last\u201d: repeats the last valid frame of the clip. We would get frames sampled at timestamps [10.5, 10.7, 10.9, 10.9, 10.9]. \u201dwrap\u201d: wraps around to the beginning of the clip. We would get frames sampled at timestamps [10.5, 10.7, 10.9, 10.5, 10.7]. \u201derror\u201d: raises an error. Default is \u201crepeat_last\u201d. Note that when sampling_range_end=None (default), this policy parameter is unlikely to be relevant. Returns: The sampled clips, as a 5D FrameBatch. The shape of the data field is (num_clips, num_frames_per_clips, \u2026) where \u2026 is (H, W, C) or (C, H, W) depending on the dimension_order parameter of VideoDecoder. The shape of the pts_seconds and duration_seconds fields is (num_clips, num_frames_per_clips). Return type: FrameBatch Examples using clips_at_regular_timestamps: How to sample video clips How to sample video clips",
+       "url": "/generated/torchcodec.decoders.WavDecoder.html",
+       "articleBody": "WavDecoder# class torchcodec.decoders.WavDecoder(source: str | Path | RawIOBase | BufferedReader | bytes | Tensor)[source]# A fast decoder for WAV audio files. This is a lightweight, high-performance alternative to AudioDecoder that is specialized for WAV files. See TorchCodec Performance Tips and Best Practices for more details. Unlike AudioDecoder, this decoder does not support resampling (sample_rate parameter) or channel remixing (num_channels parameter). If you need those features, use AudioDecoder. Returned samples are float samples normalized in [-1, 1]. Parameters: (str (source) \u2013 object): The source of the audio: If str: a path to a local WAV file. If Pathlib.path: a path to a local WAV file. If bytes object or torch.Tensor: the raw WAV data. If file-like object: we read audio data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. Pathlib.path \u2013 object): The source of the audio: If str: a path to a local WAV file. If Pathlib.path: a path to a local WAV file. If bytes object or torch.Tensor: the raw WAV data. If file-like object: we read audio data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. bytes \u2013 object): The source of the audio: If str: a path to a local WAV file. If Pathlib.path: a path to a local WAV file. If bytes object or torch.Tensor: the raw WAV data. If file-like object: we read audio data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. file-like (torch.Tensor or) \u2013 object): The source of the audio: If str: a path to a local WAV file. If Pathlib.path: a path to a local WAV file. If bytes object or torch.Tensor: the raw WAV data. If file-like object: we read audio data from the object on demand. The object must expose the methods read(self, size: int) -\u003e bytes and seek(self, offset: int, whence: int) -\u003e int. Variables: metadata (AudioStreamMetadata) \u2013 Metadata of the audio stream. stream_index (int) \u2013 The stream index. Always 0 for WAV files. Examples using WavDecoder: Decoding audio streams with AudioDecoder Decoding audio streams with AudioDecoder TorchCodec Performance Tips and Best Practices TorchCodec Performance Tips and Best Practices get_all_samples() \u2192 AudioSamples[source]# Returns all the audio samples from the source. To decode samples in a specific range, use get_samples_played_in_range(). Returns: The samples within the file. Return type: AudioSamples get_samples_played_in_range(start_seconds: float = 0.0, stop_seconds: float | None = None) \u2192 AudioSamples[source]# Returns audio samples in the given range. Samples are in the half open range [start_seconds, stop_seconds). To decode all the samples from beginning to end, you can call this method while leaving start_seconds and stop_seconds to their default values, or use get_all_samples() as a more convenient alias. Parameters: start_seconds (float) \u2013 Time, in seconds, of the start of the range. Default: 0. stop_seconds (float or None) \u2013 Time, in seconds, of the end of the range. As a half open range, the end is excluded. Default: None, which decodes samples until the end. Returns: The samples within the specified range. Return type: AudioSamples",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",
@@ -1580,7 +1626,7 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
        "image": "https://pytorch.org/docs/stable/_static/img/pytorch_seo.png",
        "mainEntityOfPage": {
          "@type": "WebPage",
-         "@id": "/generated/torchcodec.samplers.clips_at_regular_timestamps.html"
+         "@id": "/generated/torchcodec.decoders.WavDecoder.html"
        },
        "datePublished": "2023-01-01T00:00:00Z",
        "dateModified": "2023-01-01T00:00:00Z"

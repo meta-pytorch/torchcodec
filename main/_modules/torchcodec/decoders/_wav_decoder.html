@@ -2,13 +2,12 @@
 <!DOCTYPE html>
 
 
-<html lang="en" data-content_root="../" >
+<html lang="en" data-content_root="../../../" >
 
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-
-    <title>clips_at_regular_timestamps &#8212; TorchCodec 0.14.0.dev20260601+cu126 Documentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>torchcodec.decoders._wav_decoder &#8212; TorchCodec 0.14.0.dev20260601+cu126 Documentation</title>
   
   
   
@@ -18,49 +17,483 @@
   </script>
   
   <!-- Loaded before other Sphinx assets -->
-  <link href="../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-<link href="../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-<link href="../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link href="../../../_static/styles/theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/bootstrap.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+<link href="../../../_static/styles/pydata-sphinx-theme.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
 
   
-  <link href="../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
-  <link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
-<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
-<link rel="preload" as="font" type="font/woff2" crossorigin href="../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
+  <link href="../../../_static/vendor/fontawesome/6.5.2/css/all.min.css?digest=dfe6caa3a7d634c4db9b" rel="stylesheet" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-solid-900.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-brands-400.woff2" />
+<link rel="preload" as="font" type="font/woff2" crossorigin href="../../../_static/vendor/fontawesome/6.5.2/webfonts/fa-regular-400.woff2" />
 
-    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=03e43079" />
-    <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=a6c16915" />
-    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
-    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery.css?v=fd6457a4" />
-    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-binder.css?v=f4aeca0c" />
-    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-dataframe.css?v=2082cf3c" />
-    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-rendered-html.css?v=1277b6f3" />
-    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=03e43079" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=a6c16915" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery.css?v=fd6457a4" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery-binder.css?v=f4aeca0c" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery-dataframe.css?v=2082cf3c" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sg_gallery-rendered-html.css?v=1277b6f3" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
   
   <!-- Pre-loaded scripts that we'll load fully later -->
-  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
-<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
-  <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
+  <link rel="preload" as="script" href="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b" />
+<link rel="preload" as="script" href="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
+  <script src="../../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=2617bdf5"></script>
-    <script src="../_static/doctools.js?v=888ff710"></script>
-    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
-    <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
-    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
-    <script src="../_static/copybutton.js?v=f281be69"></script>
-    <script src="../_static/design-tabs.js?v=f930bc37"></script>
-    <script>DOCUMENTATION_OPTIONS.pagename = 'generated/torchcodec.samplers.clips_at_regular_timestamps';</script>
+    <script src="../../../_static/documentation_options.js?v=2617bdf5"></script>
+    <script src="../../../_static/doctools.js?v=888ff710"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/sg-tags.js?v=d80f6fa4"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
+    <script>DOCUMENTATION_OPTIONS.pagename = '_modules/torchcodec/decoders/_wav_decoder';</script>
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
         DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.14';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
-    <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.samplers.clips_at_regular_timestamps.html" />
-    <link rel="index" title="Index" href="../genindex.html" />
-    <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="clips_at_random_timestamps" href="torchcodec.samplers.clips_at_random_timestamps.html" />
-    <link rel="prev" title="clips_at_random_indices" href="torchcodec.samplers.clips_at_random_indices.html" />
+    <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/_modules/torchcodec/decoders/_wav_decoder.html" />
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <meta name="docsearch:language" content="en"/>
@@ -70,7 +503,7 @@
 <meta name="llm:site-type" content="documentation">
 <meta name="llm:framework" content="PyTorch">
 
-<meta name="llm:description" content="clips_at_regular_timestamps - Documentation for Python, part of the PyTorch ecosystem.">
+<meta name="llm:description" content="torchcodec.decoders._wav_decoder - Documentation for Python, part of the PyTorch ecosystem.">
 
 
 
@@ -80,7 +513,7 @@
 <meta name="llm:sitemap" content="/sitemap.xml">
 <meta name="llm:version" content="0.14">
 <meta name="llm:project" content="Python">
-<meta name="llm:page-type" content="api">
+<meta name="llm:page-type" content="documentation">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
 
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -138,13 +571,13 @@
 </style>
 
 
-<link rel="stylesheet" type="text/css" href="../_static/css/theme.css" crossorigin="anonymous">
-<script type="text/javascript" src="../_static/js/theme.js"></script>
+<link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css" crossorigin="anonymous">
+<script type="text/javascript" src="../../../_static/js/theme.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
 <meta property="og:image" content="https://docs.pytorch.org/docs/stable/_static/img/pytorch_seo.png" />
-<link rel="stylesheet" href="../_static/webfonts/all.min.css" crossorigin="anonymous">
+<link rel="stylesheet" href="../../../_static/webfonts/all.min.css" crossorigin="anonymous">
 <meta http-equiv="Content-Security-Policy"
   content="default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; style-src * 'unsafe-inline'; script-src * 'unsafe-inline' 'unsafe-eval' blob:;">
 <meta name="pytorch_project" content="">
@@ -370,7 +803,7 @@
     <div class="search-button__overlay"></div>
     <div class="search-button__search-container">
 <form class="bd-search d-flex align-items-center"
-      action="../search.html"
+      action="../../../search.html"
       method="get">
   <i class="fa-solid fa-magnifying-glass"></i>
   <input type="search"
@@ -414,7 +847,7 @@
   
 
 
-<a class="navbar-brand logo" href="../index.html">
+<a class="navbar-brand logo" href="../../../index.html">
   
     <span class="logo__title">TorchCodec</span>
   
@@ -441,7 +874,7 @@
   
 
 
-<a class="navbar-brand logo" href="../index.html">
+<a class="navbar-brand logo" href="../../../index.html">
   
     <span class="logo__title">TorchCodec</span>
   
@@ -517,20 +950,20 @@ document.write(`
         
           
           <div class="nav-item-with-toggle">
-            <a class="nav-link nav-internal" href="../generated_examples/index.html">
+            <a class="nav-link nav-internal" href="../../../generated_examples/index.html">
               Interactive examples
             </a>
           </div>
           <ul class="dropdown-menu" id="dropdown-2">
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/decoding/index.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../generated_examples/decoding/index.html">
                   Decoding
                 </a>
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/encoding/index.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../generated_examples/encoding/index.html">
                   Encoding
                 </a>
               </li>
@@ -543,38 +976,38 @@ document.write(`
         
           
           <div class="nav-item-with-toggle">
-            <a class="nav-link nav-internal" href="../api_ref.html">
+            <a class="nav-link nav-internal" href="../../../api_ref.html">
               API Reference
             </a>
           </div>
           <ul class="dropdown-menu" id="dropdown-3">
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../api_ref_torchcodec.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../api_ref_torchcodec.html">
                   torchcodec
                 </a>
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../api_ref_decoders.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../api_ref_decoders.html">
                   torchcodec.decoders
                 </a>
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../api_ref_encoders.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../api_ref_encoders.html">
                   torchcodec.encoders
                 </a>
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../api_ref_samplers.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../api_ref_samplers.html">
                   torchcodec.samplers
                 </a>
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../api_ref_transforms.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../api_ref_transforms.html">
                   torchcodec.transforms
                 </a>
               </li>
@@ -586,7 +1019,7 @@ document.write(`
       <li class="nav-item">
         
           
-          <a class="nav-link nav-internal" href="../glossary.html">
+          <a class="nav-link nav-internal" href="../../../glossary.html">
             Glossary
           </a>
         
@@ -619,7 +1052,7 @@ document.write(`
         <div class="navbar-item">
   
 <form class="bd-search d-flex align-items-center"
-      action="../search.html"
+      action="../../../search.html"
       method="get">
   <i class="fa-solid fa-magnifying-glass"></i>
   <input type="search"
@@ -707,10 +1140,6 @@ document.write(`
   
 
   
-    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
-      <span class="fa-solid fa-outdent"></span>
-    </button>
-  
 </div>
 
     </header>
@@ -721,7 +1150,9 @@ document.write(`
       
       
       
-      <div class="bd-sidebar-primary bd-sidebar">
+        
+      
+      <div class="bd-sidebar-primary bd-sidebar hide-on-wide">
         
 
 
@@ -798,20 +1229,20 @@ document.write(`
         
           
           <div class="nav-item-with-toggle">
-            <a class="nav-link nav-internal" href="../generated_examples/index.html">
+            <a class="nav-link nav-internal" href="../../../generated_examples/index.html">
               Interactive examples
             </a>
           </div>
           <ul class="dropdown-menu" id="dropdown-2">
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/decoding/index.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../generated_examples/decoding/index.html">
                   Decoding
                 </a>
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/encoding/index.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../generated_examples/encoding/index.html">
                   Encoding
                 </a>
               </li>
@@ -824,38 +1255,38 @@ document.write(`
         
           
           <div class="nav-item-with-toggle">
-            <a class="nav-link nav-internal" href="../api_ref.html">
+            <a class="nav-link nav-internal" href="../../../api_ref.html">
               API Reference
             </a>
           </div>
           <ul class="dropdown-menu" id="dropdown-3">
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../api_ref_torchcodec.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../api_ref_torchcodec.html">
                   torchcodec
                 </a>
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../api_ref_decoders.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../api_ref_decoders.html">
                   torchcodec.decoders
                 </a>
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../api_ref_encoders.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../api_ref_encoders.html">
                   torchcodec.encoders
                 </a>
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../api_ref_samplers.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../api_ref_samplers.html">
                   torchcodec.samplers
                 </a>
               </li>
             
               <li class=" ">
-                <a class="nav-link dropdown-item nav-internal" href="../api_ref_transforms.html">
+                <a class="nav-link dropdown-item nav-internal" href="../../../api_ref_transforms.html">
                   torchcodec.transforms
                 </a>
               </li>
@@ -867,7 +1298,7 @@ document.write(`
       <li class="nav-item">
         
           
-          <a class="nav-link nav-internal" href="../glossary.html">
+          <a class="nav-link nav-internal" href="../../../glossary.html">
             Glossary
           </a>
         
@@ -901,7 +1332,7 @@ document.write(`
           <div class="navbar-item">
   
 <form class="bd-search d-flex align-items-center"
-      action="../search.html"
+      action="../../../search.html"
       method="get">
   <i class="fa-solid fa-magnifying-glass"></i>
   <input type="search"
@@ -986,57 +1417,6 @@ document.write(`
     
   </div>
   
-    <div class="sidebar-primary-items__start sidebar-primary__section">
-        <div class="sidebar-primary-item">
-<nav class="bd-docs-nav bd-links"
-     aria-label="Section Navigation">
-  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
-  <div class="bd-toc-item navbar-nav"><ul class="current nav bd-sidenav">
-<li class="toctree-l1 has-children"><a class="reference internal" href="../api_ref_torchcodec.html">torchcodec</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.Frame.html">Frame</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.FrameBatch.html">FrameBatch</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.AudioSamples.html">AudioSamples</a></li>
-</ul>
-</details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../api_ref_decoders.html">torchcodec.decoders</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoDecoder.html">VideoDecoder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioDecoder.html">AudioDecoder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.WavDecoder.html">WavDecoder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoStreamMetadata.html">VideoStreamMetadata</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioStreamMetadata.html">AudioStreamMetadata</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.set_cuda_backend.html">set_cuda_backend</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.set_nvdec_cache_capacity.html">set_nvdec_cache_capacity</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.get_nvdec_cache_capacity.html">get_nvdec_cache_capacity</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.CpuFallbackStatus.html">CpuFallbackStatus</a></li>
-</ul>
-</details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../api_ref_encoders.html">torchcodec.encoders</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.encoders.Encoder.html">Encoder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.encoders.VideoStream.html">VideoStream</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.encoders.AudioStream.html">AudioStream</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.encoders.VideoEncoder.html">VideoEncoder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.encoders.AudioEncoder.html">AudioEncoder</a></li>
-</ul>
-</details></li>
-<li class="toctree-l1 current active has-children"><a class="reference internal" href="../api_ref_samplers.html">torchcodec.samplers</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul class="current">
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.samplers.clips_at_regular_indices.html">clips_at_regular_indices</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.samplers.clips_at_random_indices.html">clips_at_random_indices</a></li>
-<li class="toctree-l2 current active"><a class="current reference internal" href="#">clips_at_regular_timestamps</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.samplers.clips_at_random_timestamps.html">clips_at_random_timestamps</a></li>
-</ul>
-</details></li>
-<li class="toctree-l1 has-children"><a class="reference internal" href="../api_ref_transforms.html">torchcodec.transforms</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.transforms.DecoderTransform.html">DecoderTransform</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.transforms.CenterCrop.html">CenterCrop</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.transforms.RandomCrop.html">RandomCrop</a></li>
-<li class="toctree-l2"><a class="reference internal" href="torchcodec.transforms.Resize.html">Resize</a></li>
-</ul>
-</details></li>
-</ul>
-</div>
-</nav></div>
-    </div>
-  
   
   <div class="sidebar-primary-items__end sidebar-primary__section">
   </div>
@@ -1065,17 +1445,14 @@ document.write(`
   <ul class="bd-breadcrumbs">
     
     <li class="breadcrumb-item breadcrumb-home">
-      <a href="../index.html" class="nav-link" aria-label="Home">
+      <a href="../../../index.html" class="nav-link" aria-label="Home">
         <i class="fa-solid fa-home"></i>
       </a>
     </li>
     
-    <li class="breadcrumb-item"><a href="../api_ref.html" class="nav-link">API Reference</a></li>
+    <li class="breadcrumb-item"><a href="../../index.html" class="nav-link">Module code</a></li>
     
-    
-    <li class="breadcrumb-item"><a href="../api_ref_samplers.html" class="nav-link">torchcodec.samplers</a></li>
-    
-    <li class="breadcrumb-item active" aria-current="page">clips_at_reg...</li>
+    <li class="breadcrumb-item active" aria-current="page">torchcodec.d...</li>
   </ul>
 </nav>
 </div>
@@ -1117,20 +1494,14 @@ document.write(`
   <div style="display:none;" itemscope itemtype="https://schema.org/BreadcrumbList">
     
     <div itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-      <link itemprop="item" href="../api_ref.html">
-      <meta itemprop="name" content="API Reference">
+      <link itemprop="item" href="../../index.html">
+      <meta itemprop="name" content="Module code">
       <meta itemprop="position" content="1">
     </div>
     
     <div itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-      <link itemprop="item" href="../api_ref_samplers.html">
-      <meta itemprop="name" content="torchcodec.samplers">
+      <meta itemprop="name" content="torchcodec.decoders._wav_decoder">
       <meta itemprop="position" content="2">
-    </div>
-    
-    <div itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
-      <meta itemprop="name" content="clips_at_regular_timestamps">
-      <meta itemprop="position" content="3">
     </div>
   </div>
 
@@ -1143,91 +1514,144 @@ document.write(`
 <div id="searchbox"></div>
                 <article class="bd-article">
                   
-  <section id="clips-at-regular-timestamps">
-<h1>clips_at_regular_timestamps<a class="headerlink" href="#clips-at-regular-timestamps" title="Link to this heading">#</a></h1>
-<dl class="py function">
-<dt class="sig sig-object py" id="torchcodec.samplers.clips_at_regular_timestamps">
-<span class="sig-prename descclassname"><span class="pre">torchcodec.samplers.</span></span><span class="sig-name descname"><span class="pre">clips_at_regular_timestamps</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">decoder</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seconds_between_clip_starts</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_frames_per_clip</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">seconds_between_frames</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampling_range_start</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">sampling_range_end</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">policy</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/typing.html#typing.Literal" title="(in Python v3.14)"><span class="pre">Literal</span></a><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'repeat_last'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'wrap'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'error'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'repeat_last'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="torchcodec.FrameBatch.html#torchcodec.FrameBatch" title="torchcodec._frame.FrameBatch"><span class="pre">FrameBatch</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/samplers/_time_based.html#clips_at_regular_timestamps"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.samplers.clips_at_regular_timestamps" title="Link to this definition">#</a></dt>
-<dd><p>Sample <a class="reference internal" href="../glossary.html#term-clips"><span class="xref std std-term">clips</span></a> at regular (equally-spaced) timestamps.</p>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>For consistency with existing sampling APIs (such as torchvision), this
-sampler takes a <code class="docutils literal notranslate"><span class="pre">seconds_between_clip_starts</span></code> parameter instead of
-<code class="docutils literal notranslate"><span class="pre">num_clips</span></code>. If you find that supporting <code class="docutils literal notranslate"><span class="pre">num_clips</span></code> would be
-useful, please let us know by <a class="reference external" href="https://github.com/pytorch/torchcodec/issues?q=is:open+is:issue">opening a feature request</a>.</p>
+  <h1>Source code for torchcodec.decoders._wav_decoder</h1><div class="highlight"><pre>
+<span></span><span class="c1"># Copyright (c) Meta Platforms, Inc. and affiliates.</span>
+<span class="c1"># All rights reserved.</span>
+<span class="c1">#</span>
+<span class="c1"># This source code is licensed under the BSD-style license found in the</span>
+<span class="c1"># LICENSE file in the root directory of this source tree.</span>
+
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec</span><span class="w"> </span><span class="kn">import</span> <span class="n">_core</span><span class="p">,</span> <span class="n">AudioSamples</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec._core._decoder_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_wav_decoder</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">torchcodec._core._metadata</span><span class="w"> </span><span class="kn">import</span> <span class="n">AudioStreamMetadata</span>
+
+
+<div class="viewcode-block" id="WavDecoder">
+<a class="viewcode-back" href="../../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WavDecoder</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;A fast decoder for WAV audio files.</span>
+
+<span class="sd">    This is a lightweight, high-performance alternative to</span>
+<span class="sd">    :class:`~torchcodec.decoders.AudioDecoder` that is specialized for WAV</span>
+<span class="sd">    files. See :ref:`sphx_glr_generated_examples_decoding_performance_tips.py`</span>
+<span class="sd">    for more details.</span>
+
+<span class="sd">    Unlike :class:`~torchcodec.decoders.AudioDecoder`, this decoder does not</span>
+<span class="sd">    support resampling (``sample_rate`` parameter) or channel remixing</span>
+<span class="sd">    (``num_channels`` parameter). If you need those features, use</span>
+<span class="sd">    :class:`~torchcodec.decoders.AudioDecoder`.</span>
+
+<span class="sd">    Returned samples are float samples normalized in [-1, 1].</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like</span>
+<span class="sd">            object): The source of the audio:</span>
+
+<span class="sd">            - If ``str``: a path to a local WAV file.</span>
+<span class="sd">            - If ``Pathlib.path``: a path to a local WAV file.</span>
+<span class="sd">            - If ``bytes`` object or ``torch.Tensor``: the raw WAV data.</span>
+<span class="sd">            - If file-like object: we read audio data from the object on</span>
+<span class="sd">              demand. The object must expose the methods ``read(self, size:</span>
+<span class="sd">              int) -&gt; bytes`` and ``seek(self, offset: int, whence: int) -&gt;</span>
+<span class="sd">              int``.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        metadata (AudioStreamMetadata): Metadata of the audio stream.</span>
+<span class="sd">        stream_index (int): The stream index. Always 0 for WAV files.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Path</span> <span class="o">|</span> <span class="n">io</span><span class="o">.</span><span class="n">RawIOBase</span> <span class="o">|</span> <span class="n">io</span><span class="o">.</span><span class="n">BufferedReader</span> <span class="o">|</span> <span class="nb">bytes</span> <span class="o">|</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="n">torch</span><span class="o">.</span><span class="n">_C</span><span class="o">.</span><span class="n">_log_api_usage_once</span><span class="p">(</span><span class="s2">&quot;torchcodec.decoders.WavDecoder&quot;</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_decoder</span> <span class="o">=</span> <span class="n">create_wav_decoder</span><span class="p">(</span><span class="n">source</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_source</span> <span class="o">=</span> <span class="n">source</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stream_index</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="n">metadata_json</span> <span class="o">=</span> <span class="n">_core</span><span class="o">.</span><span class="n">get_wav_metadata_from_decoder</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_decoder</span><span class="p">)</span>
+        <span class="n">metadata_dict</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">metadata_json</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span> <span class="o">=</span> <span class="n">AudioStreamMetadata</span><span class="p">(</span>
+            <span class="n">sample_rate</span><span class="o">=</span><span class="n">metadata_dict</span><span class="p">[</span><span class="s2">&quot;sampleRate&quot;</span><span class="p">],</span>
+            <span class="n">num_channels</span><span class="o">=</span><span class="n">metadata_dict</span><span class="p">[</span><span class="s2">&quot;numChannels&quot;</span><span class="p">],</span>
+            <span class="n">sample_format</span><span class="o">=</span><span class="n">metadata_dict</span><span class="p">[</span><span class="s2">&quot;sampleFormat&quot;</span><span class="p">],</span>
+            <span class="n">duration_seconds</span><span class="o">=</span><span class="n">metadata_dict</span><span class="p">[</span><span class="s2">&quot;durationSeconds&quot;</span><span class="p">],</span>
+            <span class="n">stream_index</span><span class="o">=</span><span class="n">metadata_dict</span><span class="p">[</span><span class="s2">&quot;streamIndex&quot;</span><span class="p">],</span>
+            <span class="n">codec</span><span class="o">=</span><span class="n">metadata_dict</span><span class="p">[</span><span class="s2">&quot;codec&quot;</span><span class="p">],</span>
+            <span class="n">bit_rate</span><span class="o">=</span><span class="n">metadata_dict</span><span class="p">[</span><span class="s2">&quot;bitRate&quot;</span><span class="p">],</span>
+            <span class="n">duration_seconds_from_header</span><span class="o">=</span><span class="n">metadata_dict</span><span class="p">[</span><span class="s2">&quot;durationSecondsFromHeader&quot;</span><span class="p">],</span>
+            <span class="n">begin_stream_seconds</span><span class="o">=</span><span class="n">metadata_dict</span><span class="p">[</span><span class="s2">&quot;beginStreamSeconds&quot;</span><span class="p">],</span>
+            <span class="n">begin_stream_seconds_from_header</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>  <span class="c1"># WAV format lacks stream start time metadata</span>
+        <span class="p">)</span>
+
+<div class="viewcode-block" id="WavDecoder.get_all_samples">
+<a class="viewcode-back" href="../../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder.get_all_samples">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_all_samples</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AudioSamples</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns all the audio samples from the source.</span>
+
+<span class="sd">        To decode samples in a specific range, use</span>
+<span class="sd">        :meth:`~torchcodec.decoders.WavDecoder.get_samples_played_in_range`.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            AudioSamples: The samples within the file.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_samples_played_in_range</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="WavDecoder.get_samples_played_in_range">
+<a class="viewcode-back" href="../../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder.get_samples_played_in_range">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_samples_played_in_range</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">start_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">stop_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AudioSamples</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Returns audio samples in the given range.</span>
+
+<span class="sd">        Samples are in the half open range [start_seconds, stop_seconds).</span>
+
+<span class="sd">        To decode all the samples from beginning to end, you can call this</span>
+<span class="sd">        method while leaving ``start_seconds`` and ``stop_seconds`` to their</span>
+<span class="sd">        default values, or use</span>
+<span class="sd">        :meth:`~torchcodec.decoders.WavDecoder.get_all_samples` as a more</span>
+<span class="sd">        convenient alias.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            start_seconds (float): Time, in seconds, of the start of the</span>
+<span class="sd">                range. Default: 0.</span>
+<span class="sd">            stop_seconds (float or None): Time, in seconds, of the end of the</span>
+<span class="sd">                range. As a half open range, the end is excluded. Default: None,</span>
+<span class="sd">                which decodes samples until the end.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            AudioSamples: The samples within the specified range.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">stop_seconds</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">start_seconds</span> <span class="o">&lt;=</span> <span class="n">stop_seconds</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Invalid start seconds: </span><span class="si">{</span><span class="n">start_seconds</span><span class="si">}</span><span class="s2">. It must be less than or equal to stop seconds (</span><span class="si">{</span><span class="n">stop_seconds</span><span class="si">}</span><span class="s2">).&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">actual_start_seconds</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">start_seconds</span><span class="p">)</span>
+        <span class="n">samples</span><span class="p">,</span> <span class="n">actual_pts</span> <span class="o">=</span> <span class="n">_core</span><span class="o">.</span><span class="n">get_wav_samples_in_range</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_decoder</span><span class="p">,</span> <span class="n">actual_start_seconds</span><span class="p">,</span> <span class="n">stop_seconds</span>
+        <span class="p">)</span>
+        <span class="n">actual_pts</span> <span class="o">=</span> <span class="n">actual_pts</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+        <span class="k">assert</span> <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">sample_rate</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>  <span class="c1"># make mypy happy</span>
+        <span class="n">duration_seconds</span> <span class="o">=</span> <span class="n">samples</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">sample_rate</span>
+        <span class="k">return</span> <span class="n">AudioSamples</span><span class="p">(</span>
+            <span class="n">data</span><span class="o">=</span><span class="n">samples</span><span class="p">,</span>
+            <span class="n">pts_seconds</span><span class="o">=</span><span class="n">actual_pts</span><span class="p">,</span>
+            <span class="n">duration_seconds</span><span class="o">=</span><span class="n">duration_seconds</span><span class="p">,</span>
+            <span class="n">sample_rate</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">sample_rate</span><span class="p">,</span>
+        <span class="p">)</span></div>
 </div>
-<dl class="field-list simple">
-<dt class="field-odd">Parameters<span class="colon">:</span></dt>
-<dd class="field-odd"><ul class="simple">
-<li><p><strong>decoder</strong> (<a class="reference internal" href="torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><em>VideoDecoder</em></a>) – The <a class="reference internal" href="torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a>
-instance to sample clips from.</p></li>
-<li><p><strong>seconds_between_clip_starts</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a>) – The space (in seconds) between each
-clip start.</p></li>
-<li><p><strong>num_frames_per_clip</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><em>int</em></a><em>, </em><em>optional</em>) – The number of frames per clips. Default: 1.</p></li>
-<li><p><strong>seconds_between_frames</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> or </em><em>None</em><em>, </em><em>optional</em>) – The time (in seconds)
-between each frame within a clip. More accurately, this defines the
-time between the <em>frame sampling point</em>, i.e. the timestamps at
-which we sample the frames. Because frames span intervals in time ,
-the resulting start of frames within a clip may not be exactly
-spaced by <code class="docutils literal notranslate"><span class="pre">seconds_between_frames</span></code> - but on average, they will be.
-Default is None, which is set to the average frame duration
-(<code class="docutils literal notranslate"><span class="pre">1/average_fps</span></code>).</p></li>
-<li><p><strong>sampling_range_start</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> or </em><em>None</em><em>, </em><em>optional</em>) – The start of the
-sampling range, which defines the first timestamp (in seconds) that
-a clip may <em>start</em> at. Default: None, which corresponds to the start
-of the video. (Note: some videos start at negative values, which is
-why the default is not 0).</p></li>
-<li><p><strong>sampling_range_end</strong> (<a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><em>float</em></a><em> or </em><em>None</em><em>, </em><em>optional</em>) – The end of the sampling
-range, which defines the last timestamp (in seconds) that a clip may
-<em>start</em> at. This value is exclusive, i.e. a clip may only start within
-[<code class="docutils literal notranslate"><span class="pre">sampling_range_start</span></code>, <code class="docutils literal notranslate"><span class="pre">sampling_range_end</span></code>). If None
-(default), the value is set automatically such that the clips never
-span beyond the end of the video, i.e. it is set to
-<code class="docutils literal notranslate"><span class="pre">end_video_seconds</span> <span class="pre">-</span> <span class="pre">(num_frames_per_clip</span> <span class="pre">-</span> <span class="pre">1)</span> <span class="pre">*</span>
-<span class="pre">seconds_between_frames</span></code>. When a clip spans beyond the end of the
-video, the <code class="docutils literal notranslate"><span class="pre">policy</span></code> parameter defines how to construct such clip.</p></li>
-<li><p><strong>policy</strong> (<a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><em>str</em></a><em>, </em><em>optional</em>) – <p>Defines how to construct clips that span beyond
-the end of the video. This is best described with an example:
-assuming the last valid (seekable) timestamp in a video is 10.9, and
-a clip was sampled to start at timestamp 10.5, with
-<code class="docutils literal notranslate"><span class="pre">num_frames_per_clip=5</span></code> and <code class="docutils literal notranslate"><span class="pre">seconds_between_frames=0.2</span></code>, the
-sampling timestamps of the frames in the clip are supposed to be
-[10.5, 10.7, 10.9, 11.1, 11.2]. But 11.1 and 11.2 are invalid
-timestamps, so the <code class="docutils literal notranslate"><span class="pre">policy</span></code> parameter defines how to replace those
-frames, with valid sampling timestamps:</p>
-<ul>
-<li><p>”repeat_last”: repeats the last valid frame of the clip. We would
-get frames sampled at timestamps [10.5, 10.7, 10.9, 10.9, 10.9].</p></li>
-<li><p>”wrap”: wraps around to the beginning of the clip. We would get
-frames sampled at timestamps [10.5, 10.7, 10.9, 10.5, 10.7].</p></li>
-<li><p>”error”: raises an error.</p></li>
-</ul>
-<p>Default is “repeat_last”. Note that when <code class="docutils literal notranslate"><span class="pre">sampling_range_end=None</span></code>
-(default), this policy parameter is unlikely to be relevant.</p>
-</p></li>
-</ul>
-</dd>
-<dt class="field-even">Returns<span class="colon">:</span></dt>
-<dd class="field-even"><p>The sampled <a class="reference internal" href="../glossary.html#term-clips"><span class="xref std std-term">clips</span></a>, as a 5D <a class="reference internal" href="torchcodec.FrameBatch.html#torchcodec.FrameBatch" title="torchcodec.FrameBatch"><code class="xref py py-class docutils literal notranslate"><span class="pre">FrameBatch</span></code></a>.
-The shape of the <code class="docutils literal notranslate"><span class="pre">data</span></code> field is (<code class="docutils literal notranslate"><span class="pre">num_clips</span></code>,
-<code class="docutils literal notranslate"><span class="pre">num_frames_per_clips</span></code>, …) where … is (H, W, C) or (C, H, W)
-depending on the <code class="docutils literal notranslate"><span class="pre">dimension_order</span></code> parameter of
-<a class="reference internal" href="torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-class docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a>. The shape of the
-<code class="docutils literal notranslate"><span class="pre">pts_seconds</span></code> and <code class="docutils literal notranslate"><span class="pre">duration_seconds</span></code> fields is (<code class="docutils literal notranslate"><span class="pre">num_clips</span></code>,
-<code class="docutils literal notranslate"><span class="pre">num_frames_per_clips</span></code>).</p>
-</dd>
-<dt class="field-odd">Return type<span class="colon">:</span></dt>
-<dd class="field-odd"><p><a class="reference internal" href="torchcodec.FrameBatch.html#torchcodec.FrameBatch" title="torchcodec.FrameBatch">FrameBatch</a></p>
-</dd>
-</dl>
-<p>Examples using <code class="docutils literal notranslate"><span class="pre">clips_at_regular_timestamps</span></code>:</p>
-<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to sample video clips from a video. A clip generally denotes a sequence or batch of frames, and is typically passed as input to video models."><img alt="" src="../_images/sphx_glr_sampling_thumb.png" />
-<p><a class="reference internal" href="../generated_examples/decoding/sampling.html"><span class="doc">How to sample video clips</span></a></p>
-  <div class="sphx-glr-thumbnail-title">How to sample video clips</div>
-</div></div></dd></dl>
 
-</section>
-
+</pre></div>
 
                 </article>
               
@@ -1270,24 +1694,6 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
 </div>
 
 <div class="prev-next-area">
-    <a class="left-prev"
-       href="torchcodec.samplers.clips_at_random_indices.html"
-       title="previous page">
-      <i class="fa-solid fa-angle-left"></i>
-      <div class="prev-next-info">
-        <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">clips_at_random_indices</p>
-      </div>
-    </a>
-    <a class="right-next"
-       href="torchcodec.samplers.clips_at_random_timestamps.html"
-       title="next page">
-      <div class="prev-next-info">
-        <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">clips_at_random_timestamps</p>
-      </div>
-      <i class="fa-solid fa-angle-right"></i>
-    </a>
 </div>
 
 <div class="footer-info">
@@ -1309,76 +1715,12 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
                 <footer class="prev-next-footer d-print-none">
                   
 <div class="prev-next-area">
-    <a class="left-prev"
-       href="torchcodec.samplers.clips_at_random_indices.html"
-       title="previous page">
-      <i class="fa-solid fa-angle-left"></i>
-      <div class="prev-next-info">
-        <p class="prev-next-subtitle">previous</p>
-        <p class="prev-next-title">clips_at_random_indices</p>
-      </div>
-    </a>
-    <a class="right-next"
-       href="torchcodec.samplers.clips_at_random_timestamps.html"
-       title="next page">
-      <div class="prev-next-info">
-        <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">clips_at_random_timestamps</p>
-      </div>
-      <i class="fa-solid fa-angle-right"></i>
-    </a>
 </div>
                 </footer>
               
             </div>
             
             
-              
-                <div class="bd-sidebar-secondary bd-toc">
-<div class="sidebar-secondary-items sidebar-secondary__inner">
-    
-       <div class="sidebar-secondary-item">
-<div
-    id="pst-page-navigation-heading-2"
-    class="page-toc tocsection onthispage">
-    <i class="fa-solid fa-list"></i> On this page
-  </div>
-  <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
-    <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#torchcodec.samplers.clips_at_regular_timestamps"><code class="docutils literal notranslate"><span class="pre">clips_at_regular_timestamps()</span></code></a></li>
-</ul>
-  </nav></div>
-    
-       <div class="sidebar-secondary-item">
-
-  
-  <div class="tocsection editthispage">
-    <a href="https://github.com/meta-pytorch/torchcodec/edit/main/docs/source/generated/torchcodec.samplers.clips_at_regular_timestamps.rst">
-      <i class="fa-solid fa-pencil"></i>
-      
-      
-        
-          Edit on GitHub
-        
-      
-    </a>
-  </div>
-</div>
-    
-       <div class="sidebar-secondary-item">
-    <div class="tocsection sourcelink">
-      <a href="../_sources/generated/torchcodec.samplers.clips_at_regular_timestamps.rst.txt">
-        <i class="fa-solid fa-file-lines"></i> Show Source
-      </a>
-    </div>
-</div>
-    
-
-
-
-
-</div>
-</div>
               
             
           </div>
@@ -1391,8 +1733,8 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
   </div>
   
   <!-- Scripts loaded after <body> so the DOM is not blocked -->
-  <script src="../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
-<script src="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
+  <script src="../../../_static/scripts/bootstrap.js?digest=dfe6caa3a7d634c4db9b"></script>
+<script src="../../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b"></script>
 
   
 
@@ -1567,11 +1909,11 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
     {
        "@context": "https://schema.org",
        "@type": "Article",
-       "name": "clips_at_regular_timestamps",
-       "headline": "clips_at_regular_timestamps",
+       "name": "torchcodec.decoders._wav_decoder",
+       "headline": "torchcodec.decoders._wav_decoder",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
-       "url": "/generated/torchcodec.samplers.clips_at_regular_timestamps.html",
-       "articleBody": "clips_at_regular_timestamps# torchcodec.samplers.clips_at_regular_timestamps(decoder, *, seconds_between_clip_starts: float, num_frames_per_clip: int = 1, seconds_between_frames: float | None = None, sampling_range_start: float | None = None, sampling_range_end: float | None = None, policy: Literal[\u0027repeat_last\u0027, \u0027wrap\u0027, \u0027error\u0027] = \u0027repeat_last\u0027) \u2192 FrameBatch[source]# Sample clips at regular (equally-spaced) timestamps. Note For consistency with existing sampling APIs (such as torchvision), this sampler takes a seconds_between_clip_starts parameter instead of num_clips. If you find that supporting num_clips would be useful, please let us know by opening a feature request. Parameters: decoder (VideoDecoder) \u2013 The VideoDecoder instance to sample clips from. seconds_between_clip_starts (float) \u2013 The space (in seconds) between each clip start. num_frames_per_clip (int, optional) \u2013 The number of frames per clips. Default: 1. seconds_between_frames (float or None, optional) \u2013 The time (in seconds) between each frame within a clip. More accurately, this defines the time between the frame sampling point, i.e. the timestamps at which we sample the frames. Because frames span intervals in time , the resulting start of frames within a clip may not be exactly spaced by seconds_between_frames - but on average, they will be. Default is None, which is set to the average frame duration (1/average_fps). sampling_range_start (float or None, optional) \u2013 The start of the sampling range, which defines the first timestamp (in seconds) that a clip may start at. Default: None, which corresponds to the start of the video. (Note: some videos start at negative values, which is why the default is not 0). sampling_range_end (float or None, optional) \u2013 The end of the sampling range, which defines the last timestamp (in seconds) that a clip may start at. This value is exclusive, i.e. a clip may only start within [sampling_range_start, sampling_range_end). If None (default), the value is set automatically such that the clips never span beyond the end of the video, i.e. it is set to end_video_seconds - (num_frames_per_clip - 1) * seconds_between_frames. When a clip spans beyond the end of the video, the policy parameter defines how to construct such clip. policy (str, optional) \u2013 Defines how to construct clips that span beyond the end of the video. This is best described with an example: assuming the last valid (seekable) timestamp in a video is 10.9, and a clip was sampled to start at timestamp 10.5, with num_frames_per_clip=5 and seconds_between_frames=0.2, the sampling timestamps of the frames in the clip are supposed to be [10.5, 10.7, 10.9, 11.1, 11.2]. But 11.1 and 11.2 are invalid timestamps, so the policy parameter defines how to replace those frames, with valid sampling timestamps: \u201drepeat_last\u201d: repeats the last valid frame of the clip. We would get frames sampled at timestamps [10.5, 10.7, 10.9, 10.9, 10.9]. \u201dwrap\u201d: wraps around to the beginning of the clip. We would get frames sampled at timestamps [10.5, 10.7, 10.9, 10.5, 10.7]. \u201derror\u201d: raises an error. Default is \u201crepeat_last\u201d. Note that when sampling_range_end=None (default), this policy parameter is unlikely to be relevant. Returns: The sampled clips, as a 5D FrameBatch. The shape of the data field is (num_clips, num_frames_per_clips, \u2026) where \u2026 is (H, W, C) or (C, H, W) depending on the dimension_order parameter of VideoDecoder. The shape of the pts_seconds and duration_seconds fields is (num_clips, num_frames_per_clips). Return type: FrameBatch Examples using clips_at_regular_timestamps: How to sample video clips How to sample video clips",
+       "url": "/_modules/torchcodec/decoders/_wav_decoder.html",
+       "articleBody": "Source code for torchcodec.decoders._wav_decoder # Copyright (c) Meta Platforms, Inc. and affiliates. # All rights reserved. # # This source code is licensed under the BSD-style license found in the # LICENSE file in the root directory of this source tree. import io import json from pathlib import Path import torch from torchcodec import _core, AudioSamples from torchcodec._core._decoder_utils import create_wav_decoder from torchcodec._core._metadata import AudioStreamMetadata [docs] class WavDecoder: \"\"\"A fast decoder for WAV audio files. This is a lightweight, high-performance alternative to :class:`~torchcodec.decoders.AudioDecoder` that is specialized for WAV files. See :ref:`sphx_glr_generated_examples_decoding_performance_tips.py` for more details. Unlike :class:`~torchcodec.decoders.AudioDecoder`, this decoder does not support resampling (``sample_rate`` parameter) or channel remixing (``num_channels`` parameter). If you need those features, use :class:`~torchcodec.decoders.AudioDecoder`. Returned samples are float samples normalized in [-1, 1]. Args: source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like object): The source of the audio: - If ``str``: a path to a local WAV file. - If ``Pathlib.path``: a path to a local WAV file. - If ``bytes`` object or ``torch.Tensor``: the raw WAV data. - If file-like object: we read audio data from the object on demand. The object must expose the methods ``read(self, size: int) -\u003e bytes`` and ``seek(self, offset: int, whence: int) -\u003e int``. Attributes: metadata (AudioStreamMetadata): Metadata of the audio stream. stream_index (int): The stream index. Always 0 for WAV files. \"\"\" def __init__( self, source: str | Path | io.RawIOBase | io.BufferedReader | bytes | torch.Tensor, ): torch._C._log_api_usage_once(\"torchcodec.decoders.WavDecoder\") self._decoder = create_wav_decoder(source) self._source = source self.stream_index = 0 metadata_json = _core.get_wav_metadata_from_decoder(self._decoder) metadata_dict = json.loads(metadata_json) self.metadata = AudioStreamMetadata( sample_rate=metadata_dict[\"sampleRate\"], num_channels=metadata_dict[\"numChannels\"], sample_format=metadata_dict[\"sampleFormat\"], duration_seconds=metadata_dict[\"durationSeconds\"], stream_index=metadata_dict[\"streamIndex\"], codec=metadata_dict[\"codec\"], bit_rate=metadata_dict[\"bitRate\"], duration_seconds_from_header=metadata_dict[\"durationSecondsFromHeader\"], begin_stream_seconds=metadata_dict[\"beginStreamSeconds\"], begin_stream_seconds_from_header=None, # WAV format lacks stream start time metadata ) [docs] def get_all_samples(self) -\u003e AudioSamples: \"\"\"Returns all the audio samples from the source. To decode samples in a specific range, use :meth:`~torchcodec.decoders.WavDecoder.get_samples_played_in_range`. Returns: AudioSamples: The samples within the file. \"\"\" return self.get_samples_played_in_range() [docs] def get_samples_played_in_range( self, start_seconds: float = 0.0, stop_seconds: float | None = None ) -\u003e AudioSamples: \"\"\"Returns audio samples in the given range. Samples are in the half open range [start_seconds, stop_seconds). To decode all the samples from beginning to end, you can call this method while leaving ``start_seconds`` and ``stop_seconds`` to their default values, or use :meth:`~torchcodec.decoders.WavDecoder.get_all_samples` as a more convenient alias. Args: start_seconds (float): Time, in seconds, of the start of the range. Default: 0. stop_seconds (float or None): Time, in seconds, of the end of the range. As a half open range, the end is excluded. Default: None, which decodes samples until the end. Returns: AudioSamples: The samples within the specified range. \"\"\" if stop_seconds is not None and not start_seconds \u003c= stop_seconds: raise ValueError( f\"Invalid start seconds: {start_seconds}. It must be less than or equal to stop seconds ({stop_seconds}).\" ) actual_start_seconds = max(0.0, start_seconds) samples, actual_pts = _core.get_wav_samples_in_range( self._decoder, actual_start_seconds, stop_seconds ) actual_pts = actual_pts.item() assert self.metadata.sample_rate is not None # make mypy happy duration_seconds = samples.shape[1] / self.metadata.sample_rate return AudioSamples( data=samples, pts_seconds=actual_pts, duration_seconds=duration_seconds, sample_rate=self.metadata.sample_rate, )",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",
@@ -1580,7 +1922,7 @@ depending on the <code class="docutils literal notranslate"><span class="pre">di
        "image": "https://pytorch.org/docs/stable/_static/img/pytorch_seo.png",
        "mainEntityOfPage": {
          "@type": "WebPage",
-         "@id": "/generated/torchcodec.samplers.clips_at_regular_timestamps.html"
+         "@id": "/_modules/torchcodec/decoders/_wav_decoder.html"
        },
        "datePublished": "2023-01-01T00:00:00Z",
        "dateModified": "2023-01-01T00:00:00Z"

@@ -15,15 +15,16 @@ Decoding audio streams with AudioDecoder
 ========================================
 
 In this example, we'll learn how to decode an audio file using the
-:class:`~torchcodec.decoders.AudioDecoder` class.
+:class:`~torchcodec.decoders.AudioDecoder` class. If you're decoding WAV files,
+also check out the :ref:`wav_decoder_section` section below.
 
-.. GENERATED FROM PYTHON SOURCE LINES 18-21
+.. GENERATED FROM PYTHON SOURCE LINES 19-22
 
 First, a bit of boilerplate: we'll download an audio file from the web and
 define an audio playing utility.  You can ignore that part and jump right
 below to :ref:`creating_decoder_audio`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 21-40
+.. GENERATED FROM PYTHON SOURCE LINES 22-41
 
 .. code-block:: Python
 
@@ -53,7 +54,7 @@ below to :ref:`creating_decoder_audio`.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 42-50
+.. GENERATED FROM PYTHON SOURCE LINES 43-51
 
 .. _creating_decoder_audio:
 
@@ -64,7 +65,7 @@ We can now create a decoder from the raw (encoded) audio bytes. You can of
 course use a local audio file and pass the path as input. You can also decode
 audio streams from videos!
 
-.. GENERATED FROM PYTHON SOURCE LINES 50-55
+.. GENERATED FROM PYTHON SOURCE LINES 51-56
 
 .. code-block:: Python
 
@@ -80,13 +81,13 @@ audio streams from videos!
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 56-59
+.. GENERATED FROM PYTHON SOURCE LINES 57-60
 
 The has not yet been decoded by the decoder, but we already have access to
 some metadata via the ``metadata`` attribute which is an
 :class:`~torchcodec.decoders.AudioStreamMetadata` object.
 
-.. GENERATED FROM PYTHON SOURCE LINES 59-61
+.. GENERATED FROM PYTHON SOURCE LINES 60-62
 
 .. code-block:: Python
 
@@ -116,7 +117,7 @@ some metadata via the ``metadata`` attribute which is an
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 62-68
+.. GENERATED FROM PYTHON SOURCE LINES 63-69
 
 Decoding samples
 ----------------
@@ -125,7 +126,7 @@ To get decoded samples, we just need to call the
 :meth:`~torchcodec.decoders.AudioDecoder.get_all_samples` method,
 which returns an :class:`~torchcodec.AudioSamples` object:
 
-.. GENERATED FROM PYTHON SOURCE LINES 68-74
+.. GENERATED FROM PYTHON SOURCE LINES 69-75
 
 .. code-block:: Python
 
@@ -164,7 +165,7 @@ which returns an :class:`~torchcodec.AudioSamples` object:
     <br />
     <br />
 
-.. GENERATED FROM PYTHON SOURCE LINES 75-89
+.. GENERATED FROM PYTHON SOURCE LINES 76-90
 
 The ``.data`` field is a tensor of shape ``(num_channels, num_samples)`` and
 of float dtype with values in [-1, 1].
@@ -181,7 +182,7 @@ If we don't need all the samples, we can use
 :meth:`~torchcodec.decoders.AudioDecoder.get_samples_played_in_range` to
 decode the samples within a custom range:
 
-.. GENERATED FROM PYTHON SOURCE LINES 89-95
+.. GENERATED FROM PYTHON SOURCE LINES 90-96
 
 .. code-block:: Python
 
@@ -220,7 +221,7 @@ decode the samples within a custom range:
     <br />
     <br />
 
-.. GENERATED FROM PYTHON SOURCE LINES 96-103
+.. GENERATED FROM PYTHON SOURCE LINES 97-104
 
 Custom sample rate
 ------------------
@@ -230,7 +231,7 @@ We can also decode the samples into a desired sample rate using the
 ouput will sound similar, but note that the number of samples greatly
 decreased:
 
-.. GENERATED FROM PYTHON SOURCE LINES 103-109
+.. GENERATED FROM PYTHON SOURCE LINES 104-111
 
 .. code-block:: Python
 
@@ -240,6 +241,7 @@ decreased:
 
     print(samples)
     play_5s(samples)
+
 
 
 
@@ -269,10 +271,26 @@ decreased:
     <br />
     <br />
 
+.. GENERATED FROM PYTHON SOURCE LINES 112-125
+
+.. _wav_decoder_section:
+
+WavDecoder for WAV files
+------------------------
+
+If your audio source is a WAV file and you don't need resampling or channel
+remixing, you can use :class:`~torchcodec.decoders.WavDecoder` for
+significantly faster decoding. It has the same
+:meth:`~torchcodec.decoders.WavDecoder.get_all_samples` and
+:meth:`~torchcodec.decoders.WavDecoder.get_samples_played_in_range` methods
+as :class:`~torchcodec.decoders.AudioDecoder`. See
+:ref:`sphx_glr_generated_examples_decoding_performance_tips.py` for more
+details.
+
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 0.948 seconds)
+   **Total running time of the script:** (0 minutes 0.935 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_audio_decoding.py:
