@@ -3,7 +3,7 @@
 #
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
-
+from __future__ import annotations
 
 import io
 import json
@@ -11,7 +11,7 @@ import numbers
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TYPE_CHECKING
 
 import torch
 from torch import device as torch_device, nn, Tensor
@@ -20,6 +20,9 @@ from torchcodec._core._decoder_utils import create_video_decoder
 from torchcodec._logging import _LG
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.transforms import DecoderTransform
+
+if TYPE_CHECKING:
+    from torchcodec.decoders._audio_decoder import AudioDecoder
 
 
 @dataclass
@@ -158,6 +161,13 @@ class VideoDecoder:
             Alternative field names "pkt_pts" and "pkt_duration" are also supported.
             Read more about this parameter in:
             :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py`
+        audio_stream_index (int, optional): Stream index of the audio stream to
+            use when :attr:`audio` is accessed. If unspecified, the
+            :term:`best stream` is used. Ignored for ``torch.Tensor`` sources.
+        audio_sample_rate (int, optional): Desired output sample rate for the
+            :attr:`audio` decoder. Defaults to the stream's native sample rate.
+        audio_num_channels (int, optional): Desired number of channels for the
+            :attr:`audio` decoder. Defaults to the stream's native channel count.
 
     Attributes:
         metadata (VideoStreamMetadata): Metadata of the video stream.
@@ -184,8 +194,22 @@ class VideoDecoder:
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
+        audio_stream_index: int | None = None,
+        audio_sample_rate: int | None = None,
+        audio_num_channels: int | None = None,
     ):
         torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
+
+        # Normalize file-like objects to bytes so the source can be stored and
+        # later passed to AudioDecoder independently (file-likes have a single
+        # shared cursor that two decoders would stomp on each other).
+        if not isinstance(source, (str, Path, bytes, Tensor)) and hasattr(
+            source, "read"
+        ):
+            if hasattr(source, "seek"):
+                source.seek(0)
+            source = source.read()
+
         allowed_seek_modes = ("exact", "approximate")
         if seek_mode not in allowed_seek_modes:
             raise ValueError(
@@ -280,6 +304,13 @@ class VideoDecoder:
         else:
             self._cpu_fallback._backend = "CPU"
 
+        self._source = source
+        self._audio_stream_index = audio_stream_index
+        self._audio_sample_rate = audio_sample_rate
+        self._audio_num_channels = audio_num_channels
+        self._audio: AudioDecoder | None = None
+        self._audio_initialized = False
+
     def __len__(self) -> int:
         return self._num_frames
 
@@ -309,6 +340,30 @@ class VideoDecoder:
                             self._cpu_fallback._video_not_supported = True
 
         return self._cpu_fallback
+
+    @property
+    def audio(self) -> AudioDecoder | None:
+        """An :class:`AudioDecoder` for the best audio stream in the same
+        source, or ``None`` if the source has no audio stream or is a
+        ``torch.Tensor`` (raw encoded bytes with no container).
+
+        The decoder is created lazily on first access and cached.
+        """
+        if not self._audio_initialized:
+            if not isinstance(self._source, Tensor):
+                try:
+                    from torchcodec.decoders._audio_decoder import AudioDecoder
+
+                    self._audio = AudioDecoder(
+                        self._source,
+                        stream_index=self._audio_stream_index,
+                        sample_rate=self._audio_sample_rate,
+                        num_channels=self._audio_num_channels,
+                    )
+                except ValueError:
+                    pass
+            self._audio_initialized = True
+        return self._audio
 
     def _getitem_int(self, key: int) -> Tensor:
         assert isinstance(key, int)
