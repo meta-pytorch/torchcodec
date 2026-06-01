@@ -170,6 +170,12 @@ function(make_torchcodec_libraries
         # https://github.com/pytorch/pytorch/blob/98e36864e640023a716e058d894ea2d20e76e5f7/torch/csrc/inductor/aoti_torch/c/shim.h#L573-L602
         target_compile_definitions(${core_library_name} PRIVATE USE_CUDA)
         set_property(TARGET ${core_library_name} PROPERTY CUDA_STANDARD 17)
+        if(WIN32)
+            # CUDA 13.2+ CCCL headers require MSVC's standard-conforming
+            # preprocessor when compiling .cu files.
+            target_compile_options(${core_library_name} PRIVATE
+                $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/Zc:preprocessor>)
+        endif()
     endif()
 
     # 2. Create libtorchcodec_custom_opsN.{ext}.
