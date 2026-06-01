@@ -11,8 +11,10 @@ below to Creating a decoder.
 import requests
 from IPython.display import Audio
 
-def play_audio(samples):
- return Audio(samples.data, rate=samples.sample_rate)
+def play_5s(samples):
+ # Play 5 seconds of the audio. Playing the entire file would take too much
+ # space in our docs (~40Mb!).
+ return Audio(samples.data[:, :5 * samples.sample_rate], rate=samples.sample_rate)
 
 # Audio source is CC0: https://opengameart.org/content/town-theme-rpg
 # Attribution: cynicmusic.com pixelsphere.org
@@ -68,7 +70,7 @@ which returns an [`AudioSamples`](../../generated/torchcodec.AudioSamples.html#t
 samples = decoder.get_all_samples()
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
 ```
 
 ```
@@ -100,7 +102,7 @@ decode the samples within a custom range:
 samples = decoder.get_samples_played_in_range(start_seconds=10, stop_seconds=70)
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
 ```
 
 ```
@@ -126,7 +128,7 @@ decoder = AudioDecoder(raw_audio_bytes, sample_rate=16_000)
 samples = decoder.get_all_samples()
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
 ```
 
 ```
@@ -140,7 +142,7 @@ AudioSamples:
  Your browser does not support the audio element.
  
 
-**Total running time of the script:** (0 minutes 1.415 seconds)
+**Total running time of the script:** (0 minutes 0.948 seconds)
 
 [`Download Jupyter notebook: audio_decoding.ipynb`](../../_downloads/f6b4925719fd3f116259f89a204c6888/audio_decoding.ipynb)
 
