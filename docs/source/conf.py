@@ -143,8 +143,10 @@ templates_path = [
 source_suffix = [".rst"]
 
 version = ".".join(torchcodec.__version__.split(".")[:2])
+# Strip CUDA suffix (e.g. "0.14.0-cu126" -> "0.14.0") for display
+release = torchcodec.__version__.split("-")[0]
 
-html_title = f"TorchCodec {torchcodec.__version__} Documentation"
+html_title = f"TorchCodec {release} Documentation"
 
 # The master toctree document.
 master_doc = "index"
