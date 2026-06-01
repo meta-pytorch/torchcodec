@@ -23,8 +23,10 @@ import requests
 from IPython.display import Audio
 
 
-def play_audio(samples):
-    return Audio(samples.data, rate=samples.sample_rate)
+def play_5s(samples):
+    # Play 5 seconds of the audio. Playing the entire file would take too much
+    # space in our docs (~40Mb!).
+    return Audio(samples.data[:, :5 * samples.sample_rate], rate=samples.sample_rate)
 
 
 # sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_audio.jpg'
@@ -68,7 +70,7 @@ print(decoder.metadata)
 samples = decoder.get_all_samples()
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
 
 # %%
 # The ``.data`` field is a tensor of shape ``(num_channels, num_samples)`` and
@@ -89,7 +91,7 @@ play_audio(samples)
 samples = decoder.get_samples_played_in_range(start_seconds=10, stop_seconds=70)
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
 
 # %%
 # Custom sample rate
@@ -104,7 +106,7 @@ decoder = AudioDecoder(raw_audio_bytes, sample_rate=16_000)
 samples = decoder.get_all_samples()
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
 
 # %%
 # .. _wav_decoder_section:
