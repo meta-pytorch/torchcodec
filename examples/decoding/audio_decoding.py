@@ -11,7 +11,8 @@ Decoding audio streams with AudioDecoder
 ========================================
 
 In this example, we'll learn how to decode an audio file using the
-:class:`~torchcodec.decoders.AudioDecoder` class.
+:class:`~torchcodec.decoders.AudioDecoder` class. If you're decoding WAV files,
+also check out the :ref:`wav_decoder_section` section below.
 """
 
 # %%
@@ -104,3 +105,18 @@ samples = decoder.get_all_samples()
 
 print(samples)
 play_audio(samples)
+
+# %%
+# .. _wav_decoder_section:
+#
+# WavDecoder for WAV files
+# ------------------------
+#
+# If your audio source is a WAV file and you don't need resampling or channel
+# remixing, you can use :class:`~torchcodec.decoders.WavDecoder` for
+# significantly faster decoding. It has the same
+# :meth:`~torchcodec.decoders.WavDecoder.get_all_samples` and
+# :meth:`~torchcodec.decoders.WavDecoder.get_samples_played_in_range` methods
+# as :class:`~torchcodec.decoders.AudioDecoder`. See
+# :ref:`sphx_glr_generated_examples_decoding_performance_tips.py` for more
+# details.
