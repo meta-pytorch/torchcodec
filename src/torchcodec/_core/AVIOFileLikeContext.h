@@ -28,14 +28,11 @@ class AVIOFileLikeContext : public AVIOContextHolder {
   explicit AVIOFileLikeContext(const py::object& fileLike, bool isForWriting);
 
   int read(uint8_t* buf, int size) override;
+  int write(const uint8_t* buf, int size) override;
   int64_t seek(int64_t offset, int whence) override;
   int64_t getSize() override;
 
  private:
-  static int readCallback(void* opaque, uint8_t* buf, int buf_size);
-  static int64_t seekCallback(void* opaque, int64_t offset, int whence);
-  static int writeCallback(void* opaque, const uint8_t* buf, int buf_size);
-
   // Note that we dynamically allocate the Python object because we need to
   // strictly control when its destructor is called. We must hold the GIL
   // when its destructor gets called, as it needs to update the reference

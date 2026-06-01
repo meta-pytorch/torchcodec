@@ -45,9 +45,7 @@ void computeColorConversionMatrix(
     float outScale,
     float outMatrix[3][4]);
 
-// Update the cached color matrix if any parameter changed.
-// Returns true if the matrix was recomputed (and needs re-uploading to GPU).
-bool maybeUpdateColorMatrix(
+void maybeUpdateColorMatrix(
     CachedColorMatrix& cachedColorMatrix,
     AVColorSpace colorspace,
     AVColorRange colorRange,
@@ -64,7 +62,6 @@ void launchNV12ToRGBKernel(
     int uvPitch,
     int rgbPitch,
     const float colorMatrix[3][4],
-    bool colorMatrixChanged,
     cudaStream_t stream);
 
 void launchP016ToRGB16Kernel(
@@ -78,7 +75,6 @@ void launchP016ToRGB16Kernel(
     int rgbPitch,
     int bitDepth,
     const float colorMatrix[3][4],
-    bool colorMatrixChanged,
     cudaStream_t stream);
 
 // Convert a YUV frame (NV12 or P016) on GPU to an interleaved RGB tensor.

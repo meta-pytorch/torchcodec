@@ -118,7 +118,7 @@ void computeColorConversionMatrix(
   }
 }
 
-bool maybeUpdateColorMatrix(
+void maybeUpdateColorMatrix(
     CachedColorMatrix& cachedColorMatrix,
     AVColorSpace colorspace,
     AVColorRange colorRange,
@@ -128,7 +128,7 @@ bool maybeUpdateColorMatrix(
       cachedColorMatrix.colorRange == colorRange &&
       cachedColorMatrix.bitDepth == bitDepth &&
       cachedColorMatrix.outScale == outScale) {
-    return false;
+    return;
   }
 
   computeColorConversionMatrix(
@@ -138,7 +138,6 @@ bool maybeUpdateColorMatrix(
   cachedColorMatrix.bitDepth = bitDepth;
   cachedColorMatrix.outScale = outScale;
   cachedColorMatrix.valid = true;
-  return true;
 }
 
 void computeRGBToYUVMatrix(
@@ -221,7 +220,7 @@ torch::stable::Tensor convertYUVFrameToRGB(
   syncStreams(
       /*runningStream=*/nvdecStream, /*waitingStream=*/stream);
 
-  bool colorMatrixChanged = maybeUpdateColorMatrix(
+  maybeUpdateColorMatrix(
       cachedColorMatrix,
       avFrame->colorspace,
       avFrame->color_range,
@@ -240,7 +239,6 @@ torch::stable::Tensor convertYUVFrameToRGB(
         validateInt64ToInt(dst.stride(0) * 2, "dst.stride(0)*2"),
         bitDepth,
         cachedColorMatrix.matrix,
-        colorMatrixChanged,
         stream);
   } else {
     launchNV12ToRGBKernel(
@@ -253,7 +251,6 @@ torch::stable::Tensor convertYUVFrameToRGB(
         avFrame->linesize[1],
         validateInt64ToInt(dst.stride(0), "dst.stride(0)"),
         cachedColorMatrix.matrix,
-        colorMatrixChanged,
         stream);
   }
 
