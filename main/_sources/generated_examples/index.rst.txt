@@ -208,6 +208,23 @@ Decoding
     </div>
 
 
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode HDR (High Dynamic Range) videos using the output_dtype parameter of the VideoDecoder class.">
+
+.. only:: html
+
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_hdr_decoding_thumb.jpg
+    :alt:
+
+  :doc:`/generated_examples/decoding/hdr_decoding`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Decoding HDR videos</div>
+    </div>
+
+
 .. thumbnail-parent-div-close
 
 .. raw:: html

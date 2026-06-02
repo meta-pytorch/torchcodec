@@ -75,6 +75,12 @@ Tips for optimizing video decoding performance
 
 [generated_examples/decoding/performance_tips.html](generated_examples/decoding/performance_tips.html)
 
+HDR Decoding
+
+How to decode HDR videos with the `output_dtype` parameter
+
+[generated_examples/decoding/hdr_decoding.html](generated_examples/decoding/hdr_decoding.html)
+
 ## Encoding
 
 Video and Audio Encoding
@@ -82,3 +88,15 @@ Video and Audio Encoding
 How encode audio and video streams
 
 [generated_examples/encoding/multi_stream_encoding.html](generated_examples/encoding/multi_stream_encoding.html)
+
+Video Encoding
+
+How to encode video frames into a video file
+
+[generated_examples/encoding/video_encoding.html](generated_examples/encoding/video_encoding.html)
+
+Audio Encoding
+
+How to encode audio samples into an audio file
+
+[generated_examples/encoding/audio_encoding.html](generated_examples/encoding/audio_encoding.html)

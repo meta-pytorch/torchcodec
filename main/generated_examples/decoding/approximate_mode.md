@@ -91,14 +91,14 @@ bench(VideoDecoder, source=long_video_path, seek_mode="approximate")
 
 ```
 Creating a VideoDecoder object with seek_mode='exact' on a short video:
-med = 6.39ms +- 0.02
+med = 6.40ms +- 0.02
 Creating a VideoDecoder object with seek_mode='approximate' on a short video:
-med = 5.71ms +- 0.01
+med = 5.72ms +- 0.02
 
 Creating a VideoDecoder object with seek_mode='exact' on a long video:
-med = 74.71ms +- 1.44
+med = 76.27ms +- 1.31
 Creating a VideoDecoder object with seek_mode='approximate' on a long video:
-med = 8.27ms +- 0.01
+med = 8.33ms +- 0.02
 ```
 
 ## Performance: frame decoding and clip sampling
@@ -132,9 +132,9 @@ bench(sample_clips, seek_mode="approximate")
 
 ```
 Sampling clips with seek_mode='exact':
-med = 199.00ms +- 27.18
+med = 195.19ms +- 28.45
 Sampling clips with seek_mode='approximate':
-med = 138.19ms +- 26.70
+med = 138.73ms +- 30.86
 ```
 
 ## Accuracy: Metadata and frame retrieval
@@ -248,7 +248,7 @@ is usually the case when doing clip sampling, consider using "approximate".
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (0 minutes 24.283 seconds)
+**Total running time of the script:** (0 minutes 24.160 seconds)
 
 [`Download Jupyter notebook: approximate_mode.ipynb`](../../_downloads/4bf13eb02a73a239a7e7af99b5c000a9/approximate_mode.ipynb)
 

@@ -66,12 +66,15 @@ output frames. Supported values are `torch.uint8` with values in
 `"auto"`. When `"auto"` is specified, the output dtype is
 determined automatically based on the video content: uint8 for SDR
 content, float32 for HDR content.
+Read more about this parameter in:
+[Decoding HDR videos](../generated_examples/decoding/hdr_decoding.html#sphx-glr-generated-examples-decoding-hdr-decoding-py)
 
 Note
 
-On `"auto"`: since detecting whether a video is SDR or HDR is
-difficult, the heuristic is subject to change and improve across
-versions.
+The features associated with this parameter are in beta stage
+and behavior may change in future versions. Specifically,
+detecting whether a video is SDR or HDR is difficult, so the
+"auto" heuristic is subject to change and improve.
 - **custom_frame_mappings** ([*str*](https://docs.python.org/3/library/stdtypes.html#str)*,*[*bytes*](https://docs.python.org/3/library/stdtypes.html#bytes)*, or**file-like object**,**optional*) - 
 
 Mapping of frames to their metadata, typically generated via ffprobe.
@@ -133,6 +136,11 @@ Decoding with custom frame mappings
 [Streaming data through file-like support](../generated_examples/decoding/file_like.html)
 
 Streaming data through file-like support
+![](../_images/sphx_glr_hdr_decoding_thumb.jpg)
+
+[Decoding HDR videos](../generated_examples/decoding/hdr_decoding.html)
+
+Decoding HDR videos
 ![](../_images/sphx_glr_parallel_decoding_thumb.jpg)
 
 [Parallel video decoding: multi-processing and multi-threading](../generated_examples/decoding/parallel_decoding.html)
