@@ -68,8 +68,7 @@ class AudioStream:
 class Encoder:
     """A multi-stream encoder for encoding video and/or audio streams.
 
-    Unlike :class:`VideoEncoder` and :class:`AudioEncoder` which encode a
-    single stream in one shot, ``Encoder`` supports multiple streams and
+    ``Encoder`` supports multiple streams and
     incremental (streaming) encoding. Frames and samples can be added
     progressively, which is useful when data is generated on-the-fly or when
     encoding both audio and video into the same container.
