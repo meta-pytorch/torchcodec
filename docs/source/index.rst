@@ -91,6 +91,13 @@ Decoding
 
         Tips for optimizing video decoding performance
 
+     .. grid-item-card:: :octicon:`file-code;1em`
+        HDR Decoding
+        :link: generated_examples/decoding/hdr_decoding.html
+        :link-type: url
+
+        How to decode HDR videos with the ``output_dtype`` parameter
+
 
 Encoding
 ^^^^^^^^
@@ -103,6 +110,20 @@ Encoding
         :link-type: url
 
         How encode audio and video streams
+
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Video Encoding
+        :link: generated_examples/encoding/video_encoding.html
+        :link-type: url
+
+        How to encode video frames into a video file
+
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Audio Encoding
+        :link: generated_examples/encoding/audio_encoding.html
+        :link-type: url
+
+        How to encode audio samples into an audio file
 
 .. toctree::
    :maxdepth: 1
