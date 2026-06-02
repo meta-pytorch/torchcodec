@@ -34,16 +34,11 @@ namespace facebook::torchcodec {
 //   from which we can pull the exact number of samples that we need. Note that
 //   this involves at least 2 additional copies.
 //
-// To be clear, the FIFO is only used if BOTH the following conditions are met:
-//  - sample rate conversion is needed (inSampleRate != outSampleRate)
-//  - the encoder expects a specific number of samples per AVFrame (fixed frame size)
-//    This is not the case for all encoders, e.g. WAV doesn't care about frame size.
-//
-// Also, the FIFO is either:
-// - used for every single frame during the encoding process, or
-// - not used at all.
-// There is no scenario where a given audio stream would sometimes use a
-// FIFO, sometimes not.
+// Unlike the old single-stream AudioEncoder where the FIFO was only used when
+// sample rate conversion was needed with a fixed-frame-size encoder, the
+// MultiStreamEncoder always creates a FIFO. This is because addSamples() can
+// be called multiple times with arbitrary chunk sizes, so we always need to
+// buffer and re-chunk samples into frame_size-sized batches.
 //
 /* clang-format on */
 
