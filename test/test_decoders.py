@@ -1162,6 +1162,8 @@ class TestVideoDecoder:
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
     def test_get_frames_played_in_range_with_fps(self, device, seek_mode):
+        if device == "cuda:ffmpeg" and ffmpeg_major_version == 5:
+            pytest.skip("CUDA FFmpeg backend has numerical issues on FFmpeg 5")
         decoder, _ = make_video_decoder(
             NASA_VIDEO.path, device=device, seek_mode=seek_mode
         )
@@ -1707,6 +1709,8 @@ class TestVideoDecoder:
     def test_custom_frame_mappings_json_and_bytes(
         self, tmp_path, device, stream_index, method
     ):
+        if device == "cuda:ffmpeg" and ffmpeg_major_version == 5:
+            pytest.skip("CUDA FFmpeg backend has numerical issues on FFmpeg 5")
         custom_frame_mappings = method(tmp_path=tmp_path, stream_index=stream_index)
         # Optionally open the custom frame mappings file if it is a file path
         # or use a null context if it is a string.

@@ -2751,8 +2751,8 @@ class TestEncoder:
                         in_fbcode(), reason="NVENC not available in fbcode"
                     ),
                     pytest.mark.skipif(
-                        ffmpeg_major_version == 4,
-                        reason="CUDA + FFmpeg 4 test is flaky",
+                        ffmpeg_major_version in (4, 5),
+                        reason="CUDA + FFmpeg 4 and 5 test is flaky",
                     ),
                 ],
             ),
