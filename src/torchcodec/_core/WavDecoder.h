@@ -62,7 +62,7 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
   void convertSamplesToFloat(
       const std::vector<uint8_t>& bufferData,
       int64_t samplesInBuffer,
-      float* outputPtr) const;
+      float* __restrict__ outputPtr) const;
 
   std::unique_ptr<AVIOContextHolder> avio_;
   WavHeader header_;

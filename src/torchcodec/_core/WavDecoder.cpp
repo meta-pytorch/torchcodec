@@ -303,7 +303,7 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
 void WavDecoder::convertSamplesToFloat(
     const std::vector<uint8_t>& bufferData,
     int64_t samplesInBuffer,
-    float* outputPtr) const {
+    float* __restrict__ outputPtr) const {
   int64_t totalSamples = samplesInBuffer * header_.numChannels;
 
   // Normalize PCM samples to [-1.0, 1.0] range. The convention across
@@ -364,7 +364,8 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
     double startSeconds,
     std::optional<double> stopSecondsOptional) {
   // Calculate the range of samples to decode.
-  // Negative startSeconds is resolved to 0 in the Python layer.
+  // Note: negative startSeconds should already be resolved in the Python layer
+  STD_TORCH_CHECK(startSeconds >= 0, "startSeconds must be non-negative");
   STD_TORCH_CHECK(
       startSeconds <= INT64_MAX / header_.sampleRate,
       "startSample calculation would overflow: startSeconds * sampleRate");
