@@ -26,12 +26,12 @@ defaults:
 jobs:
 
   generate-matrix:
-    uses: pytorch/test-infra/.github/workflows/generate_binary_build_matrix.yml@main
+    uses: pytorch/test-infra/.github/workflows/generate_binary_build_matrix.yml@release/2.12
     with:
       package-type: wheel
       os: windows
       test-infra-repository: pytorch/test-infra
-      test-infra-ref: main
+      test-infra-ref: release/2.12
       with-cpu: disable
       with-xpu: disable
       with-rocm: disable
@@ -44,12 +44,12 @@ jobs:
     strategy:
       fail-fast: false
     name: Build and Upload wheel
-    uses: pytorch/test-infra/.github/workflows/build_wheels_windows.yml@main
+    uses: pytorch/test-infra/.github/workflows/build_wheels_windows.yml@release/2.12
     with:
       repository: meta-pytorch/torchcodec
       ref: ""
       test-infra-repository: pytorch/test-infra
-      test-infra-ref: main
+      test-infra-ref: release/2.12
       build-matrix: ${{ needs.generate-matrix.outputs.matrix }}
       pre-script: packaging/pre_build_script.sh
       # post-script: packaging/post_build_script.sh  TODO: consider enabling post-build checks for Windows
@@ -73,12 +73,12 @@ jobs:
           # PR.
           # For the actual release we should add that label and change this to
           # include more python versions.
-        python-version: ['3.10']
-        cuda-version: ['12.6', '13.0']
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+        cuda-version: ['12.6', '13.0', '13.2']
         # TODO: FFmpeg 5 on Windows segfaults in avcodec_open2() when passing
         # bad parameters.
         # See https://github.com/pytorch/torchcodec/pull/806
-        ffmpeg-version-for-tests: ['4', '6', '7', '8']
+        ffmpeg-version-for-tests: ['4', '5', '6', '7', '8']
     needs: build
     steps:
       - name: Setup env vars
@@ -92,7 +92,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Update NVIDIA driver
-        uses: pytorch/test-infra/.github/actions/setup-nvidia-windows@main
+        uses: pytorch/test-infra/.github/actions/setup-nvidia-windows@release/2.12
 
       - name: Remove src/ folder
         run: bash packaging/remove_src.sh
