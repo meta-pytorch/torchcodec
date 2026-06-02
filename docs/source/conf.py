@@ -79,6 +79,7 @@ class CustomGalleryExampleSortKey:
                 "performance_tips.py",
                 "custom_frame_mappings.py",
                 "transforms.py",
+                "hdr_decoding.py",
             ]
         else:
             assert "examples/encoding" in self.src_dir

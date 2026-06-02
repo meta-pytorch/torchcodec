@@ -131,11 +131,14 @@ class VideoDecoder:
             ``"auto"``. When ``"auto"`` is specified, the output dtype is
             determined automatically based on the video content: uint8 for SDR
             content, float32 for HDR content.
+            Read more about this parameter in:
+            :ref:`sphx_glr_generated_examples_decoding_hdr_decoding.py`
 
             .. note::
-                On ``"auto"``: since detecting whether a video is SDR or HDR is
-                difficult, the heuristic is subject to change and improve across
-                versions.
+                The features associated with this parameter are in beta stage
+                and behavior may change in future versions. Specifically,
+                detecting whether a video is SDR or HDR is difficult, so the
+                "auto" heuristic is subject to change and improve.
 
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
