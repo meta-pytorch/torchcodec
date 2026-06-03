@@ -5,10 +5,15 @@
         "url": "https://meta-pytorch.org/torchcodec/main/"
     },
     {
+        "name": "0.14 (stable)",
+        "version": "0.14",
+        "url": "https://meta-pytorch.org/torchcodec/0.14/",
+        "preferred": true
+    },
+    {
         "name": "0.13 (stable)",
         "version": "0.13",
-        "url": "https://meta-pytorch.org/torchcodec/0.13/",
-        "preferred": true
+        "url": "https://meta-pytorch.org/torchcodec/0.13/"
     },
     {
         "name": "0.12",
