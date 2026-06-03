@@ -155,6 +155,23 @@ generated test video:
 ffmpeg -hwaccel cuda -hwaccel_output_format cuda -f lavfi -i testsrc2=duration=1 -f null -
 ```
 
+### XPU support
+
+Intel GPUs (XPU) support requires a stand-alone plugin for TorchCodec:
+
+```bash
+pip install torchcodec-xpu --extra-index-url=https://download.pytorch.org/whl/xpu
+```
+
+Upon installation plugin needs to be imported in the script:
+
+```python
+import torchcodec_xpu
+```
+
+Check plugin development repository https://github.com/intel/torchlib-xpu for support on
+XPU devices.
+
 ### CPU-only installation
 
 To install CPU-only wheels explicitly (e.g. on Linux where CUDA wheels are the
