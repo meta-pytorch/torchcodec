@@ -1,0 +1,11 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.encoders
+
+
+VideoStream
+===========
+
+.. autoclass:: VideoStream
+    :members:
+    :special-members: __getitem__
