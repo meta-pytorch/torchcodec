@@ -7,12 +7,6 @@ from torch import Tensor
 from torchcodec import _core
 
 
-# TODO MultiStreamEncoder: the stream_index values here are per media-type,
-# while everywhere else in the code base (and particularly in the public decoder
-# APIs) they are absolute across all media types. That'll quickly becomes
-# confusing, and we should definitely not expose this one as-is. We should either:
-# - keep it private but rename it to something that's not stream_index
-# - make it absolute per container, if we ever want to expose it.
 class VideoStream:
     """A video stream within an :class:`Encoder`.
 
@@ -20,9 +14,11 @@ class VideoStream:
     video frames into this stream.
     """
 
-    def __init__(self, encoder_tensor: Tensor, stream_index: int):
+    def __init__(self, encoder_tensor: Tensor, stream_identifier: int):
         self._encoder_tensor = encoder_tensor
-        self._stream_index = stream_index
+        # This is a per-media-type index, not absolute across all media types,
+        # hence why we don't call this stream_index
+        self._stream_identifier = stream_identifier
 
     def add_frames(self, frames: Tensor) -> None:
         """Add video frames to this stream.
@@ -36,7 +32,7 @@ class VideoStream:
                 :meth:`Encoder.add_video`.
         """
         _core.streaming_encoder_add_frames(
-            self._encoder_tensor, frames, self._stream_index
+            self._encoder_tensor, frames, self._stream_identifier
         )
 
 
@@ -47,9 +43,11 @@ class AudioStream:
     audio samples into this stream.
     """
 
-    def __init__(self, encoder_tensor: Tensor, stream_index: int):
+    def __init__(self, encoder_tensor: Tensor, stream_identifier: int):
         self._encoder_tensor = encoder_tensor
-        self._stream_index = stream_index
+        # This is a per-media-type index, not absolute across all media types,
+        # hence why we don't call this stream_index
+        self._stream_identifier = stream_identifier
 
     def add_samples(self, samples: Tensor) -> None:
         """Add audio samples to this stream.
@@ -61,7 +59,7 @@ class AudioStream:
                 match the ``num_channels`` passed to :meth:`Encoder.add_audio`.
         """
         _core.streaming_encoder_add_samples(
-            self._encoder_tensor, samples, self._stream_index
+            self._encoder_tensor, samples, self._stream_identifier
         )
 
 
@@ -166,7 +164,7 @@ class Encoder:
             device = torch.get_default_device()
         device = str(device)
         preset = str(preset) if isinstance(preset, int) else preset
-        stream_index = _core.streaming_encoder_add_video_stream(
+        stream_identifier = _core.streaming_encoder_add_video_stream(
             self._encoder_tensor,
             height=height,
             width=width,
@@ -180,7 +178,7 @@ class Encoder:
                 str(x) for k, v in (extra_options or {}).items() for x in (k, v)
             ],
         )
-        return VideoStream(self._encoder_tensor, stream_index)
+        return VideoStream(self._encoder_tensor, stream_identifier)
 
     def add_audio(
         self,
@@ -211,7 +209,7 @@ class Encoder:
             An audio stream object. Use its :meth:`~AudioStream.add_samples`
             method to feed samples into the stream.
         """
-        stream_index = _core.streaming_encoder_add_audio_stream(
+        stream_identifier = _core.streaming_encoder_add_audio_stream(
             self._encoder_tensor,
             sample_rate=sample_rate,
             num_channels=num_channels,
@@ -219,7 +217,7 @@ class Encoder:
             output_num_channels=out_num_channels,
             output_sample_rate=out_sample_rate,
         )
-        return AudioStream(self._encoder_tensor, stream_index)
+        return AudioStream(self._encoder_tensor, stream_identifier)
 
     def open_file(self, dest: str | Path) -> "Encoder":
         """Open a file for writing the encoded output.
