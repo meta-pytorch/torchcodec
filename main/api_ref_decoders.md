@@ -6,6 +6,7 @@ For an audio decoder tutorial, see: [Decoding audio streams with AudioDecoder](g
 | [`VideoDecoder`](generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder) | A single-stream video decoder. |
 | --- | --- |
 | [`AudioDecoder`](generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) | A single-stream audio decoder. |
+| [`WavDecoder`](generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder) | A fast decoder for WAV audio files. |
 
 | [`VideoStreamMetadata`](generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata) | Metadata of a single video stream. |
 | --- | --- |

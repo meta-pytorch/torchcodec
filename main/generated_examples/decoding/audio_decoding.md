@@ -1,7 +1,8 @@
 # Decoding audio streams with AudioDecoder
 
 In this example, we'll learn how to decode an audio file using the
-[`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) class.
+[`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder) class. If you're decoding WAV files,
+also check out the WavDecoder for WAV files section below.
 
 First, a bit of boilerplate: we'll download an audio file from the web and
 define an audio playing utility. You can ignore that part and jump right
@@ -11,8 +12,10 @@ below to Creating a decoder.
 import requests
 from IPython.display import Audio
 
-def play_audio(samples):
- return Audio(samples.data, rate=samples.sample_rate)
+def play_5s(samples):
+ # Play 5 seconds of the audio. Playing the entire file would take too much
+ # space in our docs (~40Mb!).
+ return Audio(samples.data[:, :5 * samples.sample_rate], rate=samples.sample_rate)
 
 # Audio source is CC0: https://opengameart.org/content/town-theme-rpg
 # Attribution: cynicmusic.com pixelsphere.org
@@ -68,7 +71,7 @@ which returns an [`AudioSamples`](../../generated/torchcodec.AudioSamples.html#t
 samples = decoder.get_all_samples()
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
 ```
 
 ```
@@ -100,7 +103,7 @@ decode the samples within a custom range:
 samples = decoder.get_samples_played_in_range(start_seconds=10, stop_seconds=70)
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
 ```
 
 ```
@@ -126,7 +129,7 @@ decoder = AudioDecoder(raw_audio_bytes, sample_rate=16_000)
 samples = decoder.get_all_samples()
 
 print(samples)
-play_audio(samples)
+play_5s(samples)
 ```
 
 ```
@@ -140,7 +143,18 @@ AudioSamples:
  Your browser does not support the audio element.
  
 
-**Total running time of the script:** (0 minutes 1.336 seconds)
+## WavDecoder for WAV files
+
+If your audio source is a WAV file and you don't need resampling or channel
+remixing, you can use [`WavDecoder`](../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder) for
+significantly faster decoding. It has the same
+[`get_all_samples()`](../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder.get_all_samples) and
+[`get_samples_played_in_range()`](../../generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder.get_samples_played_in_range) methods
+as [`AudioDecoder`](../../generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder). See
+[TorchCodec Performance Tips and Best Practices](performance_tips.html#sphx-glr-generated-examples-decoding-performance-tips-py) for more
+details.
+
+**Total running time of the script:** (0 minutes 0.950 seconds)
 
 [`Download Jupyter notebook: audio_decoding.ipynb`](../../_downloads/f6b4925719fd3f116259f89a204c6888/audio_decoding.ipynb)
 

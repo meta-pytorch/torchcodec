@@ -7,6 +7,12 @@ A single-stream audio decoder.
 This can be used to decode audio from pure audio files (e.g. mp3, wav,
 etc.), or from videos that contain audio streams (e.g. mp4 videos).
 
+Tip
+
+If you are decoding WAV files, consider using
+[`WavDecoder`](torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder) instead for significantly faster
+decoding.
+
 Returned samples are float samples normalized in [-1, 1]
 
 Parameters:
@@ -82,6 +88,11 @@ Decoding audio streams with AudioDecoder
 [Streaming data through file-like support](../generated_examples/decoding/file_like.html)
 
 Streaming data through file-like support
+![](../_images/sphx_glr_performance_tips_thumb.jpg)
+
+[TorchCodec Performance Tips and Best Practices](../generated_examples/decoding/performance_tips.html)
+
+TorchCodec Performance Tips and Best Practices
 ![](../_images/sphx_glr_audio_encoding_thumb.jpg)
 
 [Encoding audio samples with AudioEncoder](../generated_examples/encoding/audio_encoding.html)

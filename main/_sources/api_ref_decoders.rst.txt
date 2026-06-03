@@ -18,6 +18,7 @@ For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_decoding_a
 
     VideoDecoder
     AudioDecoder
+    WavDecoder
 
 .. autosummary::
     :toctree: generated/

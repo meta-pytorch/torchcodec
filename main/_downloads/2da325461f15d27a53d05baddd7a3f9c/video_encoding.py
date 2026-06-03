@@ -268,7 +268,9 @@ vs = encoder.add_video(
 with encoder.open_file_like(buf, format="mp4"):
     vs.add_frames(frames)
 
-play_video(buf.getvalue())
+# play_video is disabled because crf=0 creates a 50+ Mb video that we don't want
+# to check into our docs
+# play_video(buf.getvalue())
 
 # %%
 

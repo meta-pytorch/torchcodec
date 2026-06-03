@@ -33,7 +33,7 @@ How to sample video clips
 
 data*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 
-The frames data (`torch.Tensor` of uint8).
+The frames data (`torch.Tensor` of uint8 in [0, 255] or float in [0, 1]).
 
 duration_seconds*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 

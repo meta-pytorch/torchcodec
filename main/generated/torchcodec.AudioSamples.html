@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>AudioSamples &#8212; TorchCodec 0.13.0.dev20260521+cu126 Documentation</title>
+    <title>AudioSamples &#8212; TorchCodec 0.14.0.dev20260603+cu126 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/documentation_options.js?v=069dcc69"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -53,7 +53,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.13';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.14';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.AudioSamples.html" />
@@ -78,7 +78,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.13">
+<meta name="llm:version" content="0.14">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="api">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -184,7 +184,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.13');
+  document.documentElement.setAttribute('data-version', '0.14');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -1001,6 +1001,7 @@ document.write(`
 <li class="toctree-l1 has-children"><a class="reference internal" href="../api_ref_decoders.html">torchcodec.decoders</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoDecoder.html">VideoDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioDecoder.html">AudioDecoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.WavDecoder.html">WavDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoStreamMetadata.html">VideoStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioStreamMetadata.html">AudioStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.set_cuda_backend.html">set_cuda_backend</a></li>
@@ -1149,7 +1150,7 @@ document.write(`
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">torchcodec.</span></span><span class="sig-name descname"><span class="pre">AudioSamples</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.12)"><span class="pre">Tensor</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">pts_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">duration_seconds</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#float" title="(in Python v3.14)"><span class="pre">float</span></a></span></em>, <em class="sig-param"><span class="n"><span class="pre">sample_rate</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/torchcodec/_frame.html#AudioSamples"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.AudioSamples" title="Link to this definition">#</a></dt>
 <dd><p>Audio samples with associated metadata.</p>
 <p>Examples using <code class="docutils literal notranslate"><span class="pre">AudioSamples</span></code>:</p>
-<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode an audio file using the AudioDecoder class."><img alt="" src="../_images/sphx_glr_audio_decoding_thumb.jpg" />
+<div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode an audio file using the AudioDecoder class. If you&#x27;re decoding WAV files, also check out the wav_decoder_section section below."><img alt="" src="../_images/sphx_glr_audio_decoding_thumb.jpg" />
 <p><a class="reference internal" href="../generated_examples/decoding/audio_decoding.html"><span class="doc">Decoding audio streams with AudioDecoder</span></a></p>
   <div class="sphx-glr-thumbnail-title">Decoding audio streams with AudioDecoder</div>
 </div><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode audio samples to a file or to raw bytes using the AudioEncoder class."><img alt="" src="../_images/sphx_glr_audio_encoding_thumb.jpg" />

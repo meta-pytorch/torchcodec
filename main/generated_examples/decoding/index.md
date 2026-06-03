@@ -50,3 +50,8 @@ Decoding with custom frame mappings
 [Decoder Transforms: Applying transforms during decoding](transforms.html)
 
 Decoder Transforms: Applying transforms during decoding
+![](../../_images/sphx_glr_hdr_decoding_thumb.jpg)
+
+[Decoding HDR videos](hdr_decoding.html)
+
+Decoding HDR videos

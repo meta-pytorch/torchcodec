@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>torchcodec.decoders &#8212; TorchCodec 0.13.0.dev20260521+cu126 Documentation</title>
+    <title>torchcodec.decoders &#8212; TorchCodec 0.14.0.dev20260603+cu126 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="_static/documentation_options.js?v=069dcc69"></script>
     <script src="_static/doctools.js?v=888ff710"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/sg-tags.js?v=d80f6fa4"></script>
@@ -53,7 +53,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.13';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.14';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/api_ref_decoders.html" />
@@ -78,7 +78,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.13">
+<meta name="llm:version" content="0.14">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="documentation">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -184,7 +184,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.13');
+  document.documentElement.setAttribute('data-version', '0.14');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -1001,6 +1001,7 @@ document.write(`
 <li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">torchcodec.decoders</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.VideoDecoder.html">VideoDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.AudioDecoder.html">AudioDecoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.WavDecoder.html">WavDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.VideoStreamMetadata.html">VideoStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.AudioStreamMetadata.html">AudioStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.set_cuda_backend.html">set_cuda_backend</a></li>
@@ -1144,6 +1145,9 @@ For an audio decoder tutorial, see: <a class="reference internal" href="generate
 </tr>
 <tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a></p></td>
 <td><p>A single-stream audio decoder.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder" title="torchcodec.decoders.WavDecoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">WavDecoder</span></code></a></p></td>
+<td><p>A fast decoder for WAV audio files.</p></td>
 </tr>
 </tbody>
 </table>
@@ -1531,7 +1535,7 @@ For an audio decoder tutorial, see: <a class="reference internal" href="generate
        "headline": "torchcodec.decoders",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/api_ref_decoders.html",
-       "articleBody": "torchcodec.decoders# For a video decoder tutorial, see: Decoding a video with VideoDecoder. For an audio decoder tutorial, see: Decoding audio streams with AudioDecoder. VideoDecoder A single-stream video decoder. AudioDecoder A single-stream audio decoder. VideoStreamMetadata Metadata of a single video stream. AudioStreamMetadata Metadata of a single audio stream. CUDA decoding utils# set_cuda_backend Context Manager to set the CUDA backend for VideoDecoder. set_nvdec_cache_capacity Set the maximum number of NVDEC decoders that can be cached (per GPU). get_nvdec_cache_capacity Get the capacity of the per-device NVDEC decoder cache. CpuFallbackStatus Information about CPU fallback status.",
+       "articleBody": "torchcodec.decoders# For a video decoder tutorial, see: Decoding a video with VideoDecoder. For an audio decoder tutorial, see: Decoding audio streams with AudioDecoder. VideoDecoder A single-stream video decoder. AudioDecoder A single-stream audio decoder. WavDecoder A fast decoder for WAV audio files. VideoStreamMetadata Metadata of a single video stream. AudioStreamMetadata Metadata of a single audio stream. CUDA decoding utils# set_cuda_backend Context Manager to set the CUDA backend for VideoDecoder. set_nvdec_cache_capacity Set the maximum number of NVDEC decoders that can be cached (per GPU). get_nvdec_cache_capacity Get the capacity of the per-device NVDEC decoder cache. CpuFallbackStatus Information about CPU fallback status.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

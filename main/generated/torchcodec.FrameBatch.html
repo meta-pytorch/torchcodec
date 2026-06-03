@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>FrameBatch &#8212; TorchCodec 0.13.0.dev20260521+cu126 Documentation</title>
+    <title>FrameBatch &#8212; TorchCodec 0.14.0.dev20260603+cu126 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/documentation_options.js?v=069dcc69"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -53,7 +53,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.13';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.14';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.FrameBatch.html" />
@@ -78,7 +78,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.13">
+<meta name="llm:version" content="0.14">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="api">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -184,7 +184,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.13');
+  document.documentElement.setAttribute('data-version', '0.14');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -1001,6 +1001,7 @@ document.write(`
 <li class="toctree-l1 has-children"><a class="reference internal" href="../api_ref_decoders.html">torchcodec.decoders</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoDecoder.html">VideoDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioDecoder.html">AudioDecoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.WavDecoder.html">WavDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.VideoStreamMetadata.html">VideoStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.AudioStreamMetadata.html">AudioStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="torchcodec.decoders.set_cuda_backend.html">set_cuda_backend</a></li>
@@ -1169,7 +1170,7 @@ on CPU, even if <code class="docutils literal notranslate"><span class="pre">dat
 </div></div><dl class="py attribute">
 <dt class="sig sig-object py" id="torchcodec.FrameBatch.data">
 <span class="sig-name descname"><span class="pre">data</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference external" href="https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor" title="(in PyTorch v2.12)"><span class="pre">Tensor</span></a></em><a class="headerlink" href="#torchcodec.FrameBatch.data" title="Link to this definition">#</a></dt>
-<dd><p>The frames data (<code class="docutils literal notranslate"><span class="pre">torch.Tensor</span></code> of uint8).</p>
+<dd><p>The frames data (<code class="docutils literal notranslate"><span class="pre">torch.Tensor</span></code> of uint8 in [0, 255] or float in [0, 1]).</p>
 </dd></dl>
 
 <dl class="py attribute">
@@ -1536,7 +1537,7 @@ on CPU, even if <code class="docutils literal notranslate"><span class="pre">dat
        "headline": "FrameBatch",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.FrameBatch.html",
-       "articleBody": "FrameBatch# class torchcodec.FrameBatch(data: Tensor, pts_seconds: Tensor, duration_seconds: Tensor)[source]# Multiple video frames with associated metadata. The data tensor is typically 4D for sequences of frames (NHWC or NCHW), or 5D for sequences of clips, as returned by the samplers. When data is 4D (resp. 5D) the pts_seconds and duration_seconds tensors are 1D (resp. 2D). Note The pts_seconds and duration_seconds Tensors are always returned on CPU, even if data is on GPU. Examples using FrameBatch: Decoding a video with VideoDecoder Decoding a video with VideoDecoder Parallel video decoding: multi-processing and multi-threading Parallel video decoding: multi-processing and multi-threading How to sample video clips How to sample video clips data: Tensor# The frames data (torch.Tensor of uint8). duration_seconds: Tensor# The duration of the frame, in seconds (torch.Tensor of floats). pts_seconds: Tensor# The pts of the frame, in seconds (torch.Tensor of floats).",
+       "articleBody": "FrameBatch# class torchcodec.FrameBatch(data: Tensor, pts_seconds: Tensor, duration_seconds: Tensor)[source]# Multiple video frames with associated metadata. The data tensor is typically 4D for sequences of frames (NHWC or NCHW), or 5D for sequences of clips, as returned by the samplers. When data is 4D (resp. 5D) the pts_seconds and duration_seconds tensors are 1D (resp. 2D). Note The pts_seconds and duration_seconds Tensors are always returned on CPU, even if data is on GPU. Examples using FrameBatch: Decoding a video with VideoDecoder Decoding a video with VideoDecoder Parallel video decoding: multi-processing and multi-threading Parallel video decoding: multi-processing and multi-threading How to sample video clips How to sample video clips data: Tensor# The frames data (torch.Tensor of uint8 in [0, 255] or float in [0, 1]). duration_seconds: Tensor# The duration of the frame, in seconds (torch.Tensor of floats). pts_seconds: Tensor# The pts of the frame, in seconds (torch.Tensor of floats).",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

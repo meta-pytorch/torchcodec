@@ -36,7 +36,7 @@ Decoding
 
 .. raw:: html
 
-    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode an audio file using the AudioDecoder class.">
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode an audio file using the AudioDecoder class. If you&#x27;re decoding WAV files, also check out the wav_decoder_section section below.">
 
 .. only:: html
 
@@ -187,6 +187,23 @@ Decoding
     </div>
 
 
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode HDR (High Dynamic Range) videos using the output_dtype parameter of the VideoDecoder class.">
+
+.. only:: html
+
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_hdr_decoding_thumb.jpg
+    :alt:
+
+  :doc:`/generated_examples/decoding/hdr_decoding`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Decoding HDR videos</div>
+    </div>
+
+
 .. thumbnail-parent-div-close
 
 .. raw:: html
@@ -207,4 +224,5 @@ Decoding
    /generated_examples/decoding/performance_tips
    /generated_examples/decoding/custom_frame_mappings
    /generated_examples/decoding/transforms
+   /generated_examples/decoding/hdr_decoding
 
