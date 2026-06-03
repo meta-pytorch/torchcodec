@@ -11,7 +11,7 @@
         "preferred": true
     },
     {
-        "name": "0.13 (stable)",
+        "name": "0.13",
         "version": "0.13",
         "url": "https://meta-pytorch.org/torchcodec/0.13/"
     },
