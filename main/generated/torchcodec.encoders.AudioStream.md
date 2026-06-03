@@ -1,6 +1,6 @@
 # AudioStream
 
-*class*torchcodec.encoders.AudioStream(*encoder_tensor: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *stream_index: [int](https://docs.python.org/3/library/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#AudioStream)
+*class*torchcodec.encoders.AudioStream(*encoder_tensor: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*, *stream_identifier: [int](https://docs.python.org/3/library/functions.html#int)*)[[source]](../_modules/torchcodec/encoders/_multi_stream_encoder.html#AudioStream)
 
 An audio stream within an [`Encoder`](torchcodec.encoders.Encoder.html#torchcodec.encoders.Encoder).
 
