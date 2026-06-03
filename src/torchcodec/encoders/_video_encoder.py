@@ -1,10 +1,11 @@
+import io
 from pathlib import Path
 from typing import Any
 
 import torch
 from torch import Tensor
 
-from torchcodec import _core
+from torchcodec.encoders._multi_stream_encoder import Encoder
 
 
 class VideoEncoder:
@@ -41,6 +42,28 @@ class VideoEncoder:
 
         self._frames = frames
         self._frame_rate = frame_rate
+
+    def _get_add_video_kwargs(
+        self,
+        *,
+        codec: str | None = None,
+        pixel_format: str | None = None,
+        crf: int | float | None = None,
+        preset: str | int | None = None,
+        extra_options: dict[str, Any] | None = None,
+    ) -> dict:
+        preset = str(preset) if isinstance(preset, int) else preset
+        return dict(
+            height=self._frames.shape[2],
+            width=self._frames.shape[3],
+            frame_rate=self._frame_rate,
+            device=str(self._frames.device),
+            codec=codec,
+            pixel_format=pixel_format,
+            crf=crf,
+            preset=preset,
+            extra_options=extra_options,
+        )
 
     def to_file(
         self,
@@ -79,19 +102,18 @@ class VideoEncoder:
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 See :ref:`extra_options` for details.
         """
-        preset = str(preset) if isinstance(preset, int) else preset
-        _core.encode_video_to_file(
-            frames=self._frames,
-            frame_rate=self._frame_rate,
-            filename=str(dest),
-            codec=codec,
-            pixel_format=pixel_format,
-            crf=crf,
-            preset=preset,
-            extra_options=[
-                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
-            ],
+        encoder = Encoder()
+        video = encoder.add_video(
+            **self._get_add_video_kwargs(
+                codec=codec,
+                pixel_format=pixel_format,
+                crf=crf,
+                preset=preset,
+                extra_options=extra_options,
+            )
         )
+        with encoder.open_file(dest):
+            video.add_frames(self._frames)
 
     def to_tensor(
         self,
@@ -132,19 +154,20 @@ class VideoEncoder:
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor on CPU regardless of the device of the input frames.
         """
-        preset_value = str(preset) if isinstance(preset, int) else preset
-        return _core.encode_video_to_tensor(
-            frames=self._frames,
-            frame_rate=self._frame_rate,
-            format=format,
-            codec=codec,
-            pixel_format=pixel_format,
-            crf=crf,
-            preset=preset_value,
-            extra_options=[
-                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
-            ],
+        buf = io.BytesIO()
+        encoder = Encoder()
+        video = encoder.add_video(
+            **self._get_add_video_kwargs(
+                codec=codec,
+                pixel_format=pixel_format,
+                crf=crf,
+                preset=preset,
+                extra_options=extra_options,
+            )
         )
+        with encoder.open_file_like(buf, format=format):
+            video.add_frames(self._frames)
+        return torch.frombuffer(buf.getvalue(), dtype=torch.uint8).clone()
 
     def to_file_like(
         self,
@@ -188,17 +211,15 @@ class VideoEncoder:
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 See :ref:`extra_options` for details.
         """
-        preset = str(preset) if isinstance(preset, int) else preset
-        _core.encode_video_to_file_like(
-            frames=self._frames,
-            frame_rate=self._frame_rate,
-            format=format,
-            file_like=file_like,
-            codec=codec,
-            pixel_format=pixel_format,
-            crf=crf,
-            preset=preset,
-            extra_options=[
-                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
-            ],
+        encoder = Encoder()
+        video = encoder.add_video(
+            **self._get_add_video_kwargs(
+                codec=codec,
+                pixel_format=pixel_format,
+                crf=crf,
+                preset=preset,
+                extra_options=extra_options,
+            )
         )
+        with encoder.open_file_like(file_like, format=format):
+            video.add_frames(self._frames)

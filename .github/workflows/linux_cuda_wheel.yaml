@@ -295,7 +295,8 @@ jobs:
 
     needs: build-docs
     if: github.repository == 'meta-pytorch/torchcodec' && github.event_name == 'push' &&
-        ((github.ref_type == 'branch' && github.ref_name == 'main') || github.ref_type == 'tag')
+        ((github.ref_type == 'branch' && github.ref_name == 'main') ||
+         (github.ref_type == 'tag' && !contains(github.ref_name, '-rc')))
     runs-on: ubuntu-latest
     steps:
       - name: Check out gh-pages branch
@@ -318,17 +319,9 @@ jobs:
           if [[ "${REF_TYPE}" == branch ]]; then
             TARGET_FOLDER="${REF_NAME}"
           elif [[ "${REF_TYPE}" == tag ]]; then
-            case "${REF_NAME}" in
-              *-rc*)
-                echo "Aborting upload since this is an RC tag: ${REF_NAME}"
-                exit 0
-                ;;
-              *)
-                # Strip the leading "v" as well as the trailing patch version. For example:
-                # 'v0.10.2' -> '0.10'
-                TARGET_FOLDER=$(echo "${REF_NAME}" | sed 's/v\([0-9]\+\)\.\([0-9]\+\)\.[0-9]\+/\1.\2/')
-                ;;
-            esac
+            # Strip the leading "v" as well as the trailing patch version. For example:
+            # 'v0.10.2' -> '0.10'
+            TARGET_FOLDER=$(echo "${REF_NAME}" | sed 's/v\([0-9]\+\)\.\([0-9]\+\)\.[0-9]\+/\1.\2/')
           fi
           echo "Target Folder: ${TARGET_FOLDER}"
 

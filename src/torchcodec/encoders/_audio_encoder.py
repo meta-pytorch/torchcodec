@@ -1,9 +1,10 @@
+import io
 from pathlib import Path
 
 import torch
 from torch import Tensor
 
-from torchcodec import _core
+from torchcodec.encoders._multi_stream_encoder import Encoder
 
 
 class AudioEncoder:
@@ -73,14 +74,16 @@ class AudioEncoder:
             sample_rate (int, optional): The sample rate of the encoded output.
                 By default, the sample rate of the input ``samples`` is used.
         """
-        _core.encode_audio_to_file(
-            samples=self._samples,
+        encoder = Encoder()
+        audio = encoder.add_audio(
             sample_rate=self._sample_rate,
-            filename=str(dest),
+            num_channels=self._samples.shape[0],
             bit_rate=bit_rate,
-            num_channels=num_channels,
-            desired_sample_rate=sample_rate,
+            out_num_channels=num_channels,
+            out_sample_rate=sample_rate,
         )
+        with encoder.open_file(dest):
+            audio.add_samples(self._samples)
 
     def to_tensor(
         self,
@@ -108,14 +111,18 @@ class AudioEncoder:
         Returns:
             Tensor: The raw encoded bytes as 1D uint8 Tensor.
         """
-        return _core.encode_audio_to_tensor(
-            samples=self._samples,
+        buf = io.BytesIO()
+        encoder = Encoder()
+        audio = encoder.add_audio(
             sample_rate=self._sample_rate,
-            format=format,
+            num_channels=self._samples.shape[0],
             bit_rate=bit_rate,
-            num_channels=num_channels,
-            desired_sample_rate=sample_rate,
+            out_num_channels=num_channels,
+            out_sample_rate=sample_rate,
         )
+        with encoder.open_file_like(buf, format=format):
+            audio.add_samples(self._samples)
+        return torch.frombuffer(buf.getvalue(), dtype=torch.uint8).clone()
 
     def to_file_like(
         self,
@@ -146,12 +153,13 @@ class AudioEncoder:
             sample_rate (int, optional): The sample rate of the encoded output.
                 By default, the sample rate of the input ``samples`` is used.
         """
-        _core.encode_audio_to_file_like(
-            samples=self._samples,
+        encoder = Encoder()
+        audio = encoder.add_audio(
             sample_rate=self._sample_rate,
-            format=format,
-            file_like=file_like,
+            num_channels=self._samples.shape[0],
             bit_rate=bit_rate,
-            num_channels=num_channels,
-            desired_sample_rate=sample_rate,
+            out_num_channels=num_channels,
+            out_sample_rate=sample_rate,
         )
+        with encoder.open_file_like(file_like, format=format):
+            audio.add_samples(self._samples)

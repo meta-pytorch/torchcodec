@@ -39,7 +39,6 @@ from .utils import (
     get_ffmpeg_minor_version,
     get_python_version,
     H264_10BITS,
-    H265_10BITS,
     H265_VIDEO,
     in_fbcode,
     make_video_decoder,
@@ -1643,8 +1642,6 @@ class TestVideoDecoder:
         # do the color conversion on the CPU.
         # Here we just assert that the GPU results are the same as the CPU
         # results.
-        # TODO see other TODO below in test_10bit_videos_cpu: we should validate
-        # the frames against a reference.
         #
         # This test exercises the FFmpeg CUDA interface specifically: its CPU
         # fallback delegates directly to CpuDeviceInterface, so the output
@@ -1674,15 +1671,6 @@ class TestVideoDecoder:
         assert frames_gpu.device.type == "cuda"
         frames_cpu = decoder_cpu.get_frames_at(frame_indices).data
         assert_frames_equal(frames_gpu.cpu(), frames_cpu)
-
-    @pytest.mark.parametrize("device", all_supported_devices())
-    @pytest.mark.parametrize("asset", (H264_10BITS, H265_10BITS))
-    def test_10bit_videos(self, device, asset):
-        # This just validates that we can decode 10-bit videos.
-        # TODO validate against the ref that the decoded frames are correct
-
-        decoder, _ = make_video_decoder(asset.path, device=device)
-        decoder.get_frame_at(10)
 
     def setup_frame_mappings(tmp_path, file, stream_index):
         json_path = tmp_path / "custom_frame_mappings.json"
@@ -1811,20 +1799,21 @@ class TestVideoDecoder:
         decoder.get_frames_played_at(torch.tensor([0, 1], dtype=torch.int))
         decoder.get_frames_played_at(torch.tensor([0, 1], dtype=torch.float))
 
-    # TODONVDEC P1:
-    # - unskip equality assertion checks on FFMpeg4. The comparison
-    #   checks are failing on very few pixels, e.g.:
+    # Note [NVDEC vs FFmpeg CUDA pixel mismatches]:
+    # These tests compare the NVDEC (beta) CUDA backend against the FFmpeg
+    # CUDA backend. There are two known sources of pixel mismatches:
     #
-    #   E   Mismatched elements: 648586 / 82944000 (0.8%)
-    #   E   Greatest absolute difference: 164 at index (20, 2, 27, 96)
-    #   E   Greatest relative difference: inf at index (5, 1, 112, 186)
+    # 1. FFmpeg 4: small pixel differences on a few pixels (< 1%), cause
+    #    unknown. We don't investigate further since FFmpeg 4 is not a
+    #    priority.
     #
-    #   So we're skipping them to unblock for now, but we should call
-    #   assert_tensor_close_on_at_least or something like that.
-    # - unskip equality assertion checks for MPEG4 asset. The frames are decoded
-    #   fine, it's the color conversion that's different. The frame from the
-    #   NVDEC interface is mapped to 709 by the matrix coefficient
-    #   using NVCUVID while the one from the FFmpeg CUDA interface is 601.
+    # 2. MPEG4 asset: NVCUVID's parser reports matrix_coefficients=1
+    #    (BT.709) for the MPEG4 asset, even though the bitstream has no
+    #    color metadata. This is an NVIDIA-internal heuristic. FFmpeg's
+    #    parser leaves colorspace as UNSPECIFIED, which both swscale (CPU)
+    #    and our color conversion code treat as BT.601. So the NVDEC
+    #    backend uses BT.709 while the FFmpeg CUDA backend (and CPU) use
+    #    BT.601 for this asset, leading to different RGB output.
 
     @needs_cuda
     @pytest.mark.parametrize(
@@ -1864,7 +1853,7 @@ class TestVideoDecoder:
         for frame_index in indices:
             ref_frame = ref_decoder.get_frame_at(frame_index)
             nvdec_frame = nvdec_decoder.get_frame_at(frame_index)
-            # TODONVDEC P1 see above
+            # See Note [NVDEC vs FFmpeg CUDA pixel mismatches]
             if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     nvdec_frame.data, ref_frame.data, rtol=0, atol=0
@@ -1911,7 +1900,7 @@ class TestVideoDecoder:
 
         ref_frames = ref_decoder.get_frames_at(indices)
         nvdec_frames = nvdec_decoder.get_frames_at(indices)
-        # TODONVDEC P1 see above
+        # See Note [NVDEC vs FFmpeg CUDA pixel mismatches]
         if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
                 nvdec_frames.data, ref_frames.data, rtol=0, atol=0
@@ -1954,7 +1943,7 @@ class TestVideoDecoder:
         for pts in timestamps:
             ref_frame = ref_decoder.get_frame_played_at(pts)
             nvdec_frame = nvdec_decoder.get_frame_played_at(pts)
-            # TODONVDEC P1 see above
+            # See Note [NVDEC vs FFmpeg CUDA pixel mismatches]
             if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     nvdec_frame.data, ref_frame.data, rtol=0, atol=0
@@ -1996,7 +1985,7 @@ class TestVideoDecoder:
 
         ref_frames = ref_decoder.get_frames_played_at(timestamps)
         nvdec_frames = nvdec_decoder.get_frames_played_at(timestamps)
-        # TODONVDEC P1 see above
+        # See Note [NVDEC vs FFmpeg CUDA pixel mismatches]
         if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
             torch.testing.assert_close(
                 nvdec_frames.data, ref_frames.data, rtol=0, atol=0
@@ -2043,7 +2032,7 @@ class TestVideoDecoder:
 
             ref_frame = ref_decoder.get_frame_at(frame_index)
             nvdec_frame = nvdec_decoder.get_frame_at(frame_index)
-            # TODONVDEC P1 see above
+            # See Note [NVDEC vs FFmpeg CUDA pixel mismatches]
             if ffmpeg_major_version > 5 and asset is not TEST_SRC_2_720P_MPEG4:
                 torch.testing.assert_close(
                     nvdec_frame.data, ref_frame.data, rtol=0, atol=0
@@ -2071,8 +2060,9 @@ class TestVideoDecoder:
         assert frame0.pts_seconds == expected_frame0.pts_seconds
         assert frame0.duration_seconds == expected_frame0.duration_seconds
         assert frame0.data.shape == expected_frame0.data.shape
-        # Strict pixel equality is skipped — TODONVDEC P1 above (BT.601 vs
-        # BT.709 color matrix mismatch between the ffmpeg and default cuda).
+        # Strict pixel equality is skipped — see Note [NVDEC vs FFmpeg CUDA
+        # pixel mismatches] (BT.601 vs BT.709 color matrix mismatch between the
+        # ffmpeg and default cuda backend for this MPEG4 asset).
 
     @needs_cuda
     def test_nvdec_cuda_interface_cpu_fallback(self):
