@@ -44,24 +44,6 @@ with expose_ffmpeg_dlls():
 create_from_file = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_from_file.default
 )
-encode_audio_to_file = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.encode_audio_to_file.default
-)
-encode_audio_to_tensor = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.encode_audio_to_tensor.default
-)
-_encode_audio_to_file_like = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns._encode_audio_to_file_like.default
-)
-encode_video_to_file = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.encode_video_to_file.default
-)
-encode_video_to_tensor = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.encode_video_to_tensor.default
-)
-_encode_video_to_file_like = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns._encode_video_to_file_like.default
-)
 create_from_tensor = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_from_tensor.default
 )
@@ -222,81 +204,6 @@ def create_wav_decoder_from_file_like(
     )
 
 
-def encode_audio_to_file_like(
-    samples: torch.Tensor,
-    sample_rate: int,
-    format: str,
-    file_like: io.RawIOBase | io.BufferedIOBase,
-    bit_rate: int | None = None,
-    num_channels: int | None = None,
-    desired_sample_rate: int | None = None,
-) -> None:
-    """Encode audio samples to a file-like object.
-
-    Args:
-        samples: Audio samples tensor
-        sample_rate: Sample rate in Hz
-        format: Audio format (e.g., "wav", "mp3", "flac")
-        file_like: File-like object that supports write() and seek() methods
-        bit_rate: Optional bit rate for encoding
-        num_channels: Optional number of output channels
-        desired_sample_rate: Optional desired sample rate for the output.
-    """
-    assert _pybind_ops is not None
-
-    if samples.dtype != torch.float32:
-        raise ValueError(f"samples must have dtype torch.float32, got {samples.dtype}")
-
-    _encode_audio_to_file_like(
-        samples,
-        sample_rate,
-        format,
-        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
-        bit_rate,
-        num_channels,
-        desired_sample_rate,
-    )
-
-
-def encode_video_to_file_like(
-    frames: torch.Tensor,
-    frame_rate: float,
-    format: str,
-    file_like: io.RawIOBase | io.BufferedIOBase,
-    codec: str | None = None,
-    pixel_format: str | None = None,
-    crf: int | float | None = None,
-    preset: str | None = None,
-    extra_options: list[str] | None = None,
-) -> None:
-    """Encode video frames to a file-like object.
-
-    Args:
-        frames: Video frames tensor. The device of the frames tensor will be used for encoding.
-        frame_rate: Frame rate in frames per second
-        format: Video format (e.g., "mp4", "mov", "mkv")
-        file_like: File-like object that supports write() and seek() methods
-        codec: Optional codec name (e.g., "libx264", "h264")
-        pixel_format: Optional pixel format (e.g., "yuv420p", "yuv444p")
-        crf: Optional constant rate factor for encoding quality
-        preset: Optional encoder preset as string (e.g., "ultrafast", "medium")
-        extra_options: Optional list of extra options as flattened key-value pairs
-    """
-    assert _pybind_ops is not None
-
-    _encode_video_to_file_like(
-        frames,
-        frame_rate,
-        format,
-        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
-        codec,
-        pixel_format,
-        crf,
-        preset,
-        extra_options,
-    )
-
-
 def streaming_encoder_open_file_like(
     encoder: torch.Tensor,
     format: str,
@@ -350,86 +257,6 @@ def _create_from_file_like_abstract(
     file_like: int, seek_mode: str | None
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
-
-
-@register_fake("torchcodec_ns::encode_audio_to_file")
-def encode_audio_to_file_abstract(
-    samples: torch.Tensor,
-    sample_rate: int,
-    filename: str,
-    bit_rate: int | None = None,
-    num_channels: int | None = None,
-    desired_sample_rate: int | None = None,
-) -> None:
-    return
-
-
-@register_fake("torchcodec_ns::encode_audio_to_tensor")
-def encode_audio_to_tensor_abstract(
-    samples: torch.Tensor,
-    sample_rate: int,
-    format: str,
-    bit_rate: int | None = None,
-    num_channels: int | None = None,
-    desired_sample_rate: int | None = None,
-) -> torch.Tensor:
-    return torch.empty([], dtype=torch.long)
-
-
-@register_fake("torchcodec_ns::_encode_audio_to_file_like")
-def _encode_audio_to_file_like_abstract(
-    samples: torch.Tensor,
-    sample_rate: int,
-    format: str,
-    file_like_context: int,
-    bit_rate: int | None = None,
-    num_channels: int | None = None,
-    desired_sample_rate: int | None = None,
-) -> None:
-    return
-
-
-@register_fake("torchcodec_ns::encode_video_to_file")
-def encode_video_to_file_abstract(
-    frames: torch.Tensor,
-    frame_rate: float,
-    filename: str,
-    codec: str | None = None,
-    pixel_format: str | None = None,
-    preset: str | None = None,
-    crf: int | float | None = None,
-    extra_options: list[str] | None = None,
-) -> None:
-    return
-
-
-@register_fake("torchcodec_ns::encode_video_to_tensor")
-def encode_video_to_tensor_abstract(
-    frames: torch.Tensor,
-    frame_rate: float,
-    format: str,
-    codec: str | None = None,
-    pixel_format: str | None = None,
-    preset: str | None = None,
-    crf: int | float | None = None,
-    extra_options: list[str] | None = None,
-) -> torch.Tensor:
-    return torch.empty([], dtype=torch.long)
-
-
-@register_fake("torchcodec_ns::_encode_video_to_file_like")
-def _encode_video_to_file_like_abstract(
-    frames: torch.Tensor,
-    frame_rate: float,
-    format: str,
-    file_like_context: int,
-    codec: str | None = None,
-    pixel_format: str | None = None,
-    preset: str | None = None,
-    crf: int | float | None = None,
-    extra_options: list[str] | None = None,
-) -> None:
-    return
 
 
 @register_fake("torchcodec_ns::create_from_tensor")
