@@ -4,7 +4,6 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-import builtins
 import os
 from pathlib import Path
 
@@ -29,43 +28,23 @@ cmake_prefix_path = Path(__file__).parent / "share" / "cmake"
 from ._core import core_library_path, ffmpeg_major_version  # usort:skip
 
 
-def _import_device_backends():
-    """
-    Leverage the Python plugin mechanism to load out-of-the-tree device extensions.
-    """
+# Leverage the Python plugin mechanism to load out-of-the-tree device extensions.
+# See https://github.com/pytorch/pytorch/pull/127074 that enabled the same
+# plugin support in torch.
+# This block should be kept at the end to ensure all the other functions in this
+# module that may be accessed by an autoloaded backend are defined.
+_TORCHCODEC_DEVICE_BACKEND_AUTOLOAD_VAR_NAME = "TORCHCODEC_DEVICE_BACKEND_AUTOLOAD"
+if os.getenv(_TORCHCODEC_DEVICE_BACKEND_AUTOLOAD_VAR_NAME, "1") == "1":
     from importlib.metadata import entry_points
 
-    group_name = "torchcodec.backends"
-    backend_extensions = entry_points(group=group_name)
+    _backend_extensions = entry_points(group="torchcodec.backends")
 
-    for backend_extension in backend_extensions:
+    for _backend_extension in _backend_extensions:
         try:
-            # Load the extension
-            entrypoint = backend_extension.load()
-            # Call the entrypoint
-            entrypoint()
-        except Exception as err:
+            _entrypoint = _backend_extension.load()
+            _entrypoint()
+        except Exception as _err:
             raise RuntimeError(
-                f"Failed to load the backend extension: {backend_extension.name}. "
-                f"You can disable extension auto-loading with TORCHCODEC_DEVICE_BACKEND_AUTOLOAD=0."
-            ) from err
-
-
-def _is_device_backend_autoload_enabled() -> builtins.bool:
-    """
-    Whether autoloading out-of-the-tree device extensions is enabled.
-    The switch depends on the value of the environment variable
-    `TORCHCODEC_DEVICE_BACKEND_AUTOLOAD`.
-
-    Returns:
-        bool: Whether to enable autoloading the extensions. Enabled by default.
-    """
-    # enabled by default
-    return os.getenv("TORCHCODEC_DEVICE_BACKEND_AUTOLOAD", "1") == "1"
-
-
-# `_import_device_backends` should be kept at the end to ensure
-# all the other functions in this module that may be accessed by
-# an autoloaded backend are defined
-if _is_device_backend_autoload_enabled():
-    _import_device_backends()
+                f"Failed to load the backend extension: {_backend_extension.name}. "
+                f"You can disable extension auto-loading with {_TORCHCODEC_DEVICE_BACKEND_AUTOLOAD_VAR_NAME}=0."
+            ) from _err

@@ -9,4 +9,4 @@ requires-python = ">=3.8"
 dynamic = ["version"]
 
 [project.entry-points.'torchcodec.backends']
-device_backend = 'torchcodec_test_plugin:_autoload'
+device_backend = 'dummy_plugin:_autoload'
