@@ -117,8 +117,6 @@ with encoder.open_file("output.mp4"):
    and Windows this will install CPU-only wheels. CPU wheels are available for
    Linux (x86_64 and aarch64), macOS, and Windows.
 
-   For other versions of PyTorch, refer to the compatibility table below.
-
 ### CUDA support
 
 CUDA-enabled wheels are installed by default on Linux. For Windows, you'll need
@@ -155,23 +153,6 @@ generated test video:
 ffmpeg -hwaccel cuda -hwaccel_output_format cuda -f lavfi -i testsrc2=duration=1 -f null -
 ```
 
-### XPU support
-
-Intel GPUs (XPU) support requires a stand-alone plugin for TorchCodec:
-
-```bash
-pip install torchcodec-xpu --extra-index-url=https://download.pytorch.org/whl/xpu
-```
-
-Upon installation plugin needs to be imported in the script:
-
-```python
-import torchcodec_xpu
-```
-
-Check plugin development repository https://github.com/intel/torchlib-xpu for support on
-XPU devices.
-
 ### CPU-only installation
 
 To install CPU-only wheels explicitly (e.g. on Linux where CUDA wheels are the
@@ -181,7 +162,25 @@ default):
 pip install torchcodec --index-url=https://download.pytorch.org/whl/cpu
 ```
 
-### Compatibility
+### XPU support
+
+Intel GPUs (XPU) support requires a stand-alone plugin for TorchCodec:
+
+```bash
+pip install torchcodec-xpu --extra-index-url=https://download.pytorch.org/whl/xpu
+```
+
+Upon installation, the plugin needs to be imported:
+
+```python
+import torchcodec_xpu
+```
+
+For any XPU-related support, please refer to
+https://github.com/intel/torchlib-xpu.
+
+
+### Compatibility with `torch` versions
 
 The following table indicates the compatibility between versions of
 `torchcodec`, `torch` and Python.
