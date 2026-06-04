@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from fractions import Fraction
 
 import torch
-
 from torchcodec._core.ops import (
     _get_container_json_metadata,
     _get_stream_json_metadata,
@@ -102,6 +101,33 @@ class VideoStreamMetadata(StreamMetadata):
     (SAR --- not to be confused with Storage Aspect Ratio, also SAR),
     is the ratio between the width and height of each pixel
     (``fractions.Fraction`` or None)."""
+    rotation: float | None
+    """Rotation angle in degrees (counter-clockwise rounded to the nearest
+    multiple of 90 degrees) from the display matrix metadata. This indicates
+    how the video should be rotated for correct display. TorchCodec automatically
+    applies this rotation during decoding, so the returned frames are in the
+    correct orientation (float or None).
+
+    .. note::
+
+        The :attr:`~torchcodec.decoders.VideoStreamMetadata.width` and
+        :attr:`~torchcodec.decoders.VideoStreamMetadata.height` attributes report
+        the **post-rotation** dimensions, i.e., the dimensions of frames as they
+        will be returned by TorchCodec's decoding methods. For videos with 90
+        or -90 degree rotation, this means width and height are swapped
+        compared to the raw encoded dimensions in the container.
+    """
+    color_primaries: str | None
+    """Color primaries as reported by FFmpeg. E.g. ``"bt709"``, ``"bt2020"``."""
+    color_space: str | None
+    """Color space as reported by FFmpeg. E.g. ``"bt709"``,
+    ``"bt2020nc"``."""
+    color_transfer_characteristic: str | None
+    """Color transfer characteristic as reported by FFmpeg
+    E.g. ``"bt709"``, ``"smpte2084"`` (PQ), ``"arib-std-b67"`` (HLG)."""
+    pixel_format: str | None
+    """The source pixel format of the video as reported by FFmpeg.
+    E.g. ``'yuv420p'``, ``'yuv444p'``, etc."""
 
     # Computed fields (computed in C++ with fallback logic)
     end_stream_seconds: float | None
@@ -227,6 +253,13 @@ def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
                     num_frames_from_content=stream_dict.get("numFramesFromContent"),
                     average_fps_from_header=stream_dict.get("averageFpsFromHeader"),
                     pixel_aspect_ratio=_get_optional_par_fraction(stream_dict),
+                    rotation=stream_dict.get("rotation"),
+                    color_primaries=stream_dict.get("colorPrimaries"),
+                    color_space=stream_dict.get("colorSpace"),
+                    color_transfer_characteristic=stream_dict.get(
+                        "colorTransferCharacteristic"
+                    ),
+                    pixel_format=stream_dict.get("pixelFormat"),
                     **common_meta,
                 )
             )

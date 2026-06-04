@@ -7,6 +7,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -23,6 +24,7 @@ extern "C" {
 #include <libavutil/display.h>
 #include <libavutil/file.h>
 #include <libavutil/opt.h>
+#include <libavutil/pixdesc.h>
 #include <libavutil/pixfmt.h>
 #include <libavutil/version.h>
 #include <libswresample/swresample.h>
@@ -280,35 +282,40 @@ int64_t computeSafeDuration(
     const AVRational& frameRate,
     const AVRational& timeBase);
 
+// Extracts the rotation angle in degrees from the stream's display matrix
+// side data. The display matrix is used to specify how the video should be
+// rotated for correct display.
+std::optional<double> getRotationFromStream(const AVStream* avStream);
+
 AVFilterContext* createAVFilterContextWithOptions(
     AVFilterGraph* filterGraph,
     const AVFilter* buffer,
     const enum AVPixelFormat outputFormat);
 
-struct SwsFrameContext {
+struct SwsConfig {
   int inputWidth = 0;
   int inputHeight = 0;
   AVPixelFormat inputFormat = AV_PIX_FMT_NONE;
+  AVColorSpace inputColorspace = AVCOL_SPC_UNSPECIFIED;
   int outputWidth = 0;
   int outputHeight = 0;
+  AVPixelFormat outputFormat = AV_PIX_FMT_NONE;
 
-  SwsFrameContext() = default;
-  SwsFrameContext(
+  SwsConfig() = default;
+  SwsConfig(
       int inputWidth,
       int inputHeight,
       AVPixelFormat inputFormat,
+      AVColorSpace inputColorspace,
       int outputWidth,
-      int outputHeight);
+      int outputHeight,
+      AVPixelFormat outputFormat);
 
-  bool operator==(const SwsFrameContext& other) const;
-  bool operator!=(const SwsFrameContext& other) const;
+  bool operator==(const SwsConfig& other) const;
+  bool operator!=(const SwsConfig& other) const;
 };
 
 // Utility functions for swscale context management
-UniqueSwsContext createSwsContext(
-    const SwsFrameContext& swsFrameContext,
-    AVColorSpace colorspace,
-    AVPixelFormat outputFormat,
-    int swsFlags);
+UniqueSwsContext createSwsContext(const SwsConfig& swsConfig, int swsFlags);
 
 } // namespace facebook::torchcodec

@@ -23,9 +23,8 @@ else
     exit 1
 fi
 
-# TODO: Make ffmpeg4 work with nvcc.
 if [[ "$ENABLE_CUDA" -eq 1 ]]; then
-  ffmpeg_versions=(5 6 7)
+  ffmpeg_versions=(4 5 6 7)
 fi
 
 for ffmpeg_major_version in ${ffmpeg_versions[@]}; do

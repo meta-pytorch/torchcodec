@@ -26,7 +26,7 @@ fi
 COMPUTE_PLATFORM="$1"
 PACKAGES="$2"
 
-if [[ (${GITHUB_EVENT_NAME:-} = 'pull_request' && (${GITHUB_BASE_REF:-} = 'release'*)) || (${GITHUB_REF:-} = 'refs/heads/release'*) ]]; then
+if [[ (${GITHUB_EVENT_NAME:-} = 'pull_request' && (${GITHUB_BASE_REF:-} = 'release'*)) || (${GITHUB_REF:-} = 'refs/heads/release'*) || (${GITHUB_REF:-} = refs/tags/v*) ]]; then
   CHANNEL=test
 else
   CHANNEL=nightly

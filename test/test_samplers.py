@@ -558,12 +558,12 @@ def test_time_based_sampler_errors(sampler):
     decoder = VideoDecoder(NASA_VIDEO.path)
 
     with pytest.raises(
-        ValueError, match=re.escape("sampling_range_start (-1) must be at least 0.0")
+        ValueError, match=re.escape("sampling_range_start (-1) must be at least 0")
     ):
         sampler(decoder, sampling_range_start=-1)
 
     with pytest.raises(
-        ValueError, match=re.escape("sampling_range_end (-1) must be at least 0.0")
+        ValueError, match=re.escape("sampling_range_end (-1) must be at least 0")
     ):
         sampler(decoder, sampling_range_end=-1)
 

@@ -7,54 +7,45 @@
 #pragma once
 
 #include "FFMPEGCommon.h"
+#include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
-// The AVIOContextHolder serves several purposes:
+// The AVIOContextHolder is a base class for I/O backends. It serves as:
 //
-//   1. It is a smart pointer for the AVIOContext. It has the logic to create
-//      a new AVIOContext and will appropriately free the AVIOContext when it
-//      goes out of scope. Note that this requires more than just having a
-//      UniqueAVIOContext, as the AVIOContext points to a buffer which must be
-//      freed.
-//   2. It is a base class for AVIOContext specializations. When specializing a
-//      AVIOContext, we need to provide four things:
-//        1. A read callback function, for decoding.
-//        2. A seek callback function, for decoding and encoding.
-//        3. A write callback function, for encoding.
-//        4. A pointer to some context object that has the same lifetime as the
-//           AVIOContext itself. This context object holds the custom state that
-//           tracks the custom behavior of reading, seeking and writing. It is
-//           provided upon AVIOContext creation and to the read, seek and
-//           write callback functions.
-//      The callback functions do not need to be members of the derived class,
-//      but the derived class must have access to them. The context object must
-//      be a member of the derived class. Derived classes need to call
-//      createAVIOContext(), ideally in their constructor.
-//  3. A generic handle for those that just need to manage having access to an
-//     AVIOContext, but aren't necessarily concerned with how it was customized:
-//     typically, the SingleStreamDecoder.
-class AVIOContextHolder {
+//   1. A generic I/O interface: derived classes override virtual methods
+//      (read, write, seek, getSize) to implement their specific I/O.
+//      These can be called directly by consumers like WavDecoder.
+//
+//   2. An FFmpeg AVIO adapter: calling createAVIOContext() sets up an
+//      FFmpeg AVIOContext whose callbacks automatically delegate to the
+//      virtual methods. This is used by SingleStreamDecoder and Encoder.
+//
+//   3. A smart pointer for the AVIOContext, freeing it and its buffer
+//      on destruction.
+class FORCE_PUBLIC_VISIBILITY AVIOContextHolder {
  public:
   virtual ~AVIOContextHolder();
   AVIOContext* getAVIOContext();
 
+  virtual int read(uint8_t* buf, int size);
+  virtual int write(const uint8_t* buf, int size);
+  virtual int64_t seek(int64_t offset, int whence);
+  virtual int64_t getSize();
+
  protected:
-  // Make constructor protected to prevent anyone from constructing
-  // an AVIOContextHolder without deriving it. (Ordinarily this would be
-  // enforced by having a pure virtual methods, but we don't have any.)
   AVIOContextHolder() = default;
 
-  // Deriving classes should call this function in their constructor.
-  void createAVIOContext(
-      AVIOReadFunction read,
-      AVIOWriteFunction write,
-      AVIOSeekFunction seek,
-      void* heldData,
-      bool isForWriting,
-      int bufferSize = defaultBufferSize);
+  // Sets up an FFmpeg AVIOContext whose callbacks delegate to the
+  // virtual methods above. Derived classes that need FFmpeg AVIO
+  // should call this in their constructor.
+  void createAVIOContext(bool isForWriting, int bufferSize = defaultBufferSize);
 
  private:
+  static int readCallback(void* opaque, uint8_t* buf, int buf_size);
+  static int writeCallback(void* opaque, const uint8_t* buf, int buf_size);
+  static int64_t seekCallback(void* opaque, int64_t offset, int whence);
+
   UniqueAVIOContext avioContext_;
 
   // Defaults to 64 KB

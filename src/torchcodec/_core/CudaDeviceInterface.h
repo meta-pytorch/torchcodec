@@ -9,12 +9,13 @@
 #include "CUDACommon.h"
 #include "DeviceInterface.h"
 #include "FilterGraph.h"
+#include "color_conversion.h"
 
 namespace facebook::torchcodec {
 
 class CudaDeviceInterface : public DeviceInterface {
  public:
-  CudaDeviceInterface(const torch::Device& device);
+  CudaDeviceInterface(const StableDevice& device);
 
   virtual ~CudaDeviceInterface();
 
@@ -22,12 +23,11 @@ class CudaDeviceInterface : public DeviceInterface {
       const AVCodecID& codecId,
       bool isDecoder = true) override;
 
-  void initialize(
-      const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) override;
+  void initialize(const SharedAVCodecContext& codecContext) override;
 
   void initializeVideo(
+      const AVStream* avStream,
+      const UniqueDecodingAVFormatContext& avFormatCtx,
       const VideoStreamOptions& videoStreamOptions,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
           transforms,
@@ -39,12 +39,12 @@ class CudaDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor) override;
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor) override;
 
   std::string getDetails() override;
 
-  UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
-      const torch::Tensor& tensor,
+  UniqueAVFrame convertTensorToAVFrameForEncoding(
+      const torch::stable::Tensor& tensor,
       int frameIndex,
       AVCodecContext* codecContext) override;
 
@@ -65,15 +65,16 @@ class CudaDeviceInterface : public DeviceInterface {
   AVRational timeBase_;
 
   UniqueAVBufferRef hardwareDeviceCtx_;
-  UniqueNppContext nppCtx_;
 
   // This filtergraph instance is only used for NV12 format conversion in
   // maybeConvertAVFrameToNV12().
-  std::unique_ptr<FiltersContext> nv12ConversionContext_;
+  std::unique_ptr<FiltersConfig> nv12ConversionConfig_;
   std::unique_ptr<FilterGraph> nv12Conversion_;
 
   bool usingCPUFallback_ = false;
   bool hasDecodedFrame_ = false;
+
+  CachedColorMatrix cachedColorMatrix_;
 };
 
 } // namespace facebook::torchcodec

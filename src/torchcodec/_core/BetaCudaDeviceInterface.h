@@ -4,7 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-// BETA CUDA device interface that provides direct control over NVDEC
+// NVDEC CUDA device interface that provides direct control over NVDEC
 // while keeping FFmpeg for demuxing. A lot of the logic, particularly the use
 // of a cache for the decoders, is inspired by DALI's implementation which is
 // APACHE 2.0:
@@ -20,8 +20,9 @@
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
 #include "NVDECCache.h"
+#include "Transform.h"
+#include "color_conversion.h"
 
-#include <map>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -35,18 +36,24 @@ namespace facebook::torchcodec {
 
 class BetaCudaDeviceInterface : public DeviceInterface {
  public:
-  explicit BetaCudaDeviceInterface(const torch::Device& device);
+  explicit BetaCudaDeviceInterface(const StableDevice& device);
   virtual ~BetaCudaDeviceInterface();
 
-  void initialize(
+  void initialize(const SharedAVCodecContext& codecContext) override;
+
+  void initializeVideo(
       const AVStream* avStream,
       const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) override;
+      const VideoStreamOptions& videoStreamOptions,
+      const std::vector<std::unique_ptr<Transform>>& transforms,
+      const std::optional<FrameDims>& resizedOutputDims) override;
+
+  OutputDtype getPreAllocationDtype(OutputDtype requestedDtype) const override;
 
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor) override;
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor) override;
 
   int sendPacket(ReferenceAVPacket& packet) override;
   int sendEOFPacket() override;
@@ -80,11 +87,18 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       unsigned int pitch,
       const CUVIDPARSERDISPINFO& dispInfo);
 
-  UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
+  UniqueAVFrame transferCpuFrameToGpu(
+      UniqueAVFrame& cpuFrame,
+      AVPixelFormat targetPixFmt);
+
+  void applyRotation(
+      FrameOutput& frameOutput,
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor);
 
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;
   CUVIDEOFORMAT videoFormat_ = {};
+  CUVIDEOFORMATEX parserExtInfo_ = {};
 
   std::queue<CUVIDPARSERDISPINFO> readyFrames_;
 
@@ -95,13 +109,16 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   UniqueAVBSFContext bitstreamFilter_;
 
-  // NPP context for color conversion
-  UniqueNppContext nppCtx_;
-
   std::unique_ptr<DeviceInterface> cpuFallback_;
   bool nvcuvidAvailable_ = false;
   UniqueSwsContext swsContext_;
-  SwsFrameContext prevSwsFrameContext_;
+
+  SwsConfig prevSwsConfig_;
+  Rotation rotation_ = Rotation::NONE;
+  OutputDtype outputDtype_ = OutputDtype::UINT8;
+  cudaVideoSurfaceFormat surfaceFormat_ = cudaVideoSurfaceFormat_NV12;
+
+  CachedColorMatrix cachedColorMatrix_;
 };
 
 } // namespace facebook::torchcodec

@@ -14,14 +14,8 @@ import pandas as pd
 import torch
 import torch.utils.benchmark as benchmark
 
-from torchcodec._core import (
-    _add_video_stream,
-    create_from_file,
-    get_frames_at_indices,
-    get_frames_by_pts,
-    get_next_frame,
-    seek_to_pts,
-)
+from torchcodec._core import get_frames_at_indices, get_frames_by_pts, get_next_frame
+from torchcodec._core.ops import _add_video_stream, create_from_file, seek_to_pts
 from torchcodec._frame import FrameBatch
 from torchcodec.decoders import VideoDecoder, VideoStreamMetadata
 

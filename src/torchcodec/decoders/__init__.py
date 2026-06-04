@@ -6,7 +6,12 @@
 
 from .._core import AudioStreamMetadata, VideoStreamMetadata
 from ._audio_decoder import AudioDecoder  # noqa
-from ._decoder_utils import set_cuda_backend  # noqa
+from ._decoder_utils import (  # noqa
+    get_nvdec_cache_capacity,
+    set_cuda_backend,
+    set_nvdec_cache_capacity,
+)
 from ._video_decoder import CpuFallbackStatus, VideoDecoder  # noqa
+from ._wav_decoder import WavDecoder  # noqa
 
 SimpleVideoDecoder = VideoDecoder

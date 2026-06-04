@@ -13,6 +13,7 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
+#include <libavutil/pixfmt.h>
 #include <libavutil/rational.h>
 }
 
@@ -53,9 +54,17 @@ struct StreamMetadata {
   std::optional<int64_t> numFramesFromContent;
 
   // Video-only fields
-  std::optional<int> width;
-  std::optional<int> height;
+  // Post-rotation dimensions
+  std::optional<int> postRotationWidth;
+  std::optional<int> postRotationHeight;
   std::optional<AVRational> sampleAspectRatio;
+  // Rotation angle in degrees from display matrix, in the range [-180, 180].
+  std::optional<double> rotation;
+  std::optional<AVColorPrimaries> colorPrimaries;
+  std::optional<AVColorSpace> colorSpace;
+  std::optional<AVColorTransferCharacteristic> colorTransferCharacteristic;
+  // The pixel format of the encoded video, e.g. "yuv420p".
+  std::optional<std::string> pixelFormat;
 
   // Audio-only fields
   std::optional<int64_t> sampleRate;
@@ -68,6 +77,12 @@ struct StreamMetadata {
   std::optional<double> getEndStreamSeconds(SeekMode seekMode) const;
   std::optional<int64_t> getNumFrames(SeekMode seekMode) const;
   std::optional<double> getAverageFps(SeekMode seekMode) const;
+
+  // Color metadata name accessors. These return nullopt if the field is unset
+  // or if FFmpeg returns NULL for the name.
+  std::optional<std::string> getColorPrimariesName() const;
+  std::optional<std::string> getColorSpaceName() const;
+  std::optional<std::string> getColorTransferCharacteristicName() const;
 };
 
 struct ContainerMetadata {

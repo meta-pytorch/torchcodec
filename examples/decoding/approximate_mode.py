@@ -33,6 +33,7 @@ import subprocess
 from time import perf_counter_ns
 
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_seek_mode.jpg'
 # Video source: https://www.pexels.com/video/dog-eating-854132/
 # License: CC0. Author: Coverr.
 url = "https://videos.pexels.com/video-files/854132/854132-sd_640_360_25fps.mp4"

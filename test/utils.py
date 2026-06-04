@@ -5,20 +5,39 @@ import pathlib
 import platform
 import subprocess
 import sys
-
+import tempfile
 from dataclasses import dataclass, field
 
 import numpy as np
 import pytest
-
 import torch
 
+from torchcodec import ffmpeg_major_version
 from torchcodec._core import get_ffmpeg_library_versions
 from torchcodec.decoders import set_cuda_backend, VideoDecoder
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
 IN_GITHUB_CI = bool(os.getenv("GITHUB_ACTIONS"))
+
+
+def call_ffprobe(args):
+    # We write ffprobe's output to a temp file instead of capturing via
+    # subprocess pipe, to avoid sporadic JSON truncation on Windows.
+    with tempfile.NamedTemporaryFile(mode="r", suffix=".json", delete=False) as f:
+        tmp_path = f.name
+    try:
+        with open(tmp_path, "w") as stdout_file:
+            subprocess.run(
+                ["ffprobe", "-v", "error", "-hide_banner"] + args + ["-of", "json"],
+                check=True,
+                stdout=stdout_file,
+                stderr=subprocess.DEVNULL,
+            )
+        with open(tmp_path) as f:
+            return json.loads(f.read())
+    finally:
+        os.unlink(tmp_path)
 
 
 # Decorator for skipping CUDA tests when CUDA isn't available. The tests are
@@ -35,53 +54,53 @@ def needs_ffmpeg_cli(test_item):
     return pytest.mark.needs_ffmpeg_cli(test_item)
 
 
-# This is a special device string that we use to test the "beta" CUDA backend.
-# It only exists here, in this test utils file. Public and core APIs have no
-# idea that this is how we're tesing them. That is, that's not a supported
-# `device` parameter for the VideoDecoder or for the _core APIs.
+# This is a special device string that we use to test the legacy "ffmpeg" CUDA
+# backend. It only exists here, in this test utils file. Public and core APIs
+# have no idea that this is how we're testing them. That is, that's not a
+# supported `device` parameter for the VideoDecoder or for the _core APIs.
 # Tests using all_supported_devices() will get this device string, and the test
 # need to clean it up by calling either make_video_decoder for VideoDecoder, or
 # unsplit_device_str for core APIs.
-_CUDA_BETA_DEVICE_STR = "cuda:beta"
+_CUDA_FFMPEG_DEVICE_STR = "cuda:ffmpeg"
 
 
 def all_supported_devices():
     return (
         "cpu",
         pytest.param("cuda", marks=pytest.mark.needs_cuda),
-        pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_FFMPEG_DEVICE_STR, marks=pytest.mark.needs_cuda),
     )
 
 
 def cuda_devices():
     return (
         pytest.param("cuda", marks=pytest.mark.needs_cuda),
-        pytest.param(_CUDA_BETA_DEVICE_STR, marks=pytest.mark.needs_cuda),
+        pytest.param(_CUDA_FFMPEG_DEVICE_STR, marks=pytest.mark.needs_cuda),
     )
 
 
 def unsplit_device_str(device_str: str) -> str:
     # helper meant to be used as
     # device, device_variant = unsplit_device_str(device)
-    # when `device` comes from all_supported_devices() and may be _CUDA_BETA_DEVICE_STR.
+    # when `device` comes from all_supported_devices() and may be _CUDA_FFMPEG_DEVICE_STR.
     # It is used:
-    # - before calling `.to(device)` where device can't be _CUDA_BETA_DEVICE_STR.
+    # - before calling `.to(device)` where device can't be _CUDA_FFMPEG_DEVICE_STR.
     # - before calling add_video_stream(device=device, device_variant=device_variant)
-    if device_str == _CUDA_BETA_DEVICE_STR:
-        return "cuda", "beta"
+    if device_str == _CUDA_FFMPEG_DEVICE_STR:
+        return "cuda", "ffmpeg"
     else:
-        return device_str, "ffmpeg"
+        return device_str, "default"
 
 
 def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
     # Helper to create a VideoDecoder with the right cuda backend if needed.
     # kwargs is expected to have a "device" key which comes from
-    # all_supported_devices(), and can be _CUDA_BETA_DEVICE_STR.
+    # all_supported_devices(), and can be _CUDA_FFMPEG_DEVICE_STR.
     device = kwargs.pop("device", "cpu")
-    if device == _CUDA_BETA_DEVICE_STR:
-        clean_device, backend = "cuda", "beta"
+    if device == _CUDA_FFMPEG_DEVICE_STR:
+        clean_device, backend = "cuda", "ffmpeg"
     else:
-        clean_device, backend = device, "ffmpeg"
+        clean_device, backend = device, "nvdec"
 
     # set_cuda_backend is a no-op if the device is "cpu", so we can use it
     # unconditionally.
@@ -91,24 +110,13 @@ def make_video_decoder(*args, **kwargs) -> tuple[VideoDecoder, str]:
     return dec, clean_device
 
 
-def _get_ffmpeg_version_string():
+def get_ffmpeg_minor_version():
     ffmpeg_version = get_ffmpeg_library_versions()["ffmpeg_version"]
     # When building FFmpeg from source there can be a `n` prefix in the version
     # string.  This is quite brittle as we're using av_version_info(), which has
     # no stable format. See https://github.com/pytorch/torchcodec/issues/100
     if ffmpeg_version.startswith("n"):
         ffmpeg_version = ffmpeg_version.removeprefix("n")
-
-    return ffmpeg_version
-
-
-def get_ffmpeg_major_version():
-    ffmpeg_version = _get_ffmpeg_version_string()
-    return int(ffmpeg_version.split(".")[0])
-
-
-def get_ffmpeg_minor_version():
-    ffmpeg_version = _get_ffmpeg_version_string()
     return int(ffmpeg_version.split(".")[1])
 
 
@@ -150,7 +158,7 @@ def assert_frames_equal(*args, **kwargs):
     if sys.platform == "linux" and "x86" in platform.machine().lower():
         if args[0].device.type == "cuda":
             atol = 3 if cuda_version_used_for_building_torch() >= (13, 0) else 2
-            if get_ffmpeg_major_version() == 4:
+            if ffmpeg_major_version == 4:
                 assert_tensor_close_on_at_least(
                     args[0], args[1], percentage=95, atol=atol
                 )
@@ -361,22 +369,16 @@ class TestContainerFile:
         return self._custom_frame_mappings_data[stream_index]
 
     def generate_custom_frame_mappings(self, stream_index: int) -> str:
-        result = subprocess.run(
+        parsed = call_ffprobe(
             [
-                "ffprobe",
                 "-i",
                 f"{self.path}",
                 "-select_streams",
                 f"{stream_index}",
                 "-show_frames",
-                "-of",
-                "json",
             ],
-            check=True,
-            capture_output=True,
-            text=True,
-        ).stdout
-        return result
+        )
+        return json.dumps(parsed)
 
     @property
     def empty_pts_seconds(self) -> torch.Tensor:
@@ -416,6 +418,19 @@ class TestVideo(TestContainerFile):
             idx, stream_index=stream_index, filters=filters
         )
         tensor_file_path = f"{base_path}.pt"
+        return torch.load(tensor_file_path, weights_only=True).permute(2, 0, 1)
+
+    def get_frame_data_by_index_rgb48(
+        self,
+        idx: int,
+        *,
+        stream_index: int | None = None,
+    ) -> torch.Tensor:
+        if stream_index is None:
+            stream_index = self.default_stream_index
+
+        base_path = self.get_base_path_by_index(idx, stream_index=stream_index)
+        tensor_file_path = f"{base_path}.rgb48.pt"
         return torch.load(tensor_file_path, weights_only=True).permute(2, 0, 1)
 
     def get_frame_data_by_range(
@@ -486,6 +501,18 @@ NASA_VIDEO = TestVideo(
     stream_infos={
         0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
         3: TestVideoStreamInfo(width=480, height=270, num_color_channels=3),
+    },
+    frames={},  # Automatically loaded from json file
+)
+
+NASA_VIDEO_ROTATED = TestVideo(
+    filename="nasa_13013_rotated.mp4",
+    default_stream_index=0,
+    stream_infos={
+        # Post-rotation dimensions: 90-degree rotation swaps width/height
+        # This is a short video (~15 frames) extracted from nasa_13013.mp4 stream 3
+        # with 90-degree rotation metadata added
+        0: TestVideoStreamInfo(width=270, height=480, num_color_channels=3),
     },
     frames={},  # Automatically loaded from json file
 )
@@ -564,6 +591,108 @@ BT709_FULL_RANGE = TestVideo(
     frames={0: {}},  # Not needed for now
 )
 
+# BT.2020 10-bit video with limited range (tv), generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x240:rate=30 -c:v libx265 \
+# -pix_fmt yuv420p10le -color_primaries bt2020 -color_trc smpte2084 \
+# -colorspace bt2020nc -color_range tv bt2020_10bit.mp4
+#
+# Confirm color space with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/bt2020_10bit.mp4
+# color_range=tv
+# color_space=bt2020nc
+# color_transfer=smpte2084
+# color_primaries=bt2020
+BT2020_LIMITED_RANGE_10BIT = TestVideo(
+    filename="bt2020_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# Full range BT.601 video, generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x240:rate=30 -c:v libx264
+# -profile:v high -pix_fmt yuv420p
+# -vf "setparams=color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m:range=pc"
+# bt601_full_range.mp4
+#
+# Confirm color space with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/bt601_full_range.mp4
+# color_range=pc
+# color_space=smpte170m
+# color_transfer=smpte170m
+# color_primaries=smpte170m
+BT601_FULL_RANGE = TestVideo(
+    filename="bt601_full_range.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# Limited range BT.601 video, generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x240:rate=30 -c:v libx264
+# -profile:v baseline -pix_fmt yuv420p
+# -vf "setparams=color_primaries=smpte170m:color_trc=smpte170m:colorspace=smpte170m:range=tv"
+# bt601_limited_range.mp4
+#
+# Confirm color space with:
+# ffprobe -v quiet -select_streams v:0 -show_entries stream=color_space,color_transfer,color_primaries,color_range -of default=noprint_wrappers=1 test/resources/bt601_limited_range.mp4
+# color_range=tv
+# color_space=smpte170m
+# color_transfer=smpte170m
+# color_primaries=smpte170m
+BT601_LIMITED_RANGE = TestVideo(
+    filename="bt601_limited_range.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# HDR re-encode of NASA video (10-bit H265 with BT.2020 + PQ), generated with:
+# ffmpeg -i test/resources/nasa_13013.mp4 -map 0:v:0 -c:v libx265 -pix_fmt yuv420p10le \
+# -x265-params "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited" \
+# -preset fast -crf 23 test/resources/nasa_13013_hdr.mp4
+NASA_VIDEO_HDR = TestVideo(
+    filename="nasa_13013_hdr.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# HDR re-encode of testsrc2 (10-bit H265 with BT.2020 + PQ), generated with:
+# ffmpeg -i test/resources/testsrc2.mp4 -c:v libx265 -pix_fmt yuv420p10le \
+# -x265-params "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited" \
+# -preset fast -crf 23 test/resources/testsrc2_hdr.mp4
+TEST_SRC_2_720P_HDR = TestVideo(
+    filename="testsrc2_hdr.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# 12-bit HDR testsrc2 (H265 with BT.2020 + PQ), generated with:
+# ffmpeg -f lavfi -i testsrc2=duration=2:size=320x180:rate=30 -c:v libx265
+# -pix_fmt yuv420p12le -x265-params
+# "colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:range=limited"
+# -preset fast -crf 23 test/resources/testsrc2_12bit_hdr.mp4
+TEST_SRC_2_12BIT_HDR = TestVideo(
+    filename="testsrc2_12bit_hdr.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=180, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
 # ffmpeg -f lavfi -i testsrc2=duration=2:size=1280x720:rate=30 -c:v libx264 -profile:v baseline -level 3.1 -pix_fmt yuv420p -b:v 2500k -r 30 -movflags +faststart output_720p_2s.mp4
 TEST_SRC_2_720P = TestVideo(
     filename="testsrc2.mp4",
@@ -611,6 +740,127 @@ TEST_SRC_2_720P_MPEG4 = TestVideo(
         0: TestVideoStreamInfo(width=1280, height=720, num_color_channels=3),
     },
     frames={0: {}},  # Not needed for now
+)
+
+# ffmpeg -f lavfi -i color=c=black:s=64x64:d=0.034 -c:v mpeg4 -q:v 31 testsrc2_mpeg4.mp4
+TEST_SRC_2_MPEG4_MP4 = TestVideo(
+    filename="testsrc2_mpeg4.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=64, height=64, num_color_channels=3),
+    },
+    frames={0: {}},  # Not needed for now
+)
+
+# Video with non-zero start time (start_time ~8.333s)
+# Used to test that PTS values are correctly reported for videos that don't
+# start at time 0.
+TEST_NON_ZERO_START = TestVideo(
+    filename="test_non_zero_start.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=200, height=112, num_color_channels=3),
+    },
+    frames={},  # Automatically loaded from json file
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_width_444.mp4
+TESTSRC2_ODD_WIDTH_444 = TestVideo(
+    filename="testsrc2_odd_width_444.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=320x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_height_444.mp4
+TESTSRC2_ODD_HEIGHT_444 = TestVideo(
+    filename="testsrc2_odd_height_444.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p -profile:v testsrc2_odd_height_and_width_444.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_444 = TestVideo(
+    filename="testsrc2_odd_height_and_width_444.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p -b:v 1M testsrc2_odd_width_vp9.mp4
+TESTSRC2_ODD_WIDTH_VP9 = TestVideo(
+    filename="testsrc2_odd_width_vp9.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=320x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p -b:v 1M testsrc2_odd_height_vp9.mp4
+TESTSRC2_ODD_HEIGHT_VP9 = TestVideo(
+    filename="testsrc2_odd_height_vp9.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p -b:v 1M testsrc2_odd_height_and_width_vp9.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9 = TestVideo(
+    filename="testsrc2_odd_height_and_width_vp9.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p10le -b:v 1M testsrc2_odd_width_vp9_10bit.mp4
+TESTSRC2_ODD_WIDTH_VP9_10BIT = TestVideo(
+    filename="testsrc2_odd_width_vp9_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=320x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p10le -b:v 1M testsrc2_odd_height_vp9_10bit.mp4
+TESTSRC2_ODD_HEIGHT_VP9_10BIT = TestVideo(
+    filename="testsrc2_odd_height_vp9_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p10le -b:v 1M testsrc2_odd_height_and_width_vp9_10bit.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT = TestVideo(
+    filename="testsrc2_odd_height_and_width_vp9_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
 )
 
 
@@ -830,6 +1080,134 @@ SINE_MONO_S16 = TestAudio(
             num_channels=1,
             duration_seconds=4,
             num_frames=63,
+            sample_format="s16",
+        )
+    },
+)
+
+# Same sample rate as SINE_MONO_S32, but encoded as u8 instead of s32. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -c:a pcm_u8 test/resources/sine_mono_u8.wav
+SINE_MONO_U8 = TestAudio(
+    filename="sine_mono_u8.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=1,
+            duration_seconds=4,
+            num_frames=63,
+            sample_format="u8",
+        )
+    },
+)
+
+# Same sample rate as SINE_MONO_S32, but encoded as s24 instead of s32. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -c:a pcm_s24le test/resources/sine_mono_s24.wav
+SINE_MONO_S24 = TestAudio(
+    filename="sine_mono_s24.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=1,
+            duration_seconds=4,
+            num_frames=63,
+            sample_format="s32",
+        )
+    },
+)
+
+# Same sample rate as SINE_MONO_S32, but encoded as f32. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -c:a pcm_f32le test/resources/sine_mono_f32.wav
+SINE_MONO_F32 = TestAudio(
+    filename="sine_mono_f32.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=1,
+            duration_seconds=4,
+            num_frames=63,
+            sample_format="flt",
+        )
+    },
+)
+
+# Same sample rate as SINE_MONO_S32, but encoded as f64. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -c:a pcm_f64le test/resources/sine_mono_f64.wav
+SINE_MONO_F64 = TestAudio(
+    filename="sine_mono_f64.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=1,
+            duration_seconds=4,
+            num_frames=63,
+            sample_format="dbl",
+        )
+    },
+)
+
+# WAV file with an odd-sized data chunk and a trailing metadata chunk.
+# This reproduces https://github.com/meta-pytorch/torchcodec/issues/1378 where
+# FFmpeg seeks past EOF when scanning for trailing chunks, causing a crash
+# when decoding from a bytes tensor (but not from a file path).
+# Generated with:
+#     import struct
+#     path = "test/resources/reproduce_seek_bug.wav"
+#     sample_rate = 48000
+#     block_align = 3  # 24-bit mono
+#     num_samples = 48001  # * 3 = 144003 bytes (odd!)
+#     data_size = num_samples * block_align
+#     sample_data = bytes(data_size)  # silence
+#     trailing_data = b"\x00" * 256
+#     with open(path, "wb") as f:
+#         riff_size = 4 + (8 + 16) + (8 + data_size + 1) + (8 + len(trailing_data))
+#         f.write(b"RIFF")
+#         f.write(struct.pack("<I", riff_size))
+#         f.write(b"WAVE")
+#         f.write(b"fmt ")
+#         f.write(struct.pack("<I", 16))
+#         f.write(struct.pack("<HHIIHH", 1, 1, sample_rate, sample_rate * block_align, block_align, 24))
+#         f.write(b"data")
+#         f.write(struct.pack("<I", data_size))
+#         f.write(sample_data)
+#         f.write(b"\x00")  # RIFF padding byte for odd-sized chunk
+#         f.write(b"_PMX")
+#         f.write(struct.pack("<I", len(trailing_data)))
+#         f.write(trailing_data)
+WAV_ODD_DATA_TRAILING_CHUNK = TestAudio(
+    filename="reproduce_seek_bug.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=48_000,
+            num_channels=1,
+            duration_seconds=1.000021,
+            num_frames=12,
+            sample_format="s32",
+        )
+    },
+)
+
+# 16-channel audio for testing support for >8 channels. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -t 1 -filter_complex "[0]asplit=16[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15];[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15]amerge=inputs=16" -c:a pcm_s16le test/resources/sine_16ch_s16.wav
+SINE_16_CHANNEL_S16 = TestAudio(
+    filename="sine_16ch_s16.wav",
+    default_stream_index=0,
+    frames={},  # Automatically loaded from json file
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=16,
+            duration_seconds=1,
+            num_frames=16,
             sample_format="s16",
         )
     },

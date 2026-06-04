@@ -6,8 +6,14 @@
 
 #pragma once
 
+// pybind11 headers from torch error out if TORCH_TARGET_VERSION is defined,
+// so we temporarily undefine it.
+// See https://github.com/pytorch/pytorch/pull/174372 for context
+#pragma push_macro("TORCH_TARGET_VERSION")
+#undef TORCH_TARGET_VERSION
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#pragma pop_macro("TORCH_TARGET_VERSION")
 
 #include "AVIOContextHolder.h"
 
@@ -21,11 +27,12 @@ class AVIOFileLikeContext : public AVIOContextHolder {
  public:
   explicit AVIOFileLikeContext(const py::object& fileLike, bool isForWriting);
 
- private:
-  static int read(void* opaque, uint8_t* buf, int buf_size);
-  static int64_t seek(void* opaque, int64_t offset, int whence);
-  static int write(void* opaque, const uint8_t* buf, int buf_size);
+  int read(uint8_t* buf, int size) override;
+  int write(const uint8_t* buf, int size) override;
+  int64_t seek(int64_t offset, int whence) override;
+  int64_t getSize() override;
 
+ private:
   // Note that we dynamically allocate the Python object because we need to
   // strictly control when its destructor is called. We must hold the GIL
   // when its destructor gets called, as it needs to update the reference

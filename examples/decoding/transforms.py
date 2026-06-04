@@ -129,22 +129,6 @@ resized_during = resize_decoder[5]
 plot(resized_during, title="Resized to 480x640 during decoding")
 
 # %%
-# TorchCodec's relationship to TorchVision transforms
-# -----------------------------------------------------
-# Notably, in our examples we are passing in TorchVision
-# :class:`~torchvision.transforms.v2.Transform` objects as our transforms.
-# However, :class:`~torchcodec.decoders.VideoDecoder` accepts TorchVision
-# transforms as a matter of convenience. TorchVision is **not required** to use
-# decoder transforms.
-#
-# Every TorchVision transform that :class:`~torchcodec.decoders.VideoDecoder` accepts
-# has a complementary transform defined in :mod:`torchcodec.transforms`. We
-# would have gotten equivalent behavior if we had passed in the
-# :class:`torchcodec.transforms.Resize` object that is a part of TorchCodec.
-# :class:`~torchcodec.decoders.VideoDecoder` accepts both objects as a matter of
-# convenience and to clarify the relationship between the transforms that TorchCodec
-# applies and the transforms that TorchVision offers.
-#
 # Importantly, the two frames are not identical, even though we can see they
 # *look* very similar:
 
@@ -155,7 +139,24 @@ abs_diff = (resized_after.float() - resized_during.float()).abs()
 # But they're close enough that models won't be able to tell a difference:
 assert (abs_diff <= 1).float().mean() >= 0.998
 
+
 # %%
+# TorchCodec's relationship to TorchVision transforms
+# -----------------------------------------------------
+# Notably, in our examples we are passing in TorchVision
+# :class:`~torchvision.transforms.v2.Transform` objects as our transforms.
+# However, :class:`~torchcodec.decoders.VideoDecoder` accepts TorchVision
+# transforms as a matter of convenience. TorchVision is **not required** to use
+# decoder transforms.
+#
+# Every TorchVision transform that :class:`~torchcodec.decoders.VideoDecoder` accepts
+# has a complementary transform defined in :mod:`torchcodec.transforms`. We
+# would have gotten the same results if we had passed in the
+# :class:`torchcodec.transforms.Resize` object that is a part of TorchCodec.
+# :class:`~torchcodec.decoders.VideoDecoder` accepts both objects as a matter of
+# convenience and to clarify the relationship between the transforms that TorchCodec
+# applies and the transforms that TorchVision offers.
+#
 # While :class:`~torchcodec.decoders.VideoDecoder` accepts TorchVision transforms as
 # *specifications*, it is not actually using the TorchVision implementation of these
 # transforms. Instead, it is mapping them to equivalent
@@ -206,13 +207,20 @@ assert (abs_diff <= 1).float().mean() >= 0.998
 # the originally decoded frame. The output of that transform becomes the input
 # to the next transform in the list, and so on.
 #
+# From now on, we'll use TorchCodec transforms instead of TorchVision
+# transforms. When passed to the :class:`~torchcodec.decoders.VideoDecoder`,
+# they behave identically.
+#
 # A simple example:
+
+from torchcodec.transforms import Resize, CenterCrop
+
 
 crop_resize_decoder = VideoDecoder(
     penguin_video_path,
     transforms = [
-        v2.CenterCrop(size=(1280, 1664)),
-        v2.Resize(size=(480, 640)),
+        CenterCrop(size=(1280, 1664)),
+        Resize(size=(480, 640)),
     ]
 )
 crop_resized_during = crop_resize_decoder[5]
@@ -264,8 +272,8 @@ def sample_decoder_transforms(num_threads: int):
     decoder = VideoDecoder(
         penguin_video_path,
         transforms = [
-            v2.CenterCrop(size=(1280, 1664)),
-            v2.Resize(size=(480, 640)),
+            CenterCrop(size=(1280, 1664)),
+            Resize(size=(480, 640)),
         ],
         seek_mode="approximate",
         num_ffmpeg_threads=num_threads,

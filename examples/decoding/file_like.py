@@ -28,6 +28,7 @@ import requests
 from time import perf_counter_ns
 
 
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_6.jpg'
 def get_url_content(url):
     response = requests.get(url, headers={"User-Agent": ""})
     if response.status_code != 200:

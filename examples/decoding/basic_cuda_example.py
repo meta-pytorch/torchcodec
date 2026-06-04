@@ -21,7 +21,7 @@ CUDA decoding also uses less PCI-e bandwidth.
 Installing TorchCodec with CUDA Enabled
 ---------------------------------------
 
-Refer to the installation guide in the `README <https://github.com/pytorch/torchcodec#installing-cuda-enabled-torchcodec>`_.
+Refer to the installation guide in the `README <https://github.com/meta-pytorch/torchcodec#installing-cuda-enabled-torchcodec>`_.
 
 """
 
@@ -72,10 +72,9 @@ urllib.request.urlretrieve(
 #
 # To use CUDA decoder, you need to pass in a cuda device to the decoder.
 #
-from torchcodec.decoders import set_cuda_backend, VideoDecoder
+from torchcodec.decoders import VideoDecoder
 
-with set_cuda_backend("beta"):  # Use the BETA backend, it's faster!
-    decoder = VideoDecoder(video_file, device="cuda")
+decoder = VideoDecoder(video_file, device="cuda")
 frame = decoder[0]
 
 # %%
@@ -103,8 +102,7 @@ print(frame.data.device)
 # You can access the fallback status via the
 # :attr:`~torchcodec.decoders.VideoDecoder.cpu_fallback` attribute:
 
-with set_cuda_backend("beta"):
-    decoder = VideoDecoder(video_file, device="cuda")
+decoder = VideoDecoder(video_file, device="cuda")
 
 # Check and print the CPU fallback status
 print(decoder.cpu_fallback)
@@ -118,8 +116,7 @@ print(decoder.cpu_fallback)
 # against equivalent results from the CPU decoders.
 timestamps = [12, 19, 45, 131, 180]
 cpu_decoder = VideoDecoder(video_file, device="cpu")
-with set_cuda_backend("beta"):
-    cuda_decoder = VideoDecoder(video_file, device="cuda")
+cuda_decoder = VideoDecoder(video_file, device="cuda")
 cpu_frames = cpu_decoder.get_frames_played_at(timestamps).data
 cuda_frames = cuda_decoder.get_frames_played_at(timestamps).data
 

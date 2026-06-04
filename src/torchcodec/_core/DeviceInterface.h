@@ -6,13 +6,13 @@
 
 #pragma once
 
-#include <torch/types.h>
 #include <functional>
 #include <memory>
 #include <stdexcept>
 #include <string>
 #include "FFMPEGCommon.h"
 #include "Frame.h"
+#include "StableABICompat.h"
 #include "StreamOptions.h"
 #include "Transform.h"
 
@@ -20,8 +20,8 @@ namespace facebook::torchcodec {
 
 // Key for device interface registration with device type + variant support
 struct DeviceInterfaceKey {
-  torch::DeviceType deviceType;
-  std::string_view variant = "ffmpeg"; // e.g., "ffmpeg", "beta", etc.
+  StableDeviceType deviceType;
+  std::string_view variant = "default"; // e.g., "default", "ffmpeg"
 
   bool operator<(const DeviceInterfaceKey& other) const {
     if (deviceType != other.deviceType) {
@@ -30,19 +30,19 @@ struct DeviceInterfaceKey {
     return variant < other.variant;
   }
 
-  explicit DeviceInterfaceKey(torch::DeviceType type) : deviceType(type) {}
+  explicit DeviceInterfaceKey(StableDeviceType type) : deviceType(type) {}
 
-  DeviceInterfaceKey(torch::DeviceType type, const std::string_view& variant)
+  DeviceInterfaceKey(StableDeviceType type, const std::string_view& variant)
       : deviceType(type), variant(variant) {}
 };
 
 class DeviceInterface {
  public:
-  DeviceInterface(const torch::Device& device) : device_(device) {}
+  DeviceInterface(const StableDevice& device) : device_(device) {}
 
   virtual ~DeviceInterface(){};
 
-  torch::Device& device() {
+  StableDevice& device() {
     return device_;
   };
 
@@ -52,15 +52,15 @@ class DeviceInterface {
     return std::nullopt;
   };
 
-  // Initialize the device with parameters generic to all kinds of decoding.
-  virtual void initialize(
-      const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) = 0;
+  // Initialize the device with the codec context, which is needed for the
+  // default sendPacket/receiveFrame/flush implementations.
+  virtual void initialize(const SharedAVCodecContext& codecContext) = 0;
 
   // Initialize the device with parameters specific to video decoding. There is
   // a default empty implementation.
   virtual void initializeVideo(
+      [[maybe_unused]] const AVStream* avStream,
+      [[maybe_unused]] const UniqueDecodingAVFormatContext& avFormatCtx,
       [[maybe_unused]] const VideoStreamOptions& videoStreamOptions,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
           transforms,
@@ -77,7 +77,7 @@ class DeviceInterface {
   // buffered samples.
   // Returns an optional tensor containing the flushed samples, or std::nullopt
   // if there are no buffered samples or audio is not supported.
-  virtual std::optional<torch::Tensor> maybeFlushAudioBuffers() {
+  virtual std::optional<torch::stable::Tensor> maybeFlushAudioBuffers() {
     return std::nullopt;
   }
 
@@ -88,10 +88,20 @@ class DeviceInterface {
   virtual void registerHardwareDeviceWithCodec(
       [[maybe_unused]] AVCodecContext* codecContext) {}
 
+  // The dtype that should be used for the pre-allocated tensors on batch APIs.
+  // Usually that will just be the user's requested dtype, but not always: on
+  // CUDA with SDR videos when float32 is asked, will fallback from P016 to NV12
+  // to avoid falling back all the way to the CPU. The pre-allocated tensors
+  // then need to be uint8, not float32.
+  virtual OutputDtype getPreAllocationDtype(OutputDtype requestedDtype) const {
+    return requestedDtype;
+  }
+
   virtual void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt) = 0;
+      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+          std::nullopt) = 0;
 
   // ------------------------------------------
   // Extension points for custom decoding paths
@@ -101,7 +111,7 @@ class DeviceInterface {
   // other AVERROR on failure
   // Default implementation uses FFmpeg directly
   virtual int sendPacket(ReferenceAVPacket& avPacket) {
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         codecContext_ != nullptr,
         "Codec context not available for default packet sending");
     return avcodec_send_packet(codecContext_.get(), avPacket.get());
@@ -111,7 +121,7 @@ class DeviceInterface {
   // Returns AVSUCCESS on success, or other AVERROR on failure
   // Default implementation uses FFmpeg directly
   virtual int sendEOFPacket() {
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         codecContext_ != nullptr,
         "Codec context not available for default EOF packet sending");
     return avcodec_send_packet(codecContext_.get(), nullptr);
@@ -121,7 +131,7 @@ class DeviceInterface {
   // AVERROR_EOF if end of stream, or other AVERROR on failure
   // Default implementation uses FFmpeg directly
   virtual int receiveFrame(UniqueAVFrame& avFrame) {
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         codecContext_ != nullptr,
         "Codec context not available for default frame receiving");
     return avcodec_receive_frame(codecContext_.get(), avFrame.get());
@@ -129,60 +139,70 @@ class DeviceInterface {
 
   // Flush remaining frames from decoder
   virtual void flush() {
-    TORCH_CHECK(
+    STD_TORCH_CHECK(
         codecContext_ != nullptr,
         "Codec context not available for default flushing");
     avcodec_flush_buffers(codecContext_.get());
+
+    // We also manually flush any remaining frames in the decoder buffer. We
+    // shouldn't have to do this, because avcodec_flush_buffers should handle
+    // it, but some codecs like HEVC may still have frames buffered internally
+    // in edge cases (ex. hitting EOF) as observed in
+    // https://github.com/meta-pytorch/torchcodec/issues/1339.
+    UniqueAVFrame tmp(av_frame_alloc());
+    while (avcodec_receive_frame(codecContext_.get(), tmp.get()) == AVSUCCESS) {
+    }
   }
 
   virtual std::string getDetails() {
     return "";
   }
 
-  // Function used for video encoding, only implemented in CudaDeviceInterface.
-  // It is here to isolate CUDA dependencies from CPU builds
-  // TODO Video-Encoder: Reconsider using video encoding functions in device
-  // interface
-  virtual UniqueAVFrame convertCUDATensorToAVFrameForEncoding(
-      [[maybe_unused]] const torch::Tensor& tensor,
+  // Pixel format used for encoding on CUDA devices
+  static constexpr AVPixelFormat CUDA_ENCODING_PIXEL_FORMAT = AV_PIX_FMT_NV12;
+
+  virtual UniqueAVFrame convertTensorToAVFrameForEncoding(
+      [[maybe_unused]] const torch::stable::Tensor& tensor,
       [[maybe_unused]] int frameIndex,
       [[maybe_unused]] AVCodecContext* codecContext) {
-    TORCH_CHECK(false);
+    STD_TORCH_CHECK(false, "convertTensorToAVFrameForEncoding not implemented");
   }
 
   // Function used for video encoding, only implemented in CudaDeviceInterface.
   // It is here to isolate CUDA dependencies from CPU builds
   virtual void setupHardwareFrameContextForEncoding(
       [[maybe_unused]] AVCodecContext* codecContext) {
-    TORCH_CHECK(false);
+    STD_TORCH_CHECK(
+        false, "setupHardwareFrameContextForEncoding not implemented");
   }
 
   virtual std::optional<const AVCodec*> findHardwareEncoder(
       [[maybe_unused]] const AVCodecID& codecId) {
-    TORCH_CHECK(false);
+    STD_TORCH_CHECK(false, "findHardwareEncoder not implemented");
   }
 
  protected:
-  torch::Device device_;
+  StableDevice device_;
   SharedAVCodecContext codecContext_;
   AVMediaType avMediaType_;
 };
 
 using CreateDeviceInterfaceFn =
-    std::function<DeviceInterface*(const torch::Device& device)>;
+    std::function<DeviceInterface*(const StableDevice& device)>;
 
-bool registerDeviceInterface(
+TORCHCODEC_THIRD_PARTY_API bool registerDeviceInterface(
     const DeviceInterfaceKey& key,
     const CreateDeviceInterfaceFn createInterface);
 
-void validateDeviceInterface(
-    const std::string device,
-    const std::string variant);
+FORCE_PUBLIC_VISIBILITY void validateDeviceInterface(
+    const std::string& device,
+    const std::string& variant);
 
-std::unique_ptr<DeviceInterface> createDeviceInterface(
-    const torch::Device& device,
-    const std::string_view variant = "ffmpeg");
+TORCHCODEC_THIRD_PARTY_API std::unique_ptr<DeviceInterface>
+createDeviceInterface(
+    const StableDevice& device,
+    const std::string_view variant = "default");
 
-torch::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
+torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame);
 
 } // namespace facebook::torchcodec

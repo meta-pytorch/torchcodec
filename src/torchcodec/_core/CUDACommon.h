@@ -6,10 +6,7 @@
 
 #pragma once
 
-#include <ATen/cuda/CUDAEvent.h>
-#include <c10/cuda/CUDAStream.h>
-#include <npp.h>
-#include <torch/types.h>
+#include <cuda_runtime.h>
 
 #include "FFMPEGCommon.h"
 #include "Frame.h"
@@ -25,27 +22,23 @@ namespace facebook::torchcodec {
 // https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
 constexpr int MAX_CUDA_GPUS = 128;
 
-void initializeCudaContextWithPytorch(const torch::Device& device);
+// NV12 requires even dimensions. This rounds up to the nearest even value.
+inline int roundUpToEven(int value) {
+  return (value + 1) & ~1;
+}
 
-// Unique pointer type for NPP stream context
-using UniqueNppContext = std::unique_ptr<NppStreamContext>;
+cudaStream_t getCurrentCudaStream(int32_t deviceIndex);
 
-torch::Tensor convertNV12FrameToRGB(
-    UniqueAVFrame& avFrame,
-    const torch::Device& device,
-    const UniqueNppContext& nppCtx,
-    at::cuda::CUDAStream nvdecStream,
-    std::optional<torch::Tensor> preAllocatedOutputTensor = std::nullopt);
+// Make waitingStream wait until all work currently enqueued on runningStream
+// has completed.
+void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream);
 
-UniqueNppContext getNppStreamContext(const torch::Device& device);
-void returnNppStreamContextToCache(
-    const torch::Device& device,
-    UniqueNppContext nppCtx);
+void initializeCudaContextWithPytorch(const StableDevice& device);
 
 void validatePreAllocatedTensorShape(
-    const std::optional<torch::Tensor>& preAllocatedOutputTensor,
-    const UniqueAVFrame& avFrame);
+    const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,
+    const FrameDims& frameDims);
 
-int getDeviceIndex(const torch::Device& device);
+int getDeviceIndex(const StableDevice& device);
 
 } // namespace facebook::torchcodec

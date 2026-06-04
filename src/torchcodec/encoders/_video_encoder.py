@@ -1,21 +1,31 @@
+import io
 from pathlib import Path
 from typing import Any
 
 import torch
 from torch import Tensor
 
-from torchcodec import _core
+from torchcodec.encoders._multi_stream_encoder import Encoder
 
 
 class VideoEncoder:
-    """A video encoder.
+    """A single-stream video encoder on CPU or CUDA.
+
+    .. note::
+        This is a convenience class for simple, one-shot video encoding. For
+        multi-stream encoding (e.g. video + audio), incremental encoding, or
+        mixing CPU and CUDA streams, use :class:`~torchcodec.encoders.Encoder`
+        instead. See
+        :ref:`sphx_glr_generated_examples_encoding_video_encoding.py` for a
+        tutorial.
 
     Args:
         frames (``torch.Tensor``): The frames to encode. This must be a 4D
             tensor of shape ``(N, C, H, W)`` where N is the number of frames,
             C is 3 channels (RGB), H is height, and W is width.
             Values must be uint8 in the range ``[0, 255]``.
-            The device of the frames tensor will be used for encoding.
+            The tensor can be on CPU or CUDA. The device of the tensor
+            determines which encoder is used (CPU or GPU).
         frame_rate (float): The frame rate of the **input** ``frames``. Also defines the encoded **output** frame rate.
     """
 
@@ -32,6 +42,28 @@ class VideoEncoder:
 
         self._frames = frames
         self._frame_rate = frame_rate
+
+    def _get_add_video_kwargs(
+        self,
+        *,
+        codec: str | None = None,
+        pixel_format: str | None = None,
+        crf: int | float | None = None,
+        preset: str | int | None = None,
+        extra_options: dict[str, Any] | None = None,
+    ) -> dict:
+        preset = str(preset) if isinstance(preset, int) else preset
+        return dict(
+            height=self._frames.shape[2],
+            width=self._frames.shape[3],
+            frame_rate=self._frame_rate,
+            device=str(self._frames.device),
+            codec=codec,
+            pixel_format=pixel_format,
+            crf=crf,
+            preset=preset,
+            extra_options=extra_options,
+        )
 
     def to_file(
         self,
@@ -55,6 +87,7 @@ class VideoEncoder:
                 See :ref:`codec_selection` for details.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+                Must be left as ``None`` when encoding CUDA tensors.
                 See :ref:`pixel_format` for details.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
                 mean better quality. Valid range depends on the encoder (e.g.  0-51 for libx264).
@@ -69,19 +102,18 @@ class VideoEncoder:
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 See :ref:`extra_options` for details.
         """
-        preset = str(preset) if isinstance(preset, int) else preset
-        _core.encode_video_to_file(
-            frames=self._frames,
-            frame_rate=self._frame_rate,
-            filename=str(dest),
-            codec=codec,
-            pixel_format=pixel_format,
-            crf=crf,
-            preset=preset,
-            extra_options=[
-                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
-            ],
+        encoder = Encoder()
+        video = encoder.add_video(
+            **self._get_add_video_kwargs(
+                codec=codec,
+                pixel_format=pixel_format,
+                crf=crf,
+                preset=preset,
+                extra_options=extra_options,
+            )
         )
+        with encoder.open_file(dest):
+            video.add_frames(self._frames)
 
     def to_tensor(
         self,
@@ -104,6 +136,7 @@ class VideoEncoder:
                 See :ref:`codec_selection` for details.
             pixel_format (str, optional): The pixel format to encode frames into (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+                Must be left as ``None`` when encoding CUDA tensors.
                 See :ref:`pixel_format` for details.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
                 mean better quality. Valid range depends on the encoder (e.g.  0-51 for libx264).
@@ -119,21 +152,22 @@ class VideoEncoder:
                 See :ref:`extra_options` for details.
 
         Returns:
-            Tensor: The raw encoded bytes as 1D uint8 Tensor.
+            Tensor: The raw encoded bytes as 1D uint8 Tensor on CPU regardless of the device of the input frames.
         """
-        preset_value = str(preset) if isinstance(preset, int) else preset
-        return _core.encode_video_to_tensor(
-            frames=self._frames,
-            frame_rate=self._frame_rate,
-            format=format,
-            codec=codec,
-            pixel_format=pixel_format,
-            crf=crf,
-            preset=preset_value,
-            extra_options=[
-                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
-            ],
+        buf = io.BytesIO()
+        encoder = Encoder()
+        video = encoder.add_video(
+            **self._get_add_video_kwargs(
+                codec=codec,
+                pixel_format=pixel_format,
+                crf=crf,
+                preset=preset,
+                extra_options=extra_options,
+            )
         )
+        with encoder.open_file_like(buf, format=format):
+            video.add_frames(self._frames)
+        return torch.frombuffer(buf.getvalue(), dtype=torch.uint8).clone()
 
     def to_file_like(
         self,
@@ -162,6 +196,7 @@ class VideoEncoder:
                 See :ref:`codec_selection` for details.
             pixel_format (str, optional): The pixel format for encoding (e.g.,
                 "yuv420p", "yuv444p"). If not specified, uses codec's default format.
+                Must be left as ``None`` when encoding CUDA tensors.
                 See :ref:`pixel_format` for details.
             crf (int or float, optional): Constant Rate Factor for encoding quality. Lower values
                 mean better quality. Valid range depends on the encoder (e.g.  0-51 for libx264).
@@ -176,17 +211,15 @@ class VideoEncoder:
                 encoder options to pass, e.g. ``{"qp": 5, "tune": "film"}``.
                 See :ref:`extra_options` for details.
         """
-        preset = str(preset) if isinstance(preset, int) else preset
-        _core.encode_video_to_file_like(
-            frames=self._frames,
-            frame_rate=self._frame_rate,
-            format=format,
-            file_like=file_like,
-            codec=codec,
-            pixel_format=pixel_format,
-            crf=crf,
-            preset=preset,
-            extra_options=[
-                str(x) for k, v in (extra_options or {}).items() for x in (k, v)
-            ],
+        encoder = Encoder()
+        video = encoder.add_video(
+            **self._get_add_video_kwargs(
+                codec=codec,
+                pixel_format=pixel_format,
+                crf=crf,
+                preset=preset,
+                extra_options=extra_options,
+            )
         )
+        with encoder.open_file_like(file_like, format=format):
+            video.add_frames(self._frames)

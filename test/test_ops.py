@@ -17,15 +17,7 @@ import pytest
 import torch
 
 from torchcodec._core import (
-    _add_video_stream,
     _test_frame_pts_equality,
-    add_audio_stream,
-    add_video_stream,
-    create_from_bytes,
-    create_from_file,
-    create_from_file_like,
-    create_from_tensor,
-    encode_audio_to_file,
     get_ffmpeg_library_versions,
     get_frame_at_index,
     get_frame_at_pts,
@@ -36,6 +28,15 @@ from torchcodec._core import (
     get_frames_in_range,
     get_json_metadata,
     get_next_frame,
+)
+from torchcodec._core.ops import (
+    _add_video_stream,
+    add_audio_stream,
+    add_video_stream,
+    create_from_bytes,
+    create_from_file,
+    create_from_file_like,
+    create_from_tensor,
     seek_to_pts,
 )
 
@@ -1109,35 +1110,6 @@ class TestAudioDecoderOps:
         )
 
         torch.testing.assert_close(frames_file_like, frames_references)
-
-
-class TestAudioEncoderOps:
-
-    def test_bad_input(self, tmp_path):
-
-        valid_output_file = str(tmp_path / ".mp3")
-
-        with pytest.raises(RuntimeError, match="must have float32 dtype, got int"):
-            encode_audio_to_file(
-                samples=torch.arange(10, dtype=torch.int),
-                sample_rate=10,
-                filename=valid_output_file,
-            )
-        with pytest.raises(RuntimeError, match="must have 2 dimensions, got 1"):
-            encode_audio_to_file(
-                samples=torch.rand(3), sample_rate=10, filename=valid_output_file
-            )
-
-        with pytest.raises(RuntimeError, match="No such file or directory"):
-            encode_audio_to_file(
-                samples=torch.rand(2, 10), sample_rate=10, filename="./bad/path.mp3"
-            )
-        with pytest.raises(RuntimeError, match="check the desired extension"):
-            encode_audio_to_file(
-                samples=torch.rand(2, 10),
-                sample_rate=10,
-                filename="./file.bad_extension",
-            )
 
 
 if __name__ == "__main__":
