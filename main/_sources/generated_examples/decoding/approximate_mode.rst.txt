@@ -138,14 +138,14 @@ longer the video, the higher the performance gain.
  .. code-block:: none
 
     Creating a VideoDecoder object with seek_mode='exact' on a short video:
-    med = 6.40ms +- 0.02
+    med = 6.59ms +- 0.03
     Creating a VideoDecoder object with seek_mode='approximate' on a short video:
-    med = 5.72ms +- 0.02
+    med = 5.89ms +- 0.01
 
     Creating a VideoDecoder object with seek_mode='exact' on a long video:
-    med = 74.43ms +- 1.31
+    med = 74.75ms +- 1.25
     Creating a VideoDecoder object with seek_mode='approximate' on a long video:
-    med = 8.28ms +- 0.22
+    med = 8.59ms +- 0.06
 
 
 
@@ -196,9 +196,9 @@ example:
  .. code-block:: none
 
     Sampling clips with seek_mode='exact':
-    med = 199.94ms +- 23.58
+    med = 218.77ms +- 25.43
     Sampling clips with seek_mode='approximate':
-    med = 140.03ms +- 25.68
+    med = 146.70ms +- 28.08
 
 
 
@@ -344,7 +344,7 @@ The general rule of thumb is as follows:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 24.516 seconds)
+   **Total running time of the script:** (0 minutes 25.519 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_approximate_mode.py:
