@@ -170,12 +170,6 @@ Intel GPUs (XPU) support requires a stand-alone plugin for TorchCodec:
 pip install torchcodec-xpu --extra-index-url=https://download.pytorch.org/whl/xpu
 ```
 
-Upon installation, the plugin needs to be imported:
-
-```python
-import torchcodec_xpu
-```
-
 For any XPU-related support, please refer to
 https://github.com/intel/torchlib-xpu.
 
