@@ -649,9 +649,7 @@ class TestVideoDecoder:
         with pytest.raises(IndexError, match="Invalid frame index=390"):
             decoder.get_frames_at([390])
 
-        with pytest.raises(
-            RuntimeError, match="expected scalar type Long but found Float"
-        ):
+        with pytest.raises(RuntimeError, match="Long but found Float"):
             decoder.get_frames_at([0.3])
 
     @pytest.mark.parametrize("device", all_supported_devices())
