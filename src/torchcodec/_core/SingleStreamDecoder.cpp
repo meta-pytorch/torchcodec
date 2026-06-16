@@ -1331,34 +1331,76 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
     // caching we have to rewind back and decode the frame again.
     return false;
   }
-  // We are seeking forwards. We can skip a seek if both the last decoded frame
-  // and cursor_ share the same keyframe:
-  // Videos have I frames and non-I frames (P and B frames). Non-I frames need
-  // data from the previous I frame to be decoded.
+  // We are seeking forward, from the current frame x (lastDecodedAvFramePts_)
+  // to a target frame y (cursor_). Seeking means jumping to the last keyframe
+  // before y, which we call j:
   //
-  // Imagine the cursor is at a random frame with PTS=lastDecodedAvFramePts (x
-  // for brevity) and we wish to seek to a user-specified PTS=y.
+  //   .........x...............j...............y.......
+  //            ^               ^               ^
+  //       current frame   keyframe we'd     frame we
+  //       (last decoded)  seek to           want
   //
-  // If y < x, we don't have a choice but to seek backwards to the highest I
-  // frame before y.
+  // Whether seeking is worth it depends on how far j is from x. Seeking flushes
+  // the decoder, which throws away the `has_b_frames` frames already sitting in
+  // the reorder buffer plus the `thread_count - 1` frames in flight in the
+  // threading pipeline -- exactly the frames we'd decode next anyway. So we
+  // only seek if j is beyond them, i.e. if decoding straight through would cost
+  // more than the flush:
   //
-  // If y > x, we have two choices:
+  //   seek iff (j - x) > has_b_frames + thread_count - 1
   //
-  // 1. We could keep decoding forward until we hit y. Illustrated below:
-  //
-  // I    P     P    P    I    P    P    P    I    P    P    I    P
-  //                           x         y
-  //
-  // 2. We could try to jump to an I frame between x and y (indicated by j
-  // below). And then start decoding until we encounter y. Illustrated below:
-  //
-  // I    P     P    P    I    P    P    P    I    P    P    I    P
-  //                           x              j         y
-  // (2) is only more efficient than (1) if there is an I frame between x and y.
-  int lastKeyFrame = getKeyFrameIdentifier(lastDecodedAvFramePts_);
-  int targetKeyFrame = getKeyFrameIdentifier(cursor_);
-  return lastKeyFrame >= 0 && targetKeyFrame >= 0 &&
-      lastKeyFrame == targetKeyFrame;
+  // (the thread_count term only applies to CPU decoding, see below.)
+  // See https://github.com/meta-pytorch/torchcodec/issues/1488 for details.
+
+  // These "identifiers" only let us tell whether x and y share the same
+  // keyframe. They are not necessarily frame indices (see
+  // getKeyFrameIdentifier()), so we use them for equality only, not for the
+  // (j - x) distance below.
+  int lastKeyFrameId = getKeyFrameIdentifier(lastDecodedAvFramePts_);
+  int targetKeyFrameId = getKeyFrameIdentifier(cursor_);
+  if (lastKeyFrameId < 0 || targetKeyFrameId < 0) {
+    return false;
+  }
+  if (lastKeyFrameId == targetKeyFrameId) {
+    // x and y share the same keyframe (as in `...j...x...y`): seeking would go
+    // backwards to j and re-decode up to x, landing us back where we are.
+    return true;
+  }
+
+  // x
+  int64_t lastDecodedFrameIndex = secondsToIndexLowerBound(
+      ptsToSeconds(lastDecodedAvFramePts_, streamInfo.timeBase));
+
+  // j
+  int64_t targetKeyFrameIndex;
+  if (!streamInfo.keyFrames.empty()) {
+    // exact and custom_frame_mappings modes: getKeyFrameIdentifier() returned
+    // getKeyFrameIndexForPtsUsingScannedIndex() for these modes, so
+    // targetKeyFrameId is already the position of j in the scanned keyFrames
+    // vector.
+    targetKeyFrameIndex = streamInfo.keyFrames[targetKeyFrameId].frameIndex;
+  } else {
+    // approximate mode: keyFrames is empty, so we can't locate j. We use y
+    // instead. This makes the heuristic more conservative, i.e. err towards
+    // seeking even more, which is safe.
+    targetKeyFrameIndex =
+        secondsToIndexLowerBound(ptsToSeconds(cursor_, streamInfo.timeBase));
+  }
+
+  int64_t frameReorderBufferSize =
+      std::max(streamInfo.codecContext->has_b_frames, 0);
+
+  // The `thread_count - 1` in-flight frames only exist with FFmpeg
+  // frame-threading, i.e. the CPU decoding path. On other devices (e.g. CUDA)
+  // decoding is offloaded and there's no such pipeline, so we don't count them.
+  // The reorder buffer (has_b_frames) is a codec property and applies
+  // regardless.
+  int64_t inFlightFrames = 0;
+  if (streamInfo.videoStreamOptions.device == kStableCPU) {
+    inFlightFrames = std::max(streamInfo.codecContext->thread_count, 1) - 1;
+  }
+  return (targetKeyFrameIndex - lastDecodedFrameIndex) <=
+      frameReorderBufferSize + inFlightFrames;
 }
 
 // This method looks at currentPts and desiredPts and seeks in the
@@ -1627,8 +1669,8 @@ int SingleStreamDecoder::getKeyFrameIndexForPtsUsingScannedIndex(
   return upperBound - 1 - keyFrames.begin();
 }
 
-int64_t SingleStreamDecoder::secondsToIndexLowerBound(double seconds) {
-  auto& streamInfo = streamInfos_[activeStreamIndex_];
+int64_t SingleStreamDecoder::secondsToIndexLowerBound(double seconds) const {
+  const auto& streamInfo = streamInfos_.at(activeStreamIndex_);
   switch (seekMode_) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact: {
