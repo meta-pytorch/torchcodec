@@ -4,6 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+import ctypes
 import importlib
 import importlib.util
 import sys
@@ -64,6 +65,24 @@ def _load_pybind11_module(module_name: str, library_path: str) -> ModuleType:
     return mod
 
 
+def _ffmpeg_runtime_present(ffmpeg_major_version: int) -> bool:
+    """Return True if the FFmpeg runtime for this major version is loadable.
+
+    dlopen'ing a core lib whose FFmpeg runtime is absent still maps the core
+    lib's CUDA deps (which carry TLS) before failing on the missing libavutil
+    and unwinding (dlclose) -- freeing TLS module ids and leaving glibc's TLS
+    slotinfo bookkeeping inconsistent, which aborts an unrelated later dlopen
+    ("_dl_add_to_slotinfo: idx == 0"; glibc before the bug-31717 rework).
+
+    Checking libavutil first: libavutil soname major == FFmpeg major + 52.
+    """
+    try:
+        ctypes.CDLL(f"libavutil.so.{ffmpeg_major_version + 52}")
+        return True
+    except OSError:
+        return False
+
+
 def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
     """
     Successively try to load the shared libraries for each version of FFmpeg
@@ -85,6 +104,8 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
     """
     exceptions = []
     for ffmpeg_major_version in (8, 7, 6, 5, 4):
+        if not _ffmpeg_runtime_present(ffmpeg_major_version):
+            continue
         core_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
         custom_ops_library_name = f"libtorchcodec_custom_ops{ffmpeg_major_version}"
         pybind_ops_library_name = f"libtorchcodec_pybind_ops{ffmpeg_major_version}"
