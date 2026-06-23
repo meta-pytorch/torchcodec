@@ -297,7 +297,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       const std::vector<SingleStreamDecoder::FrameInfo>& keyFrames,
       int64_t pts) const;
 
-  int64_t secondsToIndexLowerBound(double seconds);
+  int64_t secondsToIndexLowerBound(double seconds) const;
 
   int64_t secondsToIndexUpperBound(double seconds);
 
