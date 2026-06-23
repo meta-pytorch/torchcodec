@@ -1,6 +1,7 @@
 build/
 dist/
 src/TorchCodec.egg-info/
+test/plugin/torchcodec_test_plugin.egg-info/
 */**/__pycache__
 */__pycache__
 */*.pyc
