@@ -13,7 +13,7 @@
 // we can rely on it, that's what torch does too.
 
 namespace facebook::torchcodec {
-bool loadNVCUVIDLibrary() {
+bool load_nvcuvid_library() {
   return true;
 }
 } // namespace facebook::torchcodec
@@ -65,7 +65,7 @@ namespace facebook::torchcodec {
 // nullptr, but later it will be a proper function [pointer] that can be called
 // with dl_cuvidCreateVideoParser(...);
 //
-// For that to happen we need to call loadNVCUVIDLibrary(): in there, we first
+// For that to happen we need to call load_nvcuvid_library(): in there, we first
 // dlopen(libnvcuvid.so) which loads the .so somewhere in memory. Then we call
 // dlsym(...), which binds dl_cuvidCreateVideoParser to its actual address: it
 // literally sets the value of the dl_cuvidCreateVideoParser pointer to the
@@ -124,7 +124,7 @@ static tcuvidUnmapVideoFrame64* dl_cuvidUnmapVideoFrame64 = nullptr;
 static tHandle g_nvcuvid_handle = nullptr;
 static std::mutex g_nvcuvid_mutex;
 
-bool isLoaded() {
+bool is_loaded() {
   return (
       g_nvcuvid_handle && dl_cuvidCreateVideoParser && dl_cuvidParseVideoData &&
       dl_cuvidDestroyVideoParser && dl_cuvidGetDecoderCaps &&
@@ -135,15 +135,15 @@ bool isLoaded() {
 }
 
 template <typename T>
-T* bindFunction(const char* functionName) {
+T* bind_function(const char* function_name) {
 #if defined(WIN64) || defined(_WIN64)
-  return reinterpret_cast<T*>(GetProcAddress(g_nvcuvid_handle, functionName));
+  return reinterpret_cast<T*>(GetProcAddress(g_nvcuvid_handle, function_name));
 #else
-  return reinterpret_cast<T*>(dlsym(g_nvcuvid_handle, functionName));
+  return reinterpret_cast<T*>(dlsym(g_nvcuvid_handle, function_name));
 #endif
 }
 
-bool _loadLibrary() {
+bool load_library() {
   // Helper that just calls dlopen or equivalent on Windows. In a separate
   // function because of the #ifdef uglyness.
 #if defined(WIN64) || defined(_WIN64)
@@ -169,44 +169,44 @@ bool _loadLibrary() {
   return true;
 }
 
-bool loadNVCUVIDLibrary() {
+bool load_nvcuvid_library() {
   // Loads NVCUVID library and all required function pointers.
   // Returns true on success, false on failure.
   std::lock_guard<std::mutex> lock(g_nvcuvid_mutex);
 
-  if (isLoaded()) {
+  if (is_loaded()) {
     return true;
   }
 
-  if (!_loadLibrary()) {
+  if (!load_library()) {
     return false;
   }
 
   // Load all function pointers. They'll be set to nullptr if not found.
   dl_cuvidCreateVideoParser =
-      bindFunction<tcuvidCreateVideoParser>("cuvidCreateVideoParser");
+      bind_function<tcuvidCreateVideoParser>("cuvidCreateVideoParser");
   dl_cuvidParseVideoData =
-      bindFunction<tcuvidParseVideoData>("cuvidParseVideoData");
+      bind_function<tcuvidParseVideoData>("cuvidParseVideoData");
   dl_cuvidDestroyVideoParser =
-      bindFunction<tcuvidDestroyVideoParser>("cuvidDestroyVideoParser");
+      bind_function<tcuvidDestroyVideoParser>("cuvidDestroyVideoParser");
   dl_cuvidGetDecoderCaps =
-      bindFunction<tcuvidGetDecoderCaps>("cuvidGetDecoderCaps");
+      bind_function<tcuvidGetDecoderCaps>("cuvidGetDecoderCaps");
   dl_cuvidCreateDecoder =
-      bindFunction<tcuvidCreateDecoder>("cuvidCreateDecoder");
+      bind_function<tcuvidCreateDecoder>("cuvidCreateDecoder");
   dl_cuvidDestroyDecoder =
-      bindFunction<tcuvidDestroyDecoder>("cuvidDestroyDecoder");
+      bind_function<tcuvidDestroyDecoder>("cuvidDestroyDecoder");
   dl_cuvidDecodePicture =
-      bindFunction<tcuvidDecodePicture>("cuvidDecodePicture");
+      bind_function<tcuvidDecodePicture>("cuvidDecodePicture");
   dl_cuvidMapVideoFrame =
-      bindFunction<tcuvidMapVideoFrame>("cuvidMapVideoFrame");
+      bind_function<tcuvidMapVideoFrame>("cuvidMapVideoFrame");
   dl_cuvidUnmapVideoFrame =
-      bindFunction<tcuvidUnmapVideoFrame>("cuvidUnmapVideoFrame");
+      bind_function<tcuvidUnmapVideoFrame>("cuvidUnmapVideoFrame");
   dl_cuvidMapVideoFrame64 =
-      bindFunction<tcuvidMapVideoFrame64>("cuvidMapVideoFrame64");
+      bind_function<tcuvidMapVideoFrame64>("cuvidMapVideoFrame64");
   dl_cuvidUnmapVideoFrame64 =
-      bindFunction<tcuvidUnmapVideoFrame64>("cuvidUnmapVideoFrame64");
+      bind_function<tcuvidUnmapVideoFrame64>("cuvidUnmapVideoFrame64");
 
-  return isLoaded();
+  return is_loaded();
 }
 
 } // namespace facebook::torchcodec
@@ -214,29 +214,30 @@ bool loadNVCUVIDLibrary() {
 extern "C" {
 
 CUresult CUDAAPI cuvidCreateVideoParser(
-    CUvideoparser* videoParser,
-    CUVIDPARSERPARAMS* parserParams) {
+    CUvideoparser* video_parser,
+    CUVIDPARSERPARAMS* parser_params) {
   STD_TORCH_CHECK(
       facebook::torchcodec::dl_cuvidCreateVideoParser,
       "cuvidCreateVideoParser called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidCreateVideoParser(
-      videoParser, parserParams);
+      video_parser, parser_params);
 }
 
 CUresult CUDAAPI cuvidParseVideoData(
-    CUvideoparser videoParser,
-    CUVIDSOURCEDATAPACKET* cuvidPacket) {
+    CUvideoparser video_parser,
+    CUVIDSOURCEDATAPACKET* cuvid_packet) {
   STD_TORCH_CHECK(
       facebook::torchcodec::dl_cuvidParseVideoData,
       "cuvidParseVideoData called but NVCUVID not loaded!");
-  return facebook::torchcodec::dl_cuvidParseVideoData(videoParser, cuvidPacket);
+  return facebook::torchcodec::dl_cuvidParseVideoData(
+      video_parser, cuvid_packet);
 }
 
-CUresult CUDAAPI cuvidDestroyVideoParser(CUvideoparser videoParser) {
+CUresult CUDAAPI cuvidDestroyVideoParser(CUvideoparser video_parser) {
   STD_TORCH_CHECK(
       facebook::torchcodec::dl_cuvidDestroyVideoParser,
       "cuvidDestroyVideoParser called but NVCUVID not loaded!");
-  return facebook::torchcodec::dl_cuvidDestroyVideoParser(videoParser);
+  return facebook::torchcodec::dl_cuvidDestroyVideoParser(video_parser);
 }
 
 CUresult CUDAAPI cuvidGetDecoderCaps(CUVIDDECODECAPS* caps) {
@@ -248,11 +249,11 @@ CUresult CUDAAPI cuvidGetDecoderCaps(CUVIDDECODECAPS* caps) {
 
 CUresult CUDAAPI cuvidCreateDecoder(
     CUvideodecoder* decoder,
-    CUVIDDECODECREATEINFO* decoderParams) {
+    CUVIDDECODECREATEINFO* decoder_params) {
   STD_TORCH_CHECK(
       facebook::torchcodec::dl_cuvidCreateDecoder,
       "cuvidCreateDecoder called but NVCUVID not loaded!");
-  return facebook::torchcodec::dl_cuvidCreateDecoder(decoder, decoderParams);
+  return facebook::torchcodec::dl_cuvidCreateDecoder(decoder, decoder_params);
 }
 
 CUresult CUDAAPI cuvidDestroyDecoder(CUvideodecoder decoder) {
@@ -263,11 +264,11 @@ CUresult CUDAAPI cuvidDestroyDecoder(CUvideodecoder decoder) {
 }
 
 CUresult CUDAAPI
-cuvidDecodePicture(CUvideodecoder decoder, CUVIDPICPARAMS* picParams) {
+cuvidDecodePicture(CUvideodecoder decoder, CUVIDPICPARAMS* pic_params) {
   STD_TORCH_CHECK(
       facebook::torchcodec::dl_cuvidDecodePicture,
       "cuvidDecodePicture called but NVCUVID not loaded!");
-  return facebook::torchcodec::dl_cuvidDecodePicture(decoder, picParams);
+  return facebook::torchcodec::dl_cuvidDecodePicture(decoder, pic_params);
 }
 
 #if !defined(__CUVID_DEVPTR64) || defined(__CUVID_INTERNAL)
@@ -277,45 +278,45 @@ cuvidDecodePicture(CUvideodecoder decoder, CUVIDPICPARAMS* picParams) {
 // versions.
 CUresult CUDAAPI cuvidMapVideoFrame(
     CUvideodecoder decoder,
-    int pixIndex,
-    unsigned int* framePtr,
+    int pix_index,
+    unsigned int* frame_ptr,
     unsigned int* pitch,
-    CUVIDPROCPARAMS* procParams) {
+    CUVIDPROCPARAMS* proc_params) {
   STD_TORCH_CHECK(
       facebook::torchcodec::dl_cuvidMapVideoFrame,
       "cuvidMapVideoFrame called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidMapVideoFrame(
-      decoder, pixIndex, framePtr, pitch, procParams);
+      decoder, pix_index, frame_ptr, pitch, proc_params);
 }
 
 CUresult CUDAAPI
-cuvidUnmapVideoFrame(CUvideodecoder decoder, unsigned int framePtr) {
+cuvidUnmapVideoFrame(CUvideodecoder decoder, unsigned int frame_ptr) {
   STD_TORCH_CHECK(
       facebook::torchcodec::dl_cuvidUnmapVideoFrame,
       "cuvidUnmapVideoFrame called but NVCUVID not loaded!");
-  return facebook::torchcodec::dl_cuvidUnmapVideoFrame(decoder, framePtr);
+  return facebook::torchcodec::dl_cuvidUnmapVideoFrame(decoder, frame_ptr);
 }
 #endif
 
 CUresult CUDAAPI cuvidMapVideoFrame64(
     CUvideodecoder decoder,
-    int pixIndex,
-    unsigned long long* framePtr,
+    int pix_index,
+    unsigned long long* frame_ptr,
     unsigned int* pitch,
-    CUVIDPROCPARAMS* procParams) {
+    CUVIDPROCPARAMS* proc_params) {
   STD_TORCH_CHECK(
       facebook::torchcodec::dl_cuvidMapVideoFrame64,
       "cuvidMapVideoFrame64 called but NVCUVID not loaded!");
   return facebook::torchcodec::dl_cuvidMapVideoFrame64(
-      decoder, pixIndex, framePtr, pitch, procParams);
+      decoder, pix_index, frame_ptr, pitch, proc_params);
 }
 
 CUresult CUDAAPI
-cuvidUnmapVideoFrame64(CUvideodecoder decoder, unsigned long long framePtr) {
+cuvidUnmapVideoFrame64(CUvideodecoder decoder, unsigned long long frame_ptr) {
   STD_TORCH_CHECK(
       facebook::torchcodec::dl_cuvidUnmapVideoFrame64,
       "cuvidUnmapVideoFrame64 called but NVCUVID not loaded!");
-  return facebook::torchcodec::dl_cuvidUnmapVideoFrame64(decoder, framePtr);
+  return facebook::torchcodec::dl_cuvidUnmapVideoFrame64(decoder, frame_ptr);
 }
 
 } // extern "C"

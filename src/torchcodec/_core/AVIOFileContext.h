@@ -22,11 +22,11 @@ class AVIOFileContext : public AVIOContextHolder {
 
   int read(uint8_t* buf, int size) override;
   int64_t seek(int64_t offset, int whence) override;
-  int64_t getSize() override;
+  int64_t get_size() override;
 
  private:
   std::ifstream file_;
-  int64_t fileSize_;
+  int64_t file_size_;
 };
 
 } // namespace facebook::torchcodec

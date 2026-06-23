@@ -9,51 +9,51 @@
 
 namespace facebook::torchcodec {
 
-SwScale::SwScale(const SwsConfig& config, int swsFlags)
-    : config_(config), swsFlags_(swsFlags) {
-  needsResize_ =
-      (config_.inputHeight != config_.outputHeight ||
-       config_.inputWidth != config_.outputWidth);
+SwScale::SwScale(const SwsConfig& config, int sws_flags)
+    : config_(config), sws_flags_(sws_flags) {
+  needs_resize_ =
+      (config_.input_height != config_.output_height ||
+       config_.input_width != config_.output_width);
 
   // Create color conversion context (input format -> output RGB format).
   // Color conversion always outputs at the input resolution.
   // When no resize is needed, input and output resolutions are the same.
   // See [Transform and Format Conversion Order] for more on the output pixel
   // format.
-  SwsConfig colorConversionFrameConfig(
-      config_.inputWidth,
-      config_.inputHeight,
-      config_.inputFormat,
-      config_.inputColorspace,
-      config_.inputWidth,
-      config_.inputHeight,
-      config_.outputFormat);
+  SwsConfig color_conversion_frame_config(
+      config_.input_width,
+      config_.input_height,
+      config_.input_format,
+      config_.input_colorspace,
+      config_.input_width,
+      config_.input_height,
+      config_.output_format);
 
-  colorConversionSwsContext_ = createSwsContext(
-      colorConversionFrameConfig,
+  color_conversion_sws_context_ = create_sws_context(
+      color_conversion_frame_config,
       // No flags for color conversion. When resizing is needed, we use a
       // separate swscale context with the appropriate resize flags.
       /*swsFlags=*/0);
 
   // Create resize context if needed (output RGB at input resolution ->
   // output RGB at output resolution).
-  if (needsResize_) {
-    SwsConfig resizeFrameConfig(
-        config_.inputWidth,
-        config_.inputHeight,
-        config_.outputFormat,
+  if (needs_resize_) {
+    SwsConfig resize_frame_config(
+        config_.input_width,
+        config_.input_height,
+        config_.output_format,
         AVCOL_SPC_RGB,
-        config_.outputWidth,
-        config_.outputHeight,
-        config_.outputFormat);
+        config_.output_width,
+        config_.output_height,
+        config_.output_format);
 
-    resizeSwsContext_ = createSwsContext(resizeFrameConfig, swsFlags_);
+    resize_sws_context_ = create_sws_context(resize_frame_config, sws_flags_);
   }
 }
 
 int SwScale::convert(
-    const UniqueAVFrame& avFrame,
-    torch::stable::Tensor& outputTensor) {
+    const UniqueAVFrame& av_frame,
+    torch::stable::Tensor& output_tensor) {
   // When resizing is needed, we do sws_scale twice: first convert to output
   // RGB at original resolution, then resize in output RGB space. This ensures
   // transforms happen in the output color space (RGB) rather than the input
@@ -62,69 +62,70 @@ int SwScale::convert(
   // When no resize is needed, we do color conversion directly into the output
   // tensor.
   // RGB24 = 3 channels x 1 byte (uint8); RGB48 = 3 channels x 2 bytes (uint16).
-  bool isRGB48 = config_.outputFormat == AV_PIX_FMT_RGB48;
-  int bytesPerPixel = isRGB48 ? 6 : 3;
-  auto outputDtype = isRGB48 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
-  torch::stable::Tensor colorConvertedTensor = needsResize_
-      ? allocateEmptyHWCTensor(
-            FrameDims(config_.inputHeight, config_.inputWidth),
+  bool is_rgb48 = config_.output_format == AV_PIX_FMT_RGB48;
+  int bytes_per_pixel = is_rgb48 ? 6 : 3;
+  auto output_dtype = is_rgb48 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
+  torch::stable::Tensor color_converted_tensor = needs_resize_
+      ? allocate_empty_hwc_tensor(
+            FrameDims(config_.input_height, config_.input_width),
             kStableCPU,
-            outputDtype)
-      : outputTensor;
+            output_dtype)
+      : output_tensor;
 
   // sws_scale always takes uint8_t* pointers regardless of actual bit depth.
-  uint8_t* colorConvertedPointers[4] = {
-      static_cast<uint8_t*>(colorConvertedTensor.mutable_data_ptr()),
+  uint8_t* color_converted_pointers[4] = {
+      static_cast<uint8_t*>(color_converted_tensor.mutable_data_ptr()),
       nullptr,
       nullptr,
       nullptr};
-  int colorConvertedWidth = static_cast<int>(colorConvertedTensor.sizes()[1]);
-  int colorConvertedLinesizes[4] = {
-      colorConvertedWidth * bytesPerPixel, 0, 0, 0};
+  int color_converted_width =
+      static_cast<int>(color_converted_tensor.sizes()[1]);
+  int color_converted_linesizes[4] = {
+      color_converted_width * bytes_per_pixel, 0, 0, 0};
 
-  int colorConvertedHeight = sws_scale(
-      colorConversionSwsContext_.get(),
-      avFrame->data,
-      avFrame->linesize,
+  int color_converted_height = sws_scale(
+      color_conversion_sws_context_.get(),
+      av_frame->data,
+      av_frame->linesize,
       0,
-      avFrame->height,
-      colorConvertedPointers,
-      colorConvertedLinesizes);
+      av_frame->height,
+      color_converted_pointers,
+      color_converted_linesizes);
 
   STD_TORCH_CHECK(
-      colorConvertedHeight == avFrame->height,
+      color_converted_height == av_frame->height,
       "Color conversion swscale pass failed: colorConvertedHeight != avFrame->height: ",
-      colorConvertedHeight,
+      color_converted_height,
       " != ",
-      avFrame->height);
+      av_frame->height);
 
-  if (needsResize_) {
-    uint8_t* srcPointers[4] = {
-        static_cast<uint8_t*>(colorConvertedTensor.mutable_data_ptr()),
+  if (needs_resize_) {
+    uint8_t* src_pointers[4] = {
+        static_cast<uint8_t*>(color_converted_tensor.mutable_data_ptr()),
         nullptr,
         nullptr,
         nullptr};
-    int srcLinesizes[4] = {config_.inputWidth * bytesPerPixel, 0, 0, 0};
+    int src_linesizes[4] = {config_.input_width * bytes_per_pixel, 0, 0, 0};
 
-    uint8_t* dstPointers[4] = {
-        static_cast<uint8_t*>(outputTensor.mutable_data_ptr()),
+    uint8_t* dst_pointers[4] = {
+        static_cast<uint8_t*>(output_tensor.mutable_data_ptr()),
         nullptr,
         nullptr,
         nullptr};
-    int expectedOutputWidth = static_cast<int>(outputTensor.sizes()[1]);
-    int dstLinesizes[4] = {expectedOutputWidth * bytesPerPixel, 0, 0, 0};
+    int expected_output_width = static_cast<int>(output_tensor.sizes()[1]);
+    int dst_linesizes[4] = {expected_output_width * bytes_per_pixel, 0, 0, 0};
 
-    colorConvertedHeight = sws_scale(
-        resizeSwsContext_.get(),
-        srcPointers,
-        srcLinesizes,
+    color_converted_height = sws_scale(
+        resize_sws_context_.get(),
+        src_pointers,
+        src_linesizes,
         0,
-        config_.inputHeight,
-        dstPointers,
-        dstLinesizes);
+        config_.input_height,
+        dst_pointers,
+        dst_linesizes);
   }
 
-  return colorConvertedHeight;
+  return color_converted_height;
 }
 
 } // namespace facebook::torchcodec

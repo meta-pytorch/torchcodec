@@ -11,7 +11,7 @@
 
 namespace facebook::torchcodec {
 
-cudaStream_t getCurrentCudaStream(int32_t deviceIndex) {
+cudaStream_t get_current_cuda_stream(int32_t device_index) {
   // This is the documented and blessed way to get the current CUDA stream with
   // the stable ABI. aoti_torch_get_current_cuda_stream, TORCH_ERROR_CODE_CHECK,
   // and the corresponding torch/csrc/inductor/aoti_torch/c/shim.h header are
@@ -19,7 +19,7 @@ cudaStream_t getCurrentCudaStream(int32_t deviceIndex) {
   // https://github.com/pytorch/pytorch/blob/7bc8d4b0648e1d364dce0104c3aea2e7e3c1640a/docs/cpp/source/stable.rst?plain=1#L172-L179
   void* stream = nullptr;
   TORCH_ERROR_CODE_CHECK(
-      aoti_torch_get_current_cuda_stream(deviceIndex, &stream));
+      aoti_torch_get_current_cuda_stream(device_index, &stream));
   // Note: no need for checking against nullptr stream, it's a valid default
   // stream value.
   return static_cast<cudaStream_t>(stream);
@@ -27,17 +27,17 @@ cudaStream_t getCurrentCudaStream(int32_t deviceIndex) {
 
 // Make waitingStream wait until all work currently enqueued on runningStream
 // has completed.
-void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream) {
+void sync_streams(cudaStream_t running_stream, cudaStream_t waiting_stream) {
   cudaEvent_t event;
   cudaError_t err = cudaEventCreate(&event);
   STD_TORCH_CHECK(
       err == cudaSuccess, "cudaEventCreate failed: ", cudaGetErrorString(err));
 
-  err = cudaEventRecord(event, runningStream);
+  err = cudaEventRecord(event, running_stream);
   STD_TORCH_CHECK(
       err == cudaSuccess, "cudaEventRecord failed: ", cudaGetErrorString(err));
 
-  err = cudaStreamWaitEvent(waitingStream, event, 0);
+  err = cudaStreamWaitEvent(waiting_stream, event, 0);
   STD_TORCH_CHECK(
       err == cudaSuccess,
       "cudaStreamWaitEvent failed: ",
@@ -46,47 +46,48 @@ void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream) {
   cudaEventDestroy(event);
 }
 
-void initializeCudaContextWithPytorch(const StableDevice& device) {
+void initialize_cuda_context_with_pytorch(const StableDevice& device) {
   // It is important for pytorch itself to create the cuda context. If ffmpeg
   // creates the context it may not be compatible with pytorch.
   // This is a dummy tensor to initialize the cuda context.
-  torch::stable::Tensor dummyTensorForCudaInitialization = torch::stable::empty(
-      {1}, kStableUInt8, std::nullopt, StableDevice(device));
-  torch::stable::zero_(dummyTensorForCudaInitialization);
+  torch::stable::Tensor dummy_tensor_for_cuda_initialization =
+      torch::stable::empty(
+          {1}, kStableUInt8, std::nullopt, StableDevice(device));
+  torch::stable::zero_(dummy_tensor_for_cuda_initialization);
 }
 
-void validatePreAllocatedTensorShape(
-    const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,
-    const FrameDims& frameDims) {
-  if (preAllocatedOutputTensor.has_value()) {
-    auto shape = preAllocatedOutputTensor.value().sizes();
+void validate_pre_allocated_tensor_shape(
+    const std::optional<torch::stable::Tensor>& pre_allocated_output_tensor,
+    const FrameDims& frame_dims) {
+  if (pre_allocated_output_tensor.has_value()) {
+    auto shape = pre_allocated_output_tensor.value().sizes();
     STD_TORCH_CHECK(
-        (shape.size() == 3) && (shape[0] == frameDims.height) &&
-            (shape[1] == frameDims.width) && (shape[2] == 3),
+        (shape.size() == 3) && (shape[0] == frame_dims.height) &&
+            (shape[1] == frame_dims.width) && (shape[2] == 3),
         "Expected tensor of shape ",
-        frameDims.height,
+        frame_dims.height,
         "x",
-        frameDims.width,
+        frame_dims.width,
         "x3, got ",
-        intArrayRefToString(shape));
+        int_array_ref_to_string(shape));
   }
 }
 
-int getDeviceIndex(const StableDevice& device) {
+int get_device_index(const StableDevice& device) {
   // PyTorch uses int8_t as its torch::DeviceIndex, but FFmpeg and CUDA
   // libraries use int. So we use int, too.
-  int deviceIndex = static_cast<int>(device.index());
+  int device_index = static_cast<int>(device.index());
   STD_TORCH_CHECK(
-      deviceIndex >= -1 && deviceIndex < MAX_CUDA_GPUS,
+      device_index >= -1 && device_index < MAX_CUDA_GPUS,
       "Invalid device index = ",
-      deviceIndex);
+      device_index);
 
-  if (deviceIndex == -1) {
+  if (device_index == -1) {
     STD_TORCH_CHECK(
-        cudaGetDevice(&deviceIndex) == cudaSuccess,
+        cudaGetDevice(&device_index) == cudaSuccess,
         "Failed to get current CUDA device.");
   }
-  return deviceIndex;
+  return device_index;
 }
 
 } // namespace facebook::torchcodec
