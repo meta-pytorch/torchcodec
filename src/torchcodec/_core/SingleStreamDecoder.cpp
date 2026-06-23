@@ -1349,7 +1349,8 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
   //
   //   seek iff (j - x) > has_b_frames + thread_count - 1
   //
-  // (the thread_count term only applies to CPU decoding, see below.)
+  // (the thread_count term only applies to CPU decoding and to FRAME threading,
+  // see below.)
   // See https://github.com/meta-pytorch/torchcodec/issues/1488 for details.
 
   // These "identifiers" only let us tell whether x and y share the same
@@ -1390,13 +1391,16 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
   int64_t frameReorderBufferSize =
       std::max(streamInfo.codecContext->has_b_frames, 0);
 
-  // The `thread_count - 1` in-flight frames only exist with FFmpeg
-  // frame-threading, i.e. the CPU decoding path. On other devices (e.g. CUDA)
-  // decoding is offloaded and there's no such pipeline, so we don't count them.
-  // The reorder buffer (has_b_frames) is a codec property and applies
-  // regardless.
+  // The reorder buffer (has_b_frames) is a codec property that applies
+  // in all scenarios, but the `thread_count - 1` in-flight frames only exist
+  // with FFmpeg FRAME threading, in the CPU decoding path. On other devices
+  // (e.g. CUDA) decoding doesn't depend on thread_count, and with SLICE
+  // threading the threads cooperate on a single frame rather than pipelining
+  // several frames. Note that FRAME threading is the default across the vast
+  // majority of codecs, so our check is just to be on the safe side.
   int64_t inFlightFrames = 0;
-  if (streamInfo.videoStreamOptions.device == kStableCPU) {
+  if (streamInfo.videoStreamOptions.device == kStableCPU &&
+      (streamInfo.codecContext->active_thread_type & FF_THREAD_FRAME)) {
     inFlightFrames = std::max(streamInfo.codecContext->thread_count, 1) - 1;
   }
   return (targetKeyFrameIndex - lastDecodedFrameIndex) <=
