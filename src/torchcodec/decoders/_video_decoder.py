@@ -5,6 +5,10 @@
 # LICENSE file in the root directory of this source tree.
 
 
+# Lazy (string) annotations so torch-typed signatures don't need torch at
+# import time on a torch-free install.
+from __future__ import annotations
+
 import io
 import json
 import numbers
@@ -13,13 +17,30 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
-import torch
-from torch import device as torch_device, nn, Tensor
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec._core._decoder_utils import create_video_decoder
 from torchcodec._logging import _LG
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
-from torchcodec.transforms import DecoderTransform
+
+try:
+    import torch
+    from torch import device as torch_device, nn, Tensor
+    from torchcodec.transforms import DecoderTransform
+
+    _HAS_TORCH = True
+    _DEFAULT_OUTPUT_DTYPE = torch.uint8
+except ImportError:
+    # Torch-free install: video decoding returns numpy; transforms/float32/GPU
+    # are unsupported and raise downstream.
+    import numpy as _np
+
+    torch = None
+    torch_device = ()  # makes isinstance(device, torch_device) always False
+    nn = None
+    Tensor = _np.ndarray
+    DecoderTransform = object
+    _HAS_TORCH = False
+    _DEFAULT_OUTPUT_DTYPE = "uint8"
 
 
 @dataclass
@@ -183,12 +204,13 @@ class VideoDecoder:
         device: str | torch_device | None = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
         transforms: Sequence[DecoderTransform | nn.Module] | None = None,
-        output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
+        output_dtype: torch.dtype | Literal["auto"] = _DEFAULT_OUTPUT_DTYPE,
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
     ):
-        torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
+        if _HAS_TORCH:
+            torch._C._log_api_usage_once("torchcodec.decoders.VideoDecoder")
         allowed_seek_modes = ("exact", "approximate")
         if seek_mode not in allowed_seek_modes:
             raise ValueError(
@@ -221,18 +243,26 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
-        _DTYPE_TO_STR = {torch.uint8: "uint8", torch.float32: "float32"}
-        if output_dtype != "auto":
-            if output_dtype not in _DTYPE_TO_STR:
+        if _HAS_TORCH:
+            _DTYPE_TO_STR = {torch.uint8: "uint8", torch.float32: "float32"}
+            if output_dtype != "auto":
+                if output_dtype not in _DTYPE_TO_STR:
+                    raise ValueError(
+                        f"Invalid output_dtype ({output_dtype}). "
+                        f"Supported values are torch.uint8, torch.float32, and 'auto'."
+                    )
+                output_dtype = _DTYPE_TO_STR[output_dtype]
+        else:
+            # Torch-free: output_dtype is given as a string.
+            if output_dtype not in ("uint8", "float32", "auto"):
                 raise ValueError(
-                    f"Invalid output_dtype ({output_dtype}). "
-                    f"Supported values are torch.uint8, torch.float32, and 'auto'."
+                    f"Invalid output_dtype ({output_dtype!r}). Supported values "
+                    f"are 'uint8', 'float32', and 'auto'."
                 )
-            output_dtype = _DTYPE_TO_STR[output_dtype]
 
         device_variant = _get_cuda_backend()
         if device is None:
-            device = str(torch.get_default_device())
+            device = "cpu" if not _HAS_TORCH else str(torch.get_default_device())
         elif isinstance(device, torch_device):
             device = str(device)
 
@@ -562,6 +592,8 @@ def _read_custom_frame_mappings(
         - is_key_frame (Tensor): Boolean tensor indicating which frames are key frames
         - duration (Tensor): Duration of each frame
     """
+    if not _HAS_TORCH:
+        raise NotImplementedError("custom_frame_mappings requires PyTorch.")
     try:
         input_data = (
             json.load(custom_frame_mappings)

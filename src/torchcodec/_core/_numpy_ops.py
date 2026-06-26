@@ -206,5 +206,15 @@ get_nvdec_cache_capacity = _requires_torch("get_nvdec_cache_capacity")
 set_nvdec_cache_capacity = _requires_torch("set_nvdec_cache_capacity")
 _get_nvdec_cache_size = _requires_torch("_get_nvdec_cache_size")
 
+
+# Logging control is not exposed torch-free yet; benign no-ops so the logging
+# module imports and basic logging still works.
+def _set_cpp_log_level(level):
+    return None
+
+
+def _get_log_level():
+    return 0
+
 # json is used by callers that parse get_ffmpeg_library_versions; keep imported.
 _ = json

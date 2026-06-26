@@ -10,7 +10,19 @@ from pathlib import Path
 # Note: usort wants to put Frame and FrameBatch after decoders and samplers,
 # but that results in circular import.
 from ._frame import AudioSamples, Frame, FrameBatch  # usort:skip # noqa
-from . import decoders, encoders, samplers, transforms  # noqa
+from . import decoders  # noqa
+
+try:
+    import torch as _torch  # noqa: F401
+
+    _HAS_TORCH = True
+except ImportError:
+    _HAS_TORCH = False
+
+if _HAS_TORCH:
+    # Encoders, samplers and transforms operate on torch tensors and require
+    # torch. On a torch-free install only video decoding is available.
+    from . import encoders, samplers, transforms  # noqa
 
 try:
     # Note that version.py is generated during install.

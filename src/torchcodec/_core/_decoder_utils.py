@@ -5,11 +5,14 @@
 # LICENSE file in the root directory of this source tree.
 
 
+# Lazy (string) annotations so torch-typed signatures don't need torch at
+# import time on a torch-free install.
+from __future__ import annotations
+
 import io
 from collections.abc import Sequence
 from pathlib import Path
 
-from torch import nn, Tensor
 from torchcodec._core._metadata import (
     AudioStreamMetadata,
     get_container_metadata,
@@ -27,8 +30,24 @@ from torchcodec._core.ops import (
     create_wav_decoder_from_file_like,
     create_wav_decoder_from_tensor,
 )
-from torchcodec.transforms import DecoderTransform
-from torchcodec.transforms._decoder_transforms import _make_transform_specs
+
+try:
+    from torch import nn, Tensor
+    from torchcodec.transforms import DecoderTransform
+    from torchcodec.transforms._decoder_transforms import _make_transform_specs
+except ImportError:
+    # Torch-free install: transforms require torch. Keep names defined for the
+    # (now lazy) annotations and the isinstance check below.
+    import numpy as _np
+
+    nn = None
+    Tensor = _np.ndarray
+    DecoderTransform = object
+
+    def _make_transform_specs(transforms, input_dims):
+        if transforms:
+            raise NotImplementedError("Transforms require PyTorch.")
+        return ""
 
 
 _ERROR_REPORTING_INSTRUCTIONS = """
