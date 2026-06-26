@@ -82,10 +82,23 @@ add_executable(
 
 target_include_directories(TCTorchBackendTest PRIVATE ../)
 
+# The test references no custom_ops symbol directly (it only checks that loading
+# custom_ops ran its static initializer, which registers the tc hooks). Under
+# the default -Wl,--as-needed, the linker would DROP the unused custom_ops
+# dependency and the initializer would never run. Force it to be retained with
+# --no-as-needed placed right before custom_ops on the link line. (Linux/GNU ld
+# only; the real Python path dlopens custom_ops explicitly so doesn't need this.)
+if(LINUX)
+  set(_tctorchbackend_custom_ops
+      "-Wl,--no-as-needed" ${libtorchcodec_custom_ops_name} "-Wl,--as-needed")
+else()
+  set(_tctorchbackend_custom_ops ${libtorchcodec_custom_ops_name})
+endif()
+
 target_link_libraries(
   TCTorchBackendTest
   ${libtorchcodec_library_name}
-  ${libtorchcodec_custom_ops_name}
+  ${_tctorchbackend_custom_ops}
   GTest::gtest_main
 )
 

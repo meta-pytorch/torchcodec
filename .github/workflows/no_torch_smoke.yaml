@@ -69,7 +69,7 @@ jobs:
         run: |
           so=$(find build_notorch -name "libtorchcodec_pybind_ops*.so" | head -1)
           echo "Checking $so"
-          if ldd "$so" | grep -iE "libtorch|libc10"; then
+          if ldd "$so" | grep -iE "libtorch[._]|libc10"; then
             echo "ERROR: torch is linked into the torch-free build!"
             exit 1
           fi
@@ -126,7 +126,7 @@ jobs:
       - name: Core must not link torch (so it loads torch-free)
         run: |
           so=$(find . -name "libtorchcodec_core*.so" | head -1)
-          if ldd "$so" | grep -iE "libtorch|libc10"; then
+          if ldd "$so" | grep -iE "libtorch[._]|libc10"; then
             echo "ERROR: CPU core links torch; the single wheel won't load torch-free."
             exit 1
           fi
