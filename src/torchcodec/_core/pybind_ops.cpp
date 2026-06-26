@@ -100,9 +100,47 @@ void add_video_stream(int64_t decoderPtr, const std::string& dimensionOrder) {
   asDecoder(decoderPtr)->addVideoStream(-1, transforms, options);
 }
 
+void scan_all_streams(int64_t decoderPtr) {
+  asDecoder(decoderPtr)->scanFileAndUpdateMetadataAndIndex();
+}
+
 py::object get_next_frame(int64_t decoderPtr) {
   FrameOutput frameOutput = asDecoder(decoderPtr)->getNextFrame();
   return frameToDLPackCapsule(frameOutput.data);
+}
+
+// Single-frame ops return (data_capsule, pts_seconds, duration_seconds); the
+// pts/duration are plain Python floats (no need for the 0-dim tensor form the
+// torch.compile path uses).
+py::tuple get_frame_at_index(int64_t decoderPtr, int64_t frameIndex) {
+  FrameOutput frameOutput = asDecoder(decoderPtr)->getFrameAtIndex(frameIndex);
+  return py::make_tuple(
+      frameToDLPackCapsule(frameOutput.data),
+      frameOutput.ptsSeconds,
+      frameOutput.durationSeconds);
+}
+
+py::tuple get_frame_played_at(int64_t decoderPtr, double seconds) {
+  FrameOutput frameOutput = asDecoder(decoderPtr)->getFramePlayedAt(seconds);
+  return py::make_tuple(
+      frameToDLPackCapsule(frameOutput.data),
+      frameOutput.ptsSeconds,
+      frameOutput.durationSeconds);
+}
+
+// Batch ops return (data_capsule, pts_capsule, duration_capsule); pts/duration
+// are 1-D arrays.
+py::tuple get_frames_in_range(
+    int64_t decoderPtr,
+    int64_t start,
+    int64_t stop,
+    int64_t step) {
+  FrameBatchOutput out = asDecoder(decoderPtr)->getFramesInRange(
+      start, stop, step <= 0 ? 1 : step);
+  return py::make_tuple(
+      frameToDLPackCapsule(out.data),
+      frameToDLPackCapsule(out.ptsSeconds),
+      frameToDLPackCapsule(out.durationSeconds));
 }
 
 void destroy_decoder(int64_t decoderPtr) {
@@ -119,7 +157,11 @@ PYBIND11_MODULE(PYBIND_OPS_MODULE_NAME, m) {
   m.def("create_decoder", &create_decoder);
   m.def("add_video_stream", &add_video_stream, py::arg("decoder"),
         py::arg("dimension_order") = "NCHW");
+  m.def("scan_all_streams", &scan_all_streams);
   m.def("get_next_frame", &get_next_frame);
+  m.def("get_frame_at_index", &get_frame_at_index);
+  m.def("get_frame_played_at", &get_frame_played_at);
+  m.def("get_frames_in_range", &get_frames_in_range);
   m.def("destroy_decoder", &destroy_decoder);
 }
 

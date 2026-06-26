@@ -81,17 +81,45 @@ def main():
     # The whole point: torch must not be required.
     assert "torch" not in sys.modules, "torch was imported — not torch-free!"
 
+    def to_numpy(capsule):
+        return np.from_dlpack(_DLPackWrapper(capsule))
+
     decoder = mod.create_decoder(_VIDEO)
     try:
-        mod.add_video_stream(decoder, "NHWC")
-        frame = np.from_dlpack(_DLPackWrapper(mod.get_next_frame(decoder)))
+        mod.scan_all_streams(decoder)
+        mod.add_video_stream(decoder, "NCHW")
+
+        # Sequential next-frame decode.
+        first = to_numpy(mod.get_next_frame(decoder))
+        print(f"get_next_frame: shape={first.shape}, dtype={first.dtype}")
+        assert first.shape == (3, 270, 480), first.shape
+        assert first.dtype == np.uint8
+
+        # Indexed single-frame decode (returns data + pts/duration floats).
+        data_capsule, pts, duration = mod.get_frame_at_index(decoder, 10)
+        frame10 = to_numpy(data_capsule)
+        print(f"get_frame_at_index(10): shape={frame10.shape}, pts={pts:.3f}")
+        assert frame10.shape == (3, 270, 480), frame10.shape
+        assert pts > 0 and duration > 0
+
+        # Time-based single-frame decode.
+        data_capsule, pts, _ = mod.get_frame_played_at(decoder, 1.0)
+        played = to_numpy(data_capsule)
+        assert played.shape == (3, 270, 480), played.shape
+
+        # Batched range decode: data is 4-D, pts/duration are 1-D.
+        data_capsule, pts_capsule, dur_capsule = mod.get_frames_in_range(
+            decoder, 0, 10, 2
+        )
+        batch = to_numpy(data_capsule)
+        pts_arr = to_numpy(pts_capsule)
+        print(f"get_frames_in_range(0,10,2): batch={batch.shape}, pts={pts_arr.shape}")
+        assert batch.shape == (5, 3, 270, 480), batch.shape
+        assert pts_arr.shape == (5,), pts_arr.shape
+        assert batch.sum() > 0
     finally:
         mod.destroy_decoder(decoder)
 
-    print(f"Decoded frame: shape={frame.shape}, dtype={frame.dtype}")
-    assert frame.shape == (270, 480, 3), frame.shape
-    assert frame.dtype == np.uint8, frame.dtype
-    assert frame.sum() > 0, "frame is all zeros"
     assert "torch" not in sys.modules, "torch was imported during decode!"
     print("TORCH-FREE SMOKE TEST PASSED")
 
