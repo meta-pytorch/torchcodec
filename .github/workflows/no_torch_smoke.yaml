@@ -43,7 +43,7 @@ jobs:
         run: python -m pip install --upgrade pip
       - name: Install build + runtime deps (deliberately NO torch)
         run: |
-          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" pkg-config pybind11 numpy cmake -c conda-forge
+          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" pkg-config pybind11 numpy cmake setuptools pip cxx-compiler -c conda-forge
           ffmpeg -version
       - name: Assert torch is NOT installed
         run: |
@@ -74,6 +74,24 @@ jobs:
             exit 1
           fi
           echo "no torch linkage (good)"
-      - name: Run torch-free smoke test
+      - name: Run torch-free (pybind-direct) smoke test
         run: |
           TORCHCODEC_LIB_DIR="${PWD}/build_notorch" python test/smoke_test_no_torch.py
+
+      - name: Install torchcodec torch-free (pip, ENABLE_TORCH=0)
+        run: |
+          ENABLE_TORCH=0 ENABLE_CUDA=0 pip install -e . --no-build-isolation -v
+
+      - name: Assert torch still not installed
+        run: |
+          if python -c "import torch" 2>/dev/null; then
+            echo "ERROR: torch got installed."
+            exit 1
+          fi
+          echo "torch is not installed (good)"
+
+      - name: Run torch-free package smoke test (import torchcodec + VideoDecoder)
+        run: |
+          # Run from a different dir so we import the installed package, not ./src.
+          cd "${RUNNER_TEMP:-/tmp}"
+          python "${GITHUB_WORKSPACE}/test/smoke_test_no_torch_package.py"
