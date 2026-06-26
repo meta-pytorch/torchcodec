@@ -58,8 +58,7 @@ FilterGraph::FilterGraph(
     const FiltersConfig& filtersConfig,
     const VideoStreamOptions& videoStreamOptions) {
   filterGraph_.reset(avfilter_graph_alloc());
-  TC_CHECK(
-      filterGraph_.get() != nullptr, "Failed to allocate filter graph");
+  TC_CHECK(filterGraph_.get() != nullptr, "Failed to allocate filter graph");
 
   if (videoStreamOptions.ffmpegThreadCount.has_value()) {
     filterGraph_->nb_threads = videoStreamOptions.ffmpegThreadCount.value();
@@ -147,13 +146,11 @@ FilterGraph::FilterGraph(
 
 UniqueAVFrame FilterGraph::convert(const UniqueAVFrame& avFrame) {
   int status = av_buffersrc_write_frame(sourceContext_, avFrame.get());
-  TC_CHECK(
-      status >= AVSUCCESS, "Failed to add frame to buffer source context");
+  TC_CHECK(status >= AVSUCCESS, "Failed to add frame to buffer source context");
 
   UniqueAVFrame filteredAVFrame(av_frame_alloc());
   status = av_buffersink_get_frame(sinkContext_, filteredAVFrame.get());
-  TC_CHECK(
-      status >= AVSUCCESS, "Failed to get frame from buffer sink context");
+  TC_CHECK(status >= AVSUCCESS, "Failed to get frame from buffer sink context");
 
   return filteredAVFrame;
 }

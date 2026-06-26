@@ -742,8 +742,7 @@ std::string get_container_json_metadata(torch::stable::Tensor& decoder) {
 std::string get_stream_json_metadata(
     torch::stable::Tensor& decoder,
     int64_t stream_index) {
-  return getStreamJsonMetadata(
-      unwrapTensorToGetDecoder(decoder), stream_index);
+  return getStreamJsonMetadata(unwrapTensorToGetDecoder(decoder), stream_index);
 }
 
 // Returns version information about the various FFMPEG libraries that are

@@ -8,8 +8,8 @@
 
 #include "FFMPEGCommon.h"
 #include "Metadata.h"
-#include "TCError.h"
 #include "StreamOptions.h"
+#include "TCError.h"
 #include "TCTensor.h"
 
 namespace facebook::torchcodec {

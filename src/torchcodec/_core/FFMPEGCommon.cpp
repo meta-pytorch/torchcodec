@@ -103,8 +103,7 @@ const AVPixelFormat* getSupportedPixelFormats(const AVCodec& avCodec) {
       reinterpret_cast<const void**>(&supportedPixelFormats),
       &numPixelFormats);
   if (ret < 0 || supportedPixelFormats == nullptr) {
-    TC_CHECK(
-        false, "Couldn't get supported pixel formats from encoder.");
+    TC_CHECK(false, "Couldn't get supported pixel formats from encoder.");
   }
 #else
   supportedPixelFormats = avCodec.pix_fmts;

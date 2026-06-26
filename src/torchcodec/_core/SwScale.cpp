@@ -51,9 +51,7 @@ SwScale::SwScale(const SwsConfig& config, int swsFlags)
   }
 }
 
-int SwScale::convert(
-    const UniqueAVFrame& avFrame,
-    tc::Tensor& outputTensor) {
+int SwScale::convert(const UniqueAVFrame& avFrame, tc::Tensor& outputTensor) {
   // When resizing is needed, we do sws_scale twice: first convert to output
   // RGB at original resolution, then resize in output RGB space. This ensures
   // transforms happen in the output color space (RGB) rather than the input

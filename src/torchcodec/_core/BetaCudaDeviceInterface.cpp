@@ -941,8 +941,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       FrameOutput cpuFrameOutput;
       cpuFallback_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
       if (preAllocatedOutputTensor.has_value()) {
-        tc::copy_(
-            preAllocatedOutputTensor.value(), cpuFrameOutput.data);
+        tc::copy_(preAllocatedOutputTensor.value(), cpuFrameOutput.data);
         frameOutput.data = preAllocatedOutputTensor.value();
       } else {
         frameOutput.data = tc::to(cpuFrameOutput.data, device_);
@@ -975,8 +974,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
-  auto convertFrame = [&](std::optional<tc::Tensor> preAlloc)
-      -> tc::Tensor {
+  auto convertFrame = [&](std::optional<tc::Tensor> preAlloc) -> tc::Tensor {
     bool isP016 = (gpuFrame->format == AV_PIX_FMT_P016LE);
     int bitDepth = 8;
     if (isP016) {
@@ -1029,8 +1027,7 @@ void BetaCudaDeviceInterface::applyRotation(
   }
   // Apply rotation using rot90 on the H and W dims of our HWC tensor.
   // tc::rot90 returns a view, so we need to make it contiguous.
-  frameOutput.data =
-      tc::contiguous(tc::rot90(frameOutput.data, k, 0, 1));
+  frameOutput.data = tc::contiguous(tc::rot90(frameOutput.data, k, 0, 1));
 
   if (preAllocatedOutputTensor.has_value()) {
     tc::copy_(preAllocatedOutputTensor.value(), frameOutput.data);

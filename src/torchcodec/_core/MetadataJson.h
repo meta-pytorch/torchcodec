@@ -12,8 +12,8 @@
 #include "SingleStreamDecoder.h"
 
 // Torch-free serialization of decoder metadata to JSON strings. These were
-// previously inline in custom_ops.cpp (the torch adapter); they live here so the
-// torch-free pybind frontend can read metadata too. They operate on a plain
+// previously inline in custom_ops.cpp (the torch adapter); they live here so
+// the torch-free pybind frontend can read metadata too. They operate on a plain
 // SingleStreamDecoder* and depend only on the (torch-free) metadata structs.
 
 namespace facebook::torchcodec {

@@ -20,9 +20,10 @@ namespace {
 
 void checkCpu(const Device& device, const char* what) {
   if (device.type() != DeviceType::CPU) {
-    fail(std::string(what) +
-         " is only implemented for CPU tensors (CUDA support is the CUDA part "
-         "of Phase A).");
+    fail(
+        std::string(what) +
+        " is only implemented for CPU tensors (CUDA support is the CUDA part "
+        "of Phase A).");
   }
 }
 
@@ -58,9 +59,10 @@ std::map<DeviceType, DeviceBackend>& backendRegistry() {
 const DeviceBackend& requireBackend(Device device, const char* op) {
   const DeviceBackend* backend = getDeviceBackend(device.type());
   if (backend == nullptr) {
-    fail(std::string(op) +
-         ": no compute backend registered for this non-CPU device (GPU ops "
-         "require torch, or a registered tc backend)");
+    fail(
+        std::string(op) +
+        ": no compute backend registered for this non-CPU device (GPU ops "
+        "require torch, or a registered tc backend)");
   }
   return *backend;
 }
@@ -78,10 +80,8 @@ std::shared_ptr<void> allocCpuStorage(int64_t numBytes) {
 // Allocate storage for a tensor, routing through the installed allocator hook
 // when present (e.g. torch's caching allocator), else falling back to malloc
 // for CPU. Non-CPU allocation without a hook is an error.
-std::shared_ptr<void> allocStorage(
-    int64_t numBytes,
-    ScalarType dtype,
-    Device device) {
+std::shared_ptr<void>
+allocStorage(int64_t numBytes, ScalarType dtype, Device device) {
   if (g_allocator) {
     return g_allocator(numBytes, dtype, device);
   }
@@ -258,7 +258,11 @@ Tensor empty(std::vector<int64_t> sizes, ScalarType dtype, Device device) {
   void* base = storage.get();
   auto strides = contiguousStrides(sizes);
   return Tensor(
-      std::move(storage), base, std::move(sizes), std::move(strides), dtype,
+      std::move(storage),
+      base,
+      std::move(sizes),
+      std::move(strides),
+      dtype,
       device);
 }
 
@@ -287,7 +291,11 @@ Tensor from_blob(
   });
   void* base = data;
   return Tensor(
-      std::move(storage), base, std::move(sizes), std::move(strides), dtype,
+      std::move(storage),
+      base,
+      std::move(sizes),
+      std::move(strides),
+      dtype,
       device);
 }
 
@@ -310,9 +318,8 @@ void copy_(Tensor& dst, const Tensor& src) {
   // same-device and cross-device H2D/D2H copies).
   if (dst.device().type() != DeviceType::CPU ||
       src.device().type() != DeviceType::CPU) {
-    Device computeDevice = dst.device().type() != DeviceType::CPU
-        ? dst.device()
-        : src.device();
+    Device computeDevice =
+        dst.device().type() != DeviceType::CPU ? dst.device() : src.device();
     requireBackend(computeDevice, "copy_").copy_(dst, src);
     return;
   }
@@ -519,11 +526,11 @@ Tensor rot90(const Tensor& self, int64_t k, int64_t dim0, int64_t dim1) {
     int64_t sizeB = cur.size(b);
     forEachIndex(out.sizes(), [&](const std::vector<int64_t>& outIdx) {
       std::vector<int64_t> inIdx = outIdx;
-      // One counter-clockwise step: out[p along a, q along b] = in[q, sizeB-1-p].
+      // One counter-clockwise step: out[p along a, q along b] = in[q,
+      // sizeB-1-p].
       inIdx[a] = outIdx[b];
       inIdx[b] = sizeB - 1 - outIdx[a];
-      std::memcpy(
-          elemPtr(out, outIdx), elemPtr(cur, inIdx), es);
+      std::memcpy(elemPtr(out, outIdx), elemPtr(cur, inIdx), es);
     });
     cur = out;
   }
@@ -654,8 +661,7 @@ DLManagedTensor* toDLPack(const Tensor& t) {
   dl.dtype = toDLDataType(t.scalar_type());
   dl.shape = ctx->shape.data();
   dl.strides = ctx->strides.data();
-  dl.byte_offset =
-      static_cast<uint64_t>(t.storage_offset() * t.element_size());
+  dl.byte_offset = static_cast<uint64_t>(t.storage_offset() * t.element_size());
   return m;
 }
 
@@ -680,11 +686,15 @@ Tensor fromDLPack(DLManagedTensor* managed) {
   });
 
   int64_t es = elementSize(dtype);
-  int64_t offsetElems =
-      es > 0 ? static_cast<int64_t>(dl.byte_offset) / es : 0;
+  int64_t offsetElems = es > 0 ? static_cast<int64_t>(dl.byte_offset) / es : 0;
   return Tensor(
-      std::move(storage), dl.data, std::move(sizes), std::move(strides), dtype,
-      device, offsetElems);
+      std::move(storage),
+      dl.data,
+      std::move(sizes),
+      std::move(strides),
+      dtype,
+      device,
+      offsetElems);
 }
 
 } // namespace facebook::torchcodec::tc

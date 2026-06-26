@@ -30,9 +30,7 @@ class SwScale {
   // >8-bit.
   SwScale(const SwsConfig& config, int swsFlags = SWS_BILINEAR);
 
-  int convert(
-      const UniqueAVFrame& avFrame,
-      tc::Tensor& outputTensor);
+  int convert(const UniqueAVFrame& avFrame, tc::Tensor& outputTensor);
 
   const SwsConfig& getConfig() const {
     return config_;

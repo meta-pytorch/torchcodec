@@ -1,5 +1,5 @@
-#include <sstream>
 #include <algorithm>
+#include <sstream>
 
 #include "Encoder.h"
 #include "TCError.h"
@@ -402,8 +402,7 @@ int MultiStreamEncoder::addAudioStream(
     std::optional<int> outNumChannels,
     std::optional<int> outSampleRate) {
   TC_CHECK(sampleRate > 0, "sample_rate must be > 0, got ", sampleRate);
-  TC_CHECK(
-      numChannels > 0, "num_channels must be > 0, got ", numChannels);
+  TC_CHECK(numChannels > 0, "num_channels must be > 0, got ", numChannels);
   TC_CHECK(
       numChannels <= AV_NUM_DATA_POINTERS,
       "Trying to encode ",
@@ -464,8 +463,7 @@ void MultiStreamEncoder::initializeVideoStream(VideoStream& videoStream) {
       "not found. To see available codecs, run: ffmpeg -encoders");
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
-  TC_CHECK(
-      avCodecContext != nullptr, "Couldn't allocate codec context.");
+  TC_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
   videoStream.avCodecContext.reset(avCodecContext);
 
   int outHeight = videoStream.inHeight;
@@ -555,8 +553,7 @@ void MultiStreamEncoder::initializeVideoStream(VideoStream& videoStream) {
       getFFMPEGErrorStringFromErrorCode(status));
 
   videoStream.avStream = avformat_new_stream(avFormatContext_.get(), nullptr);
-  TC_CHECK(
-      videoStream.avStream != nullptr, "Couldn't create new stream.");
+  TC_CHECK(videoStream.avStream != nullptr, "Couldn't create new stream.");
 
   // Set the stream time base to encode correct frame timestamps
   videoStream.avStream->time_base = videoStream.avCodecContext->time_base;
@@ -580,8 +577,7 @@ void MultiStreamEncoder::initializeAudioStream(AudioStream& audioStream) {
   TC_CHECK(avCodec != nullptr, "Codec not found");
 
   AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
-  TC_CHECK(
-      avCodecContext != nullptr, "Couldn't allocate codec context.");
+  TC_CHECK(avCodecContext != nullptr, "Couldn't allocate codec context.");
   audioStream.avCodecContext.reset(avCodecContext);
 
   auto desiredBitRate = audioStream.options.bitRate;
@@ -670,9 +666,7 @@ void MultiStreamEncoder::openStreamsAndWriteHeader() {
   headerWritten_ = true;
 }
 
-void MultiStreamEncoder::addFrames(
-    const tc::Tensor& frames,
-    int streamIndex) {
+void MultiStreamEncoder::addFrames(const tc::Tensor& frames, int streamIndex) {
   TC_CHECK(!closed_, "Cannot add frames after close() was called.");
   TC_CHECK(headerWritten_, "Call open() before addFrames().");
   TC_CHECK(
@@ -827,8 +821,7 @@ void MultiStreamEncoder::encodeAudioSamples(
 
     numEncodedSamples += numSamplesToEncode;
   }
-  TC_CHECK(
-      numEncodedSamples == numSamples, "Hmmmmmm something went wrong.");
+  TC_CHECK(numEncodedSamples == numSamples, "Hmmmmmm something went wrong.");
 }
 
 UniqueAVFrame MultiStreamEncoder::maybeConvertAudioAVFrame(

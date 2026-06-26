@@ -16,8 +16,8 @@
 #include "FFMPEGCommon.h"
 #include "Frame.h"
 #include "Metadata.h"
-#include "TCError.h"
 #include "StreamOptions.h"
+#include "TCError.h"
 #include "Transform.h"
 
 namespace facebook::torchcodec {
@@ -113,8 +113,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
 
   // Returns frames at the given indices for a given stream as a single stacked
   // Tensor.
-  FrameBatchOutput getFramesAtIndices(
-      const tc::Tensor& frameIndices);
+  FrameBatchOutput getFramesAtIndices(const tc::Tensor& frameIndices);
 
   // Returns frames within a given range. The range is defined by [start, stop).
   // The values retrieved from the range are: [start, start+step,
@@ -176,8 +175,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   // can move it back to private.
   FrameOutput getFrameAtIndexInternal(
       int64_t frameIndex,
-      std::optional<tc::Tensor> preAllocatedOutputTensor =
-          std::nullopt);
+      std::optional<tc::Tensor> preAllocatedOutputTensor = std::nullopt);
 
   // Exposed for _test_frame_pts_equality, which is used to test non-regression
   // of pts resolution (64 to 32 bit floats)
@@ -271,18 +269,15 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       std::function<bool(const UniqueAVFrame&)> filterFunction);
 
   FrameOutput getNextFrameInternal(
-      std::optional<tc::Tensor> preAllocatedOutputTensor =
-          std::nullopt);
+      std::optional<tc::Tensor> preAllocatedOutputTensor = std::nullopt);
 
   // Permutes HWC to CHW if needed, then converts to float32 and normalizes to
   // [0, 1] if the active stream's outputDtype is FLOAT32.
-  tc::Tensor maybePermuteAndConvertToFloat32(
-      tc::Tensor& tensor);
+  tc::Tensor maybePermuteAndConvertToFloat32(tc::Tensor& tensor);
 
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
-      std::optional<tc::Tensor> preAllocatedOutputTensor =
-          std::nullopt);
+      std::optional<tc::Tensor> preAllocatedOutputTensor = std::nullopt);
 
   // --------------------------------------------------------------------------
   // PTS <-> INDEX CONVERSIONS

@@ -50,8 +50,8 @@ void initializeCudaContextWithPytorch(const tc::Device& device) {
   // It is important for pytorch itself to create the cuda context. If ffmpeg
   // creates the context it may not be compatible with pytorch.
   // This is a dummy tensor to initialize the cuda context.
-  tc::Tensor dummyTensorForCudaInitialization = tc::empty(
-      {1}, tc::kUInt8, std::nullopt, tc::Device(device));
+  tc::Tensor dummyTensorForCudaInitialization =
+      tc::empty({1}, tc::kUInt8, std::nullopt, tc::Device(device));
   tc::zero_(dummyTensorForCudaInitialization);
 }
 

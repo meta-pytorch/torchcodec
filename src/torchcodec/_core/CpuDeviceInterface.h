@@ -37,8 +37,7 @@ class CpuDeviceInterface : public DeviceInterface {
   virtual void initializeAudio(
       const AudioStreamOptions& audioStreamOptions) override;
 
-  virtual std::optional<tc::Tensor> maybeFlushAudioBuffers()
-      override;
+  virtual std::optional<tc::Tensor> maybeFlushAudioBuffers() override;
 
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,

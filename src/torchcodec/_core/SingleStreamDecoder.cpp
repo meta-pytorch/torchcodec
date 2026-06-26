@@ -434,9 +434,10 @@ tc::Tensor SingleStreamDecoder::getKeyFrameIndices() {
 
   const std::vector<FrameInfo>& keyFrames =
       streamInfos_[activeStreamIndex_].keyFrames;
-  tc::Tensor keyFrameIndices = tc::empty(
-      {static_cast<int64_t>(keyFrames.size())}, tc::kInt64);
-  auto keyFrameIndicesAccessor = tc::mutableAccessor<int64_t, 1>(keyFrameIndices);
+  tc::Tensor keyFrameIndices =
+      tc::empty({static_cast<int64_t>(keyFrames.size())}, tc::kInt64);
+  auto keyFrameIndicesAccessor =
+      tc::mutableAccessor<int64_t, 1>(keyFrameIndices);
   for (size_t i = 0; i < keyFrames.size(); ++i) {
     keyFrameIndicesAccessor[i] = keyFrames[i].frameIndex;
   }
@@ -518,8 +519,7 @@ void SingleStreamDecoder::addStream(
   deviceInterface_->registerHardwareDeviceWithCodec(
       streamInfo.codecContext.get());
   retVal = avcodec_open2(streamInfo.codecContext.get(), avCodec, nullptr);
-  TC_CHECK(
-      retVal >= AVSUCCESS, getFFMPEGErrorStringFromErrorCode(retVal));
+  TC_CHECK(retVal >= AVSUCCESS, getFFMPEGErrorStringFromErrorCode(retVal));
 
   streamInfo.codecContext->time_base = streamInfo.stream->time_base;
 
@@ -633,8 +633,7 @@ void SingleStreamDecoder::addVideoStream(
   // us.
   // Validate and add user transforms
   for (auto& transform : transforms) {
-    TC_CHECK(
-        transform != nullptr, "Transforms should never be nullptr!");
+    TC_CHECK(transform != nullptr, "Transforms should never be nullptr!");
     transform->validate(currInputDims);
     if (transform->getOutputFrameDims().has_value()) {
       resizedOutputDims_ = transform->getOutputFrameDims().value();
@@ -828,8 +827,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
   const auto& streamInfo = streamInfos_[activeStreamIndex_];
   TC_CHECK(
       start >= 0, "Range start, " + std::to_string(start) + " is less than 0.");
-  TC_CHECK(
-      step > 0, "Step must be greater than 0; is " + std::to_string(step));
+  TC_CHECK(step > 0, "Step must be greater than 0; is " + std::to_string(step));
 
   // Note that if we do not have the number of frames available in our
   // metadata, then we assume that the upper part of the range is valid.
@@ -922,8 +920,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
   // avoid decoding that unique frame twice is to convert the input timestamps
   // to indices, and leverage the de-duplication logic of getFramesAtIndices.
 
-  tc::Tensor frameIndices =
-      tc::empty({timestamps.numel()}, tc::kInt64);
+  tc::Tensor frameIndices = tc::empty({timestamps.numel()}, tc::kInt64);
   auto frameIndicesAccessor = tc::mutableAccessor<int64_t, 1>(frameIndices);
   auto timestampsAccessor = tc::constAccessor<double, 1>(timestamps);
 
@@ -1055,7 +1052,8 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       if (sourceIdx == lastDecodedSourceIndex && lastDecodedSourceIndex >= 0) {
         tc::copyFrame(frameBatchOutput.data, i, frameBatchOutput.data, i - 1);
       } else {
-        getFrameAtIndexInternal(sourceIdx, tc::selectRow(frameBatchOutput.data, i));
+        getFrameAtIndexInternal(
+            sourceIdx, tc::selectRow(frameBatchOutput.data, i));
         lastDecodedSourceIndex = sourceIdx;
       }
 
@@ -1874,8 +1872,7 @@ double SingleStreamDecoder::getPtsSecondsForFrame(int64_t frameIndex) {
 }
 
 std::string SingleStreamDecoder::getDeviceInterfaceDetails() const {
-  TC_CHECK(
-      deviceInterface_ != nullptr, "Device interface doesn't exist.");
+  TC_CHECK(deviceInterface_ != nullptr, "Device interface doesn't exist.");
   return deviceInterface_->getDetails();
 }
 

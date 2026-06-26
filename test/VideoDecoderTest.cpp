@@ -50,6 +50,7 @@ inline at::ScalarType tcToAtenDtype(tc::ScalarType dtype) {
   }
   TORCH_CHECK(false, "unhandled tc dtype");
 }
+
 inline tc::ScalarType atenToTcDtype(at::ScalarType dtype) {
   switch (dtype) {
     case at::kByte:
@@ -70,12 +71,14 @@ inline tc::ScalarType atenToTcDtype(at::ScalarType dtype) {
       TORCH_CHECK(false, "unhandled aten dtype");
   }
 }
+
 inline tc::Device atenToTcDevice(at::Device device) {
   if (device.is_cuda()) {
     return tc::Device(tc::kCUDA, device.index());
   }
   return tc::Device(tc::kCPU);
 }
+
 inline at::Device tcToAtenDevice(tc::Device device) {
   if (device.type() == tc::kCUDA) {
     return at::Device(at::kCUDA, device.index());
@@ -87,7 +90,8 @@ inline at::Device tcToAtenDevice(tc::Device device) {
 inline tc::Tensor toStableTensor(const torch::Tensor& tensor) {
   auto holder = std::make_shared<torch::Tensor>(tensor);
   std::vector<int64_t> sizes(tensor.sizes().begin(), tensor.sizes().end());
-  std::vector<int64_t> strides(tensor.strides().begin(), tensor.strides().end());
+  std::vector<int64_t> strides(
+      tensor.strides().begin(), tensor.strides().end());
   return tc::from_blob(
       tensor.data_ptr(),
       std::move(sizes),
@@ -105,11 +109,7 @@ inline torch::Tensor toATenTensor(const tc::Tensor& t) {
                      .dtype(tcToAtenDtype(t.scalar_type()))
                      .device(tcToAtenDevice(t.device()));
   return torch::from_blob(
-      t.mutable_data_ptr(),
-      sizes,
-      strides,
-      [holder](void*) {},
-      options);
+      t.mutable_data_ptr(), sizes, strides, [holder](void*) {}, options);
 }
 
 std::string getResourcePath(const std::string& filename) {

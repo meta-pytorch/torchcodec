@@ -11,7 +11,8 @@
 // process the hooks stay unset (CPU malloc only; GPU unavailable) by design.
 //
 // - Allocator: allocate storage via torch (torch's caching allocator on CUDA),
-//   so when torch is present GPU memory comes from its pool, not raw cudaMalloc.
+//   so when torch is present GPU memory comes from its pool, not raw
+//   cudaMalloc.
 // - CUDA compute backend: run each non-CPU tc op through torch (toStable ->
 //   torch op -> fromStable), zero-copy at the boundary.
 

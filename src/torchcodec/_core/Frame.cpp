@@ -29,10 +29,8 @@ tc::Tensor allocateEmptyHWCTensor(
     const tc::Device& device,
     OutputDtype outputDtype,
     std::optional<int> numFrames) {
-  TC_CHECK(
-      frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
-  TC_CHECK(
-      frameDims.width > 0, "width must be > 0, got: ", frameDims.width);
+  TC_CHECK(frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
+  TC_CHECK(frameDims.width > 0, "width must be > 0, got: ", frameDims.width);
   auto dtype = outputDtype == OutputDtype::FLOAT32 ? tc::kUInt16 : tc::kUInt8;
   if (numFrames.has_value()) {
     auto numFramesValue = numFrames.value();

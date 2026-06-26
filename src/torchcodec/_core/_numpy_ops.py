@@ -196,9 +196,7 @@ streaming_encoder_add_samples = _requires_torch("streaming_encoder_add_samples")
 create_wav_decoder_from_file = _requires_torch("create_wav_decoder_from_file")
 create_wav_decoder_from_tensor = _requires_torch("create_wav_decoder_from_tensor")
 create_wav_decoder_from_bytes = _requires_torch("create_wav_decoder_from_bytes")
-create_wav_decoder_from_file_like = _requires_torch(
-    "create_wav_decoder_from_file_like"
-)
+create_wav_decoder_from_file_like = _requires_torch("create_wav_decoder_from_file_like")
 get_wav_samples_in_range = _requires_torch("get_wav_samples_in_range")
 get_wav_metadata_from_decoder = _requires_torch("get_wav_metadata_from_decoder")
 
@@ -215,6 +213,7 @@ def _set_cpp_log_level(level):
 
 def _get_log_level():
     return 0
+
 
 # json is used by callers that parse get_ffmpeg_library_versions; keep imported.
 _ = json

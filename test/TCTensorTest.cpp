@@ -36,7 +36,11 @@ TEST(TCTensorTest, FromBlobInvokesDeleter) {
   auto* buf = new float[6]{1, 2, 3, 4, 5, 6};
   {
     Tensor t = from_blob(
-        buf, {2, 3}, {3, 1}, ScalarType::Float32, Device{},
+        buf,
+        {2, 3},
+        {3, 1},
+        ScalarType::Float32,
+        Device{},
         [&deleted](void* p) {
           deleted = true;
           delete[] static_cast<float*>(p);
@@ -50,7 +54,10 @@ TEST(TCTensorTest, FromBlobInvokesDeleter) {
 TEST(TCTensorTest, CopyAndZero) {
   Tensor a = empty({2, 2}, ScalarType::Int32);
   auto* ap = a.mutable_data_ptr<int32_t>();
-  ap[0] = 10; ap[1] = 20; ap[2] = 30; ap[3] = 40;
+  ap[0] = 10;
+  ap[1] = 20;
+  ap[2] = 30;
+  ap[3] = 40;
   Tensor b = empty({2, 2}, ScalarType::Int32);
   copy_(b, a);
   EXPECT_EQ(b.const_data_ptr<int32_t>()[3], 40);
@@ -62,7 +69,10 @@ TEST(TCTensorTest, CopyAndZero) {
 TEST(TCTensorTest, ToDtypeAndDiv) {
   Tensor a = empty({4}, ScalarType::UInt8);
   auto* ap = a.mutable_data_ptr<uint8_t>();
-  ap[0] = 0; ap[1] = 127; ap[2] = 200; ap[3] = 255;
+  ap[0] = 0;
+  ap[1] = 127;
+  ap[2] = 200;
+  ap[3] = 255;
   Tensor f = to(a, ScalarType::Float32);
   EXPECT_EQ(f.scalar_type(), ScalarType::Float32);
   EXPECT_EQ(f.const_data_ptr<float>()[2], 200.0f);
@@ -167,14 +177,16 @@ TEST(TCTensorTest, AllocatorHookIsUsed) {
   int calls = 0;
   Device sawDevice;
   int64_t sawBytes = 0;
-  setAllocator([&](int64_t numBytes, ScalarType, Device device)
-                   -> std::shared_ptr<void> {
-    ++calls;
-    sawDevice = device;
-    sawBytes = numBytes;
-    void* p = ::operator new(static_cast<size_t>(numBytes));
-    return std::shared_ptr<void>(p, [](void* q) { ::operator delete(q); });
-  });
+  setAllocator(
+      [&](int64_t numBytes,
+          ScalarType,
+          Device device) -> std::shared_ptr<void> {
+        ++calls;
+        sawDevice = device;
+        sawBytes = numBytes;
+        void* p = ::operator new(static_cast<size_t>(numBytes));
+        return std::shared_ptr<void>(p, [](void* q) { ::operator delete(q); });
+      });
   EXPECT_TRUE(hasAllocator());
 
   Tensor t = empty({2, 3}, ScalarType::Float32, Device(DeviceType::CUDA, 1));
@@ -193,10 +205,11 @@ TEST(TCTensorTest, AllocatorHookIsUsed) {
 TEST(TCTensorTest, ComputeBackendDispatch) {
   // Allocator so we can construct non-CPU tensors (host memory under the hood;
   // we never dereference it as device memory in this test).
-  setAllocator([](int64_t numBytes, ScalarType, Device) -> std::shared_ptr<void> {
-    void* p = ::operator new(static_cast<size_t>(numBytes));
-    return std::shared_ptr<void>(p, [](void* q) { ::operator delete(q); });
-  });
+  setAllocator(
+      [](int64_t numBytes, ScalarType, Device) -> std::shared_ptr<void> {
+        void* p = ::operator new(static_cast<size_t>(numBytes));
+        return std::shared_ptr<void>(p, [](void* q) { ::operator delete(q); });
+      });
 
   // No backend registered for XPU: a data-touching op on an XPU tensor fails
   // clearly rather than silently doing CPU work.
@@ -216,8 +229,8 @@ TEST(TCTensorTest, ComputeBackendDispatch) {
   };
   backend.cat = [&](const std::vector<Tensor>& tensors, int64_t) {
     catCalled = true;
-    return empty(tensors[0].sizes(), tensors[0].scalar_type(),
-                 tensors[0].device());
+    return empty(
+        tensors[0].sizes(), tensors[0].scalar_type(), tensors[0].device());
   };
   registerDeviceBackend(DeviceType::CUDA, backend);
   EXPECT_NE(getDeviceBackend(DeviceType::CUDA), nullptr);

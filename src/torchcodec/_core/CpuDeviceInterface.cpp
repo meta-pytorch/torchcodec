@@ -31,8 +31,7 @@ static bool g_cpu = registerDeviceInterface(
 CpuDeviceInterface::CpuDeviceInterface(const tc::Device& device)
     : DeviceInterface(device) {
   TC_CHECK(g_cpu, "CpuDeviceInterface was not registered!");
-  TC_CHECK(
-      device_.type() == tc::kCPU, "Unsupported device: must be CPU");
+  TC_CHECK(device_.type() == tc::kCPU, "Unsupported device: must be CPU");
 }
 
 void CpuDeviceInterface::initialize(const SharedAVCodecContext& codecContext) {
@@ -79,8 +78,7 @@ void CpuDeviceInterface::initializeVideo(
   // need to know the actual frame dimensions.
   if (transforms.size() == 1 && transforms[0]->isResize()) {
     auto resize = dynamic_cast<ResizeTransform*>(transforms[0].get());
-    TC_CHECK(
-        resize != nullptr, "ResizeTransform expected but not found!");
+    TC_CHECK(resize != nullptr, "ResizeTransform expected but not found!");
     swsFlags_ = resize->getSwsFlags();
   }
 
@@ -274,8 +272,7 @@ void CpuDeviceInterface::convertVideoAVFrameToFrameOutput(
   }
 }
 
-tc::Tensor
-CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
+tc::Tensor CpuDeviceInterface::convertAVFrameToTensorUsingFilterGraph(
     const UniqueAVFrame& avFrame,
     const FrameDims& outputDims) {
   auto avFrameFormat = static_cast<AVPixelFormat>(avFrame->format);
@@ -383,8 +380,7 @@ void CpuDeviceInterface::convertAudioAVFrameToFrameOutput(
   }
 }
 
-std::optional<tc::Tensor>
-CpuDeviceInterface::maybeFlushAudioBuffers() {
+std::optional<tc::Tensor> CpuDeviceInterface::maybeFlushAudioBuffers() {
   // When sample rate conversion is involved, swresample buffers some of the
   // samples in-between calls to swr_convert (see the libswresample docs).
   // That's because the last few samples in a given frame require future
@@ -402,8 +398,7 @@ CpuDeviceInterface::maybeFlushAudioBuffers() {
 
   int numChannels =
       audioStreamOptions_.numChannels.value_or(getNumChannels(codecContext_));
-  tc::Tensor lastSamples =
-      tc::empty({numChannels, numRemainingSamples});
+  tc::Tensor lastSamples = tc::empty({numChannels, numRemainingSamples});
 
   std::vector<uint8_t*> outputBuffers(numChannels);
   for (auto i = 0; i < numChannels; i++) {

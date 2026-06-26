@@ -59,16 +59,16 @@ template <typename... Args>
 
 } // namespace facebook::torchcodec::detail
 
-#define TC_CHECK(cond, ...)                                            \
-  do {                                                                 \
-    if (!(cond)) {                                                     \
-      ::facebook::torchcodec::detail::throwCheckFailure(__VA_ARGS__);  \
-    }                                                                  \
+#define TC_CHECK(cond, ...)                                           \
+  do {                                                                \
+    if (!(cond)) {                                                    \
+      ::facebook::torchcodec::detail::throwCheckFailure(__VA_ARGS__); \
+    }                                                                 \
   } while (false)
 
-#define TC_CHECK_INDEX(cond, ...)                                      \
-  do {                                                                 \
-    if (!(cond)) {                                                     \
-      ::facebook::torchcodec::detail::throwIndexFailure(__VA_ARGS__);  \
-    }                                                                  \
+#define TC_CHECK_INDEX(cond, ...)                                     \
+  do {                                                                \
+    if (!(cond)) {                                                    \
+      ::facebook::torchcodec::detail::throwIndexFailure(__VA_ARGS__); \
+    }                                                                 \
   } while (false)

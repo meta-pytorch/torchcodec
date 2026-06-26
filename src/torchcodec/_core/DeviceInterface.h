@@ -12,8 +12,8 @@
 #include <string>
 #include "FFMPEGCommon.h"
 #include "Frame.h"
-#include "TCError.h"
 #include "StreamOptions.h"
+#include "TCError.h"
 #include "Transform.h"
 
 namespace facebook::torchcodec {
@@ -100,8 +100,7 @@ class DeviceInterface {
   virtual void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<tc::Tensor> preAllocatedOutputTensor =
-          std::nullopt) = 0;
+      std::optional<tc::Tensor> preAllocatedOutputTensor = std::nullopt) = 0;
 
   // ------------------------------------------
   // Extension points for custom decoding paths
@@ -172,8 +171,7 @@ class DeviceInterface {
   // It is here to isolate CUDA dependencies from CPU builds
   virtual void setupHardwareFrameContextForEncoding(
       [[maybe_unused]] AVCodecContext* codecContext) {
-    TC_CHECK(
-        false, "setupHardwareFrameContextForEncoding not implemented");
+    TC_CHECK(false, "setupHardwareFrameContextForEncoding not implemented");
   }
 
   virtual std::optional<const AVCodec*> findHardwareEncoder(

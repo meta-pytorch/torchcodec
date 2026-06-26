@@ -94,8 +94,7 @@ int64_t AVIOContextHolder::seek(int64_t, int) {
 }
 
 int64_t AVIOContextHolder::getSize() {
-  TC_CHECK(
-      false, "getSize() is not supported by this AVIOContextHolder");
+  TC_CHECK(false, "getSize() is not supported by this AVIOContextHolder");
 }
 
 } // namespace facebook::torchcodec

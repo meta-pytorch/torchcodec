@@ -101,9 +101,7 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
                 # Loading via torch registers the custom ops with torch's
                 # dispatcher (torch.ops.torchcodec_ns.*).
                 torch.ops.load_library(core_library_path)
-                torch.ops.load_library(
-                    _get_extension_path(custom_ops_library_name)
-                )
+                torch.ops.load_library(_get_extension_path(custom_ops_library_name))
             else:
                 # Torch-free install: there is no custom-ops adapter library.
                 # Load the core into the global namespace so the pybind module

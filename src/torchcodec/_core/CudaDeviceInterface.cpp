@@ -281,8 +281,7 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     // pre-allocated tensor is on the GPU, so we can't send that to the CPU
     // device interface. We copy it over here.
     if (preAllocatedOutputTensor.has_value()) {
-      tc::copy_(
-          preAllocatedOutputTensor.value(), cpuFrameOutput.data);
+      tc::copy_(preAllocatedOutputTensor.value(), cpuFrameOutput.data);
       frameOutput.data = preAllocatedOutputTensor.value();
     } else {
       frameOutput.data = tc::to(cpuFrameOutput.data, device_);
@@ -432,8 +431,7 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
       "avFrame must be pre-allocated with CUDA memory");
 
   // TODO VideoEncoder: Investigate ways to avoid this copy
-  tc::Tensor hwcFrame =
-      tc::contiguous(tc::permute(tensor, {1, 2, 0}));
+  tc::Tensor hwcFrame = tc::contiguous(tc::permute(tensor, {1, 2, 0}));
 
   float rgbToYuvMatrix[3][4];
   computeRGBToYUVMatrix(

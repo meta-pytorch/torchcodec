@@ -130,8 +130,7 @@ void safeSeek(AVIOContextHolder& avio, int64_t pos) {
 
 WavDecoder::WavDecoder(std::unique_ptr<AVIOContextHolder> avio)
     : avio_(std::move(avio)) {
-  TC_CHECK(
-      isLittleEndian(), "WAV decoder requires little-endian architecture");
+  TC_CHECK(isLittleEndian(), "WAV decoder requires little-endian architecture");
   TC_CHECK(avio_ != nullptr, "AVIO context cannot be null");
   sourceSize_ = static_cast<uint64_t>(avio_->getSize());
   parseHeader();
@@ -218,8 +217,7 @@ void WavDecoder::validateHeader() {
 
   TC_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
   TC_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
-  TC_CHECK(
-      header_.numBytesPerSample > 0, "Invalid WAV: zero block alignment");
+  TC_CHECK(header_.numBytesPerSample > 0, "Invalid WAV: zero block alignment");
   // The WAV spec requires numBytesPerSample == numChannels * bitsPerSample / 8.
   // https://en.wikipedia.org/wiki/WAV#WAV_file_header
   // Our output tensor has (dataSize / numBytesPerSample) * numChannels
@@ -390,8 +388,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
         ").");
     if (startSeconds == stopSecondsOptional.value()) {
       return AudioFramesOutput{
-          tc::empty({header_.numChannels, 0}, tc::kFloat32),
-          startSeconds};
+          tc::empty({header_.numChannels, 0}, tc::kFloat32), startSeconds};
     }
     TC_CHECK(
         stopSecondsOptional.value() <= INT64_MAX / header_.sampleRate,
@@ -422,8 +419,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
 
   safeSeek(*avio_, byteOffset);
 
-  auto samples =
-      tc::empty({numSamples, header_.numChannels}, tc::kFloat32);
+  auto samples = tc::empty({numSamples, header_.numChannels}, tc::kFloat32);
 
   if (header_.audioFormat == WAV_FORMAT_IEEE_FLOAT &&
       header_.bitsPerSample == 32) {

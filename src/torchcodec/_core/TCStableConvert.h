@@ -128,14 +128,16 @@ inline torch::stable::Tensor toStable(const tc::Tensor& t) {
       [keepAlive](void*) mutable { /* releases keepAlive on storage free */ });
 }
 
-// torch::stable::Tensor -> tc::Tensor (zero-copy; keeps the torch tensor alive).
+// torch::stable::Tensor -> tc::Tensor (zero-copy; keeps the torch tensor
+// alive).
 inline tc::Tensor fromStable(const torch::stable::Tensor& t) {
   std::vector<int64_t> sizes(t.sizes().begin(), t.sizes().end());
   std::vector<int64_t> strides(t.strides().begin(), t.strides().end());
   // Empty tensors: avoid wrapping a possibly-null/zero-size data pointer.
   if (t.numel() == 0) {
     return tc::empty(
-        std::move(sizes), fromStableDtype(t.scalar_type()),
+        std::move(sizes),
+        fromStableDtype(t.scalar_type()),
         fromStableDevice(t.device()));
   }
   torch::stable::Tensor keepAlive = t;

@@ -53,17 +53,21 @@ enum class DeviceType {
 class Device {
  public:
   Device() = default;
+
   /* implicit */ Device(DeviceType type, int32_t index = 0)
       : type_(type), index_(index) {}
+
   // Parse "cpu", "cuda", "cuda:N", "xpu", etc.
   explicit Device(const std::string& deviceStr);
 
   DeviceType type() const {
     return type_;
   }
+
   int32_t index() const {
     return index_;
   }
+
   void set_index(int32_t index) {
     index_ = index;
   }
@@ -79,6 +83,7 @@ class Device {
     }
     return index_ == other.index_;
   }
+
   bool operator!=(const Device& other) const {
     return !(*this == other);
   }
@@ -128,6 +133,7 @@ inline const char* scalarTypeName(ScalarType dtype) {
 inline std::ostream& operator<<(std::ostream& os, ScalarType dtype) {
   return os << scalarTypeName(dtype);
 }
+
 inline std::ostream& operator<<(std::ostream& os, DeviceType type) {
   return os << deviceTypeName(type);
 }
@@ -185,30 +191,37 @@ inline const char* torchScalarName(ScalarType dtype) {
 // Map a C++ type to its ScalarType (used to type-check typed data_ptr access).
 template <typename T>
 ScalarType cppScalarType();
+
 template <>
 inline ScalarType cppScalarType<uint8_t>() {
   return ScalarType::UInt8;
 }
+
 template <>
 inline ScalarType cppScalarType<uint16_t>() {
   return ScalarType::UInt16;
 }
+
 template <>
 inline ScalarType cppScalarType<int32_t>() {
   return ScalarType::Int32;
 }
+
 template <>
 inline ScalarType cppScalarType<int64_t>() {
   return ScalarType::Int64;
 }
+
 template <>
 inline ScalarType cppScalarType<float>() {
   return ScalarType::Float32;
 }
+
 template <>
 inline ScalarType cppScalarType<double>() {
   return ScalarType::Float64;
 }
+
 template <>
 inline ScalarType cppScalarType<bool>() {
   return ScalarType::Bool;
@@ -296,42 +309,54 @@ class Tensor {
   const std::vector<int64_t>& sizes() const {
     return sizes_;
   }
+
   const std::vector<int64_t>& strides() const {
     return strides_;
   }
+
   int64_t size(int64_t dim) const {
     return sizes_.at(normalizeDim(dim));
   }
+
   int64_t stride(int64_t dim) const {
     return strides_.at(normalizeDim(dim));
   }
+
   int64_t dim() const {
     return static_cast<int64_t>(sizes_.size());
   }
+
   int64_t numel() const;
+
   ScalarType scalar_type() const {
     return dtype_;
   }
+
   Device device() const {
     return device_;
   }
+
   int64_t element_size() const {
     return elementSize(dtype_);
   }
+
   bool is_contiguous() const;
 
   // Byte pointer to element [0...]. Honors storage offset.
   void* mutable_data_ptr() const {
     return static_cast<char*>(dataBase_) + storageOffsetElems_ * element_size();
   }
+
   const void* const_data_ptr() const {
     return mutable_data_ptr();
   }
+
   template <typename T>
   T* mutable_data_ptr() const {
     checkDtype<T>();
     return reinterpret_cast<T*>(mutable_data_ptr());
   }
+
   template <typename T>
   const T* const_data_ptr() const {
     checkDtype<T>();
@@ -343,6 +368,7 @@ class Tensor {
   const std::shared_ptr<void>& storage() const {
     return storage_;
   }
+
   int64_t storage_offset() const {
     return storageOffsetElems_;
   }
@@ -374,7 +400,8 @@ class Tensor {
   int64_t storageOffsetElems_ = 0;
 };
 
-// ---- Factory / op surface (mirrors the torch::stable subset the core uses) ----
+// ---- Factory / op surface (mirrors the torch::stable subset the core uses)
+// ----
 
 Tensor empty(
     std::vector<int64_t> sizes,
@@ -446,6 +473,7 @@ class TensorAccessor {
  public:
   TensorAccessor(T* data, const int64_t* sizes, const int64_t* strides)
       : data_(data), sizes_(sizes), strides_(strides) {}
+
   TensorAccessor<T, N - 1> operator[](int64_t i) {
     return TensorAccessor<T, N - 1>(
         data_ + strides_[0] * i, sizes_ + 1, strides_ + 1);
@@ -462,9 +490,11 @@ class TensorAccessor<T, 1> {
  public:
   TensorAccessor(T* data, const int64_t* sizes, const int64_t* strides)
       : data_(data), sizes_(sizes), strides_(strides) {}
+
   T& operator[](int64_t i) {
     return data_[strides_[0] * i];
   }
+
   const T& operator[](int64_t i) const {
     return data_[strides_[0] * i];
   }

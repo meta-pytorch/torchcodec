@@ -6,8 +6,8 @@
 #include "AVIOContextHolder.h"
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
-#include "TCError.h"
 #include "StreamOptions.h"
+#include "TCError.h"
 
 extern "C" {
 #include <libavutil/dict.h>
@@ -111,9 +111,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
       const UniqueAVFrame& avFrame,
       VideoStream& videoStream);
   void initializeAudioStream(AudioStream& audioStream);
-  void encodeAudioSamples(
-      const tc::Tensor& samples,
-      AudioStream& audioStream);
+  void encodeAudioSamples(const tc::Tensor& samples, AudioStream& audioStream);
   UniqueAVFrame maybeConvertAudioAVFrame(
       const UniqueAVFrame& avFrame,
       AudioStream& audioStream);

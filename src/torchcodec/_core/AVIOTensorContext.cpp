@@ -79,10 +79,7 @@ int64_t AVIOFromTensorContext::getSize() {
 // --------------------------------------------------------------------------
 
 AVIOToTensorContext::AVIOToTensorContext()
-    : tensorContext_{
-          tc::empty({INITIAL_TENSOR_SIZE}, tc::kUInt8),
-          0,
-          0} {
+    : tensorContext_{tc::empty({INITIAL_TENSOR_SIZE}, tc::kUInt8), 0, 0} {
   createAVIOContext(/*isForWriting=*/true);
 }
 
