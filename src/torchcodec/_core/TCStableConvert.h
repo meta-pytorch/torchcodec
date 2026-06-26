@@ -77,13 +77,16 @@ inline tc::ScalarType fromStableDtype(torch::headeronly::ScalarType dtype) {
 }
 
 inline StableDevice toStableDevice(tc::Device device) {
-  StableDeviceType type = kStableCPU;
+  // Note: CPU must be constructed without an explicit index. torch's CPU device
+  // has index -1, and APIs like from_blob reject a "cpu:0" that doesn't match
+  // the data's "cpu" device.
   if (device.type() == tc::DeviceType::CUDA) {
-    type = kStableCUDA;
-  } else if (device.type() == tc::DeviceType::XPU) {
-    type = kStableXPU;
+    return StableDevice(kStableCUDA, static_cast<int32_t>(device.index()));
   }
-  return StableDevice(type, static_cast<int32_t>(device.index()));
+  if (device.type() == tc::DeviceType::XPU) {
+    return StableDevice(kStableXPU, static_cast<int32_t>(device.index()));
+  }
+  return StableDevice(kStableCPU);
 }
 
 inline tc::Device fromStableDevice(const StableDevice& device) {

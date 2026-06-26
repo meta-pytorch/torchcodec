@@ -183,6 +183,7 @@ function(make_torchcodec_libraries
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
     set(custom_ops_sources
         custom_ops.cpp
+        TCTorchBackend.cpp
     )
     set(custom_ops_dependencies
         ${core_library_name}

@@ -71,3 +71,22 @@ target_link_libraries(
 )
 
 gtest_discover_tests(TCTensorTest)
+
+
+# Verifies the torch-linked custom-ops library registers tc's allocator + CUDA
+# backend, so it links custom_ops (whose static initializer does the wiring).
+add_executable(
+  TCTorchBackendTest
+  TCTorchBackendTest.cpp
+)
+
+target_include_directories(TCTorchBackendTest PRIVATE ../)
+
+target_link_libraries(
+  TCTorchBackendTest
+  ${libtorchcodec_library_name}
+  ${libtorchcodec_custom_ops_name}
+  GTest::gtest_main
+)
+
+gtest_discover_tests(TCTorchBackendTest)
