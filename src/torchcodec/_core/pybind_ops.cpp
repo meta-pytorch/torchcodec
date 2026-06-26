@@ -86,6 +86,33 @@ SingleStreamDecoder* asDecoder(int64_t decoderPtr) {
   return reinterpret_cast<SingleStreamDecoder*>(decoderPtr);
 }
 
+tc::Tensor makeInt64Tensor(const std::vector<int64_t>& values) {
+  tc::Tensor t = tc::empty(
+      {static_cast<int64_t>(values.size())}, tc::kInt64);
+  int64_t* data = t.mutable_data_ptr<int64_t>();
+  for (size_t i = 0; i < values.size(); ++i) {
+    data[i] = values[i];
+  }
+  return t;
+}
+
+tc::Tensor makeFloat64Tensor(const std::vector<double>& values) {
+  tc::Tensor t = tc::empty(
+      {static_cast<int64_t>(values.size())}, tc::kFloat64);
+  double* data = t.mutable_data_ptr<double>();
+  for (size_t i = 0; i < values.size(); ++i) {
+    data[i] = values[i];
+  }
+  return t;
+}
+
+py::tuple batchToTuple(FrameBatchOutput& out) {
+  return py::make_tuple(
+      frameToDLPackCapsule(out.data),
+      frameToDLPackCapsule(out.ptsSeconds),
+      frameToDLPackCapsule(out.durationSeconds));
+}
+
 } // namespace
 
 int64_t create_decoder(const std::string& filename) {
@@ -94,11 +121,19 @@ int64_t create_decoder(const std::string& filename) {
   return reinterpret_cast<int64_t>(decoder.release());
 }
 
-void add_video_stream(int64_t decoderPtr, const std::string& dimensionOrder) {
+void add_video_stream(
+    int64_t decoderPtr,
+    const std::string& dimensionOrder,
+    int64_t streamIndex,
+    std::optional<int64_t> numThreads) {
   VideoStreamOptions options;
   options.dimensionOrder = dimensionOrder;
+  if (numThreads.has_value()) {
+    options.ffmpegThreadCount = static_cast<int>(numThreads.value());
+  }
   std::vector<Transform*> transforms;
-  asDecoder(decoderPtr)->addVideoStream(-1, transforms, options);
+  asDecoder(decoderPtr)->addVideoStream(
+      static_cast<int>(streamIndex), transforms, options);
 }
 
 void scan_all_streams(int64_t decoderPtr) {
@@ -138,10 +173,37 @@ py::tuple get_frames_in_range(
     int64_t step) {
   FrameBatchOutput out = asDecoder(decoderPtr)->getFramesInRange(
       start, stop, step <= 0 ? 1 : step);
-  return py::make_tuple(
-      frameToDLPackCapsule(out.data),
-      frameToDLPackCapsule(out.ptsSeconds),
-      frameToDLPackCapsule(out.durationSeconds));
+  return batchToTuple(out);
+}
+
+py::tuple get_frames_at_indices(
+    int64_t decoderPtr,
+    const std::vector<int64_t>& frameIndices) {
+  FrameBatchOutput out =
+      asDecoder(decoderPtr)->getFramesAtIndices(makeInt64Tensor(frameIndices));
+  return batchToTuple(out);
+}
+
+py::tuple get_frames_by_pts(
+    int64_t decoderPtr,
+    const std::vector<double>& timestamps) {
+  FrameBatchOutput out =
+      asDecoder(decoderPtr)->getFramesPlayedAt(makeFloat64Tensor(timestamps));
+  return batchToTuple(out);
+}
+
+py::tuple get_frames_by_pts_in_range(
+    int64_t decoderPtr,
+    double startSeconds,
+    double stopSeconds,
+    std::optional<double> fps) {
+  FrameBatchOutput out = asDecoder(decoderPtr)->getFramesPlayedInRange(
+      startSeconds, stopSeconds, fps);
+  return batchToTuple(out);
+}
+
+py::object get_key_frame_indices(int64_t decoderPtr) {
+  return frameToDLPackCapsule(asDecoder(decoderPtr)->getKeyFrameIndices());
 }
 
 std::string get_json_metadata(int64_t decoderPtr) {
@@ -169,12 +231,19 @@ PYBIND11_MODULE(PYBIND_OPS_MODULE_NAME, m) {
   // Torch-free decoding ops.
   m.def("create_decoder", &create_decoder);
   m.def("add_video_stream", &add_video_stream, py::arg("decoder"),
-        py::arg("dimension_order") = "NCHW");
+        py::arg("dimension_order") = "NCHW", py::arg("stream_index") = -1,
+        py::arg("num_threads") = py::none());
   m.def("scan_all_streams", &scan_all_streams);
   m.def("get_next_frame", &get_next_frame);
   m.def("get_frame_at_index", &get_frame_at_index);
   m.def("get_frame_played_at", &get_frame_played_at);
   m.def("get_frames_in_range", &get_frames_in_range);
+  m.def("get_frames_at_indices", &get_frames_at_indices);
+  m.def("get_frames_by_pts", &get_frames_by_pts);
+  m.def("get_frames_by_pts_in_range", &get_frames_by_pts_in_range, py::arg("decoder"),
+        py::arg("start_seconds"), py::arg("stop_seconds"),
+        py::arg("fps") = py::none());
+  m.def("get_key_frame_indices", &get_key_frame_indices);
   m.def("get_json_metadata", &get_json_metadata);
   m.def("get_container_json_metadata", &get_container_json_metadata);
   m.def("get_stream_json_metadata", &get_stream_json_metadata);
