@@ -68,6 +68,30 @@ int64_t elementSize(ScalarType dtype);
 // Deleter signature compatible with torch::stable::from_blob.
 using DeleterFn = std::function<void(void*)>;
 
+// ---- Pluggable storage allocator ----
+//
+// tc::Tensor never calls cudaMalloc itself, and does not reimplement a caching
+// allocator. Instead, allocation of the raw storage block is delegated to a
+// process-wide hook. This is how we honor "use torch's CUDA caching allocator
+// when torch is present":
+//   - torch present  -> the torch adapter registers an allocator that allocates
+//                       via torch::stable::empty (torch's caching allocator on
+//                       CUDA) and returns storage that owns the torch tensor.
+//   - torch absent + CUDA -> a simple cudaMalloc/cudaFree allocator (registered
+//                       by the torch-free GPU build).
+//   - torch absent + CPU  -> the built-in malloc fallback (no hook needed).
+//
+// The hook returns the owning storage for `numBytes` bytes on `device`. It is
+// expected to be installed once at module init (not thread-safe to swap).
+using AllocFn = std::function<
+    std::shared_ptr<void>(int64_t numBytes, ScalarType dtype, Device device)>;
+
+// Install (or, with nullptr, clear) the global storage allocator.
+void setAllocator(AllocFn fn);
+
+// True if a custom allocator has been installed.
+bool hasAllocator();
+
 class Tensor {
  public:
   // Default-constructed tensor is "undefined" (no storage). Mirrors

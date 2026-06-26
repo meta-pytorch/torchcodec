@@ -43,7 +43,11 @@ int64_t numelOf(const std::vector<int64_t>& sizes) {
   return n;
 }
 
-// Allocate a zero-initialized? No: uninitialized CPU storage block.
+// Process-wide storage allocator hook (see TCTensor.h). Default is empty, in
+// which case CPU allocation uses malloc and non-CPU allocation throws.
+AllocFn g_allocator;
+
+// Allocate an uninitialized CPU storage block via malloc.
 std::shared_ptr<void> allocCpuStorage(int64_t numBytes) {
   if (numBytes == 0) {
     // Non-null sentinel so defined() is true for empty tensors.
@@ -51,6 +55,23 @@ std::shared_ptr<void> allocCpuStorage(int64_t numBytes) {
   }
   void* p = ::operator new(static_cast<size_t>(numBytes));
   return std::shared_ptr<void>(p, [](void* q) { ::operator delete(q); });
+}
+
+// Allocate storage for a tensor, routing through the installed allocator hook
+// when present (e.g. torch's caching allocator), else falling back to malloc
+// for CPU. Non-CPU allocation without a hook is an error.
+std::shared_ptr<void> allocStorage(
+    int64_t numBytes,
+    ScalarType dtype,
+    Device device) {
+  if (g_allocator) {
+    return g_allocator(numBytes, dtype, device);
+  }
+  checkCpu(
+      device,
+      "empty (no allocator installed; non-CPU allocation needs an allocator "
+      "hook, e.g. torch's)");
+  return allocCpuStorage(numBytes);
 }
 
 // Read element at byte pointer as a double (exact for all supported dtypes
@@ -174,11 +195,18 @@ bool Tensor::is_contiguous() const {
   return strides_ == contiguousStrides(sizes_);
 }
 
+void setAllocator(AllocFn fn) {
+  g_allocator = std::move(fn);
+}
+
+bool hasAllocator() {
+  return static_cast<bool>(g_allocator);
+}
+
 Tensor empty(std::vector<int64_t> sizes, ScalarType dtype, Device device) {
-  checkCpu(device, "empty");
   int64_t n = numelOf(sizes);
   int64_t bytes = n * elementSize(dtype);
-  auto storage = allocCpuStorage(bytes);
+  auto storage = allocStorage(bytes, dtype, device);
   void* base = storage.get();
   auto strides = contiguousStrides(sizes);
   return Tensor(

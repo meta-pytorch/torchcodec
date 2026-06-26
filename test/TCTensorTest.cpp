@@ -151,6 +151,45 @@ TEST(TCTensorTest, DLPackRoundtripIsZeroCopy) {
   EXPECT_EQ(b.const_data_ptr<float>()[5], 5.5f);
 }
 
+TEST(TCTensorTest, AllocatorHookCpuDefault) {
+  // No allocator installed: CPU works via malloc, non-CPU throws.
+  EXPECT_FALSE(hasAllocator());
+  Tensor c = empty({2, 2}, ScalarType::Float32);
+  EXPECT_TRUE(c.defined());
+  EXPECT_THROW(
+      empty({2, 2}, ScalarType::Float32, Device{DeviceType::CUDA, 0}),
+      std::runtime_error);
+}
+
+TEST(TCTensorTest, AllocatorHookIsUsed) {
+  // Install an allocator that records calls and serves host memory (we label
+  // it CUDA but never dereference it as device memory).
+  int calls = 0;
+  Device sawDevice;
+  int64_t sawBytes = 0;
+  setAllocator([&](int64_t numBytes, ScalarType, Device device)
+                   -> std::shared_ptr<void> {
+    ++calls;
+    sawDevice = device;
+    sawBytes = numBytes;
+    void* p = ::operator new(static_cast<size_t>(numBytes));
+    return std::shared_ptr<void>(p, [](void* q) { ::operator delete(q); });
+  });
+  EXPECT_TRUE(hasAllocator());
+
+  Tensor t = empty({2, 3}, ScalarType::Float32, Device{DeviceType::CUDA, 1});
+  EXPECT_EQ(calls, 1);
+  EXPECT_EQ(sawBytes, 2 * 3 * 4); // 6 float32 elements
+  EXPECT_EQ(sawDevice.type, DeviceType::CUDA);
+  EXPECT_EQ(sawDevice.index, 1);
+  EXPECT_EQ(t.device().type, DeviceType::CUDA);
+  EXPECT_TRUE(t.defined());
+
+  // Clean up global state so other tests see the default (no allocator).
+  setAllocator(nullptr);
+  EXPECT_FALSE(hasAllocator());
+}
+
 TEST(TCTensorTest, DLPackKeepsStorageAlive) {
   // Export, drop the original tensor, ensure data still valid via DLPack ctx.
   DLManagedTensor* m = nullptr;
