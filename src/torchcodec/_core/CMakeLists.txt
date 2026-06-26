@@ -10,8 +10,20 @@ if(ENABLE_TORCH)
 endif()
 find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development)
 
+# Enable the CUDA language at top-level (directory) scope so CMAKE_CUDA_COMPILE_*
+# is set before make_torchcodec_libraries() uses it. In the torch build this
+# scope is already set up by find_package(Torch)'s CUDA handling; the torch-free
+# build has no torch, so we must enable it ourselves here (enabling it only
+# inside the function leaves CMAKE_CUDA_COMPILE_OBJECT unset in the parent
+# scope under a plain cmake invocation).
+if(ENABLE_CUDA)
+    enable_language(CUDA)
+endif()
+
+# A torch-free CUDA build (ENABLE_CUDA && !ENABLE_TORCH) needs the CUDA Toolkit
+# directly (cudart) since it can no longer get CUDA libraries via torch.
 if(ENABLE_CUDA AND NOT ENABLE_TORCH)
-    message(FATAL_ERROR "ENABLE_CUDA=1 requires ENABLE_TORCH=1 (the CUDA device interfaces use torch for stream/context). The torch-free build is CPU-only.")
+    find_package(CUDAToolkit REQUIRED)
 endif()
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
@@ -162,6 +174,11 @@ function(make_torchcodec_libraries
     if(ENABLE_CUDA)
         enable_language(CUDA)
 	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp color_conversion.cpp color_conversion.cu)
+        if(NOT ENABLE_TORCH)
+            # Torch-free GPU: the core provides tc's CUDA allocator + compute
+            # backend (cudaMalloc / kernels) instead of routing through torch.
+            list(APPEND core_sources TCCudaBackend.cu)
+        endif()
     endif()
 
     set(core_library_dependencies
@@ -174,7 +191,13 @@ function(make_torchcodec_libraries
     # is present. Only the CUDA device interfaces use torch (stream/context), so
     # the core links torch only for CUDA builds.
     if(ENABLE_CUDA)
-        list(APPEND core_library_dependencies ${TORCH_LIBRARIES})
+        if(ENABLE_TORCH)
+            list(APPEND core_library_dependencies ${TORCH_LIBRARIES})
+        else()
+            # Torch-free CUDA build: link the CUDA runtime directly (cuvid is
+            # dlopen'd via NVCUVIDRuntimeLoader, so no driver link is needed).
+            list(APPEND core_library_dependencies CUDA::cudart)
+        endif()
     endif()
 
     make_torchcodec_sublibrary(

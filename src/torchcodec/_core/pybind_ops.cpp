@@ -76,10 +76,26 @@ void dlpackCapsuleDeleter(PyObject* capsule) {
   }
 }
 
+// Self-describing DLPack frame: exposes the standard __dlpack__ /
+// __dlpack_device__ protocol so numpy / cupy / jax / torch consume it zero-copy
+// and learn the correct device (CPU vs CUDA) WITHOUT the Python side having to
+// hardcode it. __dlpack__ returns the underlying "dltensor" capsule (single
+// consumption, as the protocol requires).
+struct DLPackFrame {
+  py::object capsule;
+  int deviceType = 0;
+  int deviceId = 0;
+};
+
 py::object frameToDLPackCapsule(const tc::Tensor& data) {
   DLManagedTensor* managed = tc::toDLPack(data);
-  return py::reinterpret_steal<py::object>(
+  py::object capsule = py::reinterpret_steal<py::object>(
       PyCapsule_New(managed, "dltensor", dlpackCapsuleDeleter));
+  DLPackFrame frame;
+  frame.capsule = std::move(capsule);
+  frame.deviceType = static_cast<int>(managed->dl_tensor.device.device_type);
+  frame.deviceId = static_cast<int>(managed->dl_tensor.device.device_id);
+  return py::cast(frame);
 }
 
 SingleStreamDecoder* asDecoder(int64_t decoderPtr) {
@@ -123,12 +139,16 @@ void add_video_stream(
     int64_t decoderPtr,
     const std::string& dimensionOrder,
     int64_t streamIndex,
-    std::optional<int64_t> numThreads) {
+    std::optional<int64_t> numThreads,
+    const std::string& device,
+    const std::string& deviceVariant) {
   VideoStreamOptions options;
   options.dimensionOrder = dimensionOrder;
   if (numThreads.has_value()) {
     options.ffmpegThreadCount = static_cast<int>(numThreads.value());
   }
+  options.device = tc::Device(device);
+  options.deviceVariant = deviceVariant;
   std::vector<Transform*> transforms;
   asDecoder(decoderPtr)
       ->addVideoStream(static_cast<int>(streamIndex), transforms, options);
@@ -227,6 +247,15 @@ void destroy_decoder(int64_t decoderPtr) {
 #endif
 
 PYBIND11_MODULE(PYBIND_OPS_MODULE_NAME, m) {
+  // Self-describing DLPack frame returned by the decode ops (see DLPackFrame).
+  py::class_<DLPackFrame>(m, "_DLPackFrame")
+      .def(
+          "__dlpack__",
+          [](DLPackFrame& self, py::args, py::kwargs) { return self.capsule; })
+      .def("__dlpack_device__", [](DLPackFrame& self) {
+        return py::make_tuple(self.deviceType, self.deviceId);
+      });
+
   m.def("create_file_like_context", &create_file_like_context);
   // Torch-free decoding ops.
   m.def("create_decoder", &create_decoder);
@@ -236,7 +265,9 @@ PYBIND11_MODULE(PYBIND_OPS_MODULE_NAME, m) {
       py::arg("decoder"),
       py::arg("dimension_order") = "NCHW",
       py::arg("stream_index") = -1,
-      py::arg("num_threads") = py::none());
+      py::arg("num_threads") = py::none(),
+      py::arg("device") = "cpu",
+      py::arg("device_variant") = "default");
   m.def("scan_all_streams", &scan_all_streams);
   m.def("get_next_frame", &get_next_frame);
   m.def("get_frame_at_index", &get_frame_at_index);

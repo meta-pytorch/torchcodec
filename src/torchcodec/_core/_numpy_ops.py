@@ -30,21 +30,34 @@ def _requires_torch(name):
     return _stub
 
 
-class _DLPackCapsule:
-    """Adapts a raw 'dltensor' PyCapsule to numpy's from_dlpack protocol."""
-
-    def __init__(self, capsule):
-        self._capsule = capsule
-
-    def __dlpack__(self, *args, **kwargs):
-        return self._capsule
-
-    def __dlpack_device__(self):
-        return (1, 0)  # (kDLCPU, device 0)
+_DLPACK_CPU = 1
+_DLPACK_CUDA = 2
 
 
-def _to_numpy(capsule):
-    return np.from_dlpack(_DLPackCapsule(capsule))
+def _cupy():
+    try:
+        import cupy
+    except ImportError as e:
+        raise RuntimeError(
+            "Decoding on CUDA without PyTorch returns a cupy array, but cupy "
+            "is not installed. Install cupy (e.g. 'pip install cupy-cuda12x'), "
+            "or install torch."
+        ) from e
+    return cupy
+
+
+def _to_array(frame):
+    """Convert a self-describing _DLPackFrame to its natural array type: numpy
+    for CPU frames, cupy for CUDA frames (both zero-copy via DLPack). torch is
+    not involved on this path."""
+    device_type, _ = frame.__dlpack_device__()
+    if device_type == _DLPACK_CUDA:
+        return _cupy().from_dlpack(frame)
+    return np.from_dlpack(frame)
+
+
+# Backwards-compatible alias (CPU/GPU aware).
+_to_numpy = _to_array
 
 
 # ---- Construction ----------------------------------------------------------
@@ -71,9 +84,13 @@ def add_video_stream(
     custom_frame_mappings=None,
     output_dtype="uint8",
 ):
-    if device != "cpu":
+    # CPU and CUDA are supported torch-free (CUDA frames come back as cupy via
+    # DLPack). Other device types still require torch.
+    device_str = str(device)
+    if not (device_str == "cpu" or device_str.startswith("cuda")):
         raise NotImplementedError(
-            "GPU decoding requires PyTorch (the torch-free build is CPU-only)."
+            f"Device {device_str!r} requires PyTorch; the torch-free build "
+            "supports CPU and CUDA only."
         )
     if output_dtype not in ("uint8", None):
         raise NotImplementedError(
@@ -89,6 +106,8 @@ def add_video_stream(
         dimension_order or "NCHW",
         -1 if stream_index is None else stream_index,
         num_threads,
+        device_str,
+        device_variant,
     )
 
 

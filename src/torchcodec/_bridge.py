@@ -99,6 +99,11 @@ def _to_numpy(array):
                 "CPU device."
             )
         return array.numpy()
+    # GPU arrays (e.g. cupy from a torch-free CUDA decode) can't live in host
+    # numpy; numpy is the host-only member of its family, so on GPU the natural
+    # output is the GPU array itself. Pass it through unchanged.
+    if hasattr(array, "__cuda_array_interface__"):
+        return array
     # DLPack-capable object / capsule (np.from_dlpack rejects non-CPU).
     return np.from_dlpack(array)
 

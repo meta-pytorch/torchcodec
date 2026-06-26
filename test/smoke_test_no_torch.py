@@ -57,19 +57,6 @@ def _find_pybind_so(lib_dir):
     )
 
 
-class _DLPackWrapper:
-    """Adapts a raw 'dltensor' PyCapsule to numpy's from_dlpack protocol."""
-
-    def __init__(self, capsule):
-        self._capsule = capsule
-
-    def __dlpack__(self, *args, **kwargs):
-        return self._capsule
-
-    def __dlpack_device__(self):
-        return (1, 0)  # (kDLCPU, device 0)
-
-
 def main():
     lib_dir = sys.argv[1] if len(sys.argv) > 1 else None
     so_path = _find_pybind_so(lib_dir)
@@ -82,8 +69,10 @@ def main():
     # The whole point: torch must not be required.
     assert "torch" not in sys.modules, "torch was imported — not torch-free!"
 
-    def to_numpy(capsule):
-        return np.from_dlpack(_DLPackWrapper(capsule))
+    def to_numpy(frame):
+        # frame is a self-describing _DLPackFrame (implements the __dlpack__ /
+        # __dlpack_device__ protocol), so numpy reads the correct device itself.
+        return np.from_dlpack(frame)
 
     decoder = mod.create_decoder(_VIDEO)
     try:
