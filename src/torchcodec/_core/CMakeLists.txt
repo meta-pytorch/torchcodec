@@ -167,7 +167,13 @@ function(make_torchcodec_libraries
     set(core_library_dependencies
         ${ffmpeg_target}
     )
-    if(ENABLE_TORCH)
+    # The CPU core is torch-symbol-free, so it does NOT link torch even when
+    # ENABLE_TORCH=ON. This is what lets a single (torch-built) CPU wheel load in
+    # a torch-free environment: the core + pybind load without torch, and the
+    # torch adapter (custom_ops, which DOES link torch) is loaded only when torch
+    # is present. Only the CUDA device interfaces use torch (stream/context), so
+    # the core links torch only for CUDA builds.
+    if(ENABLE_CUDA)
         list(APPEND core_library_dependencies ${TORCH_LIBRARIES})
     endif()
 
@@ -202,9 +208,13 @@ function(make_torchcodec_libraries
             custom_ops.cpp
             TCTorchBackend.cpp
         )
+        # custom_ops is the torch adapter: it links torch directly (rather than
+        # relying on the core, which no longer links torch on CPU). This also
+        # restores torch's -isystem include treatment for this target.
         set(custom_ops_dependencies
             ${core_library_name}
             ${Python3_LIBRARIES}
+            ${TORCH_LIBRARIES}
         )
         make_torchcodec_sublibrary(
             "${custom_ops_library_name}"

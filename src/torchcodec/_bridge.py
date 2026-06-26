@@ -17,8 +17,9 @@ installed). Conversions are zero-copy via DLPack / buffer protocol.
 
 import contextvars
 
-import numpy as np
-
+# Neither torch nor numpy is required to be installed; torchcodec needs at least
+# one. We import both lazily-guarded so a torch-only user doesn't need numpy and
+# vice versa.
 try:
     import torch
 
@@ -26,6 +27,14 @@ try:
 except ImportError:
     torch = None  # type: ignore[assignment]
     _HAS_TORCH = False
+
+try:
+    import numpy as np
+
+    _HAS_NUMPY = True
+except ImportError:
+    np = None  # type: ignore[assignment]
+    _HAS_NUMPY = False
 
 
 _VALID_BRIDGES = ("torch", "numpy")
@@ -54,6 +63,10 @@ def set_bridge(bridge: str) -> None:
         raise RuntimeError(
             "set_bridge('torch') requires PyTorch, which is not installed."
         )
+    if bridge == "numpy" and not _HAS_NUMPY:
+        raise RuntimeError(
+            "set_bridge('numpy') requires numpy, which is not installed."
+        )
     _BRIDGE.set(bridge)
 
 
@@ -65,13 +78,17 @@ def get_bridge() -> str:
 def _to_torch(array):
     if _HAS_TORCH and isinstance(array, torch.Tensor):
         return array
-    if isinstance(array, np.ndarray):
+    if _HAS_NUMPY and isinstance(array, np.ndarray):
         return torch.from_numpy(array)
     # DLPack-capable object / capsule.
     return torch.from_dlpack(array)
 
 
 def _to_numpy(array):
+    if not _HAS_NUMPY:
+        raise RuntimeError(
+            "Returning numpy arrays requires numpy, which is not installed."
+        )
     if isinstance(array, np.ndarray):
         return array
     if _HAS_TORCH and isinstance(array, torch.Tensor):

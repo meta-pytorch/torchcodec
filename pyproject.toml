@@ -8,6 +8,10 @@ authors = [
     { name = "PyTorch Team", email = "packages@pytorch.org" },
 ]
 dynamic = ["version"]
+# Note: neither torch nor numpy is a hard dependency. torchcodec needs at least
+# one of them at runtime: with torch you get torch.Tensor output (default) and
+# full features; with only numpy you get numpy arrays. This mirrors how the torch
+# ecosystem leaves the torch install to the user. See torchcodec.set_bridge().
 
 [project.urls]
 GitHub = "https://github.com/pytorch/torchcodec"
