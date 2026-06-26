@@ -13,13 +13,13 @@ namespace facebook::torchcodec {
 
 namespace {
 
-torch::stable::Tensor validateSamples(const torch::stable::Tensor& samples) {
+tc::Tensor validateSamples(const tc::Tensor& samples) {
   STD_TORCH_CHECK(
-      samples.scalar_type() == kStableFloat32,
+      samples.scalar_type() == tc::kFloat32,
       "samples must have float32 dtype, got ",
       (samples.scalar_type()));
   STD_TORCH_CHECK(
-      samples.device().type() == kStableCPU,
+      samples.device().type() == tc::kCPU,
       "samples must be on CPU, got ",
       deviceTypeName(samples.device().type()));
   STD_TORCH_CHECK(
@@ -38,7 +38,7 @@ torch::stable::Tensor validateSamples(const torch::stable::Tensor& samples) {
       AV_NUM_DATA_POINTERS,
       " channels per frame.");
 
-  return torch::stable::contiguous(samples);
+  return tc::contiguous(samples);
 }
 
 void validateSampleRate(const AVCodec& avCodec, int sampleRate) {
@@ -129,12 +129,12 @@ void closeAVIOContext(
   avFormatContext->pb = nullptr;
 }
 
-torch::stable::Tensor validateFrames(
-    const torch::stable::Tensor& frames,
+tc::Tensor validateFrames(
+    const tc::Tensor& frames,
     const AVCodecContext* avCodecContext = nullptr,
     DeviceInterface* deviceInterface = nullptr) {
   STD_TORCH_CHECK(
-      frames.scalar_type() == kStableUInt8,
+      frames.scalar_type() == tc::kUInt8,
       "frames must have uint8 dtype, got ",
       frames.scalar_type());
   STD_TORCH_CHECK(
@@ -172,7 +172,7 @@ torch::stable::Tensor validateFrames(
         " width=",
         frames.sizes()[3]);
   }
-  return torch::stable::contiguous(frames);
+  return tc::contiguous(frames);
 }
 
 AVPixelFormat validatePixelFormat(
@@ -377,9 +377,9 @@ int MultiStreamEncoder::addVideoStream(
   STD_TORCH_CHECK(width > 0, "width must be > 0, got ", width);
   STD_TORCH_CHECK(frameRate > 0, "frame_rate must be > 0, got ", frameRate);
   VideoStream videoStream;
-  StableDevice stableDevice(std::move(device));
+  tc::Device stableDevice(std::move(device));
   videoStream.deviceInterface = createDeviceInterface(
-      stableDevice, stableDevice.type() == kStableCUDA ? "ffmpeg" : "default");
+      stableDevice, stableDevice.type() == tc::kCUDA ? "ffmpeg" : "default");
   videoStream.inHeight = height;
   videoStream.inWidth = width;
   videoStream.inFrameRate = frameRate;
@@ -470,7 +470,7 @@ void MultiStreamEncoder::initializeVideoStream(VideoStream& videoStream) {
   AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
 
   if (videoStream.options.pixelFormat.has_value()) {
-    if (deviceType == kStableCUDA) {
+    if (deviceType == tc::kCUDA) {
       STD_TORCH_CHECK(
           false,
           "Video encoding on GPU currently only supports the nv12 pixel format. "
@@ -479,7 +479,7 @@ void MultiStreamEncoder::initializeVideoStream(VideoStream& videoStream) {
     outPixelFormat =
         validatePixelFormat(*avCodec, videoStream.options.pixelFormat.value());
   } else {
-    if (deviceType == kStableCUDA) {
+    if (deviceType == tc::kCUDA) {
       // Default to nv12 pixel format when encoding on GPU.
       outPixelFormat = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
     } else {
@@ -536,7 +536,7 @@ void MultiStreamEncoder::initializeVideoStream(VideoStream& videoStream) {
         0);
   }
 
-  if (deviceType == kStableCUDA) {
+  if (deviceType == tc::kCUDA) {
     videoStream.deviceInterface->registerHardwareDeviceWithCodec(
         videoStream.avCodecContext.get());
     videoStream.deviceInterface->setupHardwareFrameContextForEncoding(
@@ -668,7 +668,7 @@ void MultiStreamEncoder::openStreamsAndWriteHeader() {
 }
 
 void MultiStreamEncoder::addFrames(
-    const torch::stable::Tensor& frames,
+    const tc::Tensor& frames,
     int streamIndex) {
   STD_TORCH_CHECK(!closed_, "Cannot add frames after close() was called.");
   STD_TORCH_CHECK(headerWritten_, "Call open() before addFrames().");
@@ -689,7 +689,7 @@ void MultiStreamEncoder::addFrames(
   // improvement
   int numFrames = static_cast<int>(validatedFrames.sizes()[0]);
   for (int i = 0; i < numFrames; ++i) {
-    torch::stable::Tensor currFrame = selectRow(validatedFrames, i);
+    tc::Tensor currFrame = tc::selectRow(validatedFrames, i);
     int frameIndex = videoStream.numEncodedFrames + i;
     UniqueAVFrame avFrame =
         videoStream.deviceInterface->convertTensorToAVFrameForEncoding(
@@ -758,7 +758,7 @@ void MultiStreamEncoder::encodeVideoFrame(
 }
 
 void MultiStreamEncoder::addSamples(
-    const torch::stable::Tensor& samples,
+    const tc::Tensor& samples,
     int streamIndex) {
   STD_TORCH_CHECK(!closed_, "Cannot add samples after close() was called.");
   STD_TORCH_CHECK(headerWritten_, "Call open() before addSamples().");
@@ -781,7 +781,7 @@ void MultiStreamEncoder::addSamples(
 }
 
 void MultiStreamEncoder::encodeAudioSamples(
-    const torch::stable::Tensor& samples,
+    const tc::Tensor& samples,
     AudioStream& audioStream) {
   UniqueAVFrame avFrame = allocateAVFrame(
       audioStream.frameSize,

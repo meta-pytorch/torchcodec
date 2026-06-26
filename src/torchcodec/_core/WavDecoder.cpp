@@ -389,7 +389,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
         ").");
     if (startSeconds == stopSecondsOptional.value()) {
       return AudioFramesOutput{
-          torch::stable::empty({header_.numChannels, 0}, kStableFloat32),
+          tc::empty({header_.numChannels, 0}, tc::kFloat32),
           startSeconds};
     }
     STD_TORCH_CHECK(
@@ -422,7 +422,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   safeSeek(*avio_, byteOffset);
 
   auto samples =
-      torch::stable::empty({numSamples, header_.numChannels}, kStableFloat32);
+      tc::empty({numSamples, header_.numChannels}, tc::kFloat32);
 
   if (header_.audioFormat == WAV_FORMAT_IEEE_FLOAT &&
       header_.bitsPerSample == 32) {
@@ -466,7 +466,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   }
 
   // Convert to [channels, samples]
-  samples = torch::stable::transpose(samples, 0, 1);
+  samples = tc::transpose(samples, 0, 1);
 
   // We return the actual sample start time
   // (rounded to nearest sample boundary to startSeconds).

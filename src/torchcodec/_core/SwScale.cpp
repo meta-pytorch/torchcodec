@@ -53,7 +53,7 @@ SwScale::SwScale(const SwsConfig& config, int swsFlags)
 
 int SwScale::convert(
     const UniqueAVFrame& avFrame,
-    torch::stable::Tensor& outputTensor) {
+    tc::Tensor& outputTensor) {
   // When resizing is needed, we do sws_scale twice: first convert to output
   // RGB at original resolution, then resize in output RGB space. This ensures
   // transforms happen in the output color space (RGB) rather than the input
@@ -65,10 +65,10 @@ int SwScale::convert(
   bool isRGB48 = config_.outputFormat == AV_PIX_FMT_RGB48;
   int bytesPerPixel = isRGB48 ? 6 : 3;
   auto outputDtype = isRGB48 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
-  torch::stable::Tensor colorConvertedTensor = needsResize_
+  tc::Tensor colorConvertedTensor = needsResize_
       ? allocateEmptyHWCTensor(
             FrameDims(config_.inputHeight, config_.inputWidth),
-            kStableCPU,
+            tc::kCPU,
             outputDtype)
       : outputTensor;
 

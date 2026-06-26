@@ -10,7 +10,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include "StableABICompat.h"
+#include "TCTensor.h"
 
 namespace facebook::torchcodec {
 
@@ -58,7 +58,7 @@ struct VideoStreamOptions {
   // By default we use CPU for decoding for both C++ and python users.
   // Note: This is not used for video encoding, because device is determined by
   // the device of the input frame tensor.
-  StableDevice device = StableDevice(kStableCPU);
+  tc::Device device = tc::Device(tc::kCPU);
   // Device variant (e.g., "nvdec", "ffmpeg")
   std::string_view deviceVariant = "default";
 

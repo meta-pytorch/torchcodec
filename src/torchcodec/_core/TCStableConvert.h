@@ -97,13 +97,25 @@ inline tc::Device fromStableDevice(const StableDevice& device) {
   if (device.type() == kStableXPU) {
     return tc::Device(tc::DeviceType::XPU, index);
   }
-  return tc::Device(tc::DeviceType::CPU, index);
+  // Canonicalize CPU to index 0 (torch uses -1) so it compares equal to tc's
+  // default-constructed CPU device.
+  return tc::Device(tc::DeviceType::CPU);
 }
 
 // tc::Tensor -> torch::stable::Tensor (zero-copy; keeps the tc storage alive).
 inline torch::stable::Tensor toStable(const tc::Tensor& t) {
   if (!t.defined()) {
     return torch::stable::Tensor();
+  }
+  // Empty tensors have no real storage (tc uses a sentinel pointer); from_blob
+  // rejects a zero-size blob, so make a fresh empty torch tensor instead.
+  if (t.numel() == 0) {
+    std::vector<int64_t> sizes(t.sizes().begin(), t.sizes().end());
+    return torch::stable::empty(
+        sizes,
+        toStableDtype(t.scalar_type()),
+        std::nullopt,
+        toStableDevice(t.device()));
   }
   // Hold a reference to the source storage until torch frees the blob.
   tc::Tensor keepAlive = t;
@@ -120,6 +132,12 @@ inline torch::stable::Tensor toStable(const tc::Tensor& t) {
 inline tc::Tensor fromStable(const torch::stable::Tensor& t) {
   std::vector<int64_t> sizes(t.sizes().begin(), t.sizes().end());
   std::vector<int64_t> strides(t.strides().begin(), t.strides().end());
+  // Empty tensors: avoid wrapping a possibly-null/zero-size data pointer.
+  if (t.numel() == 0) {
+    return tc::empty(
+        std::move(sizes), fromStableDtype(t.scalar_type()),
+        fromStableDevice(t.device()));
+  }
   torch::stable::Tensor keepAlive = t;
   return tc::from_blob(
       t.mutable_data_ptr(),

@@ -205,6 +205,26 @@ Tensor::Tensor(
       device_(device),
       storageOffsetElems_(storageOffsetElems) {}
 
+Device::Device(const std::string& deviceStr) {
+  std::string typeStr = deviceStr;
+  int32_t index = 0;
+  auto colon = deviceStr.find(':');
+  if (colon != std::string::npos) {
+    typeStr = deviceStr.substr(0, colon);
+    index = std::stoi(deviceStr.substr(colon + 1));
+  }
+  if (typeStr == "cpu") {
+    type_ = DeviceType::CPU;
+  } else if (typeStr == "cuda") {
+    type_ = DeviceType::CUDA;
+  } else if (typeStr == "xpu") {
+    type_ = DeviceType::XPU;
+  } else {
+    fail("Device: unknown device string '" + deviceStr + "'");
+  }
+  index_ = index;
+}
+
 int64_t Tensor::numel() const {
   return numelOf(sizes_);
 }
@@ -272,7 +292,10 @@ Tensor from_blob(
 }
 
 void zero_(Tensor& t) {
-  checkCpu(t.device(), "zero_");
+  if (t.device().type() != DeviceType::CPU) {
+    requireBackend(t.device(), "zero_").zero_(t);
+    return;
+  }
   if (t.is_contiguous()) {
     std::memset(t.mutable_data_ptr(), 0, t.numel() * t.element_size());
     return;
@@ -331,10 +354,12 @@ Tensor to(const Tensor& self, Device device) {
   if (self.device() == device) {
     return self;
   }
-  // Cross-device transfer is dispatched to the non-CPU side's backend.
-  Device computeDevice =
-      device.type() != DeviceType::CPU ? device : self.device();
-  return requireBackend(computeDevice, "to(device)").toDevice(self, device);
+  // Generic transfer: allocate on the target device (via the allocator hook)
+  // and copy_ (which dispatches H2D/D2H to the non-CPU side's backend). No
+  // dedicated backend entry point needed.
+  Tensor out = empty(self.sizes(), self.scalar_type(), device);
+  copy_(out, self);
+  return out;
 }
 
 Tensor narrow(const Tensor& self, int64_t dim, int64_t start, int64_t length) {
@@ -414,6 +439,18 @@ Tensor permute(const Tensor& self, std::vector<int64_t> dims) {
       self.scalar_type(),
       self.device(),
       self.storage_offset());
+}
+
+Tensor transpose(const Tensor& self, int64_t dim0, int64_t dim1) {
+  int64_t n = self.dim();
+  std::vector<int64_t> dims(n);
+  for (int64_t k = 0; k < n; ++k) {
+    dims[k] = k;
+  }
+  int64_t a = dim0 < 0 ? dim0 + n : dim0;
+  int64_t b = dim1 < 0 ? dim1 + n : dim1;
+  std::swap(dims[a], dims[b]);
+  return permute(self, dims);
 }
 
 Tensor contiguous(const Tensor& self) {

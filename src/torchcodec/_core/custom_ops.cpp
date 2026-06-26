@@ -204,7 +204,7 @@ using OpsFrameOutput = std::
 
 OpsFrameOutput makeOpsFrameOutput(FrameOutput& frame) {
   return std::make_tuple(
-      frame.data,
+      toStable(frame.data),
       torch::stable::full({}, frame.ptsSeconds, kStableFloat64),
       torch::stable::full({}, frame.durationSeconds, kStableFloat64));
 }
@@ -222,7 +222,10 @@ using OpsFrameBatchOutput = std::
     tuple<torch::stable::Tensor, torch::stable::Tensor, torch::stable::Tensor>;
 
 OpsFrameBatchOutput makeOpsFrameBatchOutput(FrameBatchOutput& batch) {
-  return std::make_tuple(batch.data, batch.ptsSeconds, batch.durationSeconds);
+  return std::make_tuple(
+      toStable(batch.data),
+      toStable(batch.ptsSeconds),
+      toStable(batch.durationSeconds));
 }
 
 // The elements of this tuple are all tensors that represent the concatenation
@@ -234,7 +237,7 @@ using OpsAudioFramesOutput =
 
 OpsAudioFramesOutput makeOpsAudioFramesOutput(AudioFramesOutput& audioFrames) {
   return std::make_tuple(
-      audioFrames.data,
+      toStable(audioFrames.data),
       torch::stable::full({}, audioFrames.ptsSeconds, kStableFloat64));
 }
 
@@ -465,7 +468,7 @@ torch::stable::Tensor create_from_tensor(
   }
 
   auto avioContextHolder =
-      std::make_unique<AVIOFromTensorContext>(video_tensor);
+      std::make_unique<AVIOFromTensorContext>(fromStable(video_tensor));
 
   std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
       std::make_unique<SingleStreamDecoder>(
@@ -552,7 +555,9 @@ void _add_video_stream(
 
   validateDeviceInterface(device, device_variant);
 
-  videoStreamOptions.device = StableDevice(std::move(device));
+  // Parse the device string via torch so malformed strings produce torch's
+  // familiar error (the back-compat tests rely on "torch_parse_device_string").
+  videoStreamOptions.device = fromStableDevice(StableDevice(std::move(device)));
   videoStreamOptions.deviceVariant = std::move(device_variant);
 
   std::vector<Transform*> transforms =
@@ -569,9 +574,9 @@ void _add_video_stream(
 
   std::optional<SingleStreamDecoder::FrameMappings> converted_mappings = hasPts
       ? std::make_optional(SingleStreamDecoder::FrameMappings{
-            std::move(*custom_frame_mappings_pts),
-            std::move(*custom_frame_mappings_keyframe_indices),
-            std::move(*custom_frame_mappings_duration)})
+            fromStable(*custom_frame_mappings_pts),
+            fromStable(*custom_frame_mappings_keyframe_indices),
+            fromStable(*custom_frame_mappings_duration)})
       : std::nullopt;
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
   videoDecoder->addVideoStream(
@@ -675,7 +680,7 @@ OpsFrameBatchOutput get_frames_at_indices(
     torch::stable::Tensor& decoder,
     const torch::stable::Tensor& frame_indices) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto result = videoDecoder->getFramesAtIndices(frame_indices);
+  auto result = videoDecoder->getFramesAtIndices(fromStable(frame_indices));
   return makeOpsFrameBatchOutput(result);
 }
 
@@ -696,7 +701,7 @@ OpsFrameBatchOutput get_frames_by_pts(
     torch::stable::Tensor& decoder,
     const torch::stable::Tensor& timestamps) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto result = videoDecoder->getFramesPlayedAt(timestamps);
+  auto result = videoDecoder->getFramesPlayedAt(fromStable(timestamps));
   return makeOpsFrameBatchOutput(result);
 }
 
@@ -746,7 +751,7 @@ bool _test_frame_pts_equality(
 
 torch::stable::Tensor _get_key_frame_indices(torch::stable::Tensor& decoder) {
   auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  return videoDecoder->getKeyFrameIndices();
+  return toStable(videoDecoder->getKeyFrameIndices());
 }
 
 // Get the metadata from the video as a string.
@@ -1107,7 +1112,7 @@ void streaming_encoder_add_frames(
     const torch::stable::Tensor& frames,
     int64_t stream_index) {
   unwrapTensorToGetMultiStreamEncoder(encoder)->addFrames(
-      frames, static_cast<int>(stream_index));
+      fromStable(frames), static_cast<int>(stream_index));
 }
 
 void streaming_encoder_add_samples(
@@ -1115,7 +1120,7 @@ void streaming_encoder_add_samples(
     const torch::stable::Tensor& samples,
     int64_t stream_index) {
   unwrapTensorToGetMultiStreamEncoder(encoder)->addSamples(
-      samples, static_cast<int>(stream_index));
+      fromStable(samples), static_cast<int>(stream_index));
 }
 
 torch::stable::Tensor create_wav_decoder_from_file(
@@ -1127,7 +1132,7 @@ torch::stable::Tensor create_wav_decoder_from_file(
 
 torch::stable::Tensor create_wav_decoder_from_tensor(
     const torch::stable::Tensor& data) {
-  auto avioContext = std::make_unique<AVIOFromTensorContext>(data);
+  auto avioContext = std::make_unique<AVIOFromTensorContext>(fromStable(data));
   auto decoder = std::make_unique<WavDecoder>(std::move(avioContext));
   return wrapWavDecoderPointerToTensor(std::move(decoder));
 }

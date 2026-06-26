@@ -50,6 +50,11 @@ tc::DeviceBackend makeTorchCudaBackend() {
     torch::stable::copy_(stableDst, toStable(src));
   };
 
+  backend.zero_ = [](tc::Tensor& self) {
+    torch::stable::Tensor stableSelf = toStable(self);
+    torch::stable::zero_(stableSelf);
+  };
+
   backend.toDtype = [](const tc::Tensor& self, tc::ScalarType dtype) {
     return fromStable(torch::stable::to(toStable(self), toStableDtype(dtype)));
   };

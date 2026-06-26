@@ -27,7 +27,7 @@ NVDECCache* NVDECCache::getCacheInstances() {
   return cacheInstances;
 }
 
-NVDECCache& NVDECCache::getCache(const StableDevice& device) {
+NVDECCache& NVDECCache::getCache(const tc::Device& device) {
   return getCacheInstances()[getDeviceIndex(device)];
 }
 

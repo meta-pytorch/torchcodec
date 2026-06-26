@@ -19,6 +19,8 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -52,6 +54,8 @@ class Device {
   Device() = default;
   /* implicit */ Device(DeviceType type, int32_t index = 0)
       : type_(type), index_(index) {}
+  // Parse "cpu", "cuda", "cuda:N", "xpu", etc.
+  explicit Device(const std::string& deviceStr);
 
   DeviceType type() const {
     return type_;
@@ -59,9 +63,20 @@ class Device {
   int32_t index() const {
     return index_;
   }
+  void set_index(int32_t index) {
+    index_ = index;
+  }
 
   bool operator==(const Device& other) const {
-    return type_ == other.type_ && index_ == other.index_;
+    if (type_ != other.type_) {
+      return false;
+    }
+    // CPU has no meaningful index (torch uses -1, we default to 0); treat all
+    // CPU devices as equal.
+    if (type_ == DeviceType::CPU) {
+      return true;
+    }
+    return index_ == other.index_;
   }
   bool operator!=(const Device& other) const {
     return !(*this == other);
@@ -76,8 +91,112 @@ constexpr DeviceType kCPU = DeviceType::CPU;
 constexpr DeviceType kCUDA = DeviceType::CUDA;
 constexpr DeviceType kXPU = DeviceType::XPU;
 
+inline const char* deviceTypeName(DeviceType type) {
+  switch (type) {
+    case DeviceType::CPU:
+      return "cpu";
+    case DeviceType::CUDA:
+      return "cuda";
+    case DeviceType::XPU:
+      return "xpu";
+  }
+  return "unknown";
+}
+
+inline const char* scalarTypeName(ScalarType dtype) {
+  switch (dtype) {
+    case ScalarType::UInt8:
+      return "uint8";
+    case ScalarType::UInt16:
+      return "uint16";
+    case ScalarType::Int32:
+      return "int32";
+    case ScalarType::Int64:
+      return "int64";
+    case ScalarType::Float32:
+      return "float32";
+    case ScalarType::Float64:
+      return "float64";
+    case ScalarType::Bool:
+      return "bool";
+  }
+  return "unknown";
+}
+
+// Streaming support so these can appear in STD_TORCH_CHECK error messages.
+inline std::ostream& operator<<(std::ostream& os, ScalarType dtype) {
+  return os << scalarTypeName(dtype);
+}
+inline std::ostream& operator<<(std::ostream& os, DeviceType type) {
+  return os << deviceTypeName(type);
+}
+
+// Scalar-type convenience constants (mirror the kStable* names the core used).
+constexpr ScalarType kUInt8 = ScalarType::UInt8;
+constexpr ScalarType kUInt16 = ScalarType::UInt16;
+constexpr ScalarType kInt32 = ScalarType::Int32;
+constexpr ScalarType kInt64 = ScalarType::Int64;
+constexpr ScalarType kFloat32 = ScalarType::Float32;
+constexpr ScalarType kFloat64 = ScalarType::Float64;
+constexpr ScalarType kBool = ScalarType::Bool;
+
 // Size in bytes of one element of the given dtype.
 int64_t elementSize(ScalarType dtype);
+
+// torch-style scalar name (Byte/Int/Long/Float/...), used in dtype-mismatch
+// error messages so they match torch's wording (the back-compat tests rely on
+// e.g. "Long but found Float").
+inline const char* torchScalarName(ScalarType dtype) {
+  switch (dtype) {
+    case ScalarType::UInt8:
+      return "Byte";
+    case ScalarType::UInt16:
+      return "UInt16";
+    case ScalarType::Int32:
+      return "Int";
+    case ScalarType::Int64:
+      return "Long";
+    case ScalarType::Float32:
+      return "Float";
+    case ScalarType::Float64:
+      return "Double";
+    case ScalarType::Bool:
+      return "Bool";
+  }
+  return "Unknown";
+}
+
+// Map a C++ type to its ScalarType (used to type-check typed data_ptr access).
+template <typename T>
+ScalarType cppScalarType();
+template <>
+inline ScalarType cppScalarType<uint8_t>() {
+  return ScalarType::UInt8;
+}
+template <>
+inline ScalarType cppScalarType<uint16_t>() {
+  return ScalarType::UInt16;
+}
+template <>
+inline ScalarType cppScalarType<int32_t>() {
+  return ScalarType::Int32;
+}
+template <>
+inline ScalarType cppScalarType<int64_t>() {
+  return ScalarType::Int64;
+}
+template <>
+inline ScalarType cppScalarType<float>() {
+  return ScalarType::Float32;
+}
+template <>
+inline ScalarType cppScalarType<double>() {
+  return ScalarType::Float64;
+}
+template <>
+inline ScalarType cppScalarType<bool>() {
+  return ScalarType::Bool;
+}
 
 // Deleter signature compatible with torch::stable::from_blob.
 using DeleterFn = std::function<void(void*)>;
@@ -122,8 +241,8 @@ class Tensor; // forward decl for the backend hook below
 // manipulate shape/strides and work on any device.
 struct DeviceBackend {
   std::function<void(Tensor& dst, const Tensor& src)> copy_;
+  std::function<void(Tensor& self)> zero_;
   std::function<Tensor(const Tensor& self, ScalarType dtype)> toDtype;
-  std::function<Tensor(const Tensor& self, Device device)> toDevice;
   std::function<Tensor(const Tensor& self, double other)> div;
   std::function<Tensor(const Tensor& self)> contiguous;
   std::function<Tensor(const std::vector<Tensor>& tensors, int64_t dim)> cat;
@@ -189,12 +308,17 @@ class Tensor {
   void* mutable_data_ptr() const {
     return static_cast<char*>(dataBase_) + storageOffsetElems_ * element_size();
   }
+  const void* const_data_ptr() const {
+    return mutable_data_ptr();
+  }
   template <typename T>
   T* mutable_data_ptr() const {
+    checkDtype<T>();
     return reinterpret_cast<T*>(mutable_data_ptr());
   }
   template <typename T>
   const T* const_data_ptr() const {
+    checkDtype<T>();
     return reinterpret_cast<const T*>(mutable_data_ptr());
   }
 
@@ -213,6 +337,18 @@ class Tensor {
     return dim < 0 ? dim + n : dim;
   }
 
+  // Validate that typed data access matches the tensor's dtype, mirroring
+  // torch's "expected scalar type X but found Y" check.
+  template <typename T>
+  void checkDtype() const {
+    ScalarType expected = cppScalarType<T>();
+    if (dtype_ != expected) {
+      throw std::runtime_error(
+          std::string("expected scalar type ") + torchScalarName(expected) +
+          " but found " + torchScalarName(dtype_));
+    }
+  }
+
   std::shared_ptr<void> storage_;
   void* dataBase_ = nullptr; // base of storage (offset applied via accessors)
   std::vector<int64_t> sizes_;
@@ -226,8 +362,19 @@ class Tensor {
 
 Tensor empty(
     std::vector<int64_t> sizes,
-    ScalarType dtype,
+    ScalarType dtype = ScalarType::Float32,
     Device device = Device{});
+
+// Overload matching torch::stable::empty's (sizes, dtype, layout/memory_format,
+// device) shape so existing allocation call sites need no edits. The 3rd arg is
+// ignored (the core always passed std::nullopt).
+inline Tensor empty(
+    std::vector<int64_t> sizes,
+    ScalarType dtype,
+    std::nullopt_t,
+    Device device) {
+  return empty(std::move(sizes), dtype, device);
+}
 
 // 0-dim or N-dim tensor filled with a single value.
 Tensor full(std::vector<int64_t> sizes, double value, ScalarType dtype);
@@ -254,6 +401,7 @@ Tensor to(const Tensor& self, Device device);
 Tensor narrow(const Tensor& self, int64_t dim, int64_t start, int64_t length);
 Tensor select(const Tensor& self, int64_t dim, int64_t index);
 Tensor permute(const Tensor& self, std::vector<int64_t> dims);
+Tensor transpose(const Tensor& self, int64_t dim0, int64_t dim1);
 
 // Materializing ops.
 Tensor contiguous(const Tensor& self);
@@ -264,6 +412,63 @@ Tensor div(const Tensor& self, double other);
 // Shorthand for select(t, 0, index), i.e. t[index].
 inline Tensor selectRow(const Tensor& t, int64_t index) {
   return select(t, 0, index);
+}
+
+// Copy row srcIndex of srcTensor into row dstIndex of dstTensor.
+inline void copyFrame(
+    Tensor& dstTensor,
+    int64_t dstIndex,
+    const Tensor& srcTensor,
+    int64_t srcIndex) {
+  Tensor dst = selectRow(dstTensor, dstIndex);
+  copy_(dst, selectRow(srcTensor, srcIndex));
+}
+
+// ---- Strided element accessors (mirror torch's HeaderOnlyTensorAccessor) ----
+template <typename T, int64_t N>
+class TensorAccessor {
+ public:
+  TensorAccessor(T* data, const int64_t* sizes, const int64_t* strides)
+      : data_(data), sizes_(sizes), strides_(strides) {}
+  TensorAccessor<T, N - 1> operator[](int64_t i) {
+    return TensorAccessor<T, N - 1>(
+        data_ + strides_[0] * i, sizes_ + 1, strides_ + 1);
+  }
+
+ private:
+  T* data_;
+  const int64_t* sizes_;
+  const int64_t* strides_;
+};
+
+template <typename T>
+class TensorAccessor<T, 1> {
+ public:
+  TensorAccessor(T* data, const int64_t* sizes, const int64_t* strides)
+      : data_(data), sizes_(sizes), strides_(strides) {}
+  T& operator[](int64_t i) {
+    return data_[strides_[0] * i];
+  }
+  const T& operator[](int64_t i) const {
+    return data_[strides_[0] * i];
+  }
+
+ private:
+  T* data_;
+  const int64_t* sizes_;
+  const int64_t* strides_;
+};
+
+template <typename T, int64_t N>
+TensorAccessor<T, N> mutableAccessor(Tensor& t) {
+  return TensorAccessor<T, N>(
+      t.mutable_data_ptr<T>(), t.sizes().data(), t.strides().data());
+}
+
+template <typename T, int64_t N>
+TensorAccessor<const T, N> constAccessor(const Tensor& t) {
+  return TensorAccessor<const T, N>(
+      t.const_data_ptr<T>(), t.sizes().data(), t.strides().data());
 }
 
 // ---- DLPack interop ----

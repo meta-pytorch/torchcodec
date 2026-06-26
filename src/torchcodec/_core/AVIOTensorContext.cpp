@@ -18,11 +18,11 @@ constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
 // AVIOFromTensorContext
 // --------------------------------------------------------------------------
 
-AVIOFromTensorContext::AVIOFromTensorContext(torch::stable::Tensor data)
+AVIOFromTensorContext::AVIOFromTensorContext(tc::Tensor data)
     : tensorContext_{data, 0, 0} {
   STD_TORCH_CHECK(data.numel() > 0, "data must not be empty");
   STD_TORCH_CHECK(data.is_contiguous(), "data must be contiguous");
-  STD_TORCH_CHECK(data.scalar_type() == kStableUInt8, "data must be kUInt8");
+  STD_TORCH_CHECK(data.scalar_type() == tc::kUInt8, "data must be kUInt8");
   createAVIOContext(/*isForWriting=*/false);
 }
 
@@ -77,7 +77,7 @@ int64_t AVIOFromTensorContext::getSize() {
 
 AVIOToTensorContext::AVIOToTensorContext()
     : tensorContext_{
-          torch::stable::empty({INITIAL_TENSOR_SIZE}, kStableUInt8),
+          tc::empty({INITIAL_TENSOR_SIZE}, tc::kUInt8),
           0,
           0} {
   createAVIOContext(/*isForWriting=*/true);
@@ -95,7 +95,7 @@ int AVIOToTensorContext::write(const uint8_t* buf, int size) {
     // We double the size of the outpout tensor. Calling cat() may not be the
     // most efficient, but it's simple.
     tensorContext_.data =
-        stableCat({tensorContext_.data, tensorContext_.data}, 0);
+        tc::cat({tensorContext_.data, tensorContext_.data}, 0);
   }
 
   STD_TORCH_CHECK(
@@ -127,8 +127,8 @@ int64_t AVIOToTensorContext::getSize() {
   return tensorContext_.data.numel();
 }
 
-torch::stable::Tensor AVIOToTensorContext::getOutputTensor() {
-  return torch::stable::narrow(
+tc::Tensor AVIOToTensorContext::getOutputTensor() {
+  return tc::narrow(
       tensorContext_.data,
       /*dim=*/0,
       /*start=*/0,

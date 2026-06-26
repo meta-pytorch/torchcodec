@@ -33,13 +33,13 @@ std::string getDeviceTypeString(const std::string& device) {
 // TODO_STABLE_ABI: we might need to support more device types, i.e. those from
 // https://github.com/pytorch/pytorch/blob/main/torch/headeronly/core/DeviceType.h
 // Ideally we'd remove this helper?
-StableDeviceType parseDeviceType(const std::string& deviceType) {
+tc::DeviceType parseDeviceType(const std::string& deviceType) {
   if (deviceType == "cpu") {
-    return kStableCPU;
+    return tc::kCPU;
   } else if (deviceType == "cuda") {
-    return kStableCUDA;
+    return tc::kCUDA;
   } else if (deviceType == "xpu") {
-    return kStableXPU;
+    return tc::kXPU;
   } else {
     STD_TORCH_CHECK(false, "Unknown device type: ", deviceType);
   }
@@ -74,7 +74,7 @@ void validateDeviceInterface(
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
   // Find device interface that matches device type and variant
-  StableDeviceType deviceTypeEnum = parseDeviceType(deviceType);
+  tc::DeviceType deviceTypeEnum = parseDeviceType(deviceType);
 
   auto deviceInterface = std::find_if(
       deviceMap.begin(),
@@ -96,7 +96,7 @@ void validateDeviceInterface(
 }
 
 std::unique_ptr<DeviceInterface> createDeviceInterface(
-    const StableDevice& device,
+    const tc::Device& device,
     const std::string_view variant) {
   DeviceInterfaceKey key(device.type(), variant);
   std::scoped_lock lock(g_interface_mutex);
@@ -116,7 +116,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
       "'");
 }
 
-torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
+tc::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   auto format = static_cast<AVPixelFormat>(avFrame->format);
   STD_TORCH_CHECK(
       format == AV_PIX_FMT_RGB24 || format == AV_PIX_FMT_RGB48,
@@ -136,16 +136,16 @@ torch::stable::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   // RGB48 stores 2 bytes per channel (uint16); RGB24 stores 1 byte (uint8).
   // linesize is in bytes, but torch strides are in elements, so divide.
   int bytesPerElement = (format == AV_PIX_FMT_RGB48) ? 2 : 1;
-  auto dtype = (format == AV_PIX_FMT_RGB48) ? kStableUInt16 : kStableUInt8;
+  auto dtype = (format == AV_PIX_FMT_RGB48) ? tc::kUInt16 : tc::kUInt8;
   std::vector<int64_t> strides = {
       avFrameClone->linesize[0] / bytesPerElement, 3, 1};
 
-  return torch::stable::from_blob(
+  return tc::from_blob(
       avFrameClone->data[0],
       shape,
       strides,
-      StableDevice(kStableCPU),
       dtype,
+      tc::Device(tc::kCPU),
       deleter);
 }
 

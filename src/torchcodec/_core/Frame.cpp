@@ -17,36 +17,31 @@ FrameDims::FrameDims(int height, int width) : height(height), width(width) {
 FrameBatchOutput::FrameBatchOutput(
     int64_t numFrames,
     const FrameDims& outputDims,
-    const StableDevice& device,
+    const tc::Device& device,
     OutputDtype outputDtype)
-    : ptsSeconds(torch::stable::empty({numFrames}, kStableFloat64)),
-      durationSeconds(torch::stable::empty({numFrames}, kStableFloat64)) {
+    : ptsSeconds(tc::empty({numFrames}, tc::kFloat64)),
+      durationSeconds(tc::empty({numFrames}, tc::kFloat64)) {
   data = allocateEmptyHWCTensor(outputDims, device, outputDtype, numFrames);
 }
 
-torch::stable::Tensor allocateEmptyHWCTensor(
+tc::Tensor allocateEmptyHWCTensor(
     const FrameDims& frameDims,
-    const StableDevice& device,
+    const tc::Device& device,
     OutputDtype outputDtype,
     std::optional<int> numFrames) {
   STD_TORCH_CHECK(
       frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
   STD_TORCH_CHECK(
       frameDims.width > 0, "width must be > 0, got: ", frameDims.width);
-  auto dtype =
-      outputDtype == OutputDtype::FLOAT32 ? kStableUInt16 : kStableUInt8;
+  auto dtype = outputDtype == OutputDtype::FLOAT32 ? tc::kUInt16 : tc::kUInt8;
   if (numFrames.has_value()) {
     auto numFramesValue = numFrames.value();
     STD_TORCH_CHECK(
         numFramesValue >= 0, "numFrames must be >= 0, got: ", numFramesValue);
-    return torch::stable::empty(
-        {numFramesValue, frameDims.height, frameDims.width, 3},
-        dtype,
-        std::nullopt,
-        device);
+    return tc::empty(
+        {numFramesValue, frameDims.height, frameDims.width, 3}, dtype, device);
   } else {
-    return torch::stable::empty(
-        {frameDims.height, frameDims.width, 3}, dtype, std::nullopt, device);
+    return tc::empty({frameDims.height, frameDims.width, 3}, dtype, device);
   }
 }
 

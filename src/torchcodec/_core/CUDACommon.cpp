@@ -46,17 +46,17 @@ void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream) {
   cudaEventDestroy(event);
 }
 
-void initializeCudaContextWithPytorch(const StableDevice& device) {
+void initializeCudaContextWithPytorch(const tc::Device& device) {
   // It is important for pytorch itself to create the cuda context. If ffmpeg
   // creates the context it may not be compatible with pytorch.
   // This is a dummy tensor to initialize the cuda context.
-  torch::stable::Tensor dummyTensorForCudaInitialization = torch::stable::empty(
-      {1}, kStableUInt8, std::nullopt, StableDevice(device));
-  torch::stable::zero_(dummyTensorForCudaInitialization);
+  tc::Tensor dummyTensorForCudaInitialization = tc::empty(
+      {1}, tc::kUInt8, std::nullopt, tc::Device(device));
+  tc::zero_(dummyTensorForCudaInitialization);
 }
 
 void validatePreAllocatedTensorShape(
-    const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,
+    const std::optional<tc::Tensor>& preAllocatedOutputTensor,
     const FrameDims& frameDims) {
   if (preAllocatedOutputTensor.has_value()) {
     auto shape = preAllocatedOutputTensor.value().sizes();
@@ -72,7 +72,7 @@ void validatePreAllocatedTensorShape(
   }
 }
 
-int getDeviceIndex(const StableDevice& device) {
+int getDeviceIndex(const tc::Device& device) {
   // PyTorch uses int8_t as its torch::DeviceIndex, but FFmpeg and CUDA
   // libraries use int. So we use int, too.
   int deviceIndex = static_cast<int>(device.index());

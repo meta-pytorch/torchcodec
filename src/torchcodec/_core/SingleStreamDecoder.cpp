@@ -369,13 +369,13 @@ void SingleStreamDecoder::readCustomFrameMappingsUpdateMetadataAndIndex(
     int streamIndex,
     FrameMappings customFrameMappings) {
   STD_TORCH_CHECK(
-      customFrameMappings.all_frames.scalar_type() == kStableInt64 &&
-          customFrameMappings.is_key_frame.scalar_type() == kStableBool &&
-          customFrameMappings.duration.scalar_type() == kStableInt64,
+      customFrameMappings.all_frames.scalar_type() == tc::kInt64 &&
+          customFrameMappings.is_key_frame.scalar_type() == tc::kBool &&
+          customFrameMappings.duration.scalar_type() == tc::kInt64,
       "all_frames and duration tensors must be int64 dtype, and is_key_frame tensor must be a bool dtype.");
-  const torch::stable::Tensor& all_frames = customFrameMappings.all_frames;
-  const torch::stable::Tensor& is_key_frame = customFrameMappings.is_key_frame;
-  const torch::stable::Tensor& duration = customFrameMappings.duration;
+  const tc::Tensor& all_frames = customFrameMappings.all_frames;
+  const tc::Tensor& is_key_frame = customFrameMappings.is_key_frame;
+  const tc::Tensor& duration = customFrameMappings.duration;
   STD_TORCH_CHECK(
       all_frames.sizes()[0] == is_key_frame.sizes()[0] &&
           is_key_frame.sizes()[0] == duration.sizes()[0],
@@ -385,9 +385,9 @@ void SingleStreamDecoder::readCustomFrameMappingsUpdateMetadataAndIndex(
   int64_t numFrames = all_frames.sizes()[0];
   streamInfos_[streamIndex].allFrames.reserve(numFrames);
   streamInfos_[streamIndex].keyFrames.reserve(numFrames);
-  auto pts_data = constAccessor<int64_t, 1>(all_frames);
-  auto is_key_frame_data = constAccessor<bool, 1>(is_key_frame);
-  auto duration_data = constAccessor<int64_t, 1>(duration);
+  auto pts_data = tc::constAccessor<int64_t, 1>(all_frames);
+  auto is_key_frame_data = tc::constAccessor<bool, 1>(is_key_frame);
+  auto duration_data = tc::constAccessor<int64_t, 1>(duration);
 
   auto& streamMetadata = containerMetadata_.allStreamMetadata[streamIndex];
 
@@ -427,15 +427,15 @@ int SingleStreamDecoder::getActiveStreamIndex() const {
   return activeStreamIndex_;
 }
 
-torch::stable::Tensor SingleStreamDecoder::getKeyFrameIndices() {
+tc::Tensor SingleStreamDecoder::getKeyFrameIndices() {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
   validateScannedAllStreams("getKeyFrameIndices");
 
   const std::vector<FrameInfo>& keyFrames =
       streamInfos_[activeStreamIndex_].keyFrames;
-  torch::stable::Tensor keyFrameIndices = torch::stable::empty(
-      {static_cast<int64_t>(keyFrames.size())}, kStableInt64);
-  auto keyFrameIndicesAccessor = mutableAccessor<int64_t, 1>(keyFrameIndices);
+  tc::Tensor keyFrameIndices = tc::empty(
+      {static_cast<int64_t>(keyFrames.size())}, tc::kInt64);
+  auto keyFrameIndicesAccessor = tc::mutableAccessor<int64_t, 1>(keyFrameIndices);
   for (size_t i = 0; i < keyFrames.size(); ++i) {
     keyFrameIndicesAccessor[i] = keyFrames[i].frameIndex;
   }
@@ -450,7 +450,7 @@ torch::stable::Tensor SingleStreamDecoder::getKeyFrameIndices() {
 void SingleStreamDecoder::addStream(
     int streamIndex,
     AVMediaType mediaType,
-    const StableDevice& device,
+    const tc::Device& device,
     const std::string_view deviceVariant,
     std::optional<int> ffmpegThreadCount) {
   STD_TORCH_CHECK(
@@ -545,7 +545,7 @@ void SingleStreamDecoder::addVideoStream(
     const VideoStreamOptions& videoStreamOptions,
     std::optional<FrameMappings> customFrameMappings) {
   STD_TORCH_CHECK(
-      transforms.empty() || videoStreamOptions.device == kStableCPU,
+      transforms.empty() || videoStreamOptions.device == tc::kCPU,
       " Transforms are only supported for CPU devices.");
 
   addStream(
@@ -669,7 +669,7 @@ void SingleStreamDecoder::addAudioStream(
   // https://github.com/pytorch/torchcodec/issues/1253 and
   // https://github.com/pytorch/torchcodec/pull/1254
   addStream(
-      streamIndex, AVMEDIA_TYPE_AUDIO, StableDevice(kStableCPU), "default", 1);
+      streamIndex, AVMEDIA_TYPE_AUDIO, tc::Device(tc::kCPU), "default", 1);
 
   auto& streamInfo = streamInfos_[activeStreamIndex_];
   streamInfo.audioStreamOptions = audioStreamOptions;
@@ -697,7 +697,7 @@ FrameOutput SingleStreamDecoder::getNextFrame() {
 }
 
 FrameOutput SingleStreamDecoder::getNextFrameInternal(
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
+    std::optional<tc::Tensor> preAllocatedOutputTensor) {
   validateActiveStream();
   UniqueAVFrame avFrame = decodeAVFrame([this](const UniqueAVFrame& avFrame) {
     return getPtsOrDts(avFrame) >= cursor_;
@@ -713,7 +713,7 @@ FrameOutput SingleStreamDecoder::getFrameAtIndex(int64_t frameIndex) {
 
 FrameOutput SingleStreamDecoder::getFrameAtIndexInternal(
     int64_t frameIndex,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
+    std::optional<tc::Tensor> preAllocatedOutputTensor) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
 
   const auto& streamInfo = streamInfos_[activeStreamIndex_];
@@ -741,10 +741,10 @@ FrameOutput SingleStreamDecoder::getFrameAtIndexInternal(
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
-    const torch::stable::Tensor& frameIndices) {
+    const tc::Tensor& frameIndices) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
 
-  auto frameIndicesData = constAccessor<int64_t, 1>(frameIndices);
+  auto frameIndicesData = tc::constAccessor<int64_t, 1>(frameIndices);
 
   bool indicesAreSorted = true;
   for (int64_t i = 1; i < frameIndices.numel(); ++i) {
@@ -781,9 +781,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
       deviceInterface_->getPreAllocationDtype(videoStreamOptions.outputDtype));
 
   auto frameBatchOutputPtsSeconds =
-      mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
+      tc::mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
   auto frameBatchOutputDurationSeconds =
-      mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
+      tc::mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
 
   auto previousIndexInVideo = -1;
   for (int64_t f = 0; f < frameIndices.numel(); ++f) {
@@ -793,7 +793,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
     if ((f > 0) && (indexInVideo == previousIndexInVideo)) {
       // Avoid decoding the same frame twice
       auto previousIndexInOutput = indicesAreSorted ? f - 1 : argsort[f - 1];
-      copyFrame(
+      tc::copyFrame(
           frameBatchOutput.data,
           indexInOutput,
           frameBatchOutput.data,
@@ -804,7 +804,7 @@ FrameBatchOutput SingleStreamDecoder::getFramesAtIndices(
           frameBatchOutputDurationSeconds[previousIndexInOutput];
     } else {
       FrameOutput frameOutput = getFrameAtIndexInternal(
-          indexInVideo, selectRow(frameBatchOutput.data, indexInOutput));
+          indexInVideo, tc::selectRow(frameBatchOutput.data, indexInOutput));
       frameBatchOutputPtsSeconds[indexInOutput] = frameOutput.ptsSeconds;
       frameBatchOutputDurationSeconds[indexInOutput] =
           frameOutput.durationSeconds;
@@ -850,12 +850,12 @@ FrameBatchOutput SingleStreamDecoder::getFramesInRange(
       deviceInterface_->getPreAllocationDtype(videoStreamOptions.outputDtype));
 
   auto frameBatchOutputPtsSeconds =
-      mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
+      tc::mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
   auto frameBatchOutputDurationSeconds =
-      mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
+      tc::mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
   for (int64_t i = start, f = 0; i < stop; i += step, ++f) {
     FrameOutput frameOutput =
-        getFrameAtIndexInternal(i, selectRow(frameBatchOutput.data, f));
+        getFrameAtIndexInternal(i, tc::selectRow(frameBatchOutput.data, f));
     frameBatchOutputPtsSeconds[f] = frameOutput.ptsSeconds;
     frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
   }
@@ -906,7 +906,7 @@ FrameOutput SingleStreamDecoder::getFramePlayedAt(double seconds) {
 }
 
 FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
-    const torch::stable::Tensor& timestamps) {
+    const tc::Tensor& timestamps) {
   validateActiveStream(AVMEDIA_TYPE_VIDEO);
 
   const auto& streamMetadata =
@@ -921,10 +921,10 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedAt(
   // avoid decoding that unique frame twice is to convert the input timestamps
   // to indices, and leverage the de-duplication logic of getFramesAtIndices.
 
-  torch::stable::Tensor frameIndices =
-      torch::stable::empty({timestamps.numel()}, kStableInt64);
-  auto frameIndicesAccessor = mutableAccessor<int64_t, 1>(frameIndices);
-  auto timestampsAccessor = constAccessor<double, 1>(timestamps);
+  tc::Tensor frameIndices =
+      tc::empty({timestamps.numel()}, tc::kInt64);
+  auto frameIndicesAccessor = tc::mutableAccessor<int64_t, 1>(frameIndices);
+  auto timestampsAccessor = tc::constAccessor<double, 1>(timestamps);
 
   for (int64_t i = 0; i < timestamps.numel(); ++i) {
     auto frameSeconds = timestampsAccessor[i];
@@ -1040,9 +1040,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
             videoStreamOptions.outputDtype));
 
     auto frameBatchOutputPtsSeconds =
-        mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
+        tc::mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
     auto frameBatchOutputDurationSeconds =
-        mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
+        tc::mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
 
     // Decode frames, reusing already-decoded frames for duplicates
     int64_t lastDecodedSourceIndex = -1;
@@ -1052,9 +1052,9 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
       int64_t sourceIdx = secondsToIndexLowerBound(targetPtsSeconds);
 
       if (sourceIdx == lastDecodedSourceIndex && lastDecodedSourceIndex >= 0) {
-        copyFrame(frameBatchOutput.data, i, frameBatchOutput.data, i - 1);
+        tc::copyFrame(frameBatchOutput.data, i, frameBatchOutput.data, i - 1);
       } else {
-        getFrameAtIndexInternal(sourceIdx, selectRow(frameBatchOutput.data, i));
+        getFrameAtIndexInternal(sourceIdx, tc::selectRow(frameBatchOutput.data, i));
         lastDecodedSourceIndex = sourceIdx;
       }
 
@@ -1090,12 +1090,12 @@ FrameBatchOutput SingleStreamDecoder::getFramesPlayedInRange(
         deviceInterface_->getPreAllocationDtype(
             videoStreamOptions.outputDtype));
     auto frameBatchOutputPtsSeconds =
-        mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
+        tc::mutableAccessor<double, 1>(frameBatchOutput.ptsSeconds);
     auto frameBatchOutputDurationSeconds =
-        mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
+        tc::mutableAccessor<double, 1>(frameBatchOutput.durationSeconds);
     for (int64_t i = startFrameIndex, f = 0; i < stopFrameIndex; ++i, ++f) {
       FrameOutput frameOutput =
-          getFrameAtIndexInternal(i, selectRow(frameBatchOutput.data, f));
+          getFrameAtIndexInternal(i, tc::selectRow(frameBatchOutput.data, f));
       frameBatchOutputPtsSeconds[f] = frameOutput.ptsSeconds;
       frameBatchOutputDurationSeconds[f] = frameOutput.durationSeconds;
     }
@@ -1179,7 +1179,7 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
   if (stopSecondsOptional.has_value() && startSeconds == *stopSecondsOptional) {
     // For consistency with video
     int numChannels = getNumChannels(streamInfo.codecContext);
-    return AudioFramesOutput{torch::stable::empty({numChannels, 0}), 0.0};
+    return AudioFramesOutput{tc::empty({numChannels, 0}), 0.0};
   }
 
   auto startPts = secondsToClosestPts(startSeconds, streamInfo.timeBase);
@@ -1239,7 +1239,7 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
   // TODO-AUDIO Pre-allocate a long-enough tensor instead of creating a vec +
   // cat(). This would save a copy. We know the duration of the output and the
   // sample rate, so in theory we know the number of output samples.
-  std::vector<torch::stable::Tensor> frames;
+  std::vector<tc::Tensor> frames;
 
   std::optional<double> firstFramePtsSeconds = std::nullopt;
   auto stopPts = stopSecondsOptional.has_value()
@@ -1288,7 +1288,7 @@ AudioFramesOutput SingleStreamDecoder::getFramesPlayedInRangeAudio(
                                       : "nullopt",
       ") is too low.");
 
-  return AudioFramesOutput{stableCat(frames, 1), *firstFramePtsSeconds};
+  return AudioFramesOutput{tc::cat(frames, 1), *firstFramePtsSeconds};
 }
 
 // --------------------------------------------------------------------------
@@ -1399,7 +1399,7 @@ bool SingleStreamDecoder::canWeAvoidSeeking() const {
   // several frames. Note that FRAME threading is the default across the vast
   // majority of codecs, so our check is just to be on the safe side.
   int64_t inFlightFrames = 0;
-  if (streamInfo.videoStreamOptions.device == kStableCPU &&
+  if (streamInfo.videoStreamOptions.device == tc::kCPU &&
       (streamInfo.codecContext->active_thread_type & FF_THREAD_FRAME)) {
     inFlightFrames = std::max(streamInfo.codecContext->thread_count, 1) - 1;
   }
@@ -1575,7 +1575,7 @@ UniqueAVFrame SingleStreamDecoder::decodeAVFrame(
 
 FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
+    std::optional<tc::Tensor> preAllocatedOutputTensor) {
   // Convert the frame to tensor.
   FrameOutput frameOutput;
   frameOutput.ptsSeconds = ptsToSeconds(
@@ -1593,12 +1593,12 @@ FrameOutput SingleStreamDecoder::convertAVFrameToFrameOutput(
 // OUTPUT ALLOCATION AND SHAPE CONVERSION
 // --------------------------------------------------------------------------
 
-torch::stable::Tensor SingleStreamDecoder::maybePermuteAndConvertToFloat32(
-    torch::stable::Tensor& hwcTensor) {
+tc::Tensor SingleStreamDecoder::maybePermuteAndConvertToFloat32(
+    tc::Tensor& hwcTensor) {
   // Permute HWC to CHW if needed. Returns a view of the input tensor, the
   // leading batch-dimension [N] is optional i.e. the input tensor can be 3D or
   // 4D.
-  torch::stable::Tensor tensor = hwcTensor;
+  tc::Tensor tensor = hwcTensor;
   if (streamInfos_[activeStreamIndex_].videoStreamOptions.dimensionOrder !=
       "NHWC") {
     auto numDimensions = hwcTensor.dim();
@@ -1606,11 +1606,11 @@ torch::stable::Tensor SingleStreamDecoder::maybePermuteAndConvertToFloat32(
     if (numDimensions == 3) {
       STD_TORCH_CHECK(
           shape[2] == 3, "Not a HWC tensor: ", intArrayRefToString(shape));
-      tensor = stablePermute(hwcTensor, {2, 0, 1});
+      tensor = tc::permute(hwcTensor, {2, 0, 1});
     } else if (numDimensions == 4) {
       STD_TORCH_CHECK(
           shape[3] == 3, "Not a NHWC tensor: ", intArrayRefToString(shape));
-      tensor = stablePermute(hwcTensor, {0, 3, 1, 2});
+      tensor = tc::permute(hwcTensor, {0, 3, 1, 2});
     } else {
       STD_TORCH_CHECK(
           false, "Expected tensor with 3 or 4 dimensions, got ", numDimensions);
@@ -1623,12 +1623,12 @@ torch::stable::Tensor SingleStreamDecoder::maybePermuteAndConvertToFloat32(
   if (outputDtype != OutputDtype::FLOAT32) {
     return tensor;
   }
-  bool isUInt16 = tensor.scalar_type() == torch::headeronly::ScalarType::UInt16;
+  bool isUInt16 = tensor.scalar_type() == tc::kUInt16;
   double maxVal = static_cast<double>(
       isUInt16 ? std::numeric_limits<uint16_t>::max()
                : std::numeric_limits<uint8_t>::max());
-  auto asFloat = torch::stable::to(tensor, kStableFloat32);
-  return stableDiv(asFloat, maxVal);
+  auto asFloat = tc::to(tensor, tc::kFloat32);
+  return tc::div(asFloat, maxVal);
 }
 
 // --------------------------------------------------------------------------

@@ -74,8 +74,8 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
   void open(
       std::string_view formatName,
       std::unique_ptr<AVIOContextHolder> avioContextHolder);
-  void addFrames(const torch::stable::Tensor& frames, int streamIndex);
-  void addSamples(const torch::stable::Tensor& samples, int streamIndex);
+  void addFrames(const tc::Tensor& frames, int streamIndex);
+  void addSamples(const tc::Tensor& samples, int streamIndex);
   void close();
 
  private:
@@ -112,7 +112,7 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
       VideoStream& videoStream);
   void initializeAudioStream(AudioStream& audioStream);
   void encodeAudioSamples(
-      const torch::stable::Tensor& samples,
+      const tc::Tensor& samples,
       AudioStream& audioStream);
   UniqueAVFrame maybeConvertAudioAVFrame(
       const UniqueAVFrame& avFrame,

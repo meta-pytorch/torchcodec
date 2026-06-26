@@ -10,6 +10,7 @@
 #include "Metadata.h"
 #include "StableABICompat.h"
 #include "StreamOptions.h"
+#include "TCTensor.h"
 
 namespace facebook::torchcodec {
 
@@ -33,25 +34,25 @@ struct FrameOutput {
   // data shape is:
   // - 3D (C, H, W) or (H, W, C) for videos
   // - 2D (numChannels, numSamples) for audio
-  torch::stable::Tensor data;
+  tc::Tensor data;
   double ptsSeconds;
   double durationSeconds;
 };
 
 struct FrameBatchOutput {
-  torch::stable::Tensor data; // 4D: of shape NCHW or NHWC.
-  torch::stable::Tensor ptsSeconds; // 1D of shape (N,)
-  torch::stable::Tensor durationSeconds; // 1D of shape (N,)
+  tc::Tensor data; // 4D: of shape NCHW or NHWC.
+  tc::Tensor ptsSeconds; // 1D of shape (N,)
+  tc::Tensor durationSeconds; // 1D of shape (N,)
 
   FrameBatchOutput(
       int64_t numFrames,
       const FrameDims& outputDims,
-      const StableDevice& device,
+      const tc::Device& device,
       OutputDtype outputDtype);
 };
 
 struct AudioFramesOutput {
-  torch::stable::Tensor data; // shape is (numChannels, numSamples)
+  tc::Tensor data; // shape is (numChannels, numSamples)
   double ptsSeconds;
 };
 
@@ -65,9 +66,9 @@ struct AudioFramesOutput {
 // assume HWC tensors, since this is what FFmpeg natively handles. It's up to
 // the high-level decoding entry-points to permute that back to CHW, by calling
 // maybePermuteHWC2CHW().
-torch::stable::Tensor allocateEmptyHWCTensor(
+tc::Tensor allocateEmptyHWCTensor(
     const FrameDims& frameDims,
-    const StableDevice& device,
+    const tc::Device& device,
     OutputDtype outputDtype,
     std::optional<int> numFrames = std::nullopt);
 

@@ -67,7 +67,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
 
   // Returns the key frame indices as a tensor. The tensor is 1D and contains
   // int64 values, where each value is the frame index for a key frame.
-  torch::stable::Tensor getKeyFrameIndices();
+  tc::Tensor getKeyFrameIndices();
 
   // FrameMappings is used for the custom_frame_mappings seek mode to store
   // metadata of frames in a stream. The size of all tensors in this struct must
@@ -78,13 +78,13 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   // --------------------------------------------------------------------------
   struct FrameMappings {
     // 1D tensor of int64, each value is the PTS of a frame in timebase units.
-    torch::stable::Tensor all_frames;
+    tc::Tensor all_frames;
     // 1D tensor of bool, each value indicates if the corresponding frame in
     // all_frames is a key frame.
-    torch::stable::Tensor is_key_frame;
+    tc::Tensor is_key_frame;
     // 1D tensor of int64, each value is the duration of the corresponding frame
     // in all_frames in timebase units.
-    torch::stable::Tensor duration;
+    tc::Tensor duration;
   };
 
   void addVideoStream(
@@ -114,7 +114,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   // Returns frames at the given indices for a given stream as a single stacked
   // Tensor.
   FrameBatchOutput getFramesAtIndices(
-      const torch::stable::Tensor& frameIndices);
+      const tc::Tensor& frameIndices);
 
   // Returns frames within a given range. The range is defined by [start, stop).
   // The values retrieved from the range are: [start, start+step,
@@ -129,7 +129,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   // seconds=5.999, etc.
   FrameOutput getFramePlayedAt(double seconds);
 
-  FrameBatchOutput getFramesPlayedAt(const torch::stable::Tensor& timestamps);
+  FrameBatchOutput getFramesPlayedAt(const tc::Tensor& timestamps);
 
   // Returns frames within a given pts range. The range is defined by
   // [startSeconds, stopSeconds) with respect to the pts values for frames. The
@@ -176,7 +176,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   // can move it back to private.
   FrameOutput getFrameAtIndexInternal(
       int64_t frameIndex,
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+      std::optional<tc::Tensor> preAllocatedOutputTensor =
           std::nullopt);
 
   // Exposed for _test_frame_pts_equality, which is used to test non-regression
@@ -271,17 +271,17 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       std::function<bool(const UniqueAVFrame&)> filterFunction);
 
   FrameOutput getNextFrameInternal(
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+      std::optional<tc::Tensor> preAllocatedOutputTensor =
           std::nullopt);
 
   // Permutes HWC to CHW if needed, then converts to float32 and normalizes to
   // [0, 1] if the active stream's outputDtype is FLOAT32.
-  torch::stable::Tensor maybePermuteAndConvertToFloat32(
-      torch::stable::Tensor& tensor);
+  tc::Tensor maybePermuteAndConvertToFloat32(
+      tc::Tensor& tensor);
 
   FrameOutput convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+      std::optional<tc::Tensor> preAllocatedOutputTensor =
           std::nullopt);
 
   // --------------------------------------------------------------------------
@@ -320,7 +320,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   void addStream(
       int streamIndex,
       AVMediaType mediaType,
-      const StableDevice& device = StableDevice(kStableCPU),
+      const tc::Device& device = tc::Device(tc::kCPU),
       const std::string_view deviceVariant = "default",
       std::optional<int> ffmpegThreadCount = std::nullopt);
 

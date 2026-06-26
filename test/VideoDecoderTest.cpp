@@ -27,13 +27,89 @@ C10_DEFINE_bool(
 
 namespace facebook::torchcodec {
 
-inline torch::stable::Tensor toStableTensor(const torch::Tensor& tensor) {
-  torch::Tensor* p = new torch::Tensor(tensor);
-  return torch::stable::Tensor(reinterpret_cast<AtenTensorHandle>(p));
+// The core now uses tc::Tensor. These bridge the test's full-libtorch
+// torch::Tensor to/from tc::Tensor (zero-copy; a deleter keeps the source
+// alive). The name toStableTensor is kept to minimize call-site churn.
+namespace {
+inline at::ScalarType tcToAtenDtype(tc::ScalarType dtype) {
+  switch (dtype) {
+    case tc::ScalarType::UInt8:
+      return at::kByte;
+    case tc::ScalarType::UInt16:
+      return at::kUInt16;
+    case tc::ScalarType::Int32:
+      return at::kInt;
+    case tc::ScalarType::Int64:
+      return at::kLong;
+    case tc::ScalarType::Float32:
+      return at::kFloat;
+    case tc::ScalarType::Float64:
+      return at::kDouble;
+    case tc::ScalarType::Bool:
+      return at::kBool;
+  }
+  TORCH_CHECK(false, "unhandled tc dtype");
+}
+inline tc::ScalarType atenToTcDtype(at::ScalarType dtype) {
+  switch (dtype) {
+    case at::kByte:
+      return tc::ScalarType::UInt8;
+    case at::kUInt16:
+      return tc::ScalarType::UInt16;
+    case at::kInt:
+      return tc::ScalarType::Int32;
+    case at::kLong:
+      return tc::ScalarType::Int64;
+    case at::kFloat:
+      return tc::ScalarType::Float32;
+    case at::kDouble:
+      return tc::ScalarType::Float64;
+    case at::kBool:
+      return tc::ScalarType::Bool;
+    default:
+      TORCH_CHECK(false, "unhandled aten dtype");
+  }
+}
+inline tc::Device atenToTcDevice(at::Device device) {
+  if (device.is_cuda()) {
+    return tc::Device(tc::kCUDA, device.index());
+  }
+  return tc::Device(tc::kCPU);
+}
+inline at::Device tcToAtenDevice(tc::Device device) {
+  if (device.type() == tc::kCUDA) {
+    return at::Device(at::kCUDA, device.index());
+  }
+  return at::Device(at::kCPU);
+}
+} // namespace
+
+inline tc::Tensor toStableTensor(const torch::Tensor& tensor) {
+  auto holder = std::make_shared<torch::Tensor>(tensor);
+  std::vector<int64_t> sizes(tensor.sizes().begin(), tensor.sizes().end());
+  std::vector<int64_t> strides(tensor.strides().begin(), tensor.strides().end());
+  return tc::from_blob(
+      tensor.data_ptr(),
+      std::move(sizes),
+      std::move(strides),
+      atenToTcDtype(tensor.scalar_type()),
+      atenToTcDevice(tensor.device()),
+      [holder](void*) {});
 }
 
-inline torch::Tensor toATenTensor(const torch::stable::Tensor& t) {
-  return *reinterpret_cast<torch::Tensor*>(t.get());
+inline torch::Tensor toATenTensor(const tc::Tensor& t) {
+  auto holder = std::make_shared<tc::Tensor>(t);
+  std::vector<int64_t> sizes(t.sizes().begin(), t.sizes().end());
+  std::vector<int64_t> strides(t.strides().begin(), t.strides().end());
+  auto options = torch::TensorOptions()
+                     .dtype(tcToAtenDtype(t.scalar_type()))
+                     .device(tcToAtenDevice(t.device()));
+  return torch::from_blob(
+      t.mutable_data_ptr(),
+      sizes,
+      strides,
+      [holder](void*) {},
+      options);
 }
 
 std::string getResourcePath(const std::string& filename) {
@@ -416,7 +492,9 @@ TEST_P(SingleStreamDecoderTest, PreAllocatedTensorFilterGraph) {
       bestVideoStreamIndex, transforms, videoStreamOptions);
   auto output =
       ourDecoder->getFrameAtIndexInternal(0, preAllocatedOutputTensor);
-  EXPECT_EQ(output.data.data_ptr(), preAllocatedOutputTensor.data_ptr());
+  EXPECT_EQ(
+      output.data.mutable_data_ptr(),
+      preAllocatedOutputTensor.mutable_data_ptr());
 }
 
 TEST_P(SingleStreamDecoderTest, PreAllocatedTensorSwscale) {
@@ -436,7 +514,9 @@ TEST_P(SingleStreamDecoderTest, PreAllocatedTensorSwscale) {
       bestVideoStreamIndex, transforms, videoStreamOptions);
   auto output =
       ourDecoder->getFrameAtIndexInternal(0, preAllocatedOutputTensor);
-  EXPECT_EQ(output.data.data_ptr(), preAllocatedOutputTensor.data_ptr());
+  EXPECT_EQ(
+      output.data.mutable_data_ptr(),
+      preAllocatedOutputTensor.mutable_data_ptr());
 }
 
 TEST_P(SingleStreamDecoderTest, GetAudioMetadata) {

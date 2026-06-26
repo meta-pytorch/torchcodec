@@ -16,8 +16,8 @@ namespace facebook::torchcodec {
 namespace {
 
 static bool g_cuda = registerDeviceInterface(
-    DeviceInterfaceKey(kStableCUDA, /*variant=*/"ffmpeg"),
-    [](const StableDevice& device) { return new CudaDeviceInterface(device); });
+    DeviceInterfaceKey(tc::kCUDA, /*variant=*/"ffmpeg"),
+    [](const tc::Device& device) { return new CudaDeviceInterface(device); });
 
 // We reuse cuda contexts across VideoDeoder instances. This is because
 // creating a cuda context is expensive. The cache mechanism is as follows:
@@ -46,7 +46,7 @@ int getFlagsAVHardwareDeviceContextCreate() {
 #endif
 }
 
-UniqueAVBufferRef getHardwareDeviceContext(const StableDevice& device) {
+UniqueAVBufferRef getHardwareDeviceContext(const tc::Device& device) {
   enum AVHWDeviceType type = av_hwdevice_find_type_by_name("cuda");
   STD_TORCH_CHECK(type != AV_HWDEVICE_TYPE_NONE, "Failed to find cuda device");
   int deviceIndex = getDeviceIndex(device);
@@ -88,11 +88,11 @@ UniqueAVBufferRef getHardwareDeviceContext(const StableDevice& device) {
 
 } // namespace
 
-CudaDeviceInterface::CudaDeviceInterface(const StableDevice& device)
+CudaDeviceInterface::CudaDeviceInterface(const tc::Device& device)
     : DeviceInterface(device) {
   STD_TORCH_CHECK(g_cuda, "CudaDeviceInterface was not registered!");
   STD_TORCH_CHECK(
-      device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
+      device_.type() == tc::kCUDA, "Unsupported device: must be CUDA");
 
   // Resolve unspecified device index (-1) to the actual current CUDA device.
   device_.set_index(getDeviceIndex(device_));
@@ -124,7 +124,7 @@ void CudaDeviceInterface::initializeVideo(
   videoStreamOptions_ = videoStreamOptions;
 
   // TODO: Ideally, we should keep all interface implementations independent.
-  cpuInterface_ = createDeviceInterface(kStableCPU);
+  cpuInterface_ = createDeviceInterface(tc::kCPU);
   STD_TORCH_CHECK(
       cpuInterface_ != nullptr, "Failed to create CPU device interface");
   cpuInterface_->initialize(codecContext_);
@@ -238,7 +238,7 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
 void CudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
+    std::optional<tc::Tensor> preAllocatedOutputTensor) {
   validatePreAllocatedTensorShape(
       preAllocatedOutputTensor, FrameDims(avFrame->height, avFrame->width));
 
@@ -281,11 +281,11 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
     // pre-allocated tensor is on the GPU, so we can't send that to the CPU
     // device interface. We copy it over here.
     if (preAllocatedOutputTensor.has_value()) {
-      torch::stable::copy_(
+      tc::copy_(
           preAllocatedOutputTensor.value(), cpuFrameOutput.data);
       frameOutput.data = preAllocatedOutputTensor.value();
     } else {
-      frameOutput.data = torch::stable::to(cpuFrameOutput.data, device_);
+      frameOutput.data = tc::to(cpuFrameOutput.data, device_);
     }
 
     usingCPUFallback_ = true;
@@ -393,7 +393,7 @@ std::string CudaDeviceInterface::getDetails() {
 // --------------------------------------------------------------------------
 
 UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
-    const torch::stable::Tensor& tensor,
+    const tc::Tensor& tensor,
     int frameIndex,
     AVCodecContext* codecContext) {
   STD_TORCH_CHECK(
@@ -402,7 +402,7 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
       tensor.dim(),
       "D tensor");
   STD_TORCH_CHECK(
-      tensor.device().type() == kStableCUDA,
+      tensor.device().type() == tc::kCUDA,
       "Expected tensor on CUDA device, got: ",
       deviceTypeName(tensor.device().type()));
 
@@ -432,8 +432,8 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
       "avFrame must be pre-allocated with CUDA memory");
 
   // TODO VideoEncoder: Investigate ways to avoid this copy
-  torch::stable::Tensor hwcFrame =
-      torch::stable::contiguous(stablePermute(tensor, {1, 2, 0}));
+  tc::Tensor hwcFrame =
+      tc::contiguous(tc::permute(tensor, {1, 2, 0}));
 
   float rgbToYuvMatrix[3][4];
   computeRGBToYUVMatrix(

@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 #include "StableABICompat.h"
+#include "TCTensor.h"
 
 namespace facebook::torchcodec {
 
@@ -83,11 +84,11 @@ class PerGpuCache {
 
   // Adds an object to the specified device cache if the cache has
   // capacity. Returns true if object was added and false otherwise.
-  bool addIfCacheHasCapacity(const StableDevice& device, element_type&& obj);
+  bool addIfCacheHasCapacity(const tc::Device& device, element_type&& obj);
 
   // Returns an object from the cache of the specified device. Cache
   // does not hold a reference to the object after this call.
-  element_type get(const StableDevice& device);
+  element_type get(const tc::Device& device);
 
  private:
   // 'Cache' class implementation contains mutex which makes it non-movable
@@ -98,11 +99,11 @@ class PerGpuCache {
 // Forward declaration of getDeviceIndex which exists in CUDACommon.h
 // This avoids circular dependency between Cache.h and CUDACommon.cpp which also
 // needs to include Cache.h
-int getDeviceIndex(const StableDevice& device);
+int getDeviceIndex(const tc::Device& device);
 
 template <typename T, typename D>
 bool PerGpuCache<T, D>::addIfCacheHasCapacity(
-    const StableDevice& device,
+    const tc::Device& device,
     element_type&& obj) {
   int deviceIndex = getDeviceIndex(device);
   STD_TORCH_CHECK(
@@ -113,7 +114,7 @@ bool PerGpuCache<T, D>::addIfCacheHasCapacity(
 
 template <typename T, typename D>
 typename PerGpuCache<T, D>::element_type PerGpuCache<T, D>::get(
-    const StableDevice& device) {
+    const tc::Device& device) {
   int deviceIndex = getDeviceIndex(device);
   STD_TORCH_CHECK(
       static_cast<size_t>(deviceIndex) < cache_.size(),

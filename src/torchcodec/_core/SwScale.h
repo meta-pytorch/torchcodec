@@ -8,6 +8,7 @@
 
 #include "FFMPEGCommon.h"
 #include "StableABICompat.h"
+#include "TCTensor.h"
 
 namespace facebook::torchcodec {
 
@@ -31,7 +32,7 @@ class SwScale {
 
   int convert(
       const UniqueAVFrame& avFrame,
-      torch::stable::Tensor& outputTensor);
+      tc::Tensor& outputTensor);
 
   const SwsConfig& getConfig() const {
     return config_;

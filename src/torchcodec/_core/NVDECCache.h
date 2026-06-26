@@ -15,6 +15,7 @@
 #include "NVCUVIDRuntimeLoader.h"
 #include "NVDECCacheConfig.h"
 #include "StableABICompat.h"
+#include "TCTensor.h"
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
 
@@ -49,7 +50,7 @@ struct CacheEntry {
 // method.  The cache supports multiple decoders with the same parameters.
 class NVDECCache {
  public:
-  static NVDECCache& getCache(const StableDevice& device);
+  static NVDECCache& getCache(const tc::Device& device);
 
   // Get decoder from cache - returns nullptr if none available.
   UniqueCUvideodecoder getDecoder(

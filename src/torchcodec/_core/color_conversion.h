@@ -83,11 +83,11 @@ void launchP016ToRGB16Kernel(
 // bitDepth: 8 for NV12, actual bit depth (10 or 12) for P016.
 // outputDims: desired output size; if the frame was rounded up to even
 //   dimensions, the result is cropped back to outputDims.
-torch::stable::Tensor convertYUVFrameToRGB(
+tc::Tensor convertYUVFrameToRGB(
     UniqueAVFrame& avFrame,
-    const StableDevice& device,
+    const tc::Device& device,
     cudaStream_t nvdecStream,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
+    std::optional<tc::Tensor> preAllocatedOutputTensor,
     const FrameDims& outputDims,
     bool isP016,
     int bitDepth,

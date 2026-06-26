@@ -77,8 +77,8 @@ cudaVideoSurfaceFormat getPreferredSurfaceFormat(OutputDtype outputDtype) {
 }
 
 static bool g_cuda_nvdec = registerDeviceInterface(
-    DeviceInterfaceKey(kStableCUDA, /*variant=*/"default"),
-    [](const StableDevice& device) {
+    DeviceInterfaceKey(tc::kCUDA, /*variant=*/"default"),
+    [](const tc::Device& device) {
       return new BetaCudaDeviceInterface(device);
     });
 
@@ -195,7 +195,7 @@ std::optional<cudaVideoCodec> validateCodecSupport(AVCodecID codecId) {
 }
 
 std::optional<cudaVideoSurfaceFormat> getNVDECSurfaceFormat(
-    const StableDevice& device,
+    const tc::Device& device,
     const SharedAVCodecContext& codecContext,
     OutputDtype outputDtype) {
   // Return the surface format to use for NVDEC decoding if the stream is
@@ -270,11 +270,11 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
 
 } // namespace
 
-BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
+BetaCudaDeviceInterface::BetaCudaDeviceInterface(const tc::Device& device)
     : DeviceInterface(device) {
   STD_TORCH_CHECK(g_cuda_nvdec, "NvdecCudaDeviceInterface was not registered!");
   STD_TORCH_CHECK(
-      device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
+      device_.type() == tc::kCUDA, "Unsupported device: must be CUDA");
 
   initializeCudaContextWithPytorch(device_);
 
@@ -302,7 +302,7 @@ void BetaCudaDeviceInterface::initializeVideo(
       TC_LOG(
           "Video stream not supported by NVDEC; falling back to CPU decoding.");
     }
-    cpuFallback_ = createDeviceInterface(kStableCPU);
+    cpuFallback_ = createDeviceInterface(tc::kCPU);
     STD_TORCH_CHECK(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
     cpuFallback_->initialize(codecContext_);
@@ -925,7 +925,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpu(
 void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     UniqueAVFrame& avFrame,
     FrameOutput& frameOutput,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
+    std::optional<tc::Tensor> preAllocatedOutputTensor) {
   if (cpuFallback_) {
     // When the CPU fallback happens, we'll try to run the color-conversion on
     // GPU by sending those CPU frames to the GPU as NV12 or P016 (See
@@ -941,11 +941,11 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
       FrameOutput cpuFrameOutput;
       cpuFallback_->convertAVFrameToFrameOutput(avFrame, cpuFrameOutput);
       if (preAllocatedOutputTensor.has_value()) {
-        torch::stable::copy_(
+        tc::copy_(
             preAllocatedOutputTensor.value(), cpuFrameOutput.data);
         frameOutput.data = preAllocatedOutputTensor.value();
       } else {
-        frameOutput.data = torch::stable::to(cpuFrameOutput.data, device_);
+        frameOutput.data = tc::to(cpuFrameOutput.data, device_);
       }
       if (rotation_ != Rotation::NONE) {
         applyRotation(frameOutput, preAllocatedOutputTensor);
@@ -975,8 +975,8 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
   cudaStream_t nvdecStream = getCurrentCudaStream(device_.index());
 
-  auto convertFrame = [&](std::optional<torch::stable::Tensor> preAlloc)
-      -> torch::stable::Tensor {
+  auto convertFrame = [&](std::optional<tc::Tensor> preAlloc)
+      -> tc::Tensor {
     bool isP016 = (gpuFrame->format == AV_PIX_FMT_P016LE);
     int bitDepth = 8;
     if (isP016) {
@@ -1011,7 +1011,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
 
 void BetaCudaDeviceInterface::applyRotation(
     FrameOutput& frameOutput,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor) {
+    std::optional<tc::Tensor> preAllocatedOutputTensor) {
   int k = 0;
   switch (rotation_) {
     case Rotation::CCW90:
@@ -1028,12 +1028,12 @@ void BetaCudaDeviceInterface::applyRotation(
       break;
   }
   // Apply rotation using rot90 on the H and W dims of our HWC tensor.
-  // stableRot90 returns a view, so we need to make it contiguous.
+  // tc::rot90 returns a view, so we need to make it contiguous.
   frameOutput.data =
-      torch::stable::contiguous(stableRot90(frameOutput.data, k, 0, 1));
+      tc::contiguous(tc::rot90(frameOutput.data, k, 0, 1));
 
   if (preAllocatedOutputTensor.has_value()) {
-    torch::stable::copy_(preAllocatedOutputTensor.value(), frameOutput.data);
+    tc::copy_(preAllocatedOutputTensor.value(), frameOutput.data);
     frameOutput.data = preAllocatedOutputTensor.value();
   }
 }

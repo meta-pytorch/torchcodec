@@ -33,12 +33,12 @@ cudaStream_t getCurrentCudaStream(int32_t deviceIndex);
 // has completed.
 void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream);
 
-void initializeCudaContextWithPytorch(const StableDevice& device);
+void initializeCudaContextWithPytorch(const tc::Device& device);
 
 void validatePreAllocatedTensorShape(
-    const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,
+    const std::optional<tc::Tensor>& preAllocatedOutputTensor,
     const FrameDims& frameDims);
 
-int getDeviceIndex(const StableDevice& device);
+int getDeviceIndex(const tc::Device& device);
 
 } // namespace facebook::torchcodec

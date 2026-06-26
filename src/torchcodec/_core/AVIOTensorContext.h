@@ -8,13 +8,14 @@
 
 #include "AVIOContextHolder.h"
 #include "StableABICompat.h"
+#include "TCTensor.h"
 
 namespace facebook::torchcodec {
 
 namespace detail {
 
 struct TensorContext {
-  torch::stable::Tensor data;
+  tc::Tensor data;
   int64_t current_pos;
   int64_t max_pos;
 };
@@ -25,7 +26,7 @@ struct TensorContext {
 // Our read and seek functions then traverse the bytes in memory.
 class FORCE_PUBLIC_VISIBILITY AVIOFromTensorContext : public AVIOContextHolder {
  public:
-  explicit AVIOFromTensorContext(torch::stable::Tensor data);
+  explicit AVIOFromTensorContext(tc::Tensor data);
 
   int read(uint8_t* buf, int size) override;
   int64_t seek(int64_t offset, int whence) override;
@@ -39,7 +40,7 @@ class FORCE_PUBLIC_VISIBILITY AVIOFromTensorContext : public AVIOContextHolder {
 class FORCE_PUBLIC_VISIBILITY AVIOToTensorContext : public AVIOContextHolder {
  public:
   explicit AVIOToTensorContext();
-  torch::stable::Tensor getOutputTensor();
+  tc::Tensor getOutputTensor();
 
   int write(const uint8_t* buf, int size) override;
   int64_t seek(int64_t offset, int whence) override;

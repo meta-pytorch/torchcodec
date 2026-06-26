@@ -36,7 +36,7 @@ namespace facebook::torchcodec {
 
 class BetaCudaDeviceInterface : public DeviceInterface {
  public:
-  explicit BetaCudaDeviceInterface(const StableDevice& device);
+  explicit BetaCudaDeviceInterface(const tc::Device& device);
   virtual ~BetaCudaDeviceInterface();
 
   void initialize(const SharedAVCodecContext& codecContext) override;
@@ -53,7 +53,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor) override;
+      std::optional<tc::Tensor> preAllocatedOutputTensor) override;
 
   int sendPacket(ReferenceAVPacket& packet) override;
   int sendEOFPacket() override;
@@ -93,7 +93,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void applyRotation(
       FrameOutput& frameOutput,
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor);
+      std::optional<tc::Tensor> preAllocatedOutputTensor);
 
   CUvideoparser videoParser_ = nullptr;
   UniqueCUvideodecoder decoder_;

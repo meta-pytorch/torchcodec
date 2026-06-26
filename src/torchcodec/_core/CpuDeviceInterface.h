@@ -15,7 +15,7 @@ namespace facebook::torchcodec {
 
 class CpuDeviceInterface : public DeviceInterface {
  public:
-  CpuDeviceInterface(const StableDevice& device);
+  CpuDeviceInterface(const tc::Device& device);
 
   virtual ~CpuDeviceInterface() {}
 
@@ -37,16 +37,16 @@ class CpuDeviceInterface : public DeviceInterface {
   virtual void initializeAudio(
       const AudioStreamOptions& audioStreamOptions) override;
 
-  virtual std::optional<torch::stable::Tensor> maybeFlushAudioBuffers()
+  virtual std::optional<tc::Tensor> maybeFlushAudioBuffers()
       override;
 
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor) override;
+      std::optional<tc::Tensor> preAllocatedOutputTensor) override;
 
   UniqueAVFrame convertTensorToAVFrameForEncoding(
-      const torch::stable::Tensor& tensor,
+      const tc::Tensor& tensor,
       int frameIndex,
       AVCodecContext* codecContext) override;
 
@@ -60,9 +60,9 @@ class CpuDeviceInterface : public DeviceInterface {
   void convertVideoAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor);
+      std::optional<tc::Tensor> preAllocatedOutputTensor);
 
-  torch::stable::Tensor convertAVFrameToTensorUsingFilterGraph(
+  tc::Tensor convertAVFrameToTensorUsingFilterGraph(
       const UniqueAVFrame& avFrame,
       const FrameDims& outputDims);
 

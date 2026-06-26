@@ -183,11 +183,11 @@ void computeRGBToYUVMatrix(
   }
 }
 
-torch::stable::Tensor convertYUVFrameToRGB(
+tc::Tensor convertYUVFrameToRGB(
     UniqueAVFrame& avFrame,
-    const StableDevice& device,
+    const tc::Device& device,
     cudaStream_t nvdecStream,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
+    std::optional<tc::Tensor> preAllocatedOutputTensor,
     const FrameDims& outputDims,
     bool isP016,
     int bitDepth,
@@ -205,7 +205,7 @@ torch::stable::Tensor convertYUVFrameToRGB(
   int outWidth = outputDims.width;
   bool needsCrop = (outHeight != evenHeight) || (outWidth != evenWidth);
 
-  torch::stable::Tensor dst;
+  tc::Tensor dst;
   if (needsCrop) {
     dst = allocateEmptyHWCTensor(
         FrameDims(evenHeight, evenWidth), device, outDtype);
@@ -256,14 +256,14 @@ torch::stable::Tensor convertYUVFrameToRGB(
 
   if (needsCrop) {
     if (outHeight != evenHeight) {
-      dst = torch::stable::narrow(dst, /*dim=*/0, /*start=*/0, outHeight);
+      dst = tc::narrow(dst, /*dim=*/0, /*start=*/0, outHeight);
     }
     if (outWidth != evenWidth) {
-      dst = torch::stable::narrow(dst, /*dim=*/1, /*start=*/0, outWidth);
-      dst = torch::stable::contiguous(dst);
+      dst = tc::narrow(dst, /*dim=*/1, /*start=*/0, outWidth);
+      dst = tc::contiguous(dst);
     }
     if (preAllocatedOutputTensor.has_value()) {
-      torch::stable::copy_(preAllocatedOutputTensor.value(), dst);
+      tc::copy_(preAllocatedOutputTensor.value(), dst);
       return preAllocatedOutputTensor.value();
     }
     return dst;
