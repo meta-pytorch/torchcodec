@@ -10,8 +10,15 @@ import json
 import pathlib
 from dataclasses import dataclass
 from fractions import Fraction
+from typing import Any
 
-import torch
+try:
+    import torch
+
+    _Decoder = torch.Tensor
+except ImportError:
+    # Torch-free install: the decoder handle is an opaque int pointer.
+    _Decoder = Any
 from torchcodec._core.ops import (
     _get_container_json_metadata,
     _get_stream_json_metadata,
@@ -213,7 +220,7 @@ def _get_optional_par_fraction(stream_dict):
 
 # TODO-AUDIO: This is user-facing. Should this just be `get_metadata`, without
 # the "container" name in it? Same below.
-def get_container_metadata(decoder: torch.Tensor) -> ContainerMetadata:
+def get_container_metadata(decoder: _Decoder) -> ContainerMetadata:
     """Return container metadata from a decoder.
 
     The accuracy of the metadata and the availability of some returned fields

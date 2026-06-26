@@ -4,6 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+import ctypes
 import importlib
 import importlib.util
 import sys
@@ -11,7 +12,13 @@ import traceback
 from pathlib import Path
 from types import ModuleType
 
-import torch
+try:
+    import torch
+
+    _HAS_TORCH = True
+except ImportError:
+    torch = None  # type: ignore[assignment]
+    _HAS_TORCH = False
 
 # Note that this value must match the value used as PYBIND_OPS_MODULE_NAME when we compile _core/pybind_ops.cpp.
 # If the values do not match, we will not be able to import the C++ shared library as a Python module at runtime.
@@ -90,8 +97,18 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
         pybind_ops_library_name = f"libtorchcodec_pybind_ops{ffmpeg_major_version}"
         try:
             core_library_path = _get_extension_path(core_library_name)
-            torch.ops.load_library(core_library_path)
-            torch.ops.load_library(_get_extension_path(custom_ops_library_name))
+            if _HAS_TORCH:
+                # Loading via torch registers the custom ops with torch's
+                # dispatcher (torch.ops.torchcodec_ns.*).
+                torch.ops.load_library(core_library_path)
+                torch.ops.load_library(
+                    _get_extension_path(custom_ops_library_name)
+                )
+            else:
+                # Torch-free install: there is no custom-ops adapter library.
+                # Load the core into the global namespace so the pybind module
+                # can resolve its symbols, then load the pybind module.
+                ctypes.CDLL(core_library_path, mode=ctypes.RTLD_GLOBAL)
 
             pybind_ops_library_path = _get_extension_path(pybind_ops_library_name)
             pybind_ops = _load_pybind11_module(
@@ -116,9 +133,9 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
              your system are expected; only the error for your installed FFmpeg
              version is relevant. On Windows, ensure you've installed the
              "full-shared" version which ships DLLs.
-          2. The PyTorch version ({torch.__version__}) is not compatible with
-             this version of TorchCodec. Refer to the version compatibility
-             table:
+          2. The PyTorch version ({torch.__version__ if _HAS_TORCH else "not installed"})
+             is not compatible with this version of TorchCodec. Refer to the
+             version compatibility table:
              https://github.com/pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec.
           3. Another runtime dependency; see exceptions below.
 

@@ -9,7 +9,14 @@ import dataclasses
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
-from torch import Tensor
+try:
+    # When torch is available, frame data is a torch.Tensor (the default).
+    from torch import Tensor
+except ImportError:
+    # Torch-free install: frame data is a numpy.ndarray. The dataclasses below
+    # only rely on .ndim/.shape/indexing/iteration, which numpy supports. The
+    # annotation is informational only (dataclasses don't enforce types).
+    from numpy import ndarray as Tensor  # noqa: F401
 
 
 def _frame_repr(self):
