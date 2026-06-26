@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Literal
 
 from torchcodec import _core as core, Frame, FrameBatch
+from torchcodec._bridge import to_bridge_array as _to_bridge_array
 from torchcodec._core._decoder_utils import create_video_decoder
 from torchcodec._logging import _LG
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
@@ -347,7 +348,7 @@ class VideoDecoder:
         assert isinstance(key, int)
 
         frame_data, *_ = core.get_frame_at_index(self._decoder, frame_index=key)
-        return frame_data
+        return _to_bridge_array(frame_data)
 
     def _getitem_slice(self, key: slice) -> Tensor:
         assert isinstance(key, slice)
@@ -359,7 +360,7 @@ class VideoDecoder:
             stop=stop,
             step=step,
         )
-        return frame_data
+        return _to_bridge_array(frame_data)
 
     def __getitem__(self, key: numbers.Integral | slice) -> Tensor:
         """Return frame or frames as tensors, at the given index or range.
@@ -413,7 +414,7 @@ class VideoDecoder:
             self._decoder, frame_index=index
         )
         return Frame(
-            data=data,
+            data=_to_bridge_array(data),
             pts_seconds=pts_seconds.item(),
             duration_seconds=duration_seconds.item(),
         )
@@ -433,9 +434,9 @@ class VideoDecoder:
         )
 
         return FrameBatch(
-            data=data,
-            pts_seconds=pts_seconds,
-            duration_seconds=duration_seconds,
+            data=_to_bridge_array(data),
+            pts_seconds=_to_bridge_array(pts_seconds),
+            duration_seconds=_to_bridge_array(duration_seconds),
         )
 
     def get_frames_in_range(self, start: int, stop: int, step: int = 1) -> FrameBatch:
@@ -454,13 +455,17 @@ class VideoDecoder:
         """
         # Adjust start / stop indices to enable indexing semantics, ex. [-10, 1000] returns the last 10 frames
         start, stop, step = slice(start, stop, step).indices(self._num_frames)
-        frames = core.get_frames_in_range(
+        data, pts_seconds, duration_seconds = core.get_frames_in_range(
             self._decoder,
             start=start,
             stop=stop,
             step=step,
         )
-        return FrameBatch(*frames)
+        return FrameBatch(
+            data=_to_bridge_array(data),
+            pts_seconds=_to_bridge_array(pts_seconds),
+            duration_seconds=_to_bridge_array(duration_seconds),
+        )
 
     def get_frame_played_at(self, seconds: float) -> Frame:
         """Return a single frame played at the given timestamp in seconds.
@@ -490,7 +495,7 @@ class VideoDecoder:
             self._decoder, seconds
         )
         return Frame(
-            data=data,
+            data=_to_bridge_array(data),
             pts_seconds=pts_seconds.item(),
             duration_seconds=duration_seconds.item(),
         )
@@ -509,9 +514,9 @@ class VideoDecoder:
             self._decoder, timestamps=seconds
         )
         return FrameBatch(
-            data=data,
-            pts_seconds=pts_seconds,
-            duration_seconds=duration_seconds,
+            data=_to_bridge_array(data),
+            pts_seconds=_to_bridge_array(pts_seconds),
+            duration_seconds=_to_bridge_array(duration_seconds),
         )
 
     def get_frames_played_in_range(
@@ -550,13 +555,17 @@ class VideoDecoder:
                 f"Invalid stop seconds: {stop_seconds}. "
                 f"It must be less than or equal to {self._end_stream_seconds}."
             )
-        frames = core.get_frames_by_pts_in_range(
+        data, pts_seconds, duration_seconds = core.get_frames_by_pts_in_range(
             self._decoder,
             start_seconds=start_seconds,
             stop_seconds=stop_seconds,
             fps=fps,
         )
-        return FrameBatch(*frames)
+        return FrameBatch(
+            data=_to_bridge_array(data),
+            pts_seconds=_to_bridge_array(pts_seconds),
+            duration_seconds=_to_bridge_array(duration_seconds),
+        )
 
     def get_all_frames(self, fps: float | None = None) -> FrameBatch:
         """Returns all frames in the video.
