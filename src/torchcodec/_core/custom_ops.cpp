@@ -27,6 +27,7 @@ extern "C" {
 #include "NVDECCacheConfig.h"
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
+#include "TCStableConvert.h"
 #include "ValidationUtils.h"
 #include "WavDecoder.h"
 
