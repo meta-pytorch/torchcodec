@@ -106,6 +106,38 @@ void setAllocator(AllocFn fn);
 // True if a custom allocator has been installed.
 bool hasAllocator();
 
+class Tensor; // forward decl for the backend hook below
+
+// ---- Pluggable compute backend (for non-CPU devices) ----
+//
+// tc::Tensor implements all ops natively for CPU. For non-CPU devices it does
+// NOT reimplement GPU kernels; instead each data-touching op is dispatched to a
+// per-device-type backend registered at module init. This mirrors the allocator
+// hook and keeps the torch-free GPU path pluggable:
+//   - torch present -> the adapter registers a CUDA backend that runs each op
+//                      via torch (toStable -> torch op -> fromStable).
+//   - torch-free GPU (later) -> register a backend backed by CUDA kernels.
+//
+// Metadata-only views (narrow/select/permute) never need a backend; they only
+// manipulate shape/strides and work on any device.
+struct DeviceBackend {
+  std::function<void(Tensor& dst, const Tensor& src)> copy_;
+  std::function<Tensor(const Tensor& self, ScalarType dtype)> toDtype;
+  std::function<Tensor(const Tensor& self, Device device)> toDevice;
+  std::function<Tensor(const Tensor& self, double other)> div;
+  std::function<Tensor(const Tensor& self)> contiguous;
+  std::function<Tensor(const std::vector<Tensor>& tensors, int64_t dim)> cat;
+  std::function<Tensor(const Tensor& self, int64_t k, int64_t d0, int64_t d1)>
+      rot90;
+};
+
+// Register (or, with a default-constructed backend, leaving fields null,
+// effectively clear) the compute backend for a device type.
+void registerDeviceBackend(DeviceType deviceType, DeviceBackend backend);
+
+// Returns the registered backend for a device type, or nullptr if none.
+const DeviceBackend* getDeviceBackend(DeviceType deviceType);
+
 class Tensor {
  public:
   // Default-constructed tensor is "undefined" (no storage). Mirrors

@@ -7,6 +7,7 @@
 #include "TCTensor.h"
 
 #include <cstring>
+#include <map>
 #include <numeric>
 
 namespace facebook::torchcodec::tc {
@@ -46,6 +47,23 @@ int64_t numelOf(const std::vector<int64_t>& sizes) {
 // Process-wide storage allocator hook (see TCTensor.h). Default is empty, in
 // which case CPU allocation uses malloc and non-CPU allocation throws.
 AllocFn g_allocator;
+
+// Process-wide compute backends, keyed by device type (see TCTensor.h).
+std::map<DeviceType, DeviceBackend>& backendRegistry() {
+  static std::map<DeviceType, DeviceBackend> registry;
+  return registry;
+}
+
+// Fetch the backend for a non-CPU device, failing clearly if none registered.
+const DeviceBackend& requireBackend(Device device, const char* op) {
+  const DeviceBackend* backend = getDeviceBackend(device.type());
+  if (backend == nullptr) {
+    fail(std::string(op) +
+         ": no compute backend registered for this non-CPU device (GPU ops "
+         "require torch, or a registered tc backend)");
+  }
+  return *backend;
+}
 
 // Allocate an uninitialized CPU storage block via malloc.
 std::shared_ptr<void> allocCpuStorage(int64_t numBytes) {
@@ -203,6 +221,16 @@ bool hasAllocator() {
   return static_cast<bool>(g_allocator);
 }
 
+void registerDeviceBackend(DeviceType deviceType, DeviceBackend backend) {
+  backendRegistry()[deviceType] = std::move(backend);
+}
+
+const DeviceBackend* getDeviceBackend(DeviceType deviceType) {
+  auto& registry = backendRegistry();
+  auto it = registry.find(deviceType);
+  return it == registry.end() ? nullptr : &it->second;
+}
+
 Tensor empty(std::vector<int64_t> sizes, ScalarType dtype, Device device) {
   int64_t n = numelOf(sizes);
   int64_t bytes = n * elementSize(dtype);
@@ -255,8 +283,16 @@ void zero_(Tensor& t) {
 }
 
 void copy_(Tensor& dst, const Tensor& src) {
-  checkCpu(dst.device(), "copy_");
-  checkCpu(src.device(), "copy_");
+  // If either side is non-CPU, dispatch to that device's backend (it handles
+  // same-device and cross-device H2D/D2H copies).
+  if (dst.device().type() != DeviceType::CPU ||
+      src.device().type() != DeviceType::CPU) {
+    Device computeDevice = dst.device().type() != DeviceType::CPU
+        ? dst.device()
+        : src.device();
+    requireBackend(computeDevice, "copy_").copy_(dst, src);
+    return;
+  }
   if (dst.sizes() != src.sizes()) {
     fail("copy_ requires matching shapes");
   }
@@ -283,7 +319,9 @@ Tensor to(const Tensor& self, ScalarType dtype) {
   if (self.scalar_type() == dtype) {
     return contiguous(self);
   }
-  checkCpu(self.device(), "to(dtype)");
+  if (self.device().type() != DeviceType::CPU) {
+    return requireBackend(self.device(), "to(dtype)").toDtype(self, dtype);
+  }
   Tensor out = empty(self.sizes(), dtype, self.device());
   copy_(out, self);
   return out;
@@ -293,7 +331,10 @@ Tensor to(const Tensor& self, Device device) {
   if (self.device() == device) {
     return self;
   }
-  fail("to(device) across devices is the CUDA part of Phase A.");
+  // Cross-device transfer is dispatched to the non-CPU side's backend.
+  Device computeDevice =
+      device.type() != DeviceType::CPU ? device : self.device();
+  return requireBackend(computeDevice, "to(device)").toDevice(self, device);
 }
 
 Tensor narrow(const Tensor& self, int64_t dim, int64_t start, int64_t length) {
@@ -379,7 +420,9 @@ Tensor contiguous(const Tensor& self) {
   if (self.is_contiguous()) {
     return self;
   }
-  checkCpu(self.device(), "contiguous");
+  if (self.device().type() != DeviceType::CPU) {
+    return requireBackend(self.device(), "contiguous").contiguous(self);
+  }
   Tensor out = empty(self.sizes(), self.scalar_type(), self.device());
   int64_t es = self.element_size();
   forEachIndex(self.sizes(), [&](const std::vector<int64_t>& idx) {
@@ -395,7 +438,9 @@ Tensor cat(const std::vector<Tensor>& tensors, int64_t dim) {
   const Tensor& first = tensors[0];
   int64_t n = first.dim();
   int64_t d = dim < 0 ? dim + n : dim;
-  checkCpu(first.device(), "cat");
+  if (first.device().type() != DeviceType::CPU) {
+    return requireBackend(first.device(), "cat").cat(tensors, dim);
+  }
   std::vector<int64_t> outSizes = first.sizes();
   int64_t catSize = 0;
   for (const auto& t : tensors) {
@@ -423,7 +468,9 @@ Tensor rot90(const Tensor& self, int64_t k, int64_t dim0, int64_t dim1) {
   int64_t n = self.dim();
   int64_t a = dim0 < 0 ? dim0 + n : dim0;
   int64_t b = dim1 < 0 ? dim1 + n : dim1;
-  checkCpu(self.device(), "rot90");
+  if (self.device().type() != DeviceType::CPU) {
+    return requireBackend(self.device(), "rot90").rot90(self, k, dim0, dim1);
+  }
 
   Tensor cur = contiguous(self);
   for (int64_t step = 0; step < kk; ++step) {
@@ -447,7 +494,9 @@ Tensor rot90(const Tensor& self, int64_t k, int64_t dim0, int64_t dim1) {
 }
 
 Tensor div(const Tensor& self, double other) {
-  checkCpu(self.device(), "div");
+  if (self.device().type() != DeviceType::CPU) {
+    return requireBackend(self.device(), "div").div(self, other);
+  }
   Tensor out = empty(self.sizes(), self.scalar_type(), self.device());
   ScalarType dt = self.scalar_type();
   forEachIndex(self.sizes(), [&](const std::vector<int64_t>& idx) {

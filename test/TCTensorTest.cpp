@@ -190,6 +190,53 @@ TEST(TCTensorTest, AllocatorHookIsUsed) {
   EXPECT_FALSE(hasAllocator());
 }
 
+TEST(TCTensorTest, ComputeBackendDispatch) {
+  // Allocator so we can construct non-CPU tensors (host memory under the hood;
+  // we never dereference it as device memory in this test).
+  setAllocator([](int64_t numBytes, ScalarType, Device) -> std::shared_ptr<void> {
+    void* p = ::operator new(static_cast<size_t>(numBytes));
+    return std::shared_ptr<void>(p, [](void* q) { ::operator delete(q); });
+  });
+
+  // No backend registered for XPU: a data-touching op on an XPU tensor fails
+  // clearly rather than silently doing CPU work.
+  Tensor xpu = empty({2, 2}, ScalarType::Float32, Device(DeviceType::XPU, 0));
+  EXPECT_THROW(div(xpu, 2.0), std::runtime_error);
+
+  // Register a CUDA backend that records dispatch and fabricates results.
+  bool divCalled = false, toDtypeCalled = false, catCalled = false;
+  DeviceBackend backend;
+  backend.div = [&](const Tensor& self, double) {
+    divCalled = true;
+    return empty(self.sizes(), self.scalar_type(), self.device());
+  };
+  backend.toDtype = [&](const Tensor& self, ScalarType dt) {
+    toDtypeCalled = true;
+    return empty(self.sizes(), dt, self.device());
+  };
+  backend.cat = [&](const std::vector<Tensor>& tensors, int64_t) {
+    catCalled = true;
+    return empty(tensors[0].sizes(), tensors[0].scalar_type(),
+                 tensors[0].device());
+  };
+  registerDeviceBackend(DeviceType::CUDA, backend);
+  EXPECT_NE(getDeviceBackend(DeviceType::CUDA), nullptr);
+
+  Tensor cuda = empty({2, 3}, ScalarType::UInt16, Device(DeviceType::CUDA, 0));
+  (void)div(cuda, 2.0);
+  EXPECT_TRUE(divCalled);
+  (void)to(cuda, ScalarType::Float32);
+  EXPECT_TRUE(toDtypeCalled);
+  (void)cat({cuda, cuda}, 0);
+  EXPECT_TRUE(catCalled);
+
+  // Metadata-only views need no backend even on a non-CPU tensor.
+  Tensor v = permute(cuda, {1, 0});
+  EXPECT_EQ(v.sizes(), (std::vector<int64_t>{3, 2}));
+
+  setAllocator(nullptr);
+}
+
 TEST(TCTensorTest, DLPackKeepsStorageAlive) {
   // Export, drop the original tensor, ensure data still valid via DLPack ctx.
   DLManagedTensor* m = nullptr;
