@@ -42,25 +42,39 @@ enum class ScalarType {
 enum class DeviceType {
   CPU,
   CUDA,
+  XPU,
 };
 
-struct Device {
-  DeviceType type = DeviceType::CPU;
-  int32_t index = 0;
-
+// Mirrors the small surface of torch::stable::Device (type()/index()) so core
+// call sites that were written against it need minimal churn.
+class Device {
+ public:
   Device() = default;
-  /* implicit */ Device(DeviceType t, int32_t i = 0) : type(t), index(i) {}
+  /* implicit */ Device(DeviceType type, int32_t index = 0)
+      : type_(type), index_(index) {}
+
+  DeviceType type() const {
+    return type_;
+  }
+  int32_t index() const {
+    return index_;
+  }
 
   bool operator==(const Device& other) const {
-    return type == other.type && index == other.index;
+    return type_ == other.type_ && index_ == other.index_;
   }
   bool operator!=(const Device& other) const {
     return !(*this == other);
   }
+
+ private:
+  DeviceType type_ = DeviceType::CPU;
+  int32_t index_ = 0;
 };
 
 constexpr DeviceType kCPU = DeviceType::CPU;
 constexpr DeviceType kCUDA = DeviceType::CUDA;
+constexpr DeviceType kXPU = DeviceType::XPU;
 
 // Size in bytes of one element of the given dtype.
 int64_t elementSize(ScalarType dtype);

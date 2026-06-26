@@ -77,16 +77,24 @@ inline tc::ScalarType fromStableDtype(torch::headeronly::ScalarType dtype) {
 }
 
 inline StableDevice toStableDevice(tc::Device device) {
-  StableDeviceType type =
-      device.type == tc::DeviceType::CUDA ? kStableCUDA : kStableCPU;
-  return StableDevice(type, static_cast<int32_t>(device.index));
+  StableDeviceType type = kStableCPU;
+  if (device.type() == tc::DeviceType::CUDA) {
+    type = kStableCUDA;
+  } else if (device.type() == tc::DeviceType::XPU) {
+    type = kStableXPU;
+  }
+  return StableDevice(type, static_cast<int32_t>(device.index()));
 }
 
 inline tc::Device fromStableDevice(const StableDevice& device) {
+  auto index = static_cast<int32_t>(device.index());
   if (device.type() == kStableCUDA) {
-    return tc::Device(tc::DeviceType::CUDA, static_cast<int32_t>(device.index()));
+    return tc::Device(tc::DeviceType::CUDA, index);
   }
-  return tc::Device(tc::DeviceType::CPU, static_cast<int32_t>(device.index()));
+  if (device.type() == kStableXPU) {
+    return tc::Device(tc::DeviceType::XPU, index);
+  }
+  return tc::Device(tc::DeviceType::CPU, index);
 }
 
 // tc::Tensor -> torch::stable::Tensor (zero-copy; keeps the tc storage alive).

@@ -18,7 +18,7 @@ namespace {
 }
 
 void checkCpu(const Device& device, const char* what) {
-  if (device.type != DeviceType::CPU) {
+  if (device.type() != DeviceType::CPU) {
     fail(std::string(what) +
          " is only implemented for CPU tensors (CUDA support is the CUDA part "
          "of Phase A).");
@@ -533,8 +533,8 @@ ScalarType fromDLDataType(DLDataType d) {
 
 DLDevice toDLDevice(Device dev) {
   DLDevice d;
-  d.device_id = dev.index;
-  d.device_type = dev.type == DeviceType::CUDA ? kDLCUDA : kDLCPU;
+  d.device_id = dev.index();
+  d.device_type = dev.type() == DeviceType::CUDA ? kDLCUDA : kDLCPU;
   return d;
 }
 
@@ -542,9 +542,9 @@ Device fromDLDevice(DLDevice d) {
   switch (d.device_type) {
     case kDLCPU:
     case kDLCUDAHost:
-      return Device{DeviceType::CPU, 0};
+      return Device(DeviceType::CPU, 0);
     case kDLCUDA:
-      return Device{DeviceType::CUDA, d.device_id};
+      return Device(DeviceType::CUDA, d.device_id);
     default:
       fail("DLPack: unsupported device type");
   }

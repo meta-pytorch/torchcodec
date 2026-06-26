@@ -21,7 +21,7 @@ TEST(TCTensorTest, EmptyAndMetadata) {
   EXPECT_EQ(t.element_size(), 1);
   EXPECT_TRUE(t.is_contiguous());
   EXPECT_EQ(t.strides(), (std::vector<int64_t>{12, 4, 1}));
-  EXPECT_EQ(t.device().type, DeviceType::CPU);
+  EXPECT_EQ(t.device().type(), DeviceType::CPU);
 }
 
 TEST(TCTensorTest, FullScalar) {
@@ -157,7 +157,7 @@ TEST(TCTensorTest, AllocatorHookCpuDefault) {
   Tensor c = empty({2, 2}, ScalarType::Float32);
   EXPECT_TRUE(c.defined());
   EXPECT_THROW(
-      empty({2, 2}, ScalarType::Float32, Device{DeviceType::CUDA, 0}),
+      empty({2, 2}, ScalarType::Float32, Device(DeviceType::CUDA, 0)),
       std::runtime_error);
 }
 
@@ -177,12 +177,12 @@ TEST(TCTensorTest, AllocatorHookIsUsed) {
   });
   EXPECT_TRUE(hasAllocator());
 
-  Tensor t = empty({2, 3}, ScalarType::Float32, Device{DeviceType::CUDA, 1});
+  Tensor t = empty({2, 3}, ScalarType::Float32, Device(DeviceType::CUDA, 1));
   EXPECT_EQ(calls, 1);
   EXPECT_EQ(sawBytes, 2 * 3 * 4); // 6 float32 elements
-  EXPECT_EQ(sawDevice.type, DeviceType::CUDA);
-  EXPECT_EQ(sawDevice.index, 1);
-  EXPECT_EQ(t.device().type, DeviceType::CUDA);
+  EXPECT_EQ(sawDevice.type(), DeviceType::CUDA);
+  EXPECT_EQ(sawDevice.index(), 1);
+  EXPECT_EQ(t.device().type(), DeviceType::CUDA);
   EXPECT_TRUE(t.defined());
 
   // Clean up global state so other tests see the default (no allocator).
