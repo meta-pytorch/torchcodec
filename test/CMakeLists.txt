@@ -53,3 +53,21 @@ target_link_libraries(
 )
 
 gtest_discover_tests(MetadataTest)
+
+
+# tc::Tensor is the torch-free core tensor type. Its test only needs the core
+# library (which contains TCTensor.cpp); it does not depend on torch itself.
+add_executable(
+  TCTensorTest
+  TCTensorTest.cpp
+)
+
+target_include_directories(TCTensorTest PRIVATE ../)
+
+target_link_libraries(
+  TCTensorTest
+  ${libtorchcodec_library_name}
+  GTest::gtest_main
+)
+
+gtest_discover_tests(TCTensorTest)
