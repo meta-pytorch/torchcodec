@@ -95,3 +95,59 @@ jobs:
           # Run from a different dir so we import the installed package, not ./src.
           cd "${RUNNER_TEMP:-/tmp}"
           python "${GITHUB_WORKSPACE}/test/smoke_test_no_torch_package.py"
+
+  # Proves the SAME (torch-built) CPU install is runtime-optional: with torch it
+  # returns torch tensors; after uninstalling torch it returns numpy.
+  single-wheel-runtime-optional:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ffmpeg-version-for-tests: ['7']
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v6
+      - name: Setup conda env
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          miniforge-version: latest
+          activate-environment: test
+          python-version: '3.12'
+      - name: Update pip
+        run: python -m pip install --upgrade pip
+      - name: Install deps + torch (CPU)
+        run: |
+          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" pkg-config pybind11 numpy cmake setuptools pip cxx-compiler -c conda-forge
+          bash packaging/install_pytorch.sh cpu "torch"
+      - name: Build the CPU wheel WITH torch (single-wheel config)
+        run: |
+          ENABLE_TORCH=1 ENABLE_CUDA=0 pip install -e . --no-build-isolation -v
+      - name: Core must not link torch (so it loads torch-free)
+        run: |
+          so=$(find . -name "libtorchcodec_core*.so" | head -1)
+          if ldd "$so" | grep -iE "libtorch|libc10"; then
+            echo "ERROR: CPU core links torch; the single wheel won't load torch-free."
+            exit 1
+          fi
+          echo "core has no torch linkage (good)"
+      - name: With torch present -> torch tensors; numpy bridge -> numpy
+        run: |
+          cd "${RUNNER_TEMP:-/tmp}"
+          python - <<'PY'
+          import os
+          import torch, numpy as np, torchcodec
+          from torchcodec.decoders import VideoDecoder
+          p = os.path.join(os.environ["GITHUB_WORKSPACE"], "test/resources/nasa_13013.mp4")
+          d = VideoDecoder(p)
+          assert isinstance(d[0], torch.Tensor), type(d[0])
+          torchcodec.set_bridge("numpy")
+          assert isinstance(d[0], np.ndarray), type(d[0])
+          print("with torch: torch tensor + numpy bridge OK")
+          PY
+      - name: Uninstall torch, then the SAME install must decode to numpy
+        run: |
+          pip uninstall -y torch
+          if python -c "import torch" 2>/dev/null; then echo "torch still present"; exit 1; fi
+          cd "${RUNNER_TEMP:-/tmp}"
+          python "${GITHUB_WORKSPACE}/test/smoke_test_no_torch_package.py"
