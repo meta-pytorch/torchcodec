@@ -14,7 +14,7 @@
 
 #include "NVCUVIDRuntimeLoader.h"
 #include "NVDECCacheConfig.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 #include "TCTensor.h"
 #include "nvcuvid_include/cuviddec.h"
 #include "nvcuvid_include/nvcuvid.h"
@@ -87,7 +87,7 @@ class NVDECCache {
     explicit CacheKey(
         CUVIDEOFORMAT* videoFormat,
         cudaVideoSurfaceFormat surfaceFmt) {
-      STD_TORCH_CHECK(videoFormat != nullptr, "videoFormat must not be null");
+      TC_CHECK(videoFormat != nullptr, "videoFormat must not be null");
       codecType = videoFormat->codec;
       width = videoFormat->coded_width;
       height = videoFormat->coded_height;

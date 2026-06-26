@@ -7,7 +7,7 @@
 #include <map>
 #include <mutex>
 #include <vector>
-#include "StableABICompat.h"
+#include "TCError.h"
 #include "ValidationUtils.h"
 
 #include "BetaCudaDeviceInterface.h"
@@ -132,7 +132,7 @@ static UniqueCUvideodecoder createDecoder(
 
   CUvideodecoder* decoder = new CUvideodecoder();
   CUresult result = cuvidCreateDecoder(decoder, &decoderParams);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       result == CUDA_SUCCESS, "Failed to create NVDEC decoder: ", result);
   return UniqueCUvideodecoder(decoder, CUvideoDecoderDeleter{});
 }
@@ -141,7 +141,7 @@ std::optional<cudaVideoChromaFormat> validateChromaSupport(
     const AVPixFmtDescriptor* desc) {
   // Return the corresponding cudaVideoChromaFormat if supported, std::nullopt
   // otherwise.
-  STD_TORCH_CHECK(desc != nullptr, "desc can't be null");
+  TC_CHECK(desc != nullptr, "desc can't be null");
 
   if (desc->nb_components == 1) {
     return cudaVideoChromaFormat_Monochrome;
@@ -272,11 +272,11 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const tc::Device& device)
     : DeviceInterface(device) {
-  STD_TORCH_CHECK(g_cuda_nvdec, "NvdecCudaDeviceInterface was not registered!");
-  STD_TORCH_CHECK(
+  TC_CHECK(g_cuda_nvdec, "NvdecCudaDeviceInterface was not registered!");
+  TC_CHECK(
       device_.type() == tc::kCUDA, "Unsupported device: must be CUDA");
 
-  initializeCudaContextWithPytorch(device_);
+  initializeCudaContext(device_);
 
   nvcuvidAvailable_ = loadNVCUVIDLibrary();
 }
@@ -287,7 +287,7 @@ void BetaCudaDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resizedOutputDims) {
-  STD_TORCH_CHECK(avStream != nullptr, "AVStream cannot be null");
+  TC_CHECK(avStream != nullptr, "AVStream cannot be null");
   rotation_ = rotationFromDegrees(getRotationFromStream(avStream));
   outputDtype_ = videoStreamOptions.outputDtype;
 
@@ -303,7 +303,7 @@ void BetaCudaDeviceInterface::initializeVideo(
           "Video stream not supported by NVDEC; falling back to CPU decoding.");
     }
     cpuFallback_ = createDeviceInterface(tc::kCPU);
-    STD_TORCH_CHECK(
+    TC_CHECK(
         cpuFallback_ != nullptr, "Failed to create CPU device interface");
     cpuFallback_->initialize(codecContext_);
     cpuFallback_->initializeVideo(
@@ -320,14 +320,14 @@ void BetaCudaDeviceInterface::initializeVideo(
   frameRateAvgFromFFmpeg_ = avStream->r_frame_rate;
 
   const AVCodecParameters* codecPar = avStream->codecpar;
-  STD_TORCH_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
+  TC_CHECK(codecPar != nullptr, "CodecParameters cannot be null");
 
   initializeBSF(codecPar, avFormatCtx);
 
   // Create parser. Default values that aren't obvious are taken from DALI.
   CUVIDPARSERPARAMS parserParams = {};
   auto codecType = validateCodecSupport(codecPar->codec_id);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       codecType.has_value(),
       "This should never happen, we should be using the CPU fallback by now. "
       "Please report a bug.");
@@ -357,7 +357,7 @@ void BetaCudaDeviceInterface::initializeVideo(
   }
 
   CUresult result = cuvidCreateVideoParser(&videoParser_, &parserParams);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       result == CUDA_SUCCESS, "Failed to create video parser: ", result);
 }
 
@@ -392,9 +392,9 @@ void BetaCudaDeviceInterface::initializeBSF(
   // https://ffmpeg.org/doxygen/7.0/group__lavc__bsf.html
   // This is only needed for some formats, like H264 or HEVC.
 
-  STD_TORCH_CHECK(codecPar != nullptr, "codecPar cannot be null");
-  STD_TORCH_CHECK(avFormatCtx != nullptr, "AVFormatContext cannot be null");
-  STD_TORCH_CHECK(
+  TC_CHECK(codecPar != nullptr, "codecPar cannot be null");
+  TC_CHECK(avFormatCtx != nullptr, "AVFormatContext cannot be null");
+  TC_CHECK(
       avFormatCtx->iformat != nullptr,
       "AVFormatContext->iformat cannot be null");
   std::string filterName;
@@ -446,12 +446,12 @@ void BetaCudaDeviceInterface::initializeBSF(
   }
 
   const AVBitStreamFilter* avBSF = av_bsf_get_by_name(filterName.c_str());
-  STD_TORCH_CHECK(
+  TC_CHECK(
       avBSF != nullptr, "Failed to find bitstream filter: ", filterName);
 
   AVBSFContext* avBSFContext = nullptr;
   int retVal = av_bsf_alloc(avBSF, &avBSFContext);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       retVal >= AVSUCCESS,
       "Failed to allocate bitstream filter: ",
       getFFMPEGErrorStringFromErrorCode(retVal));
@@ -459,13 +459,13 @@ void BetaCudaDeviceInterface::initializeBSF(
   bitstreamFilter_.reset(avBSFContext);
 
   retVal = avcodec_parameters_copy(bitstreamFilter_->par_in, codecPar);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       retVal >= AVSUCCESS,
       "Failed to copy codec parameters: ",
       getFFMPEGErrorStringFromErrorCode(retVal));
 
   retVal = av_bsf_init(bitstreamFilter_.get());
-  STD_TORCH_CHECK(
+  TC_CHECK(
       retVal == AVSUCCESS,
       "Failed to initialize bitstream filter: ",
       getFFMPEGErrorStringFromErrorCode(retVal));
@@ -479,7 +479,7 @@ void BetaCudaDeviceInterface::initializeBSF(
 // we should handle the case of multiple calls. Probably need to flush buffers,
 // etc.
 int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
-  STD_TORCH_CHECK(videoFormat != nullptr, "Invalid video format");
+  TC_CHECK(videoFormat != nullptr, "Invalid video format");
 
   videoFormat_ = *videoFormat;
 
@@ -499,7 +499,7 @@ int BetaCudaDeviceInterface::streamPropertyChange(CUVIDEOFORMAT* videoFormat) {
       decoder_ = createDecoder(videoFormat, surfaceFormat_);
     }
 
-    STD_TORCH_CHECK(decoder_, "Failed to get or create decoder");
+    TC_CHECK(decoder_, "Failed to get or create decoder");
   }
 
   // DALI also returns min_num_decode_surfaces from this function. This
@@ -515,7 +515,7 @@ int BetaCudaDeviceInterface::sendPacket(ReferenceAVPacket& packet) {
     return cpuFallback_->sendPacket(packet);
   }
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       packet.get() && packet->data && packet->size > 0,
       "sendPacket received an empty packet, this is unexpected, please report.");
 
@@ -563,7 +563,7 @@ ReferenceAVPacket& BetaCudaDeviceInterface::applyBSF(
   }
 
   int retVal = av_bsf_send_packet(bitstreamFilter_.get(), packet.get());
-  STD_TORCH_CHECK(
+  TC_CHECK(
       retVal >= AVSUCCESS,
       "Failed to send packet to bitstream filter: ",
       getFFMPEGErrorStringFromErrorCode(retVal));
@@ -573,7 +573,7 @@ ReferenceAVPacket& BetaCudaDeviceInterface::applyBSF(
   // more than once. We should figure out whether that applies to the BSF we're
   // using.
   retVal = av_bsf_receive_packet(bitstreamFilter_.get(), filteredPacket.get());
-  STD_TORCH_CHECK(
+  TC_CHECK(
       retVal >= AVSUCCESS,
       "Failed to receive packet from bitstream filter: ",
       getFFMPEGErrorStringFromErrorCode(retVal));
@@ -586,8 +586,8 @@ ReferenceAVPacket& BetaCudaDeviceInterface::applyBSF(
 // given frame. It means we can send that frame to be decoded by the hardware
 // NVDEC decoder by calling cuvidDecodePicture.
 int BetaCudaDeviceInterface::frameReadyForDecoding(CUVIDPICPARAMS* picParams) {
-  STD_TORCH_CHECK(picParams != nullptr, "Invalid picture parameters");
-  STD_TORCH_CHECK(decoder_, "Decoder not initialized before picture decode");
+  TC_CHECK(picParams != nullptr, "Invalid picture parameters");
+  TC_CHECK(decoder_, "Decoder not initialized before picture decode");
   // Send frame to be decoded by NVDEC. This may or may not block, depending on
   // the internal state of the NVDEC. Presumably, when it blocks, it gets
   // automatically unblocked once a frame has been decoded, although how and
@@ -672,7 +672,7 @@ void BetaCudaDeviceInterface::unmapPreviousFrame() {
   }
   CUresult result =
       cuvidUnmapVideoFrame(*decoder_.get(), previouslyMappedFrame_);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       result == CUDA_SUCCESS, "Failed to unmap previous frame: ", result);
   previouslyMappedFrame_ = 0;
 }
@@ -681,19 +681,19 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
     CUdeviceptr framePtr,
     unsigned int pitch,
     const CUVIDPARSERDISPINFO& dispInfo) {
-  STD_TORCH_CHECK(framePtr != 0, "Invalid CUDA frame pointer");
+  TC_CHECK(framePtr != 0, "Invalid CUDA frame pointer");
 
   // Get frame dimensions from video format display area (not coded dimensions)
   // This matches DALI's approach and avoids padding issues
   int width = videoFormat_.display_area.right - videoFormat_.display_area.left;
   int height = videoFormat_.display_area.bottom - videoFormat_.display_area.top;
 
-  STD_TORCH_CHECK(width > 0 && height > 0, "Invalid frame dimensions");
-  STD_TORCH_CHECK(
+  TC_CHECK(width > 0 && height > 0, "Invalid frame dimensions");
+  TC_CHECK(
       pitch >= static_cast<unsigned int>(width), "Pitch must be >= width");
 
   UniqueAVFrame avFrame(av_frame_alloc());
-  STD_TORCH_CHECK(avFrame.get() != nullptr, "Failed to allocate AVFrame");
+  TC_CHECK(avFrame.get() != nullptr, "Failed to allocate AVFrame");
 
   avFrame->width = width;
   avFrame->height = height;
@@ -794,9 +794,9 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpu(
   // (rounded up) width and height, even if the original CPU frame had odd
   // dimensions.
 
-  STD_TORCH_CHECK(cpuFrame != nullptr, "CPU frame cannot be null");
+  TC_CHECK(cpuFrame != nullptr, "CPU frame cannot be null");
   // NV12 = 1 byte per sample, P016 = 2 bytes per sample
-  STD_TORCH_CHECK(
+  TC_CHECK(
       targetPixFmt == AV_PIX_FMT_NV12 || targetPixFmt == AV_PIX_FMT_P016LE,
       "targetPixFmt must be NV12 or P016LE");
   int bytesPerSample = (targetPixFmt == AV_PIX_FMT_P016LE) ? 2 : 1;
@@ -807,7 +807,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpu(
   int evenHeight = roundUpToEven(height);
 
   UniqueAVFrame intermediateCpuFrame(av_frame_alloc());
-  STD_TORCH_CHECK(
+  TC_CHECK(
       intermediateCpuFrame != nullptr,
       "Failed to allocate intermediate CPU frame");
 
@@ -816,7 +816,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpu(
   intermediateCpuFrame->height = evenHeight;
 
   int ret = av_frame_get_buffer(intermediateCpuFrame.get(), 0);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       ret >= 0,
       "Failed to allocate intermediate CPU frame buffer: ",
       getFFMPEGErrorStringFromErrorCode(ret));
@@ -843,7 +843,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpu(
       height,
       intermediateCpuFrame->data,
       intermediateCpuFrame->linesize);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       convertedHeight == evenHeight,
       "sws_scale failed for CPU->NV12/P016 conversion");
 
@@ -855,13 +855,13 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpu(
   uint8_t* cudaBuffer = nullptr;
   cudaError_t err =
       cudaMalloc(reinterpret_cast<void**>(&cudaBuffer), totalSize);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       err == cudaSuccess,
       "Failed to allocate CUDA memory: ",
       cudaGetErrorString(err));
 
   UniqueAVFrame gpuFrame(av_frame_alloc());
-  STD_TORCH_CHECK(gpuFrame != nullptr, "Failed to allocate GPU AVFrame");
+  TC_CHECK(gpuFrame != nullptr, "Failed to allocate GPU AVFrame");
 
   gpuFrame->format = targetPixFmt;
   gpuFrame->width = evenWidth;
@@ -882,7 +882,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpu(
       rowBytes,
       evenHeight,
       cudaMemcpyHostToDevice);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       err == cudaSuccess,
       "Failed to copy Y plane to GPU: ",
       cudaGetErrorString(err));
@@ -895,13 +895,13 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpu(
       rowBytes,
       evenHeight / 2,
       cudaMemcpyHostToDevice);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       err == cudaSuccess,
       "Failed to copy UV plane to GPU: ",
       cudaGetErrorString(err));
 
   ret = av_frame_copy_props(gpuFrame.get(), cpuFrame.get());
-  STD_TORCH_CHECK(
+  TC_CHECK(
       ret >= 0,
       "Failed to copy frame properties: ",
       getFFMPEGErrorStringFromErrorCode(ret));
@@ -915,7 +915,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transferCpuFrameToGpu(
       cudaBufferFreeCallback, // callback triggered by av_frame_free()
       cudaBuffer, // parameter to callback
       0); // flags
-  STD_TORCH_CHECK(
+  TC_CHECK(
       gpuFrame->opaque_ref != nullptr,
       "Failed to create GPU memory cleanup reference");
 
@@ -967,7 +967,7 @@ void BetaCudaDeviceInterface::convertAVFrameToFrameOutput(
     gpuFrame = std::move(avFrame);
   }
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       gpuFrame->format == AV_PIX_FMT_NV12 ||
           gpuFrame->format == AV_PIX_FMT_P016LE,
       "Expected NV12 or P016LE format frame");
@@ -1022,7 +1022,7 @@ void BetaCudaDeviceInterface::applyRotation(
       k = 3;
       break;
     default:
-      STD_TORCH_CHECK(false, "Unexpected rotation value");
+      TC_CHECK(false, "Unexpected rotation value");
       break;
   }
   // Apply rotation using rot90 on the H and W dims of our HWC tensor.

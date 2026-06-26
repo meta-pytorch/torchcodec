@@ -33,7 +33,26 @@ cudaStream_t getCurrentCudaStream(int32_t deviceIndex);
 // has completed.
 void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream);
 
-void initializeCudaContextWithPytorch(const tc::Device& device);
+// Ensure a CUDA context exists on `device`. This allocates a tiny tc::Tensor,
+// which routes through tc's allocator hook: when torch is present that means
+// torch creates/owns the (primary) context, so it stays compatible with torch;
+// when torch is absent a plain cudaMalloc creates the primary context. Either
+// way FFmpeg then reuses that context rather than creating an incompatible one.
+void initializeCudaContext(const tc::Device& device);
+
+// RAII guard that sets the current CUDA device for its lifetime and restores the
+// previously-current device on destruction. Torch-free replacement for
+// torch::stable::accelerator::DeviceGuard. A negative index is a no-op.
+class CudaDeviceGuard {
+ public:
+  explicit CudaDeviceGuard(int deviceIndex);
+  ~CudaDeviceGuard();
+  CudaDeviceGuard(const CudaDeviceGuard&) = delete;
+  CudaDeviceGuard& operator=(const CudaDeviceGuard&) = delete;
+
+ private:
+  int prevDeviceIndex_ = -1;
+};
 
 void validatePreAllocatedTensorShape(
     const std::optional<tc::Tensor>& preAllocatedOutputTensor,

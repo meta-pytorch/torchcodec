@@ -222,6 +222,12 @@ function(make_torchcodec_libraries
             "${custom_ops_sources}"
             "${custom_ops_dependencies}"
         )
+        if(ENABLE_CUDA)
+            # So TCTorchBackend.cpp registers the torch CUDA stream provider
+            # (the aoti_torch_get_current_cuda_stream symbol is only exposed by
+            # shim.h under USE_CUDA).
+            target_compile_definitions(${custom_ops_library_name} PRIVATE USE_CUDA)
+        endif()
     endif()
 
     # 3. Create libtorchcodec_pybind_opsN.so.

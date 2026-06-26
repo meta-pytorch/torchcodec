@@ -8,7 +8,7 @@
 
 #include <memory>
 #include <mutex>
-#include "StableABICompat.h"
+#include "TCError.h"
 #include "TCTensor.h"
 
 namespace facebook::torchcodec {
@@ -76,7 +76,7 @@ class PerGpuCache {
   // Initializes 'maxGpus' number of caches. Each cache can hold no
   // more than 'capacity' items. If 'capacity' <0 cache size is unlimited.
   PerGpuCache(int maxGpus, int capacity) {
-    STD_TORCH_CHECK(maxGpus > 0, "maxGpus for PerGpuCache must be >0");
+    TC_CHECK(maxGpus > 0, "maxGpus for PerGpuCache must be >0");
     for (int i = 0; i < maxGpus; ++i) {
       cache_.emplace_back(std::make_unique<Cache<T, D>>(capacity));
     }
@@ -106,7 +106,7 @@ bool PerGpuCache<T, D>::addIfCacheHasCapacity(
     const tc::Device& device,
     element_type&& obj) {
   int deviceIndex = getDeviceIndex(device);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       static_cast<size_t>(deviceIndex) < cache_.size(),
       "Device index out of range");
   return cache_[deviceIndex]->addIfCacheHasCapacity(std::move(obj));
@@ -116,7 +116,7 @@ template <typename T, typename D>
 typename PerGpuCache<T, D>::element_type PerGpuCache<T, D>::get(
     const tc::Device& device) {
   int deviceIndex = getDeviceIndex(device);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       static_cast<size_t>(deviceIndex) < cache_.size(),
       "Device index out of range");
   return cache_[deviceIndex]->get();

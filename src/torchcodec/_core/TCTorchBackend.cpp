@@ -23,6 +23,11 @@
 #include "TCStableConvert.h"
 #include "TCTensor.h"
 
+#ifdef USE_CUDA
+#include <torch/csrc/inductor/aoti_torch/c/shim.h>
+#include "CUDAStreamHook.h"
+#endif
+
 namespace facebook::torchcodec {
 namespace {
 
@@ -91,6 +96,17 @@ struct TorchHookRegistrar {
   TorchHookRegistrar() {
     tc::setAllocator(allocViaTorch);
     tc::registerDeviceBackend(tc::DeviceType::CUDA, makeTorchCudaBackend());
+#ifdef USE_CUDA
+    // Return torch's current CUDA stream so decoded GPU frames stay synchronized
+    // with the user's torch stream (the original behavior). Passed as void* to
+    // keep CUDAStreamHook.h free of <cuda_runtime.h>.
+    setCudaStreamProvider([](int32_t deviceIndex) -> void* {
+      void* stream = nullptr;
+      TORCH_ERROR_CODE_CHECK(
+          aoti_torch_get_current_cuda_stream(deviceIndex, &stream));
+      return stream;
+    });
+#endif
   }
 };
 

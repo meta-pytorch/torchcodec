@@ -6,7 +6,7 @@
 
 #include "color_conversion.h"
 #include "CUDACommon.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 #include "ValidationUtils.h"
 
 namespace facebook::torchcodec {

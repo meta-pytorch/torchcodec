@@ -67,7 +67,7 @@ void NVDECCache::returnDecoder(
     CUVIDEOFORMAT* videoFormat,
     cudaVideoSurfaceFormat surfaceFormat,
     UniqueCUvideodecoder decoder) {
-  STD_TORCH_CHECK(decoder != nullptr, "decoder must not be null");
+  TC_CHECK(decoder != nullptr, "decoder must not be null");
 
   CacheKey key(videoFormat, surfaceFormat);
   std::lock_guard<std::mutex> lock(cacheLock_);
@@ -87,7 +87,7 @@ void NVDECCache::returnDecoder(
   // Add the decoder back to cache
   cache_.emplace(key, CacheEntry(std::move(decoder), lastUsedCounter_++));
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       cache_.size() <= static_cast<size_t>(capacity),
       "Cache size exceeded capacity, please report a bug");
 }

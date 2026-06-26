@@ -4,7 +4,7 @@
 #include "Cache.h"
 #include "CudaDeviceInterface.h"
 #include "FFMPEGCommon.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 #include "ValidationUtils.h"
 
 extern "C" {
@@ -48,7 +48,7 @@ int getFlagsAVHardwareDeviceContextCreate() {
 
 UniqueAVBufferRef getHardwareDeviceContext(const tc::Device& device) {
   enum AVHWDeviceType type = av_hwdevice_find_type_by_name("cuda");
-  STD_TORCH_CHECK(type != AV_HWDEVICE_TYPE_NONE, "Failed to find cuda device");
+  TC_CHECK(type != AV_HWDEVICE_TYPE_NONE, "Failed to find cuda device");
   int deviceIndex = getDeviceIndex(device);
 
   UniqueAVBufferRef hardwareDeviceCtx = g_cached_hw_device_ctxs.get(device);
@@ -57,10 +57,10 @@ UniqueAVBufferRef getHardwareDeviceContext(const tc::Device& device) {
   }
 
   // Create hardware device context
-  StableDeviceGuard deviceGuard(device.index());
+  CudaDeviceGuard deviceGuard(static_cast<int>(device.index()));
   // We set the device because we may be called from a different thread than
   // the one that initialized the cuda context.
-  STD_TORCH_CHECK(
+  TC_CHECK(
       cudaSetDevice(deviceIndex) == cudaSuccess, "Failed to set CUDA device");
   AVBufferRef* hardwareDeviceCtxRaw = nullptr;
   std::string deviceOrdinal = std::to_string(deviceIndex);
@@ -74,7 +74,7 @@ UniqueAVBufferRef getHardwareDeviceContext(const tc::Device& device) {
 
   if (err < 0) {
     /* clang-format off */
-    STD_TORCH_CHECK(
+    TC_CHECK(
         false,
         "Failed to create specified HW device. This typically happens when ",
         "your installed FFmpeg doesn't support CUDA (see ",
@@ -90,14 +90,14 @@ UniqueAVBufferRef getHardwareDeviceContext(const tc::Device& device) {
 
 CudaDeviceInterface::CudaDeviceInterface(const tc::Device& device)
     : DeviceInterface(device) {
-  STD_TORCH_CHECK(g_cuda, "CudaDeviceInterface was not registered!");
-  STD_TORCH_CHECK(
+  TC_CHECK(g_cuda, "CudaDeviceInterface was not registered!");
+  TC_CHECK(
       device_.type() == tc::kCUDA, "Unsupported device: must be CUDA");
 
   // Resolve unspecified device index (-1) to the actual current CUDA device.
   device_.set_index(getDeviceIndex(device_));
 
-  initializeCudaContextWithPytorch(device_);
+  initializeCudaContext(device_);
 
   hardwareDeviceCtx_ = getHardwareDeviceContext(device_);
 }
@@ -119,13 +119,13 @@ void CudaDeviceInterface::initializeVideo(
     const VideoStreamOptions& videoStreamOptions,
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
     [[maybe_unused]] const std::optional<FrameDims>& resizedOutputDims) {
-  STD_TORCH_CHECK(avStream != nullptr, "avStream is null");
+  TC_CHECK(avStream != nullptr, "avStream is null");
   timeBase_ = avStream->time_base;
   videoStreamOptions_ = videoStreamOptions;
 
   // TODO: Ideally, we should keep all interface implementations independent.
   cpuInterface_ = createDeviceInterface(tc::kCPU);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       cpuInterface_ != nullptr, "Failed to create CPU device interface");
   cpuInterface_->initialize(codecContext_);
   cpuInterface_->initializeVideo(
@@ -138,9 +138,9 @@ void CudaDeviceInterface::initializeVideo(
 
 void CudaDeviceInterface::registerHardwareDeviceWithCodec(
     AVCodecContext* codecContext) {
-  STD_TORCH_CHECK(
+  TC_CHECK(
       hardwareDeviceCtx_, "Hardware device context has not been initialized");
-  STD_TORCH_CHECK(codecContext != nullptr, "codecContext is null");
+  TC_CHECK(codecContext != nullptr, "codecContext is null");
   codecContext->hw_device_ctx = av_buffer_ref(hardwareDeviceCtx_.get());
 }
 
@@ -159,7 +159,7 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
 
   auto hwFramesCtx =
       reinterpret_cast<AVHWFramesContext*>(avFrame->hw_frames_ctx->data);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       hwFramesCtx != nullptr,
       "The AVFrame does not have a hw_frames_ctx. "
       "That's unexpected, please report this to the TorchCodec repo.");
@@ -183,7 +183,7 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
     outputFormat = AV_PIX_FMT_RGB24;
 
     auto actualFormatName = av_get_pix_fmt_name(actualFormat);
-    STD_TORCH_CHECK(
+    TC_CHECK(
         actualFormatName != nullptr,
         "The actual format of a frame is unknown to FFmpeg. "
         "That's unexpected, please report this to the TorchCodec repo.");
@@ -220,7 +220,7 @@ UniqueAVFrame CudaDeviceInterface::maybeConvertAVFrameToNV12OrRGB24(
 
   // If this check fails it means the frame wasn't
   // reshaped to its expected dimensions by filtergraph.
-  STD_TORCH_CHECK(
+  TC_CHECK(
       (filteredAVFrame->width == nv12ConversionConfig_->outputWidth) &&
           (filteredAVFrame->height == nv12ConversionConfig_->outputHeight),
       "Expected frame from filter graph of ",
@@ -297,17 +297,17 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   // also need to check that the AVFrame is in AV_PIX_FMT_NV12 format (8 bits),
   // because this is what our color conversion kernel expects. This SHOULD
   // be enforced by our call to maybeConvertAVFrameToNV12OrRGB24() above.
-  STD_TORCH_CHECK(
+  TC_CHECK(
       avFrame->hw_frames_ctx != nullptr,
       "The AVFrame does not have a hw_frames_ctx. This should never happen");
   AVHWFramesContext* hwFramesCtx =
       reinterpret_cast<AVHWFramesContext*>(avFrame->hw_frames_ctx->data);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       hwFramesCtx != nullptr,
       "The AVFrame does not have a valid hw_frames_ctx. This should never happen");
 
   AVPixelFormat actualFormat = hwFramesCtx->sw_format;
-  STD_TORCH_CHECK(
+  TC_CHECK(
       actualFormat == AV_PIX_FMT_NV12,
       "The AVFrame is ",
       (av_get_pix_fmt_name(actualFormat) ? av_get_pix_fmt_name(actualFormat)
@@ -319,12 +319,12 @@ void CudaDeviceInterface::convertAVFrameToFrameOutput(
   // In reality, we know that this stream is hardcoded to be the default stream
   // by FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/66e40840d15b514f275ce3ce2a4bf72ec68c7311/libavutil/hwcontext_cuda.c#L387-L388
-  STD_TORCH_CHECK(
+  TC_CHECK(
       hwFramesCtx->device_ctx != nullptr,
       "The AVFrame's hw_frames_ctx does not have a device_ctx. ");
   auto cudaDeviceCtx =
       static_cast<AVCUDADeviceContext*>(hwFramesCtx->device_ctx->hwctx);
-  STD_TORCH_CHECK(cudaDeviceCtx != nullptr, "The hardware context is null");
+  TC_CHECK(cudaDeviceCtx != nullptr, "The hardware context is null");
 
   cudaStream_t nvdecStream = // That's always the default stream. Sad.
       cudaDeviceCtx->stream;
@@ -350,7 +350,7 @@ std::optional<const AVCodec*> CudaDeviceInterface::findCodec(
   void* i = nullptr;
   const AVCodec* codec = nullptr;
   while ((codec = av_codec_iterate(&i)) != nullptr) {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         codec != nullptr,
         "codec returned by av_codec_iterate should not be null");
     if (isDecoder) {
@@ -395,18 +395,18 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
     const tc::Tensor& tensor,
     int frameIndex,
     AVCodecContext* codecContext) {
-  STD_TORCH_CHECK(
+  TC_CHECK(
       tensor.dim() == 3 && tensor.sizes()[0] == 3,
       "Expected 3D RGB tensor (CHW format), got ",
       tensor.dim(),
       "D tensor");
-  STD_TORCH_CHECK(
+  TC_CHECK(
       tensor.device().type() == tc::kCUDA,
       "Expected tensor on CUDA device, got: ",
       deviceTypeName(tensor.device().type()));
 
   UniqueAVFrame avFrame(av_frame_alloc());
-  STD_TORCH_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
+  TC_CHECK(avFrame != nullptr, "Failed to allocate AVFrame");
   int height = static_cast<int>(tensor.sizes()[1]);
   int width = static_cast<int>(tensor.sizes()[2]);
 
@@ -421,12 +421,12 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
   // efficiency
   int ret =
       av_hwframe_get_buffer(codecContext->hw_frames_ctx, avFrame.get(), 0);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       ret >= 0,
       "Failed to allocate hardware frame: ",
       getFFMPEGErrorStringFromErrorCode(ret));
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       avFrame != nullptr && avFrame->data[0] != nullptr,
       "avFrame must be pre-allocated with CUDA memory");
 
@@ -462,12 +462,12 @@ UniqueAVFrame CudaDeviceInterface::convertTensorToAVFrameForEncoding(
 // FFmpeg to allocate frames on GPU's memory.
 void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
     AVCodecContext* codecContext) {
-  STD_TORCH_CHECK(codecContext != nullptr, "codecContext is null");
-  STD_TORCH_CHECK(
+  TC_CHECK(codecContext != nullptr, "codecContext is null");
+  TC_CHECK(
       hardwareDeviceCtx_, "Hardware device context has not been initialized");
 
   AVBufferRef* hwFramesCtxRef = av_hwframe_ctx_alloc(hardwareDeviceCtx_.get());
-  STD_TORCH_CHECK(
+  TC_CHECK(
       hwFramesCtxRef != nullptr,
       "Failed to allocate hardware frames context for codec");
 
@@ -485,7 +485,7 @@ void CudaDeviceInterface::setupHardwareFrameContextForEncoding(
   int ret = av_hwframe_ctx_init(hwFramesCtxRef);
   if (ret < 0) {
     av_buffer_unref(&hwFramesCtxRef);
-    STD_TORCH_CHECK(
+    TC_CHECK(
         false,
         "Failed to initialize CUDA frames context for codec: ",
         getFFMPEGErrorStringFromErrorCode(ret));
