@@ -5,9 +5,8 @@ name: No-torch smoke test
 # has NO torch, assert the built libraries link no torch, and run a smoke test
 # that decodes a frame to a numpy array via DLPack.
 #
-# Note: the torch-free build is CPU-only for now (the CUDA device interfaces
-# still use torch for stream/context), so this runs on a CPU runner. When
-# GPU-without-torch lands, this can move to a CUDA runner.
+# CPU decoding runs on a CPU runner (numpy output). GPU decoding without torch
+# is covered by the no-torch-cuda-smoke job on a CUDA runner (cupy output).
 
 on:
   push:
@@ -151,3 +150,60 @@ jobs:
           if python -c "import torch" 2>/dev/null; then echo "torch still present"; exit 1; fi
           cd "${RUNNER_TEMP:-/tmp}"
           python "${GITHUB_WORKSPACE}/test/smoke_test_no_torch_package.py"
+
+  # Proves GPU decoding works WITHOUT torch: build ENABLE_CUDA=1 ENABLE_TORCH=0
+  # in a torch-free env that has the CUDA toolkit (conda nvcc) + cupy as the
+  # DLPack consumer, then decode on the GPU to cupy arrays.
+  no-torch-cuda-smoke:
+    runs-on: linux.g5.4xlarge.nvidia.gpu
+    strategy:
+      fail-fast: false
+      matrix:
+        ffmpeg-version-for-tests: ['7']
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v6
+      - name: Setup conda env
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          miniforge-version: latest
+          activate-environment: test
+          python-version: '3.12'
+      - name: Update pip
+        run: python -m pip install --upgrade pip
+      - name: Install build + runtime deps incl. CUDA toolkit (deliberately NO torch)
+        run: |
+          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" pkg-config pybind11 numpy cmake setuptools pip cxx-compiler cuda-nvcc cuda-cudart-dev cuda-version=12.6 -c conda-forge -c nvidia
+          python -m pip install cupy-cuda12x
+          nvidia-smi
+          ffmpeg -version | head -1
+      - name: Assert torch is NOT installed
+        run: |
+          if python -c "import torch" 2>/dev/null; then
+            echo "ERROR: torch is installed; this job must run torch-free."
+            exit 1
+          fi
+          echo "torch is not installed (good)"
+      - name: Build + install torchcodec torch-free CUDA (ENABLE_TORCH=0 ENABLE_CUDA=1)
+        run: |
+          # g5 runners are A10G (compute 8.6); set the arch explicitly so the
+          # build doesn't depend on native detection. Force the conda CUDA
+          # toolchain (PATH may also expose a system nvcc).
+          export PKG_CONFIG_PATH="$CONDA_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
+          export CUDAARCHS=86
+          export CUDACXX="$CONDA_PREFIX/bin/nvcc"
+          export CUDAHOSTCXX="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-g++"
+          ENABLE_TORCH=0 ENABLE_CUDA=1 pip install -e . --no-build-isolation -v
+      - name: Core must not link torch
+        run: |
+          so=$(find . -name "libtorchcodec_core*.so" | head -1)
+          if ldd "$so" | grep -iE "libtorch[._]|libc10"; then
+            echo "ERROR: torch is linked into the torch-free CUDA build!"
+            exit 1
+          fi
+          echo "no torch linkage (good)"
+      - name: Run torch-free CUDA smoke test (decode to cupy on GPU)
+        run: |
+          cd "${RUNNER_TEMP:-/tmp}"
+          python "${GITHUB_WORKSPACE}/test/smoke_test_no_torch_cuda.py"
