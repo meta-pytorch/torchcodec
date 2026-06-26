@@ -1,0 +1,79 @@
+name: No-torch smoke test
+
+# Proves that torchcodec can decode WITHOUT PyTorch installed: we build the
+# torch-free core + pybind frontend (ENABLE_TORCH=OFF) in an environment that
+# has NO torch, assert the built libraries link no torch, and run a smoke test
+# that decodes a frame to a numpy array via DLPack.
+#
+# Note: the torch-free build is CPU-only for now (the CUDA device interfaces
+# still use torch for stream/context), so this runs on a CPU runner. When
+# GPU-without-torch lands, this can move to a CUDA runner.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+concurrency:
+  group: no-torch-${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash -l -eo pipefail {0}
+
+jobs:
+  no-torch-smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ffmpeg-version-for-tests: ['7']
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v6
+      - name: Setup conda env
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          miniforge-version: latest
+          activate-environment: test
+          python-version: '3.12'
+      - name: Update pip
+        run: python -m pip install --upgrade pip
+      - name: Install build + runtime deps (deliberately NO torch)
+        run: |
+          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" pkg-config pybind11 numpy cmake -c conda-forge
+          ffmpeg -version
+      - name: Assert torch is NOT installed
+        run: |
+          if python -c "import torch" 2>/dev/null; then
+            echo "ERROR: torch is installed; this job must run torch-free."
+            exit 1
+          fi
+          echo "torch is not installed (good)"
+      - name: Build torch-free core + pybind frontend
+        run: |
+          build_dir="${PWD}/build_notorch"
+          mkdir "$build_dir"
+          pushd "$build_dir"
+          cmake .. \
+            -DENABLE_TORCH=OFF \
+            -DENABLE_CUDA=0 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DPYTHON_VERSION=3.12 \
+            -DCMAKE_VERBOSE_MAKEFILE=ON
+          cmake --build . -j
+          popd
+      - name: Assert the built libraries link no torch
+        run: |
+          so=$(find build_notorch -name "libtorchcodec_pybind_ops*.so" | head -1)
+          echo "Checking $so"
+          if ldd "$so" | grep -iE "libtorch|libc10"; then
+            echo "ERROR: torch is linked into the torch-free build!"
+            exit 1
+          fi
+          echo "no torch linkage (good)"
+      - name: Run torch-free smoke test
+        run: |
+          TORCHCODEC_LIB_DIR="${PWD}/build_notorch" python test/smoke_test_no_torch.py

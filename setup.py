@@ -46,9 +46,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-import torch
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
+
+# torch is only needed to locate its CMake config for the torch-dependent build.
+# When ENABLE_TORCH=0 we build a torch-free core + pybind frontend (CPU only),
+# so torch need not even be installed.
+_ENABLE_TORCH = os.environ.get("ENABLE_TORCH", "1") not in ("0", "OFF", "")
+if _ENABLE_TORCH:
+    import torch
 
 
 _ROOT_DIR = Path(__file__).parent.resolve()
@@ -109,9 +115,9 @@ class CMakeBuild(build_ext):
     def _build_all_extensions_with_cmake(self):
         # Note that self.debug is True when you invoke setup.py like this:
         # python setup.py build_ext --debug install
-        torch_dir = Path(torch.utils.cmake_prefix_path) / "Torch"
         cmake_build_type = os.environ.get("CMAKE_BUILD_TYPE", "Release")
         enable_cuda = os.environ.get("ENABLE_CUDA", "")
+        enable_torch = "ON" if _ENABLE_TORCH else "OFF"
         torchcodec_disable_compile_warning_as_error = os.environ.get(
             "TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR", "OFF"
         )
@@ -121,14 +127,17 @@ class CMakeBuild(build_ext):
         python_version = sys.version_info
         cmake_args = [
             f"-DCMAKE_INSTALL_PREFIX={self._install_prefix}",
-            f"-DTorch_DIR={torch_dir}",
             "-DCMAKE_VERBOSE_MAKEFILE=ON",
             f"-DCMAKE_BUILD_TYPE={cmake_build_type}",
             f"-DPYTHON_VERSION={python_version.major}.{python_version.minor}",
             f"-DENABLE_CUDA={enable_cuda}",
+            f"-DENABLE_TORCH={enable_torch}",
             f"-DTORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR={torchcodec_disable_compile_warning_as_error}",
             f"-DTORCHCODEC_DISABLE_HOMEBREW_RPATH={torchcodec_disable_homebrew_rpath}",
         ]
+        if _ENABLE_TORCH:
+            torch_dir = Path(torch.utils.cmake_prefix_path) / "Torch"
+            cmake_args.append(f"-DTorch_DIR={torch_dir}")
 
         if sys.platform == "win32":
             cmake_args.append("-G Ninja")

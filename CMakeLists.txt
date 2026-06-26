@@ -8,6 +8,12 @@ else()
     set(LINUX FALSE)
 endif()
 
+# When OFF, build a torch-free core + pybind frontend (CPU only): no
+# find_package(Torch), no torch linkage, and the torch adapter (custom_ops) and
+# torch hooks (TCTorchBackend) are skipped. Used to prove torchcodec decoding
+# does not require PyTorch.
+option(ENABLE_TORCH "Build torch-dependent components" ON)
+
 add_subdirectory(src/torchcodec/_core)
 
 

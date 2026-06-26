@@ -5,8 +5,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 REQUIRED)
-find_package(Torch REQUIRED)
+if(ENABLE_TORCH)
+    find_package(Torch REQUIRED)
+endif()
 find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development)
+
+if(ENABLE_CUDA AND NOT ENABLE_TORCH)
+    message(FATAL_ERROR "ENABLE_CUDA=1 requires ENABLE_TORCH=1 (the CUDA device interfaces use torch for stream/context). The torch-free build is CPU-only.")
+endif()
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -48,17 +54,23 @@ function(make_torchcodec_sublibrary
     target_include_directories(${library_name}
         PRIVATE
         ./../../../
-        "${TORCH_INSTALL_PREFIX}/include"
         ${Python3_INCLUDE_DIRS}
     )
-    # Use fmt library in header-only mode (bundled with PyTorch): the fmt
-    # library is bundled with PyTorch and the headers are available in
-    # TORCH_INSTALL_PREFIX/include/, which we add above. To be compatible with
-    # torch, we want to rely on the "header-only" mode of these headers and hit
-    # all the `#ifdef FMT_HEADER_ONLY` paths, so we define FMT_HEADER_ONLY here.```
-    target_compile_definitions(${library_name} PRIVATE FMT_HEADER_ONLY)
-    # TC is ABI-stable w.r.t. torch since torch 2.11
-    target_compile_definitions(${library_name} PRIVATE TORCH_TARGET_VERSION=0x020b000000000000)
+    if(ENABLE_TORCH)
+        target_include_directories(${library_name}
+            PRIVATE
+            "${TORCH_INSTALL_PREFIX}/include"
+        )
+        # Use fmt library in header-only mode (bundled with PyTorch): the fmt
+        # library is bundled with PyTorch and the headers are available in
+        # TORCH_INSTALL_PREFIX/include/, which we add above. To be compatible
+        # with torch, we want to rely on the "header-only" mode of these headers
+        # and hit all the `#ifdef FMT_HEADER_ONLY` paths, so we define
+        # FMT_HEADER_ONLY here.
+        target_compile_definitions(${library_name} PRIVATE FMT_HEADER_ONLY)
+        # TC is ABI-stable w.r.t. torch since torch 2.11
+        target_compile_definitions(${library_name} PRIVATE TORCH_TARGET_VERSION=0x020b000000000000)
+    endif()
 
     # Avoid adding the "lib" prefix which we already add explicitly.
     set_target_properties(${library_name} PROPERTIES PREFIX "")
@@ -153,8 +165,10 @@ function(make_torchcodec_libraries
 
     set(core_library_dependencies
         ${ffmpeg_target}
-        ${TORCH_LIBRARIES}
     )
+    if(ENABLE_TORCH)
+        list(APPEND core_library_dependencies ${TORCH_LIBRARIES})
+    endif()
 
     make_torchcodec_sublibrary(
         "${core_library_name}"
@@ -179,22 +193,25 @@ function(make_torchcodec_libraries
         endif()
     endif()
 
-    # 2. Create libtorchcodec_custom_opsN.{ext}.
+    # 2. Create libtorchcodec_custom_opsN.{ext}. This is the torch adapter
+    # (PyTorch custom ops + tc<->torch hooks); only built with torch.
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
-    set(custom_ops_sources
-        custom_ops.cpp
-        TCTorchBackend.cpp
-    )
-    set(custom_ops_dependencies
-        ${core_library_name}
-        ${Python3_LIBRARIES}
-    )
-    make_torchcodec_sublibrary(
-        "${custom_ops_library_name}"
-        SHARED
-        "${custom_ops_sources}"
-        "${custom_ops_dependencies}"
-    )
+    if(ENABLE_TORCH)
+        set(custom_ops_sources
+            custom_ops.cpp
+            TCTorchBackend.cpp
+        )
+        set(custom_ops_dependencies
+            ${core_library_name}
+            ${Python3_LIBRARIES}
+        )
+        make_torchcodec_sublibrary(
+            "${custom_ops_library_name}"
+            SHARED
+            "${custom_ops_sources}"
+            "${custom_ops_dependencies}"
+        )
+    endif()
 
     # 3. Create libtorchcodec_pybind_opsN.so.
     set(pybind_ops_library_name "libtorchcodec_pybind_ops${ffmpeg_major_version}")
@@ -246,11 +263,13 @@ function(make_torchcodec_libraries
             PUBLIC
             "-fvisibility=hidden"
         )
-        target_compile_options(
-            ${custom_ops_library_name}
-            PUBLIC
-            "-fvisibility=hidden"
-        )
+        if(ENABLE_TORCH)
+            target_compile_options(
+                ${custom_ops_library_name}
+                PUBLIC
+                "-fvisibility=hidden"
+            )
+        endif()
     endif()
 
     # We disable the "attributes" warning in the core library.
@@ -306,9 +325,11 @@ function(make_torchcodec_libraries
     set(
         all_libraries
         ${core_library_name}
-        ${custom_ops_library_name}
         ${pybind_ops_library_name}
     )
+    if(ENABLE_TORCH)
+        list(APPEND all_libraries ${custom_ops_library_name})
+    endif()
 
     # The install step is invoked within CMakeBuild.build_library() in
     # setup.py and just copies the built files from the temp
