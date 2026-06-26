@@ -22,6 +22,7 @@ build dirs and the installed torchcodec package.
 
 import glob
 import importlib.util
+import json
 import os
 import sys
 
@@ -87,6 +88,18 @@ def main():
     decoder = mod.create_decoder(_VIDEO)
     try:
         mod.scan_all_streams(decoder)
+
+        # Metadata (JSON serialized in the torch-free core).
+        meta = json.loads(mod.get_json_metadata(decoder))
+        container_meta = json.loads(mod.get_container_json_metadata(decoder))
+        print(
+            f"metadata: numFrames={meta.get('numFramesFromHeader')}, "
+            f"fps={meta.get('averageFpsFromHeader'):.2f}, "
+            f"numStreams={container_meta.get('numStreams')}"
+        )
+        assert meta.get("numFramesFromHeader") == 390, meta
+        assert container_meta.get("numStreams") == 6, container_meta
+
         mod.add_video_stream(decoder, "NCHW")
 
         # Sequential next-frame decode.

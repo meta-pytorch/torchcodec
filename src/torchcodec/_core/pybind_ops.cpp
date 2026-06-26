@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "AVIOFileLikeContext.h"
+#include "MetadataJson.h"
 #include "SingleStreamDecoder.h"
 #include "TCTensor.h"
 #include "Transform.h"
@@ -143,6 +144,18 @@ py::tuple get_frames_in_range(
       frameToDLPackCapsule(out.durationSeconds));
 }
 
+std::string get_json_metadata(int64_t decoderPtr) {
+  return getVideoJsonMetadata(asDecoder(decoderPtr));
+}
+
+std::string get_container_json_metadata(int64_t decoderPtr) {
+  return getContainerJsonMetadata(asDecoder(decoderPtr));
+}
+
+std::string get_stream_json_metadata(int64_t decoderPtr, int64_t streamIndex) {
+  return getStreamJsonMetadata(asDecoder(decoderPtr), streamIndex);
+}
+
 void destroy_decoder(int64_t decoderPtr) {
   delete asDecoder(decoderPtr);
 }
@@ -162,6 +175,9 @@ PYBIND11_MODULE(PYBIND_OPS_MODULE_NAME, m) {
   m.def("get_frame_at_index", &get_frame_at_index);
   m.def("get_frame_played_at", &get_frame_played_at);
   m.def("get_frames_in_range", &get_frames_in_range);
+  m.def("get_json_metadata", &get_json_metadata);
+  m.def("get_container_json_metadata", &get_container_json_metadata);
+  m.def("get_stream_json_metadata", &get_stream_json_metadata);
   m.def("destroy_decoder", &destroy_decoder);
 }
 

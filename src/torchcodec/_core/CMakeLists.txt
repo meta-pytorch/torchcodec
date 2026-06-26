@@ -139,6 +139,7 @@ function(make_torchcodec_libraries
     set(core_library_name "libtorchcodec_core${ffmpeg_major_version}")
     set(core_sources
         TCTensor.cpp
+        MetadataJson.cpp
         AVIOContextHolder.cpp
         AVIOTensorContext.cpp
         AVIOFileContext.cpp
