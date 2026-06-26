@@ -7,17 +7,17 @@
 #include "AVIOFileContext.h"
 
 #include <filesystem>
-#include "StableABICompat.h"
+#include "TCError.h"
 
 namespace facebook::torchcodec {
 
 AVIOFileContext::AVIOFileContext(const std::string& path)
     : file_(path, std::ios::binary) {
-  STD_TORCH_CHECK(file_.is_open(), "Failed to open file: ", path);
+  TC_CHECK(file_.is_open(), "Failed to open file: ", path);
   try {
     fileSize_ = static_cast<int64_t>(std::filesystem::file_size(path));
   } catch (const std::filesystem::filesystem_error& e) {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         false, "Failed to get file size for: ", path, ". Error: ", e.what());
   }
 }
@@ -47,7 +47,7 @@ int64_t AVIOFileContext::seek(int64_t offset, int whence) {
       return -1;
   }
   file_.seekg(offset, dir);
-  STD_TORCH_CHECK(!file_.fail(), "Failed to seek in file");
+  TC_CHECK(!file_.fail(), "Failed to seek in file");
   return static_cast<int64_t>(file_.tellg());
 }
 

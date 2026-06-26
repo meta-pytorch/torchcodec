@@ -5,9 +5,10 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "DeviceInterface.h"
+#include <algorithm>
 #include <map>
 #include <mutex>
-#include "StableABICompat.h"
+#include "TCError.h"
 
 namespace facebook::torchcodec {
 
@@ -41,7 +42,7 @@ tc::DeviceType parseDeviceType(const std::string& deviceType) {
   } else if (deviceType == "xpu") {
     return tc::kXPU;
   } else {
-    STD_TORCH_CHECK(false, "Unknown device type: ", deviceType);
+    TC_CHECK(false, "Unknown device type: ", deviceType);
   }
 }
 
@@ -53,7 +54,7 @@ bool registerDeviceInterface(
   std::scoped_lock lock(g_interface_mutex);
   DeviceInterfaceMap& deviceMap = getDeviceMap();
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       deviceMap.find(key) == deviceMap.end(),
       "Device interface already registered for device type ",
       static_cast<int>(key.deviceType),
@@ -84,7 +85,7 @@ void validateDeviceInterface(
             arg.first.variant == variant;
       });
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       deviceInterface != deviceMap.end(),
       "Unsupported device: ",
       device,
@@ -107,7 +108,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
     return std::unique_ptr<DeviceInterface>(it->second(device));
   }
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       false,
       "No device interface found for device type: ",
       static_cast<int>(device.type()),
@@ -118,7 +119,7 @@ std::unique_ptr<DeviceInterface> createDeviceInterface(
 
 tc::Tensor rgbAVFrameToTensor(const UniqueAVFrame& avFrame) {
   auto format = static_cast<AVPixelFormat>(avFrame->format);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       format == AV_PIX_FMT_RGB24 || format == AV_PIX_FMT_RGB48,
       "Expected RGB24 or RGB48 format, got ",
       (av_get_pix_fmt_name(format) ? av_get_pix_fmt_name(format) : "unknown"));

@@ -5,7 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "AVIOContextHolder.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 
 namespace facebook::torchcodec {
 
@@ -44,11 +44,11 @@ AVIOContextHolder::seekCallback(void* opaque, int64_t offset, int whence) {
 // --------------------------------------------------------------------------
 
 void AVIOContextHolder::createAVIOContext(bool isForWriting, int bufferSize) {
-  STD_TORCH_CHECK(
+  TC_CHECK(
       bufferSize > 0,
       "Buffer size must be greater than 0; is " + std::to_string(bufferSize));
   auto buffer = static_cast<uint8_t*>(av_malloc(bufferSize));
-  STD_TORCH_CHECK(
+  TC_CHECK(
       buffer != nullptr,
       "Failed to allocate buffer of size " + std::to_string(bufferSize));
 
@@ -63,7 +63,7 @@ void AVIOContextHolder::createAVIOContext(bool isForWriting, int bufferSize) {
 
   if (!avioContext_) {
     av_freep(&buffer);
-    STD_TORCH_CHECK(false, "Failed to allocate AVIOContext");
+    TC_CHECK(false, "Failed to allocate AVIOContext");
   }
 }
 
@@ -82,19 +82,19 @@ AVIOContext* AVIOContextHolder::getAVIOContext() {
 // --------------------------------------------------------------------------
 
 int AVIOContextHolder::read(uint8_t*, int) {
-  STD_TORCH_CHECK(false, "read() is not supported by this AVIOContextHolder");
+  TC_CHECK(false, "read() is not supported by this AVIOContextHolder");
 }
 
 int AVIOContextHolder::write(const uint8_t*, int) {
-  STD_TORCH_CHECK(false, "write() is not supported by this AVIOContextHolder");
+  TC_CHECK(false, "write() is not supported by this AVIOContextHolder");
 }
 
 int64_t AVIOContextHolder::seek(int64_t, int) {
-  STD_TORCH_CHECK(false, "seek() is not supported by this AVIOContextHolder");
+  TC_CHECK(false, "seek() is not supported by this AVIOContextHolder");
 }
 
 int64_t AVIOContextHolder::getSize() {
-  STD_TORCH_CHECK(
+  TC_CHECK(
       false, "getSize() is not supported by this AVIOContextHolder");
 }
 

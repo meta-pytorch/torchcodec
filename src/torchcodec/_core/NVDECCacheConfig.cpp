@@ -5,7 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "NVDECCacheConfig.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 
 #include <atomic>
 #include <mutex>
@@ -29,7 +29,7 @@ static std::atomic<int> g_nvdecCacheCapacity{DEFAULT_NVDEC_CACHE_CAPACITY};
 static std::mutex g_nvdecCacheCapacityMutex;
 
 void setNVDECCacheCapacity(int capacity) {
-  STD_TORCH_CHECK(
+  TC_CHECK(
       capacity >= 0,
       "NVDEC cache capacity must be non-negative, got ",
       capacity);
@@ -46,7 +46,7 @@ int getNVDECCacheCapacity() {
 
 int getNVDECCacheSize([[maybe_unused]] int device_index) {
 #ifdef USE_CUDA
-  STD_TORCH_CHECK(
+  TC_CHECK(
       device_index >= 0 && device_index < MAX_CUDA_GPUS,
       "device_index must be between 0 and ",
       MAX_CUDA_GPUS - 1,

@@ -8,7 +8,7 @@
 
 #include "FFMPEGCommon.h"
 #include "Metadata.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 #include "StreamOptions.h"
 #include "TCTensor.h"
 

@@ -12,7 +12,7 @@
 #include <string>
 #include "FFMPEGCommon.h"
 #include "Frame.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 #include "StreamOptions.h"
 #include "Transform.h"
 
@@ -111,7 +111,7 @@ class DeviceInterface {
   // other AVERROR on failure
   // Default implementation uses FFmpeg directly
   virtual int sendPacket(ReferenceAVPacket& avPacket) {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         codecContext_ != nullptr,
         "Codec context not available for default packet sending");
     return avcodec_send_packet(codecContext_.get(), avPacket.get());
@@ -121,7 +121,7 @@ class DeviceInterface {
   // Returns AVSUCCESS on success, or other AVERROR on failure
   // Default implementation uses FFmpeg directly
   virtual int sendEOFPacket() {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         codecContext_ != nullptr,
         "Codec context not available for default EOF packet sending");
     return avcodec_send_packet(codecContext_.get(), nullptr);
@@ -131,7 +131,7 @@ class DeviceInterface {
   // AVERROR_EOF if end of stream, or other AVERROR on failure
   // Default implementation uses FFmpeg directly
   virtual int receiveFrame(UniqueAVFrame& avFrame) {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         codecContext_ != nullptr,
         "Codec context not available for default frame receiving");
     return avcodec_receive_frame(codecContext_.get(), avFrame.get());
@@ -139,7 +139,7 @@ class DeviceInterface {
 
   // Flush remaining frames from decoder
   virtual void flush() {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         codecContext_ != nullptr,
         "Codec context not available for default flushing");
     avcodec_flush_buffers(codecContext_.get());
@@ -165,20 +165,20 @@ class DeviceInterface {
       [[maybe_unused]] const tc::Tensor& tensor,
       [[maybe_unused]] int frameIndex,
       [[maybe_unused]] AVCodecContext* codecContext) {
-    STD_TORCH_CHECK(false, "convertTensorToAVFrameForEncoding not implemented");
+    TC_CHECK(false, "convertTensorToAVFrameForEncoding not implemented");
   }
 
   // Function used for video encoding, only implemented in CudaDeviceInterface.
   // It is here to isolate CUDA dependencies from CPU builds
   virtual void setupHardwareFrameContextForEncoding(
       [[maybe_unused]] AVCodecContext* codecContext) {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         false, "setupHardwareFrameContextForEncoding not implemented");
   }
 
   virtual std::optional<const AVCodec*> findHardwareEncoder(
       [[maybe_unused]] const AVCodecID& codecId) {
-    STD_TORCH_CHECK(false, "findHardwareEncoder not implemented");
+    TC_CHECK(false, "findHardwareEncoder not implemented");
   }
 
  protected:

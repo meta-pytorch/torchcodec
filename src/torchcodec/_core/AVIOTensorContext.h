@@ -7,7 +7,7 @@
 #pragma once
 
 #include "AVIOContextHolder.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 #include "TCTensor.h"
 
 namespace facebook::torchcodec {

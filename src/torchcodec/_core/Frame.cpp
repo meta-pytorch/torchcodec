@@ -5,13 +5,13 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "Frame.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 
 namespace facebook::torchcodec {
 
 FrameDims::FrameDims(int height, int width) : height(height), width(width) {
-  STD_TORCH_CHECK(height > 0, "FrameDims.height must be > 0, got: ", height);
-  STD_TORCH_CHECK(width > 0, "FrameDims.width must be > 0, got: ", width);
+  TC_CHECK(height > 0, "FrameDims.height must be > 0, got: ", height);
+  TC_CHECK(width > 0, "FrameDims.width must be > 0, got: ", width);
 }
 
 FrameBatchOutput::FrameBatchOutput(
@@ -29,14 +29,14 @@ tc::Tensor allocateEmptyHWCTensor(
     const tc::Device& device,
     OutputDtype outputDtype,
     std::optional<int> numFrames) {
-  STD_TORCH_CHECK(
+  TC_CHECK(
       frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
-  STD_TORCH_CHECK(
+  TC_CHECK(
       frameDims.width > 0, "width must be > 0, got: ", frameDims.width);
   auto dtype = outputDtype == OutputDtype::FLOAT32 ? tc::kUInt16 : tc::kUInt8;
   if (numFrames.has_value()) {
     auto numFramesValue = numFrames.value();
-    STD_TORCH_CHECK(
+    TC_CHECK(
         numFramesValue >= 0, "numFrames must be >= 0, got: ", numFramesValue);
     return tc::empty(
         {numFramesValue, frameDims.height, frameDims.width, 3}, dtype, device);

@@ -16,7 +16,7 @@
 #include "FFMPEGCommon.h"
 #include "Frame.h"
 #include "Metadata.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 #include "StreamOptions.h"
 #include "Transform.h"
 

@@ -6,7 +6,7 @@
 #include "AVIOContextHolder.h"
 #include "DeviceInterface.h"
 #include "FFMPEGCommon.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 #include "StreamOptions.h"
 
 extern "C" {

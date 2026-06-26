@@ -14,7 +14,7 @@
 #include "AVIOContextHolder.h"
 #include "Frame.h"
 #include "Metadata.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 
 namespace facebook::torchcodec {
 

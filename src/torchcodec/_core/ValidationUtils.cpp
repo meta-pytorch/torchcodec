@@ -6,12 +6,12 @@
 
 #include "ValidationUtils.h"
 #include <limits>
-#include "StableABICompat.h"
+#include "TCError.h"
 
 namespace facebook::torchcodec {
 
 int validateInt64ToInt(int64_t value, const std::string& parameterName) {
-  STD_TORCH_CHECK(
+  TC_CHECK(
       value >= std::numeric_limits<int>::min() &&
           value <= std::numeric_limits<int>::max(),
       parameterName,
@@ -38,7 +38,7 @@ std::streampos validateUint64ToStreampos(
   // We validate against streamoff limits because streampos
   // (std::fpos<state_type>) stores the actual position as streamoff internally.
   // https://en.cppreference.com/w/cpp/io/fpos.html
-  STD_TORCH_CHECK(
+  TC_CHECK(
       value <=
           static_cast<uint64_t>(std::numeric_limits<std::streamoff>::max()),
       parameterName,

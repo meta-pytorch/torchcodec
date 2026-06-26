@@ -5,6 +5,7 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "WavDecoder.h"
+#include <algorithm>
 
 #include <cstddef>
 #include <cstring>
@@ -57,8 +58,8 @@ OutType readValue(const InType& data, int64_t offset) {
 
 template <typename OutType, typename InType>
 OutType safeReadValue(const InType& data, int64_t offset) {
-  STD_TORCH_CHECK(offset >= 0);
-  STD_TORCH_CHECK(
+  TC_CHECK(offset >= 0);
+  TC_CHECK(
       data.size() >= sizeof(OutType) &&
           static_cast<size_t>(offset) <= data.size() - sizeof(OutType),
       "Reading ",
@@ -75,24 +76,24 @@ bool matchesFourCC(
     int64_t dataSize,
     int64_t offset,
     std::string_view expected) {
-  STD_TORCH_CHECK(
+  TC_CHECK(
       dataSize >= 4 && offset <= dataSize - 4,
       "Data array too small for FourCC comparison at offset ",
       offset);
-  STD_TORCH_CHECK(offset >= 0);
+  TC_CHECK(offset >= 0);
   return std::memcmp(data + static_cast<size_t>(offset), expected.data(), 4) ==
       0;
 }
 
 void safeRead(AVIOContextHolder& avio, uint8_t* buf, int64_t bytesToRead) {
-  STD_TORCH_CHECK(bytesToRead >= 0);
+  TC_CHECK(bytesToRead >= 0);
   int64_t totalRead = 0;
   while (totalRead < bytesToRead) {
     int bytesRead = avio.read(
         buf + totalRead,
         static_cast<int>(
             std::min(bytesToRead - totalRead, static_cast<int64_t>(INT_MAX))));
-    STD_TORCH_CHECK(
+    TC_CHECK(
         bytesRead > 0,
         "WAV: unexpected end of data (expected ",
         bytesToRead,
@@ -101,7 +102,7 @@ void safeRead(AVIOContextHolder& avio, uint8_t* buf, int64_t bytesToRead) {
         ")");
     totalRead += bytesRead;
   }
-  STD_TORCH_CHECK(
+  TC_CHECK(
       totalRead == bytesToRead,
       "Read more bytes than requested: got ",
       totalRead,
@@ -114,7 +115,7 @@ void safeRead(AVIOContextHolder& avio, Container& buffer, int64_t bytesToRead) {
   static_assert(
       sizeof(typename Container::value_type) == 1,
       "Container value_type must be a 1-byte type");
-  STD_TORCH_CHECK(
+  TC_CHECK(
       static_cast<size_t>(bytesToRead) <= buffer.size(),
       "Read size exceeds buffer length");
   safeRead(avio, reinterpret_cast<uint8_t*>(buffer.data()), bytesToRead);
@@ -122,16 +123,16 @@ void safeRead(AVIOContextHolder& avio, Container& buffer, int64_t bytesToRead) {
 
 void safeSeek(AVIOContextHolder& avio, int64_t pos) {
   int64_t result = avio.seek(pos, SEEK_SET);
-  STD_TORCH_CHECK(result >= 0, "Failed to seek to ", pos, " in WAV file");
+  TC_CHECK(result >= 0, "Failed to seek to ", pos, " in WAV file");
 }
 
 } // namespace
 
 WavDecoder::WavDecoder(std::unique_ptr<AVIOContextHolder> avio)
     : avio_(std::move(avio)) {
-  STD_TORCH_CHECK(
+  TC_CHECK(
       isLittleEndian(), "WAV decoder requires little-endian architecture");
-  STD_TORCH_CHECK(avio_ != nullptr, "AVIO context cannot be null");
+  TC_CHECK(avio_ != nullptr, "AVIO context cannot be null");
   sourceSize_ = static_cast<uint64_t>(avio_->getSize());
   parseHeader();
   validateHeader();
@@ -143,16 +144,16 @@ void WavDecoder::parseHeader() {
   std::array<uint8_t, RIFF_HEADER_SIZE> riffHeader;
   safeRead(*avio_, riffHeader, RIFF_HEADER_SIZE);
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       matchesFourCC(riffHeader.data(), RIFF_HEADER_SIZE, 0, "RIFF"),
       "Missing RIFF header");
-  STD_TORCH_CHECK(
+  TC_CHECK(
       matchesFourCC(riffHeader.data(), RIFF_HEADER_SIZE, 8, "WAVE"),
       "Missing WAVE format identifier");
 
   ChunkInfo fmtChunk =
       findChunk("fmt ", static_cast<uint64_t>(RIFF_HEADER_SIZE));
-  STD_TORCH_CHECK(
+  TC_CHECK(
       fmtChunk.size >= MIN_FMT_CHUNK_SIZE,
       "Invalid fmt chunk: size must be at least ",
       MIN_FMT_CHUNK_SIZE,
@@ -160,7 +161,7 @@ void WavDecoder::parseHeader() {
 
   // Use ChunkInfo to seek to and read the fmt chunk data
   safeSeek(*avio_, static_cast<int64_t>(fmtChunk.offset));
-  STD_TORCH_CHECK(
+  TC_CHECK(
       fmtChunk.size <= MAX_FMT_CHUNK_SIZE,
       "fmt chunk too large for allocation: ",
       fmtChunk.size,
@@ -177,7 +178,7 @@ void WavDecoder::parseHeader() {
   header_.bitsPerSample = safeReadValue<uint16_t>(fmtData, 14);
 
   if (header_.audioFormat == WAV_FORMAT_EXTENSIBLE) {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         fmtChunk.size >= MIN_WAVEX_FMT_CHUNK_SIZE,
         "WAVE_FORMAT_EXTENSIBLE fmt chunk too small");
     header_.subFormat = safeReadValue<uint16_t>(fmtData, 24);
@@ -193,7 +194,7 @@ void WavDecoder::validateHeader() {
   uint16_t effectiveFormat = (header_.audioFormat == WAV_FORMAT_EXTENSIBLE)
       ? header_.subFormat
       : header_.audioFormat;
-  STD_TORCH_CHECK(
+  TC_CHECK(
       effectiveFormat == WAV_FORMAT_PCM ||
           effectiveFormat == WAV_FORMAT_IEEE_FLOAT,
       "Unsupported WAV format: ",
@@ -201,23 +202,23 @@ void WavDecoder::validateHeader() {
       ". Only PCM and IEEE float formats are supported.");
 
   if (effectiveFormat == WAV_FORMAT_PCM) {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         header_.bitsPerSample == 8 || header_.bitsPerSample == 16 ||
             header_.bitsPerSample == 24 || header_.bitsPerSample == 32,
         "Unsupported PCM bit depth: ",
         header_.bitsPerSample,
         ". Currently supported bit depths are: 8, 16, 24, 32");
   } else {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         header_.bitsPerSample == 32 || header_.bitsPerSample == 64,
         "Unsupported IEEE float bit depth: ",
         header_.bitsPerSample,
         ". Currently supported bit depths are: 32, 64");
   }
 
-  STD_TORCH_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
-  STD_TORCH_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
-  STD_TORCH_CHECK(
+  TC_CHECK(header_.numChannels > 0, "Invalid WAV: zero channels");
+  TC_CHECK(header_.sampleRate > 0, "Invalid WAV: zero sample rate");
+  TC_CHECK(
       header_.numBytesPerSample > 0, "Invalid WAV: zero block alignment");
   // The WAV spec requires numBytesPerSample == numChannels * bitsPerSample / 8.
   // https://en.wikipedia.org/wiki/WAV#WAV_file_header
@@ -228,7 +229,7 @@ void WavDecoder::validateHeader() {
   //   = dataSize / (bitsPerSample/8)
   // Without this check, a corrupt numChannels could multiply tensor size
   // independently of dataSize.
-  STD_TORCH_CHECK(
+  TC_CHECK(
       header_.numBytesPerSample ==
           header_.numChannels * (header_.bitsPerSample / 8),
       "Invalid WAV: block alignment (",
@@ -259,7 +260,7 @@ void WavDecoder::validateHeader() {
     sampleFormat_ = "dbl";
     codecName_ = "pcm_f64le";
   } else {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         false,
         "Unsupported format after validation. "
         "This is a bug in TorchCodec, please report it.");
@@ -271,7 +272,7 @@ void WavDecoder::validateHeader() {
 WavDecoder::ChunkInfo WavDecoder::findChunk(
     std::string_view chunkId,
     uint64_t startPos) {
-  STD_TORCH_CHECK(
+  TC_CHECK(
       sourceSize_ >= static_cast<uint64_t>(CHUNK_HEADER_SIZE),
       "File too small to contain chunk:",
       chunkId);
@@ -289,13 +290,13 @@ WavDecoder::ChunkInfo WavDecoder::findChunk(
     // Skip this chunk and continue searching (odd chunks are padded)
     uint64_t numBytesToSkip =
         CHUNK_HEADER_SIZE + static_cast<uint64_t>(chunkSize) + (chunkSize % 2);
-    STD_TORCH_CHECK(
+    TC_CHECK(
         startPos <= UINT64_MAX - numBytesToSkip,
         "File position arithmetic would overflow");
     startPos += numBytesToSkip;
   }
   // If this code is reached, the required chunk was not found, so we error
-  STD_TORCH_CHECK(false, "Chunk not found: ", chunkId);
+  TC_CHECK(false, "Chunk not found: ", chunkId);
 }
 
 // Callers must ensure outputPtr has space for at least
@@ -345,7 +346,7 @@ void WavDecoder::convertSamplesToFloat(
       outputPtr[i] = static_cast<float>(sample) * scale;
     }
   } else {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         header_.bitsPerSample == 8,
         "Unsupported bit depth in convertSamplesToFloat: ",
         header_.bitsPerSample,
@@ -365,7 +366,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
     std::optional<double> stopSecondsOptional) {
   // Calculate the range of samples to decode.
   // Negative startSeconds is resolved to 0 in the Python layer.
-  STD_TORCH_CHECK(
+  TC_CHECK(
       startSeconds <= INT64_MAX / header_.sampleRate,
       "startSample calculation would overflow: startSeconds * sampleRate");
   // Sample boundary alignment: round to nearest sample to avoid partial samples
@@ -380,7 +381,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       std::min(static_cast<uint64_t>(header_.dataSize), sourceSize_) /
       header_.numBytesPerSample);
   if (stopSecondsOptional.has_value()) {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         startSeconds <= stopSecondsOptional.value(),
         "Start seconds (",
         startSeconds,
@@ -392,7 +393,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
           tc::empty({header_.numChannels, 0}, tc::kFloat32),
           startSeconds};
     }
-    STD_TORCH_CHECK(
+    TC_CHECK(
         stopSecondsOptional.value() <= INT64_MAX / header_.sampleRate,
         "End sample calculation would overflow: stopSeconds * sampleRate");
     int64_t requestedEndSample = static_cast<int64_t>(
@@ -401,7 +402,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
   }
 
   const int64_t numSamples = endSample - startSample;
-  STD_TORCH_CHECK(
+  TC_CHECK(
       numSamples > 0,
       "No samples to decode. ",
       "This is probably because start_seconds is too high(",
@@ -409,12 +410,12 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
       "), ",
       "or because stop_seconds is too low.");
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       startSample <= INT64_MAX / header_.numBytesPerSample,
       "byteOffset calculation would overflow: startSample * numBytesPerSample ");
   int64_t byteOffset = startSample * header_.numBytesPerSample;
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       header_.dataOffset <= static_cast<uint64_t>(INT64_MAX - byteOffset),
       "dataPosition calculation would overflow: dataOffset + byteOffset ");
   byteOffset += static_cast<int64_t>(header_.dataOffset);
@@ -439,7 +440,7 @@ AudioFramesOutput WavDecoder::getSamplesInRange(
     size_t alignedBufferSize = TMP_BUFFER_SIZE;
     alignedBufferSize = (alignedBufferSize / header_.numBytesPerSample) *
         header_.numBytesPerSample;
-    STD_TORCH_CHECK(
+    TC_CHECK(
         alignedBufferSize > 0,
         "WAV bytes per sample (",
         header_.numBytesPerSample,

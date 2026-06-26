@@ -91,7 +91,7 @@ int SwScale::convert(
       colorConvertedPointers,
       colorConvertedLinesizes);
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       colorConvertedHeight == avFrame->height,
       "Color conversion swscale pass failed: colorConvertedHeight != avFrame->height: ",
       colorConvertedHeight,

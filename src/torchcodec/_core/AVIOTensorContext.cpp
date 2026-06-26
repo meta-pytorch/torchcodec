@@ -5,7 +5,10 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "AVIOTensorContext.h"
-#include "StableABICompat.h"
+#include <algorithm>
+#include "TCError.h"
+
+#include <cstring>
 
 namespace facebook::torchcodec {
 
@@ -20,9 +23,9 @@ constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
 
 AVIOFromTensorContext::AVIOFromTensorContext(tc::Tensor data)
     : tensorContext_{data, 0, 0} {
-  STD_TORCH_CHECK(data.numel() > 0, "data must not be empty");
-  STD_TORCH_CHECK(data.is_contiguous(), "data must be contiguous");
-  STD_TORCH_CHECK(data.scalar_type() == tc::kUInt8, "data must be kUInt8");
+  TC_CHECK(data.numel() > 0, "data must not be empty");
+  TC_CHECK(data.is_contiguous(), "data must be contiguous");
+  TC_CHECK(data.scalar_type() == tc::kUInt8, "data must be kUInt8");
   createAVIOContext(/*isForWriting=*/false);
 }
 
@@ -35,7 +38,7 @@ int AVIOFromTensorContext::read(uint8_t* buf, int size) {
       static_cast<int64_t>(size),
       tensorContext_.data.numel() - tensorContext_.current_pos);
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       numBytesRead >= 0,
       "Tried to read negative bytes: numBytesRead=",
       numBytesRead,
@@ -86,7 +89,7 @@ AVIOToTensorContext::AVIOToTensorContext()
 int AVIOToTensorContext::write(const uint8_t* buf, int size) {
   int64_t bufSize = static_cast<int64_t>(size);
   if (tensorContext_.current_pos + bufSize > tensorContext_.data.numel()) {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         tensorContext_.data.numel() * 2 <= MAX_TENSOR_SIZE,
         "We tried to allocate an output encoded tensor larger than ",
         MAX_TENSOR_SIZE,
@@ -98,7 +101,7 @@ int AVIOToTensorContext::write(const uint8_t* buf, int size) {
         tc::cat({tensorContext_.data, tensorContext_.data}, 0);
   }
 
-  STD_TORCH_CHECK(
+  TC_CHECK(
       tensorContext_.current_pos + bufSize <= tensorContext_.data.numel(),
       "Re-allocation of the output tensor didn't work. ",
       "This should not happen, please report on TorchCodec bug tracker");

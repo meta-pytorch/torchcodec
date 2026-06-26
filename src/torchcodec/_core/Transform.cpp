@@ -6,7 +6,7 @@
 
 #include "Transform.h"
 #include "FFMPEGCommon.h"
-#include "StableABICompat.h"
+#include "TCError.h"
 
 namespace facebook::torchcodec {
 
@@ -18,7 +18,7 @@ std::string toFilterGraphInterpolation(
     case ResizeTransform::InterpolationMode::BILINEAR:
       return "bilinear";
     default:
-      STD_TORCH_CHECK(
+      TC_CHECK(
           false,
           "Unknown interpolation mode: " +
               std::to_string(static_cast<int>(mode)));
@@ -30,7 +30,7 @@ int toSwsInterpolation(ResizeTransform::InterpolationMode mode) {
     case ResizeTransform::InterpolationMode::BILINEAR:
       return SWS_BILINEAR;
     default:
-      STD_TORCH_CHECK(
+      TC_CHECK(
           false,
           "Unknown interpolation mode: " +
               std::to_string(static_cast<int>(mode)));
@@ -61,8 +61,8 @@ CropTransform::CropTransform(const FrameDims& dims) : outputDims_(dims) {}
 
 CropTransform::CropTransform(const FrameDims& dims, int x, int y)
     : outputDims_(dims), x_(x), y_(y) {
-  STD_TORCH_CHECK(x >= 0, "Crop x position must be >= 0, got: ", x);
-  STD_TORCH_CHECK(y >= 0, "Crop y position must be >= 0, got: ", y);
+  TC_CHECK(x >= 0, "Crop x position must be >= 0, got: ", x);
+  TC_CHECK(y >= 0, "Crop y position must be >= 0, got: ", y);
 }
 
 std::string CropTransform::getFilterGraphCpu() const {
@@ -80,43 +80,43 @@ std::optional<FrameDims> CropTransform::getOutputFrameDims() const {
 }
 
 void CropTransform::validate(const FrameDims& inputDims) const {
-  STD_TORCH_CHECK(
+  TC_CHECK(
       outputDims_.height <= inputDims.height,
       "Crop output height (",
       outputDims_.height,
       ") is greater than input height (",
       inputDims.height,
       ")");
-  STD_TORCH_CHECK(
+  TC_CHECK(
       outputDims_.width <= inputDims.width,
       "Crop output width (",
       outputDims_.width,
       ") is greater than input width (",
       inputDims.width,
       ")");
-  STD_TORCH_CHECK(
+  TC_CHECK(
       x_.has_value() == y_.has_value(),
       "Crop x and y values must be both set or both unset");
   if (x_.has_value()) {
-    STD_TORCH_CHECK(
+    TC_CHECK(
         x_.value() <= inputDims.width,
         "Crop x start position, ",
         x_.value(),
         ", out of bounds of input width, ",
         inputDims.width);
-    STD_TORCH_CHECK(
+    TC_CHECK(
         x_.value() + outputDims_.width <= inputDims.width,
         "Crop x end position, ",
         x_.value() + outputDims_.width,
         ", out of bounds of input width ",
         inputDims.width);
-    STD_TORCH_CHECK(
+    TC_CHECK(
         y_.value() <= inputDims.height,
         "Crop y start position, ",
         y_.value(),
         ", out of bounds of input height, ",
         inputDims.height);
-    STD_TORCH_CHECK(
+    TC_CHECK(
         y_.value() + outputDims_.height <= inputDims.height,
         "Crop y end position, ",
         y_.value() + outputDims_.height,
@@ -142,7 +142,7 @@ Rotation rotationFromDegrees(std::optional<double> degrees) {
     case -180:
       return Rotation::ROTATE180;
     default:
-      STD_TORCH_CHECK(
+      TC_CHECK(
           false,
           "Unexpected rotation value: ",
           *degrees,

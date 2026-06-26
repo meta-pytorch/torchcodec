@@ -21,6 +21,7 @@
 #include <memory>
 #include <optional>
 #include <ostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -129,6 +130,21 @@ inline std::ostream& operator<<(std::ostream& os, ScalarType dtype) {
 }
 inline std::ostream& operator<<(std::ostream& os, DeviceType type) {
   return os << deviceTypeName(type);
+}
+
+// Render a shape/strides vector like "[2, 3, 4]" for error messages (replaces
+// StableABICompat's intArrayRefToString).
+inline std::string intArrayRefToString(const std::vector<int64_t>& arr) {
+  std::ostringstream ss;
+  ss << "[";
+  for (size_t i = 0; i < arr.size(); ++i) {
+    if (i > 0) {
+      ss << ", ";
+    }
+    ss << arr[i];
+  }
+  ss << "]";
+  return ss.str();
 }
 
 // Scalar-type convenience constants (mirror the kStable* names the core used).
