@@ -97,9 +97,9 @@ struct TorchHookRegistrar {
     tc::setAllocator(allocViaTorch);
     tc::registerDeviceBackend(tc::DeviceType::CUDA, makeTorchCudaBackend());
 #ifdef USE_CUDA
-    // Return torch's current CUDA stream so decoded GPU frames stay synchronized
-    // with the user's torch stream (the original behavior). Passed as void* to
-    // keep CUDAStreamHook.h free of <cuda_runtime.h>.
+    // Return torch's current CUDA stream so decoded GPU frames stay
+    // synchronized with the user's torch stream (the original behavior). Passed
+    // as void* to keep CUDAStreamHook.h free of <cuda_runtime.h>.
     setCudaStreamProvider([](int32_t deviceIndex) -> void* {
       void* stream = nullptr;
       TORCH_ERROR_CODE_CHECK(

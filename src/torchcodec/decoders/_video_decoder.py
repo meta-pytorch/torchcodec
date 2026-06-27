@@ -35,11 +35,11 @@ except ImportError:
     # are unsupported and raise downstream.
     import numpy as _np
 
-    torch = None
-    torch_device = ()  # makes isinstance(device, torch_device) always False
-    nn = None
-    Tensor = _np.ndarray
-    DecoderTransform = object
+    torch = None  # type: ignore[assignment]
+    torch_device = ()  # type: ignore[misc,assignment] # isinstance(...) -> False
+    nn = None  # type: ignore[assignment]
+    Tensor = _np.ndarray  # type: ignore[misc,assignment]
+    DecoderTransform = object  # type: ignore[misc,assignment]
     _HAS_TORCH = False
     _DEFAULT_OUTPUT_DTYPE = "uint8"
 
@@ -205,7 +205,7 @@ class VideoDecoder:
         device: str | torch_device | None = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
         transforms: Sequence[DecoderTransform | nn.Module] | None = None,
-        output_dtype: torch.dtype | Literal["auto"] = _DEFAULT_OUTPUT_DTYPE,
+        output_dtype: torch.dtype | Literal["auto"] = _DEFAULT_OUTPUT_DTYPE,  # type: ignore[assignment]
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,

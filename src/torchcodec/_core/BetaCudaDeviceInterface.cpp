@@ -132,8 +132,7 @@ static UniqueCUvideodecoder createDecoder(
 
   CUvideodecoder* decoder = new CUvideodecoder();
   CUresult result = cuvidCreateDecoder(decoder, &decoderParams);
-  TC_CHECK(
-      result == CUDA_SUCCESS, "Failed to create NVDEC decoder: ", result);
+  TC_CHECK(result == CUDA_SUCCESS, "Failed to create NVDEC decoder: ", result);
   return UniqueCUvideodecoder(decoder, CUvideoDecoderDeleter{});
 }
 
@@ -273,8 +272,7 @@ void cudaBufferFreeCallback(void* opaque, [[maybe_unused]] uint8_t* data) {
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const tc::Device& device)
     : DeviceInterface(device) {
   TC_CHECK(g_cuda_nvdec, "NvdecCudaDeviceInterface was not registered!");
-  TC_CHECK(
-      device_.type() == tc::kCUDA, "Unsupported device: must be CUDA");
+  TC_CHECK(device_.type() == tc::kCUDA, "Unsupported device: must be CUDA");
 
   initializeCudaContext(device_);
 
@@ -303,8 +301,7 @@ void BetaCudaDeviceInterface::initializeVideo(
           "Video stream not supported by NVDEC; falling back to CPU decoding.");
     }
     cpuFallback_ = createDeviceInterface(tc::kCPU);
-    TC_CHECK(
-        cpuFallback_ != nullptr, "Failed to create CPU device interface");
+    TC_CHECK(cpuFallback_ != nullptr, "Failed to create CPU device interface");
     cpuFallback_->initialize(codecContext_);
     cpuFallback_->initializeVideo(
         avStream,
@@ -357,8 +354,7 @@ void BetaCudaDeviceInterface::initializeVideo(
   }
 
   CUresult result = cuvidCreateVideoParser(&videoParser_, &parserParams);
-  TC_CHECK(
-      result == CUDA_SUCCESS, "Failed to create video parser: ", result);
+  TC_CHECK(result == CUDA_SUCCESS, "Failed to create video parser: ", result);
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
@@ -446,8 +442,7 @@ void BetaCudaDeviceInterface::initializeBSF(
   }
 
   const AVBitStreamFilter* avBSF = av_bsf_get_by_name(filterName.c_str());
-  TC_CHECK(
-      avBSF != nullptr, "Failed to find bitstream filter: ", filterName);
+  TC_CHECK(avBSF != nullptr, "Failed to find bitstream filter: ", filterName);
 
   AVBSFContext* avBSFContext = nullptr;
   int retVal = av_bsf_alloc(avBSF, &avBSFContext);
@@ -672,8 +667,7 @@ void BetaCudaDeviceInterface::unmapPreviousFrame() {
   }
   CUresult result =
       cuvidUnmapVideoFrame(*decoder_.get(), previouslyMappedFrame_);
-  TC_CHECK(
-      result == CUDA_SUCCESS, "Failed to unmap previous frame: ", result);
+  TC_CHECK(result == CUDA_SUCCESS, "Failed to unmap previous frame: ", result);
   previouslyMappedFrame_ = 0;
 }
 
@@ -689,8 +683,7 @@ UniqueAVFrame BetaCudaDeviceInterface::convertCudaFrameToAVFrame(
   int height = videoFormat_.display_area.bottom - videoFormat_.display_area.top;
 
   TC_CHECK(width > 0 && height > 0, "Invalid frame dimensions");
-  TC_CHECK(
-      pitch >= static_cast<unsigned int>(width), "Pitch must be >= width");
+  TC_CHECK(pitch >= static_cast<unsigned int>(width), "Pitch must be >= width");
 
   UniqueAVFrame avFrame(av_frame_alloc());
   TC_CHECK(avFrame.get() != nullptr, "Failed to allocate AVFrame");

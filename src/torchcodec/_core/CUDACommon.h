@@ -40,8 +40,8 @@ void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream);
 // way FFmpeg then reuses that context rather than creating an incompatible one.
 void initializeCudaContext(const tc::Device& device);
 
-// RAII guard that sets the current CUDA device for its lifetime and restores the
-// previously-current device on destruction. Torch-free replacement for
+// RAII guard that sets the current CUDA device for its lifetime and restores
+// the previously-current device on destruction. Torch-free replacement for
 // torch::stable::accelerator::DeviceGuard. A negative index is a no-op.
 class CudaDeviceGuard {
  public:

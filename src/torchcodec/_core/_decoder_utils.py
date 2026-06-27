@@ -40,11 +40,11 @@ except ImportError:
     # (now lazy) annotations and the isinstance check below.
     import numpy as _np
 
-    nn = None
-    Tensor = _np.ndarray
-    DecoderTransform = object
+    nn = None  # type: ignore[assignment]
+    Tensor = _np.ndarray  # type: ignore[misc,assignment]
+    DecoderTransform = object  # type: ignore[misc,assignment]
 
-    def _make_transform_specs(transforms, input_dims):
+    def _make_transform_specs(transforms, input_dims):  # type: ignore[misc]
         if transforms:
             raise NotImplementedError("Transforms require PyTorch.")
         return ""

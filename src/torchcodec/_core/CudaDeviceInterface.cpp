@@ -91,8 +91,7 @@ UniqueAVBufferRef getHardwareDeviceContext(const tc::Device& device) {
 CudaDeviceInterface::CudaDeviceInterface(const tc::Device& device)
     : DeviceInterface(device) {
   TC_CHECK(g_cuda, "CudaDeviceInterface was not registered!");
-  TC_CHECK(
-      device_.type() == tc::kCUDA, "Unsupported device: must be CUDA");
+  TC_CHECK(device_.type() == tc::kCUDA, "Unsupported device: must be CUDA");
 
   // Resolve unspecified device index (-1) to the actual current CUDA device.
   device_.set_index(getDeviceIndex(device_));
@@ -125,8 +124,7 @@ void CudaDeviceInterface::initializeVideo(
 
   // TODO: Ideally, we should keep all interface implementations independent.
   cpuInterface_ = createDeviceInterface(tc::kCPU);
-  TC_CHECK(
-      cpuInterface_ != nullptr, "Failed to create CPU device interface");
+  TC_CHECK(cpuInterface_ != nullptr, "Failed to create CPU device interface");
   cpuInterface_->initialize(codecContext_);
   cpuInterface_->initializeVideo(
       avStream,

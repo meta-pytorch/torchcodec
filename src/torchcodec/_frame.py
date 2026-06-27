@@ -16,7 +16,7 @@ except ImportError:
     # Torch-free install: frame data is a numpy.ndarray. The dataclasses below
     # only rely on .ndim/.shape/indexing/iteration, which numpy supports. The
     # annotation is informational only (dataclasses don't enforce types).
-    from numpy import ndarray as Tensor  # noqa: F401
+    from numpy import ndarray as Tensor  # type: ignore[assignment]  # noqa: F401
 
 
 def _frame_repr(self):

@@ -18,7 +18,7 @@ try:
     _Decoder = torch.Tensor
 except ImportError:
     # Torch-free install: the decoder handle is an opaque int pointer.
-    _Decoder = Any
+    _Decoder = Any  # type: ignore[misc,assignment]
 from torchcodec._core.ops import (
     _get_container_json_metadata,
     _get_stream_json_metadata,

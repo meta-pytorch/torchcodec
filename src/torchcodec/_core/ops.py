@@ -20,6 +20,7 @@ import shutil
 import sys
 from contextlib import nullcontext
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchcodec/src:internally_replaced_utils
     load_torchcodec_shared_libraries,
@@ -58,8 +59,28 @@ with expose_ffmpeg_dlls():
 if _HAS_TORCH:
     from torchcodec._core import _torch_ops as _impl
 else:
-    from torchcodec._core import _numpy_ops as _impl
+    from torchcodec._core import _numpy_ops as _impl  # type: ignore[no-redef]
 
 globals().update(
     {key: value for key, value in vars(_impl).items() if not key.startswith("__")}
 )
+
+
+# The op functions are injected into this module's namespace at runtime by the
+# globals().update() above, so they aren't visible to static type-checkers. Make
+# them statically resolvable by re-exporting the backend surface under
+# TYPE_CHECKING (this is type-check-only; runtime uses globals().update). We use
+# _torch_ops as the canonical surface since it declares the full op set,
+# including the underscore-prefixed ops that `import *` would skip.
+if TYPE_CHECKING:
+    from torchcodec._core._torch_ops import *  # noqa: F401,F403
+    from torchcodec._core._torch_ops import (  # noqa: F401
+        _get_backend_details,
+        _get_container_json_metadata,
+        _get_key_frame_indices,
+        _get_log_level,
+        _get_nvdec_cache_size,
+        _get_stream_json_metadata,
+        _set_cpp_log_level,
+        _test_frame_pts_equality,
+    )

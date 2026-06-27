@@ -36,7 +36,7 @@ _DLPACK_CUDA = 2
 
 def _cupy():
     try:
-        import cupy
+        import cupy  # type: ignore[import-not-found]
     except ImportError as e:
         raise RuntimeError(
             "Decoding on CUDA without PyTorch returns a cupy array, but cupy "
