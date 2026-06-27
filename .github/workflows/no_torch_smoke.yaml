@@ -174,7 +174,10 @@ jobs:
         run: python -m pip install --upgrade pip
       - name: Install build + runtime deps incl. CUDA toolkit (deliberately NO torch)
         run: |
-          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" pkg-config pybind11 numpy cmake setuptools pip cxx-compiler cuda-nvcc cuda-cudart-dev cuda-version=12.6 -c conda-forge -c nvidia
+          # cuda-nvrtc: cupy JIT-compiles a kernel for any real op (even copying
+          # our non-contiguous CHW frames to host), and cupy-cuda12x does NOT
+          # bundle the NVRTC runtime -- it expects it from the CUDA install.
+          conda install "ffmpeg=${{ matrix.ffmpeg-version-for-tests }}" pkg-config pybind11 numpy cmake setuptools pip cxx-compiler cuda-nvcc cuda-cudart-dev cuda-nvrtc cuda-version=12.6 -c conda-forge -c nvidia
           python -m pip install cupy-cuda12x
           nvidia-smi
           ffmpeg -version | head -1
@@ -205,5 +208,7 @@ jobs:
           echo "no torch linkage (good)"
       - name: Run torch-free CUDA smoke test (decode to cupy on GPU)
         run: |
+          # Ensure cupy's pathfinder can locate the conda-installed libnvrtc.so.
+          export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
           cd "${RUNNER_TEMP:-/tmp}"
           python "${GITHUB_WORKSPACE}/test/smoke_test_no_torch_cuda.py"
