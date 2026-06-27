@@ -40,6 +40,13 @@ def main():
     decoder = VideoDecoder(video, device="cuda")
     assert len(decoder) > 0
 
+    # We validate values on the host via cp.asnumpy (a plain device->host copy).
+    # We deliberately avoid cupy reductions like .sum() on the device: those
+    # JIT-compile a kernel via NVRTC, which exercises cupy's build toolchain
+    # rather than torchcodec's decode (and isn't always present in CI).
+    def host_sum(arr):
+        return int(cp.asnumpy(arr).sum())
+
     # Single frame -> cupy uint8 on the GPU.
     frame = decoder[10]
     assert isinstance(frame, cp.ndarray), type(frame)
@@ -47,7 +54,7 @@ def main():
     assert frame.shape == (3, 270, 480), frame.shape
     assert int(frame.device.id) >= 0
     print(f"decoder[10]: {type(frame).__module__}.{type(frame).__name__} "
-          f"{frame.shape} {frame.dtype} on {frame.device}, sum={int(frame.sum())}")
+          f"{frame.shape} {frame.dtype} on {frame.device}, sum={host_sum(frame)}")
 
     # Time-based single frame.
     played = decoder.get_frame_played_at(1.0).data
@@ -58,7 +65,7 @@ def main():
     batch = decoder.get_frames_in_range(0, 10, 2)
     assert isinstance(batch.data, cp.ndarray), type(batch.data)
     assert batch.data.shape == (5, 3, 270, 480), batch.data.shape
-    assert batch.data.sum() > 0
+    assert host_sum(batch.data) > 0
     print(f"get_frames_in_range(0,10,2): {batch.data.shape}, "
           f"pts={tuple(batch.pts_seconds)}")
 
