@@ -6,6 +6,7 @@
 
 #include "WavDecoder.h"
 #include <algorithm>
+#include <array>
 
 #include <cstddef>
 #include <cstring>

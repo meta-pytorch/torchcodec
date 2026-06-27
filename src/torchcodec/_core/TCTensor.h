@@ -46,6 +46,11 @@ enum class DeviceType {
   CPU,
   CUDA,
   XPU,
+  // Generic slot for out-of-tree / third-party device interfaces (mirrors
+  // torch's PrivateUse1). The core implements no compute for it; a third-party
+  // plugin registers a DeviceInterface under this type. See
+  // test/third-party-interface.
+  PrivateUse1,
 };
 
 // Mirrors the small surface of torch::stable::Device (type()/index()) so core
@@ -96,6 +101,7 @@ class Device {
 constexpr DeviceType kCPU = DeviceType::CPU;
 constexpr DeviceType kCUDA = DeviceType::CUDA;
 constexpr DeviceType kXPU = DeviceType::XPU;
+constexpr DeviceType kPrivateUse1 = DeviceType::PrivateUse1;
 
 inline const char* deviceTypeName(DeviceType type) {
   switch (type) {
@@ -105,6 +111,8 @@ inline const char* deviceTypeName(DeviceType type) {
       return "cuda";
     case DeviceType::XPU:
       return "xpu";
+    case DeviceType::PrivateUse1:
+      return "privateuseone";
   }
   return "unknown";
 }

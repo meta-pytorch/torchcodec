@@ -16,6 +16,7 @@
 
 #include <torch/headeronly/core/TensorAccessor.h>
 
+#include <array>
 #include <sstream>
 #include <stdexcept>
 #include <string>

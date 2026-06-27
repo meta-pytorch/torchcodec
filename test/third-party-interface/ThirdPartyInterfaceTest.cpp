@@ -12,7 +12,7 @@ namespace facebook::torchcodec {
 
 class DummyDeviceInterface : public DeviceInterface {
  public:
-  DummyDeviceInterface(const StableDevice& device) : DeviceInterface(device) {}
+  DummyDeviceInterface(const tc::Device& device) : DeviceInterface(device) {}
 
   virtual ~DummyDeviceInterface() {}
 
@@ -20,13 +20,13 @@ class DummyDeviceInterface : public DeviceInterface {
     // Access to CPU device interface is essential for CPU fallback
     // implementation
     std::unique_ptr<DeviceInterface> cpuInterface =
-        createDeviceInterface(kStableCPU);
+        createDeviceInterface(tc::Device(tc::kCPU));
   }
 
   void convertAVFrameToFrameOutput(
       UniqueAVFrame& avFrame,
       FrameOutput& frameOutput,
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor =
+      std::optional<tc::Tensor> preAllocatedOutputTensor =
           std::nullopt) override {}
 
  private:
@@ -35,9 +35,7 @@ class DummyDeviceInterface : public DeviceInterface {
 
 namespace {
 static bool g_dummy = registerDeviceInterface(
-    DeviceInterfaceKey(StableDeviceType::PrivateUse1),
-    [](const StableDevice& device) {
-      return new DummyDeviceInterface(device);
-    });
+    DeviceInterfaceKey(tc::kPrivateUse1),
+    [](const tc::Device& device) { return new DummyDeviceInterface(device); });
 } // namespace
 } // namespace facebook::torchcodec
