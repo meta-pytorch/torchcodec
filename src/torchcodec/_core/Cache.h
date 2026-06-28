@@ -33,7 +33,7 @@ class Cache {
 
   // Adds an object to the cache if the cache has capacity. Returns true
   // if object was added and false otherwise.
-  bool addIfCacheHasCapacity(element_type&& obj);
+  bool add_if_cache_has_capacity(element_type&& obj);
 
   // Returns an object from the cache. Cache does not hold a reference
   // to the object after this call.
@@ -46,7 +46,7 @@ class Cache {
 };
 
 template <typename T, typename D>
-bool Cache<T, D>::addIfCacheHasCapacity(element_type&& obj) {
+bool Cache<T, D>::add_if_cache_has_capacity(element_type&& obj) {
   std::scoped_lock lock(mutex_);
   if (capacity_ >= 0 && cache_.size() >= static_cast<size_t>(capacity_)) {
     return false;
@@ -74,16 +74,18 @@ class PerGpuCache {
 
   // Initializes 'maxGpus' number of caches. Each cache can hold no
   // more than 'capacity' items. If 'capacity' <0 cache size is unlimited.
-  PerGpuCache(int maxGpus, int capacity) {
-    STD_TORCH_CHECK(maxGpus > 0, "maxGpus for PerGpuCache must be >0");
-    for (int i = 0; i < maxGpus; ++i) {
+  PerGpuCache(int max_gpus, int capacity) {
+    STD_TORCH_CHECK(max_gpus > 0, "maxGpus for PerGpuCache must be >0");
+    for (int i = 0; i < max_gpus; ++i) {
       cache_.emplace_back(std::make_unique<Cache<T, D>>(capacity));
     }
   }
 
   // Adds an object to the specified device cache if the cache has
   // capacity. Returns true if object was added and false otherwise.
-  bool addIfCacheHasCapacity(const StableDevice& device, element_type&& obj);
+  bool add_if_cache_has_capacity(
+      const StableDevice& device,
+      element_type&& obj);
 
   // Returns an object from the cache of the specified device. Cache
   // does not hold a reference to the object after this call.
@@ -95,30 +97,30 @@ class PerGpuCache {
   std::vector<std::unique_ptr<Cache<T, D>>> cache_;
 };
 
-// Forward declaration of getDeviceIndex which exists in CUDACommon.h
+// Forward declaration of get_device_index which exists in CUDACommon.h
 // This avoids circular dependency between Cache.h and CUDACommon.cpp which also
 // needs to include Cache.h
-int getDeviceIndex(const StableDevice& device);
+int get_device_index(const StableDevice& device);
 
 template <typename T, typename D>
-bool PerGpuCache<T, D>::addIfCacheHasCapacity(
+bool PerGpuCache<T, D>::add_if_cache_has_capacity(
     const StableDevice& device,
     element_type&& obj) {
-  int deviceIndex = getDeviceIndex(device);
+  int device_index = get_device_index(device);
   STD_TORCH_CHECK(
-      static_cast<size_t>(deviceIndex) < cache_.size(),
+      static_cast<size_t>(device_index) < cache_.size(),
       "Device index out of range");
-  return cache_[deviceIndex]->addIfCacheHasCapacity(std::move(obj));
+  return cache_[device_index]->add_if_cache_has_capacity(std::move(obj));
 }
 
 template <typename T, typename D>
 typename PerGpuCache<T, D>::element_type PerGpuCache<T, D>::get(
     const StableDevice& device) {
-  int deviceIndex = getDeviceIndex(device);
+  int device_index = get_device_index(device);
   STD_TORCH_CHECK(
-      static_cast<size_t>(deviceIndex) < cache_.size(),
+      static_cast<size_t>(device_index) < cache_.size(),
       "Device index out of range");
-  return cache_[deviceIndex]->get();
+  return cache_[device_index]->get();
 }
 
 } // namespace facebook::torchcodec

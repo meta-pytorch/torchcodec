@@ -13,14 +13,14 @@
 
 namespace facebook::torchcodec {
 
-static std::atomic<int> gLogLevel{static_cast<int>(LogLevel::OFF)};
+static std::atomic<int> g_log_level{static_cast<int>(LogLevel::OFF)};
 
-void setCppLogLevel(LogLevel level) {
-  gLogLevel.store(static_cast<int>(level), std::memory_order_relaxed);
+void set_cpp_log_level(LogLevel level) {
+  g_log_level.store(static_cast<int>(level), std::memory_order_relaxed);
 }
 
-LogLevel getLogLevel() {
-  return static_cast<LogLevel>(gLogLevel.load(std::memory_order_relaxed));
+LogLevel get_log_level() {
+  return static_cast<LogLevel>(g_log_level.load(std::memory_order_relaxed));
 }
 
 namespace internal {

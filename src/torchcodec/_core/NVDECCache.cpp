@@ -20,22 +20,22 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-NVDECCache* NVDECCache::getCacheInstances() {
+NVDECCache* NVDECCache::get_cache_instances() {
   // Intentionally leaked to avoid calling into CUDA/NVCUVID during static
   // destruction, when the CUDA runtime may already be torn down.
-  static NVDECCache* cacheInstances = new NVDECCache[MAX_CUDA_GPUS];
-  return cacheInstances;
+  static NVDECCache* cache_instances = new NVDECCache[MAX_CUDA_GPUS];
+  return cache_instances;
 }
 
-NVDECCache& NVDECCache::getCache(const StableDevice& device) {
-  return getCacheInstances()[getDeviceIndex(device)];
+NVDECCache& NVDECCache::get_cache(const StableDevice& device) {
+  return get_cache_instances()[get_device_index(device)];
 }
 
-UniqueCUvideodecoder NVDECCache::getDecoder(
-    CUVIDEOFORMAT* videoFormat,
-    cudaVideoSurfaceFormat surfaceFormat) {
-  CacheKey key(videoFormat, surfaceFormat);
-  std::lock_guard<std::mutex> lock(cacheLock_);
+UniqueCUvideodecoder NVDECCache::get_decoder(
+    CUVIDEOFORMAT* video_format,
+    cudaVideoSurfaceFormat surface_format) {
+  CacheKey key(video_format, surface_format);
+  std::lock_guard<std::mutex> lock(cache_lock_);
 
   // Find an entry with matching key
   auto it = cache_.find(key);
@@ -50,29 +50,29 @@ UniqueCUvideodecoder NVDECCache::getDecoder(
 
 // Evicts the least-recently-used entry from cache_.
 // Caller must hold cacheLock_!!!
-void NVDECCache::evictLRUEntry() {
+void NVDECCache::evict_lru_entry() {
   if (cache_.empty()) {
     return;
   }
   auto victim = cache_.begin();
   for (auto it = cache_.begin(); it != cache_.end(); ++it) {
-    if (it->second.lastUsed < victim->second.lastUsed) {
+    if (it->second.last_used < victim->second.last_used) {
       victim = it;
     }
   }
   cache_.erase(victim);
 }
 
-void NVDECCache::returnDecoder(
-    CUVIDEOFORMAT* videoFormat,
-    cudaVideoSurfaceFormat surfaceFormat,
+void NVDECCache::return_decoder(
+    CUVIDEOFORMAT* video_format,
+    cudaVideoSurfaceFormat surface_format,
     UniqueCUvideodecoder decoder) {
   STD_TORCH_CHECK(decoder != nullptr, "decoder must not be null");
 
-  CacheKey key(videoFormat, surfaceFormat);
-  std::lock_guard<std::mutex> lock(cacheLock_);
+  CacheKey key(video_format, surface_format);
+  std::lock_guard<std::mutex> lock(cache_lock_);
 
-  int capacity = getNVDECCacheCapacity();
+  int capacity = get_nvdec_cache_capacity();
   if (capacity <= 0) {
     return;
   }
@@ -81,30 +81,30 @@ void NVDECCache::returnDecoder(
   // This search is O(capacity), which is supposed to be small,
   // so linear vs constant search overhead is expected to be negligible.
   while (cache_.size() >= static_cast<size_t>(capacity)) {
-    evictLRUEntry();
+    evict_lru_entry();
   }
 
   // Add the decoder back to cache
-  cache_.emplace(key, CacheEntry(std::move(decoder), lastUsedCounter_++));
+  cache_.emplace(key, CacheEntry(std::move(decoder), last_used_counter_++));
 
   STD_TORCH_CHECK(
       cache_.size() <= static_cast<size_t>(capacity),
       "Cache size exceeded capacity, please report a bug");
 }
 
-void NVDECCache::evictExcessEntriesAcrossDevices(int capacity) {
-  NVDECCache* instances = getCacheInstances();
+void NVDECCache::evict_excess_entries_across_devices(int capacity) {
+  NVDECCache* instances = get_cache_instances();
   for (int i = 0; i < MAX_CUDA_GPUS; ++i) {
-    std::lock_guard<std::mutex> lock(instances[i].cacheLock_);
+    std::lock_guard<std::mutex> lock(instances[i].cache_lock_);
     while (instances[i].cache_.size() > static_cast<size_t>(capacity)) {
-      instances[i].evictLRUEntry();
+      instances[i].evict_lru_entry();
     }
   }
 }
 
-int NVDECCache::getCacheSizeForDevice(int device_index) {
-  NVDECCache* instances = getCacheInstances();
-  std::lock_guard<std::mutex> lock(instances[device_index].cacheLock_);
+int NVDECCache::get_cache_size_for_device(int device_index) {
+  NVDECCache* instances = get_cache_instances();
+  std::lock_guard<std::mutex> lock(instances[device_index].cache_lock_);
   return static_cast<int>(instances[device_index].cache_.size());
 }
 

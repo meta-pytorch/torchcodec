@@ -26,12 +26,12 @@ namespace facebook::torchcodec {
 class FORCE_PUBLIC_VISIBILITY AVIOContextHolder {
  public:
   virtual ~AVIOContextHolder();
-  AVIOContext* getAVIOContext();
+  AVIOContext* get_avio_context();
 
   virtual int read(uint8_t* buf, int size);
   virtual int write(const uint8_t* buf, int size);
   virtual int64_t seek(int64_t offset, int whence);
-  virtual int64_t getSize();
+  virtual int64_t get_size();
 
  protected:
   AVIOContextHolder() = default;
@@ -39,17 +39,19 @@ class FORCE_PUBLIC_VISIBILITY AVIOContextHolder {
   // Sets up an FFmpeg AVIOContext whose callbacks delegate to the
   // virtual methods above. Derived classes that need FFmpeg AVIO
   // should call this in their constructor.
-  void createAVIOContext(bool isForWriting, int bufferSize = defaultBufferSize);
+  void create_avio_context(
+      bool is_for_writing,
+      int buffer_size = default_buffer_size);
 
  private:
-  static int readCallback(void* opaque, uint8_t* buf, int buf_size);
-  static int writeCallback(void* opaque, const uint8_t* buf, int buf_size);
-  static int64_t seekCallback(void* opaque, int64_t offset, int whence);
+  static int read_callback(void* opaque, uint8_t* buf, int buf_size);
+  static int write_callback(void* opaque, const uint8_t* buf, int buf_size);
+  static int64_t seek_callback(void* opaque, int64_t offset, int whence);
 
-  UniqueAVIOContext avioContext_;
+  UniqueAVIOContext avio_context_;
 
   // Defaults to 64 KB
-  static const int defaultBufferSize = 64 * 1024;
+  static const int default_buffer_size = 64 * 1024;
 };
 
 } // namespace facebook::torchcodec

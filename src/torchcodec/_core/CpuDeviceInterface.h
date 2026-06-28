@@ -19,60 +19,61 @@ class CpuDeviceInterface : public DeviceInterface {
 
   virtual ~CpuDeviceInterface() {}
 
-  std::optional<const AVCodec*> findCodec(
-      [[maybe_unused]] const AVCodecID& codecId,
-      [[maybe_unused]] bool isDecoder = true) override {
+  std::optional<const AVCodec*> find_codec(
+      [[maybe_unused]] const AVCodecID& codec_id,
+      [[maybe_unused]] bool is_decoder = true) override {
     return std::nullopt;
   }
 
-  virtual void initialize(const SharedAVCodecContext& codecContext) override;
+  virtual void initialize(const SharedAVCodecContext& codec_context) override;
 
-  virtual void initializeVideo(
-      const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx,
-      const VideoStreamOptions& videoStreamOptions,
+  virtual void initialize_video(
+      const AVStream* av_stream,
+      const UniqueDecodingAVFormatContext& av_format_ctx,
+      const VideoStreamOptions& video_stream_options,
       const std::vector<std::unique_ptr<Transform>>& transforms,
-      const std::optional<FrameDims>& resizedOutputDims) override;
+      const std::optional<FrameDims>& resized_output_dims) override;
 
-  virtual void initializeAudio(
-      const AudioStreamOptions& audioStreamOptions) override;
+  virtual void initialize_audio(
+      const AudioStreamOptions& audio_stream_options) override;
 
-  virtual std::optional<torch::stable::Tensor> maybeFlushAudioBuffers()
+  virtual std::optional<torch::stable::Tensor> maybe_flush_audio_buffers()
       override;
 
-  void convertAVFrameToFrameOutput(
-      UniqueAVFrame& avFrame,
-      FrameOutput& frameOutput,
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor) override;
+  void convert_av_frame_to_frame_output(
+      UniqueAVFrame& av_frame,
+      FrameOutput& frame_output,
+      std::optional<torch::stable::Tensor> pre_allocated_output_tensor)
+      override;
 
-  UniqueAVFrame convertTensorToAVFrameForEncoding(
+  UniqueAVFrame convert_tensor_to_av_frame_for_encoding(
       const torch::stable::Tensor& tensor,
-      int frameIndex,
-      AVCodecContext* codecContext) override;
+      int frame_index,
+      AVCodecContext* codec_context) override;
 
-  std::string getDetails() override;
+  std::string get_details() override;
 
  private:
-  void convertAudioAVFrameToFrameOutput(
-      UniqueAVFrame& srcAVFrame,
-      FrameOutput& frameOutput);
+  void convert_audio_av_frame_to_frame_output(
+      UniqueAVFrame& src_av_frame,
+      FrameOutput& frame_output);
 
-  void convertVideoAVFrameToFrameOutput(
-      UniqueAVFrame& avFrame,
-      FrameOutput& frameOutput,
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor);
+  void convert_video_av_frame_to_frame_output(
+      UniqueAVFrame& av_frame,
+      FrameOutput& frame_output,
+      std::optional<torch::stable::Tensor> pre_allocated_output_tensor);
 
-  torch::stable::Tensor convertAVFrameToTensorUsingFilterGraph(
-      const UniqueAVFrame& avFrame,
-      const FrameDims& outputDims);
+  torch::stable::Tensor convert_av_frame_to_tensor_using_filter_graph(
+      const UniqueAVFrame& av_frame,
+      const FrameDims& output_dims);
 
-  ColorConversionLibrary getColorConversionLibrary(
-      const FrameDims& inputDims,
-      const FrameDims& outputDims) const;
+  ColorConversionLibrary get_color_conversion_library(
+      const FrameDims& input_dims,
+      const FrameDims& output_dims) const;
 
-  VideoStreamOptions videoStreamOptions_;
-  AVRational timeBase_;
-  AVPixelFormat outputPixelFormat_;
+  VideoStreamOptions video_stream_options_;
+  AVRational time_base_;
+  AVPixelFormat output_pixel_format_;
 
   // If the resized output dimensions are present, then we always use those as
   // the output frame's dimensions. If they are not present, then we use the
@@ -81,7 +82,7 @@ class CpuDeviceInterface : public DeviceInterface {
   // convertAVFrameToFrameOutput(). Deciding the final output frame's actual
   // dimensions late allows us to handle video streams with variable
   // resolutions.
-  std::optional<FrameDims> resizedOutputDims_;
+  std::optional<FrameDims> resized_output_dims_;
 
   // Color-conversion objects. Only one of filterGraph_ and swScale_ should
   // be non-null. Which one we use is determined dynamically in
@@ -94,13 +95,13 @@ class CpuDeviceInterface : public DeviceInterface {
   // to create the object last time. We always compare the current frame's info
   // against the previous one to determine if we need to recreate the color
   // conversion object.
-  std::unique_ptr<FilterGraph> filterGraph_;
-  FiltersConfig prevFiltersConfig_;
-  std::unique_ptr<SwScale> swScale_;
+  std::unique_ptr<FilterGraph> filter_graph_;
+  FiltersConfig prev_filters_config_;
+  std::unique_ptr<SwScale> sw_scale_;
 
   // Cached swscale context for encoding (tensor -> AVFrame pixel format
   // conversion).
-  UniqueSwsContext encodingSwsContext_;
+  UniqueSwsContext encoding_sws_context_;
 
   // We pass these filters to FFmpeg's filtergraph API. It is a simple pipeline
   // of what FFmpeg calls "filters" to apply to decoded frames before returning
@@ -118,19 +119,19 @@ class CpuDeviceInterface : public DeviceInterface {
 
   // Values set during initialization and referred to in
   // getColorConversionLibrary().
-  bool areTransformsSwScaleCompatible_;
-  bool userRequestedSwScale_;
+  bool are_transforms_sw_scale_compatible_;
+  bool user_requested_sw_scale_;
 
   // The flags we supply to the resize swscale context. The flags control the
   // resizing algorithm. We default to bilinear. Users can override this with a
   // ResizeTransform that specifies a different interpolation mode.
-  int swsFlags_ = SWS_BILINEAR;
+  int sws_flags_ = SWS_BILINEAR;
 
   bool initialized_ = false;
 
   // Audio-specific members
-  AudioStreamOptions audioStreamOptions_;
-  UniqueSwrContext swrContext_;
+  AudioStreamOptions audio_stream_options_;
+  UniqueSwrContext swr_context_;
 };
 
 } // namespace facebook::torchcodec

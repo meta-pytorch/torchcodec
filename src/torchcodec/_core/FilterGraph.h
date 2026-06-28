@@ -12,31 +12,31 @@
 namespace facebook::torchcodec {
 
 struct FiltersConfig {
-  int inputWidth = 0;
-  int inputHeight = 0;
-  AVPixelFormat inputFormat = AV_PIX_FMT_NONE;
-  AVRational inputAspectRatio = {0, 0};
-  int outputWidth = 0;
-  int outputHeight = 0;
-  AVPixelFormat outputFormat = AV_PIX_FMT_NONE;
-  std::string filtergraphStr;
-  AVRational timeBase = {0, 0};
-  UniqueAVBufferRef hwFramesCtx;
+  int input_width = 0;
+  int input_height = 0;
+  AVPixelFormat input_format = AV_PIX_FMT_NONE;
+  AVRational input_aspect_ratio = {0, 0};
+  int output_width = 0;
+  int output_height = 0;
+  AVPixelFormat output_format = AV_PIX_FMT_NONE;
+  std::string filtergraph_str;
+  AVRational time_base = {0, 0};
+  UniqueAVBufferRef hw_frames_ctx;
 
   FiltersConfig() = default;
   FiltersConfig(FiltersConfig&&) = default;
   FiltersConfig& operator=(FiltersConfig&&) = default;
   FiltersConfig(
-      int inputWidth,
-      int inputHeight,
-      AVPixelFormat inputFormat,
-      AVRational inputAspectRatio,
-      int outputWidth,
-      int outputHeight,
-      AVPixelFormat outputFormat,
-      const std::string& filtergraphStr,
-      AVRational timeBase,
-      AVBufferRef* hwFramesCtx = nullptr);
+      int input_width,
+      int input_height,
+      AVPixelFormat input_format,
+      AVRational input_aspect_ratio,
+      int output_width,
+      int output_height,
+      AVPixelFormat output_format,
+      const std::string& filtergraph_str,
+      AVRational time_base,
+      AVBufferRef* hw_frames_ctx = nullptr);
 
   bool operator==(const FiltersConfig&) const;
   bool operator!=(const FiltersConfig&) const;
@@ -45,15 +45,15 @@ struct FiltersConfig {
 class FilterGraph {
  public:
   FilterGraph(
-      const FiltersConfig& filtersConfig,
-      const VideoStreamOptions& videoStreamOptions);
+      const FiltersConfig& filters_config,
+      const VideoStreamOptions& video_stream_options);
 
-  UniqueAVFrame convert(const UniqueAVFrame& avFrame);
+  UniqueAVFrame convert(const UniqueAVFrame& av_frame);
 
  private:
-  UniqueAVFilterGraph filterGraph_;
-  AVFilterContext* sourceContext_ = nullptr;
-  AVFilterContext* sinkContext_ = nullptr;
+  UniqueAVFilterGraph filter_graph_;
+  AVFilterContext* source_context_ = nullptr;
+  AVFilterContext* sink_context_ = nullptr;
 };
 
 } // namespace facebook::torchcodec

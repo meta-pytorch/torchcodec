@@ -12,7 +12,7 @@ namespace facebook::torchcodec {
 
 namespace {
 
-std::string toFilterGraphInterpolation(
+std::string to_filter_graph_interpolation(
     ResizeTransform::InterpolationMode mode) {
   switch (mode) {
     case ResizeTransform::InterpolationMode::BILINEAR:
@@ -25,7 +25,7 @@ std::string toFilterGraphInterpolation(
   }
 }
 
-int toSwsInterpolation(ResizeTransform::InterpolationMode mode) {
+int to_sws_interpolation(ResizeTransform::InterpolationMode mode) {
   switch (mode) {
     case ResizeTransform::InterpolationMode::BILINEAR:
       return SWS_BILINEAR;
@@ -39,93 +39,93 @@ int toSwsInterpolation(ResizeTransform::InterpolationMode mode) {
 
 } // namespace
 
-std::string ResizeTransform::getFilterGraphCpu() const {
-  return "scale=" + std::to_string(outputDims_.width) + ":" +
-      std::to_string(outputDims_.height) +
-      ":flags=" + toFilterGraphInterpolation(interpolationMode_);
+std::string ResizeTransform::get_filter_graph_cpu() const {
+  return "scale=" + std::to_string(output_dims_.width) + ":" +
+      std::to_string(output_dims_.height) +
+      ":flags=" + to_filter_graph_interpolation(interpolation_mode_);
 }
 
-std::optional<FrameDims> ResizeTransform::getOutputFrameDims() const {
-  return outputDims_;
+std::optional<FrameDims> ResizeTransform::get_output_frame_dims() const {
+  return output_dims_;
 }
 
-bool ResizeTransform::isResize() const {
+bool ResizeTransform::is_resize() const {
   return true;
 }
 
-int ResizeTransform::getSwsFlags() const {
-  return toSwsInterpolation(interpolationMode_);
+int ResizeTransform::get_sws_flags() const {
+  return to_sws_interpolation(interpolation_mode_);
 }
 
-CropTransform::CropTransform(const FrameDims& dims) : outputDims_(dims) {}
+CropTransform::CropTransform(const FrameDims& dims) : output_dims_(dims) {}
 
 CropTransform::CropTransform(const FrameDims& dims, int x, int y)
-    : outputDims_(dims), x_(x), y_(y) {
+    : output_dims_(dims), x_(x), y_(y) {
   STD_TORCH_CHECK(x >= 0, "Crop x position must be >= 0, got: ", x);
   STD_TORCH_CHECK(y >= 0, "Crop y position must be >= 0, got: ", y);
 }
 
-std::string CropTransform::getFilterGraphCpu() const {
+std::string CropTransform::get_filter_graph_cpu() const {
   // For the FFmpeg filter crop, if the x and y coordinates are left
   // unspecified, it defaults to a center crop.
   std::string coordinates = x_.has_value()
       ? (":" + std::to_string(x_.value()) + ":" + std::to_string(y_.value()))
       : "";
-  return "crop=" + std::to_string(outputDims_.width) + ":" +
-      std::to_string(outputDims_.height) + coordinates + ":exact=1";
+  return "crop=" + std::to_string(output_dims_.width) + ":" +
+      std::to_string(output_dims_.height) + coordinates + ":exact=1";
 }
 
-std::optional<FrameDims> CropTransform::getOutputFrameDims() const {
-  return outputDims_;
+std::optional<FrameDims> CropTransform::get_output_frame_dims() const {
+  return output_dims_;
 }
 
-void CropTransform::validate(const FrameDims& inputDims) const {
+void CropTransform::validate(const FrameDims& input_dims) const {
   STD_TORCH_CHECK(
-      outputDims_.height <= inputDims.height,
+      output_dims_.height <= input_dims.height,
       "Crop output height (",
-      outputDims_.height,
+      output_dims_.height,
       ") is greater than input height (",
-      inputDims.height,
+      input_dims.height,
       ")");
   STD_TORCH_CHECK(
-      outputDims_.width <= inputDims.width,
+      output_dims_.width <= input_dims.width,
       "Crop output width (",
-      outputDims_.width,
+      output_dims_.width,
       ") is greater than input width (",
-      inputDims.width,
+      input_dims.width,
       ")");
   STD_TORCH_CHECK(
       x_.has_value() == y_.has_value(),
       "Crop x and y values must be both set or both unset");
   if (x_.has_value()) {
     STD_TORCH_CHECK(
-        x_.value() <= inputDims.width,
+        x_.value() <= input_dims.width,
         "Crop x start position, ",
         x_.value(),
         ", out of bounds of input width, ",
-        inputDims.width);
+        input_dims.width);
     STD_TORCH_CHECK(
-        x_.value() + outputDims_.width <= inputDims.width,
+        x_.value() + output_dims_.width <= input_dims.width,
         "Crop x end position, ",
-        x_.value() + outputDims_.width,
+        x_.value() + output_dims_.width,
         ", out of bounds of input width ",
-        inputDims.width);
+        input_dims.width);
     STD_TORCH_CHECK(
-        y_.value() <= inputDims.height,
+        y_.value() <= input_dims.height,
         "Crop y start position, ",
         y_.value(),
         ", out of bounds of input height, ",
-        inputDims.height);
+        input_dims.height);
     STD_TORCH_CHECK(
-        y_.value() + outputDims_.height <= inputDims.height,
+        y_.value() + output_dims_.height <= input_dims.height,
         "Crop y end position, ",
-        y_.value() + outputDims_.height,
+        y_.value() + output_dims_.height,
         ", out of bounds of input height ",
-        inputDims.height);
+        input_dims.height);
   }
 }
 
-Rotation rotationFromDegrees(std::optional<double> degrees) {
+Rotation rotation_from_degrees(std::optional<double> degrees) {
   if (!degrees.has_value()) {
     return Rotation::NONE;
   }
@@ -152,17 +152,17 @@ Rotation rotationFromDegrees(std::optional<double> degrees) {
 
 RotationTransform::RotationTransform(
     Rotation rotation,
-    const FrameDims& inputDims)
+    const FrameDims& input_dims)
     : rotation_(rotation) {
   // 90° rotations swap dimensions
   if (rotation_ == Rotation::CCW90 || rotation_ == Rotation::CW90) {
-    outputDims_ = FrameDims(inputDims.width, inputDims.height);
+    output_dims_ = FrameDims(input_dims.width, input_dims.height);
   } else {
-    outputDims_ = inputDims;
+    output_dims_ = input_dims;
   }
 }
 
-std::string RotationTransform::getFilterGraphCpu() const {
+std::string RotationTransform::get_filter_graph_cpu() const {
   switch (rotation_) {
     case Rotation::NONE:
       return "";
@@ -177,8 +177,8 @@ std::string RotationTransform::getFilterGraphCpu() const {
   }
 }
 
-std::optional<FrameDims> RotationTransform::getOutputFrameDims() const {
-  return outputDims_;
+std::optional<FrameDims> RotationTransform::get_output_frame_dims() const {
+  return output_dims_;
 }
 
 } // namespace facebook::torchcodec

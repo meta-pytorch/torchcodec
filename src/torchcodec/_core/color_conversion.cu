@@ -32,42 +32,39 @@ struct ColorMatrix {
 // Vec2T is the corresponding 2-element vector: uchar2 (2 uint8 values for NV12)
 // or ushort2 (2 uint16 values for P016).
 template <typename T, typename Vec2T>
-__device__ void writePairOfRGBPixels(
+__device__ void write_pair_of_rgb_pixels(
     Vec2T yayb,
     float u,
     float v,
-    T* rgbPlaneToWrite,
-    int bitShift,
+    T* rgb_plane_to_write,
+    int bit_shift,
     const ColorMatrix& cm) {
-  constexpr float clampMax = sizeof(T) == 1 ? 255.0f : 65535.0f;
+  constexpr float clamp_max = sizeof(T) == 1 ? 255.0f : 65535.0f;
 
-  float ya = static_cast<float>(yayb.x >> bitShift);
-  float yb = static_cast<float>(yayb.y >> bitShift);
+  float ya = static_cast<float>(yayb.x >> bit_shift);
+  float yb = static_cast<float>(yayb.y >> bit_shift);
 
-  float ra = cm.m[0][0] * ya + cm.m[0][1] * u +
-      cm.m[0][2] * v + cm.m[0][3];
-  float ga = cm.m[1][0] * ya + cm.m[1][1] * u +
-      cm.m[1][2] * v + cm.m[1][3];
+  float ra = cm.m[0][0] * ya + cm.m[0][1] * u + cm.m[0][2] * v + cm.m[0][3];
+  float ga = cm.m[1][0] * ya + cm.m[1][1] * u + cm.m[1][2] * v + cm.m[1][3];
 
-  Vec2T raga = {static_cast<T>(fminf(fmaxf(ra, 0.0f), clampMax)),
-                static_cast<T>(fminf(fmaxf(ga, 0.0f), clampMax))};
-  *(reinterpret_cast<Vec2T*>(&rgbPlaneToWrite[0])) = raga;
+  Vec2T raga = {
+      static_cast<T>(fminf(fmaxf(ra, 0.0f), clamp_max)),
+      static_cast<T>(fminf(fmaxf(ga, 0.0f), clamp_max))};
+  *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[0])) = raga;
 
-  float ba = cm.m[2][0] * ya + cm.m[2][1] * u +
-      cm.m[2][2] * v + cm.m[2][3];
-  float rb = cm.m[0][0] * yb + cm.m[0][1] * u +
-      cm.m[0][2] * v + cm.m[0][3];
-  Vec2T barb = {static_cast<T>(fminf(fmaxf(ba, 0.0f), clampMax)),
-                static_cast<T>(fminf(fmaxf(rb, 0.0f), clampMax))};
-  *(reinterpret_cast<Vec2T*>(&rgbPlaneToWrite[2])) = barb;
+  float ba = cm.m[2][0] * ya + cm.m[2][1] * u + cm.m[2][2] * v + cm.m[2][3];
+  float rb = cm.m[0][0] * yb + cm.m[0][1] * u + cm.m[0][2] * v + cm.m[0][3];
+  Vec2T barb = {
+      static_cast<T>(fminf(fmaxf(ba, 0.0f), clamp_max)),
+      static_cast<T>(fminf(fmaxf(rb, 0.0f), clamp_max))};
+  *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[2])) = barb;
 
-  float gb = cm.m[1][0] * yb + cm.m[1][1] * u +
-      cm.m[1][2] * v + cm.m[1][3];
-  float bb = cm.m[2][0] * yb + cm.m[2][1] * u +
-      cm.m[2][2] * v + cm.m[2][3];
-  Vec2T gbbb = {static_cast<T>(fminf(fmaxf(gb, 0.0f), clampMax)),
-                static_cast<T>(fminf(fmaxf(bb, 0.0f), clampMax))};
-  *(reinterpret_cast<Vec2T*>(&rgbPlaneToWrite[4])) = gbbb;
+  float gb = cm.m[1][0] * yb + cm.m[1][1] * u + cm.m[1][2] * v + cm.m[1][3];
+  float bb = cm.m[2][0] * yb + cm.m[2][1] * u + cm.m[2][2] * v + cm.m[2][3];
+  Vec2T gbbb = {
+      static_cast<T>(fminf(fmaxf(gb, 0.0f), clamp_max)),
+      static_cast<T>(fminf(fmaxf(bb, 0.0f), clamp_max))};
+  *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[4])) = gbbb;
 }
 
 // Takes the Y and UV plane as input, applies the color-conversion matrix and
@@ -88,18 +85,18 @@ __device__ void writePairOfRGBPixels(
 // reads, and {U,V} in one read. Then we apply the color matrix to produce
 // 4 RGB pixels.
 template <typename T, typename Vec2T>
-__global__ void yuvToRgbKernel(
+__global__ void yuv_to_rgb_kernel(
     // __restrict__ tells the compiler those pointers never overlap with each
     // other so it can optimize read and writes more aggressively.
-    const T* __restrict__ yPlane,
-    const T* __restrict__ uvPlane,
-    T* __restrict__ rgbOutput,
+    const T* __restrict__ y_plane,
+    const T* __restrict__ uv_plane,
+    T* __restrict__ rgb_output,
     int width,
     int height,
-    int yPitchElements,
-    int uvPitchElements,
-    int rgbPitchElements,
-    int bitShift,
+    int y_pitch_elements,
+    int uv_pitch_elements,
+    int rgb_pitch_elements,
+    int bit_shift,
     const ColorMatrix cm) {
   // The kernel operates on 2x2 blocks, so it's called H / 2 * W / 2 times.
   // We have to multiply back by 2 to retrieve the output pixel coordinates x
@@ -112,110 +109,105 @@ __global__ void yuvToRgbKernel(
 
   // Vec2T stores two values in .x and .y
   // Here, we read the UV pair in one instruction.
-  int uvIdx = (y / 2) * uvPitchElements + x;
-  Vec2T uv = *reinterpret_cast<const Vec2T*>(&uvPlane[uvIdx]);
-  float u = static_cast<float>(uv.x >> bitShift);
-  float v = static_cast<float>(uv.y >> bitShift);
+  int uv_idx = (y / 2) * uv_pitch_elements + x;
+  Vec2T uv = *reinterpret_cast<const Vec2T*>(&uv_plane[uv_idx]);
+  float u = static_cast<float>(uv.x >> bit_shift);
+  float v = static_cast<float>(uv.y >> bit_shift);
 
   // Similarly, we can read 4 Y values in 2 reads
   Vec2T y1y2 =
-      *reinterpret_cast<const Vec2T*>(&yPlane[y * yPitchElements + x]);
-  Vec2T y3y4 = *reinterpret_cast<const Vec2T*>(
-      &yPlane[(y + 1) * yPitchElements + x]);
+      *reinterpret_cast<const Vec2T*>(&y_plane[y * y_pitch_elements + x]);
+  Vec2T y3y4 =
+      *reinterpret_cast<const Vec2T*>(&y_plane[(y + 1) * y_pitch_elements + x]);
 
-  T* rgbPlaneToWrite = rgbOutput + y * rgbPitchElements + x * 3;
-  writePairOfRGBPixels<T, Vec2T>(
-      y1y2, u, v, rgbPlaneToWrite, bitShift, cm);
-  rgbPlaneToWrite += rgbPitchElements; // go to next line
-  writePairOfRGBPixels<T, Vec2T>(
-      y3y4, u, v, rgbPlaneToWrite, bitShift, cm);
+  T* rgb_plane_to_write = rgb_output + y * rgb_pitch_elements + x * 3;
+  write_pair_of_rgb_pixels<T, Vec2T>(
+      y1y2, u, v, rgb_plane_to_write, bit_shift, cm);
+  rgb_plane_to_write += rgb_pitch_elements; // go to next line
+  write_pair_of_rgb_pixels<T, Vec2T>(
+      y3y4, u, v, rgb_plane_to_write, bit_shift, cm);
 }
 
-void launchNV12ToRGBKernel(
-    const uint8_t* yPlane,
-    const uint8_t* uvPlane,
-    uint8_t* rgbOutput,
+void launch_nv12_to_rgb_kernel(
+    const uint8_t* y_plane,
+    const uint8_t* uv_plane,
+    uint8_t* rgb_output,
     int width,
     int height,
-    int yPitch,
-    int uvPitch,
-    int rgbPitch,
-    const float colorMatrix[3][4],
+    int y_pitch,
+    int uv_pitch,
+    int rgb_pitch,
+    const float color_matrix[3][4],
     cudaStream_t stream) {
-  const auto& cm =
-      *reinterpret_cast<const ColorMatrix*>(colorMatrix);
+  const auto& cm = *reinterpret_cast<const ColorMatrix*>(color_matrix);
 
   dim3 block(32, 2);
   dim3 grid(
       (width / 2 + block.x - 1) / block.x,
       (height / 2 + block.y - 1) / block.y);
 
-  yuvToRgbKernel<uint8_t, uchar2><<<grid, block, 0, stream>>>(
-      yPlane,
-      uvPlane,
-      rgbOutput,
+  yuv_to_rgb_kernel<uint8_t, uchar2><<<grid, block, 0, stream>>>(
+      y_plane,
+      uv_plane,
+      rgb_output,
       width,
       height,
-      yPitch,
-      uvPitch,
-      rgbPitch,
+      y_pitch,
+      uv_pitch,
+      rgb_pitch,
       0, // bitShift = 0 for NV12
       cm);
 }
 
-void launchP016ToRGB16Kernel(
-    const uint16_t* yPlane,
-    const uint16_t* uvPlane,
-    uint16_t* rgbOutput,
+void launch_p016_to_rgb16_kernel(
+    const uint16_t* y_plane,
+    const uint16_t* uv_plane,
+    uint16_t* rgb_output,
     int width,
     int height,
-    int yPitch,
-    int uvPitch,
-    int rgbPitch,
-    int bitDepth,
-    const float colorMatrix[3][4],
+    int y_pitch,
+    int uv_pitch,
+    int rgb_pitch,
+    int bit_depth,
+    const float color_matrix[3][4],
     cudaStream_t stream) {
-  const auto& cm =
-      *reinterpret_cast<const ColorMatrix*>(colorMatrix);
+  const auto& cm = *reinterpret_cast<const ColorMatrix*>(color_matrix);
 
-  int yPitchElements =
-      yPitch / static_cast<int>(sizeof(uint16_t));
-  int uvPitchElements =
-      uvPitch / static_cast<int>(sizeof(uint16_t));
-  int rgbPitchElements =
-      rgbPitch / static_cast<int>(sizeof(uint16_t));
-  int bitShift = 16 - bitDepth;
+  int y_pitch_elements = y_pitch / static_cast<int>(sizeof(uint16_t));
+  int uv_pitch_elements = uv_pitch / static_cast<int>(sizeof(uint16_t));
+  int rgb_pitch_elements = rgb_pitch / static_cast<int>(sizeof(uint16_t));
+  int bit_shift = 16 - bit_depth;
 
   dim3 block(32, 2);
   dim3 grid(
       (width / 2 + block.x - 1) / block.x,
       (height / 2 + block.y - 1) / block.y);
 
-  yuvToRgbKernel<uint16_t, ushort2><<<grid, block, 0, stream>>>(
-      yPlane,
-      uvPlane,
-      rgbOutput,
+  yuv_to_rgb_kernel<uint16_t, ushort2><<<grid, block, 0, stream>>>(
+      y_plane,
+      uv_plane,
+      rgb_output,
       width,
       height,
-      yPitchElements,
-      uvPitchElements,
-      rgbPitchElements,
-      bitShift,
+      y_pitch_elements,
+      uv_pitch_elements,
+      rgb_pitch_elements,
+      bit_shift,
       cm);
 }
 
 // RGB -> NV12 kernel for encoding.
 // Each thread processes a 2x2 block: computes Y for all 4 pixels,
 // averages U and V across the block, and writes to the NV12 planes.
-__global__ void rgbToNV12Kernel(
-    const uint8_t* __restrict__ rgbInput,
-    uint8_t* __restrict__ yPlane,
-    uint8_t* __restrict__ uvPlane,
+__global__ void rgb_to_nv12_kernel(
+    const uint8_t* __restrict__ rgb_input,
+    uint8_t* __restrict__ y_plane,
+    uint8_t* __restrict__ uv_plane,
     int width,
     int height,
-    int rgbPitchElements,
-    int yPitchElements,
-    int uvPitchElements,
+    int rgb_pitch_elements,
+    int y_pitch_elements,
+    int uv_pitch_elements,
     const ColorMatrix cm) {
   int x = (blockIdx.x * blockDim.x + threadIdx.x) * 2;
   int y = (blockIdx.y * blockDim.y + threadIdx.y) * 2;
@@ -224,9 +216,8 @@ __global__ void rgbToNV12Kernel(
   }
 
   // Read 4 RGB pixels from 2x2 block
-  const uint8_t* row0 = rgbInput + y * rgbPitchElements + x * 3;
-  const uint8_t* row1 =
-      rgbInput + (y + 1) * rgbPitchElements + x * 3;
+  const uint8_t* row0 = rgb_input + y * rgb_pitch_elements + x * 3;
+  const uint8_t* row1 = rgb_input + (y + 1) * rgb_pitch_elements + x * 3;
 
   float r00 = row0[0], g00 = row0[1], b00 = row0[2];
   float r01 = row0[3], g01 = row0[4], b01 = row0[5];
@@ -234,103 +225,83 @@ __global__ void rgbToNV12Kernel(
   float r11 = row1[3], g11 = row1[4], b11 = row1[5];
 
   // Compute Y for all 4 pixels
-  float y00 = cm.m[0][0] * r00 +
-      cm.m[0][1] * g00 + cm.m[0][2] * b00 +
-      cm.m[0][3];
-  float y01 = cm.m[0][0] * r01 +
-      cm.m[0][1] * g01 + cm.m[0][2] * b01 +
-      cm.m[0][3];
-  float y10 = cm.m[0][0] * r10 +
-      cm.m[0][1] * g10 + cm.m[0][2] * b10 +
-      cm.m[0][3];
-  float y11 = cm.m[0][0] * r11 +
-      cm.m[0][1] * g11 + cm.m[0][2] * b11 +
-      cm.m[0][3];
+  float y00 =
+      cm.m[0][0] * r00 + cm.m[0][1] * g00 + cm.m[0][2] * b00 + cm.m[0][3];
+  float y01 =
+      cm.m[0][0] * r01 + cm.m[0][1] * g01 + cm.m[0][2] * b01 + cm.m[0][3];
+  float y10 =
+      cm.m[0][0] * r10 + cm.m[0][1] * g10 + cm.m[0][2] * b10 + cm.m[0][3];
+  float y11 =
+      cm.m[0][0] * r11 + cm.m[0][1] * g11 + cm.m[0][2] * b11 + cm.m[0][3];
 
   // Write Y plane
-  uchar2 yRow0 = {
-      static_cast<uint8_t>(
-          fminf(fmaxf(roundf(y00), 0.0f), 255.0f)),
-      static_cast<uint8_t>(
-          fminf(fmaxf(roundf(y01), 0.0f), 255.0f))};
-  *(reinterpret_cast<uchar2*>(
-      &yPlane[y * yPitchElements + x])) = yRow0;
+  uchar2 y_row0 = {
+      static_cast<uint8_t>(fminf(fmaxf(roundf(y00), 0.0f), 255.0f)),
+      static_cast<uint8_t>(fminf(fmaxf(roundf(y01), 0.0f), 255.0f))};
+  *(reinterpret_cast<uchar2*>(&y_plane[y * y_pitch_elements + x])) = y_row0;
 
-  uchar2 yRow1 = {
-      static_cast<uint8_t>(
-          fminf(fmaxf(roundf(y10), 0.0f), 255.0f)),
-      static_cast<uint8_t>(
-          fminf(fmaxf(roundf(y11), 0.0f), 255.0f))};
-  *(reinterpret_cast<uchar2*>(
-      &yPlane[(y + 1) * yPitchElements + x])) = yRow1;
+  uchar2 y_row1 = {
+      static_cast<uint8_t>(fminf(fmaxf(roundf(y10), 0.0f), 255.0f)),
+      static_cast<uint8_t>(fminf(fmaxf(roundf(y11), 0.0f), 255.0f))};
+  *(reinterpret_cast<uchar2*>(&y_plane[(y + 1) * y_pitch_elements + x])) =
+      y_row1;
 
   // Compute U,V for all 4 pixels and average for 4:2:0 subsampling
-  float u00 = cm.m[1][0] * r00 +
-      cm.m[1][1] * g00 + cm.m[1][2] * b00 +
-      cm.m[1][3];
-  float u01 = cm.m[1][0] * r01 +
-      cm.m[1][1] * g01 + cm.m[1][2] * b01 +
-      cm.m[1][3];
-  float u10 = cm.m[1][0] * r10 +
-      cm.m[1][1] * g10 + cm.m[1][2] * b10 +
-      cm.m[1][3];
-  float u11 = cm.m[1][0] * r11 +
-      cm.m[1][1] * g11 + cm.m[1][2] * b11 +
-      cm.m[1][3];
+  float u00 =
+      cm.m[1][0] * r00 + cm.m[1][1] * g00 + cm.m[1][2] * b00 + cm.m[1][3];
+  float u01 =
+      cm.m[1][0] * r01 + cm.m[1][1] * g01 + cm.m[1][2] * b01 + cm.m[1][3];
+  float u10 =
+      cm.m[1][0] * r10 + cm.m[1][1] * g10 + cm.m[1][2] * b10 + cm.m[1][3];
+  float u11 =
+      cm.m[1][0] * r11 + cm.m[1][1] * g11 + cm.m[1][2] * b11 + cm.m[1][3];
 
-  float v00 = cm.m[2][0] * r00 +
-      cm.m[2][1] * g00 + cm.m[2][2] * b00 +
-      cm.m[2][3];
-  float v01 = cm.m[2][0] * r01 +
-      cm.m[2][1] * g01 + cm.m[2][2] * b01 +
-      cm.m[2][3];
-  float v10 = cm.m[2][0] * r10 +
-      cm.m[2][1] * g10 + cm.m[2][2] * b10 +
-      cm.m[2][3];
-  float v11 = cm.m[2][0] * r11 +
-      cm.m[2][1] * g11 + cm.m[2][2] * b11 +
-      cm.m[2][3];
+  float v00 =
+      cm.m[2][0] * r00 + cm.m[2][1] * g00 + cm.m[2][2] * b00 + cm.m[2][3];
+  float v01 =
+      cm.m[2][0] * r01 + cm.m[2][1] * g01 + cm.m[2][2] * b01 + cm.m[2][3];
+  float v10 =
+      cm.m[2][0] * r10 + cm.m[2][1] * g10 + cm.m[2][2] * b10 + cm.m[2][3];
+  float v11 =
+      cm.m[2][0] * r11 + cm.m[2][1] * g11 + cm.m[2][2] * b11 + cm.m[2][3];
 
-  float uAvg = (u00 + u01 + u10 + u11) * 0.25f;
-  float vAvg = (v00 + v01 + v10 + v11) * 0.25f;
+  float u_avg = (u00 + u01 + u10 + u11) * 0.25f;
+  float v_avg = (v00 + v01 + v10 + v11) * 0.25f;
 
-  int uvIdx = (y / 2) * uvPitchElements + x;
-  uchar2 uvPair = {
-      static_cast<uint8_t>(
-          fminf(fmaxf(roundf(uAvg), 0.0f), 255.0f)),
-      static_cast<uint8_t>(
-          fminf(fmaxf(roundf(vAvg), 0.0f), 255.0f))};
-  *(reinterpret_cast<uchar2*>(&uvPlane[uvIdx])) = uvPair;
+  int uv_idx = (y / 2) * uv_pitch_elements + x;
+  uchar2 uv_pair = {
+      static_cast<uint8_t>(fminf(fmaxf(roundf(u_avg), 0.0f), 255.0f)),
+      static_cast<uint8_t>(fminf(fmaxf(roundf(v_avg), 0.0f), 255.0f))};
+  *(reinterpret_cast<uchar2*>(&uv_plane[uv_idx])) = uv_pair;
 }
 
-void launchRGBToNV12Kernel(
-    const uint8_t* rgbInput,
-    uint8_t* yPlane,
-    uint8_t* uvPlane,
+void launch_rgb_to_nv12_kernel(
+    const uint8_t* rgb_input,
+    uint8_t* y_plane,
+    uint8_t* uv_plane,
     int width,
     int height,
-    int rgbPitch,
-    int yPitch,
-    int uvPitch,
-    const float colorMatrix[3][4],
+    int rgb_pitch,
+    int y_pitch,
+    int uv_pitch,
+    const float color_matrix[3][4],
     cudaStream_t stream) {
-  const auto& cm =
-      *reinterpret_cast<const ColorMatrix*>(colorMatrix);
+  const auto& cm = *reinterpret_cast<const ColorMatrix*>(color_matrix);
 
   dim3 block(32, 2);
   dim3 grid(
       (width / 2 + block.x - 1) / block.x,
       (height / 2 + block.y - 1) / block.y);
 
-  rgbToNV12Kernel<<<grid, block, 0, stream>>>(
-      rgbInput,
-      yPlane,
-      uvPlane,
+  rgb_to_nv12_kernel<<<grid, block, 0, stream>>>(
+      rgb_input,
+      y_plane,
+      uv_plane,
       width,
       height,
-      rgbPitch,
-      yPitch,
-      uvPitch,
+      rgb_pitch,
+      y_pitch,
+      uv_pitch,
       cm);
 }
 

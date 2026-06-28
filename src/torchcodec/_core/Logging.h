@@ -14,11 +14,11 @@ enum class LogLevel : int {
   ALL = 1,
 };
 
-void setCppLogLevel(LogLevel level);
+void set_cpp_log_level(LogLevel level);
 
 // getLogLevel doesn't have "Cpp" in the name because it's the source of
 // truth for both Python and C++ log levels.
-LogLevel getLogLevel();
+LogLevel get_log_level();
 
 namespace internal {
 void log(const char* file, int line, const char* fmt, ...)
@@ -31,7 +31,7 @@ void log(const char* file, int line, const char* fmt, ...)
 
 #define TC_LOG(...)                                                           \
   do {                                                                        \
-    if (::facebook::torchcodec::getLogLevel() !=                              \
+    if (::facebook::torchcodec::get_log_level() !=                            \
         ::facebook::torchcodec::LogLevel::OFF) {                              \
       ::facebook::torchcodec::internal::log(__FILE__, __LINE__, __VA_ARGS__); \
     }                                                                         \

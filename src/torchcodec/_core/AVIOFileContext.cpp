@@ -15,7 +15,7 @@ AVIOFileContext::AVIOFileContext(const std::string& path)
     : file_(path, std::ios::binary) {
   STD_TORCH_CHECK(file_.is_open(), "Failed to open file: ", path);
   try {
-    fileSize_ = static_cast<int64_t>(std::filesystem::file_size(path));
+    file_size_ = static_cast<int64_t>(std::filesystem::file_size(path));
   } catch (const std::filesystem::filesystem_error& e) {
     STD_TORCH_CHECK(
         false, "Failed to get file size for: ", path, ". Error: ", e.what());
@@ -24,11 +24,11 @@ AVIOFileContext::AVIOFileContext(const std::string& path)
 
 int AVIOFileContext::read(uint8_t* buf, int size) {
   file_.read(reinterpret_cast<char*>(buf), size);
-  auto bytesRead = static_cast<int>(file_.gcount());
-  if (bytesRead == 0) {
+  auto bytes_read = static_cast<int>(file_.gcount());
+  if (bytes_read == 0) {
     return -1;
   }
-  return bytesRead;
+  return bytes_read;
 }
 
 int64_t AVIOFileContext::seek(int64_t offset, int whence) {
@@ -51,8 +51,8 @@ int64_t AVIOFileContext::seek(int64_t offset, int whence) {
   return static_cast<int64_t>(file_.tellg());
 }
 
-int64_t AVIOFileContext::getSize() {
-  return fileSize_;
+int64_t AVIOFileContext::get_size() {
+  return file_size_;
 }
 
 } // namespace facebook::torchcodec
