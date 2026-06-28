@@ -109,7 +109,7 @@ we use to feed data.
 
  .. code-block:: none
 
-    Encoded video + audio to /tmp/tmp25iu7fg0.mp4
+    Encoded video + audio to /tmp/tmpsaw8_fxu.mp4
     Output size: 2526289 bytes
 
 
@@ -202,7 +202,7 @@ a time:
 
  .. code-block:: none
 
-    Incrementally encoded to /tmp/tmp85_y6713.mp4
+    Incrementally encoded to /tmp/tmpynn3fszf.mp4
     Output size: 2526660 bytes
 
 
@@ -301,7 +301,7 @@ it from.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 5.585 seconds)
+   **Total running time of the script:** (0 minutes 5.615 seconds)
 
 
 .. _sphx_glr_download_generated_examples_encoding_multi_stream_encoding.py:
