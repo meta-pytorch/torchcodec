@@ -16,31 +16,31 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-AutoAVPacket::AutoAVPacket() : avPacket_(av_packet_alloc()) {
-  STD_TORCH_CHECK(avPacket_ != nullptr, "Couldn't allocate avPacket.");
+AutoAVPacket::AutoAVPacket() : av_packet_(av_packet_alloc()) {
+  STD_TORCH_CHECK(av_packet_ != nullptr, "Couldn't allocate avPacket.");
 }
 
 AutoAVPacket::~AutoAVPacket() {
-  av_packet_free(&avPacket_);
+  av_packet_free(&av_packet_);
 }
 
 ReferenceAVPacket::ReferenceAVPacket(AutoAVPacket& shared)
-    : avPacket_(shared.avPacket_) {}
+    : av_packet_(shared.av_packet_) {}
 
 ReferenceAVPacket::~ReferenceAVPacket() {
-  av_packet_unref(avPacket_);
+  av_packet_unref(av_packet_);
 }
 
 AVPacket* ReferenceAVPacket::get() {
-  return avPacket_;
+  return av_packet_;
 }
 
 AVPacket* ReferenceAVPacket::operator->() {
-  return avPacket_;
+  return av_packet_;
 }
 
 AVCodecOnlyUseForCallingAVFindBestStream
-makeAVCodecOnlyUseForCallingAVFindBestStream(const AVCodec* codec) {
+make_av_codec_only_use_for_calling_av_find_best_stream(const AVCodec* codec) {
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(59, 18, 100)
   return const_cast<AVCodec*>(codec);
 #else
@@ -48,119 +48,122 @@ makeAVCodecOnlyUseForCallingAVFindBestStream(const AVCodec* codec) {
 #endif
 }
 
-std::string getFFMPEGErrorStringFromErrorCode(int errorCode) {
-  char errorBuffer[AV_ERROR_MAX_STRING_SIZE] = {0};
-  av_strerror(errorCode, errorBuffer, AV_ERROR_MAX_STRING_SIZE);
-  return std::string(errorBuffer);
+std::string get_ffmpeg_error_string_from_error_code(int error_code) {
+  char error_buffer[AV_ERROR_MAX_STRING_SIZE] = {0};
+  av_strerror(error_code, error_buffer, AV_ERROR_MAX_STRING_SIZE);
+  return std::string(error_buffer);
 }
 
-int64_t getDuration(const UniqueAVFrame& avFrame) {
+int64_t get_duration(const UniqueAVFrame& av_frame) {
 #if LIBAVUTIL_VERSION_MAJOR < 58
-  return avFrame->pkt_duration;
+  return av_frame->pkt_duration;
 #else
-  return avFrame->duration;
+  return av_frame->duration;
 #endif
 }
 
-void setDuration(const UniqueAVFrame& avFrame, int64_t duration) {
+void set_duration(const UniqueAVFrame& av_frame, int64_t duration) {
 #if LIBAVUTIL_VERSION_MAJOR < 58
-  avFrame->pkt_duration = duration;
+  av_frame->pkt_duration = duration;
 #else
-  avFrame->duration = duration;
+  av_frame->duration = duration;
 #endif
 }
 
-const int* getSupportedSampleRates(const AVCodec& avCodec) {
-  const int* supportedSampleRates = nullptr;
+const int* get_supported_sample_rates(const AVCodec& av_codec) {
+  const int* supported_sample_rates = nullptr;
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100) // FFmpeg >= 7.1
-  int numSampleRates = 0;
+  int num_sample_rates = 0;
   int ret = avcodec_get_supported_config(
       nullptr,
-      &avCodec,
+      &av_codec,
       AV_CODEC_CONFIG_SAMPLE_RATE,
       0,
-      reinterpret_cast<const void**>(&supportedSampleRates),
-      &numSampleRates);
-  if (ret < 0 || supportedSampleRates == nullptr) {
+      reinterpret_cast<const void**>(&supported_sample_rates),
+      &num_sample_rates);
+  if (ret < 0 || supported_sample_rates == nullptr) {
     // Return nullptr to skip validation in validateSampleRate.
     return nullptr;
   }
 #else
-  supportedSampleRates = avCodec.supported_samplerates;
+  supported_sample_rates = av_codec.supported_samplerates;
 #endif
-  return supportedSampleRates;
+  return supported_sample_rates;
 }
 
-const AVPixelFormat* getSupportedPixelFormats(const AVCodec& avCodec) {
-  const AVPixelFormat* supportedPixelFormats = nullptr;
+const AVPixelFormat* get_supported_pixel_formats(const AVCodec& av_codec) {
+  const AVPixelFormat* supported_pixel_formats = nullptr;
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100) // FFmpeg >= 7.1
-  int numPixelFormats = 0;
+  int num_pixel_formats = 0;
   int ret = avcodec_get_supported_config(
       nullptr,
-      &avCodec,
+      &av_codec,
       AV_CODEC_CONFIG_PIX_FORMAT,
       0,
-      reinterpret_cast<const void**>(&supportedPixelFormats),
-      &numPixelFormats);
-  if (ret < 0 || supportedPixelFormats == nullptr) {
+      reinterpret_cast<const void**>(&supported_pixel_formats),
+      &num_pixel_formats);
+  if (ret < 0 || supported_pixel_formats == nullptr) {
     STD_TORCH_CHECK(
         false, "Couldn't get supported pixel formats from encoder.");
   }
 #else
-  supportedPixelFormats = avCodec.pix_fmts;
+  supported_pixel_formats = av_codec.pix_fmts;
 #endif
-  return supportedPixelFormats;
+  return supported_pixel_formats;
 }
 
-const AVSampleFormat* getSupportedOutputSampleFormats(const AVCodec& avCodec) {
-  const AVSampleFormat* supportedSampleFormats = nullptr;
+const AVSampleFormat* get_supported_output_sample_formats(
+    const AVCodec& av_codec) {
+  const AVSampleFormat* supported_sample_formats = nullptr;
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100) // FFmpeg >= 7.1
-  int numSampleFormats = 0;
+  int num_sample_formats = 0;
   int ret = avcodec_get_supported_config(
       nullptr,
-      &avCodec,
+      &av_codec,
       AV_CODEC_CONFIG_SAMPLE_FORMAT,
       0,
-      reinterpret_cast<const void**>(&supportedSampleFormats),
-      &numSampleFormats);
-  if (ret < 0 || supportedSampleFormats == nullptr) {
+      reinterpret_cast<const void**>(&supported_sample_formats),
+      &num_sample_formats);
+  if (ret < 0 || supported_sample_formats == nullptr) {
     // Return nullptr to use default output format in
     // findBestOutputSampleFormat.
     return nullptr;
   }
 #else
-  supportedSampleFormats = avCodec.sample_fmts;
+  supported_sample_formats = av_codec.sample_fmts;
 #endif
-  return supportedSampleFormats;
+  return supported_sample_formats;
 }
 
-int getNumChannels(const UniqueAVFrame& avFrame) {
+int get_num_channels(const UniqueAVFrame& av_frame) {
 #if LIBAVFILTER_VERSION_MAJOR > 8 || \
     (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44)
-  return avFrame->ch_layout.nb_channels;
+  return av_frame->ch_layout.nb_channels;
 #else
-  int numChannels = av_get_channel_layout_nb_channels(avFrame->channel_layout);
-  // Handle FFmpeg 4 bug where channel_layout and numChannels are 0 or unset
-  // Set values based on avFrame->channels which appears to be correct
+  int num_channels =
+      av_get_channel_layout_nb_channels(av_frame->channel_layout);
+  // Handle FFmpeg 4 bug where channel_layout and num_channels are 0 or unset
+  // Set values based on av_frame->channels which appears to be correct
   // to allow successful initialization of SwrContext
-  if (numChannels == 0 && avFrame->channels > 0) {
-    avFrame->channel_layout = av_get_default_channel_layout(avFrame->channels);
-    numChannels = avFrame->channels;
+  if (num_channels == 0 && av_frame->channels > 0) {
+    av_frame->channel_layout =
+        av_get_default_channel_layout(av_frame->channels);
+    num_channels = av_frame->channels;
   }
-  return numChannels;
+  return num_channels;
 #endif
 }
 
-int getNumChannels(const SharedAVCodecContext& avCodecContext) {
+int get_num_channels(const SharedAVCodecContext& av_codec_context) {
 #if LIBAVFILTER_VERSION_MAJOR > 8 || \
     (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44)
-  return avCodecContext->ch_layout.nb_channels;
+  return av_codec_context->ch_layout.nb_channels;
 #else
-  return avCodecContext->channels;
+  return av_codec_context->channels;
 #endif
 }
 
-int getNumChannels(const AVCodecParameters* codecpar) {
+int get_num_channels(const AVCodecParameters* codecpar) {
   STD_TORCH_CHECK(codecpar != nullptr, "codecpar is null");
 #if LIBAVFILTER_VERSION_MAJOR > 8 || \
     (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44)
@@ -170,109 +173,109 @@ int getNumChannels(const AVCodecParameters* codecpar) {
 #endif
 }
 
-void setDefaultChannelLayout(
-    UniqueAVCodecContext& avCodecContext,
-    int numChannels) {
+void set_default_channel_layout(
+    UniqueAVCodecContext& av_codec_context,
+    int num_channels) {
 #if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
   AVChannelLayout channel_layout;
-  av_channel_layout_default(&channel_layout, numChannels);
-  avCodecContext->ch_layout = channel_layout;
+  av_channel_layout_default(&channel_layout, num_channels);
+  av_codec_context->ch_layout = channel_layout;
 #else
-  uint64_t channel_layout = av_get_default_channel_layout(numChannels);
-  avCodecContext->channel_layout = channel_layout;
-  avCodecContext->channels = numChannels;
+  uint64_t channel_layout = av_get_default_channel_layout(num_channels);
+  av_codec_context->channel_layout = channel_layout;
+  av_codec_context->channels = num_channels;
 #endif
 }
 
-void setDefaultChannelLayout(UniqueAVFrame& avFrame, int numChannels) {
+void set_default_channel_layout(UniqueAVFrame& av_frame, int num_channels) {
 #if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
   AVChannelLayout channel_layout;
-  av_channel_layout_default(&channel_layout, numChannels);
-  avFrame->ch_layout = channel_layout;
+  av_channel_layout_default(&channel_layout, num_channels);
+  av_frame->ch_layout = channel_layout;
 #else
-  uint64_t channel_layout = av_get_default_channel_layout(numChannels);
-  avFrame->channel_layout = channel_layout;
-  avFrame->channels = numChannels;
+  uint64_t channel_layout = av_get_default_channel_layout(num_channels);
+  av_frame->channel_layout = channel_layout;
+  av_frame->channels = num_channels;
 #endif
 }
 
-void validateNumChannels(const AVCodec& avCodec, int numChannels) {
+void validate_num_channels(const AVCodec& av_codec, int num_channels) {
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100) // FFmpeg >= 7.1
-  std::stringstream supportedNumChannels;
-  const AVChannelLayout* supportedLayouts = nullptr;
-  int numLayouts = 0;
+  std::stringstream supported_num_channels;
+  const AVChannelLayout* supported_layouts = nullptr;
+  int num_layouts = 0;
   int ret = avcodec_get_supported_config(
       nullptr,
-      &avCodec,
+      &av_codec,
       AV_CODEC_CONFIG_CHANNEL_LAYOUT,
       0,
-      reinterpret_cast<const void**>(&supportedLayouts),
-      &numLayouts);
-  if (ret < 0 || supportedLayouts == nullptr) {
+      reinterpret_cast<const void**>(&supported_layouts),
+      &num_layouts);
+  if (ret < 0 || supported_layouts == nullptr) {
     // If we can't validate, we must assume it'll be fine. If not, FFmpeg will
     // eventually raise.
     return;
   }
-  for (int i = 0; i < numLayouts; ++i) {
+  for (int i = 0; i < num_layouts; ++i) {
     if (i > 0) {
-      supportedNumChannels << ", ";
+      supported_num_channels << ", ";
     }
-    supportedNumChannels << supportedLayouts[i].nb_channels;
-    if (numChannels == supportedLayouts[i].nb_channels) {
+    supported_num_channels << supported_layouts[i].nb_channels;
+    if (num_channels == supported_layouts[i].nb_channels) {
       return;
     }
   }
 #elif LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
-  if (avCodec.ch_layouts == nullptr) {
+  if (av_codec.ch_layouts == nullptr) {
     // If we can't validate, we must assume it'll be fine. If not, FFmpeg will
     // eventually raise.
     return;
   }
   // FFmpeg doc indicate that the ch_layouts array is terminated by a zeroed
   // layout, so checking for nb_channels == 0 should indicate its end.
-  for (auto i = 0; avCodec.ch_layouts[i].nb_channels != 0; ++i) {
-    if (numChannels == avCodec.ch_layouts[i].nb_channels) {
+  for (auto i = 0; av_codec.ch_layouts[i].nb_channels != 0; ++i) {
+    if (num_channels == av_codec.ch_layouts[i].nb_channels) {
       return;
     }
   }
   // At this point it seems that the encoder doesn't support the requested
   // number of channels, so we error out.
-  std::stringstream supportedNumChannels;
-  for (auto i = 0; avCodec.ch_layouts[i].nb_channels != 0; ++i) {
+  std::stringstream supported_num_channels;
+  for (auto i = 0; av_codec.ch_layouts[i].nb_channels != 0; ++i) {
     if (i > 0) {
-      supportedNumChannels << ", ";
+      supported_num_channels << ", ";
     }
-    supportedNumChannels << avCodec.ch_layouts[i].nb_channels;
+    supported_num_channels << av_codec.ch_layouts[i].nb_channels;
   }
 #else // FFmpeg <= 4
-  if (avCodec.channel_layouts == nullptr) {
+  if (av_codec.channel_layouts == nullptr) {
     // can't validate, same as above.
     return;
   }
-  for (auto i = 0; avCodec.channel_layouts[i] != 0; ++i) {
-    if (numChannels ==
-        av_get_channel_layout_nb_channels(avCodec.channel_layouts[i])) {
+  for (auto i = 0; av_codec.channel_layouts[i] != 0; ++i) {
+    if (num_channels ==
+        av_get_channel_layout_nb_channels(av_codec.channel_layouts[i])) {
       return;
     }
   }
   // At this point it seems that the encoder doesn't support the requested
   // number of channels, so we error out.
-  std::stringstream supportedNumChannels;
-  for (auto i = 0; avCodec.channel_layouts[i] != 0; ++i) {
+  std::stringstream supported_num_channels;
+  for (auto i = 0; av_codec.channel_layouts[i] != 0; ++i) {
     if (i > 0) {
-      supportedNumChannels << ", ";
+      supported_num_channels << ", ";
     }
-    supportedNumChannels << av_get_channel_layout_nb_channels(
-        avCodec.channel_layouts[i]);
+    supported_num_channels << av_get_channel_layout_nb_channels(
+        av_codec.channel_layouts[i]);
   }
 #endif
   STD_TORCH_CHECK(
       false,
       "Desired number of channels (",
-      numChannels,
+      num_channels,
       ") is not supported by the ",
       "encoder. Supported number of channels are: ",
-      supportedNumChannels.str(),
+      supported_num_channels.str(),
       ".");
 }
 
@@ -280,215 +283,218 @@ namespace {
 #if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
 
 // Returns:
-// - the srcAVFrame's channel layout if srcAVFrame has outNumChannels
-// - the default channel layout with outNumChannels otherwise.
-AVChannelLayout getOutputChannelLayout(
-    int outNumChannels,
-    const UniqueAVFrame& srcAVFrame) {
-  AVChannelLayout outLayout;
-  if (outNumChannels == getNumChannels(srcAVFrame)) {
-    outLayout = srcAVFrame->ch_layout;
+// - the src_av_frame's channel layout if src_av_frame has out_num_channels
+// - the default channel layout with out_num_channels otherwise.
+AVChannelLayout get_output_channel_layout(
+    int out_num_channels,
+    const UniqueAVFrame& src_av_frame) {
+  AVChannelLayout out_layout;
+  if (out_num_channels == get_num_channels(src_av_frame)) {
+    out_layout = src_av_frame->ch_layout;
   } else {
-    av_channel_layout_default(&outLayout, outNumChannels);
+    av_channel_layout_default(&out_layout, out_num_channels);
   }
-  return outLayout;
+  return out_layout;
 }
 
 #else
 
 // Same as above
-int64_t getOutputChannelLayout(
-    int outNumChannels,
-    const UniqueAVFrame& srcAVFrame) {
-  int64_t outLayout;
-  if (outNumChannels == getNumChannels(srcAVFrame)) {
-    outLayout = srcAVFrame->channel_layout;
+int64_t get_output_channel_layout(
+    int out_num_channels,
+    const UniqueAVFrame& src_av_frame) {
+  int64_t out_layout;
+  if (out_num_channels == get_num_channels(src_av_frame)) {
+    out_layout = src_av_frame->channel_layout;
   } else {
-    outLayout = av_get_default_channel_layout(outNumChannels);
+    out_layout = av_get_default_channel_layout(out_num_channels);
   }
-  return outLayout;
+  return out_layout;
 }
 #endif
 } // namespace
 
-// Sets dstAVFrame' channel layout to getOutputChannelLayout(): see doc above
-void setChannelLayout(
-    UniqueAVFrame& dstAVFrame,
-    const UniqueAVFrame& srcAVFrame,
-    int outNumChannels) {
+// Sets dst_av_frame' channel layout to get_output_channel_layout(): see doc
+// above
+void set_channel_layout(
+    UniqueAVFrame& dst_av_frame,
+    const UniqueAVFrame& src_av_frame,
+    int out_num_channels) {
 #if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
-  AVChannelLayout outLayout =
-      getOutputChannelLayout(outNumChannels, srcAVFrame);
-  auto status = av_channel_layout_copy(&dstAVFrame->ch_layout, &outLayout);
+  AVChannelLayout out_layout =
+      get_output_channel_layout(out_num_channels, src_av_frame);
+  auto status = av_channel_layout_copy(&dst_av_frame->ch_layout, &out_layout);
   STD_TORCH_CHECK(
       status == AVSUCCESS,
-      "Couldn't copy channel layout to avFrame: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      "Couldn't copy channel layout to av_frame: ",
+      get_ffmpeg_error_string_from_error_code(status));
 #else
-  dstAVFrame->channel_layout =
-      getOutputChannelLayout(outNumChannels, srcAVFrame);
-  dstAVFrame->channels = outNumChannels;
+  dst_av_frame->channel_layout =
+      get_output_channel_layout(out_num_channels, src_av_frame);
+  dst_av_frame->channels = out_num_channels;
 #endif
 }
 
-UniqueAVFrame allocateAVFrame(
-    int numSamples,
-    int sampleRate,
-    int numChannels,
-    AVSampleFormat sampleFormat) {
-  auto avFrame = UniqueAVFrame(av_frame_alloc());
-  STD_TORCH_CHECK(avFrame != nullptr, "Couldn't allocate AVFrame.");
+UniqueAVFrame allocate_av_frame(
+    int num_samples,
+    int sample_rate,
+    int num_channels,
+    AVSampleFormat sample_format) {
+  auto av_frame = UniqueAVFrame(av_frame_alloc());
+  STD_TORCH_CHECK(av_frame != nullptr, "Couldn't allocate AVFrame.");
 
-  avFrame->nb_samples = numSamples;
-  avFrame->sample_rate = sampleRate;
-  setDefaultChannelLayout(avFrame, numChannels);
-  avFrame->format = sampleFormat;
-  auto status = av_frame_get_buffer(avFrame.get(), 0);
+  av_frame->nb_samples = num_samples;
+  av_frame->sample_rate = sample_rate;
+  set_default_channel_layout(av_frame, num_channels);
+  av_frame->format = sample_format;
+  auto status = av_frame_get_buffer(av_frame.get(), 0);
 
   STD_TORCH_CHECK(
       status == AVSUCCESS,
-      "Couldn't allocate avFrame's buffers: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      "Couldn't allocate av_frame's buffers: ",
+      get_ffmpeg_error_string_from_error_code(status));
 
-  status = av_frame_make_writable(avFrame.get());
+  status = av_frame_make_writable(av_frame.get());
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Couldn't make AVFrame writable: ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  return avFrame;
+      get_ffmpeg_error_string_from_error_code(status));
+  return av_frame;
 }
 
-SwrContext* createSwrContext(
-    AVSampleFormat srcSampleFormat,
-    AVSampleFormat outSampleFormat,
-    int srcSampleRate,
-    int outSampleRate,
-    const UniqueAVFrame& srcAVFrame,
-    int outNumChannels) {
-  SwrContext* swrContext = nullptr;
+SwrContext* create_swr_context(
+    AVSampleFormat src_sample_format,
+    AVSampleFormat out_sample_format,
+    int src_sample_rate,
+    int out_sample_rate,
+    const UniqueAVFrame& src_av_frame,
+    int out_num_channels) {
+  SwrContext* swr_context = nullptr;
   int status = AVSUCCESS;
 #if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
-  AVChannelLayout outLayout =
-      getOutputChannelLayout(outNumChannels, srcAVFrame);
+  AVChannelLayout out_layout =
+      get_output_channel_layout(out_num_channels, src_av_frame);
   status = swr_alloc_set_opts2(
-      &swrContext,
-      &outLayout,
-      outSampleFormat,
-      outSampleRate,
-      &srcAVFrame->ch_layout,
-      srcSampleFormat,
-      srcSampleRate,
+      &swr_context,
+      &out_layout,
+      out_sample_format,
+      out_sample_rate,
+      &src_av_frame->ch_layout,
+      src_sample_format,
+      src_sample_rate,
       0,
       nullptr);
 
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Couldn't create SwrContext: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 #else
-  int64_t outLayout = getOutputChannelLayout(outNumChannels, srcAVFrame);
-  swrContext = swr_alloc_set_opts(
+  int64_t out_layout =
+      get_output_channel_layout(out_num_channels, src_av_frame);
+  swr_context = swr_alloc_set_opts(
       nullptr,
-      outLayout,
-      outSampleFormat,
-      outSampleRate,
-      srcAVFrame->channel_layout,
-      srcSampleFormat,
-      srcSampleRate,
+      out_layout,
+      out_sample_format,
+      out_sample_rate,
+      src_av_frame->channel_layout,
+      src_sample_format,
+      src_sample_rate,
       0,
       nullptr);
 #endif
 
-  STD_TORCH_CHECK(swrContext != nullptr, "Couldn't create swrContext");
-  status = swr_init(swrContext);
+  STD_TORCH_CHECK(swr_context != nullptr, "Couldn't create swr_context");
+  status = swr_init(swr_context);
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Couldn't initialize SwrContext: ",
-      getFFMPEGErrorStringFromErrorCode(status),
+      get_ffmpeg_error_string_from_error_code(status),
       ". If the error says 'Invalid argument', it's likely that you are using "
       "a buggy FFmpeg version. FFmpeg4 is known to fail here in some "
       "valid scenarios. Try to upgrade FFmpeg?");
-  return swrContext;
+  return swr_context;
 }
 
-AVFilterContext* createAVFilterContextWithOptions(
-    AVFilterGraph* filterGraph,
+AVFilterContext* create_av_filter_context_with_options(
+    AVFilterGraph* filter_graph,
     const AVFilter* buffer,
-    const enum AVPixelFormat outputFormat) {
-  AVFilterContext* avFilterContext = nullptr;
-  const char* filterName = "out";
+    const enum AVPixelFormat output_format) {
+  AVFilterContext* av_filter_context = nullptr;
+  const char* filter_name = "out";
 
-  enum AVPixelFormat pixFmts[] = {outputFormat, AV_PIX_FMT_NONE};
+  enum AVPixelFormat pix_fmts[] = {output_format, AV_PIX_FMT_NONE};
 
 // av_opt_set_int_list was replaced by av_opt_set_array() in FFmpeg 8.
 #if LIBAVUTIL_VERSION_MAJOR >= 60 // FFmpeg >= 8
   // Output options like pixel_formats must be set before filter init
-  avFilterContext =
-      avfilter_graph_alloc_filter(filterGraph, buffer, filterName);
+  av_filter_context =
+      avfilter_graph_alloc_filter(filter_graph, buffer, filter_name);
   STD_TORCH_CHECK(
-      avFilterContext != nullptr, "Failed to allocate buffer filter context.");
+      av_filter_context != nullptr,
+      "Failed to allocate buffer filter context.");
 
   // When setting pix_fmts, only the first element is used, so nb_elems = 1
   // AV_PIX_FMT_NONE acts as a terminator for the array in av_opt_set_int_list
   int status = av_opt_set_array(
-      avFilterContext,
+      av_filter_context,
       "pixel_formats",
       AV_OPT_SEARCH_CHILDREN,
       0, // start_elem
       1, // nb_elems
       AV_OPT_TYPE_PIXEL_FMT,
-      pixFmts);
+      pix_fmts);
   STD_TORCH_CHECK(
       status >= 0,
       "Failed to set pixel format for buffer filter: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 
-  status = avfilter_init_str(avFilterContext, nullptr);
+  status = avfilter_init_str(av_filter_context, nullptr);
   STD_TORCH_CHECK(
       status >= 0,
       "Failed to initialize buffer filter: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 #else // FFmpeg <= 7
   // For older FFmpeg versions, create filter and then set options
   int status = avfilter_graph_create_filter(
-      &avFilterContext, buffer, filterName, nullptr, nullptr, filterGraph);
+      &av_filter_context, buffer, filter_name, nullptr, nullptr, filter_graph);
   STD_TORCH_CHECK(
       status >= 0,
       "Failed to create buffer filter: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 
   status = av_opt_set_int_list(
-      avFilterContext,
+      av_filter_context,
       "pix_fmts",
-      pixFmts,
+      pix_fmts,
       AV_PIX_FMT_NONE,
       AV_OPT_SEARCH_CHILDREN);
   STD_TORCH_CHECK(
       status >= 0,
       "Failed to set pixel formats for buffer filter: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 #endif
 
-  return avFilterContext;
+  return av_filter_context;
 }
 
-UniqueAVFrame convertAudioAVFrameSamples(
-    const UniqueSwrContext& swrContext,
-    const UniqueAVFrame& srcAVFrame,
-    AVSampleFormat outSampleFormat,
-    int outSampleRate,
-    int outNumChannels) {
-  UniqueAVFrame convertedAVFrame(av_frame_alloc());
+UniqueAVFrame convert_audio_av_frame_samples(
+    const UniqueSwrContext& swr_context,
+    const UniqueAVFrame& src_av_frame,
+    AVSampleFormat out_sample_format,
+    int out_sample_rate,
+    int out_num_channels) {
+  UniqueAVFrame converted_av_frame(av_frame_alloc());
   STD_TORCH_CHECK(
-      convertedAVFrame,
+      converted_av_frame,
       "Could not allocate frame for sample format conversion.");
 
-  convertedAVFrame->pts = srcAVFrame->pts;
-  convertedAVFrame->format = static_cast<int>(outSampleFormat);
+  converted_av_frame->pts = src_av_frame->pts;
+  converted_av_frame->format = static_cast<int>(out_sample_format);
 
-  convertedAVFrame->sample_rate = outSampleRate;
-  int srcSampleRate = srcAVFrame->sample_rate;
-  if (srcSampleRate != outSampleRate) {
+  converted_av_frame->sample_rate = out_sample_rate;
+  int src_sample_rate = src_av_frame->sample_rate;
+  if (src_sample_rate != out_sample_rate) {
     // Note that this is an upper bound on the number of output samples.
     // `swr_convert()` will likely not fill convertedAVFrame with that many
     // samples if sample rate conversion is needed. It will buffer the last few
@@ -497,83 +503,84 @@ UniqueAVFrame convertAudioAVFrameSamples(
     // We could also use `swr_get_out_samples()` to determine the number of
     // output samples, but empirically `av_rescale_rnd()` seems to provide a
     // tighter bound.
-    convertedAVFrame->nb_samples = av_rescale_rnd(
-        swr_get_delay(swrContext.get(), srcSampleRate) + srcAVFrame->nb_samples,
-        outSampleRate,
-        srcSampleRate,
+    converted_av_frame->nb_samples = av_rescale_rnd(
+        swr_get_delay(swr_context.get(), src_sample_rate) +
+            src_av_frame->nb_samples,
+        out_sample_rate,
+        src_sample_rate,
         AV_ROUND_UP);
   } else {
-    convertedAVFrame->nb_samples = srcAVFrame->nb_samples;
+    converted_av_frame->nb_samples = src_av_frame->nb_samples;
   }
 
-  setChannelLayout(convertedAVFrame, srcAVFrame, outNumChannels);
+  set_channel_layout(converted_av_frame, src_av_frame, out_num_channels);
 
-  auto status = av_frame_get_buffer(convertedAVFrame.get(), 0);
+  auto status = av_frame_get_buffer(converted_av_frame.get(), 0);
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Could not allocate frame buffers for sample format conversion: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 
   // Below we use AVFrame->extended_data instead of AVFrame->data to support
   // decoding audio with >8 audio channels. extended_data contains pointers
   // for all channels, while data only contains AV_NUM_DATA_POINTERS (8).
   // https://ffmpeg.org/doxygen/trunk/structAVFrame.html#afca04d808393822625e09b5ba91c6756
-  auto numConvertedSamples = swr_convert(
-      swrContext.get(),
-      convertedAVFrame->extended_data,
-      convertedAVFrame->nb_samples,
+  auto num_converted_samples = swr_convert(
+      swr_context.get(),
+      converted_av_frame->extended_data,
+      converted_av_frame->nb_samples,
       static_cast<const uint8_t**>(
-          const_cast<const uint8_t**>(srcAVFrame->extended_data)),
-      srcAVFrame->nb_samples);
+          const_cast<const uint8_t**>(src_av_frame->extended_data)),
+      src_av_frame->nb_samples);
   // numConvertedSamples can be 0 if we're downsampling by a great factor and
   // the first frame doesn't contain a lot of samples. It should be handled
   // properly by the caller.
   STD_TORCH_CHECK(
-      numConvertedSamples >= 0,
+      num_converted_samples >= 0,
       "Error in swr_convert: ",
-      getFFMPEGErrorStringFromErrorCode(numConvertedSamples));
+      get_ffmpeg_error_string_from_error_code(num_converted_samples));
 
   // See comment above about nb_samples
-  convertedAVFrame->nb_samples = numConvertedSamples;
+  converted_av_frame->nb_samples = num_converted_samples;
 
-  return convertedAVFrame;
+  return converted_av_frame;
 }
 
-void setFFmpegLogLevel() {
-  auto logLevel = AV_LOG_QUIET;
-  const char* logLevelEnvPtr = std::getenv("TORCHCODEC_FFMPEG_LOG_LEVEL");
-  if (logLevelEnvPtr != nullptr) {
-    std::string logLevelEnv(logLevelEnvPtr);
-    if (logLevelEnv == "QUIET") {
-      logLevel = AV_LOG_QUIET;
-    } else if (logLevelEnv == "PANIC") {
-      logLevel = AV_LOG_PANIC;
-    } else if (logLevelEnv == "FATAL") {
-      logLevel = AV_LOG_FATAL;
-    } else if (logLevelEnv == "ERROR") {
-      logLevel = AV_LOG_ERROR;
-    } else if (logLevelEnv == "WARNING") {
-      logLevel = AV_LOG_WARNING;
-    } else if (logLevelEnv == "INFO") {
-      logLevel = AV_LOG_INFO;
-    } else if (logLevelEnv == "VERBOSE") {
-      logLevel = AV_LOG_VERBOSE;
-    } else if (logLevelEnv == "DEBUG") {
-      logLevel = AV_LOG_DEBUG;
-    } else if (logLevelEnv == "TRACE") {
-      logLevel = AV_LOG_TRACE;
+void set_ffmpeg_log_level() {
+  auto log_level = AV_LOG_QUIET;
+  const char* log_level_env_ptr = std::getenv("TORCHCODEC_FFMPEG_LOG_LEVEL");
+  if (log_level_env_ptr != nullptr) {
+    std::string log_level_env(log_level_env_ptr);
+    if (log_level_env == "QUIET") {
+      log_level = AV_LOG_QUIET;
+    } else if (log_level_env == "PANIC") {
+      log_level = AV_LOG_PANIC;
+    } else if (log_level_env == "FATAL") {
+      log_level = AV_LOG_FATAL;
+    } else if (log_level_env == "ERROR") {
+      log_level = AV_LOG_ERROR;
+    } else if (log_level_env == "WARNING") {
+      log_level = AV_LOG_WARNING;
+    } else if (log_level_env == "INFO") {
+      log_level = AV_LOG_INFO;
+    } else if (log_level_env == "VERBOSE") {
+      log_level = AV_LOG_VERBOSE;
+    } else if (log_level_env == "DEBUG") {
+      log_level = AV_LOG_DEBUG;
+    } else if (log_level_env == "TRACE") {
+      log_level = AV_LOG_TRACE;
     } else {
       STD_TORCH_CHECK(
           false,
           "Invalid TORCHCODEC_FFMPEG_LOG_LEVEL: ",
-          logLevelEnv,
+          log_level_env,
           ". Use e.g. 'QUIET', 'PANIC', 'VERBOSE', etc.");
     }
   }
-  av_log_set_level(logLevel);
+  av_log_set_level(log_level);
 }
 
-AVIOContext* avioAllocContext(
+AVIOContext* avio_alloc_context(
     uint8_t* buffer,
     int buffer_size,
     int write_flag,
@@ -581,7 +588,9 @@ AVIOContext* avioAllocContext(
     AVIOReadFunction read_packet,
     AVIOWriteFunction write_packet,
     AVIOSeekFunction seek) {
-  return avio_alloc_context(
+  // Qualified with :: to call FFmpeg's avio_alloc_context, not this same-named
+  // wrapper in the facebook::torchcodec namespace (which would recurse).
+  return ::avio_alloc_context(
       buffer,
       buffer_size,
       write_flag,
@@ -596,83 +605,83 @@ AVIOContext* avioAllocContext(
       seek);
 }
 
-double ptsToSeconds(int64_t pts, const AVRational& timeBase) {
+double pts_to_seconds(int64_t pts, const AVRational& time_base) {
   // To perform the multiplication before the division, av_q2d is not used
-  return static_cast<double>(pts) * timeBase.num / timeBase.den;
+  return static_cast<double>(pts) * time_base.num / time_base.den;
 }
 
-int64_t secondsToClosestPts(double seconds, const AVRational& timeBase) {
+int64_t seconds_to_closest_pts(double seconds, const AVRational& time_base) {
   return static_cast<int64_t>(
-      std::round(seconds * timeBase.den / timeBase.num));
+      std::round(seconds * time_base.den / time_base.num));
 }
 
-int64_t computeSafeDuration(
-    const AVRational& frameRate,
-    const AVRational& timeBase) {
-  if (frameRate.num <= 0 || frameRate.den <= 0 || timeBase.num <= 0 ||
-      timeBase.den <= 0) {
+int64_t compute_safe_duration(
+    const AVRational& frame_rate,
+    const AVRational& time_base) {
+  if (frame_rate.num <= 0 || frame_rate.den <= 0 || time_base.num <= 0 ||
+      time_base.den <= 0) {
     return 0;
   } else {
-    return (static_cast<int64_t>(frameRate.den) * timeBase.den) /
-        (static_cast<int64_t>(timeBase.num) * frameRate.num);
+    return (static_cast<int64_t>(frame_rate.den) * time_base.den) /
+        (static_cast<int64_t>(time_base.num) * frame_rate.num);
   }
 }
 
-std::optional<double> getRotationFromStream(const AVStream* avStream) {
+std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
   // av_stream_get_side_data() was deprecated in FFmpeg 6.0, but its replacement
   // (av_packet_side_data_get() + codecpar->coded_side_data) is only available
   // from FFmpeg 6.1. We need some #pragma magic to silence the deprecation
   // warning which our compile chain would otherwise treat as an error.
-  if (avStream == nullptr) {
+  if (av_stream == nullptr) {
     return std::nullopt;
   }
 
-  const int32_t* displayMatrix = nullptr;
+  const int32_t* display_matrix = nullptr;
 
 // FFmpeg >= 6.1: Use codecpar->coded_side_data
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(60, 31, 100)
-  const AVPacketSideData* sideData = av_packet_side_data_get(
-      avStream->codecpar->coded_side_data,
-      avStream->codecpar->nb_coded_side_data,
+  const AVPacketSideData* side_data = av_packet_side_data_get(
+      av_stream->codecpar->coded_side_data,
+      av_stream->codecpar->nb_coded_side_data,
       AV_PKT_DATA_DISPLAYMATRIX);
-  if (sideData != nullptr) {
-    displayMatrix = reinterpret_cast<const int32_t*>(sideData->data);
+  if (side_data != nullptr) {
+    display_matrix = reinterpret_cast<const int32_t*>(side_data->data);
   }
 #elif LIBAVFORMAT_VERSION_MAJOR >= 60 // FFmpeg 6.0
   // FFmpeg 6.0: Use av_stream_get_side_data (deprecated but still available)
   // Suppress deprecation warning for this specific call
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  size_t sideDataSize = 0;
-  const uint8_t* sideData = av_stream_get_side_data(
-      avStream, AV_PKT_DATA_DISPLAYMATRIX, &sideDataSize);
+  size_t side_data_size = 0;
+  const uint8_t* side_data = av_stream_get_side_data(
+      av_stream, AV_PKT_DATA_DISPLAYMATRIX, &side_data_size);
 #pragma GCC diagnostic pop
-  if (sideData != nullptr) {
-    displayMatrix = reinterpret_cast<const int32_t*>(sideData);
+  if (side_data != nullptr) {
+    display_matrix = reinterpret_cast<const int32_t*>(side_data);
   }
 #else
   // FFmpeg < 6: Use av_stream_get_side_data.
   // The size parameter type changed from int* (FFmpeg 4) to size_t* (FFmpeg 5)
 #if LIBAVFORMAT_VERSION_MAJOR >= 59 // FFmpeg 5
-  size_t sideDataSize = 0;
+  size_t side_data_size = 0;
 #else // FFmpeg 4
-  int sideDataSize = 0;
+  int side_data_size = 0;
 #endif
-  const uint8_t* sideData = av_stream_get_side_data(
-      avStream, AV_PKT_DATA_DISPLAYMATRIX, &sideDataSize);
-  if (sideData != nullptr) {
-    displayMatrix = reinterpret_cast<const int32_t*>(sideData);
+  const uint8_t* side_data = av_stream_get_side_data(
+      av_stream, AV_PKT_DATA_DISPLAYMATRIX, &side_data_size);
+  if (side_data != nullptr) {
+    display_matrix = reinterpret_cast<const int32_t*>(side_data);
   }
 #endif
 
-  if (displayMatrix == nullptr) {
+  if (display_matrix == nullptr) {
     return std::nullopt;
   }
 
   // av_display_rotation_get returns the rotation angle in degrees needed to
   // rotate the video counter-clockwise to make it upright.
   // Returns NaN if the matrix is invalid.
-  double rotation = av_display_rotation_get(displayMatrix);
+  double rotation = av_display_rotation_get(display_matrix);
 
   // Check for invalid matrix
   if (std::isnan(rotation)) {
@@ -683,74 +692,79 @@ std::optional<double> getRotationFromStream(const AVStream* avStream) {
 }
 
 SwsConfig::SwsConfig(
-    int inputWidth,
-    int inputHeight,
-    AVPixelFormat inputFormat,
-    AVColorSpace inputColorspace,
-    int outputWidth,
-    int outputHeight,
-    AVPixelFormat outputFormat)
-    : inputWidth(inputWidth),
-      inputHeight(inputHeight),
-      inputFormat(inputFormat),
-      inputColorspace(inputColorspace),
-      outputWidth(outputWidth),
-      outputHeight(outputHeight),
-      outputFormat(outputFormat) {}
+    int input_width,
+    int input_height,
+    AVPixelFormat input_format,
+    AVColorSpace input_colorspace,
+    int output_width,
+    int output_height,
+    AVPixelFormat output_format)
+    : input_width(input_width),
+      input_height(input_height),
+      input_format(input_format),
+      input_colorspace(input_colorspace),
+      output_width(output_width),
+      output_height(output_height),
+      output_format(output_format) {}
 
 bool SwsConfig::operator==(const SwsConfig& other) const {
-  return inputWidth == other.inputWidth && inputHeight == other.inputHeight &&
-      inputFormat == other.inputFormat &&
-      inputColorspace == other.inputColorspace &&
-      outputWidth == other.outputWidth && outputHeight == other.outputHeight &&
-      outputFormat == other.outputFormat;
+  return input_width == other.input_width &&
+      input_height == other.input_height &&
+      input_format == other.input_format &&
+      input_colorspace == other.input_colorspace &&
+      output_width == other.output_width &&
+      output_height == other.output_height &&
+      output_format == other.output_format;
 }
 
 bool SwsConfig::operator!=(const SwsConfig& other) const {
   return !(*this == other);
 }
 
-UniqueSwsContext createSwsContext(const SwsConfig& swsConfig, int swsFlags) {
-  SwsContext* swsContext = sws_getContext(
-      swsConfig.inputWidth,
-      swsConfig.inputHeight,
-      swsConfig.inputFormat,
-      swsConfig.outputWidth,
-      swsConfig.outputHeight,
-      swsConfig.outputFormat,
-      swsFlags,
+UniqueSwsContext create_sws_context(
+    const SwsConfig& sws_config,
+    int sws_flags) {
+  SwsContext* sws_context = sws_getContext(
+      sws_config.input_width,
+      sws_config.input_height,
+      sws_config.input_format,
+      sws_config.output_width,
+      sws_config.output_height,
+      sws_config.output_format,
+      sws_flags,
       nullptr,
       nullptr,
       nullptr);
-  STD_TORCH_CHECK(swsContext, "sws_getContext() returned nullptr");
+  STD_TORCH_CHECK(sws_context, "sws_getContext() returned nullptr");
 
-  int* invTable = nullptr;
+  int* inv_table = nullptr;
   int* table = nullptr;
-  int srcRange, dstRange, brightness, contrast, saturation;
+  int src_range, dst_range, brightness, contrast, saturation;
   int ret = sws_getColorspaceDetails(
-      swsContext,
-      &invTable,
-      &srcRange,
+      sws_context,
+      &inv_table,
+      &src_range,
       &table,
-      &dstRange,
+      &dst_range,
       &brightness,
       &contrast,
       &saturation);
   STD_TORCH_CHECK(ret != -1, "sws_getColorspaceDetails returned -1");
 
-  const int* colorspaceTable = sws_getCoefficients(swsConfig.inputColorspace);
+  const int* colorspace_table =
+      sws_getCoefficients(sws_config.input_colorspace);
   ret = sws_setColorspaceDetails(
-      swsContext,
-      colorspaceTable,
-      srcRange,
-      colorspaceTable,
-      dstRange,
+      sws_context,
+      colorspace_table,
+      src_range,
+      colorspace_table,
+      dst_range,
       brightness,
       contrast,
       saturation);
   STD_TORCH_CHECK(ret != -1, "sws_setColorspaceDetails returned -1");
 
-  return UniqueSwsContext(swsContext);
+  return UniqueSwsContext(sws_context);
 }
 
 } // namespace facebook::torchcodec

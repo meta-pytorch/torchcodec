@@ -17,14 +17,14 @@ constexpr int DEFAULT_NVDEC_CACHE_CAPACITY = 20;
 
 // Set the capacity of the per-device NVDEC decoder cache.
 // capacity must be non-negative.
-void setNVDECCacheCapacity(int capacity);
+void set_nvdec_cache_capacity(int capacity);
 
 // Get the current capacity of the per-device NVDEC decoder cache.
-int getNVDECCacheCapacity();
+int get_nvdec_cache_capacity();
 
 // Get the current number of entries in the NVDEC decoder cache for a device.
 // This is currently only used for tests, and not publicly exposed.
 // TODO expose it?
-int getNVDECCacheSize(int device_index);
+int get_nvdec_cache_size(int device_index);
 
 } // namespace facebook::torchcodec

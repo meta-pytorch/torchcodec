@@ -27,28 +27,28 @@ class SwScale {
  public:
   // config.outputFormat is AV_PIX_FMT_RGB24 for 8-bit, AV_PIX_FMT_RGB48 for
   // >8-bit.
-  SwScale(const SwsConfig& config, int swsFlags = SWS_BILINEAR);
+  SwScale(const SwsConfig& config, int sws_flags = SWS_BILINEAR);
 
   int convert(
-      const UniqueAVFrame& avFrame,
-      torch::stable::Tensor& outputTensor);
+      const UniqueAVFrame& av_frame,
+      torch::stable::Tensor& output_tensor);
 
-  const SwsConfig& getConfig() const {
+  const SwsConfig& get_config() const {
     return config_;
   }
 
  private:
   SwsConfig config_;
-  int swsFlags_;
-  bool needsResize_;
+  int sws_flags_;
+  bool needs_resize_;
 
   // Color conversion context (input format -> output RGB at original
   // resolution).
-  UniqueSwsContext colorConversionSwsContext_;
+  UniqueSwsContext color_conversion_sws_context_;
 
   // Resize context (output RGB at input res -> output RGB at output res).
   // May be null if no resize is needed.
-  UniqueSwsContext resizeSwsContext_;
+  UniqueSwsContext resize_sws_context_;
 };
 
 } // namespace facebook::torchcodec

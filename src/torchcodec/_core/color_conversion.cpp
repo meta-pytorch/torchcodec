@@ -39,7 +39,7 @@ namespace facebook::torchcodec {
 // (bitDepth=10 or 12, outScale=65535).
 /* clang-format on */
 
-LumaCoefficients getLumaCoefficients(AVColorSpace colorspace) {
+LumaCoefficients get_luma_coefficients(AVColorSpace colorspace) {
   switch (colorspace) {
     case AVCOL_SPC_BT709:
       return {0.2126f, 0.7152f, 0.0722f};
@@ -54,217 +54,222 @@ LumaCoefficients getLumaCoefficients(AVColorSpace colorspace) {
   }
 }
 
-void computeColorConversionMatrix(
+void compute_color_conversion_matrix(
     AVColorSpace colorspace,
-    AVColorRange colorRange,
-    int bitDepth,
-    float outScale,
-    float outMatrix[3][4]) {
-  auto [kr, kg, kb] = getLumaCoefficients(colorspace);
+    AVColorRange color_range,
+    int bit_depth,
+    float out_scale,
+    float out_matrix[3][4]) {
+  auto [kr, kg, kb] = get_luma_coefficients(colorspace);
 
-  float vScale = 2.0f * (1.0f - kr);
-  float uScale = 2.0f * (1.0f - kb);
-  float guCoeff = -(2.0f * kb * (1.0f - kb)) / kg;
-  float gvCoeff = -(2.0f * kr * (1.0f - kr)) / kg;
+  float v_scale = 2.0f * (1.0f - kr);
+  float u_scale = 2.0f * (1.0f - kb);
+  float gu_coeff = -(2.0f * kb * (1.0f - kb)) / kg;
+  float gv_coeff = -(2.0f * kr * (1.0f - kr)) / kg;
 
-  float maxVal = static_cast<float>((1 << bitDepth) - 1);
+  float max_val = static_cast<float>((1 << bit_depth) - 1);
 
-  bool isFullRange = (colorRange == AVCOL_RANGE_JPEG);
+  bool is_full_range = (color_range == AVCOL_RANGE_JPEG);
 
-  if (isFullRange) {
-    float yScale = outScale / maxVal;
-    float uvCenter = static_cast<float>(1 << (bitDepth - 1));
+  if (is_full_range) {
+    float y_scale = out_scale / max_val;
+    float uv_center = static_cast<float>(1 << (bit_depth - 1));
 
-    outMatrix[0][0] = yScale;
-    outMatrix[0][1] = 0.0f;
-    outMatrix[0][2] = vScale * outScale / maxVal;
-    outMatrix[0][3] = -vScale * uvCenter * outScale / maxVal;
+    out_matrix[0][0] = y_scale;
+    out_matrix[0][1] = 0.0f;
+    out_matrix[0][2] = v_scale * out_scale / max_val;
+    out_matrix[0][3] = -v_scale * uv_center * out_scale / max_val;
 
-    outMatrix[1][0] = yScale;
-    outMatrix[1][1] = guCoeff * outScale / maxVal;
-    outMatrix[1][2] = gvCoeff * outScale / maxVal;
-    outMatrix[1][3] = -(guCoeff + gvCoeff) * uvCenter * outScale / maxVal;
+    out_matrix[1][0] = y_scale;
+    out_matrix[1][1] = gu_coeff * out_scale / max_val;
+    out_matrix[1][2] = gv_coeff * out_scale / max_val;
+    out_matrix[1][3] = -(gu_coeff + gv_coeff) * uv_center * out_scale / max_val;
 
-    outMatrix[2][0] = yScale;
-    outMatrix[2][1] = uScale * outScale / maxVal;
-    outMatrix[2][2] = 0.0f;
-    outMatrix[2][3] = -uScale * uvCenter * outScale / maxVal;
+    out_matrix[2][0] = y_scale;
+    out_matrix[2][1] = u_scale * out_scale / max_val;
+    out_matrix[2][2] = 0.0f;
+    out_matrix[2][3] = -u_scale * uv_center * out_scale / max_val;
   } else {
-    float s = static_cast<float>(1 << (bitDepth - 8));
-    float yOff = 16.0f * s;
-    float yRange = 219.0f * s;
-    float uvOff = 128.0f * s;
-    float uvRange = 224.0f * s;
+    float s = static_cast<float>(1 << (bit_depth - 8));
+    float y_off = 16.0f * s;
+    float y_range = 219.0f * s;
+    float uv_off = 128.0f * s;
+    float uv_range = 224.0f * s;
 
-    float yCoeff = outScale / yRange;
-    float uvCoeff_u = outScale / uvRange;
-    float uvCoeff_v = outScale / uvRange;
+    float y_coeff = out_scale / y_range;
+    float uv_coeff_u = out_scale / uv_range;
+    float uv_coeff_v = out_scale / uv_range;
 
-    outMatrix[0][0] = yCoeff;
-    outMatrix[0][1] = 0.0f;
-    outMatrix[0][2] = vScale * uvCoeff_v;
-    outMatrix[0][3] = -yCoeff * yOff - vScale * uvCoeff_v * uvOff;
+    out_matrix[0][0] = y_coeff;
+    out_matrix[0][1] = 0.0f;
+    out_matrix[0][2] = v_scale * uv_coeff_v;
+    out_matrix[0][3] = -y_coeff * y_off - v_scale * uv_coeff_v * uv_off;
 
-    outMatrix[1][0] = yCoeff;
-    outMatrix[1][1] = guCoeff * uvCoeff_u;
-    outMatrix[1][2] = gvCoeff * uvCoeff_v;
-    outMatrix[1][3] = -yCoeff * yOff - guCoeff * uvCoeff_u * uvOff -
-        gvCoeff * uvCoeff_v * uvOff;
+    out_matrix[1][0] = y_coeff;
+    out_matrix[1][1] = gu_coeff * uv_coeff_u;
+    out_matrix[1][2] = gv_coeff * uv_coeff_v;
+    out_matrix[1][3] = -y_coeff * y_off - gu_coeff * uv_coeff_u * uv_off -
+        gv_coeff * uv_coeff_v * uv_off;
 
-    outMatrix[2][0] = yCoeff;
-    outMatrix[2][1] = uScale * uvCoeff_u;
-    outMatrix[2][2] = 0.0f;
-    outMatrix[2][3] = -yCoeff * yOff - uScale * uvCoeff_u * uvOff;
+    out_matrix[2][0] = y_coeff;
+    out_matrix[2][1] = u_scale * uv_coeff_u;
+    out_matrix[2][2] = 0.0f;
+    out_matrix[2][3] = -y_coeff * y_off - u_scale * uv_coeff_u * uv_off;
   }
 }
 
-void maybeUpdateColorMatrix(
-    CachedColorMatrix& cachedColorMatrix,
+void maybe_update_color_matrix(
+    CachedColorMatrix& cached_color_matrix,
     AVColorSpace colorspace,
-    AVColorRange colorRange,
-    int bitDepth,
-    float outScale) {
-  if (cachedColorMatrix.valid && cachedColorMatrix.colorspace == colorspace &&
-      cachedColorMatrix.colorRange == colorRange &&
-      cachedColorMatrix.bitDepth == bitDepth &&
-      cachedColorMatrix.outScale == outScale) {
+    AVColorRange color_range,
+    int bit_depth,
+    float out_scale) {
+  if (cached_color_matrix.valid &&
+      cached_color_matrix.colorspace == colorspace &&
+      cached_color_matrix.color_range == color_range &&
+      cached_color_matrix.bit_depth == bit_depth &&
+      cached_color_matrix.out_scale == out_scale) {
     return;
   }
 
-  computeColorConversionMatrix(
-      colorspace, colorRange, bitDepth, outScale, cachedColorMatrix.matrix);
-  cachedColorMatrix.colorspace = colorspace;
-  cachedColorMatrix.colorRange = colorRange;
-  cachedColorMatrix.bitDepth = bitDepth;
-  cachedColorMatrix.outScale = outScale;
-  cachedColorMatrix.valid = true;
+  compute_color_conversion_matrix(
+      colorspace,
+      color_range,
+      bit_depth,
+      out_scale,
+      cached_color_matrix.matrix);
+  cached_color_matrix.colorspace = colorspace;
+  cached_color_matrix.color_range = color_range;
+  cached_color_matrix.bit_depth = bit_depth;
+  cached_color_matrix.out_scale = out_scale;
+  cached_color_matrix.valid = true;
 }
 
-void computeRGBToYUVMatrix(
+void compute_rgb_to_yuv_matrix(
     AVColorSpace colorspace,
-    AVColorRange colorRange,
-    float outMatrix[3][4]) {
-  auto [kr, kg, kb] = getLumaCoefficients(colorspace);
+    AVColorRange color_range,
+    float out_matrix[3][4]) {
+  auto [kr, kg, kb] = get_luma_coefficients(colorspace);
 
-  float uScale = 2.0f * (1.0f - kb);
-  float vScale = 2.0f * (1.0f - kr);
+  float u_scale = 2.0f * (1.0f - kb);
+  float v_scale = 2.0f * (1.0f - kr);
 
   // Full-range RGB [0,255] -> YUV forward matrix
   // Y = kr*R + kg*G + kb*B
   // U = (-kr*R - kg*G + (1-kb)*B) / uScale
   // V = ((1-kr)*R - kg*G - kb*B) / vScale
-  float yRow[3] = {kr, kg, kb};
-  float uRow[3] = {-kr / uScale, -kg / uScale, (1.0f - kb) / uScale};
-  float vRow[3] = {(1.0f - kr) / vScale, -kg / vScale, -kb / vScale};
+  float y_row[3] = {kr, kg, kb};
+  float u_row[3] = {-kr / u_scale, -kg / u_scale, (1.0f - kb) / u_scale};
+  float v_row[3] = {(1.0f - kr) / v_scale, -kg / v_scale, -kb / v_scale};
 
-  bool isFullRange = (colorRange == AVCOL_RANGE_JPEG);
+  bool is_full_range = (color_range == AVCOL_RANGE_JPEG);
 
-  if (isFullRange) {
+  if (is_full_range) {
     for (int i = 0; i < 3; i++) {
-      outMatrix[0][i] = yRow[i];
-      outMatrix[1][i] = uRow[i];
-      outMatrix[2][i] = vRow[i];
+      out_matrix[0][i] = y_row[i];
+      out_matrix[1][i] = u_row[i];
+      out_matrix[2][i] = v_row[i];
     }
-    outMatrix[0][3] = 0.0f;
-    outMatrix[1][3] = 128.0f;
-    outMatrix[2][3] = 128.0f;
+    out_matrix[0][3] = 0.0f;
+    out_matrix[1][3] = 128.0f;
+    out_matrix[2][3] = 128.0f;
   } else {
     // Limited range: Y scaled to [16, 235], UV scaled to [16, 240]
-    float yScale = 219.0f / 255.0f;
-    float uvLimitedScale = 224.0f / 255.0f;
+    float y_scale = 219.0f / 255.0f;
+    float uv_limited_scale = 224.0f / 255.0f;
     for (int i = 0; i < 3; i++) {
-      outMatrix[0][i] = yRow[i] * yScale;
-      outMatrix[1][i] = uRow[i] * uvLimitedScale;
-      outMatrix[2][i] = vRow[i] * uvLimitedScale;
+      out_matrix[0][i] = y_row[i] * y_scale;
+      out_matrix[1][i] = u_row[i] * uv_limited_scale;
+      out_matrix[2][i] = v_row[i] * uv_limited_scale;
     }
-    outMatrix[0][3] = 16.0f;
-    outMatrix[1][3] = 128.0f;
-    outMatrix[2][3] = 128.0f;
+    out_matrix[0][3] = 16.0f;
+    out_matrix[1][3] = 128.0f;
+    out_matrix[2][3] = 128.0f;
   }
 }
 
-torch::stable::Tensor convertYUVFrameToRGB(
-    UniqueAVFrame& avFrame,
+torch::stable::Tensor convert_yuv_frame_to_rgb(
+    UniqueAVFrame& av_frame,
     const StableDevice& device,
-    cudaStream_t nvdecStream,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
-    const FrameDims& outputDims,
-    bool isP016,
-    int bitDepth,
-    CachedColorMatrix& cachedColorMatrix) {
-  float outScale = isP016 ? 65535.0f : 255.0f;
-  OutputDtype outDtype = isP016 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
+    cudaStream_t nvdec_stream,
+    std::optional<torch::stable::Tensor> pre_allocated_output_tensor,
+    const FrameDims& output_dims,
+    bool is_p016,
+    int bit_depth,
+    CachedColorMatrix& cached_color_matrix) {
+  float out_scale = is_p016 ? 65535.0f : 255.0f;
+  OutputDtype out_dtype = is_p016 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 
   // Dimensions may be odd (NVDEC display area for VP9 etc.). NV12/P016
   // color conversion requires even dimensions, so we round up to even
   // for the kernel, then crop to outputDims.
-  int evenHeight = roundUpToEven(avFrame->height);
-  int evenWidth = roundUpToEven(avFrame->width);
+  int even_height = round_up_to_even(av_frame->height);
+  int even_width = round_up_to_even(av_frame->width);
 
-  int outHeight = outputDims.height;
-  int outWidth = outputDims.width;
-  bool needsCrop = (outHeight != evenHeight) || (outWidth != evenWidth);
+  int out_height = output_dims.height;
+  int out_width = output_dims.width;
+  bool needs_crop = (out_height != even_height) || (out_width != even_width);
 
   torch::stable::Tensor dst;
-  if (needsCrop) {
-    dst = allocateEmptyHWCTensor(
-        FrameDims(evenHeight, evenWidth), device, outDtype);
-  } else if (preAllocatedOutputTensor.has_value()) {
-    dst = preAllocatedOutputTensor.value();
+  if (needs_crop) {
+    dst = allocate_empty_hwc_tensor(
+        FrameDims(even_height, even_width), device, out_dtype);
+  } else if (pre_allocated_output_tensor.has_value()) {
+    dst = pre_allocated_output_tensor.value();
   } else {
-    dst = allocateEmptyHWCTensor(
-        FrameDims(outHeight, outWidth), device, outDtype);
+    dst = allocate_empty_hwc_tensor(
+        FrameDims(out_height, out_width), device, out_dtype);
   }
 
-  cudaStream_t stream = getCurrentCudaStream(device.index());
-  syncStreams(
-      /*runningStream=*/nvdecStream, /*waitingStream=*/stream);
+  cudaStream_t stream = get_current_cuda_stream(device.index());
+  sync_streams(
+      /*runningStream=*/nvdec_stream, /*waitingStream=*/stream);
 
-  maybeUpdateColorMatrix(
-      cachedColorMatrix,
-      avFrame->colorspace,
-      avFrame->color_range,
-      bitDepth,
-      outScale);
+  maybe_update_color_matrix(
+      cached_color_matrix,
+      av_frame->colorspace,
+      av_frame->color_range,
+      bit_depth,
+      out_scale);
 
-  if (isP016) {
-    launchP016ToRGB16Kernel(
-        reinterpret_cast<const uint16_t*>(avFrame->data[0]),
-        reinterpret_cast<const uint16_t*>(avFrame->data[1]),
+  if (is_p016) {
+    launch_p016_to_rgb16_kernel(
+        reinterpret_cast<const uint16_t*>(av_frame->data[0]),
+        reinterpret_cast<const uint16_t*>(av_frame->data[1]),
         dst.mutable_data_ptr<uint16_t>(),
-        evenWidth,
-        evenHeight,
-        avFrame->linesize[0],
-        avFrame->linesize[1],
-        validateInt64ToInt(dst.stride(0) * 2, "dst.stride(0)*2"),
-        bitDepth,
-        cachedColorMatrix.matrix,
+        even_width,
+        even_height,
+        av_frame->linesize[0],
+        av_frame->linesize[1],
+        validate_int64_to_int(dst.stride(0) * 2, "dst.stride(0)*2"),
+        bit_depth,
+        cached_color_matrix.matrix,
         stream);
   } else {
-    launchNV12ToRGBKernel(
-        avFrame->data[0],
-        avFrame->data[1],
+    launch_nv12_to_rgb_kernel(
+        av_frame->data[0],
+        av_frame->data[1],
         dst.mutable_data_ptr<uint8_t>(),
-        evenWidth,
-        evenHeight,
-        avFrame->linesize[0],
-        avFrame->linesize[1],
-        validateInt64ToInt(dst.stride(0), "dst.stride(0)"),
-        cachedColorMatrix.matrix,
+        even_width,
+        even_height,
+        av_frame->linesize[0],
+        av_frame->linesize[1],
+        validate_int64_to_int(dst.stride(0), "dst.stride(0)"),
+        cached_color_matrix.matrix,
         stream);
   }
 
-  if (needsCrop) {
-    if (outHeight != evenHeight) {
-      dst = torch::stable::narrow(dst, /*dim=*/0, /*start=*/0, outHeight);
+  if (needs_crop) {
+    if (out_height != even_height) {
+      dst = torch::stable::narrow(dst, /*dim=*/0, /*start=*/0, out_height);
     }
-    if (outWidth != evenWidth) {
-      dst = torch::stable::narrow(dst, /*dim=*/1, /*start=*/0, outWidth);
+    if (out_width != even_width) {
+      dst = torch::stable::narrow(dst, /*dim=*/1, /*start=*/0, out_width);
       dst = torch::stable::contiguous(dst);
     }
-    if (preAllocatedOutputTensor.has_value()) {
-      torch::stable::copy_(preAllocatedOutputTensor.value(), dst);
-      return preAllocatedOutputTensor.value();
+    if (pre_allocated_output_tensor.has_value()) {
+      torch::stable::copy_(pre_allocated_output_tensor.value(), dst);
+      return pre_allocated_output_tensor.value();
     }
     return dst;
   }

@@ -9,6 +9,6 @@
 namespace facebook::torchcodec {
 
 // See note in corresponding cpp file
-bool loadNVCUVIDLibrary();
+bool load_nvcuvid_library();
 
 } // namespace facebook::torchcodec

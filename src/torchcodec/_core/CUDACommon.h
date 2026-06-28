@@ -23,22 +23,22 @@ namespace facebook::torchcodec {
 constexpr int MAX_CUDA_GPUS = 128;
 
 // NV12 requires even dimensions. This rounds up to the nearest even value.
-inline int roundUpToEven(int value) {
+inline int round_up_to_even(int value) {
   return (value + 1) & ~1;
 }
 
-cudaStream_t getCurrentCudaStream(int32_t deviceIndex);
+cudaStream_t get_current_cuda_stream(int32_t device_index);
 
 // Make waitingStream wait until all work currently enqueued on runningStream
 // has completed.
-void syncStreams(cudaStream_t runningStream, cudaStream_t waitingStream);
+void sync_streams(cudaStream_t running_stream, cudaStream_t waiting_stream);
 
-void initializeCudaContextWithPytorch(const StableDevice& device);
+void initialize_cuda_context_with_pytorch(const StableDevice& device);
 
-void validatePreAllocatedTensorShape(
-    const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,
-    const FrameDims& frameDims);
+void validate_pre_allocated_tensor_shape(
+    const std::optional<torch::stable::Tensor>& pre_allocated_output_tensor,
+    const FrameDims& frame_dims);
 
-int getDeviceIndex(const StableDevice& device);
+int get_device_index(const StableDevice& device);
 
 } // namespace facebook::torchcodec
