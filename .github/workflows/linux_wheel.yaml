@@ -98,7 +98,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cpu_x86_64
+          name: meta-pytorch_torchcodec__3.10_cpu_x86_64
           path: dist/
 
       - name: Install torchcodec from the wheel
@@ -149,7 +149,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cpu_x86_64
+          name: meta-pytorch_torchcodec__3.10_cpu_x86_64
           path: dist/
 
       - name: Install torchcodec from the wheel
