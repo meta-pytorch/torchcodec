@@ -50,6 +50,11 @@ import torch
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
+try:
+    from setuptools.command.bdist_wheel import bdist_wheel
+except ImportError:  # setuptools < 70.1 (bdist_wheel not yet vendored)
+    from wheel.bdist_wheel import bdist_wheel
+
 
 _ROOT_DIR = Path(__file__).parent.resolve()
 
@@ -197,6 +202,34 @@ if "bdist_wheel" in sys.argv and not (
         f"If you have a good reason *not* to, then set {NOT_A_LICENSE_VIOLATION_VAR}."
     )
 
+# nanobind only supports the CPython stable ABI (abi3) on Python >= 3.12. So:
+#   - On Python >= 3.12 we build our extension module (libtorchcodec_pybind_opsN)
+#     against the limited API and tag the wheel cp312-abi3, which works on 3.12
+#     and all later versions.
+#   - On Python 3.10 / 3.11 nanobind builds a regular, version-specific module,
+#     so we produce a normal cp3X-cp3X wheel for each of those versions.
+# (core/custom_ops are loaded via torch.ops.load_library and don't touch the
+# CPython API, so they never constrain the wheel tag.)
+ABI3_MIN_VERSION = (3, 12)
+ABI3_LIMITED_API_TAG = "cp312"
+
+
+class BdistWheelABI3(bdist_wheel):
+    """Tag the wheel as abi3 (e.g. cp312-abi3-<platform>) on Python >= 3.12.
+
+    nanobind produces a stable-ABI .so, but the *wheel* tag is driven solely by
+    bdist_wheel.py_limited_api. We set it here (rather than via setup.cfg or a
+    --py-limited-api CLI flag) so the abi3 tag is part of the committed build
+    definition and can't be accidentally dropped. On Python < 3.12 we leave it
+    unset, producing a normal per-version cp3X-cp3X wheel.
+    """
+
+    def finalize_options(self):
+        if sys.version_info >= ABI3_MIN_VERSION:
+            self.py_limited_api = ABI3_LIMITED_API_TAG
+        super().finalize_options()
+
+
 # See `CMakeBuild.build_extension()`.
 fake_extension = Extension(name="FAKE_NAME", sources=[])
 
@@ -233,5 +266,5 @@ _write_version_files()
 
 setup(
     ext_modules=[fake_extension],
-    cmdclass={"build_ext": CMakeBuild},
+    cmdclass={"build_ext": CMakeBuild, "bdist_wheel": BdistWheelABI3},
 )

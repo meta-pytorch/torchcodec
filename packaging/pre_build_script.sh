@@ -7,8 +7,9 @@
 
 set -ex
 
-# We need to install pybind11 because we need its CMake helpers in order to
-# compile correctly on Mac. Pybind11 is actually a C++ header-only library,
-# and PyTorch actually has it included. PyTorch, however, does not have the
-# CMake helpers.
-conda install -y pybind11 -c conda-forge
+# We build the pybind_ops Python extension module with nanobind (in stable-ABI
+# mode), so nanobind must be available at build time: its headers, its bundled
+# static library, and its CMake helpers (nanobind_add_module). We install it
+# with pip so that `python -m nanobind --cmake_dir` resolves during the CMake
+# configure step.
+python -m pip install nanobind

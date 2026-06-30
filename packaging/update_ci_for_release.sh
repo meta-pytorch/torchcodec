@@ -16,6 +16,12 @@ done
 
 # 2. Update python/ffmpeg/cuda versions in wheel install-and-test jobs only.
 #    This must NOT touch install-and-test-third-party-interface or build-docs.
+#
+#    Note on Python versions: we build wheels for 3.10, 3.11 and 3.12 only (see
+#    the generate-matrix `python-versions` in each workflow). 3.10/3.11 are
+#    regular per-version wheels; 3.12 is an abi3 (stable ABI) wheel that also
+#    works on 3.13, 3.14, ... So we test those three built versions here. Each
+#    install-and-test job downloads the wheel matching its Python version.
 WHEEL_FILES=(
     "${WORKFLOW_DIR}/linux_wheel.yaml"
     "${WORKFLOW_DIR}/linux_aarch64_wheel.yaml"
@@ -32,7 +38,7 @@ for f in "${WHEEL_FILES[@]}"; do
         continue
     fi
     echo "Updating matrix versions in $f ..."
-    sed -i "s|python-version: \[.*\]|python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']|g" "$f"
+    sed -i "s|python-version: \[.*\]|python-version: ['3.10', '3.11', '3.12']|g" "$f"
     sed -i "s|ffmpeg-version-for-tests: \[.*\]|ffmpeg-version-for-tests: ['4', '5', '6', '7', '8']|g" "$f"
     sed -i "s|cuda-version: \[.*\]|cuda-version: ['12.6', '13.0', '13.2']|g" "$f"
 done

@@ -36,7 +36,11 @@ jobs:
       with-rocm: disable
       with-cuda: disable
       build-python-only: "disable"
-      python-versions: '["3.10", "3.11", "3.12", "3.13", "3.14"]'
+      # nanobind only supports the CPython stable ABI (abi3) on Python >= 3.12.
+      # So we build a per-version wheel for 3.10 and 3.11, plus one abi3 wheel on
+      # 3.12 that also covers 3.13, 3.14, ... We therefore build only these three
+      # versions; the install-and-test jobs run each wheel on its Python.
+      python-versions: '["3.10", "3.11", "3.12"]'
 
 
   build:
@@ -67,7 +71,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10']
+        python-version: ['3.10', '3.11', '3.12']
         # TODO: FFmpeg 5 on Windows segfaults in avcodec_open2() when passing
         # bad parameters.
         # See https://github.com/pytorch/torchcodec/pull/806

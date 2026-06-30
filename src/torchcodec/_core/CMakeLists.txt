@@ -3,10 +3,21 @@ project(TorchCodec)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(PYBIND11_FINDPYTHON ON)
-find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development)
+
+# The pybind_ops Python extension module is built with nanobind, in stable-ABI
+# (abi3) mode, so we can ship a single wheel that works on Python >= 3.12.
+# nanobind requires the `Python` package (not just `Python3`) with the
+# Interpreter, Development and Development.SABIModule components; the last one
+# provides Python::SABIModule, which nanobind needs for stable-ABI builds.
+find_package(Python ${PYTHON_VERSION} EXACT COMPONENTS Interpreter Development Development.SABIModule REQUIRED)
+# nanobind ships its CMake config inside the installed Python package; ask it
+# where, then load it.
+execute_process(
+    COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+    OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
+find_package(nanobind CONFIG REQUIRED)
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -194,56 +205,39 @@ function(make_torchcodec_libraries
         "${custom_ops_dependencies}"
     )
 
-    # 3. Create libtorchcodec_pybind_opsN.so.
+    # 3. Create libtorchcodec_pybind_opsN — the Python extension module, built
+    #    with nanobind in stable-ABI (abi3) mode so a single wheel works on
+    #    Python >= 3.12. nanobind_add_module picks the right module type per
+    #    platform (e.g. .pyd on Windows), sets the .abi3 suffix, hides symbol
+    #    visibility, and links nanobind itself (statically, via NB_STATIC).
     set(pybind_ops_library_name "libtorchcodec_pybind_ops${ffmpeg_major_version}")
-    set(pybind_ops_sources
+    nanobind_add_module(
+        ${pybind_ops_library_name}
+        STABLE_ABI
+        NB_STATIC
         AVIOFileLikeContext.cpp
         pybind_ops.cpp
     )
-    set(pybind_ops_dependencies
-       ${core_library_name}
-       pybind11::module # This library dependency makes sure we have the right
-                        # Python libraries included as well as all of the right
-                        # settings so that we can successfully load the shared
-                        # library as a Python module on Mac. If we instead use
-                        # ${Python3_LIBRARIES}, it works on Linux but not on
-                        # Mac.
-    )
-    make_torchcodec_sublibrary(
-        "${pybind_ops_library_name}"
-        MODULE # Note that this not SHARED; otherwise we build the wrong kind
-               # of library on Mac. On Mac, SHARED becomes .dylib and MODULE becomes
-               # a .so. We want pybind11 libraries to become .so. If this is
-               # changed to SHARED, we will be able to succesfully compile a
-               # .dylib, but we will not be able to succesfully import that as
-               # a Python module on Mac.
-        "${pybind_ops_sources}"
-        "${pybind_ops_dependencies}"
-    )
 
-    if(WIN32)
-      # On Windows, we need to set the suffix to .pyd so that Python can
-      # import the shared library as a module. Just setting the MODULE type
-      # isn't enough.
-      set_target_properties(${pybind_ops_library_name} PROPERTIES SUFFIX ".pyd")
-    endif()
+    # nanobind_add_module doesn't go through make_torchcodec_sublibrary, so apply
+    # the same settings those libraries need: include paths, header-only fmt, the
+    # torch stable-ABI target version (these files include torch stable headers),
+    # and a link against the core library.
+    set_target_properties(${pybind_ops_library_name} PROPERTIES CXX_STANDARD 20)
+    target_include_directories(${pybind_ops_library_name} PRIVATE
+        ./../../../
+        "${TORCH_INSTALL_PREFIX}/include"
+        ${Python3_INCLUDE_DIRS}
+    )
+    target_compile_definitions(${pybind_ops_library_name} PRIVATE FMT_HEADER_ONLY)
+    target_compile_definitions(${pybind_ops_library_name} PRIVATE TORCH_TARGET_VERSION=0x020b000000000000)
+    target_link_libraries(${pybind_ops_library_name} PRIVATE ${core_library_name})
 
-    # pybind11 limits the visibility of symbols in the shared library to prevent
-    # stray initialization of py::objects. The rest of the object code must
-    # match. See:
-    #   https://pybind11.readthedocs.io/en/stable/faq.html#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclass-member-wattributes
-    # We have to do this for both pybind_ops and custom_ops because they include
-    # some of the same headers.
-    #
-    # Note that this is Linux only. It's not necessary on Windows, and on Mac
-    # hiding visibility can actually break dyanmic casts across share libraries
-    # because the type infos don't get exported.
+    # Hide symbol visibility in the custom ops library. The nanobind module gets
+    # hidden visibility from nanobind_add_module already. Linux only: it's not
+    # necessary on Windows, and on Mac hiding visibility can break dynamic casts
+    # across shared libraries because the type infos don't get exported.
     if(LINUX)
-        target_compile_options(
-            ${pybind_ops_library_name}
-            PUBLIC
-            "-fvisibility=hidden"
-        )
         target_compile_options(
             ${custom_ops_library_name}
             PUBLIC
@@ -279,26 +273,15 @@ function(make_torchcodec_libraries
         )
     endif()
 
-    # The value we use here must match _PYBIND_OPS_MODULE_NAME in
-    # torchcodec/_internally_replaced_utils.py. If the values do not
-    # match, then we will be unable to import the C++ shared library as a
-    # Python module at runtime.
+    # This is the name passed to NB_MODULE in pybind_ops.cpp. It must match
+    # _PYBIND_OPS_MODULE_NAME in torchcodec/_internally_replaced_utils.py, else
+    # we won't be able to import the C++ shared library as a Python module at
+    # runtime.
     target_compile_definitions(
         ${pybind_ops_library_name}
         PRIVATE
         PYBIND_OPS_MODULE_NAME=core_pybind_ops
     )
-
-    if(APPLE)
-        # If we don't make sure this flag is set, we run into segfauls at import
-        # time on Mac. See:
-        # https://github.com/pybind/pybind11/issues/3907#issuecomment-1170412764
-        target_link_options(
-            ${pybind_ops_library_name}
-            PUBLIC
-            "LINKER:-undefined,dynamic_lookup"
-        )
-    endif()
 
     # Install all libraries.
     set(
