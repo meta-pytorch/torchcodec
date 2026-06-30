@@ -50,6 +50,11 @@ import torch
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
 
+try:
+    from setuptools.command.bdist_wheel import bdist_wheel
+except ImportError:  # setuptools < 70.1 (bdist_wheel not yet vendored)
+    from wheel.bdist_wheel import bdist_wheel
+
 
 _ROOT_DIR = Path(__file__).parent.resolve()
 
@@ -197,13 +202,31 @@ if "bdist_wheel" in sys.argv and not (
         f"If you have a good reason *not* to, then set {NOT_A_LICENSE_VIOLATION_VAR}."
     )
 
-# See `CMakeBuild.build_extension()`.
-# py_limited_api=True tells setuptools to tag the wheel as abi3 (see the
-# [bdist_wheel] py_limited_api setting in setup.cfg). Our only CPython extension
-# module, libtorchcodec_pybind_opsN, is built against the limited API
-# (Py_LIMITED_API in _core/CMakeLists.txt); the core/custom_ops libraries are
-# loaded via torch.ops.load_library and don't touch the CPython API. So a single
-# abi3 wheel works across Python versions (>= the cp310 floor).
+# The minimum Python version we build for. Our only CPython extension module
+# (libtorchcodec_pybind_opsN) is compiled against the limited API
+# (Py_LIMITED_API in _core/CMakeLists.txt); core/custom_ops are loaded via
+# torch.ops.load_library and don't touch the CPython API. So a single abi3 wheel
+# built on this version works on all later Python versions.
+ABI3_LIMITED_API = "cp310"
+
+
+class BdistWheelABI3(bdist_wheel):
+    """Force the abi3 (stable ABI) wheel tag, e.g. cp310-abi3-<platform>.
+
+    We set py_limited_api here rather than in a setup.cfg [bdist_wheel] section
+    or via a --py-limited-api CLI flag so the abi3 tag is part of the committed
+    build definition and can't be accidentally dropped. If it were dropped, the
+    build would silently produce a per-version cp3X-cp3X wheel that only installs
+    on the build's own Python version.
+    """
+
+    def finalize_options(self):
+        self.py_limited_api = ABI3_LIMITED_API
+        super().finalize_options()
+
+
+# See `CMakeBuild.build_extension()`. py_limited_api=True makes setuptools
+# compile the extension against the limited API and use the .abi3 file suffix.
 fake_extension = Extension(name="FAKE_NAME", sources=[], py_limited_api=True)
 
 
@@ -239,5 +262,5 @@ _write_version_files()
 
 setup(
     ext_modules=[fake_extension],
-    cmdclass={"build_ext": CMakeBuild},
+    cmdclass={"build_ext": CMakeBuild, "bdist_wheel": BdistWheelABI3},
 )
