@@ -4,7 +4,36 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Torch REQUIRED)
-find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development)
+find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development Interpreter)
+
+# Read a list variable from sources.bzl, the single source of truth for the
+# _core C++ source files shared with the internal Buck build. The .bzl file is
+# valid Python, so we exec it and print the requested list; configure_file
+# registers it as a dependency so re-running CMake picks up edits.
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/sources.bzl
+    ${CMAKE_CURRENT_BINARY_DIR}/sources.bzl
+    COPYONLY)
+
+function(read_sources_from_bzl output_var list_name)
+    execute_process(
+        COMMAND "${Python3_EXECUTABLE}" -c
+            "exec(open('${CMAKE_CURRENT_SOURCE_DIR}/sources.bzl').read()); print(';'.join(${list_name}))"
+        OUTPUT_VARIABLE _sources
+        RESULT_VARIABLE _retval
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _retval EQUAL 0)
+        message(FATAL_ERROR "Failed to read '${list_name}' from sources.bzl")
+    endif()
+    set(${output_var} ${_sources} PARENT_SCOPE)
+endfunction()
+
+read_sources_from_bzl(TORCHCODEC_DECODER_CORE_SOURCES decoder_core_sources)
+read_sources_from_bzl(TORCHCODEC_FFMPEG_COMMON_SOURCES ffmpeg_common_sources)
+read_sources_from_bzl(TORCHCODEC_DECODER_CORE_CUDA_SOURCES decoder_core_cuda_sources)
+read_sources_from_bzl(TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES file_like_context_sources)
+read_sources_from_bzl(TORCHCODEC_CUSTOM_OPS_SOURCES custom_ops_sources)
+read_sources_from_bzl(TORCHCODEC_PYBIND_OPS_SOURCES pybind_ops_sources)
 
 # The pybind_ops Python extension module is built with nanobind, in stable-ABI
 # (abi3) mode, so we can ship a single wheel that works on Python >= 3.12.
@@ -137,28 +166,13 @@ function(make_torchcodec_libraries
     # 1. Create libtorchcodec_coreN.{ext}.
     set(core_library_name "libtorchcodec_core${ffmpeg_major_version}")
     set(core_sources
-        AVIOContextHolder.cpp
-        AVIOTensorContext.cpp
-        AVIOFileContext.cpp
-        FFMPEGCommon.cpp
-        FilterGraph.cpp
-        Frame.cpp
-        DeviceInterface.cpp
-        CpuDeviceInterface.cpp
-        SingleStreamDecoder.cpp
-        Encoder.cpp
-        ValidationUtils.cpp
-        Transform.cpp
-        Metadata.cpp
-        SwScale.cpp
-        WavDecoder.cpp
-        NVDECCacheConfig.cpp
-        Logging.cpp
+        ${TORCHCODEC_DECODER_CORE_SOURCES}
+        ${TORCHCODEC_FFMPEG_COMMON_SOURCES}
     )
 
     if(ENABLE_CUDA)
         enable_language(CUDA)
-	    list(APPEND core_sources CudaDeviceInterface.cpp BetaCudaDeviceInterface.cpp NVDECCache.cpp CUDACommon.cpp NVCUVIDRuntimeLoader.cpp color_conversion.cpp color_conversion.cu)
+        list(APPEND core_sources ${TORCHCODEC_DECODER_CORE_CUDA_SOURCES})
     endif()
 
     set(core_library_dependencies
@@ -192,7 +206,7 @@ function(make_torchcodec_libraries
     # 2. Create libtorchcodec_custom_opsN.{ext}.
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
     set(custom_ops_sources
-        custom_ops.cpp
+        ${TORCHCODEC_CUSTOM_OPS_SOURCES}
     )
     set(custom_ops_dependencies
         ${core_library_name}
@@ -215,8 +229,8 @@ function(make_torchcodec_libraries
         ${pybind_ops_library_name}
         STABLE_ABI
         NB_STATIC
-        AVIOFileLikeContext.cpp
-        pybind_ops.cpp
+        ${TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES}
+        ${TORCHCODEC_PYBIND_OPS_SOURCES}
     )
 
     # nanobind_add_module doesn't go through make_torchcodec_sublibrary, so apply
