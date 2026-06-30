@@ -36,6 +36,11 @@ jobs:
       with-rocm: disable
       with-cuda: disable
       build-python-only: "disable"
+      # torchcodec wheels are abi3 (built against Py_LIMITED_API), so a single
+      # wheel built on the minimum supported Python (3.10) works on all later
+      # versions. We build only that one wheel; the install-and-test jobs run it
+      # across the supported Python versions.
+      python-versions: '["3.10"]'
 
   build:
     needs: generate-matrix

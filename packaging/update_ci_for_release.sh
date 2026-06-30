@@ -16,6 +16,13 @@ done
 
 # 2. Update python/ffmpeg/cuda versions in wheel install-and-test jobs only.
 #    This must NOT touch install-and-test-third-party-interface or build-docs.
+#
+#    Note: this only expands the TEST matrix. We do NOT build one wheel per
+#    Python version: torchcodec wheels are abi3 (Py_LIMITED_API), so a single
+#    wheel built on Python 3.10 works on all later versions. The build is pinned
+#    to 3.10 via `python-versions: '["3.10"]'` in each workflow's generate-matrix
+#    job, and the install-and-test jobs always download/install that 3.10 wheel
+#    (hardcoded artifact name + cp310 glob) while running tests on each version.
 WHEEL_FILES=(
     "${WORKFLOW_DIR}/linux_wheel.yaml"
     "${WORKFLOW_DIR}/linux_aarch64_wheel.yaml"
