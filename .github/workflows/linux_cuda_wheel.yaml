@@ -67,12 +67,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-          # 3.10 corresponds to the minimum python version for which we build
-          # the wheel unless the label cliflow/binaries/all is present in the
-          # PR.
-          # For the actual release we should add that label and change this to
-          # include more python versions.
-        python-version: ['3.10', '3.11', '3.12']
+          # We test on all supported Python versions. The wheels themselves are
+          # built only for 3.10, 3.11 and 3.12 (the 3.12 one is abi3 and also
+          # covers 3.13, 3.14); each job below downloads the wheel matching its
+          # Python version.
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
         # We test against 12.6 and 13.0 to avoid having too big of a CI matrix,
         # but for releases we should add 12.8.
         cuda-version: ['12.6', '13.0']
@@ -88,8 +87,14 @@ jobs:
         run: |
           cuda_version_without_periods=$(echo "${{ matrix.cuda-version }}" | sed 's/\.//g')
           echo cuda_version_without_periods=${cuda_version_without_periods} >> $GITHUB_ENV
-          python_version_without_periods=$(echo "${{ matrix.python-version }}" | sed 's/\.//g')
-          echo python_version_without_periods=${python_version_without_periods} >> $GITHUB_ENV
+          # 3.10/3.11 have their own wheels; 3.12 and newer all use the 3.12
+          # abi3 wheel, so map the test Python to the wheel's Python tag.
+          case "${{ matrix.python-version }}" in
+            3.10|3.11) wheel_python="${{ matrix.python-version }}" ;;
+            *) wheel_python="3.12" ;;
+          esac
+          echo wheel_python=${wheel_python} >> $GITHUB_ENV
+          echo wheel_python_without_periods=${wheel_python//./} >> $GITHUB_ENV
 
       - name: Check out repo
         uses: actions/checkout@v6
@@ -123,11 +128,11 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cu${{ env.cuda_version_without_periods }}_x86_64
+          name: meta-pytorch_torchcodec__${{ env.wheel_python }}_cu${{ env.cuda_version_without_periods }}_x86_64
           path: dist/
 
       - name: Install torchcodec from the wheel
-        run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}-cp${{ env.python_version_without_periods }}*.whl"
+        run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}-cp${{ env.wheel_python_without_periods }}*.whl"
 
       - name: Install test dependencies
         run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh
