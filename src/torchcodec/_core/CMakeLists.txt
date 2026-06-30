@@ -3,10 +3,11 @@ project(TorchCodec)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(PYBIND11_FINDPYTHON ON)
-find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
-find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development)
+# Development.SABIModule provides the stable-ABI (limited API) module target,
+# Python3::SABIModule, which we link the pybind_ops module against so we can
+# ship a single abi3 wheel that works across Python versions.
+find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development Development.SABIModule)
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -202,24 +203,41 @@ function(make_torchcodec_libraries
     )
     set(pybind_ops_dependencies
        ${core_library_name}
-       pybind11::module # This library dependency makes sure we have the right
-                        # Python libraries included as well as all of the right
-                        # settings so that we can successfully load the shared
-                        # library as a Python module on Mac. If we instead use
-                        # ${Python3_LIBRARIES}, it works on Linux but not on
-                        # Mac.
     )
     make_torchcodec_sublibrary(
         "${pybind_ops_library_name}"
         MODULE # Note that this not SHARED; otherwise we build the wrong kind
                # of library on Mac. On Mac, SHARED becomes .dylib and MODULE becomes
-               # a .so. We want pybind11 libraries to become .so. If this is
-               # changed to SHARED, we will be able to succesfully compile a
-               # .dylib, but we will not be able to succesfully import that as
-               # a Python module on Mac.
+               # a .so. We want the Python extension module to become a .so. If
+               # this is changed to SHARED, we will be able to succesfully
+               # compile a .dylib, but we will not be able to succesfully import
+               # that as a Python module on Mac.
         "${pybind_ops_sources}"
         "${pybind_ops_dependencies}"
     )
+
+    # Build the module against the CPython limited API (stable ABI) so that a
+    # single abi3 wheel works across Python versions. This must match the floor
+    # advertised in the wheel tag (py_limited_api = cp310 in setup.cfg) and the
+    # minimum supported Python version. We set the value explicitly rather than
+    # letting Python3::SABIModule derive it from the build interpreter, so the
+    # floor is deterministic regardless of which Python builds the wheel.
+    target_compile_definitions(
+        ${pybind_ops_library_name}
+        PRIVATE
+        Py_LIMITED_API=0x030A0000
+    )
+    if(WIN32)
+        # On Windows we must link the stable-ABI import library (python3.lib),
+        # which Python3::SABIModule provides. On Linux/Mac, extension-module
+        # symbols are resolved from the interpreter at load time (see the macOS
+        # dynamic_lookup link option below), so no extra linkage is needed.
+        target_link_libraries(
+            ${pybind_ops_library_name}
+            PRIVATE
+            Python3::SABIModule
+        )
+    endif()
 
     if(WIN32)
       # On Windows, we need to set the suffix to .pyd so that Python can
@@ -228,12 +246,11 @@ function(make_torchcodec_libraries
       set_target_properties(${pybind_ops_library_name} PROPERTIES SUFFIX ".pyd")
     endif()
 
-    # pybind11 limits the visibility of symbols in the shared library to prevent
-    # stray initialization of py::objects. The rest of the object code must
-    # match. See:
-    #   https://pybind11.readthedocs.io/en/stable/faq.html#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclass-member-wattributes
-    # We have to do this for both pybind_ops and custom_ops because they include
-    # some of the same headers.
+    # We hide the visibility of symbols in these shared libraries so that the
+    # only exported symbol of the pybind_ops module is its PyInit_* entry point
+    # (PyMODINIT_FUNC forces default visibility on it), keeping the module's
+    # internals private. We do this for both pybind_ops and custom_ops because
+    # they include some of the same headers.
     #
     # Note that this is Linux only. It's not necessary on Windows, and on Mac
     # hiding visibility can actually break dyanmic casts across share libraries

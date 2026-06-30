@@ -198,7 +198,13 @@ if "bdist_wheel" in sys.argv and not (
     )
 
 # See `CMakeBuild.build_extension()`.
-fake_extension = Extension(name="FAKE_NAME", sources=[])
+# py_limited_api=True tells setuptools to tag the wheel as abi3 (see the
+# [bdist_wheel] py_limited_api setting in setup.cfg). Our only CPython extension
+# module, libtorchcodec_pybind_opsN, is built against the limited API
+# (Py_LIMITED_API in _core/CMakeLists.txt); the core/custom_ops libraries are
+# loaded via torch.ops.load_library and don't touch the CPython API. So a single
+# abi3 wheel works across Python versions (>= the cp310 floor).
+fake_extension = Extension(name="FAKE_NAME", sources=[], py_limited_api=True)
 
 
 def _write_version_files():

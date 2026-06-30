@@ -1022,8 +1022,13 @@ class TestAudioDecoderOps:
             def seek(self, offset: int, whence: int) -> int:
                 return self._file.seeK(offset, whence)
 
+        # Note: the underlying Python exception is a TypeError, but it surfaces
+        # as a RuntimeError (with the original message included). Since our
+        # extension module is built against the limited API, we can no longer
+        # rely on pybind11 to restore the original Python exception type at the
+        # torch/Python boundary.
         with pytest.raises(
-            TypeError, match="takes 1 positional argument but 2 were given"
+            RuntimeError, match="takes 1 positional argument but 2 were given"
         ):
             create_from_file_like(
                 ReadMethodWrongSignature(open(NASA_VIDEO.path, mode="rb", buffering=0)),
@@ -1041,8 +1046,10 @@ class TestAudioDecoderOps:
             def seek(self, offset: int) -> int:
                 return 0
 
+        # See the note above: a TypeError surfaces as a RuntimeError under the
+        # limited API.
         with pytest.raises(
-            TypeError, match="takes 2 positional arguments but 3 were given"
+            RuntimeError, match="takes 2 positional arguments but 3 were given"
         ):
             create_from_file_like(
                 SeekMethodWrongSignature(open(NASA_VIDEO.path, mode="rb", buffering=0)),
