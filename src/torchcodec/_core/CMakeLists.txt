@@ -208,9 +208,14 @@ function(make_torchcodec_libraries
     set(custom_ops_sources
         ${TORCHCODEC_CUSTOM_OPS_SOURCES}
     )
+    # Note: we deliberately do NOT link ${Python3_LIBRARIES} here. custom_ops
+    # uses only the torch stable ABI and no CPython API, so it needs no Python
+    # symbols. Linking the version-specific libpython (e.g. libpython3.12.so)
+    # would add a hard DT_NEEDED on it, which breaks our abi3 wheel: the wheel is
+    # built on 3.12 but installed on 3.13/3.14, where libpython3.12 isn't
+    # present, causing "libpython3.12.so.1.0: cannot open shared object file".
     set(custom_ops_dependencies
         ${core_library_name}
-        ${Python3_LIBRARIES}
     )
     make_torchcodec_sublibrary(
         "${custom_ops_library_name}"
