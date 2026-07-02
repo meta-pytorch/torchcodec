@@ -36,6 +36,11 @@ jobs:
       with-rocm: disable
       with-cuda: enable
       build-python-only: "disable"
+      # nanobind only supports the CPython stable ABI (abi3) on Python >= 3.12.
+      # So we build a per-version wheel for 3.10 and 3.11, plus one abi3 wheel on
+      # 3.12 that also covers 3.13, 3.14, ... We therefore build only these three
+      # versions; the install-and-test jobs run each wheel on its Python.
+      python-versions: '["3.10", "3.11", "3.12"]'
   build:
     needs: generate-matrix
     strategy:
@@ -62,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10']
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
         cuda-version: ['12.6']
         ffmpeg-version-for-tests: ['4', '5', '6', '7', '8']
     container:
@@ -73,6 +78,13 @@ jobs:
         run: |
           cuda_version_without_periods=$(echo "${{ matrix.cuda-version }}" | sed 's/\.//g')
           echo cuda_version_without_periods=${cuda_version_without_periods} >> $GITHUB_ENV
+          # 3.10/3.11 have their own wheels; 3.12 and newer all use the 3.12
+          # abi3 wheel, so map the test Python to the wheel's Python tag.
+          case "${{ matrix.python-version }}" in
+            3.10|3.11) wheel_python="${{ matrix.python-version }}" ;;
+            *) wheel_python="3.12" ;;
+          esac
+          echo wheel_python=${wheel_python} >> $GITHUB_ENV
 
       - name: Check out repo
         uses: actions/checkout@v6
@@ -98,7 +110,8 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cu${{ env.cuda_version_without_periods }}_aarch64
+          # 3.10/3.11 have their own wheels; 3.12+ all use the 3.12 abi3 wheel.
+          name: meta-pytorch_torchcodec__${{ env.wheel_python }}_cu${{ env.cuda_version_without_periods }}_aarch64
           path: dist/
 
       - name: Install torchcodec from the wheel

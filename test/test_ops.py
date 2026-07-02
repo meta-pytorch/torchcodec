@@ -1022,8 +1022,12 @@ class TestAudioDecoderOps:
             def seek(self, offset: int, whence: int) -> int:
                 return self._file.seeK(offset, whence)
 
+        # Note: the underlying Python exception is a TypeError, but it surfaces
+        # as a RuntimeError (with the original message preserved). The exception
+        # is raised in an FFmpeg AVIO callback and crosses the torch op boundary,
+        # which only restores pybind11's own exception type, not nanobind's.
         with pytest.raises(
-            TypeError, match="takes 1 positional argument but 2 were given"
+            RuntimeError, match="takes 1 positional argument but 2 were given"
         ):
             create_from_file_like(
                 ReadMethodWrongSignature(open(NASA_VIDEO.path, mode="rb", buffering=0)),
@@ -1041,8 +1045,10 @@ class TestAudioDecoderOps:
             def seek(self, offset: int) -> int:
                 return 0
 
+        # See the note above: a TypeError surfaces as a RuntimeError (message
+        # preserved) since it's raised in an FFmpeg AVIO callback.
         with pytest.raises(
-            TypeError, match="takes 2 positional arguments but 3 were given"
+            RuntimeError, match="takes 2 positional arguments but 3 were given"
         ):
             create_from_file_like(
                 SeekMethodWrongSignature(open(NASA_VIDEO.path, mode="rb", buffering=0)),

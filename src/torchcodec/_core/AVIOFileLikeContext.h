@@ -6,18 +6,14 @@
 
 #pragma once
 
-// pybind11 headers from torch error out if TORCH_TARGET_VERSION is defined,
-// so we temporarily undefine it.
-// See https://github.com/pytorch/pytorch/pull/174372 for context
-#pragma push_macro("TORCH_TARGET_VERSION")
-#undef TORCH_TARGET_VERSION
-#include <pybind11/pybind11.h>
-#include <pybind11/stl.h>
-#pragma pop_macro("TORCH_TARGET_VERSION")
+// nanobind.h pulls in Python.h, so it must come before any standard headers.
+// We build this module against nanobind's stable-ABI (limited API) mode so we
+// can ship a single abi3 wheel that works across Python versions (>= 3.12).
+#include <nanobind/nanobind.h>
 
 #include "AVIOContextHolder.h"
 
-namespace py = pybind11;
+namespace nb = nanobind;
 
 namespace facebook::torchcodec {
 
@@ -25,9 +21,7 @@ namespace facebook::torchcodec {
 // and seek calls back up to the methods on the Python object.
 class AVIOFileLikeContext : public AVIOContextHolder {
  public:
-  explicit AVIOFileLikeContext(
-      const py::object& file_like,
-      bool is_for_writing);
+  explicit AVIOFileLikeContext(nb::object file_like, bool is_for_writing);
 
   int read(uint8_t* buf, int size) override;
   int write(const uint8_t* buf, int size) override;
@@ -40,24 +34,22 @@ class AVIOFileLikeContext : public AVIOContextHolder {
   // when its destructor gets called, as it needs to update the reference
   // count. It's easiest to control that when it's dynamic memory. Otherwise,
   // we'd have to ensure whatever enclosing scope holds the object has the GIL,
-  // and that's, at least, hard. For all of the common pitfalls, see:
-  //
-  //   https://pybind11.readthedocs.io/en/stable/advanced/misc.html#common-sources-of-global-interpreter-lock-errors
+  // and that's, at least, hard.
   //
   // We maintain a reference to the file-like object because the file-like
   // object that was created on the Python side must live as long as our
   // potential use. That is, even if there are no more references to the object
   // on the Python side, we require that the object is still live.
   struct PyObjectDeleter {
-    inline void operator()(py::object* obj) const {
+    inline void operator()(nb::object* obj) const {
       if (obj) {
-        py::gil_scoped_acquire gil;
+        nb::gil_scoped_acquire gil;
         delete obj;
       }
     }
   };
 
-  using UniquePyObject = std::unique_ptr<py::object, PyObjectDeleter>;
+  using UniquePyObject = std::unique_ptr<nb::object, PyObjectDeleter>;
   UniquePyObject file_like_;
 };
 

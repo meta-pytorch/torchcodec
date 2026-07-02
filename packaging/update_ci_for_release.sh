@@ -16,6 +16,13 @@ done
 
 # 2. Update python/ffmpeg/cuda versions in wheel install-and-test jobs only.
 #    This must NOT touch install-and-test-third-party-interface or build-docs.
+#
+#    Note on Python versions: we TEST on all supported versions (3.10-3.14), but
+#    we BUILD wheels only for 3.10, 3.11 and 3.12 (see the generate-matrix
+#    `python-versions` in each workflow, which this script does NOT touch).
+#    3.10/3.11 are regular per-version wheels; 3.12 is an abi3 (stable ABI) wheel
+#    that also covers 3.13, 3.14. Each install-and-test job downloads the wheel
+#    matching its Python version (3.10/3.11 -> own wheel, 3.12+ -> 3.12 wheel).
 WHEEL_FILES=(
     "${WORKFLOW_DIR}/linux_wheel.yaml"
     "${WORKFLOW_DIR}/linux_aarch64_wheel.yaml"

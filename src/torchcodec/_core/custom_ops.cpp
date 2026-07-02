@@ -4,13 +4,12 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-// fmt and pybind11 headers from torch error out if TORCH_TARGET_VERSION is
-// defined, so we temporarily undefine it.
+// fmt headers from torch error out if TORCH_TARGET_VERSION is defined, so we
+// temporarily undefine it.
 // See https://github.com/pytorch/pytorch/pull/174372 for context
 #pragma push_macro("TORCH_TARGET_VERSION")
 #undef TORCH_TARGET_VERSION
 #include <fmt/format.h>
-#include <pybind11/pybind11.h>
 #pragma pop_macro("TORCH_TARGET_VERSION")
 #include <cstdint>
 #include <string>
@@ -19,8 +18,8 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
+#include "AVIOContextHolder.h"
 #include "AVIOFileContext.h"
-#include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "Encoder.h"
 #include "Logging.h"
@@ -481,12 +480,11 @@ torch::stable::Tensor _create_from_file_like(
     int64_t file_like_context,
     std::optional<std::string> seek_mode) {
   auto file_like_context_ptr =
-      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+      reinterpret_cast<AVIOContextHolder*>(file_like_context);
   STD_TORCH_CHECK(
       file_like_context_ptr != nullptr,
       "file_like_context must be a valid pointer");
-  std::unique_ptr<AVIOFileLikeContext> avio_context_holder(
-      file_like_context_ptr);
+  std::unique_ptr<AVIOContextHolder> avio_context_holder(file_like_context_ptr);
 
   SeekMode real_seek = SeekMode::exact;
   if (seek_mode.has_value()) {
@@ -1086,12 +1084,11 @@ void streaming_encoder_open_file_like(
     std::string format,
     int64_t file_like_context) {
   auto file_like_context_ptr =
-      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+      reinterpret_cast<AVIOContextHolder*>(file_like_context);
   STD_TORCH_CHECK(
       file_like_context_ptr != nullptr,
       "file_like_context must be a valid pointer");
-  std::unique_ptr<AVIOFileLikeContext> avio_context_holder(
-      file_like_context_ptr);
+  std::unique_ptr<AVIOContextHolder> avio_context_holder(file_like_context_ptr);
   unwrap_tensor_to_get_multi_stream_encoder(encoder)->open(
       format, std::move(avio_context_holder));
 }
@@ -1147,8 +1144,8 @@ torch::stable::Tensor create_wav_decoder_from_tensor(
 torch::stable::Tensor _create_wav_decoder_from_file_like(
     int64_t file_like_context) {
   auto file_like_context_ptr =
-      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
-  std::unique_ptr<AVIOFileLikeContext> avio_context(file_like_context_ptr);
+      reinterpret_cast<AVIOContextHolder*>(file_like_context);
+  std::unique_ptr<AVIOContextHolder> avio_context(file_like_context_ptr);
   auto decoder = std::make_unique<WavDecoder>(std::move(avio_context));
   return wrap_wav_decoder_pointer_to_tensor(std::move(decoder));
 }

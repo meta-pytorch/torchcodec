@@ -36,6 +36,11 @@ jobs:
       with-rocm: disable
       with-cuda: disable
       build-python-only: "disable"
+      # nanobind only supports the CPython stable ABI (abi3) on Python >= 3.12.
+      # So we build a per-version wheel for 3.10 and 3.11, plus one abi3 wheel on
+      # 3.12 that also covers 3.13, 3.14, ... We therefore build only these three
+      # versions; the install-and-test jobs run each wheel on its Python.
+      python-versions: '["3.10", "3.11", "3.12"]'
 
   build:
     needs: generate-matrix
@@ -64,7 +69,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10']
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
         ffmpeg-version-for-tests: ['4', '5', '6', '7', '8']
     needs: build
     steps:
@@ -94,7 +99,8 @@ jobs:
       - name: Download wheel
         uses: actions/download-artifact@v4
         with:
-          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cpu_
+          # 3.10/3.11 have their own wheels; 3.12+ all use the 3.12 abi3 wheel.
+          name: meta-pytorch_torchcodec__${{ (matrix.python-version == '3.10' || matrix.python-version == '3.11') && matrix.python-version || '3.12' }}_cpu_
           path: dist/
 
       - name: Install torchcodec from the wheel
