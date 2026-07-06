@@ -160,9 +160,6 @@ class DeviceInterface {
     return "";
   }
 
-  // Pixel format used for encoding on CUDA devices
-  static constexpr AVPixelFormat CUDA_ENCODING_PIXEL_FORMAT = AV_PIX_FMT_NV12;
-
   virtual UniqueAVFrame convert_tensor_to_av_frame_for_encoding(
       [[maybe_unused]] const torch::stable::Tensor& tensor,
       [[maybe_unused]] int frame_index,
