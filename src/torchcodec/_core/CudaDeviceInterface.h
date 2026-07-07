@@ -15,6 +15,9 @@ namespace facebook::torchcodec {
 
 class CudaDeviceInterface : public DeviceInterface {
  public:
+  //  Pixel format used for encoding on CUDA devices.
+  static constexpr AVPixelFormat CUDA_ENCODING_PIXEL_FORMAT = AV_PIX_FMT_NV12;
+
   CudaDeviceInterface(const StableDevice& device);
 
   virtual ~CudaDeviceInterface();
@@ -49,6 +52,10 @@ class CudaDeviceInterface : public DeviceInterface {
       const torch::stable::Tensor& tensor,
       int frame_index,
       AVCodecContext* codec_context) override;
+
+  AVPixelFormat get_encoding_pixel_format(
+      const AVCodec& av_codec,
+      const std::optional<std::string>& user_pixel_format) const override;
 
   void setup_hardware_frame_context_for_encoding(
       AVCodecContext* codec_context) override;
