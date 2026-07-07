@@ -29,6 +29,17 @@ class DummyDeviceInterface : public DeviceInterface {
       std::optional<torch::stable::Tensor> pre_allocated_output_tensor =
           std::nullopt) override {}
 
+  // Encoder-side hooks added to exercise the third-party API surface at build
+  // time.
+  AVPixelFormat get_encoding_pixel_format(
+      const AVCodec& /*av_codec*/,
+      const std::optional<std::string>& /*user_pixel_format*/) const override {
+    return AV_PIX_FMT_NONE;
+  }
+
+  void setup_hardware_frame_context_for_encoding(
+      AVCodecContext* /*codec_context*/) override {}
+
  private:
   std::unique_ptr<FilterGraph> filter_graph_context_;
 };

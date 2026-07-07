@@ -51,6 +51,10 @@ class CpuDeviceInterface : public DeviceInterface {
       int frame_index,
       AVCodecContext* codec_context) override;
 
+  AVPixelFormat get_encoding_pixel_format(
+      const AVCodec& av_codec,
+      const std::optional<std::string>& user_pixel_format) const override;
+
   std::string get_details() override;
 
  private:

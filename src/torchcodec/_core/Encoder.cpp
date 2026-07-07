@@ -176,38 +176,6 @@ torch::stable::Tensor validate_frames(
   return torch::stable::contiguous(frames);
 }
 
-AVPixelFormat validate_pixel_format(
-    const AVCodec& av_codec,
-    const std::string& target_pixel_format) {
-  AVPixelFormat pixel_format = av_get_pix_fmt(target_pixel_format.c_str());
-
-  // Validate that the encoder supports this pixel format
-  const AVPixelFormat* supported_formats =
-      get_supported_pixel_formats(av_codec);
-  if (supported_formats != nullptr) {
-    for (int i = 0; supported_formats[i] != AV_PIX_FMT_NONE; ++i) {
-      if (supported_formats[i] == pixel_format) {
-        return pixel_format;
-      }
-    }
-  }
-
-  std::stringstream error_msg;
-  // av_get_pix_fmt failed to find a pix_fmt
-  if (pixel_format == AV_PIX_FMT_NONE) {
-    error_msg << "Unknown pixel format: " << target_pixel_format;
-  } else {
-    error_msg << "Specified pixel format " << target_pixel_format
-              << " is not supported by the " << av_codec.name << " encoder.";
-  }
-  // Build error message, similar to FFmpeg's error log
-  error_msg << "\nSupported pixel formats for " << av_codec.name << ":";
-  for (int i = 0; supported_formats[i] != AV_PIX_FMT_NONE; ++i) {
-    error_msg << " " << av_get_pix_fmt_name(supported_formats[i]);
-  }
-  STD_TORCH_CHECK(false, error_msg.str());
-}
-
 void try_to_validate_codec_option(
     const AVCodec& av_codec,
     const char* option_name,
@@ -426,8 +394,6 @@ int MultiStreamEncoder::add_audio_stream(
 }
 
 void MultiStreamEncoder::initialize_video_stream(VideoStream& video_stream) {
-  auto device_type = video_stream.device_interface->device().type();
-
   const AVCodec* av_codec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
@@ -473,32 +439,10 @@ void MultiStreamEncoder::initialize_video_stream(VideoStream& video_stream) {
 
   int out_height = video_stream.in_height;
   int out_width = video_stream.in_width;
-  AVPixelFormat out_pixel_format = AV_PIX_FMT_NONE;
-
-  if (video_stream.options.pixel_format.has_value()) {
-    if (device_type == kStableCUDA) {
-      STD_TORCH_CHECK(
-          false,
-          "Video encoding on GPU currently only supports the nv12 pixel format. "
-          "Do not set pixel_format to use nv12 by default.");
-    }
-    out_pixel_format = validate_pixel_format(
-        *av_codec, video_stream.options.pixel_format.value());
-  } else {
-    if (device_type == kStableCUDA) {
-      // Default to nv12 pixel format when encoding on GPU.
-      out_pixel_format = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
-    } else {
-      const AVPixelFormat* formats = get_supported_pixel_formats(*av_codec);
-      // Use first listed pixel format as default (often yuv420p).
-      // This is similar to FFmpeg's logic:
-      // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
-      // If pixel formats are undefined for some reason, try yuv420p
-      out_pixel_format = (formats && formats[0] != AV_PIX_FMT_NONE)
-          ? formats[0]
-          : AV_PIX_FMT_YUV420P;
-    }
-  }
+  // Pixel-format selection is delegated to the device interface.
+  AVPixelFormat out_pixel_format =
+      video_stream.device_interface->get_encoding_pixel_format(
+          *av_codec, video_stream.options.pixel_format);
 
   // Configure codec parameters
   video_stream.av_codec_context->codec_id = av_codec->id;
@@ -542,13 +486,11 @@ void MultiStreamEncoder::initialize_video_stream(VideoStream& video_stream) {
         video_stream.options.preset.value().c_str(),
         0);
   }
-
-  if (device_type == kStableCUDA) {
-    video_stream.device_interface->register_hardware_device_with_codec(
-        video_stream.av_codec_context.get());
-    video_stream.device_interface->setup_hardware_frame_context_for_encoding(
-        video_stream.av_codec_context.get());
-  }
+  // Hardware setup is a no-op on CPU; HW devices override these hooks.
+  video_stream.device_interface->register_hardware_device_with_codec(
+      video_stream.av_codec_context.get());
+  video_stream.device_interface->setup_hardware_frame_context_for_encoding(
+      video_stream.av_codec_context.get());
 
   int status = avcodec_open2(
       video_stream.av_codec_context.get(),
