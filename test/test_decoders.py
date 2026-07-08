@@ -6,12 +6,15 @@
 
 import contextlib
 import gc
+import queue
+import threading
 from functools import partial
 
 import numpy
 import pytest
 import torch
 from torchcodec import _core, ffmpeg_major_version, FrameBatch
+from torchcodec._frame import Frame
 from torchcodec.decoders import (
     AudioDecoder,
     AudioStreamMetadata,
@@ -21,6 +24,13 @@ from torchcodec.decoders import (
     VideoDecoder,
     VideoStreamMetadata,
     WavDecoder,
+)
+from torchcodec.decoders._blocks import (
+    ColorConverter,
+    DecodedFrame,
+    Demuxer,
+    Packet,
+    PacketDecoder,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.encoders import VideoEncoder
@@ -3129,3 +3139,179 @@ class TestWavDecoder:
                 wav_samples.data, audio_samples.data, rtol=0, atol=0
             )
             assert wav_samples.pts_seconds == audio_samples.pts_seconds
+
+
+class TestBlocks:
+
+    def test_block_output_types(self):
+        # Demuxer yields Packets, PacketDecoder yields DecodedFrames, and
+        # ColorConverter yields Frames with the expected shape/dtype.
+        demuxer = Demuxer(NASA_VIDEO.path)
+        decoder = PacketDecoder(demuxer)
+        converter = ColorConverter()
+
+        num_packets = 0
+        for packet in demuxer:
+            assert isinstance(packet, Packet)
+            num_packets += 1
+            for decoded in decoder.decode(packet):
+                assert isinstance(decoded, DecodedFrame)
+                frame = converter.convert(decoded)
+                assert isinstance(frame, Frame)
+                assert frame.data.ndim == 3  # CHW
+                assert frame.data.shape[0] == 3  # channels first
+                assert frame.data.dtype == torch.uint8
+                assert frame.duration_seconds >= 0
+
+        assert num_packets > 0
+
+    # The three decode stages, each expressed as a generator that transforms an
+    # iterator of inputs into an iterator of outputs. They compose directly (the
+    # sequential pipeline is just convert(decode(demux()))), and a thread
+    # boundary between any two stages is inserted with prefetch() below.
+
+    @staticmethod
+    def _demux(demuxer):
+        yield from demuxer
+
+    @staticmethod
+    def _decode(decoder, packets):
+        for packet in packets:
+            yield from decoder.decode(packet)
+        yield from decoder.flush()
+
+    @staticmethod
+    def _convert(converter, frames):
+        for frame in frames:
+            yield converter.convert(frame)
+
+    @staticmethod
+    def prefetch(upstream, buffer_size=8):
+        # Run `upstream` (a generator chaining one or more stages) on a
+        # background thread, yielding its items through a bounded queue. This is
+        # the only threading primitive: where you insert it decides which stages
+        # overlap. The queue applies backpressure (the worker blocks in q.put()
+        # when the buffer is full), so it runs ~buffer_size items ahead.
+        q: queue.Queue = queue.Queue(maxsize=buffer_size)
+        eof = object()
+        error = []
+
+        def worker():
+            try:
+                for item in upstream:
+                    q.put(item)
+            except Exception as e:  # surface failures instead of hanging
+                error.append(e)
+            finally:
+                q.put(eof)
+
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+
+        def drain():
+            while (item := q.get()) is not eof:
+                yield item
+            thread.join()  # worker enqueued eof and is finishing; make it explicit
+            if error:
+                raise error[0]
+
+        return drain()
+
+    def _decoded_frames(self, path):
+        # demux + decode, as a single generator of DecodedFrames (pts order).
+        demuxer = Demuxer(path)
+        decoder = PacketDecoder(demuxer)
+        return self._decode(decoder, self._demux(demuxer))
+
+    def _decode_sequential(self, path):
+        # demux -> decode -> color-convert, all on the calling thread.
+        demuxer = Demuxer(path)
+        decoder = PacketDecoder(demuxer)
+        converter = ColorConverter()
+        return list(
+            self._convert(converter, self._decode(decoder, self._demux(demuxer)))
+        )
+
+    def _decode_prefetch_frames(self, path):
+        # [demux + decode] on one thread || [color-convert] on another.
+        demuxer = Demuxer(path)
+        decoder = PacketDecoder(demuxer)
+        converter = ColorConverter()
+        frames = self.prefetch(self._decode(decoder, self._demux(demuxer)))
+        return list(self._convert(converter, frames))
+
+    def _decode_prefetch_packets(self, path):
+        # [demux] on one thread || [decode + color-convert] on another.
+        demuxer = Demuxer(path)
+        decoder = PacketDecoder(demuxer)
+        converter = ColorConverter()
+        packets = self.prefetch(self._demux(demuxer))
+        return list(self._convert(converter, self._decode(decoder, packets)))
+
+    def _decode_prefetch_packets_and_frames(self, path):
+        # [demux] || [decode] || [color-convert], each on its own thread.
+        demuxer = Demuxer(path)
+        decoder = PacketDecoder(demuxer)
+        converter = ColorConverter()
+        packets = self.prefetch(self._demux(demuxer))
+        frames = self.prefetch(self._decode(decoder, packets))
+        return list(self._convert(converter, frames))
+
+    def _to_frame_batch(self, frames):
+        return FrameBatch(
+            data=torch.stack([f.data for f in frames]),
+            pts_seconds=torch.tensor(
+                [f.pts_seconds for f in frames], dtype=torch.float64
+            ),
+            duration_seconds=torch.tensor(
+                [f.duration_seconds for f in frames], dtype=torch.float64
+            ),
+        )
+
+    @pytest.mark.parametrize("video", (NASA_VIDEO, BT709_FULL_RANGE))
+    @pytest.mark.parametrize(
+        "decode_method",
+        (
+            _decode_sequential,
+            _decode_prefetch_frames,
+            _decode_prefetch_packets,
+            _decode_prefetch_packets_and_frames,
+        ),
+        ids=lambda f: f.__name__.removeprefix("_decode_"),
+    )
+    def test_matches_video_decoder(self, video, decode_method):
+        got = self._to_frame_batch(decode_method(self, video.path))
+        ref = VideoDecoder(video.path).get_all_frames()
+
+        assert got.data.shape == ref.data.shape
+        torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
+        torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
+        torch.testing.assert_close(
+            got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
+        )
+
+    def test_color_converter_reused_across_videos(self):
+        # A single unbound ColorConverter must correctly convert frames from two
+        # different videos - here interleaved frame-by-frame, so the converter
+        # switches input resolution/format on every call.
+        converter = ColorConverter()
+        videos = [NASA_VIDEO, BT709_FULL_RANGE]
+        generators = [self._decoded_frames(v.path) for v in videos]
+        outputs = [[] for _ in videos]
+
+        done = [False] * len(videos)
+        while not all(done):
+            for i, gen in enumerate(generators):
+                if done[i]:
+                    continue
+                decoded = next(gen, None)
+                if decoded is None:
+                    done[i] = True
+                    continue
+                outputs[i].append(converter.convert(decoded))
+
+        for video, frames in zip(videos, outputs):
+            got = self._to_frame_batch(frames)
+            ref = VideoDecoder(video.path).get_all_frames()
+            assert got.data.shape == ref.data.shape
+            torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)

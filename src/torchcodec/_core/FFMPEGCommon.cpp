@@ -62,6 +62,19 @@ int64_t get_duration(const UniqueAVFrame& av_frame) {
 #endif
 }
 
+// Some videos aren't properly encoded and do not specify pts values for
+// packets, and thus for frames. Unset values correspond to INT64_MIN. When that
+// happens, we fall back to the dts value which hopefully exists and is correct.
+// Accessing AVFrames' and AVPackets' pts values should **always** go through
+// these helpers.
+int64_t get_pts_or_dts(ReferenceAVPacket& packet) {
+  return packet->pts == INT64_MIN ? packet->dts : packet->pts;
+}
+
+int64_t get_pts_or_dts(const UniqueAVFrame& av_frame) {
+  return av_frame->pts == INT64_MIN ? av_frame->pkt_dts : av_frame->pts;
+}
+
 void set_duration(const UniqueAVFrame& av_frame, int64_t duration) {
 #if LIBAVUTIL_VERSION_MAJOR < 58
   av_frame->pkt_duration = duration;

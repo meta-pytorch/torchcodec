@@ -44,8 +44,15 @@ void CpuDeviceInterface::initialize_video(
     const VideoStreamOptions& video_stream_options,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resized_output_dims) {
-  STD_TORCH_CHECK(av_stream != nullptr, "avStream is null");
-  time_base_ = av_stream->time_base;
+
+  // TODO_API_BREAKDOWN this used to be:
+  // STD_TORCH_CHECK(av_stream != nullptr, "avStream is null");
+  // time_base_ = av_stream->time_base;
+  // but now that avStrean can be null (to create a standalone color converter)
+  // we need this workaround. This is bad, we need to preserve the previous
+  // check somehow.
+  time_base_ = (av_stream != nullptr) ? av_stream->time_base
+                                      : AVRational{1, AV_TIME_BASE};
   av_media_type_ = AVMEDIA_TYPE_VIDEO;
   video_stream_options_ = video_stream_options;
   resized_output_dims_ = resized_output_dims;
