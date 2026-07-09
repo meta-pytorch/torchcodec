@@ -10,7 +10,9 @@
 #include <iostream>
 #include <limits>
 #include <string_view>
+#include "Demuxer.h"
 #include "Metadata.h"
+#include "PacketDecoder.h"
 #include "StableABICompat.h"
 
 extern "C" {
@@ -18,23 +20,6 @@ extern "C" {
 }
 
 namespace facebook::torchcodec {
-namespace {
-
-// Some videos aren't properly encoded and do not specify pts values for
-// packets, and thus for frames. Unset values correspond to INT64_MIN. When that
-// happens, we fallback to the dts value which hopefully exists and is correct.
-// Accessing AVFrames and AVPackets's pts values should **always** go through
-// the helpers below. Then, the "pts" fields in our structs like FrameInfo.pts
-// should be interpreted as "pts if it exists, dts otherwise".
-int64_t get_pts_or_dts(ReferenceAVPacket& packet) {
-  return packet->pts == INT64_MIN ? packet->dts : packet->pts;
-}
-
-int64_t get_pts_or_dts(const UniqueAVFrame& av_frame) {
-  return av_frame->pts == INT64_MIN ? av_frame->pkt_dts : av_frame->pts;
-}
-
-} // namespace
 
 // --------------------------------------------------------------------------
 // CONSTRUCTORS, INITIALIZATION, DESTRUCTORS
@@ -506,27 +491,12 @@ void SingleStreamDecoder::add_stream(
             .value_or(av_codec));
   }
 
-  AVCodecContext* codec_context = avcodec_alloc_context3(av_codec);
-  STD_TORCH_CHECK(codec_context != nullptr, "Failed to allocate codec context");
-  stream_info.codec_context = make_shared_av_codec_context(codec_context);
-
-  int ret_val = avcodec_parameters_to_context(
-      stream_info.codec_context.get(), stream_info.stream->codecpar);
-  STD_TORCH_CHECK(ret_val == AVSUCCESS, "avcodec_parameters_to_context failed");
-
-  stream_info.codec_context->thread_count = ffmpeg_thread_count.value_or(0);
-  stream_info.codec_context->pkt_timebase = stream_info.stream->time_base;
-
-  // Note that we must make sure to register the harware device context
-  // with the codec context before calling avcodec_open2(). Otherwise, decoding
-  // will happen on the CPU and not the hardware device.
-  device_interface_->register_hardware_device_with_codec(
-      stream_info.codec_context.get());
-  ret_val = avcodec_open2(stream_info.codec_context.get(), av_codec, nullptr);
-  STD_TORCH_CHECK(
-      ret_val >= AVSUCCESS, get_ffmpeg_error_string_from_error_code(ret_val));
-
-  stream_info.codec_context->time_base = stream_info.stream->time_base;
+  // Create + configure + open the codec context (shared with PacketDecoder).
+  stream_info.codec_context = create_and_open_codec_context(
+      stream_info.stream,
+      av_codec,
+      device_interface_.get(),
+      ffmpeg_thread_count);
 
   // Initialize the device interface with the codec context
   device_interface_->initialize(stream_info.codec_context);
@@ -1526,30 +1496,28 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
     }
 
     // We still haven't found the frame we're looking for. So let's read more
-    // packets and send them to the decoder.
+    // packets and send them to the decoder. (read_next_packet is shared with
+    // the Demuxer building block.)
     ReferenceAVPacket packet(auto_av_packet);
-    do {
-      status = av_read_frame(format_context_.get(), packet.get());
-      decode_stats_.num_packets_read++;
+    status =
+        read_next_packet(format_context_.get(), active_stream_index_, packet);
+    decode_stats_.num_packets_read++;
 
-      if (status == AVERROR_EOF) {
-        // End of file reached. We must drain the decoder
-        status = device_interface_->send_eof_packet();
-        STD_TORCH_CHECK(
-            status >= AVSUCCESS,
-            "Could not flush decoder: ",
-            get_ffmpeg_error_string_from_error_code(status));
+    if (status == AVERROR_EOF) {
+      // End of file reached. We must drain the decoder
+      status = device_interface_->send_eof_packet();
+      STD_TORCH_CHECK(
+          status >= AVSUCCESS,
+          "Could not flush decoder: ",
+          get_ffmpeg_error_string_from_error_code(status));
 
-        reached_eof = true;
-        break;
-      }
-
+      reached_eof = true;
+    } else {
       STD_TORCH_CHECK(
           status >= AVSUCCESS,
           "Could not read frame from input file: ",
           get_ffmpeg_error_string_from_error_code(status));
-
-    } while (packet->stream_index != active_stream_index_);
+    }
 
     if (reached_eof) {
       // We don't have any more packets to send to the decoder. So keep on

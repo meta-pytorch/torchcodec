@@ -22,9 +22,12 @@ extern "C" {
 #include "AVIOFileContext.h"
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
+#include "ColorConverter.h"
+#include "Demuxer.h"
 #include "Encoder.h"
 #include "Logging.h"
 #include "NVDECCacheConfig.h"
+#include "PacketDecoder.h"
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
@@ -68,6 +71,19 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "get_frames_by_pts_in_range_audio(Tensor(a!) decoder, *, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def(
       "get_frames_by_pts(Tensor(a!) decoder, *, Tensor timestamps) -> (Tensor, Tensor, Tensor)");
+  m.def(
+      "_blocks_create_demuxer(str filename, int? stream_index=None) -> Tensor");
+  m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
+  m.def(
+      "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\", str device_variant=\"default\") -> Tensor");
+  m.def(
+      "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
+  m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
+  m.def(
+      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float)");
+  m.def(
+      "_blocks_create_color_converter(str device=\"cpu\", str device_variant=\"default\") -> Tensor");
+  m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -161,6 +177,81 @@ SingleStreamDecoder* unwrap_tensor_to_get_decoder(
   void* buffer = tensor.mutable_data_ptr();
   SingleStreamDecoder* decoder = static_cast<SingleStreamDecoder*>(buffer);
   return decoder;
+}
+
+// Generic pointer<->tensor laundering for the building-block handle types
+// (Demuxer / PacketDecoder / ColorConverter). Same trick as
+// wrap_decoder_pointer_to_tensor: the tensor's data pointer IS the raw pointer,
+// with a deleter that deletes the owned object when the handle is dropped.
+template <typename T>
+torch::stable::Tensor wrap_pointer_to_tensor(std::unique_ptr<T> ptr) {
+  T* raw = ptr.release();
+  auto deleter = [raw](void*) { delete raw; };
+  int64_t sizes[] = {static_cast<int64_t>(sizeof(T*))};
+  int64_t strides[] = {1};
+  return torch::stable::from_blob(
+      raw,
+      {sizes, 1},
+      {strides, 1},
+      StableDevice(kStableCPU),
+      kStableInt64,
+      deleter);
+}
+
+template <typename T>
+T* unwrap_tensor_to_pointer(torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(tensor.is_contiguous(), "handle tensor must be contiguous");
+  return static_cast<T*>(tensor.mutable_data_ptr());
+}
+
+// Opaque packet/frame handles: launder a raw AVPacket*/AVFrame* through a [1]
+// int64 CPU tensor whose data pointer IS the raw pointer, with a deleter that
+// frees it. Thread-movable, process-local.
+torch::stable::Tensor wrap_packet_pointer_to_tensor(AVPacket* packet) {
+  auto deleter = [packet](void*) {
+    AVPacket* p = packet;
+    av_packet_free(&p);
+  };
+  int64_t sizes[] = {1};
+  int64_t strides[] = {1};
+  return torch::stable::from_blob(
+      packet,
+      {sizes, 1},
+      {strides, 1},
+      StableDevice(kStableCPU),
+      kStableInt64,
+      deleter);
+}
+
+AVPacket* unwrap_tensor_to_packet(torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(tensor.is_contiguous(), "packet handle must be contiguous");
+  return static_cast<AVPacket*>(tensor.mutable_data_ptr());
+}
+
+torch::stable::Tensor wrap_frame_pointer_to_tensor(AVFrame* frame) {
+  // Owning handle: the frame is freed when the handle tensor's refcount drops.
+  // ColorConverter borrows the frame during conversion (on CPU it does not free
+  // it), so the handle stays the sole owner and there is no leak even if a
+  // frame is never converted. (GPU conversion would consume the frame; GPU is
+  // not exposed through these ops yet.)
+  auto deleter = [frame](void*) {
+    AVFrame* f = frame;
+    av_frame_free(&f);
+  };
+  int64_t sizes[] = {1};
+  int64_t strides[] = {1};
+  return torch::stable::from_blob(
+      frame,
+      {sizes, 1},
+      {strides, 1},
+      StableDevice(kStableCPU),
+      kStableInt64,
+      deleter);
+}
+
+AVFrame* unwrap_tensor_to_frame(torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(tensor.is_contiguous(), "frame handle must be contiguous");
+  return static_cast<AVFrame*>(tensor.mutable_data_ptr());
 }
 
 torch::stable::Tensor wrap_multi_stream_encoder_pointer_to_tensor(
@@ -735,6 +826,118 @@ OpsAudioFramesOutput get_frames_by_pts_in_range_audio(
   return make_ops_audio_frames_output(result);
 }
 
+// ==============================
+// Building-block ops (torchcodec.decoders._blocks)
+// ==============================
+
+torch::stable::Tensor _blocks_create_demuxer(
+    std::string filename,
+    std::optional<int64_t> stream_index) {
+  std::optional<int> stream_index_int;
+  if (stream_index.has_value()) {
+    stream_index_int = static_cast<int>(stream_index.value());
+  }
+  auto demuxer = std::make_unique<Demuxer>(filename, stream_index_int);
+  return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
+}
+
+// (packet_handle, is_eof). On EOF the packet_handle is a dummy tensor that must
+// not be used. Native bool avoids per-frame .item() overhead in Python.
+using OpsPacketOutput = std::tuple<torch::stable::Tensor, bool>;
+
+OpsPacketOutput _blocks_demuxer_next_packet(torch::stable::Tensor& demuxer) {
+  Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
+  AVPacket* packet = demuxer_ptr->next_packet();
+  if (packet == nullptr) {
+    return std::make_tuple(torch::stable::full({1}, 0, kStableInt64), true);
+  }
+  return std::make_tuple(wrap_packet_pointer_to_tensor(packet), false);
+}
+
+torch::stable::Tensor _blocks_create_packet_decoder(
+    torch::stable::Tensor& demuxer,
+    std::optional<int64_t> num_threads,
+    std::string device,
+    std::string device_variant) {
+  Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
+  validate_device_interface(device, device_variant);
+  std::optional<int> thread_count;
+  if (num_threads.has_value()) {
+    thread_count = static_cast<int>(num_threads.value());
+  }
+  auto decoder = std::make_unique<PacketDecoder>(
+      *demuxer_ptr, StableDevice(device), device_variant, thread_count);
+  return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));
+}
+
+int64_t _blocks_packet_decoder_send_packet(
+    torch::stable::Tensor& decoder,
+    torch::stable::Tensor& packet) {
+  PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
+  AVPacket* raw_packet = unwrap_tensor_to_packet(packet);
+  return static_cast<int64_t>(decoder_ptr->send_packet(raw_packet));
+}
+
+int64_t _blocks_packet_decoder_send_eof(torch::stable::Tensor& decoder) {
+  PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
+  return static_cast<int64_t>(decoder_ptr->send_eof());
+}
+
+// (frame_handle, status, pts_seconds, duration_seconds). status == 0 means a
+// frame was produced; nonzero (EAGAIN/EOF) means no frame (dummy handle,
+// zeros). pts/duration are stamped here (the decoder knows the stream time
+// base) so the ColorConverter doesn't need to be bound to a stream. Native
+// scalars avoid per-frame .item() overhead.
+using OpsReceiveFrameOutput =
+    std::tuple<torch::stable::Tensor, int64_t, double, double>;
+
+OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
+    torch::stable::Tensor& decoder) {
+  PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
+  UniqueAVFrame av_frame(av_frame_alloc());
+  STD_TORCH_CHECK(av_frame != nullptr, "Failed to allocate AVFrame");
+  int status = decoder_ptr->receive_frame(av_frame);
+  if (status != AVSUCCESS) {
+    return std::make_tuple(
+        torch::stable::full({1}, 0, kStableInt64),
+        static_cast<int64_t>(status),
+        0.0,
+        0.0);
+  }
+  AVRational time_base = decoder_ptr->time_base();
+  double pts_seconds = pts_to_seconds(get_pts_or_dts(av_frame), time_base);
+  double duration_seconds = pts_to_seconds(get_duration(av_frame), time_base);
+  AVFrame* raw_frame = av_frame.release();
+  return std::make_tuple(
+      wrap_frame_pointer_to_tensor(raw_frame),
+      static_cast<int64_t>(0),
+      pts_seconds,
+      duration_seconds);
+}
+
+torch::stable::Tensor _blocks_create_color_converter(
+    std::string device,
+    std::string device_variant) {
+  validate_device_interface(device, device_variant);
+  auto converter =
+      std::make_unique<ColorConverter>(StableDevice(device), device_variant);
+  return wrap_pointer_to_tensor<ColorConverter>(std::move(converter));
+}
+
+torch::stable::Tensor _blocks_convert_frame(
+    torch::stable::Tensor& converter,
+    torch::stable::Tensor& frame) {
+  ColorConverter* converter_ptr =
+      unwrap_tensor_to_pointer<ColorConverter>(converter);
+  AVFrame* raw_frame = unwrap_tensor_to_frame(frame);
+  // Borrow the frame for conversion, then release() so the handle keeps
+  // ownership and frees it when its tensor is dropped (CPU path).
+  UniqueAVFrame borrowed(raw_frame);
+  torch::stable::Tensor data = converter_ptr->convert(borrowed);
+  borrowed.release();
+  return data;
+}
+
 // For testing only. We need to implement this operation as a core library
 // function because what we're testing is round-tripping pts values as
 // double-precision floating point numbers from C++ to Python and back to C++.
@@ -1219,6 +1422,10 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
   m.impl("_create_from_file_like", TORCH_BOX(&_create_from_file_like));
+  m.impl("_blocks_create_demuxer", TORCH_BOX(&_blocks_create_demuxer));
+  m.impl(
+      "_blocks_create_color_converter",
+      TORCH_BOX(&_blocks_create_color_converter));
   m.impl(
       "_get_json_ffmpeg_library_versions",
       TORCH_BOX(&_get_json_ffmpeg_library_versions));
@@ -1278,6 +1485,21 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "get_frames_by_pts_in_range_audio",
       TORCH_BOX(&get_frames_by_pts_in_range_audio));
   m.impl("get_frames_by_pts", TORCH_BOX(&get_frames_by_pts));
+  m.impl(
+      "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
+  m.impl(
+      "_blocks_create_packet_decoder",
+      TORCH_BOX(&_blocks_create_packet_decoder));
+  m.impl(
+      "_blocks_packet_decoder_send_packet",
+      TORCH_BOX(&_blocks_packet_decoder_send_packet));
+  m.impl(
+      "_blocks_packet_decoder_send_eof",
+      TORCH_BOX(&_blocks_packet_decoder_send_eof));
+  m.impl(
+      "_blocks_packet_decoder_receive_frame",
+      TORCH_BOX(&_blocks_packet_decoder_receive_frame));
+  m.impl("_blocks_convert_frame", TORCH_BOX(&_blocks_convert_frame));
   m.impl("_test_frame_pts_equality", TORCH_BOX(&_test_frame_pts_equality));
   m.impl(
       "scan_all_streams_to_update_metadata",

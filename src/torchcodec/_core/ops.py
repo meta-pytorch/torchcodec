@@ -107,6 +107,30 @@ get_frames_by_pts_in_range_audio = (
     torch.ops.torchcodec_ns.get_frames_by_pts_in_range_audio.default
 )
 get_json_metadata = torch.ops.torchcodec_ns.get_json_metadata.default
+
+# Building-block ops for torchcodec.decoders._blocks (CPU). See
+# API_breakdown_claude_plan.md.
+_blocks_create_demuxer = torch.ops.torchcodec_ns._blocks_create_demuxer.default
+_blocks_demuxer_next_packet = (
+    torch.ops.torchcodec_ns._blocks_demuxer_next_packet.default
+)
+_blocks_create_packet_decoder = (
+    torch.ops.torchcodec_ns._blocks_create_packet_decoder.default
+)
+_blocks_packet_decoder_send_packet = (
+    torch.ops.torchcodec_ns._blocks_packet_decoder_send_packet.default
+)
+_blocks_packet_decoder_send_eof = (
+    torch.ops.torchcodec_ns._blocks_packet_decoder_send_eof.default
+)
+_blocks_packet_decoder_receive_frame = (
+    torch.ops.torchcodec_ns._blocks_packet_decoder_receive_frame.default
+)
+_blocks_create_color_converter = (
+    torch.ops.torchcodec_ns._blocks_create_color_converter.default
+)
+_blocks_convert_frame = torch.ops.torchcodec_ns._blocks_convert_frame.default
+
 _test_frame_pts_equality = torch.ops.torchcodec_ns._test_frame_pts_equality.default
 _get_container_json_metadata = (
     torch.ops.torchcodec_ns.get_container_json_metadata.default
