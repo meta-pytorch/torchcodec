@@ -16,10 +16,7 @@ int read_next_packet(
   int status = AVSUCCESS;
   do {
     status = av_read_frame(format_context, packet.get());
-    if (status == AVERROR_EOF) {
-      return AVERROR_EOF;
-    }
-    if (status < AVSUCCESS) {
+    if (status == AVERROR_EOF || status < AVSUCCESS) {
       return status;
     }
   } while (packet->stream_index != active_stream_index);

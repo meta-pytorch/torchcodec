@@ -8,6 +8,9 @@
 
 namespace facebook::torchcodec {
 
+// TODO_API_BREAKDOWN: we should make sure the block APIs can dispatch to
+// third-party extensions - all of them.
+
 SharedAVCodecContext create_and_open_codec_context(
     AVStream* stream,
     const AVCodec* av_codec,

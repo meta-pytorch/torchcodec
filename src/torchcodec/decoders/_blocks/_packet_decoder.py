@@ -53,6 +53,8 @@ class PacketDecoder:
             raise RuntimeError(f"Failed to send packet to decoder (status {status})")
         return self._drain()
 
+    # TODO_API_BREAKDOWN maybe this shouldn't be called flush, at least not
+    # as-is. It's not the same flush as the FFmpeg decoder buffer flush.
     def flush(self) -> list[DecodedFrame]:
         """Signal end-of-stream and return all remaining buffered frames. Call
         once, after the last packet."""

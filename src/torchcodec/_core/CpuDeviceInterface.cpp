@@ -86,7 +86,6 @@ void CpuDeviceInterface::initialize_video(
     const VideoStreamOptions& video_stream_options,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resized_output_dims) {
-
   // TODO_API_BREAKDOWN this used to be:
   // STD_TORCH_CHECK(av_stream != nullptr, "avStream is null");
   // time_base_ = av_stream->time_base;
