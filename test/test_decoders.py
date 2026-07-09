@@ -2072,6 +2072,42 @@ class TestVideoDecoder:
         # pixel mismatches] (BT.601 vs BT.709 color matrix mismatch between the
         # ffmpeg and default cuda backend for this MPEG4 asset).
 
+    @pytest.mark.skip(reason="Assets not checked in; run manually with them present.")
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "path", ("./youtube-1HYJQESw3hs.mp4", "./youtube-c_B4XII1L6A.mp4")
+    )
+    @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
+    def test_cuda_open_gop_late_idr(self, path, seek_mode):
+        # Non-regression test for open-GOP H.264 files whose only IDR is not at
+        # the start of the stream: the in-band SPS/PPS only shows up at that
+        # late IDR. NVDEC used to have no usable sequence header until then, so
+        # it dropped every frame before the IDR, returned shifted frames, and
+        # hit a premature EOF on a full/sequential decode. CPU is unaffected and
+        # serves as the reference here.
+        cpu_decoder = VideoDecoder(path, device="cpu", seek_mode=seek_mode)
+        cuda_decoder = VideoDecoder(path, device="cuda", seek_mode=seek_mode)
+
+        assert cpu_decoder.metadata == cuda_decoder.metadata
+        num_frames = cpu_decoder.metadata.num_frames
+
+        # Full sequential decode must not raise and must yield every frame (the
+        # `dec[:]` / `dec[:54]` failures we're guarding against).
+        assert cuda_decoder[:].shape[0] == num_frames
+
+        # Frames must not be shifted: pts must match the CPU reference exactly,
+        # and pixels must be close. Exact pixel equality is skipped because CPU
+        # and CUDA use different color-conversion matrices; a shifted/wrong frame
+        # would show a large diff, so a tolerant mean check cleanly catches it.
+        for i in [0, 1, 53, num_frames // 2, num_frames - 1]:
+            cpu_frame = cpu_decoder.get_frame_at(i)
+            cuda_frame = cuda_decoder.get_frame_at(i)
+            assert cuda_frame.pts_seconds == cpu_frame.pts_seconds
+            mean_abs_diff = (
+                (cuda_frame.data.cpu().float() - cpu_frame.data.float()).abs().mean()
+            )
+            assert mean_abs_diff < 5
+
     @needs_cuda
     def test_nvdec_cuda_interface_cpu_fallback(self):
         # Non-regression test for the CPU fallback behavior of the NVDEC CUDA
