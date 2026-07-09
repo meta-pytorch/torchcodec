@@ -5,10 +5,40 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "CpuDeviceInterface.h"
+#include <sstream>
 
 namespace facebook::torchcodec {
 
 namespace {
+
+AVPixelFormat validate_pixel_format(
+    const AVCodec& av_codec,
+    const std::string& target_pixel_format) {
+  AVPixelFormat pixel_format = av_get_pix_fmt(target_pixel_format.c_str());
+  const AVPixelFormat* supported_formats =
+      get_supported_pixel_formats(av_codec);
+  if (supported_formats != nullptr) {
+    for (int i = 0; supported_formats[i] != AV_PIX_FMT_NONE; ++i) {
+      if (supported_formats[i] == pixel_format) {
+        return pixel_format;
+      }
+    }
+  }
+  std::stringstream error_msg;
+  if (pixel_format == AV_PIX_FMT_NONE) {
+    error_msg << "Unknown pixel format: " << target_pixel_format;
+  } else {
+    error_msg << "Specified pixel format " << target_pixel_format
+              << " is not supported by the " << av_codec.name << " encoder.";
+  }
+  error_msg << "\nSupported pixel formats for " << av_codec.name << ":";
+  if (supported_formats != nullptr) {
+    for (int i = 0; supported_formats[i] != AV_PIX_FMT_NONE; ++i) {
+      error_msg << " " << av_get_pix_fmt_name(supported_formats[i]);
+    }
+  }
+  STD_TORCH_CHECK(false, error_msg.str());
+}
 
 AVPixelFormat get_output_pixel_format(OutputDtype output_dtype) {
   return output_dtype == OutputDtype::FLOAT32 ? AV_PIX_FMT_RGB48
@@ -26,6 +56,18 @@ static bool g_cpu = register_device_interface(
     [](const StableDevice& device) { return new CpuDeviceInterface(device); });
 
 } // namespace
+
+AVPixelFormat CpuDeviceInterface::get_encoding_pixel_format(
+    const AVCodec& av_codec,
+    const std::optional<std::string>& user_pixel_format) const {
+  if (user_pixel_format.has_value()) {
+    return validate_pixel_format(av_codec, user_pixel_format.value());
+  }
+  const AVPixelFormat* formats = get_supported_pixel_formats(av_codec);
+  // Pick the codec's first supported format (often yuv420p), else fall back.
+  return (formats && formats[0] != AV_PIX_FMT_NONE) ? formats[0]
+                                                    : AV_PIX_FMT_YUV420P;
+}
 
 CpuDeviceInterface::CpuDeviceInterface(const StableDevice& device)
     : DeviceInterface(device) {
