@@ -72,6 +72,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
  private:
   int send_cuvid_packet(CUVIDSOURCEDATAPACKET& cuvid_packet);
 
+  void send_seqhdr_packet();
+
   void initialize_bsf(
       const AVCodecParameters* codec_par,
       const UniqueDecodingAVFormatContext& av_format_ctx);
