@@ -349,18 +349,47 @@ void BetaCudaDeviceInterface::initialize_video(
   // pass it via pExtVideoInfo. Same approach as DALI and FFmpeg cuviddec.
   // DALI does the same thing
   // https://github.com/NVIDIA/DALI/blob/ae79f316ae9b14c464d9cb98465f7f783da9ea89/dali/operators/video/frames_decoder_gpu.cc#L402-L408
-  if (codec_par->extradata_size > 0) {
+  //
+  const uint8_t* seqhdr = codec_par->extradata;
+  int seqhdr_data_size = codec_par->extradata_size;
+  if (bitstream_filter_ && bitstream_filter_->par_out->extradata_size > 0) {
+    // when a BSF is used (e.g. h264_mp4toannexb), we must pass the
+    // *filtered* extradata!
+    seqhdr = bitstream_filter_->par_out->extradata;
+    seqhdr_data_size = bitstream_filter_->par_out->extradata_size;
+  }
+  if (seqhdr_data_size > 0) {
     auto seqhdr_size = std::min(
-        static_cast<size_t>(codec_par->extradata_size),
+        static_cast<size_t>(seqhdr_data_size),
         sizeof(parser_ext_info_.raw_seqhdr_data));
     parser_ext_info_.format.seqhdr_data_length = seqhdr_size;
-    memcpy(parser_ext_info_.raw_seqhdr_data, codec_par->extradata, seqhdr_size);
+    memcpy(parser_ext_info_.raw_seqhdr_data, seqhdr, seqhdr_size);
     parser_params.pExtVideoInfo = &parser_ext_info_;
   }
 
   CUresult result = cuvidCreateVideoParser(&video_parser_, &parser_params);
   STD_TORCH_CHECK(
       result == CUDA_SUCCESS, "Failed to create video parser: ", result);
+
+  send_seqhdr_packet();
+}
+
+void BetaCudaDeviceInterface::send_seqhdr_packet() {
+  // This must be called at parser initialization, and after each flush.
+  // See TODO for details.
+  // FFmpeg's nvcuviddec.c does the same thing (not the nvdec.c one, because it
+  // doesn't rely on the nvcuvid parser):
+  // -
+  // https://github.com/FFmpeg/FFmpeg/blob/d244d438c372b76d825be4527fccfd162429010a/libavcodec/cuviddec.c#L1211
+  // -
+  // https://github.com/FFmpeg/FFmpeg/blob/d244d438c372b76d825be4527fccfd162429010a/libavcodec/cuviddec.c#L1157
+  if (parser_ext_info_.format.seqhdr_data_length == 0) {
+    return;
+  }
+  CUVIDSOURCEDATAPACKET seq_pkt = {};
+  seq_pkt.payload = parser_ext_info_.raw_seqhdr_data;
+  seq_pkt.payload_size = parser_ext_info_.format.seqhdr_data_length;
+  send_cuvid_packet(seq_pkt);
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
@@ -790,6 +819,8 @@ void BetaCudaDeviceInterface::flush() {
 
   std::queue<CUVIDPARSERDISPINFO> empty_queue;
   std::swap(ready_frames_, empty_queue);
+
+  send_seqhdr_packet();
 }
 
 UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(

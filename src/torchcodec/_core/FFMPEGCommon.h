@@ -209,6 +209,11 @@ std::string get_ffmpeg_error_string_from_error_code(int error_code);
 int64_t get_duration(const UniqueAVFrame& frame);
 void set_duration(const UniqueAVFrame& frame, int64_t duration);
 
+// pts accessors that fall back to dts when pts is unset (INT64_MIN). See the
+// definitions for details.
+int64_t get_pts_or_dts(ReferenceAVPacket& packet);
+int64_t get_pts_or_dts(const UniqueAVFrame& av_frame);
+
 const int* get_supported_sample_rates(const AVCodec& av_codec);
 const AVSampleFormat* get_supported_output_sample_formats(
     const AVCodec& av_codec);
