@@ -1428,7 +1428,9 @@ class TestVideoDecoder:
             key_frame_indices, h265_reference_key_frame_indices, atol=0, rtol=0
         )
 
-    @pytest.mark.parametrize("device", ("cpu", "cuda"))
+    @pytest.mark.parametrize(
+        "device", ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+    )
     def test_discard_first_keyframe(self, device):
         # Non-regression test for TODO
         decoder, device = make_video_decoder(
