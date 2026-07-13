@@ -26,12 +26,12 @@ defaults:
 jobs:
 
   generate-matrix:
-    uses: pytorch/test-infra/.github/workflows/generate_binary_build_matrix.yml@2.13
+    uses: pytorch/test-infra/.github/workflows/generate_binary_build_matrix.yml@release/2.13
     with:
       package-type: wheel
       os: windows
       test-infra-repository: pytorch/test-infra
-      test-infra-ref: 2.13
+      test-infra-ref: release/2.13
       with-cpu: disable
       with-xpu: disable
       with-rocm: disable
@@ -44,12 +44,12 @@ jobs:
     strategy:
       fail-fast: false
     name: Build and Upload wheel
-    uses: pytorch/test-infra/.github/workflows/build_wheels_windows.yml@2.13
+    uses: pytorch/test-infra/.github/workflows/build_wheels_windows.yml@release/2.13
     with:
       repository: meta-pytorch/torchcodec
       ref: ""
       test-infra-repository: pytorch/test-infra
-      test-infra-ref: 2.13
+      test-infra-ref: release/2.13
       build-matrix: ${{ needs.generate-matrix.outputs.matrix }}
       pre-script: packaging/pre_build_script.sh
       # post-script: packaging/post_build_script.sh  TODO: consider enabling post-build checks for Windows
@@ -92,7 +92,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Update NVIDIA driver
-        uses: pytorch/test-infra/.github/actions/setup-nvidia-windows@2.13
+        uses: pytorch/test-infra/.github/actions/setup-nvidia-windows@release/2.13
 
       - name: Remove src/ folder
         run: bash packaging/remove_src.sh
