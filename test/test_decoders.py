@@ -46,6 +46,7 @@ from .utils import (
     BT601_LIMITED_RANGE,
     BT709_FULL_RANGE,
     cuda_devices,
+    DISCARD_FIRST_KEYFRAME_VIDEO,
     get_ffmpeg_minor_version,
     get_python_version,
     H264_10BITS,
@@ -1426,6 +1427,55 @@ class TestVideoDecoder:
         torch.testing.assert_close(
             key_frame_indices, h265_reference_key_frame_indices, atol=0, rtol=0
         )
+
+    @pytest.mark.parametrize("device", all_supported_devices())
+    def test_discard_first_keyframe(self, device):
+        # Non-regression test for TODO
+        decoder, device = make_video_decoder(
+            DISCARD_FIRST_KEYFRAME_VIDEO.path, device=device
+        )
+
+        # The 5 discarded frames (incl. the first keyframe) must be excluded
+        # from the frame count: the decoder only ever emits 25 frames.
+        assert decoder.metadata.num_frames == 25
+        assert len(decoder) == 25
+
+        assert decoder.get_frame_at(0).pts_seconds == 0
+
+        all_frames = decoder[:]
+        assert all_frames.shape[0] == 25
+
+        pts = [decoder.get_frame_at(i).pts_seconds for i in range(len(decoder))]
+        expected_pts = [0.04 * i for i in range(25)]
+        assert pts == pytest.approx(expected_pts, abs=1e-6)
+
+        # The discarded keyframe is not itself an output frame, so it is not
+        # reported as a key frame: output frame 0 is a P-frame that depends on
+        # it. Only the two non-discarded keyframes (output frames 5 and 15) are
+        # reported. key_frames stays in sync with all_frames.
+        assert decoder._get_key_frame_indices().tolist() == [5, 15]
+
+        # Random access must agree with sequential decoding: seeking to a frame
+        # must return the same pixels as decoding straight through, including
+        # frames 0-4, whose keyframe was discarded (we rely on FFmpeg to seek to
+        # that keyframe since it is not in our scanned index).
+        for i in (0, 4, 5, 6, 15, 16, 24):
+            assert_frames_equal(decoder.get_frame_at(i).data, all_frames.data[i])
+
+        # Note that the num_frames_from_header is 30, which is technically
+        # correct, but there are only 25 decodeable frames. This means
+        # approximate mode will try to decode past frame 25 and fail. Not sure
+        # what we can do about this.
+        assert decoder.metadata.num_frames_from_header == 30
+        decoder_approx, _ = make_video_decoder(
+            DISCARD_FIRST_KEYFRAME_VIDEO.path, device=device, seek_mode="approximate"
+        )
+
+        with pytest.raises(
+            RuntimeError, match="Requested next frame while there are no more frames"
+        ):
+            # Tries to decode [0, 30) but only 25 frames are decodeable.
+            decoder_approx[:]
 
     # TODO investigate why this is failing from the nightlies of Dec 09 2025.
     @pytest.mark.skip(reason="TODO investigate")

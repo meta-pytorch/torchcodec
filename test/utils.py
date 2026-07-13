@@ -555,6 +555,44 @@ H265_VIDEO = TestVideo(
     },
 )
 
+# Video whose leading GOP, including its first keyframe,  is trimmed by an
+# mp4 edit list, so those packets are marked AV_PKT_FLAG_DISCARD. The decoder
+# still has to decode that discarded keyframe to produce the first *output*
+# frame (pts=0), but it is never itself emitted.
+#
+# Generated with:
+#   $ ffmpeg -f lavfi -i testsrc2=duration=1.2:size=64x64:rate=25 \
+#       -c:v libx264 -pix_fmt yuv420p -g 10 -keyint_min 10 -sc_threshold 0 src.mp4
+#   $ ffmpeg -ss 0.2 -i src.mp4 -c copy discard_first_keyframe.mp4
+#
+# Then the first few packets look like this:
+# # $ ffprobe -v error -select_streams \
+#     v:0 -show_entries packet=pts_time,flags -of csv discard_first_keyframe.mp4
+# packet,-0.200000,KD_
+# packet,-0.040000,_D_
+# packet,-0.120000,_D_
+# packet,-0.160000,_D_
+# packet,-0.080000,_D_
+# packet,0.000000,___
+# packet,0.080000,___
+# packet,0.040000,___
+# packet,0.160000,___
+# packet,0.120000,___
+# packet,0.200000,K__
+# ...
+DISCARD_FIRST_KEYFRAME_VIDEO = TestVideo(
+    filename="discard_first_keyframe.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=64, height=64, num_color_channels=3),
+    },
+    frames={
+        0: {
+            0: TestFrameInfo(pts_seconds=0.0, duration_seconds=0.04),
+        },
+    },
+)
+
 AV1_VIDEO = TestVideo(
     filename="av1_video.mkv",
     default_stream_index=0,

@@ -290,6 +290,7 @@ void SingleStreamDecoder::scan_file_and_update_metadata_and_index() {
     // We got a valid packet. Let's figure out what stream it belongs to and
     // record its relevant metadata.
     int stream_index = packet->stream_index;
+
     auto& stream_metadata =
         container_metadata_.all_stream_metadata[stream_index];
     stream_metadata.begin_stream_pts_from_content = std::min(
@@ -1424,8 +1425,14 @@ void SingleStreamDecoder::maybe_seek_to_before_desired_pts() {
     int desired_key_frame_index =
         get_key_frame_index_for_pts_using_scanned_index(
             stream_info.key_frames, desired_pts);
-    desired_key_frame_index = std::max(desired_key_frame_index, 0);
-    desired_pts = stream_info.key_frames[desired_key_frame_index].pts;
+    if (desired_key_frame_index >= 0) {
+      desired_pts = stream_info.key_frames[desired_key_frame_index].pts;
+    }
+    // Otherwise the target precedes the first *scanned* keyframe. This happens
+    // when the keyframe needed to decode the target was discarded / trimmed by
+    // an edit list (AV_PKT_FLAG_DISCARD) and thus not recorded in our index. We
+    // leave desired_pts as the target pts and let FFmpeg seek to the preceding
+    // keyframe itself (same as approximate mode, which has no scanned index).
   }
 
   int status = avformat_seek_file(
