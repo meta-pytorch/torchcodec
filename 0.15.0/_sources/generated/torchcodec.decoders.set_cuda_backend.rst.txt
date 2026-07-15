@@ -1,0 +1,9 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.decoders
+
+
+set_cuda_backend
+================
+
+.. autofunction:: set_cuda_backend
