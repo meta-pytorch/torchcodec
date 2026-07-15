@@ -47,9 +47,7 @@ def dynamic_metadata(field: str, settings: Mapping[str, Any]) -> str:
         version = f.readline().strip()
     try:
         sha = (
-            subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=str(_ROOT_DIR)
-            )
+            subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=str(_ROOT_DIR))
             .decode("ascii")
             .strip()
         )

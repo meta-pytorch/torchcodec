@@ -80,6 +80,14 @@ function(make_torchcodec_sublibrary
         "${TORCH_INSTALL_PREFIX}/include"
         ${Python3_INCLUDE_DIRS}
     )
+    # On Windows, the pybind ops library links the Python import library
+    # (python3XX.lib) by bare name via pybind11::module, so the Python library
+    # directory must be on the linker search path or linking fails with
+    # "LNK1104: cannot open file 'python3XX.lib'". This is a no-op on
+    # Linux/macOS, where extension modules resolve Python symbols dynamically.
+    if(WIN32)
+        target_link_directories(${library_name} PRIVATE ${Python3_LIBRARY_DIRS})
+    endif()
     # Use fmt library in header-only mode (bundled with PyTorch): the fmt
     # library is bundled with PyTorch and the headers are available in
     # TORCH_INSTALL_PREFIX/include/, which we add above. To be compatible with

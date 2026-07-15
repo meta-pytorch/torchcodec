@@ -67,6 +67,9 @@ jobs:
           ffmpeg -version
       - name: Build and install torchcodec
         run: |
+          # scikit-build-core is the build backend (see pyproject.toml). With
+          # --no-build-isolation it must already be present in this env.
+          python -m pip install "scikit-build-core>=0.10"
           python -m pip install -e ".[dev]" --no-build-isolation -vvv
       - name: Install mypy
         run: |

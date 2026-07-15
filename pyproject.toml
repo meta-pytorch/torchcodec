@@ -24,6 +24,12 @@ wheel.packages = ["src/torchcodec"]
 # Required to use our own dynamic-metadata plugin (packaging/torchcodec_version.py)
 # for the version field below.
 experimental = true
+# Do NOT strip symbols from the built .so files. scikit-build-core strips by
+# default, but packaging/post_build_script.sh inspects the .so symbol table
+# (objdump --syms | grep GLIBCXX) to enforce manylinux GLIBCXX compatibility;
+# stripping leaves that check with no symbols to read. This also matches the
+# behavior of the previous setuptools build, which did not strip.
+install.strip = false
 
 # Restores the version-handling logic that used to live in setup.py: honor the
 # BUILD_VERSION env var (set by test-infra release/nightly jobs), and otherwise
