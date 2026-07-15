@@ -120,11 +120,20 @@ void CudaDeviceInterface::initialize_video(
     const VideoStreamOptions& video_stream_options,
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
     [[maybe_unused]] const std::optional<FrameDims>& resized_output_dims) {
-  STD_TORCH_CHECK(av_stream != nullptr, "avStream is null");
-  time_base_ = av_stream->time_base;
+  // av_stream may be null: that's how a standalone ColorConverter configures
+  // conversion without being bound to a decoder/stream. Everything the convert
+  // path needs is derived from each frame (dimensions, pixel format, hardware
+  // context and CUDA stream), so a null stream is fine here. The time base only
+  // feeds the (rarely used) nv12 filtergraph's pts and doesn't affect pixels, so
+  // we fall back to a default. Mirrors CpuDeviceInterface::initialize_video.
+  time_base_ = (av_stream != nullptr) ? av_stream->time_base
+                                      : AVRational{1, AV_TIME_BASE};
   video_stream_options_ = video_stream_options;
 
   // TODO: Ideally, we should keep all interface implementations independent.
+  // The CPU interface is only used as a fallback when NVDEC can't decode a codec
+  // and hands us back an already-decoded CPU frame; color-converting that frame
+  // is itself stream-agnostic, so it too tolerates a null stream.
   cpu_interface_ = create_device_interface(kStableCPU);
   STD_TORCH_CHECK(
       cpu_interface_ != nullptr, "Failed to create CPU device interface");

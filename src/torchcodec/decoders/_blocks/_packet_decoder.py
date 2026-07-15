@@ -29,10 +29,25 @@ class PacketDecoder:
     use one ``PacketDecoder`` per thread. FFmpeg's internal codec thread count
     is kept at 1 for now (not exposed); parallelism comes from composing blocks
     on your own threads.
+
+    On CUDA, use ``device_variant="ffmpeg"`` (FFmpeg NVDEC hwaccel): it produces
+    self-contained, thread-movable frames. The default NVDEC variant hands out
+    transient GPU surfaces that the blocks don't support yet.
     """
 
-    def __init__(self, demuxer: Demuxer):
-        self._handle = _blocks_create_packet_decoder(demuxer._handle, num_threads=1)
+    def __init__(
+        self,
+        demuxer: Demuxer,
+        *,
+        device: str = "cpu",
+        device_variant: str = "default",
+    ):
+        self._handle = _blocks_create_packet_decoder(
+            demuxer._handle,
+            num_threads=1,
+            device=device,
+            device_variant=device_variant,
+        )
 
     def _drain(self) -> list[DecodedFrame]:
         frames = []

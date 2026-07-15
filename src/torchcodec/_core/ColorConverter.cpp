@@ -28,14 +28,11 @@ ColorConverter::ColorConverter(
   options.device = device;
 
   // No user transforms and no stream: the converter is stream-agnostic and
-  // derives everything it needs from each frame.
-  //
-  // TODO_API_BREAKDOWN Need to refac/rethink all this. It seems unnatural that
-  // the color-converter needs its own device_interface_, but at the same time
-  // the color-conversion *must* be third-party aware, and the only way to
-  // achieve that for now is via the interface.
-  // This will become very relevant when we tackle CUDA, so we can defer until
-  // then. For now this is an OK hack.
+  // derives everything it needs (dimensions, pixel format, and on CUDA the
+  // hardware context + stream) from each frame. This is what keeps the block
+  // self-contained -- it needs no reference to the decoder that produced the
+  // frame, on either CPU or CUDA. The DeviceInterface is the vendor extension
+  // point, so color conversion still goes through it to stay third-party aware.
   std::vector<std::unique_ptr<Transform>> no_transforms;
   device_interface_->initialize_video(
       /*av_stream=*/nullptr,

@@ -15,6 +15,9 @@
 
 namespace facebook::torchcodec {
 
+// Self-contained color-conversion block: owns its own DeviceInterface and is
+// not bound to any decoder or stream. Everything it needs is derived from each
+// frame, so one converter can process frames from any video, on CPU or CUDA.
 class FORCE_PUBLIC_VISIBILITY ColorConverter {
  public:
   explicit ColorConverter(
