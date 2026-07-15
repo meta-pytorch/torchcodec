@@ -18,4 +18,4 @@ conda install -y pybind11 -c conda-forge
 # current environment - pip/build won't create an isolated env to install them.
 # Without this, the build fails with "Backend 'scikit_build_core.build' is not
 # available." pybind11 is installed above; `build` is provided by test-infra.
-python -m pip install "scikit-build-core>=0.10"
+python -m pip install "scikit-build-core>=0.10" ninja
