@@ -12,3 +12,10 @@ set -ex
 # and PyTorch actually has it included. PyTorch, however, does not have the
 # CMake helpers.
 conda install -y pybind11 -c conda-forge
+
+# We build with `python -m build --no-isolation`, which means the build backend
+# (and everything else in build-system.requires) must already be present in the
+# current environment - pip/build won't create an isolated env to install them.
+# Without this, the build fails with "Backend 'scikit_build_core.build' is not
+# available." pybind11 is installed above; `build` is provided by test-infra.
+python -m pip install "scikit-build-core>=0.10"

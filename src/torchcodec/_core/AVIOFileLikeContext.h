@@ -25,13 +25,16 @@ namespace facebook::torchcodec {
 // and seek calls back up to the methods on the Python object.
 class AVIOFileLikeContext : public AVIOContextHolder {
  public:
-  explicit AVIOFileLikeContext(const py::object& fileLike, bool isForWriting);
+  explicit AVIOFileLikeContext(
+      const py::object& file_like,
+      bool is_for_writing);
+
+  int read(uint8_t* buf, int size) override;
+  int write(const uint8_t* buf, int size) override;
+  int64_t seek(int64_t offset, int whence) override;
+  int64_t get_size() override;
 
  private:
-  static int read(void* opaque, uint8_t* buf, int buf_size);
-  static int64_t seek(void* opaque, int64_t offset, int whence);
-  static int write(void* opaque, const uint8_t* buf, int buf_size);
-
   // Note that we dynamically allocate the Python object because we need to
   // strictly control when its destructor is called. We must hold the GIL
   // when its destructor gets called, as it needs to update the reference
@@ -55,7 +58,7 @@ class AVIOFileLikeContext : public AVIOContextHolder {
   };
 
   using UniquePyObject = std::unique_ptr<py::object, PyObjectDeleter>;
-  UniquePyObject fileLike_;
+  UniquePyObject file_like_;
 };
 
 } // namespace facebook::torchcodec

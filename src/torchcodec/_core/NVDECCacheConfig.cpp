@@ -28,7 +28,7 @@ static std::atomic<int> g_nvdecCacheCapacity{DEFAULT_NVDEC_CACHE_CAPACITY};
 // returnDecoder() or setNVDECCacheCapacity() call.
 static std::mutex g_nvdecCacheCapacityMutex;
 
-void setNVDECCacheCapacity(int capacity) {
+void set_nvdec_cache_capacity(int capacity) {
   STD_TORCH_CHECK(
       capacity >= 0,
       "NVDEC cache capacity must be non-negative, got ",
@@ -36,15 +36,15 @@ void setNVDECCacheCapacity(int capacity) {
   std::lock_guard<std::mutex> lock(g_nvdecCacheCapacityMutex);
   g_nvdecCacheCapacity.store(capacity);
 #ifdef USE_CUDA
-  NVDECCache::evictExcessEntriesAcrossDevices(capacity);
+  NVDECCache::evict_excess_entries_across_devices(capacity);
 #endif
 }
 
-int getNVDECCacheCapacity() {
+int get_nvdec_cache_capacity() {
   return g_nvdecCacheCapacity.load();
 }
 
-int getNVDECCacheSize([[maybe_unused]] int device_index) {
+int get_nvdec_cache_size([[maybe_unused]] int device_index) {
 #ifdef USE_CUDA
   STD_TORCH_CHECK(
       device_index >= 0 && device_index < MAX_CUDA_GPUS,
@@ -52,7 +52,7 @@ int getNVDECCacheSize([[maybe_unused]] int device_index) {
       MAX_CUDA_GPUS - 1,
       ", got ",
       device_index);
-  return NVDECCache::getCacheSizeForDevice(device_index);
+  return NVDECCache::get_cache_size_for_device(device_index);
 #else
   return 0;
 #endif

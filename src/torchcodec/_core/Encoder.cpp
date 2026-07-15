@@ -1,6 +1,5 @@
 #include <sstream>
 
-#include "AVIOTensorContext.h"
 #include "Encoder.h"
 #include "StableABICompat.h"
 
@@ -14,7 +13,7 @@ namespace facebook::torchcodec {
 
 namespace {
 
-torch::stable::Tensor validateSamples(const torch::stable::Tensor& samples) {
+torch::stable::Tensor validate_samples(const torch::stable::Tensor& samples) {
   STD_TORCH_CHECK(
       samples.scalar_type() == kStableFloat32,
       "samples must have float32 dtype, got ",
@@ -22,7 +21,7 @@ torch::stable::Tensor validateSamples(const torch::stable::Tensor& samples) {
   STD_TORCH_CHECK(
       samples.device().type() == kStableCPU,
       "samples must be on CPU, got ",
-      deviceTypeName(samples.device().type()));
+      device_type_name(samples.device().type()));
   STD_TORCH_CHECK(
       samples.dim() == 2,
       "samples must have 2 dimensions, got ",
@@ -30,11 +29,11 @@ torch::stable::Tensor validateSamples(const torch::stable::Tensor& samples) {
 
   // We enforce this, but if we get user reports we should investigate whether
   // that's actually needed.
-  int numChannels = static_cast<int>(samples.sizes()[0]);
+  int num_channels = static_cast<int>(samples.sizes()[0]);
   STD_TORCH_CHECK(
-      numChannels <= AV_NUM_DATA_POINTERS,
+      num_channels <= AV_NUM_DATA_POINTERS,
       "Trying to encode ",
-      numChannels,
+      num_channels,
       " channels, but FFmpeg only supports ",
       AV_NUM_DATA_POINTERS,
       " channels per frame.");
@@ -42,34 +41,34 @@ torch::stable::Tensor validateSamples(const torch::stable::Tensor& samples) {
   return torch::stable::contiguous(samples);
 }
 
-void validateSampleRate(const AVCodec& avCodec, int sampleRate) {
-  const int* supportedSampleRates = getSupportedSampleRates(avCodec);
-  if (supportedSampleRates == nullptr) {
+void validate_sample_rate(const AVCodec& av_codec, int sample_rate) {
+  const int* supported_sample_rates = get_supported_sample_rates(av_codec);
+  if (supported_sample_rates == nullptr) {
     return;
   }
 
-  for (auto i = 0; supportedSampleRates[i] != 0; ++i) {
-    if (sampleRate == supportedSampleRates[i]) {
+  for (auto i = 0; supported_sample_rates[i] != 0; ++i) {
+    if (sample_rate == supported_sample_rates[i]) {
       return;
     }
   }
-  std::stringstream supportedRates;
-  for (auto i = 0; supportedSampleRates[i] != 0; ++i) {
+  std::stringstream supported_rates;
+  for (auto i = 0; supported_sample_rates[i] != 0; ++i) {
     if (i > 0) {
-      supportedRates << ", ";
+      supported_rates << ", ";
     }
-    supportedRates << supportedSampleRates[i];
+    supported_rates << supported_sample_rates[i];
   }
 
   STD_TORCH_CHECK(
       false,
       "invalid sample rate=",
-      sampleRate,
+      sample_rate,
       ". Supported sample rate values are: ",
-      supportedRates.str());
+      supported_rates.str());
 }
 
-static const std::vector<AVSampleFormat> preferredFormatsOrder = {
+static const std::vector<AVSampleFormat> preferred_formats_order = {
     AV_SAMPLE_FMT_FLTP,
     AV_SAMPLE_FMT_FLT,
     AV_SAMPLE_FMT_DBLP,
@@ -83,469 +82,58 @@ static const std::vector<AVSampleFormat> preferredFormatsOrder = {
     AV_SAMPLE_FMT_U8P,
     AV_SAMPLE_FMT_U8};
 
-AVSampleFormat findBestOutputSampleFormat(const AVCodec& avCodec) {
-  const AVSampleFormat* supportedSampleFormats =
-      getSupportedOutputSampleFormats(avCodec);
+AVSampleFormat find_best_output_sample_format(const AVCodec& av_codec) {
+  const AVSampleFormat* supported_sample_formats =
+      get_supported_output_sample_formats(av_codec);
 
   // Find a sample format that the encoder supports. We prefer using FLT[P],
   // since this is the format of the input samples. If FLTP isn't supported
   // then we'll need to convert the AVFrame's format. Our heuristic is to encode
   // into the format with the highest resolution.
-  if (supportedSampleFormats == nullptr) {
+  if (supported_sample_formats == nullptr) {
     // Can't really validate anything in this case, best we can do is hope that
     // FLTP is supported by the encoder. If not, FFmpeg will raise.
     return AV_SAMPLE_FMT_FLTP;
   }
 
-  for (AVSampleFormat preferredFormat : preferredFormatsOrder) {
-    for (int i = 0; supportedSampleFormats[i] != -1; ++i) {
-      if (supportedSampleFormats[i] == preferredFormat) {
-        return preferredFormat;
+  for (AVSampleFormat preferred_format : preferred_formats_order) {
+    for (int i = 0; supported_sample_formats[i] != -1; ++i) {
+      if (supported_sample_formats[i] == preferred_format) {
+        return preferred_format;
       }
     }
   }
-  // We should always find a match in preferredFormatsOrder, so we should always
-  // return earlier. But in the event that a future FFmpeg version defines an
-  // additional sample format that isn't in preferredFormatsOrder, we fallback:
-  return supportedSampleFormats[0];
+  // We should always find a match in preferred_formats_order, so we should
+  // always return earlier. But in the event that a future FFmpeg version
+  // defines an additional sample format that isn't in preferred_formats_order,
+  // we fallback:
+  return supported_sample_formats[0];
 }
 
-void closeAVIOContext(
-    AVFormatContext* avFormatContext,
-    AVIOContextHolder* avioContextHolder) {
-  if (!avFormatContext || !avFormatContext->pb) {
+void close_avio_context(
+    AVFormatContext* av_format_context,
+    AVIOContextHolder* avio_context_holder) {
+  if (!av_format_context || !av_format_context->pb) {
     return;
   }
 
-  if (avFormatContext->pb->error == 0) {
-    avio_flush(avFormatContext->pb);
+  if (av_format_context->pb->error == 0) {
+    avio_flush(av_format_context->pb);
   }
 
-  if (!avioContextHolder) {
-    if (avFormatContext->pb->error == 0) {
-      avio_close(avFormatContext->pb);
+  if (!avio_context_holder) {
+    if (av_format_context->pb->error == 0) {
+      avio_close(av_format_context->pb);
     }
   }
 
-  avFormatContext->pb = nullptr;
+  av_format_context->pb = nullptr;
 }
 
-} // namespace
-
-AudioEncoder::~AudioEncoder() {
-  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
-}
-
-AudioEncoder::AudioEncoder(
-    const torch::stable::Tensor& samples,
-    int sampleRate,
-    std::string_view fileName,
-    const AudioStreamOptions& audioStreamOptions)
-    : samples_(validateSamples(samples)), inSampleRate_(sampleRate) {
-  setFFmpegLogLevel();
-  AVFormatContext* avFormatContext = nullptr;
-  int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, nullptr, fileName.data());
-
-  STD_TORCH_CHECK(
-      avFormatContext != nullptr,
-      "Couldn't allocate AVFormatContext. ",
-      "The destination file is ",
-      fileName,
-      ", check the desired extension? ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  avFormatContext_.reset(avFormatContext);
-
-  status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
-  STD_TORCH_CHECK(
-      status >= 0,
-      "avio_open failed. The destination file is ",
-      fileName,
-      ", make sure it's a valid path? ",
-      getFFMPEGErrorStringFromErrorCode(status));
-
-  initializeEncoder(audioStreamOptions);
-}
-
-AudioEncoder::AudioEncoder(
-    const torch::stable::Tensor& samples,
-    int sampleRate,
-    std::string_view formatName,
-    std::unique_ptr<AVIOContextHolder> avioContextHolder,
-    const AudioStreamOptions& audioStreamOptions)
-    : samples_(validateSamples(samples)),
-      inSampleRate_(sampleRate),
-      avioContextHolder_(std::move(avioContextHolder)) {
-  setFFmpegLogLevel();
-  AVFormatContext* avFormatContext = nullptr;
-  int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, formatName.data(), nullptr);
-
-  STD_TORCH_CHECK(
-      avFormatContext != nullptr,
-      "Couldn't allocate AVFormatContext. ",
-      "Check the desired format? Got format=",
-      formatName,
-      ". ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  avFormatContext_.reset(avFormatContext);
-
-  avFormatContext_->pb = avioContextHolder_->getAVIOContext();
-
-  initializeEncoder(audioStreamOptions);
-}
-
-void AudioEncoder::initializeEncoder(
-    const AudioStreamOptions& audioStreamOptions) {
-  // We use the AVFormatContext's default codec for that
-  // specific format/container.
-  const AVCodec* avCodec =
-      avcodec_find_encoder(avFormatContext_->oformat->audio_codec);
-  STD_TORCH_CHECK(avCodec != nullptr, "Codec not found");
-
-  AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
-  STD_TORCH_CHECK(
-      avCodecContext != nullptr, "Couldn't allocate codec context.");
-  avCodecContext_.reset(avCodecContext);
-
-  auto desiredBitRate = audioStreamOptions.bitRate;
-  if (desiredBitRate.has_value()) {
-    STD_TORCH_CHECK(
-        *desiredBitRate >= 0, "bit_rate=", *desiredBitRate, " must be >= 0.");
-  }
-  // bit_rate=None defaults to 0, which is what the FFmpeg CLI seems to use as
-  // well when "-b:a" isn't specified.
-  avCodecContext_->bit_rate = desiredBitRate.value_or(0);
-
-  outNumChannels_ = static_cast<int>(
-      audioStreamOptions.numChannels.value_or(samples_.sizes()[0]));
-  validateNumChannels(*avCodec, outNumChannels_);
-  // The avCodecContext layout defines the layout of the encoded output, it's
-  // not related to the input sampes.
-  setDefaultChannelLayout(avCodecContext_, outNumChannels_);
-
-  outSampleRate_ = audioStreamOptions.sampleRate.value_or(inSampleRate_);
-  validateSampleRate(*avCodec, outSampleRate_);
-  avCodecContext_->sample_rate = outSampleRate_;
-
-  // Input samples are expected to be FLTP. Not all encoders support FLTP, so we
-  // may need to convert the samples into a supported output sample format,
-  // which is what the `.sample_fmt` defines.
-  avCodecContext_->sample_fmt = findBestOutputSampleFormat(*avCodec);
-
-  int status = avcodec_open2(avCodecContext_.get(), avCodec, nullptr);
-  STD_TORCH_CHECK(
-      status == AVSUCCESS,
-      "avcodec_open2 failed: ",
-      getFFMPEGErrorStringFromErrorCode(status));
-
-  // We're allocating the stream here. Streams are meant to be freed by
-  // avformat_free_context(avFormatContext), which we call in the
-  // avFormatContext_'s destructor.
-  AVStream* avStream = avformat_new_stream(avFormatContext_.get(), nullptr);
-  STD_TORCH_CHECK(avStream != nullptr, "Couldn't create new stream.");
-  status = avcodec_parameters_from_context(
-      avStream->codecpar, avCodecContext_.get());
-  STD_TORCH_CHECK(
-      status == AVSUCCESS,
-      "avcodec_parameters_from_context failed: ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  streamIndex_ = avStream->index;
-
-  // If sample rate conversion is needed and the encoder doesn't support
-  // variable frame size, we need to create an intermediate FIFO. See
-  // [Encoding loop, sample rate conversion and FIFO].
-  if (((avCodec->capabilities & AV_CODEC_CAP_VARIABLE_FRAME_SIZE) == 0) &&
-      (inSampleRate_ != outSampleRate_)) {
-    // frame_size * 2 is a decent default size. FFmpeg automatically
-    // re-allocates the fifo if more space is needed.
-    auto avAudioFifo = av_audio_fifo_alloc(
-        avCodecContext_->sample_fmt,
-        outNumChannels_,
-        avCodecContext_->frame_size * 2);
-    STD_TORCH_CHECK(avAudioFifo != nullptr, "Couldn't create AVAudioFifo.");
-    avAudioFifo_.reset(avAudioFifo);
-  }
-}
-
-torch::stable::Tensor AudioEncoder::encodeToTensor() {
-  STD_TORCH_CHECK(
-      avioContextHolder_ != nullptr,
-      "Cannot encode to tensor, avio tensor context doesn't exist.");
-  encode();
-  auto avioToTensorContext =
-      dynamic_cast<AVIOToTensorContext*>(avioContextHolder_.get());
-  STD_TORCH_CHECK(
-      avioToTensorContext != nullptr, "Invalid AVIO context holder.");
-  return avioToTensorContext->getOutputTensor();
-}
-
-void AudioEncoder::encode() {
-  // To be on the safe side we enforce that encode() can only be called once on
-  // an encoder object. Whether this is actually necessary is unknown, so this
-  // may be relaxed if needed.
-  STD_TORCH_CHECK(!encodeWasCalled_, "Cannot call encode() twice.");
-  encodeWasCalled_ = true;
-
-  //  Default to 256 like in torchaudio
-  int numSamplesAllocatedPerFrame =
-      avCodecContext_->frame_size > 0 ? avCodecContext_->frame_size : 256;
-  UniqueAVFrame avFrame = allocateAVFrame(
-      numSamplesAllocatedPerFrame,
-      inSampleRate_,
-      static_cast<int>(samples_.sizes()[0]),
-      AV_SAMPLE_FMT_FLTP);
-  avFrame->pts = 0;
-
-  AutoAVPacket autoAVPacket;
-
-  const uint8_t* psamples =
-      static_cast<const uint8_t*>(samples_.const_data_ptr());
-  int numSamples = static_cast<int>(samples_.sizes()[1]); // per channel
-  int numEncodedSamples = 0; // per channel
-  int numBytesPerSample = static_cast<int>(samples_.element_size());
-  int numBytesPerChannel = numSamples * numBytesPerSample;
-
-  auto status = avformat_write_header(avFormatContext_.get(), nullptr);
-  STD_TORCH_CHECK(
-      status == AVSUCCESS,
-      "Error in avformat_write_header: ",
-      getFFMPEGErrorStringFromErrorCode(status));
-
-  while (numEncodedSamples < numSamples) {
-    int numSamplesToEncode =
-        std::min(numSamplesAllocatedPerFrame, numSamples - numEncodedSamples);
-    int numBytesToEncode = numSamplesToEncode * numBytesPerSample;
-
-    for (int ch = 0; ch < samples_.sizes()[0]; ch++) {
-      std::memcpy(
-          avFrame->data[ch],
-          psamples + ch * numBytesPerChannel,
-          numBytesToEncode);
-    }
-    psamples += numBytesToEncode;
-
-    // Above, we set the AVFrame's .nb_samples to AVCodecContext.frame_size so
-    // that the frame buffers are allocated to a big enough size. Here, we reset
-    // it to the exact number of samples that need to be encoded, otherwise the
-    // encoded frame would contain more samples than necessary and our results
-    // wouldn't match the ffmpeg CLI.
-    avFrame->nb_samples = numSamplesToEncode;
-
-    UniqueAVFrame convertedAVFrame = maybeConvertAVFrame(avFrame);
-    encodeFrameThroughFifo(autoAVPacket, convertedAVFrame);
-
-    numEncodedSamples += numSamplesToEncode;
-  }
-  STD_TORCH_CHECK(
-      numEncodedSamples == numSamples, "Hmmmmmm something went wrong.");
-
-  flushBuffers();
-
-  status = av_write_trailer(avFormatContext_.get());
-  STD_TORCH_CHECK(
-      status == AVSUCCESS,
-      "Error in: av_write_trailer",
-      getFFMPEGErrorStringFromErrorCode(status));
-
-  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
-}
-
-UniqueAVFrame AudioEncoder::maybeConvertAVFrame(const UniqueAVFrame& avFrame) {
-  if (static_cast<AVSampleFormat>(avFrame->format) ==
-          avCodecContext_->sample_fmt &&
-      getNumChannels(avFrame) == outNumChannels_ &&
-      avFrame->sample_rate == outSampleRate_) {
-    // Note: the clone references the same underlying data, it's a cheap copy.
-    return UniqueAVFrame(av_frame_clone(avFrame.get()));
-  }
-
-  if (!swrContext_) {
-    swrContext_.reset(createSwrContext(
-        static_cast<AVSampleFormat>(avFrame->format),
-        avCodecContext_->sample_fmt,
-        avFrame->sample_rate,
-        outSampleRate_,
-        avFrame,
-        outNumChannels_));
-  }
-  // convertAudioAVFrameSamples uses avFrame's extended_data field, so we ensure
-  // it's the same as data. This should always be the case since we validated
-  // earlier that we have less than AV_NUM_DATA_POINTERS channels.
-  STD_TORCH_CHECK(
-      avFrame->data == avFrame->extended_data,
-      "Codec context data and extended_data pointers differ, this is unexpected.");
-  UniqueAVFrame convertedAVFrame = convertAudioAVFrameSamples(
-      swrContext_,
-      avFrame,
-      avCodecContext_->sample_fmt,
-      outSampleRate_,
-      outNumChannels_);
-
-  if (avFrame->sample_rate == outSampleRate_) {
-    STD_TORCH_CHECK(
-        convertedAVFrame->nb_samples == avFrame->nb_samples,
-        "convertedAVFrame->nb_samples=",
-        convertedAVFrame->nb_samples,
-        " differs from ",
-        "avFrame->nb_samples=",
-        avFrame->nb_samples,
-        "This is unexpected, please report on the TorchCodec bug tracker.");
-  }
-  return convertedAVFrame;
-}
-
-void AudioEncoder::encodeFrameThroughFifo(
-    AutoAVPacket& autoAVPacket,
-    const UniqueAVFrame& avFrame,
-    // flushFifo is only set to true in maybeFlushSwrBuffers(), i.e. at the very
-    // end of the encoding process when we're flushing buffers. We also want to
-    // flush the FIFO so as to not leave any remaining samples in it.
-    bool flushFifo) {
-  if (avAudioFifo_ == nullptr) {
-    encodeFrame(autoAVPacket, avFrame);
-    return;
-  }
-  int numSamplesWritten = av_audio_fifo_write(
-      avAudioFifo_.get(),
-      reinterpret_cast<void**>(avFrame->data),
-      avFrame->nb_samples);
-  STD_TORCH_CHECK(
-      numSamplesWritten == avFrame->nb_samples,
-      "Tried to write ",
-      avFrame->nb_samples,
-      " samples, but only wrote ",
-      numSamplesWritten);
-
-  UniqueAVFrame newavFrame = allocateAVFrame(
-      avCodecContext_->frame_size,
-      outSampleRate_,
-      outNumChannels_,
-      avCodecContext_->sample_fmt);
-
-  // Explaining the while bound:
-  // - if we're not flushing the FIFO, i.e. in most cases, we want to pull
-  //   exactly `frame_size` samples from the FIFO, so we have to stop before it
-  //   contains less than `frame_size` samples.
-  // - if we're flushing the FIFO, we want to read from the FIFO until the very
-  //   last sample it contains.
-  //
-  // In both cases, for as long as we can, we're trying to pull exatly
-  // `frame_size` samples from the FIFO and send each `frame_size`-sized avFrame
-  // to encodeFrame(). Only the very last avFrame of the encoding process is
-  // allowed to contained less than frame_size samples. That only happens when
-  // flushFifo is true.
-  while (av_audio_fifo_size(avAudioFifo_.get()) >=
-         (flushFifo ? 1 : avCodecContext_->frame_size)) {
-    int samplesToRead = std::min(
-        av_audio_fifo_size(avAudioFifo_.get()), newavFrame->nb_samples);
-    int numSamplesRead = av_audio_fifo_read(
-        avAudioFifo_.get(),
-        reinterpret_cast<void**>(newavFrame->data),
-        samplesToRead);
-    STD_TORCH_CHECK(
-        numSamplesRead == samplesToRead,
-        "Tried to read ",
-        samplesToRead,
-        " samples, but only read ",
-        numSamplesRead);
-
-    newavFrame->nb_samples = numSamplesRead;
-    encodeFrame(autoAVPacket, newavFrame);
-  }
-}
-
-void AudioEncoder::encodeFrame(
-    AutoAVPacket& autoAVPacket,
-    const UniqueAVFrame& avFrame) {
-  if (avFrame != nullptr) {
-    avFrame->pts = lastEncodedAVFramePts_;
-    lastEncodedAVFramePts_ += avFrame->nb_samples;
-  }
-
-  auto status = avcodec_send_frame(avCodecContext_.get(), avFrame.get());
-  STD_TORCH_CHECK(
-      status == AVSUCCESS,
-      "Error while sending frame: ",
-      getFFMPEGErrorStringFromErrorCode(status));
-
-  while (status >= 0) {
-    ReferenceAVPacket packet(autoAVPacket);
-    status = avcodec_receive_packet(avCodecContext_.get(), packet.get());
-    if (status == AVERROR(EAGAIN) || status == AVERROR_EOF) {
-      if (status == AVERROR_EOF) {
-        // Flush the packets that were potentially buffered by
-        // av_interleaved_write_frame(). See corresponding block in
-        // TorchAudio:
-        // https://github.com/pytorch/audio/blob/d60ce09e2c532d5bf2e05619e700ab520543465e/src/libtorio/ffmpeg/stream_writer/encoder.cpp#L21
-        status = av_interleaved_write_frame(avFormatContext_.get(), nullptr);
-        STD_TORCH_CHECK(
-            status == AVSUCCESS,
-            "Failed to flush packet: ",
-            getFFMPEGErrorStringFromErrorCode(status));
-      }
-      return;
-    }
-    STD_TORCH_CHECK(
-        status >= 0,
-        "Error receiving packet: ",
-        getFFMPEGErrorStringFromErrorCode(status));
-
-    packet->stream_index = streamIndex_;
-
-    status = av_interleaved_write_frame(avFormatContext_.get(), packet.get());
-    STD_TORCH_CHECK(
-        status == AVSUCCESS,
-        "Error in av_interleaved_write_frame: ",
-        getFFMPEGErrorStringFromErrorCode(status));
-  }
-}
-
-void AudioEncoder::maybeFlushSwrBuffers(AutoAVPacket& autoAVPacket) {
-  // Similar to the decoder's method with the same name, but for encoding this
-  // time. That is, when sample conversion is involved, libswresample may have
-  // buffered some samples that we now need to flush and send to the encoder.
-  if (swrContext_ == nullptr && inSampleRate_ == outSampleRate_) {
-    return;
-  }
-  STD_TORCH_CHECK(
-      swrContext_ != nullptr,
-      "swrContext is null, but sample rate conversion is needed. ",
-      "This is unexpected, please report on the TorchCodec bug tracker.");
-
-  int numRemainingSamples = // this is an upper bound
-      swr_get_out_samples(swrContext_.get(), 0);
-  if (numRemainingSamples == 0) {
-    return;
-  }
-
-  UniqueAVFrame avFrame = allocateAVFrame(
-      numRemainingSamples,
-      outSampleRate_,
-      outNumChannels_,
-      avCodecContext_->sample_fmt);
-  int actualNumRemainingSamples = swr_convert(
-      swrContext_.get(), avFrame->data, avFrame->nb_samples, nullptr, 0);
-  avFrame->nb_samples = actualNumRemainingSamples;
-
-  // We're potentially sending avFrame through the FIFO (if it exists), in which
-  // case we also want to flush the FIFO itself.
-  encodeFrameThroughFifo(autoAVPacket, avFrame, /*flushFifo=*/true);
-}
-
-void AudioEncoder::flushBuffers() {
-  AutoAVPacket autoAVPacket;
-  maybeFlushSwrBuffers(autoAVPacket);
-
-  encodeFrame(autoAVPacket, UniqueAVFrame(nullptr));
-}
-
-namespace {
-
-torch::stable::Tensor validateFrames(
+torch::stable::Tensor validate_frames(
     const torch::stable::Tensor& frames,
-    const AVCodecContext* avCodecContext = nullptr,
-    DeviceInterface* deviceInterface = nullptr) {
+    const AVCodecContext* av_codec_context = nullptr,
+    DeviceInterface* device_interface = nullptr) {
   STD_TORCH_CHECK(
       frames.scalar_type() == kStableUInt8,
       "frames must have uint8 dtype, got ",
@@ -558,28 +146,28 @@ torch::stable::Tensor validateFrames(
       frames.sizes()[1] == 3,
       "frame must have 3 channels (R, G, B), got ",
       frames.sizes()[1]);
-  if (deviceInterface != nullptr) {
-    auto& expectedDevice = deviceInterface->device();
-    auto framesDevice = frames.device();
+  if (device_interface != nullptr) {
+    auto& expected_device = device_interface->device();
+    auto frames_device = frames.device();
     STD_TORCH_CHECK(
-        framesDevice == expectedDevice,
+        frames_device == expected_device,
         "All frames must be on the same device. Expected ",
-        deviceTypeName(expectedDevice.type()),
+        device_type_name(expected_device.type()),
         ":",
-        expectedDevice.index(),
+        expected_device.index(),
         ", got ",
-        deviceTypeName(framesDevice.type()),
+        device_type_name(frames_device.type()),
         ":",
-        framesDevice.index());
+        frames_device.index());
   }
-  if (avCodecContext) {
+  if (av_codec_context) {
     STD_TORCH_CHECK(
-        static_cast<int>(frames.sizes()[2]) == avCodecContext->height &&
-            static_cast<int>(frames.sizes()[3]) == avCodecContext->width,
+        static_cast<int>(frames.sizes()[2]) == av_codec_context->height &&
+            static_cast<int>(frames.sizes()[3]) == av_codec_context->width,
         "All frames must have the same dimensions. Expected height=",
-        avCodecContext->height,
+        av_codec_context->height,
         " width=",
-        avCodecContext->width,
+        av_codec_context->width,
         ", got height=",
         frames.sizes()[2],
         " width=",
@@ -588,49 +176,18 @@ torch::stable::Tensor validateFrames(
   return torch::stable::contiguous(frames);
 }
 
-AVPixelFormat validatePixelFormat(
-    const AVCodec& avCodec,
-    const std::string& targetPixelFormat) {
-  AVPixelFormat pixelFormat = av_get_pix_fmt(targetPixelFormat.c_str());
-
-  // Validate that the encoder supports this pixel format
-  const AVPixelFormat* supportedFormats = getSupportedPixelFormats(avCodec);
-  if (supportedFormats != nullptr) {
-    for (int i = 0; supportedFormats[i] != AV_PIX_FMT_NONE; ++i) {
-      if (supportedFormats[i] == pixelFormat) {
-        return pixelFormat;
-      }
-    }
-  }
-
-  std::stringstream errorMsg;
-  // av_get_pix_fmt failed to find a pix_fmt
-  if (pixelFormat == AV_PIX_FMT_NONE) {
-    errorMsg << "Unknown pixel format: " << targetPixelFormat;
-  } else {
-    errorMsg << "Specified pixel format " << targetPixelFormat
-             << " is not supported by the " << avCodec.name << " encoder.";
-  }
-  // Build error message, similar to FFmpeg's error log
-  errorMsg << "\nSupported pixel formats for " << avCodec.name << ":";
-  for (int i = 0; supportedFormats[i] != AV_PIX_FMT_NONE; ++i) {
-    errorMsg << " " << av_get_pix_fmt_name(supportedFormats[i]);
-  }
-  STD_TORCH_CHECK(false, errorMsg.str());
-}
-
-void tryToValidateCodecOption(
-    const AVCodec& avCodec,
-    const char* optionName,
+void try_to_validate_codec_option(
+    const AVCodec& av_codec,
+    const char* option_name,
     const std::string& value) {
-  if (!avCodec.priv_class) {
+  if (!av_codec.priv_class) {
     return;
   }
   const AVOption* option = av_opt_find2(
       // Convert obj arg from const AVClass* const* to non-const void*
       // First cast to remove const, then cast to void*
-      const_cast<void*>(static_cast<const void*>(&avCodec.priv_class)),
-      optionName,
+      const_cast<void*>(static_cast<const void*>(&av_codec.priv_class)),
+      option_name,
       nullptr,
       0,
       AV_OPT_SEARCH_FAKE_OBJ,
@@ -643,24 +200,24 @@ void tryToValidateCodecOption(
   if (option->type == AV_OPT_TYPE_INT || option->type == AV_OPT_TYPE_INT64 ||
       option->type == AV_OPT_TYPE_FLOAT || option->type == AV_OPT_TYPE_DOUBLE) {
     try {
-      double numericValue = std::stod(value);
+      double numeric_value = std::stod(value);
       STD_TORCH_CHECK(
-          numericValue >= option->min && numericValue <= option->max,
-          optionName,
+          numeric_value >= option->min && numeric_value <= option->max,
+          option_name,
           "=",
-          numericValue,
+          numeric_value,
           " is out of valid range [",
           option->min,
           ", ",
           option->max,
           "] for this codec. For more details, run 'ffmpeg -h encoder=",
-          avCodec.name,
+          av_codec.name,
           "'");
     } catch (const std::invalid_argument&) {
       STD_TORCH_CHECK(
           false,
           "Option ",
-          optionName,
+          option_name,
           " expects a numeric value but got '",
           value,
           "'");
@@ -668,20 +225,21 @@ void tryToValidateCodecOption(
   }
 }
 
-void sortCodecOptions(
-    const AVFormatContext* avFormatContext,
-    const std::map<std::string, std::string>& extraOptions,
-    UniqueAVDictionary& codecDict,
-    UniqueAVDictionary& formatDict) {
+void sort_codec_options(
+    const AVFormatContext* av_format_context,
+    const std::map<std::string, std::string>& extra_options,
+    UniqueAVDictionary& codec_dict,
+    UniqueAVDictionary& format_dict) {
   // Accepts a map of options as input, then sorts them into codec options and
   // format options. The sorted options are returned into two separate dicts.
-  const AVClass* formatClass = avformat_get_class();
-  const AVClass* muxerClass =
-      avFormatContext->oformat ? avFormatContext->oformat->priv_class : nullptr;
-  for (const auto& [key, value] : extraOptions) {
+  const AVClass* format_class = avformat_get_class();
+  const AVClass* muxer_class = av_format_context->oformat
+      ? av_format_context->oformat->priv_class
+      : nullptr;
+  for (const auto& [key, value] : extra_options) {
     // Check if option is generic format option
-    const AVOption* fmtOpt = av_opt_find2(
-        &formatClass,
+    const AVOption* fmt_opt = av_opt_find2(
+        &format_class,
         key.c_str(),
         nullptr,
         0,
@@ -689,803 +247,453 @@ void sortCodecOptions(
         nullptr);
     // Check if option is muxer-specific option
     // (Returned from `ffmpeg -h muxer=mp4`)
-    const AVOption* muxerOpt = nullptr;
-    if (muxerClass) {
-      muxerOpt = av_opt_find2(
-          &muxerClass,
+    const AVOption* muxer_opt = nullptr;
+    if (muxer_class) {
+      muxer_opt = av_opt_find2(
+          &muxer_class,
           key.c_str(),
           nullptr,
           0,
           AV_OPT_SEARCH_FAKE_OBJ,
           nullptr);
     }
-    if (fmtOpt || muxerOpt) {
+    if (fmt_opt || muxer_opt) {
       // Pass container-format options to formatDict to be used in
       // avformat_write_header
-      av_dict_set(formatDict.getAddress(), key.c_str(), value.c_str(), 0);
+      av_dict_set(format_dict.get_address(), key.c_str(), value.c_str(), 0);
     } else {
       // By default, pass as codec option to be used in avcodec_open2
-      av_dict_set(codecDict.getAddress(), key.c_str(), value.c_str(), 0);
+      av_dict_set(codec_dict.get_address(), key.c_str(), value.c_str(), 0);
     }
   }
 }
 
 } // namespace
 
-VideoEncoder::~VideoEncoder() {
-  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
-}
-
-VideoEncoder::VideoEncoder(
-    const torch::stable::Tensor& frames,
-    double frameRate,
-    std::string_view fileName,
-    const VideoStreamOptions& videoStreamOptions)
-    : frames_(validateFrames(frames)), inFrameRate_(frameRate) {
-  setFFmpegLogLevel();
-
-  // Allocate output format context
-  AVFormatContext* avFormatContext = nullptr;
-  int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, nullptr, fileName.data());
-
-  STD_TORCH_CHECK(
-      avFormatContext != nullptr,
-      "Couldn't allocate AVFormatContext. ",
-      "The destination file is ",
-      fileName,
-      ", check the desired extension? ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  avFormatContext_.reset(avFormatContext);
-
-  status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
-  STD_TORCH_CHECK(
-      status >= 0,
-      "avio_open failed. The destination file is ",
-      fileName,
-      ", make sure it's a valid path? ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  initializeEncoder(videoStreamOptions);
-}
-
-VideoEncoder::VideoEncoder(
-    const torch::stable::Tensor& frames,
-    double frameRate,
-    std::string_view formatName,
-    std::unique_ptr<AVIOContextHolder> avioContextHolder,
-    const VideoStreamOptions& videoStreamOptions)
-    : frames_(validateFrames(frames)),
-      inFrameRate_(frameRate),
-      avioContextHolder_(std::move(avioContextHolder)) {
-  setFFmpegLogLevel();
-  // Map mkv -> matroska when used as format name
-  formatName = (formatName == "mkv") ? "matroska" : formatName;
-  AVFormatContext* avFormatContext = nullptr;
-  int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, formatName.data(), nullptr);
-
-  STD_TORCH_CHECK(
-      avFormatContext != nullptr,
-      "Couldn't allocate AVFormatContext. ",
-      "Check the desired format? Got format=",
-      formatName,
-      ". ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  avFormatContext_.reset(avFormatContext);
-
-  avFormatContext_->pb = avioContextHolder_->getAVIOContext();
-
-  initializeEncoder(videoStreamOptions);
-}
-
-void VideoEncoder::initializeEncoder(
-    const VideoStreamOptions& videoStreamOptions) {
-  auto tensorDevice = frames_.device();
-  StableDevice stableDevice(
-      static_cast<StableDeviceType>(tensorDevice.type()), tensorDevice.index());
-  // The NVDEC CUDA interface is decode-only; encoders need the FFmpeg-based
-  // one.
-  deviceInterface_ = createDeviceInterface(
-      stableDevice, stableDevice.type() == kStableCUDA ? "ffmpeg" : "default");
-  const AVCodec* avCodec = nullptr;
-  // If codec arg is provided, find codec using logic similar to FFmpeg:
-  // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
-  if (videoStreamOptions.codec.has_value()) {
-    const std::string& codec = videoStreamOptions.codec.value();
-    // Try to find codec by name ("libx264", "libsvtav1")
-    avCodec = avcodec_find_encoder_by_name(codec.c_str());
-    // Try to find by codec descriptor ("h264", "av1")
-    if (!avCodec) {
-      const AVCodecDescriptor* desc =
-          avcodec_descriptor_get_by_name(codec.c_str());
-      if (desc) {
-        avCodec = avcodec_find_encoder(desc->id);
-      }
-    }
-  } else {
-    STD_TORCH_CHECK(
-        avFormatContext_->oformat != nullptr,
-        "Output format is null, unable to find default codec.");
-    // Try to substitute the default codec with its hardware equivalent
-    // This will return std::nullopt when device is CPU.
-    auto hwCodec = deviceInterface_->findCodec(
-        avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
-    if (hwCodec.has_value()) {
-      avCodec = hwCodec.value();
-    }
-    if (!avCodec) {
-      avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
-    }
-  }
-  STD_TORCH_CHECK(
-      avCodec != nullptr,
-      "Video codec ",
-      videoStreamOptions.codec.has_value()
-          ? videoStreamOptions.codec.value() + " "
-          : "",
-      "not found. To see available codecs, run: ffmpeg -encoders");
-
-  AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
-  STD_TORCH_CHECK(
-      avCodecContext != nullptr, "Couldn't allocate codec context.");
-  avCodecContext_.reset(avCodecContext);
-
-  // Store dimensions of input frames
-  auto sizes = frames_.sizes();
-  int inHeight = static_cast<int>(sizes[2]);
-  int inWidth = static_cast<int>(sizes[3]);
-
-  // Always use input dimensions as output dimensions
-  int outWidth = inWidth;
-  int outHeight = inHeight;
-  AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
-
-  if (videoStreamOptions.pixelFormat.has_value()) {
-    // TODO-VideoEncoder: (P2) Enable pixel formats to be set by user on GPU
-    // and handled with the appropriate NPP function on GPU.
-    if (frames_.device().type() == kStableCUDA) {
-      STD_TORCH_CHECK(
-          false,
-          "Video encoding on GPU currently only supports the nv12 pixel format. "
-          "Do not set pixel_format to use nv12 by default.");
-    }
-    outPixelFormat =
-        validatePixelFormat(*avCodec, videoStreamOptions.pixelFormat.value());
-  } else {
-    if (frames_.device().type() == kStableCUDA) {
-      // Default to nv12 pixel format when encoding on GPU.
-      outPixelFormat = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
-    } else {
-      const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
-      // Use first listed pixel format as default (often yuv420p).
-      // This is similar to FFmpeg's logic:
-      // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
-      // If pixel formats are undefined for some reason, try yuv420p
-      outPixelFormat = (formats && formats[0] != AV_PIX_FMT_NONE)
-          ? formats[0]
-          : AV_PIX_FMT_YUV420P;
-    }
-  }
-
-  // Configure codec parameters
-  avCodecContext_->codec_id = avCodec->id;
-  avCodecContext_->width = outWidth;
-  avCodecContext_->height = outHeight;
-  avCodecContext_->pix_fmt = outPixelFormat;
-  // TODO-VideoEncoder: (P1) Add and utilize output frame_rate option
-  avCodecContext_->framerate = av_d2q(inFrameRate_, INT_MAX);
-  avCodecContext_->time_base = av_inv_q(avCodecContext_->framerate);
-
-  // Set flag for containers that require extradata to be in the codec context
-  if (avFormatContext_->oformat->flags & AVFMT_GLOBALHEADER) {
-    avCodecContext_->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
-  }
-
-  // Apply videoStreamOptions
-  UniqueAVDictionary avCodecOptions;
-  if (videoStreamOptions.extraOptions.has_value()) {
-    for (const auto& [key, value] : videoStreamOptions.extraOptions.value()) {
-      tryToValidateCodecOption(*avCodec, key.c_str(), value);
-    }
-    sortCodecOptions(
-        avFormatContext_.get(),
-        videoStreamOptions.extraOptions.value(),
-        avCodecOptions,
-        avFormatOptions_);
-  }
-
-  if (videoStreamOptions.crf.has_value()) {
-    std::string crfValue = std::to_string(videoStreamOptions.crf.value());
-    tryToValidateCodecOption(*avCodec, "crf", crfValue);
-    av_dict_set(avCodecOptions.getAddress(), "crf", crfValue.c_str(), 0);
-  }
-  if (videoStreamOptions.preset.has_value()) {
-    av_dict_set(
-        avCodecOptions.getAddress(),
-        "preset",
-        videoStreamOptions.preset.value().c_str(),
-        0);
-  }
-
-  if (frames_.device().type() == kStableCUDA) {
-    deviceInterface_->registerHardwareDeviceWithCodec(avCodecContext_.get());
-    deviceInterface_->setupHardwareFrameContextForEncoding(
-        avCodecContext_.get());
-  }
-
-  int status = avcodec_open2(
-      avCodecContext_.get(), avCodec, avCodecOptions.getAddress());
-
-  STD_TORCH_CHECK(
-      status == AVSUCCESS,
-      "avcodec_open2 failed: ",
-      getFFMPEGErrorStringFromErrorCode(status));
-
-  avStream_ = avformat_new_stream(avFormatContext_.get(), nullptr);
-  STD_TORCH_CHECK(avStream_ != nullptr, "Couldn't create new stream.");
-
-  // Set the stream time base to encode correct frame timestamps
-  avStream_->time_base = avCodecContext_->time_base;
-  // Set the stream frame rate to store correct frame durations for some
-  // containers (webm, mkv)
-  avStream_->r_frame_rate = avCodecContext_->framerate;
-
-  status = avcodec_parameters_from_context(
-      avStream_->codecpar, avCodecContext_.get());
-  STD_TORCH_CHECK(
-      status == AVSUCCESS,
-      "avcodec_parameters_from_context failed: ",
-      getFFMPEGErrorStringFromErrorCode(status));
-}
-
-void VideoEncoder::encode() {
-  // To be on the safe side we enforce that encode() can only be called once
-  STD_TORCH_CHECK(!encodeWasCalled_, "Cannot call encode() twice.");
-  encodeWasCalled_ = true;
-
-  int status = avformat_write_header(
-      avFormatContext_.get(), avFormatOptions_.getAddress());
-  STD_TORCH_CHECK(
-      status == AVSUCCESS,
-      "Error in avformat_write_header: ",
-      getFFMPEGErrorStringFromErrorCode(status));
-
-  AutoAVPacket autoAVPacket;
-  int numFrames = static_cast<int>(frames_.sizes()[0]);
-  for (int i = 0; i < numFrames; ++i) {
-    torch::stable::Tensor currFrame = selectRow(frames_, i);
-    UniqueAVFrame avFrame = deviceInterface_->convertTensorToAVFrameForEncoding(
-        currFrame, i, avCodecContext_.get());
-    STD_TORCH_CHECK(
-        avFrame != nullptr,
-        "convertTensorToAVFrameForEncoding failed for frame ",
-        i,
-        " on device: ",
-        deviceTypeName(frames_.device().type()));
-    encodeFrame(autoAVPacket, avFrame);
-  }
-
-  flushBuffers();
-
-  status = av_write_trailer(avFormatContext_.get());
-  // av_write_trailer returns mfra atom size (positive) for fragmented
-  // containers, which we'd misinterpret as an error, since all FFmpeg errors
-  // are negative (see AVERROR definition:
-  // http://ffmpeg.org/doxygen/8.0/error_8h_source.html) So we replace positive
-  // values with AVSUCCESS. See:
-  // https://github.com/FFmpeg/FFmpeg/blob/n8.0/libavformat/movenc.c#L8666
-  if (status > 0) {
-    status = AVSUCCESS;
-  }
-  STD_TORCH_CHECK(
-      status == AVSUCCESS,
-      "Error in av_write_trailer: ",
-      getFFMPEGErrorStringFromErrorCode(status));
-}
-
-torch::stable::Tensor VideoEncoder::encodeToTensor() {
-  STD_TORCH_CHECK(
-      avioContextHolder_ != nullptr,
-      "Cannot encode to tensor, avio tensor context doesn't exist.");
-  encode();
-  auto avioToTensorContext =
-      dynamic_cast<AVIOToTensorContext*>(avioContextHolder_.get());
-  STD_TORCH_CHECK(
-      avioToTensorContext != nullptr, "Invalid AVIO context holder.");
-  return avioToTensorContext->getOutputTensor();
-}
-
-void VideoEncoder::encodeFrame(
-    AutoAVPacket& autoAVPacket,
-    const UniqueAVFrame& avFrame) {
-  auto status = avcodec_send_frame(avCodecContext_.get(), avFrame.get());
-  STD_TORCH_CHECK(
-      status == AVSUCCESS,
-      "Error while sending frame: ",
-      getFFMPEGErrorStringFromErrorCode(status));
-
-  while (status >= 0) {
-    ReferenceAVPacket packet(autoAVPacket);
-    status = avcodec_receive_packet(avCodecContext_.get(), packet.get());
-    if (status == AVERROR(EAGAIN) || status == AVERROR_EOF) {
-      if (status == AVERROR_EOF) {
-        // Flush remaining buffered packets
-        status = av_interleaved_write_frame(avFormatContext_.get(), nullptr);
-        STD_TORCH_CHECK(
-            status == AVSUCCESS,
-            "Failed to flush packet: ",
-            getFFMPEGErrorStringFromErrorCode(status));
-      }
-      return;
-    }
-    STD_TORCH_CHECK(
-        status >= 0,
-        "Error receiving packet: ",
-        getFFMPEGErrorStringFromErrorCode(status));
-
-    // The code below is borrowed from torchaudio:
-    // https://github.com/pytorch/audio/blob/b6a3368a45aaafe05f1a6a9f10c68adc5e944d9e/src/libtorio/ffmpeg/stream_writer/encoder.cpp#L46
-    // Setting packet->duration to 1 allows the last frame to be properly
-    // encoded, and needs to be set before calling av_packet_rescale_ts.
-    if (packet->duration == 0) {
-      packet->duration = 1;
-    }
-    av_packet_rescale_ts(
-        packet.get(), avCodecContext_->time_base, avStream_->time_base);
-    packet->stream_index = avStream_->index;
-
-    status = av_interleaved_write_frame(avFormatContext_.get(), packet.get());
-    STD_TORCH_CHECK(
-        status == AVSUCCESS,
-        "Error in av_interleaved_write_frame: ",
-        getFFMPEGErrorStringFromErrorCode(status));
-  }
-}
-
-void VideoEncoder::flushBuffers() {
-  AutoAVPacket autoAVPacket;
-  // Send null frame to signal end of input
-  encodeFrame(autoAVPacket, UniqueAVFrame(nullptr));
-}
-
 MultiStreamEncoder::~MultiStreamEncoder() {
   close();
 }
 
 MultiStreamEncoder::MultiStreamEncoder() {
-  setFFmpegLogLevel();
+  set_ffmpeg_log_level();
 }
 
-void MultiStreamEncoder::open(std::string_view fileName) {
+void MultiStreamEncoder::open(std::string_view file_name) {
   STD_TORCH_CHECK(!closed_, "Cannot open after close() was called.");
-  STD_TORCH_CHECK(!headerWritten_, "open() was already called.");
+  STD_TORCH_CHECK(!header_written_, "open() was already called.");
 
-  AVFormatContext* avFormatContext = nullptr;
+  AVFormatContext* av_format_context = nullptr;
   int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, nullptr, fileName.data());
+      &av_format_context, nullptr, nullptr, file_name.data());
 
   STD_TORCH_CHECK(
-      avFormatContext != nullptr,
+      av_format_context != nullptr,
       "Couldn't allocate AVFormatContext. ",
       "The destination file is ",
-      fileName,
+      file_name,
       ", check the desired extension? ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  avFormatContext_.reset(avFormatContext);
+      get_ffmpeg_error_string_from_error_code(status));
+  av_format_context_.reset(av_format_context);
 
-  status = avio_open(&avFormatContext_->pb, fileName.data(), AVIO_FLAG_WRITE);
+  status =
+      avio_open(&av_format_context_->pb, file_name.data(), AVIO_FLAG_WRITE);
   STD_TORCH_CHECK(
       status >= 0,
       "avio_open failed. The destination file is ",
-      fileName,
+      file_name,
       ", make sure it's a valid path? ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 
-  openStreamsAndWriteHeader();
+  open_streams_and_write_header();
 }
 
 void MultiStreamEncoder::open(
-    std::string_view formatName,
-    std::unique_ptr<AVIOContextHolder> avioContextHolder) {
+    std::string_view format_name,
+    std::unique_ptr<AVIOContextHolder> avio_context_holder) {
   STD_TORCH_CHECK(!closed_, "Cannot open after close() was called.");
-  STD_TORCH_CHECK(!headerWritten_, "open() was already called.");
+  STD_TORCH_CHECK(!header_written_, "open() was already called.");
 
-  avioContextHolder_ = std::move(avioContextHolder);
+  avio_context_holder_ = std::move(avio_context_holder);
 
   // Map mkv -> matroska when used as format name
-  formatName = (formatName == "mkv") ? "matroska" : formatName;
-  AVFormatContext* avFormatContext = nullptr;
+  format_name = (format_name == "mkv") ? "matroska" : format_name;
+  AVFormatContext* av_format_context = nullptr;
   int status = avformat_alloc_output_context2(
-      &avFormatContext, nullptr, formatName.data(), nullptr);
+      &av_format_context, nullptr, format_name.data(), nullptr);
 
   STD_TORCH_CHECK(
-      avFormatContext != nullptr,
+      av_format_context != nullptr,
       "Couldn't allocate AVFormatContext. ",
       "Check the desired format? Got format=",
-      formatName,
+      format_name,
       ". ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  avFormatContext_.reset(avFormatContext);
+      get_ffmpeg_error_string_from_error_code(status));
+  av_format_context_.reset(av_format_context);
 
-  avFormatContext_->pb = avioContextHolder_->getAVIOContext();
+  av_format_context_->pb = avio_context_holder_->get_avio_context();
 
-  openStreamsAndWriteHeader();
+  open_streams_and_write_header();
 }
 
-int MultiStreamEncoder::addVideoStream(
+int MultiStreamEncoder::add_video_stream(
     int height,
     int width,
-    double frameRate,
+    double frame_rate,
     std::string device,
     std::optional<std::string> codec,
-    std::optional<std::string> pixelFormat,
+    std::optional<std::string> pixel_format,
     std::optional<double> crf,
     std::optional<std::string> preset,
-    std::optional<std::map<std::string, std::string>> extraOptions) {
+    std::optional<std::map<std::string, std::string>> extra_options) {
   STD_TORCH_CHECK(height > 0, "height must be > 0, got ", height);
   STD_TORCH_CHECK(width > 0, "width must be > 0, got ", width);
-  STD_TORCH_CHECK(frameRate > 0, "frame_rate must be > 0, got ", frameRate);
-  VideoStream videoStream;
-  StableDevice stableDevice(std::move(device));
-  videoStream.deviceInterface = createDeviceInterface(
-      stableDevice, stableDevice.type() == kStableCUDA ? "ffmpeg" : "default");
-  videoStream.inHeight = height;
-  videoStream.inWidth = width;
-  videoStream.inFrameRate = frameRate;
-  videoStream.options.codec = std::move(codec);
-  videoStream.options.pixelFormat = std::move(pixelFormat);
-  videoStream.options.crf = crf;
-  videoStream.options.preset = std::move(preset);
-  videoStream.options.extraOptions = std::move(extraOptions);
-  videoStreams_.push_back(std::move(videoStream));
-  return static_cast<int>(videoStreams_.size() - 1);
+  STD_TORCH_CHECK(frame_rate > 0, "frame_rate must be > 0, got ", frame_rate);
+  VideoStream video_stream;
+  StableDevice stable_device(std::move(device));
+  video_stream.device_interface = create_device_interface(
+      stable_device,
+      stable_device.type() == kStableCUDA ? "ffmpeg" : "default");
+  video_stream.in_height = height;
+  video_stream.in_width = width;
+  video_stream.in_frame_rate = frame_rate;
+  video_stream.options.codec = std::move(codec);
+  video_stream.options.pixel_format = std::move(pixel_format);
+  video_stream.options.crf = crf;
+  video_stream.options.preset = std::move(preset);
+  video_stream.options.extra_options = std::move(extra_options);
+  video_streams_.push_back(std::move(video_stream));
+  return static_cast<int>(video_streams_.size() - 1);
 }
 
-int MultiStreamEncoder::addAudioStream(
-    int sampleRate,
-    int numChannels,
-    std::optional<int> bitRate,
-    std::optional<int> outNumChannels,
-    std::optional<int> outSampleRate) {
-  STD_TORCH_CHECK(sampleRate > 0, "sample_rate must be > 0, got ", sampleRate);
+int MultiStreamEncoder::add_audio_stream(
+    int sample_rate,
+    int num_channels,
+    std::optional<int> bit_rate,
+    std::optional<int> out_num_channels,
+    std::optional<int> out_sample_rate) {
   STD_TORCH_CHECK(
-      numChannels > 0, "num_channels must be > 0, got ", numChannels);
+      sample_rate > 0, "sample_rate must be > 0, got ", sample_rate);
   STD_TORCH_CHECK(
-      numChannels <= AV_NUM_DATA_POINTERS,
+      num_channels > 0, "num_channels must be > 0, got ", num_channels);
+  STD_TORCH_CHECK(
+      num_channels <= AV_NUM_DATA_POINTERS,
       "Trying to encode ",
-      numChannels,
+      num_channels,
       " channels, but FFmpeg only supports ",
       AV_NUM_DATA_POINTERS,
       " channels per frame.");
 
-  AudioStream audioStream;
-  audioStream.inSampleRate = sampleRate;
-  audioStream.inNumChannels = numChannels;
-  audioStream.options.bitRate = bitRate;
-  audioStream.options.numChannels = outNumChannels;
-  audioStream.options.sampleRate = outSampleRate;
-  audioStreams_.push_back(std::move(audioStream));
-  return static_cast<int>(audioStreams_.size() - 1);
+  AudioStream audio_stream;
+  audio_stream.in_sample_rate = sample_rate;
+  audio_stream.in_num_channels = num_channels;
+  audio_stream.options.bit_rate = bit_rate;
+  audio_stream.options.num_channels = out_num_channels;
+  audio_stream.options.sample_rate = out_sample_rate;
+  audio_streams_.push_back(std::move(audio_stream));
+  return static_cast<int>(audio_streams_.size() - 1);
 }
 
-void MultiStreamEncoder::initializeVideoStream(VideoStream& videoStream) {
-  auto deviceType = videoStream.deviceInterface->device().type();
-
-  const AVCodec* avCodec = nullptr;
+void MultiStreamEncoder::initialize_video_stream(VideoStream& video_stream) {
+  const AVCodec* av_codec = nullptr;
   // If codec arg is provided, find codec using logic similar to FFmpeg:
   // https://github.com/FFmpeg/FFmpeg/blob/master/fftools/ffmpeg_opt.c#L804-L835
-  if (videoStream.options.codec.has_value()) {
-    const std::string& codec = videoStream.options.codec.value();
+  if (video_stream.options.codec.has_value()) {
+    const std::string& codec = video_stream.options.codec.value();
     // Try to find codec by name ("libx264", "libsvtav1")
-    avCodec = avcodec_find_encoder_by_name(codec.c_str());
+    av_codec = avcodec_find_encoder_by_name(codec.c_str());
     // Try to find by codec descriptor ("h264", "av1")
-    if (!avCodec) {
+    if (!av_codec) {
       const AVCodecDescriptor* desc =
           avcodec_descriptor_get_by_name(codec.c_str());
       if (desc) {
-        avCodec = avcodec_find_encoder(desc->id);
+        av_codec = avcodec_find_encoder(desc->id);
       }
     }
   } else {
     STD_TORCH_CHECK(
-        avFormatContext_->oformat != nullptr,
+        av_format_context_->oformat != nullptr,
         "Output format is null, unable to find default codec.");
     // Try to substitute the default codec with its hardware equivalent
     // This will return std::nullopt when device is CPU.
-    auto hwCodec = videoStream.deviceInterface->findCodec(
-        avFormatContext_->oformat->video_codec, /*isDecoder=*/false);
-    if (hwCodec.has_value()) {
-      avCodec = hwCodec.value();
+    auto hw_codec = video_stream.device_interface->find_codec(
+        av_format_context_->oformat->video_codec, /*isDecoder=*/false);
+    if (hw_codec.has_value()) {
+      av_codec = hw_codec.value();
     }
-    if (!avCodec) {
-      avCodec = avcodec_find_encoder(avFormatContext_->oformat->video_codec);
+    if (!av_codec) {
+      av_codec = avcodec_find_encoder(av_format_context_->oformat->video_codec);
     }
   }
   STD_TORCH_CHECK(
-      avCodec != nullptr,
+      av_codec != nullptr,
       "Video codec ",
-      videoStream.options.codec.has_value()
-          ? videoStream.options.codec.value() + " "
+      video_stream.options.codec.has_value()
+          ? video_stream.options.codec.value() + " "
           : "",
       "not found. To see available codecs, run: ffmpeg -encoders");
 
-  AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
+  AVCodecContext* av_codec_context = avcodec_alloc_context3(av_codec);
   STD_TORCH_CHECK(
-      avCodecContext != nullptr, "Couldn't allocate codec context.");
-  videoStream.avCodecContext.reset(avCodecContext);
+      av_codec_context != nullptr, "Couldn't allocate codec context.");
+  video_stream.av_codec_context.reset(av_codec_context);
 
-  int outHeight = videoStream.inHeight;
-  int outWidth = videoStream.inWidth;
-  AVPixelFormat outPixelFormat = AV_PIX_FMT_NONE;
-
-  if (videoStream.options.pixelFormat.has_value()) {
-    // TODO-MultiStreamEncoder: (P2) Enable pixel formats to be set by user on
-    // GPU and handled with the appropriate NPP function on GPU.
-    if (deviceType == kStableCUDA) {
-      STD_TORCH_CHECK(
-          false,
-          "Video encoding on GPU currently only supports the nv12 pixel format. "
-          "Do not set pixel_format to use nv12 by default.");
-    }
-    outPixelFormat =
-        validatePixelFormat(*avCodec, videoStream.options.pixelFormat.value());
-  } else {
-    if (deviceType == kStableCUDA) {
-      // Default to nv12 pixel format when encoding on GPU.
-      outPixelFormat = DeviceInterface::CUDA_ENCODING_PIXEL_FORMAT;
-    } else {
-      const AVPixelFormat* formats = getSupportedPixelFormats(*avCodec);
-      // Use first listed pixel format as default (often yuv420p).
-      // This is similar to FFmpeg's logic:
-      // https://www.ffmpeg.org/doxygen/4.0/decode_8c_source.html#l01087
-      // If pixel formats are undefined for some reason, try yuv420p
-      outPixelFormat = (formats && formats[0] != AV_PIX_FMT_NONE)
-          ? formats[0]
-          : AV_PIX_FMT_YUV420P;
-    }
-  }
+  int out_height = video_stream.in_height;
+  int out_width = video_stream.in_width;
+  // Pixel-format selection is delegated to the device interface.
+  AVPixelFormat out_pixel_format =
+      video_stream.device_interface->get_encoding_pixel_format(
+          *av_codec, video_stream.options.pixel_format);
 
   // Configure codec parameters
-  videoStream.avCodecContext->codec_id = avCodec->id;
-  videoStream.avCodecContext->width = outWidth;
-  videoStream.avCodecContext->height = outHeight;
-  videoStream.avCodecContext->pix_fmt = outPixelFormat;
-  videoStream.avCodecContext->framerate =
-      av_d2q(videoStream.inFrameRate, INT_MAX);
-  videoStream.avCodecContext->time_base =
-      av_inv_q(videoStream.avCodecContext->framerate);
+  video_stream.av_codec_context->codec_id = av_codec->id;
+  video_stream.av_codec_context->width = out_width;
+  video_stream.av_codec_context->height = out_height;
+  video_stream.av_codec_context->pix_fmt = out_pixel_format;
+  video_stream.av_codec_context->framerate =
+      av_d2q(video_stream.in_frame_rate, INT_MAX);
+  video_stream.av_codec_context->time_base =
+      av_inv_q(video_stream.av_codec_context->framerate);
 
   // Set flag for containers that require extradata to be in the codec context
-  if (avFormatContext_->oformat->flags & AVFMT_GLOBALHEADER) {
-    videoStream.avCodecContext->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+  if (av_format_context_->oformat->flags & AVFMT_GLOBALHEADER) {
+    video_stream.av_codec_context->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
   }
 
   // Apply videoStreamOptions
-  UniqueAVDictionary avCodecOptions;
-  if (videoStream.options.extraOptions.has_value()) {
-    for (const auto& [key, value] : videoStream.options.extraOptions.value()) {
-      tryToValidateCodecOption(*avCodec, key.c_str(), value);
+  UniqueAVDictionary av_codec_options;
+  if (video_stream.options.extra_options.has_value()) {
+    for (const auto& [key, value] :
+         video_stream.options.extra_options.value()) {
+      try_to_validate_codec_option(*av_codec, key.c_str(), value);
     }
-    sortCodecOptions(
-        avFormatContext_.get(),
-        videoStream.options.extraOptions.value(),
-        avCodecOptions,
-        avFormatOptions_);
+    sort_codec_options(
+        av_format_context_.get(),
+        video_stream.options.extra_options.value(),
+        av_codec_options,
+        av_format_options_);
   }
 
-  if (videoStream.options.crf.has_value()) {
-    std::string crfValue = std::to_string(videoStream.options.crf.value());
-    tryToValidateCodecOption(*avCodec, "crf", crfValue);
-    av_dict_set(avCodecOptions.getAddress(), "crf", crfValue.c_str(), 0);
+  if (video_stream.options.crf.has_value()) {
+    std::string crf_value = std::to_string(video_stream.options.crf.value());
+    try_to_validate_codec_option(*av_codec, "crf", crf_value);
+    av_dict_set(av_codec_options.get_address(), "crf", crf_value.c_str(), 0);
   }
 
-  if (videoStream.options.preset.has_value()) {
+  if (video_stream.options.preset.has_value()) {
     av_dict_set(
-        avCodecOptions.getAddress(),
+        av_codec_options.get_address(),
         "preset",
-        videoStream.options.preset.value().c_str(),
+        video_stream.options.preset.value().c_str(),
         0);
   }
-
-  if (deviceType == kStableCUDA) {
-    videoStream.deviceInterface->registerHardwareDeviceWithCodec(
-        videoStream.avCodecContext.get());
-    videoStream.deviceInterface->setupHardwareFrameContextForEncoding(
-        videoStream.avCodecContext.get());
-  }
+  // Hardware setup is a no-op on CPU; HW devices override these hooks.
+  video_stream.device_interface->register_hardware_device_with_codec(
+      video_stream.av_codec_context.get());
+  video_stream.device_interface->setup_hardware_frame_context_for_encoding(
+      video_stream.av_codec_context.get());
 
   int status = avcodec_open2(
-      videoStream.avCodecContext.get(), avCodec, avCodecOptions.getAddress());
+      video_stream.av_codec_context.get(),
+      av_codec,
+      av_codec_options.get_address());
 
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_open2 failed: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 
-  videoStream.avStream = avformat_new_stream(avFormatContext_.get(), nullptr);
+  video_stream.av_stream =
+      avformat_new_stream(av_format_context_.get(), nullptr);
   STD_TORCH_CHECK(
-      videoStream.avStream != nullptr, "Couldn't create new stream.");
+      video_stream.av_stream != nullptr, "Couldn't create new stream.");
 
   // Set the stream time base to encode correct frame timestamps
-  videoStream.avStream->time_base = videoStream.avCodecContext->time_base;
+  video_stream.av_stream->time_base = video_stream.av_codec_context->time_base;
   // Set the stream frame rate to store correct frame durations for some
   // containers (webm, mkv)
-  videoStream.avStream->r_frame_rate = videoStream.avCodecContext->framerate;
+  video_stream.av_stream->r_frame_rate =
+      video_stream.av_codec_context->framerate;
 
   status = avcodec_parameters_from_context(
-      videoStream.avStream->codecpar, videoStream.avCodecContext.get());
+      video_stream.av_stream->codecpar, video_stream.av_codec_context.get());
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_parameters_from_context failed: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 }
 
-void MultiStreamEncoder::initializeAudioStream(AudioStream& audioStream) {
+void MultiStreamEncoder::initialize_audio_stream(AudioStream& audio_stream) {
   // We use the AVFormatContext's default codec for that
   // specific format/container.
-  const AVCodec* avCodec =
-      avcodec_find_encoder(avFormatContext_->oformat->audio_codec);
-  STD_TORCH_CHECK(avCodec != nullptr, "Codec not found");
+  const AVCodec* av_codec =
+      avcodec_find_encoder(av_format_context_->oformat->audio_codec);
+  STD_TORCH_CHECK(av_codec != nullptr, "Codec not found");
 
-  AVCodecContext* avCodecContext = avcodec_alloc_context3(avCodec);
+  AVCodecContext* av_codec_context = avcodec_alloc_context3(av_codec);
   STD_TORCH_CHECK(
-      avCodecContext != nullptr, "Couldn't allocate codec context.");
-  audioStream.avCodecContext.reset(avCodecContext);
+      av_codec_context != nullptr, "Couldn't allocate codec context.");
+  audio_stream.av_codec_context.reset(av_codec_context);
 
-  auto desiredBitRate = audioStream.options.bitRate;
-  if (desiredBitRate.has_value()) {
+  auto desired_bit_rate = audio_stream.options.bit_rate;
+  if (desired_bit_rate.has_value()) {
     STD_TORCH_CHECK(
-        *desiredBitRate >= 0, "bit_rate=", *desiredBitRate, " must be >= 0.");
+        *desired_bit_rate >= 0,
+        "bit_rate=",
+        *desired_bit_rate,
+        " must be >= 0.");
   }
   // bit_rate=None defaults to 0, which is what the FFmpeg CLI seems to use as
   // well when "-b:a" isn't specified.
-  audioStream.avCodecContext->bit_rate = desiredBitRate.value_or(0);
+  audio_stream.av_codec_context->bit_rate = desired_bit_rate.value_or(0);
 
-  int outNumChannels =
-      audioStream.options.numChannels.value_or(audioStream.inNumChannels);
-  audioStream.outNumChannels = outNumChannels;
-  validateNumChannels(*avCodec, outNumChannels);
-  setDefaultChannelLayout(audioStream.avCodecContext, outNumChannels);
+  int out_num_channels =
+      audio_stream.options.num_channels.value_or(audio_stream.in_num_channels);
+  audio_stream.out_num_channels = out_num_channels;
+  validate_num_channels(*av_codec, out_num_channels);
+  set_default_channel_layout(audio_stream.av_codec_context, out_num_channels);
 
-  int outSampleRate =
-      audioStream.options.sampleRate.value_or(audioStream.inSampleRate);
-  audioStream.outSampleRate = outSampleRate;
-  validateSampleRate(*avCodec, outSampleRate);
-  audioStream.avCodecContext->sample_rate = outSampleRate;
-  audioStream.avCodecContext->time_base = AVRational{1, outSampleRate};
+  int out_sample_rate =
+      audio_stream.options.sample_rate.value_or(audio_stream.in_sample_rate);
+  audio_stream.out_sample_rate = out_sample_rate;
+  validate_sample_rate(*av_codec, out_sample_rate);
+  audio_stream.av_codec_context->sample_rate = out_sample_rate;
+  audio_stream.av_codec_context->time_base = AVRational{1, out_sample_rate};
 
   // Input samples are expected to be FLTP. Not all encoders support FLTP, so we
   // may need to convert the samples into a supported output sample format,
   // which is what the `.sample_fmt` defines.
-  audioStream.avCodecContext->sample_fmt = findBestOutputSampleFormat(*avCodec);
+  audio_stream.av_codec_context->sample_fmt =
+      find_best_output_sample_format(*av_codec);
 
   int status =
-      avcodec_open2(audioStream.avCodecContext.get(), avCodec, nullptr);
+      avcodec_open2(audio_stream.av_codec_context.get(), av_codec, nullptr);
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_open2 failed: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 
   // We're allocating the stream here. Streams are meant to be freed by
   // avformat_free_context(avFormatContext), which we call in the
   // avFormatContext_'s destructor.
-  audioStream.avStream = avformat_new_stream(avFormatContext_.get(), nullptr);
+  audio_stream.av_stream =
+      avformat_new_stream(av_format_context_.get(), nullptr);
   STD_TORCH_CHECK(
-      audioStream.avStream != nullptr, "Couldn't create new audio stream.");
+      audio_stream.av_stream != nullptr, "Couldn't create new audio stream.");
 
   status = avcodec_parameters_from_context(
-      audioStream.avStream->codecpar, audioStream.avCodecContext.get());
+      audio_stream.av_stream->codecpar, audio_stream.av_codec_context.get());
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "avcodec_parameters_from_context failed: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 
   // If a codec supports variable frame size, frame_size may not be defined, in
   // which case we default to 256 like torchaudio.
-  audioStream.frameSize = audioStream.avCodecContext->frame_size > 0
-      ? audioStream.avCodecContext->frame_size
+  audio_stream.frame_size = audio_stream.av_codec_context->frame_size > 0
+      ? audio_stream.av_codec_context->frame_size
       : 256;
 
   // We always create a FIFO so that addSamples() can be called multiple times
   // with various chunk sizes that are then buffered and encoded in frame_size
   // sized batches.
-  auto avAudioFifo = av_audio_fifo_alloc(
-      audioStream.avCodecContext->sample_fmt,
-      outNumChannels,
-      audioStream.frameSize * 2);
-  STD_TORCH_CHECK(avAudioFifo != nullptr, "Couldn't create AVAudioFifo.");
-  audioStream.avAudioFifo.reset(avAudioFifo);
+  auto av_audio_fifo = av_audio_fifo_alloc(
+      audio_stream.av_codec_context->sample_fmt,
+      out_num_channels,
+      audio_stream.frame_size * 2);
+  STD_TORCH_CHECK(av_audio_fifo != nullptr, "Couldn't create AVAudioFifo.");
+  audio_stream.av_audio_fifo.reset(av_audio_fifo);
 }
 
-void MultiStreamEncoder::openStreamsAndWriteHeader() {
+void MultiStreamEncoder::open_streams_and_write_header() {
   STD_TORCH_CHECK(
-      !videoStreams_.empty() || !audioStreams_.empty(),
+      !video_streams_.empty() || !audio_streams_.empty(),
       "Call addVideoStream() or addAudioStream() before open().");
 
-  for (auto& videoStream : videoStreams_) {
-    initializeVideoStream(videoStream);
+  for (auto& video_stream : video_streams_) {
+    initialize_video_stream(video_stream);
   }
-  for (auto& audioStream : audioStreams_) {
-    initializeAudioStream(audioStream);
+  for (auto& audio_stream : audio_streams_) {
+    initialize_audio_stream(audio_stream);
   }
 
   int status = avformat_write_header(
-      avFormatContext_.get(), avFormatOptions_.getAddress());
+      av_format_context_.get(), av_format_options_.get_address());
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error in avformat_write_header: ",
-      getFFMPEGErrorStringFromErrorCode(status));
-  headerWritten_ = true;
+      get_ffmpeg_error_string_from_error_code(status));
+  header_written_ = true;
 }
 
-void MultiStreamEncoder::addFrames(
+void MultiStreamEncoder::add_frames(
     const torch::stable::Tensor& frames,
-    int streamIndex) {
+    int stream_index) {
   STD_TORCH_CHECK(!closed_, "Cannot add frames after close() was called.");
-  STD_TORCH_CHECK(headerWritten_, "Call open() before addFrames().");
+  STD_TORCH_CHECK(header_written_, "Call open() before addFrames().");
   STD_TORCH_CHECK(
-      streamIndex >= 0 && streamIndex < static_cast<int>(videoStreams_.size()),
+      stream_index >= 0 &&
+          stream_index < static_cast<int>(video_streams_.size()),
       "Invalid stream index ",
-      streamIndex,
+      stream_index,
       ". Number of video streams: ",
-      videoStreams_.size());
-  auto& videoStream = videoStreams_[streamIndex];
-  auto validatedFrames = validateFrames(
+      video_streams_.size());
+  auto& video_stream = video_streams_[stream_index];
+  auto validated_frames = validate_frames(
       frames,
-      videoStream.avCodecContext.get(),
-      videoStream.deviceInterface.get());
+      video_stream.av_codec_context.get(),
+      video_stream.device_interface.get());
 
-  AutoAVPacket autoAVPacket;
+  AutoAVPacket auto_av_packet;
   // TODO MultiStreamEncoder: Consider using accessor for potential performance
   // improvement
-  int numFrames = static_cast<int>(validatedFrames.sizes()[0]);
-  for (int i = 0; i < numFrames; ++i) {
-    torch::stable::Tensor currFrame = selectRow(validatedFrames, i);
-    int frameIndex = videoStream.numEncodedFrames + i;
-    UniqueAVFrame avFrame =
-        videoStream.deviceInterface->convertTensorToAVFrameForEncoding(
-            currFrame, frameIndex, videoStream.avCodecContext.get());
+  int num_frames = static_cast<int>(validated_frames.sizes()[0]);
+  for (int i = 0; i < num_frames; ++i) {
+    torch::stable::Tensor curr_frame = select_row(validated_frames, i);
+    int frame_index = video_stream.num_encoded_frames + i;
+    UniqueAVFrame av_frame =
+        video_stream.device_interface->convert_tensor_to_av_frame_for_encoding(
+            curr_frame, frame_index, video_stream.av_codec_context.get());
     STD_TORCH_CHECK(
-        avFrame != nullptr,
+        av_frame != nullptr,
         "convertTensorToAVFrameForEncoding failed for frame ",
-        frameIndex,
+        frame_index,
         " on device: ",
-        deviceTypeName(validatedFrames.device().type()));
-    encodeVideoFrame(autoAVPacket, avFrame, videoStream);
+        device_type_name(validated_frames.device().type()));
+    encode_video_frame(auto_av_packet, av_frame, video_stream);
   }
-  videoStream.numEncodedFrames += numFrames;
+  video_stream.num_encoded_frames += num_frames;
 }
 
-void MultiStreamEncoder::encodeVideoFrame(
-    AutoAVPacket& autoAVPacket,
-    const UniqueAVFrame& avFrame,
-    VideoStream& videoStream) {
+void MultiStreamEncoder::encode_video_frame(
+    AutoAVPacket& auto_av_packet,
+    const UniqueAVFrame& av_frame,
+    VideoStream& video_stream) {
   auto status =
-      avcodec_send_frame(videoStream.avCodecContext.get(), avFrame.get());
+      avcodec_send_frame(video_stream.av_codec_context.get(), av_frame.get());
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error while sending frame: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 
   while (status >= 0) {
-    ReferenceAVPacket packet(autoAVPacket);
-    status =
-        avcodec_receive_packet(videoStream.avCodecContext.get(), packet.get());
+    ReferenceAVPacket packet(auto_av_packet);
+    status = avcodec_receive_packet(
+        video_stream.av_codec_context.get(), packet.get());
     if (status == AVERROR(EAGAIN) || status == AVERROR_EOF) {
       if (status == AVERROR_EOF) {
         // Flush remaining buffered packets
-        status = av_interleaved_write_frame(avFormatContext_.get(), nullptr);
+        status = av_interleaved_write_frame(av_format_context_.get(), nullptr);
         STD_TORCH_CHECK(
             status == AVSUCCESS,
             "Failed to flush packet: ",
-            getFFMPEGErrorStringFromErrorCode(status));
+            get_ffmpeg_error_string_from_error_code(status));
       }
       return;
     }
     STD_TORCH_CHECK(
         status >= 0,
         "Error receiving packet: ",
-        getFFMPEGErrorStringFromErrorCode(status));
+        get_ffmpeg_error_string_from_error_code(status));
 
     // The code below is borrowed from torchaudio:
     // https://github.com/pytorch/audio/blob/b6a3368a45aaafe05f1a6a9f10c68adc5e944d9e/src/libtorio/ffmpeg/stream_writer/encoder.cpp#L46
@@ -1496,161 +704,163 @@ void MultiStreamEncoder::encodeVideoFrame(
     }
     av_packet_rescale_ts(
         packet.get(),
-        videoStream.avCodecContext->time_base,
-        videoStream.avStream->time_base);
-    packet->stream_index = videoStream.avStream->index;
+        video_stream.av_codec_context->time_base,
+        video_stream.av_stream->time_base);
+    packet->stream_index = video_stream.av_stream->index;
 
-    status = av_interleaved_write_frame(avFormatContext_.get(), packet.get());
+    status = av_interleaved_write_frame(av_format_context_.get(), packet.get());
     STD_TORCH_CHECK(
         status == AVSUCCESS,
         "Error in av_interleaved_write_frame: ",
-        getFFMPEGErrorStringFromErrorCode(status));
+        get_ffmpeg_error_string_from_error_code(status));
   }
 }
 
-void MultiStreamEncoder::addSamples(
+void MultiStreamEncoder::add_samples(
     const torch::stable::Tensor& samples,
-    int streamIndex) {
+    int stream_index) {
   STD_TORCH_CHECK(!closed_, "Cannot add samples after close() was called.");
-  STD_TORCH_CHECK(headerWritten_, "Call open() before addSamples().");
+  STD_TORCH_CHECK(header_written_, "Call open() before addSamples().");
   STD_TORCH_CHECK(
-      streamIndex >= 0 && streamIndex < static_cast<int>(audioStreams_.size()),
+      stream_index >= 0 &&
+          stream_index < static_cast<int>(audio_streams_.size()),
       "Invalid stream index ",
-      streamIndex,
+      stream_index,
       ". Number of audio streams: ",
-      audioStreams_.size());
-  auto& audioStream = audioStreams_[streamIndex];
-  auto validatedSamples = validateSamples(samples);
+      audio_streams_.size());
+  auto& audio_stream = audio_streams_[stream_index];
+  auto validated_samples = validate_samples(samples);
   STD_TORCH_CHECK(
-      static_cast<int>(validatedSamples.sizes()[0]) ==
-          audioStream.inNumChannels,
+      static_cast<int>(validated_samples.sizes()[0]) ==
+          audio_stream.in_num_channels,
       "Expected ",
-      audioStream.inNumChannels,
+      audio_stream.in_num_channels,
       " channels, got ",
-      validatedSamples.sizes()[0]);
-  encodeAudioSamples(validatedSamples, audioStream);
+      validated_samples.sizes()[0]);
+  encode_audio_samples(validated_samples, audio_stream);
 }
 
-void MultiStreamEncoder::encodeAudioSamples(
+void MultiStreamEncoder::encode_audio_samples(
     const torch::stable::Tensor& samples,
-    AudioStream& audioStream) {
-  UniqueAVFrame avFrame = allocateAVFrame(
-      audioStream.frameSize,
-      audioStream.inSampleRate,
-      audioStream.inNumChannels,
+    AudioStream& audio_stream) {
+  UniqueAVFrame av_frame = allocate_av_frame(
+      audio_stream.frame_size,
+      audio_stream.in_sample_rate,
+      audio_stream.in_num_channels,
       AV_SAMPLE_FMT_FLTP);
 
-  AutoAVPacket autoAVPacket;
+  AutoAVPacket auto_av_packet;
 
   const uint8_t* psamples =
       static_cast<const uint8_t*>(samples.const_data_ptr());
-  int numSamples = static_cast<int>(samples.sizes()[1]); // per channel
-  int numEncodedSamples = 0; // per channel
-  int numBytesPerSample = static_cast<int>(samples.element_size());
-  int numBytesPerChannel = numSamples * numBytesPerSample;
+  int num_samples = static_cast<int>(samples.sizes()[1]); // per channel
+  int num_encoded_samples = 0; // per channel
+  int num_bytes_per_sample = static_cast<int>(samples.element_size());
+  int num_bytes_per_channel = num_samples * num_bytes_per_sample;
 
-  while (numEncodedSamples < numSamples) {
-    int numSamplesToEncode =
-        std::min(audioStream.frameSize, numSamples - numEncodedSamples);
-    int numBytesToEncode = numSamplesToEncode * numBytesPerSample;
+  while (num_encoded_samples < num_samples) {
+    int num_samples_to_encode =
+        std::min(audio_stream.frame_size, num_samples - num_encoded_samples);
+    int num_bytes_to_encode = num_samples_to_encode * num_bytes_per_sample;
 
-    for (int ch = 0; ch < audioStream.inNumChannels; ch++) {
+    for (int ch = 0; ch < audio_stream.in_num_channels; ch++) {
       std::memcpy(
-          avFrame->data[ch],
-          psamples + ch * numBytesPerChannel,
-          numBytesToEncode);
+          av_frame->data[ch],
+          psamples + ch * num_bytes_per_channel,
+          num_bytes_to_encode);
     }
-    psamples += numBytesToEncode;
+    psamples += num_bytes_to_encode;
 
     // Above, we set the AVFrame's .nb_samples to AVCodecContext.frame_size so
     // that the frame buffers are allocated to a big enough size. Here, we reset
     // it to the exact number of samples that need to be encoded, otherwise the
     // encoded frame would contain more samples than necessary and our results
     // wouldn't match the ffmpeg CLI.
-    avFrame->nb_samples = numSamplesToEncode;
+    av_frame->nb_samples = num_samples_to_encode;
 
-    UniqueAVFrame convertedAVFrame =
-        maybeConvertAudioAVFrame(avFrame, audioStream);
-    encodeAudioFrameThroughFifo(autoAVPacket, convertedAVFrame, audioStream);
+    UniqueAVFrame converted_av_frame =
+        maybe_convert_audio_av_frame(av_frame, audio_stream);
+    encode_audio_frame_through_fifo(
+        auto_av_packet, converted_av_frame, audio_stream);
 
-    numEncodedSamples += numSamplesToEncode;
+    num_encoded_samples += num_samples_to_encode;
   }
   STD_TORCH_CHECK(
-      numEncodedSamples == numSamples, "Hmmmmmm something went wrong.");
+      num_encoded_samples == num_samples, "Hmmmmmm something went wrong.");
 }
 
-UniqueAVFrame MultiStreamEncoder::maybeConvertAudioAVFrame(
-    const UniqueAVFrame& avFrame,
-    AudioStream& audioStream) {
-  if (static_cast<AVSampleFormat>(avFrame->format) ==
-          audioStream.avCodecContext->sample_fmt &&
-      getNumChannels(avFrame) == audioStream.outNumChannels &&
-      avFrame->sample_rate == audioStream.outSampleRate) {
+UniqueAVFrame MultiStreamEncoder::maybe_convert_audio_av_frame(
+    const UniqueAVFrame& av_frame,
+    AudioStream& audio_stream) {
+  if (static_cast<AVSampleFormat>(av_frame->format) ==
+          audio_stream.av_codec_context->sample_fmt &&
+      get_num_channels(av_frame) == audio_stream.out_num_channels &&
+      av_frame->sample_rate == audio_stream.out_sample_rate) {
     // Note: the clone references the same underlying data, it's a cheap copy.
-    return UniqueAVFrame(av_frame_clone(avFrame.get()));
+    return UniqueAVFrame(av_frame_clone(av_frame.get()));
   }
 
-  if (!audioStream.swrContext) {
-    audioStream.swrContext.reset(createSwrContext(
-        static_cast<AVSampleFormat>(avFrame->format),
-        audioStream.avCodecContext->sample_fmt,
-        avFrame->sample_rate,
-        audioStream.outSampleRate,
-        avFrame,
-        audioStream.outNumChannels));
+  if (!audio_stream.swr_context) {
+    audio_stream.swr_context.reset(create_swr_context(
+        static_cast<AVSampleFormat>(av_frame->format),
+        audio_stream.av_codec_context->sample_fmt,
+        av_frame->sample_rate,
+        audio_stream.out_sample_rate,
+        av_frame,
+        audio_stream.out_num_channels));
   }
   // convertAudioAVFrameSamples uses avFrame's extended_data field, so we ensure
   // it's the same as data. This should always be the case since we validated
   // earlier that we have less than AV_NUM_DATA_POINTERS channels.
   STD_TORCH_CHECK(
-      avFrame->data == avFrame->extended_data,
+      av_frame->data == av_frame->extended_data,
       "Codec context data and extended_data pointers differ, this is unexpected.");
-  UniqueAVFrame convertedAVFrame = convertAudioAVFrameSamples(
-      audioStream.swrContext,
-      avFrame,
-      audioStream.avCodecContext->sample_fmt,
-      audioStream.outSampleRate,
-      audioStream.outNumChannels);
+  UniqueAVFrame converted_av_frame = convert_audio_av_frame_samples(
+      audio_stream.swr_context,
+      av_frame,
+      audio_stream.av_codec_context->sample_fmt,
+      audio_stream.out_sample_rate,
+      audio_stream.out_num_channels);
 
-  if (avFrame->sample_rate == audioStream.outSampleRate) {
+  if (av_frame->sample_rate == audio_stream.out_sample_rate) {
     STD_TORCH_CHECK(
-        convertedAVFrame->nb_samples == avFrame->nb_samples,
+        converted_av_frame->nb_samples == av_frame->nb_samples,
         "convertedAVFrame->nb_samples=",
-        convertedAVFrame->nb_samples,
+        converted_av_frame->nb_samples,
         " differs from ",
         "avFrame->nb_samples=",
-        avFrame->nb_samples,
+        av_frame->nb_samples,
         "This is unexpected, please report on the TorchCodec bug tracker.");
   }
-  return convertedAVFrame;
+  return converted_av_frame;
 }
 
-void MultiStreamEncoder::encodeAudioFrameThroughFifo(
-    AutoAVPacket& autoAVPacket,
-    const UniqueAVFrame& avFrame,
-    AudioStream& audioStream,
+void MultiStreamEncoder::encode_audio_frame_through_fifo(
+    AutoAVPacket& auto_av_packet,
+    const UniqueAVFrame& av_frame,
+    AudioStream& audio_stream,
     // flushFifo is only set to true in maybeFlushSwrAndFifo(), i.e. at the very
     // end of the encoding process when we're flushing buffers. We also want to
     // flush the FIFO so as to not leave any remaining samples in it.
-    bool flushFifo) {
-  if (avFrame != nullptr) {
-    int numSamplesWritten = av_audio_fifo_write(
-        audioStream.avAudioFifo.get(),
-        reinterpret_cast<void**>(avFrame->data),
-        avFrame->nb_samples);
+    bool flush_fifo) {
+  if (av_frame != nullptr) {
+    int num_samples_written = av_audio_fifo_write(
+        audio_stream.av_audio_fifo.get(),
+        reinterpret_cast<void**>(av_frame->data),
+        av_frame->nb_samples);
     STD_TORCH_CHECK(
-        numSamplesWritten == avFrame->nb_samples,
+        num_samples_written == av_frame->nb_samples,
         "Tried to write ",
-        avFrame->nb_samples,
+        av_frame->nb_samples,
         " samples, but only wrote ",
-        numSamplesWritten);
+        num_samples_written);
   }
 
-  UniqueAVFrame newavFrame = allocateAVFrame(
-      audioStream.frameSize,
-      audioStream.avCodecContext->sample_rate,
-      audioStream.outNumChannels,
-      audioStream.avCodecContext->sample_fmt);
+  UniqueAVFrame newav_frame = allocate_av_frame(
+      audio_stream.frame_size,
+      audio_stream.av_codec_context->sample_rate,
+      audio_stream.out_num_channels,
+      audio_stream.av_codec_context->sample_fmt);
 
   // Explaining the while bound:
   // - if we're not flushing the FIFO, i.e. in most cases, we want to pull
@@ -1664,122 +874,122 @@ void MultiStreamEncoder::encodeAudioFrameThroughFifo(
   // to encodeAudioFrame(). Only the very last avFrame of the encoding process
   // is allowed to contain less than frame_size samples. That only happens when
   // flushFifo is true.
-  while (av_audio_fifo_size(audioStream.avAudioFifo.get()) >=
-         (flushFifo ? 1 : audioStream.frameSize)) {
-    int samplesToRead = std::min(
-        av_audio_fifo_size(audioStream.avAudioFifo.get()),
-        newavFrame->nb_samples);
-    int numSamplesRead = av_audio_fifo_read(
-        audioStream.avAudioFifo.get(),
-        reinterpret_cast<void**>(newavFrame->data),
-        samplesToRead);
+  while (av_audio_fifo_size(audio_stream.av_audio_fifo.get()) >=
+         (flush_fifo ? 1 : audio_stream.frame_size)) {
+    int samples_to_read = std::min(
+        av_audio_fifo_size(audio_stream.av_audio_fifo.get()),
+        newav_frame->nb_samples);
+    int num_samples_read = av_audio_fifo_read(
+        audio_stream.av_audio_fifo.get(),
+        reinterpret_cast<void**>(newav_frame->data),
+        samples_to_read);
     STD_TORCH_CHECK(
-        numSamplesRead == samplesToRead,
+        num_samples_read == samples_to_read,
         "Tried to read ",
-        samplesToRead,
+        samples_to_read,
         " samples, but only read ",
-        numSamplesRead);
+        num_samples_read);
 
-    newavFrame->nb_samples = numSamplesRead;
-    encodeAudioFrame(autoAVPacket, newavFrame, audioStream);
+    newav_frame->nb_samples = num_samples_read;
+    encode_audio_frame(auto_av_packet, newav_frame, audio_stream);
   }
 }
 
-void MultiStreamEncoder::encodeAudioFrame(
-    AutoAVPacket& autoAVPacket,
-    const UniqueAVFrame& avFrame,
-    AudioStream& audioStream) {
-  if (avFrame != nullptr) {
-    avFrame->pts = audioStream.lastEncodedAVFramePts;
-    audioStream.lastEncodedAVFramePts += avFrame->nb_samples;
+void MultiStreamEncoder::encode_audio_frame(
+    AutoAVPacket& auto_av_packet,
+    const UniqueAVFrame& av_frame,
+    AudioStream& audio_stream) {
+  if (av_frame != nullptr) {
+    av_frame->pts = audio_stream.last_encoded_av_frame_pts;
+    audio_stream.last_encoded_av_frame_pts += av_frame->nb_samples;
   }
 
   auto status =
-      avcodec_send_frame(audioStream.avCodecContext.get(), avFrame.get());
+      avcodec_send_frame(audio_stream.av_codec_context.get(), av_frame.get());
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Error while sending frame: ",
-      getFFMPEGErrorStringFromErrorCode(status));
+      get_ffmpeg_error_string_from_error_code(status));
 
   while (status >= 0) {
-    ReferenceAVPacket packet(autoAVPacket);
-    status =
-        avcodec_receive_packet(audioStream.avCodecContext.get(), packet.get());
+    ReferenceAVPacket packet(auto_av_packet);
+    status = avcodec_receive_packet(
+        audio_stream.av_codec_context.get(), packet.get());
     if (status == AVERROR(EAGAIN) || status == AVERROR_EOF) {
       if (status == AVERROR_EOF) {
         // Flush the packets that were potentially buffered by
         // av_interleaved_write_frame(). See corresponding block in
         // TorchAudio:
         // https://github.com/pytorch/audio/blob/d60ce09e2c532d5bf2e05619e700ab520543465e/src/libtorio/ffmpeg/stream_writer/encoder.cpp#L21
-        status = av_interleaved_write_frame(avFormatContext_.get(), nullptr);
+        status = av_interleaved_write_frame(av_format_context_.get(), nullptr);
         STD_TORCH_CHECK(
             status == AVSUCCESS,
             "Failed to flush packet: ",
-            getFFMPEGErrorStringFromErrorCode(status));
+            get_ffmpeg_error_string_from_error_code(status));
       }
       return;
     }
     STD_TORCH_CHECK(
         status >= 0,
         "Error receiving packet: ",
-        getFFMPEGErrorStringFromErrorCode(status));
+        get_ffmpeg_error_string_from_error_code(status));
 
-    packet->stream_index = audioStream.avStream->index;
+    packet->stream_index = audio_stream.av_stream->index;
     av_packet_rescale_ts(
         packet.get(),
-        audioStream.avCodecContext->time_base,
-        audioStream.avStream->time_base);
+        audio_stream.av_codec_context->time_base,
+        audio_stream.av_stream->time_base);
 
-    status = av_interleaved_write_frame(avFormatContext_.get(), packet.get());
+    status = av_interleaved_write_frame(av_format_context_.get(), packet.get());
     STD_TORCH_CHECK(
         status == AVSUCCESS,
         "Error in av_interleaved_write_frame: ",
-        getFFMPEGErrorStringFromErrorCode(status));
+        get_ffmpeg_error_string_from_error_code(status));
   }
 }
 
-void MultiStreamEncoder::maybeFlushSwrAndFifo(
-    AutoAVPacket& autoAVPacket,
-    AudioStream& audioStream) {
+void MultiStreamEncoder::maybe_flush_swr_and_fifo(
+    AutoAVPacket& auto_av_packet,
+    AudioStream& audio_stream) {
   // When sample conversion is involved, libswresample may have buffered some
   // samples that we need to flush into the FIFO before draining it.
-  UniqueAVFrame swrFrame(nullptr);
-  if (audioStream.swrContext != nullptr) {
-    int numRemainingSamples = // this is an upper bound
-        swr_get_out_samples(audioStream.swrContext.get(), 0);
-    if (numRemainingSamples > 0) {
-      swrFrame = allocateAVFrame(
-          numRemainingSamples,
-          audioStream.outSampleRate,
-          audioStream.outNumChannels,
-          audioStream.avCodecContext->sample_fmt);
-      int actualNumRemainingSamples = swr_convert(
-          audioStream.swrContext.get(),
-          swrFrame->data,
-          swrFrame->nb_samples,
+  UniqueAVFrame swr_frame(nullptr);
+  if (audio_stream.swr_context != nullptr) {
+    int num_remaining_samples = // this is an upper bound
+        swr_get_out_samples(audio_stream.swr_context.get(), 0);
+    if (num_remaining_samples > 0) {
+      swr_frame = allocate_av_frame(
+          num_remaining_samples,
+          audio_stream.out_sample_rate,
+          audio_stream.out_num_channels,
+          audio_stream.av_codec_context->sample_fmt);
+      int actual_num_remaining_samples = swr_convert(
+          audio_stream.swr_context.get(),
+          swr_frame->data,
+          swr_frame->nb_samples,
           nullptr,
           0);
-      swrFrame->nb_samples = actualNumRemainingSamples;
+      swr_frame->nb_samples = actual_num_remaining_samples;
     }
   }
 
   // Flush any remaining swr samples into the FIFO, then drain it.
-  encodeAudioFrameThroughFifo(
-      autoAVPacket, swrFrame, audioStream, /*flushFifo=*/true);
+  encode_audio_frame_through_fifo(
+      auto_av_packet, swr_frame, audio_stream, /*flushFifo=*/true);
 }
 
-void MultiStreamEncoder::flushBuffers() {
-  for (auto& audioStream : audioStreams_) {
-    if (audioStream.avStream != nullptr) {
-      AutoAVPacket audioAVPacket;
-      maybeFlushSwrAndFifo(audioAVPacket, audioStream);
-      encodeAudioFrame(audioAVPacket, UniqueAVFrame(nullptr), audioStream);
+void MultiStreamEncoder::flush_buffers() {
+  for (auto& audio_stream : audio_streams_) {
+    if (audio_stream.av_stream != nullptr) {
+      AutoAVPacket audio_av_packet;
+      maybe_flush_swr_and_fifo(audio_av_packet, audio_stream);
+      encode_audio_frame(audio_av_packet, UniqueAVFrame(nullptr), audio_stream);
     }
   }
-  for (auto& videoStream : videoStreams_) {
-    if (videoStream.avStream != nullptr) {
-      AutoAVPacket videoAVPacket;
-      encodeVideoFrame(videoAVPacket, UniqueAVFrame(nullptr), videoStream);
+  for (auto& video_stream : video_streams_) {
+    if (video_stream.av_stream != nullptr) {
+      AutoAVPacket video_av_packet;
+      encode_video_frame(video_av_packet, UniqueAVFrame(nullptr), video_stream);
     }
   }
 }
@@ -1791,10 +1001,10 @@ void MultiStreamEncoder::close() {
   // TODO MultiStreamEncoder: Revisit if "closed_" flag is useful
   closed_ = true;
 
-  if (headerWritten_) {
-    flushBuffers();
+  if (header_written_) {
+    flush_buffers();
 
-    int status = av_write_trailer(avFormatContext_.get());
+    int status = av_write_trailer(av_format_context_.get());
     // av_write_trailer returns mfra atom size (positive) for fragmented
     // containers. All FFmpeg errors are negative, so positive is not an error.
     if (status > 0) {
@@ -1803,10 +1013,10 @@ void MultiStreamEncoder::close() {
     STD_TORCH_CHECK(
         status == AVSUCCESS,
         "Error in av_write_trailer: ",
-        getFFMPEGErrorStringFromErrorCode(status));
+        get_ffmpeg_error_string_from_error_code(status));
   }
 
-  closeAVIOContext(avFormatContext_.get(), avioContextHolder_.get());
+  close_avio_context(av_format_context_.get(), avio_context_holder_.get());
 }
 
 } // namespace facebook::torchcodec

@@ -555,6 +555,44 @@ H265_VIDEO = TestVideo(
     },
 )
 
+# Video whose leading GOP, including its first keyframe,  is trimmed by an
+# mp4 edit list, so those packets are marked AV_PKT_FLAG_DISCARD. The decoder
+# still has to decode that discarded keyframe to produce the first *output*
+# frame (pts=0), but it is never itself emitted.
+#
+# Generated with:
+#   $ ffmpeg -f lavfi -i testsrc2=duration=1.2:size=64x64:rate=25 \
+#       -c:v libx264 -pix_fmt yuv420p -g 10 -keyint_min 10 -sc_threshold 0 src.mp4
+#   $ ffmpeg -ss 0.2 -i src.mp4 -c copy discard_first_keyframe.mp4
+#
+# Then the first few packets look like this:
+# # $ ffprobe -v error -select_streams \
+#     v:0 -show_entries packet=pts_time,flags -of csv discard_first_keyframe.mp4
+# packet,-0.200000,KD_
+# packet,-0.040000,_D_
+# packet,-0.120000,_D_
+# packet,-0.160000,_D_
+# packet,-0.080000,_D_
+# packet,0.000000,___
+# packet,0.080000,___
+# packet,0.040000,___
+# packet,0.160000,___
+# packet,0.120000,___
+# packet,0.200000,K__
+# ...
+DISCARD_FIRST_KEYFRAME_VIDEO = TestVideo(
+    filename="discard_first_keyframe.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=64, height=64, num_color_channels=3),
+    },
+    frames={
+        0: {
+            0: TestFrameInfo(pts_seconds=0.0, duration_seconds=0.04),
+        },
+    },
+)
+
 AV1_VIDEO = TestVideo(
     filename="av1_video.mkv",
     default_stream_index=0,
@@ -765,9 +803,9 @@ TEST_NON_ZERO_START = TestVideo(
 )
 
 # ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
-#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_width.mp4
-TESTSRC2_ODD_WIDTH = TestVideo(
-    filename="testsrc2_odd_width.mp4",
+#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_width_444.mp4
+TESTSRC2_ODD_WIDTH_444 = TestVideo(
+    filename="testsrc2_odd_width_444.mp4",
     default_stream_index=0,
     stream_infos={
         0: TestVideoStreamInfo(width=321, height=240, num_color_channels=3),
@@ -776,9 +814,9 @@ TESTSRC2_ODD_WIDTH = TestVideo(
 )
 
 # ffmpeg -f lavfi -i "testsrc2=size=320x241:rate=25:duration=1,format=rgb24" \
-#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_height.mp4
-TESTSRC2_ODD_HEIGHT = TestVideo(
-    filename="testsrc2_odd_height.mp4",
+#  -c:v libx264 -pix_fmt yuv444p -profile:v high444 testsrc2_odd_height_444.mp4
+TESTSRC2_ODD_HEIGHT_444 = TestVideo(
+    filename="testsrc2_odd_height_444.mp4",
     default_stream_index=0,
     stream_infos={
         0: TestVideoStreamInfo(width=320, height=241, num_color_channels=3),
@@ -787,9 +825,75 @@ TESTSRC2_ODD_HEIGHT = TestVideo(
 )
 
 # ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
-#  -c:v libx264 -pix_fmt yuv444p -profile:v testsrc2_odd_height_and_width.mp4
-TESTSRC2_ODD_HEIGHT_AND_WIDTH = TestVideo(
-    filename="testsrc2_odd_height_and_width.mp4",
+#  -c:v libx264 -pix_fmt yuv444p -profile:v testsrc2_odd_height_and_width_444.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_444 = TestVideo(
+    filename="testsrc2_odd_height_and_width_444.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p -b:v 1M testsrc2_odd_width_vp9.mp4
+TESTSRC2_ODD_WIDTH_VP9 = TestVideo(
+    filename="testsrc2_odd_width_vp9.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=320x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p -b:v 1M testsrc2_odd_height_vp9.mp4
+TESTSRC2_ODD_HEIGHT_VP9 = TestVideo(
+    filename="testsrc2_odd_height_vp9.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p -b:v 1M testsrc2_odd_height_and_width_vp9.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9 = TestVideo(
+    filename="testsrc2_odd_height_and_width_vp9.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x240:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p10le -b:v 1M testsrc2_odd_width_vp9_10bit.mp4
+TESTSRC2_ODD_WIDTH_VP9_10BIT = TestVideo(
+    filename="testsrc2_odd_width_vp9_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=320x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p10le -b:v 1M testsrc2_odd_height_vp9_10bit.mp4
+TESTSRC2_ODD_HEIGHT_VP9_10BIT = TestVideo(
+    filename="testsrc2_odd_height_vp9_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libvpx-vp9 -pix_fmt yuv420p10le -b:v 1M testsrc2_odd_height_and_width_vp9_10bit.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT = TestVideo(
+    filename="testsrc2_odd_height_and_width_vp9_10bit.mp4",
     default_stream_index=0,
     stream_infos={
         0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
@@ -1015,6 +1119,74 @@ SINE_MONO_S16 = TestAudio(
             duration_seconds=4,
             num_frames=63,
             sample_format="s16",
+        )
+    },
+)
+
+# Same sample rate as SINE_MONO_S32, but encoded as u8 instead of s32. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -c:a pcm_u8 test/resources/sine_mono_u8.wav
+SINE_MONO_U8 = TestAudio(
+    filename="sine_mono_u8.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=1,
+            duration_seconds=4,
+            num_frames=63,
+            sample_format="u8",
+        )
+    },
+)
+
+# Same sample rate as SINE_MONO_S32, but encoded as s24 instead of s32. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -c:a pcm_s24le test/resources/sine_mono_s24.wav
+SINE_MONO_S24 = TestAudio(
+    filename="sine_mono_s24.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=1,
+            duration_seconds=4,
+            num_frames=63,
+            sample_format="s32",
+        )
+    },
+)
+
+# Same sample rate as SINE_MONO_S32, but encoded as f32. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -c:a pcm_f32le test/resources/sine_mono_f32.wav
+SINE_MONO_F32 = TestAudio(
+    filename="sine_mono_f32.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=1,
+            duration_seconds=4,
+            num_frames=63,
+            sample_format="flt",
+        )
+    },
+)
+
+# Same sample rate as SINE_MONO_S32, but encoded as f64. Generated with:
+# ffmpeg -i test/resources/sine_mono_s32.wav -c:a pcm_f64le test/resources/sine_mono_f64.wav
+SINE_MONO_F64 = TestAudio(
+    filename="sine_mono_f64.wav",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=16_000,
+            num_channels=1,
+            duration_seconds=4,
+            num_frames=63,
+            sample_format="dbl",
         )
     },
 )

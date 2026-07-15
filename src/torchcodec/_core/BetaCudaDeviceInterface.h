@@ -21,6 +21,7 @@
 #include "FFMPEGCommon.h"
 #include "NVDECCache.h"
 #include "Transform.h"
+#include "color_conversion.h"
 
 #include <memory>
 #include <mutex>
@@ -38,77 +39,90 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   explicit BetaCudaDeviceInterface(const StableDevice& device);
   virtual ~BetaCudaDeviceInterface();
 
-  void initialize(
-      const AVStream* avStream,
-      const UniqueDecodingAVFormatContext& avFormatCtx,
-      const SharedAVCodecContext& codecContext) override;
+  void initialize(const SharedAVCodecContext& codec_context) override;
 
-  void convertAVFrameToFrameOutput(
-      UniqueAVFrame& avFrame,
-      FrameOutput& frameOutput,
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor) override;
+  void initialize_video(
+      const AVStream* av_stream,
+      const UniqueDecodingAVFormatContext& av_format_ctx,
+      const VideoStreamOptions& video_stream_options,
+      const std::vector<std::unique_ptr<Transform>>& transforms,
+      const std::optional<FrameDims>& resized_output_dims) override;
 
-  int sendPacket(ReferenceAVPacket& packet) override;
-  int sendEOFPacket() override;
-  int receiveFrame(UniqueAVFrame& avFrame) override;
+  OutputDtype get_pre_allocation_dtype(
+      OutputDtype requested_dtype) const override;
+
+  void convert_av_frame_to_frame_output(
+      UniqueAVFrame& av_frame,
+      FrameOutput& frame_output,
+      std::optional<torch::stable::Tensor> pre_allocated_output_tensor)
+      override;
+
+  int send_packet(ReferenceAVPacket& packet) override;
+  int send_eof_packet() override;
+  int receive_frame(UniqueAVFrame& av_frame) override;
   void flush() override;
 
   // NVDEC callback functions (must be public for C callbacks)
-  int streamPropertyChange(CUVIDEOFORMAT* videoFormat);
-  int frameReadyForDecoding(CUVIDPICPARAMS* picParams);
-  int frameReadyInDisplayOrder(CUVIDPARSERDISPINFO* dispInfo);
+  int stream_property_change(CUVIDEOFORMAT* video_format);
+  int frame_ready_for_decoding(CUVIDPICPARAMS* pic_params);
+  int frame_ready_in_display_order(CUVIDPARSERDISPINFO* disp_info);
 
-  std::string getDetails() override;
+  std::string get_details() override;
 
  private:
-  int sendCuvidPacket(CUVIDSOURCEDATAPACKET& cuvidPacket);
+  int send_cuvid_packet(CUVIDSOURCEDATAPACKET& cuvid_packet);
 
-  void initializeBSF(
-      const AVCodecParameters* codecPar,
-      const UniqueDecodingAVFormatContext& avFormatCtx);
+  void send_seqhdr_packet();
+
+  void initialize_bsf(
+      const AVCodecParameters* codec_par,
+      const UniqueDecodingAVFormatContext& av_format_ctx);
   // Apply bitstream filter, returns filtered packet or original if no filter
   // needed.
-  ReferenceAVPacket& applyBSF(
+  ReferenceAVPacket& apply_bsf(
       ReferenceAVPacket& packet,
-      ReferenceAVPacket& filteredPacket);
+      ReferenceAVPacket& filtered_packet);
 
-  CUdeviceptr previouslyMappedFrame_ = 0;
-  void unmapPreviousFrame();
+  CUdeviceptr previously_mapped_frame_ = 0;
+  void unmap_previous_frame();
 
-  UniqueAVFrame convertCudaFrameToAVFrame(
-      CUdeviceptr framePtr,
+  UniqueAVFrame convert_cuda_frame_to_av_frame(
+      CUdeviceptr frame_ptr,
       unsigned int pitch,
-      const CUVIDPARSERDISPINFO& dispInfo);
+      const CUVIDPARSERDISPINFO& disp_info);
 
-  UniqueAVFrame transferCpuFrameToGpuNV12(UniqueAVFrame& cpuFrame);
+  UniqueAVFrame transfer_cpu_frame_to_gpu(
+      UniqueAVFrame& cpu_frame,
+      AVPixelFormat target_pix_fmt);
 
-  void applyRotation(
-      FrameOutput& frameOutput,
-      std::optional<torch::stable::Tensor> preAllocatedOutputTensor);
+  void apply_rotation(
+      FrameOutput& frame_output,
+      std::optional<torch::stable::Tensor> pre_allocated_output_tensor);
 
-  CUvideoparser videoParser_ = nullptr;
+  CUvideoparser video_parser_ = nullptr;
   UniqueCUvideodecoder decoder_;
-  CUVIDEOFORMAT videoFormat_ = {};
-  CUVIDEOFORMATEX parserExtInfo_ = {};
+  CUVIDEOFORMAT video_format_ = {};
+  CUVIDEOFORMATEX parser_ext_info_ = {};
 
-  std::queue<CUVIDPARSERDISPINFO> readyFrames_;
+  std::queue<CUVIDPARSERDISPINFO> ready_frames_;
 
-  bool eofSent_ = false;
+  bool eof_sent_ = false;
 
-  AVRational timeBase_ = {0, 1};
-  AVRational frameRateAvgFromFFmpeg_ = {0, 1};
+  AVRational time_base_ = {0, 1};
+  AVRational frame_rate_avg_from_ffmpeg_ = {0, 1};
 
-  UniqueAVBSFContext bitstreamFilter_;
+  UniqueAVBSFContext bitstream_filter_;
 
-  // NPP context for color conversion
-  UniqueNppContext nppCtx_;
+  std::unique_ptr<DeviceInterface> cpu_fallback_;
+  bool nvcuvid_available_ = false;
+  UniqueSwsContext sws_context_;
 
-  std::unique_ptr<DeviceInterface> cpuFallback_;
-  bool nvcuvidAvailable_ = false;
-  UniqueSwsContext swsContext_;
-
-  SwsConfig prevSwsConfig_;
+  SwsConfig prev_sws_config_;
   Rotation rotation_ = Rotation::NONE;
+  OutputDtype output_dtype_ = OutputDtype::UINT8;
+  cudaVideoSurfaceFormat surface_format_ = cudaVideoSurfaceFormat_NV12;
+
+  CachedColorMatrix cached_color_matrix_;
 };
 
 } // namespace facebook::torchcodec

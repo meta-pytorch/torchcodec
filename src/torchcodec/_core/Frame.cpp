@@ -15,38 +15,41 @@ FrameDims::FrameDims(int height, int width) : height(height), width(width) {
 }
 
 FrameBatchOutput::FrameBatchOutput(
-    int64_t numFrames,
-    const FrameDims& outputDims,
+    int64_t num_frames,
+    const FrameDims& output_dims,
     const StableDevice& device,
-    OutputDtype outputDtype)
-    : ptsSeconds(torch::stable::empty({numFrames}, kStableFloat64)),
-      durationSeconds(torch::stable::empty({numFrames}, kStableFloat64)) {
-  data = allocateEmptyHWCTensor(outputDims, device, outputDtype, numFrames);
+    OutputDtype output_dtype)
+    : pts_seconds(torch::stable::empty({num_frames}, kStableFloat64)),
+      duration_seconds(torch::stable::empty({num_frames}, kStableFloat64)) {
+  data =
+      allocate_empty_hwc_tensor(output_dims, device, output_dtype, num_frames);
 }
 
-torch::stable::Tensor allocateEmptyHWCTensor(
-    const FrameDims& frameDims,
+torch::stable::Tensor allocate_empty_hwc_tensor(
+    const FrameDims& frame_dims,
     const StableDevice& device,
-    OutputDtype outputDtype,
-    std::optional<int> numFrames) {
+    OutputDtype output_dtype,
+    std::optional<int> num_frames) {
   STD_TORCH_CHECK(
-      frameDims.height > 0, "height must be > 0, got: ", frameDims.height);
+      frame_dims.height > 0, "height must be > 0, got: ", frame_dims.height);
   STD_TORCH_CHECK(
-      frameDims.width > 0, "width must be > 0, got: ", frameDims.width);
+      frame_dims.width > 0, "width must be > 0, got: ", frame_dims.width);
   auto dtype =
-      outputDtype == OutputDtype::FLOAT32 ? kStableUInt16 : kStableUInt8;
-  if (numFrames.has_value()) {
-    auto numFramesValue = numFrames.value();
+      output_dtype == OutputDtype::FLOAT32 ? kStableUInt16 : kStableUInt8;
+  if (num_frames.has_value()) {
+    auto num_frames_value = num_frames.value();
     STD_TORCH_CHECK(
-        numFramesValue >= 0, "numFrames must be >= 0, got: ", numFramesValue);
+        num_frames_value >= 0,
+        "numFrames must be >= 0, got: ",
+        num_frames_value);
     return torch::stable::empty(
-        {numFramesValue, frameDims.height, frameDims.width, 3},
+        {num_frames_value, frame_dims.height, frame_dims.width, 3},
         dtype,
         std::nullopt,
         device);
   } else {
     return torch::stable::empty(
-        {frameDims.height, frameDims.width, 3}, dtype, std::nullopt, device);
+        {frame_dims.height, frame_dims.width, 3}, dtype, std::nullopt, device);
   }
 }
 

@@ -14,57 +14,6 @@ extern "C" {
 }
 
 namespace facebook::torchcodec {
-class FORCE_PUBLIC_VISIBILITY AudioEncoder {
- public:
-  ~AudioEncoder();
-
-  AudioEncoder(
-      const torch::stable::Tensor& samples,
-      int sampleRate,
-      std::string_view fileName,
-      const AudioStreamOptions& audioStreamOptions);
-
-  AudioEncoder(
-      const torch::stable::Tensor& samples,
-      int sampleRate,
-      std::string_view formatName,
-      std::unique_ptr<AVIOContextHolder> avioContextHolder,
-      const AudioStreamOptions& audioStreamOptions);
-
-  void encode();
-
-  torch::stable::Tensor encodeToTensor();
-
- private:
-  void initializeEncoder(const AudioStreamOptions& audioStreamOptions);
-  UniqueAVFrame maybeConvertAVFrame(const UniqueAVFrame& avFrame);
-  void encodeFrameThroughFifo(
-      AutoAVPacket& autoAVPacket,
-      const UniqueAVFrame& avFrame,
-      bool flushFifo = false);
-  void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
-  void maybeFlushSwrBuffers(AutoAVPacket& autoAVPacket);
-  void flushBuffers();
-
-  UniqueEncodingAVFormatContext avFormatContext_;
-  UniqueAVCodecContext avCodecContext_;
-  int streamIndex_;
-  UniqueSwrContext swrContext_;
-  AudioStreamOptions audioStreamOptions;
-
-  const torch::stable::Tensor samples_;
-
-  int outNumChannels_ = -1;
-  int outSampleRate_ = -1;
-  int inSampleRate_ = -1;
-
-  UniqueAVAudioFifo avAudioFifo_;
-
-  std::unique_ptr<AVIOContextHolder> avioContextHolder_;
-
-  bool encodeWasCalled_ = false;
-  int64_t lastEncodedAVFramePts_ = 0;
-};
 
 /* clang-format off */
 //
@@ -72,11 +21,11 @@ class FORCE_PUBLIC_VISIBILITY AudioEncoder {
 //
 // The input samples are in a given format, sample rate, and number of channels.
 // We may want to change these properties before encoding. The conversion is
-// done in maybeConvertAVFrame() and we rely on libswresample. When sample rate
-// conversion is needed, this means two things:
+// done in maybeConvertAudioAVFrame() and we rely on libswresample. When sample
+// rate conversion is needed, this means two things:
 // - swr will be storing samples in its internal buffers, which we'll need to
 //   flush at the very end of the encoding process.
-// - the converted AVFrame we get back from maybeConvertAVFrame() typically
+// - the converted AVFrame we get back from maybeConvertAudioAVFrame() typically
 //   won't have the same number of samples as the original AVFrame. And that's
 //   a problem, because some encoders expect AVFrames with a specific and
 //   constant number of samples. If we were to send it as-is, we'd get an error
@@ -85,99 +34,13 @@ class FORCE_PUBLIC_VISIBILITY AudioEncoder {
 //   from which we can pull the exact number of samples that we need. Note that
 //   this involves at least 2 additional copies.
 //
-// To be clear, the FIFO is only used if BOTH the following conditions are met:
-//  - sample rate conversion is needed (inSampleRate_ != outSampleRate_)
-//  - the encoder expects a specific number of samples per AVFrame (fixed frame size)
-//    This is not the case for all encoders, e.g. WAV doesn't care about frame size.
-//
-// Also, the FIFO is either:
-// - used for every single frame during the encoding process, or
-// - not used at all.
-// There is no scenario where a given Encoder() instance would sometimes use a
-// FIFO, sometimes not.
-//
-// Drawing made with https://asciiflow.com/, can be copy/pasted there if it
-// needs editing:
-//
-// ┌─One─iteration─of─main─encoding─loop─(encode())───────────────────────────────────────────┐
-// │                                                                                          │
-// │                        Converts:                                                         │
-// │                         - num channels                                                   │
-// │                         - format                                                         │
-// │                         - sample rate                                                    │
-// │                        If sample rate is converted, stores data in swr buffers,          │
-// │                        which will need to be flushed by maybeFlushSwrBuffers()           │
-// │                                                                                          │
-// │                               ▲                                                          │
-// │                               │                 ┌─EncodeFrameThroughFifo()──────────────┐│
-// │                               │                 │                                       ││
-// │    AVFrame  ──────►  MaybeConvertAVFrame()───▲──│─┬──► NO FIFO ─►┬──▲────►encodeFrame() ││
-// │    with                                      │  │ │              │  │                   ││
-// │    input                                     │  │ │              │  │                   ││
-// │    samples                                   │  │ │              │  │                   ││
-// │                                              │  │ │              │  │                   ││
-// │                                              │  │ └────► FIFO ─►─┘  │                   ││
-// │                                              │  └───────────────────┼───────────────────┘│
-// └──────────────────────────────────────────────┼──────────────────────┼────────────────────┘
-//                                                │                      │
-//  AVFrame from  maybeFlushSwrBuffers()       ───┘                      │
-//  Only if sample rate conversion was needed                       nullptr, to flush
-//  The call to maybeFlushSwrBuffers() will                         FFmpeg buffers
-//  also instruct to flush the FIFO, if it exists.
-//
-//
+// Unlike the old single-stream AudioEncoder where the FIFO was only used when
+// sample rate conversion was needed with a fixed-frame-size encoder, the
+// MultiStreamEncoder always creates a FIFO. This is because addSamples() can
+// be called multiple times with arbitrary chunk sizes, so we always need to
+// buffer and re-chunk samples into frame_size-sized batches.
 //
 /* clang-format on */
-
-class FORCE_PUBLIC_VISIBILITY VideoEncoder {
- public:
-  ~VideoEncoder();
-
-  // Rule of Five requires that we define copy and move
-  // constructors and assignment operators.
-  // Both are deleted because we have unique_ptr members
-  VideoEncoder(const VideoEncoder&) = delete;
-  VideoEncoder& operator=(const VideoEncoder&) = delete;
-
-  // Move operators deleted since UniqueAVDictionary member is not movable
-  VideoEncoder(VideoEncoder&&) = delete;
-  VideoEncoder& operator=(VideoEncoder&&) = delete;
-
-  VideoEncoder(
-      const torch::stable::Tensor& frames,
-      double frameRate,
-      std::string_view fileName,
-      const VideoStreamOptions& videoStreamOptions);
-
-  VideoEncoder(
-      const torch::stable::Tensor& frames,
-      double frameRate,
-      std::string_view formatName,
-      std::unique_ptr<AVIOContextHolder> avioContextHolder,
-      const VideoStreamOptions& videoStreamOptions);
-
-  void encode();
-
-  torch::stable::Tensor encodeToTensor();
-
- private:
-  void initializeEncoder(const VideoStreamOptions& videoStreamOptions);
-  void encodeFrame(AutoAVPacket& autoAVPacket, const UniqueAVFrame& avFrame);
-  void flushBuffers();
-
-  UniqueEncodingAVFormatContext avFormatContext_;
-  UniqueAVCodecContext avCodecContext_;
-  AVStream* avStream_ = nullptr;
-
-  const torch::stable::Tensor frames_;
-  double inFrameRate_;
-
-  std::unique_ptr<AVIOContextHolder> avioContextHolder_;
-  std::unique_ptr<DeviceInterface> deviceInterface_;
-
-  bool encodeWasCalled_ = false;
-  UniqueAVDictionary avFormatOptions_;
-};
 
 class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
  public:
@@ -190,91 +53,91 @@ class FORCE_PUBLIC_VISIBILITY MultiStreamEncoder {
 
   MultiStreamEncoder();
 
-  int addVideoStream(
+  int add_video_stream(
       int height,
       int width,
-      double frameRate,
+      double frame_rate,
       std::string device = "cpu",
       std::optional<std::string> codec = std::nullopt,
-      std::optional<std::string> pixelFormat = std::nullopt,
+      std::optional<std::string> pixel_format = std::nullopt,
       std::optional<double> crf = std::nullopt,
       std::optional<std::string> preset = std::nullopt,
-      std::optional<std::map<std::string, std::string>> extraOptions =
+      std::optional<std::map<std::string, std::string>> extra_options =
           std::nullopt);
-  int addAudioStream(
-      int sampleRate,
-      int numChannels,
-      std::optional<int> bitRate = std::nullopt,
-      std::optional<int> outNumChannels = std::nullopt,
-      std::optional<int> outSampleRate = std::nullopt);
-  void open(std::string_view fileName);
+  int add_audio_stream(
+      int sample_rate,
+      int num_channels,
+      std::optional<int> bit_rate = std::nullopt,
+      std::optional<int> out_num_channels = std::nullopt,
+      std::optional<int> out_sample_rate = std::nullopt);
+  void open(std::string_view file_name);
   void open(
-      std::string_view formatName,
-      std::unique_ptr<AVIOContextHolder> avioContextHolder);
-  void addFrames(const torch::stable::Tensor& frames, int streamIndex);
-  void addSamples(const torch::stable::Tensor& samples, int streamIndex);
+      std::string_view format_name,
+      std::unique_ptr<AVIOContextHolder> avio_context_holder);
+  void add_frames(const torch::stable::Tensor& frames, int stream_index);
+  void add_samples(const torch::stable::Tensor& samples, int stream_index);
   void close();
 
  private:
   struct VideoStream {
-    int inHeight = 0;
-    int inWidth = 0;
-    double inFrameRate = 0;
+    int in_height = 0;
+    int in_width = 0;
+    double in_frame_rate = 0;
     VideoStreamOptions options;
-    UniqueAVCodecContext avCodecContext;
-    AVStream* avStream = nullptr;
-    int numEncodedFrames = 0;
-    std::unique_ptr<DeviceInterface> deviceInterface;
+    UniqueAVCodecContext av_codec_context;
+    AVStream* av_stream = nullptr;
+    int num_encoded_frames = 0;
+    std::unique_ptr<DeviceInterface> device_interface;
   };
 
   struct AudioStream {
-    int inSampleRate = -1;
-    int inNumChannels = -1;
-    int outNumChannels = -1;
-    int outSampleRate = -1;
-    int frameSize = -1;
-    int64_t lastEncodedAVFramePts = 0;
+    int in_sample_rate = -1;
+    int in_num_channels = -1;
+    int out_num_channels = -1;
+    int out_sample_rate = -1;
+    int frame_size = -1;
+    int64_t last_encoded_av_frame_pts = 0;
     AudioStreamOptions options;
-    UniqueAVCodecContext avCodecContext;
-    AVStream* avStream = nullptr;
-    UniqueSwrContext swrContext;
-    UniqueAVAudioFifo avAudioFifo;
+    UniqueAVCodecContext av_codec_context;
+    AVStream* av_stream = nullptr;
+    UniqueSwrContext swr_context;
+    UniqueAVAudioFifo av_audio_fifo;
   };
 
-  void initializeVideoStream(VideoStream& videoStream);
-  void openStreamsAndWriteHeader();
-  void encodeVideoFrame(
-      AutoAVPacket& autoAVPacket,
-      const UniqueAVFrame& avFrame,
-      VideoStream& videoStream);
-  void initializeAudioStream(AudioStream& audioStream);
-  void encodeAudioSamples(
+  void initialize_video_stream(VideoStream& video_stream);
+  void open_streams_and_write_header();
+  void encode_video_frame(
+      AutoAVPacket& auto_av_packet,
+      const UniqueAVFrame& av_frame,
+      VideoStream& video_stream);
+  void initialize_audio_stream(AudioStream& audio_stream);
+  void encode_audio_samples(
       const torch::stable::Tensor& samples,
-      AudioStream& audioStream);
-  UniqueAVFrame maybeConvertAudioAVFrame(
-      const UniqueAVFrame& avFrame,
-      AudioStream& audioStream);
-  void encodeAudioFrameThroughFifo(
-      AutoAVPacket& autoAVPacket,
-      const UniqueAVFrame& avFrame,
-      AudioStream& audioStream,
-      bool flushFifo = false);
-  void encodeAudioFrame(
-      AutoAVPacket& autoAVPacket,
-      const UniqueAVFrame& avFrame,
-      AudioStream& audioStream);
-  void maybeFlushSwrAndFifo(
-      AutoAVPacket& autoAVPacket,
-      AudioStream& audioStream);
-  void flushBuffers();
+      AudioStream& audio_stream);
+  UniqueAVFrame maybe_convert_audio_av_frame(
+      const UniqueAVFrame& av_frame,
+      AudioStream& audio_stream);
+  void encode_audio_frame_through_fifo(
+      AutoAVPacket& auto_av_packet,
+      const UniqueAVFrame& av_frame,
+      AudioStream& audio_stream,
+      bool flush_fifo = false);
+  void encode_audio_frame(
+      AutoAVPacket& auto_av_packet,
+      const UniqueAVFrame& av_frame,
+      AudioStream& audio_stream);
+  void maybe_flush_swr_and_fifo(
+      AutoAVPacket& auto_av_packet,
+      AudioStream& audio_stream);
+  void flush_buffers();
 
-  UniqueEncodingAVFormatContext avFormatContext_;
-  std::vector<VideoStream> videoStreams_;
-  std::vector<AudioStream> audioStreams_;
-  bool headerWritten_ = false;
-  UniqueAVDictionary avFormatOptions_;
+  UniqueEncodingAVFormatContext av_format_context_;
+  std::vector<VideoStream> video_streams_;
+  std::vector<AudioStream> audio_streams_;
+  bool header_written_ = false;
+  UniqueAVDictionary av_format_options_;
 
-  std::unique_ptr<AVIOContextHolder> avioContextHolder_;
+  std::unique_ptr<AVIOContextHolder> avio_context_holder_;
   bool closed_ = false;
 };
 

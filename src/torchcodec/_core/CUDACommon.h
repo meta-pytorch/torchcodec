@@ -7,7 +7,6 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include <npp.h>
 
 #include "FFMPEGCommon.h"
 #include "Frame.h"
@@ -23,42 +22,23 @@ namespace facebook::torchcodec {
 // https://github.com/pytorch/pytorch/blob/e30c55ee527b40d67555464b9e402b4b7ce03737/c10/cuda/CUDAMacros.h#L44
 constexpr int MAX_CUDA_GPUS = 128;
 
-// NV12 and NPP require even dimensions. This rounds up to the nearest even
-// value.
-inline int roundUpToEven(int value) {
+// NV12 requires even dimensions. This rounds up to the nearest even value.
+inline int round_up_to_even(int value) {
   return (value + 1) & ~1;
 }
 
-cudaStream_t getCurrentCudaStream(int32_t deviceIndex);
+cudaStream_t get_current_cuda_stream(int32_t device_index);
 
-void initializeCudaContextWithPytorch(const StableDevice& device);
+// Make waitingStream wait until all work currently enqueued on runningStream
+// has completed.
+void sync_streams(cudaStream_t running_stream, cudaStream_t waiting_stream);
 
-// Unique pointer type for NPP stream context
-using UniqueNppContext = std::unique_ptr<NppStreamContext>;
+void initialize_cuda_context_with_pytorch(const StableDevice& device);
 
-// Convert an NV12 frame (on GPU) to an RGB tensor. The avFrame must have even
-// width/height matching its actual NV12 data layout.
-// outputDims is the desired output size. If smaller than the avFrame
-// dimensions, the result is cropped. This is used when the original video has
-// odd dimensions: the NV12 data is padded to even sizes, and outputDims
-// carries the original (odd) size to crop back to.
-torch::stable::Tensor convertNV12FrameToRGB(
-    UniqueAVFrame& avFrame,
-    const StableDevice& device,
-    const UniqueNppContext& nppCtx,
-    cudaStream_t nvdecStream,
-    std::optional<torch::stable::Tensor> preAllocatedOutputTensor,
-    const FrameDims& outputDims);
+void validate_pre_allocated_tensor_shape(
+    const std::optional<torch::stable::Tensor>& pre_allocated_output_tensor,
+    const FrameDims& frame_dims);
 
-UniqueNppContext getNppStreamContext(const StableDevice& device);
-void returnNppStreamContextToCache(
-    const StableDevice& device,
-    UniqueNppContext nppCtx);
-
-void validatePreAllocatedTensorShape(
-    const std::optional<torch::stable::Tensor>& preAllocatedOutputTensor,
-    const FrameDims& frameDims);
-
-int getDeviceIndex(const StableDevice& device);
+int get_device_index(const StableDevice& device);
 
 } // namespace facebook::torchcodec

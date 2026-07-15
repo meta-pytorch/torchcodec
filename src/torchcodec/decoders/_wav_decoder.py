@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
+import io
 import json
 from pathlib import Path
 
@@ -15,8 +16,41 @@ from torchcodec._core._metadata import AudioStreamMetadata
 
 
 class WavDecoder:
-    # TODO: Docstrings
-    def __init__(self, source: str | Path):
+    """A fast decoder for WAV audio files.
+
+    This is a lightweight, high-performance alternative to
+    :class:`~torchcodec.decoders.AudioDecoder` that is specialized for WAV
+    files. See :ref:`sphx_glr_generated_examples_decoding_performance_tips.py`
+    for more details.
+
+    Unlike :class:`~torchcodec.decoders.AudioDecoder`, this decoder does not
+    support resampling (``sample_rate`` parameter) or channel remixing
+    (``num_channels`` parameter). If you need those features, use
+    :class:`~torchcodec.decoders.AudioDecoder`.
+
+    Returned samples are float samples normalized in [-1, 1].
+
+    Args:
+        source (str, ``Pathlib.path``, bytes, ``torch.Tensor`` or file-like
+            object): The source of the audio:
+
+            - If ``str``: a path to a local WAV file.
+            - If ``Pathlib.path``: a path to a local WAV file.
+            - If ``bytes`` object or ``torch.Tensor``: the raw WAV data.
+            - If file-like object: we read audio data from the object on
+              demand. The object must expose the methods ``read(self, size:
+              int) -> bytes`` and ``seek(self, offset: int, whence: int) ->
+              int``.
+
+    Attributes:
+        metadata (AudioStreamMetadata): Metadata of the audio stream.
+        stream_index (int): The stream index. Always 0 for WAV files.
+    """
+
+    def __init__(
+        self,
+        source: str | Path | io.RawIOBase | io.BufferedReader | bytes | torch.Tensor,
+    ):
         torch._C._log_api_usage_once("torchcodec.decoders.WavDecoder")
 
         self._decoder = create_wav_decoder(source)
@@ -40,11 +74,39 @@ class WavDecoder:
         )
 
     def get_all_samples(self) -> AudioSamples:
+        """Returns all the audio samples from the source.
+
+        To decode samples in a specific range, use
+        :meth:`~torchcodec.decoders.WavDecoder.get_samples_played_in_range`.
+
+        Returns:
+            AudioSamples: The samples within the file.
+        """
         return self.get_samples_played_in_range()
 
     def get_samples_played_in_range(
         self, start_seconds: float = 0.0, stop_seconds: float | None = None
     ) -> AudioSamples:
+        """Returns audio samples in the given range.
+
+        Samples are in the half open range [start_seconds, stop_seconds).
+
+        To decode all the samples from beginning to end, you can call this
+        method while leaving ``start_seconds`` and ``stop_seconds`` to their
+        default values, or use
+        :meth:`~torchcodec.decoders.WavDecoder.get_all_samples` as a more
+        convenient alias.
+
+        Args:
+            start_seconds (float): Time, in seconds, of the start of the
+                range. Default: 0.
+            stop_seconds (float or None): Time, in seconds, of the end of the
+                range. As a half open range, the end is excluded. Default: None,
+                which decodes samples until the end.
+
+        Returns:
+            AudioSamples: The samples within the specified range.
+        """
         if stop_seconds is not None and not start_seconds <= stop_seconds:
             raise ValueError(
                 f"Invalid start seconds: {start_seconds}. It must be less than or equal to stop seconds ({stop_seconds})."

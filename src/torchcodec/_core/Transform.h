@@ -15,7 +15,7 @@ namespace facebook::torchcodec {
 
 class Transform {
  public:
-  virtual std::string getFilterGraphCpu() const = 0;
+  virtual std::string get_filter_graph_cpu() const = 0;
   virtual ~Transform() = default;
 
   // If the transformation does not change the output frame dimensions, then
@@ -25,13 +25,13 @@ class Transform {
   //
   // If the transformation does change the output frame dimensions, then it
   // must override this member function and return the output frame dimensions.
-  virtual std::optional<FrameDims> getOutputFrameDims() const {
+  virtual std::optional<FrameDims> get_output_frame_dims() const {
     return std::nullopt;
   }
 
   // The ResizeTransform is special because it is the only transform
   // that swscale can handle.
-  virtual bool isResize() const {
+  virtual bool is_resize() const {
     return false;
   }
 
@@ -42,7 +42,7 @@ class Transform {
   //
   // Note that the validation function does not return anything. We expect
   // invalid configurations to throw an exception.
-  virtual void validate([[maybe_unused]] const FrameDims& inputDims) const {}
+  virtual void validate([[maybe_unused]] const FrameDims& input_dims) const {}
 };
 
 class ResizeTransform : public Transform {
@@ -50,20 +50,20 @@ class ResizeTransform : public Transform {
   enum class InterpolationMode { BILINEAR };
 
   explicit ResizeTransform(const FrameDims& dims)
-      : outputDims_(dims), interpolationMode_(InterpolationMode::BILINEAR) {}
+      : output_dims_(dims), interpolation_mode_(InterpolationMode::BILINEAR) {}
 
-  ResizeTransform(const FrameDims& dims, InterpolationMode interpolationMode)
-      : outputDims_(dims), interpolationMode_(interpolationMode) {}
+  ResizeTransform(const FrameDims& dims, InterpolationMode interpolation_mode)
+      : output_dims_(dims), interpolation_mode_(interpolation_mode) {}
 
-  std::string getFilterGraphCpu() const override;
-  std::optional<FrameDims> getOutputFrameDims() const override;
-  bool isResize() const override;
+  std::string get_filter_graph_cpu() const override;
+  std::optional<FrameDims> get_output_frame_dims() const override;
+  bool is_resize() const override;
 
-  int getSwsFlags() const;
+  int get_sws_flags() const;
 
  private:
-  FrameDims outputDims_;
-  InterpolationMode interpolationMode_;
+  FrameDims output_dims_;
+  InterpolationMode interpolation_mode_;
 };
 
 class CropTransform : public Transform {
@@ -73,12 +73,12 @@ class CropTransform : public Transform {
   // Becomes a center crop if x and y are not specified.
   explicit CropTransform(const FrameDims& dims);
 
-  std::string getFilterGraphCpu() const override;
-  std::optional<FrameDims> getOutputFrameDims() const override;
-  void validate(const FrameDims& inputDims) const override;
+  std::string get_filter_graph_cpu() const override;
+  std::optional<FrameDims> get_output_frame_dims() const override;
+  void validate(const FrameDims& input_dims) const override;
 
  private:
-  FrameDims outputDims_;
+  FrameDims output_dims_;
   std::optional<int> x_;
   std::optional<int> y_;
 };
@@ -96,7 +96,7 @@ enum class Rotation {
 // Input is expected in the range [-180, 180].
 // Rounds to nearest multiple of 90 degrees before converting.
 // Returns Rotation::NONE for nullopt.
-Rotation rotationFromDegrees(std::optional<double> degrees);
+Rotation rotation_from_degrees(std::optional<double> degrees);
 
 // Applies rotation in multiples of 90 degrees using FFmpeg's transpose/flip
 // filters. Note: this does not support arbitrary angle rotation
@@ -105,14 +105,14 @@ Rotation rotationFromDegrees(std::optional<double> degrees);
 // operate in post-rotation coordinate space.
 class RotationTransform : public Transform {
  public:
-  RotationTransform(Rotation rotation, const FrameDims& inputDims);
+  RotationTransform(Rotation rotation, const FrameDims& input_dims);
 
-  std::string getFilterGraphCpu() const override;
-  std::optional<FrameDims> getOutputFrameDims() const override;
+  std::string get_filter_graph_cpu() const override;
+  std::optional<FrameDims> get_output_frame_dims() const override;
 
  private:
   Rotation rotation_;
-  FrameDims outputDims_;
+  FrameDims output_dims_;
 };
 
 } // namespace facebook::torchcodec

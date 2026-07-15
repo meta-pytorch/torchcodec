@@ -27,18 +27,26 @@ class FORCE_PUBLIC_VISIBILITY AVIOFromTensorContext : public AVIOContextHolder {
  public:
   explicit AVIOFromTensorContext(torch::stable::Tensor data);
 
+  int read(uint8_t* buf, int size) override;
+  int64_t seek(int64_t offset, int whence) override;
+  int64_t get_size() override;
+
  private:
-  detail::TensorContext tensorContext_;
+  detail::TensorContext tensor_context_;
 };
 
 // For Encoding: used to encode into an output uint8 (bytes) tensor.
 class FORCE_PUBLIC_VISIBILITY AVIOToTensorContext : public AVIOContextHolder {
  public:
   explicit AVIOToTensorContext();
-  torch::stable::Tensor getOutputTensor();
+  torch::stable::Tensor get_output_tensor();
+
+  int write(const uint8_t* buf, int size) override;
+  int64_t seek(int64_t offset, int whence) override;
+  int64_t get_size() override;
 
  private:
-  detail::TensorContext tensorContext_;
+  detail::TensorContext tensor_context_;
 };
 
 } // namespace facebook::torchcodec

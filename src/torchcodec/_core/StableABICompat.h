@@ -78,7 +78,7 @@ constexpr auto kStableBool = torch::headeronly::ScalarType::Bool;
 // https://github.com/facebookresearch/xformers/blob/720adff2b021f6f43957718514f5be3d10e36fb1/xformers/csrc/pt_stable_utils.h#L85
 
 // TODO_STABLE_ABI: upstream?
-inline torch::stable::Tensor stablePermute(
+inline torch::stable::Tensor stable_permute(
     const torch::stable::Tensor& self,
     std::vector<int64_t> dims) {
   const auto num_args = 2;
@@ -90,7 +90,7 @@ inline torch::stable::Tensor stablePermute(
 }
 
 // TODO_STABLE_ABI: upstream?
-inline torch::stable::Tensor stableCat(
+inline torch::stable::Tensor stable_cat(
     const std::vector<torch::stable::Tensor>& tensors,
     int64_t dim) {
   const auto num_args = 2;
@@ -102,7 +102,7 @@ inline torch::stable::Tensor stableCat(
 }
 
 // TODO_STABLE_ABI: upstream?
-inline torch::stable::Tensor stableRot90(
+inline torch::stable::Tensor stable_rot90(
     const torch::stable::Tensor& self,
     int k,
     int64_t dim0,
@@ -117,15 +117,28 @@ inline torch::stable::Tensor stableRot90(
   return torch::stable::detail::to<torch::stable::Tensor>(stack[0]);
 }
 
+// TODO_STABLE_ABI: upstream?
+inline torch::stable::Tensor stable_div(
+    const torch::stable::Tensor& self,
+    double other) {
+  auto divisor = torch::stable::full({}, other);
+  const auto num_args = 2;
+  std::array<StableIValue, num_args> stack{
+      torch::stable::detail::from(self), torch::stable::detail::from(divisor)};
+  TORCH_ERROR_CODE_CHECK(torch_call_dispatcher(
+      "aten::div", "Tensor", stack.data(), TORCH_ABI_VERSION));
+  return torch::stable::detail::to<torch::stable::Tensor>(stack[0]);
+}
+
 // Shorthand for torch::stable::select(tensor, 0, index), i.e. tensor[index].
-inline torch::stable::Tensor selectRow(
+inline torch::stable::Tensor select_row(
     const torch::stable::Tensor& tensor,
     int64_t index) {
   return torch::stable::select(tensor, 0, index);
 }
 
 template <typename T, size_t N>
-torch::headeronly::HeaderOnlyTensorAccessor<T, N> mutableAccessor(
+torch::headeronly::HeaderOnlyTensorAccessor<T, N> mutable_accessor(
     torch::stable::Tensor& tensor) {
   return torch::headeronly::HeaderOnlyTensorAccessor<T, N>(
       tensor.mutable_data_ptr<T>(),
@@ -134,7 +147,7 @@ torch::headeronly::HeaderOnlyTensorAccessor<T, N> mutableAccessor(
 }
 
 template <typename T, size_t N>
-torch::headeronly::HeaderOnlyTensorAccessor<const T, N> constAccessor(
+torch::headeronly::HeaderOnlyTensorAccessor<const T, N> const_accessor(
     const torch::stable::Tensor& tensor) {
   return torch::headeronly::HeaderOnlyTensorAccessor<const T, N>(
       tensor.const_data_ptr<T>(),
@@ -143,19 +156,19 @@ torch::headeronly::HeaderOnlyTensorAccessor<const T, N> constAccessor(
 }
 
 // Copy row srcIndex from srcTensor into row dstIndex of dstTensor.
-inline void copyFrame(
-    torch::stable::Tensor& dstTensor,
-    int64_t dstIndex,
-    const torch::stable::Tensor& srcTensor,
-    int64_t srcIndex) {
-  auto dst = selectRow(dstTensor, dstIndex);
-  torch::stable::copy_(dst, selectRow(srcTensor, srcIndex));
+inline void copy_frame(
+    torch::stable::Tensor& dst_tensor,
+    int64_t dst_index,
+    const torch::stable::Tensor& src_tensor,
+    int64_t src_index) {
+  auto dst = select_row(dst_tensor, dst_index);
+  torch::stable::copy_(dst, select_row(src_tensor, src_index));
 }
 
 // TODO_STABLE_ABI: this should probably be natively supported by torch::stable.
 // Consider upstreaming.
-inline const char* deviceTypeName(StableDeviceType deviceType) {
-  switch (deviceType) {
+inline const char* device_type_name(StableDeviceType device_type) {
+  switch (device_type) {
     case kStableCPU:
       return "cpu";
     case kStableCUDA:
@@ -171,7 +184,7 @@ inline const char* deviceTypeName(StableDeviceType deviceType) {
 // messages. There should probably be a better native way to support it, e.g.
 // torch::headeronly::IntHeaderOnlyArrayRef probably needs to support the `<<`
 // operator. Consider upstreaming.
-inline std::string intArrayRefToString(
+inline std::string int_array_ref_to_string(
     torch::headeronly::IntHeaderOnlyArrayRef arr) {
   std::ostringstream ss;
   ss << "[";

@@ -19,11 +19,15 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
+#include "AVIOFileContext.h"
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
+#include "ColorConverter.h"
+#include "Demuxer.h"
 #include "Encoder.h"
 #include "Logging.h"
 #include "NVDECCacheConfig.h"
+#include "PacketDecoder.h"
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
@@ -42,25 +46,13 @@ namespace facebook::torchcodec {
 STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("create_from_file(str filename, str? seek_mode=None) -> Tensor");
   m.def(
-      "encode_audio_to_file(Tensor samples, int sample_rate, str filename, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
-  m.def(
-      "encode_audio_to_tensor(Tensor samples, int sample_rate, str format, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> Tensor");
-  m.def(
-      "_encode_audio_to_file_like(Tensor samples, int sample_rate, str format, int file_like_context, int? bit_rate=None, int? num_channels=None, int? desired_sample_rate=None) -> ()");
-  m.def(
-      "encode_video_to_file(Tensor frames, float frame_rate, str filename, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
-  m.def(
-      "encode_video_to_tensor(Tensor frames, float frame_rate, str format, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> Tensor");
-  m.def(
-      "_encode_video_to_file_like(Tensor frames, float frame_rate, str format, int file_like_context, str? codec=None, str? pixel_format=None, float? crf=None, str? preset=None, str[]? extra_options=None) -> ()");
-  m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
   m.def(
-      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str? color_conversion_library=None, str? output_dtype=None) -> ()");
+      "_add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str? color_conversion_library=None, str output_dtype=\"uint8\") -> ()");
   m.def(
-      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str? output_dtype=None) -> ()");
+      "add_video_stream(Tensor(a!) decoder, *, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", Tensor? custom_frame_mappings_pts=None, Tensor? custom_frame_mappings_duration=None, Tensor? custom_frame_mappings_keyframe_indices=None, str output_dtype=\"uint8\") -> ()");
   m.def(
       "add_audio_stream(Tensor(a!) decoder, *, int? stream_index=None, int? sample_rate=None, int? num_channels=None) -> ()");
   m.def("seek_to_pts(Tensor(a!) decoder, float seconds) -> ()");
@@ -79,6 +71,19 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "get_frames_by_pts_in_range_audio(Tensor(a!) decoder, *, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def(
       "get_frames_by_pts(Tensor(a!) decoder, *, Tensor timestamps) -> (Tensor, Tensor, Tensor)");
+  m.def(
+      "_blocks_create_demuxer(str filename, int? stream_index=None) -> Tensor");
+  m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
+  m.def(
+      "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\", str device_variant=\"default\") -> Tensor");
+  m.def(
+      "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
+  m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
+  m.def(
+      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float)");
+  m.def(
+      "_blocks_create_color_converter(str device=\"cpu\", str device_variant=\"default\") -> Tensor");
+  m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -108,6 +113,8 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("_set_cpp_log_level(int level) -> ()");
   m.def("_get_log_level() -> int");
   m.def("create_wav_decoder_from_file(str filename) -> Tensor");
+  m.def("create_wav_decoder_from_tensor(Tensor data) -> Tensor");
+  m.def("_create_wav_decoder_from_file_like(int file_like_context) -> Tensor");
   m.def(
       "get_wav_samples_in_range(Tensor(a!) decoder, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def("get_wav_metadata_from_decoder(Tensor(a!) decoder) -> str");
@@ -115,9 +122,9 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
 
 namespace {
 
-torch::stable::Tensor wrapDecoderPointerToTensor(
-    std::unique_ptr<SingleStreamDecoder> uniqueDecoder) {
-  SingleStreamDecoder* decoder = uniqueDecoder.release();
+torch::stable::Tensor wrap_decoder_pointer_to_tensor(
+    std::unique_ptr<SingleStreamDecoder> unique_decoder) {
+  SingleStreamDecoder* decoder = unique_decoder.release();
 
   auto deleter = [decoder](void*) { delete decoder; };
   int64_t sizes[] = {static_cast<int64_t>(sizeof(SingleStreamDecoder*))};
@@ -129,15 +136,15 @@ torch::stable::Tensor wrapDecoderPointerToTensor(
       StableDevice(kStableCPU),
       kStableInt64,
       deleter);
-  auto videoDecoder =
+  auto video_decoder =
       static_cast<SingleStreamDecoder*>(tensor.mutable_data_ptr());
-  STD_TORCH_CHECK(videoDecoder == decoder, "videoDecoder != decoder");
+  STD_TORCH_CHECK(video_decoder == decoder, "videoDecoder != decoder");
   return tensor;
 }
 
-torch::stable::Tensor wrapWavDecoderPointerToTensor(
-    std::unique_ptr<WavDecoder> uniqueDecoder) {
-  WavDecoder* decoder = uniqueDecoder.release();
+torch::stable::Tensor wrap_wav_decoder_pointer_to_tensor(
+    std::unique_ptr<WavDecoder> unique_decoder) {
+  WavDecoder* decoder = unique_decoder.release();
 
   auto deleter = [decoder](void*) { delete decoder; };
   int64_t sizes[] = {static_cast<int64_t>(sizeof(WavDecoder*))};
@@ -149,12 +156,12 @@ torch::stable::Tensor wrapWavDecoderPointerToTensor(
       StableDevice(kStableCPU),
       kStableInt64,
       deleter);
-  auto wavDecoder = static_cast<WavDecoder*>(tensor.mutable_data_ptr());
-  STD_TORCH_CHECK(wavDecoder == decoder, "wavDecoder != decoder");
+  auto wav_decoder = static_cast<WavDecoder*>(tensor.mutable_data_ptr());
+  STD_TORCH_CHECK(wav_decoder == decoder, "wavDecoder != decoder");
   return tensor;
 }
 
-WavDecoder* unwrapTensorToGetWavDecoder(torch::stable::Tensor& tensor) {
+WavDecoder* unwrap_tensor_to_get_wav_decoder(torch::stable::Tensor& tensor) {
   STD_TORCH_CHECK(
       tensor.is_contiguous(),
       "fake decoder tensor must be contiguous! This is an internal error, please report on the torchcodec issue tracker.");
@@ -162,7 +169,8 @@ WavDecoder* unwrapTensorToGetWavDecoder(torch::stable::Tensor& tensor) {
   return decoder;
 }
 
-SingleStreamDecoder* unwrapTensorToGetDecoder(torch::stable::Tensor& tensor) {
+SingleStreamDecoder* unwrap_tensor_to_get_decoder(
+    torch::stable::Tensor& tensor) {
   STD_TORCH_CHECK(
       tensor.is_contiguous(),
       "fake decoder tensor must be contiguous! This is an internal error, please report on the torchcodec issue tracker.");
@@ -171,9 +179,84 @@ SingleStreamDecoder* unwrapTensorToGetDecoder(torch::stable::Tensor& tensor) {
   return decoder;
 }
 
-torch::stable::Tensor wrapMultiStreamEncoderPointerToTensor(
-    std::unique_ptr<MultiStreamEncoder> uniqueEncoder) {
-  MultiStreamEncoder* encoder = uniqueEncoder.release();
+// Generic pointer<->tensor laundering for the building-block handle types
+// (Demuxer / PacketDecoder / ColorConverter). Same trick as
+// wrap_decoder_pointer_to_tensor: the tensor's data pointer IS the raw pointer,
+// with a deleter that deletes the owned object when the handle is dropped.
+template <typename T>
+torch::stable::Tensor wrap_pointer_to_tensor(std::unique_ptr<T> ptr) {
+  T* raw = ptr.release();
+  auto deleter = [raw](void*) { delete raw; };
+  int64_t sizes[] = {static_cast<int64_t>(sizeof(T*))};
+  int64_t strides[] = {1};
+  return torch::stable::from_blob(
+      raw,
+      {sizes, 1},
+      {strides, 1},
+      StableDevice(kStableCPU),
+      kStableInt64,
+      deleter);
+}
+
+template <typename T>
+T* unwrap_tensor_to_pointer(torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(tensor.is_contiguous(), "handle tensor must be contiguous");
+  return static_cast<T*>(tensor.mutable_data_ptr());
+}
+
+// Opaque packet/frame handles: launder a raw AVPacket*/AVFrame* through a [1]
+// int64 CPU tensor whose data pointer IS the raw pointer, with a deleter that
+// frees it. Thread-movable, process-local.
+torch::stable::Tensor wrap_packet_pointer_to_tensor(AVPacket* packet) {
+  auto deleter = [packet](void*) {
+    AVPacket* p = packet;
+    av_packet_free(&p);
+  };
+  int64_t sizes[] = {1};
+  int64_t strides[] = {1};
+  return torch::stable::from_blob(
+      packet,
+      {sizes, 1},
+      {strides, 1},
+      StableDevice(kStableCPU),
+      kStableInt64,
+      deleter);
+}
+
+AVPacket* unwrap_tensor_to_packet(torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(tensor.is_contiguous(), "packet handle must be contiguous");
+  return static_cast<AVPacket*>(tensor.mutable_data_ptr());
+}
+
+torch::stable::Tensor wrap_frame_pointer_to_tensor(AVFrame* frame) {
+  // Owning handle: the frame is freed when the handle tensor's refcount drops.
+  // ColorConverter borrows the frame during conversion (on CPU it does not free
+  // it), so the handle stays the sole owner and there is no leak even if a
+  // frame is never converted. (GPU conversion would consume the frame; GPU is
+  // not exposed through these ops yet.)
+  auto deleter = [frame](void*) {
+    AVFrame* f = frame;
+    av_frame_free(&f);
+  };
+  int64_t sizes[] = {1};
+  int64_t strides[] = {1};
+  return torch::stable::from_blob(
+      frame,
+      {sizes, 1},
+      {strides, 1},
+      StableDevice(kStableCPU),
+      kStableInt64,
+      deleter);
+}
+
+AVFrame* unwrap_tensor_to_frame(torch::stable::Tensor& tensor) {
+  STD_TORCH_CHECK(tensor.is_contiguous(), "frame handle must be contiguous");
+  return static_cast<AVFrame*>(tensor.mutable_data_ptr());
+}
+
+torch::stable::Tensor wrap_multi_stream_encoder_pointer_to_tensor(
+    std::unique_ptr<MultiStreamEncoder> unique_encoder) {
+  MultiStreamEncoder* encoder = unique_encoder.release();
   auto deleter = [encoder](void*) { delete encoder; };
   int64_t sizes[] = {static_cast<int64_t>(sizeof(MultiStreamEncoder*))};
   int64_t strides[] = {1};
@@ -184,14 +267,14 @@ torch::stable::Tensor wrapMultiStreamEncoderPointerToTensor(
       StableDevice(kStableCPU),
       kStableInt64,
       deleter);
-  auto multiStreamEncoder =
+  auto multi_stream_encoder =
       static_cast<MultiStreamEncoder*>(tensor.mutable_data_ptr());
   STD_TORCH_CHECK(
-      multiStreamEncoder == encoder, "multiStreamEncoder != encoder");
+      multi_stream_encoder == encoder, "multiStreamEncoder != encoder");
   return tensor;
 }
 
-MultiStreamEncoder* unwrapTensorToGetMultiStreamEncoder(
+MultiStreamEncoder* unwrap_tensor_to_get_multi_stream_encoder(
     torch::stable::Tensor& tensor) {
   STD_TORCH_CHECK(
       tensor.is_contiguous(),
@@ -210,11 +293,11 @@ MultiStreamEncoder* unwrapTensorToGetMultiStreamEncoder(
 using OpsFrameOutput = std::
     tuple<torch::stable::Tensor, torch::stable::Tensor, torch::stable::Tensor>;
 
-OpsFrameOutput makeOpsFrameOutput(FrameOutput& frame) {
+OpsFrameOutput make_ops_frame_output(FrameOutput& frame) {
   return std::make_tuple(
       frame.data,
-      torch::stable::full({}, frame.ptsSeconds, kStableFloat64),
-      torch::stable::full({}, frame.durationSeconds, kStableFloat64));
+      torch::stable::full({}, frame.pts_seconds, kStableFloat64),
+      torch::stable::full({}, frame.duration_seconds, kStableFloat64));
 }
 
 // All elements of this tuple are tensors of the same leading dimension. The
@@ -229,8 +312,8 @@ OpsFrameOutput makeOpsFrameOutput(FrameOutput& frame) {
 using OpsFrameBatchOutput = std::
     tuple<torch::stable::Tensor, torch::stable::Tensor, torch::stable::Tensor>;
 
-OpsFrameBatchOutput makeOpsFrameBatchOutput(FrameBatchOutput& batch) {
-  return std::make_tuple(batch.data, batch.ptsSeconds, batch.durationSeconds);
+OpsFrameBatchOutput make_ops_frame_batch_output(FrameBatchOutput& batch) {
+  return std::make_tuple(batch.data, batch.pts_seconds, batch.duration_seconds);
 }
 
 // The elements of this tuple are all tensors that represent the concatenation
@@ -240,34 +323,36 @@ OpsFrameBatchOutput makeOpsFrameBatchOutput(FrameBatchOutput& batch) {
 using OpsAudioFramesOutput =
     std::tuple<torch::stable::Tensor, torch::stable::Tensor>;
 
-OpsAudioFramesOutput makeOpsAudioFramesOutput(AudioFramesOutput& audioFrames) {
+OpsAudioFramesOutput make_ops_audio_frames_output(
+    AudioFramesOutput& audio_frames) {
   return std::make_tuple(
-      audioFrames.data,
-      torch::stable::full({}, audioFrames.ptsSeconds, kStableFloat64));
+      audio_frames.data,
+      torch::stable::full({}, audio_frames.pts_seconds, kStableFloat64));
 }
 
-std::string quoteValue(const std::string& value) {
+std::string quote_value(const std::string& value) {
   return "\"" + value + "\"";
 }
 
 // Helper function to unflatten extra_options, alternating keys and values
-std::map<std::string, std::string> unflattenExtraOptions(
+std::map<std::string, std::string> unflatten_extra_options(
     const std::vector<std::string>& opts) {
-  std::map<std::string, std::string> optionsMap;
+  std::map<std::string, std::string> options_map;
   for (size_t i = 0; i < opts.size(); i += 2) {
-    optionsMap[opts[i]] = opts[i + 1];
+    options_map[opts[i]] = opts[i + 1];
   }
-  return optionsMap;
+  return options_map;
 }
 
-std::string mapToJson(const std::map<std::string, std::string>& metadataMap) {
+std::string map_to_json(
+    const std::map<std::string, std::string>& metadata_map) {
   std::stringstream ss;
   ss << "{\n";
-  auto it = metadataMap.begin();
-  while (it != metadataMap.end()) {
+  auto it = metadata_map.begin();
+  while (it != metadata_map.end()) {
     ss << "\"" << it->first << "\": " << it->second;
     ++it;
-    if (it != metadataMap.end()) {
+    if (it != metadata_map.end()) {
       ss << ",\n";
     } else {
       ss << "\n";
@@ -278,47 +363,48 @@ std::string mapToJson(const std::map<std::string, std::string>& metadataMap) {
   return ss.str();
 }
 
-SeekMode seekModeFromString(std::string_view seekMode) {
-  if (seekMode == "exact") {
+SeekMode seek_mode_from_string(std::string_view seek_mode) {
+  if (seek_mode == "exact") {
     return SeekMode::exact;
-  } else if (seekMode == "approximate") {
+  } else if (seek_mode == "approximate") {
     return SeekMode::approximate;
-  } else if (seekMode == "custom_frame_mappings") {
+  } else if (seek_mode == "custom_frame_mappings") {
     return SeekMode::custom_frame_mappings;
   } else {
-    STD_TORCH_CHECK(false, "Invalid seek mode: " + std::string(seekMode));
+    STD_TORCH_CHECK(false, "Invalid seek mode: " + std::string(seek_mode));
   }
 }
 
-void writeFallbackBasedMetadata(
+void write_fallback_based_metadata(
     std::map<std::string, std::string>& map,
-    const StreamMetadata& streamMetadata,
-    SeekMode seekMode) {
-  auto durationSeconds = streamMetadata.getDurationSeconds(seekMode);
-  if (durationSeconds.has_value()) {
-    map["durationSeconds"] = fmt::to_string(durationSeconds.value());
+    const StreamMetadata& stream_metadata,
+    SeekMode seek_mode) {
+  auto duration_seconds = stream_metadata.get_duration_seconds(seek_mode);
+  if (duration_seconds.has_value()) {
+    map["durationSeconds"] = fmt::to_string(duration_seconds.value());
   }
 
-  auto numFrames = streamMetadata.getNumFrames(seekMode);
-  if (numFrames.has_value()) {
-    map["numFrames"] = std::to_string(numFrames.value());
+  auto num_frames = stream_metadata.get_num_frames(seek_mode);
+  if (num_frames.has_value()) {
+    map["numFrames"] = std::to_string(num_frames.value());
   }
 
-  double beginStreamSeconds = streamMetadata.getBeginStreamSeconds(seekMode);
-  map["beginStreamSeconds"] = fmt::to_string(beginStreamSeconds);
+  double begin_stream_seconds =
+      stream_metadata.get_begin_stream_seconds(seek_mode);
+  map["beginStreamSeconds"] = fmt::to_string(begin_stream_seconds);
 
-  auto endStreamSeconds = streamMetadata.getEndStreamSeconds(seekMode);
-  if (endStreamSeconds.has_value()) {
-    map["endStreamSeconds"] = fmt::to_string(endStreamSeconds.value());
+  auto end_stream_seconds = stream_metadata.get_end_stream_seconds(seek_mode);
+  if (end_stream_seconds.has_value()) {
+    map["endStreamSeconds"] = fmt::to_string(end_stream_seconds.value());
   }
 
-  auto averageFps = streamMetadata.getAverageFps(seekMode);
-  if (averageFps.has_value()) {
-    map["averageFps"] = fmt::to_string(averageFps.value());
+  auto average_fps = stream_metadata.get_average_fps(seek_mode);
+  if (average_fps.has_value()) {
+    map["averageFps"] = fmt::to_string(average_fps.value());
   }
 }
 
-int checkedToPositiveInt(const std::string& str) {
+int checked_to_positive_int(const std::string& str) {
   int ret = 0;
   try {
     ret = std::stoi(str);
@@ -331,7 +417,7 @@ int checkedToPositiveInt(const std::string& str) {
   return ret;
 }
 
-int checkedToNonNegativeInt(const std::string& str) {
+int checked_to_non_negative_int(const std::string& str) {
   int ret = 0;
   try {
     ret = std::stoi(str);
@@ -350,13 +436,13 @@ int checkedToNonNegativeInt(const std::string& str) {
 //
 // Where "resize" is the string literal and <height> and <width> are positive
 // integers.
-Transform* makeResizeTransform(
-    const std::vector<std::string>& resizeTransformSpec) {
+Transform* make_resize_transform(
+    const std::vector<std::string>& resize_transform_spec) {
   STD_TORCH_CHECK(
-      resizeTransformSpec.size() == 3,
+      resize_transform_spec.size() == 3,
       "resizeTransformSpec must have 3 elements including its name");
-  int height = checkedToPositiveInt(resizeTransformSpec[1]);
-  int width = checkedToPositiveInt(resizeTransformSpec[2]);
+  int height = checked_to_positive_int(resize_transform_spec[1]);
+  int width = checked_to_positive_int(resize_transform_spec[2]);
   return new ResizeTransform(FrameDims(height, width));
 }
 
@@ -368,15 +454,15 @@ Transform* makeResizeTransform(
 // positive integers. <x> and <y> are the x and y coordinates of the top left
 // corner of the crop. Note that we follow the PyTorch convention of (height,
 // width) for specifying image dimensions; FFmpeg uses (width, height).
-Transform* makeCropTransform(
-    const std::vector<std::string>& cropTransformSpec) {
+Transform* make_crop_transform(
+    const std::vector<std::string>& crop_transform_spec) {
   STD_TORCH_CHECK(
-      cropTransformSpec.size() == 5,
+      crop_transform_spec.size() == 5,
       "cropTransformSpec must have 5 elements including its name");
-  int height = checkedToPositiveInt(cropTransformSpec[1]);
-  int width = checkedToPositiveInt(cropTransformSpec[2]);
-  int x = checkedToNonNegativeInt(cropTransformSpec[3]);
-  int y = checkedToNonNegativeInt(cropTransformSpec[4]);
+  int height = checked_to_positive_int(crop_transform_spec[1]);
+  int width = checked_to_positive_int(crop_transform_spec[2]);
+  int x = checked_to_non_negative_int(crop_transform_spec[3]);
+  int y = checked_to_non_negative_int(crop_transform_spec[4]);
   return new CropTransform(FrameDims(height, width), x, y);
 }
 
@@ -387,21 +473,21 @@ Transform* makeCropTransform(
 // Where "center_crop" is the string literal and <height>, <width> are
 // positive integers. Note that we follow the PyTorch convention of (height,
 // width) for specifying image dimensions; FFmpeg uses (width, height).
-Transform* makeCenterCropTransform(
-    const std::vector<std::string>& cropTransformSpec) {
+Transform* make_center_crop_transform(
+    const std::vector<std::string>& crop_transform_spec) {
   STD_TORCH_CHECK(
-      cropTransformSpec.size() == 3,
+      crop_transform_spec.size() == 3,
       "cropTransformSpec must have 3 elements including its name");
-  int height = checkedToPositiveInt(cropTransformSpec[1]);
-  int width = checkedToPositiveInt(cropTransformSpec[2]);
+  int height = checked_to_positive_int(crop_transform_spec[1]);
+  int width = checked_to_positive_int(crop_transform_spec[2]);
   return new CropTransform(FrameDims(height, width));
 }
 
 std::vector<std::string> split(const std::string& str, char delimiter) {
   std::vector<std::string> tokens;
   std::string token;
-  std::istringstream tokenStream(str);
-  while (std::getline(tokenStream, token, delimiter)) {
+  std::istringstream token_stream(str);
+  while (std::getline(token_stream, token, delimiter)) {
     tokens.push_back(token);
   }
   return tokens;
@@ -412,22 +498,23 @@ std::vector<std::string> split(const std::string& str, char delimiter) {
 //   "name1, param1, param2, ...; name2, param1, param2, ...; ..."
 //
 // Where "nameX" is the name of the transform, and "paramX" are the parameters.
-std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
+std::vector<Transform*> make_transforms(
+    const std::string& transform_specs_raw) {
   std::vector<Transform*> transforms;
-  std::vector<std::string> transformSpecs = split(transformSpecsRaw, ';');
-  for (const std::string& transformSpecRaw : transformSpecs) {
-    std::vector<std::string> transformSpec = split(transformSpecRaw, ',');
+  std::vector<std::string> transform_specs = split(transform_specs_raw, ';');
+  for (const std::string& transform_spec_raw : transform_specs) {
+    std::vector<std::string> transform_spec = split(transform_spec_raw, ',');
     STD_TORCH_CHECK(
-        transformSpec.size() >= 1,
-        "Invalid transform spec: " + transformSpecRaw);
+        transform_spec.size() >= 1,
+        "Invalid transform spec: " + transform_spec_raw);
 
-    auto name = transformSpec[0];
+    auto name = transform_spec[0];
     if (name == "resize") {
-      transforms.push_back(makeResizeTransform(transformSpec));
+      transforms.push_back(make_resize_transform(transform_spec));
     } else if (name == "crop") {
-      transforms.push_back(makeCropTransform(transformSpec));
+      transforms.push_back(make_crop_transform(transform_spec));
     } else if (name == "center_crop") {
-      transforms.push_back(makeCenterCropTransform(transformSpec));
+      transforms.push_back(make_center_crop_transform(transform_spec));
     } else {
       STD_TORCH_CHECK(false, "Invalid transform name: " + name);
     }
@@ -445,15 +532,15 @@ std::vector<Transform*> makeTransforms(const std::string& transformSpecsRaw) {
 torch::stable::Tensor create_from_file(
     std::string filename,
     std::optional<std::string> seek_mode = std::nullopt) {
-  SeekMode realSeek = SeekMode::exact;
+  SeekMode real_seek = SeekMode::exact;
   if (seek_mode.has_value()) {
-    realSeek = seekModeFromString(seek_mode.value());
+    real_seek = seek_mode_from_string(seek_mode.value());
   }
 
-  std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
-      std::make_unique<SingleStreamDecoder>(filename, realSeek);
+  std::unique_ptr<SingleStreamDecoder> unique_decoder =
+      std::make_unique<SingleStreamDecoder>(filename, real_seek);
 
-  return wrapDecoderPointerToTensor(std::move(uniqueDecoder));
+  return wrap_decoder_pointer_to_tensor(std::move(unique_decoder));
 }
 
 // Create a SingleStreamDecoder from the actual bytes of a video and wrap the
@@ -467,38 +554,40 @@ torch::stable::Tensor create_from_tensor(
       video_tensor.scalar_type() == kStableUInt8,
       "video_tensor must be kUInt8");
 
-  SeekMode realSeek = SeekMode::exact;
+  SeekMode real_seek = SeekMode::exact;
   if (seek_mode.has_value()) {
-    realSeek = seekModeFromString(seek_mode.value());
+    real_seek = seek_mode_from_string(seek_mode.value());
   }
 
-  auto avioContextHolder =
+  auto avio_context_holder =
       std::make_unique<AVIOFromTensorContext>(video_tensor);
 
-  std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
+  std::unique_ptr<SingleStreamDecoder> unique_decoder =
       std::make_unique<SingleStreamDecoder>(
-          std::move(avioContextHolder), realSeek);
-  return wrapDecoderPointerToTensor(std::move(uniqueDecoder));
+          std::move(avio_context_holder), real_seek);
+  return wrap_decoder_pointer_to_tensor(std::move(unique_decoder));
 }
 
 torch::stable::Tensor _create_from_file_like(
     int64_t file_like_context,
     std::optional<std::string> seek_mode) {
-  auto fileLikeContext =
+  auto file_like_context_ptr =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
   STD_TORCH_CHECK(
-      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
-  std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
+      file_like_context_ptr != nullptr,
+      "file_like_context must be a valid pointer");
+  std::unique_ptr<AVIOFileLikeContext> avio_context_holder(
+      file_like_context_ptr);
 
-  SeekMode realSeek = SeekMode::exact;
+  SeekMode real_seek = SeekMode::exact;
   if (seek_mode.has_value()) {
-    realSeek = seekModeFromString(seek_mode.value());
+    real_seek = seek_mode_from_string(seek_mode.value());
   }
 
-  std::unique_ptr<SingleStreamDecoder> uniqueDecoder =
+  std::unique_ptr<SingleStreamDecoder> unique_decoder =
       std::make_unique<SingleStreamDecoder>(
-          std::move(avioContextHolder), realSeek);
-  return wrapDecoderPointerToTensor(std::move(uniqueDecoder));
+          std::move(avio_context_holder), real_seek);
+  return wrap_decoder_pointer_to_tensor(std::move(unique_decoder));
 }
 
 void _add_video_stream(
@@ -516,79 +605,77 @@ void _add_video_stream(
     std::optional<torch::stable::Tensor>
         custom_frame_mappings_keyframe_indices = std::nullopt,
     std::optional<std::string> color_conversion_library = std::nullopt,
-    std::optional<std::string> output_dtype = std::nullopt) {
-  VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.ffmpegThreadCount = num_threads;
+    std::string output_dtype = "uint8") {
+  VideoStreamOptions video_stream_options;
+  video_stream_options.ffmpeg_thread_count = num_threads;
 
-  if (output_dtype.has_value()) {
-    const std::string& val = *output_dtype;
-    if (val == "uint8") {
-      videoStreamOptions.outputDtype = OutputDtype::UINT8;
-    } else if (val == "float32") {
-      videoStreamOptions.outputDtype = OutputDtype::FLOAT32;
-    } else if (val == "auto") {
-      videoStreamOptions.outputDtype = OutputDtype::AUTO;
-    } else {
-      STD_TORCH_CHECK(
-          false,
-          "Invalid output_dtype=",
-          val,
-          ". Supported values are: uint8, float32, auto.");
-    }
+  if (output_dtype == "uint8") {
+    video_stream_options.output_dtype_config = OutputDtypeConfig::UINT8;
+  } else if (output_dtype == "float32") {
+    video_stream_options.output_dtype_config = OutputDtypeConfig::FLOAT32;
+  } else if (output_dtype == "auto") {
+    video_stream_options.output_dtype_config = OutputDtypeConfig::AUTO;
+  } else {
+    STD_TORCH_CHECK(
+        false,
+        "Invalid output_dtype=",
+        output_dtype,
+        ". Supported values are: uint8, float32, auto.");
   }
 
   if (dimension_order.has_value()) {
     STD_TORCH_CHECK(
         *dimension_order == "NHWC" || *dimension_order == "NCHW",
         "dimension_order must be NHWC or NCHW");
-    videoStreamOptions.dimensionOrder = std::move(*dimension_order);
+    video_stream_options.dimension_order = std::move(*dimension_order);
   }
   if (color_conversion_library.has_value()) {
-    const std::string& stdColorConversionLibrary =
+    const std::string& std_color_conversion_library =
         color_conversion_library.value();
-    if (stdColorConversionLibrary == "filtergraph") {
-      videoStreamOptions.colorConversionLibrary =
+    if (std_color_conversion_library == "filtergraph") {
+      video_stream_options.color_conversion_library =
           ColorConversionLibrary::FILTERGRAPH;
-    } else if (stdColorConversionLibrary == "swscale") {
-      videoStreamOptions.colorConversionLibrary =
+    } else if (std_color_conversion_library == "swscale") {
+      video_stream_options.color_conversion_library =
           ColorConversionLibrary::SWSCALE;
     } else {
       STD_TORCH_CHECK(
           false,
           "Invalid color_conversion_library=",
-          stdColorConversionLibrary,
+          std_color_conversion_library,
           ". color_conversion_library must be either filtergraph or swscale.");
     }
   }
 
-  validateDeviceInterface(device, device_variant);
+  validate_device_interface(device, device_variant);
 
-  videoStreamOptions.device = StableDevice(std::move(device));
-  videoStreamOptions.deviceVariant = std::move(device_variant);
+  video_stream_options.device = StableDevice(std::move(device));
+  video_stream_options.device_variant = std::move(device_variant);
 
   std::vector<Transform*> transforms =
-      makeTransforms(std::move(transform_specs));
+      make_transforms(std::move(transform_specs));
 
-  bool hasPts = custom_frame_mappings_pts.has_value();
-  bool hasDuration = custom_frame_mappings_duration.has_value();
-  bool hasKeyframeIndices = custom_frame_mappings_keyframe_indices.has_value();
+  bool has_pts = custom_frame_mappings_pts.has_value();
+  bool has_duration = custom_frame_mappings_duration.has_value();
+  bool has_keyframe_indices =
+      custom_frame_mappings_keyframe_indices.has_value();
   STD_TORCH_CHECK(
-      (hasPts == hasDuration) && (hasDuration == hasKeyframeIndices),
+      (has_pts == has_duration) && (has_duration == has_keyframe_indices),
       "custom_frame_mappings_pts, custom_frame_mappings_duration, and "
       "custom_frame_mappings_keyframe_indices must all be provided or all be "
       "None. This is a bug in TorchCodec, please report it.");
 
-  std::optional<SingleStreamDecoder::FrameMappings> converted_mappings = hasPts
+  std::optional<SingleStreamDecoder::FrameMappings> converted_mappings = has_pts
       ? std::make_optional(SingleStreamDecoder::FrameMappings{
             std::move(*custom_frame_mappings_pts),
             std::move(*custom_frame_mappings_keyframe_indices),
             std::move(*custom_frame_mappings_duration)})
       : std::nullopt;
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  videoDecoder->addVideoStream(
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  video_decoder->add_video_stream(
       stream_index.value_or(-1),
       transforms,
-      videoStreamOptions,
+      video_stream_options,
       converted_mappings);
 }
 
@@ -607,7 +694,7 @@ void add_video_stream(
         std::nullopt,
     std::optional<torch::stable::Tensor>
         custom_frame_mappings_keyframe_indices = std::nullopt,
-    std::optional<std::string> output_dtype = std::nullopt) {
+    std::string output_dtype = "uint8") {
   _add_video_stream(
       decoder,
       num_threads,
@@ -628,32 +715,33 @@ void add_audio_stream(
     std::optional<int64_t> stream_index = std::nullopt,
     std::optional<int64_t> sample_rate = std::nullopt,
     std::optional<int64_t> num_channels = std::nullopt) {
-  AudioStreamOptions audioStreamOptions;
-  audioStreamOptions.sampleRate = sample_rate;
-  audioStreamOptions.numChannels = num_channels;
+  AudioStreamOptions audio_stream_options;
+  audio_stream_options.sample_rate = sample_rate;
+  audio_stream_options.num_channels = num_channels;
 
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  videoDecoder->addAudioStream(stream_index.value_or(-1), audioStreamOptions);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  video_decoder->add_audio_stream(
+      stream_index.value_or(-1), audio_stream_options);
 }
 
 // Seek to a particular presentation timestamp in the video in seconds.
 void seek_to_pts(torch::stable::Tensor& decoder, double seconds) {
-  auto videoDecoder =
+  auto video_decoder =
       static_cast<SingleStreamDecoder*>(decoder.mutable_data_ptr());
-  videoDecoder->setCursorPtsInSeconds(seconds);
+  video_decoder->set_cursor_pts_in_seconds(seconds);
 }
 
 // Get the next frame from the video as a tuple that has the frame data, pts and
 // duration as tensors.
 OpsFrameOutput get_next_frame(torch::stable::Tensor& decoder) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
   FrameOutput result;
   try {
-    result = videoDecoder->getNextFrame();
+    result = video_decoder->get_next_frame();
   } catch (const SingleStreamDecoder::EndOfFileException& e) {
     STABLE_CHECK_INDEX(false, e.what());
   }
-  return makeOpsFrameOutput(result);
+  return make_ops_frame_output(result);
 }
 
 // Return the frame that is visible at a given timestamp in seconds. Each frame
@@ -662,32 +750,32 @@ OpsFrameOutput get_next_frame(torch::stable::Tensor& decoder) {
 OpsFrameOutput get_frame_at_pts(
     torch::stable::Tensor& decoder,
     double seconds) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
   FrameOutput result;
   try {
-    result = videoDecoder->getFramePlayedAt(seconds);
+    result = video_decoder->get_frame_played_at(seconds);
   } catch (const SingleStreamDecoder::EndOfFileException& e) {
     STABLE_CHECK_INDEX(false, e.what());
   }
-  return makeOpsFrameOutput(result);
+  return make_ops_frame_output(result);
 }
 
 // Return the frame that is visible at a given index in the video.
 OpsFrameOutput get_frame_at_index(
     torch::stable::Tensor& decoder,
     int64_t frame_index) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto result = videoDecoder->getFrameAtIndex(frame_index);
-  return makeOpsFrameOutput(result);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  auto result = video_decoder->get_frame_at_index(frame_index);
+  return make_ops_frame_output(result);
 }
 
 // Return the frames at given indices for a given stream
 OpsFrameBatchOutput get_frames_at_indices(
     torch::stable::Tensor& decoder,
     const torch::stable::Tensor& frame_indices) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto result = videoDecoder->getFramesAtIndices(frame_indices);
-  return makeOpsFrameBatchOutput(result);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  auto result = video_decoder->get_frames_at_indices(frame_indices);
+  return make_ops_frame_batch_output(result);
 }
 
 // Return the frames inside a range as a single stacked Tensor. The range is
@@ -697,18 +785,19 @@ OpsFrameBatchOutput get_frames_in_range(
     int64_t start,
     int64_t stop,
     std::optional<int64_t> step = std::nullopt) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto result = videoDecoder->getFramesInRange(start, stop, step.value_or(1));
-  return makeOpsFrameBatchOutput(result);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  auto result =
+      video_decoder->get_frames_in_range(start, stop, step.value_or(1));
+  return make_ops_frame_batch_output(result);
 }
 
 // Return the frames at given ptss for a given stream
 OpsFrameBatchOutput get_frames_by_pts(
     torch::stable::Tensor& decoder,
     const torch::stable::Tensor& timestamps) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto result = videoDecoder->getFramesPlayedAt(timestamps);
-  return makeOpsFrameBatchOutput(result);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  auto result = video_decoder->get_frames_played_at(timestamps);
+  return make_ops_frame_batch_output(result);
 }
 
 // Return the frames inside the range as a single stacked Tensor. The range is
@@ -721,183 +810,132 @@ OpsFrameBatchOutput get_frames_by_pts_in_range(
     double start_seconds,
     double stop_seconds,
     std::optional<double> fps = std::nullopt) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto result =
-      videoDecoder->getFramesPlayedInRange(start_seconds, stop_seconds, fps);
-  return makeOpsFrameBatchOutput(result);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  auto result = video_decoder->get_frames_played_in_range(
+      start_seconds, stop_seconds, fps);
+  return make_ops_frame_batch_output(result);
 }
 
 OpsAudioFramesOutput get_frames_by_pts_in_range_audio(
     torch::stable::Tensor& decoder,
     double start_seconds,
     std::optional<double> stop_seconds = std::nullopt) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto result =
-      videoDecoder->getFramesPlayedInRangeAudio(start_seconds, stop_seconds);
-  return makeOpsAudioFramesOutput(result);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  auto result = video_decoder->get_frames_played_in_range_audio(
+      start_seconds, stop_seconds);
+  return make_ops_audio_frames_output(result);
 }
 
-void encode_audio_to_file(
-    const torch::stable::Tensor& samples,
-    int64_t sample_rate,
-    std::string file_name,
-    std::optional<int64_t> bit_rate = std::nullopt,
-    std::optional<int64_t> num_channels = std::nullopt,
-    std::optional<int64_t> desired_sample_rate = std::nullopt) {
-  AudioStreamOptions audioStreamOptions;
-  audioStreamOptions.bitRate = validateOptionalInt64ToInt(bit_rate, "bit_rate");
-  audioStreamOptions.numChannels =
-      validateOptionalInt64ToInt(num_channels, "num_channels");
-  audioStreamOptions.sampleRate =
-      validateOptionalInt64ToInt(desired_sample_rate, "desired_sample_rate");
-  AudioEncoder(
-      samples,
-      validateInt64ToInt(sample_rate, "sample_rate"),
-      file_name,
-      audioStreamOptions)
-      .encode();
-}
+// ==============================
+// Building-block ops (torchcodec.decoders._blocks)
+// ==============================
 
-torch::stable::Tensor encode_audio_to_tensor(
-    const torch::stable::Tensor& samples,
-    int64_t sample_rate,
-    std::string format,
-    std::optional<int64_t> bit_rate = std::nullopt,
-    std::optional<int64_t> num_channels = std::nullopt,
-    std::optional<int64_t> desired_sample_rate = std::nullopt) {
-  auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
-  AudioStreamOptions audioStreamOptions;
-  audioStreamOptions.bitRate = validateOptionalInt64ToInt(bit_rate, "bit_rate");
-  audioStreamOptions.numChannels =
-      validateOptionalInt64ToInt(num_channels, "num_channels");
-  audioStreamOptions.sampleRate =
-      validateOptionalInt64ToInt(desired_sample_rate, "desired_sample_rate");
-  return AudioEncoder(
-             samples,
-             validateInt64ToInt(sample_rate, "sample_rate"),
-             format,
-             std::move(avioContextHolder),
-             audioStreamOptions)
-      .encodeToTensor();
-}
-
-void _encode_audio_to_file_like(
-    const torch::stable::Tensor& samples,
-    int64_t sample_rate,
-    std::string format,
-    int64_t file_like_context,
-    std::optional<int64_t> bit_rate = std::nullopt,
-    std::optional<int64_t> num_channels = std::nullopt,
-    std::optional<int64_t> desired_sample_rate = std::nullopt) {
-  auto fileLikeContext =
-      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
-  STD_TORCH_CHECK(
-      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
-  std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
-
-  AudioStreamOptions audioStreamOptions;
-  audioStreamOptions.bitRate = validateOptionalInt64ToInt(bit_rate, "bit_rate");
-  audioStreamOptions.numChannels =
-      validateOptionalInt64ToInt(num_channels, "num_channels");
-  audioStreamOptions.sampleRate =
-      validateOptionalInt64ToInt(desired_sample_rate, "desired_sample_rate");
-
-  AudioEncoder encoder(
-      samples,
-      validateInt64ToInt(sample_rate, "sample_rate"),
-      format,
-      std::move(avioContextHolder),
-      audioStreamOptions);
-  encoder.encode();
-}
-
-void encode_video_to_file(
-    const torch::stable::Tensor& frames,
-    double frame_rate,
-    std::string file_name,
-    std::optional<std::string> codec = std::nullopt,
-    std::optional<std::string> pixel_format = std::nullopt,
-    std::optional<double> crf = std::nullopt,
-    std::optional<std::string> preset = std::nullopt,
-    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
-  VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.codec = std::move(codec);
-  videoStreamOptions.pixelFormat = std::move(pixel_format);
-  videoStreamOptions.crf = crf;
-  videoStreamOptions.preset = preset;
-
-  if (extra_options.has_value()) {
-    videoStreamOptions.extraOptions =
-        unflattenExtraOptions(extra_options.value());
+torch::stable::Tensor _blocks_create_demuxer(
+    std::string filename,
+    std::optional<int64_t> stream_index) {
+  std::optional<int> stream_index_int;
+  if (stream_index.has_value()) {
+    stream_index_int = static_cast<int>(stream_index.value());
   }
-
-  VideoEncoder(frames, frame_rate, file_name, videoStreamOptions).encode();
+  auto demuxer = std::make_unique<Demuxer>(filename, stream_index_int);
+  return wrap_pointer_to_tensor<Demuxer>(std::move(demuxer));
 }
 
-torch::stable::Tensor encode_video_to_tensor(
-    const torch::stable::Tensor& frames,
-    double frame_rate,
-    std::string format,
-    std::optional<std::string> codec = std::nullopt,
-    std::optional<std::string> pixel_format = std::nullopt,
-    std::optional<double> crf = std::nullopt,
-    std::optional<std::string> preset = std::nullopt,
-    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
-  auto avioContextHolder = std::make_unique<AVIOToTensorContext>();
-  VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.codec = std::move(codec);
-  videoStreamOptions.pixelFormat = std::move(pixel_format);
-  videoStreamOptions.crf = crf;
-  videoStreamOptions.preset = preset;
+// (packet_handle, is_eof). On EOF the packet_handle is a dummy tensor that must
+// not be used. Native bool avoids per-frame .item() overhead in Python.
+using OpsPacketOutput = std::tuple<torch::stable::Tensor, bool>;
 
-  if (extra_options.has_value()) {
-    videoStreamOptions.extraOptions =
-        unflattenExtraOptions(extra_options.value());
+OpsPacketOutput _blocks_demuxer_next_packet(torch::stable::Tensor& demuxer) {
+  Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
+  AVPacket* packet = demuxer_ptr->next_packet();
+  if (packet == nullptr) {
+    return std::make_tuple(torch::stable::full({1}, 0, kStableInt64), true);
   }
-
-  return VideoEncoder(
-             frames,
-             frame_rate,
-             format,
-             std::move(avioContextHolder),
-             videoStreamOptions)
-      .encodeToTensor();
+  return std::make_tuple(wrap_packet_pointer_to_tensor(packet), false);
 }
 
-void _encode_video_to_file_like(
-    const torch::stable::Tensor& frames,
-    double frame_rate,
-    std::string format,
-    int64_t file_like_context,
-    std::optional<std::string> codec = std::nullopt,
-    std::optional<std::string> pixel_format = std::nullopt,
-    std::optional<double> crf = std::nullopt,
-    std::optional<std::string> preset = std::nullopt,
-    std::optional<std::vector<std::string>> extra_options = std::nullopt) {
-  auto fileLikeContext =
-      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
-  STD_TORCH_CHECK(
-      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
-  std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
-
-  VideoStreamOptions videoStreamOptions;
-  videoStreamOptions.codec = std::move(codec);
-  videoStreamOptions.pixelFormat = std::move(pixel_format);
-  videoStreamOptions.crf = crf;
-  videoStreamOptions.preset = preset;
-
-  if (extra_options.has_value()) {
-    videoStreamOptions.extraOptions =
-        unflattenExtraOptions(extra_options.value());
+torch::stable::Tensor _blocks_create_packet_decoder(
+    torch::stable::Tensor& demuxer,
+    std::optional<int64_t> num_threads,
+    std::string device,
+    std::string device_variant) {
+  Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
+  validate_device_interface(device, device_variant);
+  std::optional<int> thread_count;
+  if (num_threads.has_value()) {
+    thread_count = static_cast<int>(num_threads.value());
   }
+  auto decoder = std::make_unique<PacketDecoder>(
+      *demuxer_ptr, StableDevice(device), device_variant, thread_count);
+  return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));
+}
 
-  VideoEncoder encoder(
-      frames,
-      frame_rate,
-      format,
-      std::move(avioContextHolder),
-      videoStreamOptions);
-  encoder.encode();
+int64_t _blocks_packet_decoder_send_packet(
+    torch::stable::Tensor& decoder,
+    torch::stable::Tensor& packet) {
+  PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
+  AVPacket* raw_packet = unwrap_tensor_to_packet(packet);
+  return static_cast<int64_t>(decoder_ptr->send_packet(raw_packet));
+}
+
+int64_t _blocks_packet_decoder_send_eof(torch::stable::Tensor& decoder) {
+  PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
+  return static_cast<int64_t>(decoder_ptr->send_eof());
+}
+
+// (frame_handle, status, pts_seconds, duration_seconds). status == 0 means a
+// frame was produced; nonzero (EAGAIN/EOF) means no frame (dummy handle,
+// zeros). pts/duration are stamped here (the decoder knows the stream time
+// base) so the ColorConverter doesn't need to be bound to a stream. Native
+// scalars avoid per-frame .item() overhead.
+using OpsReceiveFrameOutput =
+    std::tuple<torch::stable::Tensor, int64_t, double, double>;
+
+OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
+    torch::stable::Tensor& decoder) {
+  PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
+  UniqueAVFrame av_frame(av_frame_alloc());
+  STD_TORCH_CHECK(av_frame != nullptr, "Failed to allocate AVFrame");
+  int status = decoder_ptr->receive_frame(av_frame);
+  if (status != AVSUCCESS) {
+    return std::make_tuple(
+        torch::stable::full({1}, 0, kStableInt64),
+        static_cast<int64_t>(status),
+        0.0,
+        0.0);
+  }
+  AVRational time_base = decoder_ptr->time_base();
+  double pts_seconds = pts_to_seconds(get_pts_or_dts(av_frame), time_base);
+  double duration_seconds = pts_to_seconds(get_duration(av_frame), time_base);
+  AVFrame* raw_frame = av_frame.release();
+  return std::make_tuple(
+      wrap_frame_pointer_to_tensor(raw_frame),
+      static_cast<int64_t>(0),
+      pts_seconds,
+      duration_seconds);
+}
+
+torch::stable::Tensor _blocks_create_color_converter(
+    std::string device,
+    std::string device_variant) {
+  validate_device_interface(device, device_variant);
+  auto converter =
+      std::make_unique<ColorConverter>(StableDevice(device), device_variant);
+  return wrap_pointer_to_tensor<ColorConverter>(std::move(converter));
+}
+
+torch::stable::Tensor _blocks_convert_frame(
+    torch::stable::Tensor& converter,
+    torch::stable::Tensor& frame) {
+  ColorConverter* converter_ptr =
+      unwrap_tensor_to_pointer<ColorConverter>(converter);
+  AVFrame* raw_frame = unwrap_tensor_to_frame(frame);
+  // Borrow the frame for conversion, then release() so the handle keeps
+  // ownership and frees it when its tensor is dropped (CPU path).
+  UniqueAVFrame borrowed(raw_frame);
+  torch::stable::Tensor data = converter_ptr->convert(borrowed);
+  borrowed.release();
+  return data;
 }
 
 // For testing only. We need to implement this operation as a core library
@@ -913,215 +951,216 @@ bool _test_frame_pts_equality(
     torch::stable::Tensor& decoder,
     int64_t frame_index,
     double pts_seconds_to_test) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
   return pts_seconds_to_test ==
-      videoDecoder->getPtsSecondsForFrame(frame_index);
+      video_decoder->get_pts_seconds_for_frame(frame_index);
 }
 
 torch::stable::Tensor _get_key_frame_indices(torch::stable::Tensor& decoder) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  return videoDecoder->getKeyFrameIndices();
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  return video_decoder->get_key_frame_indices();
 }
 
 // Get the metadata from the video as a string.
 std::string get_json_metadata(torch::stable::Tensor& decoder) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
 
-  ContainerMetadata videoMetadata = videoDecoder->getContainerMetadata();
-  auto maybeBestVideoStreamIndex = videoMetadata.bestVideoStreamIndex;
+  ContainerMetadata video_metadata = video_decoder->get_container_metadata();
+  auto maybe_best_video_stream_index = video_metadata.best_video_stream_index;
 
-  std::map<std::string, std::string> metadataMap;
+  std::map<std::string, std::string> metadata_map;
   // serialize the metadata into a string std::stringstream ss;
-  double durationSecondsFromHeader = 0;
-  if (maybeBestVideoStreamIndex.has_value() &&
-      videoMetadata.allStreamMetadata[*maybeBestVideoStreamIndex]
-          .durationSecondsFromHeader.has_value()) {
-    durationSecondsFromHeader =
-        videoMetadata.allStreamMetadata[*maybeBestVideoStreamIndex]
-            .durationSecondsFromHeader.value_or(0);
+  double duration_seconds_from_header = 0;
+  if (maybe_best_video_stream_index.has_value() &&
+      video_metadata.all_stream_metadata[*maybe_best_video_stream_index]
+          .duration_seconds_from_header.has_value()) {
+    duration_seconds_from_header =
+        video_metadata.all_stream_metadata[*maybe_best_video_stream_index]
+            .duration_seconds_from_header.value_or(0);
   } else {
     // Fallback to container-level duration if stream duration is not found.
-    durationSecondsFromHeader =
-        videoMetadata.durationSecondsFromHeader.value_or(0);
+    duration_seconds_from_header =
+        video_metadata.duration_seconds_from_header.value_or(0);
   }
-  metadataMap["durationSecondsFromHeader"] =
-      fmt::to_string(durationSecondsFromHeader);
+  metadata_map["durationSecondsFromHeader"] =
+      fmt::to_string(duration_seconds_from_header);
 
-  if (videoMetadata.bitRate.has_value()) {
-    metadataMap["bitRate"] = fmt::to_string(videoMetadata.bitRate.value());
-  }
-
-  if (maybeBestVideoStreamIndex.has_value()) {
-    auto streamMetadata =
-        videoMetadata.allStreamMetadata[*maybeBestVideoStreamIndex];
-    if (streamMetadata.numFramesFromContent.has_value()) {
-      metadataMap["numFramesFromHeader"] =
-          std::to_string(*streamMetadata.numFramesFromContent);
-    } else if (streamMetadata.numFramesFromHeader.has_value()) {
-      metadataMap["numFramesFromHeader"] =
-          std::to_string(*streamMetadata.numFramesFromHeader);
-    }
-    if (streamMetadata.beginStreamPtsSecondsFromContent.has_value()) {
-      metadataMap["beginStreamSecondsFromContent"] =
-          fmt::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
-    }
-    if (streamMetadata.endStreamPtsSecondsFromContent.has_value()) {
-      metadataMap["endStreamSecondsFromContent"] =
-          fmt::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
-    }
-    if (streamMetadata.codecName.has_value()) {
-      metadataMap["codec"] = quoteValue(streamMetadata.codecName.value());
-    }
-    if (streamMetadata.postRotationWidth.has_value()) {
-      metadataMap["width"] = std::to_string(*streamMetadata.postRotationWidth);
-    }
-    if (streamMetadata.postRotationHeight.has_value()) {
-      metadataMap["height"] =
-          std::to_string(*streamMetadata.postRotationHeight);
-    }
-    if (streamMetadata.averageFpsFromHeader.has_value()) {
-      metadataMap["averageFpsFromHeader"] =
-          fmt::to_string(*streamMetadata.averageFpsFromHeader);
-    }
-  }
-  if (videoMetadata.bestVideoStreamIndex.has_value()) {
-    metadataMap["bestVideoStreamIndex"] =
-        std::to_string(*videoMetadata.bestVideoStreamIndex);
-  }
-  if (videoMetadata.bestAudioStreamIndex.has_value()) {
-    metadataMap["bestAudioStreamIndex"] =
-        std::to_string(*videoMetadata.bestAudioStreamIndex);
+  if (video_metadata.bit_rate.has_value()) {
+    metadata_map["bitRate"] = fmt::to_string(video_metadata.bit_rate.value());
   }
 
-  return mapToJson(metadataMap);
+  if (maybe_best_video_stream_index.has_value()) {
+    auto stream_metadata =
+        video_metadata.all_stream_metadata[*maybe_best_video_stream_index];
+    if (stream_metadata.num_frames_from_content.has_value()) {
+      metadata_map["numFramesFromHeader"] =
+          std::to_string(*stream_metadata.num_frames_from_content);
+    } else if (stream_metadata.num_frames_from_header.has_value()) {
+      metadata_map["numFramesFromHeader"] =
+          std::to_string(*stream_metadata.num_frames_from_header);
+    }
+    if (stream_metadata.begin_stream_pts_seconds_from_content.has_value()) {
+      metadata_map["beginStreamSecondsFromContent"] = fmt::to_string(
+          *stream_metadata.begin_stream_pts_seconds_from_content);
+    }
+    if (stream_metadata.end_stream_pts_seconds_from_content.has_value()) {
+      metadata_map["endStreamSecondsFromContent"] =
+          fmt::to_string(*stream_metadata.end_stream_pts_seconds_from_content);
+    }
+    if (stream_metadata.codec_name.has_value()) {
+      metadata_map["codec"] = quote_value(stream_metadata.codec_name.value());
+    }
+    if (stream_metadata.post_rotation_width.has_value()) {
+      metadata_map["width"] =
+          std::to_string(*stream_metadata.post_rotation_width);
+    }
+    if (stream_metadata.post_rotation_height.has_value()) {
+      metadata_map["height"] =
+          std::to_string(*stream_metadata.post_rotation_height);
+    }
+    if (stream_metadata.average_fps_from_header.has_value()) {
+      metadata_map["averageFpsFromHeader"] =
+          fmt::to_string(*stream_metadata.average_fps_from_header);
+    }
+  }
+  if (video_metadata.best_video_stream_index.has_value()) {
+    metadata_map["bestVideoStreamIndex"] =
+        std::to_string(*video_metadata.best_video_stream_index);
+  }
+  if (video_metadata.best_audio_stream_index.has_value()) {
+    metadata_map["bestAudioStreamIndex"] =
+        std::to_string(*video_metadata.best_audio_stream_index);
+  }
+
+  return map_to_json(metadata_map);
 }
 
 // Get the container metadata as a string.
 std::string get_container_json_metadata(torch::stable::Tensor& decoder) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
 
-  auto containerMetadata = videoDecoder->getContainerMetadata();
+  auto container_metadata = video_decoder->get_container_metadata();
 
   std::map<std::string, std::string> map;
 
-  if (containerMetadata.durationSecondsFromHeader.has_value()) {
+  if (container_metadata.duration_seconds_from_header.has_value()) {
     map["durationSecondsFromHeader"] =
-        fmt::to_string(*containerMetadata.durationSecondsFromHeader);
+        fmt::to_string(*container_metadata.duration_seconds_from_header);
   }
 
-  if (containerMetadata.bitRate.has_value()) {
-    map["bitRate"] = fmt::to_string(*containerMetadata.bitRate);
+  if (container_metadata.bit_rate.has_value()) {
+    map["bitRate"] = fmt::to_string(*container_metadata.bit_rate);
   }
 
-  if (containerMetadata.bestVideoStreamIndex.has_value()) {
+  if (container_metadata.best_video_stream_index.has_value()) {
     map["bestVideoStreamIndex"] =
-        std::to_string(*containerMetadata.bestVideoStreamIndex);
+        std::to_string(*container_metadata.best_video_stream_index);
   }
-  if (containerMetadata.bestAudioStreamIndex.has_value()) {
+  if (container_metadata.best_audio_stream_index.has_value()) {
     map["bestAudioStreamIndex"] =
-        std::to_string(*containerMetadata.bestAudioStreamIndex);
+        std::to_string(*container_metadata.best_audio_stream_index);
   }
 
   map["numStreams"] =
-      std::to_string(containerMetadata.allStreamMetadata.size());
+      std::to_string(container_metadata.all_stream_metadata.size());
 
-  return mapToJson(map);
+  return map_to_json(map);
 }
 
 // Get the stream metadata as a string.
 std::string get_stream_json_metadata(
     torch::stable::Tensor& decoder,
     int64_t stream_index) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  auto allStreamMetadata =
-      videoDecoder->getContainerMetadata().allStreamMetadata;
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  auto all_stream_metadata =
+      video_decoder->get_container_metadata().all_stream_metadata;
   STABLE_CHECK_INDEX(
       stream_index >= 0 &&
-          stream_index < static_cast<int64_t>(allStreamMetadata.size()),
+          stream_index < static_cast<int64_t>(all_stream_metadata.size()),
       "stream_index out of bounds: " + std::to_string(stream_index));
 
-  auto streamMetadata = allStreamMetadata[stream_index];
-  auto seekMode = videoDecoder->getSeekMode();
-  int activeStreamIndex = videoDecoder->getActiveStreamIndex();
+  auto stream_metadata = all_stream_metadata[stream_index];
+  auto seek_mode = video_decoder->get_seek_mode();
+  int active_stream_index = video_decoder->get_active_stream_index();
 
   std::map<std::string, std::string> map;
 
-  if (streamMetadata.durationSecondsFromHeader.has_value()) {
+  if (stream_metadata.duration_seconds_from_header.has_value()) {
     map["durationSecondsFromHeader"] =
-        fmt::to_string(*streamMetadata.durationSecondsFromHeader);
+        fmt::to_string(*stream_metadata.duration_seconds_from_header);
   }
-  if (streamMetadata.bitRate.has_value()) {
-    map["bitRate"] = fmt::to_string(*streamMetadata.bitRate);
+  if (stream_metadata.bit_rate.has_value()) {
+    map["bitRate"] = fmt::to_string(*stream_metadata.bit_rate);
   }
-  if (streamMetadata.numFramesFromContent.has_value()) {
+  if (stream_metadata.num_frames_from_content.has_value()) {
     map["numFramesFromContent"] =
-        std::to_string(*streamMetadata.numFramesFromContent);
+        std::to_string(*stream_metadata.num_frames_from_content);
   }
-  if (streamMetadata.numFramesFromHeader.has_value()) {
+  if (stream_metadata.num_frames_from_header.has_value()) {
     map["numFramesFromHeader"] =
-        std::to_string(*streamMetadata.numFramesFromHeader);
+        std::to_string(*stream_metadata.num_frames_from_header);
   }
-  if (streamMetadata.beginStreamSecondsFromHeader.has_value()) {
+  if (stream_metadata.begin_stream_seconds_from_header.has_value()) {
     map["beginStreamSecondsFromHeader"] =
-        fmt::to_string(*streamMetadata.beginStreamSecondsFromHeader);
+        fmt::to_string(*stream_metadata.begin_stream_seconds_from_header);
   }
-  if (streamMetadata.beginStreamPtsSecondsFromContent.has_value()) {
+  if (stream_metadata.begin_stream_pts_seconds_from_content.has_value()) {
     map["beginStreamSecondsFromContent"] =
-        fmt::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
+        fmt::to_string(*stream_metadata.begin_stream_pts_seconds_from_content);
   }
-  if (streamMetadata.endStreamPtsSecondsFromContent.has_value()) {
+  if (stream_metadata.end_stream_pts_seconds_from_content.has_value()) {
     map["endStreamSecondsFromContent"] =
-        fmt::to_string(*streamMetadata.endStreamPtsSecondsFromContent);
+        fmt::to_string(*stream_metadata.end_stream_pts_seconds_from_content);
   }
-  if (streamMetadata.codecName.has_value()) {
-    map["codec"] = quoteValue(streamMetadata.codecName.value());
+  if (stream_metadata.codec_name.has_value()) {
+    map["codec"] = quote_value(stream_metadata.codec_name.value());
   }
-  if (streamMetadata.postRotationWidth.has_value()) {
-    map["width"] = std::to_string(*streamMetadata.postRotationWidth);
+  if (stream_metadata.post_rotation_width.has_value()) {
+    map["width"] = std::to_string(*stream_metadata.post_rotation_width);
   }
-  if (streamMetadata.postRotationHeight.has_value()) {
-    map["height"] = std::to_string(*streamMetadata.postRotationHeight);
+  if (stream_metadata.post_rotation_height.has_value()) {
+    map["height"] = std::to_string(*stream_metadata.post_rotation_height);
   }
-  if (streamMetadata.sampleAspectRatio.has_value()) {
+  if (stream_metadata.sample_aspect_ratio.has_value()) {
     map["sampleAspectRatioNum"] =
-        std::to_string((*streamMetadata.sampleAspectRatio).num);
+        std::to_string((*stream_metadata.sample_aspect_ratio).num);
     map["sampleAspectRatioDen"] =
-        std::to_string((*streamMetadata.sampleAspectRatio).den);
+        std::to_string((*stream_metadata.sample_aspect_ratio).den);
   }
-  if (streamMetadata.rotation.has_value()) {
-    map["rotation"] = std::to_string(*streamMetadata.rotation);
+  if (stream_metadata.rotation.has_value()) {
+    map["rotation"] = std::to_string(*stream_metadata.rotation);
   }
-  if (auto name = streamMetadata.getColorPrimariesName()) {
-    map["colorPrimaries"] = quoteValue(*name);
+  if (auto name = stream_metadata.get_color_primaries_name()) {
+    map["colorPrimaries"] = quote_value(*name);
   }
-  if (auto name = streamMetadata.getColorSpaceName()) {
-    map["colorSpace"] = quoteValue(*name);
+  if (auto name = stream_metadata.get_color_space_name()) {
+    map["colorSpace"] = quote_value(*name);
   }
-  if (auto name = streamMetadata.getColorTransferCharacteristicName()) {
-    map["colorTransferCharacteristic"] = quoteValue(*name);
+  if (auto name = stream_metadata.get_color_transfer_characteristic_name()) {
+    map["colorTransferCharacteristic"] = quote_value(*name);
   }
-  if (streamMetadata.pixelFormat.has_value()) {
-    map["pixelFormat"] = quoteValue(streamMetadata.pixelFormat.value());
+  if (stream_metadata.pixel_format.has_value()) {
+    map["pixelFormat"] = quote_value(stream_metadata.pixel_format.value());
   }
-  if (streamMetadata.averageFpsFromHeader.has_value()) {
+  if (stream_metadata.average_fps_from_header.has_value()) {
     map["averageFpsFromHeader"] =
-        fmt::to_string(*streamMetadata.averageFpsFromHeader);
+        fmt::to_string(*stream_metadata.average_fps_from_header);
   }
-  if (streamMetadata.sampleRate.has_value()) {
-    map["sampleRate"] = std::to_string(*streamMetadata.sampleRate);
+  if (stream_metadata.sample_rate.has_value()) {
+    map["sampleRate"] = std::to_string(*stream_metadata.sample_rate);
   }
-  if (streamMetadata.numChannels.has_value()) {
-    map["numChannels"] = std::to_string(*streamMetadata.numChannels);
+  if (stream_metadata.num_channels.has_value()) {
+    map["numChannels"] = std::to_string(*stream_metadata.num_channels);
   }
-  if (streamMetadata.sampleFormat.has_value()) {
-    map["sampleFormat"] = quoteValue(streamMetadata.sampleFormat.value());
+  if (stream_metadata.sample_format.has_value()) {
+    map["sampleFormat"] = quote_value(stream_metadata.sample_format.value());
   }
-  if (streamMetadata.mediaType == AVMEDIA_TYPE_VIDEO) {
-    map["mediaType"] = quoteValue("video");
-  } else if (streamMetadata.mediaType == AVMEDIA_TYPE_AUDIO) {
-    map["mediaType"] = quoteValue("audio");
+  if (stream_metadata.media_type == AVMEDIA_TYPE_VIDEO) {
+    map["mediaType"] = quote_value("video");
+  } else if (stream_metadata.media_type == AVMEDIA_TYPE_AUDIO) {
+    map["mediaType"] = quote_value("audio");
   } else {
-    map["mediaType"] = quoteValue("other");
+    map["mediaType"] = quote_value("other");
   }
 
   // Check whether content-based metadata is available for this stream.
@@ -1133,11 +1172,11 @@ std::string get_stream_json_metadata(
   // Our fallback logic assumes content-based metadata is available.
   // It is available for decoding on the active stream, but would break
   // when getting metadata from non-active streams.
-  if ((seekMode != SeekMode::custom_frame_mappings) ||
-      (seekMode == SeekMode::custom_frame_mappings &&
-       stream_index == activeStreamIndex)) {
-    writeFallbackBasedMetadata(map, streamMetadata, seekMode);
-  } else if (seekMode == SeekMode::custom_frame_mappings) {
+  if ((seek_mode != SeekMode::custom_frame_mappings) ||
+      (seek_mode == SeekMode::custom_frame_mappings &&
+       stream_index == active_stream_index)) {
+    write_fallback_based_metadata(map, stream_metadata, seek_mode);
+  } else if (seek_mode == SeekMode::custom_frame_mappings) {
     // If this is not the active stream, then we don't have content-based
     // metadata for custom frame mappings. In that case, we want the same
     // behavior as we would get with approximate mode. Encoding this behavior in
@@ -1150,10 +1189,10 @@ std::string get_stream_json_metadata(
     //       not the constructor because we need to know the stream index. If we
     //       can encode the relevant stream indices into custom frame mappings
     //       itself, then we can put it in the constructor.
-    writeFallbackBasedMetadata(map, streamMetadata, SeekMode::approximate);
+    write_fallback_based_metadata(map, stream_metadata, SeekMode::approximate);
   }
 
-  return mapToJson(map);
+  return map_to_json(map);
 }
 
 // Returns version information about the various FFMPEG libraries that are
@@ -1189,8 +1228,8 @@ std::string _get_json_ffmpeg_library_versions() {
 }
 
 std::string get_backend_details(torch::stable::Tensor& decoder) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  return videoDecoder->getDeviceInterfaceDetails();
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  return video_decoder->get_device_interface_details();
 }
 
 // Scans video packets to get more accurate metadata like frame count, exact
@@ -1198,17 +1237,17 @@ std::string get_backend_details(torch::stable::Tensor& decoder) {
 // accurate seeking. Note that this function reads the entire video but it does
 // not decode frames. Reading a video file is much cheaper than decoding it.
 void scan_all_streams_to_update_metadata(torch::stable::Tensor& decoder) {
-  auto videoDecoder = unwrapTensorToGetDecoder(decoder);
-  videoDecoder->scanFileAndUpdateMetadataAndIndex();
+  auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
+  video_decoder->scan_file_and_update_metadata_and_index();
 }
 
 torch::stable::Tensor create_streaming_encoder() {
   auto encoder = std::make_unique<MultiStreamEncoder>();
-  return wrapMultiStreamEncoderPointerToTensor(std::move(encoder));
+  return wrap_multi_stream_encoder_pointer_to_tensor(std::move(encoder));
 }
 
 void streaming_encoder_close(torch::stable::Tensor& encoder) {
-  unwrapTensorToGetMultiStreamEncoder(encoder)->close();
+  unwrap_tensor_to_get_multi_stream_encoder(encoder)->close();
 }
 
 int64_t streaming_encoder_add_video_stream(
@@ -1222,12 +1261,12 @@ int64_t streaming_encoder_add_video_stream(
     std::optional<double> crf = std::nullopt,
     std::optional<std::string> preset = std::nullopt,
     std::optional<std::vector<std::string>> extra_options = std::nullopt) {
-  std::optional<std::map<std::string, std::string>> extraOptionsMap;
+  std::optional<std::map<std::string, std::string>> extra_options_map;
   if (extra_options.has_value()) {
-    extraOptionsMap = unflattenExtraOptions(extra_options.value());
+    extra_options_map = unflatten_extra_options(extra_options.value());
   }
   return static_cast<int64_t>(
-      unwrapTensorToGetMultiStreamEncoder(encoder)->addVideoStream(
+      unwrap_tensor_to_get_multi_stream_encoder(encoder)->add_video_stream(
           static_cast<int>(height),
           static_cast<int>(width),
           frame_rate,
@@ -1236,26 +1275,28 @@ int64_t streaming_encoder_add_video_stream(
           std::move(pixel_format),
           crf,
           std::move(preset),
-          std::move(extraOptionsMap)));
+          std::move(extra_options_map)));
 }
 
 void streaming_encoder_open_file(
     torch::stable::Tensor& encoder,
     std::string filename) {
-  unwrapTensorToGetMultiStreamEncoder(encoder)->open(filename);
+  unwrap_tensor_to_get_multi_stream_encoder(encoder)->open(filename);
 }
 
 void streaming_encoder_open_file_like(
     torch::stable::Tensor& encoder,
     std::string format,
     int64_t file_like_context) {
-  auto fileLikeContext =
+  auto file_like_context_ptr =
       reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
   STD_TORCH_CHECK(
-      fileLikeContext != nullptr, "file_like_context must be a valid pointer");
-  std::unique_ptr<AVIOFileLikeContext> avioContextHolder(fileLikeContext);
-  unwrapTensorToGetMultiStreamEncoder(encoder)->open(
-      format, std::move(avioContextHolder));
+      file_like_context_ptr != nullptr,
+      "file_like_context must be a valid pointer");
+  std::unique_ptr<AVIOFileLikeContext> avio_context_holder(
+      file_like_context_ptr);
+  unwrap_tensor_to_get_multi_stream_encoder(encoder)->open(
+      format, std::move(avio_context_holder));
 }
 
 int64_t streaming_encoder_add_audio_stream(
@@ -1266,13 +1307,13 @@ int64_t streaming_encoder_add_audio_stream(
     std::optional<int64_t> output_num_channels = std::nullopt,
     std::optional<int64_t> output_sample_rate = std::nullopt) {
   return static_cast<int64_t>(
-      unwrapTensorToGetMultiStreamEncoder(encoder)->addAudioStream(
-          validateInt64ToInt(sample_rate, "sample_rate"),
-          validateInt64ToInt(num_channels, "num_channels"),
-          validateOptionalInt64ToInt(bit_rate, "bit_rate"),
-          validateOptionalInt64ToInt(
+      unwrap_tensor_to_get_multi_stream_encoder(encoder)->add_audio_stream(
+          validate_int64_to_int(sample_rate, "sample_rate"),
+          validate_int64_to_int(num_channels, "num_channels"),
+          validate_optional_int64_to_int(bit_rate, "bit_rate"),
+          validate_optional_int64_to_int(
               output_num_channels, "output_num_channels"),
-          validateOptionalInt64ToInt(
+          validate_optional_int64_to_int(
               output_sample_rate, "output_sample_rate")));
 }
 
@@ -1280,7 +1321,7 @@ void streaming_encoder_add_frames(
     torch::stable::Tensor& encoder,
     const torch::stable::Tensor& frames,
     int64_t stream_index) {
-  unwrapTensorToGetMultiStreamEncoder(encoder)->addFrames(
+  unwrap_tensor_to_get_multi_stream_encoder(encoder)->add_frames(
       frames, static_cast<int>(stream_index));
 }
 
@@ -1288,88 +1329,106 @@ void streaming_encoder_add_samples(
     torch::stable::Tensor& encoder,
     const torch::stable::Tensor& samples,
     int64_t stream_index) {
-  unwrapTensorToGetMultiStreamEncoder(encoder)->addSamples(
+  unwrap_tensor_to_get_multi_stream_encoder(encoder)->add_samples(
       samples, static_cast<int>(stream_index));
 }
 
 torch::stable::Tensor create_wav_decoder_from_file(
     const std::string& filename) {
-  auto decoder = std::make_unique<WavDecoder>(filename);
-  return wrapWavDecoderPointerToTensor(std::move(decoder));
+  auto avio_context = std::make_unique<AVIOFileContext>(filename);
+  auto decoder = std::make_unique<WavDecoder>(std::move(avio_context));
+  return wrap_wav_decoder_pointer_to_tensor(std::move(decoder));
+}
+
+torch::stable::Tensor create_wav_decoder_from_tensor(
+    const torch::stable::Tensor& data) {
+  auto avio_context = std::make_unique<AVIOFromTensorContext>(data);
+  auto decoder = std::make_unique<WavDecoder>(std::move(avio_context));
+  return wrap_wav_decoder_pointer_to_tensor(std::move(decoder));
+}
+
+torch::stable::Tensor _create_wav_decoder_from_file_like(
+    int64_t file_like_context) {
+  auto file_like_context_ptr =
+      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+  std::unique_ptr<AVIOFileLikeContext> avio_context(file_like_context_ptr);
+  auto decoder = std::make_unique<WavDecoder>(std::move(avio_context));
+  return wrap_wav_decoder_pointer_to_tensor(std::move(decoder));
 }
 
 OpsAudioFramesOutput get_wav_samples_in_range(
     torch::stable::Tensor& decoder,
     double start_seconds,
     std::optional<double> stop_seconds) {
-  auto wavDecoder = unwrapTensorToGetWavDecoder(decoder);
-  AudioFramesOutput audioFrames =
-      wavDecoder->getSamplesInRange(start_seconds, stop_seconds);
-  return makeOpsAudioFramesOutput(audioFrames);
+  auto wav_decoder = unwrap_tensor_to_get_wav_decoder(decoder);
+  AudioFramesOutput audio_frames =
+      wav_decoder->get_samples_in_range(start_seconds, stop_seconds);
+  return make_ops_audio_frames_output(audio_frames);
 }
 
 std::string get_wav_metadata_from_decoder(torch::stable::Tensor& decoder) {
-  auto wavDecoder = unwrapTensorToGetWavDecoder(decoder);
-  StreamMetadata streamMetadata = wavDecoder->getStreamMetadata();
+  auto wav_decoder = unwrap_tensor_to_get_wav_decoder(decoder);
+  StreamMetadata stream_metadata = wav_decoder->get_stream_metadata();
 
-  std::map<std::string, std::string> metadataMap;
+  std::map<std::string, std::string> metadata_map;
 
-  metadataMap["sampleRate"] = std::to_string(*streamMetadata.sampleRate);
-  metadataMap["numChannels"] = std::to_string(*streamMetadata.numChannels);
-  metadataMap["sampleFormat"] = quoteValue(*streamMetadata.sampleFormat);
-  metadataMap["codec"] = quoteValue(*streamMetadata.codecName);
-  metadataMap["durationSeconds"] =
-      fmt::to_string(*streamMetadata.durationSecondsFromHeader);
-  metadataMap["durationSecondsFromHeader"] =
-      fmt::to_string(*streamMetadata.durationSecondsFromHeader);
-  metadataMap["bitRate"] = fmt::to_string(*streamMetadata.bitRate);
-  metadataMap["streamIndex"] = std::to_string(streamMetadata.streamIndex);
-  metadataMap["mediaType"] = quoteValue("audio");
-  metadataMap["beginStreamSeconds"] =
-      fmt::to_string(*streamMetadata.beginStreamPtsSecondsFromContent);
-  return mapToJson(metadataMap);
+  metadata_map["sampleRate"] = std::to_string(*stream_metadata.sample_rate);
+  metadata_map["numChannels"] = std::to_string(*stream_metadata.num_channels);
+  metadata_map["sampleFormat"] = quote_value(*stream_metadata.sample_format);
+  metadata_map["codec"] = quote_value(*stream_metadata.codec_name);
+  metadata_map["durationSeconds"] =
+      fmt::to_string(*stream_metadata.duration_seconds_from_header);
+  metadata_map["durationSecondsFromHeader"] =
+      fmt::to_string(*stream_metadata.duration_seconds_from_header);
+  metadata_map["bitRate"] = fmt::to_string(*stream_metadata.bit_rate);
+  metadata_map["streamIndex"] = std::to_string(stream_metadata.stream_index);
+  metadata_map["mediaType"] = quote_value("audio");
+  metadata_map["beginStreamSeconds"] =
+      fmt::to_string(*stream_metadata.begin_stream_pts_seconds_from_content);
+  return map_to_json(metadata_map);
 }
 
-void set_nvdec_cache_capacity(int64_t capacity) {
-  int capacityInt = validateInt64ToInt(capacity, "capacity");
+void _set_nvdec_cache_capacity(int64_t capacity) {
+  int capacity_int = validate_int64_to_int(capacity, "capacity");
   STD_TORCH_CHECK(
-      capacityInt >= 0,
+      capacity_int >= 0,
       "NVDEC cache capacity must be non-negative, got ",
-      capacityInt);
-  setNVDECCacheCapacity(capacityInt);
+      capacity_int);
+  set_nvdec_cache_capacity(capacity_int);
 }
 
-int64_t get_nvdec_cache_capacity() {
-  return static_cast<int64_t>(getNVDECCacheCapacity());
+int64_t _get_nvdec_cache_capacity() {
+  return static_cast<int64_t>(get_nvdec_cache_capacity());
 }
 
 int64_t _get_nvdec_cache_size(int64_t device_index) {
-  int deviceIndexInt = validateInt64ToInt(device_index, "device_index");
+  int device_index_int = validate_int64_to_int(device_index, "device_index");
   STD_TORCH_CHECK(
-      deviceIndexInt >= 0,
+      device_index_int >= 0,
       "device_index must be non-negative, got ",
-      deviceIndexInt);
-  return static_cast<int64_t>(getNVDECCacheSize(deviceIndexInt));
+      device_index_int);
+  return static_cast<int64_t>(get_nvdec_cache_size(device_index_int));
 }
 
 void _set_cpp_log_level(int64_t level) {
-  setCppLogLevel(static_cast<LogLevel>(level));
+  set_cpp_log_level(static_cast<LogLevel>(level));
 }
 
 int64_t _get_log_level() {
-  return static_cast<int64_t>(getLogLevel());
+  return static_cast<int64_t>(get_log_level());
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
   m.impl("_create_from_file_like", TORCH_BOX(&_create_from_file_like));
+  m.impl("_blocks_create_demuxer", TORCH_BOX(&_blocks_create_demuxer));
+  m.impl(
+      "_blocks_create_color_converter",
+      TORCH_BOX(&_blocks_create_color_converter));
   m.impl(
       "_get_json_ffmpeg_library_versions",
       TORCH_BOX(&_get_json_ffmpeg_library_versions));
-  m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
-  m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
-  m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
   m.impl("create_streaming_encoder", TORCH_BOX(&create_streaming_encoder));
   m.impl(
       "streaming_encoder_add_video_stream",
@@ -1387,13 +1446,19 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl(
       "streaming_encoder_add_samples",
       TORCH_BOX(&streaming_encoder_add_samples));
-  m.impl("set_nvdec_cache_capacity", TORCH_BOX(&set_nvdec_cache_capacity));
-  m.impl("get_nvdec_cache_capacity", TORCH_BOX(&get_nvdec_cache_capacity));
+  m.impl("set_nvdec_cache_capacity", TORCH_BOX(&_set_nvdec_cache_capacity));
+  m.impl("get_nvdec_cache_capacity", TORCH_BOX(&_get_nvdec_cache_capacity));
   m.impl("_get_nvdec_cache_size", TORCH_BOX(&_get_nvdec_cache_size));
   m.impl("_set_cpp_log_level", TORCH_BOX(&_set_cpp_log_level));
   m.impl("_get_log_level", TORCH_BOX(&_get_log_level));
   m.impl(
       "create_wav_decoder_from_file", TORCH_BOX(&create_wav_decoder_from_file));
+  m.impl(
+      "create_wav_decoder_from_tensor",
+      TORCH_BOX(&create_wav_decoder_from_tensor));
+  m.impl(
+      "_create_wav_decoder_from_file_like",
+      TORCH_BOX(&_create_wav_decoder_from_file_like));
   m.impl("get_wav_samples_in_range", TORCH_BOX(&get_wav_samples_in_range));
   m.impl(
       "get_wav_metadata_from_decoder",
@@ -1401,12 +1466,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
-  m.impl("encode_audio_to_file", TORCH_BOX(&encode_audio_to_file));
-  m.impl("encode_audio_to_tensor", TORCH_BOX(&encode_audio_to_tensor));
-  m.impl("_encode_audio_to_file_like", TORCH_BOX(&_encode_audio_to_file_like));
-  m.impl("encode_video_to_file", TORCH_BOX(&encode_video_to_file));
-  m.impl("encode_video_to_tensor", TORCH_BOX(&encode_video_to_tensor));
-  m.impl("_encode_video_to_file_like", TORCH_BOX(&_encode_video_to_file_like));
   m.impl("seek_to_pts", TORCH_BOX(&seek_to_pts));
   m.impl("add_video_stream", TORCH_BOX(&add_video_stream));
   m.impl("_add_video_stream", TORCH_BOX(&_add_video_stream));
@@ -1426,6 +1485,21 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "get_frames_by_pts_in_range_audio",
       TORCH_BOX(&get_frames_by_pts_in_range_audio));
   m.impl("get_frames_by_pts", TORCH_BOX(&get_frames_by_pts));
+  m.impl(
+      "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
+  m.impl(
+      "_blocks_create_packet_decoder",
+      TORCH_BOX(&_blocks_create_packet_decoder));
+  m.impl(
+      "_blocks_packet_decoder_send_packet",
+      TORCH_BOX(&_blocks_packet_decoder_send_packet));
+  m.impl(
+      "_blocks_packet_decoder_send_eof",
+      TORCH_BOX(&_blocks_packet_decoder_send_eof));
+  m.impl(
+      "_blocks_packet_decoder_receive_frame",
+      TORCH_BOX(&_blocks_packet_decoder_receive_frame));
+  m.impl("_blocks_convert_frame", TORCH_BOX(&_blocks_convert_frame));
   m.impl("_test_frame_pts_equality", TORCH_BOX(&_test_frame_pts_equality));
   m.impl(
       "scan_all_streams_to_update_metadata",

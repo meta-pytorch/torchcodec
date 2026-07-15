@@ -21,7 +21,12 @@ enum ColorConversionLibrary {
   SWSCALE
 };
 
-// Controls the dtype of decoded frame tensors.
+// The resolved output dtype. Only UINT8 or FLOAT32 — no AUTO.
+// All code downstream of addVideoStream() should use this.
+enum class OutputDtype { UINT8, FLOAT32 };
+
+// The user-facing output dtype config, which may include AUTO.
+// AUTO is resolved in addVideoStream() into an OutputDtype.
 // UINT8: Always output uint8 tensors (default, backward compatible). Uses an
 //        8-bit / RGB24 intermediate.
 // FLOAT32: Always output float32 tensors normalized to [0, 1]. Uses a 16-bit /
@@ -29,9 +34,7 @@ enum ColorConversionLibrary {
 //          full precision through the float cast, regardless of source bit
 //          depth.
 // AUTO: Output uint8 for SDR (<=8-bit) sources, float32 for HDR (>8-bit).
-//       Resolved upstream in addVideoStream so downstream code only ever sees
-//       UINT8 / FLOAT32.
-enum class OutputDtype { UINT8, FLOAT32, AUTO };
+enum class OutputDtypeConfig { UINT8, FLOAT32, AUTO };
 
 struct VideoStreamOptions {
   VideoStreamOptions() {}
@@ -40,16 +43,16 @@ struct VideoStreamOptions {
   // 0 means FFMPEG will choose the number of threads automatically to fully
   // utilize all cores. If not set, it will be the default FFMPEG behavior for
   // the given codec.
-  std::optional<int> ffmpegThreadCount;
+  std::optional<int> ffmpeg_thread_count;
 
   // Currently the dimension order can be either NHWC or NCHW.
   // H=height, W=width, C=channel.
-  std::string dimensionOrder = "NCHW";
+  std::string dimension_order = "NCHW";
 
   // By default we have to use filtergraph, as it is more general. We can only
   // use swscale when we have met strict requirements. See
   // CpuDeviceInterface::initialze() for the logic.
-  ColorConversionLibrary colorConversionLibrary =
+  ColorConversionLibrary color_conversion_library =
       ColorConversionLibrary::FILTERGRAPH;
 
   // By default we use CPU for decoding for both C++ and python users.
@@ -57,31 +60,34 @@ struct VideoStreamOptions {
   // the device of the input frame tensor.
   StableDevice device = StableDevice(kStableCPU);
   // Device variant (e.g., "nvdec", "ffmpeg")
-  std::string_view deviceVariant = "default";
+  std::string_view device_variant = "default";
 
-  // Controls the dtype of decoded frame tensors. Default UINT8 preserves
-  // existing behavior; FLOAT32 and AUTO are used for high-bit-depth output
-  // (e.g. HDR).
-  OutputDtype outputDtype = OutputDtype::UINT8;
+  // The user-specified output dtype config. May be AUTO, which gets resolved
+  // in addVideoStream() into outputDtype below.
+  OutputDtypeConfig output_dtype_config = OutputDtypeConfig::UINT8;
+
+  // Set by addVideoStream() after resolving AUTO. All downstream code should
+  // read this field.
+  OutputDtype output_dtype = OutputDtype::UINT8;
 
   // Encoding options
   std::optional<std::string> codec;
   // Optional pixel format for video encoding (e.g., "yuv420p", "yuv444p")
   // If not specified, uses codec's default format.
-  std::optional<std::string> pixelFormat;
+  std::optional<std::string> pixel_format;
   std::optional<double> crf;
   std::optional<std::string> preset;
-  std::optional<std::map<std::string, std::string>> extraOptions;
+  std::optional<std::map<std::string, std::string>> extra_options;
 };
 
 struct AudioStreamOptions {
   AudioStreamOptions() {}
 
   // Encoding only
-  std::optional<int> bitRate;
+  std::optional<int> bit_rate;
   // Decoding and encoding:
-  std::optional<int> numChannels;
-  std::optional<int> sampleRate;
+  std::optional<int> num_channels;
+  std::optional<int> sample_rate;
 };
 
 } // namespace facebook::torchcodec

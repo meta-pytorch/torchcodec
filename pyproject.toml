@@ -21,11 +21,17 @@ build-backend = "scikit_build_core.build"
 minimum-version = "build-system.requires"
 build-dir = "build/{wheel_tag}"
 wheel.packages = ["src/torchcodec"]
+# Required to use our own dynamic-metadata plugin (packaging/torchcodec_version.py)
+# for the version field below.
+experimental = true
 
+# Restores the version-handling logic that used to live in setup.py: honor the
+# BUILD_VERSION env var (set by test-infra release/nightly jobs), and otherwise
+# append the short git sha to the contents of version.txt for dev builds. See
+# packaging/torchcodec_version.py.
 [tool.scikit-build.metadata.version]
-provider = "scikit_build_core.metadata.regex"
-input = "version.txt"
-regex = "(?P<value>.+)"
+provider = "torchcodec_version"
+provider-path = "packaging"
 
 [[tool.scikit-build.generate]]
 path = "torchcodec/version.py"

@@ -125,6 +125,21 @@ class VideoDecoder:
             :class:`~torchcodec.transforms.DecoderTransform` and
             :class:`~torchvision.transforms.v2.Transform`
             objects. Read more about this parameter in :ref:`sphx_glr_generated_examples_decoding_transforms.py`.
+        output_dtype (torch.dtype or ``"auto"``, optional): The dtype of the
+            output frames. Supported values are ``torch.uint8`` with values in
+            [0, 255] (default), ``torch.float32`` with values in [0, 1], and
+            ``"auto"``. When ``"auto"`` is specified, the output dtype is
+            determined automatically based on the video content: uint8 for SDR
+            content, float32 for HDR content.
+            Read more about this parameter in:
+            :ref:`sphx_glr_generated_examples_decoding_hdr_decoding.py`
+
+            .. note::
+                The features associated with this parameter are in beta stage
+                and behavior may change in future versions. Specifically,
+                detecting whether a video is SDR or HDR is difficult, so the
+                "auto" heuristic is subject to change and improve.
+
         custom_frame_mappings (str, bytes, or file-like object, optional):
             Mapping of frames to their metadata, typically generated via ffprobe.
             This enables accurate frame seeking without requiring a full video scan.
@@ -168,6 +183,7 @@ class VideoDecoder:
         device: str | torch_device | None = None,
         seek_mode: Literal["exact", "approximate"] = "exact",
         transforms: Sequence[DecoderTransform | nn.Module] | None = None,
+        output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
         custom_frame_mappings: (
             str | bytes | io.RawIOBase | io.BufferedReader | None
         ) = None,
@@ -205,11 +221,32 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
+        _DTYPE_TO_STR = {torch.uint8: "uint8", torch.float32: "float32"}
+        if output_dtype != "auto":
+            if output_dtype not in _DTYPE_TO_STR:
+                raise ValueError(
+                    f"Invalid output_dtype ({output_dtype}). "
+                    f"Supported values are torch.uint8, torch.float32, and 'auto'."
+                )
+            output_dtype = _DTYPE_TO_STR[output_dtype]
+
         device_variant = _get_cuda_backend()
         if device is None:
             device = str(torch.get_default_device())
         elif isinstance(device, torch_device):
             device = str(device)
+
+        if (
+            device.startswith("cuda")
+            and device_variant == "ffmpeg"
+            and output_dtype != "uint8"
+        ):
+            raise ValueError(
+                f"output_dtype={output_dtype} is not supported with the 'ffmpeg' "
+                f"CUDA backend. Only torch.uint8 is supported. Use the default "
+                f"'nvdec' CUDA backend for non-uint8 output dtypes."
+            )
+
         (
             self._decoder,
             self.stream_index,
@@ -224,6 +261,7 @@ class VideoDecoder:
             device_variant=device_variant,
             transforms=transforms,
             custom_frame_mappings=custom_frame_mappings_data,
+            output_dtype=output_dtype,
         )
 
         assert self.metadata.begin_stream_seconds is not None  # mypy.

@@ -25,10 +25,10 @@ namespace facebook::torchcodec {
 // this NVDEC Cache involves a cache key (the decoder parameters).
 
 struct CUvideoDecoderDeleter {
-  void operator()(CUvideodecoder* decoderPtr) const {
-    if (decoderPtr && *decoderPtr) {
-      cuvidDestroyDecoder(*decoderPtr);
-      delete decoderPtr;
+  void operator()(CUvideodecoder* decoder_ptr) const {
+    if (decoder_ptr && *decoder_ptr) {
+      cuvidDestroyDecoder(*decoder_ptr);
+      delete decoder_ptr;
     }
   }
 };
@@ -38,10 +38,10 @@ using UniqueCUvideodecoder =
 
 struct CacheEntry {
   UniqueCUvideodecoder decoder;
-  uint64_t lastUsed; // LRU timestamp
+  uint64_t last_used; // LRU timestamp
 
   CacheEntry(UniqueCUvideodecoder dec, uint64_t ts)
-      : decoder(std::move(dec)), lastUsed(ts) {}
+      : decoder(std::move(dec)), last_used(ts) {}
 };
 
 // A per-device LRU cache for NVDEC decoders. There is one instance of this
@@ -49,42 +49,51 @@ struct CacheEntry {
 // method.  The cache supports multiple decoders with the same parameters.
 class NVDECCache {
  public:
-  static NVDECCache& getCache(const StableDevice& device);
+  static NVDECCache& get_cache(const StableDevice& device);
 
   // Get decoder from cache - returns nullptr if none available.
-  UniqueCUvideodecoder getDecoder(CUVIDEOFORMAT* videoFormat);
+  UniqueCUvideodecoder get_decoder(
+      CUVIDEOFORMAT* video_format,
+      cudaVideoSurfaceFormat surface_format);
 
   // Return decoder to cache using LRU eviction.
-  void returnDecoder(CUVIDEOFORMAT* videoFormat, UniqueCUvideodecoder decoder);
+  void return_decoder(
+      CUVIDEOFORMAT* video_format,
+      cudaVideoSurfaceFormat surface_format,
+      UniqueCUvideodecoder decoder);
 
   // Iterates all per-device cache instances and evicts LRU entries until each
   // cache's size is at most capacity. Called from setNVDECCacheCapacity().
-  static void evictExcessEntriesAcrossDevices(int capacity);
+  static void evict_excess_entries_across_devices(int capacity);
 
   // Returns the number of entries in the cache for a given device index.
-  static int getCacheSizeForDevice(int device_index);
+  static int get_cache_size_for_device(int device_index);
 
  private:
   // Cache key struct: a decoder can be reused and taken from the cache only if
   // all these parameters match.
   struct CacheKey {
-    cudaVideoCodec codecType;
+    cudaVideoCodec codec_type;
     uint32_t width;
     uint32_t height;
-    cudaVideoChromaFormat chromaFormat;
-    uint32_t bitDepthLumaMinus8;
-    uint8_t numDecodeSurfaces;
+    cudaVideoChromaFormat chroma_format;
+    uint32_t bit_depth_luma_minus8;
+    uint8_t num_decode_surfaces;
+    cudaVideoSurfaceFormat output_surface_format;
 
     CacheKey() = delete;
 
-    explicit CacheKey(CUVIDEOFORMAT* videoFormat) {
-      STD_TORCH_CHECK(videoFormat != nullptr, "videoFormat must not be null");
-      codecType = videoFormat->codec;
-      width = videoFormat->coded_width;
-      height = videoFormat->coded_height;
-      chromaFormat = videoFormat->chroma_format;
-      bitDepthLumaMinus8 = videoFormat->bit_depth_luma_minus8;
-      numDecodeSurfaces = videoFormat->min_num_decode_surfaces;
+    explicit CacheKey(
+        CUVIDEOFORMAT* video_format,
+        cudaVideoSurfaceFormat surface_fmt) {
+      STD_TORCH_CHECK(video_format != nullptr, "videoFormat must not be null");
+      codec_type = video_format->codec;
+      width = video_format->coded_width;
+      height = video_format->coded_height;
+      chroma_format = video_format->chroma_format;
+      bit_depth_luma_minus8 = video_format->bit_depth_luma_minus8;
+      num_decode_surfaces = video_format->min_num_decode_surfaces;
+      output_surface_format = surface_fmt;
     }
 
     CacheKey(const CacheKey&) = default;
@@ -92,32 +101,34 @@ class NVDECCache {
 
     bool operator<(const CacheKey& other) const {
       return std::tie(
-                 codecType,
+                 codec_type,
                  width,
                  height,
-                 chromaFormat,
-                 bitDepthLumaMinus8,
-                 numDecodeSurfaces) <
+                 chroma_format,
+                 bit_depth_luma_minus8,
+                 num_decode_surfaces,
+                 output_surface_format) <
           std::tie(
-                 other.codecType,
+                 other.codec_type,
                  other.width,
                  other.height,
-                 other.chromaFormat,
-                 other.bitDepthLumaMinus8,
-                 other.numDecodeSurfaces);
+                 other.chroma_format,
+                 other.bit_depth_luma_minus8,
+                 other.num_decode_surfaces,
+                 other.output_surface_format);
     }
   };
 
   NVDECCache() = default;
   ~NVDECCache() = default;
 
-  void evictLRUEntry();
+  void evict_lru_entry();
 
-  static NVDECCache* getCacheInstances();
+  static NVDECCache* get_cache_instances();
 
   std::multimap<CacheKey, CacheEntry> cache_;
-  std::mutex cacheLock_;
-  uint64_t lastUsedCounter_ = 0;
+  std::mutex cache_lock_;
+  uint64_t last_used_counter_ = 0;
 };
 
 } // namespace facebook::torchcodec

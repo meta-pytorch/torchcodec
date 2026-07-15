@@ -13,28 +13,29 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-std::optional<double> StreamMetadata::getDurationSeconds(
-    SeekMode seekMode) const {
-  switch (seekMode) {
+std::optional<double> StreamMetadata::get_duration_seconds(
+    SeekMode seek_mode) const {
+  switch (seek_mode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
       STD_TORCH_CHECK(
-          endStreamPtsSecondsFromContent.has_value() &&
-              beginStreamPtsSecondsFromContent.has_value(),
+          end_stream_pts_seconds_from_content.has_value() &&
+              begin_stream_pts_seconds_from_content.has_value(),
           "Missing beginStreamPtsSecondsFromContent or endStreamPtsSecondsFromContent");
-      return endStreamPtsSecondsFromContent.value() -
-          beginStreamPtsSecondsFromContent.value();
+      return end_stream_pts_seconds_from_content.value() -
+          begin_stream_pts_seconds_from_content.value();
     case SeekMode::approximate:
-      if (durationSecondsFromHeader.has_value()) {
-        return durationSecondsFromHeader.value();
+      if (duration_seconds_from_header.has_value()) {
+        return duration_seconds_from_header.value();
       }
-      if (numFramesFromHeader.has_value() && averageFpsFromHeader.has_value() &&
-          averageFpsFromHeader.value() != 0.0) {
-        return static_cast<double>(numFramesFromHeader.value()) /
-            averageFpsFromHeader.value();
+      if (num_frames_from_header.has_value() &&
+          average_fps_from_header.has_value() &&
+          average_fps_from_header.value() != 0.0) {
+        return static_cast<double>(num_frames_from_header.value()) /
+            average_fps_from_header.value();
       }
-      if (durationSecondsFromContainer.has_value()) {
-        return durationSecondsFromContainer.value();
+      if (duration_seconds_from_container.has_value()) {
+        return duration_seconds_from_container.value();
       }
       return std::nullopt;
     default:
@@ -42,17 +43,17 @@ std::optional<double> StreamMetadata::getDurationSeconds(
   }
 }
 
-double StreamMetadata::getBeginStreamSeconds(SeekMode seekMode) const {
-  switch (seekMode) {
+double StreamMetadata::get_begin_stream_seconds(SeekMode seek_mode) const {
+  switch (seek_mode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
       STD_TORCH_CHECK(
-          beginStreamPtsSecondsFromContent.has_value(),
+          begin_stream_pts_seconds_from_content.has_value(),
           "Missing beginStreamPtsSecondsFromContent");
-      return beginStreamPtsSecondsFromContent.value();
+      return begin_stream_pts_seconds_from_content.value();
     case SeekMode::approximate:
-      if (beginStreamSecondsFromHeader.has_value()) {
-        return beginStreamSecondsFromHeader.value();
+      if (begin_stream_seconds_from_header.has_value()) {
+        return begin_stream_seconds_from_header.value();
       }
       return 0.0;
     default:
@@ -60,19 +61,19 @@ double StreamMetadata::getBeginStreamSeconds(SeekMode seekMode) const {
   }
 }
 
-std::optional<double> StreamMetadata::getEndStreamSeconds(
-    SeekMode seekMode) const {
-  switch (seekMode) {
+std::optional<double> StreamMetadata::get_end_stream_seconds(
+    SeekMode seek_mode) const {
+  switch (seek_mode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
       STD_TORCH_CHECK(
-          endStreamPtsSecondsFromContent.has_value(),
+          end_stream_pts_seconds_from_content.has_value(),
           "Missing endStreamPtsSecondsFromContent");
-      return endStreamPtsSecondsFromContent.value();
+      return end_stream_pts_seconds_from_content.value();
     case SeekMode::approximate: {
-      auto dur = getDurationSeconds(seekMode);
+      auto dur = get_duration_seconds(seek_mode);
       if (dur.has_value()) {
-        return getBeginStreamSeconds(seekMode) + dur.value();
+        return get_begin_stream_seconds(seek_mode) + dur.value();
       }
       return std::nullopt;
     }
@@ -81,21 +82,22 @@ std::optional<double> StreamMetadata::getEndStreamSeconds(
   }
 }
 
-std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
-  switch (seekMode) {
+std::optional<int64_t> StreamMetadata::get_num_frames(
+    SeekMode seek_mode) const {
+  switch (seek_mode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact:
       STD_TORCH_CHECK(
-          numFramesFromContent.has_value(), "Missing numFramesFromContent");
-      return numFramesFromContent.value();
+          num_frames_from_content.has_value(), "Missing numFramesFromContent");
+      return num_frames_from_content.value();
     case SeekMode::approximate: {
-      auto durationSeconds = getDurationSeconds(seekMode);
-      if (numFramesFromHeader.has_value()) {
-        return numFramesFromHeader.value();
+      auto duration_seconds = get_duration_seconds(seek_mode);
+      if (num_frames_from_header.has_value()) {
+        return num_frames_from_header.value();
       }
-      if (averageFpsFromHeader.has_value() && durationSeconds.has_value()) {
+      if (average_fps_from_header.has_value() && duration_seconds.has_value()) {
         return static_cast<int64_t>(
-            averageFpsFromHeader.value() * durationSeconds.value());
+            average_fps_from_header.value() * duration_seconds.value());
       }
       return std::nullopt;
     }
@@ -104,57 +106,58 @@ std::optional<int64_t> StreamMetadata::getNumFrames(SeekMode seekMode) const {
   }
 }
 
-std::optional<double> StreamMetadata::getAverageFps(SeekMode seekMode) const {
-  switch (seekMode) {
+std::optional<double> StreamMetadata::get_average_fps(
+    SeekMode seek_mode) const {
+  switch (seek_mode) {
     case SeekMode::custom_frame_mappings:
     case SeekMode::exact: {
-      auto numFrames = getNumFrames(seekMode);
-      if (numFrames.has_value() &&
-          beginStreamPtsSecondsFromContent.has_value() &&
-          endStreamPtsSecondsFromContent.has_value()) {
-        double duration = endStreamPtsSecondsFromContent.value() -
-            beginStreamPtsSecondsFromContent.value();
+      auto num_frames = get_num_frames(seek_mode);
+      if (num_frames.has_value() &&
+          begin_stream_pts_seconds_from_content.has_value() &&
+          end_stream_pts_seconds_from_content.has_value()) {
+        double duration = end_stream_pts_seconds_from_content.value() -
+            begin_stream_pts_seconds_from_content.value();
         if (duration != 0.0) {
-          return static_cast<double>(numFrames.value()) / duration;
+          return static_cast<double>(num_frames.value()) / duration;
         }
       }
-      return averageFpsFromHeader;
+      return average_fps_from_header;
     }
     case SeekMode::approximate:
-      return averageFpsFromHeader;
+      return average_fps_from_header;
     default:
       STD_TORCH_CHECK(false, "Unknown SeekMode");
   }
 }
 
-std::optional<std::string> StreamMetadata::getColorPrimariesName() const {
-  if (!colorPrimaries.has_value()) {
+std::optional<std::string> StreamMetadata::get_color_primaries_name() const {
+  if (!color_primaries.has_value()) {
     return std::nullopt;
   }
-  const char* name = av_color_primaries_name(*colorPrimaries);
+  const char* name = av_color_primaries_name(*color_primaries);
   if (name == nullptr) {
     return std::nullopt;
   }
   return std::string(name);
 }
 
-std::optional<std::string> StreamMetadata::getColorSpaceName() const {
-  if (!colorSpace.has_value()) {
+std::optional<std::string> StreamMetadata::get_color_space_name() const {
+  if (!color_space.has_value()) {
     return std::nullopt;
   }
-  const char* name = av_color_space_name(*colorSpace);
+  const char* name = av_color_space_name(*color_space);
   if (name == nullptr) {
     return std::nullopt;
   }
   return std::string(name);
 }
 
-std::optional<std::string> StreamMetadata::getColorTransferCharacteristicName()
-    const {
-  if (!colorTransferCharacteristic.has_value()) {
+std::optional<std::string>
+StreamMetadata::get_color_transfer_characteristic_name() const {
+  if (!color_transfer_characteristic.has_value()) {
     return std::nullopt;
   }
-  const char* name = av_color_transfer_name(*colorTransferCharacteristic);
+  const char* name = av_color_transfer_name(*color_transfer_characteristic);
   if (name == nullptr) {
     return std::nullopt;
   }

@@ -10,125 +10,130 @@
 namespace facebook::torchcodec {
 
 namespace {
-
 constexpr int64_t INITIAL_TENSOR_SIZE = 10'000'000; // 10 MB
 constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
+} // namespace
 
-// The signature of this function is defined by FFMPEG.
-int read(void* opaque, uint8_t* buf, int buf_size) {
-  auto tensorContext = static_cast<detail::TensorContext*>(opaque);
+// --------------------------------------------------------------------------
+// AVIOFromTensorContext
+// --------------------------------------------------------------------------
 
-  if (tensorContext->current_pos >= tensorContext->data.numel()) {
-    return AVERROR_EOF;
+AVIOFromTensorContext::AVIOFromTensorContext(torch::stable::Tensor data)
+    : tensor_context_{data, 0, 0} {
+  STD_TORCH_CHECK(data.numel() > 0, "data must not be empty");
+  STD_TORCH_CHECK(data.is_contiguous(), "data must be contiguous");
+  STD_TORCH_CHECK(data.scalar_type() == kStableUInt8, "data must be kUInt8");
+  create_avio_context(/*isForWriting=*/false);
+}
+
+int AVIOFromTensorContext::read(uint8_t* buf, int size) {
+  if (tensor_context_.current_pos >= tensor_context_.data.numel()) {
+    return -1;
   }
 
-  int64_t numBytesRead = std::min(
-      static_cast<int64_t>(buf_size),
-      tensorContext->data.numel() - tensorContext->current_pos);
+  int64_t num_bytes_read = std::min(
+      static_cast<int64_t>(size),
+      tensor_context_.data.numel() - tensor_context_.current_pos);
 
   STD_TORCH_CHECK(
-      // This should never happen based on the other checks above, but might as
-      // well.
-      numBytesRead >= 0,
+      num_bytes_read >= 0,
       "Tried to read negative bytes: numBytesRead=",
-      numBytesRead,
+      num_bytes_read,
       ", size=",
-      tensorContext->data.numel(),
+      tensor_context_.data.numel(),
       ", current_pos=",
-      tensorContext->current_pos);
+      tensor_context_.current_pos);
 
-  if (numBytesRead == 0) {
-    return AVERROR_EOF;
+  if (num_bytes_read == 0) {
+    return -1;
   }
 
   std::memcpy(
       buf,
-      tensorContext->data.const_data_ptr<uint8_t>() +
-          tensorContext->current_pos,
-      numBytesRead);
-  tensorContext->current_pos += numBytesRead;
-  return numBytesRead;
+      tensor_context_.data.const_data_ptr<uint8_t>() +
+          tensor_context_.current_pos,
+      num_bytes_read);
+  tensor_context_.current_pos += num_bytes_read;
+  return static_cast<int>(num_bytes_read);
 }
 
-// The signature of this function is defined by FFMPEG.
-int write(void* opaque, const uint8_t* buf, int buf_size) {
-  auto tensorContext = static_cast<detail::TensorContext*>(opaque);
+int64_t AVIOFromTensorContext::seek(int64_t offset, int whence) {
+  switch (whence) {
+    case SEEK_SET:
+      tensor_context_.current_pos = offset;
+      return offset;
+    default:
+      return -1;
+  }
+}
 
-  int64_t bufSize = static_cast<int64_t>(buf_size);
-  if (tensorContext->current_pos + bufSize > tensorContext->data.numel()) {
+int64_t AVIOFromTensorContext::get_size() {
+  return tensor_context_.data.numel();
+}
+
+// --------------------------------------------------------------------------
+// AVIOToTensorContext
+// --------------------------------------------------------------------------
+
+AVIOToTensorContext::AVIOToTensorContext()
+    : tensor_context_{
+          torch::stable::empty({INITIAL_TENSOR_SIZE}, kStableUInt8),
+          0,
+          0} {
+  create_avio_context(/*isForWriting=*/true);
+}
+
+int AVIOToTensorContext::write(const uint8_t* buf, int size) {
+  int64_t buf_size = static_cast<int64_t>(size);
+  if (tensor_context_.current_pos + buf_size > tensor_context_.data.numel()) {
     STD_TORCH_CHECK(
-        tensorContext->data.numel() * 2 <= MAX_TENSOR_SIZE,
+        tensor_context_.data.numel() * 2 <= MAX_TENSOR_SIZE,
         "We tried to allocate an output encoded tensor larger than ",
         MAX_TENSOR_SIZE,
         " bytes. If you think this should be supported, please report.");
 
     // We double the size of the outpout tensor. Calling cat() may not be the
     // most efficient, but it's simple.
-    tensorContext->data =
-        stableCat({tensorContext->data, tensorContext->data}, 0);
+    tensor_context_.data =
+        stable_cat({tensor_context_.data, tensor_context_.data}, 0);
   }
 
   STD_TORCH_CHECK(
-      tensorContext->current_pos + bufSize <= tensorContext->data.numel(),
+      tensor_context_.current_pos + buf_size <= tensor_context_.data.numel(),
       "Re-allocation of the output tensor didn't work. ",
       "This should not happen, please report on TorchCodec bug tracker");
 
-  uint8_t* outputTensorData = tensorContext->data.mutable_data_ptr<uint8_t>();
-  std::memcpy(outputTensorData + tensorContext->current_pos, buf, bufSize);
-  tensorContext->current_pos += bufSize;
+  uint8_t* output_tensor_data =
+      tensor_context_.data.mutable_data_ptr<uint8_t>();
+  std::memcpy(output_tensor_data + tensor_context_.current_pos, buf, buf_size);
+  tensor_context_.current_pos += buf_size;
   // Track the maximum position written so getOutputTensor's narrow() does not
   // truncate the file if final seek was backwards
-  tensorContext->max_pos =
-      std::max(tensorContext->current_pos, tensorContext->max_pos);
-  return buf_size;
+  tensor_context_.max_pos =
+      std::max(tensor_context_.current_pos, tensor_context_.max_pos);
+  return size;
 }
 
-// The signature of this function is defined by FFMPEG.
-int64_t seek(void* opaque, int64_t offset, int whence) {
-  auto tensorContext = static_cast<detail::TensorContext*>(opaque);
-  int64_t ret = -1;
-
+int64_t AVIOToTensorContext::seek(int64_t offset, int whence) {
   switch (whence) {
-    case AVSEEK_SIZE:
-      ret = tensorContext->data.numel();
-      break;
     case SEEK_SET:
-      tensorContext->current_pos = offset;
-      ret = offset;
-      break;
+      tensor_context_.current_pos = offset;
+      return offset;
     default:
-      break;
+      return -1;
   }
-
-  return ret;
 }
 
-} // namespace
-
-AVIOFromTensorContext::AVIOFromTensorContext(torch::stable::Tensor data)
-    : tensorContext_{data, 0, 0} {
-  STD_TORCH_CHECK(data.numel() > 0, "data must not be empty");
-  STD_TORCH_CHECK(data.is_contiguous(), "data must be contiguous");
-  STD_TORCH_CHECK(data.scalar_type() == kStableUInt8, "data must be kUInt8");
-  createAVIOContext(
-      &read, nullptr, &seek, &tensorContext_, /*isForWriting=*/false);
+int64_t AVIOToTensorContext::get_size() {
+  return tensor_context_.data.numel();
 }
 
-AVIOToTensorContext::AVIOToTensorContext()
-    : tensorContext_{
-          torch::stable::empty({INITIAL_TENSOR_SIZE}, kStableUInt8),
-          0,
-          0} {
-  createAVIOContext(
-      nullptr, &write, &seek, &tensorContext_, /*isForWriting=*/true);
-}
-
-torch::stable::Tensor AVIOToTensorContext::getOutputTensor() {
+torch::stable::Tensor AVIOToTensorContext::get_output_tensor() {
   return torch::stable::narrow(
-      tensorContext_.data,
+      tensor_context_.data,
       /*dim=*/0,
       /*start=*/0,
-      /*length=*/tensorContext_.max_pos);
+      /*length=*/tensor_context_.max_pos);
 }
 
 } // namespace facebook::torchcodec

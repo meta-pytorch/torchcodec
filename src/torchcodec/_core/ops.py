@@ -44,24 +44,6 @@ with expose_ffmpeg_dlls():
 create_from_file = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_from_file.default
 )
-encode_audio_to_file = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.encode_audio_to_file.default
-)
-encode_audio_to_tensor = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.encode_audio_to_tensor.default
-)
-_encode_audio_to_file_like = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns._encode_audio_to_file_like.default
-)
-encode_video_to_file = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.encode_video_to_file.default
-)
-encode_video_to_tensor = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns.encode_video_to_tensor.default
-)
-_encode_video_to_file_like = torch._dynamo.disallow_in_graph(
-    torch.ops.torchcodec_ns._encode_video_to_file_like.default
-)
 create_from_tensor = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns.create_from_tensor.default
 )
@@ -84,7 +66,7 @@ def add_video_stream(
     custom_frame_mappings: (
         tuple[torch.Tensor, torch.Tensor, torch.Tensor] | None
     ) = None,
-    output_dtype: str | None = None,
+    output_dtype: str = "uint8",
 ) -> None:
     custom_frame_mappings_pts: torch.Tensor | None = None
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None
@@ -125,6 +107,30 @@ get_frames_by_pts_in_range_audio = (
     torch.ops.torchcodec_ns.get_frames_by_pts_in_range_audio.default
 )
 get_json_metadata = torch.ops.torchcodec_ns.get_json_metadata.default
+
+# Building-block ops for torchcodec.decoders._blocks (CPU). See
+# API_breakdown_claude_plan.md.
+_blocks_create_demuxer = torch.ops.torchcodec_ns._blocks_create_demuxer.default
+_blocks_demuxer_next_packet = (
+    torch.ops.torchcodec_ns._blocks_demuxer_next_packet.default
+)
+_blocks_create_packet_decoder = (
+    torch.ops.torchcodec_ns._blocks_create_packet_decoder.default
+)
+_blocks_packet_decoder_send_packet = (
+    torch.ops.torchcodec_ns._blocks_packet_decoder_send_packet.default
+)
+_blocks_packet_decoder_send_eof = (
+    torch.ops.torchcodec_ns._blocks_packet_decoder_send_eof.default
+)
+_blocks_packet_decoder_receive_frame = (
+    torch.ops.torchcodec_ns._blocks_packet_decoder_receive_frame.default
+)
+_blocks_create_color_converter = (
+    torch.ops.torchcodec_ns._blocks_create_color_converter.default
+)
+_blocks_convert_frame = torch.ops.torchcodec_ns._blocks_convert_frame.default
+
 _test_frame_pts_equality = torch.ops.torchcodec_ns._test_frame_pts_equality.default
 _get_container_json_metadata = (
     torch.ops.torchcodec_ns.get_container_json_metadata.default
@@ -168,6 +174,12 @@ _get_log_level = torch.ops.torchcodec_ns._get_log_level.default
 create_wav_decoder_from_file = (
     torch.ops.torchcodec_ns.create_wav_decoder_from_file.default
 )
+create_wav_decoder_from_tensor = (
+    torch.ops.torchcodec_ns.create_wav_decoder_from_tensor.default
+)
+_create_wav_decoder_from_file_like = (
+    torch.ops.torchcodec_ns._create_wav_decoder_from_file_like.default
+)
 get_wav_samples_in_range = torch.ops.torchcodec_ns.get_wav_samples_in_range.default
 get_wav_metadata_from_decoder = (
     torch.ops.torchcodec_ns.get_wav_metadata_from_decoder.default
@@ -198,78 +210,21 @@ def create_from_file_like(
     )
 
 
-def encode_audio_to_file_like(
-    samples: torch.Tensor,
-    sample_rate: int,
-    format: str,
-    file_like: io.RawIOBase | io.BufferedIOBase,
-    bit_rate: int | None = None,
-    num_channels: int | None = None,
-    desired_sample_rate: int | None = None,
-) -> None:
-    """Encode audio samples to a file-like object.
+def create_wav_decoder_from_bytes(wav_bytes: bytes) -> torch.Tensor:
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        buffer = torch.frombuffer(wav_bytes, dtype=torch.uint8)
+    return create_wav_decoder_from_tensor(buffer)
 
-    Args:
-        samples: Audio samples tensor
-        sample_rate: Sample rate in Hz
-        format: Audio format (e.g., "wav", "mp3", "flac")
-        file_like: File-like object that supports write() and seek() methods
-        bit_rate: Optional bit rate for encoding
-        num_channels: Optional number of output channels
-        desired_sample_rate: Optional desired sample rate for the output.
-    """
+
+def create_wav_decoder_from_file_like(
+    file_like: io.RawIOBase | io.BufferedReader,
+) -> torch.Tensor:
     assert _pybind_ops is not None
-
-    if samples.dtype != torch.float32:
-        raise ValueError(f"samples must have dtype torch.float32, got {samples.dtype}")
-
-    _encode_audio_to_file_like(
-        samples,
-        sample_rate,
-        format,
-        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
-        bit_rate,
-        num_channels,
-        desired_sample_rate,
-    )
-
-
-def encode_video_to_file_like(
-    frames: torch.Tensor,
-    frame_rate: float,
-    format: str,
-    file_like: io.RawIOBase | io.BufferedIOBase,
-    codec: str | None = None,
-    pixel_format: str | None = None,
-    crf: int | float | None = None,
-    preset: str | None = None,
-    extra_options: list[str] | None = None,
-) -> None:
-    """Encode video frames to a file-like object.
-
-    Args:
-        frames: Video frames tensor. The device of the frames tensor will be used for encoding.
-        frame_rate: Frame rate in frames per second
-        format: Video format (e.g., "mp4", "mov", "mkv")
-        file_like: File-like object that supports write() and seek() methods
-        codec: Optional codec name (e.g., "libx264", "h264")
-        pixel_format: Optional pixel format (e.g., "yuv420p", "yuv444p")
-        crf: Optional constant rate factor for encoding quality
-        preset: Optional encoder preset as string (e.g., "ultrafast", "medium")
-        extra_options: Optional list of extra options as flattened key-value pairs
-    """
-    assert _pybind_ops is not None
-
-    _encode_video_to_file_like(
-        frames,
-        frame_rate,
-        format,
-        _pybind_ops.create_file_like_context(file_like, True),  # True means for writing
-        codec,
-        pixel_format,
-        crf,
-        preset,
-        extra_options,
+    return _create_wav_decoder_from_file_like(
+        _pybind_ops.create_file_like_context(
+            file_like, False  # False means not for writing
+        ),
     )
 
 
@@ -328,86 +283,6 @@ def _create_from_file_like_abstract(
     return torch.empty([], dtype=torch.long)
 
 
-@register_fake("torchcodec_ns::encode_audio_to_file")
-def encode_audio_to_file_abstract(
-    samples: torch.Tensor,
-    sample_rate: int,
-    filename: str,
-    bit_rate: int | None = None,
-    num_channels: int | None = None,
-    desired_sample_rate: int | None = None,
-) -> None:
-    return
-
-
-@register_fake("torchcodec_ns::encode_audio_to_tensor")
-def encode_audio_to_tensor_abstract(
-    samples: torch.Tensor,
-    sample_rate: int,
-    format: str,
-    bit_rate: int | None = None,
-    num_channels: int | None = None,
-    desired_sample_rate: int | None = None,
-) -> torch.Tensor:
-    return torch.empty([], dtype=torch.long)
-
-
-@register_fake("torchcodec_ns::_encode_audio_to_file_like")
-def _encode_audio_to_file_like_abstract(
-    samples: torch.Tensor,
-    sample_rate: int,
-    format: str,
-    file_like_context: int,
-    bit_rate: int | None = None,
-    num_channels: int | None = None,
-    desired_sample_rate: int | None = None,
-) -> None:
-    return
-
-
-@register_fake("torchcodec_ns::encode_video_to_file")
-def encode_video_to_file_abstract(
-    frames: torch.Tensor,
-    frame_rate: float,
-    filename: str,
-    codec: str | None = None,
-    pixel_format: str | None = None,
-    preset: str | None = None,
-    crf: int | float | None = None,
-    extra_options: list[str] | None = None,
-) -> None:
-    return
-
-
-@register_fake("torchcodec_ns::encode_video_to_tensor")
-def encode_video_to_tensor_abstract(
-    frames: torch.Tensor,
-    frame_rate: float,
-    format: str,
-    codec: str | None = None,
-    pixel_format: str | None = None,
-    preset: str | None = None,
-    crf: int | float | None = None,
-    extra_options: list[str] | None = None,
-) -> torch.Tensor:
-    return torch.empty([], dtype=torch.long)
-
-
-@register_fake("torchcodec_ns::_encode_video_to_file_like")
-def _encode_video_to_file_like_abstract(
-    frames: torch.Tensor,
-    frame_rate: float,
-    format: str,
-    file_like_context: int,
-    codec: str | None = None,
-    pixel_format: str | None = None,
-    preset: str | None = None,
-    crf: int | float | None = None,
-    extra_options: list[str] | None = None,
-) -> None:
-    return
-
-
 @register_fake("torchcodec_ns::create_from_tensor")
 def create_from_tensor_abstract(
     video_tensor: torch.Tensor, seek_mode: str | None
@@ -429,7 +304,7 @@ def _add_video_stream_abstract(
     custom_frame_mappings_duration: torch.Tensor | None = None,
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None,
     color_conversion_library: str | None = None,
-    output_dtype: str | None = None,
+    output_dtype: str = "uint8",
 ) -> None:
     return
 
@@ -447,7 +322,7 @@ def add_video_stream_abstract(
     custom_frame_mappings_pts: torch.Tensor | None = None,
     custom_frame_mappings_duration: torch.Tensor | None = None,
     custom_frame_mappings_keyframe_indices: torch.Tensor | None = None,
-    output_dtype: str | None = None,
+    output_dtype: str = "uint8",
 ) -> None:
     return
 
@@ -716,6 +591,18 @@ def _get_log_level_abstract() -> int:
 
 @register_fake("torchcodec_ns::create_wav_decoder_from_file")
 def create_wav_decoder_from_file_abstract(filename: str) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::create_wav_decoder_from_tensor")
+def create_wav_decoder_from_tensor_abstract(data: torch.Tensor) -> torch.Tensor:
+    return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::_create_wav_decoder_from_file_like")
+def _create_wav_decoder_from_file_like_abstract(
+    file_like_context: int,
+) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
 
