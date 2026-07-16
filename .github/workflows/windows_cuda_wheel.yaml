@@ -53,10 +53,11 @@ jobs:
       build-matrix: ${{ needs.generate-matrix.outputs.matrix }}
       pre-script: packaging/pre_build_script.sh
       # Bundle libjpeg into the Windows wheel via delvewheel + verify only
-      # libjpeg is bundled (repair_wheel.sh runs check_wheel_bundling.sh). We
-      # don't use post_build_script.sh, which does Linux/macOS-only checks.
-      # TODO: consider enabling the full post-build checks for Windows.
-      post-script: packaging/repair_wheel.sh
+      # libjpeg is bundled. The .bat shim delegates to git-bash to run the
+      # shared repair_wheel.sh (which runs check_wheel_bundling.sh); a .sh can't
+      # be run directly by vc_env_helper.bat (cmd), and the backslash path
+      # avoids cmd misparsing "packaging/..." as a command.
+      post-script: packaging\repair_wheel.bat
       env-script: packaging/vc_env_helper.bat
       smoke-test-script: packaging/fake_smoke_test.py
       package-name: torchcodec

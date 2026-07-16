@@ -44,7 +44,10 @@ fi
 
 case "${os}" in
     Linux)
-        python -m pip install auditwheel
+        # -U: the runner may ship an older auditwheel preinstalled; without -U
+        # `pip install` is a no-op and we'd run the stale version.
+        python -m pip install -U auditwheel
+        auditwheel --version
         # auditwheel drives `patchelf` (found on PATH; provided by the manylinux
         # build image). NOTE: on a bleeding-edge local toolchain we saw old
         # patchelf (<=0.18.0) corrupt our large torch-linked custom_ops.so ->
@@ -74,7 +77,14 @@ case "${os}" in
         ;;
 
     Darwin)
-        python -m pip install delocate
+        # -U is IMPORTANT: macOS runners ship delocate preinstalled, and an
+        # older delocate's `--exclude` did NOT skip libc++/libpython (they ended
+        # up bundled -> check failed). Without -U, `pip install delocate` is a
+        # no-op and keeps the stale version. Current delocate's copy filter
+        # ("exclude if the string is a substring of the lib path") correctly
+        # excludes them.
+        python -m pip install -U delocate
+        delocate-wheel --version
         # delocate resolves via install names; conda's are usually absolute, but
         # add the env lib dir to the fallback path to be safe.
         if [[ -n "${CONDA_PREFIX:-}" ]]; then
@@ -102,7 +112,8 @@ case "${os}" in
         ;;
 
     MINGW*|MSYS*|CYGWIN*)
-        python -m pip install delvewheel
+        python -m pip install -U delvewheel
+        delvewheel --version || true
         add_path=""
         if [[ -n "${CONDA_PREFIX:-}" ]]; then
             # conda ships DLLs under $CONDA_PREFIX/Library/bin on Windows.
