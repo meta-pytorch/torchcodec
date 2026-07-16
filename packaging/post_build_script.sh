@@ -11,9 +11,9 @@ source packaging/helpers.sh
 
 # Bundle libjpeg into the wheel with the standard per-OS repair tool (auditwheel
 # on Linux, delocate on macOS), excluding FFmpeg/torch/CUDA so ONLY libjpeg is
-# bundled. repair_wheel.sh also runs check_wheel_bundling.sh to assert that.
+# bundled. repair_wheel.py also runs check_wheel_bundling.py to assert that.
 # Runs before the checks below so they validate the final, shipped wheel.
-bash packaging/repair_wheel.sh
+python packaging/repair_wheel.py
 
 wheel_path=$(pwd)/$(find dist -type f -name "*.whl")
 echo "Wheel content:"
