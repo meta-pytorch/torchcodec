@@ -3,10 +3,23 @@ project(TorchCodec)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Guard against accidentally building a distributable wheel that dynamically
+# links against a GPL build of FFmpeg (e.g. from conda/system), which would be a
+# license violation. Wheels are expected to link against our pre-built non-GPL
+# FFmpeg (BUILD_AGAINST_ALL_FFMPEG_FROM_S3).
+if(SKBUILD_STATE STREQUAL "wheel"
+   AND NOT DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3}
+   AND NOT DEFINED ENV{I_CONFIRM_THIS_IS_NOT_A_LICENSE_VIOLATION})
+    message(FATAL_ERROR
+        "It looks like you're trying to build a wheel. You probably want to set "
+        "BUILD_AGAINST_ALL_FFMPEG_FROM_S3. If you have a good reason *not* to, "
+        "then set I_CONFIRM_THIS_IS_NOT_A_LICENSE_VIOLATION.")
+endif()
+
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
-find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development Interpreter)
+find_package(Python3 COMPONENTS Development Interpreter)
 
 # Read a list variable from sources.bzl, the single source of truth for the
 # _core C++ source files shared with the internal Buck build. The .bzl file is
@@ -80,6 +93,14 @@ function(make_torchcodec_sublibrary
         "${TORCH_INSTALL_PREFIX}/include"
         ${Python3_INCLUDE_DIRS}
     )
+    # On Windows, the pybind ops library links the Python import library
+    # (python3XX.lib) by bare name via pybind11::module, so the Python library
+    # directory must be on the linker search path or linking fails with
+    # "LNK1104: cannot open file 'python3XX.lib'". This is a no-op on
+    # Linux/macOS, where extension modules resolve Python symbols dynamically.
+    if(WIN32)
+        target_link_directories(${library_name} PRIVATE ${Python3_LIBRARY_DIRS})
+    endif()
     # Use fmt library in header-only mode (bundled with PyTorch): the fmt
     # library is bundled with PyTorch and the headers are available in
     # TORCH_INSTALL_PREFIX/include/, which we add above. To be compatible with
@@ -322,16 +343,32 @@ function(make_torchcodec_libraries
         ${pybind_ops_library_name}
     )
 
-    # The install step is invoked within CMakeBuild.build_library() in
-    # setup.py and just copies the built files from the temp
-    # cmake/setuptools build folder into the CMAKE_INSTALL_PREFIX folder. We
-    # still need to manually pass "DESTINATION ..." for cmake to copy those
-    # files in CMAKE_INSTALL_PREFIX instead of CMAKE_INSTALL_PREFIX/lib.
-    install(
-        TARGETS ${all_libraries}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}  # For Windows
-    )
+    # We want the built libraries to end up in [src/]torchcodec so that the
+    # Python runtime loader can find them. This is done in two mutually exclusive
+    # ways depending on the build mode. Crucially, scikit-build-core doesn't
+    # trigger cmake's install() step on editable installs:
+    #
+    # - Editable installs (`pip install -e .`, SKBUILD_STATE=="editable"): build
+    #   the compiled libraries directly into the source package dir
+    #   (src/torchcodec).
+    # - Wheel builds and `pip install .`: install() copies the libraries into
+    #   scikit-build-core's staging dir (which becomes the wheel).
+    #  scikit-build-core manages the prefix, so we give a destination *relative* to it: "torchcodec/".
+    if(SKBUILD_STATE STREQUAL "editable")
+        # src/torchcodec, the parent of this _core dir.
+        get_filename_component(
+            TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+        set_target_properties(${all_libraries} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
+        )
+    else()
+        install(
+            TARGETS ${all_libraries}
+            LIBRARY DESTINATION torchcodec
+            RUNTIME DESTINATION torchcodec  # For Windows
+        )
+    endif()
 
 endfunction()
 

@@ -19,8 +19,10 @@ test locally you will need the following dependencies:
 - A C++ compiler+linker. This is typically available on a baseline Linux
   installation already.
 - cmake
+- ninja
 - pkg-config
 - pybind11
+- scikit-build-core (our build backend)
 - FFmpeg
 - PyTorch nightly
 
@@ -30,7 +32,7 @@ Start by installing the **nightly** build of PyTorch following the
 Then, the easiest way to install the rest of the dependencies is to run:
 
 ```bash
-conda install cmake pkg-config pybind11 "ffmpeg" -c conda-forge
+conda install cmake ninja pkg-config pybind11 scikit-build-core "ffmpeg" -c conda-forge
 ```
 
 ### Clone and build
