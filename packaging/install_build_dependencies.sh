@@ -26,10 +26,9 @@ python -m pip install "scikit-build-core>=0.10" ninja
 # libjpeg-turbo is a build-time dependency for the CPU JPEG image decoder
 # (torchcodec.decoders._image_decoders.decode_jpeg). When present, torchcodec is
 # built with JPEG support and libjpeg (permissively licensed) is bundled into
-# the wheel at build time by CMake (install() + a link-time $ORIGIN rpath; see
-# src/torchcodec/_core/CMakeLists.txt). We do NOT use auditwheel/delocate for
-# this: they'd also bundle the GPL FFmpeg libs torchcodec keeps external, and
-# their patchelf-based rewriting corrupts our custom-ops .so (segfault at load).
+# the wheel at repair time by the standard per-OS tool -- auditwheel (Linux),
+# delocate (macOS), delvewheel (Windows) -- excluding the GPL FFmpeg libs and
+# the torch/CUDA libs so ONLY libjpeg is bundled. See packaging/repair_wheel.sh.
 #
 # The install is best-effort (|| echo) so a channel/arch that lacks the package
 # doesn't abort the build; the wheel-bundling check (packaging/check_wheel_

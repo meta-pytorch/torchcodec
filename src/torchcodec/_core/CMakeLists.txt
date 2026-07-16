@@ -40,47 +40,13 @@ endif()
 find_package(JPEG)
 if(JPEG_FOUND)
     message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
-
-    # --- Wheel bundling of libjpeg -------------------------------------------
-    # libjpeg is LINKED into libtorchcodec_custom_ops*, so it must travel with
-    # the wheel or `import torchcodec` fails on machines without it. We bundle it
-    # OURSELVES (copy the runtime .so next to our libs + a link-time $ORIGIN
-    # rpath, see make_torchcodec_libraries) rather than with auditwheel/delocate.
-    # Two reasons: (1) those tools would also try to bundle the GPL, runtime-
-    # provided FFmpeg libs that torchcodec deliberately keeps external; (2) their
-    # patchelf-based rewriting corrupts our custom-ops .so (segfault at load).
-    # A link-time rpath produces a correct binary with no post-hoc patching.
-    #
-    # Resolve the runtime file(s) from the linker library's directory: on Linux
-    # the SONAME recorded as NEEDED is e.g. libjpeg.so.8, so we ship every
-    # libjpeg.so.* (skipping the bare dev symlink); on macOS the versioned
-    # dylibs; on Windows the DLL.
-    set(_jpeg_link_lib "${JPEG_LIBRARY_RELEASE}")
-    if(NOT _jpeg_link_lib)
-        set(_jpeg_link_lib "${JPEG_LIBRARY}")
-    endif()
-    if(NOT _jpeg_link_lib)
-        list(GET JPEG_LIBRARIES 0 _jpeg_link_lib)
-    endif()
-    get_filename_component(_jpeg_libdir "${_jpeg_link_lib}" DIRECTORY)
-    if(APPLE)
-        file(GLOB TORCHCODEC_JPEG_RUNTIME_LIBS "${_jpeg_libdir}/libjpeg.*.dylib")
-    elseif(WIN32)
-        # conda ships DLLs under Library/bin, not Library/lib.
-        file(GLOB TORCHCODEC_JPEG_RUNTIME_LIBS
-            "${_jpeg_libdir}/../bin/jpeg*.dll"
-            "${_jpeg_libdir}/../bin/libjpeg*.dll")
-    else()
-        file(GLOB TORCHCODEC_JPEG_RUNTIME_LIBS "${_jpeg_libdir}/libjpeg.so.*")
-    endif()
-
-    # Only bundle for actual wheel / non-editable installs. In editable/dev
-    # installs the .so keeps its build-tree rpath, which already points at the
-    # environment's libjpeg, so there's nothing to bundle.
-    if(SKBUILD_STATE STREQUAL "wheel" AND TORCHCODEC_JPEG_RUNTIME_LIBS)
-        message(STATUS "Bundling libjpeg into the wheel: ${TORCHCODEC_JPEG_RUNTIME_LIBS}")
-        install(FILES ${TORCHCODEC_JPEG_RUNTIME_LIBS} DESTINATION torchcodec)
-    endif()
+    # We only LINK libjpeg here (into libtorchcodec_custom_ops*, see
+    # make_torchcodec_libraries). Because it's linked, libjpeg must travel with
+    # the wheel or `import torchcodec` would fail on machines without it. It gets
+    # bundled at wheel-repair time by the standard per-OS tool (auditwheel on
+    # Linux, delocate on macOS, delvewheel on Windows); see
+    # packaging/repair_wheel.sh, which excludes the (GPL, runtime-provided)
+    # FFmpeg libs and the torch/CUDA libs so ONLY libjpeg gets bundled.
 else()
     message(STATUS "libjpeg NOT found: torchcodec.decode_jpeg will raise at runtime.")
 endif()
@@ -310,24 +276,9 @@ function(make_torchcodec_libraries
         target_compile_definitions(
             ${custom_ops_library_name} PRIVATE JPEG_FOUND=1)
         target_link_libraries(${custom_ops_library_name} PRIVATE JPEG::JPEG)
-        # Link-time rpath so the bundled libjpeg (installed next to this lib in
-        # the wheel by install(FILES ...) above) is found at runtime. Done at
-        # link time (not via patchelf) because patchelf corrupts this lib.
-        # APPEND so we don't clobber the Homebrew-FFmpeg rpath set on macOS.
-        if(APPLE)
-            set_property(TARGET ${custom_ops_library_name}
-                APPEND PROPERTY INSTALL_RPATH "@loader_path")
-        elseif(NOT WIN32)
-            set_property(TARGET ${custom_ops_library_name}
-                APPEND PROPERTY INSTALL_RPATH "$ORIGIN")
-            # Emit DT_RPATH (old dtags) instead of DT_RUNPATH. DT_RUNPATH is not
-            # inherited down the load chain, which would break resolution of
-            # libpython (found via the statically-linked interpreter's inherited
-            # DT_RPATH); DT_RPATH preserves that inheritance while still adding
-            # $ORIGIN so the co-located bundled libjpeg is found.
-            target_link_options(${custom_ops_library_name}
-                PRIVATE "-Wl,--disable-new-dtags")
-        endif()
+        # No rpath / bundling here: the wheel-repair tool (auditwheel/delocate/
+        # delvewheel; see packaging/repair_wheel.sh) copies libjpeg into the
+        # wheel and rewrites the rpath at repair time.
     endif()
 
     # 3. Create libtorchcodec_pybind_opsN.so.

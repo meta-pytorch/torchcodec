@@ -9,10 +9,11 @@ set -ex
 
 source packaging/helpers.sh
 
-# Assert the wheel bundles ONLY libjpeg (plus our own libs) and nothing else --
-# in particular no FFmpeg/torch/CUDA libs. libjpeg itself is bundled at build
-# time via CMake (install() + link-time $ORIGIN rpath); see _core/CMakeLists.txt.
-bash packaging/check_wheel_bundling.sh
+# Bundle libjpeg into the wheel with the standard per-OS repair tool (auditwheel
+# on Linux, delocate on macOS), excluding FFmpeg/torch/CUDA so ONLY libjpeg is
+# bundled. repair_wheel.sh also runs check_wheel_bundling.sh to assert that.
+# Runs before the checks below so they validate the final, shipped wheel.
+bash packaging/repair_wheel.sh
 
 wheel_path=$(pwd)/$(find dist -type f -name "*.whl")
 echo "Wheel content:"
