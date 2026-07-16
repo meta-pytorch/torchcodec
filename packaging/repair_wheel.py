@@ -110,46 +110,39 @@ def repair_macos(wheels):
 
 def repair_windows(wheels):
     run([sys.executable, "-m", "pip", "install", "-U", "delvewheel"])
-    run(["delvewheel", "--version"])
+    # NB: delvewheel has no `--version` flag (it requires a subcommand), so we
+    # don't print a version line here; the pip install output above shows it.
     extra = []
     conda_prefix = os.environ.get("CONDA_PREFIX")
     if conda_prefix:
         # conda ships DLLs under $CONDA_PREFIX/Library/bin on Windows.
         extra = ["--add-path", os.path.join(conda_prefix, "Library", "bin")]
-    # delvewheel --exclude takes a comma-separated list; glob patterns supported.
-    exclude = ",".join(
-        [
-            "torch.dll",
-            "torch_cpu.dll",
-            "torch_cuda.dll",
-            "c10.dll",
-            "c10_cuda.dll",
-            "avcodec-*.dll",
-            "avformat-*.dll",
-            "avutil-*.dll",
-            "avfilter-*.dll",
-            "avdevice-*.dll",
-            "swscale-*.dll",
-            "swresample-*.dll",
-            "postproc-*.dll",
-            "cudart64_*.dll",
-            "nvrtc*.dll",
-            "cublas*.dll",
-        ]
-    )
+    # delvewheel --exclude supports glob patterns (fnmatch). Its multi-value
+    # form is os.pathsep-delimited (';' on Windows), but --exclude also has
+    # action='append', so we pass it repeatedly (one pattern each) to avoid any
+    # delimiter ambiguity -- mirroring the Linux/macOS branches.
+    excludes = []
+    for pat in (
+        "torch.dll",
+        "torch_cpu.dll",
+        "torch_cuda.dll",
+        "c10.dll",
+        "c10_cuda.dll",
+        "avcodec-*.dll",
+        "avformat-*.dll",
+        "avutil-*.dll",
+        "avfilter-*.dll",
+        "avdevice-*.dll",
+        "swscale-*.dll",
+        "swresample-*.dll",
+        "postproc-*.dll",
+        "cudart64_*.dll",
+        "nvrtc*.dll",
+        "cublas*.dll",
+    ):
+        excludes += ["--exclude", pat]
     for wheel in wheels:
-        run(
-            [
-                "delvewheel",
-                "repair",
-                *extra,
-                "--exclude",
-                exclude,
-                "-w",
-                REPAIRED_DIR,
-                wheel,
-            ]
-        )
+        run(["delvewheel", "repair", *extra, *excludes, "-w", REPAIRED_DIR, wheel])
 
 
 def main():
