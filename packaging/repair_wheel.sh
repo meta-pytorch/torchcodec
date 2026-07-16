@@ -45,8 +45,16 @@ fi
 case "${os}" in
     Linux)
         python -m pip install auditwheel
-        # NOT `pip install patchelf` -- that pins 0.17.2, which corrupts our .so.
-        conda install -y -c conda-forge "patchelf>=0.18"
+        # auditwheel drives `patchelf` (found on PATH; provided by the manylinux
+        # build image). NOTE: on a bleeding-edge local toolchain we saw old
+        # patchelf (<=0.18.0) corrupt our large torch-linked custom_ops.so ->
+        # SIGSEGV in the library's static initializer at import; patchelf 0.19.0
+        # was the first version that rewrote it cleanly. We're NOT pinning it
+        # here -- letting the CI image use its own patchelf -- because the
+        # manylinux toolchain likely doesn't trigger the bug. If a wheel
+        # segfaults at import, install a patchelf >= 0.19 before this step, e.g.:
+        #   curl -fsSL https://github.com/NixOS/patchelf/releases/download/0.19.0/patchelf-0.19.0-$(uname -m).tar.gz | tar -xz -C /tmp/pf && export PATH=/tmp/pf/bin:$PATH
+        patchelf --version || true
         # auditwheel must be able to *find* libjpeg to graft it.
         if [[ -n "${CONDA_PREFIX:-}" ]]; then
             export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
@@ -73,9 +81,18 @@ case "${os}" in
             export DYLD_FALLBACK_LIBRARY_PATH="${CONDA_PREFIX}/lib:${DYLD_FALLBACK_LIBRARY_PATH:-}"
         fi
         # delocate --exclude matches a substring of the dependency's basename.
+        # Besides FFmpeg (libav*/libsw*) and torch (libtorch*/libc10*/libomp),
+        # we must also exclude libc++ (a macOS system lib, always present at
+        # /usr/lib) and libpython (provided by the interpreter). delocate would
+        # otherwise copy both into the wheel; auditwheel handles their Linux
+        # equivalents automatically (libstdc++/libc are manylinux-allowlisted and
+        # libpython is auto-dropped), but delocate needs to be told explicitly.
+        # Note: "libtorch" also substring-matches our own libtorchcodec_* libs,
+        # which is harmless -- they're the wheel's own libs, not external deps.
         excludes=(
             --exclude libav --exclude libsw --exclude libpostproc
             --exclude libtorch --exclude libc10 --exclude libomp
+            --exclude "libc++" --exclude libpython
         )
         for wheel in "${wheels[@]}"; do
             echo "Repairing (delocate) ${wheel}"
