@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -258,8 +259,14 @@ class TestImageDecoder:
         try:
             img = decode_jpeg(path)
         except RuntimeError as e:
-            if "libjpeg" in str(e):
-                pytest.skip("torchcodec was built without libjpeg support")
+            # We skip the JPEG tests when torchcodec was built without libjpeg,
+            # but only if the FAIL_WITHOUT_JPEG env var wasn't set. If it's set,
+            # we let the error propagate and fail loudly. This env var is set on
+            # CI jobs that are supposed to have JPEG support built in, so if it's
+            # missing there for whatever reason, we need to know. Mirrors the
+            # FAIL_WITHOUT_CUDA logic in test/conftest.py.
+            if "libjpeg" in str(e) and os.environ.get("FAIL_WITHOUT_JPEG") is None:
+                pytest.skip("torchcodec was built without libjpeg support.")
             raise
 
         assert img.dtype == torch.uint8
