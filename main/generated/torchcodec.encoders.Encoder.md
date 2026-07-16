@@ -39,7 +39,7 @@ encoder = Encoder()
 video_stream = encoder.add_video(height=256, width=256, frame_rate=30)
 with encoder.open_file_like(buf, format="mp4"):
  video_stream.add_frames(frames_tensor)
-encoded_bytes = buf.getvalue()
+encoded_bytes = buf.getbuffer() # or getvalue()
 # Optionally convert to a uint8 tensor of bytes with
 # bytes_tensor = torch.frombuffer(encoded_bytes, dtype=torch.uint8)
 ```
