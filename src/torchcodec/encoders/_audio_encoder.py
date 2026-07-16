@@ -122,7 +122,7 @@ class AudioEncoder:
         )
         with encoder.open_file_like(buf, format=format):
             audio.add_samples(self._samples)
-        return torch.frombuffer(buf.getvalue(), dtype=torch.uint8).clone()
+        return torch.frombuffer(buf.getbuffer(), dtype=torch.uint8)
 
     def to_file_like(
         self,
