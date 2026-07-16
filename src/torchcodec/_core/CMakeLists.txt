@@ -19,10 +19,6 @@ if(SKBUILD_STATE STREQUAL "wheel"
         "then set I_CONFIRM_THIS_IS_NOT_A_LICENSE_VIOLATION.")
 endif()
 
-# Absolute path to the torchcodec Python package directory (src/torchcodec), the
-# parent of this _core directory. Used to place editable-install artifacts.
-get_filename_component(TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
-
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
@@ -119,21 +115,6 @@ function(make_torchcodec_sublibrary
 
     # Avoid adding the "lib" prefix which we already add explicitly.
     set_target_properties(${library_name} PROPERTIES PREFIX "")
-
-    # For editable installs (editable.mode="inplace" in pyproject.toml,
-    # SKBUILD_STATE=="editable"), scikit-build-core skips the install step, so we
-    # build the shared libraries straight into the source package dir. This keeps
-    # all local .so/.dylib/.pyd files in one inspectable place (src/torchcodec/),
-    # next to the Python files where the runtime loader finds them, and avoids
-    # stale libraries from a previous build lingering in a separate staging dir.
-    # We set both LIBRARY_ and RUNTIME_OUTPUT_DIRECTORY to cover .so/.dylib and
-    # Windows .dll/.pyd.
-    if(SKBUILD_STATE STREQUAL "editable")
-        set_target_properties(${library_name} PROPERTIES
-            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
-            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
-        )
-    endif()
 
     # On macOS, for wheels, add Homebrew's FFmpeg library path to the rpath so
     # that users with Homebrew-installed FFmpeg can use torchcodec without
@@ -365,19 +346,33 @@ function(make_torchcodec_libraries
         ${pybind_ops_library_name}
     )
 
-    # This install() rule is what makes the built libraries importable, for every
-    # build mode (wheel, `pip install .`, and editable `pip install -e .`).
-    # scikit-build-core builds by running `cmake --install`, which only copies
-    # targets that have an install() rule, so without this the .so/.dll files
-    # would be compiled but never staged. scikit-build-core manages the install
-    # prefix (it passes CMAKE_INSTALL_PREFIX at install time, pointing at a
-    # staging dir inside the wheel tree), so we give a destination *relative* to
-    # it: "torchcodec/" rather than CMake's defaults (lib/ for LIBRARY, bin/ for
-    # RUNTIME) so the libraries sit next to the Python files. For wheel builds /
-    # `pip install .` that staging dir becomes the wheel; for editable installs
-    # (default "redirect" mode) the libraries stay there and scikit-build-core
-    # adds an import hook pointing at them - the source tree is NOT modified
-    # (unlike the old setup.py build, which copied the .so files back into src/).
+    # Where the built libraries need to end up depends on the build mode:
+    #
+    # - Editable installs (`pip install -e .`): scikit-build-core uses "inplace"
+    #   mode (see pyproject.toml) and SKIPS the install() step below, so we build
+    #   the libraries straight into the source package dir (src/torchcodec), next
+    #   to the Python files where the runtime loader finds them. This keeps all
+    #   local .so/.dylib/.pyd in one inspectable place. We set both LIBRARY_ and
+    #   RUNTIME_OUTPUT_DIRECTORY to cover .so/.dylib and Windows .dll/.pyd.
+    #
+    # - Wheel builds and `pip install .`: the install() rule copies the libraries
+    #   into scikit-build-core's staging dir. `cmake --install` only copies
+    #   targets that have an install() rule, so this is required or the libraries
+    #   would compile but never be packaged. scikit-build-core manages the prefix
+    #   (it passes CMAKE_INSTALL_PREFIX at install time, pointing at a staging dir
+    #   that becomes the wheel), so we give a destination *relative* to it:
+    #   "torchcodec/" rather than CMake's defaults (lib/ for LIBRARY, bin/ for
+    #   RUNTIME) so the libraries sit next to the Python files.
+    if(SKBUILD_STATE STREQUAL "editable")
+        # src/torchcodec, the parent of this _core dir.
+        get_filename_component(
+            TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+        set_target_properties(${all_libraries} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+        )
+    endif()
+
     install(
         TARGETS ${all_libraries}
         LIBRARY DESTINATION torchcodec
