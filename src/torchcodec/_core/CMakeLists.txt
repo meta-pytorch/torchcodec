@@ -346,10 +346,14 @@ function(make_torchcodec_libraries
         ${pybind_ops_library_name}
     )
 
-    # The install step copies the built files into the wheel layout.
-    # With scikit-build-core, CMAKE_INSTALL_PREFIX is managed automatically.
-    # We install to "torchcodec/" (relative to the install prefix) so that
-    # the .so files end up next to the Python files in site-packages.
+    # This install() rule is what puts the built libraries into the wheel:
+    # scikit-build-core builds the wheel by running `cmake --install`, which only
+    # copies targets that have an install() rule, so without this the .so/.dll
+    # files would be compiled but never packaged. scikit-build-core manages
+    # CMAKE_INSTALL_PREFIX for us (it points at the wheel's staging root), so we
+    # only specify the destination *relative* to it. We use "torchcodec/" rather
+    # than CMake's defaults (lib/ for LIBRARY, bin/ for RUNTIME) so the libraries
+    # land next to the Python files, where `import torchcodec` can find them.
     install(
         TARGETS ${all_libraries}
         LIBRARY DESTINATION torchcodec
