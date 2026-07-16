@@ -346,23 +346,17 @@ function(make_torchcodec_libraries
         ${pybind_ops_library_name}
     )
 
-    # Where the built libraries need to end up depends on the build mode:
+    # We want the built libraries to end-up in [src/]torchcodec] so that the
+    # Python runtime loader can find them. This is done in two multually
+    # exclusive ways:
     #
     # - Editable installs (`pip install -e .`): scikit-build-core uses "inplace"
     #   mode (see pyproject.toml) and SKIPS the install() step below, so we build
-    #   the libraries straight into the source package dir (src/torchcodec), next
-    #   to the Python files where the runtime loader finds them. This keeps all
-    #   local .so/.dylib/.pyd in one inspectable place. We set both LIBRARY_ and
-    #   RUNTIME_OUTPUT_DIRECTORY to cover .so/.dylib and Windows .dll/.pyd.
-    #
-    # - Wheel builds and `pip install .`: the install() rule copies the libraries
-    #   into scikit-build-core's staging dir. `cmake --install` only copies
-    #   targets that have an install() rule, so this is required or the libraries
-    #   would compile but never be packaged. scikit-build-core manages the prefix
-    #   (it passes CMAKE_INSTALL_PREFIX at install time, pointing at a staging dir
-    #   that becomes the wheel), so we give a destination *relative* to it:
-    #   "torchcodec/" rather than CMake's defaults (lib/ for LIBRARY, bin/ for
-    #   RUNTIME) so the libraries sit next to the Python files.
+    #   the libraries straight into the source package dir (src/torchcodec).
+    # - Wheel builds and `pip install .`: the install() step is invoked.
+    # scikit-build-core manages the prefix (it passes CMAKE_INSTALL_PREFIX at
+    # install time, pointing at a staging dir that becomes the wheel), so we
+    # give a destination *relative* to it: "torchcodec/".
     if(SKBUILD_STATE STREQUAL "editable")
         # src/torchcodec, the parent of this _core dir.
         get_filename_component(
@@ -372,7 +366,8 @@ function(make_torchcodec_libraries
             RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
         )
     endif()
-
+    # Note: there's no "else", but this isn't invoked by scikit-build-core in
+    # editable mode
     install(
         TARGETS ${all_libraries}
         LIBRARY DESTINATION torchcodec

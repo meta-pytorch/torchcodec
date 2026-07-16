@@ -32,10 +32,7 @@ experimental = true
 install.strip = false
 # For editable installs (`pip install -e .`), use "inplace" mode so the compiled
 # libraries are placed directly in the source tree (src/torchcodec/) instead of a
-# separate scikit-build-core staging dir. This keeps all local .so files in one
-# place - easy to inspect and remove - and avoids one build's libraries shadowing
-# another's. CMakeLists.txt points the build output at src/torchcodec for editable
-# builds (keyed on SKBUILD_STATE). Matches the old setup.py behavior.
+# separate scikit-build-core staging dir.
 editable.mode = "inplace"
 
 # Restores the version-handling logic that used to live in setup.py: honor the

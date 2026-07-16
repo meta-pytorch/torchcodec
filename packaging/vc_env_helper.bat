@@ -37,10 +37,7 @@ if defined CUDA_PATH set CUDACXX=%CUDA_PATH%\bin\nvcc.exe
 :: For CUDA builds, force the Ninja generator. CMake honors the CUDACXX env var
 :: (set above to the toolkit matching this build, e.g. v12.6) under Ninja, but
 :: NOT under the default Visual Studio generator, which auto-selects the newest
-:: nvcc on PATH (e.g. 13.x). A newer nvcc rejects the older gpu archs that torch
-:: requests (e.g. compute_50), failing with "nvcc fatal: Unsupported gpu
-:: architecture". This mirrors the previous setup.py-based build. We only do
-:: this for CUDA builds so the CPU build keeps using the Visual Studio generator.
+:: nvcc on PATH (e.g. 13.x).
 if defined CUDA_PATH set CMAKE_GENERATOR=Ninja
 
 set args=%1
