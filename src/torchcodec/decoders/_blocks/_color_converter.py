@@ -22,16 +22,21 @@ class ColorConverter:
     :class:`DecodedFrame` into an RGB :class:`~torchcodec._frame.Frame`
     (CHW, uint8 -- matching ``VideoDecoder``'s default output).
 
-    Not bound to anything: everything it needs (dims, pixel format, colorspace)
-    comes from the frame itself, so one converter can process frames from any
-    video. Passive and *not* thread-safe: use one ``ColorConverter`` per thread.
+    Self-contained and not bound to anything: everything it needs (dims, pixel
+    format, colorspace, and on CUDA the hardware context) comes from the frame
+    itself, so one converter can process frames from any video -- it needs no
+    reference to the decoder that produced them. ``device`` selects where the
+    conversion runs; on CUDA use ``device_variant="ffmpeg"`` to match a
+    ``PacketDecoder`` configured the same way.
+
+    Passive and *not* thread-safe: use one ``ColorConverter`` per thread.
 
     Note: automatic rotation (from stream side data) is not applied, since this
     block is intentionally stream-agnostic.
     """
 
-    def __init__(self):
-        self._handle = _blocks_create_color_converter()
+    def __init__(self, device: str = "cpu", device_variant: str = "default"):
+        self._handle = _blocks_create_color_converter(device, device_variant)
 
     def convert(self, decoded_frame: DecodedFrame) -> Frame:
         data = _blocks_convert_frame(self._handle, decoded_frame._handle)

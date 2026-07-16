@@ -229,15 +229,15 @@ AVPacket* unwrap_tensor_to_packet(torch::stable::Tensor& tensor) {
 }
 
 torch::stable::Tensor wrap_frame_pointer_to_tensor(AVFrame* frame) {
-  // Owning handle: the frame is freed when the handle tensor's refcount drops.
-  // ColorConverter borrows the frame during conversion (on CPU it does not free
-  // it), so the handle stays the sole owner and there is no leak even if a
-  // frame is never converted. (GPU conversion would consume the frame; GPU is
-  // not exposed through these ops yet.)
-  auto deleter = [frame](void*) {
-    AVFrame* f = frame;
-    av_frame_free(&f);
-  };
+  // NON-owning handle (no-op deleter): ownership is transferred to
+  // _blocks_convert_frame, which consumes the frame. This is the only model
+  // that's correct across devices: CPU convert reads the frame (the op's local
+  // UniqueAVFrame frees it), the CUDA/NVDEC path std::move's it, and the CUDA
+  // ffmpeg path may replace it with a filtered frame -- in every case convert
+  // ends up owning (and freeing) whatever frame is live, so the handle must not
+  // also free. Trade-off: a frame that is never converted leaks; in practice
+  // pipelines convert every frame.
+  auto deleter = [](void*) {};
   int64_t sizes[] = {1};
   int64_t strides[] = {1};
   return torch::stable::from_blob(
@@ -930,12 +930,12 @@ torch::stable::Tensor _blocks_convert_frame(
   ColorConverter* converter_ptr =
       unwrap_tensor_to_pointer<ColorConverter>(converter);
   AVFrame* raw_frame = unwrap_tensor_to_frame(frame);
-  // Borrow the frame for conversion, then release() so the handle keeps
-  // ownership and frees it when its tensor is dropped (CPU path).
-  UniqueAVFrame borrowed(raw_frame);
-  torch::stable::Tensor data = converter_ptr->convert(borrowed);
-  borrowed.release();
-  return data;
+  // Take ownership of the frame (the handle is non-owning) and let `owned` free
+  // whatever frame is live after convert: CPU leaves `owned` holding raw_frame;
+  // the CUDA/NVDEC path moves it out (owned becomes null); the CUDA ffmpeg path
+  // may replace it with a filtered frame. Single free in every case.
+  UniqueAVFrame owned(raw_frame);
+  return converter_ptr->convert(owned);
 }
 
 // For testing only. We need to implement this operation as a core library

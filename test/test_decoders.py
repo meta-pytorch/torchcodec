@@ -3305,42 +3305,44 @@ class TestBlocks:
 
         return drain()
 
-    def _decoded_frames(self, path):
-        # demux + decode, as a single generator of DecodedFrames (pts order).
+    @staticmethod
+    def _make_blocks(path, device="cpu"):
+        # Build the three blocks for `device`. All blocks are self-contained: the
+        # ColorConverter is not bound to the decoder even on CUDA. On CUDA we use
+        # the "ffmpeg" variant for both decoder and converter.
+        variant = "default" if device == "cpu" else "ffmpeg"
         demuxer = Demuxer(path)
-        decoder = PacketDecoder(demuxer)
+        decoder = PacketDecoder(demuxer, device=device, device_variant=variant)
+        converter = ColorConverter(device=device, device_variant=variant)
+        return demuxer, decoder, converter
+
+    def _decoded_frames(self, path, device="cpu"):
+        # demux + decode, as a single generator of DecodedFrames (pts order).
+        demuxer, decoder, _ = self._make_blocks(path, device)
         return self._decode(decoder, self._demux(demuxer))
 
-    def _decode_sequential(self, path):
+    def _decode_sequential(self, path, device="cpu"):
         # demux -> decode -> color-convert, all on the calling thread.
-        demuxer = Demuxer(path)
-        decoder = PacketDecoder(demuxer)
-        converter = ColorConverter()
+        demuxer, decoder, converter = self._make_blocks(path, device)
         return list(
             self._convert(converter, self._decode(decoder, self._demux(demuxer)))
         )
 
-    def _decode_prefetch_frames(self, path):
+    def _decode_prefetch_frames(self, path, device="cpu"):
         # [demux + decode] on one thread || [color-convert] on another.
-        demuxer = Demuxer(path)
-        decoder = PacketDecoder(demuxer)
-        converter = ColorConverter()
+        demuxer, decoder, converter = self._make_blocks(path, device)
         frames = self.prefetch(self._decode(decoder, self._demux(demuxer)))
         return list(self._convert(converter, frames))
 
-    def _decode_prefetch_packets(self, path):
+    def _decode_prefetch_packets(self, path, device="cpu"):
         # [demux] on one thread || [decode + color-convert] on another.
-        demuxer = Demuxer(path)
-        decoder = PacketDecoder(demuxer)
-        converter = ColorConverter()
+        demuxer, decoder, converter = self._make_blocks(path, device)
         packets = self.prefetch(self._demux(demuxer))
         return list(self._convert(converter, self._decode(decoder, packets)))
 
-    def _decode_prefetch_packets_and_frames(self, path):
+    def _decode_prefetch_packets_and_frames(self, path, device="cpu"):
         # [demux] || [decode] || [color-convert], each on its own thread.
-        demuxer = Demuxer(path)
-        decoder = PacketDecoder(demuxer)
-        converter = ColorConverter()
+        demuxer, decoder, converter = self._make_blocks(path, device)
         packets = self.prefetch(self._demux(demuxer))
         frames = self.prefetch(self._decode(decoder, packets))
         return list(self._convert(converter, frames))
@@ -3403,3 +3405,36 @@ class TestBlocks:
             ref = VideoDecoder(video.path).get_all_frames()
             assert got.data.shape == ref.data.shape
             torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "decode_method",
+        (
+            _decode_sequential,
+            _decode_prefetch_frames,
+            _decode_prefetch_packets,
+            _decode_prefetch_packets_and_frames,
+        ),
+        ids=lambda f: f.__name__.removeprefix("_decode_"),
+    )
+    def test_matches_video_decoder_cuda(self, decode_method):
+        # On CUDA, the ColorConverter must share the decoder's DeviceInterface,
+        # so we bind it to the decoder. Blocks target the "ffmpeg" CUDA variant
+        # (self-contained, thread-movable frames); the reference VideoDecoder
+        # uses the same backend so the color conversion matches.
+        video = NASA_VIDEO
+        with set_cuda_backend("ffmpeg"):
+            got = self._to_frame_batch(
+                decode_method(self, video.path, device="cuda")
+            )
+            ref = VideoDecoder(video.path, device="cuda").get_all_frames()
+
+        assert got.data.device.type == "cuda"
+        assert got.data.shape == ref.data.shape
+        assert_frames_equal(got.data, ref.data)
+        torch.testing.assert_close(
+            got.pts_seconds, ref.pts_seconds, atol=0, rtol=0
+        )
+        torch.testing.assert_close(
+            got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
+        )
