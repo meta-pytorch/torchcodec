@@ -296,8 +296,7 @@ torch::stable::Tensor decode_jpeg(
   auto ptr = tensor->mutable_data_ptr<uint8_t>();
 
   if (cmyk_to_rgb_or_gray) {
-    cmyk_line_tensor =
-        torch::stable::empty({int64_t(width), 4}, kStableUInt8);
+    cmyk_line_tensor = torch::stable::empty({int64_t(width), 4}, kStableUInt8);
   }
 
   while (cinfo.output_scanline < cinfo.output_height) {

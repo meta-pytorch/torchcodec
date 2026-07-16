@@ -77,9 +77,11 @@ constexpr uint16_t INCORRECT_TAG = -1;
 class ExifDataReader {
  public:
   ExifDataReader(unsigned char* p, size_t s) : _ptr(p), _size(s) {}
+
   size_t size() const {
     return _size;
   }
+
   const unsigned char& operator[](size_t index) const {
     STD_TORCH_CHECK(index >= 0 && index < _size);
     return _ptr[index];
