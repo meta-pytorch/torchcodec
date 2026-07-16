@@ -73,6 +73,15 @@ custom_ops_sources = [
     "custom_ops.cpp",
 ]
 
+# Image decoder ops (jpeg/png/...), registered into the torchcodec_ns namespace.
+# These do NOT depend on FFmpeg and are compiled into the custom-ops library.
+# libjpeg (etc.) are optional build-time dependencies: when a lib is not found,
+# the corresponding op registers a stub that raises at call time. Not yet wired
+# into the internal Buck build.
+image_sources = [
+    "DecodeJpeg.cpp",
+]
+
 # pybind11 bindings.
 pybind_ops_sources = [
     "pybind_ops.cpp",

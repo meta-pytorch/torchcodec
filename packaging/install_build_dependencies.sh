@@ -22,3 +22,12 @@ set -ex
 
 conda install -y pybind11 -c conda-forge
 python -m pip install "scikit-build-core>=0.10" ninja
+
+# libjpeg-turbo is an OPTIONAL build-time dependency: when present, torchcodec is
+# built with the CPU JPEG image decoder (torchcodec.decoders._image_decoders.
+# decode_jpeg) and libjpeg gets bundled into the wheel by auditwheel/delocate
+# (it's permissively licensed). When absent, the build still succeeds and
+# decode_jpeg raises an actionable error at call time. We therefore don't let a
+# failed install abort the build.
+conda install -y libjpeg-turbo -c pytorch \
+    || echo "libjpeg-turbo not installed; torchcodec.decode_jpeg will be unavailable in this build."

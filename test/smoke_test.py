@@ -13,6 +13,7 @@ from test.utils import (
 from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
 from torchcodec.decoders import AudioDecoder, VideoDecoder
+from torchcodec.decoders._image_decoders import decode_jpeg, ImageColorMode
 from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
 
 
@@ -239,6 +240,36 @@ class TestAudioDecoder:
         samples = decoder.get_all_samples()
         assert samples.sample_rate == target_sr
         assert samples.data.shape[0] == 1
+
+
+def _make_jpeg_file(tmp_path):
+    from PIL import Image
+
+    arr = torch.randint(0, 256, (HEIGHT, WIDTH, 3), dtype=torch.uint8).numpy()
+    path = tmp_path / "test.jpg"
+    Image.fromarray(arr).save(path, quality=95)
+    return path
+
+
+class TestImageDecoder:
+    def test_decode_jpeg(self, tmp_path):
+        path = _make_jpeg_file(tmp_path)
+
+        try:
+            img = decode_jpeg(path)
+        except RuntimeError as e:
+            if "libjpeg" in str(e):
+                pytest.skip("torchcodec was built without libjpeg support")
+            raise
+
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, HEIGHT, WIDTH)
+
+        gray = decode_jpeg(path, mode=ImageColorMode.GRAY)
+        assert gray.shape == (1, HEIGHT, WIDTH)
+
+        rgb = decode_jpeg(path, mode=ImageColorMode.RGB)
+        assert rgb.shape == (3, HEIGHT, WIDTH)
 
 
 class TestVideoEncoder:

@@ -24,6 +24,24 @@ find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(Python3 COMPONENTS Development Interpreter)
 
+# libjpeg is an OPTIONAL build-time dependency for the CPU JPEG image decoder.
+# When found, we compile decode_jpeg with libjpeg support and link against it.
+# When absent, decode_jpeg still exists but raises an actionable error at call
+# time (see DecodeJpeg.cpp's !JPEG_FOUND stub). Not REQUIRED on purpose.
+#
+# CMake's FindJPEG doesn't search the active conda environment by default, so we
+# hint it there (this is where CI installs libjpeg-turbo, `conda install -c
+# pytorch libjpeg-turbo`, and where dev envs typically have it).
+if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
+    set(JPEG_ROOT $ENV{CONDA_PREFIX})
+endif()
+find_package(JPEG)
+if(JPEG_FOUND)
+    message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
+else()
+    message(STATUS "libjpeg NOT found: torchcodec.decode_jpeg will raise at runtime.")
+endif()
+
 # Read a list variable from sources.bzl, the single source of truth for the
 # _core C++ source files shared with the internal Buck build. The .bzl file is
 # valid Python, so we exec it and print the requested list; configure_file
@@ -52,6 +70,16 @@ read_sources_from_bzl(TORCHCODEC_DECODER_CORE_CUDA_SOURCES decoder_core_cuda_sou
 read_sources_from_bzl(TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES file_like_context_sources)
 read_sources_from_bzl(TORCHCODEC_CUSTOM_OPS_SOURCES custom_ops_sources)
 read_sources_from_bzl(TORCHCODEC_PYBIND_OPS_SOURCES pybind_ops_sources)
+read_sources_from_bzl(TORCHCODEC_IMAGE_SOURCES image_sources)
+
+# The image sources are ported from torchvision and use libjpeg's
+# setjmp/longjmp-based error handling and C-style idioms that would trip our
+# strict -Werror build. Relax -Werror for just these files.
+if(NOT WIN32)
+    set_source_files_properties(
+        ${TORCHCODEC_IMAGE_SOURCES}
+        PROPERTIES COMPILE_OPTIONS "-Wno-error")
+endif()
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -220,6 +248,7 @@ function(make_torchcodec_libraries
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
     set(custom_ops_sources
         ${TORCHCODEC_CUSTOM_OPS_SOURCES}
+        ${TORCHCODEC_IMAGE_SOURCES}
     )
     set(custom_ops_dependencies
         ${core_library_name}
@@ -231,6 +260,14 @@ function(make_torchcodec_libraries
         "${custom_ops_sources}"
         "${custom_ops_dependencies}"
     )
+
+    # Optional libjpeg support for the CPU JPEG image decoder (DecodeJpeg.cpp).
+    # JPEG_FOUND gates both the compile-time code path and the link.
+    if(JPEG_FOUND)
+        target_compile_definitions(
+            ${custom_ops_library_name} PRIVATE JPEG_FOUND=1)
+        target_link_libraries(${custom_ops_library_name} PRIVATE JPEG::JPEG)
+    endif()
 
     # 3. Create libtorchcodec_pybind_opsN.so.
     set(pybind_ops_library_name "libtorchcodec_pybind_ops${ffmpeg_major_version}")
