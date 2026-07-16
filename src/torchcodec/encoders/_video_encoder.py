@@ -167,7 +167,7 @@ class VideoEncoder:
         )
         with encoder.open_file_like(buf, format=format):
             video.add_frames(self._frames)
-        return torch.frombuffer(buf.getvalue(), dtype=torch.uint8).clone()
+        return torch.frombuffer(buf.getbuffer(), dtype=torch.uint8)
 
     def to_file_like(
         self,

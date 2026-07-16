@@ -4,6 +4,7 @@ import platform
 import re
 import subprocess
 import sys
+import warnings
 from functools import partial
 from pathlib import Path
 
@@ -139,9 +140,16 @@ class TestAudioEncoder:
         audio = enc.add_audio(sample_rate=sample_rate, num_channels=num_channels)
         with enc.open_file_like(buf, format="flac"):
             audio.add_samples(source_samples)
-        encoder_output = torch.frombuffer(buf.getvalue(), dtype=torch.uint8).clone()
+        encoder_output = torch.frombuffer(buf.getbuffer(), dtype=torch.uint8)
 
         torch.testing.assert_close(audio_encoder_output, encoder_output, rtol=0, atol=0)
+
+    def test_to_tensor_no_warning(self):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1509
+        samples = torch.rand(2, 32_000, dtype=torch.float32)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            AudioEncoder(samples, sample_rate=32_000).to_tensor(format="flac")
 
 
 class TestVideoEncoder:
@@ -183,9 +191,16 @@ class TestVideoEncoder:
         )
         with enc.open_file_like(buf, format="mp4"):
             video.add_frames(source_frames)
-        encoder_output = torch.frombuffer(buf.getvalue(), dtype=torch.uint8).clone()
+        encoder_output = torch.frombuffer(buf.getbuffer(), dtype=torch.uint8)
 
         torch.testing.assert_close(video_encoder_output, encoder_output, rtol=0, atol=0)
+
+    def test_to_tensor_no_warning(self):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1509
+        frames = torch.randint(0, 256, (10, 3, 64, 64), dtype=torch.uint8)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            VideoEncoder(frames, frame_rate=30).to_tensor(format="mp4")
 
 
 class TestEncoder:
