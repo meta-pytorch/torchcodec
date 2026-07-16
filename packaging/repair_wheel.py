@@ -109,40 +109,42 @@ def repair_macos(wheels):
 
 
 def repair_windows(wheels):
-    run([sys.executable, "-m", "pip", "install", "-U", "delvewheel"])
-    # NB: delvewheel has no `--version` flag (it requires a subcommand), so we
-    # don't print a version line here; the pip install output above shows it.
-    extra = []
-    conda_prefix = os.environ.get("CONDA_PREFIX")
-    if conda_prefix:
-        # conda ships DLLs under $CONDA_PREFIX/Library/bin on Windows.
-        extra = ["--add-path", os.path.join(conda_prefix, "Library", "bin")]
-    # delvewheel --exclude supports glob patterns (fnmatch). Its multi-value
-    # form is os.pathsep-delimited (';' on Windows), but --exclude also has
-    # action='append', so we pass it repeatedly (one pattern each) to avoid any
-    # delimiter ambiguity -- mirroring the Linux/macOS branches.
-    excludes = []
-    for pat in (
-        "torch.dll",
-        "torch_cpu.dll",
-        "torch_cuda.dll",
-        "c10.dll",
-        "c10_cuda.dll",
-        "avcodec-*.dll",
-        "avformat-*.dll",
-        "avutil-*.dll",
-        "avfilter-*.dll",
-        "avdevice-*.dll",
-        "swscale-*.dll",
-        "swresample-*.dll",
-        "postproc-*.dll",
-        "cudart64_*.dll",
-        "nvrtc*.dll",
-        "cublas*.dll",
-    ):
-        excludes += ["--exclude", pat]
+    # We do NOT use delvewheel here. delvewheel roots its dependency analysis on
+    # .pyd extension modules, but libjpeg is linked into
+    # libtorchcodec_custom_ops*.dll -- a plain DLL that torchcodec loads
+    # standalone at runtime (via ctypes), so it's not reachable in delvewheel's
+    # graph and libjpeg would never get vendored (and delvewheel also chokes on
+    # our intra-wheel libtorchcodec_core*.dll deps).
+    #
+    # Instead we do what torchvision does on Windows: copy the libjpeg DLL next
+    # to our libs inside the wheel. At load time Windows resolves a DLL's
+    # dependencies from the DLL's own directory, so custom_ops finds libjpeg
+    # there. We repack with `wheel` so the RECORD is regenerated.
+    run([sys.executable, "-m", "pip", "install", "-U", "wheel"])
+    conda_prefix = os.environ.get("CONDA_PREFIX", "")
+    bin_dir = os.path.join(conda_prefix, "Library", "bin")
+    jpeg_dlls = sorted(
+        set(glob.glob(os.path.join(bin_dir, "jpeg*.dll")))
+        | set(glob.glob(os.path.join(bin_dir, "libjpeg*.dll")))
+    )
+    if not jpeg_dlls:
+        raise FileNotFoundError(f"No libjpeg DLL found under {bin_dir}")
+
     for wheel in wheels:
-        run(["delvewheel", "repair", *extra, *excludes, "-w", REPAIRED_DIR, wheel])
+        unpack_dir = os.path.join(REPAIRED_DIR, "unpack")
+        if os.path.isdir(unpack_dir):
+            shutil.rmtree(unpack_dir)
+        run([sys.executable, "-m", "wheel", "unpack", wheel, "-d", unpack_dir])
+        pkg_dirs = glob.glob(os.path.join(unpack_dir, "*", "torchcodec"))
+        if not pkg_dirs:
+            raise FileNotFoundError("torchcodec/ package dir not found in wheel")
+        pkg_dir = pkg_dirs[0]
+        for dll in jpeg_dlls:
+            print(f"bundling {dll} -> {pkg_dir}", flush=True)
+            shutil.copy(dll, pkg_dir)
+        unpacked = os.path.dirname(pkg_dir)  # the <name>-<version> dir
+        run([sys.executable, "-m", "wheel", "pack", unpacked, "-d", REPAIRED_DIR])
+        shutil.rmtree(unpack_dir)
 
 
 def main():
