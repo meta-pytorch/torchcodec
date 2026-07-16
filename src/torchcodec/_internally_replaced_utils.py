@@ -18,7 +18,7 @@ import torch
 _PYBIND_OPS_MODULE_NAME = "core_pybind_ops"
 
 
-# Copy pasted from torchvision
+# Adapted from torchvision
 # https://github.com/pytorch/vision/blob/947ae1dc71867f28021d5bc0ff3a19c249236e2a/torchvision/_internally_replaced_utils.py#L25
 def _get_extension_path(lib_name: str) -> str:
     extension_suffixes = []
@@ -35,17 +35,30 @@ def _get_extension_path(lib_name: str) -> str:
         extension_suffixes,
     )
 
-    extfinder = importlib.machinery.FileFinder(
-        str(Path(__file__).parent), loader_details
-    )
-    ext_specs = extfinder.find_spec(lib_name)
-    if ext_specs is None:
-        raise ImportError(f"No spec found for {lib_name}")
+    # Search every directory on the torchcodec package's __path__ for the shared
+    # library. For a wheel or conda install __path__ is just the installed
+    # package directory, where the compiled libraries sit right next to the
+    # Python files. For an editable install (`pip install -e .`) built with
+    # scikit-build-core's default "redirect" mode, the compiled libraries are
+    # installed into a *separate* directory from the source .py files, and
+    # scikit-build-core's import hook adds that directory to the package's
+    # __path__. So we must search all of __path__ rather than just this file's
+    # directory (which, for editable installs, only holds the source .py files).
+    package = sys.modules.get(__package__ or "torchcodec")
+    search_dirs = list(getattr(package, "__path__", [])) or [str(Path(__file__).parent)]
 
-    if ext_specs.origin is None:
-        raise ImportError(f"Existing spec found for {lib_name} does not have an origin")
+    for directory in search_dirs:
+        extfinder = importlib.machinery.FileFinder(directory, loader_details)
+        ext_specs = extfinder.find_spec(lib_name)
+        if ext_specs is None:
+            continue
+        if ext_specs.origin is None:
+            raise ImportError(
+                f"Existing spec found for {lib_name} does not have an origin"
+            )
+        return ext_specs.origin
 
-    return ext_specs.origin
+    raise ImportError(f"No spec found for {lib_name} in {search_dirs}")
 
 
 def _load_pybind11_module(module_name: str, library_path: str) -> ModuleType:
