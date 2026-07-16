@@ -6,18 +6,9 @@
 
 """scikit-build-core dynamic-metadata provider for torchcodec's version.
 
-This restores the version-handling logic that used to live in setup.py's
-``_write_version_files()`` before the migration to scikit-build-core. It is
-wired up from pyproject.toml via::
-
-    [tool.scikit-build.metadata.version]
-    provider = "torchcodec_version"
-    provider-path = "packaging"
-
-scikit-build-core adds ``provider-path`` to ``sys.path`` and imports this
-module to resolve the (dynamic) ``version`` metadata field. The resolved value
-is also what gets substituted into the generated ``version.py`` files (see the
-``[[tool.scikit-build.generate]]`` sections in pyproject.toml).
+The resolved value is also what gets substituted into the generated
+``version.py`` files (see the ``[[tool.scikit-build.generate]]`` sections in
+pyproject.toml).
 """
 
 from __future__ import annotations

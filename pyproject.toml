@@ -37,7 +37,7 @@ install.strip = false
 # packaging/torchcodec_version.py.
 [tool.scikit-build.metadata.version]
 provider = "torchcodec_version"
-provider-path = "packaging"
+provider-path = "packaging"  # gets added to sys.path
 
 [[tool.scikit-build.generate]]
 path = "torchcodec/version.py"
