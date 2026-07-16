@@ -30,10 +30,6 @@ experimental = true
 # stripping leaves that check with no symbols to read. This also matches the
 # behavior of the previous setuptools build, which did not strip.
 install.strip = false
-# For editable installs (`pip install -e .`), use "inplace" mode so the compiled
-# libraries are placed directly in the source tree (src/torchcodec/) instead of a
-# separate scikit-build-core staging dir.
-editable.mode = "inplace"
 
 # Restores the version-handling logic that used to live in setup.py: honor the
 # BUILD_VERSION env var (set by test-infra release/nightly jobs), and otherwise
