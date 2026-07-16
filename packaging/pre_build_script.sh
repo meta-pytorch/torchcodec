@@ -7,7 +7,4 @@
 
 set -ex
 
-# Install the build-backend dependencies (scikit-build-core, ninja, pybind11).
-# We build the wheel against the pre-built FFmpeg from S3
-# (BUILD_AGAINST_ALL_FFMPEG_FROM_S3), so pkg-config is not needed here.
 bash packaging/install_build_dependencies.sh
