@@ -6,10 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Guard against accidentally building a distributable wheel that dynamically
 # links against a GPL build of FFmpeg (e.g. from conda/system), which would be a
 # license violation. Wheels are expected to link against our pre-built non-GPL
-# FFmpeg (BUILD_AGAINST_ALL_FFMPEG_FROM_S3). scikit-build-core sets SKBUILD_STATE
-# to "wheel" only for actual wheel builds - not editable/dev installs, sdists, or
-# metadata-only steps - which mirrors the `"bdist_wheel" in sys.argv` check that
-# used to live in setup.py.
+# FFmpeg (BUILD_AGAINST_ALL_FFMPEG_FROM_S3).
 if(SKBUILD_STATE STREQUAL "wheel"
    AND NOT DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3}
    AND NOT DEFINED ENV{I_CONFIRM_THIS_IS_NOT_A_LICENSE_VIOLATION})
