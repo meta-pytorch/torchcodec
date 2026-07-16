@@ -7,15 +7,7 @@
 
 set -ex
 
-# We need to install pybind11 because we need its CMake helpers in order to
-# compile correctly on Mac. Pybind11 is actually a C++ header-only library,
-# and PyTorch actually has it included. PyTorch, however, does not have the
-# CMake helpers.
-conda install -y pybind11 -c conda-forge
-
-# We build with `python -m build --no-isolation`, which means the build backend
-# (and everything else in build-system.requires) must already be present in the
-# current environment - pip/build won't create an isolated env to install them.
-# Without this, the build fails with "Backend 'scikit_build_core.build' is not
-# available." pybind11 is installed above; `build` is provided by test-infra.
-python -m pip install "scikit-build-core>=0.10" ninja
+# Install the build-backend dependencies (scikit-build-core, ninja, pybind11).
+# We build the wheel against the pre-built FFmpeg from S3
+# (BUILD_AGAINST_ALL_FFMPEG_FROM_S3), so pkg-config is not needed here.
+bash packaging/install_build_dependencies.sh

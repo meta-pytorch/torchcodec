@@ -63,13 +63,11 @@ jobs:
       - name: Install dependencies and FFmpeg
         run: |
           bash packaging/install_pytorch.sh cpu "torch torchvision"
-          conda install "ffmpeg=7.0.1" pkg-config pybind11 -c conda-forge
+          bash packaging/install_build_dependencies.sh
+          conda install "ffmpeg=7.0.1" pkg-config -c conda-forge
           ffmpeg -version
       - name: Build and install torchcodec
         run: |
-          # scikit-build-core is the build backend (see pyproject.toml). With
-          # --no-build-isolation it must already be present in this env.
-          python -m pip install "scikit-build-core>=0.10"
           python -m pip install -e ".[dev]" --no-build-isolation -vvv
       - name: Install mypy
         run: |
