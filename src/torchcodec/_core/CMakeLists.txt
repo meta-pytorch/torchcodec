@@ -346,14 +346,19 @@ function(make_torchcodec_libraries
         ${pybind_ops_library_name}
     )
 
-    # This install() rule is what puts the built libraries into the wheel:
-    # scikit-build-core builds the wheel by running `cmake --install`, which only
-    # copies targets that have an install() rule, so without this the .so/.dll
-    # files would be compiled but never packaged. scikit-build-core manages
-    # CMAKE_INSTALL_PREFIX for us (it points at the wheel's staging root), so we
-    # only specify the destination *relative* to it. We use "torchcodec/" rather
-    # than CMake's defaults (lib/ for LIBRARY, bin/ for RUNTIME) so the libraries
-    # land next to the Python files, where `import torchcodec` can find them.
+    # This install() rule is what makes the built libraries importable, for every
+    # build mode (wheel, `pip install .`, and editable `pip install -e .`).
+    # scikit-build-core builds by running `cmake --install`, which only copies
+    # targets that have an install() rule, so without this the .so/.dll files
+    # would be compiled but never staged. scikit-build-core manages the install
+    # prefix (it passes CMAKE_INSTALL_PREFIX at install time, pointing at a
+    # staging dir inside the wheel tree), so we give a destination *relative* to
+    # it: "torchcodec/" rather than CMake's defaults (lib/ for LIBRARY, bin/ for
+    # RUNTIME) so the libraries sit next to the Python files. For wheel builds /
+    # `pip install .` that staging dir becomes the wheel; for editable installs
+    # (default "redirect" mode) the libraries stay there and scikit-build-core
+    # adds an import hook pointing at them - the source tree is NOT modified
+    # (unlike the old setup.py build, which copied the .so files back into src/).
     install(
         TARGETS ${all_libraries}
         LIBRARY DESTINATION torchcodec
