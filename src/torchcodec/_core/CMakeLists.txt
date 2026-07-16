@@ -19,6 +19,10 @@ if(SKBUILD_STATE STREQUAL "wheel"
         "then set I_CONFIRM_THIS_IS_NOT_A_LICENSE_VIOLATION.")
 endif()
 
+# Absolute path to the torchcodec Python package directory (src/torchcodec), the
+# parent of this _core directory. Used to place editable-install artifacts.
+get_filename_component(TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
@@ -115,6 +119,21 @@ function(make_torchcodec_sublibrary
 
     # Avoid adding the "lib" prefix which we already add explicitly.
     set_target_properties(${library_name} PROPERTIES PREFIX "")
+
+    # For editable installs (editable.mode="inplace" in pyproject.toml,
+    # SKBUILD_STATE=="editable"), scikit-build-core skips the install step, so we
+    # build the shared libraries straight into the source package dir. This keeps
+    # all local .so/.dylib/.pyd files in one inspectable place (src/torchcodec/),
+    # next to the Python files where the runtime loader finds them, and avoids
+    # stale libraries from a previous build lingering in a separate staging dir.
+    # We set both LIBRARY_ and RUNTIME_OUTPUT_DIRECTORY to cover .so/.dylib and
+    # Windows .dll/.pyd.
+    if(SKBUILD_STATE STREQUAL "editable")
+        set_target_properties(${library_name} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+        )
+    endif()
 
     # On macOS, for wheels, add Homebrew's FFmpeg library path to the rpath so
     # that users with Homebrew-installed FFmpeg can use torchcodec without
