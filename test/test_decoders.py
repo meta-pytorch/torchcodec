@@ -14,6 +14,7 @@ import numpy
 import pytest
 import torch
 from torchcodec import _core, ffmpeg_major_version, FrameBatch
+from torchcodec._core.ops import add_video_stream, create_from_file, get_next_frame
 from torchcodec._frame import Frame
 from torchcodec.decoders import (
     AudioDecoder,
@@ -33,6 +34,7 @@ from torchcodec.decoders._blocks import (
     PacketDecoder,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
+from torchcodec.decoders._image_decoders import decode_jpeg, ImageColorMode
 from torchcodec.encoders import VideoEncoder
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
@@ -47,8 +49,10 @@ from .utils import (
     BT709_FULL_RANGE,
     cuda_devices,
     DISCARD_FIRST_KEYFRAME_VIDEO,
+    EXIF_JPEG,
     get_ffmpeg_minor_version,
     get_python_version,
+    GRADIENT_JPEG,
     H264_10BITS,
     H265_VIDEO,
     in_fbcode,
@@ -61,6 +65,7 @@ from .utils import (
     NASA_VIDEO_ROTATED,
     needs_cuda,
     needs_ffmpeg_cli,
+    needs_jpeg,
     psnr,
     SINE_16_CHANNEL_S16,
     SINE_MONO_F32,
@@ -3403,3 +3408,47 @@ class TestBlocks:
             ref = VideoDecoder(video.path).get_all_frames()
             assert got.data.shape == ref.data.shape
             torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
+
+
+class TestImageDecoder:
+    def _decode_with_ffmpeg(self, path):
+        # Note that this ignores EXIF rotation metadata because our FFmpeg-based
+        # reference decoder reads rotation metadata from the AVstream, not from
+        # the AVFrame. For jpeg, the rotation metadata is attached to the frame.
+        decoder = create_from_file(str(path), "approximate")
+        add_video_stream(decoder)
+        frame, _, _ = get_next_frame(decoder)
+        return frame
+
+    def _save_debug(self, decoded, reference, path="debug.png"):
+        # Debugging helper: dump decoded and reference frames side-by-side.
+        from torchvision.io import write_png
+        from torchvision.utils import make_grid
+
+        grid = make_grid([decoded, reference], padding=10)
+        write_png(grid, str(path))
+
+    @needs_jpeg
+    def test_against_ffmpeg(self):
+        decoded = decode_jpeg(GRADIENT_JPEG.path, mode=ImageColorMode.RGB)
+        reference = self._decode_with_ffmpeg(GRADIENT_JPEG.path)
+        assert (
+            decoded.shape
+            == reference.shape
+            == (3, GRADIENT_JPEG.height, GRADIENT_JPEG.width)
+        )
+        assert_tensor_close_on_at_least(decoded, reference, percentage=95, atol=5)
+
+    @needs_jpeg
+    def test_exif_orientation_is_applied(self):
+        # This relies on the assumption that the ffmpeg-based reference decoder
+        # ignores EXIF orientation metadata, which is true for the current
+        # implementation.
+
+        decoded = decode_jpeg(EXIF_JPEG.path, mode=ImageColorMode.RGB)
+        assert decoded.shape == (3, EXIF_JPEG.height, EXIF_JPEG.width)
+
+        reference = self._decode_with_ffmpeg(EXIF_JPEG.path)
+        reference = torch.flip(torch.transpose(reference, -1, -2), dims=[-1])
+        assert reference.shape == decoded.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=95, atol=5)

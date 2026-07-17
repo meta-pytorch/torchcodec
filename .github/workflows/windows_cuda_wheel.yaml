@@ -52,7 +52,8 @@ jobs:
       test-infra-ref: main
       build-matrix: ${{ needs.generate-matrix.outputs.matrix }}
       pre-script: packaging/pre_build_script.sh
-      # post-script: packaging/post_build_script.sh  TODO: consider enabling post-build checks for Windows
+      # Via `bash` because vc_env_helper.bat runs the post-script in cmd.
+      post-script: bash packaging/post_build_script.sh
       env-script: packaging/vc_env_helper.bat
       smoke-test-script: packaging/fake_smoke_test.py
       package-name: torchcodec
@@ -141,7 +142,7 @@ jobs:
         run: bash packaging/install_test_dependencies.sh
       - name: Run Python tests
         run: |
-          FAIL_WITHOUT_CUDA=1 pytest --override-ini="addopts=-v" test/smoke_test.py --tb=short
+          FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_JPEG=1 pytest --override-ini="addopts=-v" test/smoke_test.py --tb=short
       - name: Run Python benchmark
         run: |
           time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none
@@ -207,4 +208,4 @@ jobs:
 
       - name: Run Python tests
         run: |
-          pytest --override-ini="addopts=-v" test/smoke_test.py --tb=short
+          FAIL_WITHOUT_JPEG=1 pytest --override-ini="addopts=-v" test/smoke_test.py --tb=short

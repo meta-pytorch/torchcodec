@@ -73,6 +73,10 @@ custom_ops_sources = [
     "custom_ops.cpp",
 ]
 
+image_sources = [
+    "DecodeJpeg.cpp",
+]
+
 # pybind11 bindings.
 pybind_ops_sources = [
     "pybind_ops.cpp",

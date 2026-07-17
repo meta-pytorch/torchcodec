@@ -7,12 +7,15 @@ import torch
 from test.utils import (
     assert_tensor_close_on_at_least,
     cuda_version_used_for_building_torch,
+    GRADIENT_JPEG,
     needs_cuda,
+    needs_jpeg,
 )
 
 from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
 from torchcodec.decoders import AudioDecoder, VideoDecoder
+from torchcodec.decoders._image_decoders import decode_jpeg
 from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
 
 
@@ -239,6 +242,17 @@ class TestAudioDecoder:
         samples = decoder.get_all_samples()
         assert samples.sample_rate == target_sr
         assert samples.data.shape[0] == 1
+
+
+class TestImageDecoder:
+    @needs_jpeg
+    def test_decode_jpeg(self):
+        path = GRADIENT_JPEG.path
+        h, w = GRADIENT_JPEG.height, GRADIENT_JPEG.width
+
+        img = decode_jpeg(path)
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, h, w)
 
 
 class TestVideoEncoder:

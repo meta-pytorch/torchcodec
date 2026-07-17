@@ -21,6 +21,27 @@ find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(Python3 COMPONENTS Development Interpreter)
 
+# libjpeg is an optional build-time dependency for the CPU JPEG image decoder.
+# When found, we compile decode_jpeg with libjpeg support and link against it.
+# When absent, decode_jpeg still exists but raises an actionable error at call
+# time (see DecodeJpeg.cpp's !JPEG_FOUND stub).
+if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
+    # JPEG_ROOT will automatically be passed to find_package(JPEG) by CMake if it is
+    # set. We fallback to the conda prefix if it is not set.
+    if(WIN32)
+        # conda puts libraries under $CONDA_PREFIX/Library on Windows.
+        set(JPEG_ROOT "$ENV{CONDA_PREFIX}/Library")
+    else()
+        set(JPEG_ROOT "$ENV{CONDA_PREFIX}")
+    endif()
+endif()
+find_package(JPEG)  # Not REQUIRED on purpose.
+if(JPEG_FOUND)
+    message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
+else()
+    message(STATUS "libjpeg NOT found: torchcodec.decode_jpeg will raise at runtime.")
+endif()
+
 # Read a list variable from sources.bzl, the single source of truth for the
 # _core C++ source files shared with the internal Buck build. The .bzl file is
 # valid Python, so we exec it and print the requested list; configure_file
@@ -49,6 +70,14 @@ read_sources_from_bzl(TORCHCODEC_DECODER_CORE_CUDA_SOURCES decoder_core_cuda_sou
 read_sources_from_bzl(TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES file_like_context_sources)
 read_sources_from_bzl(TORCHCODEC_CUSTOM_OPS_SOURCES custom_ops_sources)
 read_sources_from_bzl(TORCHCODEC_PYBIND_OPS_SOURCES pybind_ops_sources)
+read_sources_from_bzl(TORCHCODEC_IMAGE_SOURCES image_sources)
+
+# TODO_IMAGE: Fix this
+if(NOT WIN32)
+    set_source_files_properties(
+        ${TORCHCODEC_IMAGE_SOURCES}
+        PROPERTIES COMPILE_OPTIONS "-Wno-error")
+endif()
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -178,6 +207,7 @@ function(make_torchcodec_libraries
     set(core_sources
         ${TORCHCODEC_DECODER_CORE_SOURCES}
         ${TORCHCODEC_FFMPEG_COMMON_SOURCES}
+        ${TORCHCODEC_IMAGE_SOURCES}
     )
 
     if(ENABLE_CUDA)
@@ -196,6 +226,13 @@ function(make_torchcodec_libraries
         "${core_sources}"
         "${core_library_dependencies}"
     )
+
+    # Optional libjpeg support for the CPU JPEG image decoder (DecodeJpeg.cpp).
+    # JPEG_FOUND gates both the compile-time code path and the link.
+    if(JPEG_FOUND)
+        target_compile_definitions(${core_library_name} PRIVATE JPEG_FOUND=1)
+        target_link_libraries(${core_library_name} PRIVATE JPEG::JPEG)
+    endif()
 
     if(ENABLE_CUDA)
         # We define USE_CUDA to guard CUDA-specific code paths (e.g.

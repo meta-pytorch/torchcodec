@@ -102,6 +102,18 @@ inline torch::stable::Tensor stable_cat(
 }
 
 // TODO_STABLE_ABI: upstream?
+inline torch::stable::Tensor stable_flip(
+    const torch::stable::Tensor& self,
+    std::vector<int64_t> dims) {
+  const auto num_args = 2;
+  std::array<StableIValue, num_args> stack{
+      torch::stable::detail::from(self), torch::stable::detail::from(dims)};
+  TORCH_ERROR_CODE_CHECK(
+      torch_call_dispatcher("aten::flip", "", stack.data(), TORCH_ABI_VERSION));
+  return torch::stable::detail::to<torch::stable::Tensor>(stack[0]);
+}
+
+// TODO_STABLE_ABI: upstream?
 inline torch::stable::Tensor stable_rot90(
     const torch::stable::Tensor& self,
     int k,
