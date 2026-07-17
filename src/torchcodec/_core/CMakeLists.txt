@@ -72,13 +72,6 @@ read_sources_from_bzl(TORCHCODEC_CUSTOM_OPS_SOURCES custom_ops_sources)
 read_sources_from_bzl(TORCHCODEC_PYBIND_OPS_SOURCES pybind_ops_sources)
 read_sources_from_bzl(TORCHCODEC_IMAGE_SOURCES image_sources)
 
-# TODO_IMAGE: Fix this
-if(NOT WIN32)
-    set_source_files_properties(
-        ${TORCHCODEC_IMAGE_SOURCES}
-        PROPERTIES COMPILE_OPTIONS "-Wno-error")
-endif()
-
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
 else()

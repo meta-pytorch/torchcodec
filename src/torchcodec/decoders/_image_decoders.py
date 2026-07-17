@@ -29,6 +29,7 @@ from torchcodec._core.ops import decode_jpeg as _decode_jpeg
 class ImageColorMode(Enum):
     # TODO_IMAGE:  We'll probably need to keep that for BC but ugh. Let's type
     # stuff with Literal strings instead.
+
     """Color mode for image decoding.
 
     Integer values match torchvision's ``ImageReadMode`` and the C++
@@ -56,6 +57,9 @@ def decode_jpeg(
     # TODO_IMAGE: support bytes and file-like
     source: str | Path,
     *,
+    # TODO_IMAGE: The default value of all decoders should be "RGB", not "unchanged".
+    # TODO_IMAGE: we should honor the desired mode across all codecs regardless
+    # of the native codec support.
     mode: ImageColorMode = ImageColorMode.UNCHANGED,
 ) -> torch.Tensor:
     # TODO_IMAGE We should ensure we build and link against turbo. Maybe by

@@ -83,7 +83,7 @@ class ExifDataReader {
   }
 
   const unsigned char& operator[](size_t index) const {
-    STD_TORCH_CHECK(index >= 0 && index < _size);
+    STD_TORCH_CHECK(index < _size);
     return _ptr[index];
   }
 

@@ -17,7 +17,7 @@ the torch wheel).
 """
 
 import io
-import os  # only for os.environ / os.pathsep (env vars have no pathlib equivalent)
+import os
 import platform
 import shutil
 import subprocess

@@ -98,7 +98,7 @@ struct torch_jpeg_mgr {
   size_t len;
 };
 
-static void torch_jpeg_init_source(j_decompress_ptr cinfo) {}
+static void torch_jpeg_init_source(j_decompress_ptr) {}
 
 static boolean torch_jpeg_fill_input_buffer(j_decompress_ptr cinfo) {
   // No more data.  Probably an incomplete image;  Raise exception.
@@ -120,7 +120,7 @@ static void torch_jpeg_skip_input_data(j_decompress_ptr cinfo, long num_bytes) {
   }
 }
 
-static void torch_jpeg_term_source(j_decompress_ptr cinfo) {}
+static void torch_jpeg_term_source(j_decompress_ptr) {}
 
 static void torch_jpeg_set_source_mgr(
     j_decompress_ptr cinfo,
