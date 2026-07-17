@@ -25,10 +25,14 @@ from torchcodec._core.ops import decode_jpeg as _decode_jpeg
 # TODO_IMAGE: We'll need to support all output modes consistently across all
 # decoders, with tests.
 
+# TODO_IMAGE: I think there are some tests for corrupted images in TV? We
+# should port those.
+
 
 class ImageColorMode(Enum):
-    # TODO_IMAGE:  We'll probably need to keep that for BC but ugh. Let's type
-    # stuff with Literal strings instead.
+    # TODO_IMAGE:  We'll probably need to keep that for BC but ugh. this should
+    # be ImageReadMode to be consistent with TV. Let's type stuff with Literal
+    # strings instead.
 
     """Color mode for image decoding.
 

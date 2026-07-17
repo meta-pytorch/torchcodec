@@ -250,6 +250,21 @@ GRADIENT_JPEG = TestImage(
     filename="gradient.jpg", width=1280, height=720, num_channels=3
 )
 
+# 720p grayscale gradient JPEG. Generated with:
+# h, w = 720, 1280
+# r = np.linspace(0, 255, w, dtype=np.uint8)[None, :].repeat(h, 0)
+# g = np.linspace(0, 255, h, dtype=np.uint8)[:, None].repeat(w, 1)
+# gray = ((r.astype(int) + g.astype(int)) // 2).astype(np.uint8)
+# Image.fromarray(gray, mode="L").save("grayscale.jpg", quality=90)
+GRAYSCALE_JPEG = TestImage(
+    filename="grayscale.jpg", width=1280, height=720, num_channels=1
+)
+
+# 720p CMYK JPEG, same gradient as GRADIENT_JPEG but stored as CMYK. Generated
+# with the GRADIENT_JPEG recipe above, then:
+# Image.fromarray(rgb).convert("CMYK").save("cmyk.jpg", quality=90)
+CMYK_JPEG = TestImage(filename="cmyk.jpg", width=1280, height=720, num_channels=4)
+
 # 64x40 gradient JPEG with EXIF orientation=6 (rotate 90 CW). width/height below
 # are the *decoded* (post-orientation) dims. Generated with:
 # im = Image.fromarray(arr)  # arr is a 40x64 gradient, same recipe as above

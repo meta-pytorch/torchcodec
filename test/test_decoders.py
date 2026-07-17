@@ -47,12 +47,14 @@ from .utils import (
     BT601_FULL_RANGE,
     BT601_LIMITED_RANGE,
     BT709_FULL_RANGE,
+    CMYK_JPEG,
     cuda_devices,
     DISCARD_FIRST_KEYFRAME_VIDEO,
     EXIF_JPEG,
     get_ffmpeg_minor_version,
     get_python_version,
     GRADIENT_JPEG,
+    GRAYSCALE_JPEG,
     H264_10BITS,
     H265_VIDEO,
     in_fbcode,
@@ -3428,6 +3430,12 @@ class TestImageDecoder:
         grid = make_grid([decoded, reference], padding=10)
         write_png(grid, str(path))
 
+    def _rgb_to_gray(self, rgb):
+        # ITU-R 601 luma, the same coefficients libjpeg uses for RGB->grayscale.
+        weights = torch.tensor([0.299, 0.587, 0.114]).view(3, 1, 1)
+        gray = (rgb.to(torch.float64) * weights).sum(dim=0, keepdim=True)
+        return gray.round().clamp(0, 255).to(torch.uint8)
+
     @needs_jpeg
     def test_against_ffmpeg(self):
         decoded = decode_jpeg(GRADIENT_JPEG.path, mode=ImageColorMode.RGB)
@@ -3451,4 +3459,51 @@ class TestImageDecoder:
         reference = self._decode_with_ffmpeg(EXIF_JPEG.path)
         reference = torch.flip(torch.transpose(reference, -1, -2), dims=[-1])
         assert reference.shape == decoded.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=95, atol=5)
+
+    @pytest.mark.parametrize("asset", (GRAYSCALE_JPEG, GRADIENT_JPEG, CMYK_JPEG))
+    def test_mode_unchanged(self, asset):
+        decoded = decode_jpeg(asset.path, mode=ImageColorMode.UNCHANGED)
+        assert decoded.shape == (asset.num_channels, asset.height, asset.width)
+
+    @needs_jpeg
+    def test_grayscale_to_rgb(self):
+        gray = decode_jpeg(GRAYSCALE_JPEG.path, mode=ImageColorMode.GRAY)
+        rgb = decode_jpeg(GRAYSCALE_JPEG.path, mode=ImageColorMode.RGB)
+
+        assert gray.shape == (1, GRAYSCALE_JPEG.height, GRAYSCALE_JPEG.width)
+        assert rgb.shape == (3, GRAYSCALE_JPEG.height, GRAYSCALE_JPEG.width)
+
+        # The three RGB channels are identical and equal the grayscale decode.
+        torch.testing.assert_close(rgb[0], rgb[1], rtol=0, atol=0)
+        torch.testing.assert_close(rgb[1], rgb[2], rtol=0, atol=0)
+        torch.testing.assert_close(rgb[0], gray[0], rtol=0, atol=0)
+
+    @needs_jpeg
+    def test_rgb_to_grayscale(self):
+        rgb = decode_jpeg(GRADIENT_JPEG.path, mode=ImageColorMode.RGB)
+        gray = decode_jpeg(GRADIENT_JPEG.path, mode=ImageColorMode.GRAY)
+
+        assert rgb.shape == (3, GRADIENT_JPEG.height, GRADIENT_JPEG.width)
+        assert gray.shape == (1, GRADIENT_JPEG.height, GRADIENT_JPEG.width)
+
+        expected = self._rgb_to_gray(rgb)
+        assert_tensor_close_on_at_least(gray, expected, percentage=99, atol=2)
+
+    @needs_jpeg
+    @pytest.mark.parametrize("mode", (ImageColorMode.RGB, ImageColorMode.GRAY))
+    def test_cmyk(self, mode):
+        reference = self._decode_with_ffmpeg(CMYK_JPEG.path)
+        if mode == ImageColorMode.GRAY:
+            reference = self._rgb_to_gray(reference)
+
+        decoded = decode_jpeg(CMYK_JPEG.path, mode=mode)
+
+        expected_num_channels = 3 if mode == ImageColorMode.RGB else 1
+        assert decoded.shape == (
+            expected_num_channels,
+            CMYK_JPEG.height,
+            CMYK_JPEG.width,
+        )
+
         assert_tensor_close_on_at_least(decoded, reference, percentage=95, atol=5)
