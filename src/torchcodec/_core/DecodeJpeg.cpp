@@ -12,7 +12,25 @@
 
 #include "StableABICompat.h"
 
-#if JPEG_FOUND
+#if !JPEG_FOUND
+
+namespace facebook::torchcodec {
+
+torch::stable::Tensor decode_jpeg(
+    const torch::stable::Tensor& data,
+    int64_t mode) {
+  STD_TORCH_CHECK(
+      false,
+      "decode_jpeg: torchcodec was not compiled with libjpeg support. "
+      "Rebuild torchcodec in an environment where libjpeg-turbo (and its "
+      "development headers) are available. If you see this error in a prebuilt "
+      "wheel, please report it to the TorchCodec repo.");
+}
+
+} // namespace facebook::torchcodec
+
+#else
+
 #include <jpeglib.h>
 #include <setjmp.h>
 
@@ -21,9 +39,10 @@
 #include <optional>
 
 #include "Exif.h"
-#endif // JPEG_FOUND
 
 namespace facebook::torchcodec {
+
+using namespace exif_private;
 
 namespace {
 
@@ -48,27 +67,6 @@ void validate_encoded_data(const torch::stable::Tensor& encoded_data) {
       encoded_data.numel(),
       " numels.");
 }
-
-} // namespace
-
-#if !JPEG_FOUND
-
-torch::stable::Tensor decode_jpeg(
-    const torch::stable::Tensor& data,
-    int64_t mode) {
-  STD_TORCH_CHECK(
-      false,
-      "decode_jpeg: torchcodec was not compiled with libjpeg support. "
-      "Rebuild torchcodec in an environment where libjpeg-turbo (and its "
-      "development headers) are available. If you see this error in a prebuilt "
-      "wheel, please report it to the TorchCodec repo.");
-}
-
-#else
-
-using namespace exif_private;
-
-namespace {
 
 static const JOCTET EOI_BUFFER[1] = {JPEG_EOI};
 
@@ -321,6 +319,6 @@ torch::stable::Tensor decode_jpeg(
   return exif_orientation_transform(output, exif_orientation);
 }
 
-#endif // #if !JPEG_FOUND
-
 } // namespace facebook::torchcodec
+
+#endif // !JPEG_FOUND
