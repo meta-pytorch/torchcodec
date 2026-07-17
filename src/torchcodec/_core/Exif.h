@@ -55,10 +55,6 @@ direct,
 // to the JPEG path only (PNG EXIF is added when decode_png is migrated) and
 // made always-on: torchcodec always applies EXIF orientation after decoding.
 
-#if JPEG_FOUND
-#include <jpeglib.h>
-#endif
-
 #include <torch/csrc/stable/ops.h>
 #include <torch/headeronly/util/Exception.h>
 
@@ -67,7 +63,6 @@ direct,
 namespace facebook::torchcodec {
 namespace exif_private {
 
-constexpr uint16_t APP1 = 0xe1;
 constexpr uint16_t ENDIANNESS_INTEL = 0x49;
 constexpr uint16_t ENDIANNESS_MOTO = 0x4d;
 constexpr uint16_t REQ_EXIF_TAG_MARK = 0x2a;
@@ -137,6 +132,8 @@ inline uint32_t get_uint32(
 }
 
 inline int fetch_exif_orientation(unsigned char* exif_data_ptr, size_t size) {
+  STD_TORCH_CHECK(exif_data_ptr != nullptr, "exif_data_ptr cannot be null");
+
   int exif_orientation = -1;
 
   // Exif binary structure looks like this
@@ -175,34 +172,6 @@ inline int fetch_exif_orientation(unsigned char* exif_data_ptr, size_t size) {
   }
   return exif_orientation;
 }
-
-#if JPEG_FOUND
-inline int fetch_jpeg_exif_orientation(j_decompress_ptr cinfo) {
-  // Check for Exif marker APP1
-  jpeg_saved_marker_ptr exif_marker = 0;
-  jpeg_saved_marker_ptr cmarker = cinfo->marker_list;
-  while (cmarker && exif_marker == 0) {
-    if (cmarker->marker == APP1) {
-      exif_marker = cmarker;
-    }
-    cmarker = cmarker->next;
-  }
-
-  if (!exif_marker) {
-    return -1;
-  }
-
-  constexpr size_t start_offset = 6;
-  if (exif_marker->data_length <= start_offset) {
-    return -1;
-  }
-
-  auto* exif_data_ptr = exif_marker->data + start_offset;
-  auto size = exif_marker->data_length - start_offset;
-
-  return fetch_exif_orientation(exif_data_ptr, size);
-}
-#endif // #if JPEG_FOUND
 
 constexpr uint16_t IMAGE_ORIENTATION_TL = 1; // normal orientation
 constexpr uint16_t IMAGE_ORIENTATION_TR = 2; // needs horizontal flip

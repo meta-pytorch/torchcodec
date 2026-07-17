@@ -53,6 +53,10 @@ def _read_file_to_tensor(path: str | Path) -> torch.Tensor:
         return torch.frombuffer(data, dtype=torch.uint8)
 
 
+# TODO_IMAGE: Since we're updating the decoders code a bit, we should run sanity
+# checks ensure we're not leaking anything (there was a leak on webp back then!).
+
+
 def decode_jpeg(
     # TODO_IMAGE: support bytes and file-like
     source: str | Path,
