@@ -263,35 +263,41 @@ torch::stable::Tensor decode_jpeg(
 
   jpeg_read_header(&jpeg_ctx, TRUE);
 
-  int num_output_channels = jpeg_ctx.num_components;
-  bool cmyk_to_rgb_or_gray = false;
-
   // TODO_IMAGE wait, what does this return on a CMYK image when mode is
   // UNCHANGED?
-  if (mode != kImageReadModeUnchanged) {
-    // libjpeg can't convert CMYK/YCCK straight to gray or RGB, so for those we
-    // decode as CMYK and convert the lines ourselves (see the scanline loop),
-    // like:
-    // https://github.com/tensorflow/tensorflow/blob/86871065265b04e0db8ca360c046421efb2bdeb4/tensorflow/core/lib/jpeg/jpeg_mem.cc#L284-L313
-    cmyk_to_rgb_or_gray = jpeg_ctx.jpeg_color_space == JCS_CMYK ||
-        jpeg_ctx.jpeg_color_space == JCS_YCCK;
-    switch (mode) {
-      case kImageReadModeGray:
-        jpeg_ctx.out_color_space =
-            cmyk_to_rgb_or_gray ? JCS_CMYK : JCS_GRAYSCALE;
-        num_output_channels = 1;
-        break;
-      case kImageReadModeRgb:
-        jpeg_ctx.out_color_space = cmyk_to_rgb_or_gray ? JCS_CMYK : JCS_RGB;
-        num_output_channels = 3;
-        break;
-      default:
-        jpeg_destroy_decompress(&jpeg_ctx);
-        STD_TORCH_CHECK(
-            false, "The provided mode is not supported for JPEG files");
-    }
+  int num_output_channels = -1;
+  switch (mode) {
+    case kImageReadModeUnchanged:
+      num_output_channels = jpeg_ctx.num_components;
+      break;
+    case kImageReadModeGray:
+      num_output_channels = 1;
+      break;
+    case kImageReadModeRgb:
+      num_output_channels = 3;
+      break;
+    default:
+      jpeg_destroy_decompress(&jpeg_ctx);
+      STD_TORCH_CHECK(
+          false, "The provided mode is not supported for JPEG files");
+  }
 
-    jpeg_calc_output_dimensions(&jpeg_ctx);
+  // libjpeg can't convert CMYK/YCCK straight to gray or RGB, so for those modes
+  // we keep libjpeg's JCS_CMYK default as the output color-space, and convert
+  // the lines ourselves (see the scanline loop). Similar to:
+  // https://github.com/tensorflow/tensorflow/blob/86871065265b04e0db8ca360c046421efb2bdeb4/tensorflow/core/lib/jpeg/jpeg_mem.cc#L284-L313
+  bool cmyk_to_rgb_or_gray = (jpeg_ctx.jpeg_color_space == JCS_CMYK ||
+                              jpeg_ctx.jpeg_color_space == JCS_YCCK) &&
+      (mode == kImageReadModeGray || mode == kImageReadModeRgb);
+
+  // For other sources, ask libjpeg to convert to the requested color space.
+  if (mode != kImageReadModeUnchanged && !cmyk_to_rgb_or_gray) {
+    if (mode == kImageReadModeGray) {
+      jpeg_ctx.out_color_space = JCS_GRAYSCALE;
+    } else {
+      STD_TORCH_CHECK(mode == kImageReadModeRgb, "Should never reach here.");
+      jpeg_ctx.out_color_space = JCS_RGB;
+    }
   }
 
   jpeg_start_decompress(&jpeg_ctx);
