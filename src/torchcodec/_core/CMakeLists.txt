@@ -72,9 +72,7 @@ read_sources_from_bzl(TORCHCODEC_CUSTOM_OPS_SOURCES custom_ops_sources)
 read_sources_from_bzl(TORCHCODEC_PYBIND_OPS_SOURCES pybind_ops_sources)
 read_sources_from_bzl(TORCHCODEC_IMAGE_SOURCES image_sources)
 
-# The image sources are ported from torchvision and use libjpeg's
-# setjmp/longjmp-based error handling and C-style idioms that would trip our
-# strict -Werror build. Relax -Werror for just these files.
+# TODO_IMAGE: Fix this
 if(NOT WIN32)
     set_source_files_properties(
         ${TORCHCODEC_IMAGE_SOURCES}

@@ -16,6 +16,7 @@ sure we EXCLUDE FFmpeg (user-provided at runtime) and torch/CUDA (provided by
 the torch wheel).
 """
 
+import io
 import os  # only for os.environ / os.pathsep (env vars have no pathlib equivalent)
 import platform
 import shutil
@@ -125,6 +126,7 @@ def check_bundling():
     - a wheel bundles a lib that's not in the allowlist. This would raise if we
       ever try to bundle FFmpeg or torch/CUDA.
     - a wheel does NOT bundle libjpeg.
+    - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
     """
 
     def _is_shared_lib(name):
@@ -145,21 +147,43 @@ def check_bundling():
             return True
         return False
 
+    def _assert_linux_libjpeg_is_turbo(zf):
+        jpeg_members = [
+            n
+            for n in zf.namelist()
+            if _is_shared_lib(n) and _is_jpeg(n.rsplit("/", 1)[-1])
+        ]
+        assert len(jpeg_members) == 1
+        jpeg_member = jpeg_members[0]
+
+        from elftools.elf.elffile import ELFFile
+
+        elf = ELFFile(io.BytesIO(zf.read(jpeg_member)))
+        verdefs = elf.get_section_by_name(".gnu.version_d")
+        is_turbo = verdefs is not None and any(
+            aux.name.startswith("LIBJPEGTURBO")
+            for _, auxes in verdefs.iter_versions()
+            for aux in auxes
+        )
+        if not is_turbo:
+            raise RuntimeError(
+                f"Bundled {jpeg_member.rsplit('/', 1)[-1]} is not libjpeg-turbo (no "
+                "LIBJPEGTURBO version node). Ensure libjpeg-turbo is the libjpeg "
+                "found at build time."
+            )
+
     for wheel in DIST_DIR.glob("*.whl"):
         print(f"Checking bundled libraries in {wheel.name}")
         with zipfile.ZipFile(wheel) as zf:
-            libs = sorted(
-                {n.rsplit("/", 1)[-1] for n in zf.namelist() if _is_shared_lib(n)}
-            )
-        if unexpected := [lib for lib in libs if not _is_allowed(lib)]:
-            raise RuntimeError(
-                f"Unexpected libraries bundled in {wheel.name}: {' '.join(unexpected)}"
-            )
-        if not any(_is_jpeg(lib) for lib in libs):
-            raise RuntimeError(
-                f"libjpeg is NOT bundled in {wheel.name}; the JPEG image decoder "
-                "would fail at runtime. Was libjpeg-turbo available at build time?"
-            )
+            names = zf.namelist()
+            libs = sorted({n.rsplit("/", 1)[-1] for n in names if _is_shared_lib(n)})
+            if unexpected := [lib for lib in libs if not _is_allowed(lib)]:
+                raise RuntimeError(
+                    f"Unexpected libraries bundled in {wheel.name}: "
+                    + " ".join(unexpected)
+                )
+            if platform.system() == "Linux":
+                _assert_linux_libjpeg_is_turbo(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")
 
 
