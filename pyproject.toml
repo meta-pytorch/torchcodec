@@ -13,12 +13,46 @@ dynamic = ["version"]
 GitHub = "https://github.com/pytorch/torchcodec"
 Documentation = "https://pytorch.org/torchcodec/stable/index.html"
 
-[tool.setuptools.dynamic]
-version = {file = "version.txt"}
-
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.10", "pybind11"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+minimum-version = "build-system.requires"
+build-dir = "build/{wheel_tag}"
+wheel.packages = ["src/torchcodec"]
+# Required to use our own dynamic-metadata plugin (packaging/torchcodec_version.py)
+# for the version field below.
+experimental = true
+# Do NOT strip symbols from the built .so files. scikit-build-core strips by
+# default, but packaging/post_build_script.sh inspects the .so symbol table
+# (objdump --syms | grep GLIBCXX) to enforce manylinux GLIBCXX compatibility;
+# stripping leaves that check with no symbols to read. This also matches the
+# behavior of the previous setuptools build, which did not strip.
+install.strip = false
+
+# Restores the version-handling logic that used to live in setup.py: honor the
+# BUILD_VERSION env var (set by test-infra release/nightly jobs), and otherwise
+# append the short git sha to the contents of version.txt for dev builds. See
+# packaging/torchcodec_version.py.
+[tool.scikit-build.metadata.version]
+provider = "torchcodec_version"
+provider-path = "packaging"  # gets added to sys.path
+
+[[tool.scikit-build.generate]]
+path = "torchcodec/version.py"
+template = "__version__ = '${version}'"
+location = "install"
+
+[[tool.scikit-build.generate]]
+path = "src/torchcodec/version.py"
+template = "__version__ = '${version}'"
+location = "source"
+
+[tool.scikit-build.cmake.define]
+ENABLE_CUDA = {env = "ENABLE_CUDA", default = ""}
+TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR = {env = "TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR", default = "OFF"}
+TORCHCODEC_DISABLE_HOMEBREW_RPATH = {env = "TORCHCODEC_DISABLE_HOMEBREW_RPATH", default = "OFF"}
 
 [project.optional-dependencies]
 dev = [

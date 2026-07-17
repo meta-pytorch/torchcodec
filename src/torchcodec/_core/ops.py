@@ -185,6 +185,8 @@ get_wav_metadata_from_decoder = (
     torch.ops.torchcodec_ns.get_wav_metadata_from_decoder.default
 )
 
+decode_jpeg = torch.ops.torchcodec_ns.decode_jpeg.default
+
 
 # =============================
 # Functions not related to custom ops, but similar implementation to c++ ops

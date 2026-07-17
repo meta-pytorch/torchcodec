@@ -1,3 +1,4 @@
+import functools
 import importlib
 import json
 import os
@@ -15,6 +16,7 @@ import torch
 from torchcodec import ffmpeg_major_version
 from torchcodec._core import get_ffmpeg_library_versions
 from torchcodec.decoders import set_cuda_backend, VideoDecoder
+from torchcodec.decoders._image_decoders import decode_jpeg
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
@@ -52,6 +54,12 @@ def needs_cuda(test_item):
 # conftest.py
 def needs_ffmpeg_cli(test_item):
     return pytest.mark.needs_ffmpeg_cli(test_item)
+
+
+# Decorator for skipping tests that need libjpeg (torchcodec may be built without
+# it). Handled in pytest_collection_modifyitems() of conftest.py.
+def needs_jpeg(test_item):
+    return pytest.mark.needs_jpeg(test_item)
 
 
 # This is a special device string that we use to test the legacy "ffmpeg" CUDA
@@ -216,6 +224,51 @@ def _get_file_path(filename: str) -> pathlib.Path:
             return path
     else:
         return pathlib.Path(__file__).parent / "resources" / filename
+
+
+@dataclass
+class TestImage:
+    __test__ = False  # prevents pytest from thinking this is a test class
+
+    filename: str
+    width: int
+    height: int
+    num_channels: int
+
+    @property
+    def path(self) -> pathlib.Path:
+        return _get_file_path(self.filename)
+
+
+# 720p RGB gradient JPEG. Generated with:
+# h, w = 720, 1280
+# r = np.linspace(0, 255, w, dtype=np.uint8)[None, :].repeat(h, 0)
+# g = np.linspace(0, 255, h, dtype=np.uint8)[:, None].repeat(w, 1)
+# b = ((r.astype(int) + g.astype(int)) // 2).astype(np.uint8)
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save("gradient.jpg", quality=90)
+GRADIENT_JPEG = TestImage(
+    filename="gradient.jpg", width=1280, height=720, num_channels=3
+)
+
+# 64x40 gradient JPEG with EXIF orientation=6 (rotate 90 CW). width/height below
+# are the *decoded* (post-orientation) dims. Generated with:
+# im = Image.fromarray(arr)  # arr is a 40x64 gradient, same recipe as above
+# exif = im.getexif(); exif[274] = 6
+# im.save("exif_orientation.jpg", quality=95, exif=exif)
+EXIF_JPEG = TestImage(
+    filename="exif_orientation.jpg", width=40, height=64, num_channels=3
+)
+
+
+@functools.cache
+def jpeg_is_available() -> bool:
+    try:
+        decode_jpeg(GRADIENT_JPEG.path)
+    except RuntimeError as e:
+        if "libjpeg" in str(e):
+            return False
+        raise
+    return True
 
 
 @dataclass

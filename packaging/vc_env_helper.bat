@@ -34,6 +34,11 @@ set BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1
 
 if "%CU_VERSION:~0,2%" == "cu" set ENABLE_CUDA=1
 if defined CUDA_PATH set CUDACXX=%CUDA_PATH%\bin\nvcc.exe
+:: For CUDA builds, force the Ninja generator. CMake honors the CUDACXX env var
+:: (set above to the toolkit matching this build, e.g. v12.6) under Ninja, but
+:: NOT under the default Visual Studio generator, which auto-selects the newest
+:: nvcc on PATH (e.g. 13.x).
+if defined CUDA_PATH set CMAKE_GENERATOR=Ninja
 
 set args=%1
 shift

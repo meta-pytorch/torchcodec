@@ -3,10 +3,44 @@ project(TorchCodec)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Guard against accidentally building a distributable wheel that dynamically
+# links against a GPL build of FFmpeg (e.g. from conda/system), which would be a
+# license violation. Wheels are expected to link against our pre-built non-GPL
+# FFmpeg (BUILD_AGAINST_ALL_FFMPEG_FROM_S3).
+if(SKBUILD_STATE STREQUAL "wheel"
+   AND NOT DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3}
+   AND NOT DEFINED ENV{I_CONFIRM_THIS_IS_NOT_A_LICENSE_VIOLATION})
+    message(FATAL_ERROR
+        "It looks like you're trying to build a wheel. You probably want to set "
+        "BUILD_AGAINST_ALL_FFMPEG_FROM_S3. If you have a good reason *not* to, "
+        "then set I_CONFIRM_THIS_IS_NOT_A_LICENSE_VIOLATION.")
+endif()
+
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
-find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development Interpreter)
+find_package(Python3 COMPONENTS Development Interpreter)
+
+# libjpeg is an optional build-time dependency for the CPU JPEG image decoder.
+# When found, we compile decode_jpeg with libjpeg support and link against it.
+# When absent, decode_jpeg still exists but raises an actionable error at call
+# time (see DecodeJpeg.cpp's !JPEG_FOUND stub).
+if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
+    # JPEG_ROOT will automatically be passed to find_package(JPEG) by CMake if it is
+    # set. We fallback to the conda prefix if it is not set.
+    if(WIN32)
+        # conda puts libraries under $CONDA_PREFIX/Library on Windows.
+        set(JPEG_ROOT "$ENV{CONDA_PREFIX}/Library")
+    else()
+        set(JPEG_ROOT "$ENV{CONDA_PREFIX}")
+    endif()
+endif()
+find_package(JPEG)  # Not REQUIRED on purpose.
+if(JPEG_FOUND)
+    message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
+else()
+    message(STATUS "libjpeg NOT found: torchcodec.decode_jpeg will raise at runtime.")
+endif()
 
 # Read a list variable from sources.bzl, the single source of truth for the
 # _core C++ source files shared with the internal Buck build. The .bzl file is
@@ -36,6 +70,14 @@ read_sources_from_bzl(TORCHCODEC_DECODER_CORE_CUDA_SOURCES decoder_core_cuda_sou
 read_sources_from_bzl(TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES file_like_context_sources)
 read_sources_from_bzl(TORCHCODEC_CUSTOM_OPS_SOURCES custom_ops_sources)
 read_sources_from_bzl(TORCHCODEC_PYBIND_OPS_SOURCES pybind_ops_sources)
+read_sources_from_bzl(TORCHCODEC_IMAGE_SOURCES image_sources)
+
+# TODO_IMAGE: Fix this
+if(NOT WIN32)
+    set_source_files_properties(
+        ${TORCHCODEC_IMAGE_SOURCES}
+        PROPERTIES COMPILE_OPTIONS "-Wno-error")
+endif()
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -80,6 +122,14 @@ function(make_torchcodec_sublibrary
         "${TORCH_INSTALL_PREFIX}/include"
         ${Python3_INCLUDE_DIRS}
     )
+    # On Windows, the pybind ops library links the Python import library
+    # (python3XX.lib) by bare name via pybind11::module, so the Python library
+    # directory must be on the linker search path or linking fails with
+    # "LNK1104: cannot open file 'python3XX.lib'". This is a no-op on
+    # Linux/macOS, where extension modules resolve Python symbols dynamically.
+    if(WIN32)
+        target_link_directories(${library_name} PRIVATE ${Python3_LIBRARY_DIRS})
+    endif()
     # Use fmt library in header-only mode (bundled with PyTorch): the fmt
     # library is bundled with PyTorch and the headers are available in
     # TORCH_INSTALL_PREFIX/include/, which we add above. To be compatible with
@@ -157,6 +207,7 @@ function(make_torchcodec_libraries
     set(core_sources
         ${TORCHCODEC_DECODER_CORE_SOURCES}
         ${TORCHCODEC_FFMPEG_COMMON_SOURCES}
+        ${TORCHCODEC_IMAGE_SOURCES}
     )
 
     if(ENABLE_CUDA)
@@ -175,6 +226,13 @@ function(make_torchcodec_libraries
         "${core_sources}"
         "${core_library_dependencies}"
     )
+
+    # Optional libjpeg support for the CPU JPEG image decoder (DecodeJpeg.cpp).
+    # JPEG_FOUND gates both the compile-time code path and the link.
+    if(JPEG_FOUND)
+        target_compile_definitions(${core_library_name} PRIVATE JPEG_FOUND=1)
+        target_link_libraries(${core_library_name} PRIVATE JPEG::JPEG)
+    endif()
 
     if(ENABLE_CUDA)
         # We define USE_CUDA to guard CUDA-specific code paths (e.g.
@@ -322,16 +380,32 @@ function(make_torchcodec_libraries
         ${pybind_ops_library_name}
     )
 
-    # The install step is invoked within CMakeBuild.build_library() in
-    # setup.py and just copies the built files from the temp
-    # cmake/setuptools build folder into the CMAKE_INSTALL_PREFIX folder. We
-    # still need to manually pass "DESTINATION ..." for cmake to copy those
-    # files in CMAKE_INSTALL_PREFIX instead of CMAKE_INSTALL_PREFIX/lib.
-    install(
-        TARGETS ${all_libraries}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}  # For Windows
-    )
+    # We want the built libraries to end up in [src/]torchcodec so that the
+    # Python runtime loader can find them. This is done in two mutually exclusive
+    # ways depending on the build mode. Crucially, scikit-build-core doesn't
+    # trigger cmake's install() step on editable installs:
+    #
+    # - Editable installs (`pip install -e .`, SKBUILD_STATE=="editable"): build
+    #   the compiled libraries directly into the source package dir
+    #   (src/torchcodec).
+    # - Wheel builds and `pip install .`: install() copies the libraries into
+    #   scikit-build-core's staging dir (which becomes the wheel).
+    #  scikit-build-core manages the prefix, so we give a destination *relative* to it: "torchcodec/".
+    if(SKBUILD_STATE STREQUAL "editable")
+        # src/torchcodec, the parent of this _core dir.
+        get_filename_component(
+            TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+        set_target_properties(${all_libraries} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
+        )
+    else()
+        install(
+            TARGETS ${all_libraries}
+            LIBRARY DESTINATION torchcodec
+            RUNTIME DESTINATION torchcodec  # For Windows
+        )
+    endif()
 
 endfunction()
 

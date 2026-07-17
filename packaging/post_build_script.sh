@@ -9,6 +9,16 @@ set -ex
 
 source packaging/helpers.sh
 
+python packaging/repair_wheel.py
+
+# TODO: enable the checks below (Linux/macOS-only) on Windows too.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        echo "Windows: skipping Linux/macOS-only post-build checks."
+        exit 0
+        ;;
+esac
+
 wheel_path=$(pwd)/$(find dist -type f -name "*.whl")
 echo "Wheel content:"
 unzip -l $wheel_path
