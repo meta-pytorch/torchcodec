@@ -73,9 +73,6 @@ custom_ops_sources = [
     "custom_ops.cpp",
 ]
 
-# Image decoders (jpeg/png/...), compiled into the core library. libjpeg (etc.)
-# are optional build-time deps: when absent, the op registers a stub that raises
-# at call time. Not yet wired into the internal Buck build.
 image_sources = [
     "DecodeJpeg.cpp",
 ]

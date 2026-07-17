@@ -185,9 +185,6 @@ get_wav_metadata_from_decoder = (
     torch.ops.torchcodec_ns.get_wav_metadata_from_decoder.default
 )
 
-# Image decoder ops. Registered from DecodeJpeg.cpp (and future image sources)
-# into the torchcodec_ns namespace. decode_jpeg always exists; if torchcodec was
-# built without libjpeg it raises an actionable error at call time.
 decode_jpeg = torch.ops.torchcodec_ns.decode_jpeg.default
 
 

@@ -4,27 +4,26 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Private image decoders.
-
-This module is intentionally private and minimal for now: it exposes a single
-``decode_jpeg`` function that decodes a JPEG file into a ``(C, H, W)`` uint8
-tensor. Only file paths are supported at the moment. More formats, input types
-(bytes / tensors), a metadata probe and a unified color-conversion story will be
-added later, following IMAGE_DECODER_MIGRATION_PLAN.md.
-"""
-
 import warnings
 from enum import Enum
 from pathlib import Path
 
 import torch
 
-# Importing the ops module ensures the torchcodec shared libraries (which
-# register the decode_jpeg op) are loaded.
 from torchcodec._core.ops import decode_jpeg as _decode_jpeg
+
+# TODO_IMAGE: we need to make FFmpeg an optional dependency
+
+# TODO_IMAGE: we should allow to build without all the image dependencies
+# (libjpeg etc.), and make sure only the *calls* to decode_*() fail at runtime,
+# not the import of torchcodec.
+
+# TODO_IMAGE We probably need CI jobs for both TODOs above.
 
 
 class ImageColorMode(Enum):
+    # TODO_IMAGE:  We'll probably need to keep that for BC but ugh. Let's type
+    # stuff with Literal strings instead.
     """Color mode for image decoding.
 
     Integer values match torchvision's ``ImageReadMode`` and the C++
@@ -39,6 +38,7 @@ class ImageColorMode(Enum):
 
 
 def _read_file_to_tensor(path: str | Path) -> torch.Tensor:
+    # TODO_IMAGE: port read_file?
     data = Path(path).read_bytes()
     with warnings.catch_warnings():
         # torch.frombuffer warns that the underlying buffer is non-writable;
@@ -48,6 +48,7 @@ def _read_file_to_tensor(path: str | Path) -> torch.Tensor:
 
 
 def decode_jpeg(
+    # TODO_IMAGE: support bytes and file-like
     source: str | Path,
     *,
     mode: ImageColorMode = ImageColorMode.UNCHANGED,
@@ -61,7 +62,7 @@ def decode_jpeg(
             ``GRAY`` and ``RGB`` are supported for JPEG.
 
     Returns:
-        A ``(C, H, W)`` uint8 tensor. EXIF orientation is always applied.
+        A ``(C, H, W)`` uint8 tensor.
     """
     data = _read_file_to_tensor(source)
     return _decode_jpeg(data, mode.value)

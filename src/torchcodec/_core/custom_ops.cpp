@@ -119,7 +119,6 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "get_wav_samples_in_range(Tensor(a!) decoder, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def("get_wav_metadata_from_decoder(Tensor(a!) decoder) -> str");
-  // Image decoder ops (see DecodeJpeg.cpp and future image sources).
   m.def("decode_jpeg(Tensor data, int mode) -> Tensor");
 }
 

@@ -4,13 +4,6 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-// CPU JPEG decoder, ported from torchvision's
-// csrc/io/image/cpu/decode_jpeg.cpp. Registered into the existing torchcodec_ns
-// namespace (via a fragment) rather than a dedicated image .so, per the image
-// decoder migration plan. libjpeg is an optional *build-time* dependency: when
-// it is not found at CMake time, JPEG_FOUND is undefined and decode_jpeg
-// registers a stub that raises an actionable error.
-
 #include "DecodeJpeg.h"
 
 #include <torch/csrc/stable/library.h>
@@ -328,8 +321,5 @@ torch::stable::Tensor decode_jpeg(
 }
 
 #endif // #if !JPEG_FOUND
-
-// Op definition + registration live in custom_ops.cpp alongside the other
-// torchcodec_ns ops (STABLE_TORCH_LIBRARY / STABLE_TORCH_LIBRARY_IMPL(CPU)).
 
 } // namespace facebook::torchcodec
