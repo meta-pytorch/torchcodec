@@ -265,13 +265,10 @@ GRAYSCALE_JPEG = TestImage(
 # Image.fromarray(rgb).convert("CMYK").save("cmyk.jpg", quality=90)
 CMYK_JPEG = TestImage(filename="cmyk.jpg", width=1280, height=720, num_channels=4)
 
-# 64x40 gradient JPEG with EXIF orientation=6 (rotate 90 CW). width/height below
-# are the *decoded* (post-orientation) dims. Generated with:
-# im = Image.fromarray(arr)  # arr is a 40x64 gradient, same recipe as above
-# exif = im.getexif(); exif[274] = 6
-# im.save("exif_orientation.jpg", quality=95, exif=exif)
-EXIF_JPEG = TestImage(
-    filename="exif_orientation.jpg", width=40, height=64, num_channels=3
+# JPEG with a bad Huffman table (damaged but still decodable). Taken from
+# torchvision's test assets (test/assets/damaged_jpeg/bad_huffman.jpg).
+BAD_HUFFMAN_JPEG = TestImage(
+    filename="bad_huffman.jpg", width=1024, height=768, num_channels=3
 )
 
 
