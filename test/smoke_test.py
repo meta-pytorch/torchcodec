@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -8,13 +7,15 @@ import torch
 from test.utils import (
     assert_tensor_close_on_at_least,
     cuda_version_used_for_building_torch,
+    GRADIENT_JPEG,
     needs_cuda,
+    needs_jpeg,
 )
 
 from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
 from torchcodec.decoders import AudioDecoder, VideoDecoder
-from torchcodec.decoders._image_decoders import decode_jpeg, ImageColorMode
+from torchcodec.decoders._image_decoders import decode_jpeg
 from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
 
 
@@ -243,40 +244,15 @@ class TestAudioDecoder:
         assert samples.data.shape[0] == 1
 
 
-def _make_jpeg_file(tmp_path):
-    from PIL import Image
-
-    arr = torch.randint(0, 256, (HEIGHT, WIDTH, 3), dtype=torch.uint8).numpy()
-    path = tmp_path / "test.jpg"
-    Image.fromarray(arr).save(path, quality=95)
-    return path
-
-
 class TestImageDecoder:
-    def test_decode_jpeg(self, tmp_path):
-        path = _make_jpeg_file(tmp_path)
+    @needs_jpeg
+    def test_decode_jpeg(self):
+        path = GRADIENT_JPEG.path
+        h, w = GRADIENT_JPEG.height, GRADIENT_JPEG.width
 
-        try:
-            img = decode_jpeg(path)
-        except RuntimeError as e:
-            # We skip the JPEG tests when torchcodec was built without libjpeg,
-            # but only if the FAIL_WITHOUT_JPEG env var wasn't set. If it's set,
-            # we let the error propagate and fail loudly. This env var is set on
-            # CI jobs that are supposed to have JPEG support built in, so if it's
-            # missing there for whatever reason, we need to know. Mirrors the
-            # FAIL_WITHOUT_CUDA logic in test/conftest.py.
-            if "libjpeg" in str(e) and os.environ.get("FAIL_WITHOUT_JPEG") is None:
-                pytest.skip("torchcodec was built without libjpeg support.")
-            raise
-
+        img = decode_jpeg(path)
         assert img.dtype == torch.uint8
-        assert img.shape == (3, HEIGHT, WIDTH)
-
-        gray = decode_jpeg(path, mode=ImageColorMode.GRAY)
-        assert gray.shape == (1, HEIGHT, WIDTH)
-
-        rgb = decode_jpeg(path, mode=ImageColorMode.RGB)
-        assert rgb.shape == (3, HEIGHT, WIDTH)
+        assert img.shape == (3, h, w)
 
 
 class TestVideoEncoder:

@@ -20,6 +20,8 @@ from torchcodec._core.ops import decode_jpeg as _decode_jpeg
 
 # TODO_IMAGE We probably need CI jobs for both TODOs above.
 
+# TODO_IMAGE: Support torchscript?
+
 
 class ImageColorMode(Enum):
     # TODO_IMAGE:  We'll probably need to keep that for BC but ugh. Let's type
@@ -53,6 +55,8 @@ def decode_jpeg(
     *,
     mode: ImageColorMode = ImageColorMode.UNCHANGED,
 ) -> torch.Tensor:
+    # TODO_IMAGE We should ensure we build and link against turbo. Maybe by
+    # checking the symbols of the bundled libjpeg shared library at repair time.
     """Decode a JPEG file into a uint8 tensor of shape ``(C, H, W)``.
 
     Args:

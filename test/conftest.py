@@ -4,7 +4,7 @@ import random
 import pytest
 import torch
 
-from .utils import in_fbcode
+from .utils import in_fbcode, jpeg_is_available
 
 
 def pytest_configure(config):
@@ -14,6 +14,9 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "needs_ffmpeg_cli: mark for tests that rely on ffmpeg"
+    )
+    config.addinivalue_line(
+        "markers", "needs_jpeg: mark for tests that rely on libjpeg support"
     )
 
 
@@ -34,6 +37,7 @@ def pytest_collection_modifyitems(items):
         # mark.
         needs_cuda = item.get_closest_marker("needs_cuda") is not None
         needs_ffmpeg_cli = item.get_closest_marker("needs_ffmpeg_cli") is not None
+        needs_jpeg = item.get_closest_marker("needs_jpeg") is not None
         has_skip_marker = item.get_closest_marker("skip") is not None
 
         # For skipif, the marker is always present regardless of whether the
@@ -67,6 +71,16 @@ def pytest_collection_modifyitems(items):
             # supposed to run the CUDA tests, so if CUDA isn't available on
             # those for whatever reason, we need to know.
             item.add_marker(pytest.mark.skip(reason="CUDA not available."))
+
+        # Same rationale as needs_cuda: skip when libjpeg support isn't built in,
+        # unless FAIL_WITHOUT_JPEG is set (on CI it is, so a missing libjpeg
+        # surfaces as a failure rather than a silent skip).
+        if (
+            needs_jpeg
+            and not jpeg_is_available()
+            and os.environ.get("FAIL_WITHOUT_JPEG") is None
+        ):
+            item.add_marker(pytest.mark.skip(reason="libjpeg support not available."))
 
         out_items.append(item)
 

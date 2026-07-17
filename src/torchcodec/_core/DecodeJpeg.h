@@ -10,7 +10,7 @@
 
 namespace facebook::torchcodec {
 
-torch::stable::Tensor decode_jpeg(
+FORCE_PUBLIC_VISIBILITY torch::stable::Tensor decode_jpeg(
     const torch::stable::Tensor& data,
     int64_t mode);
 

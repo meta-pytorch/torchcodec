@@ -57,14 +57,17 @@ def repair_linux(wheels):
     ):
         excludes += ["--exclude", pattern]
     for wheel in wheels:
-        run(["auditwheel", "repair", *excludes, "--wheel-dir", REPAIRED_DIR, wheel], env=env)
+        run(
+            ["auditwheel", "repair", *excludes, "--wheel-dir", REPAIRED_DIR, wheel],
+            env=env,
+        )
 
 
 def repair_macos(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "delocate"])
     run(["delocate-wheel", "--version"])
     env = os.environ.copy()
-    if conda_prefix:= env.get("CONDA_PREFIX"): 
+    if conda_prefix := env.get("CONDA_PREFIX"):
         env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
             [str(Path(conda_prefix) / "lib"), env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
         )
