@@ -14,7 +14,7 @@ with the wheel: libjpeg (for the CPU JPEG image decoder). We bundle it with:
 
 ...while EXCLUDING FFmpeg (GPL, user-provided at runtime) and torch/CUDA
 (provided by the torch wheel) so ONLY libjpeg (and future permissive image libs)
-gets bundled. After repairing we run check_wheel_bundling.py to assert that.
+gets bundled. After repairing, check_bundling() (below) asserts exactly that.
 
 This is written in Python (not bash) so it runs identically on all three
 platforms -- in particular on Windows, where the build workflow runs the
@@ -28,13 +28,82 @@ import platform
 import shutil
 import subprocess
 import sys
+import zipfile
 
 REPAIRED_DIR = "dist_repaired"
+
+# Substrings that must NOT appear in any bundled library's filename. Covers every
+# SONAME / DLL-version spelling across platforms. These are the libraries that
+# must stay EXTERNAL: FFmpeg (GPL, user-provided at runtime) and torch/CUDA
+# (provided by the torch wheel).
+FORBIDDEN = [
+    # FFmpeg
+    "libav", "avcodec-", "avformat-", "avutil-", "avfilter-", "avdevice-",
+    "libsw", "swscale-", "swresample-", "libpostproc", "postproc-",
+    # PyTorch
+    "libtorch", "torch_cpu", "torch_cuda", "libc10", "c10.dll", "c10_cuda",
+    # CUDA / NVIDIA
+    "libcu", "libnv", "libcupti", "cudart", "nvrtc", "cublas", "cudnn",
+]
 
 
 def run(cmd, **kwargs):
     print("+ " + " ".join(cmd), flush=True)
     subprocess.run(cmd, check=True, **kwargs)
+
+
+def _is_shared_lib(name):
+    base = name.split("/")[-1]
+    return (
+        ".so" in base or ".dylib" in base or base.endswith((".dll", ".pyd"))
+    )
+
+
+def check_bundling():
+    """Assert every wheel in dist/ bundles libjpeg and nothing forbidden.
+
+    We use a DENYLIST (FFmpeg/torch/CUDA) rather than a strict "only libjpeg"
+    allowlist: the per-platform repair tools (and pytorch's test-infra macOS
+    build, which delocates before our post-script) also bundle benign OS /
+    interpreter runtime libs (libc++, libpython, vcruntime). Those are fine; we
+    only fail on the libraries that matter for licensing / correctness.
+    """
+    ok = True
+    for wheel in glob.glob(os.path.join("dist", "*.whl")):
+        print(f"Checking bundled libraries in {os.path.basename(wheel)}")
+        with zipfile.ZipFile(wheel) as zf:
+            libs = sorted(
+                {n.split("/")[-1] for n in zf.namelist() if _is_shared_lib(n)}
+            )
+        forbidden_found, other, found_jpeg = [], [], False
+        for lib in libs:
+            if lib.startswith("libtorchcodec_"):  # our own libraries
+                continue
+            if lib.startswith("libjpeg") or (
+                lib.startswith("jpeg") and lib.endswith(".dll")
+            ):
+                found_jpeg = True
+                continue
+            bad = next((p for p in FORBIDDEN if p in lib), None)
+            (forbidden_found if bad else other).append(lib)
+        if forbidden_found:
+            print(
+                "ERROR: forbidden libraries bundled in the wheel: "
+                + " ".join(forbidden_found)
+                + "\nFFmpeg, torch and CUDA libraries must stay external."
+            )
+            ok = False
+        if not found_jpeg:
+            print(
+                "ERROR: libjpeg is NOT bundled; the JPEG image decoder would fail "
+                "at runtime. Was libjpeg-turbo available at build time?"
+            )
+            ok = False
+        if other:
+            print("Note: also bundled (allowed OS/runtime libs): " + " ".join(other))
+        if ok:
+            print("OK: libjpeg bundled; no FFmpeg/torch/CUDA libraries bundled.")
+    return ok
 
 
 def repair_linux(wheels):
@@ -179,9 +248,8 @@ def main():
     for wheel in glob.glob(os.path.join("dist", "*.whl")):
         print("  " + wheel)
 
-    # Verify the repair bundled ONLY libjpeg (no FFmpeg/torch/CUDA leaked in).
-    run([sys.executable, os.path.join("packaging", "check_wheel_bundling.py")])
-    return 0
+    # Verify the repair bundled libjpeg and no FFmpeg/torch/CUDA leaked in.
+    return 0 if check_bundling() else 1
 
 
 if __name__ == "__main__":

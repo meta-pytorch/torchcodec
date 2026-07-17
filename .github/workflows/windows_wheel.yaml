@@ -52,12 +52,8 @@ jobs:
       test-infra-ref: main
       build-matrix: ${{ needs.generate-matrix.outputs.matrix }}
       pre-script: packaging/pre_build_script.sh
-      # Bundle libjpeg into the Windows wheel via delvewheel + verify only
-      # libjpeg is bundled (repair_wheel.py runs check_wheel_bundling.py). It's
-      # a Python script because vc_env_helper.bat runs the post-script in cmd,
-      # which can't run a .sh and won't reliably run a relatively-pathed .bat,
-      # but runs `python <script>` fine.
-      post-script: python packaging/repair_wheel.py
+      # Via `bash` because vc_env_helper.bat runs the post-script in cmd.
+      post-script: bash packaging/post_build_script.sh
       env-script: packaging/vc_env_helper.bat
       smoke-test-script: packaging/fake_smoke_test.py
       package-name: torchcodec
