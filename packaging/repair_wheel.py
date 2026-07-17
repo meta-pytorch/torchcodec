@@ -89,17 +89,10 @@ def repair_macos(wheels):
 
 
 def repair_windows(wheels):
-    # We do NOT use delvewheel here. delvewheel roots its dependency analysis on
-    # .pyd extension modules, but libjpeg is linked into
-    # libtorchcodec_custom_ops*.dll -- a plain DLL that torchcodec loads
-    # standalone at runtime (via ctypes), so it's not reachable in delvewheel's
-    # graph and libjpeg would never get vendored (and delvewheel also chokes on
-    # our intra-wheel libtorchcodec_core*.dll deps).
-    #
-    # Instead we do what torchvision does on Windows: copy the libjpeg DLL next
-    # to our libs inside the wheel. At load time Windows resolves a DLL's
-    # dependencies from the DLL's own directory, so custom_ops finds libjpeg
-    # there. We repack with `wheel` so the RECORD is regenerated.
+    # We do what torchvision does on Windows: copy the libjpeg DLL next to our
+    # libs inside the wheel. At load time Windows resolves a DLL's dependencies
+    # from the DLL's own directory, libjpeg is found. We repack with `wheel` so
+    # the RECORD is regenerated.
     run([sys.executable, "-m", "pip", "install", "-U", "wheel"])
     bin_dir = Path(os.environ.get("CONDA_PREFIX", "")) / "Library" / "bin"
     jpeg_dlls = sorted(

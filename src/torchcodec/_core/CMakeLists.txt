@@ -40,13 +40,8 @@ endif()
 find_package(JPEG)
 if(JPEG_FOUND)
     message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
-    # We only LINK libjpeg here (into libtorchcodec_custom_ops*, see
-    # make_torchcodec_libraries). Because it's linked, libjpeg must travel with
-    # the wheel or `import torchcodec` would fail on machines without it. It gets
-    # bundled at wheel-repair time by the standard per-OS tool (auditwheel on
-    # Linux, delocate on macOS, delvewheel on Windows); see
-    # packaging/repair_wheel.sh, which excludes the (GPL, runtime-provided)
-    # FFmpeg libs and the torch/CUDA libs so ONLY libjpeg gets bundled.
+    # libjpeg is linked into libtorchcodec_core* and bundled into the wheel at
+    # repair time (see packaging/repair_wheel.py).
 else()
     message(STATUS "libjpeg NOT found: torchcodec.decode_jpeg will raise at runtime.")
 endif()
@@ -218,6 +213,7 @@ function(make_torchcodec_libraries
     set(core_sources
         ${TORCHCODEC_DECODER_CORE_SOURCES}
         ${TORCHCODEC_FFMPEG_COMMON_SOURCES}
+        ${TORCHCODEC_IMAGE_SOURCES}
     )
 
     if(ENABLE_CUDA)
@@ -236,6 +232,13 @@ function(make_torchcodec_libraries
         "${core_sources}"
         "${core_library_dependencies}"
     )
+
+    # Optional libjpeg support for the CPU JPEG image decoder (DecodeJpeg.cpp).
+    # JPEG_FOUND gates both the compile-time code path and the link.
+    if(JPEG_FOUND)
+        target_compile_definitions(${core_library_name} PRIVATE JPEG_FOUND=1)
+        target_link_libraries(${core_library_name} PRIVATE JPEG::JPEG)
+    endif()
 
     if(ENABLE_CUDA)
         # We define USE_CUDA to guard CUDA-specific code paths (e.g.
@@ -257,7 +260,6 @@ function(make_torchcodec_libraries
     set(custom_ops_library_name "libtorchcodec_custom_ops${ffmpeg_major_version}")
     set(custom_ops_sources
         ${TORCHCODEC_CUSTOM_OPS_SOURCES}
-        ${TORCHCODEC_IMAGE_SOURCES}
     )
     set(custom_ops_dependencies
         ${core_library_name}
@@ -269,17 +271,6 @@ function(make_torchcodec_libraries
         "${custom_ops_sources}"
         "${custom_ops_dependencies}"
     )
-
-    # Optional libjpeg support for the CPU JPEG image decoder (DecodeJpeg.cpp).
-    # JPEG_FOUND gates both the compile-time code path and the link.
-    if(JPEG_FOUND)
-        target_compile_definitions(
-            ${custom_ops_library_name} PRIVATE JPEG_FOUND=1)
-        target_link_libraries(${custom_ops_library_name} PRIVATE JPEG::JPEG)
-        # No rpath / bundling here: the wheel-repair tool (auditwheel/delocate/
-        # delvewheel; see packaging/repair_wheel.sh) copies libjpeg into the
-        # wheel and rewrites the rpath at repair time.
-    endif()
 
     # 3. Create libtorchcodec_pybind_opsN.so.
     set(pybind_ops_library_name "libtorchcodec_pybind_ops${ffmpeg_major_version}")
