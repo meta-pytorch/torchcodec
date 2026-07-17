@@ -35,6 +35,7 @@ torch::stable::Tensor decode_jpeg(
 #include <setjmp.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <optional>
 
@@ -70,18 +71,15 @@ void validate_encoded_data(const torch::stable::Tensor& encoded_data) {
 
 constexpr JOCTET EOI_BUFFER[1] = {JPEG_EOI};
 
-struct torch_jpeg_error_mgr {
+struct error_mgr {
   jpeg_error_mgr pub; /* "public" fields */
   char jpegLastErrorMsg[JMSG_LENGTH_MAX]; /* error messages */
   jmp_buf setjmp_buffer; /* for return to caller */
 };
 
-using torch_jpeg_error_ptr = torch_jpeg_error_mgr*;
-
-void torch_jpeg_error_exit(j_common_ptr cinfo) {
-  // cinfo->err really points to a torch_jpeg_error_mgr struct, so coerce
-  // pointer.
-  auto myerr = reinterpret_cast<torch_jpeg_error_ptr>(cinfo->err);
+void error_exit(j_common_ptr cinfo) {
+  // cinfo->err really points to an error_mgr struct, so coerce pointer.
+  auto myerr = reinterpret_cast<error_mgr*>(cinfo->err);
 
   cinfo->err->format_message(cinfo, myerr->jpegLastErrorMsg);
 
@@ -89,23 +87,23 @@ void torch_jpeg_error_exit(j_common_ptr cinfo) {
   longjmp(myerr->setjmp_buffer, 1);
 }
 
-struct torch_jpeg_mgr {
+struct source_mgr {
   jpeg_source_mgr pub;
   const JOCTET* data;
   size_t len;
 };
 
-void torch_jpeg_init_source(j_decompress_ptr) {}
+void init_source(j_decompress_ptr) {}
 
-boolean torch_jpeg_fill_input_buffer(j_decompress_ptr cinfo) {
+boolean fill_input_buffer(j_decompress_ptr cinfo) {
   // No more data.  Probably an incomplete image;  Raise exception.
-  auto myerr = reinterpret_cast<torch_jpeg_error_ptr>(cinfo->err);
+  auto myerr = reinterpret_cast<error_mgr*>(cinfo->err);
   strcpy(myerr->jpegLastErrorMsg, "Image is incomplete or truncated");
   longjmp(myerr->setjmp_buffer, 1);
 }
 
-void torch_jpeg_skip_input_data(j_decompress_ptr cinfo, long num_bytes) {
-  auto* src = reinterpret_cast<torch_jpeg_mgr*>(cinfo->src);
+void skip_input_data(j_decompress_ptr cinfo, long num_bytes) {
+  auto* src = reinterpret_cast<source_mgr*>(cinfo->src);
   if (src->pub.bytes_in_buffer < static_cast<size_t>(num_bytes)) {
     // Skipping over all of remaining data;  output EOI.
     src->pub.next_input_byte = EOI_BUFFER;
@@ -117,25 +115,22 @@ void torch_jpeg_skip_input_data(j_decompress_ptr cinfo, long num_bytes) {
   }
 }
 
-void torch_jpeg_term_source(j_decompress_ptr) {}
+void term_source(j_decompress_ptr) {}
 
-void torch_jpeg_set_source_mgr(
-    j_decompress_ptr cinfo,
-    const unsigned char* data,
-    size_t len) {
-  torch_jpeg_mgr* src;
+void set_source_mgr(j_decompress_ptr cinfo, const uint8_t* data, size_t len) {
+  source_mgr* src;
   if (cinfo->src == nullptr) { // if this is first time;  allocate memory
     cinfo->src = static_cast<jpeg_source_mgr*>(cinfo->mem->alloc_small(
         reinterpret_cast<j_common_ptr>(cinfo),
         JPOOL_PERMANENT,
-        sizeof(torch_jpeg_mgr)));
+        sizeof(source_mgr)));
   }
-  src = reinterpret_cast<torch_jpeg_mgr*>(cinfo->src);
-  src->pub.init_source = torch_jpeg_init_source;
-  src->pub.fill_input_buffer = torch_jpeg_fill_input_buffer;
-  src->pub.skip_input_data = torch_jpeg_skip_input_data;
+  src = reinterpret_cast<source_mgr*>(cinfo->src);
+  src->pub.init_source = init_source;
+  src->pub.fill_input_buffer = fill_input_buffer;
+  src->pub.skip_input_data = skip_input_data;
   src->pub.resync_to_restart = jpeg_resync_to_restart; // default
-  src->pub.term_source = torch_jpeg_term_source;
+  src->pub.term_source = term_source;
   // fill the buffers
   src->data = reinterpret_cast<const JOCTET*>(data);
   src->len = len;
@@ -145,9 +140,7 @@ void torch_jpeg_set_source_mgr(
   jpeg_save_markers(cinfo, APP1, 0xffff);
 }
 
-inline unsigned char clamped_cmyk_rgb_convert(
-    unsigned char k,
-    unsigned char cmy) {
+inline uint8_t clamped_cmyk_rgb_convert(uint8_t k, uint8_t cmy) {
   // Inspired from Pillow:
   // https://github.com/python-pillow/Pillow/blob/07623d1a7cc65206a5355fba2ae256550bfcaba6/src/libImaging/Convert.c#L568-L569
   int v = k * cmy + 128;
@@ -156,10 +149,10 @@ inline unsigned char clamped_cmyk_rgb_convert(
 }
 
 void convert_line_cmyk_to_rgb(
-    j_decompress_ptr cinfo,
-    const unsigned char* cmyk_line,
-    unsigned char* rgb_line) {
-  int width = cinfo->output_width;
+    const jpeg_decompress_struct& cinfo,
+    const uint8_t* cmyk_line,
+    uint8_t* rgb_line) {
+  int width = cinfo.output_width;
   for (int i = 0; i < width; ++i) {
     int c = cmyk_line[i * 4 + 0];
     int m = cmyk_line[i * 4 + 1];
@@ -172,17 +165,17 @@ void convert_line_cmyk_to_rgb(
   }
 }
 
-inline unsigned char rgb_to_gray(int r, int g, int b) {
+inline uint8_t rgb_to_gray(int r, int g, int b) {
   // Inspired from Pillow:
   // https://github.com/python-pillow/Pillow/blob/07623d1a7cc65206a5355fba2ae256550bfcaba6/src/libImaging/Convert.c#L226
   return (r * 19595 + g * 38470 + b * 7471 + 0x8000) >> 16;
 }
 
 void convert_line_cmyk_to_gray(
-    j_decompress_ptr cinfo,
-    const unsigned char* cmyk_line,
-    unsigned char* gray_line) {
-  int width = cinfo->output_width;
+    const jpeg_decompress_struct& cinfo,
+    const uint8_t* cmyk_line,
+    uint8_t* gray_line) {
+  int width = cinfo.output_width;
   for (int i = 0; i < width; ++i) {
     int c = cmyk_line[i * 4 + 0];
     int m = cmyk_line[i * 4 + 1];
@@ -205,7 +198,7 @@ torch::stable::Tensor decode_jpeg(
   validate_encoded_data(data);
 
   jpeg_decompress_struct cinfo;
-  torch_jpeg_error_mgr jerr;
+  error_mgr jerr;
 
   // NOTE: libjpeg uses setjmp/longjmp for error handling. longjmp does not
   // unwind C++ stack frames, so destructors of objects created after setjmp
@@ -217,7 +210,7 @@ torch::stable::Tensor decode_jpeg(
   auto datap = data.const_data_ptr<uint8_t>();
   // Setup decompression structure
   cinfo.err = jpeg_std_error(&jerr.pub);
-  jerr.pub.error_exit = torch_jpeg_error_exit;
+  jerr.pub.error_exit = error_exit;
   /* Establish the setjmp return context for my_error_exit to use. */
   if (setjmp(jerr.setjmp_buffer)) {
     // Release any tensors that may have been allocated after setjmp.
@@ -232,7 +225,7 @@ torch::stable::Tensor decode_jpeg(
   }
 
   jpeg_create_decompress(&cinfo);
-  torch_jpeg_set_source_mgr(&cinfo, datap, data.numel());
+  set_source_mgr(&cinfo, datap, data.numel());
 
   // read info from header.
   jpeg_read_header(&cinfo, TRUE);
@@ -293,9 +286,9 @@ torch::stable::Tensor decode_jpeg(
       jpeg_read_scanlines(&cinfo, &cmyk_line_ptr, 1);
 
       if (channels == 3) {
-        convert_line_cmyk_to_rgb(&cinfo, cmyk_line_ptr, ptr);
+        convert_line_cmyk_to_rgb(cinfo, cmyk_line_ptr, ptr);
       } else if (channels == 1) {
-        convert_line_cmyk_to_gray(&cinfo, cmyk_line_ptr, ptr);
+        convert_line_cmyk_to_gray(cinfo, cmyk_line_ptr, ptr);
       }
     } else {
       jpeg_read_scanlines(&cinfo, &ptr, 1);
