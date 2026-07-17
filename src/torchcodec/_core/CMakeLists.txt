@@ -252,7 +252,12 @@ function(make_torchcodec_libraries
     )
     set(custom_ops_dependencies
         ${core_library_name}
-        ${Python3_LIBRARIES}
+        pybind11::module # Links Python correctly per-platform (nothing extra on
+                         # Linux, dynamic-lookup on Mac, import lib on Windows).
+                         # Using ${Python3_LIBRARIES} instead adds a DT_NEEDED on
+                         # a shared libpython (e.g. free-threaded builds ship
+                         # libpython3.XXt.so), which auditwheel then wrongly
+                         # bundles into the wheel.
     )
     make_torchcodec_sublibrary(
         "${custom_ops_library_name}"
