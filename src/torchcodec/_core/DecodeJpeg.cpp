@@ -68,30 +68,29 @@ void validate_encoded_data(const torch::stable::Tensor& encoded_data) {
       " numels.");
 }
 
-const JOCTET EOI_BUFFER[1] = {JPEG_EOI};
+constexpr JOCTET EOI_BUFFER[1] = {JPEG_EOI};
 
 struct torch_jpeg_error_mgr {
-  struct jpeg_error_mgr pub; /* "public" fields */
+  jpeg_error_mgr pub; /* "public" fields */
   char jpegLastErrorMsg[JMSG_LENGTH_MAX]; /* error messages */
   jmp_buf setjmp_buffer; /* for return to caller */
 };
 
-using torch_jpeg_error_ptr = struct torch_jpeg_error_mgr*;
+using torch_jpeg_error_ptr = torch_jpeg_error_mgr*;
 
 void torch_jpeg_error_exit(j_common_ptr cinfo) {
-  /* cinfo->err really points to a torch_jpeg_error_mgr struct, so coerce
-   * pointer */
-  torch_jpeg_error_ptr myerr = (torch_jpeg_error_ptr)cinfo->err;
+  // cinfo->err really points to a torch_jpeg_error_mgr struct, so coerce
+  // pointer.
+  auto myerr = reinterpret_cast<torch_jpeg_error_ptr>(cinfo->err);
 
-  /* Create the message */
-  (*(cinfo->err->format_message))(cinfo, myerr->jpegLastErrorMsg);
+  cinfo->err->format_message(cinfo, myerr->jpegLastErrorMsg);
 
-  /* Return control to the setjmp point */
+  // Return control to the setjmp point.
   longjmp(myerr->setjmp_buffer, 1);
 }
 
 struct torch_jpeg_mgr {
-  struct jpeg_source_mgr pub;
+  jpeg_source_mgr pub;
   const JOCTET* data;
   size_t len;
 };
@@ -100,14 +99,14 @@ void torch_jpeg_init_source(j_decompress_ptr) {}
 
 boolean torch_jpeg_fill_input_buffer(j_decompress_ptr cinfo) {
   // No more data.  Probably an incomplete image;  Raise exception.
-  torch_jpeg_error_ptr myerr = (torch_jpeg_error_ptr)cinfo->err;
+  auto myerr = reinterpret_cast<torch_jpeg_error_ptr>(cinfo->err);
   strcpy(myerr->jpegLastErrorMsg, "Image is incomplete or truncated");
   longjmp(myerr->setjmp_buffer, 1);
 }
 
 void torch_jpeg_skip_input_data(j_decompress_ptr cinfo, long num_bytes) {
-  torch_jpeg_mgr* src = (torch_jpeg_mgr*)cinfo->src;
-  if (src->pub.bytes_in_buffer < (size_t)num_bytes) {
+  auto* src = reinterpret_cast<torch_jpeg_mgr*>(cinfo->src);
+  if (src->pub.bytes_in_buffer < static_cast<size_t>(num_bytes)) {
     // Skipping over all of remaining data;  output EOI.
     src->pub.next_input_byte = EOI_BUFFER;
     src->pub.bytes_in_buffer = 1;
@@ -126,17 +125,19 @@ void torch_jpeg_set_source_mgr(
     size_t len) {
   torch_jpeg_mgr* src;
   if (cinfo->src == nullptr) { // if this is first time;  allocate memory
-    cinfo->src = (struct jpeg_source_mgr*)(*cinfo->mem->alloc_small)(
-        (j_common_ptr)cinfo, JPOOL_PERMANENT, sizeof(torch_jpeg_mgr));
+    cinfo->src = static_cast<jpeg_source_mgr*>(cinfo->mem->alloc_small(
+        reinterpret_cast<j_common_ptr>(cinfo),
+        JPOOL_PERMANENT,
+        sizeof(torch_jpeg_mgr)));
   }
-  src = (torch_jpeg_mgr*)cinfo->src;
+  src = reinterpret_cast<torch_jpeg_mgr*>(cinfo->src);
   src->pub.init_source = torch_jpeg_init_source;
   src->pub.fill_input_buffer = torch_jpeg_fill_input_buffer;
   src->pub.skip_input_data = torch_jpeg_skip_input_data;
   src->pub.resync_to_restart = jpeg_resync_to_restart; // default
   src->pub.term_source = torch_jpeg_term_source;
   // fill the buffers
-  src->data = (const JOCTET*)data;
+  src->data = reinterpret_cast<const JOCTET*>(data);
   src->len = len;
   src->pub.bytes_in_buffer = len;
   src->pub.next_input_byte = src->data;
@@ -203,8 +204,8 @@ torch::stable::Tensor decode_jpeg(
     int64_t mode) {
   validate_encoded_data(data);
 
-  struct jpeg_decompress_struct cinfo;
-  struct torch_jpeg_error_mgr jerr;
+  jpeg_decompress_struct cinfo;
+  torch_jpeg_error_mgr jerr;
 
   // NOTE: libjpeg uses setjmp/longjmp for error handling. longjmp does not
   // unwind C++ stack frames, so destructors of objects created after setjmp
@@ -239,6 +240,8 @@ torch::stable::Tensor decode_jpeg(
   int channels = cinfo.num_components;
   bool cmyk_to_rgb_or_gray = false;
 
+  // TODO_IMAGE wait, what does this return on a CMYK image when mode is
+  // UNCHANGED?
   if (mode != kImageReadModeUnchanged) {
     // libjpeg can't convert CMYK/YCCK straight to gray or RGB, so for those we
     // decode as CMYK and convert the lines ourselves (see the scanline loop),
