@@ -36,6 +36,8 @@ if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
     endif()
 endif()
 find_package(JPEG)  # Not REQUIRED on purpose.
+# TODO_IMAGE: we should probably make it mandatory by default and allow to make
+# it optional via a flag?
 if(JPEG_FOUND)
     message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
 else()

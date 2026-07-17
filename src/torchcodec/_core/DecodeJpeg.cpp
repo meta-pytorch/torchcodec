@@ -68,7 +68,7 @@ void validate_encoded_data(const torch::stable::Tensor& encoded_data) {
       " numels.");
 }
 
-static const JOCTET EOI_BUFFER[1] = {JPEG_EOI};
+const JOCTET EOI_BUFFER[1] = {JPEG_EOI};
 
 struct torch_jpeg_error_mgr {
   struct jpeg_error_mgr pub; /* "public" fields */
@@ -96,16 +96,16 @@ struct torch_jpeg_mgr {
   size_t len;
 };
 
-static void torch_jpeg_init_source(j_decompress_ptr) {}
+void torch_jpeg_init_source(j_decompress_ptr) {}
 
-static boolean torch_jpeg_fill_input_buffer(j_decompress_ptr cinfo) {
+boolean torch_jpeg_fill_input_buffer(j_decompress_ptr cinfo) {
   // No more data.  Probably an incomplete image;  Raise exception.
   torch_jpeg_error_ptr myerr = (torch_jpeg_error_ptr)cinfo->err;
   strcpy(myerr->jpegLastErrorMsg, "Image is incomplete or truncated");
   longjmp(myerr->setjmp_buffer, 1);
 }
 
-static void torch_jpeg_skip_input_data(j_decompress_ptr cinfo, long num_bytes) {
+void torch_jpeg_skip_input_data(j_decompress_ptr cinfo, long num_bytes) {
   torch_jpeg_mgr* src = (torch_jpeg_mgr*)cinfo->src;
   if (src->pub.bytes_in_buffer < (size_t)num_bytes) {
     // Skipping over all of remaining data;  output EOI.
@@ -118,14 +118,14 @@ static void torch_jpeg_skip_input_data(j_decompress_ptr cinfo, long num_bytes) {
   }
 }
 
-static void torch_jpeg_term_source(j_decompress_ptr) {}
+void torch_jpeg_term_source(j_decompress_ptr) {}
 
-static void torch_jpeg_set_source_mgr(
+void torch_jpeg_set_source_mgr(
     j_decompress_ptr cinfo,
     const unsigned char* data,
     size_t len) {
   torch_jpeg_mgr* src;
-  if (cinfo->src == 0) { // if this is first time;  allocate memory
+  if (cinfo->src == nullptr) { // if this is first time;  allocate memory
     cinfo->src = (struct jpeg_source_mgr*)(*cinfo->mem->alloc_small)(
         (j_common_ptr)cinfo, JPOOL_PERMANENT, sizeof(torch_jpeg_mgr));
   }
@@ -240,32 +240,21 @@ torch::stable::Tensor decode_jpeg(
   bool cmyk_to_rgb_or_gray = false;
 
   if (mode != kImageReadModeUnchanged) {
+    // libjpeg can't convert CMYK/YCCK straight to gray or RGB, so for those we
+    // decode as CMYK and convert the lines ourselves (see the scanline loop),
+    // like:
+    // https://github.com/tensorflow/tensorflow/blob/86871065265b04e0db8ca360c046421efb2bdeb4/tensorflow/core/lib/jpeg/jpeg_mem.cc#L284-L313
+    cmyk_to_rgb_or_gray = cinfo.jpeg_color_space == JCS_CMYK ||
+        cinfo.jpeg_color_space == JCS_YCCK;
     switch (mode) {
       case kImageReadModeGray:
-        if (cinfo.jpeg_color_space == JCS_CMYK ||
-            cinfo.jpeg_color_space == JCS_YCCK) {
-          cinfo.out_color_space = JCS_CMYK;
-          cmyk_to_rgb_or_gray = true;
-        } else {
-          cinfo.out_color_space = JCS_GRAYSCALE;
-        }
+        cinfo.out_color_space = cmyk_to_rgb_or_gray ? JCS_CMYK : JCS_GRAYSCALE;
         channels = 1;
         break;
       case kImageReadModeRgb:
-        if (cinfo.jpeg_color_space == JCS_CMYK ||
-            cinfo.jpeg_color_space == JCS_YCCK) {
-          cinfo.out_color_space = JCS_CMYK;
-          cmyk_to_rgb_or_gray = true;
-        } else {
-          cinfo.out_color_space = JCS_RGB;
-        }
+        cinfo.out_color_space = cmyk_to_rgb_or_gray ? JCS_CMYK : JCS_RGB;
         channels = 3;
         break;
-      /*
-       * Libjpeg does not support converting from CMYK to grayscale etc. There
-       * is a way to do this but it involves converting it manually to RGB:
-       * https://github.com/tensorflow/tensorflow/blob/86871065265b04e0db8ca360c046421efb2bdeb4/tensorflow/core/lib/jpeg/jpeg_mem.cc#L284-L313
-       */
       default:
         jpeg_destroy_decompress(&cinfo);
         STD_TORCH_CHECK(
