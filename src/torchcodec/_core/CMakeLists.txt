@@ -21,15 +21,13 @@ find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(Python3 COMPONENTS Development Interpreter)
 
-# libjpeg is an OPTIONAL build-time dependency for the CPU JPEG image decoder.
+# libjpeg is an optional build-time dependency for the CPU JPEG image decoder.
 # When found, we compile decode_jpeg with libjpeg support and link against it.
 # When absent, decode_jpeg still exists but raises an actionable error at call
-# time (see DecodeJpeg.cpp's !JPEG_FOUND stub). Not REQUIRED on purpose.
-#
-# CMake's FindJPEG doesn't search the active conda environment by default, so we
-# hint it there (this is where CI installs libjpeg-turbo, `conda install -c
-# pytorch libjpeg-turbo`, and where dev envs typically have it).
+# time (see DecodeJpeg.cpp's !JPEG_FOUND stub).
 if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
+    # JPEG_ROOT will automatically be passed to find_package(JPEG) by CMake if it is
+    # set. We fallback to the conda prefix if it is not set.
     if(WIN32)
         # conda puts libraries under $CONDA_PREFIX/Library on Windows.
         set(JPEG_ROOT "$ENV{CONDA_PREFIX}/Library")
@@ -37,11 +35,9 @@ if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
         set(JPEG_ROOT "$ENV{CONDA_PREFIX}")
     endif()
 endif()
-find_package(JPEG)
+find_package(JPEG)  # Not REQUIRED on purpose.
 if(JPEG_FOUND)
     message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
-    # libjpeg is linked into libtorchcodec_core* and bundled into the wheel at
-    # repair time (see packaging/repair_wheel.py).
 else()
     message(STATUS "libjpeg NOT found: torchcodec.decode_jpeg will raise at runtime.")
 endif()

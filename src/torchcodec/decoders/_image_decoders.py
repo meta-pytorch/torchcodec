@@ -22,6 +22,9 @@ from torchcodec._core.ops import decode_jpeg as _decode_jpeg
 
 # TODO_IMAGE: Support torchscript?
 
+# TODO_IMAGE: We'll need to support all output modes consistently across all
+# decoders, with tests.
+
 
 class ImageColorMode(Enum):
     # TODO_IMAGE:  We'll probably need to keep that for BC but ugh. Let's type

@@ -60,7 +60,8 @@ torch::stable::Tensor decode_jpeg(
       false,
       "decode_jpeg: torchcodec was not compiled with libjpeg support. "
       "Rebuild torchcodec in an environment where libjpeg-turbo (and its "
-      "development headers) are available.");
+      "development headers) are available. If you see this error in a prebuilt "
+      "wheel, please report it to the TorchCodec repo.");
 }
 
 #else
