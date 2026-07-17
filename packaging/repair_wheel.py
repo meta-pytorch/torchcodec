@@ -35,20 +35,17 @@ def run(cmd, **kwargs):
 
 
 def repair_linux(wheels):
-    # -U: the runner may ship an older auditwheel preinstalled; without -U
-    # `pip install` is a no-op and we'd run the stale version.
-    run([sys.executable, "-m", "pip", "install", "-U", "auditwheel"])
+    run([sys.executable, "-m", "pip", "install", "--upgrade", "auditwheel"])
     run(["auditwheel", "--version"])
     env = os.environ.copy()
-    conda_prefix = env.get("CONDA_PREFIX")
-    if conda_prefix:
+    if conda_prefix := env.get("CONDA_PREFIX"):
         # auditwheel must be able to *find* libjpeg to graft it.
         env["LD_LIBRARY_PATH"] = os.pathsep.join(
             [str(Path(conda_prefix) / "lib"), env.get("LD_LIBRARY_PATH", "")]
         )
-    # SONAME globs cover every FFmpeg version present in a multi-FFmpeg wheel.
+
     excludes = []
-    for pat in (
+    for pattern in (
         "libav*",
         "libsw*",
         "libpostproc*",
@@ -58,27 +55,24 @@ def repair_linux(wheels):
         "libnv*",
         "libcupti*",
     ):
-        excludes += ["--exclude", pat]
+        excludes += ["--exclude", pattern]
     for wheel in wheels:
-        # No --plat: let auditwheel auto-detect the most-compatible manylinux tag.
-        run(["auditwheel", "repair", *excludes, "-w", REPAIRED_DIR, wheel], env=env)
+        run(["auditwheel", "repair", *excludes, "--wheel-dir", REPAIRED_DIR, wheel], env=env)
 
 
 def repair_macos(wheels):
-    # -U is important: macOS runners ship an older delocate preinstalled whose
-    # --exclude behaved differently; without -U `pip install` is a no-op.
-    run([sys.executable, "-m", "pip", "install", "-U", "delocate"])
+    run([sys.executable, "-m", "pip", "install", "--upgrade", "delocate"])
     run(["delocate-wheel", "--version"])
     env = os.environ.copy()
-    conda_prefix = env.get("CONDA_PREFIX")
-    if conda_prefix:
+    if conda_prefix:= env.get("CONDA_PREFIX"): 
         env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
             [str(Path(conda_prefix) / "lib"), env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
         )
     # delocate --exclude matches a substring of the dependency's basename.
     excludes = []
-    for pat in ("libav", "libsw", "libpostproc", "libtorch", "libc10", "libomp"):
-        excludes += ["--exclude", pat]
+    for pattern in ("libav", "libsw", "libpostproc", "libtorch", "libc10", "libomp"):
+        excludes += ["--exclude", pattern]
+
     for wheel in wheels:
         run(
             [
@@ -132,7 +126,8 @@ def repair_windows(wheels):
 
 def check_bundling():
     """Raise if:
-    - a wheel bundles a lib that's not in the allowlist.
+    - a wheel bundles a lib that's not in the allowlist. This would raise if we
+      ever try to bundle FFmpeg or torch/CUDA.
     - a wheel does NOT bundle libjpeg.
     """
 
