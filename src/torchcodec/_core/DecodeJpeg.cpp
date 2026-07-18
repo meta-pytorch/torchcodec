@@ -199,17 +199,15 @@ void convert_line_cmyk_to_gray(
 int fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
   STD_TORCH_CHECK(jpeg_ctx != nullptr, "jpeg_ctx cannot be null");
 
-  // Check for Exif marker APP1
-  jpeg_saved_marker_ptr exif_marker = 0;
-  jpeg_saved_marker_ptr cmarker = jpeg_ctx->marker_list;
-  while (cmarker && exif_marker == 0) {
-    if (cmarker->marker == APP1) {
-      exif_marker = cmarker;
+  jpeg_saved_marker_ptr exif_marker = jpeg_ctx->marker_list;
+  while (exif_marker != nullptr) {
+    if (exif_marker->marker == APP1) {
+      break;
     }
-    cmarker = cmarker->next;
+    exif_marker = exif_marker->next;
   }
 
-  if (!exif_marker) {
+  if (exif_marker == nullptr) {
     return -1;
   }
 
