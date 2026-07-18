@@ -72,8 +72,6 @@ void validate_encoded_data(const torch::stable::Tensor& encoded_data) {
       " numels.");
 }
 
-constexpr JOCTET EOI_BUFFER[1] = {JPEG_EOI};
-
 // The libjpeg base struct must come first: libjpeg only ever sees &base (via
 // jpeg_ctx->err), and our callbacks cast that back to error_ctx_t* to reach the
 // fields below.
@@ -99,12 +97,21 @@ boolean fill_input_buffer_cb(j_decompress_ptr jpeg_ctx) {
 }
 
 void skip_input_data_cb(j_decompress_ptr jpeg_ctx, long num_bytes) {
+  if (num_bytes <= 0) {
+    return; // libjpeg docs say to ignore non-positive values
+  }
   if (jpeg_ctx->src->bytes_in_buffer < static_cast<size_t>(num_bytes)) {
-    // Skipping over all of remaining data;  output EOI.
-    jpeg_ctx->src->next_input_byte = EOI_BUFFER;
-    jpeg_ctx->src->bytes_in_buffer = 1;
+    // libjpeg requested to skip more data than is available. This path isn't
+    // exercized in our tests.
+    // In TorchVision this would return a fake EOI, but that's inconsistent with
+    // our fill_input_buffer_cb, which treats truncated JPEGs as an error.
+    // So we error here too.
+    auto error_ctx = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
+    strcpy(
+        error_ctx->last_error_message,
+        "Skipped over more data than is available in the input buffer.");
+    longjmp(error_ctx->setjmp_buffer, 1);
   } else {
-    // Skipping over only some of the remaining data.
     jpeg_ctx->src->next_input_byte += num_bytes;
     jpeg_ctx->src->bytes_in_buffer -= num_bytes;
   }
