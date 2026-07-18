@@ -91,14 +91,6 @@ void error_exit_cb(j_common_ptr jpeg_ctx) {
   longjmp(err->setjmp_buffer, 1);
 }
 
-// Same base-first requirement as error_ctx_t: libjpeg sees &base (via
-// jpeg_ctx->src), our callbacks cast it back to source_ctx_t*.
-struct source_ctx_t {
-  jpeg_source_mgr base;
-  const JOCTET* data;
-  size_t len;
-};
-
 boolean fill_input_buffer_cb(j_decompress_ptr jpeg_ctx) {
   // No more data.  Probably an incomplete image;  Raise exception.
   auto myerr = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
@@ -107,15 +99,14 @@ boolean fill_input_buffer_cb(j_decompress_ptr jpeg_ctx) {
 }
 
 void skip_input_data_cb(j_decompress_ptr jpeg_ctx, long num_bytes) {
-  auto* source_ctx = reinterpret_cast<source_ctx_t*>(jpeg_ctx->src);
-  if (source_ctx->base.bytes_in_buffer < static_cast<size_t>(num_bytes)) {
+  if (jpeg_ctx->src->bytes_in_buffer < static_cast<size_t>(num_bytes)) {
     // Skipping over all of remaining data;  output EOI.
-    source_ctx->base.next_input_byte = EOI_BUFFER;
-    source_ctx->base.bytes_in_buffer = 1;
+    jpeg_ctx->src->next_input_byte = EOI_BUFFER;
+    jpeg_ctx->src->bytes_in_buffer = 1;
   } else {
     // Skipping over only some of the remaining data.
-    source_ctx->base.next_input_byte += num_bytes;
-    source_ctx->base.bytes_in_buffer -= num_bytes;
+    jpeg_ctx->src->next_input_byte += num_bytes;
+    jpeg_ctx->src->bytes_in_buffer -= num_bytes;
   }
 }
 
@@ -133,17 +124,14 @@ void set_source_ctx(
   jpeg_ctx.src = static_cast<jpeg_source_mgr*>(jpeg_ctx.mem->alloc_small(
       reinterpret_cast<j_common_ptr>(&jpeg_ctx),
       JPOOL_PERMANENT,
-      sizeof(source_ctx_t)));
-  auto* source_ctx = reinterpret_cast<source_ctx_t*>(jpeg_ctx.src);
-  source_ctx->base.init_source = init_source_cb;
-  source_ctx->base.fill_input_buffer = fill_input_buffer_cb;
-  source_ctx->base.skip_input_data = skip_input_data_cb;
-  source_ctx->base.resync_to_restart = jpeg_resync_to_restart; // default
-  source_ctx->base.term_source = term_source_cb;
-  source_ctx->data = reinterpret_cast<const JOCTET*>(data);
-  source_ctx->len = len;
-  source_ctx->base.bytes_in_buffer = len;
-  source_ctx->base.next_input_byte = source_ctx->data;
+      sizeof(jpeg_source_mgr)));
+  jpeg_ctx.src->init_source = init_source_cb;
+  jpeg_ctx.src->fill_input_buffer = fill_input_buffer_cb;
+  jpeg_ctx.src->skip_input_data = skip_input_data_cb;
+  jpeg_ctx.src->resync_to_restart = jpeg_resync_to_restart; // default
+  jpeg_ctx.src->term_source = term_source_cb;
+  jpeg_ctx.src->bytes_in_buffer = len;
+  jpeg_ctx.src->next_input_byte = data;
 
   jpeg_save_markers(&jpeg_ctx, APP1, 0xffff);
 }
