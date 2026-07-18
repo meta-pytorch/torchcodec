@@ -37,7 +37,7 @@ torch::stable::Tensor decode_jpeg(
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
-#include <optional>
+#include <tuple>
 
 #include "Exif.h"
 
@@ -205,13 +205,23 @@ void init_source_cb(j_decompress_ptr) {}
 
 void term_source_cb(j_decompress_ptr) {}
 
-void set_source_ctx(
+// Returns {num_output_channels, cmyk_to_rgb_or_gray}.
+// jpeg_ctx.output_height and jpeg_ctx.output_width are available after this
+// function returns.
+std::tuple<int, bool> read_header_and_start(
     jpeg_decompress_struct& jpeg_ctx,
-    const uint8_t* data,
-    size_t len) {
-  // We decode one image per fresh jpeg_decompress_struct, so jpeg_ctx.src is
-  // always null here. Allocate our source manager from libjpeg's pool, which
-  // jpeg_destroy_decompress frees.
+    error_ctx_t& error_ctx,
+    const uint8_t* input_ptr,
+    const size_t input_len,
+    int64_t mode) {
+  if (setjmp(error_ctx.setjmp_buffer)) {
+    // See Note [libjpeg error handling]
+    jpeg_destroy_decompress(&jpeg_ctx);
+    STD_TORCH_CHECK(false, error_ctx.last_error_message);
+  }
+
+  jpeg_create_decompress(&jpeg_ctx);
+
   jpeg_ctx.src = static_cast<jpeg_source_mgr*>(jpeg_ctx.mem->alloc_small(
       reinterpret_cast<j_common_ptr>(&jpeg_ctx),
       JPOOL_PERMANENT,
@@ -221,53 +231,14 @@ void set_source_ctx(
   jpeg_ctx.src->skip_input_data = skip_input_data_cb;
   jpeg_ctx.src->resync_to_restart = jpeg_resync_to_restart; // default
   jpeg_ctx.src->term_source = term_source_cb;
-  jpeg_ctx.src->bytes_in_buffer = len;
-  jpeg_ctx.src->next_input_byte = data;
+  jpeg_ctx.src->bytes_in_buffer = input_len;
+  jpeg_ctx.src->next_input_byte = input_ptr;
 
+  // Tells libjpeg to save APP1 markers (EXIF) in memory for later retrieval.
   jpeg_save_markers(&jpeg_ctx, APP1, 0xffff);
-}
-
-} // namespace
-
-torch::stable::Tensor decode_jpeg(
-    const torch::stable::Tensor& data,
-    int64_t mode) {
-  validate_encoded_data(data);
-
-  // See error handling below why these are optional
-  std::optional<torch::stable::Tensor> output;
-  std::optional<torch::stable::Tensor> cmyk_line_tensor;
-
-  auto datap = data.const_data_ptr<uint8_t>();
-
-  jpeg_decompress_struct jpeg_ctx;
-
-  // Setup error handling. libjpeg uses setjmp/longjmp for that. longjmp does
-  // not unwind C++ stack frames, so destructors of objects created after setjmp
-  // won't run. We use std::optional to declare tensors before setjmp while
-  // deferring construction, and explicitly reset them on the error path.
-  error_ctx_t error_ctx;
-  jpeg_ctx.err = jpeg_std_error(&error_ctx.base);
-  error_ctx.base.error_exit = error_exit_cb;
-  // Establish the setjmp return context for error_exit_cb to use.
-  if (setjmp(error_ctx.setjmp_buffer)) {
-    // Release any tensors that may have been allocated after setjmp.
-    cmyk_line_tensor.reset();
-    output.reset();
-
-    // If we get here, the JPEG code has signaled an error.
-    // We need to clean up the JPEG object.
-    jpeg_destroy_decompress(&jpeg_ctx);
-    STD_TORCH_CHECK(false, error_ctx.last_error_message);
-  }
-
-  jpeg_create_decompress(&jpeg_ctx);
-  set_source_ctx(jpeg_ctx, datap, data.numel());
 
   jpeg_read_header(&jpeg_ctx, TRUE);
 
-  // TODO_IMAGE wait, what does this return on a CMYK image when mode is
-  // UNCHANGED?
   int num_output_channels = -1;
   switch (mode) {
     case kImageReadModeUnchanged:
@@ -302,36 +273,91 @@ torch::stable::Tensor decode_jpeg(
       jpeg_ctx.out_color_space = JCS_RGB;
     }
   }
-
   jpeg_start_decompress(&jpeg_ctx);
+  return {num_output_channels, cmyk_to_rgb_or_gray};
+}
 
-  int height = jpeg_ctx.output_height;
-  int width = jpeg_ctx.output_width;
-
-  int stride = width * num_output_channels; // we want channel-last output
-  output = torch::stable::empty(
-      {int64_t(height), int64_t(width), num_output_channels}, kStableUInt8);
-  auto outputp = output->mutable_data_ptr<uint8_t>();
-
-  if (cmyk_to_rgb_or_gray) {
-    cmyk_line_tensor = torch::stable::empty({int64_t(width), 4}, kStableUInt8);
+void decode_rows(
+    jpeg_decompress_struct& jpeg_ctx,
+    error_ctx_t& error_ctx,
+    uint8_t* output_ptr,
+    int stride,
+    int num_output_channels,
+    bool cmyk_to_rgb_or_gray,
+    uint8_t* cmyk_line_ptr) {
+  if (setjmp(error_ctx.setjmp_buffer)) {
+    jpeg_destroy_decompress(&jpeg_ctx);
+    STD_TORCH_CHECK(false, error_ctx.last_error_message);
   }
 
   while (jpeg_ctx.output_scanline < jpeg_ctx.output_height) {
     if (cmyk_to_rgb_or_gray) {
-      auto cmyk_line_ptr = cmyk_line_tensor->mutable_data_ptr<uint8_t>();
-      jpeg_read_scanlines(&jpeg_ctx, &cmyk_line_ptr, 1);
+      jpeg_read_scanlines(&jpeg_ctx, &cmyk_line_ptr, /*max_lines=*/1);
 
       if (num_output_channels == 3) {
-        convert_line_cmyk_to_rgb(width, cmyk_line_ptr, outputp);
+        convert_line_cmyk_to_rgb(
+            jpeg_ctx.output_width, cmyk_line_ptr, output_ptr);
       } else if (num_output_channels == 1) {
-        convert_line_cmyk_to_gray(width, cmyk_line_ptr, outputp);
+        convert_line_cmyk_to_gray(
+            jpeg_ctx.output_width, cmyk_line_ptr, output_ptr);
       }
     } else {
-      jpeg_read_scanlines(&jpeg_ctx, &outputp, 1);
+      jpeg_read_scanlines(&jpeg_ctx, &output_ptr, /*max_lines=*/1);
     }
-    outputp += stride;
+    output_ptr += stride;
   }
+}
+
+} // namespace
+
+// Note [libjpeg error handling]
+// TODO
+
+torch::stable::Tensor decode_jpeg(
+    const torch::stable::Tensor& input,
+    int64_t mode) {
+  validate_encoded_data(input);
+
+  torch::stable::Tensor output;
+  torch::stable::Tensor cmyk_line_tensor;
+
+  jpeg_decompress_struct jpeg_ctx;
+  error_ctx_t error_ctx;
+  jpeg_ctx.err = jpeg_std_error(&error_ctx.base);
+  error_ctx.base.error_exit = error_exit_cb;
+
+  auto [num_output_channels, cmyk_to_rgb_or_gray] = read_header_and_start(
+      jpeg_ctx,
+      error_ctx,
+      input.const_data_ptr<uint8_t>(),
+      input.numel(),
+      mode);
+
+  // We want output to be channels last
+  int stride = jpeg_ctx.output_width * num_output_channels;
+  output = torch::stable::empty(
+      {int64_t(jpeg_ctx.output_height),
+       int64_t(jpeg_ctx.output_width),
+       num_output_channels},
+      kStableUInt8);
+
+  auto output_ptr = output.mutable_data_ptr<uint8_t>();
+
+  uint8_t* cmyk_line_ptr = nullptr;
+  if (cmyk_to_rgb_or_gray) {
+    cmyk_line_tensor =
+        torch::stable::empty({int64_t(jpeg_ctx.output_width), 4}, kStableUInt8);
+    cmyk_line_ptr = cmyk_line_tensor.mutable_data_ptr<uint8_t>();
+  }
+
+  decode_rows(
+      jpeg_ctx,
+      error_ctx,
+      output_ptr,
+      stride,
+      num_output_channels,
+      cmyk_to_rgb_or_gray,
+      cmyk_line_ptr);
 
   // EXIF markers were parsed during jpeg_read_header so this is just an
   // in-memory lookup (i.e. we're not going back to the beginning of the file)
@@ -340,7 +366,7 @@ torch::stable::Tensor decode_jpeg(
   jpeg_finish_decompress(&jpeg_ctx);
   jpeg_destroy_decompress(&jpeg_ctx);
   return exif_orientation_transform(
-      stable_permute(*output, {2, 0, 1}), exif_orientation);
+      stable_permute(output, {2, 0, 1}), exif_orientation);
 }
 
 } // namespace facebook::torchcodec
