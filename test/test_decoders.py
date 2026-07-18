@@ -13,8 +13,8 @@ from functools import partial
 import numpy
 import pytest
 import torch
+from PIL import Image, ImageOps
 from torchcodec import _core, ffmpeg_major_version, FrameBatch
-from torchcodec._core.ops import add_video_stream, create_from_file, get_next_frame
 from torchcodec._frame import Frame
 from torchcodec.decoders import (
     AudioDecoder,
@@ -43,16 +43,18 @@ from .utils import (
     assert_frames_equal,
     assert_tensor_close_on_at_least,
     AV1_VIDEO,
+    BAD_HUFFMAN_JPEG,
     BT2020_LIMITED_RANGE_10BIT,
     BT601_FULL_RANGE,
     BT601_LIMITED_RANGE,
     BT709_FULL_RANGE,
+    CMYK_JPEG,
     cuda_devices,
     DISCARD_FIRST_KEYFRAME_VIDEO,
-    EXIF_JPEG,
     get_ffmpeg_minor_version,
     get_python_version,
     GRADIENT_JPEG,
+    GRAYSCALE_JPEG,
     H264_10BITS,
     H265_VIDEO,
     in_fbcode,
@@ -3411,15 +3413,6 @@ class TestBlocks:
 
 
 class TestImageDecoder:
-    def _decode_with_ffmpeg(self, path):
-        # Note that this ignores EXIF rotation metadata because our FFmpeg-based
-        # reference decoder reads rotation metadata from the AVstream, not from
-        # the AVFrame. For jpeg, the rotation metadata is attached to the frame.
-        decoder = create_from_file(str(path), "approximate")
-        add_video_stream(decoder)
-        frame, _, _ = get_next_frame(decoder)
-        return frame
-
     def _save_debug(self, decoded, reference, path="debug.png"):
         # Debugging helper: dump decoded and reference frames side-by-side.
         from torchvision.io import write_png
@@ -3428,27 +3421,72 @@ class TestImageDecoder:
         grid = make_grid([decoded, reference], padding=10)
         write_png(grid, str(path))
 
-    @needs_jpeg
-    def test_against_ffmpeg(self):
-        decoded = decode_jpeg(GRADIENT_JPEG.path, mode=ImageColorMode.RGB)
-        reference = self._decode_with_ffmpeg(GRADIENT_JPEG.path)
-        assert (
-            decoded.shape
-            == reference.shape
-            == (3, GRADIENT_JPEG.height, GRADIENT_JPEG.width)
-        )
-        assert_tensor_close_on_at_least(decoded, reference, percentage=95, atol=5)
+    @staticmethod
+    def _pil_to_tensor(img):
+        t = torch.from_numpy(numpy.array(img))
+        return t.permute(2, 0, 1) if t.ndim == 3 else t.unsqueeze(0)
 
     @needs_jpeg
-    def test_exif_orientation_is_applied(self):
-        # This relies on the assumption that the ffmpeg-based reference decoder
-        # ignores EXIF orientation metadata, which is true for the current
-        # implementation.
+    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, CMYK_JPEG))
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            (ImageColorMode.UNCHANGED, None),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.RGB, "RGB"),
+        ),
+    )
+    def test_against_pil(self, asset, mode, pil_mode):
+        decoded = decode_jpeg(asset.path, mode=mode)
 
-        decoded = decode_jpeg(EXIF_JPEG.path, mode=ImageColorMode.RGB)
-        assert decoded.shape == (3, EXIF_JPEG.height, EXIF_JPEG.width)
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+        if asset is CMYK_JPEG and mode == ImageColorMode.UNCHANGED:
+            # libjpeg returns raw (inverted) CMYK samples; flip to match PIL.
+            reference = 255 - reference
 
-        reference = self._decode_with_ffmpeg(EXIF_JPEG.path)
-        reference = torch.flip(torch.transpose(reference, -1, -2), dims=[-1])
-        assert reference.shape == decoded.shape
-        assert_tensor_close_on_at_least(decoded, reference, percentage=95, atol=5)
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_jpeg
+    @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
+    def test_exif_orientation(self, tmp_path, orientation):
+        arr = torch.randint(0, 256, (100, 101, 3), dtype=torch.uint8).numpy()
+        img = Image.fromarray(arr)
+        exif = img.getexif()
+        exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
+        path = tmp_path / f"exif_{orientation}.jpg"
+        img.save(path, "JPEG", exif=exif.tobytes(), quality=95)
+
+        decoded = decode_jpeg(path, mode=ImageColorMode.RGB)
+        reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
+
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_jpeg
+    @pytest.mark.parametrize("size", (65533, 1, 7, 10, 23, 33))
+    def test_invalid_exif(self, tmp_path, size):
+        # Malformed EXIF must not crash; output should match PIL (which ignores
+        # the bad EXIF). Inspired by a Pillow test.
+        arr = torch.randint(0, 256, (100, 101, 3), dtype=torch.uint8).numpy()
+        img = Image.fromarray(arr)
+        path = tmp_path / f"invalid_exif_{size}.jpg"
+        img.save(path, "JPEG", exif=b"1" * size, quality=95)
+
+        decoded = decode_jpeg(path, mode=ImageColorMode.RGB)
+        reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_jpeg
+    def test_bad_huffman_decodes(self):
+        # A JPEG with a bad Huffman table is still decodable; just make sure it
+        # doesn't raise.
+        decode_jpeg(BAD_HUFFMAN_JPEG.path)
+
+    @needs_jpeg
+    def test_not_a_jpeg_raises(self, tmp_path):
+        path = tmp_path / "garbage.jpg"
+        path.write_bytes(b"\x00" * 100)
+        with pytest.raises(RuntimeError, match="Not a JPEG"):
+            decode_jpeg(path)

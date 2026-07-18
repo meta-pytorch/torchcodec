@@ -36,6 +36,8 @@ if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
     endif()
 endif()
 find_package(JPEG)  # Not REQUIRED on purpose.
+# TODO_IMAGE: we should probably make it mandatory by default and allow to make
+# it optional via a flag?
 if(JPEG_FOUND)
     message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
 else()
@@ -71,13 +73,6 @@ read_sources_from_bzl(TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES file_like_context_sou
 read_sources_from_bzl(TORCHCODEC_CUSTOM_OPS_SOURCES custom_ops_sources)
 read_sources_from_bzl(TORCHCODEC_PYBIND_OPS_SOURCES pybind_ops_sources)
 read_sources_from_bzl(TORCHCODEC_IMAGE_SOURCES image_sources)
-
-# TODO_IMAGE: Fix this
-if(NOT WIN32)
-    set_source_files_properties(
-        ${TORCHCODEC_IMAGE_SOURCES}
-        PROPERTIES COMPILE_OPTIONS "-Wno-error")
-endif()
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -257,7 +252,12 @@ function(make_torchcodec_libraries
     )
     set(custom_ops_dependencies
         ${core_library_name}
-        ${Python3_LIBRARIES}
+        pybind11::module # Links Python correctly per-platform (nothing extra on
+                         # Linux, dynamic-lookup on Mac, import lib on Windows).
+                         # Using ${Python3_LIBRARIES} instead adds a DT_NEEDED on
+                         # a shared libpython (e.g. free-threaded builds ship
+                         # libpython3.XXt.so), which auditwheel then wrongly
+                         # bundles into the wheel.
     )
     make_torchcodec_sublibrary(
         "${custom_ops_library_name}"
