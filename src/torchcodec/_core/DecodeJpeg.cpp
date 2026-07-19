@@ -47,6 +47,9 @@ using namespace exif_private;
 
 namespace {
 
+// Main libjpeg docs:
+// https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/doc/libjpeg.txt
+
 // Kept in-sync with the Python ImageColorMode enum in
 // torchcodec/decoders/_image_decoders.py.
 constexpr int64_t kImageReadModeUnchanged = 0;
@@ -70,82 +73,6 @@ void validate_encoded_data(const torch::stable::Tensor& encoded_data) {
       " dims  and ",
       encoded_data.numel(),
       " numels.");
-}
-
-constexpr JOCTET EOI_BUFFER[1] = {JPEG_EOI};
-
-// The libjpeg base struct must come first: libjpeg only ever sees &base (via
-// jpeg_ctx->err), and our callbacks cast that back to error_ctx_t* to reach the
-// fields below.
-struct error_ctx_t {
-  jpeg_error_mgr base;
-  char last_error_message[JMSG_LENGTH_MAX];
-  jmp_buf setjmp_buffer; // for the longjmp back to decode_jpeg
-};
-
-void error_exit_cb(j_common_ptr jpeg_ctx) {
-  // jpeg_ctx->err really points to an error_ctx_t struct, so coerce pointer.
-  auto err = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
-  jpeg_ctx->err->format_message(jpeg_ctx, err->last_error_message);
-  // Return control to the setjmp point.
-  longjmp(err->setjmp_buffer, 1);
-}
-
-// Same base-first requirement as error_ctx_t: libjpeg sees &base (via
-// jpeg_ctx->src), our callbacks cast it back to source_ctx_t*.
-struct source_ctx_t {
-  jpeg_source_mgr base;
-  const JOCTET* data;
-  size_t len;
-};
-
-boolean fill_input_buffer_cb(j_decompress_ptr jpeg_ctx) {
-  // No more data.  Probably an incomplete image;  Raise exception.
-  auto myerr = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
-  strcpy(myerr->last_error_message, "Image is incomplete or truncated");
-  longjmp(myerr->setjmp_buffer, 1);
-}
-
-void skip_input_data_cb(j_decompress_ptr jpeg_ctx, long num_bytes) {
-  auto* source_ctx = reinterpret_cast<source_ctx_t*>(jpeg_ctx->src);
-  if (source_ctx->base.bytes_in_buffer < static_cast<size_t>(num_bytes)) {
-    // Skipping over all of remaining data;  output EOI.
-    source_ctx->base.next_input_byte = EOI_BUFFER;
-    source_ctx->base.bytes_in_buffer = 1;
-  } else {
-    // Skipping over only some of the remaining data.
-    source_ctx->base.next_input_byte += num_bytes;
-    source_ctx->base.bytes_in_buffer -= num_bytes;
-  }
-}
-
-void init_source_cb(j_decompress_ptr) {}
-
-void term_source_cb(j_decompress_ptr) {}
-
-void set_source_ctx(
-    jpeg_decompress_struct& jpeg_ctx,
-    const uint8_t* data,
-    size_t len) {
-  // We decode one image per fresh jpeg_decompress_struct, so jpeg_ctx.src is
-  // always null here. Allocate our source manager from libjpeg's pool, which
-  // jpeg_destroy_decompress frees.
-  jpeg_ctx.src = static_cast<jpeg_source_mgr*>(jpeg_ctx.mem->alloc_small(
-      reinterpret_cast<j_common_ptr>(&jpeg_ctx),
-      JPOOL_PERMANENT,
-      sizeof(source_ctx_t)));
-  auto* source_ctx = reinterpret_cast<source_ctx_t*>(jpeg_ctx.src);
-  source_ctx->base.init_source = init_source_cb;
-  source_ctx->base.fill_input_buffer = fill_input_buffer_cb;
-  source_ctx->base.skip_input_data = skip_input_data_cb;
-  source_ctx->base.resync_to_restart = jpeg_resync_to_restart; // default
-  source_ctx->base.term_source = term_source_cb;
-  source_ctx->data = reinterpret_cast<const JOCTET*>(data);
-  source_ctx->len = len;
-  source_ctx->base.bytes_in_buffer = len;
-  source_ctx->base.next_input_byte = source_ctx->data;
-
-  jpeg_save_markers(&jpeg_ctx, APP1, 0xffff);
 }
 
 inline uint8_t clamped_cmyk_rgb_convert(uint8_t k, uint8_t cmy) {
@@ -199,17 +126,15 @@ void convert_line_cmyk_to_gray(
 int fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
   STD_TORCH_CHECK(jpeg_ctx != nullptr, "jpeg_ctx cannot be null");
 
-  // Check for Exif marker APP1
-  jpeg_saved_marker_ptr exif_marker = 0;
-  jpeg_saved_marker_ptr cmarker = jpeg_ctx->marker_list;
-  while (cmarker && exif_marker == 0) {
-    if (cmarker->marker == APP1) {
-      exif_marker = cmarker;
+  jpeg_saved_marker_ptr exif_marker = jpeg_ctx->marker_list;
+  while (exif_marker != nullptr) {
+    if (exif_marker->marker == APP1) {
+      break;
     }
-    cmarker = cmarker->next;
+    exif_marker = exif_marker->next;
   }
 
-  if (!exif_marker) {
+  if (exif_marker == nullptr) {
     return -1;
   }
 
@@ -222,6 +147,84 @@ int fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
   auto size = exif_marker->data_length - start_offset;
 
   return fetch_exif_orientation(exif_data_ptr, size);
+}
+
+// Error context that gets passed by libjpeg to its callbacks
+// (error_exit_cb, fill_input_buffer_cb, etc.).
+// libjpeg doesn't actually pass this error_ctx_t, it passes the jpeg_error_mgr
+// base field, but we can cast it back to error_ctx_t in the callbacks because
+// the jpeg_error_mgr is the first field in error_ctx_t: the struct and its
+// first field share the same address.
+struct error_ctx_t {
+  jpeg_error_mgr base;
+  char last_error_message[JMSG_LENGTH_MAX];
+  jmp_buf setjmp_buffer;
+};
+
+// Callback called by libjpeg when an error occurs.
+void error_exit_cb(j_common_ptr jpeg_ctx) {
+  auto error_ctx = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
+  error_ctx->base.format_message(jpeg_ctx, error_ctx->last_error_message);
+  longjmp(error_ctx->setjmp_buffer, 1);
+}
+
+// Callback called by libjpeg whenever it runs out of input data. We treat this
+// as an error.
+// Should we ever want to support truncated JPEGs, we could instead return a
+// fake EOI.
+boolean fill_input_buffer_cb(j_decompress_ptr jpeg_ctx) {
+  auto error_ctx = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
+  strcpy(error_ctx->last_error_message, "Image is incomplete or truncated.");
+  longjmp(error_ctx->setjmp_buffer, 1);
+  return TRUE; // never reached, but keeps compiler happy
+}
+
+// Callback called when libjpeg wants to skip num_bytes worth of data.
+void skip_input_data_cb(j_decompress_ptr jpeg_ctx, long num_bytes) {
+  if (num_bytes <= 0) {
+    return; // libjpeg docs say to ignore non-positive values
+  }
+  if (jpeg_ctx->src->bytes_in_buffer < static_cast<size_t>(num_bytes)) {
+    // libjpeg requested to skip more data than is available. This path isn't
+    // exercized in our tests.
+    // In TorchVision this would return a fake EOI, but that's inconsistent with
+    // our fill_input_buffer_cb, which treats truncated JPEGs as an error.
+    // So we error here too.
+    auto error_ctx = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
+    strcpy(
+        error_ctx->last_error_message,
+        "Skipped over more data than is available in the input buffer.");
+    longjmp(error_ctx->setjmp_buffer, 1);
+  } else {
+    jpeg_ctx->src->next_input_byte += num_bytes;
+    jpeg_ctx->src->bytes_in_buffer -= num_bytes;
+  }
+}
+
+void init_source_cb(j_decompress_ptr) {}
+
+void term_source_cb(j_decompress_ptr) {}
+
+void set_source_ctx(
+    jpeg_decompress_struct& jpeg_ctx,
+    const uint8_t* data,
+    size_t len) {
+  // We decode one image per fresh jpeg_decompress_struct, so jpeg_ctx.src is
+  // always null here. Allocate our source manager from libjpeg's pool, which
+  // jpeg_destroy_decompress frees.
+  jpeg_ctx.src = static_cast<jpeg_source_mgr*>(jpeg_ctx.mem->alloc_small(
+      reinterpret_cast<j_common_ptr>(&jpeg_ctx),
+      JPOOL_PERMANENT,
+      sizeof(jpeg_source_mgr)));
+  jpeg_ctx.src->init_source = init_source_cb;
+  jpeg_ctx.src->fill_input_buffer = fill_input_buffer_cb;
+  jpeg_ctx.src->skip_input_data = skip_input_data_cb;
+  jpeg_ctx.src->resync_to_restart = jpeg_resync_to_restart; // default
+  jpeg_ctx.src->term_source = term_source_cb;
+  jpeg_ctx.src->bytes_in_buffer = len;
+  jpeg_ctx.src->next_input_byte = data;
+
+  jpeg_save_markers(&jpeg_ctx, APP1, 0xffff);
 }
 
 } // namespace
