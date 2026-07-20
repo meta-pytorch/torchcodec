@@ -410,6 +410,9 @@ void decode_rows(
 //
 /* clang-format on */
 
+// TODO_IMAGE: align names. everywhere. this is input, other places it's data,
+// other places it's something else. Should align here, in the header, in the
+// custom op definition, etc. Across codecs.
 torch::stable::Tensor decode_jpeg(
     const torch::stable::Tensor& input,
     int64_t mode) {

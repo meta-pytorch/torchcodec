@@ -46,8 +46,7 @@ torch::stable::Tensor decode_png(
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
-#include <optional>
-#include <string>
+#include <cstring>
 
 #include "Exif.h"
 #include "ImageCommon.h"
@@ -96,71 +95,55 @@ int fetch_png_exif_orientation(png_structp png_ptr, png_infop info_ptr) {
   return -1;
 }
 
-} // namespace
+// We decode from an in-memory buffer rather than a FILE*, so we feed libpng
+// through a custom read function. libpng hands our read callback back a single
+// user pointer (set via png_set_read_fn, retrieved with png_get_io_ptr): this
+// struct is that context, tracking the current read position and bytes left.
+struct SourceCtx {
+  png_const_bytep ptr;
+  png_size_t count;
+};
 
-torch::stable::Tensor decode_png(
-    const torch::stable::Tensor& data,
-    int64_t mode) {
-  validate_encoded_data(data);
-
-  auto png_ptr =
-      png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-  STD_TORCH_CHECK(png_ptr, "libpng read structure allocation failed!")
-  auto info_ptr = png_create_info_struct(png_ptr);
-  if (!info_ptr) {
-    png_destroy_read_struct(&png_ptr, nullptr, nullptr);
-    // Seems redundant with the if statement. done here to avoid leaking memory.
-    STD_TORCH_CHECK(info_ptr, "libpng info structure allocation failed!")
+void read_callback(png_structp png_ptr, png_bytep output, png_size_t bytes) {
+  auto* source_ctx = static_cast<SourceCtx*>(png_get_io_ptr(png_ptr));
+  if (source_ctx->count < bytes) {
+    // Route the error through libpng's error handler (our error_callback),
+    // which longjmp()s. We must NOT throw a C++ exception through libpng's C
+    // stack. See Note [libpng error handling].
+    png_error(
+        png_ptr,
+        "Out of bound read in decode_png. The input image might be corrupted?");
   }
+  std::copy(source_ctx->ptr, source_ctx->ptr + bytes, output);
+  source_ctx->ptr += bytes;
+  source_ctx->count -= bytes;
+}
 
-  auto datap = data.const_data_ptr<uint8_t>();
-  auto datap_len = data.numel();
+struct PngHeader {
+  png_uint_32 width;
+  png_uint_32 height;
+  int channels;
+  int bit_depth;
+  int number_of_passes;
+};
 
-  // Capture libpng's error message (see error_callback) so we can report it
-  // instead of a generic "internal error".
-  ErrorCtx error_ctx;
-  png_set_error_fn(png_ptr, &error_ctx, error_callback, /*warn_fn=*/nullptr);
-
-  // NOTE: libpng uses setjmp/longjmp for error handling. longjmp does not
-  // unwind C++ stack frames, so destructors of objects created after setjmp
-  // won't run. We use std::optional to declare tensors before setjmp while
-  // deferring construction, and explicitly reset them on the error path.
-  std::optional<torch::stable::Tensor> tensor;
-
+// Reads the PNG header and configures the requested color transforms. Contains
+// a setjmp() point, so it must not declare anything needing a non-trivial
+// destructor. See Note [libpng error handling].
+PngHeader read_header_and_configure(
+    png_structp& png_ptr,
+    png_infop& info_ptr,
+    ErrorCtx& error_ctx,
+    SourceCtx& source_ctx,
+    ImageReadMode read_mode) {
   if (setjmp(png_jmpbuf(png_ptr)) != 0) {
-    tensor.reset();
+    // See Note [libpng error handling]
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
     STD_TORCH_CHECK(false, "decode_png failed: ", error_ctx.error_message);
   }
-  STD_TORCH_CHECK(datap_len >= 8, "Content is too small for png!")
-  auto is_png = !png_sig_cmp(datap, 0, 8);
-  STD_TORCH_CHECK(is_png, "Content is not png!")
 
-  // We decode from an in-memory buffer rather than a FILE*, so we feed libpng
-  // through a custom read function. libpng hands our read callback back a
-  // single user pointer (set via png_set_read_fn, retrieved with
-  // png_get_io_ptr): this struct is that context, tracking the current read
-  // position and bytes left. The 8-byte offset skips the PNG signature we
-  // already validated.
-  struct SourceCtx {
-    png_const_bytep ptr;
-    png_size_t count;
-  } source_ctx;
-
-  source_ctx.ptr = png_const_bytep(datap) + 8;
-  source_ctx.count = datap_len - 8;
-
-  auto read_callback = [](png_structp png_ptr,
-                          png_bytep output,
-                          png_size_t bytes) {
-    auto source_ctx = static_cast<SourceCtx*>(png_get_io_ptr(png_ptr));
-    STD_TORCH_CHECK(
-        source_ctx->count >= bytes,
-        "Out of bound read in decode_png. The input image might be corrupted?");
-    std::copy(source_ctx->ptr, source_ctx->ptr + bytes, output);
-    source_ctx->ptr += bytes;
-    source_ctx->count -= bytes;
-  };
+  // The 8-byte offset in source_ctx (see decode_png) skips the PNG signature we
+  // already validated, so we tell libpng about those 8 bytes here.
   png_set_sig_bytes(png_ptr, 8);
   png_set_read_fn(png_ptr, &source_ctx, read_callback);
   png_read_info(png_ptr, info_ptr);
@@ -188,8 +171,9 @@ torch::stable::Tensor decode_png(
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
     STD_TORCH_CHECK(
         false,
-        "bit depth of png image is " + std::to_string(bit_depth) +
-            ". Only <=8 and 16 are supported.")
+        "bit depth of png image is ",
+        bit_depth,
+        ". Only <=8 and 16 are supported.")
   }
 
   int channels = png_get_channels(png_ptr, info_ptr);
@@ -205,7 +189,6 @@ torch::stable::Tensor decode_png(
     number_of_passes = 1;
   }
 
-  auto read_mode = static_cast<ImageReadMode>(mode);
   if (read_mode != ImageReadMode::Unchanged) {
     // TODO: consider supporting PNG_INFO_tRNS
     bool is_palette = (color_type & PNG_COLOR_MASK_PALETTE) != 0;
@@ -286,22 +269,116 @@ torch::stable::Tensor decode_png(
     png_read_update_info(png_ptr, info_ptr);
   }
 
-  auto num_pixels_per_row = width * channels;
-  auto is_16_bits = bit_depth == 16;
-  tensor = torch::stable::empty(
-      {int64_t(height), int64_t(width), channels},
-      is_16_bits ? kStableUInt16 : kStableUInt8);
+  return {width, height, channels, bit_depth, number_of_passes};
+}
+
+// The actual decoding loop, row by row. Contains a setjmp() point, so it must
+// not declare anything needing a non-trivial destructor, and `tensor` must be
+// owned by the caller (decode_png). See Note [libpng error handling].
+void decode_rows(
+    png_structp& png_ptr,
+    png_infop& info_ptr,
+    ErrorCtx& error_ctx,
+    torch::stable::Tensor& tensor,
+    const PngHeader& header,
+    bool is_16_bits,
+    png_uint_32 num_pixels_per_row) {
+  if (setjmp(png_jmpbuf(png_ptr)) != 0) {
+    // See Note [libpng error handling]
+    png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
+    STD_TORCH_CHECK(false, "decode_png failed: ", error_ctx.error_message);
+  }
+
   if (is_little_endian()) {
     png_set_swap(png_ptr);
   }
-  auto t_ptr = (uint8_t*)tensor->mutable_data_ptr();
-  for (int pass = 0; pass < number_of_passes; pass++) {
-    for (png_uint_32 i = 0; i < height; ++i) {
+
+  auto t_ptr = (uint8_t*)tensor.mutable_data_ptr();
+  for (int pass = 0; pass < header.number_of_passes; pass++) {
+    for (png_uint_32 i = 0; i < header.height; ++i) {
       png_read_row(png_ptr, t_ptr, nullptr);
       t_ptr += num_pixels_per_row * (is_16_bits ? 2 : 1);
     }
-    t_ptr = (uint8_t*)tensor->mutable_data_ptr();
+    t_ptr = (uint8_t*)tensor.mutable_data_ptr();
   }
+}
+
+} // namespace
+
+// Note [libpng error handling]
+//
+// This mirrors Note [libjpeg error handling] in DecodeJpeg.cpp - see that note
+// for the full explanation. The short version:
+//
+// libpng uses setjmp/longjmp for error handling. Per C11 7.13.2.1, a non-
+// volatile automatic object that is local to the function containing the
+// setjmp() and is modified between the setjmp() and the longjmp() has an
+// *indeterminate* value once we longjmp() back into the setjmp() block. Running
+// its destructor (or otherwise using it) there is undefined behavior.
+//
+// So the `output` tensor - and anything else needing a non-trivial destructor -
+// must NOT live in a function that calls setjmp(). We keep it in decode_png(),
+// which never calls setjmp(), and confine the setjmp() points to the
+// read_header_and_configure() and decode_rows() helpers, which declare nothing
+// needing destruction. Those helpers destroy the libpng structs and STD_TORCH_-
+// CHECK(false) on the error path.
+//
+// Relatedly, we must never let a C++ exception (e.g. from STD_TORCH_CHECK)
+// propagate through libpng's C stack: our libpng callbacks (error_callback,
+// read_callback) route errors through longjmp() instead of throwing.
+torch::stable::Tensor decode_png(
+    const torch::stable::Tensor& data,
+    int64_t mode) {
+  validate_encoded_data(data);
+
+  auto datap = data.const_data_ptr<uint8_t>();
+  auto datap_len = data.numel();
+  STD_TORCH_CHECK(datap_len >= 8, "Content is too small for png!")
+  STD_TORCH_CHECK(!png_sig_cmp(datap, 0, 8), "Content is not png!")
+
+  auto png_ptr =
+      png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+  STD_TORCH_CHECK(png_ptr, "libpng read structure allocation failed!")
+  auto info_ptr = png_create_info_struct(png_ptr);
+  if (!info_ptr) {
+    png_destroy_read_struct(&png_ptr, nullptr, nullptr);
+    // Seems redundant with the if statement. done here to avoid leaking memory.
+    STD_TORCH_CHECK(info_ptr, "libpng info structure allocation failed!")
+  }
+
+  ErrorCtx error_ctx;
+  png_set_error_fn(png_ptr, &error_ctx, error_callback, /*warn_fn=*/nullptr);
+
+  // The 8-byte offset skips the PNG signature we already validated above.
+  SourceCtx source_ctx;
+  source_ctx.ptr = png_const_bytep(datap) + 8;
+  source_ctx.count = datap_len - 8;
+
+  // `tensor` is declared here, in a function that does NOT call setjmp(). See
+  // Note [libpng error handling].
+  torch::stable::Tensor tensor;
+
+  auto header = read_header_and_configure(
+      png_ptr,
+      info_ptr,
+      error_ctx,
+      source_ctx,
+      static_cast<ImageReadMode>(mode));
+
+  auto num_pixels_per_row = header.width * header.channels;
+  auto is_16_bits = header.bit_depth == 16;
+  tensor = torch::stable::empty(
+      {int64_t(header.height), int64_t(header.width), header.channels},
+      is_16_bits ? kStableUInt16 : kStableUInt8);
+
+  decode_rows(
+      png_ptr,
+      info_ptr,
+      error_ctx,
+      tensor,
+      header,
+      is_16_bits,
+      num_pixels_per_row);
 
   // torchcodec always applies EXIF orientation (unlike torchvision, which gates
   // this behind an apply_exif_orientation parameter).
@@ -310,7 +387,7 @@ torch::stable::Tensor decode_png(
   png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
 
   return exif_orientation_transform(
-      stable_permute(*tensor, {2, 0, 1}), exif_orientation);
+      stable_permute(tensor, {2, 0, 1}), exif_orientation);
 }
 
 } // namespace facebook::torchcodec
