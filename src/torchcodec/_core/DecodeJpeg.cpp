@@ -204,7 +204,7 @@ std::tuple<int, bool> read_header_and_start(
     error_ctx_t& error_ctx,
     const uint8_t* input_ptr,
     const size_t input_len,
-    int64_t mode) {
+    ImageReadMode mode) {
   if (setjmp(error_ctx.setjmp_buffer)) {
     // See Note [libjpeg error handling]
     jpeg_destroy_decompress(&jpeg_ctx);
@@ -230,9 +230,8 @@ std::tuple<int, bool> read_header_and_start(
 
   jpeg_read_header(&jpeg_ctx, TRUE);
 
-  auto read_mode = static_cast<ImageReadMode>(mode);
   int num_output_channels = -1;
-  switch (read_mode) {
+  switch (mode) {
     case ImageReadMode::Unchanged:
       num_output_channels = jpeg_ctx.num_components;
       break;
@@ -254,15 +253,14 @@ std::tuple<int, bool> read_header_and_start(
   // https://github.com/tensorflow/tensorflow/blob/86871065265b04e0db8ca360c046421efb2bdeb4/tensorflow/core/lib/jpeg/jpeg_mem.cc#L284-L313
   bool cmyk_to_rgb_or_gray = (jpeg_ctx.jpeg_color_space == JCS_CMYK ||
                               jpeg_ctx.jpeg_color_space == JCS_YCCK) &&
-      (read_mode == ImageReadMode::Gray || read_mode == ImageReadMode::Rgb);
+      (mode == ImageReadMode::Gray || mode == ImageReadMode::Rgb);
 
   // For other sources, ask libjpeg to convert to the requested color space.
-  if (read_mode != ImageReadMode::Unchanged && !cmyk_to_rgb_or_gray) {
-    if (read_mode == ImageReadMode::Gray) {
+  if (mode != ImageReadMode::Unchanged && !cmyk_to_rgb_or_gray) {
+    if (mode == ImageReadMode::Gray) {
       jpeg_ctx.out_color_space = JCS_GRAYSCALE;
     } else {
-      STD_TORCH_CHECK(
-          read_mode == ImageReadMode::Rgb, "Should never reach here.");
+      STD_TORCH_CHECK(mode == ImageReadMode::Rgb, "Should never reach here.");
       jpeg_ctx.out_color_space = JCS_RGB;
     }
   }
@@ -430,7 +428,7 @@ torch::stable::Tensor decode_jpeg(
       error_ctx,
       input.const_data_ptr<uint8_t>(),
       input.numel(),
-      mode);
+      static_cast<ImageReadMode>(mode));
 
   // We want output to be channels last
   int stride = jpeg_ctx.output_width * num_output_channels;

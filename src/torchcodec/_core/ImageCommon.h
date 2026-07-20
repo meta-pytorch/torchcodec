@@ -12,13 +12,9 @@
 
 namespace facebook::torchcodec {
 
-// Kept in-sync with the Python ImageColorMode enum in
+// Must be kept in-sync with the Python ImageColorMode enum in
 // torchcodec/decoders/_image_decoders.py (and matching torchvision's
-// ImageReadMode). Not every decoder supports every mode.
-//
-// The custom op receives the mode as a plain int64_t (that's what the op schema
-// and the stable-ABI boxing marshal), so the decode_* entry points take an
-// int64_t and cast it to this enum for internal use.
+// ImageReadMode).
 enum class ImageReadMode : int64_t {
   Unchanged = 0,
   Gray = 1,

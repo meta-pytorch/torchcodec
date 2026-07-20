@@ -72,42 +72,16 @@ def decode_jpeg(
 ) -> torch.Tensor:
     # TODO_IMAGE We should ensure we build and link against turbo. Maybe by
     # checking the symbols of the bundled libjpeg shared library at repair time.
-    """Decode a JPEG file into a uint8 tensor of shape ``(C, H, W)``.
-
-    Args:
-        source: Path to a JPEG file. Only file paths are supported for now.
-        mode: Desired :class:`ImageColorMode`. ``UNCHANGED`` (default) keeps the
-            image's native number of channels. Currently only ``UNCHANGED``,
-            ``GRAY`` and ``RGB`` are supported for JPEG.
-
-    Returns:
-        A ``(C, H, W)`` uint8 tensor.
-    """
+    """Decode a JPEG file into a uint8 tensor of shape ``(C, H, W)``."""
     data = _read_file_to_tensor(source)
     return _decode_jpeg(data, mode.value)
 
 
 def decode_png(
-    # TODO_IMAGE: support bytes and file-like
     source: str | Path,
     *,
-    # TODO_IMAGE: The default value of all decoders should be "RGB", not "unchanged".
     mode: ImageColorMode = ImageColorMode.UNCHANGED,
 ) -> torch.Tensor:
-    """Decode a PNG file into a uint8 tensor of shape ``(C, H, W)``.
-
-    EXIF orientation is always applied.
-
-    Args:
-        source: Path to a PNG file. Only file paths are supported for now.
-        mode: Desired :class:`ImageColorMode`. ``UNCHANGED`` (default) keeps the
-            image's native number of channels. All modes (``UNCHANGED``,
-            ``GRAY``, ``GRAY_ALPHA``, ``RGB``, ``RGB_ALPHA``) are supported for
-            PNG.
-
-    Returns:
-        A ``(C, H, W)`` tensor. The dtype is ``uint8`` for 8-bit PNGs and
-        ``uint16`` for 16-bit PNGs.
-    """
+    """Decode a PNG file into a uint8 tensor of shape ``(C, H, W)``."""
     data = _read_file_to_tensor(source)
     return _decode_png(data, mode.value)

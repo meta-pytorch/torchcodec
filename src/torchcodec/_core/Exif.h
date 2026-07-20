@@ -53,9 +53,7 @@ direct,
 //
 // Ported from torchvision's csrc/io/image/cpu/exif.h into torchcodec. Provides
 // the shared EXIF parsing (fetch_exif_orientation) and the orientation
-// transform used by both the JPEG and PNG decoders. torchcodec always applies
-// EXIF orientation after decoding. The per-format helpers that pull the raw
-// EXIF bytes out of a jpeg/png stream live in DecodeJpeg.cpp / DecodePng.cpp.
+// transform used by both the JPEG and PNG decoders.
 
 #include <torch/csrc/stable/ops.h>
 #include <torch/headeronly/util/Exception.h>

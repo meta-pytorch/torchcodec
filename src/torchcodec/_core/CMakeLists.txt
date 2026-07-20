@@ -22,14 +22,11 @@ find_package(Torch REQUIRED)
 find_package(Python3 COMPONENTS Development Interpreter)
 
 if(APPLE)
-    # On macOS, CMAKE_FIND_FRAMEWORK defaults to FIRST, so find_package() searches
-    # macOS frameworks *before* JPEG_ROOT/PNG_ROOT/conda. Some CI runners ship a
-    # Mono.framework whose single Headers dir bundles ancient jpeglib.h, png.h and
-    # zlib.h. find_package(JPEG) then resolves its include dir to that framework,
-    # which puts Mono's Headers on the include path for *every* source -- and its
-    # png.h (no eXIf support, outdated png_sig_cmp/png_const_bytep ABI) shadows
-    # conda's real png.h, breaking the PNG build. Search frameworks last, before
-    # both the JPEG and PNG lookups, so the conda libraries win.
+    # Some CI runners ship a Mono.framework which contains headers for libjpeg,
+    # libpng, etc. We do not want those headers to be found - they're old and
+    # incompatible with what we do here (e.g. missing eXIf support in libpng).
+    # On the CI we want the conda-forge-provided libraries to be found first. So
+    # we tell CMake to search for 'frameworks' last.
     set(CMAKE_FIND_FRAMEWORK LAST)
 endif()
 
@@ -41,7 +38,6 @@ if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
     # JPEG_ROOT will automatically be passed to find_package(JPEG) by CMake if it is
     # set. We fallback to the conda prefix if it is not set.
     if(WIN32)
-        # conda puts libraries under $CONDA_PREFIX/Library on Windows.
         set(JPEG_ROOT "$ENV{CONDA_PREFIX}/Library")
     else()
         set(JPEG_ROOT "$ENV{CONDA_PREFIX}")
@@ -56,14 +52,10 @@ else()
     message(STATUS "libjpeg NOT found: torchcodec.decode_jpeg will raise at runtime.")
 endif()
 
-# libpng is an optional build-time dependency for the CPU PNG image decoder,
-# mirroring the libjpeg handling above. When absent, decode_png still exists but
-# raises an actionable error at call time (see DecodePng.cpp's !PNG_FOUND stub).
+# same as libjpeg, libpng is an optional build-time dependency for the CPU PNG
+# image decoder.
 if(NOT DEFINED PNG_ROOT AND DEFINED ENV{CONDA_PREFIX})
-    # PNG_ROOT will automatically be passed to find_package(PNG) by CMake if it
-    # is set. We fallback to the conda prefix if it is not set.
     if(WIN32)
-        # conda puts libraries under $CONDA_PREFIX/Library on Windows.
         set(PNG_ROOT "$ENV{CONDA_PREFIX}/Library")
     else()
         set(PNG_ROOT "$ENV{CONDA_PREFIX}")
