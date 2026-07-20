@@ -56,8 +56,7 @@ constexpr int64_t kImageReadModeUnchanged = 0;
 constexpr int64_t kImageReadModeGray = 1;
 constexpr int64_t kImageReadModeRgb = 3;
 
-// EXIF APP1 marker: the orientation tag lives in this marker's payload.
-constexpr uint16_t APP1 = 0xe1;
+constexpr uint16_t EXIF_APP1 = 0xe1;
 
 void validate_encoded_data(const torch::stable::Tensor& encoded_data) {
   STD_TORCH_CHECK(
@@ -75,7 +74,17 @@ void validate_encoded_data(const torch::stable::Tensor& encoded_data) {
       " numels.");
 }
 
-inline uint8_t clamped_cmyk_rgb_convert(uint8_t k, uint8_t cmy) {
+// Helpers to convert a CMYK line to RGB or grayscale, since libjpeg doesn't
+// handle that directly.
+using cmyk_line_converter_fn = void (*)(int, const uint8_t*, uint8_t*);
+
+struct CMYKHelper {
+  uint8_t* cmyk_line_ptr = nullptr;
+  // This is either convert_line_cmyk_to_rgb or convert_line_cmyk_to_gray
+  cmyk_line_converter_fn convert_fn = nullptr;
+};
+
+inline uint8_t cmyk_to_rgb(uint8_t k, uint8_t cmy) {
   // Inspired from Pillow:
   // https://github.com/python-pillow/Pillow/blob/07623d1a7cc65206a5355fba2ae256550bfcaba6/src/libImaging/Convert.c#L568-L569
   int v = k * cmy + 128;
@@ -85,17 +94,17 @@ inline uint8_t clamped_cmyk_rgb_convert(uint8_t k, uint8_t cmy) {
 
 void convert_line_cmyk_to_rgb(
     int width,
-    const uint8_t* cmyk_line,
-    uint8_t* rgb_line) {
+    const uint8_t* cmyk_line_ptr,
+    uint8_t* output_ptr) {
   for (int i = 0; i < width; ++i) {
-    int c = cmyk_line[i * 4 + 0];
-    int m = cmyk_line[i * 4 + 1];
-    int y = cmyk_line[i * 4 + 2];
-    int k = cmyk_line[i * 4 + 3];
+    int c = cmyk_line_ptr[i * 4 + 0];
+    int m = cmyk_line_ptr[i * 4 + 1];
+    int y = cmyk_line_ptr[i * 4 + 2];
+    int k = cmyk_line_ptr[i * 4 + 3];
 
-    rgb_line[i * 3 + 0] = clamped_cmyk_rgb_convert(k, 255 - c);
-    rgb_line[i * 3 + 1] = clamped_cmyk_rgb_convert(k, 255 - m);
-    rgb_line[i * 3 + 2] = clamped_cmyk_rgb_convert(k, 255 - y);
+    output_ptr[i * 3 + 0] = cmyk_to_rgb(k, 255 - c);
+    output_ptr[i * 3 + 1] = cmyk_to_rgb(k, 255 - m);
+    output_ptr[i * 3 + 2] = cmyk_to_rgb(k, 255 - y);
   }
 }
 
@@ -107,19 +116,19 @@ inline uint8_t rgb_to_gray(int r, int g, int b) {
 
 void convert_line_cmyk_to_gray(
     int width,
-    const uint8_t* cmyk_line,
-    uint8_t* gray_line) {
+    const uint8_t* cmyk_line_ptr,
+    uint8_t* output_ptr) {
   for (int i = 0; i < width; ++i) {
-    int c = cmyk_line[i * 4 + 0];
-    int m = cmyk_line[i * 4 + 1];
-    int y = cmyk_line[i * 4 + 2];
-    int k = cmyk_line[i * 4 + 3];
+    int c = cmyk_line_ptr[i * 4 + 0];
+    int m = cmyk_line_ptr[i * 4 + 1];
+    int y = cmyk_line_ptr[i * 4 + 2];
+    int k = cmyk_line_ptr[i * 4 + 3];
 
-    int r = clamped_cmyk_rgb_convert(k, 255 - c);
-    int g = clamped_cmyk_rgb_convert(k, 255 - m);
-    int b = clamped_cmyk_rgb_convert(k, 255 - y);
+    int r = cmyk_to_rgb(k, 255 - c);
+    int g = cmyk_to_rgb(k, 255 - m);
+    int b = cmyk_to_rgb(k, 255 - y);
 
-    gray_line[i] = rgb_to_gray(r, g, b);
+    output_ptr[i] = rgb_to_gray(r, g, b);
   }
 }
 
@@ -128,13 +137,15 @@ int fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
 
   jpeg_saved_marker_ptr exif_marker = jpeg_ctx->marker_list;
   while (exif_marker != nullptr) {
-    if (exif_marker->marker == APP1) {
+    if (exif_marker->marker == EXIF_APP1) {
       break;
     }
     exif_marker = exif_marker->next;
   }
 
   if (exif_marker == nullptr) {
+    // TODO_IMAGE: We should turn the exif rotation values into an enum and have
+    // a NO_ROTATION value - this is what -1 effectively means.
     return -1;
   }
 
@@ -151,10 +162,11 @@ int fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
 
 // Error context that gets passed by libjpeg to its callbacks
 // (error_exit_cb, fill_input_buffer_cb, etc.).
-// libjpeg doesn't actually pass this error_ctx_t, it passes the jpeg_error_mgr
-// base field, but we can cast it back to error_ctx_t in the callbacks because
-// the jpeg_error_mgr is the first field in error_ctx_t: the struct and its
-// first field share the same address.
+// libjpeg doesn't actually pass this error_ctx_t, it passes the jpeg_ctx object
+// which has an `err` field. This `err` field is *still* not an error_ctx_t
+// object, it's the jpeg_error_mgr base field, but we can cast it back to
+// error_ctx_t in the callbacks because the struct and its first field share the
+// same address.
 struct error_ctx_t {
   jpeg_error_mgr base;
   char last_error_message[JMSG_LENGTH_MAX];
@@ -207,8 +219,8 @@ void term_source_cb(j_decompress_ptr) {}
 
 void set_source_ctx(
     jpeg_decompress_struct& jpeg_ctx,
-    const uint8_t* data,
-    size_t len) {
+    const uint8_t* input_ptr,
+    const size_t input_len) {
   // We decode one image per fresh jpeg_decompress_struct, so jpeg_ctx.src is
   // always null here. Allocate our source manager from libjpeg's pool, which
   // jpeg_destroy_decompress frees.
@@ -221,10 +233,10 @@ void set_source_ctx(
   jpeg_ctx.src->skip_input_data = skip_input_data_cb;
   jpeg_ctx.src->resync_to_restart = jpeg_resync_to_restart; // default
   jpeg_ctx.src->term_source = term_source_cb;
-  jpeg_ctx.src->bytes_in_buffer = len;
-  jpeg_ctx.src->next_input_byte = data;
+  jpeg_ctx.src->bytes_in_buffer = input_len;
+  jpeg_ctx.src->next_input_byte = input_ptr;
 
-  jpeg_save_markers(&jpeg_ctx, APP1, 0xffff);
+  jpeg_save_markers(&jpeg_ctx, EXIF_APP1, 0xffff);
 }
 
 } // namespace
@@ -313,22 +325,29 @@ torch::stable::Tensor decode_jpeg(
       {int64_t(height), int64_t(width), num_output_channels}, kStableUInt8);
   auto outputp = output->mutable_data_ptr<uint8_t>();
 
+  CMYKHelper cmyk_helper = {nullptr, nullptr};
   if (cmyk_to_rgb_or_gray) {
     cmyk_line_tensor = torch::stable::empty({int64_t(width), 4}, kStableUInt8);
+    cmyk_helper.cmyk_line_ptr = cmyk_line_tensor->mutable_data_ptr<uint8_t>();
+    if (num_output_channels == 3) {
+      cmyk_helper.convert_fn = convert_line_cmyk_to_rgb;
+    } else if (num_output_channels == 1) {
+      cmyk_helper.convert_fn = convert_line_cmyk_to_gray;
+    } else {
+      STD_TORCH_CHECK(
+          false,
+          "Should never reach here, this is a bug in TorchCodec, please report");
+    }
   }
 
   while (jpeg_ctx.output_scanline < jpeg_ctx.output_height) {
-    if (cmyk_to_rgb_or_gray) {
-      auto cmyk_line_ptr = cmyk_line_tensor->mutable_data_ptr<uint8_t>();
-      jpeg_read_scanlines(&jpeg_ctx, &cmyk_line_ptr, 1);
-
-      if (num_output_channels == 3) {
-        convert_line_cmyk_to_rgb(width, cmyk_line_ptr, outputp);
-      } else if (num_output_channels == 1) {
-        convert_line_cmyk_to_gray(width, cmyk_line_ptr, outputp);
-      }
+    if (cmyk_helper.cmyk_line_ptr != nullptr &&
+        cmyk_helper.convert_fn != nullptr) {
+      jpeg_read_scanlines(
+          &jpeg_ctx, &cmyk_helper.cmyk_line_ptr, /*max_lines=*/1);
+      cmyk_helper.convert_fn(width, cmyk_helper.cmyk_line_ptr, outputp);
     } else {
-      jpeg_read_scanlines(&jpeg_ctx, &outputp, 1);
+      jpeg_read_scanlines(&jpeg_ctx, &outputp, /*max_lines=*/1);
     }
     outputp += stride;
   }
