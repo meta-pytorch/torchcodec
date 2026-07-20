@@ -57,6 +57,14 @@ if(NOT DEFINED PNG_ROOT AND DEFINED ENV{CONDA_PREFIX})
         set(PNG_ROOT "$ENV{CONDA_PREFIX}")
     endif()
 endif()
+if(APPLE)
+    # On macOS, CMAKE_FIND_FRAMEWORK defaults to FIRST, so find_package(PNG)
+    # searches macOS frameworks *before* PNG_ROOT/conda. Some CI runners ship a
+    # Mono.framework that bundles an ancient libpng (no eXIf support, outdated
+    # png_sig_cmp/png_const_bytep ABI), which then shadows the real libpng and
+    # breaks the build. Search frameworks last so the conda libpng wins.
+    set(CMAKE_FIND_FRAMEWORK LAST)
+endif()
 find_package(PNG)  # Not REQUIRED on purpose. Transitively pulls in ZLIB.
 if(PNG_FOUND)
     message(STATUS "libpng found: building torchcodec with PNG image decoding support.")
