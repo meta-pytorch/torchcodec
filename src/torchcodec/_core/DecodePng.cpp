@@ -103,6 +103,7 @@ struct SourceCtx {
 void read_callback(png_structp png_ptr, png_bytep output, png_size_t bytes) {
   auto* source_ctx = static_cast<SourceCtx*>(png_get_io_ptr(png_ptr));
   if (source_ctx->count < bytes) {
+    // trigger our error callback
     png_error(
         png_ptr,
         "Out of bound read in decode_png. The input image might be corrupted?");
@@ -285,6 +286,13 @@ void decode_rows(
 }
 
 } // namespace
+
+// Important: see the [libjpeg error handling] in the jpeg decoder: everything
+// applies here too. Critically, we must not throw a C++ exception through
+// libpng's C stack (and callbacks), and we also shouldn't allocate anything
+// that needs proper destruction in a function that defines a setjmp() point.
+// This is why the output tensor is allocated here in decode_png() and
+// decode_png() does *not* define a setjmp() point.
 
 torch::stable::Tensor decode_png(
     const torch::stable::Tensor& input,
