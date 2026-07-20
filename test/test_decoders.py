@@ -3416,6 +3416,15 @@ class TestBlocks:
             torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
 
+# Small helpers to avoid having to always specify the same skip marks and decode_fn
+def _jpeg_param(*values):
+    return pytest.param(decode_jpeg, *values, marks=pytest.mark.needs_jpeg, id="jpeg")
+
+
+def _png_param(*values):
+    return pytest.param(decode_png, *values, marks=pytest.mark.needs_png, id="png")
+
+
 class TestImageDecoder:
     def _save_debug(self, decoded, reference, path="debug.png"):
         # Debugging helper: dump decoded and reference frames side-by-side.
@@ -3452,21 +3461,11 @@ class TestImageDecoder:
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
     # TODO_IMAGE: Maybe create a parametrization helper, or store those
-    # pytest.params for each codec somewhere
     @pytest.mark.parametrize(
         "decode_fn, fmt, ext, save_kwargs",
         (
-            pytest.param(
-                decode_jpeg,
-                "JPEG",
-                "jpg",
-                {"quality": 95},
-                marks=pytest.mark.needs_jpeg,
-                id="jpeg",
-            ),
-            pytest.param(
-                decode_png, "PNG", "png", {}, marks=pytest.mark.needs_png, id="png"
-            ),
+            _jpeg_param("JPEG", "jpg", {"quality": 95}),
+            _png_param("PNG", "png", {}),
         ),
     )
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
@@ -3489,17 +3488,8 @@ class TestImageDecoder:
     @pytest.mark.parametrize(
         "decode_fn, fmt, ext, save_kwargs",
         (
-            pytest.param(
-                decode_jpeg,
-                "JPEG",
-                "jpg",
-                {"quality": 95},
-                marks=pytest.mark.needs_jpeg,
-                id="jpeg",
-            ),
-            pytest.param(
-                decode_png, "PNG", "png", {}, marks=pytest.mark.needs_png, id="png"
-            ),
+            _jpeg_param("JPEG", "jpg", {"quality": 95}),
+            _png_param("PNG", "png", {}),
         ),
     )
     @pytest.mark.parametrize("size", (65533, 1, 7, 10, 23, 33))
@@ -3530,20 +3520,8 @@ class TestImageDecoder:
     @pytest.mark.parametrize(
         "decode_fn, ext, match",
         (
-            pytest.param(
-                decode_jpeg,
-                "jpg",
-                "Not a JPEG",
-                marks=pytest.mark.needs_jpeg,
-                id="jpeg",
-            ),
-            pytest.param(
-                decode_png,
-                "png",
-                "Content is not png",
-                marks=pytest.mark.needs_png,
-                id="png",
-            ),
+            _jpeg_param("jpg", "Not a JPEG"),
+            _png_param("png", "Content is not png"),
         ),
     )
     def test_not_an_image_raises(self, tmp_path, decode_fn, ext, match):
@@ -3555,22 +3533,8 @@ class TestImageDecoder:
     @pytest.mark.parametrize(
         "decode_fn, asset, ext, match",
         (
-            pytest.param(
-                decode_jpeg,
-                GRADIENT_JPEG,
-                "jpg",
-                "Image is incomplete or truncated",
-                marks=pytest.mark.needs_jpeg,
-                id="jpeg",
-            ),
-            pytest.param(
-                decode_png,
-                GRADIENT_PNG,
-                "png",
-                "Out of bound read",
-                marks=pytest.mark.needs_png,
-                id="png",
-            ),
+            _jpeg_param(GRADIENT_JPEG, "jpg", "Image is incomplete or truncated"),
+            _png_param(GRADIENT_PNG, "png", "Out of bound read"),
         ),
     )
     @pytest.mark.parametrize("div", (2, 3, 4))
