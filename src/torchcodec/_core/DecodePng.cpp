@@ -279,7 +279,7 @@ void decode_rows(
     png_structp& png_ptr,
     png_infop& info_ptr,
     ErrorCtx& error_ctx,
-    torch::stable::Tensor& tensor,
+    torch::stable::Tensor& output,
     const PngHeader& header,
     bool is_16_bits,
     png_uint_32 num_pixels_per_row) {
@@ -293,48 +293,26 @@ void decode_rows(
     png_set_swap(png_ptr);
   }
 
-  auto t_ptr = (uint8_t*)tensor.mutable_data_ptr();
+  auto output_ptr = (uint8_t*)output.mutable_data_ptr();
   for (int pass = 0; pass < header.number_of_passes; pass++) {
     for (png_uint_32 i = 0; i < header.height; ++i) {
-      png_read_row(png_ptr, t_ptr, nullptr);
-      t_ptr += num_pixels_per_row * (is_16_bits ? 2 : 1);
+      png_read_row(png_ptr, output_ptr, nullptr);
+      output_ptr += num_pixels_per_row * (is_16_bits ? 2 : 1);
     }
-    t_ptr = (uint8_t*)tensor.mutable_data_ptr();
+    output_ptr = (uint8_t*)output.mutable_data_ptr();
   }
 }
 
 } // namespace
 
-// Note [libpng error handling]
-//
-// This mirrors Note [libjpeg error handling] in DecodeJpeg.cpp - see that note
-// for the full explanation. The short version:
-//
-// libpng uses setjmp/longjmp for error handling. Per C11 7.13.2.1, a non-
-// volatile automatic object that is local to the function containing the
-// setjmp() and is modified between the setjmp() and the longjmp() has an
-// *indeterminate* value once we longjmp() back into the setjmp() block. Running
-// its destructor (or otherwise using it) there is undefined behavior.
-//
-// So the `output` tensor - and anything else needing a non-trivial destructor -
-// must NOT live in a function that calls setjmp(). We keep it in decode_png(),
-// which never calls setjmp(), and confine the setjmp() points to the
-// read_header_and_configure() and decode_rows() helpers, which declare nothing
-// needing destruction. Those helpers destroy the libpng structs and STD_TORCH_-
-// CHECK(false) on the error path.
-//
-// Relatedly, we must never let a C++ exception (e.g. from STD_TORCH_CHECK)
-// propagate through libpng's C stack: our libpng callbacks (error_callback,
-// read_callback) route errors through longjmp() instead of throwing.
 torch::stable::Tensor decode_png(
-    const torch::stable::Tensor& data,
+    const torch::stable::Tensor& input,
     int64_t mode) {
-  validate_encoded_data(data);
+  validate_encoded_data(input);
 
-  auto datap = data.const_data_ptr<uint8_t>();
-  auto datap_len = data.numel();
-  STD_TORCH_CHECK(datap_len >= 8, "Content is too small for png!")
-  STD_TORCH_CHECK(!png_sig_cmp(datap, 0, 8), "Content is not png!")
+  auto input_ptr = input.const_data_ptr<uint8_t>();
+  STD_TORCH_CHECK(input.numel() >= 8, "Content is too small for png!")
+  STD_TORCH_CHECK(!png_sig_cmp(input_ptr, 0, 8), "Content is not png!")
 
   auto png_ptr =
       png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
@@ -351,12 +329,12 @@ torch::stable::Tensor decode_png(
 
   // The 8-byte offset skips the PNG signature we already validated above.
   SourceCtx source_ctx;
-  source_ctx.ptr = png_const_bytep(datap) + 8;
-  source_ctx.count = datap_len - 8;
+  source_ctx.ptr = png_const_bytep(input_ptr) + 8;
+  source_ctx.count = input.numel() - 8;
 
-  // `tensor` is declared here, in a function that does NOT call setjmp(). See
+  // `output` is declared here, in a function that does NOT call setjmp(). See
   // Note [libpng error handling].
-  torch::stable::Tensor tensor;
+  torch::stable::Tensor output;
 
   auto header = read_header_and_configure(
       png_ptr,
@@ -367,7 +345,7 @@ torch::stable::Tensor decode_png(
 
   auto num_pixels_per_row = header.width * header.channels;
   auto is_16_bits = header.bit_depth == 16;
-  tensor = torch::stable::empty(
+  output = torch::stable::empty(
       {int64_t(header.height), int64_t(header.width), header.channels},
       is_16_bits ? kStableUInt16 : kStableUInt8);
 
@@ -375,7 +353,7 @@ torch::stable::Tensor decode_png(
       png_ptr,
       info_ptr,
       error_ctx,
-      tensor,
+      output,
       header,
       is_16_bits,
       num_pixels_per_row);
@@ -387,7 +365,7 @@ torch::stable::Tensor decode_png(
   png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
 
   return exif_orientation_transform(
-      stable_permute(tensor, {2, 0, 1}), exif_orientation);
+      stable_permute(output, {2, 0, 1}), exif_orientation);
 }
 
 } // namespace facebook::torchcodec
