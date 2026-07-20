@@ -84,21 +84,17 @@ int fetch_png_exif_orientation(png_structp png_ptr, png_infop info_ptr) {
   png_uint_32 num_exif = 0;
   png_bytep exif = 0;
 
-  // Exif info could be in info_ptr
   if (png_get_valid(png_ptr, info_ptr, PNG_INFO_eXIf)) {
     png_get_eXIf_1(png_ptr, info_ptr, &num_exif, &exif);
   }
 
-  if (exif && num_exif > 0) {
+  if (exif != nullptr && num_exif > 0) {
     return fetch_exif_orientation(exif, num_exif);
+  } else {
+    return 1;
   }
-  return -1;
 }
 
-// We decode from an in-memory buffer rather than a FILE*, so we feed libpng
-// through a custom read function. libpng hands our read callback back a single
-// user pointer (set via png_set_read_fn, retrieved with png_get_io_ptr): this
-// struct is that context, tracking the current read position and bytes left.
 struct SourceCtx {
   png_const_bytep ptr;
   png_size_t count;
@@ -107,9 +103,6 @@ struct SourceCtx {
 void read_callback(png_structp png_ptr, png_bytep output, png_size_t bytes) {
   auto* source_ctx = static_cast<SourceCtx*>(png_get_io_ptr(png_ptr));
   if (source_ctx->count < bytes) {
-    // Route the error through libpng's error handler (our error_callback),
-    // which longjmp()s. We must NOT throw a C++ exception through libpng's C
-    // stack. See Note [libpng error handling].
     png_error(
         png_ptr,
         "Out of bound read in decode_png. The input image might be corrupted?");
@@ -269,12 +262,11 @@ void decode_rows(
     png_structp& png_ptr,
     png_infop& info_ptr,
     ErrorCtx& error_ctx,
-    torch::stable::Tensor& output,
-    const PngHeader& header,
-    bool is_16_bits,
-    png_uint_32 num_pixels_per_row) {
+    uint8_t* output_ptr,
+    png_uint_32 height,
+    int num_passes,
+    int stride) {
   if (setjmp(png_jmpbuf(png_ptr)) != 0) {
-    // See Note [libpng error handling]
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
     STD_TORCH_CHECK(false, "decode_png failed: ", error_ctx.error_message);
   }
@@ -283,13 +275,12 @@ void decode_rows(
     png_set_swap(png_ptr);
   }
 
-  auto output_ptr = (uint8_t*)output.mutable_data_ptr();
-  for (int pass = 0; pass < header.num_passes; pass++) {
-    for (png_uint_32 i = 0; i < header.height; ++i) {
-      png_read_row(png_ptr, output_ptr, nullptr);
-      output_ptr += num_pixels_per_row * (is_16_bits ? 2 : 1);
+  for (int pass = 0; pass < num_passes; pass++) {
+    uint8_t* row_ptr = output_ptr;
+    for (png_uint_32 i = 0; i < height; ++i) {
+      png_read_row(png_ptr, row_ptr, nullptr);
+      row_ptr += stride;
     }
-    output_ptr = (uint8_t*)output.mutable_data_ptr();
   }
 }
 
@@ -331,20 +322,21 @@ torch::stable::Tensor decode_png(
   auto num_pixels_per_row = header.width * header.num_output_channels;
   auto is_16_bits = header.bit_depth == 16;
   output = torch::stable::empty(
-      {int64_t(header.height), int64_t(header.width), header.num_output_channels},
+      {int64_t(header.height),
+       int64_t(header.width),
+       header.num_output_channels},
       is_16_bits ? kStableUInt16 : kStableUInt8);
 
+  int stride = num_pixels_per_row * (is_16_bits ? 2 : 1);
   decode_rows(
       png_ptr,
       info_ptr,
       error_ctx,
-      output,
-      header,
-      is_16_bits,
-      num_pixels_per_row);
+      (uint8_t*)output.mutable_data_ptr(),
+      header.height,
+      header.num_passes,
+      stride);
 
-  // torchcodec always applies EXIF orientation (unlike torchvision, which gates
-  // this behind an apply_exif_orientation parameter).
   int exif_orientation = fetch_png_exif_orientation(png_ptr, info_ptr);
 
   png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
