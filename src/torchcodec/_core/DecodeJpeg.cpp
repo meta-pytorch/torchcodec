@@ -55,12 +55,12 @@ constexpr uint16_t EXIF_APP1 = 0xe1;
 
 // Helpers to convert a CMYK line to RGB or grayscale, since libjpeg doesn't
 // handle that directly.
-using cmyk_line_converter_fn = void (*)(int, const uint8_t*, uint8_t*);
+using CmykLineConverterFn = void (*)(int, const uint8_t*, uint8_t*);
 
 struct CMYKHelper {
   uint8_t* cmyk_line_ptr = nullptr;
   // This is either convert_line_cmyk_to_rgb or convert_line_cmyk_to_gray
-  cmyk_line_converter_fn convert_fn = nullptr;
+  CmykLineConverterFn convert_fn = nullptr;
 };
 
 inline uint8_t cmyk_to_rgb(uint8_t k, uint8_t cmy) {
@@ -141,12 +141,12 @@ int fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
 
 // Error context that gets passed by libjpeg to its callbacks
 // (error_exit_cb, fill_input_buffer_cb, etc.).
-// libjpeg doesn't actually pass this error_ctx_t, it passes the jpeg_ctx object
-// which has an `err` field. This `err` field is *still* not an error_ctx_t
+// libjpeg doesn't actually pass this ErrorCtx, it passes the jpeg_ctx object
+// which has an `err` field. This `err` field is *still* not an ErrorCtx
 // object, it's the jpeg_error_mgr base field, but we can cast it back to
-// error_ctx_t in the callbacks because the struct and its first field share the
+// ErrorCtx in the callbacks because the struct and its first field share the
 // same address.
-struct error_ctx_t {
+struct ErrorCtx {
   jpeg_error_mgr base;
   char last_error_message[JMSG_LENGTH_MAX];
   jmp_buf setjmp_buffer;
@@ -154,7 +154,7 @@ struct error_ctx_t {
 
 // Callback called by libjpeg when an error occurs.
 void error_exit_cb(j_common_ptr jpeg_ctx) {
-  auto error_ctx = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
+  auto error_ctx = reinterpret_cast<ErrorCtx*>(jpeg_ctx->err);
   error_ctx->base.format_message(jpeg_ctx, error_ctx->last_error_message);
   longjmp(error_ctx->setjmp_buffer, 1);
 }
@@ -164,7 +164,7 @@ void error_exit_cb(j_common_ptr jpeg_ctx) {
 // Should we ever want to support truncated JPEGs, we could instead return a
 // fake EOI.
 boolean fill_input_buffer_cb(j_decompress_ptr jpeg_ctx) {
-  auto error_ctx = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
+  auto error_ctx = reinterpret_cast<ErrorCtx*>(jpeg_ctx->err);
   strcpy(error_ctx->last_error_message, "Image is incomplete or truncated.");
   longjmp(error_ctx->setjmp_buffer, 1);
   return TRUE; // never reached, but keeps compiler happy
@@ -181,7 +181,7 @@ void skip_input_data_cb(j_decompress_ptr jpeg_ctx, long num_bytes) {
     // In TorchVision this would return a fake EOI, but that's inconsistent with
     // our fill_input_buffer_cb, which treats truncated JPEGs as an error.
     // So we error here too.
-    auto error_ctx = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
+    auto error_ctx = reinterpret_cast<ErrorCtx*>(jpeg_ctx->err);
     strcpy(
         error_ctx->last_error_message,
         "Skipped over more data than is available in the input buffer.");
@@ -201,7 +201,7 @@ void term_source_cb(j_decompress_ptr) {}
 // function returns.
 std::tuple<int, bool> read_header_and_start(
     jpeg_decompress_struct& jpeg_ctx,
-    error_ctx_t& error_ctx,
+    ErrorCtx& error_ctx,
     const uint8_t* input_ptr,
     const size_t input_len,
     ImageReadMode mode) {
@@ -271,7 +271,7 @@ std::tuple<int, bool> read_header_and_start(
 // The actual decoding loop, row by row.
 void decode_rows(
     jpeg_decompress_struct& jpeg_ctx,
-    error_ctx_t& error_ctx,
+    ErrorCtx& error_ctx,
     uint8_t* output_ptr,
     int stride,
     CMYKHelper& cmyk_helper) {
@@ -419,7 +419,7 @@ torch::stable::Tensor decode_jpeg(
   torch::stable::Tensor cmyk_line_tensor;
 
   jpeg_decompress_struct jpeg_ctx;
-  error_ctx_t error_ctx;
+  ErrorCtx error_ctx;
   jpeg_ctx.err = jpeg_std_error(&error_ctx.base);
   error_ctx.base.error_exit = error_exit_cb;
 

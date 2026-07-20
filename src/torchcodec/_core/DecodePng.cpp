@@ -59,16 +59,18 @@ using namespace exif_private;
 namespace {
 
 bool is_little_endian() {
-  uint32_t x = 1;
-  return *(uint8_t*)&x;
+  int64_t x = 1;
+  uint8_t first_byte;
+  std::memcpy(&first_byte, &x, 1);
+  return first_byte == 1;
 }
 
-struct PngErrorContext {
+struct ErrorCtx {
   char error_message[256] = "";
 };
 
-void png_error_callback(png_structp png_ptr, png_const_charp error_message) {
-  auto* error_ctx = static_cast<PngErrorContext*>(png_get_error_ptr(png_ptr));
+void error_callback(png_structp png_ptr, png_const_charp error_message) {
+  auto* error_ctx = static_cast<ErrorCtx*>(png_get_error_ptr(png_ptr));
   if (error_ctx != nullptr) {
     std::snprintf(
         error_ctx->error_message,
@@ -114,11 +116,10 @@ torch::stable::Tensor decode_png(
   auto datap = data.const_data_ptr<uint8_t>();
   auto datap_len = data.numel();
 
-  // Capture libpng's error message (see png_error_callback) so we can report it
+  // Capture libpng's error message (see error_callback) so we can report it
   // instead of a generic "internal error".
-  PngErrorContext error_ctx;
-  png_set_error_fn(
-      png_ptr, &error_ctx, png_error_callback, /*warn_fn=*/nullptr);
+  ErrorCtx error_ctx;
+  png_set_error_fn(png_ptr, &error_ctx, error_callback, /*warn_fn=*/nullptr);
 
   // NOTE: libpng uses setjmp/longjmp for error handling. longjmp does not
   // unwind C++ stack frames, so destructors of objects created after setjmp
@@ -135,27 +136,33 @@ torch::stable::Tensor decode_png(
   auto is_png = !png_sig_cmp(datap, 0, 8);
   STD_TORCH_CHECK(is_png, "Content is not png!")
 
-  struct Reader {
+  // We decode from an in-memory buffer rather than a FILE*, so we feed libpng
+  // through a custom read function. libpng hands our read callback back a
+  // single user pointer (set via png_set_read_fn, retrieved with
+  // png_get_io_ptr): this struct is that context, tracking the current read
+  // position and bytes left. The 8-byte offset skips the PNG signature we
+  // already validated.
+  struct SourceCtx {
     png_const_bytep ptr;
     png_size_t count;
-  } reader;
+  } source_ctx;
 
-  reader.ptr = png_const_bytep(datap) + 8;
-  reader.count = datap_len - 8;
+  source_ctx.ptr = png_const_bytep(datap) + 8;
+  source_ctx.count = datap_len - 8;
 
   auto read_callback = [](png_structp png_ptr,
                           png_bytep output,
                           png_size_t bytes) {
-    auto reader = static_cast<Reader*>(png_get_io_ptr(png_ptr));
+    auto source_ctx = static_cast<SourceCtx*>(png_get_io_ptr(png_ptr));
     STD_TORCH_CHECK(
-        reader->count >= bytes,
+        source_ctx->count >= bytes,
         "Out of bound read in decode_png. The input image might be corrupted?");
-    std::copy(reader->ptr, reader->ptr + bytes, output);
-    reader->ptr += bytes;
-    reader->count -= bytes;
+    std::copy(source_ctx->ptr, source_ctx->ptr + bytes, output);
+    source_ctx->ptr += bytes;
+    source_ctx->count -= bytes;
   };
   png_set_sig_bytes(png_ptr, 8);
-  png_set_read_fn(png_ptr, &reader, read_callback);
+  png_set_read_fn(png_ptr, &source_ctx, read_callback);
   png_read_info(png_ptr, info_ptr);
 
   png_uint_32 width, height;
