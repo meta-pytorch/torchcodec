@@ -44,6 +44,26 @@ else()
     message(STATUS "libjpeg NOT found: torchcodec.decode_jpeg will raise at runtime.")
 endif()
 
+# libpng is an optional build-time dependency for the CPU PNG image decoder,
+# mirroring the libjpeg handling above. When absent, decode_png still exists but
+# raises an actionable error at call time (see DecodePng.cpp's !PNG_FOUND stub).
+if(NOT DEFINED PNG_ROOT AND DEFINED ENV{CONDA_PREFIX})
+    # PNG_ROOT will automatically be passed to find_package(PNG) by CMake if it
+    # is set. We fallback to the conda prefix if it is not set.
+    if(WIN32)
+        # conda puts libraries under $CONDA_PREFIX/Library on Windows.
+        set(PNG_ROOT "$ENV{CONDA_PREFIX}/Library")
+    else()
+        set(PNG_ROOT "$ENV{CONDA_PREFIX}")
+    endif()
+endif()
+find_package(PNG)  # Not REQUIRED on purpose. Transitively pulls in ZLIB.
+if(PNG_FOUND)
+    message(STATUS "libpng found: building torchcodec with PNG image decoding support.")
+else()
+    message(STATUS "libpng NOT found: torchcodec.decode_png will raise at runtime.")
+endif()
+
 # Read a list variable from sources.bzl, the single source of truth for the
 # _core C++ source files shared with the internal Buck build. The .bzl file is
 # valid Python, so we exec it and print the requested list; configure_file
@@ -227,6 +247,13 @@ function(make_torchcodec_libraries
     if(JPEG_FOUND)
         target_compile_definitions(${core_library_name} PRIVATE JPEG_FOUND=1)
         target_link_libraries(${core_library_name} PRIVATE JPEG::JPEG)
+    endif()
+
+    # Optional libpng support for the CPU PNG image decoder (DecodePng.cpp).
+    # PNG_FOUND gates both the compile-time code path and the link.
+    if(PNG_FOUND)
+        target_compile_definitions(${core_library_name} PRIVATE PNG_FOUND=1)
+        target_link_libraries(${core_library_name} PRIVATE PNG::PNG)
     endif()
 
     if(ENABLE_CUDA)

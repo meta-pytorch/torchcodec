@@ -40,6 +40,7 @@ torch::stable::Tensor decode_jpeg(
 #include <tuple>
 
 #include "Exif.h"
+#include "ImageCommon.h"
 
 namespace facebook::torchcodec {
 
@@ -50,29 +51,7 @@ namespace {
 // Main libjpeg docs:
 // https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/doc/libjpeg.txt
 
-// Kept in-sync with the Python ImageColorMode enum in
-// torchcodec/decoders/_image_decoders.py.
-constexpr int64_t kImageReadModeUnchanged = 0;
-constexpr int64_t kImageReadModeGray = 1;
-constexpr int64_t kImageReadModeRgb = 3;
-
 constexpr uint16_t EXIF_APP1 = 0xe1;
-
-void validate_encoded_data(const torch::stable::Tensor& encoded_data) {
-  STD_TORCH_CHECK(
-      encoded_data.is_contiguous(), "Input tensor must be contiguous.");
-  STD_TORCH_CHECK(
-      encoded_data.scalar_type() == kStableUInt8,
-      "Input tensor must have uint8 data type, got ",
-      torch::headeronly::toString(encoded_data.scalar_type()));
-  STD_TORCH_CHECK(
-      encoded_data.dim() == 1 && encoded_data.numel() > 0,
-      "Input tensor must be 1-dimensional and non-empty, got ",
-      encoded_data.dim(),
-      " dims  and ",
-      encoded_data.numel(),
-      " numels.");
-}
 
 // Helpers to convert a CMYK line to RGB or grayscale, since libjpeg doesn't
 // handle that directly.
@@ -251,15 +230,16 @@ std::tuple<int, bool> read_header_and_start(
 
   jpeg_read_header(&jpeg_ctx, TRUE);
 
+  auto read_mode = static_cast<ImageReadMode>(mode);
   int num_output_channels = -1;
-  switch (mode) {
-    case kImageReadModeUnchanged:
+  switch (read_mode) {
+    case ImageReadMode::Unchanged:
       num_output_channels = jpeg_ctx.num_components;
       break;
-    case kImageReadModeGray:
+    case ImageReadMode::Gray:
       num_output_channels = 1;
       break;
-    case kImageReadModeRgb:
+    case ImageReadMode::Rgb:
       num_output_channels = 3;
       break;
     default:
@@ -274,14 +254,15 @@ std::tuple<int, bool> read_header_and_start(
   // https://github.com/tensorflow/tensorflow/blob/86871065265b04e0db8ca360c046421efb2bdeb4/tensorflow/core/lib/jpeg/jpeg_mem.cc#L284-L313
   bool cmyk_to_rgb_or_gray = (jpeg_ctx.jpeg_color_space == JCS_CMYK ||
                               jpeg_ctx.jpeg_color_space == JCS_YCCK) &&
-      (mode == kImageReadModeGray || mode == kImageReadModeRgb);
+      (read_mode == ImageReadMode::Gray || read_mode == ImageReadMode::Rgb);
 
   // For other sources, ask libjpeg to convert to the requested color space.
-  if (mode != kImageReadModeUnchanged && !cmyk_to_rgb_or_gray) {
-    if (mode == kImageReadModeGray) {
+  if (read_mode != ImageReadMode::Unchanged && !cmyk_to_rgb_or_gray) {
+    if (read_mode == ImageReadMode::Gray) {
       jpeg_ctx.out_color_space = JCS_GRAYSCALE;
     } else {
-      STD_TORCH_CHECK(mode == kImageReadModeRgb, "Should never reach here.");
+      STD_TORCH_CHECK(
+          read_mode == ImageReadMode::Rgb, "Should never reach here.");
       jpeg_ctx.out_color_space = JCS_RGB;
     }
   }

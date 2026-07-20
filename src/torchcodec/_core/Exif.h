@@ -51,9 +51,11 @@ direct,
 // Functions in this module are taken from OpenCV
 // https://github.com/opencv/opencv/blob/097891e311fae1d8354eb092a0fd0171e630d78c/modules/imgcodecs/src/exif.cpp
 //
-// Ported from torchvision's csrc/io/image/cpu/exif.h into torchcodec. Trimmed
-// to the JPEG path only (PNG EXIF is added when decode_png is migrated) and
-// made always-on: torchcodec always applies EXIF orientation after decoding.
+// Ported from torchvision's csrc/io/image/cpu/exif.h into torchcodec. Provides
+// the shared EXIF parsing (fetch_exif_orientation) and the orientation
+// transform used by both the JPEG and PNG decoders. torchcodec always applies
+// EXIF orientation after decoding. The per-format helpers that pull the raw
+// EXIF bytes out of a jpeg/png stream live in DecodeJpeg.cpp / DecodePng.cpp.
 
 #include <torch/csrc/stable/ops.h>
 #include <torch/headeronly/util/Exception.h>

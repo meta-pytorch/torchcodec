@@ -24,3 +24,4 @@ conda install -y pybind11 -c conda-forge
 python -m pip install "scikit-build-core>=0.10" ninja
 
 conda install -y libjpeg-turbo -c pytorch
+conda install -y libpng -c conda-forge

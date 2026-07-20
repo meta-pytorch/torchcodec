@@ -10,7 +10,7 @@ from pathlib import Path
 
 import torch
 
-from torchcodec._core.ops import decode_jpeg as _decode_jpeg
+from torchcodec._core.ops import decode_jpeg as _decode_jpeg, decode_png as _decode_png
 
 # TODO_IMAGE: we need to make FFmpeg an optional dependency
 
@@ -85,3 +85,29 @@ def decode_jpeg(
     """
     data = _read_file_to_tensor(source)
     return _decode_jpeg(data, mode.value)
+
+
+def decode_png(
+    # TODO_IMAGE: support bytes and file-like
+    source: str | Path,
+    *,
+    # TODO_IMAGE: The default value of all decoders should be "RGB", not "unchanged".
+    mode: ImageColorMode = ImageColorMode.UNCHANGED,
+) -> torch.Tensor:
+    """Decode a PNG file into a uint8 tensor of shape ``(C, H, W)``.
+
+    EXIF orientation is always applied.
+
+    Args:
+        source: Path to a PNG file. Only file paths are supported for now.
+        mode: Desired :class:`ImageColorMode`. ``UNCHANGED`` (default) keeps the
+            image's native number of channels. All modes (``UNCHANGED``,
+            ``GRAY``, ``GRAY_ALPHA``, ``RGB``, ``RGB_ALPHA``) are supported for
+            PNG.
+
+    Returns:
+        A ``(C, H, W)`` tensor. The dtype is ``uint8`` for 8-bit PNGs and
+        ``uint16`` for 16-bit PNGs.
+    """
+    data = _read_file_to_tensor(source)
+    return _decode_png(data, mode.value)
