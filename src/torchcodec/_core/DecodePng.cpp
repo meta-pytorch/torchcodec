@@ -45,6 +45,7 @@ torch::stable::Tensor decode_png(
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <optional>
 #include <string>
 
@@ -60,6 +61,22 @@ namespace {
 bool is_little_endian() {
   uint32_t x = 1;
   return *(uint8_t*)&x;
+}
+
+struct PngErrorContext {
+  char error_message[256] = "";
+};
+
+void png_error_callback(png_structp png_ptr, png_const_charp error_message) {
+  auto* error_ctx = static_cast<PngErrorContext*>(png_get_error_ptr(png_ptr));
+  if (error_ctx != nullptr) {
+    std::snprintf(
+        error_ctx->error_message,
+        sizeof(error_ctx->error_message),
+        "%s",
+        error_message);
+  }
+  png_longjmp(png_ptr, 1);
 }
 
 int fetch_png_exif_orientation(png_structp png_ptr, png_infop info_ptr) {
@@ -97,6 +114,12 @@ torch::stable::Tensor decode_png(
   auto datap = data.const_data_ptr<uint8_t>();
   auto datap_len = data.numel();
 
+  // Capture libpng's error message (see png_error_callback) so we can report it
+  // instead of a generic "internal error".
+  PngErrorContext error_ctx;
+  png_set_error_fn(
+      png_ptr, &error_ctx, png_error_callback, /*warn_fn=*/nullptr);
+
   // NOTE: libpng uses setjmp/longjmp for error handling. longjmp does not
   // unwind C++ stack frames, so destructors of objects created after setjmp
   // won't run. We use std::optional to declare tensors before setjmp while
@@ -106,7 +129,7 @@ torch::stable::Tensor decode_png(
   if (setjmp(png_jmpbuf(png_ptr)) != 0) {
     tensor.reset();
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-    STD_TORCH_CHECK(false, "Internal error.");
+    STD_TORCH_CHECK(false, "decode_png failed: ", error_ctx.error_message);
   }
   STD_TORCH_CHECK(datap_len >= 8, "Content is too small for png!")
   auto is_png = !png_sig_cmp(datap, 0, 8);
@@ -126,7 +149,7 @@ torch::stable::Tensor decode_png(
     auto reader = static_cast<Reader*>(png_get_io_ptr(png_ptr));
     STD_TORCH_CHECK(
         reader->count >= bytes,
-        "Out of bound read in decode_png. Probably, the input image is corrupted");
+        "Out of bound read in decode_png. The input image might be corrupted?");
     std::copy(reader->ptr, reader->ptr + bytes, output);
     reader->ptr += bytes;
     reader->count -= bytes;

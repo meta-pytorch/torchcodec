@@ -3552,16 +3552,35 @@ class TestImageDecoder:
         with pytest.raises(RuntimeError, match=match):
             decode_fn(path)
 
-    @needs_jpeg
+    @pytest.mark.parametrize(
+        "decode_fn, asset, ext, match",
+        (
+            pytest.param(
+                decode_jpeg,
+                GRADIENT_JPEG,
+                "jpg",
+                "Image is incomplete or truncated",
+                marks=pytest.mark.needs_jpeg,
+                id="jpeg",
+            ),
+            pytest.param(
+                decode_png,
+                GRADIENT_PNG,
+                "png",
+                "Out of bound read",
+                marks=pytest.mark.needs_png,
+                id="png",
+            ),
+        ),
+    )
     @pytest.mark.parametrize("div", (2, 3, 4))
-    def test_truncated_jpeg_raises(self, tmp_path, div):
-        # A JPEG truncated mid-scan must raise, not crash.
-        # See TODO for details.
-        data = GRADIENT_JPEG.path.read_bytes()
-        path = tmp_path / "truncated.jpg"
+    def test_truncated_raises(self, tmp_path, div, decode_fn, asset, ext, match):
+        # A file truncated mid-stream must raise, not crash.
+        data = asset.path.read_bytes()
+        path = tmp_path / f"truncated.{ext}"
         path.write_bytes(data[: len(data) // div])
-        with pytest.raises(RuntimeError, match="Image is incomplete or truncated"):
-            decode_jpeg(path)
+        with pytest.raises(RuntimeError, match=match):
+            decode_fn(path)
 
     @needs_png
     @pytest.mark.parametrize("asset", (GRADIENT_PNG, GRAYSCALE_PNG, RGBA_PNG))
@@ -3584,15 +3603,13 @@ class TestImageDecoder:
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
     @needs_png
-    @pytest.mark.skip(
-        reason="Truncated PNG may segfault with torchvision's setjmp/longjmp "
-        "structure; to be addressed later."
-    )
-    @pytest.mark.parametrize("div", (2, 3, 4))
-    def test_truncated_png_raises(self, tmp_path, div):
-        # A PNG truncated mid-stream must raise, not crash.
-        data = GRADIENT_PNG.path.read_bytes()
-        path = tmp_path / "truncated.png"
-        path.write_bytes(data[: len(data) // div])
-        with pytest.raises(RuntimeError):
+    def test_corrupt_png_raises(self, tmp_path):
+        # Corrupting the IHDR chunk type makes libpng raise an error (its stored
+        # CRC no longer matches). This exercizes the error callback and the
+        # setjmp/longjmp handling.
+        data = bytearray(GRADIENT_PNG.path.read_bytes())
+        data[12:16] = b"XXXX"  # the "IHDR" chunk type, at a fixed offset
+        path = tmp_path / "corrupt.png"
+        path.write_bytes(bytes(data))
+        with pytest.raises(RuntimeError, match="CRC error"):
             decode_png(path)
