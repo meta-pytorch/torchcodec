@@ -10,7 +10,7 @@ from pathlib import Path
 
 import torch
 
-from torchcodec._core.ops import decode_jpeg as _decode_jpeg
+from torchcodec._core.ops import decode_jpeg as _decode_jpeg, decode_png as _decode_png
 
 # TODO_IMAGE: we need to make FFmpeg an optional dependency
 
@@ -72,16 +72,16 @@ def decode_jpeg(
 ) -> torch.Tensor:
     # TODO_IMAGE We should ensure we build and link against turbo. Maybe by
     # checking the symbols of the bundled libjpeg shared library at repair time.
-    """Decode a JPEG file into a uint8 tensor of shape ``(C, H, W)``.
-
-    Args:
-        source: Path to a JPEG file. Only file paths are supported for now.
-        mode: Desired :class:`ImageColorMode`. ``UNCHANGED`` (default) keeps the
-            image's native number of channels. Currently only ``UNCHANGED``,
-            ``GRAY`` and ``RGB`` are supported for JPEG.
-
-    Returns:
-        A ``(C, H, W)`` uint8 tensor.
-    """
+    """Decode a JPEG file into a uint8 tensor of shape ``(C, H, W)``."""
     data = _read_file_to_tensor(source)
     return _decode_jpeg(data, mode.value)
+
+
+def decode_png(
+    source: str | Path,
+    *,
+    mode: ImageColorMode = ImageColorMode.UNCHANGED,
+) -> torch.Tensor:
+    """Decode a PNG file into a uint8 tensor of shape ``(C, H, W)``."""
+    data = _read_file_to_tensor(source)
+    return _decode_png(data, mode.value)

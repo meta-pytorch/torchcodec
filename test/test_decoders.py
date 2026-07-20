@@ -34,7 +34,7 @@ from torchcodec.decoders._blocks import (
     PacketDecoder,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
-from torchcodec.decoders._image_decoders import decode_jpeg, ImageColorMode
+from torchcodec.decoders._image_decoders import decode_jpeg, decode_png, ImageColorMode
 from torchcodec.encoders import VideoEncoder
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
@@ -54,7 +54,9 @@ from .utils import (
     get_ffmpeg_minor_version,
     get_python_version,
     GRADIENT_JPEG,
+    GRADIENT_PNG,
     GRAYSCALE_JPEG,
+    GRAYSCALE_PNG,
     H264_10BITS,
     H265_VIDEO,
     in_fbcode,
@@ -68,7 +70,9 @@ from .utils import (
     needs_cuda,
     needs_ffmpeg_cli,
     needs_jpeg,
+    needs_png,
     psnr,
+    RGBA_PNG,
     SINE_16_CHANNEL_S16,
     SINE_MONO_F32,
     SINE_MONO_F64,
@@ -3447,36 +3451,75 @@ class TestImageDecoder:
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
-    @needs_jpeg
+    # TODO_IMAGE: Maybe create a parametrization helper, or store those
+    # pytest.params for each codec somewhere
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, ext, save_kwargs",
+        (
+            pytest.param(
+                decode_jpeg,
+                "JPEG",
+                "jpg",
+                {"quality": 95},
+                marks=pytest.mark.needs_jpeg,
+                id="jpeg",
+            ),
+            pytest.param(
+                decode_png, "PNG", "png", {}, marks=pytest.mark.needs_png, id="png"
+            ),
+        ),
+    )
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
-    def test_exif_orientation(self, tmp_path, orientation):
+    def test_exif_orientation(
+        self, tmp_path, orientation, decode_fn, fmt, ext, save_kwargs
+    ):
         arr = torch.randint(0, 256, (100, 101, 3), dtype=torch.uint8).numpy()
         img = Image.fromarray(arr)
         exif = img.getexif()
         exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
-        path = tmp_path / f"exif_{orientation}.jpg"
-        img.save(path, "JPEG", exif=exif.tobytes(), quality=95)
+        path = tmp_path / f"exif_{orientation}.{ext}"
+        img.save(path, fmt, exif=exif.tobytes(), **save_kwargs)
 
-        decoded = decode_jpeg(path, mode=ImageColorMode.RGB)
+        decoded = decode_fn(path, mode=ImageColorMode.RGB)
         reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
 
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
-    @needs_jpeg
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, ext, save_kwargs",
+        (
+            pytest.param(
+                decode_jpeg,
+                "JPEG",
+                "jpg",
+                {"quality": 95},
+                marks=pytest.mark.needs_jpeg,
+                id="jpeg",
+            ),
+            pytest.param(
+                decode_png, "PNG", "png", {}, marks=pytest.mark.needs_png, id="png"
+            ),
+        ),
+    )
     @pytest.mark.parametrize("size", (65533, 1, 7, 10, 23, 33))
-    def test_invalid_exif(self, tmp_path, size):
-        # Malformed EXIF must not crash; output should match PIL (which ignores
-        # the bad EXIF). Inspired by a Pillow test.
+    def test_invalid_exif(self, tmp_path, size, decode_fn, fmt, ext, save_kwargs):
+        # Malformed EXIF must not crash. Inspired by a Pillow test.
         arr = torch.randint(0, 256, (100, 101, 3), dtype=torch.uint8).numpy()
         img = Image.fromarray(arr)
-        path = tmp_path / f"invalid_exif_{size}.jpg"
-        img.save(path, "JPEG", exif=b"1" * size, quality=95)
+        path = tmp_path / f"invalid_exif_{size}.{ext}"
+        img.save(path, fmt, exif=b"1" * size, **save_kwargs)
 
-        decoded = decode_jpeg(path, mode=ImageColorMode.RGB)
-        reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
-        assert decoded.shape == reference.shape
-        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+        decoded = decode_fn(path, mode=ImageColorMode.RGB)
+        assert decoded.shape == (3, 100, 101)
+
+        # For JPEG the output should also match PIL, which ignores the bad EXIF.
+        # We can't check this for PNG: PIL's exif_transpose raises on a malformed
+        # eXIf chunk instead of ignoring it, so there's no clean reference.
+        if decode_fn is decode_jpeg:
+            reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
+            assert decoded.shape == reference.shape
+            assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
     @needs_jpeg
     def test_bad_huffman_decodes(self):
@@ -3484,12 +3527,30 @@ class TestImageDecoder:
         # doesn't raise.
         decode_jpeg(BAD_HUFFMAN_JPEG.path)
 
-    @needs_jpeg
-    def test_not_a_jpeg_raises(self, tmp_path):
-        path = tmp_path / "garbage.jpg"
+    @pytest.mark.parametrize(
+        "decode_fn, ext, match",
+        (
+            pytest.param(
+                decode_jpeg,
+                "jpg",
+                "Not a JPEG",
+                marks=pytest.mark.needs_jpeg,
+                id="jpeg",
+            ),
+            pytest.param(
+                decode_png,
+                "png",
+                "Content is not png",
+                marks=pytest.mark.needs_png,
+                id="png",
+            ),
+        ),
+    )
+    def test_not_an_image_raises(self, tmp_path, decode_fn, ext, match):
+        path = tmp_path / f"garbage.{ext}"
         path.write_bytes(b"\x00" * 100)
-        with pytest.raises(RuntimeError, match="Not a JPEG"):
-            decode_jpeg(path)
+        with pytest.raises(RuntimeError, match=match):
+            decode_fn(path)
 
     @needs_jpeg
     @pytest.mark.parametrize("div", (2, 3, 4))
@@ -3501,3 +3562,37 @@ class TestImageDecoder:
         path.write_bytes(data[: len(data) // div])
         with pytest.raises(RuntimeError, match="Image is incomplete or truncated"):
             decode_jpeg(path)
+
+    @needs_png
+    @pytest.mark.parametrize("asset", (GRADIENT_PNG, GRAYSCALE_PNG, RGBA_PNG))
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            (ImageColorMode.UNCHANGED, None),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_png_against_pil(self, asset, mode, pil_mode):
+        decoded = decode_png(asset.path, mode=mode)
+
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_png
+    @pytest.mark.skip(
+        reason="Truncated PNG may segfault with torchvision's setjmp/longjmp "
+        "structure; to be addressed later."
+    )
+    @pytest.mark.parametrize("div", (2, 3, 4))
+    def test_truncated_png_raises(self, tmp_path, div):
+        # A PNG truncated mid-stream must raise, not crash.
+        data = GRADIENT_PNG.path.read_bytes()
+        path = tmp_path / "truncated.png"
+        path.write_bytes(data[: len(data) // div])
+        with pytest.raises(RuntimeError):
+            decode_png(path)

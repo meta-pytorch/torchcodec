@@ -186,6 +186,7 @@ get_wav_metadata_from_decoder = (
 )
 
 decode_jpeg = torch.ops.torchcodec_ns.decode_jpeg.default
+decode_png = torch.ops.torchcodec_ns.decode_png.default
 
 
 # =============================

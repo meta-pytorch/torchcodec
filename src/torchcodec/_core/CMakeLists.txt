@@ -21,6 +21,15 @@ find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(Python3 COMPONENTS Development Interpreter)
 
+if(APPLE)
+    # Some CI runners ship a Mono.framework which contains headers for libjpeg,
+    # libpng, etc. We do not want those headers to be found - they're old and
+    # incompatible with what we do here (e.g. missing eXIf support in libpng).
+    # On the CI we want the conda-forge-provided libraries to be found first. So
+    # we tell CMake to search for 'frameworks' last.
+    set(CMAKE_FIND_FRAMEWORK LAST)
+endif()
+
 # libjpeg is an optional build-time dependency for the CPU JPEG image decoder.
 # When found, we compile decode_jpeg with libjpeg support and link against it.
 # When absent, decode_jpeg still exists but raises an actionable error at call
@@ -29,7 +38,6 @@ if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
     # JPEG_ROOT will automatically be passed to find_package(JPEG) by CMake if it is
     # set. We fallback to the conda prefix if it is not set.
     if(WIN32)
-        # conda puts libraries under $CONDA_PREFIX/Library on Windows.
         set(JPEG_ROOT "$ENV{CONDA_PREFIX}/Library")
     else()
         set(JPEG_ROOT "$ENV{CONDA_PREFIX}")
@@ -42,6 +50,22 @@ if(JPEG_FOUND)
     message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
 else()
     message(STATUS "libjpeg NOT found: torchcodec.decode_jpeg will raise at runtime.")
+endif()
+
+# same as libjpeg, libpng is an optional build-time dependency for the CPU PNG
+# image decoder.
+if(NOT DEFINED PNG_ROOT AND DEFINED ENV{CONDA_PREFIX})
+    if(WIN32)
+        set(PNG_ROOT "$ENV{CONDA_PREFIX}/Library")
+    else()
+        set(PNG_ROOT "$ENV{CONDA_PREFIX}")
+    endif()
+endif()
+find_package(PNG)  # Not REQUIRED on purpose. Transitively pulls in ZLIB.
+if(PNG_FOUND)
+    message(STATUS "libpng found: building torchcodec with PNG image decoding support.")
+else()
+    message(STATUS "libpng NOT found: torchcodec.decode_png will raise at runtime.")
 endif()
 
 # Read a list variable from sources.bzl, the single source of truth for the
@@ -227,6 +251,13 @@ function(make_torchcodec_libraries
     if(JPEG_FOUND)
         target_compile_definitions(${core_library_name} PRIVATE JPEG_FOUND=1)
         target_link_libraries(${core_library_name} PRIVATE JPEG::JPEG)
+    endif()
+
+    # Optional libpng support for the CPU PNG image decoder (DecodePng.cpp).
+    # PNG_FOUND gates both the compile-time code path and the link.
+    if(PNG_FOUND)
+        target_compile_definitions(${core_library_name} PRIVATE PNG_FOUND=1)
+        target_link_libraries(${core_library_name} PRIVATE PNG::PNG)
     endif()
 
     if(ENABLE_CUDA)
