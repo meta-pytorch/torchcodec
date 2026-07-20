@@ -3490,3 +3490,14 @@ class TestImageDecoder:
         path.write_bytes(b"\x00" * 100)
         with pytest.raises(RuntimeError, match="Not a JPEG"):
             decode_jpeg(path)
+
+    @needs_jpeg
+    @pytest.mark.parametrize("div", (2, 3, 4))
+    def test_truncated_jpeg_raises(self, tmp_path, div):
+        # A JPEG truncated mid-scan must raise, not crash.
+        # See TODO for details.
+        data = GRADIENT_JPEG.path.read_bytes()
+        path = tmp_path / "truncated.jpg"
+        path.write_bytes(data[: len(data) // div])
+        with pytest.raises(RuntimeError, match="Image is incomplete or truncated"):
+            decode_jpeg(path)
