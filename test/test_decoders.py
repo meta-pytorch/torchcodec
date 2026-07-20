@@ -3451,9 +3451,8 @@ class TestImageDecoder:
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
-    # Each param carries the decode function plus the PIL save format, file
-    # extension and any extra save kwargs, and a per-format skip marker (handled
-    # in conftest.py).
+    # TODO_IMAGE: Maybe create a parametrization helper, or store those
+    # pytest.params for each codec somewhere
     @pytest.mark.parametrize(
         "decode_fn, fmt, ext, save_kwargs",
         (
@@ -3487,22 +3486,40 @@ class TestImageDecoder:
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
-    @needs_jpeg
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, ext, save_kwargs",
+        (
+            pytest.param(
+                decode_jpeg,
+                "JPEG",
+                "jpg",
+                {"quality": 95},
+                marks=pytest.mark.needs_jpeg,
+                id="jpeg",
+            ),
+            pytest.param(
+                decode_png, "PNG", "png", {}, marks=pytest.mark.needs_png, id="png"
+            ),
+        ),
+    )
     @pytest.mark.parametrize("size", (65533, 1, 7, 10, 23, 33))
-    def test_invalid_exif(self, tmp_path, size):
-        # Malformed EXIF must not crash; output should match PIL (which ignores
-        # the bad EXIF). Inspired by a Pillow test. JPEG-only: for PNG, PIL's
-        # exif_transpose raises on a malformed eXIf chunk instead of ignoring it,
-        # so there's no clean reference to compare against.
+    def test_invalid_exif(self, tmp_path, size, decode_fn, fmt, ext, save_kwargs):
+        # Malformed EXIF must not crash. Inspired by a Pillow test.
         arr = torch.randint(0, 256, (100, 101, 3), dtype=torch.uint8).numpy()
         img = Image.fromarray(arr)
-        path = tmp_path / f"invalid_exif_{size}.jpg"
-        img.save(path, "JPEG", exif=b"1" * size, quality=95)
+        path = tmp_path / f"invalid_exif_{size}.{ext}"
+        img.save(path, fmt, exif=b"1" * size, **save_kwargs)
 
-        decoded = decode_jpeg(path, mode=ImageColorMode.RGB)
-        reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
-        assert decoded.shape == reference.shape
-        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+        decoded = decode_fn(path, mode=ImageColorMode.RGB)
+        assert decoded.shape == (3, 100, 101)
+
+        # For JPEG the output should also match PIL, which ignores the bad EXIF.
+        # We can't check this for PNG: PIL's exif_transpose raises on a malformed
+        # eXIf chunk instead of ignoring it, so there's no clean reference.
+        if decode_fn is decode_jpeg:
+            reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
+            assert decoded.shape == reference.shape
+            assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
     @needs_jpeg
     def test_bad_huffman_decodes(self):
