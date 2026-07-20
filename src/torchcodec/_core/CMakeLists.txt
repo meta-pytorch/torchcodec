@@ -21,6 +21,18 @@ find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(Python3 COMPONENTS Development Interpreter)
 
+if(APPLE)
+    # On macOS, CMAKE_FIND_FRAMEWORK defaults to FIRST, so find_package() searches
+    # macOS frameworks *before* JPEG_ROOT/PNG_ROOT/conda. Some CI runners ship a
+    # Mono.framework whose single Headers dir bundles ancient jpeglib.h, png.h and
+    # zlib.h. find_package(JPEG) then resolves its include dir to that framework,
+    # which puts Mono's Headers on the include path for *every* source -- and its
+    # png.h (no eXIf support, outdated png_sig_cmp/png_const_bytep ABI) shadows
+    # conda's real png.h, breaking the PNG build. Search frameworks last, before
+    # both the JPEG and PNG lookups, so the conda libraries win.
+    set(CMAKE_FIND_FRAMEWORK LAST)
+endif()
+
 # libjpeg is an optional build-time dependency for the CPU JPEG image decoder.
 # When found, we compile decode_jpeg with libjpeg support and link against it.
 # When absent, decode_jpeg still exists but raises an actionable error at call
@@ -56,14 +68,6 @@ if(NOT DEFINED PNG_ROOT AND DEFINED ENV{CONDA_PREFIX})
     else()
         set(PNG_ROOT "$ENV{CONDA_PREFIX}")
     endif()
-endif()
-if(APPLE)
-    # On macOS, CMAKE_FIND_FRAMEWORK defaults to FIRST, so find_package(PNG)
-    # searches macOS frameworks *before* PNG_ROOT/conda. Some CI runners ship a
-    # Mono.framework that bundles an ancient libpng (no eXIf support, outdated
-    # png_sig_cmp/png_const_bytep ABI), which then shadows the real libpng and
-    # breaks the build. Search frameworks last so the conda libpng wins.
-    set(CMAKE_FIND_FRAMEWORK LAST)
 endif()
 find_package(PNG)  # Not REQUIRED on purpose. Transitively pulls in ZLIB.
 if(PNG_FOUND)
