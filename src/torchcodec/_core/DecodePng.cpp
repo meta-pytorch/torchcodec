@@ -122,14 +122,11 @@ void read_callback(png_structp png_ptr, png_bytep output, png_size_t bytes) {
 struct PngHeader {
   png_uint_32 width;
   png_uint_32 height;
-  int channels;
+  int num_output_channels;
   int bit_depth;
-  int number_of_passes;
+  int num_passes;
 };
 
-// Reads the PNG header and configures the requested color transforms. Contains
-// a setjmp() point, so it must not declare anything needing a non-trivial
-// destructor. See Note [libpng error handling].
 PngHeader read_header_and_configure(
     png_structp& png_ptr,
     png_infop& info_ptr,
@@ -137,14 +134,10 @@ PngHeader read_header_and_configure(
     SourceCtx& source_ctx,
     ImageReadMode read_mode) {
   if (setjmp(png_jmpbuf(png_ptr)) != 0) {
-    // See Note [libpng error handling]
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
     STD_TORCH_CHECK(false, "decode_png failed: ", error_ctx.error_message);
   }
 
-  // The 8-byte offset in source_ctx (see decode_png) skips the PNG signature we
-  // already validated, so we tell libpng about those 8 bytes here.
-  png_set_sig_bytes(png_ptr, 8);
   png_set_read_fn(png_ptr, &source_ctx, read_callback);
   png_read_info(png_ptr, info_ptr);
 
@@ -164,7 +157,7 @@ PngHeader read_header_and_configure(
 
   if (retval != 1) {
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-    STD_TORCH_CHECK(retval == 1, "Could read image metadata from content.")
+    STD_TORCH_CHECK(retval == 1, "Could not read image metadata from content.")
   }
 
   if (bit_depth > 8 && bit_depth != 16) {
@@ -176,17 +169,17 @@ PngHeader read_header_and_configure(
         ". Only <=8 and 16 are supported.")
   }
 
-  int channels = png_get_channels(png_ptr, info_ptr);
+  int num_output_channels = png_get_channels(png_ptr, info_ptr);
 
   if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8) {
     png_set_expand_gray_1_2_4_to_8(png_ptr);
   }
 
-  int number_of_passes;
+  int num_passes;
   if (interlace_type == PNG_INTERLACE_ADAM7) {
-    number_of_passes = png_set_interlace_handling(png_ptr);
+    num_passes = png_set_interlace_handling(png_ptr);
   } else {
-    number_of_passes = 1;
+    num_passes = 1;
   }
 
   if (read_mode != ImageReadMode::Unchanged) {
@@ -210,7 +203,7 @@ PngHeader read_header_and_configure(
           if (has_color) {
             png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
           }
-          channels = 1;
+          num_output_channels = 1;
         }
         break;
       case ImageReadMode::GrayAlpha:
@@ -227,7 +220,7 @@ PngHeader read_header_and_configure(
           if (has_color) {
             png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
           }
-          channels = 2;
+          num_output_channels = 2;
         }
         break;
       case ImageReadMode::Rgb:
@@ -242,7 +235,7 @@ PngHeader read_header_and_configure(
           if (has_alpha) {
             png_set_strip_alpha(png_ptr);
           }
-          channels = 3;
+          num_output_channels = 3;
         }
         break;
       case ImageReadMode::RgbAlpha:
@@ -257,7 +250,7 @@ PngHeader read_header_and_configure(
           if (!has_alpha) {
             png_set_add_alpha(png_ptr, (1 << bit_depth) - 1, PNG_FILLER_AFTER);
           }
-          channels = 4;
+          num_output_channels = 4;
         }
         break;
       default:
@@ -269,12 +262,9 @@ PngHeader read_header_and_configure(
     png_read_update_info(png_ptr, info_ptr);
   }
 
-  return {width, height, channels, bit_depth, number_of_passes};
+  return {width, height, num_output_channels, bit_depth, num_passes};
 }
 
-// The actual decoding loop, row by row. Contains a setjmp() point, so it must
-// not declare anything needing a non-trivial destructor, and `tensor` must be
-// owned by the caller (decode_png). See Note [libpng error handling].
 void decode_rows(
     png_structp& png_ptr,
     png_infop& info_ptr,
@@ -294,7 +284,7 @@ void decode_rows(
   }
 
   auto output_ptr = (uint8_t*)output.mutable_data_ptr();
-  for (int pass = 0; pass < header.number_of_passes; pass++) {
+  for (int pass = 0; pass < header.num_passes; pass++) {
     for (png_uint_32 i = 0; i < header.height; ++i) {
       png_read_row(png_ptr, output_ptr, nullptr);
       output_ptr += num_pixels_per_row * (is_16_bits ? 2 : 1);
@@ -311,29 +301,24 @@ torch::stable::Tensor decode_png(
   validate_encoded_data(input);
 
   auto input_ptr = input.const_data_ptr<uint8_t>();
-  STD_TORCH_CHECK(input.numel() >= 8, "Content is too small for png!")
-  STD_TORCH_CHECK(!png_sig_cmp(input_ptr, 0, 8), "Content is not png!")
 
   auto png_ptr =
       png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-  STD_TORCH_CHECK(png_ptr, "libpng read structure allocation failed!")
+  STD_TORCH_CHECK(
+      png_ptr != nullptr, "libpng read structure allocation failed!")
   auto info_ptr = png_create_info_struct(png_ptr);
-  if (!info_ptr) {
+  if (info_ptr == nullptr) {
     png_destroy_read_struct(&png_ptr, nullptr, nullptr);
-    // Seems redundant with the if statement. done here to avoid leaking memory.
     STD_TORCH_CHECK(info_ptr, "libpng info structure allocation failed!")
   }
 
   ErrorCtx error_ctx;
   png_set_error_fn(png_ptr, &error_ctx, error_callback, /*warn_fn=*/nullptr);
 
-  // The 8-byte offset skips the PNG signature we already validated above.
   SourceCtx source_ctx;
-  source_ctx.ptr = png_const_bytep(input_ptr) + 8;
-  source_ctx.count = input.numel() - 8;
+  source_ctx.ptr = png_const_bytep(input_ptr);
+  source_ctx.count = input.numel();
 
-  // `output` is declared here, in a function that does NOT call setjmp(). See
-  // Note [libpng error handling].
   torch::stable::Tensor output;
 
   auto header = read_header_and_configure(
@@ -343,10 +328,10 @@ torch::stable::Tensor decode_png(
       source_ctx,
       static_cast<ImageReadMode>(mode));
 
-  auto num_pixels_per_row = header.width * header.channels;
+  auto num_pixels_per_row = header.width * header.num_output_channels;
   auto is_16_bits = header.bit_depth == 16;
   output = torch::stable::empty(
-      {int64_t(header.height), int64_t(header.width), header.channels},
+      {int64_t(header.height), int64_t(header.width), header.num_output_channels},
       is_16_bits ? kStableUInt16 : kStableUInt8);
 
   decode_rows(

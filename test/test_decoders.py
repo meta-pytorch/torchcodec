@@ -3521,7 +3521,7 @@ class TestImageDecoder:
         "decode_fn, ext, match",
         (
             _jpeg_param("jpg", "Not a JPEG"),
-            _png_param("png", "Content is not png"),
+            _png_param("png", "Not a PNG file"),
         ),
     )
     def test_not_an_image_raises(self, tmp_path, decode_fn, ext, match):
