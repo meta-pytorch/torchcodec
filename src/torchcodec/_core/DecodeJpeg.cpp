@@ -17,8 +17,8 @@
 namespace facebook::torchcodec {
 
 torch::stable::Tensor decode_jpeg(
-    const torch::stable::Tensor& data,
-    int64_t mode) {
+    [[maybe_unused]] const torch::stable::Tensor& data,
+    [[maybe_unused]] int64_t mode) {
   STD_TORCH_CHECK(
       false,
       "decode_jpeg: torchcodec was not compiled with libjpeg support. "

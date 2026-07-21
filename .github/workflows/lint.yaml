@@ -63,7 +63,9 @@ jobs:
       - name: Install dependencies and FFmpeg
         run: |
           bash packaging/install_pytorch.sh cpu "torch torchvision"
-          bash packaging/install_build_dependencies.sh
+          # mypy only type-checks, so it doesn't need the image decoder libs; the
+          # decoders compile as no-op stubs without them.
+          TORCHCODEC_SKIP_IMAGE_DEPS=1 bash packaging/install_build_dependencies.sh
           conda install "ffmpeg=7.0.1" pkg-config -c conda-forge
           ffmpeg -version
       - name: Build and install torchcodec
