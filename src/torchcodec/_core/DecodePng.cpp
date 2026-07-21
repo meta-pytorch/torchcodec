@@ -170,17 +170,19 @@ PngHeader read_header_and_configure(
   }
 
   if (read_mode != ImageReadMode::UNCHANGED) {
-    // TODO: consider supporting PNG_INFO_tRNS
     bool is_palette = (color_type & PNG_COLOR_MASK_PALETTE) != 0;
     bool has_color = (color_type & PNG_COLOR_MASK_COLOR) != 0;
     bool has_alpha = (color_type & PNG_COLOR_MASK_ALPHA) != 0;
+    // A tRNS chunk encodes transparency without a dedicated alpha channel.
+    // png_set_tRNS_to_alpha() expands it into a real alpha channel (it must be
+    // called after png_set_palette_to_rgb()).
+    bool has_trns = png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS) != 0;
 
     switch (read_mode) {
       case ImageReadMode::GRAY:
         if (color_type != PNG_COLOR_TYPE_GRAY) {
           if (is_palette) {
             png_set_palette_to_rgb(png_ptr);
-            has_alpha = true;
           }
 
           if (has_alpha) {
@@ -197,10 +199,11 @@ PngHeader read_header_and_configure(
         if (color_type != PNG_COLOR_TYPE_GRAY_ALPHA) {
           if (is_palette) {
             png_set_palette_to_rgb(png_ptr);
-            has_alpha = true;
           }
 
-          if (!has_alpha) {
+          if (has_trns) {
+            png_set_tRNS_to_alpha(png_ptr);
+          } else if (!has_alpha) {
             png_set_add_alpha(png_ptr, (1 << bit_depth) - 1, PNG_FILLER_AFTER);
           }
 
@@ -214,7 +217,6 @@ PngHeader read_header_and_configure(
         if (color_type != PNG_COLOR_TYPE_RGB) {
           if (is_palette) {
             png_set_palette_to_rgb(png_ptr);
-            has_alpha = true;
           } else if (!has_color) {
             png_set_gray_to_rgb(png_ptr);
           }
@@ -229,12 +231,13 @@ PngHeader read_header_and_configure(
         if (color_type != PNG_COLOR_TYPE_RGB_ALPHA) {
           if (is_palette) {
             png_set_palette_to_rgb(png_ptr);
-            has_alpha = true;
           } else if (!has_color) {
             png_set_gray_to_rgb(png_ptr);
           }
 
-          if (!has_alpha) {
+          if (has_trns) {
+            png_set_tRNS_to_alpha(png_ptr);
+          } else if (!has_alpha) {
             png_set_add_alpha(png_ptr, (1 << bit_depth) - 1, PNG_FILLER_AFTER);
           }
           num_output_channels = 4;

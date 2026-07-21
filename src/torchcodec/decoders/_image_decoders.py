@@ -58,9 +58,7 @@ def _read_file_to_tensor(path: str | Path) -> torch.Tensor:
 
 
 # Output modes each native codec can produce directly, for any input. Any output
-# mode not listed here is obtained via a post-decode conversion (see
-# _decode_with_mode). libpng can output all modes from any input; libjpeg has no
-# alpha support.
+# mode not listed here is obtained via a post-decode conversion.
 _JPEG_NATIVE_OUTPUT_MODES = frozenset(
     (ImageColorMode.UNCHANGED, ImageColorMode.GRAY, ImageColorMode.RGB)
 )
@@ -68,17 +66,12 @@ _PNG_NATIVE_OUTPUT_MODES = frozenset(ImageColorMode)
 
 
 def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
-    # img is (C, H, W); append a fully-opaque alpha channel.
     _, height, width = img.shape
     alpha = torch.full((1, height, width), torch.iinfo(img.dtype).max, dtype=img.dtype)
     return torch.cat([img, alpha], dim=0)
 
 
 def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tensor:
-    # Honor the requested output mode regardless of native codec support: if the
-    # codec can't produce it, decode to the closest base mode and convert here.
-    # This only implements the strict subset of conversions we currently need; it
-    # will grow over time.
     if mode in native_output_modes:
         return decode_fn(data, mode.value)
     if mode is ImageColorMode.GRAY_ALPHA:

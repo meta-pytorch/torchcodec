@@ -3453,9 +3453,6 @@ class TestImageDecoder:
         ),
     )
     def test_jpeg_against_pil(self, asset, mode, pil_mode):
-        # JPEG has no native alpha support; the GRAY_ALPHA / RGB_ALPHA modes are
-        # obtained by decoding to GRAY / RGB then appending an opaque alpha
-        # channel (see _decode_with_mode).
         decoded = decode_jpeg(asset.path, mode=mode)
 
         reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
@@ -3480,9 +3477,7 @@ class TestImageDecoder:
             _png_param("PNG", "png", {}, "LA"),
             _png_param("PNG", "png", {}, "RGB"),
             _png_param("PNG", "png", {}, "RGBA"),
-            # TODO_IMAGE: palette ("P") PNGs decoded to an alpha mode are broken
-            # (the tRNS transparency chunk isn't expanded, see DecodePng.cpp),
-            # so palette is left out here for now.
+            _png_param("PNG", "png", {}, "P"),
         ),
     )
     @pytest.mark.parametrize(
@@ -3507,7 +3502,12 @@ class TestImageDecoder:
         pil_mode,
         num_expected_channels,
     ):
-        # Every input color mode must be decodable to every output mode.
+        # Test that every input color mode is decodable to every output mode.
+
+        if source_mode == "P" and output_mode is ImageColorMode.UNCHANGED:
+            # TODO_IMAGE figure out what to do here
+            pytest.skip("UNCHANGED on a palette PNG returns raw palette indices")
+
         h, w = 40, 60
         xs = numpy.linspace(0, 255, w)
         ys = numpy.linspace(0, 255, h)
@@ -3545,6 +3545,68 @@ class TestImageDecoder:
             and not source_has_alpha
         ):
             assert (decoded[-1] == 255).all()
+
+    @staticmethod
+    def _make_transparent_png(path, kind):
+        # A PNG can encode transparency via a tRNS chunk instead of a full alpha
+        # channel: a transparent colorkey for gray/RGB images, or per-palette-
+        # entry alpha for palette images. The left half is transparent.
+        h, w = 16, 20
+        if kind == "rgb":
+            arr = numpy.empty((h, w, 3), numpy.uint8)
+            arr[:, : w // 2] = (10, 20, 30)
+            arr[:, w // 2 :] = (200, 100, 50)
+            Image.fromarray(arr, "RGB").save(path, transparency=(10, 20, 30))
+        elif kind == "gray":
+            arr = numpy.empty((h, w), numpy.uint8)
+            arr[:, : w // 2] = 42
+            arr[:, w // 2 :] = 200
+            Image.fromarray(arr, "L").save(path, transparency=42)
+        else:
+            assert kind == "palette"
+            px = numpy.zeros((h, w), numpy.uint8)
+            px[:, w // 2 :] = 1
+            im = Image.fromarray(px, "P")
+            im.putpalette([10, 20, 30, 200, 100, 50])
+            im.info["transparency"] = bytes([0, 255])  # per-index alpha
+            im.save(path)
+
+    @needs_png
+    @pytest.mark.parametrize("kind", ("rgb", "gray", "palette"))
+    @pytest.mark.parametrize(
+        "output_mode, pil_mode",
+        (
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_png_trns_transparency(self, tmp_path, kind, output_mode, pil_mode):
+        # tRNS transparency must be honored (not decoded as fully opaque) when
+        # decoding to an alpha mode.
+        path = tmp_path / f"{kind}.png"
+        self._make_transparent_png(path, kind)
+
+        decoded = decode_png(path, mode=output_mode)
+        reference = self._pil_to_tensor(Image.open(path).convert(pil_mode))
+        assert decoded.shape == reference.shape
+
+        # The alpha channel (the transparency itself) must match exactly: the
+        # left half is transparent (0), the right half opaque (255).
+        alpha, ref_alpha = decoded[-1], reference[-1]
+        assert_tensor_close_on_at_least(alpha, ref_alpha, percentage=99, atol=2)
+        assert (alpha == 0).any()
+        assert (alpha == 255).any()
+
+        # Color must match where visible. The color under fully-transparent
+        # pixels is irrelevant and PIL fills it differently than a straight
+        # gray/RGB conversion, so we don't compare it.
+        visible = (alpha > 0).unsqueeze(0).expand(decoded.shape[0] - 1, -1, -1)
+        assert_tensor_close_on_at_least(
+            decoded[:-1][visible],
+            reference[:-1][visible],
+            percentage=99,
+            atol=2,
+        )
 
     @pytest.mark.parametrize(
         "decode_fn, fmt, ext, save_kwargs",
