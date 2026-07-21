@@ -25,3 +25,4 @@ python -m pip install "scikit-build-core>=0.10" ninja
 
 conda install -y libjpeg-turbo -c pytorch
 conda install -y libpng -c conda-forge
+conda install -y libwebp -c conda-forge

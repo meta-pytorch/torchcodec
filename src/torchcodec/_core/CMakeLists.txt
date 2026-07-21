@@ -68,6 +68,22 @@ else()
     message(STATUS "libpng NOT found: torchcodec.decode_png will raise at runtime.")
 endif()
 
+# same as libjpeg/libpng, libwebp is an optional build-time dependency for the
+# CPU WebP image decoder (DecodeWebp.cpp).
+if(NOT DEFINED WebP_ROOT AND DEFINED ENV{CONDA_PREFIX})
+    if(WIN32)
+        set(WebP_ROOT "$ENV{CONDA_PREFIX}/Library")
+    else()
+        set(WebP_ROOT "$ENV{CONDA_PREFIX}")
+    endif()
+endif()
+find_package(WebP)  # Not REQUIRED on purpose. Provides the WebP::webp target.
+if(WebP_FOUND)
+    message(STATUS "libwebp found: building torchcodec with WebP image decoding support.")
+else()
+    message(STATUS "libwebp NOT found: torchcodec.decode_webp will raise at runtime.")
+endif()
+
 # Read a list variable from sources.bzl, the single source of truth for the
 # _core C++ source files shared with the internal Buck build. The .bzl file is
 # valid Python, so we exec it and print the requested list; configure_file
@@ -258,6 +274,13 @@ function(make_torchcodec_libraries
     if(PNG_FOUND)
         target_compile_definitions(${core_library_name} PRIVATE PNG_FOUND=1)
         target_link_libraries(${core_library_name} PRIVATE PNG::PNG)
+    endif()
+
+    # Optional libwebp support for the CPU WebP image decoder (DecodeWebp.cpp).
+    # WebP_FOUND gates both the compile-time code path and the link.
+    if(WebP_FOUND)
+        target_compile_definitions(${core_library_name} PRIVATE WEBP_FOUND=1)
+        target_link_libraries(${core_library_name} PRIVATE WebP::webp)
     endif()
 
     if(ENABLE_CUDA)
