@@ -55,7 +55,14 @@ def repair_linux(wheels):
 
     excludes = []
     for pattern in (
-        "libav*",
+        # FFmpeg libs, spelled out rather than "libav*" so we don't accidentally
+        # exclude libavif (which we DO want to bundle).
+        "libavcodec*",
+        "libavdevice*",
+        "libavfilter*",
+        "libavformat*",
+        "libavutil*",
+        "libavresample*",
         "libsw*",
         "libpostproc*",
         "libtorch*",
@@ -80,9 +87,23 @@ def repair_macos(wheels):
         env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
             [str(Path(conda_prefix) / "lib"), env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
         )
-    # delocate --exclude matches a substring of the dependency's basename.
+    # delocate --exclude matches a substring of the dependency's basename. We
+    # spell out the FFmpeg libs rather than using "libav" so we don't
+    # accidentally exclude libavif (which we DO want to bundle).
     excludes = []
-    for pattern in ("libav", "libsw", "libpostproc", "libtorch", "libc10", "libomp"):
+    for pattern in (
+        "libavcodec",
+        "libavdevice",
+        "libavfilter",
+        "libavformat",
+        "libavutil",
+        "libavresample",
+        "libsw",
+        "libpostproc",
+        "libtorch",
+        "libc10",
+        "libomp",
+    ):
         excludes += ["--exclude", pattern]
 
     for wheel in wheels:
