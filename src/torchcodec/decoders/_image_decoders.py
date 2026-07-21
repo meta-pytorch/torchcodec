@@ -142,8 +142,6 @@ def decode_webp(
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
-    # TODO_IMAGE: libwebp's simple decode API doesn't apply EXIF orientation, so
-    # we don't either (yet). This is inconsistent with decode_jpeg/decode_png.
     # TODO_IMAGE: animated webp files are not supported yet.
     """Decode a WebP file into a uint8 tensor of shape ``(C, H, W)``."""
     data = _read_file_to_tensor(source)

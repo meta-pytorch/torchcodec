@@ -142,7 +142,7 @@ def check_bundling():
     """Raise if:
     - a wheel bundles a lib that's not in the allowlist. This would raise if we
       ever try to bundle FFmpeg or torch/CUDA.
-    - a wheel does NOT bundle libjpeg or libpng.
+    - a wheel does NOT bundle libjpeg, libpng or libwebp.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
     """
 

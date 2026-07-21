@@ -34,11 +34,66 @@ torch::stable::Tensor decode_webp(
 #include "webp/decode.h"
 #include "webp/types.h"
 
+#include <cstring>
+
+#include "Exif.h"
 #include "ImageCommon.h"
 
 namespace facebook::torchcodec {
 
+using namespace exif_private;
+
 namespace {
+
+// Walk the RIFF container ourselves (no libwebpdemux dependency) to find the
+// EXIF orientation. WebP files are RIFF containers:
+//   "RIFF" | uint32le file_size | "WEBP" | chunks...
+// where each chunk is: fourcc(4) | uint32le payload_size | payload | one pad
+// byte when payload_size is odd. EXIF metadata only exists in extended (VP8X)
+// files, in an "EXIF" chunk holding raw TIFF-formatted EXIF data. Returns -1
+// (i.e. no rotation) when there's no usable EXIF chunk.
+int fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
+  constexpr size_t riff_header_size = 12; // "RIFF" + size + "WEBP"
+  if (size < riff_header_size || std::memcmp(data, "RIFF", 4) != 0 ||
+      std::memcmp(data + 8, "WEBP", 4) != 0) {
+    return -1;
+  }
+
+  size_t offset = riff_header_size;
+  while (offset + 8 <= size) {
+    const uint8_t* fourcc = data + offset;
+    uint32_t chunk_size = static_cast<uint32_t>(data[offset + 4]) |
+        (static_cast<uint32_t>(data[offset + 5]) << 8) |
+        (static_cast<uint32_t>(data[offset + 6]) << 16) |
+        (static_cast<uint32_t>(data[offset + 7]) << 24);
+    size_t payload_offset = offset + 8;
+    if (payload_offset + chunk_size > size) {
+      break; // truncated / malformed chunk
+    }
+
+    if (std::memcmp(fourcc, "EXIF", 4) == 0) {
+      const uint8_t* exif = data + payload_offset;
+      size_t exif_size = chunk_size;
+      // Some encoders prefix the payload with the "Exif\0\0" marker (like the
+      // JPEG APP1 segment); skip it so we're left with the TIFF header.
+      constexpr size_t exif_prefix_size = 6;
+      if (exif_size >= exif_prefix_size &&
+          std::memcmp(exif, "Exif\0\0", exif_prefix_size) == 0) {
+        exif += exif_prefix_size;
+        exif_size -= exif_prefix_size;
+      }
+      if (exif_size == 0) {
+        return -1;
+      }
+      return fetch_exif_orientation(
+          const_cast<unsigned char*>(exif), exif_size);
+    }
+
+    // Advance past the payload and the pad byte for odd-sized chunks.
+    offset = payload_offset + chunk_size + (chunk_size & 1);
+  }
+  return -1;
+}
 
 // libwebp natively decodes to RGB or RGBA only. The grayscale modes are
 // emulated in Python (see _image_decoders.py), so they never reach this op
@@ -99,7 +154,10 @@ torch::stable::Tensor decode_webp(
       kStableUInt8,
       deleter);
 
-  return stable_permute(output, {2, 0, 1});
+  int exif_orientation = fetch_webp_exif_orientation(input_ptr, input_size);
+
+  return exif_orientation_transform(
+      stable_permute(output, {2, 0, 1}), exif_orientation);
 }
 
 } // namespace facebook::torchcodec

@@ -3637,6 +3637,7 @@ class TestImageDecoder:
         (
             _jpeg_param("JPEG", "jpg", {"quality": 95}),
             _png_param("PNG", "png", {}),
+            _webp_param("WEBP", "webp", {"lossless": True}),
         ),
     )
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
@@ -3661,6 +3662,7 @@ class TestImageDecoder:
         (
             _jpeg_param("JPEG", "jpg", {"quality": 95}),
             _png_param("PNG", "png", {}),
+            _webp_param("WEBP", "webp", {"lossless": True}),
         ),
     )
     @pytest.mark.parametrize("size", (65533, 1, 7, 10, 23, 33))
