@@ -57,6 +57,33 @@ def _read_file_to_tensor(path: str | Path) -> torch.Tensor:
         return torch.frombuffer(data, dtype=torch.uint8)
 
 
+# Output modes each native codec can produce directly, for any input. Any output
+# mode not listed here is obtained via a post-decode conversion.
+_JPEG_NATIVE_OUTPUT_MODES = frozenset(
+    (ImageColorMode.UNCHANGED, ImageColorMode.GRAY, ImageColorMode.RGB)
+)
+_PNG_NATIVE_OUTPUT_MODES = frozenset(ImageColorMode)
+
+
+def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
+    _, height, width = img.shape
+    alpha = torch.full((1, height, width), torch.iinfo(img.dtype).max, dtype=img.dtype)
+    return torch.cat([img, alpha], dim=0)
+
+
+def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tensor:
+    if mode in native_output_modes:
+        return decode_fn(data, mode.value)
+    if mode is ImageColorMode.GRAY_ALPHA:
+        return _append_opaque_alpha(decode_fn(data, ImageColorMode.GRAY.value))
+    if mode is ImageColorMode.RGB_ALPHA:
+        return _append_opaque_alpha(decode_fn(data, ImageColorMode.RGB.value))
+    raise RuntimeError(
+        f"Reached an unexpected code path while decoding to mode {mode}. "
+        "This should never happen, please report a bug to the TorchCodec repo."
+    )
+
+
 # TODO_IMAGE: Since we're updating the decoders code a bit, we should run sanity
 # checks ensure we're not leaking anything (there was a leak on webp back then!).
 
@@ -65,23 +92,20 @@ def decode_jpeg(
     # TODO_IMAGE: support bytes and file-like
     source: str | Path,
     *,
-    # TODO_IMAGE: The default value of all decoders should be "RGB", not "unchanged".
-    # TODO_IMAGE: we should honor the desired mode across all codecs regardless
-    # of the native codec support.
-    mode: ImageColorMode = ImageColorMode.UNCHANGED,
+    mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
     # TODO_IMAGE We should ensure we build and link against turbo. Maybe by
     # checking the symbols of the bundled libjpeg shared library at repair time.
     """Decode a JPEG file into a uint8 tensor of shape ``(C, H, W)``."""
     data = _read_file_to_tensor(source)
-    return _decode_jpeg(data, mode.value)
+    return _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
 
 
 def decode_png(
     source: str | Path,
     *,
-    mode: ImageColorMode = ImageColorMode.UNCHANGED,
+    mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
     """Decode a PNG file into a uint8 tensor of shape ``(C, H, W)``."""
     data = _read_file_to_tensor(source)
-    return _decode_png(data, mode.value)
+    return _decode_with_mode(_decode_png, data, mode, _PNG_NATIVE_OUTPUT_MODES)
