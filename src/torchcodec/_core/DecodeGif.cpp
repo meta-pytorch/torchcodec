@@ -8,11 +8,13 @@
 
 #include <torch/csrc/stable/library.h>
 #include <torch/csrc/stable/ops.h>
-#include <torch/headeronly/core/TensorAccessor.h>
 #include <torch/headeronly/util/Exception.h>
 
+#include <torch/headeronly/core/MemoryFormat.h>
+
 #include <algorithm>
-#include <cstring>
+#include <cstdint>
+#include <optional>
 
 #include "ImageCommon.h"
 #include "StableABICompat.h"
@@ -20,111 +22,108 @@
 
 namespace facebook::torchcodec {
 
-typedef struct reader_helper_t {
-  uint8_t const* encoded_data; // input tensor data pointer
-  size_t encoded_data_size; // size of input tensor in bytes
-  size_t num_bytes_read; // number of bytes read so far in the tensor
-} reader_helper_t;
+namespace {
 
-// That function is used by GIFLIB routines to read the encoded bytes.
-// This reads `len` bytes and writes them into `buf`. The data is read from the
-// input tensor passed to decode_gif() starting at the `num_bytes_read`
-// position.
-int read_from_tensor(GifFileType* gifFile, GifByteType* buf, int len) {
-  // the UserData field was set in DGifOpen()
-  reader_helper_t* reader_helper =
-      static_cast<reader_helper_t*>(gifFile->UserData);
+struct SourceCtx {
+  const uint8_t* ptr; // current read position in the input tensor
+  size_t count; // number of bytes left to read
+};
 
-  size_t num_bytes_to_read = std::min(
-      (size_t)len,
-      reader_helper->encoded_data_size - reader_helper->num_bytes_read);
-  std::memcpy(
-      buf,
-      reader_helper->encoded_data + reader_helper->num_bytes_read,
-      num_bytes_to_read);
-  reader_helper->num_bytes_read += num_bytes_to_read;
-  return num_bytes_to_read;
+// Reader passed to DGifOpen(): giflib calls it to pull `bytes` encoded bytes
+// into `output`. We serve them from the input tensor (see SourceCtx), advancing
+// as we go, and return the number of bytes actually read.
+int read_callback(GifFileType* gif_file, GifByteType* output, int bytes) {
+  // UserData was set in DGifOpen().
+  auto* source_ctx = static_cast<SourceCtx*>(gif_file->UserData);
+  size_t num_bytes_to_read =
+      std::min(static_cast<size_t>(bytes), source_ctx->count);
+  std::copy(source_ctx->ptr, source_ctx->ptr + num_bytes_to_read, output);
+  source_ctx->ptr += num_bytes_to_read;
+  source_ctx->count -= num_bytes_to_read;
+  return static_cast<int>(num_bytes_to_read);
 }
 
-torch::stable::Tensor decode_gif(const torch::stable::Tensor& encoded_data) {
+} // namespace
+
+torch::stable::Tensor decode_gif(const torch::stable::Tensor& input) {
   // LibGif docs: https://giflib.sourceforge.net/intro.html
   // Refer over there for more details on the libgif API, API ref, and a
   // detailed description of the GIF format.
 
-  validate_encoded_data(encoded_data);
+  validate_encoded_data(input);
 
   int error = D_GIF_SUCCEEDED;
 
-  // We're using DGidOpen. The other entrypoints of libgif are
-  // DGifOpenFileName and DGifOpenFileHandle but we don't want to use those,
-  // since we need to read the encoded bytes from a tensor of encoded bytes, not
-  // from a file (for consistency with existing jpeg and png decoders). Using
-  // DGifOpen is the only way to read from a custom source.
-  // For that we need to provide a reader function `read_from_tensor` that
-  // reads from the tensor, and we have to keep track of the number of bytes
-  // read so far: this is why we need the reader_helper struct.
+  // We're using DGifOpen. The other entrypoints of libgif are DGifOpenFileName
+  // and DGifOpenFileHandle but we don't want to use those, since we need to
+  // read the encoded bytes from a tensor of encoded bytes, not from a file (for
+  // consistency with existing jpeg and png decoders). Using DGifOpen is the
+  // only way to read from a custom source, via the read_callback reader above.
 
   // TODO: We are potentially doing an unnecessary copy of the encoded bytes:
-  // - 1 copy in from file to tensor (in read_file())
-  // - 1 copy from tensor to GIFLIB buffers (in read_from_tensor())
+  // - 1 copy from file to tensor (in the Python _read_file_to_tensor())
+  // - 1 copy from tensor to GIFLIB buffers (in read_callback())
   // Since we're vendoring GIFLIB we can potentially modify the calls to
   // InternalRead() and just set the `buf` pointer to the tensor data directly.
   // That might even save allocation of those buffers.
   // If we do that, we'd have to make sure the buffers are never written to by
   // GIFLIB, otherwise we'd be overriding the tensor data.
-  reader_helper_t reader_helper;
-  reader_helper.encoded_data = encoded_data.const_data_ptr<uint8_t>();
-  reader_helper.encoded_data_size = encoded_data.numel();
-  reader_helper.num_bytes_read = 0;
-  GifFileType* gifFile =
-      DGifOpen(static_cast<void*>(&reader_helper), read_from_tensor, &error);
+  SourceCtx source_ctx{
+      .ptr = input.const_data_ptr<uint8_t>(),
+      .count = static_cast<size_t>(input.numel())};
+  GifFileType* gif_file =
+      DGifOpen(static_cast<void*>(&source_ctx), read_callback, &error);
 
   STD_TORCH_CHECK(
-      (gifFile != nullptr) && (error == D_GIF_SUCCEEDED),
-      "DGifOpenFileName() failed - ",
+      (gif_file != nullptr) && (error == D_GIF_SUCCEEDED),
+      "DGifOpen() failed - ",
       error);
 
-  if (DGifSlurp(gifFile) == GIF_ERROR) {
-    auto gifFileError = gifFile->Error;
-    DGifCloseFile(gifFile, &error);
-    STD_TORCH_CHECK(false, "DGifSlurp() failed - ", gifFileError);
+  if (DGifSlurp(gif_file) == GIF_ERROR) {
+    auto slurp_error = gif_file->Error;
+    DGifCloseFile(gif_file, &error);
+    STD_TORCH_CHECK(false, "DGifSlurp() failed - ", slurp_error);
   }
-  auto num_images = gifFile->ImageCount;
+  auto num_images = gif_file->ImageCount;
 
-  // This check should already done within DGifSlurp(), just to be safe
+  // This check should already be done within DGifSlurp(), just to be safe.
   STD_TORCH_CHECK(
       num_images > 0, "GIF file should contain at least one image!");
 
-  GifColorType bg = {0, 0, 0};
-  if (gifFile->SColorMap) {
-    bg = gifFile->SColorMap->Colors[gifFile->SBackGroundColor];
+  GifColorType bg{0, 0, 0};
+  if (gif_file->SColorMap) {
+    bg = gif_file->SColorMap->Colors[gif_file->SBackGroundColor];
   }
 
   // The GIFLIB docs say that the canvas's height and width are potentially
   // ignored by modern viewers, so to be on the safe side we set the output
   // height to max(canvas_height, first_image_height). Same for width.
   // https://giflib.sourceforge.net/whatsinagif/bits_and_bytes.html
-  auto out_h =
-      std::max(gifFile->SHeight, gifFile->SavedImages[0].ImageDesc.Height);
-  auto out_w =
-      std::max(gifFile->SWidth, gifFile->SavedImages[0].ImageDesc.Width);
+  auto output_h =
+      std::max(gif_file->SHeight, gif_file->SavedImages[0].ImageDesc.Height);
+  auto output_w =
+      std::max(gif_file->SWidth, gif_file->SavedImages[0].ImageDesc.Width);
 
-  // We always allocate a batched (N, C, H, W) tensor and squeeze the batch dim
-  // at the end for single-image GIFs. Unlike torchvision we output a plain
-  // contiguous tensor (not channels-last), for consistency with torchcodec's
-  // other image decoders; the accessor below works with any strides.
-  auto out = torch::stable::empty(
-      {int64_t(num_images), 3, int64_t(out_h), int64_t(out_w)}, kStableUInt8);
-  auto out_a = mutable_accessor<uint8_t, 4>(out);
-  for (int i = 0; i < num_images; i++) {
-    const SavedImage& img = gifFile->SavedImages[i];
+  auto output = torch::stable::empty(
+      {static_cast<int64_t>(num_images),
+       3,
+       static_cast<int64_t>(output_h),
+       static_cast<int64_t>(output_w)},
+      kStableUInt8,
+      std::nullopt,
+      std::nullopt,
+      std::nullopt,
+      torch::headeronly::MemoryFormat::ChannelsLast);
+  auto output_a = mutable_accessor<uint8_t, 4>(output);
+  for (int i = 0; i < num_images; ++i) {
+    const SavedImage& img = gif_file->SavedImages[i];
 
     GraphicsControlBlock gcb;
-    DGifSavedExtensionToGCB(gifFile, i, &gcb);
+    DGifSavedExtensionToGCB(gif_file, i, &gcb);
 
     const GifImageDesc& desc = img.ImageDesc;
     const ColorMapObject* cmap =
-        desc.ColorMap ? desc.ColorMap : gifFile->SColorMap;
+        desc.ColorMap ? desc.ColorMap : gif_file->SColorMap;
     STD_TORCH_CHECK(
         cmap != nullptr,
         "Global and local color maps are missing. This should never happen!");
@@ -148,31 +147,32 @@ torch::stable::Tensor decode_gif(const torch::stable::Tensor& encoded_data) {
         (gcb.DisposalMode == DISPOSAL_UNSPECIFIED ||
          gcb.DisposalMode == DISPOSE_DO_NOT ||
          gcb.DisposalMode == DISPOSE_PREVIOUS)) {
-      copy_frame(out, i, out, i - 1);
+      copy_frame(output, i, output, i - 1);
     } else {
-      // Background. If bg wasn't defined, it will be (0, 0, 0)
-      for (int h = 0; h < gifFile->SHeight; h++) {
-        for (int w = 0; w < gifFile->SWidth; w++) {
-          out_a[i][0][h][w] = bg.Red;
-          out_a[i][1][h][w] = bg.Green;
-          out_a[i][2][h][w] = bg.Blue;
+      // Background. If bg wasn't defined, it will be (0, 0, 0).
+      for (int h = 0; h < gif_file->SHeight; ++h) {
+        for (int w = 0; w < gif_file->SWidth; ++w) {
+          output_a[i][0][h][w] = bg.Red;
+          output_a[i][1][h][w] = bg.Green;
+          output_a[i][2][h][w] = bg.Blue;
         }
       }
     }
 
-    // Clip the frame to the output canvas. The output tensor is allocated from
-    // the canvas (SHeight/SWidth) and the first frame dimensions, but
-    // desc.{Top,Left,Height,Width} of any frame may place pixels outside it (a
-    // later frame larger than the first, or any frame with a non-zero offset).
-    // We just drop the pixels that would land outside of the allocated tensor.
-    for (int h = 0; h < desc.Height; h++) {
+    // The 'continue' blocks are to limit the frame to the output canvas. The
+    // output tensor is allocated from the canvas (SHeight/SWidth) and the first
+    // frame dimensions, but desc.{Top,Left,Height,Width} of any frame may place
+    // pixels outside it (a later frame larger than the first, or any frame with
+    // a non-zero offset).  We just drop the pixels that would land outside of
+    // the allocated tensor.
+    for (int h = 0; h < desc.Height; ++h) {
       const auto y = static_cast<int64_t>(desc.Top) + h;
-      if (y < 0 || y >= out_h) {
+      if (y < 0 || y >= output_h) {
         continue;
       }
-      for (int w = 0; w < desc.Width; w++) {
+      for (int w = 0; w < desc.Width; ++w) {
         const auto x = static_cast<int64_t>(desc.Left) + w;
-        if (x < 0 || x >= out_w) {
+        if (x < 0 || x >= output_w) {
           continue;
         }
         auto c = img.RasterBits[h * desc.Width + w];
@@ -180,9 +180,9 @@ torch::stable::Tensor decode_gif(const torch::stable::Tensor& encoded_data) {
           continue;
         }
         GifColorType rgb = cmap->Colors[c];
-        out_a[i][0][y][x] = rgb.Red;
-        out_a[i][1][y][x] = rgb.Green;
-        out_a[i][2][y][x] = rgb.Blue;
+        output_a[i][0][y][x] = rgb.Red;
+        output_a[i][1][y][x] = rgb.Green;
+        output_a[i][2][y][x] = rgb.Blue;
       }
     }
   }
@@ -190,13 +190,13 @@ torch::stable::Tensor decode_gif(const torch::stable::Tensor& encoded_data) {
   // Remove the batch dim if there's only one image, so a still GIF decodes to a
   // (C, H, W) tensor like the other image decoders.
   if (num_images == 1) {
-    out = select_row(out, 0);
+    output = select_row(output, 0);
   }
 
-  DGifCloseFile(gifFile, &error);
+  DGifCloseFile(gif_file, &error);
   STD_TORCH_CHECK(error == D_GIF_SUCCEEDED, "DGifCloseFile() failed - ", error);
 
-  return out;
+  return output;
 }
 
 } // namespace facebook::torchcodec

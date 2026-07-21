@@ -3716,7 +3716,7 @@ class TestImageDecoder:
             _jpeg_param("jpg", "Not a JPEG"),
             _png_param("png", "Not a PNG file"),
             _webp_param("webp", "WebPGetFeatures failed"),
-            _gif_param("gif", "DGifOpenFileName"),
+            _gif_param("gif", "DGifOpen"),
         ),
     )
     def test_not_an_image_raises(self, tmp_path, decode_fn, ext, match):
