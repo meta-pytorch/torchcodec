@@ -110,6 +110,9 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
     )
 
 
+# TODO_IMAGE: Benchmark against torchvision, both from file and from bytes. We
+# have changed the file reading logic a bit (it's Python right now, not Cpp).
+
 # TODO_IMAGE: Since we're updating the decoders code a bit, we should run sanity
 # checks ensure we're not leaking anything (there was a leak on webp back then!).
 

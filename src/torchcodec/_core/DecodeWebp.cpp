@@ -52,6 +52,8 @@ namespace {
 // byte when payload_size is odd. EXIF metadata only exists in extended (VP8X)
 // files, in an "EXIF" chunk holding raw TIFF-formatted EXIF data. Returns -1
 // (i.e. no rotation) when there's no usable EXIF chunk.
+// Note that this is very similar to our WavDecoder RIFF parsing, we could
+// consider merging both.
 int fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
   constexpr size_t riff_header_size = 12; // "RIFF" + size + "WEBP"
   if (size < riff_header_size || std::memcmp(data, "RIFF", 4) != 0 ||
@@ -67,7 +69,10 @@ int fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
         (static_cast<uint32_t>(data[offset + 6]) << 16) |
         (static_cast<uint32_t>(data[offset + 7]) << 24);
     size_t payload_offset = offset + 8;
-    if (payload_offset + chunk_size > size) {
+    // payload_offset <= size is guaranteed by the loop condition, so this
+    // subtraction can't underflow (and avoids overflowing payload_offset +
+    // chunk_size).
+    if (chunk_size > size - payload_offset) {
       break; // truncated / malformed chunk
     }
 
@@ -84,9 +89,9 @@ int fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
       }
       if (exif_size == 0) {
         return -1;
+      } else {
+        return fetch_exif_orientation(exif, exif_size);
       }
-      return fetch_exif_orientation(
-          const_cast<unsigned char*>(exif), exif_size);
     }
 
     // Advance past the payload and the pad byte for odd-sized chunks.

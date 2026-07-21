@@ -51,9 +51,9 @@ direct,
 // Functions in this module are taken from OpenCV
 // https://github.com/opencv/opencv/blob/097891e311fae1d8354eb092a0fd0171e630d78c/modules/imgcodecs/src/exif.cpp
 //
-// Ported from torchvision's csrc/io/image/cpu/exif.h into torchcodec. Provides
-// the shared EXIF parsing (fetch_exif_orientation) and the orientation
-// transform used by both the JPEG and PNG decoders.
+// Ported from torchvision's csrc/io/image/cpu/exif.h into torchcodec.
+// Changes made:
+// - make input ptr const.
 
 #include <torch/csrc/stable/ops.h>
 #include <torch/headeronly/util/Exception.h>
@@ -71,7 +71,7 @@ constexpr uint16_t INCORRECT_TAG = -1;
 
 class ExifDataReader {
  public:
-  ExifDataReader(unsigned char* p, size_t s) : _ptr(p), _size(s) {}
+  ExifDataReader(const unsigned char* p, size_t s) : _ptr(p), _size(s) {}
 
   size_t size() const {
     return _size;
@@ -83,7 +83,7 @@ class ExifDataReader {
   }
 
  protected:
-  unsigned char* _ptr;
+  const unsigned char* _ptr;
   size_t _size;
 };
 
@@ -131,7 +131,9 @@ inline uint32_t get_uint32(
       (exif_data[offset + 2] << 8) + exif_data[offset + 3];
 }
 
-inline int fetch_exif_orientation(unsigned char* exif_data_ptr, size_t size) {
+inline int fetch_exif_orientation(
+    const unsigned char* exif_data_ptr,
+    size_t size) {
   STD_TORCH_CHECK(exif_data_ptr != nullptr, "exif_data_ptr cannot be null");
 
   int exif_orientation = -1;
