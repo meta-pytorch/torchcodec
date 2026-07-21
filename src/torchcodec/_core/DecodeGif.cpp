@@ -45,10 +45,34 @@ int read_callback(GifFileType* gif_file, GifByteType* output, int bytes) {
 
 } // namespace
 
-torch::stable::Tensor decode_gif(const torch::stable::Tensor& input) {
-  // LibGif docs: https://giflib.sourceforge.net/intro.html
-  // Refer over there for more details on the libgif API, API ref, and a
-  // detailed description of the GIF format.
+torch::stable::Tensor decode_gif(
+    const torch::stable::Tensor& input,
+    int64_t mode) {
+  // GIF decoding model (see https://giflib.sourceforge.net/whatsinagif/):
+  //
+  // A GIF is a shared canvas (the "logical screen") onto which one or more
+  // FRAMES are painted in order. Each frame is a palette image (<= 256 colors)
+  // that may be smaller than the canvas and placed at an offset, and it is
+  // composited onto the running canvas -- so frame i as displayed is the
+  // accumulation of all frames so far, not frame i's pixels alone.
+  //
+  // Two per-frame settings (both in the frame's Graphic Control Extension)
+  // drive that compositing:
+  // - TRANSPARENCY: one palette index can be marked transparent; those pixels
+  //   are "not drawn", so whatever is already on the canvas shows through. It
+  //   is binary (fully transparent or fully opaque).
+  // - DISPOSAL METHOD: what to do with the canvas AFTER this frame is shown, to
+  //   prepare for the next one:
+  //     - DISPOSE_DO_NOT leaves it (the next frame draws on top)
+  //     - DISPOSE_BACKGROUND clears this frame's area to the background color
+  //       (a palette index from the logical screen descriptor)
+  //     - DISPOSE_PREVIOUS restores the canvas to its state before this frame.
+  //
+  // So frame i's starting canvas is decided by frame (i-1)'s disposal method,
+  // and transparency then lets frame i reveal it. Below we rebuild that canvas
+  // per frame and write each composited frame into the output tensor.
+  //
+  // LibGif API docs: https://giflib.sourceforge.net/intro.html
 
   validate_encoded_data(input);
 
@@ -95,6 +119,35 @@ torch::stable::Tensor decode_gif(const torch::stable::Tensor& input) {
     bg = gif_file->SColorMap->Colors[gif_file->SBackGroundColor];
   }
 
+  bool has_transparency = false;
+  for (int i = 0; i < num_images; ++i) {
+    GraphicsControlBlock gcb;
+    if (DGifSavedExtensionToGCB(gif_file, i, &gcb) == GIF_OK &&
+        gcb.TransparentColor != NO_TRANSPARENT_COLOR) {
+      has_transparency = true;
+      break;
+    }
+  }
+
+  // We represent transparency differently per output mode, and this is where we
+  // diverge from Pillow (see the primer above for how transparency/disposal
+  // build the canvas that transparent pixels reveal):
+  // - RGB_ALPHA, and UNCHANGED when the GIF has transparency: background/
+  //   uncovered/disposed regions become alpha 0 (i.e. transparent); since GIF
+  //   transparency is binary, the alpha we emit is always 0 or 255. This
+  //   matches Pillow's RGBA output exactly (alpha, and RGB wherever opaque).
+  // - RGB: there is no alpha, so those regions instead get the GIF background
+  //   color via fill_background(). This is spec-faithful (the background color
+  //   is what uncovered pixels should show) but differs from Pillow's
+  //   convert("RGB"): Pillow ignores the background color and, for a
+  //   transparent pixel with nothing opaque behind it, shows the transparent
+  //   index's own palette color. We deliberately do not match Pillow here. (A
+  //   transparent pixel over an opaque previous frame shows that frame in both,
+  //   so we only diverge on background/uncovered regions.)
+  bool emit_alpha =
+      !should_return_rgb(static_cast<ImageReadMode>(mode), has_transparency);
+  int num_output_channels = emit_alpha ? 4 : 3;
+
   // The GIFLIB docs say that the canvas's height and width are potentially
   // ignored by modern viewers, so to be on the safe side we set the output
   // height to max(canvas_height, first_image_height). Same for width.
@@ -106,7 +159,7 @@ torch::stable::Tensor decode_gif(const torch::stable::Tensor& input) {
 
   auto output = torch::stable::empty(
       {static_cast<int64_t>(num_images),
-       3,
+       num_output_channels,
        static_cast<int64_t>(output_h),
        static_cast<int64_t>(output_w)},
       kStableUInt8,
@@ -115,56 +168,99 @@ torch::stable::Tensor decode_gif(const torch::stable::Tensor& input) {
       std::nullopt,
       torch::headeronly::MemoryFormat::ChannelsLast);
   auto output_a = mutable_accessor<uint8_t, 4>(output);
-  for (int i = 0; i < num_images; ++i) {
-    const SavedImage& img = gif_file->SavedImages[i];
 
-    GraphicsControlBlock gcb;
-    DGifSavedExtensionToGCB(gif_file, i, &gcb);
+  // Clears frame i over the rectangle [top, top + height) x [left, left +
+  // width) (clipped to the canvas). For RGB output this paints the GIF
+  // background color; for RGBA output it clears to fully transparent (matching
+  // web browsers / Pillow, which ignore the background color for transparent
+  // GIFs).
+  auto fill_background = [&](int i, int top, int left, int height, int width) {
+    for (int h = 0; h < height; ++h) {
+      const auto y = static_cast<int64_t>(top) + h;
+      if (y < 0 || y >= output_h) {
+        continue;
+      }
+      for (int w = 0; w < width; ++w) {
+        const auto x = static_cast<int64_t>(left) + w;
+        if (x < 0 || x >= output_w) {
+          continue;
+        }
+        if (emit_alpha) {
+          output_a[i][0][y][x] = 0;
+          output_a[i][1][y][x] = 0;
+          output_a[i][2][y][x] = 0;
+          output_a[i][3][y][x] = 0;
+        } else {
+          output_a[i][0][y][x] = bg.Red;
+          output_a[i][1][y][x] = bg.Green;
+          output_a[i][2][y][x] = bg.Blue;
+        }
+      }
+    }
+  };
 
+  // Loop-carried canvas state (used by prepare_canvas): the previous frame's
+  // disposal method and image rectangle, plus a snapshot of the canvas taken
+  // before a DISPOSE_PREVIOUS frame is drawn (lazily allocated, shape
+  // (1, C, H, W)) so the following frame can restore it.
+  int prev_disposal = DISPOSAL_UNSPECIFIED;
+  GifImageDesc prev_desc{};
+  torch::stable::Tensor restore_point;
+  bool have_restore_point = false;
+
+  // Stage 1: set output[i] to the base canvas frame i is drawn onto, per the
+  // *previous* frame's disposal method (see the primer). DISPOSE_BACKGROUND
+  // clears only the previous frame's rectangle (keeping the rest of the
+  // accumulated canvas); DISPOSE_PREVIOUS restores the snapshot taken before
+  // that frame; the first frame starts from a fully cleared canvas. Also
+  // snapshots this frame's base if it will itself be disposed with
+  // DISPOSE_PREVIOUS.
+  auto prepare_canvas = [&](int i, const GraphicsControlBlock& gcb) {
+    if (i == 0) {
+      // Clear the whole first-frame canvas, not just the logical screen: when
+      // the first image is larger than the logical screen the output is sized
+      // to the image (output_h/output_w above), and any pixel the image leaves
+      // transparent there would otherwise be left uninitialized.
+      fill_background(0, 0, 0, output_h, output_w);
+    } else if (prev_disposal == DISPOSE_BACKGROUND) {
+      copy_frame(output, i, output, i - 1);
+      fill_background(
+          i, prev_desc.Top, prev_desc.Left, prev_desc.Height, prev_desc.Width);
+    } else if (prev_disposal == DISPOSE_PREVIOUS && have_restore_point) {
+      copy_frame(output, i, restore_point, 0);
+    } else {
+      // DISPOSE_DO_NOT or DISPOSAL_UNSPECIFIED: just copy the previous canvas.
+      copy_frame(output, i, output, i - 1);
+    }
+
+    // Save current canvas state for next frame to restore.
+    if (gcb.DisposalMode == DISPOSE_PREVIOUS) {
+      if (!have_restore_point) {
+        restore_point = torch::stable::empty(
+            {1,
+             num_output_channels,
+             static_cast<int64_t>(output_h),
+             static_cast<int64_t>(output_w)},
+            kStableUInt8);
+        have_restore_point = true;
+      }
+      copy_frame(restore_point, 0, output, i);
+    }
+  };
+
+  // Stage 2: draw frame i's opaque pixels on top of its prepared base canvas.
+  // Transparent pixels are skipped so the base shows through, and pixels that
+  // fall outside the output tensor (a frame larger than the first, or with a
+  // non-zero offset) are dropped.
+  auto draw_frame_over_canvas = [&](int i,
+                                    const SavedImage& img,
+                                    const GraphicsControlBlock& gcb) {
     const GifImageDesc& desc = img.ImageDesc;
     const ColorMapObject* cmap =
         desc.ColorMap ? desc.ColorMap : gif_file->SColorMap;
     STD_TORCH_CHECK(
         cmap != nullptr,
         "Global and local color maps are missing. This should never happen!");
-
-    // When going from one image to another, there is a "disposal method" which
-    // specifies how to handle the transition. E.g. DISPOSE_DO_NOT means that
-    // the current image should essentially be drawn on top of the previous
-    // canvas. The pixels of that previous canvas will appear on the new one if
-    // either:
-    // - a pixel is transparent in the current image
-    // - the current image is smaller than the canvas, hence exposing its pixels
-    // The "background" disposal method means that the current canvas should be
-    // set to the background color.
-    // We only support these 2 modes and default to DISPOSE_DO_NOT when the
-    // disposal method is unspecified, or when it's set to DISPOSE_PREVIOUS
-    // which according to GIFLIB is not widely supported.
-    // (https://giflib.sourceforge.net/whatsinagif/animation_and_transparency.html).
-    // This is consistent with default behaviour in the majority of web browsers
-    // and image libraries like Pillow.
-    if (i > 0 &&
-        (gcb.DisposalMode == DISPOSAL_UNSPECIFIED ||
-         gcb.DisposalMode == DISPOSE_DO_NOT ||
-         gcb.DisposalMode == DISPOSE_PREVIOUS)) {
-      copy_frame(output, i, output, i - 1);
-    } else {
-      // Background. If bg wasn't defined, it will be (0, 0, 0).
-      for (int h = 0; h < gif_file->SHeight; ++h) {
-        for (int w = 0; w < gif_file->SWidth; ++w) {
-          output_a[i][0][h][w] = bg.Red;
-          output_a[i][1][h][w] = bg.Green;
-          output_a[i][2][h][w] = bg.Blue;
-        }
-      }
-    }
-
-    // The 'continue' blocks are to limit the frame to the output canvas. The
-    // output tensor is allocated from the canvas (SHeight/SWidth) and the first
-    // frame dimensions, but desc.{Top,Left,Height,Width} of any frame may place
-    // pixels outside it (a later frame larger than the first, or any frame with
-    // a non-zero offset).  We just drop the pixels that would land outside of
-    // the allocated tensor.
     for (int h = 0; h < desc.Height; ++h) {
       const auto y = static_cast<int64_t>(desc.Top) + h;
       if (y < 0 || y >= output_h) {
@@ -183,8 +279,23 @@ torch::stable::Tensor decode_gif(const torch::stable::Tensor& input) {
         output_a[i][0][y][x] = rgb.Red;
         output_a[i][1][y][x] = rgb.Green;
         output_a[i][2][y][x] = rgb.Blue;
+        if (emit_alpha) {
+          output_a[i][3][y][x] = 255;
+        }
       }
     }
+  };
+
+  for (int i = 0; i < num_images; ++i) {
+    const SavedImage& img = gif_file->SavedImages[i];
+    GraphicsControlBlock gcb;
+    DGifSavedExtensionToGCB(gif_file, i, &gcb);
+
+    prepare_canvas(i, gcb);
+    draw_frame_over_canvas(i, img, gcb);
+
+    prev_disposal = gcb.DisposalMode;
+    prev_desc = img.ImageDesc;
   }
 
   // Remove the batch dim if there's only one image, so a still GIF decodes to a

@@ -10,11 +10,14 @@
 
 namespace facebook::torchcodec {
 
-// GIF decoding always produces RGB output, so unlike the other image decoders
-// there is no `mode` parameter here: color-mode conversion is done in Python.
-// The output is (C, H, W) for a single-image GIF and (N, C, H, W) for an
-// animated one.
+// Decodes a GIF to an (C, H, W) tensor (still GIF) or (N, C, H, W) tensor
+// (animated GIF). `mode` is an ImageReadMode: only UNCHANGED, RGB and RGB_ALPHA
+// are handled here (the grayscale modes are derived in Python). RGB produces a
+// 3-channel tensor with transparency composited over the GIF background color;
+// RGB_ALPHA produces a 4-channel RGBA tensor preserving transparency as alpha;
+// UNCHANGED produces RGBA if the GIF has any transparency, else RGB.
 FORCE_PUBLIC_VISIBILITY torch::stable::Tensor decode_gif(
-    const torch::stable::Tensor& data);
+    const torch::stable::Tensor& data,
+    int64_t mode);
 
 } // namespace facebook::torchcodec

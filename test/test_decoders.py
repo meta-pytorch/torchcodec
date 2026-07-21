@@ -58,6 +58,7 @@ from .utils import (
     CMYK_JPEG,
     cuda_devices,
     DISCARD_FIRST_KEYFRAME_VIDEO,
+    FRAME_EXCEEDS_SCREEN_GIF,
     get_ffmpeg_minor_version,
     get_python_version,
     GRADIENT_GIF,
@@ -112,6 +113,7 @@ from .utils import (
     TESTSRC2_ODD_WIDTH_444,
     TESTSRC2_ODD_WIDTH_VP9,
     TESTSRC2_ODD_WIDTH_VP9_10BIT,
+    TRANSPARENT_GIF,
     WAV_ODD_DATA_TRAILING_CHUNK,
 )
 
@@ -3851,3 +3853,98 @@ class TestImageDecoder:
             assert_tensor_close_on_at_least(
                 decoded[i], reference, percentage=99, atol=2
             )
+
+    @pytest.mark.parametrize("disposal", (1, 2, 3))
+    def test_gif_disposal_methods(self, tmp_path, disposal):
+        # Each frame paints a colored square in a different quadrant over a common
+        # white base; PIL writes them as partial frames with the given disposal
+        # method. We check our per-frame compositing matches PIL's, which
+        # exercises: keying the base canvas off the *previous* frame's disposal,
+        # restoring only that frame's rectangle to background (method 2), and
+        # restoring the prior canvas (method 3). See DecodeGif.cpp.
+        from PIL import ImageSequence
+
+        # Palette: 0=green, 1=red, 2=blue, 3=white.
+        palette = [0, 255, 0, 255, 0, 0, 0, 0, 255, 255, 255, 255]
+
+        def make(square_index, y, x):
+            arr = numpy.full((8, 8), 3, dtype=numpy.uint8)  # white base
+            arr[y : y + 3, x : x + 3] = square_index
+            img = Image.fromarray(arr, "P")
+            img.putpalette(palette)
+            return img
+
+        frames = [make(0, 0, 0), make(1, 0, 5), make(2, 5, 0), make(2, 5, 5)]
+        path = tmp_path / "disposal.gif"
+        # The first frame is always "leave in place" so the tested disposal method
+        # applies to frames that have a well-defined prior canvas ("restore to
+        # previous" for the very first frame is ill-defined and decoders differ).
+        frames[0].save(
+            path,
+            save_all=True,
+            append_images=frames[1:],
+            disposal=[1, disposal, disposal, 0],
+            loop=0,
+        )
+
+        decoded = decode_gif(path)
+        pil = Image.open(path)
+        assert decoded.shape[0] == pil.n_frames
+        for i, frame in enumerate(ImageSequence.Iterator(pil)):
+            reference = self._pil_to_tensor(frame.convert("RGB"))
+            assert_tensor_close_on_at_least(
+                decoded[i], reference, percentage=99, atol=2
+            )
+
+    def test_gif_transparency(self):
+        # A GIF with a transparent index over a non-zero background color (the
+        # "welcome2" case). The alpha-preserving modes return a real alpha
+        # channel matching Pillow; RGB composites the transparency over the
+        # background color instead.
+        asset = TRANSPARENT_GIF
+
+        # UNCHANGED on a transparent GIF yields RGBA (like PNG's UNCHANGED, which
+        # keeps the source's native channels); RGB_ALPHA and GRAY_ALPHA likewise
+        # carry a real alpha channel.
+        cases = (
+            (ImageColorMode.UNCHANGED, "RGBA"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+        )
+        for mode, pil_mode in cases:
+            decoded = decode_gif(asset.path, mode=mode)
+            reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+            assert decoded.shape == reference.shape
+            # The alpha channel must match Pillow exactly. The color channels are
+            # only meaningful where opaque: the value under a fully-transparent
+            # pixel is unspecified and differs between decoders.
+            alpha = reference[-1]
+            assert torch.equal(decoded[-1], alpha)
+            opaque = alpha > 0
+            assert_tensor_close_on_at_least(
+                decoded[:-1, opaque], reference[:-1, opaque], percentage=99, atol=2
+            )
+
+        # RGB has no alpha: transparency is composited over the GIF background
+        # color. Opaque pixels match Pillow; transparent ones intentionally
+        # differ (we show the background color, Pillow shows the transparent
+        # index's own color), so we only compare where opaque.
+        rgb = decode_gif(asset.path, mode=ImageColorMode.RGB)
+        assert rgb.shape[0] == 3
+        pil_rgb = self._pil_to_tensor(Image.open(asset.path).convert("RGB"))
+        opaque = decode_gif(asset.path, mode=ImageColorMode.UNCHANGED)[-1] > 0
+        assert_tensor_close_on_at_least(
+            rgb[:, opaque], pil_rgb[:, opaque], percentage=99, atol=2
+        )
+
+    def test_gif_first_frame_larger_than_canvas(self):
+        # Non-regression test: when the first frame is larger than the logical
+        # screen, the output is sized to the frame and the out-of-screen border
+        # must be initialized (transparent here) rather than left as
+        # uninitialized memory. The border is transparent, so its alpha must
+        # match Pillow. A regression would leave it as garbage.
+        asset = FRAME_EXCEEDS_SCREEN_GIF
+        decoded = decode_gif(asset.path, mode=ImageColorMode.RGB_ALPHA)
+        reference = self._pil_to_tensor(Image.open(asset.path).convert("RGBA"))
+        assert decoded.shape == reference.shape == (4, asset.height, asset.width)
+        assert torch.equal(decoded[-1], reference[-1])

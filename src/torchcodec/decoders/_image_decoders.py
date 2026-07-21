@@ -33,8 +33,16 @@ from torchcodec._core.ops import (
 # TODO_IMAGE: I think there are some tests for corrupted images in TV? We
 # should port those.
 
-# TODO_IMAGE: Investigate what giflib and PIL do differently, it might be worth
-# aligning now.
+# GIF vs Pillow: our animated-GIF compositing (disposal methods, transparency,
+# frame offsets) matches Pillow. GIF transparency is handled per output mode:
+# - RGB/GRAY: transparent pixels are composited over the GIF background color
+#   (per the GIF spec / giflib), so the output has no alpha.
+# - RGB_ALPHA/GRAY_ALPHA, and UNCHANGED when the GIF has any transparent index:
+#   transparency is preserved as a real alpha channel (transparent -> alpha 0,
+#   uncovered/disposed regions -> fully transparent), matching Pillow and web
+#   browsers, which ignore the background color for transparent GIFs.
+# So UNCHANGED returns RGBA for a transparent GIF and RGB otherwise (like PNG,
+# whose UNCHANGED preserves the source's native channels).
 
 
 class ImageColorMode(Enum):
@@ -74,10 +82,13 @@ _PNG_NATIVE_OUTPUT_MODES = frozenset(ImageColorMode)
 _WEBP_NATIVE_OUTPUT_MODES = frozenset(
     (ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.RGB_ALPHA)
 )
-# giflib always decodes to RGB (no native grayscale, and its transparency is
-# composited over the canvas so the output has no real alpha). UNCHANGED is RGB
-# too. Every other mode is derived by _decode_with_mode.
-_GIF_NATIVE_OUTPUT_MODES = frozenset((ImageColorMode.UNCHANGED, ImageColorMode.RGB))
+# Like webp, giflib has no native grayscale. It handles RGB (transparency
+# composited over the background color), RGB_ALPHA (transparency kept as a real
+# alpha channel), and UNCHANGED (RGBA if the GIF has transparency, else RGB). The
+# grayscale modes are derived by _decode_with_mode.
+_GIF_NATIVE_OUTPUT_MODES = frozenset(
+    (ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.RGB_ALPHA)
+)
 
 
 def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
@@ -179,16 +190,10 @@ def decode_gif(
     """Decode a GIF file into a uint8 tensor.
 
     The shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for an
-    animated one. The mode-conversion helpers (see _decode_with_mode) operate on
-    the channel dim, so they handle both the still and animated shapes.
+    animated one, with 4 channels when the output carries an alpha channel (see
+    the module note on GIF transparency). The mode-conversion helpers (see
+    _decode_with_mode) operate on the channel dim, so they handle both the still
+    and animated shapes.
     """
     data = _read_file_to_tensor(source)
-    # The C++ decode_gif op is mode-less (giflib always produces RGB), so we wrap
-    # it to match the (data, mode) signature _decode_with_mode expects; the mode
-    # is ignored and the requested output mode is derived from the RGB result.
-    return _decode_with_mode(
-        lambda data, mode: _decode_gif(data),
-        data,
-        mode,
-        _GIF_NATIVE_OUTPUT_MODES,
-    )
+    return _decode_with_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)

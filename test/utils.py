@@ -389,6 +389,30 @@ GRADIENT_GIF = TestImage(
 #                duration=100, loop=0, disposal=1)
 ANIMATED_GIF = TestImage(filename="animated.gif", width=64, height=48, num_channels=3)
 
+# Palette GIF with a transparent index over a (non-zero) red background, so it
+# exercises the RGBA transparency path and the "welcome2" background-vs-
+# transparency case. num_channels=4: UNCHANGED decodes it to RGBA. Generated
+# with:
+# palette = [255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255]  # 0=red(bg), ...
+# idx = np.full((48, 64), 2, np.uint8)  # index 2 will be transparent
+# idx[8:40, 8:32] = 1; idx[20:28, 40:56] = 3  # opaque green + white rectangles
+# im = Image.fromarray(idx, "P"); im.putpalette(palette)
+# im.save("transparent.gif", transparency=2)
+TRANSPARENT_GIF = TestImage(
+    filename="transparent.gif", width=64, height=48, num_channels=4
+)
+
+# Hand-crafted GIF whose logical screen is 4x4 but whose single first frame is
+# 8x8 (larger than the screen), so the output is sized to the frame (8x8). The
+# out-of-screen border is transparent, which regression-tests that those pixels
+# are initialized (transparent) rather than left as uninitialized memory.
+# Palette 0=red(bg), 1=green, 2=blue(transparent), 3=white; the top-left 4x4 is
+# opaque green and the rest is the transparent index. See git history for the
+# raw GIF89a builder used to author it (PIL can't emit a frame > logical screen).
+FRAME_EXCEEDS_SCREEN_GIF = TestImage(
+    filename="frame_exceeds_screen.gif", width=8, height=8, num_channels=4
+)
+
 
 @dataclass
 class TestFrameInfo:

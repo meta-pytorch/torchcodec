@@ -125,7 +125,7 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("decode_jpeg(Tensor data, int mode) -> Tensor");
   m.def("decode_png(Tensor data, int mode) -> Tensor");
   m.def("decode_webp(Tensor data, int mode) -> Tensor");
-  m.def("decode_gif(Tensor data) -> Tensor");
+  m.def("decode_gif(Tensor data, int mode) -> Tensor");
 }
 
 namespace {
