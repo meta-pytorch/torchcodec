@@ -3447,10 +3447,15 @@ class TestImageDecoder:
         (
             (ImageColorMode.UNCHANGED, None),
             (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
             (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
         ),
     )
-    def test_against_pil(self, asset, mode, pil_mode):
+    def test_jpeg_against_pil(self, asset, mode, pil_mode):
+        # JPEG has no native alpha support; the GRAY_ALPHA / RGB_ALPHA modes are
+        # obtained by decoding to GRAY / RGB then appending an opaque alpha
+        # channel (see _decode_with_mode).
         decoded = decode_jpeg(asset.path, mode=mode)
 
         reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
@@ -3461,7 +3466,86 @@ class TestImageDecoder:
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
-    # TODO_IMAGE: Maybe create a parametrization helper, or store those
+        if mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA):
+            # The synthesized alpha channel must be fully opaque.
+            assert (decoded[-1] == 255).all()
+
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, ext, save_kwargs, source_mode",
+        (
+            _jpeg_param("JPEG", "jpg", {"quality": 95}, "L"),
+            _jpeg_param("JPEG", "jpg", {"quality": 95}, "RGB"),
+            _jpeg_param("JPEG", "jpg", {"quality": 95}, "CMYK"),
+            _png_param("PNG", "png", {}, "L"),
+            _png_param("PNG", "png", {}, "LA"),
+            _png_param("PNG", "png", {}, "RGB"),
+            _png_param("PNG", "png", {}, "RGBA"),
+            # TODO_IMAGE: palette ("P") PNGs decoded to an alpha mode are broken
+            # (the tRNS transparency chunk isn't expanded, see DecodePng.cpp),
+            # so palette is left out here for now.
+        ),
+    )
+    @pytest.mark.parametrize(
+        "output_mode, pil_mode, num_expected_channels",
+        (
+            (ImageColorMode.UNCHANGED, None, None),
+            (ImageColorMode.GRAY, "L", 1),
+            (ImageColorMode.GRAY_ALPHA, "LA", 2),
+            (ImageColorMode.RGB, "RGB", 3),
+            (ImageColorMode.RGB_ALPHA, "RGBA", 4),
+        ),
+    )
+    def test_all_source_to_all_output_modes(
+        self,
+        tmp_path,
+        decode_fn,
+        fmt,
+        ext,
+        save_kwargs,
+        source_mode,
+        output_mode,
+        pil_mode,
+        num_expected_channels,
+    ):
+        # Every input color mode must be decodable to every output mode.
+        h, w = 40, 60
+        xs = numpy.linspace(0, 255, w)
+        ys = numpy.linspace(0, 255, h)
+        r = numpy.broadcast_to(xs, (h, w))
+        g = numpy.broadcast_to(ys[:, None], (h, w))
+        base = numpy.stack([r, g, (r + g) / 2], axis=-1).astype(numpy.uint8)
+
+        path = tmp_path / f"{source_mode}.{ext}"
+        Image.fromarray(base, mode="RGB").convert(source_mode).save(
+            path, fmt, **save_kwargs
+        )
+
+        decoded = decode_fn(path, mode=output_mode)
+        assert decoded.dtype == torch.uint8
+
+        reference = self._pil_to_tensor(Image.open(path).convert(pil_mode))
+        if (
+            output_mode is ImageColorMode.UNCHANGED
+            and fmt == "JPEG"
+            and source_mode == "CMYK"
+        ):
+            # libjpeg returns raw (inverted) CMYK samples; flip to match PIL.
+            # TODO_IMAGE: is this a bug? Should we fix it?
+            reference = 255 - reference
+
+        if output_mode is ImageColorMode.UNCHANGED:
+            num_expected_channels = reference.shape[0]
+        assert decoded.shape[0] == num_expected_channels
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+        source_has_alpha = source_mode in ("LA", "RGBA")
+        if (
+            output_mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA)
+            and not source_has_alpha
+        ):
+            assert (decoded[-1] == 255).all()
+
     @pytest.mark.parametrize(
         "decode_fn, fmt, ext, save_kwargs",
         (
