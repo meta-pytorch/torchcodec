@@ -44,9 +44,9 @@ torch::stable::Tensor decode_png(
 #include <setjmp.h>
 
 #include <algorithm>
+#include <bit>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
 
 #include "Exif.h"
 #include "ImageCommon.h"
@@ -56,13 +56,6 @@ namespace facebook::torchcodec {
 using namespace exif_private;
 
 namespace {
-
-bool is_little_endian() {
-  int64_t x = 1;
-  uint8_t first_byte;
-  std::memcpy(&first_byte, &x, 1);
-  return first_byte == 1;
-}
 
 struct ErrorCtx {
   char error_message[256] = "";
@@ -82,7 +75,7 @@ void error_callback(png_structp png_ptr, png_const_charp error_message) {
 
 int fetch_png_exif_orientation(png_structp png_ptr, png_infop info_ptr) {
   png_uint_32 num_exif = 0;
-  png_bytep exif = 0;
+  png_bytep exif = nullptr;
 
   if (png_get_valid(png_ptr, info_ptr, PNG_INFO_eXIf)) {
     png_get_eXIf_1(png_ptr, info_ptr, &num_exif, &exif);
@@ -256,7 +249,12 @@ PngHeader read_header_and_configure(
     png_read_update_info(png_ptr, info_ptr);
   }
 
-  return {width, height, num_output_channels, bit_depth, num_passes};
+  return {
+      .width = width,
+      .height = height,
+      .num_output_channels = num_output_channels,
+      .bit_depth = bit_depth,
+      .num_passes = num_passes};
 }
 
 void decode_rows(
@@ -266,13 +264,13 @@ void decode_rows(
     uint8_t* output_ptr,
     png_uint_32 height,
     int num_passes,
-    int stride) {
+    int64_t stride) {
   if (setjmp(png_jmpbuf(png_ptr)) != 0) {
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
     STD_TORCH_CHECK(false, "decode_png failed: ", error_ctx.error_message);
   }
 
-  if (is_little_endian()) {
+  if (std::endian::native == std::endian::little) {
     png_set_swap(png_ptr);
   }
 
@@ -315,7 +313,7 @@ torch::stable::Tensor decode_png(
   png_set_error_fn(png_ptr, &error_ctx, error_callback, /*warn_fn=*/nullptr);
 
   SourceCtx source_ctx;
-  source_ctx.ptr = png_const_bytep(input_ptr);
+  source_ctx.ptr = reinterpret_cast<png_const_bytep>(input_ptr);
   source_ctx.count = input.numel();
 
   torch::stable::Tensor output;
@@ -327,20 +325,20 @@ torch::stable::Tensor decode_png(
       source_ctx,
       static_cast<ImageReadMode>(mode));
 
-  auto num_pixels_per_row = header.width * header.num_output_channels;
   auto is_16_bits = header.bit_depth == 16;
   output = torch::stable::empty(
-      {int64_t(header.height),
-       int64_t(header.width),
+      {static_cast<int64_t>(header.height),
+       static_cast<int64_t>(header.width),
        header.num_output_channels},
       is_16_bits ? kStableUInt16 : kStableUInt8);
 
-  int stride = num_pixels_per_row * (is_16_bits ? 2 : 1);
+  int64_t bytes_per_pixel = header.num_output_channels * (is_16_bits ? 2 : 1);
+  int64_t stride = static_cast<int64_t>(header.width) * bytes_per_pixel;
   decode_rows(
       png_ptr,
       info_ptr,
       error_ctx,
-      (uint8_t*)output.mutable_data_ptr(),
+      static_cast<uint8_t*>(output.mutable_data_ptr()),
       header.height,
       header.num_passes,
       stride);

@@ -273,7 +273,7 @@ void decode_rows(
     jpeg_decompress_struct& jpeg_ctx,
     ErrorCtx& error_ctx,
     uint8_t* output_ptr,
-    int stride,
+    int64_t stride,
     CMYKHelper& cmyk_helper) {
   if (setjmp(error_ctx.setjmp_buffer)) {
     // See Note [libjpeg error handling]
@@ -434,7 +434,8 @@ torch::stable::Tensor decode_jpeg(
       static_cast<ImageReadMode>(mode));
 
   // We want output to be channels last
-  int stride = jpeg_ctx.output_width * num_output_channels;
+  int64_t stride =
+      static_cast<int64_t>(jpeg_ctx.output_width) * num_output_channels;
   output = torch::stable::empty(
       {int64_t(jpeg_ctx.output_height),
        int64_t(jpeg_ctx.output_width),

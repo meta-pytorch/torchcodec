@@ -36,13 +36,6 @@ constexpr uint16_t WAV_FORMAT_PCM = 1;
 constexpr uint16_t WAV_FORMAT_IEEE_FLOAT = 3;
 constexpr uint16_t WAV_FORMAT_EXTENSIBLE = 0xFFFE;
 
-bool is_little_endian() {
-  int64_t x = 1;
-  uint8_t first_byte;
-  std::memcpy(&first_byte, &x, 1);
-  return first_byte == 1;
-}
-
 template <typename OutType, typename InType>
 OutType read_value(const InType& data, int64_t offset) {
   static_assert(std::is_trivially_copyable_v<OutType>);
@@ -133,7 +126,8 @@ void safe_seek(AVIOContextHolder& avio, int64_t pos) {
 WavDecoder::WavDecoder(std::unique_ptr<AVIOContextHolder> avio)
     : avio_(std::move(avio)) {
   STD_TORCH_CHECK(
-      is_little_endian(), "WAV decoder requires little-endian architecture");
+      std::endian::native == std::endian::little,
+      "WAV decoder requires little-endian architecture");
   STD_TORCH_CHECK(avio_ != nullptr, "AVIO context cannot be null");
   source_size_ = static_cast<uint64_t>(avio_->get_size());
   parse_header();
