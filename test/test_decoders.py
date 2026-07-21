@@ -3515,6 +3515,9 @@ class TestImageDecoder:
             _png_param("PNG", "png", {}, "P"),
             _webp_param("WEBP", "webp", {"lossless": True}, "RGB"),
             _webp_param("WEBP", "webp", {"lossless": True}, "RGBA"),
+            _gif_param("GIF", "gif", {}, "L"),
+            _gif_param("GIF", "gif", {}, "RGB"),
+            _gif_param("GIF", "gif", {}, "P"),
         ),
     )
     @pytest.mark.parametrize(
@@ -3541,8 +3544,12 @@ class TestImageDecoder:
     ):
         # Test that every input color mode is decodable to every output mode.
 
-        if source_mode == "P" and output_mode is ImageColorMode.UNCHANGED:
-            # TODO_IMAGE figure out what to do here
+        if (
+            fmt == "PNG"
+            and source_mode == "P"
+            and output_mode is ImageColorMode.UNCHANGED
+        ):
+            # TODO_IMAGE figure out what to do here.
             pytest.skip("UNCHANGED on a palette PNG returns raw palette indices")
 
         h, w = 40, 60
@@ -3808,9 +3815,7 @@ class TestImageDecoder:
     @pytest.mark.parametrize(
         "mode, pil_mode",
         (
-            # GIF's "unchanged" output is RGB (giflib composites the palette to
-            # RGB), so there's no distinct raw form to compare against.
-            (ImageColorMode.UNCHANGED, "RGB"),
+            (ImageColorMode.UNCHANGED, None),
             (ImageColorMode.GRAY, "L"),
             (ImageColorMode.GRAY_ALPHA, "LA"),
             (ImageColorMode.RGB, "RGB"),
