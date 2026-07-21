@@ -16,7 +16,7 @@ import torch
 from torchcodec import ffmpeg_major_version
 from torchcodec._core import get_ffmpeg_library_versions
 from torchcodec.decoders import set_cuda_backend, VideoDecoder
-from torchcodec.decoders._image_decoders import decode_jpeg
+from torchcodec.decoders._image_decoders import decode_jpeg, decode_png, decode_webp
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
@@ -60,6 +60,18 @@ def needs_ffmpeg_cli(test_item):
 # it). Handled in pytest_collection_modifyitems() of conftest.py.
 def needs_jpeg(test_item):
     return pytest.mark.needs_jpeg(test_item)
+
+
+# Decorator for skipping tests that need libpng (torchcodec may be built without
+# it). Handled in pytest_collection_modifyitems() of conftest.py.
+def needs_png(test_item):
+    return pytest.mark.needs_png(test_item)
+
+
+# Decorator for skipping tests that need libwebp (torchcodec may be built
+# without it). Handled in pytest_collection_modifyitems() of conftest.py.
+def needs_webp(test_item):
+    return pytest.mark.needs_webp(test_item)
 
 
 # This is a special device string that we use to test the legacy "ffmpeg" CUDA
@@ -278,6 +290,79 @@ def jpeg_is_available() -> bool:
         decode_jpeg(GRADIENT_JPEG.path)
     except RuntimeError as e:
         if "libjpeg" in str(e):
+            return False
+        raise
+    return True
+
+
+# 720p RGB gradient PNG, same gradient as GRADIENT_JPEG. Generated with:
+# h, w = 720, 1280
+# r = np.linspace(0, 255, w, dtype=np.uint8)[None, :].repeat(h, 0)
+# g = np.linspace(0, 255, h, dtype=np.uint8)[:, None].repeat(w, 1)
+# b = ((r.astype(int) + g.astype(int)) // 2).astype(np.uint8)
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save("gradient.png")
+GRADIENT_PNG = TestImage(
+    filename="gradient.png", width=1280, height=720, num_channels=3
+)
+
+# 720p grayscale gradient PNG. Generated with the GRADIENT_PNG recipe above, then:
+# gray = ((r.astype(int) + g.astype(int)) // 2).astype(np.uint8)
+# Image.fromarray(gray, mode="L").save("grayscale.png")
+GRAYSCALE_PNG = TestImage(
+    filename="grayscale.png", width=1280, height=720, num_channels=1
+)
+
+# 720p RGBA PNG: same gradient as GRADIENT_PNG with a diagonal alpha ramp.
+# Generated with the GRADIENT_PNG recipe above, then:
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# rgba = np.concatenate([np.stack([r, g, b], axis=-1), a[..., None]], axis=-1)
+# Image.fromarray(rgba, mode="RGBA").save("rgba.png")
+RGBA_PNG = TestImage(filename="rgba.png", width=1280, height=720, num_channels=4)
+
+# 720p grayscale-alpha (LA) PNG: grayscale gradient with the same diagonal alpha
+# ramp as RGBA_PNG. Generated with the GRADIENT_PNG recipe above, then:
+# gray = ((r.astype(int) + g.astype(int)) // 2).astype(np.uint8)
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# la = np.stack([gray, a], axis=-1)
+# Image.fromarray(la, mode="LA").save("grayscale_alpha.png")
+GRAYSCALE_ALPHA_PNG = TestImage(
+    filename="grayscale_alpha.png", width=1280, height=720, num_channels=2
+)
+
+
+@functools.cache
+def png_is_available() -> bool:
+    try:
+        decode_png(GRADIENT_PNG.path)
+    except RuntimeError as e:
+        if "libpng" in str(e):
+            return False
+        raise
+    return True
+
+
+# 720p RGB gradient WebP (lossless), same gradient as GRADIENT_JPEG. Generated
+# with the GRADIENT_JPEG recipe above, then:
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save(
+#     "gradient.webp", "WEBP", lossless=True)
+GRADIENT_WEBP = TestImage(
+    filename="gradient.webp", width=1280, height=720, num_channels=3
+)
+
+# 720p RGBA WebP (lossless): same gradient as GRADIENT_WEBP with the diagonal
+# alpha ramp of RGBA_PNG. Generated with the GRADIENT_PNG recipe above, then:
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# rgba = np.concatenate([np.stack([r, g, b], axis=-1), a[..., None]], axis=-1)
+# Image.fromarray(rgba, mode="RGBA").save("rgba.webp", "WEBP", lossless=True)
+RGBA_WEBP = TestImage(filename="rgba.webp", width=1280, height=720, num_channels=4)
+
+
+@functools.cache
+def webp_is_available() -> bool:
+    try:
+        decode_webp(GRADIENT_WEBP.path)
+    except RuntimeError as e:
+        if "libwebp" in str(e):
             return False
         raise
     return True

@@ -8,14 +8,18 @@ from test.utils import (
     assert_tensor_close_on_at_least,
     cuda_version_used_for_building_torch,
     GRADIENT_JPEG,
+    GRADIENT_PNG,
+    GRADIENT_WEBP,
     needs_cuda,
     needs_jpeg,
+    needs_png,
+    needs_webp,
 )
 
 from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
 from torchcodec.decoders import AudioDecoder, VideoDecoder
-from torchcodec.decoders._image_decoders import decode_jpeg
+from torchcodec.decoders._image_decoders import decode_jpeg, decode_png, decode_webp
 from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
 
 
@@ -251,6 +255,24 @@ class TestImageDecoder:
         h, w = GRADIENT_JPEG.height, GRADIENT_JPEG.width
 
         img = decode_jpeg(path)
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, h, w)
+
+    @needs_png
+    def test_decode_png(self):
+        path = GRADIENT_PNG.path
+        h, w = GRADIENT_PNG.height, GRADIENT_PNG.width
+
+        img = decode_png(path)
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, h, w)
+
+    @needs_webp
+    def test_decode_webp(self):
+        path = GRADIENT_WEBP.path
+        h, w = GRADIENT_WEBP.height, GRADIENT_WEBP.width
+
+        img = decode_webp(path)
         assert img.dtype == torch.uint8
         assert img.shape == (3, h, w)
 

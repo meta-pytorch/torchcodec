@@ -17,8 +17,8 @@
 namespace facebook::torchcodec {
 
 torch::stable::Tensor decode_jpeg(
-    const torch::stable::Tensor& data,
-    int64_t mode) {
+    [[maybe_unused]] const torch::stable::Tensor& data,
+    [[maybe_unused]] int64_t mode) {
   STD_TORCH_CHECK(
       false,
       "decode_jpeg: torchcodec was not compiled with libjpeg support. "
@@ -40,6 +40,7 @@ torch::stable::Tensor decode_jpeg(
 #include <tuple>
 
 #include "Exif.h"
+#include "ImageCommon.h"
 
 namespace facebook::torchcodec {
 
@@ -50,38 +51,16 @@ namespace {
 // Main libjpeg docs:
 // https://github.com/libjpeg-turbo/libjpeg-turbo/blob/main/doc/libjpeg.txt
 
-// Kept in-sync with the Python ImageColorMode enum in
-// torchcodec/decoders/_image_decoders.py.
-constexpr int64_t kImageReadModeUnchanged = 0;
-constexpr int64_t kImageReadModeGray = 1;
-constexpr int64_t kImageReadModeRgb = 3;
-
 constexpr uint16_t EXIF_APP1 = 0xe1;
-
-void validate_encoded_data(const torch::stable::Tensor& encoded_data) {
-  STD_TORCH_CHECK(
-      encoded_data.is_contiguous(), "Input tensor must be contiguous.");
-  STD_TORCH_CHECK(
-      encoded_data.scalar_type() == kStableUInt8,
-      "Input tensor must have uint8 data type, got ",
-      torch::headeronly::toString(encoded_data.scalar_type()));
-  STD_TORCH_CHECK(
-      encoded_data.dim() == 1 && encoded_data.numel() > 0,
-      "Input tensor must be 1-dimensional and non-empty, got ",
-      encoded_data.dim(),
-      " dims  and ",
-      encoded_data.numel(),
-      " numels.");
-}
 
 // Helpers to convert a CMYK line to RGB or grayscale, since libjpeg doesn't
 // handle that directly.
-using cmyk_line_converter_fn = void (*)(int, const uint8_t*, uint8_t*);
+using CmykLineConverterFn = void (*)(int, const uint8_t*, uint8_t*);
 
 struct CMYKHelper {
   uint8_t* cmyk_line_ptr = nullptr;
   // This is either convert_line_cmyk_to_rgb or convert_line_cmyk_to_gray
-  cmyk_line_converter_fn convert_fn = nullptr;
+  CmykLineConverterFn convert_fn = nullptr;
 };
 
 inline uint8_t cmyk_to_rgb(uint8_t k, uint8_t cmy) {
@@ -162,12 +141,12 @@ int fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
 
 // Error context that gets passed by libjpeg to its callbacks
 // (error_exit_cb, fill_input_buffer_cb, etc.).
-// libjpeg doesn't actually pass this error_ctx_t, it passes the jpeg_ctx object
-// which has an `err` field. This `err` field is *still* not an error_ctx_t
+// libjpeg doesn't actually pass this ErrorCtx, it passes the jpeg_ctx object
+// which has an `err` field. This `err` field is *still* not an ErrorCtx
 // object, it's the jpeg_error_mgr base field, but we can cast it back to
-// error_ctx_t in the callbacks because the struct and its first field share the
+// ErrorCtx in the callbacks because the struct and its first field share the
 // same address.
-struct error_ctx_t {
+struct ErrorCtx {
   jpeg_error_mgr base;
   char last_error_message[JMSG_LENGTH_MAX];
   jmp_buf setjmp_buffer;
@@ -175,7 +154,7 @@ struct error_ctx_t {
 
 // Callback called by libjpeg when an error occurs.
 void error_exit_cb(j_common_ptr jpeg_ctx) {
-  auto error_ctx = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
+  auto error_ctx = reinterpret_cast<ErrorCtx*>(jpeg_ctx->err);
   error_ctx->base.format_message(jpeg_ctx, error_ctx->last_error_message);
   longjmp(error_ctx->setjmp_buffer, 1);
 }
@@ -185,7 +164,7 @@ void error_exit_cb(j_common_ptr jpeg_ctx) {
 // Should we ever want to support truncated JPEGs, we could instead return a
 // fake EOI.
 boolean fill_input_buffer_cb(j_decompress_ptr jpeg_ctx) {
-  auto error_ctx = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
+  auto error_ctx = reinterpret_cast<ErrorCtx*>(jpeg_ctx->err);
   strcpy(error_ctx->last_error_message, "Image is incomplete or truncated.");
   longjmp(error_ctx->setjmp_buffer, 1);
   return TRUE; // never reached, but keeps compiler happy
@@ -202,7 +181,7 @@ void skip_input_data_cb(j_decompress_ptr jpeg_ctx, long num_bytes) {
     // In TorchVision this would return a fake EOI, but that's inconsistent with
     // our fill_input_buffer_cb, which treats truncated JPEGs as an error.
     // So we error here too.
-    auto error_ctx = reinterpret_cast<error_ctx_t*>(jpeg_ctx->err);
+    auto error_ctx = reinterpret_cast<ErrorCtx*>(jpeg_ctx->err);
     strcpy(
         error_ctx->last_error_message,
         "Skipped over more data than is available in the input buffer.");
@@ -222,10 +201,10 @@ void term_source_cb(j_decompress_ptr) {}
 // function returns.
 std::tuple<int, bool> read_header_and_start(
     jpeg_decompress_struct& jpeg_ctx,
-    error_ctx_t& error_ctx,
+    ErrorCtx& error_ctx,
     const uint8_t* input_ptr,
     const size_t input_len,
-    int64_t mode) {
+    ImageReadMode mode) {
   if (setjmp(error_ctx.setjmp_buffer)) {
     // See Note [libjpeg error handling]
     jpeg_destroy_decompress(&jpeg_ctx);
@@ -251,21 +230,30 @@ std::tuple<int, bool> read_header_and_start(
 
   jpeg_read_header(&jpeg_ctx, TRUE);
 
+  // libjpeg natively decodes to UNCHANGED, GRAY or RGB. The alpha modes
+  // (GRAY_ALPHA, RGB_ALPHA) are emulated in Python at the single
+  // _decode_with_mode() callsite (see _image_decoders.py), which requests a
+  // native mode here and appends an alpha channel. The cpp decode_jpeg is not a
+  // public API and is only ever called from there, so the default branch is
+  // unreachable.
   int num_output_channels = -1;
   switch (mode) {
-    case kImageReadModeUnchanged:
+    case ImageReadMode::UNCHANGED:
       num_output_channels = jpeg_ctx.num_components;
       break;
-    case kImageReadModeGray:
+    case ImageReadMode::GRAY:
       num_output_channels = 1;
       break;
-    case kImageReadModeRgb:
+    case ImageReadMode::RGB:
       num_output_channels = 3;
       break;
     default:
       jpeg_destroy_decompress(&jpeg_ctx);
       STD_TORCH_CHECK(
-          false, "The provided mode is not supported for JPEG files");
+          false,
+          "Reached an unexpected code path while decoding a JPEG file to mode ",
+          static_cast<int64_t>(mode),
+          ". This should never happen, please report a bug to the TorchCodec repo.");
   }
 
   // libjpeg can't convert CMYK/YCCK straight to gray or RGB, so for those modes
@@ -274,14 +262,14 @@ std::tuple<int, bool> read_header_and_start(
   // https://github.com/tensorflow/tensorflow/blob/86871065265b04e0db8ca360c046421efb2bdeb4/tensorflow/core/lib/jpeg/jpeg_mem.cc#L284-L313
   bool cmyk_to_rgb_or_gray = (jpeg_ctx.jpeg_color_space == JCS_CMYK ||
                               jpeg_ctx.jpeg_color_space == JCS_YCCK) &&
-      (mode == kImageReadModeGray || mode == kImageReadModeRgb);
+      (mode == ImageReadMode::GRAY || mode == ImageReadMode::RGB);
 
   // For other sources, ask libjpeg to convert to the requested color space.
-  if (mode != kImageReadModeUnchanged && !cmyk_to_rgb_or_gray) {
-    if (mode == kImageReadModeGray) {
+  if (mode != ImageReadMode::UNCHANGED && !cmyk_to_rgb_or_gray) {
+    if (mode == ImageReadMode::GRAY) {
       jpeg_ctx.out_color_space = JCS_GRAYSCALE;
     } else {
-      STD_TORCH_CHECK(mode == kImageReadModeRgb, "Should never reach here.");
+      STD_TORCH_CHECK(mode == ImageReadMode::RGB, "Should never reach here.");
       jpeg_ctx.out_color_space = JCS_RGB;
     }
   }
@@ -292,9 +280,9 @@ std::tuple<int, bool> read_header_and_start(
 // The actual decoding loop, row by row.
 void decode_rows(
     jpeg_decompress_struct& jpeg_ctx,
-    error_ctx_t& error_ctx,
+    ErrorCtx& error_ctx,
     uint8_t* output_ptr,
-    int stride,
+    int64_t stride,
     CMYKHelper& cmyk_helper) {
   if (setjmp(error_ctx.setjmp_buffer)) {
     // See Note [libjpeg error handling]
@@ -431,6 +419,9 @@ void decode_rows(
 //
 /* clang-format on */
 
+// TODO_IMAGE: align names. everywhere. this is input, other places it's data,
+// other places it's something else. Should align here, in the header, in the
+// custom op definition, etc. Across codecs.
 torch::stable::Tensor decode_jpeg(
     const torch::stable::Tensor& input,
     int64_t mode) {
@@ -440,7 +431,7 @@ torch::stable::Tensor decode_jpeg(
   torch::stable::Tensor cmyk_line_tensor;
 
   jpeg_decompress_struct jpeg_ctx;
-  error_ctx_t error_ctx;
+  ErrorCtx error_ctx;
   jpeg_ctx.err = jpeg_std_error(&error_ctx.base);
   error_ctx.base.error_exit = error_exit_cb;
 
@@ -449,10 +440,11 @@ torch::stable::Tensor decode_jpeg(
       error_ctx,
       input.const_data_ptr<uint8_t>(),
       input.numel(),
-      mode);
+      static_cast<ImageReadMode>(mode));
 
   // We want output to be channels last
-  int stride = jpeg_ctx.output_width * num_output_channels;
+  int64_t stride =
+      static_cast<int64_t>(jpeg_ctx.output_width) * num_output_channels;
   output = torch::stable::empty(
       {int64_t(jpeg_ctx.output_height),
        int64_t(jpeg_ctx.output_width),

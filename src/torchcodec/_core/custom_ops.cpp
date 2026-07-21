@@ -24,6 +24,8 @@ extern "C" {
 #include "AVIOTensorContext.h"
 #include "ColorConverter.h"
 #include "DecodeJpeg.h"
+#include "DecodePng.h"
+#include "DecodeWebp.h"
 #include "Demuxer.h"
 #include "Encoder.h"
 #include "Logging.h"
@@ -120,6 +122,8 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
       "get_wav_samples_in_range(Tensor(a!) decoder, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def("get_wav_metadata_from_decoder(Tensor(a!) decoder) -> str");
   m.def("decode_jpeg(Tensor data, int mode) -> Tensor");
+  m.def("decode_png(Tensor data, int mode) -> Tensor");
+  m.def("decode_webp(Tensor data, int mode) -> Tensor");
 }
 
 namespace {
@@ -1527,6 +1531,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "streaming_encoder_add_samples",
       TORCH_BOX(&streaming_encoder_add_samples));
   m.impl("decode_jpeg", TORCH_BOX(&decode_jpeg));
+  m.impl("decode_png", TORCH_BOX(&decode_png));
+  m.impl("decode_webp", TORCH_BOX(&decode_webp));
 }
 
 } // namespace facebook::torchcodec

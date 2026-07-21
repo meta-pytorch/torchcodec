@@ -108,9 +108,9 @@ jobs:
 
       - name: Run Python smoke tests
         run: |
-          FAIL_WITHOUT_JPEG=1 pytest --override-ini="addopts=-v" test/smoke_test.py --tb=short
+          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 pytest --override-ini="addopts=-v" test/smoke_test.py --tb=short
 
       - name: Run Python tests
         if: ${{ matrix.ffmpeg-version-for-tests == '8' && !startsWith(github.ref, 'refs/heads/release/') }}
         run: |
-          FAIL_WITHOUT_JPEG=1 pytest --override-ini="addopts=-v" test
+          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 pytest --override-ini="addopts=-v" test

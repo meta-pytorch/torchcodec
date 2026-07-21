@@ -34,7 +34,12 @@ from torchcodec.decoders._blocks import (
     PacketDecoder,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
-from torchcodec.decoders._image_decoders import decode_jpeg, ImageColorMode
+from torchcodec.decoders._image_decoders import (
+    decode_jpeg,
+    decode_png,
+    decode_webp,
+    ImageColorMode,
+)
 from torchcodec.encoders import VideoEncoder
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
@@ -54,7 +59,11 @@ from .utils import (
     get_ffmpeg_minor_version,
     get_python_version,
     GRADIENT_JPEG,
+    GRADIENT_PNG,
+    GRADIENT_WEBP,
+    GRAYSCALE_ALPHA_PNG,
     GRAYSCALE_JPEG,
+    GRAYSCALE_PNG,
     H264_10BITS,
     H265_VIDEO,
     in_fbcode,
@@ -68,7 +77,11 @@ from .utils import (
     needs_cuda,
     needs_ffmpeg_cli,
     needs_jpeg,
+    needs_png,
+    needs_webp,
     psnr,
+    RGBA_PNG,
+    RGBA_WEBP,
     SINE_16_CHANNEL_S16,
     SINE_MONO_F32,
     SINE_MONO_F64,
@@ -3412,6 +3425,19 @@ class TestBlocks:
             torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
 
+# Small helpers to avoid having to always specify the same skip marks and decode_fn
+def _jpeg_param(*values):
+    return pytest.param(decode_jpeg, *values, marks=pytest.mark.needs_jpeg, id="jpeg")
+
+
+def _png_param(*values):
+    return pytest.param(decode_png, *values, marks=pytest.mark.needs_png, id="png")
+
+
+def _webp_param(*values):
+    return pytest.param(decode_webp, *values, marks=pytest.mark.needs_webp, id="webp")
+
+
 class TestImageDecoder:
     def _save_debug(self, decoded, reference, path="debug.png"):
         # Debugging helper: dump decoded and reference frames side-by-side.
@@ -3426,6 +3452,21 @@ class TestImageDecoder:
         t = torch.from_numpy(numpy.array(img))
         return t.permute(2, 0, 1) if t.ndim == 3 else t.unsqueeze(0)
 
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (
+            _jpeg_param(GRAYSCALE_JPEG),
+            _png_param(GRAYSCALE_PNG),
+            _webp_param(RGBA_WEBP),
+        ),
+    )
+    def test_default_mode_is_rgb(self, decode_fn, asset):
+        # The default output mode is RGB, so the decoded output always has 3
+        # channels regardless of the source: a grayscale source is expanded from
+        # 1 channel, an RGBA source has its alpha stripped.
+        decoded = decode_fn(asset.path)
+        assert decoded.shape[0] == 3
+
     @needs_jpeg
     @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, CMYK_JPEG))
     @pytest.mark.parametrize(
@@ -3433,10 +3474,12 @@ class TestImageDecoder:
         (
             (ImageColorMode.UNCHANGED, None),
             (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
             (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
         ),
     )
-    def test_against_pil(self, asset, mode, pil_mode):
+    def test_jpeg_against_pil(self, asset, mode, pil_mode):
         decoded = decode_jpeg(asset.path, mode=mode)
 
         reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
@@ -3447,36 +3490,204 @@ class TestImageDecoder:
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
-    @needs_jpeg
+        if mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA):
+            # The synthesized alpha channel must be fully opaque.
+            assert (decoded[-1] == 255).all()
+
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, ext, save_kwargs, source_mode",
+        (
+            _jpeg_param("JPEG", "jpg", {"quality": 95}, "L"),
+            _jpeg_param("JPEG", "jpg", {"quality": 95}, "RGB"),
+            _jpeg_param("JPEG", "jpg", {"quality": 95}, "CMYK"),
+            _png_param("PNG", "png", {}, "L"),
+            _png_param("PNG", "png", {}, "LA"),
+            _png_param("PNG", "png", {}, "RGB"),
+            _png_param("PNG", "png", {}, "RGBA"),
+            _png_param("PNG", "png", {}, "P"),
+            _webp_param("WEBP", "webp", {"lossless": True}, "RGB"),
+            _webp_param("WEBP", "webp", {"lossless": True}, "RGBA"),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "output_mode, pil_mode, num_expected_channels",
+        (
+            (ImageColorMode.UNCHANGED, None, None),
+            (ImageColorMode.GRAY, "L", 1),
+            (ImageColorMode.GRAY_ALPHA, "LA", 2),
+            (ImageColorMode.RGB, "RGB", 3),
+            (ImageColorMode.RGB_ALPHA, "RGBA", 4),
+        ),
+    )
+    def test_all_source_to_all_output_modes(
+        self,
+        tmp_path,
+        decode_fn,
+        fmt,
+        ext,
+        save_kwargs,
+        source_mode,
+        output_mode,
+        pil_mode,
+        num_expected_channels,
+    ):
+        # Test that every input color mode is decodable to every output mode.
+
+        if source_mode == "P" and output_mode is ImageColorMode.UNCHANGED:
+            # TODO_IMAGE figure out what to do here
+            pytest.skip("UNCHANGED on a palette PNG returns raw palette indices")
+
+        h, w = 40, 60
+        xs = numpy.linspace(0, 255, w)
+        ys = numpy.linspace(0, 255, h)
+        r = numpy.broadcast_to(xs, (h, w))
+        g = numpy.broadcast_to(ys[:, None], (h, w))
+        base = numpy.stack([r, g, (r + g) / 2], axis=-1).astype(numpy.uint8)
+
+        path = tmp_path / f"{source_mode}.{ext}"
+        Image.fromarray(base, mode="RGB").convert(source_mode).save(
+            path, fmt, **save_kwargs
+        )
+
+        decoded = decode_fn(path, mode=output_mode)
+        assert decoded.dtype == torch.uint8
+
+        reference = self._pil_to_tensor(Image.open(path).convert(pil_mode))
+        if (
+            output_mode is ImageColorMode.UNCHANGED
+            and fmt == "JPEG"
+            and source_mode == "CMYK"
+        ):
+            # libjpeg returns raw (inverted) CMYK samples; flip to match PIL.
+            # TODO_IMAGE: is this a bug? Should we fix it?
+            reference = 255 - reference
+
+        if output_mode is ImageColorMode.UNCHANGED:
+            num_expected_channels = reference.shape[0]
+        assert decoded.shape[0] == num_expected_channels
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+        source_has_alpha = source_mode in ("LA", "RGBA")
+        if (
+            output_mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA)
+            and not source_has_alpha
+        ):
+            assert (decoded[-1] == 255).all()
+
+    @staticmethod
+    def _make_transparent_png(path, kind):
+        # A PNG can encode transparency via a tRNS chunk instead of a full alpha
+        # channel: a transparent colorkey for gray/RGB images, or per-palette-
+        # entry alpha for palette images. The left half is transparent.
+        h, w = 16, 20
+        if kind == "rgb":
+            arr = numpy.empty((h, w, 3), numpy.uint8)
+            arr[:, : w // 2] = (10, 20, 30)
+            arr[:, w // 2 :] = (200, 100, 50)
+            Image.fromarray(arr, "RGB").save(path, transparency=(10, 20, 30))
+        elif kind == "gray":
+            arr = numpy.empty((h, w), numpy.uint8)
+            arr[:, : w // 2] = 42
+            arr[:, w // 2 :] = 200
+            Image.fromarray(arr, "L").save(path, transparency=42)
+        else:
+            assert kind == "palette"
+            px = numpy.zeros((h, w), numpy.uint8)
+            px[:, w // 2 :] = 1
+            im = Image.fromarray(px, "P")
+            im.putpalette([10, 20, 30, 200, 100, 50])
+            im.info["transparency"] = bytes([0, 255])  # per-index alpha
+            im.save(path)
+
+    @needs_png
+    @pytest.mark.parametrize("kind", ("rgb", "gray", "palette"))
+    @pytest.mark.parametrize(
+        "output_mode, pil_mode",
+        (
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_png_trns_transparency(self, tmp_path, kind, output_mode, pil_mode):
+        # tRNS transparency must be honored (not decoded as fully opaque) when
+        # decoding to an alpha mode.
+        path = tmp_path / f"{kind}.png"
+        self._make_transparent_png(path, kind)
+
+        decoded = decode_png(path, mode=output_mode)
+        reference = self._pil_to_tensor(Image.open(path).convert(pil_mode))
+        assert decoded.shape == reference.shape
+
+        # The alpha channel (the transparency itself) must match exactly: the
+        # left half is transparent (0), the right half opaque (255).
+        alpha, ref_alpha = decoded[-1], reference[-1]
+        assert_tensor_close_on_at_least(alpha, ref_alpha, percentage=99, atol=2)
+        assert (alpha == 0).any()
+        assert (alpha == 255).any()
+
+        # Color must match where visible. The color under fully-transparent
+        # pixels is irrelevant and PIL fills it differently than a straight
+        # gray/RGB conversion, so we don't compare it.
+        visible = (alpha > 0).unsqueeze(0).expand(decoded.shape[0] - 1, -1, -1)
+        assert_tensor_close_on_at_least(
+            decoded[:-1][visible],
+            reference[:-1][visible],
+            percentage=99,
+            atol=2,
+        )
+
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, ext, save_kwargs",
+        (
+            _jpeg_param("JPEG", "jpg", {"quality": 95}),
+            _png_param("PNG", "png", {}),
+            _webp_param("WEBP", "webp", {"lossless": True}),
+        ),
+    )
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
-    def test_exif_orientation(self, tmp_path, orientation):
+    def test_exif_orientation(
+        self, tmp_path, orientation, decode_fn, fmt, ext, save_kwargs
+    ):
         arr = torch.randint(0, 256, (100, 101, 3), dtype=torch.uint8).numpy()
         img = Image.fromarray(arr)
         exif = img.getexif()
         exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
-        path = tmp_path / f"exif_{orientation}.jpg"
-        img.save(path, "JPEG", exif=exif.tobytes(), quality=95)
+        path = tmp_path / f"exif_{orientation}.{ext}"
+        img.save(path, fmt, exif=exif.tobytes(), **save_kwargs)
 
-        decoded = decode_jpeg(path, mode=ImageColorMode.RGB)
+        decoded = decode_fn(path, mode=ImageColorMode.RGB)
         reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
 
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
-    @needs_jpeg
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, ext, save_kwargs",
+        (
+            _jpeg_param("JPEG", "jpg", {"quality": 95}),
+            _png_param("PNG", "png", {}),
+            _webp_param("WEBP", "webp", {"lossless": True}),
+        ),
+    )
     @pytest.mark.parametrize("size", (65533, 1, 7, 10, 23, 33))
-    def test_invalid_exif(self, tmp_path, size):
-        # Malformed EXIF must not crash; output should match PIL (which ignores
-        # the bad EXIF). Inspired by a Pillow test.
+    def test_invalid_exif(self, tmp_path, size, decode_fn, fmt, ext, save_kwargs):
+        # Malformed EXIF must not crash. Inspired by a Pillow test.
         arr = torch.randint(0, 256, (100, 101, 3), dtype=torch.uint8).numpy()
         img = Image.fromarray(arr)
-        path = tmp_path / f"invalid_exif_{size}.jpg"
-        img.save(path, "JPEG", exif=b"1" * size, quality=95)
+        path = tmp_path / f"invalid_exif_{size}.{ext}"
+        img.save(path, fmt, exif=b"1" * size, **save_kwargs)
 
-        decoded = decode_jpeg(path, mode=ImageColorMode.RGB)
-        reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
-        assert decoded.shape == reference.shape
-        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+        decoded = decode_fn(path, mode=ImageColorMode.RGB)
+        assert decoded.shape == (3, 100, 101)
+
+        # For JPEG the output should also match PIL, which ignores the bad EXIF.
+        # We can't check this for PNG: PIL's exif_transpose raises on a malformed
+        # eXIf chunk instead of ignoring it, so there's no clean reference.
+        if decode_fn is decode_jpeg:
+            reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
+            assert decoded.shape == reference.shape
+            assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
     @needs_jpeg
     def test_bad_huffman_decodes(self):
@@ -3484,20 +3695,102 @@ class TestImageDecoder:
         # doesn't raise.
         decode_jpeg(BAD_HUFFMAN_JPEG.path)
 
-    @needs_jpeg
-    def test_not_a_jpeg_raises(self, tmp_path):
-        path = tmp_path / "garbage.jpg"
+    @pytest.mark.parametrize(
+        "decode_fn, ext, match",
+        (
+            _jpeg_param("jpg", "Not a JPEG"),
+            _png_param("png", "Not a PNG file"),
+            _webp_param("webp", "WebPGetFeatures failed"),
+        ),
+    )
+    def test_not_an_image_raises(self, tmp_path, decode_fn, ext, match):
+        path = tmp_path / f"garbage.{ext}"
         path.write_bytes(b"\x00" * 100)
-        with pytest.raises(RuntimeError, match="Not a JPEG"):
-            decode_jpeg(path)
+        with pytest.raises(RuntimeError, match=match):
+            decode_fn(path)
 
-    @needs_jpeg
+    @pytest.mark.parametrize(
+        "decode_fn, asset, ext, match",
+        (
+            _jpeg_param(GRADIENT_JPEG, "jpg", "Image is incomplete or truncated"),
+            _png_param(GRADIENT_PNG, "png", "Out of bound read"),
+            _webp_param(GRADIENT_WEBP, "webp", "Failed to decode the WebP bitstream"),
+        ),
+    )
     @pytest.mark.parametrize("div", (2, 3, 4))
-    def test_truncated_jpeg_raises(self, tmp_path, div):
-        # A JPEG truncated mid-scan must raise, not crash.
-        # See TODO for details.
-        data = GRADIENT_JPEG.path.read_bytes()
-        path = tmp_path / "truncated.jpg"
+    def test_truncated_raises(self, tmp_path, div, decode_fn, asset, ext, match):
+        # A file truncated mid-stream must raise, not crash.
+        data = asset.path.read_bytes()
+        path = tmp_path / f"truncated.{ext}"
         path.write_bytes(data[: len(data) // div])
-        with pytest.raises(RuntimeError, match="Image is incomplete or truncated"):
-            decode_jpeg(path)
+        with pytest.raises(RuntimeError, match=match):
+            decode_fn(path)
+
+    @needs_png
+    @pytest.mark.parametrize(
+        "asset", (GRADIENT_PNG, GRAYSCALE_PNG, GRAYSCALE_ALPHA_PNG, RGBA_PNG)
+    )
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            (ImageColorMode.UNCHANGED, None),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_png_against_pil(self, asset, mode, pil_mode):
+        decoded = decode_png(asset.path, mode=mode)
+
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_png
+    def test_corrupt_png_raises(self, tmp_path):
+        # Corrupting the IHDR chunk type makes libpng raise an error (its stored
+        # CRC no longer matches). This exercizes the error callback and the
+        # setjmp/longjmp handling.
+        data = bytearray(GRADIENT_PNG.path.read_bytes())
+        data[12:16] = b"XXXX"  # the "IHDR" chunk type, at a fixed offset
+        path = tmp_path / "corrupt.png"
+        path.write_bytes(bytes(data))
+        with pytest.raises(RuntimeError, match="CRC error"):
+            decode_png(path)
+
+    @needs_webp
+    @pytest.mark.parametrize("asset", (GRADIENT_WEBP, RGBA_WEBP))
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            (ImageColorMode.UNCHANGED, None),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_webp_against_pil(self, asset, mode, pil_mode):
+        decoded = decode_webp(asset.path, mode=mode)
+
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_webp
+    def test_animated_webp_raises(self, tmp_path):
+        path = tmp_path / "animated.webp"
+        frames = [
+            Image.fromarray(
+                torch.randint(0, 256, (16, 16, 3), dtype=torch.uint8).numpy()
+            )
+            for _ in range(3)
+        ]
+        frames[0].save(
+            path, "WEBP", save_all=True, append_images=frames[1:], duration=100
+        )
+        with pytest.raises(RuntimeError, match="Animated webp files are not supported"):
+            decode_webp(path)

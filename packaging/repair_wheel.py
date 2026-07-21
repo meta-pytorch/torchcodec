@@ -11,9 +11,9 @@ TorchCodec depends on non-Python libraries: FFmpeg, libjpeg, libtorch, etc.
 that the wheel runs standalone on a system that doesn't have those libraries
 installed.
 
-We bundle some third-party native libraries like libjpeg(-turbo), while making
-sure we EXCLUDE FFmpeg (user-provided at runtime) and torch/CUDA (provided by
-the torch wheel).
+We bundle some third-party native libraries like libjpeg(-turbo), libpng, zlib
+and libwebp (+libsharpyuv), while making sure we EXCLUDE FFmpeg (user-provided at
+runtime) and torch/CUDA (provided by the torch wheel).
 """
 
 import io
@@ -93,17 +93,34 @@ def repair_macos(wheels):
 
 
 def repair_windows(wheels):
-    # We do what torchvision does on Windows: copy the libjpeg DLL next to our
-    # libs inside the wheel. At load time Windows resolves a DLL's dependencies
-    # from the DLL's own directory, libjpeg is found. We repack with `wheel` so
-    # the RECORD is regenerated.
+    # We do what torchvision does on Windows: copy the libjpeg/libpng/zlib DLLs
+    # next to our libs inside the wheel. At load time Windows resolves a DLL's
+    # dependencies from the DLL's own directory, so they are found. We repack with
+    # `wheel` so the RECORD is regenerated.
     run([sys.executable, "-m", "pip", "install", "-U", "wheel"])
     bin_dir = Path(os.environ.get("CONDA_PREFIX", "")) / "Library" / "bin"
-    jpeg_dlls = sorted(
-        set(bin_dir.glob("jpeg*.dll")) | set(bin_dir.glob("libjpeg*.dll"))
-    )
+
+    jpeg_dlls = set(bin_dir.glob("jpeg*.dll")) | set(bin_dir.glob("libjpeg*.dll"))
     if not jpeg_dlls:
         raise FileNotFoundError(f"No libjpeg DLL found under {bin_dir}")
+    png_dlls = set(bin_dir.glob("libpng*.dll")) | set(bin_dir.glob("png*.dll"))
+    if not png_dlls:
+        raise FileNotFoundError(f"No libpng DLL found under {bin_dir}")
+    # libpng depends on zlib; bundle it too so libpng can resolve it at load time.
+    zlib_dlls = set(bin_dir.glob("zlib*.dll")) | set(bin_dir.glob("libz*.dll"))
+    if not zlib_dlls:
+        raise FileNotFoundError(f"No zlib DLL found under {bin_dir}")
+    # libwebp depends on libsharpyuv; bundle both.
+    webp_dlls = set(bin_dir.glob("libwebp*.dll")) | set(bin_dir.glob("webp*.dll"))
+    if not webp_dlls:
+        raise FileNotFoundError(f"No libwebp DLL found under {bin_dir}")
+    sharpyuv_dlls = set(bin_dir.glob("libsharpyuv*.dll")) | set(
+        bin_dir.glob("sharpyuv*.dll")
+    )
+    if not sharpyuv_dlls:
+        raise FileNotFoundError(f"No libsharpyuv DLL found under {bin_dir}")
+
+    dlls = sorted(jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls)
 
     for wheel in wheels:
         unpack_dir = REPAIRED_DIR / "unpack"
@@ -114,7 +131,7 @@ def repair_windows(wheels):
         if not pkg_dirs:
             raise FileNotFoundError("torchcodec/ package dir not found in wheel")
         pkg_dir = pkg_dirs[0]
-        for dll in jpeg_dlls:
+        for dll in dlls:
             print(f"bundling {dll} -> {pkg_dir}", flush=True)
             shutil.copy(dll, pkg_dir)
         run([sys.executable, "-m", "wheel", "pack", pkg_dir.parent, "-d", REPAIRED_DIR])
@@ -125,7 +142,7 @@ def check_bundling():
     """Raise if:
     - a wheel bundles a lib that's not in the allowlist. This would raise if we
       ever try to bundle FFmpeg or torch/CUDA.
-    - a wheel does NOT bundle libjpeg.
+    - a wheel does NOT bundle libjpeg, libpng or libwebp.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
     """
 
@@ -138,8 +155,27 @@ def check_bundling():
             lib.startswith("jpeg") and lib.endswith(".dll")
         )
 
+    def _is_png(lib):
+        return lib.startswith("libpng") or (
+            lib.startswith("png") and lib.endswith(".dll")
+        )
+
+    def _is_zlib(lib):
+        return lib.startswith(("libz", "zlib"))
+
+    def _is_webp(lib):
+        return lib.startswith(("libwebp", "libsharpyuv")) or (
+            lib.startswith(("webp", "sharpyuv")) and lib.endswith(".dll")
+        )
+
     def _is_allowed(lib):
-        if lib.startswith("libtorchcodec_") or _is_jpeg(lib):
+        if (
+            lib.startswith("libtorchcodec_")
+            or _is_jpeg(lib)
+            or _is_png(lib)
+            or _is_zlib(lib)
+            or _is_webp(lib)
+        ):
             return True
         # On macOS, test-infra's delocate bundles these OS/interpreter libs before
         # our post-script runs; benign and out of our control.
@@ -182,6 +218,12 @@ def check_bundling():
                     f"Unexpected libraries bundled in {wheel.name}: "
                     + " ".join(unexpected)
                 )
+            if not any(_is_jpeg(lib) for lib in libs):
+                raise RuntimeError(f"{wheel.name} does not bundle libjpeg.")
+            if not any(_is_png(lib) for lib in libs):
+                raise RuntimeError(f"{wheel.name} does not bundle libpng.")
+            if not any(_is_webp(lib) for lib in libs):
+                raise RuntimeError(f"{wheel.name} does not bundle libwebp.")
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")
