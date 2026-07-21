@@ -100,30 +100,6 @@ int fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
   return -1;
 }
 
-// libwebp natively decodes to RGB or RGBA only, so this only handles the RGB,
-// RGB_ALPHA and UNCHANGED modes. The grayscale modes (GRAY, GRAY_ALPHA) are
-// emulated in Python at the single _decode_with_mode() callsite (see
-// _image_decoders.py), which requests RGB/RGBA here and converts. The cpp
-// decode_webp is not a public API and is only ever called from there, so the
-// default branch below is unreachable. This returns whether decode_webp should
-// produce a 3-channel RGB tensor (true) or a 4-channel RGBA tensor (false).
-bool should_return_rgb(ImageReadMode mode, bool has_alpha) {
-  switch (mode) {
-    case ImageReadMode::RGB:
-      return true;
-    case ImageReadMode::RGB_ALPHA:
-      return false;
-    case ImageReadMode::UNCHANGED:
-      return !has_alpha;
-    default:
-      STD_TORCH_CHECK(
-          false,
-          "Reached an unexpected code path while decoding a WebP file to mode ",
-          static_cast<int64_t>(mode),
-          ". This should never happen, please report a bug to the TorchCodec repo.");
-  }
-}
-
 } // namespace
 
 torch::stable::Tensor decode_webp(
