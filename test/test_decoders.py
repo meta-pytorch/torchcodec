@@ -55,6 +55,7 @@ from .utils import (
     get_python_version,
     GRADIENT_JPEG,
     GRADIENT_PNG,
+    GRAYSCALE_ALPHA_PNG,
     GRAYSCALE_JPEG,
     GRAYSCALE_PNG,
     H264_10BITS,
@@ -3547,7 +3548,9 @@ class TestImageDecoder:
             decode_fn(path)
 
     @needs_png
-    @pytest.mark.parametrize("asset", (GRADIENT_PNG, GRAYSCALE_PNG, RGBA_PNG))
+    @pytest.mark.parametrize(
+        "asset", (GRADIENT_PNG, GRAYSCALE_PNG, GRAYSCALE_ALPHA_PNG, RGBA_PNG)
+    )
     @pytest.mark.parametrize(
         "mode, pil_mode",
         (
