@@ -17,8 +17,8 @@
 namespace facebook::torchcodec {
 
 torch::stable::Tensor decode_jpeg(
-    const torch::stable::Tensor& data,
-    int64_t mode) {
+    [[maybe_unused]] const torch::stable::Tensor& data,
+    [[maybe_unused]] int64_t mode) {
   STD_TORCH_CHECK(
       false,
       "decode_jpeg: torchcodec was not compiled with libjpeg support. "
@@ -230,6 +230,12 @@ std::tuple<int, bool> read_header_and_start(
 
   jpeg_read_header(&jpeg_ctx, TRUE);
 
+  // libjpeg natively decodes to UNCHANGED, GRAY or RGB. The alpha modes
+  // (GRAY_ALPHA, RGB_ALPHA) are emulated in Python at the single
+  // _decode_with_mode() callsite (see _image_decoders.py), which requests a
+  // native mode here and appends an alpha channel. The cpp decode_jpeg is not a
+  // public API and is only ever called from there, so the default branch is
+  // unreachable.
   int num_output_channels = -1;
   switch (mode) {
     case ImageReadMode::UNCHANGED:
@@ -244,7 +250,10 @@ std::tuple<int, bool> read_header_and_start(
     default:
       jpeg_destroy_decompress(&jpeg_ctx);
       STD_TORCH_CHECK(
-          false, "The provided mode is not supported for JPEG files");
+          false,
+          "Reached an unexpected code path while decoding a JPEG file to mode ",
+          static_cast<int64_t>(mode),
+          ". This should never happen, please report a bug to the TorchCodec repo.");
   }
 
   // libjpeg can't convert CMYK/YCCK straight to gray or RGB, so for those modes

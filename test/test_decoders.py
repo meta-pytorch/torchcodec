@@ -34,7 +34,12 @@ from torchcodec.decoders._blocks import (
     PacketDecoder,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
-from torchcodec.decoders._image_decoders import decode_jpeg, decode_png, ImageColorMode
+from torchcodec.decoders._image_decoders import (
+    decode_jpeg,
+    decode_png,
+    decode_webp,
+    ImageColorMode,
+)
 from torchcodec.encoders import VideoEncoder
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
@@ -55,6 +60,7 @@ from .utils import (
     get_python_version,
     GRADIENT_JPEG,
     GRADIENT_PNG,
+    GRADIENT_WEBP,
     GRAYSCALE_ALPHA_PNG,
     GRAYSCALE_JPEG,
     GRAYSCALE_PNG,
@@ -72,8 +78,10 @@ from .utils import (
     needs_ffmpeg_cli,
     needs_jpeg,
     needs_png,
+    needs_webp,
     psnr,
     RGBA_PNG,
+    RGBA_WEBP,
     SINE_16_CHANNEL_S16,
     SINE_MONO_F32,
     SINE_MONO_F64,
@@ -3426,6 +3434,10 @@ def _png_param(*values):
     return pytest.param(decode_png, *values, marks=pytest.mark.needs_png, id="png")
 
 
+def _webp_param(*values):
+    return pytest.param(decode_webp, *values, marks=pytest.mark.needs_webp, id="webp")
+
+
 class TestImageDecoder:
     def _save_debug(self, decoded, reference, path="debug.png"):
         # Debugging helper: dump decoded and reference frames side-by-side.
@@ -3442,11 +3454,16 @@ class TestImageDecoder:
 
     @pytest.mark.parametrize(
         "decode_fn, asset",
-        (_jpeg_param(GRAYSCALE_JPEG), _png_param(GRAYSCALE_PNG)),
+        (
+            _jpeg_param(GRAYSCALE_JPEG),
+            _png_param(GRAYSCALE_PNG),
+            _webp_param(RGBA_WEBP),
+        ),
     )
     def test_default_mode_is_rgb(self, decode_fn, asset):
-        # The default output mode is RGB, so a grayscale source decodes to 3
-        # channels rather than 1.
+        # The default output mode is RGB, so the decoded output always has 3
+        # channels regardless of the source: a grayscale source is expanded from
+        # 1 channel, an RGBA source has its alpha stripped.
         decoded = decode_fn(asset.path)
         assert decoded.shape[0] == 3
 
@@ -3488,6 +3505,8 @@ class TestImageDecoder:
             _png_param("PNG", "png", {}, "RGB"),
             _png_param("PNG", "png", {}, "RGBA"),
             _png_param("PNG", "png", {}, "P"),
+            _webp_param("WEBP", "webp", {"lossless": True}, "RGB"),
+            _webp_param("WEBP", "webp", {"lossless": True}, "RGBA"),
         ),
     )
     @pytest.mark.parametrize(
@@ -3623,6 +3642,7 @@ class TestImageDecoder:
         (
             _jpeg_param("JPEG", "jpg", {"quality": 95}),
             _png_param("PNG", "png", {}),
+            _webp_param("WEBP", "webp", {"lossless": True}),
         ),
     )
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
@@ -3647,6 +3667,7 @@ class TestImageDecoder:
         (
             _jpeg_param("JPEG", "jpg", {"quality": 95}),
             _png_param("PNG", "png", {}),
+            _webp_param("WEBP", "webp", {"lossless": True}),
         ),
     )
     @pytest.mark.parametrize("size", (65533, 1, 7, 10, 23, 33))
@@ -3679,6 +3700,7 @@ class TestImageDecoder:
         (
             _jpeg_param("jpg", "Not a JPEG"),
             _png_param("png", "Not a PNG file"),
+            _webp_param("webp", "WebPGetFeatures failed"),
         ),
     )
     def test_not_an_image_raises(self, tmp_path, decode_fn, ext, match):
@@ -3692,6 +3714,7 @@ class TestImageDecoder:
         (
             _jpeg_param(GRADIENT_JPEG, "jpg", "Image is incomplete or truncated"),
             _png_param(GRADIENT_PNG, "png", "Out of bound read"),
+            _webp_param(GRADIENT_WEBP, "webp", "Failed to decode the WebP bitstream"),
         ),
     )
     @pytest.mark.parametrize("div", (2, 3, 4))
@@ -3736,3 +3759,38 @@ class TestImageDecoder:
         path.write_bytes(bytes(data))
         with pytest.raises(RuntimeError, match="CRC error"):
             decode_png(path)
+
+    @needs_webp
+    @pytest.mark.parametrize("asset", (GRADIENT_WEBP, RGBA_WEBP))
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            (ImageColorMode.UNCHANGED, None),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_webp_against_pil(self, asset, mode, pil_mode):
+        decoded = decode_webp(asset.path, mode=mode)
+
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_webp
+    def test_animated_webp_raises(self, tmp_path):
+        path = tmp_path / "animated.webp"
+        frames = [
+            Image.fromarray(
+                torch.randint(0, 256, (16, 16, 3), dtype=torch.uint8).numpy()
+            )
+            for _ in range(3)
+        ]
+        frames[0].save(
+            path, "WEBP", save_all=True, append_images=frames[1:], duration=100
+        )
+        with pytest.raises(RuntimeError, match="Animated webp files are not supported"):
+            decode_webp(path)

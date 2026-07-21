@@ -16,7 +16,7 @@ import torch
 from torchcodec import ffmpeg_major_version
 from torchcodec._core import get_ffmpeg_library_versions
 from torchcodec.decoders import set_cuda_backend, VideoDecoder
-from torchcodec.decoders._image_decoders import decode_jpeg, decode_png
+from torchcodec.decoders._image_decoders import decode_jpeg, decode_png, decode_webp
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
@@ -66,6 +66,12 @@ def needs_jpeg(test_item):
 # it). Handled in pytest_collection_modifyitems() of conftest.py.
 def needs_png(test_item):
     return pytest.mark.needs_png(test_item)
+
+
+# Decorator for skipping tests that need libwebp (torchcodec may be built
+# without it). Handled in pytest_collection_modifyitems() of conftest.py.
+def needs_webp(test_item):
+    return pytest.mark.needs_webp(test_item)
 
 
 # This is a special device string that we use to test the legacy "ffmpeg" CUDA
@@ -330,6 +336,33 @@ def png_is_available() -> bool:
         decode_png(GRADIENT_PNG.path)
     except RuntimeError as e:
         if "libpng" in str(e):
+            return False
+        raise
+    return True
+
+
+# 720p RGB gradient WebP (lossless), same gradient as GRADIENT_JPEG. Generated
+# with the GRADIENT_JPEG recipe above, then:
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save(
+#     "gradient.webp", "WEBP", lossless=True)
+GRADIENT_WEBP = TestImage(
+    filename="gradient.webp", width=1280, height=720, num_channels=3
+)
+
+# 720p RGBA WebP (lossless): same gradient as GRADIENT_WEBP with the diagonal
+# alpha ramp of RGBA_PNG. Generated with the GRADIENT_PNG recipe above, then:
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# rgba = np.concatenate([np.stack([r, g, b], axis=-1), a[..., None]], axis=-1)
+# Image.fromarray(rgba, mode="RGBA").save("rgba.webp", "WEBP", lossless=True)
+RGBA_WEBP = TestImage(filename="rgba.webp", width=1280, height=720, num_channels=4)
+
+
+@functools.cache
+def webp_is_available() -> bool:
+    try:
+        decode_webp(GRADIENT_WEBP.path)
+    except RuntimeError as e:
+        if "libwebp" in str(e):
             return False
         raise
     return True

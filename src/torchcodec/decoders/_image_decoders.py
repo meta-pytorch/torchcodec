@@ -10,7 +10,11 @@ from pathlib import Path
 
 import torch
 
-from torchcodec._core.ops import decode_jpeg as _decode_jpeg, decode_png as _decode_png
+from torchcodec._core.ops import (
+    decode_jpeg as _decode_jpeg,
+    decode_png as _decode_png,
+    decode_webp as _decode_webp,
+)
 
 # TODO_IMAGE: we need to make FFmpeg an optional dependency
 
@@ -63,6 +67,9 @@ _JPEG_NATIVE_OUTPUT_MODES = frozenset(
     (ImageColorMode.UNCHANGED, ImageColorMode.GRAY, ImageColorMode.RGB)
 )
 _PNG_NATIVE_OUTPUT_MODES = frozenset(ImageColorMode)
+_WEBP_NATIVE_OUTPUT_MODES = frozenset(
+    (ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.RGB_ALPHA)
+)
 
 
 def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
@@ -71,11 +78,30 @@ def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
     return torch.cat([img, alpha], dim=0)
 
 
+def _rgb_to_gray(img: torch.Tensor) -> torch.Tensor:
+    # ITU-R 601-2 luma weights, matching torchvision's rgb_to_grayscale.
+    weights = torch.tensor([0.2989, 0.587, 0.114])
+    gray = (img.to(torch.float32) * weights[:, None, None]).sum(dim=0, keepdim=True)
+    return gray.round().clamp(0, torch.iinfo(img.dtype).max).to(img.dtype)
+
+
 def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tensor:
     if mode in native_output_modes:
         return decode_fn(data, mode.value)
+    if mode is ImageColorMode.GRAY:
+        # Reached for decoders without native grayscale support (e.g. webp):
+        # decode RGB and reduce to luma.
+        return _rgb_to_gray(decode_fn(data, ImageColorMode.RGB.value))
     if mode is ImageColorMode.GRAY_ALPHA:
-        return _append_opaque_alpha(decode_fn(data, ImageColorMode.GRAY.value))
+        if ImageColorMode.GRAY in native_output_modes:
+            # The decoder produces gray but not gray+alpha (e.g. jpeg): the
+            # source carries no alpha, so synthesize an opaque one.
+            return _append_opaque_alpha(decode_fn(data, ImageColorMode.GRAY.value))
+        else:
+            # No native grayscale (e.g. webp): decode RGBA and reduce color to
+            # luma while preserving the real alpha channel.
+            rgba = decode_fn(data, ImageColorMode.RGB_ALPHA.value)
+            return torch.cat([_rgb_to_gray(rgba[:3]), rgba[3:]], dim=0)
     if mode is ImageColorMode.RGB_ALPHA:
         return _append_opaque_alpha(decode_fn(data, ImageColorMode.RGB.value))
     raise RuntimeError(
@@ -83,6 +109,9 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
         "This should never happen, please report a bug to the TorchCodec repo."
     )
 
+
+# TODO_IMAGE: Benchmark against torchvision, both from file and from bytes. We
+# have changed the file reading logic a bit (it's Python right now, not Cpp).
 
 # TODO_IMAGE: Since we're updating the decoders code a bit, we should run sanity
 # checks ensure we're not leaking anything (there was a leak on webp back then!).
@@ -109,3 +138,14 @@ def decode_png(
     """Decode a PNG file into a uint8 tensor of shape ``(C, H, W)``."""
     data = _read_file_to_tensor(source)
     return _decode_with_mode(_decode_png, data, mode, _PNG_NATIVE_OUTPUT_MODES)
+
+
+def decode_webp(
+    source: str | Path,
+    *,
+    mode: ImageColorMode = ImageColorMode.RGB,
+) -> torch.Tensor:
+    # TODO_IMAGE: animated webp files are not supported yet.
+    """Decode a WebP file into a uint8 tensor of shape ``(C, H, W)``."""
+    data = _read_file_to_tensor(source)
+    return _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)

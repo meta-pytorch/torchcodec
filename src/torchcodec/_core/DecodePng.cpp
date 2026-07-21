@@ -17,8 +17,8 @@
 namespace facebook::torchcodec {
 
 torch::stable::Tensor decode_png(
-    const torch::stable::Tensor& data,
-    int64_t mode) {
+    [[maybe_unused]] const torch::stable::Tensor& data,
+    [[maybe_unused]] int64_t mode) {
   STD_TORCH_CHECK(
       false,
       "decode_png: torchcodec was not compiled with libpng support. "
@@ -246,7 +246,10 @@ PngHeader read_header_and_configure(
       default:
         png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
         STD_TORCH_CHECK(
-            false, "The provided mode is not supported for PNG files");
+            false,
+            "Reached an unexpected code path while decoding a PNG file to mode ",
+            static_cast<int64_t>(read_mode),
+            ". This should never happen, please report a bug to the TorchCodec repo.");
     }
 
     png_read_update_info(png_ptr, info_ptr);

@@ -11,9 +11,9 @@ TorchCodec depends on non-Python libraries: FFmpeg, libjpeg, libtorch, etc.
 that the wheel runs standalone on a system that doesn't have those libraries
 installed.
 
-We bundle some third-party native libraries like libjpeg(-turbo), libpng and
-zlib, while making sure we EXCLUDE FFmpeg (user-provided at runtime) and
-torch/CUDA (provided by the torch wheel).
+We bundle some third-party native libraries like libjpeg(-turbo), libpng, zlib
+and libwebp (+libsharpyuv), while making sure we EXCLUDE FFmpeg (user-provided at
+runtime) and torch/CUDA (provided by the torch wheel).
 """
 
 import io
@@ -110,8 +110,17 @@ def repair_windows(wheels):
     zlib_dlls = set(bin_dir.glob("zlib*.dll")) | set(bin_dir.glob("libz*.dll"))
     if not zlib_dlls:
         raise FileNotFoundError(f"No zlib DLL found under {bin_dir}")
+    # libwebp depends on libsharpyuv; bundle both.
+    webp_dlls = set(bin_dir.glob("libwebp*.dll")) | set(bin_dir.glob("webp*.dll"))
+    if not webp_dlls:
+        raise FileNotFoundError(f"No libwebp DLL found under {bin_dir}")
+    sharpyuv_dlls = set(bin_dir.glob("libsharpyuv*.dll")) | set(
+        bin_dir.glob("sharpyuv*.dll")
+    )
+    if not sharpyuv_dlls:
+        raise FileNotFoundError(f"No libsharpyuv DLL found under {bin_dir}")
 
-    dlls = sorted(jpeg_dlls | png_dlls | zlib_dlls)
+    dlls = sorted(jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls)
 
     for wheel in wheels:
         unpack_dir = REPAIRED_DIR / "unpack"
@@ -133,7 +142,7 @@ def check_bundling():
     """Raise if:
     - a wheel bundles a lib that's not in the allowlist. This would raise if we
       ever try to bundle FFmpeg or torch/CUDA.
-    - a wheel does NOT bundle libjpeg or libpng.
+    - a wheel does NOT bundle libjpeg, libpng or libwebp.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
     """
 
@@ -152,8 +161,12 @@ def check_bundling():
         )
 
     def _is_zlib(lib):
-        # Linux libz.so.N, macOS libz.N.dylib, Windows zlib*.dll / libz*.dll.
         return lib.startswith(("libz", "zlib"))
+
+    def _is_webp(lib):
+        return lib.startswith(("libwebp", "libsharpyuv")) or (
+            lib.startswith(("webp", "sharpyuv")) and lib.endswith(".dll")
+        )
 
     def _is_allowed(lib):
         if (
@@ -161,6 +174,7 @@ def check_bundling():
             or _is_jpeg(lib)
             or _is_png(lib)
             or _is_zlib(lib)
+            or _is_webp(lib)
         ):
             return True
         # On macOS, test-infra's delocate bundles these OS/interpreter libs before
@@ -208,6 +222,8 @@ def check_bundling():
                 raise RuntimeError(f"{wheel.name} does not bundle libjpeg.")
             if not any(_is_png(lib) for lib in libs):
                 raise RuntimeError(f"{wheel.name} does not bundle libpng.")
+            if not any(_is_webp(lib) for lib in libs):
+                raise RuntimeError(f"{wheel.name} does not bundle libwebp.")
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")
