@@ -11,9 +11,17 @@ TorchCodec depends on non-Python libraries: FFmpeg, libjpeg, libtorch, etc.
 that the wheel runs standalone on a system that doesn't have those libraries
 installed.
 
-We bundle some third-party native libraries like libjpeg(-turbo), libpng, zlib
-and libwebp (+libsharpyuv), while making sure we EXCLUDE FFmpeg (user-provided at
-runtime) and torch/CUDA (provided by the torch wheel).
+We bundle some third-party native libraries like libjpeg(-turbo), libpng, zlib,
+libwebp (+libsharpyuv) and libavif (+ the AV1 codec libraries it links: libaom,
+libdav1d, librav1e, libSvtAv1Enc), while making sure we EXCLUDE FFmpeg
+(user-provided at runtime) and torch/CUDA (provided by the torch wheel).
+
+All the AV1 codec libraries bundled for AVIF are BSD/permissive, so bundling them
+keeps torchcodec's wheels BSD-compliant. Note that only libdav1d is needed for
+*decoding*; the encoders (librav1e, libSvtAv1Enc, and libaom's encoder) come
+along because conda-forge's libavif links them, and dropping them would require a
+custom decode-only libavif build. TODO_IMAGE: slim the wheel by building a
+decode-only libavif.
 """
 
 import io
@@ -119,8 +127,32 @@ def repair_windows(wheels):
     )
     if not sharpyuv_dlls:
         raise FileNotFoundError(f"No libsharpyuv DLL found under {bin_dir}")
+    # libavif and the AV1 codec DLLs it links. libavif and libdav1d (the decoder)
+    # are required; the AV1 encoder DLLs (aom/rav1e/SvtAv1Enc) are bundled if
+    # present, since libavif links them on conda-forge but they may be packaged
+    # differently across platforms.
+    avif_dlls = set(bin_dir.glob("libavif*.dll")) | set(bin_dir.glob("avif*.dll"))
+    if not avif_dlls:
+        raise FileNotFoundError(f"No libavif DLL found under {bin_dir}")
+    dav1d_dlls = set(bin_dir.glob("libdav1d*.dll")) | set(bin_dir.glob("dav1d*.dll"))
+    if not dav1d_dlls:
+        raise FileNotFoundError(f"No libdav1d DLL found under {bin_dir}")
+    av1_codec_dlls = set()
+    for pat in ("aom", "rav1e", "SvtAv1Enc", "SvtAv1Dec"):
+        av1_codec_dlls |= set(bin_dir.glob(f"lib{pat}*.dll")) | set(
+            bin_dir.glob(f"{pat}*.dll")
+        )
 
-    dlls = sorted(jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls)
+    dlls = sorted(
+        jpeg_dlls
+        | png_dlls
+        | zlib_dlls
+        | webp_dlls
+        | sharpyuv_dlls
+        | avif_dlls
+        | dav1d_dlls
+        | av1_codec_dlls
+    )
 
     for wheel in wheels:
         unpack_dir = REPAIRED_DIR / "unpack"
@@ -168,6 +200,17 @@ def check_bundling():
             lib.startswith(("webp", "sharpyuv")) and lib.endswith(".dll")
         )
 
+    def _is_avif(lib):
+        # libavif plus the AV1 codec libraries it links (all BSD/permissive).
+        # On Windows the DLLs may drop the "lib" prefix.
+        stem = lib.lower()
+        return stem.startswith(
+            ("libavif", "libaom", "libdav1d", "librav1e", "libsvtav1")
+        ) or (
+            stem.startswith(("avif", "aom", "dav1d", "rav1e", "svtav1"))
+            and stem.endswith(".dll")
+        )
+
     def _is_allowed(lib):
         if (
             lib.startswith("libtorchcodec_")
@@ -175,6 +218,7 @@ def check_bundling():
             or _is_png(lib)
             or _is_zlib(lib)
             or _is_webp(lib)
+            or _is_avif(lib)
         ):
             return True
         # On macOS, test-infra's delocate bundles these OS/interpreter libs before
@@ -224,6 +268,8 @@ def check_bundling():
                 raise RuntimeError(f"{wheel.name} does not bundle libpng.")
             if not any(_is_webp(lib) for lib in libs):
                 raise RuntimeError(f"{wheel.name} does not bundle libwebp.")
+            if not any(lib.lower().startswith(("libavif", "avif")) for lib in libs):
+                raise RuntimeError(f"{wheel.name} does not bundle libavif.")
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")

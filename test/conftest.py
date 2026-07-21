@@ -4,7 +4,13 @@ import random
 import pytest
 import torch
 
-from .utils import in_fbcode, jpeg_is_available, png_is_available, webp_is_available
+from .utils import (
+    avif_is_available,
+    in_fbcode,
+    jpeg_is_available,
+    png_is_available,
+    webp_is_available,
+)
 
 
 def pytest_configure(config):
@@ -23,6 +29,9 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "needs_webp: mark for tests that rely on libwebp support"
+    )
+    config.addinivalue_line(
+        "markers", "needs_avif: mark for tests that rely on libavif support"
     )
 
 
@@ -46,6 +55,7 @@ def pytest_collection_modifyitems(items):
         needs_jpeg = item.get_closest_marker("needs_jpeg") is not None
         needs_png = item.get_closest_marker("needs_png") is not None
         needs_webp = item.get_closest_marker("needs_webp") is not None
+        needs_avif = item.get_closest_marker("needs_avif") is not None
         has_skip_marker = item.get_closest_marker("skip") is not None
 
         # For skipif, the marker is always present regardless of whether the
@@ -109,6 +119,16 @@ def pytest_collection_modifyitems(items):
             and os.environ.get("FAIL_WITHOUT_WEBP") is None
         ):
             item.add_marker(pytest.mark.skip(reason="libwebp support not available."))
+
+        # Same rationale as needs_jpeg: skip when libavif support isn't built in,
+        # unless FAIL_WITHOUT_AVIF is set (on CI it is, so a missing libavif
+        # surfaces as a failure rather than a silent skip).
+        if (
+            needs_avif
+            and not avif_is_available()
+            and os.environ.get("FAIL_WITHOUT_AVIF") is None
+        ):
+            item.add_marker(pytest.mark.skip(reason="libavif support not available."))
 
         out_items.append(item)
 

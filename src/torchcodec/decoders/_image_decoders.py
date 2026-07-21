@@ -11,6 +11,7 @@ from pathlib import Path
 import torch
 
 from torchcodec._core.ops import (
+    decode_avif as _decode_avif,
     decode_gif as _decode_gif,
     decode_jpeg as _decode_jpeg,
     decode_png as _decode_png,
@@ -87,6 +88,12 @@ _WEBP_NATIVE_OUTPUT_MODES = frozenset(
 # alpha channel), and UNCHANGED (RGBA if the GIF has transparency, else RGB). The
 # grayscale modes are derived by _decode_with_mode.
 _GIF_NATIVE_OUTPUT_MODES = frozenset(
+    (ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.RGB_ALPHA)
+)
+# Like webp, libavif has no native grayscale. It handles RGB, RGB_ALPHA and
+# UNCHANGED (RGBA if the source carries alpha, else RGB); grayscale is derived by
+# _decode_with_mode.
+_AVIF_NATIVE_OUTPUT_MODES = frozenset(
     (ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.RGB_ALPHA)
 )
 
@@ -197,3 +204,17 @@ def decode_gif(
     """
     data = _read_file_to_tensor(source)
     return _decode_with_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
+
+
+def decode_avif(
+    source: str | Path,
+    *,
+    mode: ImageColorMode = ImageColorMode.RGB,
+) -> torch.Tensor:
+    # TODO_IMAGE: animated AVIF files are not supported yet.
+    # TODO_IMAGE: 10/12-bit AVIF files are decoded as uint8 for now, losing
+    # precision. Returning uint16 for high-bit-depth files is tied to adding
+    # 16-bit support to the libpng decoder.
+    """Decode an AVIF file into a uint8 tensor of shape ``(C, H, W)``."""
+    data = _read_file_to_tensor(source)
+    return _decode_with_mode(_decode_avif, data, mode, _AVIF_NATIVE_OUTPUT_MODES)

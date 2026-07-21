@@ -23,6 +23,7 @@ extern "C" {
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "ColorConverter.h"
+#include "DecodeAvif.h"
 #include "DecodeGif.h"
 #include "DecodeJpeg.h"
 #include "DecodePng.h"
@@ -126,6 +127,7 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def("decode_png(Tensor data, int mode) -> Tensor");
   m.def("decode_webp(Tensor data, int mode) -> Tensor");
   m.def("decode_gif(Tensor data, int mode) -> Tensor");
+  m.def("decode_avif(Tensor data, int mode) -> Tensor");
 }
 
 namespace {
@@ -1536,6 +1538,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("decode_png", TORCH_BOX(&decode_png));
   m.impl("decode_webp", TORCH_BOX(&decode_webp));
   m.impl("decode_gif", TORCH_BOX(&decode_gif));
+  m.impl("decode_avif", TORCH_BOX(&decode_avif));
 }
 
 } // namespace facebook::torchcodec

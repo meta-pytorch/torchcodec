@@ -84,6 +84,22 @@ else()
     message(STATUS "libwebp NOT found: torchcodec.decode_webp will raise at runtime.")
 endif()
 
+# same as the other image libs, libavif is an optional build-time dependency for
+# the CPU AVIF image decoder (DecodeAvif.cpp).
+if(NOT DEFINED libavif_ROOT AND DEFINED ENV{CONDA_PREFIX})
+    if(WIN32)
+        set(libavif_ROOT "$ENV{CONDA_PREFIX}/Library")
+    else()
+        set(libavif_ROOT "$ENV{CONDA_PREFIX}")
+    endif()
+endif()
+find_package(libavif CONFIG)  # Not REQUIRED on purpose. Provides the avif target.
+if(libavif_FOUND)
+    message(STATUS "libavif found: building torchcodec with AVIF image decoding support.")
+else()
+    message(STATUS "libavif NOT found: torchcodec.decode_avif will raise at runtime.")
+endif()
+
 # Read a list variable from sources.bzl, the single source of truth for the
 # _core C++ source files shared with the internal Buck build. The .bzl file is
 # valid Python, so we exec it and print the requested list; configure_file
@@ -283,6 +299,13 @@ function(make_torchcodec_libraries
     if(WebP_FOUND)
         target_compile_definitions(${core_library_name} PRIVATE WEBP_FOUND=1)
         target_link_libraries(${core_library_name} PRIVATE WebP::webp)
+    endif()
+
+    # Optional libavif support for the CPU AVIF image decoder (DecodeAvif.cpp).
+    # AVIF_FOUND gates both the compile-time code path and the link.
+    if(libavif_FOUND)
+        target_compile_definitions(${core_library_name} PRIVATE AVIF_FOUND=1)
+        target_link_libraries(${core_library_name} PRIVATE avif)
     endif()
 
     if(ENABLE_CUDA)

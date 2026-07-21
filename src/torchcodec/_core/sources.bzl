@@ -78,6 +78,7 @@ image_sources = [
     "DecodePng.cpp",
     "DecodeWebp.cpp",
     "DecodeGif.cpp",
+    "DecodeAvif.cpp",
 ]
 
 # Vendored giflib (decode-only subset, MIT licensed). Compiled directly from
