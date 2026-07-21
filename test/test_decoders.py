@@ -3454,11 +3454,16 @@ class TestImageDecoder:
 
     @pytest.mark.parametrize(
         "decode_fn, asset",
-        (_jpeg_param(GRAYSCALE_JPEG), _png_param(GRAYSCALE_PNG)),
+        (
+            _jpeg_param(GRAYSCALE_JPEG),
+            _png_param(GRAYSCALE_PNG),
+            _webp_param(RGBA_WEBP),
+        ),
     )
     def test_default_mode_is_rgb(self, decode_fn, asset):
-        # The default output mode is RGB, so a grayscale source decodes to 3
-        # channels rather than 1.
+        # The default output mode is RGB, so the decoded output always has 3
+        # channels regardless of the source: a grayscale source is expanded from
+        # 1 channel, an RGBA source has its alpha stripped.
         decoded = decode_fn(asset.path)
         assert decoded.shape[0] == 3
 
@@ -3774,12 +3779,6 @@ class TestImageDecoder:
 
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
-
-    @needs_webp
-    def test_webp_default_mode_strips_alpha(self):
-        # The default output mode is RGB, so an RGBA source decodes to 3 channels.
-        decoded = decode_webp(RGBA_WEBP.path)
-        assert decoded.shape[0] == 3
 
     @needs_webp
     def test_animated_webp_raises(self, tmp_path):
