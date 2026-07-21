@@ -16,11 +16,11 @@ namespace facebook::torchcodec {
 // torchcodec/decoders/_image_decoders.py (and matching torchvision's
 // ImageReadMode).
 enum class ImageReadMode : int64_t {
-  Unchanged = 0,
-  Gray = 1,
-  GrayAlpha = 2,
-  Rgb = 3,
-  RgbAlpha = 4,
+  UNCHANGED = 0,
+  GRAY = 1,
+  GRAY_ALPHA = 2,
+  RGB = 3,
+  RGB_ALPHA = 4,
 };
 
 inline void validate_encoded_data(const torch::stable::Tensor& encoded_data) {

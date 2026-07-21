@@ -232,13 +232,13 @@ std::tuple<int, bool> read_header_and_start(
 
   int num_output_channels = -1;
   switch (mode) {
-    case ImageReadMode::Unchanged:
+    case ImageReadMode::UNCHANGED:
       num_output_channels = jpeg_ctx.num_components;
       break;
-    case ImageReadMode::Gray:
+    case ImageReadMode::GRAY:
       num_output_channels = 1;
       break;
-    case ImageReadMode::Rgb:
+    case ImageReadMode::RGB:
       num_output_channels = 3;
       break;
     default:
@@ -253,14 +253,14 @@ std::tuple<int, bool> read_header_and_start(
   // https://github.com/tensorflow/tensorflow/blob/86871065265b04e0db8ca360c046421efb2bdeb4/tensorflow/core/lib/jpeg/jpeg_mem.cc#L284-L313
   bool cmyk_to_rgb_or_gray = (jpeg_ctx.jpeg_color_space == JCS_CMYK ||
                               jpeg_ctx.jpeg_color_space == JCS_YCCK) &&
-      (mode == ImageReadMode::Gray || mode == ImageReadMode::Rgb);
+      (mode == ImageReadMode::GRAY || mode == ImageReadMode::RGB);
 
   // For other sources, ask libjpeg to convert to the requested color space.
-  if (mode != ImageReadMode::Unchanged && !cmyk_to_rgb_or_gray) {
-    if (mode == ImageReadMode::Gray) {
+  if (mode != ImageReadMode::UNCHANGED && !cmyk_to_rgb_or_gray) {
+    if (mode == ImageReadMode::GRAY) {
       jpeg_ctx.out_color_space = JCS_GRAYSCALE;
     } else {
-      STD_TORCH_CHECK(mode == ImageReadMode::Rgb, "Should never reach here.");
+      STD_TORCH_CHECK(mode == ImageReadMode::RGB, "Should never reach here.");
       jpeg_ctx.out_color_space = JCS_RGB;
     }
   }

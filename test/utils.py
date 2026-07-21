@@ -313,6 +313,16 @@ GRAYSCALE_PNG = TestImage(
 # Image.fromarray(rgba, mode="RGBA").save("rgba.png")
 RGBA_PNG = TestImage(filename="rgba.png", width=1280, height=720, num_channels=4)
 
+# 720p grayscale-alpha (LA) PNG: grayscale gradient with the same diagonal alpha
+# ramp as RGBA_PNG. Generated with the GRADIENT_PNG recipe above, then:
+# gray = ((r.astype(int) + g.astype(int)) // 2).astype(np.uint8)
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# la = np.stack([gray, a], axis=-1)
+# Image.fromarray(la, mode="LA").save("grayscale_alpha.png")
+GRAYSCALE_ALPHA_PNG = TestImage(
+    filename="grayscale_alpha.png", width=1280, height=720, num_channels=2
+)
+
 
 @functools.cache
 def png_is_available() -> bool:
