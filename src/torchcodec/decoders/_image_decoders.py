@@ -11,6 +11,7 @@ from pathlib import Path
 import torch
 
 from torchcodec._core.ops import (
+    decode_gif as _decode_gif,
     decode_jpeg as _decode_jpeg,
     decode_png as _decode_png,
     decode_webp as _decode_webp,
@@ -31,6 +32,9 @@ from torchcodec._core.ops import (
 
 # TODO_IMAGE: I think there are some tests for corrupted images in TV? We
 # should port those.
+
+# TODO_IMAGE: Investigate what giflib and PIL do differently, it might be worth
+# aligning now.
 
 
 class ImageColorMode(Enum):
@@ -70,44 +74,60 @@ _PNG_NATIVE_OUTPUT_MODES = frozenset(ImageColorMode)
 _WEBP_NATIVE_OUTPUT_MODES = frozenset(
     (ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.RGB_ALPHA)
 )
+# giflib always decodes to RGB (no native grayscale, and its transparency is
+# composited over the canvas so the output has no real alpha). UNCHANGED is RGB
+# too. Every other mode is derived by _decode_with_mode.
+_GIF_NATIVE_OUTPUT_MODES = frozenset((ImageColorMode.UNCHANGED, ImageColorMode.RGB))
 
 
 def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
-    _, height, width = img.shape
-    alpha = torch.full((1, height, width), torch.iinfo(img.dtype).max, dtype=img.dtype)
-    return torch.cat([img, alpha], dim=0)
+    # img is (..., C, H, W); append a fully-opaque alpha channel on the channel
+    # dim so this works for both (C, H, W) and animated GIF (N, C, H, W) tensors.
+    alpha_shape = list(img.shape)
+    alpha_shape[-3] = 1
+    alpha = torch.full(alpha_shape, torch.iinfo(img.dtype).max, dtype=img.dtype)
+    return torch.cat([img, alpha], dim=-3)
 
 
 def _rgb_to_gray(img: torch.Tensor) -> torch.Tensor:
-    # ITU-R 601-2 luma weights, matching torchvision's rgb_to_grayscale.
+    # ITU-R 601-2 luma weights, matching torchvision's rgb_to_grayscale. img is
+    # (..., C, H, W); reduce over the channel dim so this works for both
+    # (C, H, W) and animated GIF (N, C, H, W) tensors.
     weights = torch.tensor([0.2989, 0.587, 0.114])
-    gray = (img.to(torch.float32) * weights[:, None, None]).sum(dim=0, keepdim=True)
+    gray = (img.to(torch.float32) * weights[:, None, None]).sum(dim=-3, keepdim=True)
     return gray.round().clamp(0, torch.iinfo(img.dtype).max).to(img.dtype)
 
 
 def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tensor:
     if mode in native_output_modes:
         return decode_fn(data, mode.value)
+
     if mode is ImageColorMode.GRAY:
-        # Reached for decoders without native grayscale support (e.g. webp):
-        # decode RGB and reduce to luma.
+        # No native grayscale (e.g. webp, gif): decode RGB and reduce to luma.
         return _rgb_to_gray(decode_fn(data, ImageColorMode.RGB.value))
-    if mode is ImageColorMode.GRAY_ALPHA:
-        if ImageColorMode.GRAY in native_output_modes:
-            # The decoder produces gray but not gray+alpha (e.g. jpeg): the
-            # source carries no alpha, so synthesize an opaque one.
-            return _append_opaque_alpha(decode_fn(data, ImageColorMode.GRAY.value))
-        else:
-            # No native grayscale (e.g. webp): decode RGBA and reduce color to
-            # luma while preserving the real alpha channel.
+    elif mode is ImageColorMode.RGB_ALPHA:
+        # Not native (else handled above), so the source has no real alpha:
+        # synthesize an opaque one on top of RGB.
+        return _append_opaque_alpha(decode_fn(data, ImageColorMode.RGB.value))
+    elif mode is ImageColorMode.GRAY_ALPHA:
+        if ImageColorMode.RGB_ALPHA in native_output_modes:
+            # Real alpha available (e.g. webp): decode RGBA and reduce the color
+            # channels to luma while preserving the alpha channel.
             rgba = decode_fn(data, ImageColorMode.RGB_ALPHA.value)
             return torch.cat([_rgb_to_gray(rgba[:3]), rgba[3:]], dim=0)
-    if mode is ImageColorMode.RGB_ALPHA:
-        return _append_opaque_alpha(decode_fn(data, ImageColorMode.RGB.value))
-    raise RuntimeError(
-        f"Reached an unexpected code path while decoding to mode {mode}. "
-        "This should never happen, please report a bug to the TorchCodec repo."
-    )
+        elif ImageColorMode.GRAY in native_output_modes:
+            # Native gray but no alpha (e.g. jpeg): synthesize an opaque alpha.
+            return _append_opaque_alpha(decode_fn(data, ImageColorMode.GRAY.value))
+        else:
+            # No native gray or alpha (e.g. gif): reduce RGB to luma and
+            # synthesize an opaque alpha.
+            gray = _rgb_to_gray(decode_fn(data, ImageColorMode.RGB.value))
+            return _append_opaque_alpha(gray)
+    else:
+        raise RuntimeError(
+            f"Reached an unexpected code path while decoding to mode {mode}. "
+            "This should never happen, please report a bug to the TorchCodec repo."
+        )
 
 
 # TODO_IMAGE: Benchmark against torchvision, both from file and from bytes. We
@@ -149,3 +169,26 @@ def decode_webp(
     """Decode a WebP file into a uint8 tensor of shape ``(C, H, W)``."""
     data = _read_file_to_tensor(source)
     return _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
+
+
+def decode_gif(
+    source: str | Path,
+    *,
+    mode: ImageColorMode = ImageColorMode.RGB,
+) -> torch.Tensor:
+    """Decode a GIF file into a uint8 tensor.
+
+    The shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for an
+    animated one. The mode-conversion helpers (see _decode_with_mode) operate on
+    the channel dim, so they handle both the still and animated shapes.
+    """
+    data = _read_file_to_tensor(source)
+    # The C++ decode_gif op is mode-less (giflib always produces RGB), so we wrap
+    # it to match the (data, mode) signature _decode_with_mode expects; the mode
+    # is ignored and the requested output mode is derived from the RGB result.
+    return _decode_with_mode(
+        lambda data, mode: _decode_gif(data),
+        data,
+        mode,
+        _GIF_NATIVE_OUTPUT_MODES,
+    )

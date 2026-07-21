@@ -77,6 +77,17 @@ image_sources = [
     "DecodeJpeg.cpp",
     "DecodePng.cpp",
     "DecodeWebp.cpp",
+    "DecodeGif.cpp",
+]
+
+# Vendored giflib (decode-only subset, MIT licensed). Compiled directly from
+# source into the core library, so the GIF decoder needs no external dependency
+# and is always available. See giflib/README for the license and local mods.
+giflib_sources = [
+    "giflib/dgif_lib.c",
+    "giflib/gifalloc.c",
+    "giflib/gif_hash.c",
+    "giflib/openbsd-reallocarray.c",
 ]
 
 # pybind11 bindings.

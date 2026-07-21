@@ -35,6 +35,7 @@ from torchcodec.decoders._blocks import (
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.decoders._image_decoders import (
+    decode_gif,
     decode_jpeg,
     decode_png,
     decode_webp,
@@ -45,6 +46,7 @@ from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
 from .utils import (
     all_supported_devices,
+    ANIMATED_GIF,
     assert_frames_equal,
     assert_tensor_close_on_at_least,
     AV1_VIDEO,
@@ -58,6 +60,7 @@ from .utils import (
     DISCARD_FIRST_KEYFRAME_VIDEO,
     get_ffmpeg_minor_version,
     get_python_version,
+    GRADIENT_GIF,
     GRADIENT_JPEG,
     GRADIENT_PNG,
     GRADIENT_WEBP,
@@ -3438,6 +3441,10 @@ def _webp_param(*values):
     return pytest.param(decode_webp, *values, marks=pytest.mark.needs_webp, id="webp")
 
 
+def _gif_param(*values):
+    return pytest.param(decode_gif, *values, id="gif")
+
+
 class TestImageDecoder:
     def _save_debug(self, decoded, reference, path="debug.png"):
         # Debugging helper: dump decoded and reference frames side-by-side.
@@ -3458,6 +3465,7 @@ class TestImageDecoder:
             _jpeg_param(GRAYSCALE_JPEG),
             _png_param(GRAYSCALE_PNG),
             _webp_param(RGBA_WEBP),
+            _gif_param(GRADIENT_GIF),
         ),
     )
     def test_default_mode_is_rgb(self, decode_fn, asset):
@@ -3701,6 +3709,7 @@ class TestImageDecoder:
             _jpeg_param("jpg", "Not a JPEG"),
             _png_param("png", "Not a PNG file"),
             _webp_param("webp", "WebPGetFeatures failed"),
+            _gif_param("gif", "DGifOpenFileName"),
         ),
     )
     def test_not_an_image_raises(self, tmp_path, decode_fn, ext, match):
@@ -3715,6 +3724,7 @@ class TestImageDecoder:
             _jpeg_param(GRADIENT_JPEG, "jpg", "Image is incomplete or truncated"),
             _png_param(GRADIENT_PNG, "png", "Out of bound read"),
             _webp_param(GRADIENT_WEBP, "webp", "Failed to decode the WebP bitstream"),
+            _gif_param(GRADIENT_GIF, "gif", "DGifSlurp"),
         ),
     )
     @pytest.mark.parametrize("div", (2, 3, 4))
@@ -3794,3 +3804,45 @@ class TestImageDecoder:
         )
         with pytest.raises(RuntimeError, match="Animated webp files are not supported"):
             decode_webp(path)
+
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            # GIF's "unchanged" output is RGB (giflib composites the palette to
+            # RGB), so there's no distinct raw form to compare against.
+            (ImageColorMode.UNCHANGED, "RGB"),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_gif_against_pil(self, mode, pil_mode):
+        decoded = decode_gif(GRADIENT_GIF.path, mode=mode)
+
+        reference = self._pil_to_tensor(Image.open(GRADIENT_GIF.path).convert(pil_mode))
+
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+        if mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA):
+            # GIF carries no real alpha, so the synthesized channel is opaque.
+            assert (decoded[-1] == 255).all()
+
+    def test_animated_gif(self):
+        # An animated GIF decodes to a batched (N, C, H, W) tensor, one frame per
+        # image, matching PIL's per-frame RGB decode.
+        from PIL import ImageSequence
+
+        decoded = decode_gif(ANIMATED_GIF.path)
+        pil = Image.open(ANIMATED_GIF.path)
+
+        assert decoded.ndim == 4
+        assert decoded.shape[0] == pil.n_frames
+
+        for i, frame in enumerate(ImageSequence.Iterator(pil)):
+            reference = self._pil_to_tensor(frame.convert("RGB"))
+            assert decoded[i].shape == reference.shape
+            assert_tensor_close_on_at_least(
+                decoded[i], reference, percentage=99, atol=2
+            )

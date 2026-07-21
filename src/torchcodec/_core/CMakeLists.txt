@@ -113,6 +113,7 @@ read_sources_from_bzl(TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES file_like_context_sou
 read_sources_from_bzl(TORCHCODEC_CUSTOM_OPS_SOURCES custom_ops_sources)
 read_sources_from_bzl(TORCHCODEC_PYBIND_OPS_SOURCES pybind_ops_sources)
 read_sources_from_bzl(TORCHCODEC_IMAGE_SOURCES image_sources)
+read_sources_from_bzl(TORCHCODEC_GIFLIB_SOURCES giflib_sources)
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -243,6 +244,7 @@ function(make_torchcodec_libraries
         ${TORCHCODEC_DECODER_CORE_SOURCES}
         ${TORCHCODEC_FFMPEG_COMMON_SOURCES}
         ${TORCHCODEC_IMAGE_SOURCES}
+        ${TORCHCODEC_GIFLIB_SOURCES}
     )
 
     if(ENABLE_CUDA)

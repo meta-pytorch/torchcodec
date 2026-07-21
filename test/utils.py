@@ -368,6 +368,28 @@ def webp_is_available() -> bool:
     return True
 
 
+# 720p RGB gradient GIF, same gradient as GRADIENT_JPEG.
+# Generated with the GRADIENT_JPEG recipe above, then:
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save("gradient.gif")
+GRADIENT_GIF = TestImage(
+    filename="gradient.gif", width=1280, height=720, num_channels=3
+)
+
+# Small 4-frame animated GIF with full-canvas opaque frames (no partial frames
+# or transparency, so giflib and PIL composite identically). Used to test the
+# (N, C, H, W) animated output. Generated with:
+# ah, aw = 48, 64
+# frames = []
+# for i in range(4):
+#     fr = np.zeros((ah, aw, 3), dtype=np.uint8)
+#     fr[..., i % 3] = 40 + 60 * i
+#     fr[:, i * 12 : i * 12 + 12, :] = 255
+#     frames.append(Image.fromarray(fr).convert("P", palette=Image.ADAPTIVE))
+# frames[0].save("animated.gif", save_all=True, append_images=frames[1:],
+#                duration=100, loop=0, disposal=1)
+ANIMATED_GIF = TestImage(filename="animated.gif", width=64, height=48, num_channels=3)
+
+
 @dataclass
 class TestFrameInfo:
     pts_seconds: float
