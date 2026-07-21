@@ -67,7 +67,6 @@ _JPEG_NATIVE_OUTPUT_MODES = frozenset(
     (ImageColorMode.UNCHANGED, ImageColorMode.GRAY, ImageColorMode.RGB)
 )
 _PNG_NATIVE_OUTPUT_MODES = frozenset(ImageColorMode)
-# libwebp only decodes to RGB or RGBA. The grayscale modes are emulated below.
 _WEBP_NATIVE_OUTPUT_MODES = frozenset(
     (ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.RGB_ALPHA)
 )
@@ -98,10 +97,11 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
             # The decoder produces gray but not gray+alpha (e.g. jpeg): the
             # source carries no alpha, so synthesize an opaque one.
             return _append_opaque_alpha(decode_fn(data, ImageColorMode.GRAY.value))
-        # No native grayscale (e.g. webp): decode RGBA and reduce color to luma
-        # while preserving the real alpha channel.
-        rgba = decode_fn(data, ImageColorMode.RGB_ALPHA.value)
-        return torch.cat([_rgb_to_gray(rgba[:3]), rgba[3:]], dim=0)
+        else:
+            # No native grayscale (e.g. webp): decode RGBA and reduce color to
+            # luma while preserving the real alpha channel.
+            rgba = decode_fn(data, ImageColorMode.RGB_ALPHA.value)
+            return torch.cat([_rgb_to_gray(rgba[:3]), rgba[3:]], dim=0)
     if mode is ImageColorMode.RGB_ALPHA:
         return _append_opaque_alpha(decode_fn(data, ImageColorMode.RGB.value))
     raise RuntimeError(

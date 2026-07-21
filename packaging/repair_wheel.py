@@ -161,12 +161,9 @@ def check_bundling():
         )
 
     def _is_zlib(lib):
-        # Linux libz.so.N, macOS libz.N.dylib, Windows zlib*.dll / libz*.dll.
         return lib.startswith(("libz", "zlib"))
 
     def _is_webp(lib):
-        # libwebp itself plus its libsharpyuv dependency (Linux .so, macOS
-        # .dylib, Windows libwebp*.dll / webp*.dll).
         return lib.startswith(("libwebp", "libsharpyuv")) or (
             lib.startswith(("webp", "sharpyuv")) and lib.endswith(".dll")
         )

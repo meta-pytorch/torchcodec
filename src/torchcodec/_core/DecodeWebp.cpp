@@ -143,7 +143,17 @@ torch::stable::Tensor decode_webp(
   int width = 0;
   int height = 0;
   auto decoded_data = decoding_func(input_ptr, input_size, &width, &height);
-  STD_TORCH_CHECK(decoded_data != nullptr, "WebPDecodeRGB[A] failed.");
+  // The header parsed fine above (WebPGetFeatures succeeded), so a failure here
+  // means the compressed bitstream itself is bad. libwebp's simple decode API
+  // only signals this with a null pointer (no status code), so we can't be more
+  // specific than this.
+  STD_TORCH_CHECK(
+      decoded_data != nullptr,
+      "Failed to decode the WebP bitstream (reported dimensions ",
+      features.width,
+      "x",
+      features.height,
+      "). The file is likely corrupted or truncated.");
 
   auto deleter = [decoded_data](void*) { WebPFree(decoded_data); };
   auto output = torch::stable::from_blob(

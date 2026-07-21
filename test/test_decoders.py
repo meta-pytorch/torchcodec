@@ -3709,6 +3709,7 @@ class TestImageDecoder:
         (
             _jpeg_param(GRADIENT_JPEG, "jpg", "Image is incomplete or truncated"),
             _png_param(GRADIENT_PNG, "png", "Out of bound read"),
+            _webp_param(GRADIENT_WEBP, "webp", "Failed to decode the WebP bitstream"),
         ),
     )
     @pytest.mark.parametrize("div", (2, 3, 4))
@@ -3793,13 +3794,4 @@ class TestImageDecoder:
             path, "WEBP", save_all=True, append_images=frames[1:], duration=100
         )
         with pytest.raises(RuntimeError, match="Animated webp files are not supported"):
-            decode_webp(path)
-
-    @needs_webp
-    @pytest.mark.parametrize("div", (2, 3, 4))
-    def test_truncated_webp_raises(self, tmp_path, div):
-        data = GRADIENT_WEBP.path.read_bytes()
-        path = tmp_path / "truncated.webp"
-        path.write_bytes(data[: len(data) // div])
-        with pytest.raises(RuntimeError, match="WebP"):
             decode_webp(path)

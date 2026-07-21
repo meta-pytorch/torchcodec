@@ -11,17 +11,17 @@
 # so it can't live in pyproject's build-system.requires), pip does not install
 # build-system.requires for us -- we must do it here.
 #
+# Also installs the image decoder libs (libjpeg-turbo, libpng, libwebp) by
+# default. Builds that don't need image decoding (e.g. the mypy CI job) can skip
+# them by setting TORCHCODEC_SKIP_IMAGE_DEPS=1, in which case the decoders
+# compile as no-op stubs.
+#
 # This script intentionally does NOT install:
 # - torch: install it separately (a nightly matching your CPU/CUDA variant).
 # - FFmpeg: a runtime/build dependency handled by the caller.
 # - pkg-config: only needed to *locate an installed FFmpeg* at build time, i.e.
 #   builds that don't set BUILD_AGAINST_ALL_FFMPEG_FROM_S3. Callers that build
 #   against an installed FFmpeg install pkg-config alongside it.
-#
-# The image decoder libs (libjpeg-turbo, libpng, libwebp) ARE installed here by
-# default so the image decoders get built into the wheels. Builds that don't need
-# image decoding (e.g. the mypy CI job) can skip them by setting
-# TORCHCODEC_SKIP_IMAGE_DEPS=1, in which case the decoders compile as no-op stubs.
 
 set -ex
 
@@ -31,8 +31,5 @@ python -m pip install "scikit-build-core>=0.10" ninja
 if [[ "${TORCHCODEC_SKIP_IMAGE_DEPS:-0}" != "1" ]]; then
     conda install -y libjpeg-turbo -c pytorch
     conda install -y libpng -c conda-forge
-    # Pin >=1.3: CMake has no built-in FindWebP, so we rely on config mode
-    # (find_package(WebP)), and only libwebp >=1.3 conda-forge builds ship
-    # WebPConfig.cmake. Older builds (e.g. 1.2.4) would silently disable WebP.
     conda install -y "libwebp>=1.3" -c conda-forge
 fi
