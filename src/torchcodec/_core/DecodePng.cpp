@@ -45,8 +45,8 @@ torch::stable::Tensor decode_png(
 
 #include <algorithm>
 #include <cstdint>
-#include <optional>
-#include <string>
+#include <cstdio>
+#include <cstring>
 
 #include "Exif.h"
 #include "ImageCommon.h"
@@ -58,81 +58,81 @@ using namespace exif_private;
 namespace {
 
 bool is_little_endian() {
-  uint32_t x = 1;
-  return *(uint8_t*)&x;
+  int64_t x = 1;
+  uint8_t first_byte;
+  std::memcpy(&first_byte, &x, 1);
+  return first_byte == 1;
+}
+
+struct ErrorCtx {
+  char error_message[256] = "";
+};
+
+void error_callback(png_structp png_ptr, png_const_charp error_message) {
+  auto* error_ctx = static_cast<ErrorCtx*>(png_get_error_ptr(png_ptr));
+  if (error_ctx != nullptr) {
+    std::snprintf(
+        error_ctx->error_message,
+        sizeof(error_ctx->error_message),
+        "%s",
+        error_message);
+  }
+  png_longjmp(png_ptr, 1);
 }
 
 int fetch_png_exif_orientation(png_structp png_ptr, png_infop info_ptr) {
   png_uint_32 num_exif = 0;
   png_bytep exif = 0;
 
-  // Exif info could be in info_ptr
   if (png_get_valid(png_ptr, info_ptr, PNG_INFO_eXIf)) {
     png_get_eXIf_1(png_ptr, info_ptr, &num_exif, &exif);
   }
 
-  if (exif && num_exif > 0) {
+  if (exif != nullptr && num_exif > 0) {
     return fetch_exif_orientation(exif, num_exif);
+  } else {
+    return 1;
   }
-  return -1;
 }
 
-} // namespace
+struct SourceCtx {
+  png_const_bytep ptr;
+  png_size_t count;
+};
 
-torch::stable::Tensor decode_png(
-    const torch::stable::Tensor& data,
-    int64_t mode) {
-  validate_encoded_data(data);
-
-  auto png_ptr =
-      png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-  STD_TORCH_CHECK(png_ptr, "libpng read structure allocation failed!")
-  auto info_ptr = png_create_info_struct(png_ptr);
-  if (!info_ptr) {
-    png_destroy_read_struct(&png_ptr, nullptr, nullptr);
-    // Seems redundant with the if statement. done here to avoid leaking memory.
-    STD_TORCH_CHECK(info_ptr, "libpng info structure allocation failed!")
+void read_callback(png_structp png_ptr, png_bytep output, png_size_t bytes) {
+  auto* source_ctx = static_cast<SourceCtx*>(png_get_io_ptr(png_ptr));
+  if (source_ctx->count < bytes) {
+    // trigger our error callback
+    png_error(
+        png_ptr,
+        "Out of bound read in decode_png. The input image might be corrupted?");
   }
+  std::copy(source_ctx->ptr, source_ctx->ptr + bytes, output);
+  source_ctx->ptr += bytes;
+  source_ctx->count -= bytes;
+}
 
-  auto datap = data.const_data_ptr<uint8_t>();
-  auto datap_len = data.numel();
+struct PngHeader {
+  png_uint_32 width;
+  png_uint_32 height;
+  int num_output_channels;
+  int bit_depth;
+  int num_passes;
+};
 
-  // NOTE: libpng uses setjmp/longjmp for error handling. longjmp does not
-  // unwind C++ stack frames, so destructors of objects created after setjmp
-  // won't run. We use std::optional to declare tensors before setjmp while
-  // deferring construction, and explicitly reset them on the error path.
-  std::optional<torch::stable::Tensor> tensor;
-
+PngHeader read_header_and_configure(
+    png_structp& png_ptr,
+    png_infop& info_ptr,
+    ErrorCtx& error_ctx,
+    SourceCtx& source_ctx,
+    ImageReadMode read_mode) {
   if (setjmp(png_jmpbuf(png_ptr)) != 0) {
-    tensor.reset();
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-    STD_TORCH_CHECK(false, "Internal error.");
+    STD_TORCH_CHECK(false, "decode_png failed: ", error_ctx.error_message);
   }
-  STD_TORCH_CHECK(datap_len >= 8, "Content is too small for png!")
-  auto is_png = !png_sig_cmp(datap, 0, 8);
-  STD_TORCH_CHECK(is_png, "Content is not png!")
 
-  struct Reader {
-    png_const_bytep ptr;
-    png_size_t count;
-  } reader;
-
-  reader.ptr = png_const_bytep(datap) + 8;
-  reader.count = datap_len - 8;
-
-  auto read_callback = [](png_structp png_ptr,
-                          png_bytep output,
-                          png_size_t bytes) {
-    auto reader = static_cast<Reader*>(png_get_io_ptr(png_ptr));
-    STD_TORCH_CHECK(
-        reader->count >= bytes,
-        "Out of bound read in decode_png. Probably, the input image is corrupted");
-    std::copy(reader->ptr, reader->ptr + bytes, output);
-    reader->ptr += bytes;
-    reader->count -= bytes;
-  };
-  png_set_sig_bytes(png_ptr, 8);
-  png_set_read_fn(png_ptr, &reader, read_callback);
+  png_set_read_fn(png_ptr, &source_ctx, read_callback);
   png_read_info(png_ptr, info_ptr);
 
   png_uint_32 width, height;
@@ -151,31 +151,31 @@ torch::stable::Tensor decode_png(
 
   if (retval != 1) {
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-    STD_TORCH_CHECK(retval == 1, "Could read image metadata from content.")
+    STD_TORCH_CHECK(retval == 1, "Could not read image metadata from content.")
   }
 
   if (bit_depth > 8 && bit_depth != 16) {
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
     STD_TORCH_CHECK(
         false,
-        "bit depth of png image is " + std::to_string(bit_depth) +
-            ". Only <=8 and 16 are supported.")
+        "bit depth of png image is ",
+        bit_depth,
+        ". Only <=8 and 16 are supported.")
   }
 
-  int channels = png_get_channels(png_ptr, info_ptr);
+  int num_output_channels = png_get_channels(png_ptr, info_ptr);
 
   if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8) {
     png_set_expand_gray_1_2_4_to_8(png_ptr);
   }
 
-  int number_of_passes;
+  int num_passes;
   if (interlace_type == PNG_INTERLACE_ADAM7) {
-    number_of_passes = png_set_interlace_handling(png_ptr);
+    num_passes = png_set_interlace_handling(png_ptr);
   } else {
-    number_of_passes = 1;
+    num_passes = 1;
   }
 
-  auto read_mode = static_cast<ImageReadMode>(mode);
   if (read_mode != ImageReadMode::Unchanged) {
     // TODO: consider supporting PNG_INFO_tRNS
     bool is_palette = (color_type & PNG_COLOR_MASK_PALETTE) != 0;
@@ -197,7 +197,7 @@ torch::stable::Tensor decode_png(
           if (has_color) {
             png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
           }
-          channels = 1;
+          num_output_channels = 1;
         }
         break;
       case ImageReadMode::GrayAlpha:
@@ -214,7 +214,7 @@ torch::stable::Tensor decode_png(
           if (has_color) {
             png_set_rgb_to_gray(png_ptr, 1, 0.2989, 0.587);
           }
-          channels = 2;
+          num_output_channels = 2;
         }
         break;
       case ImageReadMode::Rgb:
@@ -229,7 +229,7 @@ torch::stable::Tensor decode_png(
           if (has_alpha) {
             png_set_strip_alpha(png_ptr);
           }
-          channels = 3;
+          num_output_channels = 3;
         }
         break;
       case ImageReadMode::RgbAlpha:
@@ -244,7 +244,7 @@ torch::stable::Tensor decode_png(
           if (!has_alpha) {
             png_set_add_alpha(png_ptr, (1 << bit_depth) - 1, PNG_FILLER_AFTER);
           }
-          channels = 4;
+          num_output_channels = 4;
         }
         break;
       default:
@@ -256,31 +256,101 @@ torch::stable::Tensor decode_png(
     png_read_update_info(png_ptr, info_ptr);
   }
 
-  auto num_pixels_per_row = width * channels;
-  auto is_16_bits = bit_depth == 16;
-  tensor = torch::stable::empty(
-      {int64_t(height), int64_t(width), channels},
-      is_16_bits ? kStableUInt16 : kStableUInt8);
+  return {width, height, num_output_channels, bit_depth, num_passes};
+}
+
+void decode_rows(
+    png_structp& png_ptr,
+    png_infop& info_ptr,
+    ErrorCtx& error_ctx,
+    uint8_t* output_ptr,
+    png_uint_32 height,
+    int num_passes,
+    int stride) {
+  if (setjmp(png_jmpbuf(png_ptr)) != 0) {
+    png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
+    STD_TORCH_CHECK(false, "decode_png failed: ", error_ctx.error_message);
+  }
+
   if (is_little_endian()) {
     png_set_swap(png_ptr);
   }
-  auto t_ptr = (uint8_t*)tensor->mutable_data_ptr();
-  for (int pass = 0; pass < number_of_passes; pass++) {
+
+  for (int pass = 0; pass < num_passes; pass++) {
+    uint8_t* row_ptr = output_ptr;
     for (png_uint_32 i = 0; i < height; ++i) {
-      png_read_row(png_ptr, t_ptr, nullptr);
-      t_ptr += num_pixels_per_row * (is_16_bits ? 2 : 1);
+      png_read_row(png_ptr, row_ptr, nullptr);
+      row_ptr += stride;
     }
-    t_ptr = (uint8_t*)tensor->mutable_data_ptr();
+  }
+}
+
+} // namespace
+
+// Important: see the [libjpeg error handling] in the jpeg decoder: everything
+// applies here too. Critically, we must not throw a C++ exception through
+// libpng's C stack (and callbacks), and we also shouldn't allocate anything
+// that needs proper destruction in a function that defines a setjmp() point.
+// This is why the output tensor is allocated here in decode_png() and
+// decode_png() does *not* define a setjmp() point.
+
+torch::stable::Tensor decode_png(
+    const torch::stable::Tensor& input,
+    int64_t mode) {
+  validate_encoded_data(input);
+
+  auto input_ptr = input.const_data_ptr<uint8_t>();
+
+  auto png_ptr =
+      png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
+  STD_TORCH_CHECK(
+      png_ptr != nullptr, "libpng read structure allocation failed!")
+  auto info_ptr = png_create_info_struct(png_ptr);
+  if (info_ptr == nullptr) {
+    png_destroy_read_struct(&png_ptr, nullptr, nullptr);
+    STD_TORCH_CHECK(info_ptr, "libpng info structure allocation failed!")
   }
 
-  // torchcodec always applies EXIF orientation (unlike torchvision, which gates
-  // this behind an apply_exif_orientation parameter).
+  ErrorCtx error_ctx;
+  png_set_error_fn(png_ptr, &error_ctx, error_callback, /*warn_fn=*/nullptr);
+
+  SourceCtx source_ctx;
+  source_ctx.ptr = png_const_bytep(input_ptr);
+  source_ctx.count = input.numel();
+
+  torch::stable::Tensor output;
+
+  auto header = read_header_and_configure(
+      png_ptr,
+      info_ptr,
+      error_ctx,
+      source_ctx,
+      static_cast<ImageReadMode>(mode));
+
+  auto num_pixels_per_row = header.width * header.num_output_channels;
+  auto is_16_bits = header.bit_depth == 16;
+  output = torch::stable::empty(
+      {int64_t(header.height),
+       int64_t(header.width),
+       header.num_output_channels},
+      is_16_bits ? kStableUInt16 : kStableUInt8);
+
+  int stride = num_pixels_per_row * (is_16_bits ? 2 : 1);
+  decode_rows(
+      png_ptr,
+      info_ptr,
+      error_ctx,
+      (uint8_t*)output.mutable_data_ptr(),
+      header.height,
+      header.num_passes,
+      stride);
+
   int exif_orientation = fetch_png_exif_orientation(png_ptr, info_ptr);
 
   png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
 
   return exif_orientation_transform(
-      stable_permute(*tensor, {2, 0, 1}), exif_orientation);
+      stable_permute(output, {2, 0, 1}), exif_orientation);
 }
 
 } // namespace facebook::torchcodec
