@@ -3440,6 +3440,16 @@ class TestImageDecoder:
         t = torch.from_numpy(numpy.array(img))
         return t.permute(2, 0, 1) if t.ndim == 3 else t.unsqueeze(0)
 
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (_jpeg_param(GRAYSCALE_JPEG), _png_param(GRAYSCALE_PNG)),
+    )
+    def test_default_mode_is_rgb(self, decode_fn, asset):
+        # The default output mode is RGB, so a grayscale source decodes to 3
+        # channels rather than 1.
+        decoded = decode_fn(asset.path)
+        assert decoded.shape[0] == 3
+
     @needs_jpeg
     @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, CMYK_JPEG))
     @pytest.mark.parametrize(

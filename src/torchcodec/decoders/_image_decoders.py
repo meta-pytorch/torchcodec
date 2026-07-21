@@ -92,8 +92,7 @@ def decode_jpeg(
     # TODO_IMAGE: support bytes and file-like
     source: str | Path,
     *,
-    # TODO_IMAGE: The default value of all decoders should be "RGB", not "unchanged".
-    mode: ImageColorMode = ImageColorMode.UNCHANGED,
+    mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
     # TODO_IMAGE We should ensure we build and link against turbo. Maybe by
     # checking the symbols of the bundled libjpeg shared library at repair time.
@@ -105,7 +104,7 @@ def decode_jpeg(
 def decode_png(
     source: str | Path,
     *,
-    mode: ImageColorMode = ImageColorMode.UNCHANGED,
+    mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
     """Decode a PNG file into a uint8 tensor of shape ``(C, H, W)``."""
     data = _read_file_to_tensor(source)
