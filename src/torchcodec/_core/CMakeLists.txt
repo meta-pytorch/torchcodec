@@ -77,7 +77,8 @@ if(NOT DEFINED WebP_ROOT AND DEFINED ENV{CONDA_PREFIX})
         set(WebP_ROOT "$ENV{CONDA_PREFIX}")
     endif()
 endif()
-find_package(WebP)  # Not REQUIRED on purpose. Provides the WebP::webp target.
+find_package(WebP)  # Not REQUIRED on purpose. Provides the WebP::webp and
+                    # WebP::webpdemux targets.
 if(WebP_FOUND)
     message(STATUS "libwebp found: building torchcodec with WebP image decoding support.")
 else()
@@ -282,7 +283,9 @@ function(make_torchcodec_libraries
     # WebP_FOUND gates both the compile-time code path and the link.
     if(WebP_FOUND)
         target_compile_definitions(${core_library_name} PRIVATE WEBP_FOUND=1)
-        target_link_libraries(${core_library_name} PRIVATE WebP::webp)
+        # WebP::webpdemux provides the WebPAnimDecoder API used for animated
+        # webp files
+        target_link_libraries(${core_library_name} PRIVATE WebP::webp WebP::webpdemux)
     endif()
 
     if(ENABLE_CUDA)

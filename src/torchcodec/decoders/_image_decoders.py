@@ -123,9 +123,12 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
     elif mode is ImageColorMode.GRAY_ALPHA:
         if ImageColorMode.RGB_ALPHA in native_output_modes:
             # Real alpha available (e.g. webp): decode RGBA and reduce the color
-            # channels to luma while preserving the alpha channel.
+            # channels to luma while preserving the alpha channel. Index the
+            # channel dim (-3) so this works for both (C, H, W) and animated
+            # (N, C, H, W) tensors.
             rgba = decode_fn(data, ImageColorMode.RGB_ALPHA.value)
-            return torch.cat([_rgb_to_gray(rgba[:3]), rgba[3:]], dim=0)
+            rgb, alpha = rgba[..., :3, :, :], rgba[..., 3:, :, :]
+            return torch.cat([_rgb_to_gray(rgb), alpha], dim=-3)
         elif ImageColorMode.GRAY in native_output_modes:
             # Native gray but no alpha (e.g. jpeg): synthesize an opaque alpha.
             return _append_opaque_alpha(decode_fn(data, ImageColorMode.GRAY.value))
@@ -176,8 +179,14 @@ def decode_webp(
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
-    # TODO_IMAGE: animated webp files are not supported yet.
-    """Decode a WebP file into a uint8 tensor of shape ``(C, H, W)``."""
+    """Decode a WebP file into a uint8 tensor.
+
+    The shape is ``(C, H, W)`` for a still WebP and ``(N, C, H, W)`` for an
+    animated one, with 4 channels when the output carries an alpha channel.
+    Animated frames are composited by libwebpdemux (disposal, blending, per-frame
+    offsets). The mode-conversion helpers (see _decode_with_mode) operate on the
+    channel dim, so they handle both the still and animated shapes.
+    """
     data = _read_file_to_tensor(source)
     return _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
 
