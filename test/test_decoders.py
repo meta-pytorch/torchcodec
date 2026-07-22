@@ -3861,7 +3861,19 @@ class TestImageDecoder:
             decode_avif(path)
 
     @needs_webp
-    def test_animated_webp_raises(self, tmp_path):
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            (ImageColorMode.UNCHANGED, None),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_animated_webp(self, tmp_path, mode, pil_mode):
+        from PIL import ImageSequence
+
         path = tmp_path / "animated.webp"
         frames = [
             Image.fromarray(
@@ -3870,10 +3882,69 @@ class TestImageDecoder:
             for _ in range(3)
         ]
         frames[0].save(
-            path, "WEBP", save_all=True, append_images=frames[1:], duration=100
+            path,
+            "WEBP",
+            save_all=True,
+            append_images=frames[1:],
+            duration=100,
+            lossless=True,
         )
-        with pytest.raises(RuntimeError, match="Animated webp files are not supported"):
-            decode_webp(path)
+
+        decoded = decode_webp(path, mode=mode)
+        pil = Image.open(path)
+
+        assert decoded.ndim == 4
+        assert decoded.shape[0] == pil.n_frames
+
+        for i, frame in enumerate(ImageSequence.Iterator(pil)):
+            reference = self._pil_to_tensor(frame.convert(pil_mode))
+            assert decoded[i].shape == reference.shape
+            assert_tensor_close_on_at_least(
+                decoded[i], reference, percentage=99, atol=2
+            )
+
+        if mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA):
+            # The source is opaque, so the alpha channel must be fully opaque.
+            assert (decoded[:, -1] == 255).all()
+
+    @needs_webp
+    def test_animated_webp_transparency(self, tmp_path):
+        # An animated WebP with real transparency: an opaque red square that
+        # moves over a transparent background, one frame per position. We assert
+        # against directly-constructed expectations rather than PIL: for these
+        # small transparent WebPs, PIL's animation reader flattens the
+        # background to opaque, whereas our libwebpdemux-based decode faithfully
+        # preserves the transparent background. The frames are saved lossless,
+        # so the opaque pixels round-trip exactly.
+        path = tmp_path / "animated_transparent.webp"
+        frames = []
+        for i in range(3):
+            arr = numpy.zeros((16, 24, 4), dtype=numpy.uint8)
+            arr[4:12, i * 6 : i * 6 + 6] = (255, 0, 0, 255)
+            frames.append(Image.fromarray(arr, "RGBA"))
+        frames[0].save(
+            path,
+            "WEBP",
+            save_all=True,
+            append_images=frames[1:],
+            duration=100,
+            lossless=True,
+        )
+
+        decoded = decode_webp(path, mode=ImageColorMode.RGB_ALPHA)
+        assert decoded.shape == (3, 4, 16, 24)
+
+        # channels-last (C, H, W) -> (H, W, C) per frame for easy indexing.
+        frames_hwc = decoded.permute(0, 2, 3, 1)
+        for i in range(3):
+            frame = frames_hwc[i]
+            square = frame[4:12, i * 6 : i * 6 + 6]
+            assert (square == torch.tensor([255, 0, 0, 255], dtype=torch.uint8)).all()
+
+            # Everything outside the square is fully transparent.
+            bg_mask = torch.ones((16, 24), dtype=torch.bool)
+            bg_mask[4:12, i * 6 : i * 6 + 6] = False
+            assert (frame[bg_mask] == 0).all()
 
     @pytest.mark.parametrize(
         "mode, pil_mode",

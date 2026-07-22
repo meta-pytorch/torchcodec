@@ -81,6 +81,10 @@ image_sources = [
     "DecodeAvif.cpp",
 ]
 
+image_ops_sources = [
+    "image_custom_ops.cpp",
+]
+
 # Vendored giflib (decode-only subset, MIT licensed). Compiled directly from
 # source into the core library, so the GIF decoder needs no external dependency
 # and is always available. See giflib/README for the license and local mods.
