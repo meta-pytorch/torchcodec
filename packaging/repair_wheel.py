@@ -144,6 +144,9 @@ def check_bundling():
       ever try to bundle FFmpeg or torch/CUDA.
     - a wheel does NOT bundle libjpeg, libpng, libwebp or libwebpdemux.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
+    - (Linux only) libtorchcodec_image.so links FFmpeg or exports codec symbols
+      (it must stay isolated from the user's FFmpeg; see
+      _assert_linux_image_lib_isolated).
     """
 
     def _is_shared_lib(name):
@@ -189,6 +192,83 @@ def check_bundling():
         if platform.system() == "Darwin" and lib.startswith(("libc++", "libpython")):
             return True
         return False
+
+    def _assert_linux_image_lib_isolated(zf):
+        """Linux-only. Enforce that libtorchcodec_image.so, the standalone image
+        decoder library, stays isolated from FFmpeg:
+
+        (a) it must NOT link FFmpeg (no libav*/libsw*/libpostproc* in DT_NEEDED),
+            and
+        (b) it must NOT export any bundled-codec symbol (png_*/jpeg_*/WebP*/
+            giflib/...).
+
+        Together with the fact that it's loaded via its own torch.ops.load_library
+        call (its own RTLD_LOCAL symbol group), this is what keeps our bundled
+        libjpeg/libpng/libwebp from colliding with the codec libs the user's
+        FFmpeg links. (a) prevents the image lib from ever sharing a load group
+        with FFmpeg; (b) makes sure our lib itself never becomes a second
+        definition of a codec symbol (it only *imports* them, and giflib, which
+        we compile in, is built with hidden visibility). See
+        IMAGE_LIBS_BUNDLING_INVESTIGATION.md.
+        """
+        from elftools.elf.elffile import ELFFile
+        from elftools.elf.sections import SymbolTableSection
+
+        members = [
+            n for n in zf.namelist() if n.rsplit("/", 1)[-1] == "libtorchcodec_image.so"
+        ]
+        if not members:
+            raise RuntimeError(
+                "libtorchcodec_image.so not found in wheel; the image decoders "
+                "are expected to live in their own shared library."
+            )
+        elf = ELFFile(io.BytesIO(zf.read(members[0])))
+
+        # (a) No FFmpeg in DT_NEEDED.
+        dynamic = elf.get_section_by_name(".dynamic")
+        needed = [t.needed for t in dynamic.iter_tags("DT_NEEDED")] if dynamic else []
+        ffmpeg_needed = [
+            n for n in needed if n.startswith(("libav", "libsw", "libpostproc"))
+        ]
+        if ffmpeg_needed:
+            raise RuntimeError(
+                "libtorchcodec_image.so must not link FFmpeg, but its DT_NEEDED "
+                "lists: " + " ".join(ffmpeg_needed)
+            )
+
+        # (b) No *exported* (defined) codec symbols. Undefined symbols (imports)
+        # are expected and fine. Our own ops are C++ (mangled, "_Z" prefix) so we
+        # skip those; the codec APIs are C and appear under their bare names.
+        codec_prefixes = (
+            "png_",
+            "jpeg_",
+            "jpeg12_",
+            "jpeg16_",
+            "WebP",
+            "SharpYuv",
+            "sharpyuv",
+            "Gif",
+            "DGif",
+            "EGif",
+            "deflate",
+            "inflate",
+        )
+        dynsym = elf.get_section_by_name(".dynsym")
+        leaked = []
+        if isinstance(dynsym, SymbolTableSection):
+            for sym in dynsym.iter_symbols():
+                name = sym.name
+                if not name or name.startswith("_Z"):
+                    continue
+                if sym["st_shndx"] == "SHN_UNDEF":
+                    continue
+                if name.startswith(codec_prefixes):
+                    leaked.append(name)
+        if leaked:
+            raise RuntimeError(
+                "libtorchcodec_image.so must not export codec symbols (it should "
+                "only import them), but it exports: " + " ".join(sorted(set(leaked)))
+            )
 
     def _assert_linux_libjpeg_is_turbo(zf):
         jpeg_members = [
@@ -238,6 +318,7 @@ def check_bundling():
                 )
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
+                _assert_linux_image_lib_isolated(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")
 
 

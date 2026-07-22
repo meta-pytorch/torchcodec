@@ -114,6 +114,7 @@ read_sources_from_bzl(TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES file_like_context_sou
 read_sources_from_bzl(TORCHCODEC_CUSTOM_OPS_SOURCES custom_ops_sources)
 read_sources_from_bzl(TORCHCODEC_PYBIND_OPS_SOURCES pybind_ops_sources)
 read_sources_from_bzl(TORCHCODEC_IMAGE_SOURCES image_sources)
+read_sources_from_bzl(TORCHCODEC_IMAGE_OPS_SOURCES image_ops_sources)
 read_sources_from_bzl(TORCHCODEC_GIFLIB_SOURCES giflib_sources)
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
@@ -240,12 +241,14 @@ function(make_torchcodec_libraries
     #    Windows, it's pyd.
 
     # 1. Create libtorchcodec_coreN.{ext}.
+    # NOTE: the image decoders (image_sources + giflib) are intentionally NOT
+    # compiled here. They live in the separate, FFmpeg-free libtorchcodec_image
+    # library (see make_torchcodec_image_library) so that our bundled image codec
+    # libs don't share a symbol-resolution scope with the user's FFmpeg.
     set(core_library_name "libtorchcodec_core${ffmpeg_major_version}")
     set(core_sources
         ${TORCHCODEC_DECODER_CORE_SOURCES}
         ${TORCHCODEC_FFMPEG_COMMON_SOURCES}
-        ${TORCHCODEC_IMAGE_SOURCES}
-        ${TORCHCODEC_GIFLIB_SOURCES}
     )
 
     if(ENABLE_CUDA)
@@ -265,28 +268,8 @@ function(make_torchcodec_libraries
         "${core_library_dependencies}"
     )
 
-    # Optional libjpeg support for the CPU JPEG image decoder (DecodeJpeg.cpp).
-    # JPEG_FOUND gates both the compile-time code path and the link.
-    if(JPEG_FOUND)
-        target_compile_definitions(${core_library_name} PRIVATE JPEG_FOUND=1)
-        target_link_libraries(${core_library_name} PRIVATE JPEG::JPEG)
-    endif()
-
-    # Optional libpng support for the CPU PNG image decoder (DecodePng.cpp).
-    # PNG_FOUND gates both the compile-time code path and the link.
-    if(PNG_FOUND)
-        target_compile_definitions(${core_library_name} PRIVATE PNG_FOUND=1)
-        target_link_libraries(${core_library_name} PRIVATE PNG::PNG)
-    endif()
-
-    # Optional libwebp support for the CPU WebP image decoder (DecodeWebp.cpp).
-    # WebP_FOUND gates both the compile-time code path and the link.
-    if(WebP_FOUND)
-        target_compile_definitions(${core_library_name} PRIVATE WEBP_FOUND=1)
-        # WebP::webpdemux provides the WebPAnimDecoder API used for animated
-        # webp files
-        target_link_libraries(${core_library_name} PRIVATE WebP::webp WebP::webpdemux)
-    endif()
+    # NOTE: the image codec libs (libjpeg/libpng/libwebp) are linked into
+    # libtorchcodec_image, not core (see make_torchcodec_image_library).
 
     if(ENABLE_CUDA)
         # We define USE_CUDA to guard CUDA-specific code paths (e.g.
@@ -467,6 +450,82 @@ function(make_torchcodec_libraries
     endif()
 
 endfunction()
+
+# Create libtorchcodec_image, the shared library holding the CPU image decoders
+# (JPEG/PNG/WebP/GIF) and their custom-op registration.
+#
+# This is deliberately SEPARATE from the FFmpeg-linked core libraries and links
+# NO FFmpeg. It is loaded at runtime via its own torch.ops.load_library call (see
+# load_torchcodec_shared_libraries), which puts it in its own RTLD_LOCAL symbol
+# group. That isolation is the whole point: our bundled image codec libs
+# (libjpeg/libpng/libwebp) and the codec libs pulled in by the user's FFmpeg
+# (which also links libpng/libjpeg/... with the same sonames) then live in
+# separate scopes and cannot interpose on each other.
+#
+# Because it is FFmpeg-free and relies only on the version-stable torch ABI, it
+# is a SINGLE library rather than one-per-FFmpeg-version, which also de-duplicates
+# the image decoder code that used to be compiled into every core{4..8} library.
+function(make_torchcodec_image_library)
+    set(image_library_name "libtorchcodec_image")
+    set(image_library_sources
+        ${TORCHCODEC_IMAGE_SOURCES}
+        ${TORCHCODEC_IMAGE_OPS_SOURCES}
+        ${TORCHCODEC_GIFLIB_SOURCES}
+    )
+
+    make_torchcodec_sublibrary(
+        "${image_library_name}"
+        SHARED
+        "${image_library_sources}"
+        "${TORCH_LIBRARIES}"
+    )
+
+    # Optional image codec support. Each *_FOUND gates both the compile-time code
+    # path (the decoder falls back to an actionable runtime-error stub when
+    # absent) and the link. These are linked here, NOT into core.
+    if(JPEG_FOUND)
+        target_compile_definitions(${image_library_name} PRIVATE JPEG_FOUND=1)
+        target_link_libraries(${image_library_name} PRIVATE JPEG::JPEG)
+    endif()
+    if(PNG_FOUND)
+        target_compile_definitions(${image_library_name} PRIVATE PNG_FOUND=1)
+        target_link_libraries(${image_library_name} PRIVATE PNG::PNG)
+    endif()
+    if(WebP_FOUND)
+        target_compile_definitions(${image_library_name} PRIVATE WEBP_FOUND=1)
+        # WebP::webpdemux provides the WebPAnimDecoder API used for animated
+        # webp files.
+        target_link_libraries(${image_library_name} PRIVATE WebP::webp WebP::webpdemux)
+    endif()
+
+    # Hide our own (and vendored giflib's) symbols so the only thing exported is
+    # the torch op registration. Belt-and-suspenders on top of the RTLD_LOCAL
+    # isolation. Matches what custom_ops/pybind_ops already do. Linux only (see
+    # the note in make_torchcodec_libraries).
+    if(LINUX)
+        target_compile_options(${image_library_name} PRIVATE "-fvisibility=hidden")
+    endif()
+
+    # Same editable-vs-wheel output/install logic as make_torchcodec_libraries.
+    if(SKBUILD_STATE STREQUAL "editable")
+        get_filename_component(
+            TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+        set_target_properties(${image_library_name} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
+        )
+    else()
+        install(
+            TARGETS ${image_library_name}
+            LIBRARY DESTINATION torchcodec
+            RUNTIME DESTINATION torchcodec  # For Windows
+        )
+    endif()
+endfunction()
+
+# The image library is FFmpeg-independent, so it's built exactly once regardless
+# of which FFmpeg version(s) we build the core libraries against.
+make_torchcodec_image_library()
 
 if(DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3})
     message(

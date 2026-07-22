@@ -23,10 +23,6 @@ extern "C" {
 #include "AVIOFileLikeContext.h"
 #include "AVIOTensorContext.h"
 #include "ColorConverter.h"
-#include "DecodeGif.h"
-#include "DecodeJpeg.h"
-#include "DecodePng.h"
-#include "DecodeWebp.h"
 #include "Demuxer.h"
 #include "Encoder.h"
 #include "Logging.h"
@@ -47,7 +43,13 @@ namespace facebook::torchcodec {
 // mutated in place. We need it to make sure that torch.compile does not reorder
 // calls to these functions. For more detail, see:
 //   https://github.com/pytorch/pytorch/tree/main/aten/src/ATen/native#readme
-STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
+//
+// We use STABLE_TORCH_LIBRARY_FRAGMENT rather than STABLE_TORCH_LIBRARY because
+// the image decoders register into this same torchcodec_ns namespace from a
+// separate library (image_custom_ops.cpp in libtorchcodec_image). A namespace
+// may have at most one STABLE_TORCH_LIBRARY (exclusive) owner; using FRAGMENT
+// in both libraries lets them be loaded in either order.
+STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("create_from_file(str filename, str? seek_mode=None) -> Tensor");
   m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
@@ -122,10 +124,8 @@ STABLE_TORCH_LIBRARY(torchcodec_ns, m) {
   m.def(
       "get_wav_samples_in_range(Tensor(a!) decoder, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def("get_wav_metadata_from_decoder(Tensor(a!) decoder) -> str");
-  m.def("decode_jpeg(Tensor data, int mode) -> Tensor");
-  m.def("decode_png(Tensor data, int mode) -> Tensor");
-  m.def("decode_webp(Tensor data, int mode) -> Tensor");
-  m.def("decode_gif(Tensor data, int mode) -> Tensor");
+  // NOTE: the image decoder ops (decode_jpeg/png/webp/gif) are defined and
+  // implemented in image_custom_ops.cpp, compiled into libtorchcodec_image.
 }
 
 namespace {
@@ -1532,10 +1532,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "streaming_encoder_add_samples",
       TORCH_BOX(&streaming_encoder_add_samples));
-  m.impl("decode_jpeg", TORCH_BOX(&decode_jpeg));
-  m.impl("decode_png", TORCH_BOX(&decode_png));
-  m.impl("decode_webp", TORCH_BOX(&decode_webp));
-  m.impl("decode_gif", TORCH_BOX(&decode_gif));
+  // NOTE: decode_jpeg/png/webp/gif are implemented in image_custom_ops.cpp
+  // (libtorchcodec_image), not here.
 }
 
 } // namespace facebook::torchcodec
