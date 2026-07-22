@@ -36,6 +36,7 @@ jobs:
       job-name: Build
       upload-artifact: libavif-linux_x86_64-${{ matrix.libavif-version }}
       repository: meta-pytorch/torchcodec
+      runner: linux.4xlarge
       script: |
         export LIBAVIF_VERSION="${{ matrix.libavif-version }}"
         export LIBAVIF_ROOT="${PWD}/libavif"
