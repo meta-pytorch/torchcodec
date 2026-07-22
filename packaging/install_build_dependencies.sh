@@ -11,14 +11,17 @@
 # so it can't live in pyproject's build-system.requires), pip does not install
 # build-system.requires for us -- we must do it here.
 #
-# Also installs the image decoder libs (libjpeg-turbo, libpng, libwebp, libavif)
-# by default. Builds that don't need image decoding (e.g. the mypy CI job) can
-# skip them by setting TORCHCODEC_SKIP_IMAGE_DEPS=1, in which case the decoders
+# Also installs the image decoder libs (libjpeg-turbo, libpng, libwebp) by
+# default. Builds that don't need image decoding (e.g. the mypy CI job) can skip
+# them by setting TORCHCODEC_SKIP_IMAGE_DEPS=1, in which case the decoders
 # compile as no-op stubs.
 #
 # This script intentionally does NOT install:
 # - torch: install it separately (a nightly matching your CPU/CUDA variant).
 # - FFmpeg: a runtime/build dependency handled by the caller.
+# - libavif: unlike the other image libs, it is not installed from conda. The
+#   build always fetches a slim decode-only libavif from S3 (see
+#   fetch_avif_from_s3.cmake).
 # - pkg-config: only needed to *locate an installed FFmpeg* at build time, i.e.
 #   builds that don't set BUILD_AGAINST_ALL_FFMPEG_FROM_S3. Callers that build
 #   against an installed FFmpeg install pkg-config alongside it.
@@ -32,5 +35,6 @@ if [[ "${TORCHCODEC_SKIP_IMAGE_DEPS:-0}" != "1" ]]; then
     conda install -y libjpeg-turbo -c pytorch
     conda install -y libpng -c conda-forge
     conda install -y "libwebp>=1.3" -c conda-forge
-    conda install -y libavif -c conda-forge
+    # libavif is intentionally not installed here: it is always fetched from S3
+    # at build time (see fetch_avif_from_s3.cmake).
 fi

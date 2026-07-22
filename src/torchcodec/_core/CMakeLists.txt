@@ -85,21 +85,22 @@ else()
     message(STATUS "libwebp NOT found: torchcodec.decode_webp will raise at runtime.")
 endif()
 
-# same as the other image libs, libavif is an optional build-time dependency for
-# the CPU AVIF image decoder (DecodeAvif.cpp).
-if(NOT DEFINED libavif_ROOT AND DEFINED ENV{CONDA_PREFIX})
-    if(WIN32)
-        set(libavif_ROOT "$ENV{CONDA_PREFIX}/Library")
-    else()
-        set(libavif_ROOT "$ENV{CONDA_PREFIX}")
-    endif()
-endif()
-find_package(libavif CONFIG)  # Not REQUIRED on purpose. Provides the avif target.
-if(libavif_FOUND)
-    message(STATUS "libavif found: building torchcodec with AVIF image decoding support.")
-else()
-    message(STATUS "libavif NOT found: torchcodec.decode_avif will raise at runtime.")
-endif()
+# libavif is a build-time dependency for the CPU AVIF image decoder
+# (DecodeAvif.cpp). Unlike the other image libs (jpeg/png/webp) which we
+# find_package from conda, we always pull a slim decode-only libavif from our S3
+# bucket (dav1d + libyuv statically embedded, no encoders). This avoids
+# conda-forge's libavif, which drags in ~20MB of unused AV1 encoder libraries.
+# The fetch defines the `avif` target and sets libavif_FOUND, so the link block
+# in make_torchcodec_image_library() works unchanged.
+#
+# TODO_IMAGE: this is unconditional for now. We should make image support
+# opt-in/opt-out (mirroring the TODO_IMAGE in _image_decoders.py about building
+# without image dependencies) so a build can skip AVIF -- falling back to
+# DecodeAvif.cpp's runtime-error stub -- or use a system/conda libavif instead
+# of the S3 one.
+include(${CMAKE_CURRENT_SOURCE_DIR}/fetch_avif_from_s3.cmake)
+set(libavif_FOUND TRUE)
+message(STATUS "Building torchcodec with AVIF image decoding support (libavif from S3).")
 
 # Read a list variable from sources.bzl, the single source of truth for the
 # _core C++ source files shared with the internal Buck build. The .bzl file is
@@ -528,6 +529,19 @@ function(make_torchcodec_image_library)
             LIBRARY DESTINATION torchcodec
             RUNTIME DESTINATION torchcodec  # For Windows
         )
+    endif()
+
+    # Ship the S3 libavif runtime DLL in the wheel next to the image library and
+    # the other bundled image DLLs (jpeg/png/webp/...). Windows only: Linux and
+    # macOS graft the runtime .so/.dylib into the wheel via auditwheel/delocate
+    # (see repair_wheel.py), but Windows has no such tool, so we place the DLL
+    # ourselves here. avif_runtime_dll is set by fetch_avif_from_s3.cmake.
+    if(WIN32 AND DEFINED avif_runtime_dll)
+        if(SKBUILD_STATE STREQUAL "editable")
+            file(COPY "${avif_runtime_dll}" DESTINATION "${TORCHCODEC_PACKAGE_DIR}")
+        else()
+            install(FILES "${avif_runtime_dll}" DESTINATION torchcodec)
+        endif()
     endif()
 endfunction()
 

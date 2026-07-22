@@ -12,16 +12,18 @@ that the wheel runs standalone on a system that doesn't have those libraries
 installed.
 
 We bundle some third-party native libraries like libjpeg(-turbo), libpng, zlib,
-libwebp (+libsharpyuv) and libavif (+ the AV1 codec libraries it links: libaom,
-libdav1d, librav1e, libSvtAv1Enc), while making sure we EXCLUDE FFmpeg
+libwebp (+libsharpyuv) and libavif, while making sure we EXCLUDE FFmpeg
 (user-provided at runtime) and torch/CUDA (provided by the torch wheel).
 
-All the AV1 codec libraries bundled for AVIF are BSD/permissive, so bundling them
-keeps torchcodec's wheels BSD-compliant. Note that only libdav1d is needed for
-*decoding*; the encoders (librav1e, libSvtAv1Enc, and libaom's encoder) come
-along because conda-forge's libavif links them, and dropping them would require a
-custom decode-only libavif build. TODO_IMAGE: slim the wheel by building a
-decode-only libavif.
+libavif is our slim decode-only build fetched from S3 (see
+fetch_avif_from_s3.cmake): the AV1 decoder (dav1d) and libyuv are statically
+embedded and no AV1 *encoder* is present, so libavif.so is the only avif-related
+lib in the wheel -- there are no separate libaom/libdav1d/librav1e/libSvtAv1Enc
+to bundle. check_bundling() asserts this (encoder-absence + wheel-size).
+
+Note the FFmpeg exclusions below spell out each FFmpeg soname rather than using a
+"libav" glob, because libavif also starts with "libav" and we do NOT want to
+exclude it.
 """
 
 import io
@@ -148,32 +150,15 @@ def repair_windows(wheels):
     )
     if not sharpyuv_dlls:
         raise FileNotFoundError(f"No libsharpyuv DLL found under {bin_dir}")
-    # libavif and the AV1 codec DLLs it links. libavif and libdav1d (the decoder)
-    # are required; the AV1 encoder DLLs (aom/rav1e/SvtAv1Enc) are bundled if
-    # present, since libavif links them on conda-forge but they may be packaged
-    # differently across platforms.
-    avif_dlls = set(bin_dir.glob("libavif*.dll")) | set(bin_dir.glob("avif*.dll"))
-    if not avif_dlls:
-        raise FileNotFoundError(f"No libavif DLL found under {bin_dir}")
-    dav1d_dlls = set(bin_dir.glob("libdav1d*.dll")) | set(bin_dir.glob("dav1d*.dll"))
-    if not dav1d_dlls:
-        raise FileNotFoundError(f"No libdav1d DLL found under {bin_dir}")
-    av1_codec_dlls = set()
-    for pat in ("aom", "rav1e", "SvtAv1Enc", "SvtAv1Dec"):
-        av1_codec_dlls |= set(bin_dir.glob(f"lib{pat}*.dll")) | set(
-            bin_dir.glob(f"{pat}*.dll")
-        )
+    # NOTE: libavif is deliberately NOT sourced here. Unlike the other image DLLs
+    # (which come from conda), libavif comes from our slim decode-only S3 build
+    # and is placed into the wheel directly by CMake (see
+    # make_torchcodec_image_library() and fetch_avif_from_s3.cmake). Its AV1
+    # decoder (dav1d) is statically embedded and it ships no AV1 encoders, so
+    # there are no separate dav1d/aom/rav1e/svtav1 DLLs to bundle. check_bundling()
+    # still asserts libavif is present (and that no encoder DLLs leaked in).
 
-    dlls = sorted(
-        jpeg_dlls
-        | png_dlls
-        | zlib_dlls
-        | webp_dlls
-        | sharpyuv_dlls
-        | avif_dlls
-        | dav1d_dlls
-        | av1_codec_dlls
-    )
+    dlls = sorted(jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls)
 
     for wheel in wheels:
         unpack_dir = REPAIRED_DIR / "unpack"
@@ -195,10 +180,18 @@ def check_bundling():
     """Raise if:
     - a wheel bundles a lib that's not in the allowlist. This would raise if we
       ever try to bundle FFmpeg or torch/CUDA.
-    - a wheel does NOT bundle libjpeg, libpng, libwebp or libwebpdemux.
+    - a wheel does NOT bundle libjpeg, libpng, libwebp, libwebpdemux or libavif.
+    - the wheel bundles an AV1 encoder library: our libavif is decode-only, so
+      encoders (aom/rav1e/svtav1) must never ship (all platforms).
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
-    - (Linux only) libtorchcodec_image.so links FFmpeg
+    - (Linux only) libtorchcodec_image.so links FFmpeg.
+    - (Linux only) the compressed wheel is larger than MAX_LINUX_WHEEL_BYTES: the
+      slim decode-only libavif should keep us well under it; a regression likely
+      means a fat libavif (with encoders) crept back in.
     """
+    # 5 MB. Only enforced on Linux (see _is_avif rationale re: the slim S3
+    # libavif). Bump if a legitimate dependency growth pushes us over.
+    MAX_LINUX_WHEEL_BYTES = 5 * 1024 * 1024
 
     def _is_shared_lib(name):
         base = name.rsplit("/", 1)[-1]
@@ -223,13 +216,24 @@ def check_bundling():
         )
 
     def _is_avif(lib):
-        # libavif plus the AV1 codec libraries it links (all BSD/permissive).
-        # On Windows the DLLs may drop the "lib" prefix.
+        # We bundle a slim decode-only libavif from S3 (dav1d + libyuv statically
+        # embedded, no encoders), so libavif itself is the ONLY avif-related
+        # shared lib we expect -- no separate libaom/libdav1d/librav1e/libsvtav1.
+        # On Windows the DLL may drop the "lib" prefix.
         stem = lib.lower()
-        return stem.startswith(
-            ("libavif", "libaom", "libdav1d", "librav1e", "libsvtav1")
-        ) or (
-            stem.startswith(("avif", "aom", "dav1d", "rav1e", "svtav1"))
+        return stem.startswith("libavif") or (
+            stem.startswith("avif") and stem.endswith(".dll")
+        )
+
+    def _is_avif_encoder(lib):
+        # AV1 encoder libraries. Our decode-only libavif must never pull these in;
+        # their presence means we linked a fat libavif (e.g. conda-forge's)
+        # instead of our slim S3 build. libdav1d is the AV1 *decoder* and is
+        # statically embedded in our libavif, so a standalone libdav1d is equally
+        # unexpected -- we flag it here too.
+        stem = lib.lower()
+        return stem.startswith(("libaom", "librav1e", "libsvtav1", "libdav1d")) or (
+            stem.startswith(("aom", "rav1e", "svtav1", "dav1d"))
             and stem.endswith(".dll")
         )
 
@@ -256,9 +260,24 @@ def check_bundling():
             return True
         return False
 
+    # FFmpeg soname prefixes, spelled out rather than "libav" so we don't
+    # accidentally match libavif -- which libtorchcodec_image.so legitimately
+    # links (see _is_avif). "libsw" covers libswscale/libswresample. Mirrors the
+    # explicit lists used for the auditwheel/delocate excludes above.
+    _FFMPEG_SONAME_PREFIXES = (
+        "libavcodec",
+        "libavdevice",
+        "libavfilter",
+        "libavformat",
+        "libavutil",
+        "libavresample",
+        "libsw",
+        "libpostproc",
+    )
+
     def _assert_linux_image_lib_no_ffmpeg(zf):
-        """Enforce that libtorchcodec_image.so NOT link FFmpeg (no
-        libav*/libsw*/libpostproc* in DT_NEEDED).
+        """Enforce that libtorchcodec_image.so NOT link FFmpeg (no FFmpeg
+        soname in DT_NEEDED; see _FFMPEG_SONAME_PREFIXES).
 
         We built libtorchcodec_image.so separately from the FFmpeg-dependent
         core{4,5,6,7,8}.so libraries: the whole point is to avoid symbol
@@ -283,9 +302,7 @@ def check_bundling():
         elf = ELFFile(io.BytesIO(zf.read(members[0])))
         dynamic = elf.get_section_by_name(".dynamic")
         needed = [t.needed for t in dynamic.iter_tags("DT_NEEDED")] if dynamic else []
-        ffmpeg_needed = [
-            n for n in needed if n.startswith(("libav", "libsw", "libpostproc"))
-        ]
+        ffmpeg_needed = [n for n in needed if n.startswith(_FFMPEG_SONAME_PREFIXES)]
         if ffmpeg_needed:
             raise RuntimeError(
                 "libtorchcodec_image.so must not link FFmpeg, but its DT_NEEDED "
@@ -340,9 +357,26 @@ def check_bundling():
                     f"{wheel.name} does not bundle libwebpdemux (needed for "
                     "animated webp decoding)."
                 )
+            # Our libavif is decode-only; the AV1 encoders must never ship. This
+            # is a correctness guard, so we enforce it on every platform.
+            if encoders := [lib for lib in libs if _is_avif_encoder(lib)]:
+                raise RuntimeError(
+                    f"{wheel.name} bundles AV1 codec libraries that must not "
+                    "ship with our decode-only libavif (they should be "
+                    "statically embedded or absent): " + " ".join(encoders)
+                )
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
                 _assert_linux_image_lib_no_ffmpeg(zf)
+                wheel_bytes = wheel.stat().st_size
+                if wheel_bytes > MAX_LINUX_WHEEL_BYTES:
+                    raise RuntimeError(
+                        f"{wheel.name} is {wheel_bytes / 1024 / 1024:.1f} MB "
+                        "compressed, over the "
+                        f"{MAX_LINUX_WHEEL_BYTES / 1024 / 1024:.0f} MB limit. This "
+                        "likely means a fat libavif (with AV1 encoders) was "
+                        "bundled instead of our slim decode-only build."
+                    )
         print("OK: only libjpeg (and allowed libs) bundled.")
 
 
