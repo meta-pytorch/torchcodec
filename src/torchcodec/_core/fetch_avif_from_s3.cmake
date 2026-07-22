@@ -2,7 +2,7 @@
 # exposes it as the `avif` CMake target, so wheel builds can link+bundle a tiny
 # self-contained libavif (dav1d + libyuv statically embedded, no encoders)
 # instead of conda-forge's libavif (which drags in ~20MB of unused AV1 encoder
-# libraries). The tarball is built on CI via the build_libavif.yaml workflow.
+# libraries). The tarball is built by packaging/build_libavif.sh.
 #
 # This mirrors fetch_and_expose_non_gpl_ffmpeg_libs.cmake.
 

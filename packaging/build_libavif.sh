@@ -191,22 +191,16 @@ if [[ "${os}" == Linux || "${os}" == Darwin ]] && command -v nm > /dev/null 2>&1
     fi
 fi
 
-# macOS: libavif builds with an @rpath install-name (@rpath/libavif.16.dylib),
-# which can only be resolved via the *consumer's* rpath. Rewrite the id to a plain
-# soname so consumers record a bare "libavif.16.dylib" dependency that delocate
-# resolves from a search path (DYLD_LIBRARY_PATH) and vendors like any other lib,
-# instead of us needing a consumer-side rpath. See repair_wheel.py for how the
-# search path is passed to delocate around macOS SIP (cibuildwheel #816 / PR #821).
+# macOS: rewrite the @rpath install-name to a plain soname, so consumers record a
+# bare "libavif.16.dylib" dep that delocate resolves from a search path rather than
+# needing a consumer-side rpath. Prefer system tools (miniconda's can misbehave,
+# see build_ffmpeg.sh).
 if [[ "${os}" == Darwin ]]; then
-    # Prefer the system tools: miniconda's otool/install_name_tool can produce
-    # inconsistent results (same rationale as build_ffmpeg.sh).
     otool_bin="/usr/bin/otool"
     [[ -e "${otool_bin}" ]] || otool_bin="$(command -v otool)"
     int_bin="/usr/bin/install_name_tool"
     [[ -e "${int_bin}" ]] || int_bin="$(command -v install_name_tool)"
 
-    current_id=$("${otool_bin}" -D "${lib}" | tail -n1)  # e.g. @rpath/libavif.16.dylib
-    soname=$(basename "${current_id}")                   # e.g. libavif.16.dylib
+    soname=$(basename "$("${otool_bin}" -D "${lib}" | tail -n1)")
     "${int_bin}" -id "${soname}" "${lib}"
-    echo "libavif install-name: ${current_id} -> $("${otool_bin}" -D "${lib}" | tail -n1)"
 fi

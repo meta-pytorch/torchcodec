@@ -522,10 +522,9 @@ function(make_torchcodec_image_library)
             LIBRARY DESTINATION torchcodec
             RUNTIME DESTINATION torchcodec  # For Windows
         )
-        # Windows has no auditwheel/delocate to graft libavif from a search path,
-        # so ship the DLL in the wheel ourselves; the loader finds it next to the
-        # image lib. Linux/macOS let auditwheel/delocate graft it from the S3 build
-        # dir at repair time (repair_wheel.py puts it on their search path).
+        # Windows has no auditwheel/delocate, so ship the libavif DLL ourselves;
+        # the loader finds it next to the image lib. Linux/macOS graft it at repair
+        # time (repair_wheel.py).
         if(WIN32)
             install(FILES "${avif_runtime_lib}" DESTINATION torchcodec)
         endif()
