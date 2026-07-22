@@ -89,36 +89,14 @@ def repair_macos(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "delocate"])
     run(["delocate-wheel", "--version"])
     env = os.environ.copy()
-
-    # TEMPORARY CI DIAGNOSTIC: find where the S3 libavif lands, and dump how the
-    # image lib references it (install-name + rpaths) so we can decide whether a
-    # DYLD search path alone (no rpath) suffices. Remove once understood.
-    print("=== AVIF-DEBUG cwd:", os.getcwd(), flush=True)
-    run(
-        [
-            "bash",
-            "-c",
-            'find / -name "libavif*.dylib" 2>/dev/null || true; '
-            "d=$(mktemp -d); unzip -q dist/*.whl -d $d 2>/dev/null; "
-            'img=$(find $d -name "libtorchcodec_image*" | head -1); '
-            'echo "AVIF-DEBUG image=$img"; otool -L "$img" 2>/dev/null || true; '
-            'otool -l "$img" 2>/dev/null | grep -A2 LC_RPATH || true; '
-            'av=$(find / -name "libavif.16.dylib" 2>/dev/null | head -1); '
-            'echo "AVIF-DEBUG install-name of $av:"; otool -D "$av" 2>/dev/null || true',
-        ]
-    )
-    print("=== AVIF-DEBUG end", flush=True)
-
-    # Same as repair_linux: put the S3 libavif dir (+ conda's lib) on the search
-    # path and let delocate graft it. This run tests whether delocate can resolve
-    # libavif's @rpath install-name from DYLD_FALLBACK_LIBRARY_PATH alone; the
-    # AVIF-DEBUG output above tells us if it can't and why.
-    lib_dirs = [str(_avif_lib_dir())]
+    # delocate finds libjpeg/png/webp under conda's lib to graft them. libavif is
+    # shipped in the wheel and resolved via the image lib's @loader_path rpath (see
+    # make_torchcodec_image_library), so delocate bundles it from there -- no
+    # search-path entry works for its @rpath install-name.
     if conda_prefix := env.get("CONDA_PREFIX"):
-        lib_dirs.append(str(Path(conda_prefix) / "lib"))
-    env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
-        [*lib_dirs, env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
-    )
+        env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
+            [str(Path(conda_prefix) / "lib"), env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
+        )
     # delocate --exclude matches a substring of the dependency's basename. We
     # spell out the FFmpeg libs rather than using "libav" so we don't
     # accidentally exclude libavif (which we DO want to bundle).
