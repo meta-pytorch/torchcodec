@@ -142,7 +142,7 @@ def check_bundling():
     """Raise if:
     - a wheel bundles a lib that's not in the allowlist. This would raise if we
       ever try to bundle FFmpeg or torch/CUDA.
-    - a wheel does NOT bundle libjpeg, libpng or libwebp.
+    - a wheel does NOT bundle libjpeg, libpng, libwebp or libwebpdemux.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
     """
 
@@ -166,6 +166,13 @@ def check_bundling():
     def _is_webp(lib):
         return lib.startswith(("libwebp", "libsharpyuv")) or (
             lib.startswith(("webp", "sharpyuv")) and lib.endswith(".dll")
+        )
+
+    def _is_webp_demux(lib):
+        # libwebpdemux is a separate lib from the base libwebp; it provides the
+        # WebPAnimDecoder API used to decode animated webp files.
+        return lib.startswith("libwebpdemux") or (
+            lib.startswith("webpdemux") and lib.endswith(".dll")
         )
 
     def _is_allowed(lib):
@@ -224,6 +231,11 @@ def check_bundling():
                 raise RuntimeError(f"{wheel.name} does not bundle libpng.")
             if not any(_is_webp(lib) for lib in libs):
                 raise RuntimeError(f"{wheel.name} does not bundle libwebp.")
+            if not any(_is_webp_demux(lib) for lib in libs):
+                raise RuntimeError(
+                    f"{wheel.name} does not bundle libwebpdemux (needed for "
+                    "animated webp decoding)."
+                )
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")
