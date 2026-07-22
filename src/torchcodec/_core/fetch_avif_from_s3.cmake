@@ -81,12 +81,6 @@ if (NOT EXISTS "${avif_runtime_lib}")
     message(FATAL_ERROR "${avif_runtime_lib} does not exist")
 endif()
 
-# macOS only: used as the image lib's INSTALL_RPATH (see CMakeLists.txt) so
-# delocate can resolve @rpath/libavif at repair time.
-if (APPLE)
-    get_filename_component(avif_lib_dir "${avif_runtime_lib}" DIRECTORY)
-endif()
-
 message(STATUS "Adding libavif (decode-only, from S3) as the `avif` target")
 add_library(avif INTERFACE IMPORTED)
 target_include_directories(avif INTERFACE ${include_dir})

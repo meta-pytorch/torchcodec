@@ -505,17 +505,6 @@ function(make_torchcodec_image_library)
         target_compile_options(${image_library_name} PRIVATE "-fvisibility=hidden")
     endif()
 
-    # macOS only: the S3 libavif's install-name is @rpath/libavif.16.dylib, so
-    # delocate needs an rpath to resolve it at repair time (it can't use
-    # DYLD_FALLBACK_LIBRARY_PATH for @rpath). delocate strips this rpath again
-    # once it has bundled libavif. On Linux, repair_wheel.py instead puts this dir
-    # on LD_LIBRARY_PATH, exactly like it does for conda's libjpeg/png/webp.
-    if(APPLE AND DEFINED avif_lib_dir)
-        set_property(TARGET ${image_library_name} APPEND PROPERTY
-            INSTALL_RPATH "${avif_lib_dir}")
-    endif()
-
-    # Same editable-vs-wheel output/install logic as make_torchcodec_libraries.
     if(SKBUILD_STATE STREQUAL "editable")
         get_filename_component(
             TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
@@ -523,26 +512,20 @@ function(make_torchcodec_image_library)
             LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
             RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
         )
+        # Windows editable needs the DLL next to the image lib (no build RUNPATH).
+        if(WIN32)
+            file(COPY "${avif_runtime_lib}" DESTINATION "${TORCHCODEC_PACKAGE_DIR}")
+        endif()
     else()
         install(
             TARGETS ${image_library_name}
             LIBRARY DESTINATION torchcodec
             RUNTIME DESTINATION torchcodec  # For Windows
         )
-    endif()
-
-    # Windows only: ship the S3 libavif runtime DLL in the wheel next to the image
-    # library. Windows has no auditwheel/delocate, and the loader resolves a DLL's
-    # dependencies from its own directory, so the co-located DLL is found. On
-    # Linux/macOS, auditwheel/delocate instead graft libavif.so/.dylib into the
-    # wheel's bundled-libs dir (torchcodec.libs / torchcodec/.dylibs) alongside
-    # the other image codecs; repair_wheel.py puts the FetchContent build dir on
-    # their library search path so they can locate it. avif_runtime_lib is set by
-    # fetch_avif_from_s3.cmake.
-    if(WIN32)
-        if(SKBUILD_STATE STREQUAL "editable")
-            file(COPY "${avif_runtime_lib}" DESTINATION "${TORCHCODEC_PACKAGE_DIR}")
-        else()
+        # Windows has no auditwheel/delocate to graft libavif from a search path,
+        # so ship the DLL in the wheel ourselves; the loader finds it next to the
+        # image lib. Linux/macOS let auditwheel/delocate graft it (repair_wheel.py).
+        if(WIN32)
             install(FILES "${avif_runtime_lib}" DESTINATION torchcodec)
         endif()
     endif()

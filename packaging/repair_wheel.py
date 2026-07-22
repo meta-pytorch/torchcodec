@@ -35,26 +35,30 @@ def run(cmd, **kwargs):
     subprocess.run(cmd, check=True, **kwargs)
 
 
-def _avif_lib_dirs():
-    # libavif isn't in conda like the other image libs; it's fetched from S3 into
-    # the scikit-build build dir (build/{wheel_tag}, persistent -- see build-dir
-    # in pyproject.toml, so it survives into this repair step). Return its dir(s)
-    # so we can put them on the repair tool's search path, same as conda's lib.
-    return [p for p in Path("build").glob("*/_deps/avif_s3-src/lib") if p.is_dir()]
-
-
 def repair_linux(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "auditwheel"])
     run(["auditwheel", "--version"])
     env = os.environ.copy()
-    # auditwheel grafts the libs it finds on LD_LIBRARY_PATH: libjpeg/png/webp
-    # from conda, libavif from the S3 build dir.
-    lib_dirs = [str(d) for d in _avif_lib_dirs()]
-    if conda_prefix := env.get("CONDA_PREFIX"):
-        lib_dirs.append(str(Path(conda_prefix) / "lib"))
-    env["LD_LIBRARY_PATH"] = os.pathsep.join(
-        [*lib_dirs, env.get("LD_LIBRARY_PATH", "")]
+
+    # TEMPORARY CI DIAGNOSTIC: pin down where the S3 libavif actually lands so we
+    # can add its dir to LD_LIBRARY_PATH (like conda's lib) and let auditwheel
+    # graft it. Remove once the path is known.
+    print("=== AVIF-DEBUG cwd:", os.getcwd(), flush=True)
+    run(["bash", "-c", "find / -name 'libavif.so*' 2>/dev/null || true"])
+    run(
+        [
+            "bash",
+            "-c",
+            "echo AVIF-DEBUG-BUILD-TREE; find . -path '*avif*' 2>/dev/null | head -50 || true",
+        ]
     )
+    print("=== AVIF-DEBUG end", flush=True)
+
+    # auditwheel finds libjpeg/png/webp under conda's lib to graft them.
+    if conda_prefix := env.get("CONDA_PREFIX"):
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            [str(Path(conda_prefix) / "lib"), env.get("LD_LIBRARY_PATH", "")]
+        )
 
     excludes = []
     for pattern in (
@@ -86,15 +90,13 @@ def repair_macos(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "delocate"])
     run(["delocate-wheel", "--version"])
     env = os.environ.copy()
-    # libjpeg/png/webp come from conda. libavif is resolved via the image lib's
-    # INSTALL_RPATH (see make_torchcodec_image_library): its install-name is
-    # @rpath-based, which delocate can't resolve from DYLD_FALLBACK_LIBRARY_PATH.
-    lib_dirs = [str(d) for d in _avif_lib_dirs()]
+    # delocate finds libjpeg/png/webp here to graft them. libavif is already
+    # inside the wheel (see make_torchcodec_image_library); delocate resolves it
+    # via the image lib's @loader_path rpath and relocates it alongside the others.
     if conda_prefix := env.get("CONDA_PREFIX"):
-        lib_dirs.append(str(Path(conda_prefix) / "lib"))
-    env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
-        [*lib_dirs, env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
-    )
+        env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
+            [str(Path(conda_prefix) / "lib"), env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
+        )
     # delocate --exclude matches a substring of the dependency's basename. We
     # spell out the FFmpeg libs rather than using "libav" so we don't
     # accidentally exclude libavif (which we DO want to bundle).
@@ -120,13 +122,6 @@ def repair_macos(wheels):
                 "delocate-wheel",
                 "-v",
                 "--ignore-missing-dependencies",
-                # Strip absolute/relative rpaths from the bundled libs after
-                # grafting. This is delocate's default, but we pass it explicitly
-                # so the absolute INSTALL_RPATH we bake into libtorchcodec_image
-                # (pointing at the build-time S3 libavif dir, needed so delocate
-                # can *resolve* @rpath/libavif here) does NOT leak into the shipped
-                # wheel. auditwheel does the equivalent on Linux automatically.
-                "--sanitize-rpaths",
                 *excludes,
                 "-w",
                 REPAIRED_DIR,
