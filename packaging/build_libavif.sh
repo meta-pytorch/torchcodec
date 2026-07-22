@@ -150,12 +150,13 @@ cp "${dav1d_copying}" "${LIBAVIF_ROOT}/licenses/COPYING.dav1d"
 
 ls -R "${LIBAVIF_ROOT}"
 
-# Locate the installed shared library (Linux .so / macOS .dylib).
-if [[ "$(uname)" == Darwin ]]; then
-    lib=$(ls "${LIBAVIF_ROOT}"/lib*/libavif.*.dylib 2>/dev/null | head -n1 || true)
-else
-    lib=$(ls "${LIBAVIF_ROOT}"/lib*/libavif.so.*.* 2>/dev/null | head -n1 || true)
-fi
+# Locate the installed shared library (Linux .so / macOS .dylib / Windows .dll).
+os="$(uname -s)"
+case "${os}" in
+    Linux) lib=$(ls "${LIBAVIF_ROOT}"/lib*/libavif.so.*.* 2>/dev/null | head -n1 || true) ;;
+    Darwin) lib=$(ls "${LIBAVIF_ROOT}"/lib*/libavif.*.dylib 2>/dev/null | head -n1 || true) ;;
+    *) lib=$(ls "${LIBAVIF_ROOT}"/bin/libavif*.dll 2>/dev/null | head -n1 || true) ;;  # Windows/MinGW
+esac
 if [[ -z "${lib}" || ! -f "${lib}" ]]; then
     echo "ERROR: no installed libavif shared library found under ${LIBAVIF_ROOT}." >&2
     exit 1
@@ -164,7 +165,7 @@ fi
 # Sanity check 1 (Linux): the installed libavif must NOT pull in any external AV1
 # codec -- dav1d is static, so there must be no libaom/librav1e/libSvtAv1Enc/
 # libdav1d as a separate shared dependency.
-if [[ "$(uname)" == Linux ]]; then
+if [[ "${os}" == Linux ]]; then
     if ldd "${lib}" | grep -Ei 'libaom|librav1e|libSvtAv1|libdav1d'; then
         echo "ERROR: libavif links an external AV1 codec; expected a" \
              "self-contained decode-only build with static dav1d." >&2
@@ -177,8 +178,9 @@ fi
 # (which would silently be far slower). dav1d compiles per-ISA kernels and
 # selects among them at runtime via CPU detection; we just confirm the ISA
 # symbols are present. This is the cross-platform successor to the old
-# nasm-presence check: it covers x86 (nasm AVX2/SSE) AND arm (NEON asm).
-if [[ "$(uname)" == Linux || "$(uname)" == Darwin ]] && command -v nm > /dev/null 2>&1; then
+# nasm-presence check: it covers x86 (nasm AVX2/SSE) AND arm (NEON asm). We skip
+# it on Windows, where nm on the PE/DLL doesn't expose dav1d's static symbols.
+if [[ "${os}" == Linux || "${os}" == Darwin ]] && command -v nm > /dev/null 2>&1; then
     case "$(uname -m)" in
         x86_64 | amd64 | i?86) simd_re='avx2|avx512|ssse3|_sse' ;;
         aarch64 | arm64) simd_re='neon' ;;

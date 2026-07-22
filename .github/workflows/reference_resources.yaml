@@ -2,10 +2,11 @@ name: Reference resource generation tests
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - test/generate_reference_resources.py
-      - .github/workflows/reference_resources.yaml # self reference
+  # TEMP(build_libavif): PR trigger disabled to avoid running the full CI on this branch.
+  # pull_request:
+  #   paths:
+  #     - test/generate_reference_resources.py
+  #     - .github/workflows/reference_resources.yaml # self reference
   schedule:
     - cron: '0 0 * * 0'  # on sunday
 
