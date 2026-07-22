@@ -20,8 +20,7 @@
 # - torch: install it separately (a nightly matching your CPU/CUDA variant).
 # - FFmpeg: a runtime/build dependency handled by the caller.
 # - libavif: unlike the other image libs, it is not installed from conda. The
-#   build always fetches a slim decode-only libavif from S3 (see
-#   fetch_avif_from_s3.cmake).
+#   build always fetches a slim decode-only libavif from S3
 # - pkg-config: only needed to *locate an installed FFmpeg* at build time, i.e.
 #   builds that don't set BUILD_AGAINST_ALL_FFMPEG_FROM_S3. Callers that build
 #   against an installed FFmpeg install pkg-config alongside it.
@@ -35,6 +34,4 @@ if [[ "${TORCHCODEC_SKIP_IMAGE_DEPS:-0}" != "1" ]]; then
     conda install -y libjpeg-turbo -c pytorch
     conda install -y libpng -c conda-forge
     conda install -y "libwebp>=1.3" -c conda-forge
-    # libavif is intentionally not installed here: it is always fetched from S3
-    # at build time (see fetch_avif_from_s3.cmake).
 fi

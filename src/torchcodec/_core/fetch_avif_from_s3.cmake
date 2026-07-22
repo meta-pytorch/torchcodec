@@ -4,11 +4,7 @@
 # instead of conda-forge's libavif (which drags in ~20MB of unused AV1 encoder
 # libraries). The tarball is built on CI via the build_libavif.yaml workflow.
 #
-# This mirrors fetch_and_expose_non_gpl_ffmpeg_libs.cmake, but libavif is a
-# single version and a single library, so there is no version loop.
-#
-# The `avif` target it defines is the same one the libavif CONFIG package would
-# expose, so the libavif link block in CMakeLists.txt works unchanged.
+# This mirrors fetch_and_expose_non_gpl_ffmpeg_libs.cmake.
 
 # Avoid warning: see https://cmake.org/cmake/help/latest/policy/CMP0135.html
 if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
@@ -19,9 +15,6 @@ include(FetchContent)
 
 set(libavif_version "1.4.2")
 
-# NOTE: bump this date and refresh the sha256 hashes below whenever a new libavif
-# tarball is uploaded to S3 (see build_libavif.yaml). Compute each hash with
-# `sha256sum <platform>/1.4.2.tar.gz`.
 set(
     base_url
     https://pytorch.s3.amazonaws.com/torchcodec/libavif/2026-07-22
@@ -54,8 +47,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(avif_s3)
 
 # avif_s3_SOURCE_DIR was set by FetchContent_MakeAvailable and contains the usual
-# include/ and lib/ (and bin/ on Windows) directories (the tarball's single
-# top-level libavif/ dir is flattened away by FetchContent).
+# include/ and lib/ (and bin/ on Windows) directories
 set(include_dir "${avif_s3_SOURCE_DIR}/include")
 
 # libavif's SOVERSION is 16 (paired with libavif 1.4.2). We link the fully
@@ -65,7 +57,6 @@ if (LINUX)
 elseif (APPLE)
     set(lib_path "${avif_s3_SOURCE_DIR}/lib/libavif.16.dylib")
 elseif (WIN32)
-    # Import library produced by the mingw build; the DLL lives in bin/.
     set(lib_path "${avif_s3_SOURCE_DIR}/lib/libavif.dll.a")
 endif()
 
@@ -78,9 +69,7 @@ endforeach()
 # The runtime shared library that must be shipped in the wheel. On Linux/macOS
 # this is the same SONAME'd file we link against; on Windows we link the .dll.a
 # import lib but must ship the actual DLL from bin/. We expose its path so
-# make_torchcodec_image_library() can install it into the wheel: the FetchContent
-# download dir is gone by the time auditwheel/delocate run, so they can't locate
-# libavif there -- we must place it into the package ourselves.
+# make_torchcodec_image_library() can install it into the wheel.
 if (LINUX)
     set(avif_runtime_lib "${avif_s3_SOURCE_DIR}/lib/libavif.so.16")
 elseif (APPLE)
@@ -92,11 +81,9 @@ if (NOT EXISTS "${avif_runtime_lib}")
     message(FATAL_ERROR "${avif_runtime_lib} does not exist")
 endif()
 
-# Directory holding the runtime lib. On Linux/macOS we set this as the image
-# library's INSTALL_RPATH so auditwheel/delocate can resolve libavif at repair
-# time (see make_torchcodec_image_library() in CMakeLists.txt). Not needed on
-# Windows, where the loader finds the co-located DLL.
-if (LINUX OR APPLE)
+# macOS only: used as the image lib's INSTALL_RPATH (see CMakeLists.txt) so
+# delocate can resolve @rpath/libavif at repair time.
+if (APPLE)
     get_filename_component(avif_lib_dir "${avif_runtime_lib}" DIRECTORY)
 endif()
 

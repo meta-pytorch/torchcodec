@@ -14,16 +14,6 @@ installed.
 We bundle some third-party native libraries like libjpeg(-turbo), libpng, zlib,
 libwebp (+libsharpyuv) and libavif, while making sure we EXCLUDE FFmpeg
 (user-provided at runtime) and torch/CUDA (provided by the torch wheel).
-
-libavif is our slim decode-only build fetched from S3 (see
-fetch_avif_from_s3.cmake): the AV1 decoder (dav1d) and libyuv are statically
-embedded and no AV1 *encoder* is present, so libavif.so is the only avif-related
-lib in the wheel -- there are no separate libaom/libdav1d/librav1e/libSvtAv1Enc
-to bundle. check_bundling() asserts this (encoder-absence + wheel-size).
-
-Note the FFmpeg exclusions below spell out each FFmpeg soname rather than using a
-"libav" glob, because libavif also starts with "libav" and we do NOT want to
-exclude it.
 """
 
 import io
@@ -46,19 +36,10 @@ def run(cmd, **kwargs):
 
 
 def _avif_lib_dirs():
-    """Directories holding the S3 libavif runtime lib (best-effort).
-
-    Unlike libjpeg/png/webp (from conda), libavif is fetched from S3 into the
-    scikit-build build dir (build/{wheel_tag}, which is persistent -- see
-    build-dir in pyproject.toml -- so it survives into this repair step). We
-    prepend these dir(s) to auditwheel/delocate's search path so that, if a stray
-    system/conda libavif exists, our slim S3 one still wins.
-
-    This is only a precedence guard: the image lib already carries an
-    INSTALL_RPATH to this dir (see make_torchcodec_image_library()), which is what
-    actually lets auditwheel/delocate locate and graft libavif. So if the glob
-    finds nothing we return [] and let the rpath do the work, rather than failing.
-    """
+    # libavif isn't in conda like the other image libs; it's fetched from S3 into
+    # the scikit-build build dir (build/{wheel_tag}, persistent -- see build-dir
+    # in pyproject.toml, so it survives into this repair step). Return its dir(s)
+    # so we can put them on the repair tool's search path, same as conda's lib.
     return [p for p in Path("build").glob("*/_deps/avif_s3-src/lib") if p.is_dir()]
 
 
@@ -66,10 +47,8 @@ def repair_linux(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "auditwheel"])
     run(["auditwheel", "--version"])
     env = os.environ.copy()
-    # auditwheel must be able to *find* the libs it grafts. libjpeg/png/webp come
-    # from conda. libavif is located via the image lib's INSTALL_RPATH (see
-    # make_torchcodec_image_library()); we also prepend the S3 libavif dir here so
-    # our slim build wins over any stray system/conda libavif.
+    # auditwheel grafts the libs it finds on LD_LIBRARY_PATH: libjpeg/png/webp
+    # from conda, libavif from the S3 build dir.
     lib_dirs = [str(d) for d in _avif_lib_dirs()]
     if conda_prefix := env.get("CONDA_PREFIX"):
         lib_dirs.append(str(Path(conda_prefix) / "lib"))
@@ -107,11 +86,9 @@ def repair_macos(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "delocate"])
     run(["delocate-wheel", "--version"])
     env = os.environ.copy()
-    # delocate must be able to *find* the libs it grafts. libjpeg/png/webp come
-    # from conda. libavif is located via the image lib's INSTALL_RPATH (see
-    # make_torchcodec_image_library()); delocate resolves the @rpath/libavif dep
-    # through it. We also prepend the S3 libavif dir here so our slim build wins
-    # over any stray system/conda libavif.
+    # libjpeg/png/webp come from conda. libavif is resolved via the image lib's
+    # INSTALL_RPATH (see make_torchcodec_image_library): its install-name is
+    # @rpath-based, which delocate can't resolve from DYLD_FALLBACK_LIBRARY_PATH.
     lib_dirs = [str(d) for d in _avif_lib_dirs()]
     if conda_prefix := env.get("CONDA_PREFIX"):
         lib_dirs.append(str(Path(conda_prefix) / "lib"))
@@ -143,6 +120,13 @@ def repair_macos(wheels):
                 "delocate-wheel",
                 "-v",
                 "--ignore-missing-dependencies",
+                # Strip absolute/relative rpaths from the bundled libs after
+                # grafting. This is delocate's default, but we pass it explicitly
+                # so the absolute INSTALL_RPATH we bake into libtorchcodec_image
+                # (pointing at the build-time S3 libavif dir, needed so delocate
+                # can *resolve* @rpath/libavif here) does NOT leak into the shipped
+                # wheel. auditwheel does the equivalent on Linux automatically.
+                "--sanitize-rpaths",
                 *excludes,
                 "-w",
                 REPAIRED_DIR,
@@ -212,15 +196,14 @@ def check_bundling():
     - a wheel does NOT bundle libjpeg, libpng, libwebp, libwebpdemux or libavif.
     - the wheel bundles an AV1 encoder library: our libavif is decode-only, so
       encoders (aom/rav1e/svtav1) must never ship (all platforms).
+    - the compressed wheel is larger than MAX_WHEEL_BYTES: the slim decode-only
+      libavif should keep us under it; a regression likely means a fat libavif
+      (with encoders) crept back in (all platforms).
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
     - (Linux only) libtorchcodec_image.so links FFmpeg.
-    - (Linux only) the compressed wheel is larger than MAX_LINUX_WHEEL_BYTES: the
-      slim decode-only libavif should keep us well under it; a regression likely
-      means a fat libavif (with encoders) crept back in.
     """
-    # 5 MB. Only enforced on Linux (see _is_avif rationale re: the slim S3
-    # libavif). Bump if a legitimate dependency growth pushes us over.
-    MAX_LINUX_WHEEL_BYTES = 5 * 1024 * 1024
+    # 6 MB. Bump if a legitimate dependency growth pushes us over.
+    MAX_WHEEL_BYTES = 6 * 1024 * 1024
 
     def _is_shared_lib(name):
         base = name.rsplit("/", 1)[-1]
@@ -245,21 +228,12 @@ def check_bundling():
         )
 
     def _is_avif(lib):
-        # We bundle a slim decode-only libavif from S3 (dav1d + libyuv statically
-        # embedded, no encoders), so libavif itself is the ONLY avif-related
-        # shared lib we expect -- no separate libaom/libdav1d/librav1e/libsvtav1.
-        # On Windows the DLL may drop the "lib" prefix.
         stem = lib.lower()
         return stem.startswith("libavif") or (
             stem.startswith("avif") and stem.endswith(".dll")
         )
 
     def _is_avif_encoder(lib):
-        # AV1 encoder libraries. Our decode-only libavif must never pull these in;
-        # their presence means we linked a fat libavif (e.g. conda-forge's)
-        # instead of our slim S3 build. libdav1d is the AV1 *decoder* and is
-        # statically embedded in our libavif, so a standalone libdav1d is equally
-        # unexpected -- we flag it here too.
         stem = lib.lower()
         return stem.startswith(("libaom", "librav1e", "libsvtav1", "libdav1d")) or (
             stem.startswith(("aom", "rav1e", "svtav1", "dav1d"))
@@ -386,26 +360,24 @@ def check_bundling():
                     f"{wheel.name} does not bundle libwebpdemux (needed for "
                     "animated webp decoding)."
                 )
-            # Our libavif is decode-only; the AV1 encoders must never ship. This
-            # is a correctness guard, so we enforce it on every platform.
             if encoders := [lib for lib in libs if _is_avif_encoder(lib)]:
                 raise RuntimeError(
                     f"{wheel.name} bundles AV1 codec libraries that must not "
                     "ship with our decode-only libavif (they should be "
                     "statically embedded or absent): " + " ".join(encoders)
                 )
+            wheel_bytes = wheel.stat().st_size
+            if wheel_bytes > MAX_WHEEL_BYTES:
+                raise RuntimeError(
+                    f"{wheel.name} is {wheel_bytes / 1024 / 1024:.1f} MB "
+                    "compressed, over the "
+                    f"{MAX_WHEEL_BYTES / 1024 / 1024:.0f} MB limit. This likely "
+                    "means a fat libavif (with AV1 encoders) was bundled instead "
+                    "of our slim decode-only build."
+                )
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
                 _assert_linux_image_lib_no_ffmpeg(zf)
-                wheel_bytes = wheel.stat().st_size
-                if wheel_bytes > MAX_LINUX_WHEEL_BYTES:
-                    raise RuntimeError(
-                        f"{wheel.name} is {wheel_bytes / 1024 / 1024:.1f} MB "
-                        "compressed, over the "
-                        f"{MAX_LINUX_WHEEL_BYTES / 1024 / 1024:.0f} MB limit. This "
-                        "likely means a fat libavif (with AV1 encoders) was "
-                        "bundled instead of our slim decode-only build."
-                    )
         print("OK: only libjpeg (and allowed libs) bundled.")
 
 

@@ -85,19 +85,9 @@ else()
     message(STATUS "libwebp NOT found: torchcodec.decode_webp will raise at runtime.")
 endif()
 
-# libavif is a build-time dependency for the CPU AVIF image decoder
-# (DecodeAvif.cpp). Unlike the other image libs (jpeg/png/webp) which we
-# find_package from conda, we always pull a slim decode-only libavif from our S3
-# bucket (dav1d + libyuv statically embedded, no encoders). This avoids
-# conda-forge's libavif, which drags in ~20MB of unused AV1 encoder libraries.
-# The fetch defines the `avif` target and sets libavif_FOUND, so the link block
-# in make_torchcodec_image_library() works unchanged.
-#
-# TODO_IMAGE: this is unconditional for now. We should make image support
-# opt-in/opt-out (mirroring the TODO_IMAGE in _image_decoders.py about building
-# without image dependencies) so a build can skip AVIF -- falling back to
-# DecodeAvif.cpp's runtime-error stub -- or use a system/conda libavif instead
-# of the S3 one.
+# TODO_IMAGE: fetch and building with avif is unconditional for now. We should
+# make image support opt-in/opt-out (mirroring the TODO_IMAGE in
+# _image_decoders.py about building without image dependencies)
 include(${CMAKE_CURRENT_SOURCE_DIR}/fetch_avif_from_s3.cmake)
 set(libavif_FOUND TRUE)
 message(STATUS "Building torchcodec with AVIF image decoding support (libavif from S3).")
@@ -515,17 +505,12 @@ function(make_torchcodec_image_library)
         target_compile_options(${image_library_name} PRIVATE "-fvisibility=hidden")
     endif()
 
-    # Give the image lib an INSTALL_RPATH pointing at the S3 libavif dir so that,
-    # in wheel builds, auditwheel (Linux) / delocate (macOS) can resolve its
-    # dependency on libavif at repair time and relocate it into the wheel's
-    # bundled-libs dir. Without this, CMake strips the build-tree rpath on install
-    # and the repair tool can't find libavif -- which lives in the persistent
-    # FetchContent dir (macOS records the dep as @rpath/libavif.16.dylib, which is
-    # unresolvable with no rpath). The repair tool rewrites this rpath when it
-    # relocates libavif, so the build path doesn't leak into the final wheel.
-    # Editable builds resolve libavif via the build-tree RUNPATH instead
-    # (INSTALL_RPATH doesn't apply to them). Not needed on Windows.
-    if((LINUX OR APPLE) AND DEFINED avif_lib_dir)
+    # macOS only: the S3 libavif's install-name is @rpath/libavif.16.dylib, so
+    # delocate needs an rpath to resolve it at repair time (it can't use
+    # DYLD_FALLBACK_LIBRARY_PATH for @rpath). delocate strips this rpath again
+    # once it has bundled libavif. On Linux, repair_wheel.py instead puts this dir
+    # on LD_LIBRARY_PATH, exactly like it does for conda's libjpeg/png/webp.
+    if(APPLE AND DEFINED avif_lib_dir)
         set_property(TARGET ${image_library_name} APPEND PROPERTY
             INSTALL_RPATH "${avif_lib_dir}")
     endif()
