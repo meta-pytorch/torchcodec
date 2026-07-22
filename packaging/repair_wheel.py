@@ -155,15 +155,15 @@ def repair_windows(wheels):
     )
     if not sharpyuv_dlls:
         raise FileNotFoundError(f"No libsharpyuv DLL found under {bin_dir}")
-    # NOTE: libavif is deliberately NOT sourced here. Unlike the other image DLLs
-    # (which come from conda), libavif comes from our slim decode-only S3 build
-    # and is placed into the wheel directly by CMake (see
-    # make_torchcodec_image_library() and fetch_avif_from_s3.cmake). Its AV1
-    # decoder (dav1d) is statically embedded and it ships no AV1 encoders, so
-    # there are no separate dav1d/aom/rav1e/svtav1 DLLs to bundle. check_bundling()
-    # still asserts libavif is present (and that no encoder DLLs leaked in).
+    # libavif comes from our S3 build (not conda): its DLL is in the FetchContent
+    # build dir's bin/. Bundle it alongside the conda DLLs.
+    avif_dlls = set(Path("build").glob("*/_deps/avif_s3-src/bin/libavif*.dll"))
+    if not avif_dlls:
+        raise FileNotFoundError("No libavif DLL under build/*/_deps/avif_s3-src/bin")
 
-    dlls = sorted(jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls)
+    dlls = sorted(
+        jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls | avif_dlls
+    )
 
     for wheel in wheels:
         unpack_dir = REPAIRED_DIR / "unpack"
