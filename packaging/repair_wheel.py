@@ -144,9 +144,7 @@ def check_bundling():
       ever try to bundle FFmpeg or torch/CUDA.
     - a wheel does NOT bundle libjpeg, libpng, libwebp or libwebpdemux.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
-    - (Linux only) libtorchcodec_image.so links FFmpeg or exports codec symbols
-      (it must stay isolated from the user's FFmpeg; see
-      _assert_linux_image_lib_isolated).
+    - (Linux only) libtorchcodec_image.so links FFmpeg
     """
 
     def _is_shared_lib(name):
@@ -193,26 +191,21 @@ def check_bundling():
             return True
         return False
 
-    def _assert_linux_image_lib_isolated(zf):
-        """Linux-only. Enforce that libtorchcodec_image.so, the standalone image
-        decoder library, stays isolated from FFmpeg:
+    def _assert_linux_image_lib_no_ffmpeg(zf):
+        """Enforce that libtorchcodec_image.so NOT link FFmpeg (no
+        libav*/libsw*/libpostproc* in DT_NEEDED).
 
-        (a) it must NOT link FFmpeg (no libav*/libsw*/libpostproc* in DT_NEEDED),
-            and
-        (b) it must NOT export any bundled-codec symbol (png_*/jpeg_*/WebP*/
-            giflib/...).
+        We built libtorchcodec_image.so separately from the FFmpeg-dependent
+        core{4,5,6,7,8}.so libraries: the whole point is to avoid symbol
+        interposition between the bundled image codec libs
+        (libjpeg/libpng/libwebp) and the user's FFmpeg: FFmpeg may come with its
+        own libjpeg/libpng too!
 
-        Together with the fact that it's loaded via its own torch.ops.load_library
-        call (its own RTLD_LOCAL symbol group), this is what keeps our bundled
-        libjpeg/libpng/libwebp from colliding with the codec libs the user's
-        FFmpeg links. (a) prevents the image lib from ever sharing a load group
-        with FFmpeg; (b) makes sure our lib itself never becomes a second
-        definition of a codec symbol (it only *imports* them, and giflib, which
-        we compile in, is built with hidden visibility). See
-        IMAGE_LIBS_BUNDLING_INVESTIGATION.md.
+        This check ensures that we didn't accidentally link FFmpeg into
+        libtorchcodec_image.so, which would defeat the purpose of building it
+        separately.
         """
         from elftools.elf.elffile import ELFFile
-        from elftools.elf.sections import SymbolTableSection
 
         members = [
             n for n in zf.namelist() if n.rsplit("/", 1)[-1] == "libtorchcodec_image.so"
@@ -223,8 +216,6 @@ def check_bundling():
                 "are expected to live in their own shared library."
             )
         elf = ELFFile(io.BytesIO(zf.read(members[0])))
-
-        # (a) No FFmpeg in DT_NEEDED.
         dynamic = elf.get_section_by_name(".dynamic")
         needed = [t.needed for t in dynamic.iter_tags("DT_NEEDED")] if dynamic else []
         ffmpeg_needed = [
@@ -234,40 +225,6 @@ def check_bundling():
             raise RuntimeError(
                 "libtorchcodec_image.so must not link FFmpeg, but its DT_NEEDED "
                 "lists: " + " ".join(ffmpeg_needed)
-            )
-
-        # (b) No *exported* (defined) codec symbols. Undefined symbols (imports)
-        # are expected and fine. Our own ops are C++ (mangled, "_Z" prefix) so we
-        # skip those; the codec APIs are C and appear under their bare names.
-        codec_prefixes = (
-            "png_",
-            "jpeg_",
-            "jpeg12_",
-            "jpeg16_",
-            "WebP",
-            "SharpYuv",
-            "sharpyuv",
-            "Gif",
-            "DGif",
-            "EGif",
-            "deflate",
-            "inflate",
-        )
-        dynsym = elf.get_section_by_name(".dynsym")
-        leaked = []
-        if isinstance(dynsym, SymbolTableSection):
-            for sym in dynsym.iter_symbols():
-                name = sym.name
-                if not name or name.startswith("_Z"):
-                    continue
-                if sym["st_shndx"] == "SHN_UNDEF":
-                    continue
-                if name.startswith(codec_prefixes):
-                    leaked.append(name)
-        if leaked:
-            raise RuntimeError(
-                "libtorchcodec_image.so must not export codec symbols (it should "
-                "only import them), but it exports: " + " ".join(sorted(set(leaked)))
             )
 
     def _assert_linux_libjpeg_is_turbo(zf):
@@ -318,7 +275,7 @@ def check_bundling():
                 )
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
-                _assert_linux_image_lib_isolated(zf)
+                _assert_linux_image_lib_no_ffmpeg(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")
 
 

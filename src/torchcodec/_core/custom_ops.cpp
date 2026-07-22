@@ -44,11 +44,6 @@ namespace facebook::torchcodec {
 // calls to these functions. For more detail, see:
 //   https://github.com/pytorch/pytorch/tree/main/aten/src/ATen/native#readme
 //
-// We use STABLE_TORCH_LIBRARY_FRAGMENT rather than STABLE_TORCH_LIBRARY because
-// the image decoders register into this same torchcodec_ns namespace from a
-// separate library (image_custom_ops.cpp in libtorchcodec_image). A namespace
-// may have at most one STABLE_TORCH_LIBRARY (exclusive) owner; using FRAGMENT
-// in both libraries lets them be loaded in either order.
 STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("create_from_file(str filename, str? seek_mode=None) -> Tensor");
   m.def(
@@ -124,8 +119,6 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "get_wav_samples_in_range(Tensor(a!) decoder, float start_seconds, float? stop_seconds) -> (Tensor, Tensor)");
   m.def("get_wav_metadata_from_decoder(Tensor(a!) decoder) -> str");
-  // NOTE: the image decoder ops (decode_jpeg/png/webp/gif) are defined and
-  // implemented in image_custom_ops.cpp, compiled into libtorchcodec_image.
 }
 
 namespace {
@@ -1532,8 +1525,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "streaming_encoder_add_samples",
       TORCH_BOX(&streaming_encoder_add_samples));
-  // NOTE: decode_jpeg/png/webp/gif are implemented in image_custom_ops.cpp
-  // (libtorchcodec_image), not here.
 }
 
 } // namespace facebook::torchcodec

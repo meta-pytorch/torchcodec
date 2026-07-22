@@ -73,12 +73,6 @@ custom_ops_sources = [
     "custom_ops.cpp",
 ]
 
-# Image decoder implementations. Under CMake these are compiled into a dedicated
-# libtorchcodec_image library (NOT the FFmpeg-linked core library) so that our
-# bundled image codec libs (libjpeg/libpng/libwebp) load in a separate
-# RTLD_LOCAL symbol group from the user's FFmpeg and cannot collide with it. The
-# sources are FFmpeg-free (they use only the version-stable torch ABI + the codec
-# headers), which is what lets them live in their own library.
 image_sources = [
     "DecodeJpeg.cpp",
     "DecodePng.cpp",
@@ -86,19 +80,11 @@ image_sources = [
     "DecodeGif.cpp",
 ]
 
-# PyTorch custom-op registration for the image decoders (decode_jpeg/png/webp/
-# gif). Kept in its own translation unit so it can be compiled into the
-# libtorchcodec_image library alongside image_sources, separately from the
-# FFmpeg custom ops in custom_ops.cpp. Registers into the shared torchcodec_ns
-# namespace via STABLE_TORCH_LIBRARY_FRAGMENT.
 image_ops_sources = [
     "image_custom_ops.cpp",
 ]
 
-# Vendored giflib (decode-only subset, MIT licensed). Compiled directly from
-# source into the libtorchcodec_image library, so the GIF decoder needs no
-# external dependency and is always available. See giflib/README for the license
-# and local mods.
+# Vendored giflib (decode-only subset, MIT licensed).
 giflib_sources = [
     "giflib/dgif_lib.c",
     "giflib/gifalloc.c",

@@ -241,10 +241,6 @@ function(make_torchcodec_libraries
     #    Windows, it's pyd.
 
     # 1. Create libtorchcodec_coreN.{ext}.
-    # NOTE: the image decoders (image_sources + giflib) are intentionally NOT
-    # compiled here. They live in the separate, FFmpeg-free libtorchcodec_image
-    # library (see make_torchcodec_image_library) so that our bundled image codec
-    # libs don't share a symbol-resolution scope with the user's FFmpeg.
     set(core_library_name "libtorchcodec_core${ffmpeg_major_version}")
     set(core_sources
         ${TORCHCODEC_DECODER_CORE_SOURCES}
@@ -267,9 +263,6 @@ function(make_torchcodec_libraries
         "${core_sources}"
         "${core_library_dependencies}"
     )
-
-    # NOTE: the image codec libs (libjpeg/libpng/libwebp) are linked into
-    # libtorchcodec_image, not core (see make_torchcodec_image_library).
 
     if(ENABLE_CUDA)
         # We define USE_CUDA to guard CUDA-specific code paths (e.g.
@@ -461,10 +454,6 @@ endfunction()
 # (libjpeg/libpng/libwebp) and the codec libs pulled in by the user's FFmpeg
 # (which also links libpng/libjpeg/... with the same sonames) then live in
 # separate scopes and cannot interpose on each other.
-#
-# Because it is FFmpeg-free and relies only on the version-stable torch ABI, it
-# is a SINGLE library rather than one-per-FFmpeg-version, which also de-duplicates
-# the image decoder code that used to be compiled into every core{4..8} library.
 function(make_torchcodec_image_library)
     set(image_library_name "libtorchcodec_image")
     set(image_library_sources

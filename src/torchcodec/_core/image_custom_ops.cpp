@@ -9,12 +9,6 @@
 // RTLD_LOCAL symbol group (see load_torchcodec_shared_libraries): that keeps
 // our bundled image codec libs (libjpeg/libpng/libwebp) isolated from the codec
 // libs pulled in by the user's FFmpeg, so they can't collide.
-//
-// We register into the SAME torchcodec_ns namespace as the FFmpeg custom ops
-// (custom_ops.cpp) using STABLE_TORCH_LIBRARY_FRAGMENT. Both this library and
-// custom_ops.cpp use the FRAGMENT variant (rather than STABLE_TORCH_LIBRARY,
-// which requires a single exclusive owner of the namespace), so the two
-// libraries can be loaded in either order.
 
 #include "DecodeGif.h"
 #include "DecodeJpeg.h"
