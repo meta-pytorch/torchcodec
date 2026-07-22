@@ -487,10 +487,9 @@ function(make_torchcodec_image_library)
         target_link_libraries(${image_library_name} PRIVATE WebP::webp WebP::webpdemux)
     endif()
 
-    # Hide our own (and vendored giflib's) symbols so the only thing exported is
-    # the torch op registration. Belt-and-suspenders on top of the RTLD_LOCAL
-    # isolation. Matches what custom_ops/pybind_ops already do. Linux only (see
-    # the note in make_torchcodec_libraries).
+    # Hide our own (and statically linked giflib's) symbols so the only thing
+    # exported is the torch op registration. Belt-and-suspenders on top of the
+    # RTLD_LOCAL isolation.
     if(LINUX)
         target_compile_options(${image_library_name} PRIVATE "-fvisibility=hidden")
     endif()
@@ -512,8 +511,6 @@ function(make_torchcodec_image_library)
     endif()
 endfunction()
 
-# The image library is FFmpeg-independent, so it's built exactly once regardless
-# of which FFmpeg version(s) we build the core libraries against.
 make_torchcodec_image_library()
 
 if(DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3})
