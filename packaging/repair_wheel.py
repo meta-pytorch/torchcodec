@@ -88,46 +88,62 @@ def repair_linux(wheels):
 def repair_macos(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "delocate"])
     run(["delocate-wheel", "--version"])
-    env = os.environ.copy()
-    # delocate grafts the libs it finds on DYLD_FALLBACK_LIBRARY_PATH: libjpeg/png/
-    # webp from conda, libavif from the S3 build dir. Same mechanism, different dir.
-    lib_dirs = [str(_avif_lib_dir())]
-    if conda_prefix := env.get("CONDA_PREFIX"):
-        lib_dirs.append(str(Path(conda_prefix) / "lib"))
-    env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
-        [*lib_dirs, env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
+
+    # delocate resolves each dependency by its recorded install-name: conda's libs
+    # via their absolute install-name (no search needed); our libavif via a bare
+    # soname, which delocate looks up on DYLD_LIBRARY_PATH. macOS SIP strips DYLD_*
+    # from *inherited* environments, so we set it INLINE on the delocate command
+    # (value relayed through a non-DYLD var), per cibuildwheel #816 / PR #821.
+    search = os.pathsep.join(
+        [str(_avif_lib_dir())]
+        + ([str(Path(p) / "lib")] if (p := os.environ.get("CONDA_PREFIX")) else [])
     )
-    # delocate --exclude matches a substring of the dependency's basename. We
-    # spell out the FFmpeg libs rather than using "libav" so we don't
-    # accidentally exclude libavif (which we DO want to bundle).
-    excludes = []
-    for pattern in (
-        "libavcodec",
-        "libavdevice",
-        "libavfilter",
-        "libavformat",
-        "libavutil",
-        "libavresample",
-        "libsw",
-        "libpostproc",
-        "libtorch",
-        "libc10",
-        "libomp",
-    ):
-        excludes += ["--exclude", pattern]
+    # delocate --exclude matches a substring of the dependency's basename. We spell
+    # out the FFmpeg libs rather than using "libav" so we don't accidentally
+    # exclude libavif (which we DO want to bundle).
+    excludes = " ".join(
+        f"--exclude {p}"
+        for p in (
+            "libavcodec",
+            "libavdevice",
+            "libavfilter",
+            "libavformat",
+            "libavutil",
+            "libavresample",
+            "libsw",
+            "libpostproc",
+            "libtorch",
+            "libc10",
+            "libomp",
+        )
+    )
+
+    # DIAGNOSTIC: confirm whether DYLD_LIBRARY_PATH set inline actually survives
+    # into a child python (i.e. isn't stripped by SIP). $0 is the search path.
+    # Remove once understood.
+    run(
+        [
+            "bash",
+            "-c",
+            'DYLD_LIBRARY_PATH="$0" python -c '
+            "\"import os; print('DYLD-SURVIVES:', os.environ.get('DYLD_LIBRARY_PATH'))\"",
+            search,
+        ]
+    )
 
     for wheel in wheels:
         run(
             [
-                "delocate-wheel",
-                "-v",
-                "--ignore-missing-dependencies",
-                *excludes,
-                "-w",
-                REPAIRED_DIR,
-                wheel,
-            ],
-            env=env,
+                "bash",
+                "-c",
+                # Set DYLD_LIBRARY_PATH inline on the delocate command ($0 is the
+                # search path, $1 the wheel). Inline (vs inherited) is what survives
+                # macOS SIP -- see cibuildwheel #816 / PR #821.
+                f'DYLD_LIBRARY_PATH="$0" delocate-wheel -v '
+                f'--ignore-missing-dependencies {excludes} -w "{REPAIRED_DIR}" "$1"',
+                search,
+                str(wheel),
+            ]
         )
 
 
