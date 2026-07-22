@@ -142,8 +142,9 @@ def check_bundling():
     """Raise if:
     - a wheel bundles a lib that's not in the allowlist. This would raise if we
       ever try to bundle FFmpeg or torch/CUDA.
-    - a wheel does NOT bundle libjpeg, libpng or libwebp.
+    - a wheel does NOT bundle libjpeg, libpng, libwebp or libwebpdemux.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
+    - (Linux only) libtorchcodec_image.so links FFmpeg
     """
 
     def _is_shared_lib(name):
@@ -168,6 +169,13 @@ def check_bundling():
             lib.startswith(("webp", "sharpyuv")) and lib.endswith(".dll")
         )
 
+    def _is_webp_demux(lib):
+        # libwebpdemux is a separate lib from the base libwebp; it provides the
+        # WebPAnimDecoder API used to decode animated webp files.
+        return lib.startswith("libwebpdemux") or (
+            lib.startswith("webpdemux") and lib.endswith(".dll")
+        )
+
     def _is_allowed(lib):
         if (
             lib.startswith("libtorchcodec_")
@@ -182,6 +190,42 @@ def check_bundling():
         if platform.system() == "Darwin" and lib.startswith(("libc++", "libpython")):
             return True
         return False
+
+    def _assert_linux_image_lib_no_ffmpeg(zf):
+        """Enforce that libtorchcodec_image.so NOT link FFmpeg (no
+        libav*/libsw*/libpostproc* in DT_NEEDED).
+
+        We built libtorchcodec_image.so separately from the FFmpeg-dependent
+        core{4,5,6,7,8}.so libraries: the whole point is to avoid symbol
+        interposition between the bundled image codec libs
+        (libjpeg/libpng/libwebp) and the user's FFmpeg: FFmpeg may come with its
+        own libjpeg/libpng too!
+
+        This check ensures that we didn't accidentally link FFmpeg into
+        libtorchcodec_image.so, which would defeat the purpose of building it
+        separately.
+        """
+        from elftools.elf.elffile import ELFFile
+
+        members = [
+            n for n in zf.namelist() if n.rsplit("/", 1)[-1] == "libtorchcodec_image.so"
+        ]
+        if not members:
+            raise RuntimeError(
+                "libtorchcodec_image.so not found in wheel; the image decoders "
+                "are expected to live in their own shared library."
+            )
+        elf = ELFFile(io.BytesIO(zf.read(members[0])))
+        dynamic = elf.get_section_by_name(".dynamic")
+        needed = [t.needed for t in dynamic.iter_tags("DT_NEEDED")] if dynamic else []
+        ffmpeg_needed = [
+            n for n in needed if n.startswith(("libav", "libsw", "libpostproc"))
+        ]
+        if ffmpeg_needed:
+            raise RuntimeError(
+                "libtorchcodec_image.so must not link FFmpeg, but its DT_NEEDED "
+                "lists: " + " ".join(ffmpeg_needed)
+            )
 
     def _assert_linux_libjpeg_is_turbo(zf):
         jpeg_members = [
@@ -224,8 +268,14 @@ def check_bundling():
                 raise RuntimeError(f"{wheel.name} does not bundle libpng.")
             if not any(_is_webp(lib) for lib in libs):
                 raise RuntimeError(f"{wheel.name} does not bundle libwebp.")
+            if not any(_is_webp_demux(lib) for lib in libs):
+                raise RuntimeError(
+                    f"{wheel.name} does not bundle libwebpdemux (needed for "
+                    "animated webp decoding)."
+                )
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
+                _assert_linux_image_lib_no_ffmpeg(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")
 
 

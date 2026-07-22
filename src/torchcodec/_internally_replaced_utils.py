@@ -83,6 +83,12 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
          works when the module name and file name match exactly. Our shared
          libraries do not meet those conditions.
     """
+
+    # TODO_IMAGE: Maybe we should only load that upon first use of an image
+    # decoder.
+    image_library_path = _get_extension_path("libtorchcodec_image")
+    torch.ops.load_library(image_library_path)
+
     exceptions = []
     for ffmpeg_major_version in (8, 7, 6, 5, 4):
         core_library_name = f"libtorchcodec_core{ffmpeg_major_version}"

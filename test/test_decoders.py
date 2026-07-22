@@ -35,6 +35,7 @@ from torchcodec.decoders._blocks import (
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.decoders._image_decoders import (
+    decode_gif,
     decode_jpeg,
     decode_png,
     decode_webp,
@@ -45,6 +46,7 @@ from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
 from .utils import (
     all_supported_devices,
+    ANIMATED_GIF,
     assert_frames_equal,
     assert_tensor_close_on_at_least,
     AV1_VIDEO,
@@ -56,8 +58,10 @@ from .utils import (
     CMYK_JPEG,
     cuda_devices,
     DISCARD_FIRST_KEYFRAME_VIDEO,
+    FRAME_EXCEEDS_SCREEN_GIF,
     get_ffmpeg_minor_version,
     get_python_version,
+    GRADIENT_GIF,
     GRADIENT_JPEG,
     GRADIENT_PNG,
     GRADIENT_WEBP,
@@ -109,6 +113,7 @@ from .utils import (
     TESTSRC2_ODD_WIDTH_444,
     TESTSRC2_ODD_WIDTH_VP9,
     TESTSRC2_ODD_WIDTH_VP9_10BIT,
+    TRANSPARENT_GIF,
     WAV_ODD_DATA_TRAILING_CHUNK,
 )
 
@@ -3438,6 +3443,10 @@ def _webp_param(*values):
     return pytest.param(decode_webp, *values, marks=pytest.mark.needs_webp, id="webp")
 
 
+def _gif_param(*values):
+    return pytest.param(decode_gif, *values, id="gif")
+
+
 class TestImageDecoder:
     def _save_debug(self, decoded, reference, path="debug.png"):
         # Debugging helper: dump decoded and reference frames side-by-side.
@@ -3458,6 +3467,7 @@ class TestImageDecoder:
             _jpeg_param(GRAYSCALE_JPEG),
             _png_param(GRAYSCALE_PNG),
             _webp_param(RGBA_WEBP),
+            _gif_param(GRADIENT_GIF),
         ),
     )
     def test_default_mode_is_rgb(self, decode_fn, asset):
@@ -3507,6 +3517,9 @@ class TestImageDecoder:
             _png_param("PNG", "png", {}, "P"),
             _webp_param("WEBP", "webp", {"lossless": True}, "RGB"),
             _webp_param("WEBP", "webp", {"lossless": True}, "RGBA"),
+            _gif_param("GIF", "gif", {}, "L"),
+            _gif_param("GIF", "gif", {}, "RGB"),
+            _gif_param("GIF", "gif", {}, "P"),
         ),
     )
     @pytest.mark.parametrize(
@@ -3533,8 +3546,12 @@ class TestImageDecoder:
     ):
         # Test that every input color mode is decodable to every output mode.
 
-        if source_mode == "P" and output_mode is ImageColorMode.UNCHANGED:
-            # TODO_IMAGE figure out what to do here
+        if (
+            fmt == "PNG"
+            and source_mode == "P"
+            and output_mode is ImageColorMode.UNCHANGED
+        ):
+            # TODO_IMAGE figure out what to do here.
             pytest.skip("UNCHANGED on a palette PNG returns raw palette indices")
 
         h, w = 40, 60
@@ -3701,6 +3718,7 @@ class TestImageDecoder:
             _jpeg_param("jpg", "Not a JPEG"),
             _png_param("png", "Not a PNG file"),
             _webp_param("webp", "WebPGetFeatures failed"),
+            _gif_param("gif", "DGifOpen"),
         ),
     )
     def test_not_an_image_raises(self, tmp_path, decode_fn, ext, match):
@@ -3715,6 +3733,7 @@ class TestImageDecoder:
             _jpeg_param(GRADIENT_JPEG, "jpg", "Image is incomplete or truncated"),
             _png_param(GRADIENT_PNG, "png", "Out of bound read"),
             _webp_param(GRADIENT_WEBP, "webp", "Failed to decode the WebP bitstream"),
+            _gif_param(GRADIENT_GIF, "gif", "DGifSlurp"),
         ),
     )
     @pytest.mark.parametrize("div", (2, 3, 4))
@@ -3781,7 +3800,19 @@ class TestImageDecoder:
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
     @needs_webp
-    def test_animated_webp_raises(self, tmp_path):
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            (ImageColorMode.UNCHANGED, None),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_animated_webp(self, tmp_path, mode, pil_mode):
+        from PIL import ImageSequence
+
         path = tmp_path / "animated.webp"
         frames = [
             Image.fromarray(
@@ -3790,7 +3821,201 @@ class TestImageDecoder:
             for _ in range(3)
         ]
         frames[0].save(
-            path, "WEBP", save_all=True, append_images=frames[1:], duration=100
+            path,
+            "WEBP",
+            save_all=True,
+            append_images=frames[1:],
+            duration=100,
+            lossless=True,
         )
-        with pytest.raises(RuntimeError, match="Animated webp files are not supported"):
-            decode_webp(path)
+
+        decoded = decode_webp(path, mode=mode)
+        pil = Image.open(path)
+
+        assert decoded.ndim == 4
+        assert decoded.shape[0] == pil.n_frames
+
+        for i, frame in enumerate(ImageSequence.Iterator(pil)):
+            reference = self._pil_to_tensor(frame.convert(pil_mode))
+            assert decoded[i].shape == reference.shape
+            assert_tensor_close_on_at_least(
+                decoded[i], reference, percentage=99, atol=2
+            )
+
+        if mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA):
+            # The source is opaque, so the alpha channel must be fully opaque.
+            assert (decoded[:, -1] == 255).all()
+
+    @needs_webp
+    def test_animated_webp_transparency(self, tmp_path):
+        # An animated WebP with real transparency: an opaque red square that
+        # moves over a transparent background, one frame per position. We assert
+        # against directly-constructed expectations rather than PIL: for these
+        # small transparent WebPs, PIL's animation reader flattens the
+        # background to opaque, whereas our libwebpdemux-based decode faithfully
+        # preserves the transparent background. The frames are saved lossless,
+        # so the opaque pixels round-trip exactly.
+        path = tmp_path / "animated_transparent.webp"
+        frames = []
+        for i in range(3):
+            arr = numpy.zeros((16, 24, 4), dtype=numpy.uint8)
+            arr[4:12, i * 6 : i * 6 + 6] = (255, 0, 0, 255)
+            frames.append(Image.fromarray(arr, "RGBA"))
+        frames[0].save(
+            path,
+            "WEBP",
+            save_all=True,
+            append_images=frames[1:],
+            duration=100,
+            lossless=True,
+        )
+
+        decoded = decode_webp(path, mode=ImageColorMode.RGB_ALPHA)
+        assert decoded.shape == (3, 4, 16, 24)
+
+        # channels-last (C, H, W) -> (H, W, C) per frame for easy indexing.
+        frames_hwc = decoded.permute(0, 2, 3, 1)
+        for i in range(3):
+            frame = frames_hwc[i]
+            square = frame[4:12, i * 6 : i * 6 + 6]
+            assert (square == torch.tensor([255, 0, 0, 255], dtype=torch.uint8)).all()
+
+            # Everything outside the square is fully transparent.
+            bg_mask = torch.ones((16, 24), dtype=torch.bool)
+            bg_mask[4:12, i * 6 : i * 6 + 6] = False
+            assert (frame[bg_mask] == 0).all()
+
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            (ImageColorMode.UNCHANGED, None),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_gif_against_pil(self, mode, pil_mode):
+        decoded = decode_gif(GRADIENT_GIF.path, mode=mode)
+
+        reference = self._pil_to_tensor(Image.open(GRADIENT_GIF.path).convert(pil_mode))
+
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+        if mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA):
+            # GIF carries no real alpha, so the synthesized channel is opaque.
+            assert (decoded[-1] == 255).all()
+
+    def test_animated_gif(self):
+        # An animated GIF decodes to a batched (N, C, H, W) tensor, one frame per
+        # image, matching PIL's per-frame RGB decode.
+        from PIL import ImageSequence
+
+        decoded = decode_gif(ANIMATED_GIF.path)
+        pil = Image.open(ANIMATED_GIF.path)
+
+        assert decoded.ndim == 4
+        assert decoded.shape[0] == pil.n_frames
+
+        for i, frame in enumerate(ImageSequence.Iterator(pil)):
+            reference = self._pil_to_tensor(frame.convert("RGB"))
+            assert decoded[i].shape == reference.shape
+            assert_tensor_close_on_at_least(
+                decoded[i], reference, percentage=99, atol=2
+            )
+
+    @pytest.mark.parametrize("disposal", (1, 2, 3))
+    def test_gif_disposal_methods(self, tmp_path, disposal):
+        # Each frame paints a colored square in a different quadrant over a common
+        # white base; PIL writes them as partial frames with the given disposal
+        # method. We check our per-frame compositing matches PIL's, which
+        # exercises: keying the base canvas off the *previous* frame's disposal,
+        # restoring only that frame's rectangle to background (method 2), and
+        # restoring the prior canvas (method 3). See DecodeGif.cpp.
+        from PIL import ImageSequence
+
+        # Palette: 0=green, 1=red, 2=blue, 3=white.
+        palette = [0, 255, 0, 255, 0, 0, 0, 0, 255, 255, 255, 255]
+
+        def make(square_index, y, x):
+            arr = numpy.full((8, 8), 3, dtype=numpy.uint8)  # white base
+            arr[y : y + 3, x : x + 3] = square_index
+            img = Image.fromarray(arr, "P")
+            img.putpalette(palette)
+            return img
+
+        frames = [make(0, 0, 0), make(1, 0, 5), make(2, 5, 0), make(2, 5, 5)]
+        path = tmp_path / "disposal.gif"
+        # The first frame is always "leave in place" so the tested disposal method
+        # applies to frames that have a well-defined prior canvas ("restore to
+        # previous" for the very first frame is ill-defined and decoders differ).
+        frames[0].save(
+            path,
+            save_all=True,
+            append_images=frames[1:],
+            disposal=[1, disposal, disposal, 0],
+            loop=0,
+        )
+
+        decoded = decode_gif(path)
+        pil = Image.open(path)
+        assert decoded.shape[0] == pil.n_frames
+        for i, frame in enumerate(ImageSequence.Iterator(pil)):
+            reference = self._pil_to_tensor(frame.convert("RGB"))
+            assert_tensor_close_on_at_least(
+                decoded[i], reference, percentage=99, atol=2
+            )
+
+    def test_gif_transparency(self):
+        # A GIF with a transparent index over a non-zero background color (the
+        # "welcome2" case). The alpha-preserving modes return a real alpha
+        # channel matching Pillow; RGB composites the transparency over the
+        # background color instead.
+        asset = TRANSPARENT_GIF
+
+        # UNCHANGED on a transparent GIF yields RGBA (like PNG's UNCHANGED, which
+        # keeps the source's native channels); RGB_ALPHA and GRAY_ALPHA likewise
+        # carry a real alpha channel.
+        cases = (
+            (ImageColorMode.UNCHANGED, "RGBA"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+        )
+        for mode, pil_mode in cases:
+            decoded = decode_gif(asset.path, mode=mode)
+            reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+            assert decoded.shape == reference.shape
+            # The alpha channel must match Pillow exactly. The color channels are
+            # only meaningful where opaque: the value under a fully-transparent
+            # pixel is unspecified and differs between decoders.
+            alpha = reference[-1]
+            assert torch.equal(decoded[-1], alpha)
+            opaque = alpha > 0
+            assert_tensor_close_on_at_least(
+                decoded[:-1, opaque], reference[:-1, opaque], percentage=99, atol=2
+            )
+
+        # RGB has no alpha: transparency is composited over the GIF background
+        # color. Opaque pixels match Pillow; transparent ones intentionally
+        # differ (we show the background color, Pillow shows the transparent
+        # index's own color), so we only compare where opaque.
+        rgb = decode_gif(asset.path, mode=ImageColorMode.RGB)
+        assert rgb.shape[0] == 3
+        pil_rgb = self._pil_to_tensor(Image.open(asset.path).convert("RGB"))
+        opaque = decode_gif(asset.path, mode=ImageColorMode.UNCHANGED)[-1] > 0
+        assert_tensor_close_on_at_least(
+            rgb[:, opaque], pil_rgb[:, opaque], percentage=99, atol=2
+        )
+
+    def test_gif_first_frame_larger_than_canvas(self):
+        # Non-regression test: when the first frame is larger than the logical
+        # screen, the output is sized to the frame and the out-of-screen border
+        # must be initialized (transparent here) rather than left as
+        # uninitialized memory. The border is transparent, so its alpha must
+        # match Pillow. A regression would leave it as garbage.
+        asset = FRAME_EXCEEDS_SCREEN_GIF
+        decoded = decode_gif(asset.path, mode=ImageColorMode.RGB_ALPHA)
+        reference = self._pil_to_tensor(Image.open(asset.path).convert("RGBA"))
+        assert decoded.shape == reference.shape == (4, asset.height, asset.width)
+        assert torch.equal(decoded[-1], reference[-1])

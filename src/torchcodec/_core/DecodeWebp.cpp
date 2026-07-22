@@ -32,8 +32,12 @@ torch::stable::Tensor decode_webp(
 #else
 
 #include "webp/decode.h"
+#include "webp/demux.h"
 #include "webp/types.h"
 
+#include <torch/headeronly/core/MemoryFormat.h>
+
+#include <algorithm>
 #include <cstring>
 
 #include "Exif.h"
@@ -45,83 +49,175 @@ using namespace exif_private;
 
 namespace {
 
-// Walk the RIFF container ourselves (no libwebpdemux dependency) to find the
-// EXIF orientation. WebP files are RIFF containers:
-//   "RIFF" | uint32le file_size | "WEBP" | chunks...
-// where each chunk is: fourcc(4) | uint32le payload_size | payload | one pad
-// byte when payload_size is odd. EXIF metadata only exists in extended (VP8X)
-// files, in an "EXIF" chunk holding raw TIFF-formatted EXIF data. Returns -1
-// (i.e. no rotation) when there's no usable EXIF chunk.
-// Note that this is very similar to our WavDecoder RIFF parsing, we could
-// consider merging both.
+// Find the EXIF orientation by asking libwebpdemux for the "EXIF" chunk (which
+// only exists in extended VP8X files and holds raw TIFF-formatted EXIF data).
+// Returns -1 (i.e. no rotation) when there's no usable EXIF chunk.
 int fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
-  constexpr size_t riff_header_size = 12; // "RIFF" + size + "WEBP"
-  if (size < riff_header_size || std::memcmp(data, "RIFF", 4) != 0 ||
-      std::memcmp(data + 8, "WEBP", 4) != 0) {
+  WebPData webp_data;
+  WebPDataInit(&webp_data);
+  webp_data.bytes = data;
+  webp_data.size = size;
+
+  WebPDemuxer* demux = WebPDemux(&webp_data);
+  if (demux == nullptr) {
     return -1;
   }
 
-  size_t offset = riff_header_size;
-  while (offset + 8 <= size) {
-    const uint8_t* fourcc = data + offset;
-    uint32_t chunk_size = static_cast<uint32_t>(data[offset + 4]) |
-        (static_cast<uint32_t>(data[offset + 5]) << 8) |
-        (static_cast<uint32_t>(data[offset + 6]) << 16) |
-        (static_cast<uint32_t>(data[offset + 7]) << 24);
-    size_t payload_offset = offset + 8;
-    // payload_offset <= size is guaranteed by the loop condition, so this
-    // subtraction can't underflow (and avoids overflowing payload_offset +
-    // chunk_size).
-    if (chunk_size > size - payload_offset) {
-      break; // truncated / malformed chunk
+  int orientation = -1;
+  WebPChunkIterator chunk_iter;
+  if (WebPDemuxGetChunk(demux, "EXIF", 1, &chunk_iter)) {
+    const uint8_t* exif = chunk_iter.chunk.bytes;
+    size_t exif_size = chunk_iter.chunk.size;
+    // Some encoders prefix the payload with the "Exif\0\0" marker (like the
+    // JPEG APP1 segment); skip it so we're left with the TIFF header.
+    constexpr size_t exif_prefix_size = 6;
+    if (exif_size >= exif_prefix_size &&
+        std::memcmp(exif, "Exif\0\0", exif_prefix_size) == 0) {
+      exif += exif_prefix_size;
+      exif_size -= exif_prefix_size;
     }
-
-    if (std::memcmp(fourcc, "EXIF", 4) == 0) {
-      const uint8_t* exif = data + payload_offset;
-      size_t exif_size = chunk_size;
-      // Some encoders prefix the payload with the "Exif\0\0" marker (like the
-      // JPEG APP1 segment); skip it so we're left with the TIFF header.
-      constexpr size_t exif_prefix_size = 6;
-      if (exif_size >= exif_prefix_size &&
-          std::memcmp(exif, "Exif\0\0", exif_prefix_size) == 0) {
-        exif += exif_prefix_size;
-        exif_size -= exif_prefix_size;
-      }
-      if (exif_size == 0) {
-        return -1;
-      } else {
-        return fetch_exif_orientation(exif, exif_size);
-      }
+    if (exif_size > 0) {
+      orientation = fetch_exif_orientation(exif, exif_size);
     }
-
-    // Advance past the payload and the pad byte for odd-sized chunks.
-    offset = payload_offset + chunk_size + (chunk_size & 1);
+    WebPDemuxReleaseChunkIterator(&chunk_iter);
   }
-  return -1;
+
+  WebPDemuxDelete(demux);
+  return orientation;
 }
 
-// libwebp natively decodes to RGB or RGBA only, so this only handles the RGB,
-// RGB_ALPHA and UNCHANGED modes. The grayscale modes (GRAY, GRAY_ALPHA) are
-// emulated in Python at the single _decode_with_mode() callsite (see
-// _image_decoders.py), which requests RGB/RGBA here and converts. The cpp
-// decode_webp is not a public API and is only ever called from there, so the
-// default branch below is unreachable. This returns whether decode_webp should
-// produce a 3-channel RGB tensor (true) or a 4-channel RGBA tensor (false).
-bool should_return_rgb(ImageReadMode mode, bool has_alpha) {
-  switch (mode) {
-    case ImageReadMode::RGB:
-      return true;
-    case ImageReadMode::RGB_ALPHA:
-      return false;
-    case ImageReadMode::UNCHANGED:
-      return !has_alpha;
-    default:
+torch::stable::Tensor decode_animated_webp(
+    const uint8_t* input_ptr,
+    size_t input_size,
+    int64_t mode,
+    bool has_alpha) {
+  bool return_rgb =
+      should_return_rgb(static_cast<ImageReadMode>(mode), has_alpha);
+  int num_output_channels = return_rgb ? 3 : 4;
+
+  WebPData webp_data;
+  WebPDataInit(&webp_data);
+  webp_data.bytes = input_ptr;
+  webp_data.size = input_size;
+
+  WebPAnimDecoderOptions dec_options;
+  STD_TORCH_CHECK(
+      WebPAnimDecoderOptionsInit(&dec_options),
+      "WebPAnimDecoderOptionsInit failed. This is likely a version mismatch "
+      "with libwebpdemux.");
+  // WebPAnimDecoder can only emit RGBA/BGRA (no 3-channel RGB), so we always
+  // decode RGBA and skip the alpha below if the user wants RGB.
+  dec_options.color_mode = MODE_RGBA;
+
+  WebPAnimDecoder* dec = WebPAnimDecoderNew(&webp_data, &dec_options);
+  STD_TORCH_CHECK(
+      dec != nullptr,
+      "WebPAnimDecoderNew failed. The file is likely corrupted or truncated.");
+
+  WebPAnimInfo anim_info;
+  if (!WebPAnimDecoderGetInfo(dec, &anim_info)) {
+    WebPAnimDecoderDelete(dec);
+    STD_TORCH_CHECK(false, "WebPAnimDecoderGetInfo failed.");
+  }
+
+  auto num_frames = static_cast<int64_t>(anim_info.frame_count);
+  auto height = static_cast<int64_t>(anim_info.canvas_height);
+  auto width = static_cast<int64_t>(anim_info.canvas_width);
+
+  auto output = torch::stable::empty(
+      {num_frames, num_output_channels, height, width},
+      kStableUInt8,
+      std::nullopt,
+      std::nullopt,
+      std::nullopt,
+      torch::headeronly::MemoryFormat::ChannelsLast);
+  auto output_a = mutable_accessor<uint8_t, 4>(output);
+  uint8_t* output_ptr = output.mutable_data_ptr<uint8_t>();
+  const int64_t frame_num_bytes =
+      static_cast<int64_t>(num_output_channels) * height * width;
+
+  int64_t frame_index = 0;
+  while (WebPAnimDecoderHasMoreFrames(dec)) {
+    if (frame_index >= num_frames) {
+      // Guard against the decoder yielding more frames than it reported, which
+      // would write past the output tensor.
+      break;
+    }
+
+    // frame_rgba is an internal buffer owned by dec: we must not free it, and
+    // it's overwritten on the next GetNext call (and released by
+    // WebPAnimDecoderDelete), so we copy each frame out below.
+    uint8_t* frame_rgba = nullptr;
+    int timestamp = 0; // in ms. unused for now (we return plain tensors).
+    if (!WebPAnimDecoderGetNext(dec, &frame_rgba, &timestamp)) {
+      WebPAnimDecoderDelete(dec);
       STD_TORCH_CHECK(
           false,
-          "Reached an unexpected code path while decoding a WebP file to mode ",
-          static_cast<int64_t>(mode),
-          ". This should never happen, please report a bug to the TorchCodec repo.");
+          "WebPAnimDecoderGetNext failed at frame ",
+          frame_index,
+          ". The file is likely corrupted or truncated.");
+    }
+    if (!return_rgb) {
+      std::copy(
+          frame_rgba,
+          frame_rgba + frame_num_bytes,
+          output_ptr + frame_index * frame_num_bytes);
+    } else {
+      // We're dropping the decoder's alpha, so we can't std::copy.
+      for (int64_t y = 0; y < height; ++y) {
+        for (int64_t x = 0; x < width; ++x) {
+          const uint8_t* px = frame_rgba + (y * width + x) * 4;
+          output_a[frame_index][0][y][x] = px[0];
+          output_a[frame_index][1][y][x] = px[1];
+          output_a[frame_index][2][y][x] = px[2];
+        }
+      }
+    }
+    ++frame_index;
   }
+
+  WebPAnimDecoderDelete(dec);
+
+  STD_TORCH_CHECK(
+      frame_index == num_frames,
+      "Decoded ",
+      frame_index,
+      " webp frame(s) but expected ",
+      num_frames,
+      ". The file is likely corrupted or truncated.");
+
+  return output;
+}
+
+torch::stable::Tensor decode_still_webp(
+    const uint8_t* input_ptr,
+    size_t input_size,
+    int64_t mode,
+    bool has_alpha) {
+  bool return_rgb =
+      should_return_rgb(static_cast<ImageReadMode>(mode), has_alpha);
+
+  auto decoding_func = return_rgb ? WebPDecodeRGB : WebPDecodeRGBA;
+  int num_output_channels = return_rgb ? 3 : 4;
+
+  int width = 0;
+  int height = 0;
+  auto decoded_data = decoding_func(input_ptr, input_size, &width, &height);
+  STD_TORCH_CHECK(
+      decoded_data != nullptr,
+      "Failed to decode the WebP bitstream. "
+      "The file is likely corrupted or truncated.");
+
+  auto deleter = [decoded_data](void*) { WebPFree(decoded_data); };
+  auto output = torch::stable::from_blob(
+      decoded_data,
+      {height, width, num_output_channels},
+      {width * num_output_channels, num_output_channels, 1},
+      StableDevice(kStableCPU),
+      kStableUInt8,
+      deleter);
+
+  return stable_permute(output, {2, 0, 1});
 }
 
 } // namespace
@@ -138,41 +234,13 @@ torch::stable::Tensor decode_webp(
   auto res = WebPGetFeatures(input_ptr, input_size, &features);
   STD_TORCH_CHECK(
       res == VP8_STATUS_OK, "WebPGetFeatures failed with error code ", res);
-  // TODO_IMAGE: support animated webp files, returning an (N, C, H, W) tensor
-  // like the plan calls for. This needs the WebPAnimDecoder API (libwebpdemux).
-  STD_TORCH_CHECK(
-      !features.has_animation, "Animated webp files are not supported.");
 
-  auto return_rgb =
-      should_return_rgb(static_cast<ImageReadMode>(mode), features.has_alpha);
-
-  auto decoding_func = return_rgb ? WebPDecodeRGB : WebPDecodeRGBA;
-  int num_output_channels = return_rgb ? 3 : 4;
-
-  int width = 0;
-  int height = 0;
-  auto decoded_data = decoding_func(input_ptr, input_size, &width, &height);
-  STD_TORCH_CHECK(
-      decoded_data != nullptr,
-      "Failed to decode the WebP bitstream (reported dimensions ",
-      features.width,
-      "x",
-      features.height,
-      "). The file is likely corrupted or truncated.");
-
-  auto deleter = [decoded_data](void*) { WebPFree(decoded_data); };
-  auto output = torch::stable::from_blob(
-      decoded_data,
-      {height, width, num_output_channels},
-      {width * num_output_channels, num_output_channels, 1},
-      StableDevice(kStableCPU),
-      kStableUInt8,
-      deleter);
+  auto output = features.has_animation
+      ? decode_animated_webp(input_ptr, input_size, mode, features.has_alpha)
+      : decode_still_webp(input_ptr, input_size, mode, features.has_alpha);
 
   int exif_orientation = fetch_webp_exif_orientation(input_ptr, input_size);
-
-  return exif_orientation_transform(
-      stable_permute(output, {2, 0, 1}), exif_orientation);
+  return exif_orientation_transform(output, exif_orientation);
 }
 
 } // namespace facebook::torchcodec
