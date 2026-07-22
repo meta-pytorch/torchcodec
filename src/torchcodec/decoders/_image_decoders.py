@@ -25,6 +25,10 @@ from torchcodec._core.ops import (
 
 # TODO_IMAGE We probably need CI jobs for both TODOs above.
 
+# TODO_IMAGE Some codecs expose threading options - we should make sure the
+# default is 1 thread and allow the user to override it. (similar to
+# num_ffmpeg_threads)
+
 # TODO_IMAGE: Support torchscript?
 
 # TODO_IMAGE: We'll need to support all output modes consistently across all
