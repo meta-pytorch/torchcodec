@@ -4,15 +4,6 @@
 :: This source code is licensed under the BSD-style license found in the
 :: LICENSE file in the root directory of this source tree.
 
-:: Windows counterpart of packaging/build_libavif.sh. Like build_ffmpeg.bat, we
-:: build under an msys2/mingw shell so the same POSIX build_libavif.sh drives the
-:: decode-only libavif build. libavif is a plain C library, so the resulting
-:: avif DLL is loadable/linkable from the MSVC-built torchcodec across the C ABI
-:: boundary (same as we do for FFmpeg).
-::
-:: We install the full build toolchain via pacman -- cmake, ninja, meson and nasm
-:: (dav1d's x86 SIMD needs nasm). With all of them on PATH, build_libavif.sh skips
-:: its own toolchain provisioning (it only provisions when tools are missing).
 @echo off
 
 set PROJ_FOLDER=%cd%
