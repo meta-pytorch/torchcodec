@@ -10,14 +10,15 @@
 :: avif DLL is loadable/linkable from the MSVC-built torchcodec across the C ABI
 :: boundary (same as we do for FFmpeg).
 ::
-:: We install nasm in addition to the toolchain: dav1d's x86 SIMD needs it (see
-:: build_libavif.sh). meson+ninja are pip-installed by build_libavif.sh itself.
+:: We install the full build toolchain via pacman -- cmake, ninja, meson and nasm
+:: (dav1d's x86 SIMD needs nasm). With all of them on PATH, build_libavif.sh skips
+:: its own toolchain provisioning (it only provisions when tools are missing).
 @echo off
 
 set PROJ_FOLDER=%cd%
 
 choco install -y --no-progress msys2 --package-parameters "/NoUpdate"
-C:\tools\msys64\usr\bin\env MSYSTEM=MINGW64 /bin/bash -l -c "pacman -S --noconfirm --needed base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-nasm mingw-w64-x86_64-cmake diffutils"
+C:\tools\msys64\usr\bin\env MSYSTEM=MINGW64 /bin/bash -l -c "pacman -S --noconfirm --needed base-devel mingw-w64-x86_64-toolchain mingw-w64-x86_64-nasm mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-meson diffutils"
 C:\tools\msys64\usr\bin\env MSYSTEM=MINGW64 /bin/bash -l -c "cd ${PROJ_FOLDER} && packaging/build_libavif.sh"
 
 :end

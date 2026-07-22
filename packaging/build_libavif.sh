@@ -35,22 +35,52 @@ set -eux
 : "${LIBAVIF_VERSION:?LIBAVIF_VERSION must be set (e.g. 1.4.2)}"
 : "${LIBAVIF_ROOT:?LIBAVIF_ROOT must be set (install prefix)}"
 
-# dav1d needs meson+ninja to build, and libavif needs cmake+ninja. Ninja and
-# meson aren't guaranteed on the builder images, so install them.
-python -m pip install --upgrade meson ninja
+# Provision the build toolchain: cmake + ninja + meson (dav1d builds via meson),
+# plus nasm on x86 (dav1d's x86 SIMD is written in nasm; without it dav1d falls
+# back to a scalar C-only build -> dramatically slower decode). nasm is x86-only;
+# arm dav1d uses the GNU assembler from the C toolchain.
+#
+# The CI images are inconsistent, so we can't assume python/pip: linux_job_v2
+# (x86) has conda; the manylinux aarch64 image has neither conda nor python;
+# Windows uses msys2, which pre-installs these via pacman (build_libavif.bat). So
+# we install from conda-forge -- conda if present, else a bootstrapped micromamba
+# -- and skip entirely when the tools are already on PATH (Windows).
+tools=(cmake ninja meson)
+case "$(uname -m)" in
+    x86_64 | amd64 | i?86) tools+=(nasm) ;;
+esac
 
-# nasm is required for dav1d's x86 assembly. Without it the meson build silently
-# falls back to a scalar C-only dav1d (no SIMD -> very slow decode). Fail loudly
-# on x86 so a misconfigured runner can't silently ship a crippled decoder.
-arch="$(uname -m)"
-if [[ "${arch}" == x86_64 || "${arch}" == amd64 || "${arch}" == i*86 ]]; then
-    if ! command -v nasm > /dev/null 2>&1; then
-        echo "ERROR: nasm not found. dav1d's x86 SIMD requires nasm; without it" \
-             "dav1d builds C-only and decode is dramatically slower." >&2
-        exit 1
+missing=false
+for t in "${tools[@]}"; do
+    command -v "${t}" > /dev/null 2>&1 || missing=true
+done
+
+if ${missing}; then
+    if command -v conda > /dev/null 2>&1; then
+        conda install -y -c conda-forge "${tools[@]}"
+    else
+        case "$(uname)-$(uname -m)" in
+            Linux-x86_64) mm_platform="linux-64" ;;
+            Linux-aarch64 | Linux-arm64) mm_platform="linux-aarch64" ;;
+            Darwin-arm64) mm_platform="osx-arm64" ;;
+            Darwin-x86_64) mm_platform="osx-64" ;;
+            *) echo "ERROR: no toolchain provisioning for $(uname)-$(uname -m)" >&2; exit 1 ;;
+        esac
+        mm_root="$(mktemp -d -t micromamba.XXXXXXXX)"
+        curl -Ls "https://micro.mamba.pm/api/micromamba/${mm_platform}/latest" \
+            | tar -xj -C "${mm_root}" bin/micromamba
+        "${mm_root}/bin/micromamba" create -y -p "${mm_root}/env" -c conda-forge "${tools[@]}"
+        export PATH="${mm_root}/env/bin:${PATH}"
     fi
-    nasm --version
 fi
+
+# Fail loudly if anything is still missing (esp. nasm on x86 -- see above).
+for t in "${tools[@]}"; do
+    command -v "${t}" > /dev/null 2>&1 || {
+        echo "ERROR: ${t} not found after provisioning the toolchain." >&2
+        exit 1
+    }
+done
 
 archive="https://github.com/AOMediaCodec/libavif/archive/refs/tags/v${LIBAVIF_VERSION}.tar.gz"
 
@@ -120,18 +150,54 @@ cp "${dav1d_copying}" "${LIBAVIF_ROOT}/licenses/COPYING.dav1d"
 
 ls -R "${LIBAVIF_ROOT}"
 
-# Sanity check: the installed libavif must NOT pull in any external AV1 codec
-# (dav1d is static; there must be no libaom/librav1e/libSvtAv1Enc/libdav1d as a
-# separate shared dependency).
+# Locate the installed shared library (Linux .so / macOS .dylib).
+if [[ "$(uname)" == Darwin ]]; then
+    lib=$(ls "${LIBAVIF_ROOT}"/lib*/libavif.*.dylib 2>/dev/null | head -n1 || true)
+else
+    lib=$(ls "${LIBAVIF_ROOT}"/lib*/libavif.so.*.* 2>/dev/null | head -n1 || true)
+fi
+if [[ -z "${lib}" || ! -f "${lib}" ]]; then
+    echo "ERROR: no installed libavif shared library found under ${LIBAVIF_ROOT}." >&2
+    exit 1
+fi
+
+# Sanity check 1 (Linux): the installed libavif must NOT pull in any external AV1
+# codec -- dav1d is static, so there must be no libaom/librav1e/libSvtAv1Enc/
+# libdav1d as a separate shared dependency.
 if [[ "$(uname)" == Linux ]]; then
-    lib=$(ls "${LIBAVIF_ROOT}"/lib*/libavif.so.* 2>/dev/null | head -n1 || true)
-    if [[ -z "${lib}" ]]; then
-        echo "ERROR: no installed libavif.so.* found under ${LIBAVIF_ROOT}." >&2
-        exit 1
-    fi
     if ldd "${lib}" | grep -Ei 'libaom|librav1e|libSvtAv1|libdav1d'; then
         echo "ERROR: libavif links an external AV1 codec; expected a" \
              "self-contained decode-only build with static dav1d." >&2
         exit 1
+    fi
+fi
+
+# Sanity check 2 (Linux + macOS): verify dav1d's SIMD kernels actually made it
+# into the binary, i.e. that we did NOT accidentally ship a scalar C-only dav1d
+# (which would silently be far slower). dav1d compiles per-ISA kernels and
+# selects among them at runtime via CPU detection; we just confirm the ISA
+# symbols are present. This is the cross-platform successor to the old
+# nasm-presence check: it covers x86 (nasm AVX2/SSE) AND arm (NEON asm).
+if [[ "$(uname)" == Linux || "$(uname)" == Darwin ]] && command -v nm > /dev/null 2>&1; then
+    case "$(uname -m)" in
+        x86_64 | amd64 | i?86) simd_re='avx2|avx512|ssse3|_sse' ;;
+        aarch64 | arm64) simd_re='neon' ;;
+        *) simd_re='' ;;
+    esac
+    if [[ -n "${simd_re}" ]]; then
+        # dav1d is static, so its symbols are local -> use full nm, not `nm -D`.
+        dav1d_syms=$(nm "${lib}" 2>/dev/null | grep -ic dav1d || true)
+        simd_syms=$(nm "${lib}" 2>/dev/null | grep -icE "dav1d_[a-z0-9_]*(${simd_re})" || true)
+        if [[ "${dav1d_syms}" -eq 0 ]]; then
+            echo "WARNING: no dav1d symbols visible (stripped binary?); cannot" \
+                 "verify SIMD -- skipping." >&2
+        elif [[ "${simd_syms}" -lt 20 ]]; then
+            echo "ERROR: dav1d looks like a scalar C-only build -- only" \
+                 "${simd_syms} ${simd_re} SIMD symbols found. Check that the" \
+                 "assembler (nasm on x86) was available during the dav1d build." >&2
+            exit 1
+        else
+            echo "verified dav1d SIMD present: ${simd_syms} (${simd_re}) symbols"
+        fi
     fi
 fi

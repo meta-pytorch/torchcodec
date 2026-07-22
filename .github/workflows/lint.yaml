@@ -3,7 +3,8 @@ name: Lint
 on:
   push:
     branches: [ main ]
-  pull_request:
+  # TEMP(build_libavif): PR trigger disabled to avoid running the full CI on this branch.
+  # pull_request:
 
 concurrency:
   group: unit-test${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_number || github.ref }}
