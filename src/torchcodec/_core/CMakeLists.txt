@@ -531,16 +531,19 @@ function(make_torchcodec_image_library)
         )
     endif()
 
-    # Ship the S3 libavif runtime DLL in the wheel next to the image library and
-    # the other bundled image DLLs (jpeg/png/webp/...). Windows only: Linux and
-    # macOS graft the runtime .so/.dylib into the wheel via auditwheel/delocate
-    # (see repair_wheel.py), but Windows has no such tool, so we place the DLL
-    # ourselves here. avif_runtime_dll is set by fetch_avif_from_s3.cmake.
-    if(WIN32 AND DEFINED avif_runtime_dll)
+    # Windows only: ship the S3 libavif runtime DLL in the wheel next to the image
+    # library. Windows has no auditwheel/delocate, and the loader resolves a DLL's
+    # dependencies from its own directory, so the co-located DLL is found. On
+    # Linux/macOS, auditwheel/delocate instead graft libavif.so/.dylib into the
+    # wheel's bundled-libs dir (torchcodec.libs / torchcodec/.dylibs) alongside
+    # the other image codecs; repair_wheel.py puts the FetchContent build dir on
+    # their library search path so they can locate it. avif_runtime_lib is set by
+    # fetch_avif_from_s3.cmake.
+    if(WIN32)
         if(SKBUILD_STATE STREQUAL "editable")
-            file(COPY "${avif_runtime_dll}" DESTINATION "${TORCHCODEC_PACKAGE_DIR}")
+            file(COPY "${avif_runtime_lib}" DESTINATION "${TORCHCODEC_PACKAGE_DIR}")
         else()
-            install(FILES "${avif_runtime_dll}" DESTINATION torchcodec)
+            install(FILES "${avif_runtime_lib}" DESTINATION torchcodec)
         endif()
     endif()
 endfunction()

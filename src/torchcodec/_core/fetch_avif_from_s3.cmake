@@ -75,17 +75,21 @@ foreach (path IN LISTS include_dir lib_path)
     endif()
 endforeach()
 
-# On Windows, the runtime DLL is a separate file from the .dll.a import lib we
-# link against, and must be shipped in the wheel. We expose its path so
-# make_torchcodec_image_library() can place it next to the other bundled image
-# DLLs. On Linux/macOS the runtime .so/.dylib is grafted into the wheel by
-# auditwheel/delocate (following the linked lib), so no explicit install is
-# needed there.
-if (WIN32)
-    set(avif_runtime_dll "${avif_s3_SOURCE_DIR}/bin/libavif.dll")
-    if (NOT EXISTS "${avif_runtime_dll}")
-        message(FATAL_ERROR "${avif_runtime_dll} does not exist")
-    endif()
+# The runtime shared library that must be shipped in the wheel. On Linux/macOS
+# this is the same SONAME'd file we link against; on Windows we link the .dll.a
+# import lib but must ship the actual DLL from bin/. We expose its path so
+# make_torchcodec_image_library() can install it into the wheel: the FetchContent
+# download dir is gone by the time auditwheel/delocate run, so they can't locate
+# libavif there -- we must place it into the package ourselves.
+if (LINUX)
+    set(avif_runtime_lib "${avif_s3_SOURCE_DIR}/lib/libavif.so.16")
+elseif (APPLE)
+    set(avif_runtime_lib "${avif_s3_SOURCE_DIR}/lib/libavif.16.dylib")
+elseif (WIN32)
+    set(avif_runtime_lib "${avif_s3_SOURCE_DIR}/bin/libavif.dll")
+endif()
+if (NOT EXISTS "${avif_runtime_lib}")
+    message(FATAL_ERROR "${avif_runtime_lib} does not exist")
 endif()
 
 message(STATUS "Adding libavif (decode-only, from S3) as the `avif` target")

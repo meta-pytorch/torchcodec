@@ -45,15 +45,38 @@ def run(cmd, **kwargs):
     subprocess.run(cmd, check=True, **kwargs)
 
 
+def _avif_lib_dirs():
+    """Directories holding the S3 libavif runtime lib.
+
+    Unlike libjpeg/png/webp (from conda), libavif is fetched from S3 into the
+    scikit-build build dir (build/{wheel_tag}, which is persistent -- see
+    build-dir in pyproject.toml -- so it survives into this repair step). We put
+    these dir(s) on auditwheel/delocate's search path so they can locate libavif
+    and graft it into the wheel's bundled-libs dir alongside the other image
+    codecs. Normally there is exactly one.
+    """
+    dirs = [p for p in Path("build").glob("*/_deps/avif_s3-src/lib") if p.is_dir()]
+    if not dirs:
+        raise FileNotFoundError(
+            "Could not find the S3 libavif under build/*/_deps/avif_s3-src/lib. "
+            "The wheel links libavif from S3 (see fetch_avif_from_s3.cmake), so "
+            "auditwheel/delocate need it on their search path to bundle it."
+        )
+    return dirs
+
+
 def repair_linux(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "auditwheel"])
     run(["auditwheel", "--version"])
     env = os.environ.copy()
+    # auditwheel must be able to *find* the libs it grafts: libjpeg/png/webp from
+    # conda, and libavif from the S3 FetchContent dir.
+    lib_dirs = [str(d) for d in _avif_lib_dirs()]
     if conda_prefix := env.get("CONDA_PREFIX"):
-        # auditwheel must be able to *find* libjpeg to graft it.
-        env["LD_LIBRARY_PATH"] = os.pathsep.join(
-            [str(Path(conda_prefix) / "lib"), env.get("LD_LIBRARY_PATH", "")]
-        )
+        lib_dirs.append(str(Path(conda_prefix) / "lib"))
+    env["LD_LIBRARY_PATH"] = os.pathsep.join(
+        [*lib_dirs, env.get("LD_LIBRARY_PATH", "")]
+    )
 
     excludes = []
     for pattern in (
@@ -85,10 +108,14 @@ def repair_macos(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "delocate"])
     run(["delocate-wheel", "--version"])
     env = os.environ.copy()
+    # delocate must be able to *find* the libs it grafts: libjpeg/png/webp from
+    # conda, and libavif from the S3 FetchContent dir.
+    lib_dirs = [str(d) for d in _avif_lib_dirs()]
     if conda_prefix := env.get("CONDA_PREFIX"):
-        env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
-            [str(Path(conda_prefix) / "lib"), env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
-        )
+        lib_dirs.append(str(Path(conda_prefix) / "lib"))
+    env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
+        [*lib_dirs, env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
+    )
     # delocate --exclude matches a substring of the dependency's basename. We
     # spell out the FFmpeg libs rather than using "libav" so we don't
     # accidentally exclude libavif (which we DO want to bundle).
