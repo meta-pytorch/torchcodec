@@ -98,9 +98,13 @@ def repair_macos(wheels):
         [str(_avif_lib_dir())]
         + ([str(Path(p) / "lib")] if (p := os.environ.get("CONDA_PREFIX")) else [])
     )
-    # delocate --exclude matches a substring of the dependency's basename. We spell
-    # out the FFmpeg libs rather than using "libav" so we don't accidentally
-    # exclude libavif (which we DO want to bundle).
+    # delocate --exclude matches a SUBSTRING of a lib's basename, and it drops
+    # matching libs from processing entirely (not just from grafting). So the
+    # patterns must be precise:
+    #  - spell out the FFmpeg libs rather than "libav", else we'd match libavif;
+    #  - use "libtorch." / "libtorch_" rather than "libtorch", else we'd match our
+    #    own libtorchcodec_* libs and delocate would skip them -- never discovering
+    #    (and bundling) the image lib's jpeg/png/webp/avif deps.
     excludes = " ".join(
         f"--exclude {p}"
         for p in (
@@ -112,7 +116,8 @@ def repair_macos(wheels):
             "libavresample",
             "libsw",
             "libpostproc",
-            "libtorch",
+            "libtorch.",
+            "libtorch_",
             "libc10",
             "libomp",
         )
