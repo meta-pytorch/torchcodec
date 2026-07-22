@@ -505,16 +505,6 @@ function(make_torchcodec_image_library)
         target_compile_options(${image_library_name} PRIVATE "-fvisibility=hidden")
     endif()
 
-    # macOS: libavif's install-name is @rpath/libavif.16.dylib, so the image lib
-    # needs an rpath to resolve it (delocate can't resolve @rpath from a search
-    # path). We ship libavif next to the image lib and point at it with a relative
-    # @loader_path rpath -- no absolute build path, so nothing leaks. Linux resolves
-    # libavif via LD_LIBRARY_PATH at repair time (repair_wheel.py), so needs neither.
-    if(APPLE)
-        set_property(TARGET ${image_library_name} APPEND PROPERTY
-            INSTALL_RPATH "@loader_path")
-    endif()
-
     if(SKBUILD_STATE STREQUAL "editable")
         get_filename_component(
             TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
@@ -532,15 +522,12 @@ function(make_torchcodec_image_library)
             LIBRARY DESTINATION torchcodec
             RUNTIME DESTINATION torchcodec  # For Windows
         )
-        # Ship libavif in the wheel next to the image lib on the platforms that
-        # can't graft it from a search path at repair time: Windows (no
-        # auditwheel/delocate) and macOS (delocate resolves it via @loader_path,
-        # above). Linux grafts it via LD_LIBRARY_PATH (repair_wheel.py). Follow the
-        # symlink so the real lib lands under its soname, not a dangling link.
-        if(WIN32 OR APPLE)
-            get_filename_component(_avif_soname "${avif_runtime_lib}" NAME)
-            get_filename_component(_avif_real "${avif_runtime_lib}" REALPATH)
-            install(FILES "${_avif_real}" RENAME "${_avif_soname}" DESTINATION torchcodec)
+        # Windows has no auditwheel/delocate to graft libavif from a search path,
+        # so ship the DLL in the wheel ourselves; the loader finds it next to the
+        # image lib. Linux/macOS let auditwheel/delocate graft it from the S3 build
+        # dir at repair time (repair_wheel.py puts it on their search path).
+        if(WIN32)
+            install(FILES "${avif_runtime_lib}" DESTINATION torchcodec)
         endif()
     endif()
 endfunction()

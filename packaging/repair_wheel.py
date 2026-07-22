@@ -89,14 +89,14 @@ def repair_macos(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "delocate"])
     run(["delocate-wheel", "--version"])
     env = os.environ.copy()
-    # delocate finds libjpeg/png/webp under conda's lib to graft them. libavif is
-    # shipped in the wheel and resolved via the image lib's @loader_path rpath (see
-    # make_torchcodec_image_library), so delocate bundles it from there -- no
-    # search-path entry works for its @rpath install-name.
+    # delocate grafts the libs it finds on DYLD_FALLBACK_LIBRARY_PATH: libjpeg/png/
+    # webp from conda, libavif from the S3 build dir. Same mechanism, different dir.
+    lib_dirs = [str(_avif_lib_dir())]
     if conda_prefix := env.get("CONDA_PREFIX"):
-        env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
-            [str(Path(conda_prefix) / "lib"), env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
-        )
+        lib_dirs.append(str(Path(conda_prefix) / "lib"))
+    env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
+        [*lib_dirs, env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
+    )
     # delocate --exclude matches a substring of the dependency's basename. We
     # spell out the FFmpeg libs rather than using "libav" so we don't
     # accidentally exclude libavif (which we DO want to bundle).
