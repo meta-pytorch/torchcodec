@@ -1,8 +1,7 @@
 name: Linux CUDA x86
 
 on:
-  # TEMP(build_libavif): PR trigger disabled to avoid running the full CI on this branch.
-  # pull_request:
+  pull_request:
   push:
     branches:
       - nightly

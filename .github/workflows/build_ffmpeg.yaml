@@ -11,11 +11,10 @@ name: Build non-GPL FFmpeg from source
 
 on:
   workflow_dispatch:
-  # TEMP(build_libavif): PR trigger disabled to avoid running the full CI on this branch.
-  # pull_request:
-  #   paths:
-  #     - packaging/build_ffmpeg.sh
-  #     - .github/workflows/build_ffmpeg.yaml # self reference
+  pull_request:
+    paths:
+      - packaging/build_ffmpeg.sh
+      - .github/workflows/build_ffmpeg.yaml # self reference
   schedule:
     - cron: '0 0 * * 0'  # on sunday
 
