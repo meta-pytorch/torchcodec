@@ -46,31 +46,30 @@ def run(cmd, **kwargs):
 
 
 def _avif_lib_dirs():
-    """Directories holding the S3 libavif runtime lib.
+    """Directories holding the S3 libavif runtime lib (best-effort).
 
     Unlike libjpeg/png/webp (from conda), libavif is fetched from S3 into the
     scikit-build build dir (build/{wheel_tag}, which is persistent -- see
-    build-dir in pyproject.toml -- so it survives into this repair step). We put
-    these dir(s) on auditwheel/delocate's search path so they can locate libavif
-    and graft it into the wheel's bundled-libs dir alongside the other image
-    codecs. Normally there is exactly one.
+    build-dir in pyproject.toml -- so it survives into this repair step). We
+    prepend these dir(s) to auditwheel/delocate's search path so that, if a stray
+    system/conda libavif exists, our slim S3 one still wins.
+
+    This is only a precedence guard: the image lib already carries an
+    INSTALL_RPATH to this dir (see make_torchcodec_image_library()), which is what
+    actually lets auditwheel/delocate locate and graft libavif. So if the glob
+    finds nothing we return [] and let the rpath do the work, rather than failing.
     """
-    dirs = [p for p in Path("build").glob("*/_deps/avif_s3-src/lib") if p.is_dir()]
-    if not dirs:
-        raise FileNotFoundError(
-            "Could not find the S3 libavif under build/*/_deps/avif_s3-src/lib. "
-            "The wheel links libavif from S3 (see fetch_avif_from_s3.cmake), so "
-            "auditwheel/delocate need it on their search path to bundle it."
-        )
-    return dirs
+    return [p for p in Path("build").glob("*/_deps/avif_s3-src/lib") if p.is_dir()]
 
 
 def repair_linux(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "auditwheel"])
     run(["auditwheel", "--version"])
     env = os.environ.copy()
-    # auditwheel must be able to *find* the libs it grafts: libjpeg/png/webp from
-    # conda, and libavif from the S3 FetchContent dir.
+    # auditwheel must be able to *find* the libs it grafts. libjpeg/png/webp come
+    # from conda. libavif is located via the image lib's INSTALL_RPATH (see
+    # make_torchcodec_image_library()); we also prepend the S3 libavif dir here so
+    # our slim build wins over any stray system/conda libavif.
     lib_dirs = [str(d) for d in _avif_lib_dirs()]
     if conda_prefix := env.get("CONDA_PREFIX"):
         lib_dirs.append(str(Path(conda_prefix) / "lib"))
@@ -108,8 +107,11 @@ def repair_macos(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "delocate"])
     run(["delocate-wheel", "--version"])
     env = os.environ.copy()
-    # delocate must be able to *find* the libs it grafts: libjpeg/png/webp from
-    # conda, and libavif from the S3 FetchContent dir.
+    # delocate must be able to *find* the libs it grafts. libjpeg/png/webp come
+    # from conda. libavif is located via the image lib's INSTALL_RPATH (see
+    # make_torchcodec_image_library()); delocate resolves the @rpath/libavif dep
+    # through it. We also prepend the S3 libavif dir here so our slim build wins
+    # over any stray system/conda libavif.
     lib_dirs = [str(d) for d in _avif_lib_dirs()]
     if conda_prefix := env.get("CONDA_PREFIX"):
         lib_dirs.append(str(Path(conda_prefix) / "lib"))

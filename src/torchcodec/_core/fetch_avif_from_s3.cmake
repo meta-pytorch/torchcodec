@@ -92,6 +92,14 @@ if (NOT EXISTS "${avif_runtime_lib}")
     message(FATAL_ERROR "${avif_runtime_lib} does not exist")
 endif()
 
+# Directory holding the runtime lib. On Linux/macOS we set this as the image
+# library's INSTALL_RPATH so auditwheel/delocate can resolve libavif at repair
+# time (see make_torchcodec_image_library() in CMakeLists.txt). Not needed on
+# Windows, where the loader finds the co-located DLL.
+if (LINUX OR APPLE)
+    get_filename_component(avif_lib_dir "${avif_runtime_lib}" DIRECTORY)
+endif()
+
 message(STATUS "Adding libavif (decode-only, from S3) as the `avif` target")
 add_library(avif INTERFACE IMPORTED)
 target_include_directories(avif INTERFACE ${include_dir})

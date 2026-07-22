@@ -515,6 +515,21 @@ function(make_torchcodec_image_library)
         target_compile_options(${image_library_name} PRIVATE "-fvisibility=hidden")
     endif()
 
+    # Give the image lib an INSTALL_RPATH pointing at the S3 libavif dir so that,
+    # in wheel builds, auditwheel (Linux) / delocate (macOS) can resolve its
+    # dependency on libavif at repair time and relocate it into the wheel's
+    # bundled-libs dir. Without this, CMake strips the build-tree rpath on install
+    # and the repair tool can't find libavif -- which lives in the persistent
+    # FetchContent dir (macOS records the dep as @rpath/libavif.16.dylib, which is
+    # unresolvable with no rpath). The repair tool rewrites this rpath when it
+    # relocates libavif, so the build path doesn't leak into the final wheel.
+    # Editable builds resolve libavif via the build-tree RUNPATH instead
+    # (INSTALL_RPATH doesn't apply to them). Not needed on Windows.
+    if((LINUX OR APPLE) AND DEFINED avif_lib_dir)
+        set_property(TARGET ${image_library_name} APPEND PROPERTY
+            INSTALL_RPATH "${avif_lib_dir}")
+    endif()
+
     # Same editable-vs-wheel output/install logic as make_torchcodec_libraries.
     if(SKBUILD_STATE STREQUAL "editable")
         get_filename_component(
