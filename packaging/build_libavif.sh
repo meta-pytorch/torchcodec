@@ -87,9 +87,9 @@ tar -xf libavif.tar.gz -C libavif --strip-components 1
 # - All encoder backends (aom/rav1e/svt) and the extra decoders (libgav1/avm)
 #   OFF: they already default OFF, listed here for clarity/safety.
 # - Apps/tests/examples OFF: those (and only those) need libjpeg/zlib/png, so we
-#   also turn those aux deps OFF -- the core decode library needs none of them.
-# - AVIF_LIBYUV=OFF: use libavif's vendored libyuv subset for color conversion,
-#   avoiding an extra bundled dependency.
+#   also turn those aux deps OFF - the core decode library needs none of them.
+# - AVIF_LIBYUV=LOCAL: fetch+build libyuv and static-embed it (no separate .so),
+#   for its SIMD YUV->RGB color conversion.
 cmake -G Ninja -S libavif -B build \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${LIBAVIF_ROOT}" \
@@ -102,7 +102,7 @@ cmake -G Ninja -S libavif -B build \
     -DAVIF_CODEC_SVT=OFF \
     -DAVIF_CODEC_LIBGAV1=OFF \
     -DAVIF_CODEC_AVM=OFF \
-    -DAVIF_LIBYUV=OFF \
+    -DAVIF_LIBYUV=LOCAL \
     -DAVIF_LIBSHARPYUV=OFF \
     -DAVIF_JPEG=OFF \
     -DAVIF_ZLIBPNG=OFF \
@@ -116,9 +116,13 @@ cmake --install build
 
 # Ship the license/copyright notices. Everything compiled into libavif.so is
 # permissive BSD, but BSD-2/BSD-3 require binary redistributions to reproduce the
-# copyright notice and license text.
+# copyright notice and license text. Three components are statically embedded:
+# libavif (BSD-2), dav1d (BSD-2) and libyuv (BSD-3). dav1d and libyuv are fetched
+# at build time (AVIF_CODEC_DAV1D=LOCAL / AVIF_LIBYUV=LOCAL), so we grab their
+# license files from the checkouts the build produced.
 mkdir -p "${LIBAVIF_ROOT}/licenses"
 cp libavif/LICENSE "${LIBAVIF_ROOT}/licenses/LICENSE.libavif"
+
 dav1d_copying=$(find build -iname COPYING -path '*dav1d*' 2>/dev/null | head -n1 || true)
 if [[ -z "${dav1d_copying}" || ! -f "${dav1d_copying}" ]]; then
     echo "ERROR: could not find dav1d's COPYING license file under the build" \
@@ -126,6 +130,14 @@ if [[ -z "${dav1d_copying}" || ! -f "${dav1d_copying}" ]]; then
     exit 1
 fi
 cp "${dav1d_copying}" "${LIBAVIF_ROOT}/licenses/COPYING.dav1d"
+
+libyuv_license=$(find build -iname LICENSE -path '*yuv*' 2>/dev/null | head -n1 || true)
+if [[ -z "${libyuv_license}" || ! -f "${libyuv_license}" ]]; then
+    echo "ERROR: could not find libyuv's LICENSE file under the build directory;" \
+         "refusing to ship a binary without libyuv's license." >&2
+    exit 1
+fi
+cp "${libyuv_license}" "${LIBAVIF_ROOT}/licenses/LICENSE.libyuv"
 
 ls -R "${LIBAVIF_ROOT}"
 
