@@ -31,6 +31,8 @@ torch::stable::Tensor decode_avif(
 
 #else
 
+#include <torch/headeronly/core/MemoryFormat.h>
+
 #include <cstring>
 #include <memory>
 
@@ -76,52 +78,76 @@ torch::stable::Tensor decode_avif(
       result == AVIF_RESULT_OK,
       "avifDecoderParse failed: ",
       avifResultToString(result));
-  // TODO_IMAGE: support animated AVIF files, returning an (N, C, H, W) tensor
-  // like the plan calls for (see the GIF decoder for the multi-frame pattern).
-  STD_TORCH_CHECK(
-      decoder->imageCount == 1, "Animated AVIF files are not supported.");
 
-  result = avifDecoderNextImage(decoder.get());
-  STD_TORCH_CHECK(
-      result == AVIF_RESULT_OK,
-      "avifDecoderNextImage failed: ",
-      avifResultToString(result));
+  // We detect animation via imageSequenceTrackPresent (the signal that
+  // specifically means "image sequence"), not imageCount. imageCount can also
+  // exceed 1 for a *progressive* still images.
+  int64_t num_frames =
+      decoder->imageSequenceTrackPresent ? decoder->imageCount : 1;
 
-  avifRGBImage rgb;
-  std::memset(&rgb, 0, sizeof(rgb));
-  avifRGBImageSetDefaults(&rgb, decoder->image);
-
-  // TODO_IMAGE: images encoded as 10 or 12 bits should be decoded as uint16 to
-  // preserve their precision, like torchvision does. We force 8 bits for now so
-  // AVIF stays consistent with the other torchcodec image decoders, which are
-  // all uint8. This is tied to adding 16-bit support to the libpng decoder.
-  rgb.depth = 8;
-
+  // alphaPresent is valid after parse and constant across the sequence.
   auto return_rgb = should_return_rgb(
       static_cast<ImageReadMode>(mode),
       static_cast<bool>(decoder->alphaPresent));
-
   int num_channels = return_rgb ? 3 : 4;
-  rgb.format = return_rgb ? AVIF_RGB_FORMAT_RGB : AVIF_RGB_FORMAT_RGBA;
-  rgb.ignoreAlpha = return_rgb ? AVIF_TRUE : AVIF_FALSE;
 
-  auto output = torch::stable::empty(
-      {static_cast<int64_t>(rgb.height),
-       static_cast<int64_t>(rgb.width),
-       num_channels},
-      kStableUInt8);
-  rgb.pixels = static_cast<uint8_t*>(output.mutable_data_ptr());
-  rgb.rowBytes = rgb.width * avifRGBImagePixelSize(&rgb);
+  torch::stable::Tensor output;
+  uint8_t* output_ptr = nullptr;
+  int64_t frame_num_bytes = 0;
 
-  result = avifImageYUVToRGB(decoder->image, &rgb);
-  STD_TORCH_CHECK(
-      result == AVIF_RESULT_OK,
-      "avifImageYUVToRGB failed: ",
-      avifResultToString(result));
+  for (int64_t i = 0; i < num_frames; ++i) {
+    result = avifDecoderNextImage(decoder.get());
+    STD_TORCH_CHECK(
+        result == AVIF_RESULT_OK,
+        "avifDecoderNextImage failed at frame ",
+        i,
+        ": ",
+        avifResultToString(result));
+
+    avifRGBImage rgb;
+    std::memset(&rgb, 0, sizeof(rgb));
+    avifRGBImageSetDefaults(&rgb, decoder->image);
+
+    // TODO_IMAGE: support 10 and 12 bits.
+    rgb.depth = 8;
+    rgb.format = return_rgb ? AVIF_RGB_FORMAT_RGB : AVIF_RGB_FORMAT_RGBA;
+    rgb.ignoreAlpha = return_rgb ? AVIF_TRUE : AVIF_FALSE;
+
+    if (i == 0) {
+      output = torch::stable::empty(
+          {num_frames,
+           num_channels,
+           static_cast<int64_t>(rgb.height),
+           static_cast<int64_t>(rgb.width)},
+          kStableUInt8,
+          std::nullopt,
+          std::nullopt,
+          std::nullopt,
+          torch::headeronly::MemoryFormat::ChannelsLast);
+      output_ptr = output.mutable_data_ptr<uint8_t>();
+      frame_num_bytes =
+          static_cast<int64_t>(num_channels) * rgb.height * rgb.width;
+    }
+
+    rgb.pixels = output_ptr + i * frame_num_bytes;
+    rgb.rowBytes = rgb.width * avifRGBImagePixelSize(&rgb);
+
+    result = avifImageYUVToRGB(decoder->image, &rgb);
+    STD_TORCH_CHECK(
+        result == AVIF_RESULT_OK,
+        "avifImageYUVToRGB failed at frame ",
+        i,
+        ": ",
+        avifResultToString(result));
+  }
 
   // TODO_IMAGE: apply AVIF orientation (irot/imir transforms) like we apply
   // EXIF orientation for the other decoders.
-  return stable_permute(output, {2, 0, 1}); // HWC -> CHW
+
+  if (num_frames == 1) {
+    output = select_row(output, 0);
+  }
+  return output;
 }
 
 } // namespace facebook::torchcodec

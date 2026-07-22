@@ -3846,19 +3846,54 @@ class TestImageDecoder:
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
     @needs_avif
-    def test_animated_avif_raises(self, tmp_path):
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            (ImageColorMode.UNCHANGED, None),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_animated_avif(self, tmp_path, mode, pil_mode):
+        # An animated AVIF decodes to a batched (N, C, H, W) tensor, one frame
+        # per image. We use distinct solid-color frames: AVIF is lossy, but
+        # solid colors survive the YUV round-trip cleanly, so the frames match
+        # PIL's per-frame decode closely and the frame ordering is verifiable.
+        from PIL import ImageSequence
+
         path = tmp_path / "animated.avif"
+        colors = [(200, 30, 30), (30, 200, 30), (30, 30, 200)]
         frames = [
-            Image.fromarray(
-                torch.randint(0, 256, (16, 16, 3), dtype=torch.uint8).numpy()
-            )
-            for _ in range(3)
+            Image.fromarray(numpy.full((16, 16, 3), c, dtype=numpy.uint8))
+            for c in colors
         ]
         frames[0].save(
-            path, "AVIF", save_all=True, append_images=frames[1:], duration=100
+            path,
+            "AVIF",
+            save_all=True,
+            append_images=frames[1:],
+            duration=100,
+            quality=100,
         )
-        with pytest.raises(RuntimeError, match="Animated AVIF files are not supported"):
-            decode_avif(path)
+
+        decoded = decode_avif(path, mode=mode)
+        pil = Image.open(path)
+
+        assert decoded.ndim == 4
+        assert decoded.shape[0] == pil.n_frames == len(colors)
+
+        for i, frame in enumerate(ImageSequence.Iterator(pil)):
+            reference = self._pil_to_tensor(frame.convert(pil_mode))
+            assert decoded[i].shape == reference.shape
+            assert_tensor_close_on_at_least(
+                decoded[i], reference, percentage=99, atol=3
+            )
+
+        if mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA):
+            # The source is opaque, so the alpha channel must be fully opaque.
+            assert (decoded[:, -1] == 255).all()
 
     @needs_webp
     @pytest.mark.parametrize(
