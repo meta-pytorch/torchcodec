@@ -190,3 +190,26 @@ if [[ "${os}" == Linux || "${os}" == Darwin ]] && command -v nm > /dev/null 2>&1
         fi
     fi
 fi
+
+# macOS: libavif builds with an @rpath install-name (@rpath/libavif.16.dylib).
+# That form can only be resolved through the *consumer's* rpath list, which forces
+# torchcodec to carry an rpath (and ship libavif itself) just so delocate can find
+# it at wheel-repair time. Rewrite the id to a plain soname instead: consumers
+# then record a bare "libavif.16.dylib" dependency, which delocate resolves from
+# its search path and vendors like any other lib (e.g. conda's libjpeg) -- no
+# consumer-side rpath needed. This is the mirror image of build_ffmpeg.sh, which
+# *adds* @rpath to FFmpeg because FFmpeg is resolved from the user's environment
+# at runtime rather than bundled.
+if [[ "${os}" == Darwin ]]; then
+    # Prefer the system tools: miniconda's otool/install_name_tool can produce
+    # inconsistent results (same rationale as build_ffmpeg.sh).
+    otool_bin="/usr/bin/otool"
+    [[ -e "${otool_bin}" ]] || otool_bin="$(command -v otool)"
+    int_bin="/usr/bin/install_name_tool"
+    [[ -e "${int_bin}" ]] || int_bin="$(command -v install_name_tool)"
+
+    current_id=$("${otool_bin}" -D "${lib}" | tail -n1)  # e.g. @rpath/libavif.16.dylib
+    soname=$(basename "${current_id}")                   # e.g. libavif.16.dylib
+    "${int_bin}" -id "${soname}" "${lib}"
+    echo "libavif install-name: ${current_id} -> $("${otool_bin}" -D "${lib}" | tail -n1)"
+fi

@@ -197,8 +197,12 @@ def check_bundling():
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
     - (Linux only) libtorchcodec_image.so links FFmpeg.
     """
-    # 6 MB. Bump if a legitimate dependency growth pushes us over.
-    MAX_WHEEL_BYTES = 6 * 1024 * 1024
+    # 6 MB, bumped to 8 MB for Windows CUDA wheels (their CUDA-laden core libs are
+    # bigger). Bump if a legitimate dependency growth pushes us over.
+    if platform.system() == "Windows" and os.environ.get("ENABLE_CUDA") == "1":
+        MAX_WHEEL_BYTES = 8 * 1024 * 1024
+    else:
+        MAX_WHEEL_BYTES = 6 * 1024 * 1024
 
     def _is_shared_lib(name):
         base = name.rsplit("/", 1)[-1]
