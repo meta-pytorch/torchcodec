@@ -14,9 +14,14 @@ installed.
 We bundle some third-party native libraries like libjpeg(-turbo), libpng, zlib,
 libwebp (+libsharpyuv) and libavif, while making sure we EXCLUDE FFmpeg
 (user-provided at runtime) and torch/CUDA (provided by the torch wheel).
+
+Because we redistribute those libraries as binaries inside the wheel, their
+(permissive) licenses require us to also ship their copyright/license texts.
+do that in bundle_third_party_licenses().
 """
 
 import io
+import json
 import os
 import platform
 import shutil
@@ -180,11 +185,143 @@ def repair_windows(wheels):
         shutil.rmtree(unpack_dir)
 
 
+def bundle_third_party_licenses():
+    """Inject the license/copyright texts of the bundled third-party libraries
+    into each wheel's .dist-info/licenses/third_party/ dir.
+
+    We redistribute libjpeg-turbo, libpng, zlib, libwebp and libavif (which
+    statically embeds dav1d and libyuv) as binaries inside the wheel. Their
+    permissive licenses (IJG/BSD/zlib) require reproducing the copyright notice
+    and license text in binary redistributions, so we ship them next to our own
+    LICENSE.
+    """
+
+    def _resolve_conda_licenses():
+        """Map dest filename -> source path for the conda-provided image libs.
+
+        conda ships each package's upstream license text under
+        <extracted_package_dir>/info/licenses/, and
+        CONDA_PREFIX/conda-meta/<pkg>.json records where that dir is. We resolve
+        from there so the text always matches the exact binary we bundle.
+        """
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+        if not conda_prefix:
+            raise RuntimeError(
+                "CONDA_PREFIX not set; cannot locate conda license files."
+            )
+        meta_dir = Path(conda_prefix) / "conda-meta"
+
+        # logical lib -> (dest filename stem, candidate conda package names).
+        # Some libs are packaged under more than one name across
+        # channels/versions (e.g. zlib vs libzlib), so we try each candidate and
+        # take the first that resolves.
+        wanted = {
+            "libjpeg-turbo": ("LICENSE.libjpeg-turbo", ["libjpeg-turbo"]),
+            "libpng": ("LICENSE.libpng", ["libpng"]),
+            "zlib": ("LICENSE.zlib", ["libzlib", "zlib"]),
+            "libwebp": ("LICENSE.libwebp", ["libwebp", "libwebp-base"]),
+        }
+
+        collected = {}
+        for logical, (dest_stem, candidates) in wanted.items():
+            src_files = None
+            for pkg in candidates:
+                metas = sorted(meta_dir.glob(f"{pkg}-*.json"))
+                if not metas:
+                    continue
+                info = json.loads(metas[0].read_text())
+                lic_dir = Path(info["extracted_package_dir"]) / "info" / "licenses"
+                if lic_dir.is_dir():
+                    src_files = sorted(f for f in lic_dir.iterdir() if f.is_file())
+                    break
+            if not src_files:
+                raise RuntimeError(
+                    f"Could not find license files for {logical} (tried conda "
+                    f"packages {candidates} under {meta_dir})."
+                )
+            # A package usually ships a single license file; if it ships several,
+            # keep them all, suffixed with their original name.
+            if len(src_files) == 1:
+                collected[dest_stem] = src_files[0]
+            else:
+                for f in src_files:
+                    collected[f"{dest_stem}.{f.name}"] = f
+        return collected
+
+    def _resolve_avif_licenses():
+        """Map dest filename -> source path for the libavif stack (libavif
+        itself, plus dav1d and libyuv which are statically embedded inside
+        libavif). These are collected into licenses/ by
+        packaging/build_libavif.sh and shipped in the S3 artifact that
+        fetch_avif_from_s3.cmake unpacks into scikit-build's build dir.
+        """
+        dirs = [
+            p for p in Path("build").glob("*/_deps/avif_s3-src/licenses") if p.is_dir()
+        ]
+        if not dirs:
+            raise RuntimeError(
+                "libavif licenses dir not found under "
+                "build/*/_deps/avif_s3-src/licenses"
+            )
+        # Multiple build dirs (one per ABI) may exist; the license texts are
+        # identical, so pick any.
+        return {f.name: f for f in sorted(dirs[0].iterdir()) if f.is_file()}
+
+    run([sys.executable, "-m", "pip", "install", "-U", "wheel"])
+    licenses = {**_resolve_conda_licenses(), **_resolve_avif_licenses()}
+    print("Third-party license files to bundle:")
+    for name, src in sorted(licenses.items()):
+        print(f"  {name} <- {src}")
+
+    scratch = Path("dist_licenses")
+    if scratch.is_dir():
+        shutil.rmtree(scratch)
+    scratch.mkdir(parents=True)
+
+    for wheel in sorted(DIST_DIR.glob("*.whl")):
+        unpack_dir = scratch / "unpack"
+        if unpack_dir.is_dir():
+            shutil.rmtree(unpack_dir)
+        run([sys.executable, "-m", "wheel", "unpack", wheel, "-d", unpack_dir])
+        dist_info_dirs = list(unpack_dir.glob("*/*.dist-info"))
+        if len(dist_info_dirs) != 1:
+            raise RuntimeError(
+                f"Expected exactly one .dist-info in {wheel.name}, "
+                f"found: {dist_info_dirs}"
+            )
+        dest = dist_info_dirs[0] / "licenses" / "third_party"
+        dest.mkdir(parents=True, exist_ok=True)
+        for name, src in licenses.items():
+            shutil.copy(src, dest / name)
+        # Repack: `wheel pack` regenerates RECORD so the new files are recorded.
+        run(
+            [
+                sys.executable,
+                "-m",
+                "wheel",
+                "pack",
+                dist_info_dirs[0].parent,
+                "-d",
+                scratch,
+            ]
+        )
+        shutil.rmtree(unpack_dir)
+
+    for wheel in DIST_DIR.glob("*.whl"):
+        wheel.unlink()
+    for wheel in scratch.glob("*.whl"):
+        shutil.move(str(wheel), str(DIST_DIR))
+    shutil.rmtree(scratch)
+
+
 def check_bundling():
     """Raise if:
     - a wheel bundles a lib that's not in the allowlist. This would raise if we
       ever try to bundle FFmpeg or torch/CUDA.
     - a wheel does NOT bundle libjpeg, libpng, libwebp, libwebpdemux or libavif.
+    - a wheel is missing the license/copyright text of any bundled third-party
+      lib under .dist-info/licenses/third_party/ (see
+      bundle_third_party_licenses).
     - the wheel bundles an AV1 encoder library: our libavif is decode-only, so
       encoders (aom/rav1e/svtav1) must never ship (all platforms). This is not
       for licensing concern, this is to keep wheel size low.
@@ -330,9 +467,26 @@ def check_bundling():
                 "found at build time."
             )
 
+    def _assert_third_party_licenses(zf):
+        """Every bundled third-party lib must ship its license text under
+        .dist-info/licenses/third_party/ (see bundle_third_party_licenses)."""
+        license_files = [
+            n
+            for n in zf.namelist()
+            if "/licenses/third_party/" in n and not n.endswith("/")
+        ]
+        # keyword each bundled lib's license file must be identifiable by.
+        for keyword in ("jpeg", "png", "zlib", "webp", "avif", "dav1d", "yuv"):
+            if not any(keyword in n.lower() for n in license_files):
+                raise RuntimeError(
+                    f"No third-party license file matching '{keyword}' found in "
+                    f".dist-info/licenses/third_party/. Found: {license_files}"
+                )
+
     for wheel in DIST_DIR.glob("*.whl"):
         print(f"Checking bundled libraries in {wheel.name}")
         with zipfile.ZipFile(wheel) as zf:
+            _assert_third_party_licenses(zf)
             names = zf.namelist()
             libs = sorted({n.rsplit("/", 1)[-1] for n in names if _is_shared_lib(n)})
             if unexpected := [lib for lib in libs if not _is_allowed(lib)]:
@@ -398,6 +552,8 @@ def main():
     for wheel in REPAIRED_DIR.glob("*.whl"):
         shutil.move(str(wheel), str(DIST_DIR))
     shutil.rmtree(REPAIRED_DIR)
+
+    bundle_third_party_licenses()
 
     print("Repaired wheels:")
     for wheel in DIST_DIR.glob("*.whl"):
