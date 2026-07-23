@@ -19,8 +19,6 @@ from torchcodec._core.ops import (
     decode_webp as _decode_webp,
 )
 
-# TODO_IMAGE: we need to make FFmpeg an optional dependency, and probably want a
-# CI job for that.
 
 # GIF vs Pillow: our animated-GIF compositing (disposal methods, transparency,
 # frame offsets) matches Pillow. GIF transparency is handled per output mode:
