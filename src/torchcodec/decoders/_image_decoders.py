@@ -19,9 +19,6 @@ from torchcodec._core.ops import (
     decode_webp as _decode_webp,
 )
 
-# TODO_IMAGE: we need to make FFmpeg an optional dependency, and probably want a
-# CI job for that.
-
 # TODO_IMAGE Some codecs expose threading options - we should make sure the
 # default is 1 thread and allow the user to override it. (similar to
 # num_ffmpeg_threads)

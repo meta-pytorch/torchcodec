@@ -4,6 +4,7 @@ from pathlib import Path
 import torch
 from torch import Tensor
 
+from torchcodec._internally_replaced_utils import ensure_ffmpeg_loaded
 from torchcodec.encoders._multi_stream_encoder import Encoder
 
 
@@ -30,6 +31,8 @@ class AudioEncoder:
 
     def __init__(self, samples: Tensor, *, sample_rate: int):
         torch._C._log_api_usage_once("torchcodec.encoders.AudioEncoder")
+        # Encoding requires FFmpeg. Fail early with a clear error if it's absent.
+        ensure_ffmpeg_loaded()
         # Some of these checks are also done in C++: it's OK, they're cheap, and
         # doing them here allows to surface them when the AudioEncoder is
         # instantiated, rather than later when the encoding methods are called.

@@ -64,12 +64,43 @@ def _load_pybind11_module(module_name: str, library_path: str) -> ModuleType:
     return mod
 
 
-def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
+def load_image_library() -> None:
     """
-    Successively try to load the shared libraries for each version of FFmpeg
-    that we support. We always start with the highest version, working our way
-    down to the lowest version. Once we can load ALL shared libraries for a
-    version of FFmpeg, we have succeeded and we stop.
+    Load the FFmpeg-free image decoding library (``libtorchcodec_image``).
+
+    This library links no FFmpeg and is always available, so it is loaded
+    eagerly and separately from the FFmpeg-dependent libraries. Loading it in
+    its own ``torch.ops.load_library`` call also keeps its bundled image codec
+    libraries (libjpeg/libpng/libwebp/...) in a separate symbol scope from the
+    ones FFmpeg pulls in. See the comment in ``_core/CMakeLists.txt``.
+    """
+    image_library_path = _get_extension_path("libtorchcodec_image")
+    torch.ops.load_library(image_library_path)
+
+
+# Memoization state for ensure_ffmpeg_loaded(). We cache both success and
+# failure so that (a) we only ever load the shared libraries once, and (b) the
+# rich error explaining that FFmpeg could not be loaded is raised consistently
+# on every subsequent call (e.g. from every FFmpeg-backed entry point).
+_ffmpeg_load_result: tuple[int, str, ModuleType] | None = None
+_ffmpeg_load_error: Exception | None = None
+
+
+def ensure_ffmpeg_loaded() -> tuple[int, str, ModuleType]:
+    """
+    Load the FFmpeg-dependent shared libraries, memoizing the result.
+
+    FFmpeg is an *optional* runtime dependency: ``import torchcodec`` and the
+    image decoders work without it. This function is the single choke point that
+    actually requires FFmpeg; it is called lazily the first time an
+    FFmpeg-backed entry point (VideoDecoder, AudioDecoder, the encoders,
+    WavDecoder, ...) is used. If FFmpeg cannot be loaded, it raises a rich,
+    actionable error (and re-raises the same error on every subsequent call).
+
+    We successively try to load the shared libraries for each version of FFmpeg
+    that we support, starting with the highest version and working our way down.
+    Once we can load ALL shared libraries for a version of FFmpeg, we have
+    succeeded and we stop.
 
     Note that we use two different methods for loading shared libraries:
 
@@ -83,9 +114,11 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
          works when the module name and file name match exactly. Our shared
          libraries do not meet those conditions.
     """
-
-    image_library_path = _get_extension_path("libtorchcodec_image")
-    torch.ops.load_library(image_library_path)
+    global _ffmpeg_load_result, _ffmpeg_load_error
+    if _ffmpeg_load_result is not None:
+        return _ffmpeg_load_result
+    if _ffmpeg_load_error is not None:
+        raise _ffmpeg_load_error
 
     exceptions = []
     for ffmpeg_major_version in (8, 7, 6, 5, 4):
@@ -101,7 +134,8 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
             pybind_ops = _load_pybind11_module(
                 _PYBIND_OPS_MODULE_NAME, pybind_ops_library_path
             )
-            return ffmpeg_major_version, core_library_path, pybind_ops
+            _ffmpeg_load_result = (ffmpeg_major_version, core_library_path, pybind_ops)
+            return _ffmpeg_load_result
         except Exception:
             # Capture the full traceback for this exception
             exc_traceback = traceback.format_exc()
@@ -112,8 +146,10 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
         + "\n".join(f"FFmpeg version {v}:\n{tb}" for v, tb in exceptions)
         + "[end of libtorchcodec loading traceback]."
     )
-    raise RuntimeError(
-        f"""Could not load libtorchcodec. Likely causes:
+    _ffmpeg_load_error = RuntimeError(
+        f"""Could not load libtorchcodec. Note that FFmpeg is an optional
+        dependency of TorchCodec: it is only needed for video and audio decoding
+        and encoding, not for the image decoders. Likely causes:
           1. FFmpeg is not properly installed in your environment. We support
              versions 4, 5, 6, 7, and 8, and we attempt to load libtorchcodec
              for each of those versions. Errors for versions not installed on
@@ -130,3 +166,4 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
         """
         f"{traceback_info}"
     )
+    raise _ffmpeg_load_error
