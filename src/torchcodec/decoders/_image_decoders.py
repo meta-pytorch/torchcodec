@@ -41,15 +41,13 @@ from torchcodec._core.ops import (
 # whose UNCHANGED preserves the source's native channels).
 
 
-class ImageColorMode(Enum):
-    # TODO_IMAGE:  We'll probably need to keep that for BC but ugh. this should
-    # be ImageReadMode to be consistent with TV. Let's type stuff with Literal
-    # strings instead.
+class ImageReadMode(Enum):
+    """Color mode for image decoding, mirroring torchvision's ``ImageReadMode``.
 
-    """Color mode for image decoding.
-
-    Integer values match torchvision's ``ImageReadMode`` and the C++
-    ``ImageReadMode`` constants.
+    The recommended way to specify a color mode is a (case-insensitive) string
+    such as ``"rgb"``; this enum is only kept for backward compatibility and is
+    accepted anywhere a mode string is. Its integer values match torchvision's
+    ``ImageReadMode`` and the C++ ``ImageReadMode`` constants.
     """
 
     UNCHANGED = 0
@@ -57,6 +55,28 @@ class ImageColorMode(Enum):
     GRAY_ALPHA = 2
     RGB = 3
     RGB_ALPHA = 4
+
+
+def _normalize_mode(
+    mode: (
+        Literal["UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA"] | ImageReadMode
+    ),
+) -> ImageReadMode:
+    # Normalize the public `mode` argument (a case-insensitive string, or an
+    # ImageReadMode for BC) to an ImageReadMode, which is what the rest of the
+    # decoding code works with.
+    if isinstance(mode, ImageReadMode):
+        return mode
+    if isinstance(mode, str):
+        try:
+            return ImageReadMode[mode.upper()]
+        except KeyError:
+            valid = ", ".join(repr(m.name) for m in ImageReadMode)
+            raise ValueError(
+                f"Invalid mode {mode!r}. Supported modes are {valid} "
+                "(case-insensitive)."
+            ) from None
+    raise TypeError(f"mode must be a str (or ImageReadMode), got {type(mode)}.")
 
 
 def _source_to_tensor(source: str | Path | bytes | torch.Tensor) -> torch.Tensor:
@@ -85,11 +105,11 @@ def _source_to_tensor(source: str | Path | bytes | torch.Tensor) -> torch.Tensor
 # Output modes each native codec can produce directly, for any input. Any output
 # mode not listed here is obtained via a post-decode conversion.
 _JPEG_NATIVE_OUTPUT_MODES = frozenset(
-    (ImageColorMode.UNCHANGED, ImageColorMode.GRAY, ImageColorMode.RGB)
+    (ImageReadMode.UNCHANGED, ImageReadMode.GRAY, ImageReadMode.RGB)
 )
-_PNG_NATIVE_OUTPUT_MODES = frozenset(ImageColorMode)
+_PNG_NATIVE_OUTPUT_MODES = frozenset(ImageReadMode)
 _WEBP_NATIVE_OUTPUT_MODES = _GIF_NATIVE_OUTPUT_MODES = _AVIF_NATIVE_OUTPUT_MODES = (
-    frozenset((ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.RGB_ALPHA))
+    frozenset((ImageReadMode.UNCHANGED, ImageReadMode.RGB, ImageReadMode.RGB_ALPHA))
 )
 
 
@@ -115,29 +135,29 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
     if mode in native_output_modes:
         return decode_fn(data, mode.value)
 
-    if mode is ImageColorMode.GRAY:
+    if mode is ImageReadMode.GRAY:
         # No native grayscale (e.g. webp, gif): decode RGB and reduce to luma.
-        return _rgb_to_gray(decode_fn(data, ImageColorMode.RGB.value))
-    elif mode is ImageColorMode.RGB_ALPHA:
+        return _rgb_to_gray(decode_fn(data, ImageReadMode.RGB.value))
+    elif mode is ImageReadMode.RGB_ALPHA:
         # Not native (else handled above), so the source has no real alpha:
         # synthesize an opaque one on top of RGB.
-        return _append_opaque_alpha(decode_fn(data, ImageColorMode.RGB.value))
-    elif mode is ImageColorMode.GRAY_ALPHA:
-        if ImageColorMode.RGB_ALPHA in native_output_modes:
+        return _append_opaque_alpha(decode_fn(data, ImageReadMode.RGB.value))
+    elif mode is ImageReadMode.GRAY_ALPHA:
+        if ImageReadMode.RGB_ALPHA in native_output_modes:
             # Real alpha available (e.g. webp): decode RGBA and reduce the color
             # channels to luma while preserving the alpha channel. Index the
             # channel dim (-3) so this works for both (C, H, W) and animated
             # (N, C, H, W) tensors.
-            rgba = decode_fn(data, ImageColorMode.RGB_ALPHA.value)
+            rgba = decode_fn(data, ImageReadMode.RGB_ALPHA.value)
             rgb, alpha = rgba[..., :3, :, :], rgba[..., 3:, :, :]
             return torch.cat([_rgb_to_gray(rgb), alpha], dim=-3)
-        elif ImageColorMode.GRAY in native_output_modes:
+        elif ImageReadMode.GRAY in native_output_modes:
             # Native gray but no alpha (e.g. jpeg): synthesize an opaque alpha.
-            return _append_opaque_alpha(decode_fn(data, ImageColorMode.GRAY.value))
+            return _append_opaque_alpha(decode_fn(data, ImageReadMode.GRAY.value))
         else:
             # No native gray or alpha (e.g. gif): reduce RGB to luma and
             # synthesize an opaque alpha.
-            gray = _rgb_to_gray(decode_fn(data, ImageColorMode.RGB.value))
+            gray = _rgb_to_gray(decode_fn(data, ImageReadMode.RGB.value))
             return _append_opaque_alpha(gray)
     else:
         raise RuntimeError(
@@ -191,16 +211,20 @@ def _maybe_widen_to_uint16(
 def decode_jpeg(
     source: str | Path | bytes | torch.Tensor,
     *,
-    mode: ImageColorMode = ImageColorMode.RGB,
+    mode: (
+        Literal["UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA"] | ImageReadMode
+    ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
     """Decode a JPEG into a tensor of shape ``(C, H, W)``.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. See the module note
-    above for the semantics of ``output_dtype``.
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
+    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
+    module note above for the semantics of ``output_dtype``.
     """
     _validate_output_dtype(output_dtype)
+    mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     decoded = _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
     return _maybe_widen_to_uint16(decoded, output_dtype)
@@ -209,16 +233,20 @@ def decode_jpeg(
 def decode_png(
     source: str | Path | bytes | torch.Tensor,
     *,
-    mode: ImageColorMode = ImageColorMode.RGB,
+    mode: (
+        Literal["UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA"] | ImageReadMode
+    ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
     """Decode a PNG into a tensor of shape ``(C, H, W)``.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. See the module note
-    above for the semantics of ``output_dtype``.
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
+    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
+    module note above for the semantics of ``output_dtype``.
     """
     _validate_output_dtype(output_dtype)
+    mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     code = _OUTPUT_DTYPE_TO_CODE[output_dtype]
     return _decode_with_mode(
@@ -229,13 +257,16 @@ def decode_png(
 def decode_webp(
     source: str | Path | bytes | torch.Tensor,
     *,
-    mode: ImageColorMode = ImageColorMode.RGB,
+    mode: (
+        Literal["UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA"] | ImageReadMode
+    ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
     """Decode a WebP into a tensor.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
+    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``).
 
     The shape is ``(C, H, W)`` for a still WebP and ``(N, C, H, W)`` for an
     animated one, with 4 channels when the output carries an alpha channel.
@@ -246,6 +277,7 @@ def decode_webp(
     See the module note above for the semantics of ``output_dtype``.
     """
     _validate_output_dtype(output_dtype)
+    mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     decoded = _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
     return _maybe_widen_to_uint16(decoded, output_dtype)
@@ -254,13 +286,16 @@ def decode_webp(
 def decode_gif(
     source: str | Path | bytes | torch.Tensor,
     *,
-    mode: ImageColorMode = ImageColorMode.RGB,
+    mode: (
+        Literal["UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA"] | ImageReadMode
+    ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
     """Decode a GIF into a tensor.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
+    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``).
 
     The shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for an
     animated one, with 4 channels when the output carries an alpha channel (see
@@ -271,6 +306,7 @@ def decode_gif(
     See the module note above for the semantics of ``output_dtype``.
     """
     _validate_output_dtype(output_dtype)
+    mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     decoded = _decode_with_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
     return _maybe_widen_to_uint16(decoded, output_dtype)
@@ -279,18 +315,22 @@ def decode_gif(
 def decode_avif(
     source: str | Path | bytes | torch.Tensor,
     *,
-    mode: ImageColorMode = ImageColorMode.RGB,
+    mode: (
+        Literal["UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA"] | ImageReadMode
+    ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
     """Decode an AVIF into a tensor of shape ``(C, H, W)``.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. See the module note
-    above for the semantics of ``output_dtype``; 10- and 12-bit AVIF sources
-    carry more than 8 bits per channel, so ``"auto"`` and ``torch.uint16``
-    preserve that precision.
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
+    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
+    module note above for the semantics of ``output_dtype``; 10- and 12-bit AVIF
+    sources carry more than 8 bits per channel, so ``"auto"`` and
+    ``torch.uint16`` preserve that precision.
     """
     _validate_output_dtype(output_dtype)
+    mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     code = _OUTPUT_DTYPE_TO_CODE[output_dtype]
     return _decode_with_mode(
@@ -341,14 +381,17 @@ def _detect_image_format(data: torch.Tensor) -> str:
 def decode_image(
     source: str | Path | bytes | torch.Tensor,
     *,
-    mode: ImageColorMode = ImageColorMode.RGB,
+    mode: (
+        Literal["UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA"] | ImageReadMode
+    ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
     """Decode an image into a tensor, detecting the format automatically.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. See the module note
-    above for the semantics of ``output_dtype``.
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
+    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
+    module note above for the semantics of ``output_dtype``.
     """
     _validate_output_dtype(output_dtype)
     data = _source_to_tensor(source)

@@ -12,7 +12,7 @@
 
 namespace facebook::torchcodec {
 
-// Must be kept in-sync with the Python ImageColorMode enum in
+// Must be kept in-sync with the Python ImageReadMode enum in
 // torchcodec/decoders/_image_decoders.py (and matching torchvision's
 // ImageReadMode).
 enum class ImageReadMode : int64_t {
@@ -79,19 +79,18 @@ inline bool should_return_rgb(ImageReadMode mode, bool has_alpha) {
   }
 }
 
-inline void validate_encoded_data(const torch::stable::Tensor& encoded_data) {
+inline void validate_encoded_data(const torch::stable::Tensor& input) {
+  STD_TORCH_CHECK(input.is_contiguous(), "Input tensor must be contiguous.");
   STD_TORCH_CHECK(
-      encoded_data.is_contiguous(), "Input tensor must be contiguous.");
-  STD_TORCH_CHECK(
-      encoded_data.scalar_type() == kStableUInt8,
+      input.scalar_type() == kStableUInt8,
       "Input tensor must have uint8 data type, got ",
-      torch::headeronly::toString(encoded_data.scalar_type()));
+      torch::headeronly::toString(input.scalar_type()));
   STD_TORCH_CHECK(
-      encoded_data.dim() == 1 && encoded_data.numel() > 0,
+      input.dim() == 1 && input.numel() > 0,
       "Input tensor must be 1-dimensional and non-empty, got ",
-      encoded_data.dim(),
+      input.dim(),
       " dims  and ",
-      encoded_data.numel(),
+      input.numel(),
       " numels.");
 }
 

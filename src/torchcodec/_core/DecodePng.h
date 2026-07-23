@@ -11,7 +11,7 @@
 namespace facebook::torchcodec {
 
 FORCE_PUBLIC_VISIBILITY torch::stable::Tensor decode_png(
-    const torch::stable::Tensor& data,
+    const torch::stable::Tensor& input,
     int64_t mode,
     int64_t output_dtype);
 
