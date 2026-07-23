@@ -3486,6 +3486,42 @@ class TestImageDecoder:
         decoded = decode_fn(asset.path)
         assert decoded.shape[0] == 3
 
+    @pytest.mark.parametrize(
+        "make_source",
+        (
+            pytest.param(lambda a: str(a.path), id="str"),
+            pytest.param(lambda a: a.path.read_bytes(), id="bytes"),
+            pytest.param(
+                lambda a: torch.frombuffer(
+                    bytearray(a.path.read_bytes()), dtype=torch.uint8
+                ),
+                id="tensor",
+            ),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (
+            _jpeg_param(GRADIENT_JPEG),
+            _png_param(GRADIENT_PNG),
+            _webp_param(GRADIENT_WEBP),
+            _gif_param(GRADIENT_GIF),
+            _avif_param(GRADIENT_AVIF),
+        ),
+    )
+    def test_source_kinds(self, decode_fn, asset, make_source):
+        # A str path, bytes, and a uint8 tensor of the encoded data must all
+        # decode to the same result as a pathlib.Path.
+        assert_frames_equal(decode_fn(make_source(asset)), decode_fn(asset.path))
+
+    @pytest.mark.parametrize(
+        "decode_fn",
+        (_jpeg_param(), _png_param(), _webp_param(), _gif_param(), _avif_param()),
+    )
+    def test_bad_source_type_raises(self, decode_fn):
+        with pytest.raises(TypeError, match="Unknown source type"):
+            decode_fn(123)
+
     @needs_jpeg
     @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, CMYK_JPEG))
     @pytest.mark.parametrize(
