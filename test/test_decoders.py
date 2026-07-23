@@ -35,6 +35,7 @@ from torchcodec.decoders._blocks import (
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.decoders._image_decoders import (
+    _read_file_to_tensor,
     decode_avif,
     decode_gif,
     decode_jpeg,
@@ -3468,6 +3469,52 @@ class TestImageDecoder:
     def _pil_to_tensor(img):
         t = torch.from_numpy(numpy.array(img))
         return t.permute(2, 0, 1) if t.ndim == 3 else t.unsqueeze(0)
+
+    @staticmethod
+    def _scriptable_decode(kind: str, data: torch.Tensor, mode: int) -> torch.Tensor:
+        if kind == "jpeg":
+            return torch.ops.torchcodec_ns.decode_jpeg(data, mode)
+        elif kind == "png":
+            return torch.ops.torchcodec_ns.decode_png(data, mode)
+        elif kind == "webp":
+            return torch.ops.torchcodec_ns.decode_webp(data, mode)
+        elif kind == "gif":
+            return torch.ops.torchcodec_ns.decode_gif(data, mode)
+        else:
+            assert kind == "avif"
+            return torch.ops.torchcodec_ns.decode_avif(data, mode)
+
+    @pytest.mark.filterwarnings(
+        "ignore:`torch.jit.script` is deprecated:DeprecationWarning"
+    )
+    @pytest.mark.parametrize(
+        "kind, asset",
+        (
+            pytest.param(
+                "jpeg", GRADIENT_JPEG, marks=pytest.mark.needs_jpeg, id="jpeg"
+            ),
+            pytest.param("png", GRADIENT_PNG, marks=pytest.mark.needs_png, id="png"),
+            pytest.param(
+                "webp", GRADIENT_WEBP, marks=pytest.mark.needs_webp, id="webp"
+            ),
+            pytest.param("gif", GRADIENT_GIF, id="gif"),
+            pytest.param(
+                "avif", GRADIENT_AVIF, marks=pytest.mark.needs_avif, id="avif"
+            ),
+        ),
+    )
+    def test_torchscript(self, kind, asset):
+        # This is just to ensure some sort of BC from torchvision. Zero
+        # guarantee we'll keep supporting torchscript.
+        data = _read_file_to_tensor(asset.path)
+        scripted = torch.jit.script(self._scriptable_decode)
+        eager = getattr(torch.ops.torchcodec_ns, f"decode_{kind}")
+        torch.testing.assert_close(
+            scripted(kind, data, ImageColorMode.RGB.value),
+            eager(data, ImageColorMode.RGB.value),
+            atol=0,
+            rtol=0,
+        )
 
     @pytest.mark.parametrize(
         "decode_fn, asset",
