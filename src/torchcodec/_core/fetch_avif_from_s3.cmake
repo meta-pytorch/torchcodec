@@ -50,8 +50,7 @@ FetchContent_MakeAvailable(avif_s3)
 # include/ and lib/ (and bin/ on Windows) directories
 set(include_dir "${avif_s3_SOURCE_DIR}/include")
 
-# libavif's SOVERSION is 16 (paired with libavif 1.4.2). We link the fully
-# SONAME'd file directly, exactly as add_ffmpeg_target() does for FFmpeg.
+# libavif's SOVERSION is 16 (paired with libavif 1.4.2).
 if (LINUX)
     set(lib_path "${avif_s3_SOURCE_DIR}/lib/libavif.so.16")
 elseif (APPLE)
@@ -66,19 +65,14 @@ foreach (path IN LISTS include_dir lib_path)
     endif()
 endforeach()
 
-# The runtime shared library that must be shipped in the wheel. On Linux/macOS
-# this is the same SONAME'd file we link against; on Windows we link the .dll.a
-# import lib but must ship the actual DLL from bin/. We expose its path so
-# make_torchcodec_image_library() can install it into the wheel.
-if (LINUX)
-    set(avif_runtime_lib "${avif_s3_SOURCE_DIR}/lib/libavif.so.16")
-elseif (APPLE)
-    set(avif_runtime_lib "${avif_s3_SOURCE_DIR}/lib/libavif.16.dylib")
-elseif (WIN32)
+if (WIN32)
+    # Windows only: we link the .dll.a import lib above, but the actual runtime
+    # DLL (from bin/) is what must be shipped. We expose it to the calling
+    # CMakelists.txt for Windows editable builds.
     set(avif_runtime_lib "${avif_s3_SOURCE_DIR}/bin/libavif.dll")
-endif()
-if (NOT EXISTS "${avif_runtime_lib}")
-    message(FATAL_ERROR "${avif_runtime_lib} does not exist")
+    if (NOT EXISTS "${avif_runtime_lib}")
+        message(FATAL_ERROR "${avif_runtime_lib} does not exist")
+    endif()
 endif()
 
 message(STATUS "Adding libavif (decode-only, from S3) as the `avif` target")

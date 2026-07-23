@@ -191,11 +191,13 @@ if [[ "${os}" == Linux || "${os}" == Darwin ]] && command -v nm > /dev/null 2>&1
     fi
 fi
 
-# macOS: rewrite the @rpath install-name to a plain soname, so consumers record a
-# bare "libavif.16.dylib" dep that delocate resolves from a search path rather than
-# needing a consumer-side rpath. Prefer system tools (miniconda's can misbehave,
-# see build_ffmpeg.sh).
 if [[ "${os}" == Darwin ]]; then
+    # macOS: we rewrite install-name of libavif from @rpath/libavif.16.dylib to
+    # a plain soname like libavif.16.dylib.
+    # If @rpath is in the install-name, then libraries depending on this libavif
+    # (i.e. our torchcodec_image) *must* have an rpath entry which points to the
+    # libavif directory. We don't want that, as it could weirdly interacts with
+    # the resolution of other libraries.
     otool_bin="/usr/bin/otool"
     [[ -e "${otool_bin}" ]] || otool_bin="$(command -v otool)"
     int_bin="/usr/bin/install_name_tool"

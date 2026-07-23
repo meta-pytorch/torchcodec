@@ -512,8 +512,11 @@ function(make_torchcodec_image_library)
             LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
             RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
         )
-        # Windows editable needs the DLL next to the image lib (no build RUNPATH).
         if(WIN32)
+            # Windows editable build needs the libavif DLL next to the image
+            # lib. Note that the other image codec lib don't, because they are
+            # already on the DLL search path. This is speculative and untested,
+            # we're just trying to be nice to Windows editable builds.
             file(COPY "${avif_runtime_lib}" DESTINATION "${TORCHCODEC_PACKAGE_DIR}")
         endif()
     else()
@@ -522,8 +525,6 @@ function(make_torchcodec_image_library)
             LIBRARY DESTINATION torchcodec
             RUNTIME DESTINATION torchcodec  # For Windows
         )
-        # libavif is bundled into the wheel by repair_wheel.py on all platforms
-        # (from conda for the other image libs, from the S3 build dir for libavif).
     endif()
 endfunction()
 
