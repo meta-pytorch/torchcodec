@@ -54,6 +54,16 @@ ENABLE_CUDA = {env = "ENABLE_CUDA", default = ""}
 TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR = {env = "TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR", default = "OFF"}
 TORCHCODEC_DISABLE_HOMEBREW_RPATH = {env = "TORCHCODEC_DISABLE_HOMEBREW_RPATH", default = "OFF"}
 
+# Image decoder build toggles. By default all image decoders are built and
+# *required*: if a codec's lib can't be found/fetched the build fails loudly.
+# flags default to "AUTO", meaning they inherit from TORCHCODEC_BUILD_IMAGE.
+TORCHCODEC_BUILD_IMAGE = {env = "TORCHCODEC_BUILD_IMAGE", default = "ON"}
+TORCHCODEC_BUILD_JPEG = {env = "TORCHCODEC_BUILD_JPEG", default = "AUTO"}
+TORCHCODEC_BUILD_PNG = {env = "TORCHCODEC_BUILD_PNG", default = "AUTO"}
+TORCHCODEC_BUILD_WEBP = {env = "TORCHCODEC_BUILD_WEBP", default = "AUTO"}
+TORCHCODEC_BUILD_AVIF = {env = "TORCHCODEC_BUILD_AVIF", default = "AUTO"}
+TORCHCODEC_BUILD_GIF = {env = "TORCHCODEC_BUILD_GIF", default = "AUTO"}
+
 [project.optional-dependencies]
 dev = [
     "numpy",

@@ -18,13 +18,8 @@ from torchcodec._core.ops import (
     decode_webp as _decode_webp,
 )
 
-# TODO_IMAGE: we need to make FFmpeg an optional dependency
-
-# TODO_IMAGE: we should allow to build without all the image dependencies
-# (libjpeg etc.), and make sure only the *calls* to decode_*() fail at runtime,
-# not the import of torchcodec.
-
-# TODO_IMAGE We probably need CI jobs for both TODOs above.
+# TODO_IMAGE: we need to make FFmpeg an optional dependency, and probably want a
+# CI job for that.
 
 # TODO_IMAGE Some codecs expose threading options - we should make sure the
 # default is 1 thread and allow the user to override it. (similar to

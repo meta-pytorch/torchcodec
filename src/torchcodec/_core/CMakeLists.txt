@@ -30,67 +30,136 @@ if(APPLE)
     set(CMAKE_FIND_FRAMEWORK LAST)
 endif()
 
-# libjpeg is an optional build-time dependency for the CPU JPEG image decoder.
-# When found, we compile decode_jpeg with libjpeg support and link against it.
-# When absent, decode_jpeg still exists but raises an actionable error at call
-# time (see DecodeJpeg.cpp's !JPEG_FOUND stub).
-if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
-    # JPEG_ROOT will automatically be passed to find_package(JPEG) by CMake if it is
-    # set. We fallback to the conda prefix if it is not set.
-    if(WIN32)
-        set(JPEG_ROOT "$ENV{CONDA_PREFIX}/Library")
-    else()
-        set(JPEG_ROOT "$ENV{CONDA_PREFIX}")
+# Image decoder build toggles. By default all image decoders are built and
+# *required*: if a codec's lib can't be found/fetched the build fails loudly,
+# telling the user how to opt out. This is controlled by:
+#   - TORCHCODEC_BUILD_IMAGE (catch-all, default ON)
+#   - TORCHCODEC_BUILD_{JPEG,PNG,WEBP,AVIF,GIF} (default AUTO = inherit catch-all)
+# A codec set to OFF is not built; its decode_*() then raises an actionable error
+# at call time (see e.g. DecodeJpeg.cpp's !TORCHCODEC_ENABLE_JPEG stub), while importing
+# torchcodec still works. We default the flags here too so that direct `cmake`
+# invocations (e.g. the C++ tests build) behave like the scikit-build path,
+# which passes them via pyproject.toml.
+if(NOT DEFINED TORCHCODEC_BUILD_IMAGE)
+    set(TORCHCODEC_BUILD_IMAGE "ON")
+endif()
+foreach(_codec JPEG PNG WEBP AVIF GIF)
+    if(NOT DEFINED TORCHCODEC_BUILD_${_codec})
+        set(TORCHCODEC_BUILD_${_codec} "AUTO")
     endif()
-endif()
-find_package(JPEG)  # Not REQUIRED on purpose.
-# TODO_IMAGE: we should probably make it mandatory by default and allow to make
-# it optional via a flag?
-if(JPEG_FOUND)
-    message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
-else()
-    message(STATUS "libjpeg NOT found: torchcodec.decode_jpeg will raise at runtime.")
-endif()
+endforeach()
 
-# same as libjpeg, libpng is an optional build-time dependency for the CPU PNG
-# image decoder.
-if(NOT DEFINED PNG_ROOT AND DEFINED ENV{CONDA_PREFIX})
-    if(WIN32)
-        set(PNG_ROOT "$ENV{CONDA_PREFIX}/Library")
+# Returns true (via out_want) if TORCHCODEC_BUILD_IMAGE is on, or if that
+# specific codec flag is explicitly on, and false otherwise.
+function(resolve_image_codec codec_flag out_want)
+    if(codec_flag STREQUAL "AUTO")
+        set(_resolved "${TORCHCODEC_BUILD_IMAGE}")
     else()
-        set(PNG_ROOT "$ENV{CONDA_PREFIX}")
+        set(_resolved "${codec_flag}")
     endif()
-endif()
-find_package(PNG)  # Not REQUIRED on purpose. Transitively pulls in ZLIB.
-if(PNG_FOUND)
-    message(STATUS "libpng found: building torchcodec with PNG image decoding support.")
-else()
-    message(STATUS "libpng NOT found: torchcodec.decode_png will raise at runtime.")
-endif()
-
-# same as libjpeg/libpng, libwebp is an optional build-time dependency for the
-# CPU WebP image decoder (DecodeWebp.cpp).
-if(NOT DEFINED WebP_ROOT AND DEFINED ENV{CONDA_PREFIX})
-    if(WIN32)
-        set(WebP_ROOT "$ENV{CONDA_PREFIX}/Library")
+    if(_resolved)
+        set(${out_want} TRUE PARENT_SCOPE)
     else()
-        set(WebP_ROOT "$ENV{CONDA_PREFIX}")
+        set(${out_want} FALSE PARENT_SCOPE)
     endif()
-endif()
-find_package(WebP)  # Not REQUIRED on purpose. Provides the WebP::webp and
-                    # WebP::webpdemux targets.
-if(WebP_FOUND)
-    message(STATUS "libwebp found: building torchcodec with WebP image decoding support.")
-else()
-    message(STATUS "libwebp NOT found: torchcodec.decode_webp will raise at runtime.")
-endif()
+endfunction()
 
-# TODO_IMAGE: fetch and building with avif is unconditional for now. We should
-# make image support opt-in/opt-out (mirroring the TODO_IMAGE in
-# _image_decoders.py about building without image dependencies)
-include(${CMAKE_CURRENT_SOURCE_DIR}/fetch_avif_from_s3.cmake)
-set(libavif_FOUND TRUE)
-message(STATUS "Building torchcodec with AVIF image decoding support (libavif from S3).")
+function(discover_image_codecs)
+    resolve_image_codec("${TORCHCODEC_BUILD_JPEG}" want_jpeg)
+    if(want_jpeg)
+        if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
+            # JPEG_ROOT will automatically be passed to find_package(JPEG) by CMake
+            # if it is set. We fallback to the conda prefix if it is not set.
+            if(WIN32)
+                set(JPEG_ROOT "$ENV{CONDA_PREFIX}/Library")
+            else()
+                set(JPEG_ROOT "$ENV{CONDA_PREFIX}")
+            endif()
+        endif()
+        find_package(JPEG)  # Not REQUIRED: we emit our own actionable error below.
+        if(JPEG_FOUND)
+            message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
+        else()
+            message(FATAL_ERROR
+                "libjpeg not found, but JPEG image decoding is enabled. Install "
+                "libjpeg[-turbo] and its development headers, or set "
+                "TORCHCODEC_BUILD_JPEG=0 to build without JPEG support (decode_jpeg "
+                "will raise at runtime), or TORCHCODEC_BUILD_IMAGE=0 to disable all "
+                "image decoders.")
+        endif()
+    else()
+        message(STATUS "Not building torchcodec with JPEG image decoding support (disabled via TORCHCODEC_BUILD_JPEG/TORCHCODEC_BUILD_IMAGE): decode_jpeg will raise at runtime.")
+    endif()
+
+    resolve_image_codec("${TORCHCODEC_BUILD_PNG}" want_png)
+    if(want_png)
+        if(NOT DEFINED PNG_ROOT AND DEFINED ENV{CONDA_PREFIX})
+            if(WIN32)
+                set(PNG_ROOT "$ENV{CONDA_PREFIX}/Library")
+            else()
+                set(PNG_ROOT "$ENV{CONDA_PREFIX}")
+            endif()
+        endif()
+        find_package(PNG)  # Transitively pulls in ZLIB.
+        if(PNG_FOUND)
+            message(STATUS "libpng found: building torchcodec with PNG image decoding support.")
+        else()
+            message(FATAL_ERROR
+                "libpng not found, but PNG image decoding is enabled. Install libpng "
+                "and its development headers, or set TORCHCODEC_BUILD_PNG=0 to build "
+                "without PNG support (decode_png will raise at runtime), or "
+                "TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders.")
+        endif()
+    else()
+        message(STATUS "Not building torchcodec with PNG image decoding support (disabled via TORCHCODEC_BUILD_PNG/TORCHCODEC_BUILD_IMAGE): decode_png will raise at runtime.")
+    endif()
+
+    resolve_image_codec("${TORCHCODEC_BUILD_WEBP}" want_webp)
+    if(want_webp)
+        if(NOT DEFINED WebP_ROOT AND DEFINED ENV{CONDA_PREFIX})
+            if(WIN32)
+                set(WebP_ROOT "$ENV{CONDA_PREFIX}/Library")
+            else()
+                set(WebP_ROOT "$ENV{CONDA_PREFIX}")
+            endif()
+        endif()
+        find_package(WebP)  # Provides the WebP::webp and WebP::webpdemux targets.
+        if(WebP_FOUND)
+            message(STATUS "libwebp found: building torchcodec with WebP image decoding support.")
+        else()
+            message(FATAL_ERROR
+                "libwebp not found, but WebP image decoding is enabled. Install "
+                "libwebp and its development headers, or set TORCHCODEC_BUILD_WEBP=0 "
+                "to build without WebP support (decode_webp will raise at runtime), "
+                "or TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders.")
+        endif()
+    else()
+        message(STATUS "Not building torchcodec with WebP image decoding support (disabled via TORCHCODEC_BUILD_WEBP/TORCHCODEC_BUILD_IMAGE): decode_webp will raise at runtime.")
+    endif()
+
+    resolve_image_codec("${TORCHCODEC_BUILD_AVIF}" want_avif)
+    if(want_avif)
+        include(${CMAKE_CURRENT_SOURCE_DIR}/fetch_avif_from_s3.cmake)
+        set(libavif_FOUND TRUE)
+        message(STATUS "Building torchcodec with AVIF image decoding support (libavif from S3).")
+    else()
+        message(STATUS "Not building torchcodec with AVIF image decoding support (disabled via TORCHCODEC_BUILD_AVIF/TORCHCODEC_BUILD_IMAGE): decode_avif will raise at runtime.")
+    endif()
+
+    resolve_image_codec("${TORCHCODEC_BUILD_GIF}" want_gif)
+    if(want_gif)
+        message(STATUS "Building torchcodec with GIF image decoding support (vendored giflib).")
+    else()
+        message(STATUS "Not building torchcodec with GIF image decoding support (disabled via TORCHCODEC_BUILD_GIF/TORCHCODEC_BUILD_IMAGE): decode_gif will raise at runtime.")
+    endif()
+
+    # Re-export the resolved want_<codec> booleans and (for Windows) the avif
+    # runtime lib path to make_torchcodec_image_library, our caller.
+    foreach(_codec jpeg png webp avif gif)
+        set(want_${_codec} "${want_${_codec}}" PARENT_SCOPE)
+    endforeach()
+    set(avif_runtime_lib "${avif_runtime_lib}" PARENT_SCOPE)
+endfunction()
 
 # Read a list variable from sources.bzl, the single source of truth for the
 # _core C++ source files shared with the internal Buck build. The .bzl file is
@@ -462,12 +531,18 @@ endfunction()
 # (which also links libpng/libjpeg/... with the same sonames) then live in
 # separate scopes and cannot interpose on each other.
 function(make_torchcodec_image_library)
+    # This will expose the want_<codec> booleans and (for Windows) the avif
+    # runtime lib path
+    discover_image_codecs()
+
     set(image_library_name "libtorchcodec_image")
     set(image_library_sources
         ${TORCHCODEC_IMAGE_SOURCES}
         ${TORCHCODEC_IMAGE_OPS_SOURCES}
-        ${TORCHCODEC_GIFLIB_SOURCES}
     )
+    if(want_gif)
+        list(APPEND image_library_sources ${TORCHCODEC_GIFLIB_SOURCES})
+    endif()
 
     make_torchcodec_sublibrary(
         "${image_library_name}"
@@ -476,26 +551,26 @@ function(make_torchcodec_image_library)
         "${TORCH_LIBRARIES}"
     )
 
-    # Optional image codec support. Each *_FOUND gates both the compile-time code
-    # path (the decoder falls back to an actionable runtime-error stub when
-    # absent) and the link. These are linked here, NOT into core.
-    if(JPEG_FOUND)
-        target_compile_definitions(${image_library_name} PRIVATE JPEG_FOUND=1)
+    if(want_jpeg)
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_JPEG=1)
         target_link_libraries(${image_library_name} PRIVATE JPEG::JPEG)
     endif()
-    if(PNG_FOUND)
-        target_compile_definitions(${image_library_name} PRIVATE PNG_FOUND=1)
+    if(want_png)
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_PNG=1)
         target_link_libraries(${image_library_name} PRIVATE PNG::PNG)
     endif()
-    if(WebP_FOUND)
-        target_compile_definitions(${image_library_name} PRIVATE WEBP_FOUND=1)
+    if(want_webp)
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_WEBP=1)
         # WebP::webpdemux provides the WebPAnimDecoder API used for animated
         # webp files.
         target_link_libraries(${image_library_name} PRIVATE WebP::webp WebP::webpdemux)
     endif()
-    if(libavif_FOUND)
-        target_compile_definitions(${image_library_name} PRIVATE AVIF_FOUND=1)
+    if(want_avif)
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_AVIF=1)
         target_link_libraries(${image_library_name} PRIVATE avif)
+    endif()
+    if(want_gif)
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_GIF=1)
     endif()
 
     # Hide our own (and statically linked giflib's) symbols so the only thing
@@ -512,7 +587,7 @@ function(make_torchcodec_image_library)
             LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
             RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
         )
-        if(WIN32)
+        if(WIN32 AND want_avif)
             # Windows editable build needs the libavif DLL next to the image
             # lib. Note that the other image codec lib don't, because they are
             # already on the DLL search path. This is speculative and untested,

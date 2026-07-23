@@ -12,7 +12,7 @@
 
 #include "StableABICompat.h"
 
-#if !AVIF_FOUND
+#if !TORCHCODEC_ENABLE_AVIF
 
 namespace facebook::torchcodec {
 
@@ -152,4 +152,4 @@ torch::stable::Tensor decode_avif(
 
 } // namespace facebook::torchcodec
 
-#endif // !AVIF_FOUND
+#endif // !TORCHCODEC_ENABLE_AVIF

@@ -84,8 +84,6 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
          libraries do not meet those conditions.
     """
 
-    # TODO_IMAGE: Maybe we should only load that upon first use of an image
-    # decoder.
     image_library_path = _get_extension_path("libtorchcodec_image")
     torch.ops.load_library(image_library_path)
 
