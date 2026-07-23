@@ -105,7 +105,7 @@ torch::stable::Tensor decode_gif(
   // only way to read from a custom source, via the read_callback reader above.
 
   // TODO: We are potentially doing an unnecessary copy of the encoded bytes:
-  // - 1 copy from file to tensor (in the Python _read_file_to_tensor())
+  // - 1 copy from file to tensor (in the Python _source_to_tensor())
   // - 1 copy from tensor to GIFLIB buffers (in read_callback())
   // Since we're vendoring GIFLIB we can potentially modify the calls to
   // InternalRead() and just set the `buf` pointer to the tensor data directly.

@@ -58,14 +58,27 @@ class ImageColorMode(Enum):
     RGB_ALPHA = 4
 
 
-def _read_file_to_tensor(path: str | Path) -> torch.Tensor:
-    # TODO_IMAGE: port read_file?
-    data = Path(path).read_bytes()
-    with warnings.catch_warnings():
-        # torch.frombuffer warns that the underlying buffer is non-writable;
-        # we only read from the resulting tensor, so this is safe to ignore.
-        warnings.filterwarnings("ignore", category=UserWarning)
-        return torch.frombuffer(data, dtype=torch.uint8)
+def _source_to_tensor(source: str | Path | bytes | torch.Tensor) -> torch.Tensor:
+    # Turn any supported source into a 1-D uint8 tensor of encoded bytes.
+    if isinstance(source, torch.Tensor):
+        # dtype is validated in cpp.
+        return source
+    if isinstance(source, (str, Path)):
+        # We keep the file reading in pure Python (rather than a C++ read_file
+        # op like in torchvision): benchmarked against a C++ op, the
+        # read is only ~1-1.5% of total decode time.
+        source = Path(source).read_bytes()
+    if isinstance(source, (bytes, bytearray)):
+        with warnings.catch_warnings():
+            # torch.frombuffer warns that the underlying buffer is non-writable;
+            # we only read from the resulting tensor, so this is safe to ignore.
+            warnings.filterwarnings("ignore", category=UserWarning)
+            return torch.frombuffer(source, dtype=torch.uint8)
+
+    raise TypeError(
+        f"Unknown source type: {type(source)}. "
+        "Supported types are str, Path, bytes and torch.Tensor."
+    )
 
 
 # Output modes each native codec can produce directly, for any input. Any output
@@ -132,9 +145,6 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
         )
 
 
-# TODO_IMAGE: Benchmark against torchvision, both from file and from bytes. We
-# have changed the file reading logic a bit (it's Python right now, not Cpp).
-
 # TODO_IMAGE: Since we're updating the decoders code a bit, we should run sanity
 # checks ensure we're not leaking anything (there was a leak on webp back then!).
 
@@ -142,32 +152,42 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
 
 
 def decode_jpeg(
-    # TODO_IMAGE: support bytes and file-like
-    source: str | Path,
+    source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
-    """Decode a JPEG file into a uint8 tensor of shape ``(C, H, W)``."""
-    data = _read_file_to_tensor(source)
+    """Decode a JPEG into a uint8 tensor of shape ``(C, H, W)``.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
+    """
+    data = _source_to_tensor(source)
     return _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
 
 
 def decode_png(
-    source: str | Path,
+    source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
-    """Decode a PNG file into a uint8 tensor of shape ``(C, H, W)``."""
-    data = _read_file_to_tensor(source)
+    """Decode a PNG into a uint8 tensor of shape ``(C, H, W)``.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
+    """
+    data = _source_to_tensor(source)
     return _decode_with_mode(_decode_png, data, mode, _PNG_NATIVE_OUTPUT_MODES)
 
 
 def decode_webp(
-    source: str | Path,
+    source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
-    """Decode a WebP file into a uint8 tensor.
+    """Decode a WebP into a uint8 tensor.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
 
     The shape is ``(C, H, W)`` for a still WebP and ``(N, C, H, W)`` for an
     animated one, with 4 channels when the output carries an alpha channel.
@@ -175,16 +195,19 @@ def decode_webp(
     offsets). The mode-conversion helpers (see _decode_with_mode) operate on the
     channel dim, so they handle both the still and animated shapes.
     """
-    data = _read_file_to_tensor(source)
+    data = _source_to_tensor(source)
     return _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
 
 
 def decode_gif(
-    source: str | Path,
+    source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
-    """Decode a GIF file into a uint8 tensor.
+    """Decode a GIF into a uint8 tensor.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
 
     The shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for an
     animated one, with 4 channels when the output carries an alpha channel (see
@@ -192,17 +215,73 @@ def decode_gif(
     _decode_with_mode) operate on the channel dim, so they handle both the still
     and animated shapes.
     """
-    data = _read_file_to_tensor(source)
+    data = _source_to_tensor(source)
     return _decode_with_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
 
 
 def decode_avif(
-    source: str | Path,
+    source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
     # TODO_IMAGE: 10/12-bit AVIF files are decoded as uint8 for now, losing
     # precision. Returning uint16 for high-bit-depth files is tied to adding
-    """Decode an AVIF file into a uint8 tensor."""
-    data = _read_file_to_tensor(source)
+    """Decode an AVIF into a uint8 tensor.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
+    """
+    data = _source_to_tensor(source)
     return _decode_with_mode(_decode_avif, data, mode, _AVIF_NATIVE_OUTPUT_MODES)
+
+
+# Maps a detected format to its raw decode op and native output modes, so
+# decode_image reuses the same mode-emulation path as the format-specific
+# decoders above.
+_FORMAT_TO_DECODER = {
+    "jpeg": (_decode_jpeg, _JPEG_NATIVE_OUTPUT_MODES),
+    "png": (_decode_png, _PNG_NATIVE_OUTPUT_MODES),
+    "webp": (_decode_webp, _WEBP_NATIVE_OUTPUT_MODES),
+    "gif": (_decode_gif, _GIF_NATIVE_OUTPUT_MODES),
+    "avif": (_decode_avif, _AVIF_NATIVE_OUTPUT_MODES),
+}
+
+
+def _detect_image_format(data: torch.Tensor) -> str:
+    # Sniff the codec from the leading "magic" bytes of the encoded data.
+    # This used to be implemented in C++ in torchvision, but benchmarks show
+    # this is negligible in Python
+    header = bytes(data[:64].tolist())
+    if header[:3] == b"\xff\xd8\xff":
+        return "jpeg"
+    if header[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if header[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if header[:4] == b"RIFF" and header[8:12] == b"WEBP":
+        return "webp"
+    if header[4:8] == b"ftyp":
+        # ISOBMFF container (AVIF/HEIC/...). The major brand is at [8:12], with
+        # compatible brands following. AVIF uses the "avif" (still) or "avis"
+        # (animated) brands; HEIC (which we don't support) uses "heic"/"heix"
+        # and is deliberately not matched here.
+        brands = header[8:]
+        if b"avif" in brands or b"avis" in brands:
+            return "avif"
+    raise ValueError(
+        "Unsupported or unrecognized image format. Supported formats are "
+        "JPEG, PNG, WebP, GIF and AVIF. If you know you have a valid image, "
+        "try using the dedicated decode_* functions like decode_jpeg() instead."
+    )
+
+
+def decode_image(
+    source: str | Path | bytes | torch.Tensor,
+    *,
+    mode: ImageColorMode = ImageColorMode.RGB,
+) -> torch.Tensor:
+    """Decode an image into a uint8 tensor, detecting the format automatically."""
+    data = _source_to_tensor(source)
+    fmt = _detect_image_format(data)
+    decode_fn, native_output_modes = _FORMAT_TO_DECODER[fmt]
+    return _decode_with_mode(decode_fn, data, mode, native_output_modes)

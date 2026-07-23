@@ -35,9 +35,10 @@ from torchcodec.decoders._blocks import (
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.decoders._image_decoders import (
-    _read_file_to_tensor,
+    _source_to_tensor,
     decode_avif,
     decode_gif,
+    decode_image,
     decode_jpeg,
     decode_png,
     decode_webp,
@@ -3506,7 +3507,7 @@ class TestImageDecoder:
     def test_torchscript(self, kind, asset):
         # This is just to ensure some sort of BC from torchvision. Zero
         # guarantee we'll keep supporting torchscript.
-        data = _read_file_to_tensor(asset.path)
+        data = _source_to_tensor(asset.path)
         scripted = torch.jit.script(self._scriptable_decode)
         eager = getattr(torch.ops.torchcodec_ns, f"decode_{kind}")
         torch.testing.assert_close(
@@ -3532,6 +3533,83 @@ class TestImageDecoder:
         # 1 channel, an RGBA source has its alpha stripped.
         decoded = decode_fn(asset.path)
         assert decoded.shape[0] == 3
+
+    @pytest.mark.parametrize(
+        "make_source",
+        (
+            pytest.param(lambda a: str(a.path), id="str"),
+            pytest.param(lambda a: a.path.read_bytes(), id="bytes"),
+            pytest.param(
+                lambda a: torch.frombuffer(
+                    bytearray(a.path.read_bytes()), dtype=torch.uint8
+                ),
+                id="tensor",
+            ),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (
+            _jpeg_param(GRADIENT_JPEG),
+            _png_param(GRADIENT_PNG),
+            _webp_param(GRADIENT_WEBP),
+            _gif_param(GRADIENT_GIF),
+            _avif_param(GRADIENT_AVIF),
+        ),
+    )
+    def test_source_kinds(self, decode_fn, asset, make_source):
+        # A str path, bytes, and a uint8 tensor of the encoded data must all
+        # decode to the same result as a pathlib.Path.
+        assert_frames_equal(decode_fn(make_source(asset)), decode_fn(asset.path))
+
+    @pytest.mark.parametrize(
+        "decode_fn",
+        (_jpeg_param(), _png_param(), _webp_param(), _gif_param(), _avif_param()),
+    )
+    def test_bad_source_type_raises(self, decode_fn):
+        with pytest.raises(TypeError, match="Unknown source type"):
+            decode_fn(123)
+
+    @pytest.mark.parametrize(
+        "make_source",
+        (
+            pytest.param(lambda a: a.path, id="path"),
+            pytest.param(lambda a: str(a.path), id="str"),
+            pytest.param(lambda a: a.path.read_bytes(), id="bytes"),
+            pytest.param(
+                lambda a: torch.frombuffer(
+                    bytearray(a.path.read_bytes()), dtype=torch.uint8
+                ),
+                id="tensor",
+            ),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "mode",
+        (ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.GRAY_ALPHA),
+    )
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (
+            _jpeg_param(GRADIENT_JPEG),
+            _png_param(RGBA_PNG),
+            _webp_param(RGBA_WEBP),
+            _gif_param(GRADIENT_GIF),
+            _avif_param(RGBA_AVIF),
+        ),
+    )
+    def test_decode_image(self, decode_fn, asset, mode, make_source):
+        # decode_image detects the format and must produce exactly what the
+        # format-specific decoder produces, for every mode and source kind.
+        assert_frames_equal(
+            decode_image(make_source(asset), mode=mode),
+            decode_fn(asset.path, mode=mode),
+        )
+
+    def test_decode_image_unrecognized_format_raises(self):
+        garbage = torch.arange(64, dtype=torch.uint8)
+        with pytest.raises(ValueError, match="Unsupported or unrecognized"):
+            decode_image(garbage)
 
     @needs_jpeg
     @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, CMYK_JPEG))
