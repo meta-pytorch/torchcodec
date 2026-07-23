@@ -21,6 +21,8 @@ import torch
 
 import torchcodec
 from torchcodec._core import ops as _ops
+from torchcodec.decoders import AudioDecoder, VideoDecoder, WavDecoder
+from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
 
 from .utils import (
     avif_is_available,
@@ -84,51 +86,27 @@ def test_decode_image_works_without_ffmpeg():
     )
 
 
-def _make_video_decoder():
-    from torchcodec.decoders import VideoDecoder
-
-    return VideoDecoder(GRADIENT_JPEG.path)
-
-
-def _make_audio_decoder():
-    from torchcodec.decoders import AudioDecoder
-
-    return AudioDecoder(GRADIENT_JPEG.path)
-
-
-def _make_wav_decoder():
-    from torchcodec.decoders import WavDecoder
-
-    return WavDecoder(GRADIENT_JPEG.path)
-
-
-def _make_video_encoder():
-    from torchcodec.encoders import VideoEncoder
-
-    return VideoEncoder(torch.zeros(1, 3, 16, 16, dtype=torch.uint8), frame_rate=30)
-
-
-def _make_audio_encoder():
-    from torchcodec.encoders import AudioEncoder
-
-    return AudioEncoder(torch.zeros(1, 100), sample_rate=16000)
-
-
-def _make_streaming_encoder():
-    from torchcodec.encoders import Encoder
-
-    return Encoder()
-
-
+# The entry-point classes are imported at module scope (above): those imports
+# must succeed even without FFmpeg. Each entry below only *constructs* an object,
+# so the pytest.raises block unambiguously asserts that construction is what
+# raises (not the import).
 @pytest.mark.parametrize(
     "make_entry_point",
     [
-        _make_video_decoder,
-        _make_audio_decoder,
-        _make_wav_decoder,
-        _make_video_encoder,
-        _make_audio_encoder,
-        _make_streaming_encoder,
+        pytest.param(lambda: VideoDecoder(GRADIENT_JPEG.path), id="VideoDecoder"),
+        pytest.param(lambda: AudioDecoder(GRADIENT_JPEG.path), id="AudioDecoder"),
+        pytest.param(lambda: WavDecoder(GRADIENT_JPEG.path), id="WavDecoder"),
+        pytest.param(
+            lambda: VideoEncoder(
+                torch.zeros(1, 3, 16, 16, dtype=torch.uint8), frame_rate=30
+            ),
+            id="VideoEncoder",
+        ),
+        pytest.param(
+            lambda: AudioEncoder(torch.zeros(1, 100), sample_rate=16000),
+            id="AudioEncoder",
+        ),
+        pytest.param(lambda: Encoder(), id="Encoder"),
     ],
 )
 def test_ffmpeg_entry_points_raise_clear_error(make_entry_point):
