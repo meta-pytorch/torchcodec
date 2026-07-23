@@ -73,7 +73,9 @@ void error_callback(png_structp png_ptr, png_const_charp error_message) {
   png_longjmp(png_ptr, 1);
 }
 
-int fetch_png_exif_orientation(png_structp png_ptr, png_infop info_ptr) {
+ExifOrientation fetch_png_exif_orientation(
+    png_structp png_ptr,
+    png_infop info_ptr) {
   png_uint_32 num_exif = 0;
   png_bytep exif = nullptr;
 
@@ -84,7 +86,7 @@ int fetch_png_exif_orientation(png_structp png_ptr, png_infop info_ptr) {
   if (exif != nullptr && num_exif > 0) {
     return fetch_exif_orientation(exif, num_exif);
   } else {
-    return 1;
+    return ExifOrientation::Unspecified;
   }
 }
 
@@ -349,7 +351,8 @@ torch::stable::Tensor decode_png(
       header.num_passes,
       stride);
 
-  int exif_orientation = fetch_png_exif_orientation(png_ptr, info_ptr);
+  ExifOrientation exif_orientation =
+      fetch_png_exif_orientation(png_ptr, info_ptr);
 
   png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
 

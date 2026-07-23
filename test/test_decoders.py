@@ -3673,6 +3673,9 @@ class TestImageDecoder:
             _jpeg_param("JPEG", "jpg", {"quality": 95}),
             _png_param("PNG", "png", {}),
             _webp_param("WEBP", "webp", {"lossless": True}),
+            # Note that avif doesn't encode exif data, it has its own metadata
+            # for it, but it seems that PIL can still encode this fine.
+            _avif_param("AVIF", "avif", {"quality": 100}),
         ),
     )
     @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))

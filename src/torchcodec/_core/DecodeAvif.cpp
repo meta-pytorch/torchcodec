@@ -38,9 +38,12 @@ torch::stable::Tensor decode_avif(
 
 #include "avif/avif.h"
 
+#include "Exif.h"
 #include "ImageCommon.h"
 
 namespace facebook::torchcodec {
+
+using namespace exif_private;
 
 namespace {
 
@@ -53,6 +56,33 @@ struct AvifDecoderDeleter {
 };
 
 using DecoderPtr = std::unique_ptr<avifDecoder, AvifDecoderDeleter>;
+
+// AVIF stores orientation as separate 'irot' and 'imir' transforms rather than
+// a single EXIF orientation value. We map them to the equivalent EXIF
+// orientation so we can reuse exif_orientation_transform() and stay consistent
+// with the other decoders. This is a port of libavif's own
+// avifImageIrotImirToExifOrientation().
+ExifOrientation avif_exif_orientation(const avifImage* image) {
+  bool has_irot = (image->transformFlags & AVIF_TRANSFORM_IROT) != 0;
+  bool has_imir = (image->transformFlags & AVIF_TRANSFORM_IMIR) != 0;
+  uint8_t angle = has_irot ? image->irot.angle : 0;
+  uint8_t axis = image->imir.axis;
+
+  using E = ExifOrientation;
+  switch (angle) {
+    case 0:
+      return !has_imir ? E::TopLeft : (axis == 0 ? E::BottomLeft : E::TopRight);
+    case 1:
+      return !has_imir ? E::LeftBottom
+                       : (axis == 0 ? E::LeftTop : E::RightBottom);
+    case 2:
+      return !has_imir ? E::BottomRight
+                       : (axis == 0 ? E::TopRight : E::BottomLeft);
+    default: // angle == 3
+      return !has_imir ? E::RightTop
+                       : (axis == 0 ? E::RightBottom : E::LeftTop);
+  }
+}
 
 } // namespace
 
@@ -78,6 +108,9 @@ torch::stable::Tensor decode_avif(
       result == AVIF_RESULT_OK,
       "avifDecoderParse failed: ",
       avifResultToString(result));
+
+  // irot/imir are populated during parse and are constant across the sequence.
+  ExifOrientation exif_orientation = avif_exif_orientation(decoder->image);
 
   // We detect animation via imageSequenceTrackPresent (the signal that
   // specifically means "image sequence"), not imageCount. imageCount can also
@@ -141,8 +174,7 @@ torch::stable::Tensor decode_avif(
         avifResultToString(result));
   }
 
-  // TODO_IMAGE: apply AVIF orientation (irot/imir transforms) like we apply
-  // EXIF orientation for the other decoders.
+  output = exif_orientation_transform(output, exif_orientation);
 
   if (num_frames == 1) {
     output = select_row(output, 0);
