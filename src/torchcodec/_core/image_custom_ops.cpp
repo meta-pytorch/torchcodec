@@ -24,7 +24,8 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("decode_png(Tensor input, int mode, int output_dtype=0) -> Tensor");
   m.def("decode_webp(Tensor input, int mode) -> Tensor");
   m.def("decode_gif(Tensor input, int mode) -> Tensor");
-  m.def("decode_avif(Tensor input, int mode, int output_dtype=0) -> Tensor");
+  m.def(
+      "decode_avif(Tensor input, int mode, int output_dtype=0, int num_threads=1) -> Tensor");
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

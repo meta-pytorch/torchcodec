@@ -90,13 +90,18 @@ ExifOrientation avif_exif_orientation(const avifImage* image) {
 torch::stable::Tensor decode_avif(
     const torch::stable::Tensor& input,
     int64_t mode,
-    int64_t output_dtype) {
+    int64_t output_dtype,
+    int64_t num_threads) {
   // Based on
   // https://github.com/AOMediaCodec/libavif/blob/main/examples/avif_example_decode_memory.c
   validate_encoded_data(input);
+  STD_TORCH_CHECK(
+      num_threads >= 1, "num_threads must be >= 1, got ", num_threads);
 
   DecoderPtr decoder(avifDecoderCreate());
   STD_TORCH_CHECK(decoder != nullptr, "Failed to create avif decoder.");
+
+  decoder->maxThreads = static_cast<int>(num_threads);
 
   auto result = avifDecoderSetIOMemory(
       decoder.get(), input.const_data_ptr<uint8_t>(), input.numel());
