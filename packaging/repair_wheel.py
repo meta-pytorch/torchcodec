@@ -196,6 +196,48 @@ def bundle_third_party_licenses():
     LICENSE.
     """
 
+    # NOTE: all `[LIC-DBG]` prints below are temporary diagnostics to help debug
+    # cross-platform failures. Remove them (grep for LIC-DBG) once this is known
+    # to work on Linux/macOS/Windows.
+    def dbg(*a):
+        print("[LIC-DBG]", *a, flush=True)
+
+    def dbg_ls(label, path, limit=60):
+        """Print the (shallow) contents of a directory, defensively."""
+        p = Path(path)
+        try:
+            if not p.exists():
+                dbg(f"{label}: {p} -> DOES NOT EXIST")
+                return
+            if not p.is_dir():
+                dbg(f"{label}: {p} -> not a dir (is_file={p.is_file()})")
+                return
+            entries = sorted(p.iterdir())
+            dbg(f"{label}: {p} -> {len(entries)} entries:")
+            for e in entries[:limit]:
+                kind = "d" if e.is_dir() else "f"
+                dbg(f"    [{kind}] {e.name}")
+            if len(entries) > limit:
+                dbg(f"    ... ({len(entries) - limit} more)")
+        except Exception as e:  # never let debug crash the build
+            dbg(f"{label}: {p} -> error listing: {e!r}")
+
+    dbg("=" * 70)
+    dbg("bundle_third_party_licenses starting")
+    dbg("platform.system() =", platform.system())
+    dbg("platform.platform() =", platform.platform())
+    dbg("sys.executable =", sys.executable)
+    dbg("cwd =", Path.cwd())
+    dbg("os.pathsep =", repr(os.pathsep), "os.sep =", repr(os.sep))
+    dbg("CONDA_PREFIX =", os.environ.get("CONDA_PREFIX"))
+    dbg("CONDA_DEFAULT_ENV =", os.environ.get("CONDA_DEFAULT_ENV"))
+    dbg("CONDA_PKGS_DIRS =", os.environ.get("CONDA_PKGS_DIRS"))
+    dbg("DIST_DIR =", DIST_DIR.resolve())
+    dbg_ls("DIST_DIR contents", DIST_DIR)
+    dbg_ls("build/ glob roots", "build")
+    for d in Path("build").glob("*/_deps/avif_s3-src"):
+        dbg_ls("avif_s3-src", d)
+
     def _resolve_conda_licenses():
         """Map dest filename -> source path for the conda-provided image libs.
 
@@ -210,6 +252,24 @@ def bundle_third_party_licenses():
                 "CONDA_PREFIX not set; cannot locate conda license files."
             )
         meta_dir = Path(conda_prefix) / "conda-meta"
+        dbg("conda-meta dir =", meta_dir, "exists =", meta_dir.is_dir())
+
+        # DEBUG: show every conda-meta record whose name looks image-lib-ish, so
+        # if a package is named differently on this platform we can see it.
+        try:
+            all_meta = sorted(p.name for p in meta_dir.glob("*.json"))
+            dbg(f"conda-meta has {len(all_meta)} json records")
+            hits = [
+                n
+                for n in all_meta
+                if any(
+                    k in n.lower()
+                    for k in ("jpeg", "turbo", "png", "zlib", "webp", "sharpyuv")
+                )
+            ]
+            dbg("conda-meta records matching image-lib keywords:", hits)
+        except Exception as e:
+            dbg("could not scan conda-meta:", repr(e))
 
         # logical lib -> (dest filename stem, candidate conda package names).
         # Some libs are packaged under more than one name across
@@ -224,20 +284,40 @@ def bundle_third_party_licenses():
 
         collected = {}
         for logical, (dest_stem, candidates) in wanted.items():
+            dbg(f"resolving {logical!r}, candidates={candidates}")
             src_files = None
             for pkg in candidates:
                 metas = sorted(meta_dir.glob(f"{pkg}-*.json"))
+                dbg(
+                    f"  candidate {pkg!r}: {len(metas)} conda-meta match(es):",
+                    [m.name for m in metas],
+                )
                 if not metas:
                     continue
                 info = json.loads(metas[0].read_text())
-                lic_dir = Path(info["extracted_package_dir"]) / "info" / "licenses"
+                epd = info.get("extracted_package_dir")
+                dbg(
+                    f"    using {metas[0].name}: license field =",
+                    repr(info.get("license")),
+                )
+                dbg("    extracted_package_dir =", epd)
+                if not epd:
+                    dbg("    WARNING: no extracted_package_dir in this record")
+                    continue
+                lic_dir = Path(epd) / "info" / "licenses"
+                dbg("    licenses dir =", lic_dir, "is_dir =", lic_dir.is_dir())
+                dbg_ls("    licenses dir contents", lic_dir)
                 if lic_dir.is_dir():
                     src_files = sorted(f for f in lic_dir.iterdir() if f.is_file())
+                    dbg(f"    -> resolved {logical} to:", [str(f) for f in src_files])
                     break
             if not src_files:
+                dbg(f"FAILED to resolve {logical}. Extra diagnostics follow:")
+                dbg_ls("meta_dir", meta_dir)
                 raise RuntimeError(
                     f"Could not find license files for {logical} (tried conda "
-                    f"packages {candidates} under {meta_dir})."
+                    f"packages {candidates} under {meta_dir}). See [LIC-DBG] "
+                    "output above for what conda-meta records exist."
                 )
             # A package usually ships a single license file; if it ships several,
             # keep them all, suffixed with their original name.
@@ -255,44 +335,70 @@ def bundle_third_party_licenses():
         packaging/build_libavif.sh and shipped in the S3 artifact that
         fetch_avif_from_s3.cmake unpacks into scikit-build's build dir.
         """
+        all_avif = sorted(Path("build").glob("*/_deps/avif_s3-src"))
+        dbg("avif_s3-src dirs found:", [str(p) for p in all_avif])
         dirs = [
             p for p in Path("build").glob("*/_deps/avif_s3-src/licenses") if p.is_dir()
         ]
+        dbg("avif licenses dirs found:", [str(p) for p in dirs])
         if not dirs:
+            for p in all_avif:
+                dbg_ls("avif_s3-src layout (no licenses/ found)", p)
             raise RuntimeError(
                 "libavif licenses dir not found under "
-                "build/*/_deps/avif_s3-src/licenses"
+                "build/*/_deps/avif_s3-src/licenses. See [LIC-DBG] output for "
+                "the actual avif_s3-src layout."
             )
         # Multiple build dirs (one per ABI) may exist; the license texts are
         # identical, so pick any.
+        dbg_ls("chosen avif licenses dir", dirs[0])
         return {f.name: f for f in sorted(dirs[0].iterdir()) if f.is_file()}
 
     run([sys.executable, "-m", "pip", "install", "-U", "wheel"])
     licenses = {**_resolve_conda_licenses(), **_resolve_avif_licenses()}
+    dbg("resolved", len(licenses), "third-party license files total")
     print("Third-party license files to bundle:")
     for name, src in sorted(licenses.items()):
-        print(f"  {name} <- {src}")
+        exists = Path(src).is_file()
+        size = Path(src).stat().st_size if exists else "N/A"
+        print(f"  {name} <- {src} (exists={exists}, bytes={size})")
 
     scratch = Path("dist_licenses")
     if scratch.is_dir():
         shutil.rmtree(scratch)
     scratch.mkdir(parents=True)
 
-    for wheel in sorted(DIST_DIR.glob("*.whl")):
+    wheels_to_process = sorted(DIST_DIR.glob("*.whl"))
+    dbg("wheels to process:", [w.name for w in wheels_to_process])
+    for wheel in wheels_to_process:
+        dbg("-" * 60)
+        dbg("processing wheel:", wheel.name)
         unpack_dir = scratch / "unpack"
         if unpack_dir.is_dir():
             shutil.rmtree(unpack_dir)
         run([sys.executable, "-m", "wheel", "unpack", wheel, "-d", unpack_dir])
+        dbg_ls("unpack_dir after unpack", unpack_dir)
         dist_info_dirs = list(unpack_dir.glob("*/*.dist-info"))
+        dbg("dist-info dirs found:", [str(d) for d in dist_info_dirs])
         if len(dist_info_dirs) != 1:
+            for top in unpack_dir.glob("*"):
+                dbg_ls("unpacked tree top-level", top)
             raise RuntimeError(
                 f"Expected exactly one .dist-info in {wheel.name}, "
                 f"found: {dist_info_dirs}"
             )
-        dest = dist_info_dirs[0] / "licenses" / "third_party"
+        licenses_root = dist_info_dirs[0] / "licenses"
+        dbg_ls("existing .dist-info/licenses before inject", licenses_root)
+        dest = licenses_root / "third_party"
         dest.mkdir(parents=True, exist_ok=True)
         for name, src in licenses.items():
-            shutil.copy(src, dest / name)
+            target = dest / name
+            shutil.copy(src, target)
+            dbg(
+                f"copied {src} -> {target} "
+                f"(ok={target.is_file()}, bytes={target.stat().st_size})"
+            )
+        dbg_ls("third_party dir after inject", dest)
         # Repack: `wheel pack` regenerates RECORD so the new files are recorded.
         run(
             [
@@ -307,11 +413,22 @@ def bundle_third_party_licenses():
         )
         shutil.rmtree(unpack_dir)
 
+    dbg_ls("scratch after packing", scratch)
     for wheel in DIST_DIR.glob("*.whl"):
         wheel.unlink()
     for wheel in scratch.glob("*.whl"):
         shutil.move(str(wheel), str(DIST_DIR))
     shutil.rmtree(scratch)
+
+    # DEBUG: verify the final wheels actually contain the third-party licenses.
+    for wheel in sorted(DIST_DIR.glob("*.whl")):
+        with zipfile.ZipFile(wheel) as zf:
+            tpl = [n for n in zf.namelist() if "/licenses/" in n]
+            dbg(f"final {wheel.name} license entries:")
+            for n in tpl:
+                dbg("    ", n)
+    dbg("bundle_third_party_licenses done")
+    dbg("=" * 70)
 
 
 def check_bundling():
@@ -478,6 +595,13 @@ def check_bundling():
         # keyword each bundled lib's license file must be identifiable by.
         for keyword in ("jpeg", "png", "zlib", "webp", "avif", "dav1d", "yuv"):
             if not any(keyword in n.lower() for n in license_files):
+                # DEBUG: dump every licenses/ entry in the wheel to see what did
+                # land there. Remove with the other [LIC-DBG] diagnostics.
+                all_licenses = [n for n in zf.namelist() if "/licenses/" in n]
+                print("[LIC-DBG] third-party license check FAILED")
+                print(f"[LIC-DBG]   missing keyword: {keyword!r}")
+                print(f"[LIC-DBG]   third_party/ files: {license_files}")
+                print(f"[LIC-DBG]   all licenses/ entries: {all_licenses}")
                 raise RuntimeError(
                     f"No third-party license file matching '{keyword}' found in "
                     f".dist-info/licenses/third_party/. Found: {license_files}"
