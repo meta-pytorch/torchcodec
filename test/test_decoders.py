@@ -3673,9 +3673,6 @@ class TestImageDecoder:
         decoded = decode_jpeg(asset.path, mode=mode)
 
         reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
-        if asset is CMYK_JPEG and mode == "UNCHANGED":
-            # libjpeg returns raw (inverted) CMYK samples; flip to match PIL.
-            reference = 255 - reference
 
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
@@ -3746,10 +3743,6 @@ class TestImageDecoder:
         assert decoded.dtype == torch.uint8
 
         reference = self._pil_to_tensor(Image.open(path).convert(pil_mode))
-        if output_mode == "UNCHANGED" and fmt == "JPEG" and source_mode == "CMYK":
-            # libjpeg returns raw (inverted) CMYK samples; flip to match PIL.
-            # TODO_IMAGE: is this a bug? Should we fix it?
-            reference = 255 - reference
 
         if output_mode == "UNCHANGED":
             num_expected_channels = reference.shape[0]
