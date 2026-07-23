@@ -8,6 +8,7 @@ import importlib
 import importlib.util
 import sys
 import traceback
+from functools import cache
 from pathlib import Path
 from types import ModuleType
 
@@ -78,14 +79,7 @@ def load_image_library() -> None:
     torch.ops.load_library(image_library_path)
 
 
-# Memoization state for ensure_ffmpeg_loaded(). We cache both success and
-# failure so that (a) we only ever load the shared libraries once, and (b) the
-# rich error explaining that FFmpeg could not be loaded is raised consistently
-# on every subsequent call (e.g. from every FFmpeg-backed entry point).
-_ffmpeg_load_result: tuple[int, str, ModuleType] | None = None
-_ffmpeg_load_error: Exception | None = None
-
-
+@cache
 def ensure_ffmpeg_loaded() -> tuple[int, str, ModuleType]:
     """
     Load the FFmpeg-dependent shared libraries, memoizing the result.
@@ -95,7 +89,12 @@ def ensure_ffmpeg_loaded() -> tuple[int, str, ModuleType]:
     actually requires FFmpeg; it is called lazily the first time an
     FFmpeg-backed entry point (VideoDecoder, AudioDecoder, the encoders,
     WavDecoder, ...) is used. If FFmpeg cannot be loaded, it raises a rich,
-    actionable error (and re-raises the same error on every subsequent call).
+    actionable error.
+
+    ``@cache`` ensures the libraries are only ever loaded once on success.
+    Failures aren't cached (``functools.cache`` doesn't cache exceptions), so a
+    missing FFmpeg re-runs the load loop and re-raises on every call, but that
+    only happens on the error path so the cost is irrelevant.
 
     We successively try to load the shared libraries for each version of FFmpeg
     that we support, starting with the highest version and working our way down.
@@ -114,12 +113,6 @@ def ensure_ffmpeg_loaded() -> tuple[int, str, ModuleType]:
          works when the module name and file name match exactly. Our shared
          libraries do not meet those conditions.
     """
-    global _ffmpeg_load_result, _ffmpeg_load_error
-    if _ffmpeg_load_result is not None:
-        return _ffmpeg_load_result
-    if _ffmpeg_load_error is not None:
-        raise _ffmpeg_load_error
-
     exceptions = []
     for ffmpeg_major_version in (8, 7, 6, 5, 4):
         core_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
@@ -134,8 +127,7 @@ def ensure_ffmpeg_loaded() -> tuple[int, str, ModuleType]:
             pybind_ops = _load_pybind11_module(
                 _PYBIND_OPS_MODULE_NAME, pybind_ops_library_path
             )
-            _ffmpeg_load_result = (ffmpeg_major_version, core_library_path, pybind_ops)
-            return _ffmpeg_load_result
+            return (ffmpeg_major_version, core_library_path, pybind_ops)
         except Exception:
             # Capture the full traceback for this exception
             exc_traceback = traceback.format_exc()
@@ -146,7 +138,7 @@ def ensure_ffmpeg_loaded() -> tuple[int, str, ModuleType]:
         + "\n".join(f"FFmpeg version {v}:\n{tb}" for v, tb in exceptions)
         + "[end of libtorchcodec loading traceback]."
     )
-    _ffmpeg_load_error = RuntimeError(
+    raise RuntimeError(
         f"""Could not load libtorchcodec. Note that FFmpeg is an optional
         dependency of TorchCodec: it is only needed for video and audio decoding
         and encoding, not for the image decoders. Likely causes:
@@ -166,4 +158,3 @@ def ensure_ffmpeg_loaded() -> tuple[int, str, ModuleType]:
         """
         f"{traceback_info}"
     )
-    raise _ffmpeg_load_error

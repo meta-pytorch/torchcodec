@@ -45,69 +45,74 @@ decode_gif = torch.ops.torchcodec_ns.decode_gif.default
 decode_avif = torch.ops.torchcodec_ns.decode_avif.default
 
 # Names of all the FFmpeg-dependent ops and helpers exposed by this module. When
-# FFmpeg is available they are bound below to the real ops. When it isn't, they
-# are bound to placeholders that raise a clear error explaining that FFmpeg is
-# required, so that `import torchcodec` and the image decoders keep working
-# without FFmpeg installed and we only fail when an FFmpeg-backed feature is used.
-_FFMPEG_OP_NAMES = (
-    "create_from_file",
-    "create_from_tensor",
-    "_create_from_file_like",
-    "_add_video_stream_raw",
-    "_add_video_stream",
-    "add_video_stream",
-    "add_audio_stream",
-    "seek_to_pts",
-    "get_next_frame",
-    "get_frame_at_pts",
-    "get_frame_at_index",
-    "_get_frames_at_indices_tensor_input",
-    "_get_frames_by_pts_tensor_input",
-    "get_frames_in_range",
-    "get_frames_by_pts_in_range",
-    "get_frames_by_pts_in_range_audio",
-    "get_json_metadata",
-    "_blocks_create_demuxer",
-    "_blocks_demuxer_next_packet",
-    "_blocks_create_packet_decoder",
-    "_blocks_packet_decoder_send_packet",
-    "_blocks_packet_decoder_send_eof",
-    "_blocks_packet_decoder_receive_frame",
-    "_blocks_create_color_converter",
-    "_blocks_convert_frame",
-    "_test_frame_pts_equality",
-    "_get_container_json_metadata",
-    "_get_key_frame_indices",
-    "scan_all_streams_to_update_metadata",
-    "_get_stream_json_metadata",
-    "_get_json_ffmpeg_library_versions",
-    "_get_backend_details",
-    "create_streaming_encoder",
-    "streaming_encoder_close",
-    "streaming_encoder_add_video_stream",
-    "streaming_encoder_add_audio_stream",
-    "streaming_encoder_open_file",
-    "_streaming_encoder_open_file_like",
-    "streaming_encoder_add_frames",
-    "streaming_encoder_add_samples",
-    "set_nvdec_cache_capacity",
-    "get_nvdec_cache_capacity",
-    "_get_nvdec_cache_size",
-    "_set_cpp_log_level",
-    "_get_log_level",
-    "create_wav_decoder_from_file",
-    "create_wav_decoder_from_tensor",
-    "_create_wav_decoder_from_file_like",
-    "get_wav_samples_in_range",
-    "get_wav_metadata_from_decoder",
-    "create_from_bytes",
-    "create_from_file_like",
-    "create_wav_decoder_from_bytes",
-    "create_wav_decoder_from_file_like",
-    "streaming_encoder_open_file_like",
-    "get_frames_at_indices",
-    "get_frames_by_pts",
-    "get_ffmpeg_library_versions",
+# FFmpeg is available they are bound below to the real ops. When it isn't, the
+# `if` block is skipped and `__getattr__` (see below) resolves these names to a
+# stub that raises a clear error, so that `import torchcodec` and the image
+# decoders keep working without FFmpeg and we only fail when an FFmpeg-backed
+# feature is actually used. It's an allowlist: names not listed here still raise
+# AttributeError (so typos and introspection like IPython's canary attributes
+# behave normally).
+_FFMPEG_OP_NAMES = frozenset(
+    {
+        "create_from_file",
+        "create_from_tensor",
+        "_create_from_file_like",
+        "_add_video_stream_raw",
+        "_add_video_stream",
+        "add_video_stream",
+        "add_audio_stream",
+        "seek_to_pts",
+        "get_next_frame",
+        "get_frame_at_pts",
+        "get_frame_at_index",
+        "_get_frames_at_indices_tensor_input",
+        "_get_frames_by_pts_tensor_input",
+        "get_frames_in_range",
+        "get_frames_by_pts_in_range",
+        "get_frames_by_pts_in_range_audio",
+        "get_json_metadata",
+        "_blocks_create_demuxer",
+        "_blocks_demuxer_next_packet",
+        "_blocks_create_packet_decoder",
+        "_blocks_packet_decoder_send_packet",
+        "_blocks_packet_decoder_send_eof",
+        "_blocks_packet_decoder_receive_frame",
+        "_blocks_create_color_converter",
+        "_blocks_convert_frame",
+        "_test_frame_pts_equality",
+        "_get_container_json_metadata",
+        "_get_key_frame_indices",
+        "scan_all_streams_to_update_metadata",
+        "_get_stream_json_metadata",
+        "_get_json_ffmpeg_library_versions",
+        "_get_backend_details",
+        "create_streaming_encoder",
+        "streaming_encoder_close",
+        "streaming_encoder_add_video_stream",
+        "streaming_encoder_add_audio_stream",
+        "streaming_encoder_open_file",
+        "_streaming_encoder_open_file_like",
+        "streaming_encoder_add_frames",
+        "streaming_encoder_add_samples",
+        "set_nvdec_cache_capacity",
+        "get_nvdec_cache_capacity",
+        "_get_nvdec_cache_size",
+        "_set_cpp_log_level",
+        "_get_log_level",
+        "create_wav_decoder_from_file",
+        "create_wav_decoder_from_tensor",
+        "_create_wav_decoder_from_file_like",
+        "get_wav_samples_in_range",
+        "get_wav_metadata_from_decoder",
+        "create_from_bytes",
+        "create_from_file_like",
+        "create_wav_decoder_from_bytes",
+        "create_wav_decoder_from_file_like",
+        "streaming_encoder_open_file_like",
+        "get_frames_at_indices",
+        "get_frames_by_pts",
+        "get_ffmpeg_library_versions",
+    }
 )
 
 # FFmpeg is an optional dependency: try to load it eagerly (so the real ops are
@@ -667,17 +672,13 @@ if _FFMPEG_AVAILABLE:
 
 else:
 
-    def _make_ffmpeg_placeholder(name):
-        def _placeholder(*args, **kwargs):
-            # This is only reachable when FFmpeg is unavailable, so
-            # ensure_ffmpeg_loaded() always re-raises the rich, actionable error
-            # explaining that FFmpeg could not be loaded.
-            ensure_ffmpeg_loaded()
-
-        _placeholder.__name__ = name
-        _placeholder.__qualname__ = name
-        return _placeholder
-
-    for _name in _FFMPEG_OP_NAMES:
-        globals()[_name] = _make_ffmpeg_placeholder(_name)
-    del _name
+    def __getattr__(name):
+        # FFmpeg is unavailable, so the FFmpeg-backed ops/helpers weren't bound
+        # above. Resolve them (and only them) to a stub that raises the rich,
+        # actionable error when called: this keeps `import torchcodec` and
+        # `from torchcodec._core.ops import <op>` working, and only fails when an
+        # FFmpeg-backed feature is actually used. Everything else (typos,
+        # introspection) raises AttributeError as usual.
+        if name in _FFMPEG_OP_NAMES:
+            return lambda *args, **kwargs: ensure_ffmpeg_loaded()
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
