@@ -44,6 +44,8 @@ jobs:
 
   mypy:
     runs-on: ubuntu-latest
+    env:
+      TORCHCODEC_BUILD_IMAGE: "0"
     strategy:
       fail-fast: false
       matrix:
@@ -63,8 +65,7 @@ jobs:
       - name: Install dependencies and FFmpeg
         run: |
           bash packaging/install_pytorch.sh cpu "torch torchvision"
-          # No need to install image codecs, we can just compile the stubs
-          TORCHCODEC_SKIP_IMAGE_DEPS=1 bash packaging/install_build_dependencies.sh
+          bash packaging/install_build_dependencies.sh
           conda install "ffmpeg=7.0.1" pkg-config -c conda-forge
           ffmpeg -version
       - name: Build and install torchcodec

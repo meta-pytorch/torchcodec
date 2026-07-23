@@ -12,7 +12,7 @@
 
 #include "StableABICompat.h"
 
-#if !JPEG_FOUND
+#if !TORCHCODEC_ENABLE_JPEG
 
 namespace facebook::torchcodec {
 
@@ -111,7 +111,7 @@ void convert_line_cmyk_to_gray(
   }
 }
 
-int fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
+ExifOrientation fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
   STD_TORCH_CHECK(jpeg_ctx != nullptr, "jpeg_ctx cannot be null");
 
   jpeg_saved_marker_ptr exif_marker = jpeg_ctx->marker_list;
@@ -123,14 +123,12 @@ int fetch_jpeg_exif_orientation(j_decompress_ptr jpeg_ctx) {
   }
 
   if (exif_marker == nullptr) {
-    // TODO_IMAGE: We should turn the exif rotation values into an enum and have
-    // a NO_ROTATION value - this is what -1 effectively means.
-    return -1;
+    return ExifOrientation::Unspecified;
   }
 
   constexpr size_t start_offset = 6;
   if (exif_marker->data_length <= start_offset) {
-    return -1;
+    return ExifOrientation::Unspecified;
   }
 
   auto* exif_data_ptr = exif_marker->data + start_offset;
@@ -473,7 +471,7 @@ torch::stable::Tensor decode_jpeg(
 
   // EXIF markers were parsed during jpeg_read_header so this is just an
   // in-memory lookup (i.e. we're not going back to the beginning of the file)
-  int exif_orientation = fetch_jpeg_exif_orientation(&jpeg_ctx);
+  ExifOrientation exif_orientation = fetch_jpeg_exif_orientation(&jpeg_ctx);
 
   jpeg_finish_decompress(&jpeg_ctx);
   jpeg_destroy_decompress(&jpeg_ctx);
@@ -483,4 +481,4 @@ torch::stable::Tensor decode_jpeg(
 
 } // namespace facebook::torchcodec
 
-#endif // !JPEG_FOUND
+#endif // !TORCHCODEC_ENABLE_JPEG

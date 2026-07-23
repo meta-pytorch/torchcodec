@@ -24,6 +24,7 @@ test locally you will need the following dependencies:
 - pybind11
 - scikit-build-core (our build backend)
 - FFmpeg
+- (Optional) image codec libraries - see image decoder section below
 - PyTorch nightly
 
 Start by installing the **nightly** build of PyTorch following the
@@ -51,6 +52,22 @@ export TORCHCODEC_CMAKE_BUILD_DIR="${PWD}/build"
 pip install -e ".[dev]" --no-build-isolation -vv
 # Or, for cuda support: ENABLE_CUDA=1 pip install -e ".[dev]" --no-build-isolation -vv
 ```
+
+### Image decoder build options
+
+By default, TorchCodec builds all of its image decoders (currently jpeg, png,
+avif, webp, and gif) and **requires** them: if a codec's library can't be found,
+the build fails.
+
+The libraries that need to be externally sourced are libjpeg, libpng, and
+libwebp (TorchCodec will provide libavif and giflib). You can typically install
+them via `conda install libjpeg-turbo libpng libwebp -c conda-forge`.
+
+You can opt-out from building all the image decoders by setting
+`TORCHCODEC_BUILD_IMAGE=0`, or from building individual image decoders by
+setting one of `TORCHCODEC_BUILD_{JPEG,PNG,WEBP,AVIF,GIF}=0`. To build a single
+image decoder, e.g. jpeg, set `TORCHCODEC_BUILD_IMAGE=0
+TORCHCODEC_BUILD_JPEG=1`.
 
 ### Running unit tests
 

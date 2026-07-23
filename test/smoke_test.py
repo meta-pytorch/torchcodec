@@ -7,10 +7,12 @@ import torch
 from test.utils import (
     assert_tensor_close_on_at_least,
     cuda_version_used_for_building_torch,
+    GRADIENT_AVIF,
     GRADIENT_GIF,
     GRADIENT_JPEG,
     GRADIENT_PNG,
     GRADIENT_WEBP,
+    needs_avif,
     needs_cuda,
     needs_jpeg,
     needs_png,
@@ -21,6 +23,7 @@ from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 from torchcodec.decoders._image_decoders import (
+    decode_avif,
     decode_gif,
     decode_jpeg,
     decode_png,
@@ -287,6 +290,15 @@ class TestImageDecoder:
         h, w = GRADIENT_GIF.height, GRADIENT_GIF.width
 
         img = decode_gif(path)
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, h, w)
+
+    @needs_avif
+    def test_decode_avif(self):
+        path = GRADIENT_AVIF.path
+        h, w = GRADIENT_AVIF.height, GRADIENT_AVIF.width
+
+        img = decode_avif(path)
         assert img.dtype == torch.uint8
         assert img.shape == (3, h, w)
 

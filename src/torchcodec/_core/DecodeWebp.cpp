@@ -12,7 +12,7 @@
 
 #include "StableABICompat.h"
 
-#if !WEBP_FOUND
+#if !TORCHCODEC_ENABLE_WEBP
 
 namespace facebook::torchcodec {
 
@@ -51,8 +51,8 @@ namespace {
 
 // Find the EXIF orientation by asking libwebpdemux for the "EXIF" chunk (which
 // only exists in extended VP8X files and holds raw TIFF-formatted EXIF data).
-// Returns -1 (i.e. no rotation) when there's no usable EXIF chunk.
-int fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
+// Returns Unspecified (i.e. no rotation) when there's no usable EXIF chunk.
+ExifOrientation fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
   WebPData webp_data;
   WebPDataInit(&webp_data);
   webp_data.bytes = data;
@@ -60,10 +60,10 @@ int fetch_webp_exif_orientation(const uint8_t* data, size_t size) {
 
   WebPDemuxer* demux = WebPDemux(&webp_data);
   if (demux == nullptr) {
-    return -1;
+    return ExifOrientation::Unspecified;
   }
 
-  int orientation = -1;
+  ExifOrientation orientation = ExifOrientation::Unspecified;
   WebPChunkIterator chunk_iter;
   if (WebPDemuxGetChunk(demux, "EXIF", 1, &chunk_iter)) {
     const uint8_t* exif = chunk_iter.chunk.bytes;
@@ -239,10 +239,11 @@ torch::stable::Tensor decode_webp(
       ? decode_animated_webp(input_ptr, input_size, mode, features.has_alpha)
       : decode_still_webp(input_ptr, input_size, mode, features.has_alpha);
 
-  int exif_orientation = fetch_webp_exif_orientation(input_ptr, input_size);
+  ExifOrientation exif_orientation =
+      fetch_webp_exif_orientation(input_ptr, input_size);
   return exif_orientation_transform(output, exif_orientation);
 }
 
 } // namespace facebook::torchcodec
 
-#endif // !WEBP_FOUND
+#endif // !TORCHCODEC_ENABLE_WEBP

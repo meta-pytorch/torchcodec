@@ -10,6 +10,27 @@
 #include <torch/csrc/stable/ops.h>
 #include <torch/headeronly/util/Exception.h>
 
+#include "StableABICompat.h"
+
+#if !TORCHCODEC_ENABLE_GIF
+
+namespace facebook::torchcodec {
+
+torch::stable::Tensor decode_gif(
+    [[maybe_unused]] const torch::stable::Tensor& input,
+    [[maybe_unused]] int64_t mode) {
+  STD_TORCH_CHECK(
+      false,
+      "decode_gif: torchcodec was not compiled with GIF support. Rebuild "
+      "torchcodec with TORCHCODEC_BUILD_GIF=1 (and without TORCHCODEC_BUILD_IMAGE"
+      "=0). If you see this error in a prebuilt wheel, please report it to the "
+      "TorchCodec repo.");
+}
+
+} // namespace facebook::torchcodec
+
+#else
+
 #include <torch/headeronly/core/MemoryFormat.h>
 
 #include <algorithm>
@@ -17,7 +38,6 @@
 #include <optional>
 
 #include "ImageCommon.h"
-#include "StableABICompat.h"
 #include "giflib/gif_lib.h"
 
 namespace facebook::torchcodec {
@@ -85,7 +105,7 @@ torch::stable::Tensor decode_gif(
   // only way to read from a custom source, via the read_callback reader above.
 
   // TODO: We are potentially doing an unnecessary copy of the encoded bytes:
-  // - 1 copy from file to tensor (in the Python _read_file_to_tensor())
+  // - 1 copy from file to tensor (in the Python _source_to_tensor())
   // - 1 copy from tensor to GIFLIB buffers (in read_callback())
   // Since we're vendoring GIFLIB we can potentially modify the calls to
   // InternalRead() and just set the `buf` pointer to the tensor data directly.
@@ -311,3 +331,5 @@ torch::stable::Tensor decode_gif(
 }
 
 } // namespace facebook::torchcodec
+
+#endif // !TORCHCODEC_ENABLE_GIF

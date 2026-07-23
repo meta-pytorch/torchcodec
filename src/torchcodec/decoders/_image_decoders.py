@@ -11,28 +11,19 @@ from pathlib import Path
 import torch
 
 from torchcodec._core.ops import (
+    decode_avif as _decode_avif,
     decode_gif as _decode_gif,
     decode_jpeg as _decode_jpeg,
     decode_png as _decode_png,
     decode_webp as _decode_webp,
 )
 
-# TODO_IMAGE: we need to make FFmpeg an optional dependency
-
-# TODO_IMAGE: we should allow to build without all the image dependencies
-# (libjpeg etc.), and make sure only the *calls* to decode_*() fail at runtime,
-# not the import of torchcodec.
-
-# TODO_IMAGE We probably need CI jobs for both TODOs above.
+# TODO_IMAGE: we need to make FFmpeg an optional dependency, and probably want a
+# CI job for that.
 
 # TODO_IMAGE Some codecs expose threading options - we should make sure the
 # default is 1 thread and allow the user to override it. (similar to
 # num_ffmpeg_threads)
-
-# TODO_IMAGE: Support torchscript?
-
-# TODO_IMAGE: We'll need to support all output modes consistently across all
-# decoders, with tests.
 
 # TODO_IMAGE: I think there are some tests for corrupted images in TV? We
 # should port those.
@@ -67,14 +58,27 @@ class ImageColorMode(Enum):
     RGB_ALPHA = 4
 
 
-def _read_file_to_tensor(path: str | Path) -> torch.Tensor:
-    # TODO_IMAGE: port read_file?
-    data = Path(path).read_bytes()
-    with warnings.catch_warnings():
-        # torch.frombuffer warns that the underlying buffer is non-writable;
-        # we only read from the resulting tensor, so this is safe to ignore.
-        warnings.filterwarnings("ignore", category=UserWarning)
-        return torch.frombuffer(data, dtype=torch.uint8)
+def _source_to_tensor(source: str | Path | bytes | torch.Tensor) -> torch.Tensor:
+    # Turn any supported source into a 1-D uint8 tensor of encoded bytes.
+    if isinstance(source, torch.Tensor):
+        # dtype is validated in cpp.
+        return source
+    if isinstance(source, (str, Path)):
+        # We keep the file reading in pure Python (rather than a C++ read_file
+        # op like in torchvision): benchmarked against a C++ op, the
+        # read is only ~1-1.5% of total decode time.
+        source = Path(source).read_bytes()
+    if isinstance(source, (bytes, bytearray)):
+        with warnings.catch_warnings():
+            # torch.frombuffer warns that the underlying buffer is non-writable;
+            # we only read from the resulting tensor, so this is safe to ignore.
+            warnings.filterwarnings("ignore", category=UserWarning)
+            return torch.frombuffer(source, dtype=torch.uint8)
+
+    raise TypeError(
+        f"Unknown source type: {type(source)}. "
+        "Supported types are str, Path, bytes and torch.Tensor."
+    )
 
 
 # Output modes each native codec can produce directly, for any input. Any output
@@ -83,15 +87,8 @@ _JPEG_NATIVE_OUTPUT_MODES = frozenset(
     (ImageColorMode.UNCHANGED, ImageColorMode.GRAY, ImageColorMode.RGB)
 )
 _PNG_NATIVE_OUTPUT_MODES = frozenset(ImageColorMode)
-_WEBP_NATIVE_OUTPUT_MODES = frozenset(
-    (ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.RGB_ALPHA)
-)
-# Like webp, giflib has no native grayscale. It handles RGB (transparency
-# composited over the background color), RGB_ALPHA (transparency kept as a real
-# alpha channel), and UNCHANGED (RGBA if the GIF has transparency, else RGB). The
-# grayscale modes are derived by _decode_with_mode.
-_GIF_NATIVE_OUTPUT_MODES = frozenset(
-    (ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.RGB_ALPHA)
+_WEBP_NATIVE_OUTPUT_MODES = _GIF_NATIVE_OUTPUT_MODES = _AVIF_NATIVE_OUTPUT_MODES = (
+    frozenset((ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.RGB_ALPHA))
 )
 
 
@@ -148,42 +145,49 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
         )
 
 
-# TODO_IMAGE: Benchmark against torchvision, both from file and from bytes. We
-# have changed the file reading logic a bit (it's Python right now, not Cpp).
-
 # TODO_IMAGE: Since we're updating the decoders code a bit, we should run sanity
 # checks ensure we're not leaking anything (there was a leak on webp back then!).
 
+# TODO_IMAGE: DOCS!! and docstrings.
+
 
 def decode_jpeg(
-    # TODO_IMAGE: support bytes and file-like
-    source: str | Path,
+    source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
-    # TODO_IMAGE We should ensure we build and link against turbo. Maybe by
-    # checking the symbols of the bundled libjpeg shared library at repair time.
-    """Decode a JPEG file into a uint8 tensor of shape ``(C, H, W)``."""
-    data = _read_file_to_tensor(source)
+    """Decode a JPEG into a uint8 tensor of shape ``(C, H, W)``.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
+    """
+    data = _source_to_tensor(source)
     return _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
 
 
 def decode_png(
-    source: str | Path,
+    source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
-    """Decode a PNG file into a uint8 tensor of shape ``(C, H, W)``."""
-    data = _read_file_to_tensor(source)
+    """Decode a PNG into a uint8 tensor of shape ``(C, H, W)``.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
+    """
+    data = _source_to_tensor(source)
     return _decode_with_mode(_decode_png, data, mode, _PNG_NATIVE_OUTPUT_MODES)
 
 
 def decode_webp(
-    source: str | Path,
+    source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
-    """Decode a WebP file into a uint8 tensor.
+    """Decode a WebP into a uint8 tensor.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
 
     The shape is ``(C, H, W)`` for a still WebP and ``(N, C, H, W)`` for an
     animated one, with 4 channels when the output carries an alpha channel.
@@ -191,16 +195,19 @@ def decode_webp(
     offsets). The mode-conversion helpers (see _decode_with_mode) operate on the
     channel dim, so they handle both the still and animated shapes.
     """
-    data = _read_file_to_tensor(source)
+    data = _source_to_tensor(source)
     return _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
 
 
 def decode_gif(
-    source: str | Path,
+    source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
-    """Decode a GIF file into a uint8 tensor.
+    """Decode a GIF into a uint8 tensor.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
 
     The shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for an
     animated one, with 4 channels when the output carries an alpha channel (see
@@ -208,5 +215,21 @@ def decode_gif(
     _decode_with_mode) operate on the channel dim, so they handle both the still
     and animated shapes.
     """
-    data = _read_file_to_tensor(source)
+    data = _source_to_tensor(source)
     return _decode_with_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
+
+
+def decode_avif(
+    source: str | Path | bytes | torch.Tensor,
+    *,
+    mode: ImageColorMode = ImageColorMode.RGB,
+) -> torch.Tensor:
+    # TODO_IMAGE: 10/12-bit AVIF files are decoded as uint8 for now, losing
+    # precision. Returning uint16 for high-bit-depth files is tied to adding
+    """Decode an AVIF into a uint8 tensor.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
+    """
+    data = _source_to_tensor(source)
+    return _decode_with_mode(_decode_avif, data, mode, _AVIF_NATIVE_OUTPUT_MODES)

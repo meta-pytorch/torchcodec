@@ -107,7 +107,7 @@ jobs:
 
       - name: Run Python tests
         run: |
-          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 pytest --override-ini="addopts=-v" test
+          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 pytest --override-ini="addopts=-v" test
 
   install-and-test-third-party-interface:
     runs-on: ubuntu-latest
