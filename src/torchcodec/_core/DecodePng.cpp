@@ -12,7 +12,7 @@
 
 #include "StableABICompat.h"
 
-#if !PNG_FOUND
+#if !TORCHCODEC_ENABLE_PNG
 
 namespace facebook::torchcodec {
 
@@ -362,4 +362,4 @@ torch::stable::Tensor decode_png(
 
 } // namespace facebook::torchcodec
 
-#endif // !PNG_FOUND
+#endif // !TORCHCODEC_ENABLE_PNG

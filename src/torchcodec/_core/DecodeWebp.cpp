@@ -12,7 +12,7 @@
 
 #include "StableABICompat.h"
 
-#if !WEBP_FOUND
+#if !TORCHCODEC_ENABLE_WEBP
 
 namespace facebook::torchcodec {
 
@@ -246,4 +246,4 @@ torch::stable::Tensor decode_webp(
 
 } // namespace facebook::torchcodec
 
-#endif // !WEBP_FOUND
+#endif // !TORCHCODEC_ENABLE_WEBP
