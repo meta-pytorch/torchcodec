@@ -466,6 +466,16 @@ torch::stable::Tensor decode_jpeg(
 
   decode_rows(jpeg_ctx, error_ctx, output_ptr, stride, cmyk_helper);
 
+  // Flip raw CMYK samples so our output matches PIL.
+  if (static_cast<ImageReadMode>(mode) == ImageReadMode::UNCHANGED &&
+      (jpeg_ctx.jpeg_color_space == JCS_CMYK ||
+       jpeg_ctx.jpeg_color_space == JCS_YCCK)) {
+    int64_t num_bytes = output.numel();
+    for (int64_t i = 0; i < num_bytes; ++i) {
+      output_ptr[i] = static_cast<uint8_t>(255 - output_ptr[i]);
+    }
+  }
+
   // EXIF markers were parsed during jpeg_read_header so this is just an
   // in-memory lookup (i.e. we're not going back to the beginning of the file)
   ExifOrientation exif_orientation = fetch_jpeg_exif_orientation(&jpeg_ctx);
