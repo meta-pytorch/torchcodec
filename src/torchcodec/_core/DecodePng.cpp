@@ -175,14 +175,30 @@ PngHeader read_header_and_configure(
     num_passes = 1;
   }
 
-  if (read_mode != ImageReadMode::UNCHANGED) {
-    bool is_palette = (color_type & PNG_COLOR_MASK_PALETTE) != 0;
+  bool is_palette = (color_type & PNG_COLOR_MASK_PALETTE) != 0;
+  // A tRNS chunk encodes transparency without a dedicated alpha channel.
+  // png_set_tRNS_to_alpha() expands it into a real alpha channel (it must be
+  // called after png_set_palette_to_rgb()).
+  bool has_trns = png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS) != 0;
+
+  bool expanded_palette = false;
+  if (read_mode == ImageReadMode::UNCHANGED) {
+    if (is_palette) {
+      // A PNG palette (PLTE chunk) is always RGB triplets
+      // Note that this path is buggy in torchvision, as TV returns the raw
+      // palette indices instead of the expanded RGB values. What we do here is
+      // correct, and matches the behavior of PIL.
+      png_set_palette_to_rgb(png_ptr);
+      num_output_channels = 3;
+      if (has_trns) {
+        png_set_tRNS_to_alpha(png_ptr);
+        num_output_channels = 4;
+      }
+      expanded_palette = true;
+    }
+  } else {
     bool has_color = (color_type & PNG_COLOR_MASK_COLOR) != 0;
     bool has_alpha = (color_type & PNG_COLOR_MASK_ALPHA) != 0;
-    // A tRNS chunk encodes transparency without a dedicated alpha channel.
-    // png_set_tRNS_to_alpha() expands it into a real alpha channel (it must be
-    // called after png_set_palette_to_rgb()).
-    bool has_trns = png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS) != 0;
 
     png_uint_32 opaque_alpha = output_16 ? 65535 : 255;
 
@@ -272,7 +288,8 @@ PngHeader read_header_and_configure(
     need_scaling = true;
   }
 
-  if (read_mode != ImageReadMode::UNCHANGED || need_scaling) {
+  if (read_mode != ImageReadMode::UNCHANGED || need_scaling ||
+      expanded_palette) {
     png_read_update_info(png_ptr, info_ptr);
   }
 

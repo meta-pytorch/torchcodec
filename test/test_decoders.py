@@ -3730,10 +3730,6 @@ class TestImageDecoder:
     ):
         # Test that every input color mode is decodable to every output mode.
 
-        if fmt == "PNG" and source_mode == "P" and output_mode == "UNCHANGED":
-            # TODO_IMAGE figure out what to do here.
-            pytest.skip("UNCHANGED on a palette PNG returns raw palette indices")
-
         h, w = 40, 60
         xs = numpy.linspace(0, 255, w)
         ys = numpy.linspace(0, 255, h)
