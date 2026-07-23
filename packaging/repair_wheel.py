@@ -11,9 +11,9 @@ TorchCodec depends on non-Python libraries: FFmpeg, libjpeg, libtorch, etc.
 that the wheel runs standalone on a system that doesn't have those libraries
 installed.
 
-We bundle some third-party native libraries like libjpeg(-turbo), libpng, zlib
-and libwebp (+libsharpyuv), while making sure we EXCLUDE FFmpeg (user-provided at
-runtime) and torch/CUDA (provided by the torch wheel).
+We bundle some third-party native libraries like libjpeg(-turbo), libpng, zlib,
+libwebp (+libsharpyuv) and libavif, while making sure we EXCLUDE FFmpeg
+(user-provided at runtime) and torch/CUDA (provided by the torch wheel).
 """
 
 import io
@@ -35,19 +35,38 @@ def run(cmd, **kwargs):
     subprocess.run(cmd, check=True, **kwargs)
 
 
+def _avif_lib_dir():
+    # libavif isn't in conda like the other image libs; it's fetched from S3
+    # into scikit-build's build dir.
+    dirs = [p.resolve() for p in Path("build").glob("*/_deps/avif_s3-src/lib")]
+    if len(dirs) != 1:
+        raise RuntimeError(f"Expected exactly one S3 libavif dir, found: {dirs}")
+    return dirs[0]
+
+
 def repair_linux(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "auditwheel"])
     run(["auditwheel", "--version"])
     env = os.environ.copy()
+    # for auditwheel to graft libs, it must be able to find them, so we set
+    # LD_LIBRARY_PATH: jpeg/png/webp are from conda, libavif is from the S3
+    # build dir.
+    lib_dirs = [str(_avif_lib_dir())]
     if conda_prefix := env.get("CONDA_PREFIX"):
-        # auditwheel must be able to *find* libjpeg to graft it.
-        env["LD_LIBRARY_PATH"] = os.pathsep.join(
-            [str(Path(conda_prefix) / "lib"), env.get("LD_LIBRARY_PATH", "")]
-        )
+        lib_dirs.append(str(Path(conda_prefix) / "lib"))
+    env["LD_LIBRARY_PATH"] = os.pathsep.join(
+        [*lib_dirs, env.get("LD_LIBRARY_PATH", "")]
+    )
 
     excludes = []
     for pattern in (
-        "libav*",
+        # FFmpeg libs, spelled out rather than "libav*" so we don't match libavif.
+        "libavcodec*",
+        "libavdevice*",
+        "libavfilter*",
+        "libavformat*",
+        "libavutil*",
+        "libavresample*",
         "libsw*",
         "libpostproc*",
         "libtorch*",
@@ -67,36 +86,52 @@ def repair_linux(wheels):
 def repair_macos(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "delocate"])
     run(["delocate-wheel", "--version"])
-    env = os.environ.copy()
-    if conda_prefix := env.get("CONDA_PREFIX"):
-        env["DYLD_FALLBACK_LIBRARY_PATH"] = os.pathsep.join(
-            [str(Path(conda_prefix) / "lib"), env.get("DYLD_FALLBACK_LIBRARY_PATH", "")]
+
+    # Same search path as for linux: the libavif install dir for libavif and
+    # CONDA_PREFIX for the other image libs.
+    search = os.pathsep.join(
+        [str(_avif_lib_dir())]
+        + ([str(Path(p) / "lib")] if (p := os.environ.get("CONDA_PREFIX")) else [])
+    )
+    excludes = " ".join(
+        f"--exclude {p}"
+        for p in (
+            "libavcodec",
+            "libavdevice",
+            "libavfilter",
+            "libavformat",
+            "libavutil",
+            "libavresample",
+            "libsw",
+            "libpostproc",
+            "libtorch.",
+            "libtorch_",
+            "libc10",
+            "libomp",
         )
-    # delocate --exclude matches a substring of the dependency's basename.
-    excludes = []
-    for pattern in ("libav", "libsw", "libpostproc", "libtorch", "libc10", "libomp"):
-        excludes += ["--exclude", pattern]
+    )
 
     for wheel in wheels:
         run(
             [
-                "delocate-wheel",
-                "-v",
-                "--ignore-missing-dependencies",
-                *excludes,
-                "-w",
-                REPAIRED_DIR,
-                wheel,
-            ],
-            env=env,
+                "bash",
+                "-c",
+                # DYLD_LIBRARY_PATH must be set inline on the command ($0=search,
+                # $1=wheel): macOS SIP strips it from inherited env on CI (see
+                # cibuildwheel #816).
+                f'DYLD_LIBRARY_PATH="$0" delocate-wheel -v '
+                f'--ignore-missing-dependencies {excludes} -w "{REPAIRED_DIR}" "$1"',
+                search,
+                str(wheel),
+            ]
         )
 
 
 def repair_windows(wheels):
-    # We do what torchvision does on Windows: copy the libjpeg/libpng/zlib DLLs
-    # next to our libs inside the wheel. At load time Windows resolves a DLL's
-    # dependencies from the DLL's own directory, so they are found. We repack with
-    # `wheel` so the RECORD is regenerated.
+    # We do what torchvision does on Windows: copy the libjpeg/libpng/zlib etc.
+    # DLLs next to our libs inside the wheel. At load time Windows resolves a
+    # DLL's dependencies from the DLL's own directory, so they are found. We
+    # repack with `wheel` so the RECORD is regenerated.
     run([sys.executable, "-m", "pip", "install", "-U", "wheel"])
     bin_dir = Path(os.environ.get("CONDA_PREFIX", "")) / "Library" / "bin"
 
@@ -119,8 +154,15 @@ def repair_windows(wheels):
     )
     if not sharpyuv_dlls:
         raise FileNotFoundError(f"No libsharpyuv DLL found under {bin_dir}")
+    # libavif comes from our S3 build (not conda): its DLL is in the FetchContent
+    # build dir's bin/.
+    avif_dlls = set(Path("build").glob("*/_deps/avif_s3-src/bin/libavif*.dll"))
+    if not avif_dlls:
+        raise FileNotFoundError("No libavif DLL under build/*/_deps/avif_s3-src/bin")
 
-    dlls = sorted(jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls)
+    dlls = sorted(
+        jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls | avif_dlls
+    )
 
     for wheel in wheels:
         unpack_dir = REPAIRED_DIR / "unpack"
@@ -142,10 +184,21 @@ def check_bundling():
     """Raise if:
     - a wheel bundles a lib that's not in the allowlist. This would raise if we
       ever try to bundle FFmpeg or torch/CUDA.
-    - a wheel does NOT bundle libjpeg, libpng, libwebp or libwebpdemux.
+    - a wheel does NOT bundle libjpeg, libpng, libwebp, libwebpdemux or libavif.
+    - the wheel bundles an AV1 encoder library: our libavif is decode-only, so
+      encoders (aom/rav1e/svtav1) must never ship (all platforms). This is not
+      for licensing concern, this is to keep wheel size low.
+    - the compressed wheel is larger than MAX_WHEEL_BYTES: the slim decode-only
+      libavif should keep us under it.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
-    - (Linux only) libtorchcodec_image.so links FFmpeg
+    - (Linux only) libtorchcodec_image.so links FFmpeg.
     """
+    # 6 MB, bumped to 8 MB for Windows CUDA wheels. Bump if a legitimate
+    # dependency growth pushes us over.
+    if platform.system() == "Windows" and os.environ.get("ENABLE_CUDA") == "1":
+        MAX_WHEEL_BYTES = 8 * 1024 * 1024
+    else:
+        MAX_WHEEL_BYTES = 6 * 1024 * 1024
 
     def _is_shared_lib(name):
         base = name.rsplit("/", 1)[-1]
@@ -169,6 +222,19 @@ def check_bundling():
             lib.startswith(("webp", "sharpyuv")) and lib.endswith(".dll")
         )
 
+    def _is_avif(lib):
+        stem = lib.lower()
+        return stem.startswith("libavif") or (
+            stem.startswith("avif") and stem.endswith(".dll")
+        )
+
+    def _is_avif_encoder(lib):
+        stem = lib.lower()
+        return stem.startswith(("libaom", "librav1e", "libsvtav1", "libdav1d")) or (
+            stem.startswith(("aom", "rav1e", "svtav1", "dav1d"))
+            and stem.endswith(".dll")
+        )
+
     def _is_webp_demux(lib):
         # libwebpdemux is a separate lib from the base libwebp; it provides the
         # WebPAnimDecoder API used to decode animated webp files.
@@ -183,17 +249,31 @@ def check_bundling():
             or _is_png(lib)
             or _is_zlib(lib)
             or _is_webp(lib)
+            or _is_avif(lib)
         ):
             return True
-        # On macOS, test-infra's delocate bundles these OS/interpreter libs before
-        # our post-script runs; benign and out of our control.
         if platform.system() == "Darwin" and lib.startswith(("libc++", "libpython")):
+            # I can attest libc++ is there, but I'm not entirely sure about
+            # libpython. I used to be there when `delocate` was run from the
+            # `test-infra` job, but now that we run it here it doesn't seem to
+            # be there anymore. I guess it doesn't hurt.
             return True
         return False
 
+    _FFMPEG_SONAME_PREFIXES = (
+        "libavcodec",
+        "libavdevice",
+        "libavfilter",
+        "libavformat",
+        "libavutil",
+        "libavresample",
+        "libsw",
+        "libpostproc",
+    )
+
     def _assert_linux_image_lib_no_ffmpeg(zf):
-        """Enforce that libtorchcodec_image.so NOT link FFmpeg (no
-        libav*/libsw*/libpostproc* in DT_NEEDED).
+        """Enforce that libtorchcodec_image.so NOT link FFmpeg (no FFmpeg
+        soname in DT_NEEDED; see _FFMPEG_SONAME_PREFIXES).
 
         We built libtorchcodec_image.so separately from the FFmpeg-dependent
         core{4,5,6,7,8}.so libraries: the whole point is to avoid symbol
@@ -218,9 +298,7 @@ def check_bundling():
         elf = ELFFile(io.BytesIO(zf.read(members[0])))
         dynamic = elf.get_section_by_name(".dynamic")
         needed = [t.needed for t in dynamic.iter_tags("DT_NEEDED")] if dynamic else []
-        ffmpeg_needed = [
-            n for n in needed if n.startswith(("libav", "libsw", "libpostproc"))
-        ]
+        ffmpeg_needed = [n for n in needed if n.startswith(_FFMPEG_SONAME_PREFIXES)]
         if ffmpeg_needed:
             raise RuntimeError(
                 "libtorchcodec_image.so must not link FFmpeg, but its DT_NEEDED "
@@ -268,10 +346,26 @@ def check_bundling():
                 raise RuntimeError(f"{wheel.name} does not bundle libpng.")
             if not any(_is_webp(lib) for lib in libs):
                 raise RuntimeError(f"{wheel.name} does not bundle libwebp.")
+            if not any(lib.lower().startswith(("libavif", "avif")) for lib in libs):
+                raise RuntimeError(f"{wheel.name} does not bundle libavif.")
             if not any(_is_webp_demux(lib) for lib in libs):
                 raise RuntimeError(
                     f"{wheel.name} does not bundle libwebpdemux (needed for "
                     "animated webp decoding)."
+                )
+            if encoders := [lib for lib in libs if _is_avif_encoder(lib)]:
+                raise RuntimeError(
+                    f"{wheel.name} bundles AV1 codec libraries that must not "
+                    "ship with our decode-only libavif (they should be "
+                    "statically embedded or absent): " + " ".join(encoders)
+                )
+            wheel_bytes = wheel.stat().st_size
+            if wheel_bytes > MAX_WHEEL_BYTES:
+                raise RuntimeError(
+                    f"{wheel.name} is {wheel_bytes / 1024 / 1024:.1f} MB "
+                    "compressed, over the "
+                    f"{MAX_WHEEL_BYTES / 1024 / 1024:.0f} MB limit. "
+                    "Bump MAX_WHEEL_BYTES if a legitimate dependency growth pushes us over. "
                 )
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)

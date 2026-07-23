@@ -85,6 +85,13 @@ else()
     message(STATUS "libwebp NOT found: torchcodec.decode_webp will raise at runtime.")
 endif()
 
+# TODO_IMAGE: fetch and building with avif is unconditional for now. We should
+# make image support opt-in/opt-out (mirroring the TODO_IMAGE in
+# _image_decoders.py about building without image dependencies)
+include(${CMAKE_CURRENT_SOURCE_DIR}/fetch_avif_from_s3.cmake)
+set(libavif_FOUND TRUE)
+message(STATUS "Building torchcodec with AVIF image decoding support (libavif from S3).")
+
 # Read a list variable from sources.bzl, the single source of truth for the
 # _core C++ source files shared with the internal Buck build. The .bzl file is
 # valid Python, so we exec it and print the requested list; configure_file
@@ -486,6 +493,10 @@ function(make_torchcodec_image_library)
         # webp files.
         target_link_libraries(${image_library_name} PRIVATE WebP::webp WebP::webpdemux)
     endif()
+    if(libavif_FOUND)
+        target_compile_definitions(${image_library_name} PRIVATE AVIF_FOUND=1)
+        target_link_libraries(${image_library_name} PRIVATE avif)
+    endif()
 
     # Hide our own (and statically linked giflib's) symbols so the only thing
     # exported is the torch op registration. Belt-and-suspenders on top of the
@@ -494,7 +505,6 @@ function(make_torchcodec_image_library)
         target_compile_options(${image_library_name} PRIVATE "-fvisibility=hidden")
     endif()
 
-    # Same editable-vs-wheel output/install logic as make_torchcodec_libraries.
     if(SKBUILD_STATE STREQUAL "editable")
         get_filename_component(
             TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
@@ -502,6 +512,13 @@ function(make_torchcodec_image_library)
             LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
             RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
         )
+        if(WIN32)
+            # Windows editable build needs the libavif DLL next to the image
+            # lib. Note that the other image codec lib don't, because they are
+            # already on the DLL search path. This is speculative and untested,
+            # we're just trying to be nice to Windows editable builds.
+            file(COPY "${avif_runtime_lib}" DESTINATION "${TORCHCODEC_PACKAGE_DIR}")
+        endif()
     else()
         install(
             TARGETS ${image_library_name}

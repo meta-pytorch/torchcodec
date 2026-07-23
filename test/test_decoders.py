@@ -35,6 +35,7 @@ from torchcodec.decoders._blocks import (
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
 from torchcodec.decoders._image_decoders import (
+    decode_avif,
     decode_gif,
     decode_jpeg,
     decode_png,
@@ -61,6 +62,7 @@ from .utils import (
     FRAME_EXCEEDS_SCREEN_GIF,
     get_ffmpeg_minor_version,
     get_python_version,
+    GRADIENT_AVIF,
     GRADIENT_GIF,
     GRADIENT_JPEG,
     GRADIENT_PNG,
@@ -78,12 +80,14 @@ from .utils import (
     NASA_VIDEO,
     NASA_VIDEO_HDR,
     NASA_VIDEO_ROTATED,
+    needs_avif,
     needs_cuda,
     needs_ffmpeg_cli,
     needs_jpeg,
     needs_png,
     needs_webp,
     psnr,
+    RGBA_AVIF,
     RGBA_PNG,
     RGBA_WEBP,
     SINE_16_CHANNEL_S16,
@@ -3447,6 +3451,10 @@ def _gif_param(*values):
     return pytest.param(decode_gif, *values, id="gif")
 
 
+def _avif_param(*values):
+    return pytest.param(decode_avif, *values, marks=pytest.mark.needs_avif, id="avif")
+
+
 class TestImageDecoder:
     def _save_debug(self, decoded, reference, path="debug.png"):
         # Debugging helper: dump decoded and reference frames side-by-side.
@@ -3468,6 +3476,7 @@ class TestImageDecoder:
             _png_param(GRAYSCALE_PNG),
             _webp_param(RGBA_WEBP),
             _gif_param(GRADIENT_GIF),
+            _avif_param(RGBA_AVIF),
         ),
     )
     def test_default_mode_is_rgb(self, decode_fn, asset):
@@ -3520,6 +3529,10 @@ class TestImageDecoder:
             _gif_param("GIF", "gif", {}, "L"),
             _gif_param("GIF", "gif", {}, "RGB"),
             _gif_param("GIF", "gif", {}, "P"),
+            # Only an RGB source for AVIF: it's lossy and, unlike webp, has no
+            # lossless mode here. An RGBA source would additionally hit the
+            # alpha-drop divergence from PIL (see test_avif_against_pil).
+            _avif_param("AVIF", "avif", {}, "RGB"),
         ),
     )
     @pytest.mark.parametrize(
@@ -3719,6 +3732,7 @@ class TestImageDecoder:
             _png_param("png", "Not a PNG file"),
             _webp_param("webp", "WebPGetFeatures failed"),
             _gif_param("gif", "DGifOpen"),
+            _avif_param("avif", "avifDecoderParse failed"),
         ),
     )
     def test_not_an_image_raises(self, tmp_path, decode_fn, ext, match):
@@ -3734,6 +3748,7 @@ class TestImageDecoder:
             _png_param(GRADIENT_PNG, "png", "Out of bound read"),
             _webp_param(GRADIENT_WEBP, "webp", "Failed to decode the WebP bitstream"),
             _gif_param(GRADIENT_GIF, "gif", "DGifSlurp"),
+            _avif_param(GRADIENT_AVIF, "avif", "avifDecoderParse failed"),
         ),
     )
     @pytest.mark.parametrize("div", (2, 3, 4))
@@ -3798,6 +3813,87 @@ class TestImageDecoder:
 
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_avif
+    @pytest.mark.parametrize("asset", (GRADIENT_AVIF, RGBA_AVIF))
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            (ImageColorMode.UNCHANGED, None),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_avif_against_pil(self, asset, mode, pil_mode):
+        if asset.num_channels == 4 and mode in (
+            ImageColorMode.RGB,
+            ImageColorMode.GRAY,
+        ):
+            # For an AVIF that carries a real alpha channel, decoding to a mode
+            # that drops the alpha (RGB, and GRAY which is derived from RGB)
+            # diverges from PIL: libavif plainly ignores the alpha channel, so
+            # transparent pixels keep their raw (often dark) color, while PIL
+            # blends. Both are defensible, so we don't compare in that case.
+            pytest.skip("AVIF RGB/GRAY on an alpha image diverges from PIL by design")
+
+        decoded = decode_avif(asset.path, mode=mode)
+
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_avif
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            (ImageColorMode.UNCHANGED, None),
+            (ImageColorMode.GRAY, "L"),
+            (ImageColorMode.GRAY_ALPHA, "LA"),
+            (ImageColorMode.RGB, "RGB"),
+            (ImageColorMode.RGB_ALPHA, "RGBA"),
+        ),
+    )
+    def test_animated_avif(self, tmp_path, mode, pil_mode):
+        # An animated AVIF decodes to a batched (N, C, H, W) tensor, one frame
+        # per image. We use distinct solid-color frames: AVIF is lossy, but
+        # solid colors survive the YUV round-trip cleanly, so the frames match
+        # PIL's per-frame decode closely and the frame ordering is verifiable.
+        from PIL import ImageSequence
+
+        path = tmp_path / "animated.avif"
+        colors = [(200, 30, 30), (30, 200, 30), (30, 30, 200)]
+        frames = [
+            Image.fromarray(numpy.full((16, 16, 3), c, dtype=numpy.uint8))
+            for c in colors
+        ]
+        frames[0].save(
+            path,
+            "AVIF",
+            save_all=True,
+            append_images=frames[1:],
+            duration=100,
+            quality=100,
+        )
+
+        decoded = decode_avif(path, mode=mode)
+        pil = Image.open(path)
+
+        assert decoded.ndim == 4
+        assert decoded.shape[0] == pil.n_frames == len(colors)
+
+        for i, frame in enumerate(ImageSequence.Iterator(pil)):
+            reference = self._pil_to_tensor(frame.convert(pil_mode))
+            assert decoded[i].shape == reference.shape
+            assert_tensor_close_on_at_least(
+                decoded[i], reference, percentage=99, atol=3
+            )
+
+        if mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA):
+            # The source is opaque, so the alpha channel must be fully opaque.
+            assert (decoded[:, -1] == 255).all()
 
     @needs_webp
     @pytest.mark.parametrize(

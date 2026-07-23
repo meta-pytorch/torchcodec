@@ -19,6 +19,8 @@
 # This script intentionally does NOT install:
 # - torch: install it separately (a nightly matching your CPU/CUDA variant).
 # - FFmpeg: a runtime/build dependency handled by the caller.
+# - libavif: unlike the other image libs, it is not installed from conda. The
+#   build always fetches a slim decode-only libavif from S3
 # - pkg-config: only needed to *locate an installed FFmpeg* at build time, i.e.
 #   builds that don't set BUILD_AGAINST_ALL_FFMPEG_FROM_S3. Callers that build
 #   against an installed FFmpeg install pkg-config alongside it.

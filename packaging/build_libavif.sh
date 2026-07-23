@@ -190,3 +190,19 @@ if [[ "${os}" == Linux || "${os}" == Darwin ]] && command -v nm > /dev/null 2>&1
         fi
     fi
 fi
+
+if [[ "${os}" == Darwin ]]; then
+    # macOS: we rewrite install-name of libavif from @rpath/libavif.16.dylib to
+    # a plain soname like libavif.16.dylib.
+    # If @rpath is in the install-name, then libraries depending on this libavif
+    # (i.e. our torchcodec_image) *must* have an rpath entry which points to the
+    # libavif directory. We don't want that, as it could weirdly interacts with
+    # the resolution of other libraries.
+    otool_bin="/usr/bin/otool"
+    [[ -e "${otool_bin}" ]] || otool_bin="$(command -v otool)"
+    int_bin="/usr/bin/install_name_tool"
+    [[ -e "${int_bin}" ]] || int_bin="$(command -v install_name_tool)"
+
+    soname=$(basename "$("${otool_bin}" -D "${lib}" | tail -n1)")
+    "${int_bin}" -id "${soname}" "${lib}"
+fi
