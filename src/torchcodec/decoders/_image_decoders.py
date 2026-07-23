@@ -233,3 +233,55 @@ def decode_avif(
     """
     data = _source_to_tensor(source)
     return _decode_with_mode(_decode_avif, data, mode, _AVIF_NATIVE_OUTPUT_MODES)
+
+
+# Maps a detected format to its raw decode op and native output modes, so
+# decode_image reuses the same mode-emulation path as the format-specific
+# decoders above.
+_FORMAT_TO_DECODER = {
+    "jpeg": (_decode_jpeg, _JPEG_NATIVE_OUTPUT_MODES),
+    "png": (_decode_png, _PNG_NATIVE_OUTPUT_MODES),
+    "webp": (_decode_webp, _WEBP_NATIVE_OUTPUT_MODES),
+    "gif": (_decode_gif, _GIF_NATIVE_OUTPUT_MODES),
+    "avif": (_decode_avif, _AVIF_NATIVE_OUTPUT_MODES),
+}
+
+
+def _detect_image_format(data: torch.Tensor) -> str:
+    # Sniff the codec from the leading "magic" bytes of the encoded data.
+    # This used to be implemented in C++ in torchvision, but benchmarks show
+    # this is negligible in Python
+    header = bytes(data[:64].tolist())
+    if header[:3] == b"\xff\xd8\xff":
+        return "jpeg"
+    if header[:8] == b"\x89PNG\r\n\x1a\n":
+        return "png"
+    if header[:6] in (b"GIF87a", b"GIF89a"):
+        return "gif"
+    if header[:4] == b"RIFF" and header[8:12] == b"WEBP":
+        return "webp"
+    if header[4:8] == b"ftyp":
+        # ISOBMFF container (AVIF/HEIC/...). The major brand is at [8:12], with
+        # compatible brands following. AVIF uses the "avif" (still) or "avis"
+        # (animated) brands; HEIC (which we don't support) uses "heic"/"heix"
+        # and is deliberately not matched here.
+        brands = header[8:]
+        if b"avif" in brands or b"avis" in brands:
+            return "avif"
+    raise ValueError(
+        "Unsupported or unrecognized image format. Supported formats are "
+        "JPEG, PNG, WebP, GIF and AVIF. If you know you have a valid image, "
+        "try using the dedicated decode_* functions like decode_jpeg() instead."
+    )
+
+
+def decode_image(
+    source: str | Path | bytes | torch.Tensor,
+    *,
+    mode: ImageColorMode = ImageColorMode.RGB,
+) -> torch.Tensor:
+    """Decode an image into a uint8 tensor, detecting the format automatically."""
+    data = _source_to_tensor(source)
+    fmt = _detect_image_format(data)
+    decode_fn, native_output_modes = _FORMAT_TO_DECODER[fmt]
+    return _decode_with_mode(decode_fn, data, mode, native_output_modes)
