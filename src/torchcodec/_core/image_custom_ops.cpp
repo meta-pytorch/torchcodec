@@ -20,11 +20,11 @@
 namespace facebook::torchcodec {
 
 STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
-  m.def("decode_jpeg(Tensor data, int mode) -> Tensor");
-  m.def("decode_png(Tensor data, int mode, int output_dtype=0) -> Tensor");
-  m.def("decode_webp(Tensor data, int mode) -> Tensor");
-  m.def("decode_gif(Tensor data, int mode) -> Tensor");
-  m.def("decode_avif(Tensor data, int mode, int output_dtype=0) -> Tensor");
+  m.def("decode_jpeg(Tensor input, int mode) -> Tensor");
+  m.def("decode_png(Tensor input, int mode, int output_dtype=0) -> Tensor");
+  m.def("decode_webp(Tensor input, int mode) -> Tensor");
+  m.def("decode_gif(Tensor input, int mode) -> Tensor");
+  m.def("decode_avif(Tensor input, int mode, int output_dtype=0) -> Tensor");
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
