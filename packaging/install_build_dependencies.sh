@@ -13,8 +13,7 @@
 #
 # Also installs the image decoder libs (libjpeg-turbo, libpng, libwebp) by
 # default. Builds that don't need image decoding (e.g. the mypy CI job) can skip
-# them by setting TORCHCODEC_SKIP_IMAGE_DEPS=1, in which case the decoders
-# compile as no-op stubs.
+# them by setting TORCHCODEC_BUILD_IMAGE=0.
 #
 # This script intentionally does NOT install:
 # - torch: install it separately (a nightly matching your CPU/CUDA variant).
@@ -30,7 +29,7 @@ set -ex
 conda install -y pybind11 -c conda-forge
 python -m pip install "scikit-build-core>=0.10" ninja
 
-if [[ "${TORCHCODEC_SKIP_IMAGE_DEPS:-0}" != "1" ]]; then
+if [[ "${TORCHCODEC_BUILD_IMAGE:-ON}" != "0" ]]; then
     conda install -y libjpeg-turbo -c pytorch
     conda install -y libpng -c conda-forge
     conda install -y "libwebp>=1.3" -c conda-forge
