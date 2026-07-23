@@ -22,10 +22,6 @@ from torchcodec._core.ops import (
 # TODO_IMAGE: we need to make FFmpeg an optional dependency, and probably want a
 # CI job for that.
 
-# TODO_IMAGE Some codecs expose threading options - we should make sure the
-# default is 1 thread and allow the user to override it. (similar to
-# num_ffmpeg_threads)
-
 # TODO_IMAGE: I think there are some tests for corrupted images in TV? We
 # should port those.
 
@@ -319,6 +315,7 @@ def decode_avif(
         Literal["UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA"] | ImageReadMode
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
+    num_threads: int = 1,
 ) -> torch.Tensor:
     """Decode an AVIF into a tensor of shape ``(C, H, W)``.
 
@@ -334,7 +331,10 @@ def decode_avif(
     data = _source_to_tensor(source)
     code = _OUTPUT_DTYPE_TO_CODE[output_dtype]
     return _decode_with_mode(
-        lambda d, m: _decode_avif(d, m, code), data, mode, _AVIF_NATIVE_OUTPUT_MODES
+        lambda d, m: _decode_avif(d, m, code, num_threads),
+        data,
+        mode,
+        _AVIF_NATIVE_OUTPUT_MODES,
     )
 
 
@@ -378,6 +378,14 @@ def _detect_image_format(data: torch.Tensor) -> str:
     )
 
 
+# Design note: the parameters of decode_image must apply to *all* codecs
+# uniformly. That's why all modes are supported by decode_image even though not
+# all codec would natively support all mode - e.g. jpeg has no alpha support, so
+# we prepend an opaque alpha channel as a post-processing step.  As a resut, all
+# codec-specific entry points like decode_jpeg, decode_png etc.  must still
+# expose the same parameters that decode_image exposes.  The codec-specific
+# parameters should live in the codec-specific entry points, e.g. decode_avif
+# has its `num_threads`, decode_jpeg has `device`, etc.
 def decode_image(
     source: str | Path | bytes | torch.Tensor,
     *,

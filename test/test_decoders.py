@@ -3730,10 +3730,6 @@ class TestImageDecoder:
     ):
         # Test that every input color mode is decodable to every output mode.
 
-        if fmt == "PNG" and source_mode == "P" and output_mode == "UNCHANGED":
-            # TODO_IMAGE figure out what to do here.
-            pytest.skip("UNCHANGED on a palette PNG returns raw palette indices")
-
         h, w = 40, 60
         xs = numpy.linspace(0, 255, w)
         ys = numpy.linspace(0, 255, h)
@@ -4191,6 +4187,17 @@ class TestImageDecoder:
 
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_avif
+    def test_avif_num_threads(self):
+        reference = decode_avif(GRADIENT_AVIF.path)
+        for num_threads in (1, 2, 4):
+            decoded = decode_avif(GRADIENT_AVIF.path, num_threads=num_threads)
+            assert torch.equal(decoded, reference)
+
+        for bad in (0, -1):
+            with pytest.raises(RuntimeError, match="num_threads must be >= 1"):
+                decode_avif(GRADIENT_AVIF.path, num_threads=bad)
 
     @needs_avif
     @pytest.mark.parametrize(
