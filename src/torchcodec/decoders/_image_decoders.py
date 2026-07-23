@@ -7,6 +7,7 @@
 import warnings
 from enum import Enum
 from pathlib import Path
+from typing import Literal
 
 import torch
 
@@ -145,46 +146,93 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
         )
 
 
+# Maps the output_dtype API values to the integer codes understood by the C++
+# decoders. Must be kept in-sync with the OutputDtype enum in ImageCommon.h.
+_OUTPUT_DTYPE_TO_CODE = {torch.uint8: 0, torch.uint16: 1, "auto": 2}
+
+
+def _validate_output_dtype(output_dtype) -> None:
+    if output_dtype not in _OUTPUT_DTYPE_TO_CODE:
+        raise ValueError(
+            f"Invalid output_dtype ({output_dtype}). "
+            "Supported values are torch.uint8, torch.uint16, and 'auto'."
+        )
+
+
+def _maybe_widen_to_uint16(
+    decoded: torch.Tensor, output_dtype: torch.dtype | str
+) -> torch.Tensor:
+    # For the always-8-bit codecs, the codec cannot emit 16-bit samples, so
+    # uint16 output is produced here by scaling the 8-bit values up to the full
+    # 16-bit range (a factor of 257 == 65535 / 255, so 255 -> 65535).
+    if decoded.dtype != torch.uint8:
+        raise RuntimeError("should never happen, please report a bug")
+    if output_dtype == torch.uint16:
+        return (decoded.to(torch.int32) * 257).to(torch.uint16)
+    else:
+        return decoded
+
+
 # TODO_IMAGE: Since we're updating the decoders code a bit, we should run sanity
 # checks ensure we're not leaking anything (there was a leak on webp back then!).
 
 # TODO_IMAGE: DOCS!! and docstrings.
 
 
+# Shared semantics of ``output_dtype`` for all decoders below: ``torch.uint8``
+# (the default) always yields an 8-bit tensor and ``torch.uint16`` always a
+# 16-bit one, rescaling to the full range of the target dtype as needed.
+# ``"auto"`` keeps the source's native precision: uint8 for 8-bit sources and
+# uint16 for sources carrying more than 8 bits per channel (16-bit PNG, 10/12-bit
+# AVIF). JPEG, WebP and GIF are always 8-bit, so for them "auto" is equivalent to
+# torch.uint8 and torch.uint16 simply widens the 8-bit values.
+
+
 def decode_jpeg(
     source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
+    output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a JPEG into a uint8 tensor of shape ``(C, H, W)``.
+    """Decode a JPEG into a tensor of shape ``(C, H, W)``.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. See the module note
+    above for the semantics of ``output_dtype``.
     """
+    _validate_output_dtype(output_dtype)
     data = _source_to_tensor(source)
-    return _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
+    decoded = _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
+    return _maybe_widen_to_uint16(decoded, output_dtype)
 
 
 def decode_png(
     source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
+    output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a PNG into a uint8 tensor of shape ``(C, H, W)``.
+    """Decode a PNG into a tensor of shape ``(C, H, W)``.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. See the module note
+    above for the semantics of ``output_dtype``.
     """
+    _validate_output_dtype(output_dtype)
     data = _source_to_tensor(source)
-    return _decode_with_mode(_decode_png, data, mode, _PNG_NATIVE_OUTPUT_MODES)
+    code = _OUTPUT_DTYPE_TO_CODE[output_dtype]
+    return _decode_with_mode(
+        lambda d, m: _decode_png(d, m, code), data, mode, _PNG_NATIVE_OUTPUT_MODES
+    )
 
 
 def decode_webp(
     source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
+    output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a WebP into a uint8 tensor.
+    """Decode a WebP into a tensor.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
     or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
@@ -194,17 +242,22 @@ def decode_webp(
     Animated frames are composited by libwebpdemux (disposal, blending, per-frame
     offsets). The mode-conversion helpers (see _decode_with_mode) operate on the
     channel dim, so they handle both the still and animated shapes.
+
+    See the module note above for the semantics of ``output_dtype``.
     """
+    _validate_output_dtype(output_dtype)
     data = _source_to_tensor(source)
-    return _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
+    decoded = _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
+    return _maybe_widen_to_uint16(decoded, output_dtype)
 
 
 def decode_gif(
     source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
+    output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a GIF into a uint8 tensor.
+    """Decode a GIF into a tensor.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
     or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
@@ -214,36 +267,46 @@ def decode_gif(
     the module note on GIF transparency). The mode-conversion helpers (see
     _decode_with_mode) operate on the channel dim, so they handle both the still
     and animated shapes.
+
+    See the module note above for the semantics of ``output_dtype``.
     """
+    _validate_output_dtype(output_dtype)
     data = _source_to_tensor(source)
-    return _decode_with_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
+    decoded = _decode_with_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
+    return _maybe_widen_to_uint16(decoded, output_dtype)
 
 
 def decode_avif(
     source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
+    output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    # TODO_IMAGE: 10/12-bit AVIF files are decoded as uint8 for now, losing
-    # precision. Returning uint16 for high-bit-depth files is tied to adding
-    """Decode an AVIF into a uint8 tensor.
+    """Decode an AVIF into a tensor of shape ``(C, H, W)``.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data.
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. See the module note
+    above for the semantics of ``output_dtype``; 10- and 12-bit AVIF sources
+    carry more than 8 bits per channel, so ``"auto"`` and ``torch.uint16``
+    preserve that precision.
     """
+    _validate_output_dtype(output_dtype)
     data = _source_to_tensor(source)
-    return _decode_with_mode(_decode_avif, data, mode, _AVIF_NATIVE_OUTPUT_MODES)
+    code = _OUTPUT_DTYPE_TO_CODE[output_dtype]
+    return _decode_with_mode(
+        lambda d, m: _decode_avif(d, m, code), data, mode, _AVIF_NATIVE_OUTPUT_MODES
+    )
 
 
-# Maps a detected format to its raw decode op and native output modes, so
-# decode_image reuses the same mode-emulation path as the format-specific
-# decoders above.
+# Maps a detected format to its public decoder, so decode_image reuses the exact
+# same decoding path (mode emulation and output_dtype handling) as the
+# format-specific decoders above.
 _FORMAT_TO_DECODER = {
-    "jpeg": (_decode_jpeg, _JPEG_NATIVE_OUTPUT_MODES),
-    "png": (_decode_png, _PNG_NATIVE_OUTPUT_MODES),
-    "webp": (_decode_webp, _WEBP_NATIVE_OUTPUT_MODES),
-    "gif": (_decode_gif, _GIF_NATIVE_OUTPUT_MODES),
-    "avif": (_decode_avif, _AVIF_NATIVE_OUTPUT_MODES),
+    "jpeg": decode_jpeg,
+    "png": decode_png,
+    "webp": decode_webp,
+    "gif": decode_gif,
+    "avif": decode_avif,
 }
 
 
@@ -279,9 +342,15 @@ def decode_image(
     source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
+    output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode an image into a uint8 tensor, detecting the format automatically."""
+    """Decode an image into a tensor, detecting the format automatically.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. See the module note
+    above for the semantics of ``output_dtype``.
+    """
+    _validate_output_dtype(output_dtype)
     data = _source_to_tensor(source)
     fmt = _detect_image_format(data)
-    decode_fn, native_output_modes = _FORMAT_TO_DECODER[fmt]
-    return _decode_with_mode(decode_fn, data, mode, native_output_modes)
+    return _FORMAT_TO_DECODER[fmt](data, mode=mode, output_dtype=output_dtype)

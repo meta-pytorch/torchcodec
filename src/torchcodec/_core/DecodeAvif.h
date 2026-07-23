@@ -12,6 +12,7 @@ namespace facebook::torchcodec {
 
 FORCE_PUBLIC_VISIBILITY torch::stable::Tensor decode_avif(
     const torch::stable::Tensor& data,
-    int64_t mode);
+    int64_t mode,
+    int64_t output_dtype);
 
 } // namespace facebook::torchcodec
