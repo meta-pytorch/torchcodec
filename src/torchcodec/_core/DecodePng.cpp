@@ -18,7 +18,8 @@ namespace facebook::torchcodec {
 
 torch::stable::Tensor decode_png(
     [[maybe_unused]] const torch::stable::Tensor& data,
-    [[maybe_unused]] int64_t mode) {
+    [[maybe_unused]] int64_t mode,
+    [[maybe_unused]] int64_t output_dtype) {
   STD_TORCH_CHECK(
       false,
       "decode_png: torchcodec was not compiled with libpng support. "
@@ -112,7 +113,7 @@ struct PngHeader {
   png_uint_32 width;
   png_uint_32 height;
   int num_output_channels;
-  int bit_depth;
+  bool output_16;
   int num_passes;
 };
 
@@ -121,7 +122,8 @@ PngHeader read_header_and_configure(
     png_infop& info_ptr,
     ErrorCtx& error_ctx,
     SourceCtx& source_ctx,
-    ImageReadMode read_mode) {
+    ImageReadMode read_mode,
+    OutputDtype output_dtype) {
   if (setjmp(png_jmpbuf(png_ptr)) != 0) {
     png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
     STD_TORCH_CHECK(false, "decode_png failed: ", error_ctx.error_message);
@@ -158,6 +160,8 @@ PngHeader read_header_and_configure(
         ". Only <=8 and 16 are supported.")
   }
 
+  bool output_16 = should_output_uint16(output_dtype, bit_depth == 16);
+
   int num_output_channels = png_get_channels(png_ptr, info_ptr);
 
   if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8) {
@@ -179,6 +183,8 @@ PngHeader read_header_and_configure(
     // png_set_tRNS_to_alpha() expands it into a real alpha channel (it must be
     // called after png_set_palette_to_rgb()).
     bool has_trns = png_get_valid(png_ptr, info_ptr, PNG_INFO_tRNS) != 0;
+
+    png_uint_32 opaque_alpha = output_16 ? 65535 : 255;
 
     switch (read_mode) {
       case ImageReadMode::GRAY:
@@ -206,7 +212,7 @@ PngHeader read_header_and_configure(
           if (has_trns) {
             png_set_tRNS_to_alpha(png_ptr);
           } else if (!has_alpha) {
-            png_set_add_alpha(png_ptr, (1 << bit_depth) - 1, PNG_FILLER_AFTER);
+            png_set_add_alpha(png_ptr, opaque_alpha, PNG_FILLER_AFTER);
           }
 
           if (has_color) {
@@ -240,7 +246,7 @@ PngHeader read_header_and_configure(
           if (has_trns) {
             png_set_tRNS_to_alpha(png_ptr);
           } else if (!has_alpha) {
-            png_set_add_alpha(png_ptr, (1 << bit_depth) - 1, PNG_FILLER_AFTER);
+            png_set_add_alpha(png_ptr, opaque_alpha, PNG_FILLER_AFTER);
           }
           num_output_channels = 4;
         }
@@ -253,7 +259,20 @@ PngHeader read_header_and_configure(
             static_cast<int64_t>(read_mode),
             ". This should never happen, please report a bug to the TorchCodec repo.");
     }
+  }
 
+  // libpng knows how to scale 16-bit samples to 8-bit, and vice versa, so we
+  // can use that instead of doing it ourselves.
+  bool need_scaling = false;
+  if (output_16 && bit_depth != 16) {
+    png_set_expand_16(png_ptr);
+    need_scaling = true;
+  } else if (!output_16 && bit_depth == 16) {
+    png_set_scale_16(png_ptr);
+    need_scaling = true;
+  }
+
+  if (read_mode != ImageReadMode::UNCHANGED || need_scaling) {
     png_read_update_info(png_ptr, info_ptr);
   }
 
@@ -261,7 +280,7 @@ PngHeader read_header_and_configure(
       .width = width,
       .height = height,
       .num_output_channels = num_output_channels,
-      .bit_depth = bit_depth,
+      .output_16 = output_16,
       .num_passes = num_passes};
 }
 
@@ -302,7 +321,8 @@ void decode_rows(
 
 torch::stable::Tensor decode_png(
     const torch::stable::Tensor& input,
-    int64_t mode) {
+    int64_t mode,
+    int64_t output_dtype) {
   validate_encoded_data(input);
 
   auto input_ptr = input.const_data_ptr<uint8_t>();
@@ -331,16 +351,17 @@ torch::stable::Tensor decode_png(
       info_ptr,
       error_ctx,
       source_ctx,
-      static_cast<ImageReadMode>(mode));
+      static_cast<ImageReadMode>(mode),
+      static_cast<OutputDtype>(output_dtype));
 
-  auto is_16_bits = header.bit_depth == 16;
+  auto output_16 = header.output_16;
   output = torch::stable::empty(
       {static_cast<int64_t>(header.height),
        static_cast<int64_t>(header.width),
        header.num_output_channels},
-      is_16_bits ? kStableUInt16 : kStableUInt8);
+      output_16 ? kStableUInt16 : kStableUInt8);
 
-  int64_t bytes_per_pixel = header.num_output_channels * (is_16_bits ? 2 : 1);
+  int64_t bytes_per_pixel = header.num_output_channels * (output_16 ? 2 : 1);
   int64_t stride = static_cast<int64_t>(header.width) * bytes_per_pixel;
   decode_rows(
       png_ptr,

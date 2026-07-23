@@ -23,6 +23,38 @@ enum class ImageReadMode : int64_t {
   RGB_ALPHA = 4,
 };
 
+// Requested output dtype. Must be kept in-sync with _OUTPUT_DTYPE_TO_CODE in
+// torchcodec/decoders/_image_decoders.py. Only relevant for the decoders whose
+// source can carry more than 8 bits per channel (PNG, AVIF); AUTO keeps the
+// source's native precision (16-bit for >8-bit sources, 8-bit otherwise).
+enum class OutputDtype : int64_t {
+  UINT8 = 0,
+  UINT16 = 1,
+  AUTO = 2,
+};
+
+// Whether a decoder should output 8bit or 16bit data based on the user's
+// requeted dtype, and the source. This is assumed to be called on a decoder
+// that supports >8bit sources.
+inline bool should_output_uint16(
+    OutputDtype output_dtype,
+    bool source_gt_8bit) {
+  switch (output_dtype) {
+    case OutputDtype::UINT8:
+      return false;
+    case OutputDtype::UINT16:
+      return true;
+    case OutputDtype::AUTO:
+      return source_gt_8bit;
+    default:
+      STD_TORCH_CHECK(
+          false,
+          "Unexpected output_dtype ",
+          static_cast<int64_t>(output_dtype),
+          ". This should never happen, please report a bug to the TorchCodec repo.");
+  }
+}
+
 // Whether a decoder should produce a 3-channel RGB tensor (true) or a 4-channel
 // RGBA one (false) for the given read mode. `has_alpha` is whether the source
 // actually carries transparency. Only RGB, RGB_ALPHA and UNCHANGED are handled:

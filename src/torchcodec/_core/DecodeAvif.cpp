@@ -18,7 +18,8 @@ namespace facebook::torchcodec {
 
 torch::stable::Tensor decode_avif(
     [[maybe_unused]] const torch::stable::Tensor& data,
-    [[maybe_unused]] int64_t mode) {
+    [[maybe_unused]] int64_t mode,
+    [[maybe_unused]] int64_t output_dtype) {
   STD_TORCH_CHECK(
       false,
       "decode_avif: torchcodec was not compiled with libavif support. "
@@ -88,7 +89,8 @@ ExifOrientation avif_exif_orientation(const avifImage* image) {
 
 torch::stable::Tensor decode_avif(
     const torch::stable::Tensor& input,
-    int64_t mode) {
+    int64_t mode,
+    int64_t output_dtype) {
   // Based on
   // https://github.com/AOMediaCodec/libavif/blob/main/examples/avif_example_decode_memory.c
   validate_encoded_data(input);
@@ -124,6 +126,9 @@ torch::stable::Tensor decode_avif(
       static_cast<bool>(decoder->alphaPresent));
   int num_channels = return_rgb ? 3 : 4;
 
+  bool output_16 = should_output_uint16(
+      static_cast<OutputDtype>(output_dtype), decoder->image->depth > 8);
+
   torch::stable::Tensor output;
   uint8_t* output_ptr = nullptr;
   int64_t frame_num_bytes = 0;
@@ -141,8 +146,7 @@ torch::stable::Tensor decode_avif(
     std::memset(&rgb, 0, sizeof(rgb));
     avifRGBImageSetDefaults(&rgb, decoder->image);
 
-    // TODO_IMAGE: support 10 and 12 bits.
-    rgb.depth = 8;
+    rgb.depth = output_16 ? 16 : 8;
     rgb.format = return_rgb ? AVIF_RGB_FORMAT_RGB : AVIF_RGB_FORMAT_RGBA;
     rgb.ignoreAlpha = return_rgb ? AVIF_TRUE : AVIF_FALSE;
 
@@ -152,14 +156,14 @@ torch::stable::Tensor decode_avif(
            num_channels,
            static_cast<int64_t>(rgb.height),
            static_cast<int64_t>(rgb.width)},
-          kStableUInt8,
+          output_16 ? kStableUInt16 : kStableUInt8,
           std::nullopt,
           std::nullopt,
           std::nullopt,
           torch::headeronly::MemoryFormat::ChannelsLast);
-      output_ptr = output.mutable_data_ptr<uint8_t>();
-      frame_num_bytes =
-          static_cast<int64_t>(num_channels) * rgb.height * rgb.width;
+      output_ptr = static_cast<uint8_t*>(output.mutable_data_ptr());
+      frame_num_bytes = static_cast<int64_t>(num_channels) * rgb.height *
+          rgb.width * (output_16 ? 2 : 1);
     }
 
     rgb.pixels = output_ptr + i * frame_num_bytes;

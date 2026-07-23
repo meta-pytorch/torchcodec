@@ -64,11 +64,15 @@ from .utils import (
     FRAME_EXCEEDS_SCREEN_GIF,
     get_ffmpeg_minor_version,
     get_python_version,
+    GRADIENT_10BIT_AVIF,
+    GRADIENT_12BIT_AVIF,
+    GRADIENT_16BIT_PNG,
     GRADIENT_AVIF,
     GRADIENT_GIF,
     GRADIENT_JPEG,
     GRADIENT_PNG,
     GRADIENT_WEBP,
+    GRAYSCALE_16BIT_PNG,
     GRAYSCALE_ALPHA_PNG,
     GRAYSCALE_JPEG,
     GRAYSCALE_PNG,
@@ -3606,6 +3610,28 @@ class TestImageDecoder:
             decode_fn(asset.path, mode=mode),
         )
 
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.uint16, "auto"))
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (
+            _jpeg_param(GRADIENT_JPEG),
+            _png_param(GRADIENT_16BIT_PNG),
+            _webp_param(GRADIENT_WEBP),
+            _gif_param(GRADIENT_GIF),
+            _avif_param(GRADIENT_10BIT_AVIF),
+        ),
+    )
+    def test_decode_image_output_dtype(self, decode_fn, asset, output_dtype):
+        # decode_image must expose output_dtype and forward it, producing exactly
+        # what the format-specific decoder produces. The PNG/AVIF assets are
+        # >8-bit so the uint16/"auto" paths are meaningfully exercised.
+        from_image = decode_image(asset.path, output_dtype=output_dtype)
+        from_decoder = decode_fn(asset.path, output_dtype=output_dtype)
+        assert from_image.dtype == from_decoder.dtype
+        torch.testing.assert_close(
+            from_image.to(torch.int64), from_decoder.to(torch.int64), atol=0, rtol=0
+        )
+
     def test_decode_image_unrecognized_format_raises(self):
         garbage = torch.arange(64, dtype=torch.uint8)
         with pytest.raises(ValueError, match="Unsupported or unrecognized"):
@@ -3729,6 +3755,190 @@ class TestImageDecoder:
             and not source_has_alpha
         ):
             assert (decoded[-1] == 255).all()
+
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (
+            _jpeg_param(GRADIENT_JPEG),
+            _png_param(GRADIENT_PNG),
+            _webp_param(GRADIENT_WEBP),
+            _gif_param(GRADIENT_GIF),
+            _avif_param(GRADIENT_AVIF),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "mode",
+        (
+            ImageColorMode.UNCHANGED,
+            ImageColorMode.GRAY,
+            ImageColorMode.GRAY_ALPHA,
+            ImageColorMode.RGB,
+            ImageColorMode.RGB_ALPHA,
+        ),
+    )
+    def test_output_dtype_8bit_source(self, decode_fn, asset, mode):
+        # For an 8-bit source, uint8 (the default) and "auto" both yield uint8,
+        # while uint16 widens to the full 16-bit range. This holds for every
+        # output mode.
+        default = decode_fn(asset.path, mode=mode)
+        uint8 = decode_fn(asset.path, mode=mode, output_dtype=torch.uint8)
+        auto = decode_fn(asset.path, mode=mode, output_dtype="auto")
+        uint16 = decode_fn(asset.path, mode=mode, output_dtype=torch.uint16)
+
+        assert uint8.dtype == torch.uint8
+        torch.testing.assert_close(default, uint8, atol=0, rtol=0)  # uint8 default
+        assert auto.dtype == torch.uint8  # 8-bit source
+        torch.testing.assert_close(auto, uint8, atol=0, rtol=0)
+        assert uint16.dtype == torch.uint16
+        assert uint16.shape == uint8.shape
+
+        # The widened output is the uint8 output scaled to the full 16-bit range
+        # (a factor of 257 = 65535 / 255): exact for the codecs that widen by
+        # byte replication, within rounding for AVIF (which converts at 16-bit
+        # precision).
+        if decode_fn is decode_avif:
+            downscaled = (uint16.to(torch.float32) / 257).round()
+            assert_tensor_close_on_at_least(
+                downscaled, uint8.to(torch.float32), percentage=99, atol=1
+            )
+        else:
+            torch.testing.assert_close(
+                uint16.to(torch.int64), uint8.to(torch.int64) * 257, atol=0, rtol=0
+            )
+
+    @needs_png
+    @pytest.mark.parametrize("asset", (GRAYSCALE_16BIT_PNG, GRADIENT_16BIT_PNG))
+    @pytest.mark.parametrize(
+        "mode",
+        (
+            ImageColorMode.UNCHANGED,
+            ImageColorMode.GRAY,
+            ImageColorMode.GRAY_ALPHA,
+            ImageColorMode.RGB,
+            ImageColorMode.RGB_ALPHA,
+        ),
+    )
+    def test_output_dtype_16bit_png(self, asset, mode):
+        # 16-bit PNGs (grayscale and RGB) are genuine >8-bit sources, exercising
+        # the decoder's 16-bit path for every output mode.
+        default = decode_png(asset.path, mode=mode)
+        uint8 = decode_png(asset.path, mode=mode, output_dtype=torch.uint8)
+        uint16 = decode_png(asset.path, mode=mode, output_dtype=torch.uint16)
+        auto = decode_png(asset.path, mode=mode, output_dtype="auto")
+
+        # >8-bit source: "auto" preserves 16 bits, but the default is still uint8.
+        assert uint16.dtype == torch.uint16
+        assert auto.dtype == torch.uint16
+        torch.testing.assert_close(
+            auto.to(torch.int64), uint16.to(torch.int64), atol=0, rtol=0
+        )
+        assert uint8.dtype == torch.uint8
+        torch.testing.assert_close(default, uint8, atol=0, rtol=0)
+        assert uint16.shape == uint8.shape
+
+        # Genuine 16-bit content: not merely 8-bit values scaled by 257 (which
+        # would make every sample divisible by 257). A full-range color channel
+        # also reaches the top of the 16-bit range; GRAY luma of a gradient never
+        # does, so we only check that for the color-carrying modes.
+        assert (uint16.to(torch.int64) % 257 != 0).any()
+        if mode not in (ImageColorMode.GRAY, ImageColorMode.GRAY_ALPHA):
+            assert uint16.to(torch.int64).max() > 60000
+
+        # uint8 output is the 16-bit output scaled down by 257 (full-range).
+        expected8 = (uint16.to(torch.float32) / 257).round()
+        assert_tensor_close_on_at_least(
+            uint8.to(torch.float32), expected8, percentage=99, atol=1
+        )
+
+        # Synthesized alpha stays fully opaque at each dtype's max.
+        if mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA):
+            assert (uint16[-1].to(torch.int64) == 65535).all()
+            assert (uint8[-1].to(torch.int64) == 255).all()
+
+        # PIL can read a 16-bit *grayscale* PNG back exactly (it can't for RGB),
+        # so for that source we assert the 16-bit values are reproduced exactly.
+        # The grayscale source maps to every output color channel (it's
+        # replicated across RGB), so we compare each color channel to it.
+        if asset is GRAYSCALE_16BIT_PNG:
+            src = torch.from_numpy(
+                numpy.array(Image.open(asset.path)).astype(numpy.int64)
+            )
+            has_alpha = mode in (ImageColorMode.GRAY_ALPHA, ImageColorMode.RGB_ALPHA)
+            num_color = uint16.shape[0] - (1 if has_alpha else 0)
+            for c in range(num_color):
+                torch.testing.assert_close(
+                    uint16[c].to(torch.int64), src, atol=0, rtol=0
+                )
+
+    @needs_avif
+    @pytest.mark.parametrize("asset", (GRADIENT_10BIT_AVIF, GRADIENT_12BIT_AVIF))
+    @pytest.mark.parametrize(
+        "mode",
+        (
+            ImageColorMode.UNCHANGED,
+            ImageColorMode.GRAY,
+            ImageColorMode.GRAY_ALPHA,
+            ImageColorMode.RGB,
+            ImageColorMode.RGB_ALPHA,
+        ),
+    )
+    def test_output_dtype_high_bit_depth_avif(self, asset, mode):
+        # A 10/12-bit AVIF is a genuine >8-bit source.
+        default = decode_avif(asset.path, mode=mode)
+        uint8 = decode_avif(asset.path, mode=mode, output_dtype=torch.uint8)
+        uint16 = decode_avif(asset.path, mode=mode, output_dtype=torch.uint16)
+        auto = decode_avif(asset.path, mode=mode, output_dtype="auto")
+
+        # >8-bit source: "auto" preserves the precision, but the default is uint8.
+        assert uint8.dtype == torch.uint8
+        torch.testing.assert_close(default, uint8, atol=0, rtol=0)
+        assert uint16.dtype == torch.uint16
+        assert auto.dtype == torch.uint16
+        torch.testing.assert_close(
+            auto.to(torch.int64), uint16.to(torch.int64), atol=0, rtol=0
+        )
+        assert uint16.shape == uint8.shape
+
+        # Genuine >8-bit precision: the 16-bit samples are not merely 8-bit
+        # values scaled by 257 (which would make every sample divisible by 257).
+        # A full-range color channel also reaches the top of the 16-bit range;
+        # GRAY luma of a gradient never does, so we skip that check for gray.
+        assert (uint16.to(torch.int64) % 257 != 0).any()
+        if mode not in (ImageColorMode.GRAY, ImageColorMode.GRAY_ALPHA):
+            assert uint16.to(torch.int64).max() > 60000
+
+        # The uint8 output matches PIL's (8-bit) AVIF decode. Note libavif
+        # decodes to 8- and 16-bit independently (they aren't related by a clean
+        # 257x factor), so we validate the 8-bit path against PIL rather than
+        # against the 16-bit output. GRAY/GRAY_ALPHA additionally exercise the
+        # Python uint16 gray-conversion helpers (the source has no alpha, so
+        # there's no alpha-drop divergence from PIL).
+        pil_mode = {
+            ImageColorMode.UNCHANGED: "RGB",  # source has no alpha
+            ImageColorMode.GRAY: "L",
+            ImageColorMode.GRAY_ALPHA: "LA",
+            ImageColorMode.RGB: "RGB",
+            ImageColorMode.RGB_ALPHA: "RGBA",
+        }[mode]
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+        assert uint8.shape == reference.shape
+        assert_tensor_close_on_at_least(uint8, reference, percentage=99, atol=2)
+
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (
+            _jpeg_param(GRADIENT_JPEG),
+            _png_param(GRADIENT_PNG),
+            _webp_param(GRADIENT_WEBP),
+            _gif_param(GRADIENT_GIF),
+            _avif_param(GRADIENT_AVIF),
+        ),
+    )
+    @pytest.mark.parametrize("bad_dtype", (torch.float32, torch.int32, "uint8"))
+    def test_output_dtype_invalid(self, decode_fn, asset, bad_dtype):
+        # Only torch.uint8, torch.uint16 and the string "auto" are accepted.
+        with pytest.raises(ValueError, match="Invalid output_dtype"):
+            decode_fn(asset.path, output_dtype=bad_dtype)
 
     @staticmethod
     def _make_transparent_png(path, kind):
