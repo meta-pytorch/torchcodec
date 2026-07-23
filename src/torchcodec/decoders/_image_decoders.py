@@ -22,9 +22,6 @@ from torchcodec._core.ops import (
 # TODO_IMAGE: we need to make FFmpeg an optional dependency, and probably want a
 # CI job for that.
 
-# TODO_IMAGE: I think there are some tests for corrupted images in TV? We
-# should port those.
-
 # GIF vs Pillow: our animated-GIF compositing (disposal methods, transparency,
 # frame offsets) matches Pillow. GIF transparency is handled per output mode:
 # - RGB/GRAY: transparent pixels are composited over the GIF background color

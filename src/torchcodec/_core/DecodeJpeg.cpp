@@ -300,6 +300,15 @@ void decode_rows(
     }
     output_ptr += stride;
   }
+
+  // jpeg_finish_decompress still processes trailing data and can trigger
+  // libjpeg errors (e.g. an unsupported marker in a corrupt file), so it must
+  // run under a setjmp scope; we reuse this function's. If it instead ran in
+  // decode_jpeg() with no active setjmp, an error would longjmp into an
+  // already-returned frame and crash (segfault). See Note [libjpeg error
+  // handling]. Note that the EXIF markers must be read *before* this call,
+  // since finishing invalidates the saved marker list (see decode_jpeg).
+  jpeg_finish_decompress(&jpeg_ctx);
 }
 
 } // namespace
@@ -437,6 +446,12 @@ torch::stable::Tensor decode_jpeg(
       input.numel(),
       static_cast<ImageReadMode>(mode));
 
+  // EXIF markers were parsed during jpeg_read_header (in read_header_and_start)
+  // so this is just an in-memory lookup (i.e. we're not going back to the
+  // beginning of the file). We must read them before decode_rows(), which
+  // finishes the decode and invalidates the saved marker list.
+  ExifOrientation exif_orientation = fetch_jpeg_exif_orientation(&jpeg_ctx);
+
   // We want output to be channels last
   int64_t stride =
       static_cast<int64_t>(jpeg_ctx.output_width) * num_output_channels;
@@ -476,11 +491,6 @@ torch::stable::Tensor decode_jpeg(
     }
   }
 
-  // EXIF markers were parsed during jpeg_read_header so this is just an
-  // in-memory lookup (i.e. we're not going back to the beginning of the file)
-  ExifOrientation exif_orientation = fetch_jpeg_exif_orientation(&jpeg_ctx);
-
-  jpeg_finish_decompress(&jpeg_ctx);
   jpeg_destroy_decompress(&jpeg_ctx);
   return exif_orientation_transform(
       stable_permute(output, {2, 0, 1}), exif_orientation);
