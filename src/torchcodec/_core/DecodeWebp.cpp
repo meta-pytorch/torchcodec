@@ -17,7 +17,7 @@
 namespace facebook::torchcodec {
 
 torch::stable::Tensor decode_webp(
-    [[maybe_unused]] const torch::stable::Tensor& data,
+    [[maybe_unused]] const torch::stable::Tensor& input,
     [[maybe_unused]] int64_t mode) {
   STD_TORCH_CHECK(
       false,
