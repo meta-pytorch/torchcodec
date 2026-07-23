@@ -38,6 +38,7 @@ from torchcodec.decoders._image_decoders import (
     _source_to_tensor,
     decode_avif,
     decode_gif,
+    decode_image,
     decode_jpeg,
     decode_png,
     decode_webp,
@@ -3568,6 +3569,47 @@ class TestImageDecoder:
     def test_bad_source_type_raises(self, decode_fn):
         with pytest.raises(TypeError, match="Unknown source type"):
             decode_fn(123)
+
+    @pytest.mark.parametrize(
+        "make_source",
+        (
+            pytest.param(lambda a: a.path, id="path"),
+            pytest.param(lambda a: str(a.path), id="str"),
+            pytest.param(lambda a: a.path.read_bytes(), id="bytes"),
+            pytest.param(
+                lambda a: torch.frombuffer(
+                    bytearray(a.path.read_bytes()), dtype=torch.uint8
+                ),
+                id="tensor",
+            ),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "mode",
+        (ImageColorMode.UNCHANGED, ImageColorMode.RGB, ImageColorMode.GRAY_ALPHA),
+    )
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (
+            _jpeg_param(GRADIENT_JPEG),
+            _png_param(RGBA_PNG),
+            _webp_param(RGBA_WEBP),
+            _gif_param(GRADIENT_GIF),
+            _avif_param(RGBA_AVIF),
+        ),
+    )
+    def test_decode_image(self, decode_fn, asset, mode, make_source):
+        # decode_image detects the format and must produce exactly what the
+        # format-specific decoder produces, for every mode and source kind.
+        assert_frames_equal(
+            decode_image(make_source(asset), mode=mode),
+            decode_fn(asset.path, mode=mode),
+        )
+
+    def test_decode_image_unrecognized_format_raises(self):
+        garbage = torch.arange(64, dtype=torch.uint8)
+        with pytest.raises(ValueError, match="Unsupported or unrecognized"):
+            decode_image(garbage)
 
     @needs_jpeg
     @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, CMYK_JPEG))
