@@ -25,11 +25,6 @@ from torchcodec._core.ops import (
 # default is 1 thread and allow the user to override it. (similar to
 # num_ffmpeg_threads)
 
-# TODO_IMAGE: Support torchscript?
-
-# TODO_IMAGE: We'll need to support all output modes consistently across all
-# decoders, with tests.
-
 # TODO_IMAGE: I think there are some tests for corrupted images in TV? We
 # should port those.
 
@@ -153,14 +148,14 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
 # TODO_IMAGE: Since we're updating the decoders code a bit, we should run sanity
 # checks ensure we're not leaking anything (there was a leak on webp back then!).
 
+# TODO_IMAGE: DOCS!! and docstrings.
+
 
 def decode_jpeg(
     source: str | Path | bytes | torch.Tensor,
     *,
     mode: ImageColorMode = ImageColorMode.RGB,
 ) -> torch.Tensor:
-    # TODO_IMAGE We should ensure we build and link against turbo. Maybe by
-    # checking the symbols of the bundled libjpeg shared library at repair time.
     """Decode a JPEG into a uint8 tensor of shape ``(C, H, W)``.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
