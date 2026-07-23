@@ -54,6 +54,7 @@ direct,
 // Ported from torchvision's csrc/io/image/cpu/exif.h into torchcodec.
 // Changes made:
 // - make input ptr const.
+// - make the exif values an enum
 
 #include <torch/csrc/stable/ops.h>
 #include <torch/headeronly/util/Exception.h>
@@ -68,6 +69,21 @@ constexpr uint16_t ENDIANNESS_MOTO = 0x4d;
 constexpr uint16_t REQ_EXIF_TAG_MARK = 0x2a;
 constexpr uint16_t ORIENTATION_EXIF_TAG = 0x0112;
 constexpr uint16_t INCORRECT_TAG = -1;
+
+// EXIF orientation values as defined in JEITA CP-3451C section 4.6.4.A. Each
+// name describes where the 0th row and 0th column of the stored pixels end up
+// in the correctly-displayed image.
+enum class ExifOrientation : int {
+  Unspecified = -1,
+  TopLeft = 1, // normal orientation
+  TopRight = 2, // needs horizontal flip
+  BottomRight = 3, // needs 180 rotation
+  BottomLeft = 4, // needs vertical flip
+  LeftTop = 5, // mirrored horizontal & rotate 270 CW
+  RightTop = 6, // rotate 90 CW
+  RightBottom = 7, // mirrored horizontal & rotate 90 CW
+  LeftBottom = 8, // needs 270 CW rotation
+};
 
 class ExifDataReader {
  public:
@@ -131,12 +147,12 @@ inline uint32_t get_uint32(
       (exif_data[offset + 2] << 8) + exif_data[offset + 3];
 }
 
-inline int fetch_exif_orientation(
+inline ExifOrientation fetch_exif_orientation(
     const unsigned char* exif_data_ptr,
     size_t size) {
   STD_TORCH_CHECK(exif_data_ptr != nullptr, "exif_data_ptr cannot be null");
 
-  int exif_orientation = -1;
+  ExifOrientation exif_orientation = ExifOrientation::Unspecified;
 
   // Exif binary structure looks like this
   // First 6 bytes: [E, x, i, f, 0, 0]
@@ -166,7 +182,8 @@ inline int fetch_exif_orientation(
         break;
       }
       if (tag_num == ORIENTATION_EXIF_TAG) {
-        exif_orientation = get_uint16(exif_data, endianness, offset + 8);
+        exif_orientation = static_cast<ExifOrientation>(
+            get_uint16(exif_data, endianness, offset + 8));
         break;
       }
       offset += tiff_field_size;
@@ -175,40 +192,30 @@ inline int fetch_exif_orientation(
   return exif_orientation;
 }
 
-constexpr uint16_t IMAGE_ORIENTATION_TL = 1; // normal orientation
-constexpr uint16_t IMAGE_ORIENTATION_TR = 2; // needs horizontal flip
-constexpr uint16_t IMAGE_ORIENTATION_BR = 3; // needs 180 rotation
-constexpr uint16_t IMAGE_ORIENTATION_BL = 4; // needs vertical flip
-constexpr uint16_t IMAGE_ORIENTATION_LT =
-    5; // mirrored horizontal & rotate 270 CW
-constexpr uint16_t IMAGE_ORIENTATION_RT = 6; // rotate 90 CW
-constexpr uint16_t IMAGE_ORIENTATION_RB =
-    7; // mirrored horizontal & rotate 90 CW
-constexpr uint16_t IMAGE_ORIENTATION_LB = 8; // needs 270 CW rotation
-
 inline torch::stable::Tensor exif_orientation_transform(
     const torch::stable::Tensor& image,
-    int orientation) {
-  if (orientation == IMAGE_ORIENTATION_TL) {
-    return image;
-  } else if (orientation == IMAGE_ORIENTATION_TR) {
-    return stable_flip(image, {-1});
-  } else if (orientation == IMAGE_ORIENTATION_BR) {
-    // needs 180 rotation equivalent to
-    // flip both horizontally and vertically
-    return stable_flip(image, {-2, -1});
-  } else if (orientation == IMAGE_ORIENTATION_BL) {
-    return stable_flip(image, {-2});
-  } else if (orientation == IMAGE_ORIENTATION_LT) {
-    return torch::stable::transpose(image, -1, -2);
-  } else if (orientation == IMAGE_ORIENTATION_RT) {
-    return stable_flip(torch::stable::transpose(image, -1, -2), {-1});
-  } else if (orientation == IMAGE_ORIENTATION_RB) {
-    return stable_flip(torch::stable::transpose(image, -1, -2), {-2, -1});
-  } else if (orientation == IMAGE_ORIENTATION_LB) {
-    return stable_flip(torch::stable::transpose(image, -1, -2), {-2});
+    ExifOrientation orientation) {
+  switch (orientation) {
+    case ExifOrientation::TopRight:
+      return stable_flip(image, {-1});
+    case ExifOrientation::BottomRight:
+      // 180 rotation, equivalent to flipping both horizontally and vertically.
+      return stable_flip(image, {-2, -1});
+    case ExifOrientation::BottomLeft:
+      return stable_flip(image, {-2});
+    case ExifOrientation::LeftTop:
+      return torch::stable::transpose(image, -1, -2);
+    case ExifOrientation::RightTop:
+      return stable_flip(torch::stable::transpose(image, -1, -2), {-1});
+    case ExifOrientation::RightBottom:
+      return stable_flip(torch::stable::transpose(image, -1, -2), {-2, -1});
+    case ExifOrientation::LeftBottom:
+      return stable_flip(torch::stable::transpose(image, -1, -2), {-2});
+    default:
+      // TopLeft is the normal orientation; Unspecified and any unknown value
+      // (including the invalid 0) are treated as no transform.
+      return image;
   }
-  return image;
 }
 
 } // namespace exif_private
