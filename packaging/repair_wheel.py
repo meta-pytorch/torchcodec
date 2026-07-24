@@ -37,10 +37,7 @@ REPAIRED_DIR = Path("dist_repaired")
 
 
 def _is_cuda_wheel(wheel):
-    # Detect a CUDA wheel from its local-version tag (e.g. "+cu126") in the
-    # filename. We deliberately do NOT key off the ENABLE_CUDA env var: it is set
-    # for the build step but NOT for this repair step (post_build_script.sh), so
-    # the wheel itself is the reliable signal here.
+    # Detect a CUDA wheel from its local-version tag (e.g. "+cu126") in the filename.
     return re.search(r"[+_]cu\d", Path(wheel).name) is not None
 
 
@@ -138,30 +135,6 @@ def _cuda_lib_dirs():
     return sorted({str(f.parent) for f in _find_lib_files(["libnvjpeg.so*"])})
 
 
-def _debug_cuda_bundling(patterns):
-    # Print where we look for the bundled CUDA lib and what we find, so a failed
-    # CI run tells us exactly why libnvjpeg couldn't be located.
-    print("=== [repair_wheel] CUDA bundling debug ===", flush=True)
-    for var in (
-        "ENABLE_CUDA",
-        "CUDA_HOME",
-        "CUDA_PATH",
-        "CUDAToolkit_ROOT",
-        "CONDA_PREFIX",
-        "LD_LIBRARY_PATH",
-        "PATH",
-    ):
-        print(f"  {var}={os.environ.get(var)}")
-    print(f"  which nvcc = {shutil.which('nvcc')}")
-    print(f"  search roots = {[str(r) for r in _cuda_search_roots()]}")
-    found = _find_lib_files(patterns)
-    print(f"  {patterns} found ({len(found)}):")
-    for f in found:
-        print(f"    {f}")
-    print(f"  -> lib dirs to graft from = {_cuda_lib_dirs()}")
-    print("=== [repair_wheel] end CUDA bundling debug ===", flush=True)
-
-
 def repair_linux(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "auditwheel"])
     run(["auditwheel", "--version"])
@@ -173,18 +146,7 @@ def repair_linux(wheels):
     if conda_prefix := env.get("CONDA_PREFIX"):
         lib_dirs.append(str(Path(conda_prefix) / "lib"))
     if any(_is_cuda_wheel(w) for w in wheels):
-        _debug_cuda_bundling(["libnvjpeg.so*"])
-        cuda_dirs = _cuda_lib_dirs()
-        if not cuda_dirs:
-            # Don't fail here: let auditwheel produce its own "could not be
-            # located" error, but the debug dump above already shows where we
-            # looked so the CI log is actionable.
-            print(
-                "WARNING: could not locate libnvjpeg for bundling; see the CUDA "
-                "bundling debug above.",
-                flush=True,
-            )
-        lib_dirs.extend(cuda_dirs)
+        lib_dirs.extend(_cuda_lib_dirs())
     env["LD_LIBRARY_PATH"] = os.pathsep.join(
         [*lib_dirs, env.get("LD_LIBRARY_PATH", "")]
     )
@@ -306,7 +268,6 @@ def repair_windows(wheels):
         # nvJPEG is a CUDA-toolkit lib that torch does not ship, so we bundle it
         # (like the OSS image DLLs above). The DLL is nvjpeg64_<major>.dll; search
         # the CUDA toolkit tree (and conda/pip nvidia dirs) recursively for it.
-        _debug_cuda_bundling(["nvjpeg64*.dll"])
         nvjpeg_dlls = set(_find_lib_files(["nvjpeg64*.dll"]))
         # Also check the conda Library\bin next to the other image DLLs.
         nvjpeg_dlls |= set(bin_dir.glob("nvjpeg64*.dll"))
