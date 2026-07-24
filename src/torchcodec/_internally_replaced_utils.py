@@ -186,8 +186,7 @@ def load_core_libraries() -> tuple[int, str, ModuleType]:
         + "\n".join(f"FFmpeg version {v}:\n{tb}" for v, tb in exceptions)
         + "[end of libtorchcodec loading traceback]."
     )
-    raise RuntimeError(
-        f"""Could not load libtorchcodec. Likely causes:
+    raise RuntimeError(f"""Could not load libtorchcodec. Likely causes:
           1. FFmpeg is not properly installed in your environment. We support
              versions 4, 5, 6, 7, and 8, and we attempt to load libtorchcodec
              for each of those versions. Errors for versions not installed on
@@ -201,6 +200,4 @@ def load_core_libraries() -> tuple[int, str, ModuleType]:
           3. Another runtime dependency; see exceptions below.
 
         The following exceptions were raised as we tried to load libtorchcodec:
-        """
-        f"{traceback_info}"
-    )
+        """ f"{traceback_info}")
