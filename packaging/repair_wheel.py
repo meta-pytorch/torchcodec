@@ -24,6 +24,7 @@ import io
 import json
 import os
 import platform
+import re
 import shutil
 import site
 import subprocess
@@ -35,8 +36,12 @@ DIST_DIR = Path("dist")
 REPAIRED_DIR = Path("dist_repaired")
 
 
-def _enable_cuda():
-    return os.environ.get("ENABLE_CUDA") == "1"
+def _is_cuda_wheel(wheel):
+    # Detect a CUDA wheel from its local-version tag (e.g. "+cu126") in the
+    # filename. We deliberately do NOT key off the ENABLE_CUDA env var: it is set
+    # for the build step but NOT for this repair step (post_build_script.sh), so
+    # the wheel itself is the reliable signal here.
+    return re.search(r"[+_]cu\d", Path(wheel).name) is not None
 
 
 def run(cmd, **kwargs):
@@ -167,7 +172,7 @@ def repair_linux(wheels):
     lib_dirs = [str(_avif_lib_dir())]
     if conda_prefix := env.get("CONDA_PREFIX"):
         lib_dirs.append(str(Path(conda_prefix) / "lib"))
-    if _enable_cuda():
+    if any(_is_cuda_wheel(w) for w in wheels):
         _debug_cuda_bundling(["libnvjpeg.so*"])
         cuda_dirs = _cuda_lib_dirs()
         if not cuda_dirs:
@@ -297,7 +302,7 @@ def repair_windows(wheels):
 
     dlls = jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls | avif_dlls
 
-    if _enable_cuda():
+    if any(_is_cuda_wheel(w) for w in wheels):
         # nvJPEG is a CUDA-toolkit lib that torch does not ship, so we bundle it
         # (like the OSS image DLLs above). The DLL is nvjpeg64_<major>.dll; search
         # the CUDA toolkit tree (and conda/pip nvidia dirs) recursively for it.
@@ -478,12 +483,6 @@ def check_bundling():
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
     - (Linux only) libtorchcodec_image.so links FFmpeg.
     """
-    # 6 MB, bumped for CUDA wheels which additionally bundle libnvjpeg (~7.8 MB
-    # uncompressed). Bump if a legitimate dependency growth pushes us over.
-    if _enable_cuda():
-        MAX_WHEEL_BYTES = 12 * 1024 * 1024
-    else:
-        MAX_WHEEL_BYTES = 6 * 1024 * 1024
 
     def _is_shared_lib(name):
         base = name.rsplit("/", 1)[-1]
@@ -662,15 +661,16 @@ def check_bundling():
                     f"{wheel.name} does not bundle libwebpdemux (needed for "
                     "animated webp decoding)."
                 )
+            is_cuda = _is_cuda_wheel(wheel)
             bundles_nvjpeg = any(_is_nvjpeg(lib) for lib in libs)
-            if _enable_cuda() and not bundles_nvjpeg:
+            if is_cuda and not bundles_nvjpeg:
                 raise RuntimeError(
                     f"{wheel.name} is a CUDA wheel but does not bundle libnvjpeg. "
                     "GPU JPEG decoding (decode_jpeg(..., device='cuda')) needs it, "
                     "and torch does not ship it. Check that libnvjpeg is findable "
                     "at repair time (see _cuda_lib_dirs) and not excluded."
                 )
-            if not _enable_cuda() and bundles_nvjpeg:
+            if not is_cuda and bundles_nvjpeg:
                 raise RuntimeError(
                     f"{wheel.name} is not a CUDA wheel but bundles libnvjpeg."
                 )
@@ -680,6 +680,10 @@ def check_bundling():
                     "ship with our decode-only libavif (they should be "
                     "statically embedded or absent): " + " ".join(encoders)
                 )
+            # 6 MB, bumped for CUDA wheels which additionally bundle libnvjpeg
+            # (~7.8 MB uncompressed). Bump if a legitimate dependency growth
+            # pushes us over.
+            MAX_WHEEL_BYTES = (12 if is_cuda else 6) * 1024 * 1024
             wheel_bytes = wheel.stat().st_size
             if wheel_bytes > MAX_WHEEL_BYTES:
                 raise RuntimeError(
