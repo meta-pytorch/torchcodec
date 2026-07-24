@@ -17,7 +17,7 @@
 namespace facebook::torchcodec {
 
 torch::stable::Tensor decode_jpeg(
-    [[maybe_unused]] const torch::stable::Tensor& data,
+    [[maybe_unused]] const torch::stable::Tensor& input,
     [[maybe_unused]] int64_t mode) {
   STD_TORCH_CHECK(
       false,
@@ -300,6 +300,8 @@ void decode_rows(
     }
     output_ptr += stride;
   }
+
+  jpeg_finish_decompress(&jpeg_ctx);
 }
 
 } // namespace
@@ -417,9 +419,6 @@ void decode_rows(
 //
 /* clang-format on */
 
-// TODO_IMAGE: align names. everywhere. this is input, other places it's data,
-// other places it's something else. Should align here, in the header, in the
-// custom op definition, etc. Across codecs.
 torch::stable::Tensor decode_jpeg(
     const torch::stable::Tensor& input,
     int64_t mode) {
@@ -439,6 +438,10 @@ torch::stable::Tensor decode_jpeg(
       input.const_data_ptr<uint8_t>(),
       input.numel(),
       static_cast<ImageReadMode>(mode));
+
+  // Note: this must be called before jpeg_finish_decompress(), otherwise we get
+  // garbage exif data.
+  ExifOrientation exif_orientation = fetch_jpeg_exif_orientation(&jpeg_ctx);
 
   // We want output to be channels last
   int64_t stride =
@@ -469,11 +472,16 @@ torch::stable::Tensor decode_jpeg(
 
   decode_rows(jpeg_ctx, error_ctx, output_ptr, stride, cmyk_helper);
 
-  // EXIF markers were parsed during jpeg_read_header so this is just an
-  // in-memory lookup (i.e. we're not going back to the beginning of the file)
-  ExifOrientation exif_orientation = fetch_jpeg_exif_orientation(&jpeg_ctx);
+  // Flip raw CMYK samples so our output matches PIL.
+  if (static_cast<ImageReadMode>(mode) == ImageReadMode::UNCHANGED &&
+      (jpeg_ctx.jpeg_color_space == JCS_CMYK ||
+       jpeg_ctx.jpeg_color_space == JCS_YCCK)) {
+    int64_t num_bytes = output.numel();
+    for (int64_t i = 0; i < num_bytes; ++i) {
+      output_ptr[i] = static_cast<uint8_t>(255 - output_ptr[i]);
+    }
+  }
 
-  jpeg_finish_decompress(&jpeg_ctx);
   jpeg_destroy_decompress(&jpeg_ctx);
   return exif_orientation_transform(
       stable_permute(output, {2, 0, 1}), exif_orientation);

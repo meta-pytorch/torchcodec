@@ -11,11 +11,13 @@ videos and audio, or run inference, TorchCodec is how you turn these into data.
 We achieve these capabilities through:
 
 * Pythonic APIs that mirror Python and PyTorch conventions.
-* Relying on [FFmpeg](https://www.ffmpeg.org/) to do the decoding and encoding.
-  TorchCodec uses the version of FFmpeg you already have installed. FFmpeg is a
-  mature library with broad coverage available on most systems. It is, however,
-  not easy to use. TorchCodec abstracts FFmpeg's complexity to ensure it is used
-  correctly and efficiently.
+* Relying on [FFmpeg](https://www.ffmpeg.org/) to do the video and audio
+  decoding and encoding. TorchCodec uses the version of FFmpeg you already have
+  installed. FFmpeg is a mature library with broad coverage available on most
+  systems. It is, however, not easy to use. TorchCodec abstracts FFmpeg's
+  complexity to ensure it is used correctly and efficiently. (FFmpeg is
+  optional, and the image decoders don't need it: see [Installing
+  TorchCodec](#installing-torchcodec).)
 * Returning data as PyTorch tensors, ready to be fed into PyTorch transforms
   or used directly to train models.
 
@@ -104,6 +106,13 @@ with encoder.open_file("output.mp4"):
    # or
    conda install "ffmpeg" -c conda-forge
    ```
+
+   > **Note:** FFmpeg is an *optional* dependency. It is needed for video
+   > and audio decoding and encoding (`VideoDecoder`, `AudioDecoder`,
+   > `VideoEncoder`, `AudioEncoder`, etc.). The image decoders
+   > (`decode_image`, `decode_jpeg`, `decode_png`, etc.)
+   > do **not** require FFmpeg, so if you only need image decoding you can skip
+   > this step.
 
 2. Install PyTorch and TorchCodec:
 

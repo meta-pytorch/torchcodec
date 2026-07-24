@@ -17,7 +17,7 @@ namespace facebook::torchcodec {
 // RGB_ALPHA produces a 4-channel RGBA tensor preserving transparency as alpha;
 // UNCHANGED produces RGBA if the GIF has any transparency, else RGB.
 FORCE_PUBLIC_VISIBILITY torch::stable::Tensor decode_gif(
-    const torch::stable::Tensor& data,
+    const torch::stable::Tensor& input,
     int64_t mode);
 
 } // namespace facebook::torchcodec

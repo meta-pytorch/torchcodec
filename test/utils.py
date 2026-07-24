@@ -294,6 +294,28 @@ BAD_HUFFMAN_JPEG = TestImage(
     filename="bad_huffman.jpg", width=1024, height=768, num_channels=3
 )
 
+# Malformed images ported from torchvision's fuzzer-derived test assets. They
+# are never decoded successfully - they only exist to check that the decoders
+# raise cleanly instead of crashing, so only their `.path` matters (the
+# width/height/num_channels are the nominal header values, or 0 when the header
+# itself is unreadable).
+#
+# CORRUPT_JPEG has a valid header but a corrupt entropy stream, which trips an
+# "Unsupported marker type" error late in the decode (during
+# jpeg_finish_decompress).
+CORRUPT_JPEG = TestImage(filename="corrupt.jpg", width=120, height=90, num_channels=3)
+# PNG crashers found by fuzzing libpng (out-of-bound reads).
+SIGSEGV_PNG = TestImage(filename="sigsegv.png", width=0, height=0, num_channels=0)
+HEAPBOF_PNG = TestImage(filename="heapbof.png", width=0, height=0, num_channels=0)
+
+# Adam7-interlaced version of a small RGB gradient. It exercises the decoder's
+# multi-pass interlace-handling path (png_set_interlace_handling), which no other
+# asset covers. PIL can't write interlaced PNGs, so this was authored once with
+# ImageMagick: `magick gradient.png -interlace PNG gradient_interlaced.png`.
+GRADIENT_INTERLACED_PNG = TestImage(
+    filename="gradient_interlaced.png", width=64, height=48, num_channels=3
+)
+
 
 @functools.cache
 def jpeg_is_available() -> bool:
@@ -338,6 +360,28 @@ RGBA_PNG = TestImage(filename="rgba.png", width=1280, height=720, num_channels=4
 # Image.fromarray(la, mode="LA").save("grayscale_alpha.png")
 GRAYSCALE_ALPHA_PNG = TestImage(
     filename="grayscale_alpha.png", width=1280, height=720, num_channels=2
+)
+
+# 48x64 16-bit grayscale PNG (a full-range gradient, so the low byte carries real
+# information). Exercises the decoder's 16-bit path. Generated with:
+# h, w = 48, 64
+# gray = np.linspace(0, 65535, h * w).reshape(h, w).astype(np.uint16)
+# Image.fromarray(gray).save("grayscale_16bit.png")  # PIL infers the I;16 mode
+GRAYSCALE_16BIT_PNG = TestImage(
+    filename="grayscale_16bit.png", width=64, height=48, num_channels=1
+)
+
+# 48x64 16-bit RGB PNG with smooth full-range per-channel gradients. PIL can't
+# write 16-bit RGB, so it's authored with ffmpeg from raw rgb48 samples:
+# h, w = 48, 64
+# r = np.linspace(0, 65535, w, dtype=np.uint16)[None].repeat(h, 0)
+# g = np.linspace(0, 65535, h, dtype=np.uint16)[:, None].repeat(w, 1)
+# b = np.linspace(65535, 0, w, dtype=np.uint16)[None].repeat(h, 0)
+# np.stack([r, g, b], -1).astype("<u2").tofile("rgb48.bin")
+# ffmpeg -f rawvideo -pixel_format rgb48le -video_size 64x48 -i rgb48.bin \
+#     -frames:v 1 -pix_fmt rgb48be gradient_16bit.png
+GRADIENT_16BIT_PNG = TestImage(
+    filename="gradient_16bit.png", width=64, height=48, num_channels=3
 )
 
 
@@ -392,6 +436,23 @@ GRADIENT_AVIF = TestImage(
 # rgba = np.concatenate([np.stack([r, g, b], axis=-1), a[..., None]], axis=-1)
 # Image.fromarray(rgba, mode="RGBA").save("rgba.avif")
 RGBA_AVIF = TestImage(filename="rgba.avif", width=1280, height=720, num_channels=4)
+
+# 48x64 10- and 12-bit AVIFs (genuine >8-bit sources). PIL only writes 8-bit
+# AVIF, so they're authored with ffmpeg from an 8-bit RGB gradient. Generated
+# with:
+# h, w = 48, 64
+# r = np.linspace(0, 255, w)[None].repeat(h, 0)
+# g = np.linspace(0, 255, h)[:, None].repeat(w, 1)
+# b = np.linspace(255, 0, w)[None].repeat(h, 0)
+# Image.fromarray(np.stack([r, g, b], -1).astype(np.uint8), "RGB").save("src.png")
+# ffmpeg -i src.png -c:v libaom-av1 -pix_fmt yuv444p10le -still-picture 1 \
+#     gradient_10bit.avif    # (yuv444p12le for the 12-bit one)
+GRADIENT_10BIT_AVIF = TestImage(
+    filename="gradient_10bit.avif", width=64, height=48, num_channels=3
+)
+GRADIENT_12BIT_AVIF = TestImage(
+    filename="gradient_12bit.avif", width=64, height=48, num_channels=3
+)
 
 
 @functools.cache
