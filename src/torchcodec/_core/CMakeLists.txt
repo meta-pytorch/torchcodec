@@ -551,6 +551,19 @@ function(make_torchcodec_image_library)
         "${TORCH_LIBRARIES}"
     )
 
+    # The nvJPEG GPU JPEG decoder is a plain C++ translation unit (nvJPEG is a
+    # host-side API with no CUDA kernels), so the image library needs no
+    # enable_language(CUDA) -- just nvjpeg/cudart headers and libs from the CUDA
+    # toolkit, found via CUDAToolkit.
+    if(ENABLE_CUDA)
+        find_package(CUDAToolkit REQUIRED)
+        target_link_libraries(${image_library_name} PRIVATE CUDA::nvjpeg CUDA::cudart)
+        # TORCHCODEC_ENABLE_NVJPEG unlocks the real nvJPEG decoder (otherwise
+        # decode_jpegs_cuda is a stub that raises). USE_CUDA is needed for the
+        # torch stable-ABI CUDA shim (torch_get_cuda_stream_from_pool).
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_NVJPEG=1 USE_CUDA)
+    endif()
+
     if(want_jpeg)
         target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_JPEG=1)
         target_link_libraries(${image_library_name} PRIVATE JPEG::JPEG)

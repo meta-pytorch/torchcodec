@@ -4531,3 +4531,102 @@ class TestImageDecoder:
         reference = self._pil_to_tensor(Image.open(asset.path).convert("RGBA"))
         assert decoded.shape == reference.shape == (4, asset.height, asset.width)
         assert torch.equal(decoded[-1], reference[-1])
+
+    # ---- CUDA JPEG decoding (nvJPEG) ----
+
+    @needs_cuda
+    @needs_jpeg
+    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG))
+    @pytest.mark.parametrize(
+        "mode", ("UNCHANGED", "RGB", "GRAY", "RGB_ALPHA", "GRAY_ALPHA")
+    )
+    def test_cuda_jpeg_matches_cpu(self, asset, mode):
+        # The GPU (nvJPEG) decode must produce a CUDA tensor of the same shape as
+        # the CPU (libjpeg) decode, and near-identical values. nvJPEG and libjpeg
+        # use different IDCT/color-conversion math, so we allow a small tolerance
+        # (empirically the diff is 100% within atol=3).
+        cpu = decode_jpeg(asset.path, mode=mode)
+        gpu = decode_jpeg(asset.path, mode=mode, device="cuda")
+        assert gpu.device.type == "cuda"
+        assert gpu.dtype == torch.uint8
+        assert gpu.shape == cpu.shape
+        assert_tensor_close_on_at_least(gpu.cpu(), cpu, percentage=99, atol=3)
+
+    @needs_cuda
+    @needs_jpeg
+    def test_cuda_jpeg_batch(self):
+        # A list of sources decodes to a list of tensors (one per input), and
+        # each must match the corresponding single-image decode. The batch mixes
+        # an RGB and a grayscale source, which have different shapes.
+        assets = [GRADIENT_JPEG, GRAYSCALE_JPEG, GRADIENT_JPEG]
+        sources = [a.path for a in assets]
+        batch = decode_jpeg(sources, mode="RGB", device="cuda")
+        assert isinstance(batch, list)
+        assert len(batch) == len(sources)
+        for decoded, asset in zip(batch, assets):
+            assert decoded.device.type == "cuda"
+            single = decode_jpeg(asset.path, mode="RGB", device="cuda")
+            assert decoded.shape == single.shape
+            torch.testing.assert_close(decoded, single, atol=0, rtol=0)
+
+    @needs_cuda
+    @needs_jpeg
+    def test_cuda_jpeg_single_vs_list_return_type(self):
+        # A single source returns a Tensor; a length-1 list returns a length-1
+        # list holding the same tensor.
+        single = decode_jpeg(GRADIENT_JPEG.path, mode="RGB", device="cuda")
+        assert isinstance(single, torch.Tensor)
+        as_list = decode_jpeg([GRADIENT_JPEG.path], mode="RGB", device="cuda")
+        assert isinstance(as_list, list) and len(as_list) == 1
+        torch.testing.assert_close(as_list[0], single, atol=0, rtol=0)
+
+    @needs_cuda
+    @needs_jpeg
+    @pytest.mark.parametrize("orientation", (1, 3, 6, 8))
+    def test_cuda_jpeg_exif_orientation(self, orientation):
+        # nvJPEG doesn't surface EXIF markers, so we parse them from the raw bytes
+        # and apply the orientation transform on the GPU tensor, matching the CPU
+        # decoder. Orientations 6/8 rotate 90/270 degrees (swapping H and W), so
+        # CPU and CUDA must agree on the transformed shape too.
+        import io
+
+        base = Image.open(GRADIENT_JPEG.path).convert("RGB")
+        exif = base.getexif()
+        exif[0x0112] = orientation  # 0x0112 == EXIF Orientation tag
+        buf = io.BytesIO()
+        base.save(buf, format="JPEG", exif=exif, quality=95)
+        data = torch.frombuffer(bytearray(buf.getvalue()), dtype=torch.uint8)
+
+        cpu = decode_jpeg(data, mode="RGB")
+        gpu = decode_jpeg(data, mode="RGB", device="cuda")
+        assert gpu.shape == cpu.shape
+        assert_tensor_close_on_at_least(gpu.cpu(), cpu, percentage=99, atol=3)
+
+    @needs_cuda
+    @needs_jpeg
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.uint16, "auto"))
+    def test_cuda_jpeg_output_dtype(self, output_dtype):
+        gpu = decode_jpeg(
+            GRADIENT_JPEG.path, mode="RGB", output_dtype=output_dtype, device="cuda"
+        )
+        assert gpu.device.type == "cuda"
+        expected = torch.uint16 if output_dtype is torch.uint16 else torch.uint8
+        assert gpu.dtype == expected
+
+    @needs_cuda
+    @needs_jpeg
+    def test_cuda_jpeg_errors(self):
+        # Corrupt input raises.
+        with pytest.raises(RuntimeError):
+            decode_jpeg(CORRUPT_JPEG.path, device="cuda")
+
+        # The encoded input must be on CPU (nvJPEG reads host memory).
+        cuda_data = torch.frombuffer(
+            bytearray(GRADIENT_JPEG.path.read_bytes()), dtype=torch.uint8
+        ).cuda()
+        with pytest.raises(RuntimeError, match="must be on CPU"):
+            decode_jpeg(cuda_data, device="cuda")
+
+        # Batch (list) input is only valid on CUDA.
+        with pytest.raises(ValueError, match="only supported on CUDA"):
+            decode_jpeg([GRADIENT_JPEG.path, GRADIENT_JPEG.path])

@@ -15,6 +15,7 @@ from torchcodec._core.ops import (
     decode_avif as _decode_avif,
     decode_gif as _decode_gif,
     decode_jpeg as _decode_jpeg,
+    decode_jpegs_cuda as _decode_jpegs_cuda,
     decode_png as _decode_png,
     decode_webp as _decode_webp,
 )
@@ -106,9 +107,12 @@ _WEBP_NATIVE_OUTPUT_MODES = _GIF_NATIVE_OUTPUT_MODES = _AVIF_NATIVE_OUTPUT_MODES
 def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
     # img is (..., C, H, W); append a fully-opaque alpha channel on the channel
     # dim so this works for both (C, H, W) and animated GIF (N, C, H, W) tensors.
+    # Keep the alpha on img's device so this also works for CUDA-decoded JPEGs.
     alpha_shape = list(img.shape)
     alpha_shape[-3] = 1
-    alpha = torch.full(alpha_shape, torch.iinfo(img.dtype).max, dtype=img.dtype)
+    alpha = torch.full(
+        alpha_shape, torch.iinfo(img.dtype).max, dtype=img.dtype, device=img.device
+    )
     return torch.cat([img, alpha], dim=-3)
 
 
@@ -198,26 +202,69 @@ def _maybe_widen_to_uint16(
 # torch.uint8 and torch.uint16 simply widens the 8-bit values.
 
 
+def _decode_jpegs_cuda_with_mode(
+    tensors: list[torch.Tensor], mode: ImageReadMode, device: torch.device
+) -> list[torch.Tensor]:
+    # Batched GPU equivalent of _decode_with_mode for JPEG: decode the whole
+    # batch in one nvJPEG call using a native mode, then emulate the alpha modes
+    # per-image in Python (nvJPEG natively supports UNCHANGED, GRAY and RGB, same
+    # as libjpeg on CPU).
+    if mode in _JPEG_NATIVE_OUTPUT_MODES:
+        return _decode_jpegs_cuda(tensors, mode.value, device)
+    if mode is ImageReadMode.RGB_ALPHA:
+        decoded = _decode_jpegs_cuda(tensors, ImageReadMode.RGB.value, device)
+        return [_append_opaque_alpha(img) for img in decoded]
+    if mode is ImageReadMode.GRAY_ALPHA:
+        decoded = _decode_jpegs_cuda(tensors, ImageReadMode.GRAY.value, device)
+        return [_append_opaque_alpha(img) for img in decoded]
+    raise RuntimeError(
+        f"Reached an unexpected code path while decoding to mode {mode}. "
+        "This should never happen, please report a bug to the TorchCodec repo."
+    )
+
+
 def decode_jpeg(
-    source: str | Path | bytes | torch.Tensor,
+    source: str | Path | bytes | torch.Tensor | list,
     *,
     mode: (
         Literal["UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA"] | ImageReadMode
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
-) -> torch.Tensor:
+    device: str | torch.device = "cpu",
+) -> torch.Tensor | list[torch.Tensor]:
     """Decode a JPEG into a tensor of shape ``(C, H, W)``.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
     or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
     case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
     module note above for the semantics of ``output_dtype``.
+
+    ``device`` selects where decoding happens: ``"cpu"`` (the default) uses
+    libjpeg-turbo, while a CUDA device (e.g. ``"cuda"``) decodes on the GPU with
+    nvJPEG and returns tensors on that device. On CUDA, ``source`` may also be a
+    list of sources, in which case a list of ``(C, H, W)`` tensors (one per
+    input) is returned and the batch is decoded together for higher throughput.
     """
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
-    data = _source_to_tensor(source)
-    decoded = _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
-    return _maybe_widen_to_uint16(decoded, output_dtype)
+    device = torch.device(device)
+
+    if device.type == "cpu":
+        if isinstance(source, (list, tuple)):
+            raise ValueError(
+                "Batch decoding (a list of sources) is only supported on CUDA "
+                "devices. Pass device='cuda' or decode sources one at a time."
+            )
+        data = _source_to_tensor(source)
+        decoded = _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
+        return _maybe_widen_to_uint16(decoded, output_dtype)
+
+    is_batch = isinstance(source, (list, tuple))
+    sources = list(source) if is_batch else [source]
+    tensors = [_source_to_tensor(s) for s in sources]
+    decoded_list = _decode_jpegs_cuda_with_mode(tensors, mode, device)
+    decoded_list = [_maybe_widen_to_uint16(img, output_dtype) for img in decoded_list]
+    return decoded_list if is_batch else decoded_list[0]
 
 
 def decode_png(

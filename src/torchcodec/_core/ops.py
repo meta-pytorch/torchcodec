@@ -34,6 +34,7 @@ if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
 load_image_library()
 
 decode_jpeg = torch.ops.torchcodec_ns.decode_jpeg.default
+decode_jpegs_cuda = torch.ops.torchcodec_ns.decode_jpegs_cuda.default
 decode_png = torch.ops.torchcodec_ns.decode_png.default
 decode_webp = torch.ops.torchcodec_ns.decode_webp.default
 decode_gif = torch.ops.torchcodec_ns.decode_gif.default
