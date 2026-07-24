@@ -199,10 +199,7 @@ jobs:
   install-and-test-no-ffmpeg:
     # Asserts that the CUDA wheel works WITHOUT FFmpeg installed: it must import,
     # the FFmpeg-free image decoders must work, and the FFmpeg-backed entry
-    # points must fail with a clear error. We run on a CPU-only machine (image
-    # decoding is CPU-only and the entry points fail before touching CUDA), so
-    # this needs no GPU. No FFmpeg install step (image codec libs are bundled in
-    # the wheel).
+    # points must fail with a clear error.
     runs-on: ubuntu-latest
     needs: build
     env:
@@ -247,7 +244,6 @@ jobs:
       - name: Install test dependencies
         run: bash packaging/install_test_dependencies.sh
 
-      # Deliberately NO "Install ffmpeg" step here.
       - name: Assert FFmpeg is absent and torchcodec still imports
         run: |
           source packaging/helpers.sh

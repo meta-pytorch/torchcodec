@@ -4,11 +4,11 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+import functools
 import importlib
 import importlib.util
 import sys
 import traceback
-from functools import cache
 from pathlib import Path
 from types import ModuleType
 
@@ -66,35 +66,31 @@ def _load_pybind11_module(module_name: str, library_path: str) -> ModuleType:
 
 
 def load_image_library() -> None:
-    """
-    Load the FFmpeg-free image decoding library (``libtorchcodec_image``).
-
-    This library links no FFmpeg and is always available, so it is loaded
-    eagerly and separately from the FFmpeg-dependent libraries. Loading it in
-    its own ``torch.ops.load_library`` call also keeps its bundled image codec
-    libraries (libjpeg/libpng/libwebp/...) in a separate symbol scope from the
-    ones FFmpeg pulls in. See the comment in ``_core/CMakeLists.txt``.
-    """
+    """Load the FFmpeg-free image library"""
     image_library_path = _get_extension_path("libtorchcodec_image")
     torch.ops.load_library(image_library_path)
 
 
-@cache
-def ensure_ffmpeg_loaded() -> tuple[int, str, ModuleType]:
-    """
-    Load the FFmpeg-dependent shared libraries, memoizing the result.
+@functools.cache
+def load_core_libraries() -> tuple[int, str, ModuleType]:
+    """Load the FFmpeg-dependent shared libraries, memoizing the result.
 
-    FFmpeg is an *optional* runtime dependency: ``import torchcodec`` and the
-    image decoders work without it. This function is the single choke point that
-    actually requires FFmpeg; it is called lazily the first time an
-    FFmpeg-backed entry point (VideoDecoder, AudioDecoder, the encoders,
-    WavDecoder, ...) is used. If FFmpeg cannot be loaded, it raises a rich,
-    actionable error.
+      This raises if the libraries cannot be loaded, typically because FFmpeg
+      couldn't be found. This is called:
+      - at import time (import torchcodec) within a try/except, to determine
+        whether FFmpeg is available, and then load the corresponding ops if it is.
+        If FFmpeg isn't available, we don't propagate the exception and
+        `import torchcodec` still works: we still want to support the image
+        decoders, which don't need FFmpeg.
+      - at runtime in all FFmpeg-dependent public entry-points like VideoDecoder,
+        so that if FFmpeg isn't available the user gets a clear error message.
 
-    ``@cache`` ensures the libraries are only ever loaded once on success.
-    Failures aren't cached (``functools.cache`` doesn't cache exceptions), so a
-    missing FFmpeg re-runs the load loop and re-raises on every call, but that
-    only happens on the error path so the cost is irrelevant.
+      Since this is @functools.cache'd, the libraries are only ever loaded once on
+      success. Failures are *not* cached (functools.cache only caches return
+      values), so when FFmpeg is missing the load is retried and re-raises on each
+      call. That's fine, it only happens on the error path.
+
+
 
     We successively try to load the shared libraries for each version of FFmpeg
     that we support, starting with the highest version and working our way down.
@@ -139,9 +135,7 @@ def ensure_ffmpeg_loaded() -> tuple[int, str, ModuleType]:
         + "[end of libtorchcodec loading traceback]."
     )
     raise RuntimeError(
-        f"""Could not load libtorchcodec. Note that FFmpeg is an optional
-        dependency of TorchCodec: it is only needed for video and audio decoding
-        and encoding, not for the image decoders. Likely causes:
+        f"""Could not load libtorchcodec. Likely causes:
           1. FFmpeg is not properly installed in your environment. We support
              versions 4, 5, 6, 7, and 8, and we attempt to load libtorchcodec
              for each of those versions. Errors for versions not installed on
