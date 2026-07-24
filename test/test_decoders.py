@@ -59,6 +59,7 @@ from .utils import (
     BT601_LIMITED_RANGE,
     BT709_FULL_RANGE,
     CMYK_JPEG,
+    CORRUPT_JPEG,
     cuda_devices,
     DISCARD_FIRST_KEYFRAME_VIDEO,
     FRAME_EXCEEDS_SCREEN_GIF,
@@ -69,6 +70,7 @@ from .utils import (
     GRADIENT_16BIT_PNG,
     GRADIENT_AVIF,
     GRADIENT_GIF,
+    GRADIENT_INTERLACED_PNG,
     GRADIENT_JPEG,
     GRADIENT_PNG,
     GRADIENT_WEBP,
@@ -78,6 +80,7 @@ from .utils import (
     GRAYSCALE_PNG,
     H264_10BITS,
     H265_VIDEO,
+    HEAPBOF_PNG,
     in_fbcode,
     make_video_decoder,
     NASA_AUDIO,
@@ -96,6 +99,7 @@ from .utils import (
     RGBA_AVIF,
     RGBA_PNG,
     RGBA_WEBP,
+    SIGSEGV_PNG,
     SINE_16_CHANNEL_S16,
     SINE_MONO_F32,
     SINE_MONO_F64,
@@ -4129,6 +4133,71 @@ class TestImageDecoder:
         path.write_bytes(bytes(data))
         with pytest.raises(RuntimeError, match="CRC error"):
             decode_png(path)
+
+    @needs_jpeg
+    def test_corrupt_jpeg_raises(self):
+        # Non-regression test ported from torchvision.
+        with pytest.raises(RuntimeError, match="Unsupported marker type"):
+            decode_jpeg(CORRUPT_JPEG.path)
+
+    @needs_png
+    @pytest.mark.parametrize("asset", (SIGSEGV_PNG, HEAPBOF_PNG))
+    def test_corrupt_png_out_of_bound_read_raises(self, asset):
+        # Non-regression test ported from torchvision.
+        with pytest.raises(RuntimeError, match="Out of bound read"):
+            decode_png(asset.path)
+
+    @pytest.mark.parametrize(
+        "decode_fn",
+        (
+            _jpeg_param(),
+            _png_param(),
+            _webp_param(),
+            _gif_param(),
+            _avif_param(),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "make_bad, match",
+        (
+            (lambda t: t[None], "1-dimensional"),
+            (lambda t: t.to(torch.float32), "uint8"),
+            (lambda t: t[::2], "contiguous"),
+            (lambda t: t[:0], "non-empty"),
+        ),
+    )
+    def test_bad_encoded_data_raises(self, decode_fn, make_bad, match):
+        data = torch.randint(0, 256, (100,), dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match=match):
+            decode_fn(make_bad(data))
+
+    @needs_png
+    @pytest.mark.parametrize("shape", ((27, 27), (60, 60), (105, 105)))
+    def test_1bit_png(self, tmp_path, shape):
+        # 1-bit (black & white) PNGs are an edge case for the bit-depth handling:
+        # libpng packs 8 pixels per byte and we must expand them to full uint8.
+        # Ported from torchvision.
+        gen = torch.Generator().manual_seed(0)
+        pixels = (torch.rand(shape, generator=gen) > 0.5).numpy()
+        path = tmp_path / "1bit.png"
+        Image.fromarray(pixels).save(path)
+
+        decoded = decode_png(path, mode="GRAY")
+        reference = self._pil_to_tensor(Image.open(path).convert("L"))
+        assert decoded.shape == reference.shape
+        assert_frames_equal(decoded, reference)
+
+    @needs_png
+    @pytest.mark.parametrize("mode, pil_mode", (("UNCHANGED", None), ("RGB", "RGB")))
+    def test_interlaced_png(self, mode, pil_mode):
+        # Ported from torchvision
+        asset = GRADIENT_INTERLACED_PNG
+        assert Image.open(asset.path).info.get("interlace") == 1
+
+        decoded = decode_png(asset.path, mode=mode)
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+        assert decoded.shape == reference.shape
+        assert_frames_equal(decoded, reference)
 
     @needs_webp
     @pytest.mark.parametrize("asset", (GRADIENT_WEBP, RGBA_WEBP))
