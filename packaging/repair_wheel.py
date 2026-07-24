@@ -12,7 +12,7 @@ that the wheel runs standalone on a system that doesn't have those libraries
 installed.
 
 We bundle some third-party native libraries like libjpeg(-turbo), libpng, zlib,
-libwebp (+libsharpyuv) and libavif, while making sure we EXCLUDE FFmpeg
+libwebp (+libsharpyuv), libavif, libnvjpeg, while making sure we EXCLUDE FFmpeg
 (user-provided at runtime) and torch/CUDA (provided by the torch wheel).
 
 Because we redistribute those libraries as binaries inside the wheel, their
@@ -56,12 +56,13 @@ def _avif_lib_dir():
     return dirs[0]
 
 
-def _cuda_search_roots():
-    # Likely CUDA-toolkit roots to search for libnvjpeg. libnvjpeg is a
-    # CUDA-toolkit lib that the torch wheel does NOT ship (unlike libcudart /
-    # libnvrtc, which we exclude from bundling), so we must find and bundle it.
-    # Its location varies a lot across CI setups (system toolkit, conda, pip
-    # nvidia packages), so we cast a wide net.
+def _find_nvjpeg_libs():
+    # Find the nvJPEG runtime lib(s) to bundle. Its location varies a lot across
+    # CI setups so we search a wide set of CUDA roots recursively (+ ldconfig on
+    # Linux).
+    is_windows = platform.system() == "Windows"
+    pattern = "nvjpeg64*.dll" if is_windows else "libnvjpeg.so*"
+
     roots = []
     for var in ("CUDA_HOME", "CUDA_PATH", "CUDAToolkit_ROOT", "CONDA_PREFIX"):
         if v := os.environ.get(var):
@@ -69,7 +70,7 @@ def _cuda_search_roots():
     # nvcc on PATH -> toolkit root (e.g. /usr/local/cuda/bin/nvcc -> /usr/local/cuda).
     if nvcc := shutil.which("nvcc"):
         roots.append(Path(nvcc).resolve().parent.parent)
-    if platform.system() == "Windows":
+    if is_windows:
         roots += list(
             Path("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA").glob("*")
         )
@@ -78,31 +79,13 @@ def _cuda_search_roots():
     for site_dir in site.getsitepackages():
         roots.append(Path(site_dir) / "nvidia")  # pip nvidia-*-cu12 packages
 
-    # De-dupe by resolved path, keeping only dirs that exist.
-    seen, out = set(), []
-    for r in roots:
-        try:
-            rp = r.resolve()
-        except OSError:
-            continue
-        if r.is_dir() and rp not in seen:
-            seen.add(rp)
-            out.append(r)
-    return out
-
-
-def _find_lib_files(patterns):
-    # Recursively search the CUDA roots for library filenames matching `patterns`
-    # (e.g. "libnvjpeg.so*" on Linux, "nvjpeg64*.dll" on Windows). On Linux we
-    # also consult ldconfig, which knows about system-installed libs.
     matches = []
-    for root in _cuda_search_roots():
-        for pat in patterns:
-            try:
-                matches.extend(root.rglob(pat))
-            except OSError:
-                pass
-    if platform.system() == "Linux":
+    for root in roots:
+        try:
+            matches.extend(root.rglob(pattern))
+        except OSError:
+            pass
+    if not is_windows:
         try:
             out = subprocess.run(
                 ["ldconfig", "-p"], capture_output=True, text=True, check=False
@@ -113,26 +96,19 @@ def _find_lib_files(patterns):
         except (OSError, subprocess.SubprocessError):
             pass
 
-    seen, out = set(), []
+    found = set()
     for m in matches:
         # Skip the CUDA "stubs" libs: they're link-time placeholders (unversioned
         # libnvjpeg.so with no real code), not the runtime lib we must bundle.
         if "stubs" in m.parts:
             continue
         try:
-            rp = m.resolve()
+            resolved = m.resolve()
         except OSError:
             continue
-        if m.is_file() and rp not in seen:
-            seen.add(rp)
-            out.append(m)
-    return out
-
-
-def _cuda_lib_dirs():
-    # Directories containing libnvjpeg, to add to the repair tool's library
-    # search path so it can find and graft it into the wheel.
-    return sorted({str(f.parent) for f in _find_lib_files(["libnvjpeg.so*"])})
+        if resolved.is_file():
+            found.add(resolved)
+    return list(found)
 
 
 def repair_linux(wheels):
@@ -146,7 +122,7 @@ def repair_linux(wheels):
     if conda_prefix := env.get("CONDA_PREFIX"):
         lib_dirs.append(str(Path(conda_prefix) / "lib"))
     if any(_is_cuda_wheel(w) for w in wheels):
-        lib_dirs.extend(_cuda_lib_dirs())
+        lib_dirs.extend(sorted({str(f.parent) for f in _find_nvjpeg_libs()}))
     env["LD_LIBRARY_PATH"] = os.pathsep.join(
         [*lib_dirs, env.get("LD_LIBRARY_PATH", "")]
     )
@@ -166,9 +142,6 @@ def repair_linux(wheels):
         "libc10*",
         "libcu*",
         "libcupti*",
-        # CUDA libs provided by the torch wheel (or the driver, for nvcuvid).
-        # NOT a blanket "libnv*": that would also exclude libnvjpeg, which is a
-        # CUDA-toolkit lib torch does NOT ship, so we bundle it (see below).
         "libnvrtc*",
         "libnvToolsExt*",
         "libnvtx*",
@@ -265,10 +238,7 @@ def repair_windows(wheels):
     dlls = jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls | avif_dlls
 
     if any(_is_cuda_wheel(w) for w in wheels):
-        # nvJPEG is a CUDA-toolkit lib that torch does not ship, so we bundle it
-        # (like the OSS image DLLs above). The DLL is nvjpeg64_<major>.dll; search
-        # the CUDA toolkit tree (and conda/pip nvidia dirs) recursively for it.
-        nvjpeg_dlls = set(_find_lib_files(["nvjpeg64*.dll"]))
+        nvjpeg_dlls = set(_find_nvjpeg_libs())
         # Also check the conda Library\bin next to the other image DLLs.
         nvjpeg_dlls |= set(bin_dir.glob("nvjpeg64*.dll"))
         if not nvjpeg_dlls:
@@ -437,8 +407,7 @@ def check_bundling():
       encoders (aom/rav1e/svtav1) must never ship (all platforms). This is not
       for licensing concern, this is to keep wheel size low.
     - a CUDA wheel does NOT bundle libnvjpeg (the GPU JPEG decoder lib), or a
-      non-CUDA wheel DOES bundle it. libnvjpeg is a CUDA-toolkit lib not shipped
-      by the torch wheel, so we must bundle it for GPU JPEG decoding to work.
+      non-CUDA wheel DOES bundle it.
     - the compressed wheel is larger than MAX_WHEEL_BYTES: the slim decode-only
       libavif should keep us under it.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
@@ -474,7 +443,6 @@ def check_bundling():
         )
 
     def _is_nvjpeg(lib):
-        # Linux/mac: libnvjpeg.so.*; Windows: nvjpeg64_<major>.dll.
         return lib.startswith("libnvjpeg") or (
             lib.startswith("nvjpeg") and lib.endswith(".dll")
         )
@@ -629,7 +597,7 @@ def check_bundling():
                     f"{wheel.name} is a CUDA wheel but does not bundle libnvjpeg. "
                     "GPU JPEG decoding (decode_jpeg(..., device='cuda')) needs it, "
                     "and torch does not ship it. Check that libnvjpeg is findable "
-                    "at repair time (see _cuda_lib_dirs) and not excluded."
+                    "at repair time (see _find_nvjpeg_libs) and not excluded."
                 )
             if not is_cuda and bundles_nvjpeg:
                 raise RuntimeError(
