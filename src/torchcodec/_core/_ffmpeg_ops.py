@@ -6,10 +6,8 @@
 
 # FFmpeg-dependent ops, thin Python wrappers, and torch.compile abstract impls.
 #
-# This module is split out from ``ops.py`` (and imported by it via
-# ``from ... import *`` only when FFmpeg is available) purely so that all of this
-# can live at module scope instead of being indented under an
-# ``if _FFMPEG_AVAILABLE:`` block.
+# This module is split out from ``ops.py`` and imported by it when FFmpeg is
+# available.
 
 import io
 import json
@@ -18,16 +16,13 @@ import warnings
 import torch
 from torch.library import get_ctx, register_fake
 from torchcodec._core._ffmpeg_op_names import FFMPEG_OP_NAMES
-from torchcodec._internally_replaced_utils import ensure_ffmpeg_loaded
+from torchcodec._internally_replaced_utils import load_core_libraries
 
-# What ``from torchcodec._core._ffmpeg_ops import *`` re-exports into ops.py. We
-# spell it out (rather than relying on the default) so the underscore-prefixed
-# names, which ``import *`` would otherwise skip, are exported too.
 __all__ = sorted(FFMPEG_OP_NAMES)
 
 # Only imported when FFmpeg is available, so this always succeeds; it's @cache'd
 # so it's instant. We need _pybind_ops for the file-like helpers below.
-_, _, _pybind_ops = ensure_ffmpeg_loaded()
+_, _, _pybind_ops = load_core_libraries()
 
 
 # Note: We use disallow_in_graph because PyTorch does constant propagation of
@@ -99,8 +94,6 @@ get_frames_by_pts_in_range_audio = (
 )
 get_json_metadata = torch.ops.torchcodec_ns.get_json_metadata.default
 
-# Building-block ops for torchcodec.decoders._blocks (CPU). See
-# API_breakdown_claude_plan.md.
 _blocks_create_demuxer = torch.ops.torchcodec_ns._blocks_create_demuxer.default
 _blocks_demuxer_next_packet = (
     torch.ops.torchcodec_ns._blocks_demuxer_next_packet.default

@@ -6,16 +6,8 @@
 
 """The names of all FFmpeg-dependent ops and helpers exposed by ``ops.py``.
 
-Kept in its own tiny module so both ``ops.py`` (which needs it as the allowlist
-for its FFmpeg-absent ``__getattr__``) and ``_ffmpeg_ops.py`` (which needs it for
-``__all__``, so ``import *`` re-exports the underscore-prefixed names too) can
-import it without importing each other.
-
-When FFmpeg is available these names are bound to the real ops; when it isn't,
-``ops.__getattr__`` resolves them to a stub that raises a clear error on use, so
-``import torchcodec`` and the image decoders keep working. Names not listed here
-raise ``AttributeError`` (so typos and introspection like IPython's canary
-attributes behave normally).
+Kept in its own tiny module so both ``ops.py`` and ``_ffmpeg_ops.py`` can import
+it without importing each other.
 """
 
 FFMPEG_OP_NAMES = frozenset(

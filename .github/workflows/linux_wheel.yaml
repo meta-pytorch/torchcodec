@@ -112,8 +112,7 @@ jobs:
   install-and-test-no-ffmpeg:
     # Asserts that torchcodec works WITHOUT FFmpeg installed: the package must
     # import, the FFmpeg-free image decoders must work, and the FFmpeg-backed
-    # entry points must fail with a clear error. No ffmpeg-version matrix and no
-    # FFmpeg install step (the image codec libs are bundled in the wheel).
+    # entry points must fail with a clear error.
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
