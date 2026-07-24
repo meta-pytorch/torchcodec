@@ -82,21 +82,32 @@ if [ -n "${libvar}" ]; then
 fi
 ls -la "${libdir}/"*heif* 2>/dev/null || echo "(no libheif files found in ${libdir})"
 
-# Verify the HEIC library actually loads with libheif present, and flip on
-# FAIL_WITHOUT_HEIC for subsequent steps so a broken setup is a hard failure
-# (rather than a silent skip). If verification fails, we DON'T set it, so the
-# tests skip instead of failing -- and the diagnostics below explain why.
+# Verify HEIC actually DECODES (not just that libheif loads -- a libheif without
+# a working HEVC/de265 decoder plugin loads fine but then fails decoding with
+# "Unsupported codec"). Only if a real decode succeeds do we flip on
+# FAIL_WITHOUT_HEIC for subsequent steps, so the HEIC tests become a hard
+# failure rather than a silent skip. If verification fails we DON'T set it (the
+# tests then skip) and print loud diagnostics explaining why.
 echo "--- HEIC diagnostics ---"
 TORCHCODEC_HEIC_DEBUG=1 python packaging/print_heic_diagnostics.py || true
 
-if TORCHCODEC_HEIC_DEBUG=1 python -c "from torchcodec._internally_replaced_utils import load_heic_library; load_heic_library(); print('LIBHEIF LOAD OK')"; then
+if TORCHCODEC_HEIC_DEBUG=1 python -c "
+from torchcodec.decoders._image_decoders import decode_heic
+out = decode_heic('test/resources/gradient.heic')
+print('HEIC DECODE OK', tuple(out.shape), out.dtype)
+"; then
     if [ -n "${GITHUB_ENV:-}" ]; then
         echo "FAIL_WITHOUT_HEIC=1" >> "${GITHUB_ENV}"
-        echo "libheif verified: set FAIL_WITHOUT_HEIC=1 for subsequent steps."
+        echo "HEIC decode verified: set FAIL_WITHOUT_HEIC=1 for subsequent steps."
     fi
 else
-    echo "WARNING: libheif installed but libtorchcodec_heic failed to load. HEIC"
-    echo "tests will SKIP. See the diagnostics above for the resolution failure."
+    echo "############################################################"
+    echo "WARNING: libheif is present but decoding a HEIC failed, so HEIC tests"
+    echo "will SKIP (FAIL_WITHOUT_HEIC not set). Common cause: the libheif that"
+    echo "got loaded lacks a working HEVC decoder (libde265). Check the loader"
+    echo "path in the diagnostics above -- a system libheif may be shadowing the"
+    echo "conda one. libheif expected at: ${libdir}"
+    echo "############################################################"
 fi
 
 echo "===== install_libheif.sh done ====="

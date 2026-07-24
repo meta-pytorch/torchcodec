@@ -511,18 +511,25 @@ HEIC_TEST_FILES = (GRADIENT_HEIC, RGBA_HEIC, GRADIENT_10BIT_HEIC)
 
 @functools.cache
 def heic_is_available() -> bool:
-    # libheif is optional and user-supplied: decode_heic raises RuntimeError
-    # ("not compiled with libheif") for a stub build, or ImportError ("requires
-    # libheif") when the runtime lib is missing. Either means HEIC is
-    # unavailable; anything else is a real failure.
+    # "Available" means we can actually DECODE a HEIC here. This must never
+    # raise: it's called from conftest's collection hook, so any exception would
+    # abort the whole test session (INTERNALERROR). libheif is optional and
+    # user-supplied, and there are several ways it can be unusable, all of which
+    # simply mean "HEIC unavailable -> skip needs_heic tests":
+    #   - ImportError: the wheel's libtorchcodec_heic couldn't load libheif
+    #     (libheif not installed / not on the loader path).
+    #   - RuntimeError "not compiled with libheif": a stub build.
+    #   - RuntimeError "Unsupported codec": a libheif that loads but lacks a
+    #     working HEVC decoder plugin (e.g. libde265) -- decoding fails even
+    #     though loading didn't. This is why we probe with a real decode, and
+    #     why we can't just key off the word "libheif" in the message.
     try:
         decode_heic(GRADIENT_HEIC.path)
-    except (RuntimeError, ImportError) as e:
-        if "libheif" in str(e):
-            # Log why HEIC is unavailable so CI skips are self-explanatory.
-            print(f"heic_is_available() -> False: {type(e).__name__}: {e}")
-            return False
-        raise
+    except Exception as e:
+        # Log the reason so CI skips (and the "why isn't HEIC tested?" question)
+        # are self-explanatory.
+        print(f"heic_is_available() -> False: {type(e).__name__}: {e}")
+        return False
     return True
 
 

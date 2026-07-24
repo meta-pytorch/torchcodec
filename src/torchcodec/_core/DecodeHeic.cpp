@@ -141,7 +141,13 @@ torch::stable::Tensor decode_heic(
       chroma,
       /*options=*/nullptr);
   STD_TORCH_CHECK(
-      err.code == heif_error_Ok, "heif_decode_image failed: ", err.message);
+      err.code == heif_error_Ok,
+      "heif_decode_image failed: ",
+      err.message,
+      ". If this is an \"Unsupported codec\" error, the libheif found at runtime "
+      "was built/installed without a decoder for this image's codec (typically "
+      "libde265 for HEVC-coded HEIC). Install a libheif with HEVC decode support "
+      "(e.g. `conda install -c conda-forge libheif`, which pulls libde265).");
   ImagePtr img(raw_img);
 
   int stride = 0;
