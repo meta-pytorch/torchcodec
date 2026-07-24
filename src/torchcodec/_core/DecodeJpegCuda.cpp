@@ -93,6 +93,9 @@ ExifOrientation fetch_exif_orientation_from_jpeg_bytes(
 // How many idle decoders to keep around per GPU. Small: each decoder holds
 // nvJPEG handles plus pinned/device buffers, and calls are usually serial so
 // one gets reused; a few slots let concurrent callers avoid rebuilding.
+// TODO_IMAGE Does this potentially prevent multi-threading scaling? Would be
+// interesting to know how costly is the creation and destruction, and also how
+// many hw decoders there can be concurrently (for hw and sw paths?)
 constexpr size_t kMaxCachedDecodersPerDevice = 4;
 
 // PyTorch supports up to 128 GPUs (see CUDACommon.h's MAX_CUDA_GPUS). Kept
@@ -288,12 +291,19 @@ CUDAJpegDecoder::CUDAJpegDecoder(const torch::stable::Device& target_device)
         status);
   }
 
-  status = nvjpegJpegStateCreate(nvjpeg_handle_, &nvjpeg_state_);
-  STD_TORCH_CHECK(
-      status == NVJPEG_STATUS_SUCCESS,
-      "Failed to create nvjpeg state: ",
-      status);
+  // Batched (hardware) path state -- only ever used when the HW engine is
+  // available, so only create it then.
+  if (hw_decode_available_) {
+    status = nvjpegJpegStateCreate(nvjpeg_handle_, &nvjpeg_state_);
+    STD_TORCH_CHECK(
+        status == NVJPEG_STATUS_SUCCESS,
+        "Failed to create nvjpeg state: ",
+        status);
+  }
 
+  // Decoupled (software) path state. Needed regardless of the HW engine, since
+  // progressive JPEGs always fall back to this path. The pinned/device buffers
+  // are created empty and only allocate memory when first used.
   status = nvjpegDecoderCreate(
       nvjpeg_handle_, NVJPEG_BACKEND_DEFAULT, &nvjpeg_decoder_);
   STD_TORCH_CHECK(
@@ -359,7 +369,9 @@ CUDAJpegDecoder::~CUDAJpegDecoder() {
   nvjpegBufferDeviceDestroy(device_buffer_);
   nvjpegJpegStateDestroy(nvjpeg_decoupled_state_);
   nvjpegDecoderDestroy(nvjpeg_decoder_);
-  nvjpegJpegStateDestroy(nvjpeg_state_);
+  if (hw_decode_available_) {
+    nvjpegJpegStateDestroy(nvjpeg_state_);
+  }
   nvjpegDestroy(nvjpeg_handle_);
 }
 
@@ -577,7 +589,11 @@ void CUDAJpegDecoder::decode_software(
         "Failed to transfer jpeg to device: ",
         status);
 
-    // Switch pinned buffer to pipeline host and device work.
+    // Switch pinned buffer to pipeline host and device work (double buffering:
+    // host-decode image i+1 while image i's device work is in flight).
+    // TODO_IMAGE: benchmark whether this ping-pong pipelining actually helps vs
+    // a single buffer / no pipelining -- it adds complexity (two pinned buffers
+    // and jpeg streams) and may not be worth it.
     buffer_index = 1 - buffer_index;
 
     status = nvjpegDecodeJpegDevice(
