@@ -54,27 +54,107 @@ def _avif_lib_dir():
     return dirs[0]
 
 
-def _cuda_lib_dirs():
-    # Directories where the CUDA toolkit libs live, so the wheel-repair tools can
-    # find and graft libnvjpeg. Unlike the CUDA *runtime* libs (libcudart,
-    # libnvrtc, ...), which are provided by the torch wheel and excluded from
-    # bundling, libnvjpeg is NOT shipped by torch, so we must bundle it. It comes
-    # either from a system CUDA toolkit ($CUDA_HOME) or from the nvidia-*-cu12
-    # pip packages (site-packages/nvidia/*/lib).
-    roots = [os.environ.get(var) for var in ("CUDA_HOME", "CUDA_PATH")]
-    # Fall back to the toolkit root inferred from nvcc on PATH (e.g.
-    # /usr/local/cuda/bin/nvcc -> /usr/local/cuda).
+def _cuda_search_roots():
+    # Likely CUDA-toolkit roots to search for libnvjpeg. libnvjpeg is a
+    # CUDA-toolkit lib that the torch wheel does NOT ship (unlike libcudart /
+    # libnvrtc, which we exclude from bundling), so we must find and bundle it.
+    # Its location varies a lot across CI setups (system toolkit, conda, pip
+    # nvidia packages), so we cast a wide net.
+    roots = []
+    for var in ("CUDA_HOME", "CUDA_PATH", "CUDAToolkit_ROOT", "CONDA_PREFIX"):
+        if v := os.environ.get(var):
+            roots.append(Path(v))
+    # nvcc on PATH -> toolkit root (e.g. /usr/local/cuda/bin/nvcc -> /usr/local/cuda).
     if nvcc := shutil.which("nvcc"):
         roots.append(Path(nvcc).resolve().parent.parent)
-
-    dirs = []
-    for root in roots:
-        if root:
-            dirs.append(Path(root) / "lib64")
-            dirs.extend(Path(root).glob("targets/*/lib"))
+    if platform.system() == "Windows":
+        roots += list(
+            Path("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA").glob("*")
+        )
+    else:
+        roots += list(Path("/usr/local").glob("cuda*"))
     for site_dir in site.getsitepackages():
-        dirs.extend(Path(site_dir).glob("nvidia/*/lib"))
-    return [str(d) for d in dirs if d.is_dir()]
+        roots.append(Path(site_dir) / "nvidia")  # pip nvidia-*-cu12 packages
+
+    # De-dupe by resolved path, keeping only dirs that exist.
+    seen, out = set(), []
+    for r in roots:
+        try:
+            rp = r.resolve()
+        except OSError:
+            continue
+        if r.is_dir() and rp not in seen:
+            seen.add(rp)
+            out.append(r)
+    return out
+
+
+def _find_lib_files(patterns):
+    # Recursively search the CUDA roots for library filenames matching `patterns`
+    # (e.g. "libnvjpeg.so*" on Linux, "nvjpeg64*.dll" on Windows). On Linux we
+    # also consult ldconfig, which knows about system-installed libs.
+    matches = []
+    for root in _cuda_search_roots():
+        for pat in patterns:
+            try:
+                matches.extend(root.rglob(pat))
+            except OSError:
+                pass
+    if platform.system() == "Linux":
+        try:
+            out = subprocess.run(
+                ["ldconfig", "-p"], capture_output=True, text=True, check=False
+            ).stdout
+            for line in out.splitlines():
+                if "libnvjpeg.so" in line and "=>" in line:
+                    matches.append(Path(line.split("=>")[-1].strip()))
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    seen, out = set(), []
+    for m in matches:
+        # Skip the CUDA "stubs" libs: they're link-time placeholders (unversioned
+        # libnvjpeg.so with no real code), not the runtime lib we must bundle.
+        if "stubs" in m.parts:
+            continue
+        try:
+            rp = m.resolve()
+        except OSError:
+            continue
+        if m.is_file() and rp not in seen:
+            seen.add(rp)
+            out.append(m)
+    return out
+
+
+def _cuda_lib_dirs():
+    # Directories containing libnvjpeg, to add to the repair tool's library
+    # search path so it can find and graft it into the wheel.
+    return sorted({str(f.parent) for f in _find_lib_files(["libnvjpeg.so*"])})
+
+
+def _debug_cuda_bundling(patterns):
+    # Print where we look for the bundled CUDA lib and what we find, so a failed
+    # CI run tells us exactly why libnvjpeg couldn't be located.
+    print("=== [repair_wheel] CUDA bundling debug ===", flush=True)
+    for var in (
+        "ENABLE_CUDA",
+        "CUDA_HOME",
+        "CUDA_PATH",
+        "CUDAToolkit_ROOT",
+        "CONDA_PREFIX",
+        "LD_LIBRARY_PATH",
+        "PATH",
+    ):
+        print(f"  {var}={os.environ.get(var)}")
+    print(f"  which nvcc = {shutil.which('nvcc')}")
+    print(f"  search roots = {[str(r) for r in _cuda_search_roots()]}")
+    found = _find_lib_files(patterns)
+    print(f"  {patterns} found ({len(found)}):")
+    for f in found:
+        print(f"    {f}")
+    print(f"  -> lib dirs to graft from = {_cuda_lib_dirs()}")
+    print("=== [repair_wheel] end CUDA bundling debug ===", flush=True)
 
 
 def repair_linux(wheels):
@@ -88,7 +168,18 @@ def repair_linux(wheels):
     if conda_prefix := env.get("CONDA_PREFIX"):
         lib_dirs.append(str(Path(conda_prefix) / "lib"))
     if _enable_cuda():
-        lib_dirs.extend(_cuda_lib_dirs())
+        _debug_cuda_bundling(["libnvjpeg.so*"])
+        cuda_dirs = _cuda_lib_dirs()
+        if not cuda_dirs:
+            # Don't fail here: let auditwheel produce its own "could not be
+            # located" error, but the debug dump above already shows where we
+            # looked so the CI log is actionable.
+            print(
+                "WARNING: could not locate libnvjpeg for bundling; see the CUDA "
+                "bundling debug above.",
+                flush=True,
+            )
+        lib_dirs.extend(cuda_dirs)
     env["LD_LIBRARY_PATH"] = os.pathsep.join(
         [*lib_dirs, env.get("LD_LIBRARY_PATH", "")]
     )
@@ -208,21 +299,16 @@ def repair_windows(wheels):
 
     if _enable_cuda():
         # nvJPEG is a CUDA-toolkit lib that torch does not ship, so we bundle it
-        # (like the OSS image DLLs above). The DLL is nvjpeg64_<major>.dll, found
-        # in the CUDA toolkit bin/ or an nvidia-*-cu12 pip package.
-        candidate_dirs = [bin_dir]
-        for var in ("CUDA_HOME", "CUDA_PATH"):
-            if root := os.environ.get(var):
-                candidate_dirs.append(Path(root) / "bin")
-        for site_dir in site.getsitepackages():
-            candidate_dirs.extend(Path(site_dir).glob("nvidia/*/bin"))
-        nvjpeg_dlls = {
-            dll for d in candidate_dirs if d.is_dir() for dll in d.glob("nvjpeg64*.dll")
-        }
+        # (like the OSS image DLLs above). The DLL is nvjpeg64_<major>.dll; search
+        # the CUDA toolkit tree (and conda/pip nvidia dirs) recursively for it.
+        _debug_cuda_bundling(["nvjpeg64*.dll"])
+        nvjpeg_dlls = set(_find_lib_files(["nvjpeg64*.dll"]))
+        # Also check the conda Library\bin next to the other image DLLs.
+        nvjpeg_dlls |= set(bin_dir.glob("nvjpeg64*.dll"))
         if not nvjpeg_dlls:
             raise FileNotFoundError(
-                "No nvjpeg64*.dll found for a CUDA build; searched: "
-                + ", ".join(str(d) for d in candidate_dirs)
+                "No nvjpeg64*.dll found for a CUDA build. See the CUDA bundling "
+                "debug above for the roots searched."
             )
         dlls |= nvjpeg_dlls
 

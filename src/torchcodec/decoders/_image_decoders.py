@@ -5,9 +5,10 @@
 # LICENSE file in the root directory of this source tree.
 
 import warnings
+from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Literal
+from typing import Any, Literal
 
 import torch
 
