@@ -111,6 +111,22 @@ def _find_nvjpeg_libs():
     return list(found)
 
 
+def _find_nvjpeg_license():
+    # Try to find EULA.txt, fallback to LICENSE
+    dirs = []
+    for lib in _find_nvjpeg_libs():
+        dirs.extend(lib.parents)
+    for var in ("CUDA_HOME", "CUDA_PATH", "CUDAToolkit_ROOT"):
+        if v := os.environ.get(var):
+            dirs.append(Path(v))
+    for filename in ("EULA.txt", "LICENSE"):
+        for d in dirs:
+            candidate = d / filename
+            if candidate.is_file():
+                return candidate
+    return None
+
+
 def repair_linux(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "auditwheel"])
     run(["auditwheel", "--version"])
@@ -274,7 +290,8 @@ def bundle_third_party_licenses():
     statically embeds dav1d and libyuv) as binaries inside the wheel. Their
     permissive licenses (IJG/BSD/zlib) require reproducing the copyright notice
     and license text in binary redistributions, so we ship them next to our own
-    LICENSE.
+    LICENSE. CUDA wheels additionally bundle libnvjpeg, redistributed under the
+    NVIDIA CUDA Toolkit EULA, which we ship as well.
     """
 
     def _resolve_conda_licenses():
@@ -349,9 +366,9 @@ def bundle_third_party_licenses():
         return {f.name: f for f in sorted(dirs[0].iterdir()) if f.is_file()}
 
     run([sys.executable, "-m", "pip", "install", "-U", "wheel"])
-    licenses = {**_resolve_conda_licenses(), **_resolve_avif_licenses()}
+    base_licenses = {**_resolve_conda_licenses(), **_resolve_avif_licenses()}
     print("Third-party license files to bundle:")
-    for name, src in sorted(licenses.items()):
+    for name, src in sorted(base_licenses.items()):
         print(f"  {name} <- {src}")
 
     scratch = Path("dist_licenses")
@@ -360,6 +377,16 @@ def bundle_third_party_licenses():
     scratch.mkdir(parents=True)
 
     for wheel in sorted(DIST_DIR.glob("*.whl")):
+        licenses = dict(base_licenses)
+        if _is_cuda_wheel(wheel):
+            if (nvjpeg_license := _find_nvjpeg_license()) is None:
+                raise RuntimeError(
+                    f"{wheel.name} bundles libnvjpeg but the NVIDIA CUDA EULA "
+                    "could not be located to ship alongside it."
+                )
+            licenses["LICENSE.libnvjpeg-NVIDIA-CUDA-EULA.txt"] = nvjpeg_license
+            print(f"  LICENSE.libnvjpeg-NVIDIA-CUDA-EULA.txt <- {nvjpeg_license}")
+
         unpack_dir = scratch / "unpack"
         if unpack_dir.is_dir():
             shutil.rmtree(unpack_dir)
@@ -550,7 +577,7 @@ def check_bundling():
                 "found at build time."
             )
 
-    def _assert_third_party_licenses(zf):
+    def _assert_third_party_licenses(zf, is_cuda):
         """Every bundled third-party lib must ship its license text under
         .dist-info/licenses/third_party/ (see bundle_third_party_licenses)."""
         license_files = [
@@ -558,8 +585,12 @@ def check_bundling():
             for n in zf.namelist()
             if "/licenses/third_party/" in n and not n.endswith("/")
         ]
-        # keyword each bundled lib's license file must be identifiable by.
-        for keyword in ("jpeg", "png", "zlib", "webp", "avif", "dav1d", "yuv"):
+        # keyword each bundled lib's license file must be identifiable by. CUDA
+        # wheels also bundle libnvjpeg, whose NVIDIA CUDA EULA must ship too.
+        keywords = ["jpeg", "png", "zlib", "webp", "avif", "dav1d", "yuv"]
+        if is_cuda:
+            keywords.append("nvjpeg")
+        for keyword in keywords:
             if not any(keyword in n.lower() for n in license_files):
                 raise RuntimeError(
                     f"No third-party license file matching '{keyword}' found in "
@@ -569,7 +600,7 @@ def check_bundling():
     for wheel in DIST_DIR.glob("*.whl"):
         print(f"Checking bundled libraries in {wheel.name}")
         with zipfile.ZipFile(wheel) as zf:
-            _assert_third_party_licenses(zf)
+            _assert_third_party_licenses(zf, _is_cuda_wheel(wheel))
             names = zf.namelist()
             libs = sorted({n.rsplit("/", 1)[-1] for n in names if _is_shared_lib(n)})
             if unexpected := [lib for lib in libs if not _is_allowed(lib)]:

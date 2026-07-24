@@ -43,7 +43,7 @@ endif()
 if(NOT DEFINED TORCHCODEC_BUILD_IMAGE)
     set(TORCHCODEC_BUILD_IMAGE "ON")
 endif()
-foreach(_codec JPEG PNG WEBP AVIF GIF)
+foreach(_codec JPEG PNG WEBP AVIF GIF NVJPEG)
     if(NOT DEFINED TORCHCODEC_BUILD_${_codec})
         set(TORCHCODEC_BUILD_${_codec} "AUTO")
     endif()
@@ -551,17 +551,14 @@ function(make_torchcodec_image_library)
         "${TORCH_LIBRARIES}"
     )
 
-    # The nvJPEG GPU JPEG decoder is a plain C++ translation unit (nvJPEG is a
-    # host-side API with no CUDA kernels), so the image library needs no
-    # enable_language(CUDA) -- just nvjpeg/cudart headers and libs from the CUDA
-    # toolkit, found via CUDAToolkit.
-    if(ENABLE_CUDA)
+    resolve_image_codec("${TORCHCODEC_BUILD_NVJPEG}" want_nvjpeg)
+    if(ENABLE_CUDA AND want_nvjpeg)
         find_package(CUDAToolkit REQUIRED)
         target_link_libraries(${image_library_name} PRIVATE CUDA::nvjpeg CUDA::cudart)
-        # TORCHCODEC_ENABLE_NVJPEG unlocks the real nvJPEG decoder (otherwise
-        # decode_jpegs_cuda is a stub that raises). USE_CUDA is needed for the
-        # torch stable-ABI CUDA shim (torch_get_cuda_stream_from_pool).
         target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_NVJPEG=1 USE_CUDA)
+        message(STATUS "Building torchcodec with nvJPEG GPU JPEG decoding support.")
+    elseif(ENABLE_CUDA)
+        message(STATUS "Not building torchcodec with nvJPEG support (disabled via TORCHCODEC_BUILD_NVJPEG/TORCHCODEC_BUILD_IMAGE): decode_jpeg(device='cuda') will raise at runtime.")
     endif()
 
     if(want_jpeg)
