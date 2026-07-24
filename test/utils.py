@@ -504,30 +504,18 @@ GRADIENT_10BIT_HEIC = TestImage(
     filename="gradient_10bit.heic", width=64, height=48, num_channels=3
 )
 
-# HEIC files used by the "libheif absent" CI job to assert decode_heic raises an
-# actionable error when libheif isn't installed (see load_heic_library).
-HEIC_TEST_FILES = (GRADIENT_HEIC, RGBA_HEIC, GRADIENT_10BIT_HEIC)
-
 
 @functools.cache
 def heic_is_available() -> bool:
-    # "Available" means we can actually DECODE a HEIC here. This must never
-    # raise: it's called from conftest's collection hook, so any exception would
-    # abort the whole test session (INTERNALERROR). libheif is optional and
-    # user-supplied, and there are several ways it can be unusable, all of which
-    # simply mean "HEIC unavailable -> skip needs_heic tests":
-    #   - ImportError: the wheel's libtorchcodec_heic couldn't load libheif
-    #     (libheif not installed / not on the loader path).
-    #   - RuntimeError "not compiled with libheif": a stub build.
-    #   - RuntimeError "Unsupported codec": a libheif that loads but lacks a
-    #     working HEVC decoder plugin (e.g. libde265) -- decoding fails even
-    #     though loading didn't. This is why we probe with a real decode, and
-    #     why we can't just key off the word "libheif" in the message.
+    # "Available" means we can actually DECODE a HEIC here. We probe with a real
+    # decode (not just a library load): a libheif can load fine yet fail to
+    # decode with "Unsupported codec" when it lacks an HEVC decoder (libde265).
+    # This must never raise -- it's called from conftest's collection hook, so
+    # any exception would abort the whole session -- and every failure mode
+    # (missing libheif, stub build, missing codec) just means "skip".
     try:
         decode_heic(GRADIENT_HEIC.path)
     except Exception as e:
-        # Log the reason so CI skips (and the "why isn't HEIC tested?" question)
-        # are self-explanatory.
         print(f"heic_is_available() -> False: {type(e).__name__}: {e}")
         return False
     return True

@@ -102,16 +102,11 @@ jobs:
       - name: Install ffmpeg, post build
         run: bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
 
+      # The ffmpeg version is passed so install_test_dependencies.sh can install
+      # libheif (the optional HEIC runtime dep) into the same env, except on
+      # FFmpeg 4 where it's unsatisfiable. It also sets FAIL_WITHOUT_HEIC.
       - name: Install test dependencies
-        run: bash packaging/install_test_dependencies.sh
-
-      # Install libheif (optional HEIC runtime dep) into the SAME env, so HEIC is
-      # tested like a real user would have it. Skipped on FFmpeg 4, whose old
-      # aom/svt-av1 pins are unsatisfiable with conda's libheif. The script sets
-      # LD_LIBRARY_PATH + FAIL_WITHOUT_HEIC via GITHUB_ENV on success.
-      - name: Install libheif (HEIC runtime dep)
-        if: ${{ matrix.ffmpeg-version-for-tests != '4' }}
-        run: bash packaging/install_libheif.sh
+        run: bash packaging/install_test_dependencies.sh ${{ matrix.ffmpeg-version-for-tests }}
 
       - name: Run Python tests
         run: |

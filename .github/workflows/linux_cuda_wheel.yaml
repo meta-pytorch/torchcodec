@@ -129,15 +129,13 @@ jobs:
       - name: Install torchcodec from the wheel
         run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}-cp${{ env.python_version_without_periods }}*.whl"
 
+      # libheif (optional HEIC runtime dep) was installed at env-creation above
+      # (default-packages, for FFmpeg != 4) -- a post-hoc conda install would
+      # re-solve the env and trip the pinned cuda-toolkit. Passing the ffmpeg
+      # version lets install_test_dependencies.sh see it's already present (so it
+      # doesn't reinstall) and set FAIL_WITHOUT_HEIC for the test step.
       - name: Install test dependencies
-        run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh
-      # libheif was installed at env-creation above (for FFmpeg != 4). This
-      # verifies it loads and, on success, sets FAIL_WITHOUT_HEIC via GITHUB_ENV
-      # so the HEIC tests are required in the following step (it does not
-      # re-install, avoiding a re-solve). Emits verbose HEIC diagnostics.
-      - name: Set up / verify libheif (HEIC runtime dep)
-        if: ${{ matrix.ffmpeg-version-for-tests != '4' }}
-        run: ${CONDA_RUN} bash packaging/install_libheif.sh
+        run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh ${{ matrix.ffmpeg-version-for-tests }}
       - name: Run Python tests
         run: |
           ${CONDA_RUN} FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 pytest --override-ini="addopts=-v" test --tb=short
@@ -197,13 +195,11 @@ jobs:
       - name: Install ffmpeg
         run: bash packaging/install_ffmpeg.sh ${{ env.FFMPEG_VERSION }}
 
+      # FFMPEG_VERSION is 7 here (not 4), so install_test_dependencies.sh installs
+      # libheif into the same env and sets FAIL_WITHOUT_HEIC. cuda-toolkit is not
+      # conda-pinned in this job, so a post-hoc conda install is fine.
       - name: Install test dependencies
-        run: bash packaging/install_test_dependencies.sh
-
-      # FFMPEG_VERSION is 7 here (not 4), so libheif installs cleanly into the
-      # SAME env. Sets LD_LIBRARY_PATH + FAIL_WITHOUT_HEIC via GITHUB_ENV.
-      - name: Install libheif (HEIC runtime dep)
-        run: bash packaging/install_libheif.sh
+        run: bash packaging/install_test_dependencies.sh ${{ env.FFMPEG_VERSION }}
 
       - name: Assert CUDA is not available
         run: |
