@@ -27,6 +27,7 @@ from torchcodec._core.ops import (
     create_wav_decoder_from_file_like,
     create_wav_decoder_from_tensor,
 )
+from torchcodec._internally_replaced_utils import load_core_libraries
 from torchcodec.transforms import DecoderTransform
 from torchcodec.transforms._decoder_transforms import _make_transform_specs
 
@@ -42,6 +43,7 @@ def create_decoder(
     source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
     seek_mode: str,
 ) -> Tensor:
+    load_core_libraries()
     if isinstance(source, str):
         return create_from_file(source, seek_mode)
     elif isinstance(source, Path):
@@ -108,6 +110,9 @@ def create_audio_decoder(
 def create_wav_decoder(
     source: str | Path | io.RawIOBase | io.BufferedReader | bytes | Tensor,
 ) -> Tensor:
+    # WavDecoder currently lives in the FFmpeg-linked core library (it uses the
+    # FFmpeg-based AVIO I/O layer), so it needs FFmpeg too, for now.
+    load_core_libraries()
     if isinstance(source, str):
         return create_wav_decoder_from_file(source)
     elif isinstance(source, Path):

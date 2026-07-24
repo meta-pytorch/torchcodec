@@ -4,6 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+import functools
 import importlib
 import importlib.util
 import sys
@@ -64,12 +65,37 @@ def _load_pybind11_module(module_name: str, library_path: str) -> ModuleType:
     return mod
 
 
-def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
-    """
-    Successively try to load the shared libraries for each version of FFmpeg
-    that we support. We always start with the highest version, working our way
-    down to the lowest version. Once we can load ALL shared libraries for a
-    version of FFmpeg, we have succeeded and we stop.
+def load_image_library() -> None:
+    """Load the FFmpeg-free image library"""
+    image_library_path = _get_extension_path("libtorchcodec_image")
+    torch.ops.load_library(image_library_path)
+
+
+@functools.cache
+def load_core_libraries() -> tuple[int, str, ModuleType]:
+    """Load the FFmpeg-dependent shared libraries, memoizing the result.
+
+      This raises if the libraries cannot be loaded, typically because FFmpeg
+      couldn't be found. This is called:
+      - at import time (import torchcodec) within a try/except, to determine
+        whether FFmpeg is available, and then load the corresponding ops if it is.
+        If FFmpeg isn't available, we don't propagate the exception and
+        `import torchcodec` still works: we still want to support the image
+        decoders, which don't need FFmpeg.
+      - at runtime in all FFmpeg-dependent public entry-points like VideoDecoder,
+        so that if FFmpeg isn't available the user gets a clear error message.
+
+      Since this is @functools.cache'd, the libraries are only ever loaded once on
+      success. Failures are *not* cached (functools.cache only caches return
+      values), so when FFmpeg is missing the load is retried and re-raises on each
+      call. That's fine, it only happens on the error path.
+
+
+
+    We successively try to load the shared libraries for each version of FFmpeg
+    that we support, starting with the highest version and working our way down.
+    Once we can load ALL shared libraries for a version of FFmpeg, we have
+    succeeded and we stop.
 
     Note that we use two different methods for loading shared libraries:
 
@@ -83,10 +109,6 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
          works when the module name and file name match exactly. Our shared
          libraries do not meet those conditions.
     """
-
-    image_library_path = _get_extension_path("libtorchcodec_image")
-    torch.ops.load_library(image_library_path)
-
     exceptions = []
     for ffmpeg_major_version in (8, 7, 6, 5, 4):
         core_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
@@ -101,7 +123,7 @@ def load_torchcodec_shared_libraries() -> tuple[int, str, ModuleType]:
             pybind_ops = _load_pybind11_module(
                 _PYBIND_OPS_MODULE_NAME, pybind_ops_library_path
             )
-            return ffmpeg_major_version, core_library_path, pybind_ops
+            return (ffmpeg_major_version, core_library_path, pybind_ops)
         except Exception:
             # Capture the full traceback for this exception
             exc_traceback = traceback.format_exc()
