@@ -7,7 +7,7 @@
 import warnings
 from enum import Enum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Callable, Literal
 
 import torch
 
@@ -259,8 +259,12 @@ def decode_jpeg(
         decoded = _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
         return _maybe_widen_to_uint16(decoded, output_dtype)
 
-    is_batch = isinstance(source, (list, tuple))
-    sources = list(source) if is_batch else [source]
+    if isinstance(source, (list, tuple)):
+        is_batch = True
+        sources: list = list(source)
+    else:
+        is_batch = False
+        sources = [source]
     tensors = [_source_to_tensor(s) for s in sources]
     decoded_list = _decode_jpegs_cuda_with_mode(tensors, mode, device)
     decoded_list = [_maybe_widen_to_uint16(img, output_dtype) for img in decoded_list]
@@ -382,7 +386,11 @@ def decode_avif(
 # Maps a detected format to its public decoder, so decode_image reuses the exact
 # same decoding path (mode emulation and output_dtype handling) as the
 # format-specific decoders above.
-_FORMAT_TO_DECODER = {
+# decode_jpeg's return type (Tensor | list[Tensor]) differs from the others, so
+# we type the values as Callable[..., Any] to keep the dict callable for mypy.
+# decode_image only ever calls these with a single source (no device), so each
+# returns a plain Tensor at runtime.
+_FORMAT_TO_DECODER: dict[str, Callable[..., Any]] = {
     "jpeg": decode_jpeg,
     "png": decode_png,
     "webp": decode_webp,
