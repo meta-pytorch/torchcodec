@@ -1,0 +1,82 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
+"""The names of all FFmpeg-dependent ops and helpers exposed by ``ops.py``.
+
+Kept in its own tiny module so both ``ops.py`` (which needs it as the allowlist
+for its FFmpeg-absent ``__getattr__``) and ``_ffmpeg_ops.py`` (which needs it for
+``__all__``, so ``import *`` re-exports the underscore-prefixed names too) can
+import it without importing each other.
+
+When FFmpeg is available these names are bound to the real ops; when it isn't,
+``ops.__getattr__`` resolves them to a stub that raises a clear error on use, so
+``import torchcodec`` and the image decoders keep working. Names not listed here
+raise ``AttributeError`` (so typos and introspection like IPython's canary
+attributes behave normally).
+"""
+
+FFMPEG_OP_NAMES = frozenset(
+    {
+        "create_from_file",
+        "create_from_tensor",
+        "_create_from_file_like",
+        "_add_video_stream_raw",
+        "_add_video_stream",
+        "add_video_stream",
+        "add_audio_stream",
+        "seek_to_pts",
+        "get_next_frame",
+        "get_frame_at_pts",
+        "get_frame_at_index",
+        "_get_frames_at_indices_tensor_input",
+        "_get_frames_by_pts_tensor_input",
+        "get_frames_in_range",
+        "get_frames_by_pts_in_range",
+        "get_frames_by_pts_in_range_audio",
+        "get_json_metadata",
+        "_blocks_create_demuxer",
+        "_blocks_demuxer_next_packet",
+        "_blocks_create_packet_decoder",
+        "_blocks_packet_decoder_send_packet",
+        "_blocks_packet_decoder_send_eof",
+        "_blocks_packet_decoder_receive_frame",
+        "_blocks_create_color_converter",
+        "_blocks_convert_frame",
+        "_test_frame_pts_equality",
+        "_get_container_json_metadata",
+        "_get_key_frame_indices",
+        "scan_all_streams_to_update_metadata",
+        "_get_stream_json_metadata",
+        "_get_json_ffmpeg_library_versions",
+        "_get_backend_details",
+        "create_streaming_encoder",
+        "streaming_encoder_close",
+        "streaming_encoder_add_video_stream",
+        "streaming_encoder_add_audio_stream",
+        "streaming_encoder_open_file",
+        "_streaming_encoder_open_file_like",
+        "streaming_encoder_add_frames",
+        "streaming_encoder_add_samples",
+        "set_nvdec_cache_capacity",
+        "get_nvdec_cache_capacity",
+        "_get_nvdec_cache_size",
+        "_set_cpp_log_level",
+        "_get_log_level",
+        "create_wav_decoder_from_file",
+        "create_wav_decoder_from_tensor",
+        "_create_wav_decoder_from_file_like",
+        "get_wav_samples_in_range",
+        "get_wav_metadata_from_decoder",
+        "create_from_bytes",
+        "create_from_file_like",
+        "create_wav_decoder_from_bytes",
+        "create_wav_decoder_from_file_like",
+        "streaming_encoder_open_file_like",
+        "get_frames_at_indices",
+        "get_frames_by_pts",
+        "get_ffmpeg_library_versions",
+    }
+)
