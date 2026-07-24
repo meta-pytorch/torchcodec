@@ -4,6 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+import concurrent.futures
 import contextlib
 import gc
 import queue
@@ -4630,3 +4631,31 @@ class TestImageDecoder:
         # Batch (list) input is only valid on CUDA.
         with pytest.raises(ValueError, match="only supported on CUDA"):
             decode_jpeg([GRADIENT_JPEG.path, GRADIENT_JPEG.path])
+
+    @needs_cuda
+    @needs_jpeg
+    def test_cuda_jpeg_multithreaded(self):
+        # Many threads decoding concurrently on CUDA. Unlike torchvision (single
+        # global decoder + lock), our NVJpegCache hands each thread its own
+        # decoder from a per-device pool, so this genuinely exercises concurrent
+        # decodes: pool get/return under contention, multiple live decoders, and
+        # each decode running on its thread's own current stream. Every thread
+        # must produce results matching the CPU decode.
+        sources = [GRADIENT_JPEG.path, GRAYSCALE_JPEG.path, GRADIENT_JPEG.path]
+        reference = [decode_jpeg(s, mode="RGB") for s in sources]
+
+        num_workers = 10
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as ex:
+            futures = [
+                ex.submit(decode_jpeg, sources, mode="RGB", device="cuda")
+                for _ in range(num_workers)
+            ]
+            results = [f.result() for f in futures]
+
+        assert len(results) == num_workers
+        for decoded in results:
+            assert len(decoded) == len(sources)
+            for got, ref in zip(decoded, reference):
+                assert got.device.type == "cuda"
+                assert got.shape == ref.shape
+                assert_tensor_close_on_at_least(got.cpu(), ref, percentage=99, atol=3)
