@@ -59,6 +59,8 @@ direct,
 #include <torch/csrc/stable/ops.h>
 #include <torch/headeronly/util/Exception.h>
 
+#include <cstring>
+
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
@@ -190,6 +192,51 @@ inline ExifOrientation fetch_exif_orientation(
     }
   }
   return exif_orientation;
+}
+
+// Scan a full JPEG bitstream for the APP1/EXIF segment and return its
+// orientation. The CPU decoder gets EXIF markers from libjpeg's marker list,
+// but nvJPEG doesn't expose them, so for the CUDA path we parse the raw bytes
+// here. A JPEG is a sequence of marker segments: 0xFFD8 (SOI), then segments of
+// the form 0xFF <marker> <2-byte big-endian length> <payload>. The EXIF payload
+// lives in an APP1 (0xFFE1) segment and starts with "Exif\0\0".
+inline ExifOrientation fetch_exif_orientation_from_jpeg_bytes(
+    const unsigned char* jpeg,
+    size_t size) {
+  constexpr unsigned char MARKER_PREFIX = 0xFF;
+  constexpr unsigned char SOI = 0xD8;
+  constexpr unsigned char SOS = 0xDA; // start of scan: no more metadata markers
+  constexpr unsigned char EOI = 0xD9;
+  constexpr unsigned char APP1 = 0xE1;
+  constexpr size_t exif_header_size = 6; // "Exif\0\0"
+
+  if (size < 2 || jpeg[0] != MARKER_PREFIX || jpeg[1] != SOI) {
+    return ExifOrientation::Unspecified;
+  }
+
+  size_t pos = 2;
+  while (pos + 4 <= size && jpeg[pos] == MARKER_PREFIX) {
+    unsigned char marker = jpeg[pos + 1];
+    if (marker == SOS || marker == EOI) {
+      break;
+    }
+    // Segment length is big-endian and includes the 2 length bytes themselves.
+    size_t segment_length =
+        (size_t(jpeg[pos + 2]) << 8) | size_t(jpeg[pos + 3]);
+    if (segment_length < 2 || pos + 2 + segment_length > size) {
+      break;
+    }
+
+    if (marker == APP1 && segment_length >= 2 + exif_header_size) {
+      const unsigned char* payload = jpeg + pos + 4;
+      if (std::memcmp(payload, "Exif\0\0", exif_header_size) == 0) {
+        return fetch_exif_orientation(
+            payload + exif_header_size, segment_length - 2 - exif_header_size);
+      }
+    }
+    pos += 2 + segment_length;
+  }
+  return ExifOrientation::Unspecified;
 }
 
 inline torch::stable::Tensor exif_orientation_transform(

@@ -73,8 +73,13 @@ custom_ops_sources = [
     "custom_ops.cpp",
 ]
 
+# Always compiled into the image library. DecodeJpegCuda.cpp compiles to a stub
+# that raises unless TORCHCODEC_ENABLE_NVJPEG is defined (a CUDA-enabled build),
+# just like DecodeJpeg.cpp does for TORCHCODEC_ENABLE_JPEG. Keeping it always
+# compiled means the decode_jpegs_cuda op registration links on CPU-only builds.
 image_sources = [
     "DecodeJpeg.cpp",
+    "DecodeJpegCuda.cpp",
     "DecodePng.cpp",
     "DecodeWebp.cpp",
     "DecodeGif.cpp",
