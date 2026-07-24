@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "StableABICompat.h"
@@ -46,13 +47,41 @@ class CUDAJpegDecoder {
       cudaStream_t stream);
 
  private:
-  std::tuple<
-      std::vector<nvjpegImage_t>,
-      std::vector<torch::stable::Tensor>,
-      std::vector<int>>
-  prepare_buffers(
-      const std::vector<torch::stable::Tensor>& encoded_images,
+  // Allocate the (C,H,W) uint8 CUDA output tensor for one image and return it
+  // with an nvjpegImage_t whose channel pointers reference that tensor's
+  // memory, plus the number of channels in the source (for UNCHANGED grayscale
+  // pruning).
+  std::tuple<torch::stable::Tensor, nvjpegImage_t, int> allocate_output_image(
+      const torch::stable::Tensor& encoded_image,
       const nvjpegOutputFormat_t& output_format);
+
+  // Whether an image can be decoded by the hardware batched path.
+  bool is_hw_batched_supported(const unsigned char* data, size_t size);
+
+  // Split image indices into the hardware-batched group (baseline JPEGs when
+  // the HW engine is available) and the software group (everything else).
+  // Returns {hw_indices, sw_indices} into encoded_images / output_tensors.
+  std::pair<std::vector<size_t>, std::vector<size_t>> split_images_by_backend(
+      const std::vector<torch::stable::Tensor>& encoded_images);
+
+  // Decode the images at `indices` and write each result into
+  // output_tensors[idx]. Baseline JPEGs go via nvJPEG's hardware batched API
+  // (A100+ HW engine)...
+  void decode_batched_hardware(
+      const std::vector<torch::stable::Tensor>& encoded_images,
+      const std::vector<size_t>& indices,
+      const nvjpegOutputFormat_t& output_format,
+      cudaStream_t stream,
+      std::vector<torch::stable::Tensor>& output_tensors);
+
+  // ...everything else (e.g. progressive JPEGs, or all images when there's no
+  // HW engine) via the decoupled host/device software pipeline.
+  void decode_software(
+      const std::vector<torch::stable::Tensor>& encoded_images,
+      const std::vector<size_t>& indices,
+      const nvjpegOutputFormat_t& output_format,
+      cudaStream_t stream,
+      std::vector<torch::stable::Tensor>& output_tensors);
 
   const torch::stable::Device target_device_;
   nvjpegJpegState_t nvjpeg_state_;
