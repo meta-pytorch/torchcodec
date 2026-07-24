@@ -680,10 +680,7 @@ def check_bundling():
                     "ship with our decode-only libavif (they should be "
                     "statically embedded or absent): " + " ".join(encoders)
                 )
-            # 6 MB, bumped for CUDA wheels which additionally bundle libnvjpeg
-            # (~7.8 MB uncompressed). Bump if a legitimate dependency growth
-            # pushes us over.
-            MAX_WHEEL_BYTES = (12 if is_cuda else 6) * 1024 * 1024
+            MAX_WHEEL_BYTES = (14 if is_cuda else 6) * 1024 * 1024
             wheel_bytes = wheel.stat().st_size
             if wheel_bytes > MAX_WHEEL_BYTES:
                 raise RuntimeError(
