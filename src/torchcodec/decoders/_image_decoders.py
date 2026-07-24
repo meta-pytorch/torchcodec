@@ -19,8 +19,6 @@ from torchcodec._core.ops import (
     decode_webp as _decode_webp,
 )
 
-# TODO_IMAGE: I think there are some tests for corrupted images in TV? We
-# should port those.
 
 # GIF vs Pillow: our animated-GIF compositing (disposal methods, transparency,
 # frame offsets) matches Pillow. GIF transparency is handled per output mode:

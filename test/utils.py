@@ -294,6 +294,28 @@ BAD_HUFFMAN_JPEG = TestImage(
     filename="bad_huffman.jpg", width=1024, height=768, num_channels=3
 )
 
+# Malformed images ported from torchvision's fuzzer-derived test assets. They
+# are never decoded successfully - they only exist to check that the decoders
+# raise cleanly instead of crashing, so only their `.path` matters (the
+# width/height/num_channels are the nominal header values, or 0 when the header
+# itself is unreadable).
+#
+# CORRUPT_JPEG has a valid header but a corrupt entropy stream, which trips an
+# "Unsupported marker type" error late in the decode (during
+# jpeg_finish_decompress).
+CORRUPT_JPEG = TestImage(filename="corrupt.jpg", width=120, height=90, num_channels=3)
+# PNG crashers found by fuzzing libpng (out-of-bound reads).
+SIGSEGV_PNG = TestImage(filename="sigsegv.png", width=0, height=0, num_channels=0)
+HEAPBOF_PNG = TestImage(filename="heapbof.png", width=0, height=0, num_channels=0)
+
+# Adam7-interlaced version of a small RGB gradient. It exercises the decoder's
+# multi-pass interlace-handling path (png_set_interlace_handling), which no other
+# asset covers. PIL can't write interlaced PNGs, so this was authored once with
+# ImageMagick: `magick gradient.png -interlace PNG gradient_interlaced.png`.
+GRADIENT_INTERLACED_PNG = TestImage(
+    filename="gradient_interlaced.png", width=64, height=48, num_channels=3
+)
+
 
 @functools.cache
 def jpeg_is_available() -> bool:
