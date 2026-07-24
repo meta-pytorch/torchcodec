@@ -10,15 +10,14 @@ from pathlib import Path
 from typing import Literal
 
 import torch
-
 from torchcodec._core.ops import (
     decode_avif as _decode_avif,
     decode_gif as _decode_gif,
     decode_jpeg as _decode_jpeg,
     decode_png as _decode_png,
     decode_webp as _decode_webp,
+    get_decode_heic as _get_decode_heic,
 )
-
 
 # GIF vs Pillow: our animated-GIF compositing (disposal methods, transparency,
 # frame offsets) matches Pillow. GIF transparency is handled per output mode:
@@ -100,8 +99,8 @@ _JPEG_NATIVE_OUTPUT_MODES = frozenset(
 )
 _PNG_NATIVE_OUTPUT_MODES = frozenset(ImageReadMode)
 _WEBP_NATIVE_OUTPUT_MODES = _GIF_NATIVE_OUTPUT_MODES = _AVIF_NATIVE_OUTPUT_MODES = (
-    frozenset((ImageReadMode.UNCHANGED, ImageReadMode.RGB, ImageReadMode.RGB_ALPHA))
-)
+    _HEIC_NATIVE_OUTPUT_MODES
+) = frozenset((ImageReadMode.UNCHANGED, ImageReadMode.RGB, ImageReadMode.RGB_ALPHA))
 
 
 def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
@@ -184,8 +183,20 @@ def _maybe_widen_to_uint16(
         return decoded
 
 
-# TODO_IMAGE: Since we're updating the decoders code a bit, we should run sanity
-# checks ensure we're not leaking anything (there was a leak on webp back then!).
+def _to_output_dtype(
+    decoded: torch.Tensor, output_dtype: torch.dtype | str
+) -> torch.Tensor:
+    # For decoders (like HEIC) whose native output may be either uint8 (8-bit
+    # sources) or uint16 (>8-bit sources), coerce to the requested output_dtype,
+    # rescaling between the full uint8 and uint16 ranges as needed. "auto" keeps
+    # the native precision.
+    if output_dtype == "auto" or decoded.dtype == output_dtype:
+        return decoded
+    if output_dtype == torch.uint16:  # widen uint8 -> uint16 (x * 257)
+        return (decoded.to(torch.int32) * 257).to(torch.uint16)
+    # narrow uint16 -> uint8 (round(x / 257), the inverse of the widen above)
+    return (decoded.to(torch.float32) / 257).round().clamp(0, 255).to(torch.uint8)
+
 
 # TODO_IMAGE: DOCS!! and docstrings.
 
@@ -333,6 +344,42 @@ def decode_avif(
     )
 
 
+def decode_heic(
+    source: str | Path | bytes | torch.Tensor,
+    *,
+    mode: (
+        Literal["UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA"] | ImageReadMode
+    ) = "RGB",
+    output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
+) -> torch.Tensor:
+    """Decode an HEIC/HEIF image into a tensor of shape ``(C, H, W)``.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
+    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
+    module note above for the semantics of ``output_dtype``; 10- and 12-bit HEIC
+    sources carry more than 8 bits per channel, so ``"auto"`` and
+    ``torch.uint16`` preserve that precision.
+
+    HEIC decoding requires **libheif** to be installed and discoverable at
+    runtime. TorchCodec does not bundle it (libheif is LGPL): install it via
+    e.g. ``conda install -c conda-forge libheif`` (or ``apt``/``brew``). If it
+    isn't available, this raises an :class:`ImportError`. Only the primary image
+    of a multi-image HEIC file is decoded (image sequences are not yet
+    supported).
+    """
+    _validate_output_dtype(output_dtype)
+    mode = _normalize_mode(mode)
+    data = _source_to_tensor(source)
+    # _get_decode_heic() lazily loads libtorchcodec_heic (and thus libheif),
+    # raising an actionable ImportError if libheif isn't available.
+    decode_heic_op = _get_decode_heic()
+    # The C++ op returns the source's native precision (uint8 for 8-bit sources,
+    # uint16 for 10/12-bit ones); we apply the requested output_dtype here.
+    decoded = _decode_with_mode(decode_heic_op, data, mode, _HEIC_NATIVE_OUTPUT_MODES)
+    return _to_output_dtype(decoded, output_dtype)
+
+
 # Maps a detected format to its public decoder, so decode_image reuses the exact
 # same decoding path (mode emulation and output_dtype handling) as the
 # format-specific decoders above.
@@ -342,6 +389,7 @@ _FORMAT_TO_DECODER = {
     "webp": decode_webp,
     "gif": decode_gif,
     "avif": decode_avif,
+    "heic": decode_heic,
 }
 
 
@@ -361,15 +409,28 @@ def _detect_image_format(data: torch.Tensor) -> str:
     if header[4:8] == b"ftyp":
         # ISOBMFF container (AVIF/HEIC/...). The major brand is at [8:12], with
         # compatible brands following. AVIF uses the "avif" (still) or "avis"
-        # (animated) brands; HEIC (which we don't support) uses "heic"/"heix"
-        # and is deliberately not matched here.
+        # (animated) brands; HEIC/HEIF uses "heic"/"heix" (HEVC-coded) and the
+        # generic "mif1"/"msf1" brands. We check avif first (it can also carry
+        # mif1/msf1), then fall back to the HEIC-specific brands.
         brands = header[8:]
         if b"avif" in brands or b"avis" in brands:
             return "avif"
+        if (
+            b"heic" in brands
+            or b"heix" in brands
+            or b"heim" in brands
+            or b"heis" in brands
+            or b"hevc" in brands
+            or b"hevx" in brands
+            or b"mif1" in brands
+            or b"msf1" in brands
+        ):
+            return "heic"
     raise ValueError(
         "Unsupported or unrecognized image format. Supported formats are "
-        "JPEG, PNG, WebP, GIF and AVIF. If you know you have a valid image, "
-        "try using the dedicated decode_* functions like decode_jpeg() instead."
+        "JPEG, PNG, WebP, GIF, AVIF and HEIC. If you know you have a valid "
+        "image, try using the dedicated decode_* functions like decode_jpeg() "
+        "instead."
     )
 
 

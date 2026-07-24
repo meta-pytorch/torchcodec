@@ -11,9 +11,9 @@
 # so it can't live in pyproject's build-system.requires), pip does not install
 # build-system.requires for us -- we must do it here.
 #
-# Also installs the image decoder libs (libjpeg-turbo, libpng, libwebp) by
-# default. Builds that don't need image decoding (e.g. the mypy CI job) can skip
-# them by setting TORCHCODEC_BUILD_IMAGE=0.
+# Also installs the image decoder libs (libjpeg-turbo, libpng, libwebp, and
+# libheif) by default. Builds that don't need image decoding (e.g. the mypy CI
+# job) can skip them by setting TORCHCODEC_BUILD_IMAGE=0.
 #
 # This script intentionally does NOT install:
 # - torch: install it separately (a nightly matching your CPU/CUDA variant).
@@ -33,4 +33,16 @@ if [[ "${TORCHCODEC_BUILD_IMAGE:-ON}" != "0" ]]; then
     conda install -y libjpeg-turbo -c pytorch
     conda install -y libpng -c conda-forge
     conda install -y "libwebp>=1.3" -c conda-forge
+    # libheif is *built against* (for libtorchcodec_heic) but, unlike the image
+    # libs above, it is NOT bundled into the wheel: it's LGPL and treated as a
+    # user-supplied runtime dependency (see packaging/repair_wheel.py, which
+    # excludes it). We install it here alongside the other image libs (gated on
+    # the same TORCHCODEC_BUILD_IMAGE flag) purely so the build can link the real
+    # HEIC decoder; without it the build falls back to a stub. Installing it in
+    # the build env is safe (FFmpeg comes from S3, not conda, so there's no
+    # aom/svt-av1 pin to conflict with -- unlike the *test* envs).
+    conda install -y libheif -c conda-forge
+
+    echo "=== image build deps installed; libheif info: ==="
+    conda list 2>/dev/null | grep -iE "libheif|libde265|libavif|libjpeg|libpng|libwebp" || true
 fi

@@ -111,6 +111,14 @@ jobs:
 
       - name: Install test dependencies
         run: bash packaging/install_test_dependencies.sh
+      # Install libheif (optional HEIC runtime dep) into the SAME env, only for
+      # the FFmpeg-8 cell that runs the full suite (avoids the FFmpeg-4 aom
+      # conflict). cuda-toolkit here comes from the container image (not conda),
+      # so a post-hoc conda install doesn't hit the cuda-toolkit re-solve issue.
+      # Sets LD_LIBRARY_PATH + FAIL_WITHOUT_HEIC via GITHUB_ENV on success.
+      - name: Install libheif (HEIC runtime dep)
+        if: ${{ matrix.ffmpeg-version-for-tests == '8' }}
+        run: bash packaging/install_libheif.sh
       - name: Run Python smoke tests
         run: |
           FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 pytest --override-ini="addopts=-v" test/smoke_test.py --tb=short

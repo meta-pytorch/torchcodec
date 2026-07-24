@@ -79,6 +79,12 @@ def repair_linux(wheels):
         "libcu*",
         "libnv*",
         "libcupti*",
+        # libheif and its HEVC codecs are LGPL/GPL: we build libtorchcodec_heic
+        # against libheif but must NEVER bundle it (it's a user-supplied runtime
+        # dependency, like FFmpeg). See check_bundling() for the safety net.
+        "libheif*",
+        "libde265*",
+        "libx265*",
     ):
         excludes += ["--exclude", pattern]
     for wheel in wheels:
@@ -113,6 +119,11 @@ def repair_macos(wheels):
             "libtorch_",
             "libc10",
             "libomp",
+            # LGPL/GPL: build against libheif but never bundle it (see the Linux
+            # excludes above and check_bundling()).
+            "libheif",
+            "libde265",
+            "libx265",
         )
     )
 
@@ -325,6 +336,9 @@ def check_bundling():
     - the wheel bundles an AV1 encoder library: our libavif is decode-only, so
       encoders (aom/rav1e/svtav1) must never ship (all platforms). This is not
       for licensing concern, this is to keep wheel size low.
+    - the wheel bundles libheif or its HEVC codecs (libde265/libx265): these are
+      LGPL/GPL and must NEVER ship. libtorchcodec_heic links libheif at build
+      time but the user supplies it at runtime (like FFmpeg).
     - the compressed wheel is larger than MAX_WHEEL_BYTES: the slim decode-only
       libavif should keep us under it.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
@@ -370,6 +384,13 @@ def check_bundling():
         return stem.startswith(("libaom", "librav1e", "libsvtav1", "libdav1d")) or (
             stem.startswith(("aom", "rav1e", "svtav1", "dav1d"))
             and stem.endswith(".dll")
+        )
+
+    def _is_forbidden_lgpl(lib):
+        # libheif and its HEVC codecs are LGPL/GPL and must never be bundled.
+        stem = lib.lower()
+        return stem.startswith(("libheif", "libde265", "libx265")) or (
+            stem.startswith(("heif", "de265", "x265")) and stem.endswith(".dll")
         )
 
     def _is_webp_demux(lib):
@@ -512,6 +533,12 @@ def check_bundling():
                     f"{wheel.name} bundles AV1 codec libraries that must not "
                     "ship with our decode-only libavif (they should be "
                     "statically embedded or absent): " + " ".join(encoders)
+                )
+            if lgpl := [lib for lib in libs if _is_forbidden_lgpl(lib)]:
+                raise RuntimeError(
+                    f"{wheel.name} bundles LGPL/GPL libraries that must NEVER "
+                    "ship (libheif is a user-supplied runtime dependency, like "
+                    "FFmpeg): " + " ".join(lgpl)
                 )
             wheel_bytes = wheel.stat().st_size
             if wheel_bytes > MAX_WHEEL_BYTES:

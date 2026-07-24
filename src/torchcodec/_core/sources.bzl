@@ -85,6 +85,19 @@ image_ops_sources = [
     "image_custom_ops.cpp",
 ]
 
+# HEIC decoder, built into its OWN separately-loadable library
+# (libtorchcodec_heic), NOT into the image library. It links libheif (LGPL),
+# which we do not bundle in wheels and treat as an optional, user-supplied
+# runtime dependency. Kept out of image_sources/image_ops_sources so it never
+# gets compiled into libtorchcodec_image.
+heic_sources = [
+    "DecodeHeic.cpp",
+]
+
+heic_ops_sources = [
+    "heic_custom_ops.cpp",
+]
+
 # Vendored giflib (decode-only subset, MIT licensed). Compiled directly from
 # source into the image library, so the GIF decoder needs no external dependency.
 # See giflib/README for the license and local mods.
