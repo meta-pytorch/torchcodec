@@ -98,7 +98,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
           # We install conda packages at the start because otherwise conda may have conflicts with dependencies.
           # Note: xorg-libxau was addded to fix a problem with ffmpeg 4. We should consider removing it.
-          default-packages: "nvidia::cuda-nvrtc=${{ matrix.cuda-version }} nvidia::cuda-toolkit=${{ matrix.cuda-version }} nvidia::cuda-cudart=${{ matrix.cuda-version }} nvidia::cuda-driver-dev=${{ matrix.cuda-version }} conda-forge::ffmpeg=${{ matrix.ffmpeg-version-for-tests }} conda-forge::xorg-libxau"
+          # libheif (optional HEIC runtime dep) is installed here too, in the SAME
+          # env, at creation time -- a post-hoc `conda install` re-solves the env
+          # and is fragile with the pinned cuda-toolkit. It's omitted for FFmpeg 4,
+          # whose old aom/svt-av1 pins are unsatisfiable with conda's libheif (we
+          # don't test HEIC on the FFmpeg-4 cells).
+          default-packages: "nvidia::cuda-nvrtc=${{ matrix.cuda-version }} nvidia::cuda-toolkit=${{ matrix.cuda-version }} nvidia::cuda-cudart=${{ matrix.cuda-version }} nvidia::cuda-driver-dev=${{ matrix.cuda-version }} conda-forge::ffmpeg=${{ matrix.ffmpeg-version-for-tests }} conda-forge::xorg-libxau ${{ matrix.ffmpeg-version-for-tests != '4' && 'conda-forge::libheif' || '' }}"
       - name: Check env, set LD_LIBRARY_PATH
         run: |
           ${CONDA_RUN} env
@@ -126,9 +131,16 @@ jobs:
 
       - name: Install test dependencies
         run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh
+      # libheif was installed at env-creation above (for FFmpeg != 4). This
+      # verifies it loads and, on success, sets FAIL_WITHOUT_HEIC via GITHUB_ENV
+      # so the HEIC tests are required in the following step (it does not
+      # re-install, avoiding a re-solve). Emits verbose HEIC diagnostics.
+      - name: Set up / verify libheif (HEIC runtime dep)
+        if: ${{ matrix.ffmpeg-version-for-tests != '4' }}
+        run: ${CONDA_RUN} bash packaging/install_libheif.sh
       - name: Run Python tests
         run: |
-          ${CONDA_RUN} FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 FAIL_WITHOUT_HEIC=1 pytest --override-ini="addopts=-v" test --tb=short
+          ${CONDA_RUN} FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 pytest --override-ini="addopts=-v" test --tb=short
       - name: Run Python benchmark
         run: |
           ${CONDA_RUN} time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none
@@ -187,6 +199,11 @@ jobs:
 
       - name: Install test dependencies
         run: bash packaging/install_test_dependencies.sh
+
+      # FFMPEG_VERSION is 7 here (not 4), so libheif installs cleanly into the
+      # SAME env. Sets LD_LIBRARY_PATH + FAIL_WITHOUT_HEIC via GITHUB_ENV.
+      - name: Install libheif (HEIC runtime dep)
+        run: bash packaging/install_libheif.sh
 
       - name: Assert CUDA is not available
         run: |
@@ -252,7 +269,7 @@ jobs:
 
       - name: Run FFmpeg-free Python tests
         run: |
-          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 FAIL_WITHOUT_HEIC=1 \
+          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 \
             pytest --override-ini="addopts=-v" test/test_ffmpeg_optional.py test/test_decoders.py::TestImageDecoder
 
   build-docs:

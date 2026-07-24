@@ -87,8 +87,20 @@ def load_heic_library() -> None:
     On failure (typically because libheif isn't installed / findable) we raise
     an actionable ImportError. This is @functools.cache'd so we only ever load
     once on success; failures aren't cached, so they re-raise on each call.
+
+    Set TORCHCODEC_HEIC_DEBUG=1 to print verbose diagnostics on failure.
     """
+    debug = os.environ.get("TORCHCODEC_HEIC_DEBUG") == "1"
     heic_library_path = _get_extension_path("libtorchcodec_heic")
+    if debug:
+        print(
+            f"[heic] load_heic_library: sys.platform={sys.platform} "
+            f"path={heic_library_path} exists={Path(heic_library_path).exists()} "
+            f"CONDA_PREFIX={os.environ.get('CONDA_PREFIX')} "
+            f"LD_LIBRARY_PATH={os.environ.get('LD_LIBRARY_PATH')}",
+            file=sys.stderr,
+            flush=True,
+        )
 
     # On Windows there's no LD_LIBRARY_PATH equivalent, so a non-bundled
     # libheif.dll must be discoverable. If we can find it (typically in an
@@ -113,13 +125,21 @@ def load_heic_library() -> None:
         else:
             torch.ops.load_library(heic_library_path)
     except Exception as e:
+        if debug:
+            import traceback
+
+            print("[heic] load_heic_library FAILED:", file=sys.stderr)
+            traceback.print_exc()
         raise ImportError(
-            "Failed to load the HEIC decoding library. HEIC decoding requires "
-            "libheif to be installed and discoverable at runtime; TorchCodec "
-            "does not bundle it (it's LGPL). Install it, e.g. with "
+            "Failed to load the HEIC decoding library "
+            f"({heic_library_path!r}). HEIC decoding requires libheif to be "
+            "installed and discoverable at runtime; TorchCodec does not bundle "
+            "it (it's LGPL). Install it, e.g. with "
             "`conda install -c conda-forge libheif`, `apt install libheif1`, or "
             "`brew install libheif`, and make sure it's on your library search "
-            f"path. Original error: {e}"
+            "path (LD_LIBRARY_PATH on Linux, PATH on Windows). Set "
+            "TORCHCODEC_HEIC_DEBUG=1 for verbose diagnostics. "
+            f"Original error: {type(e).__name__}: {e}"
         ) from e
 
 

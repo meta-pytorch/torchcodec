@@ -519,6 +519,8 @@ def heic_is_available() -> bool:
         decode_heic(GRADIENT_HEIC.path)
     except (RuntimeError, ImportError) as e:
         if "libheif" in str(e):
+            # Log why HEIC is unavailable so CI skips are self-explanatory.
+            print(f"heic_is_available() -> False: {type(e).__name__}: {e}")
             return False
         raise
     return True
