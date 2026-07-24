@@ -14,7 +14,7 @@ from pathlib import Path
 import torch
 from torchcodec._core._ffmpeg_op_names import FFMPEG_OP_NAMES
 from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchcodec/src:internally_replaced_utils
-    ensure_ffmpeg_loaded,
+    load_core_libraries,
     load_image_library,
 )
 
@@ -33,19 +33,21 @@ if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
 
 load_image_library()
 
-# Image ops live in the FFmpeg-free libtorchcodec_image library, so they are
-# always available, even when FFmpeg is not installed.
 decode_jpeg = torch.ops.torchcodec_ns.decode_jpeg.default
 decode_png = torch.ops.torchcodec_ns.decode_png.default
 decode_webp = torch.ops.torchcodec_ns.decode_webp.default
 decode_gif = torch.ops.torchcodec_ns.decode_gif.default
 decode_avif = torch.ops.torchcodec_ns.decode_avif.default
 
-# FFmpeg is an optional dependency: try to load it eagerly (so the real ops are
-# bound and torch.compile works when it's present), but tolerate its absence.
+# FFmpeg is now an optional dependency, since the image decoders above don't
+# need it, and we want users to be able to use them without having FFmpeg
+# installed.  We try to load the ffmpeg-dependent ops at import time and bind
+# their names to the actual implementation. If it doesn't work
+# (_FFMPEG_AVAILABLE is then False), we bind the names to a dummy lambda that
+# will raise a proper error when called.
 try:
     with expose_ffmpeg_dlls():
-        ffmpeg_major_version, core_library_path, _ = ensure_ffmpeg_loaded()
+        ffmpeg_major_version, core_library_path, _ = load_core_libraries()
     _FFMPEG_AVAILABLE = True
 except Exception:
     _FFMPEG_AVAILABLE = False
@@ -54,19 +56,12 @@ except Exception:
 
 
 if _FFMPEG_AVAILABLE:
-    # The real ops, wrappers and torch.compile fakes live in _ffmpeg_ops so this
-    # file stays flat; `import *` re-exports them here (its __all__ lists every
-    # name, including the underscore-prefixed ones).
     from torchcodec._core._ffmpeg_ops import *  # noqa: F401,F403
 else:
 
     def __getattr__(name):
-        # FFmpeg is unavailable, so the FFmpeg-backed ops/helpers weren't bound.
-        # Resolve them (and only them) to a stub that raises the rich, actionable
-        # error when called: this keeps `import torchcodec` and
-        # `from torchcodec._core.ops import <op>` working, and only fails when an
-        # FFmpeg-backed feature is actually used. Everything else (typos,
-        # introspection) raises AttributeError as usual.
+        # Mocks all names in FFMPEG_OP_NAMES to raise an error when called, if
+        # FFmpeg is not available.
         if name in FFMPEG_OP_NAMES:
-            return lambda *args, **kwargs: ensure_ffmpeg_loaded()
+            return lambda *args, **kwargs: load_core_libraries()
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
