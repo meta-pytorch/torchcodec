@@ -108,7 +108,6 @@ _WEBP_NATIVE_OUTPUT_MODES = _GIF_NATIVE_OUTPUT_MODES = _AVIF_NATIVE_OUTPUT_MODES
 def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
     # img is (..., C, H, W); append a fully-opaque alpha channel on the channel
     # dim so this works for both (C, H, W) and animated GIF (N, C, H, W) tensors.
-    # Keep the alpha on img's device so this also works for CUDA-decoded JPEGs.
     alpha_shape = list(img.shape)
     alpha_shape[-3] = 1
     alpha = torch.full(
@@ -387,10 +386,6 @@ def decode_avif(
 # Maps a detected format to its public decoder, so decode_image reuses the exact
 # same decoding path (mode emulation and output_dtype handling) as the
 # format-specific decoders above.
-# decode_jpeg's return type (Tensor | list[Tensor]) differs from the others, so
-# we type the values as Callable[..., Any] to keep the dict callable for mypy.
-# decode_image only ever calls these with a single source (no device), so each
-# returns a plain Tensor at runtime.
 _FORMAT_TO_DECODER: dict[str, Callable[..., Any]] = {
     "jpeg": decode_jpeg,
     "png": decode_png,
