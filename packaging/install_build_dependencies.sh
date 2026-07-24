@@ -34,3 +34,12 @@ if [[ "${TORCHCODEC_BUILD_IMAGE:-ON}" != "0" ]]; then
     conda install -y libpng -c conda-forge
     conda install -y "libwebp>=1.3" -c conda-forge
 fi
+
+# libheif is built against (for libtorchcodec_heic) but, unlike the image libs
+# above, it is NOT bundled into the wheel: it's LGPL and treated as a
+# user-supplied runtime dependency (see packaging/repair_wheel.py, which
+# excludes it). Installing it here just lets the build link the real HEIC
+# decoder; skip with TORCHCODEC_BUILD_HEIC=0 to build a stub instead.
+if [[ "${TORCHCODEC_BUILD_HEIC:-AUTO}" != "0" ]]; then
+    conda install -y libheif -c conda-forge
+fi

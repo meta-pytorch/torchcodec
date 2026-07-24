@@ -16,4 +16,11 @@ echo "Installing test dependencies..."
 # Ideally we would find a way to get those dependencies from pyproject.toml
 python -m pip install numpy pytest pillow
 
+# HEIC decoding needs libheif available at runtime (we don't bundle it). Install
+# it so the HEIC tests run; skip with TORCHCODEC_TEST_WITHOUT_HEIC=1 to exercise
+# the "libheif absent" path (import still works, decode_heic raises).
+if [[ "${TORCHCODEC_TEST_WITHOUT_HEIC:-0}" != "1" ]]; then
+    conda install -y libheif -c conda-forge
+fi
+
 echo "Test dependencies installed successfully!"

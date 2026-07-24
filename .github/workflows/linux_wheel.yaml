@@ -107,7 +107,7 @@ jobs:
 
       - name: Run Python tests
         run: |
-          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 pytest --override-ini="addopts=-v" test
+          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 FAIL_WITHOUT_HEIC=1 pytest --override-ini="addopts=-v" test
 
   install-and-test-no-ffmpeg:
     # Asserts that torchcodec works WITHOUT FFmpeg installed: the package must
@@ -160,8 +160,78 @@ jobs:
 
       - name: Run FFmpeg-free Python tests
         run: |
-          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 \
+          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 FAIL_WITHOUT_HEIC=1 \
             pytest --override-ini="addopts=-v" test/test_ffmpeg_optional.py test/test_decoders.py::TestImageDecoder
+
+  install-and-test-no-heic:
+    # Asserts the optional-libheif guarantee: with libheif NOT installed,
+    # torchcodec must still import and decode every other format, and only an
+    # actual HEIC decode should fail (with an actionable ImportError).
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10']
+        ffmpeg-version-for-tests: ['7']
+    needs: build
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v6
+
+      - name: Remove src/ folder
+        run: bash packaging/remove_src.sh
+
+      - name: Setup conda env
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-update-conda: true
+          miniforge-version: latest
+          activate-environment: test
+          python-version: ${{ matrix.python-version }}
+
+      - name: Update pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install PyTorch
+        run: bash packaging/install_pytorch.sh cpu "torch torchvision"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: meta-pytorch_torchcodec__${{ matrix.python-version }}_cpu_x86_64
+          path: dist/
+
+      - name: Install torchcodec from the wheel
+        run: bash packaging/install_torchcodec_wheel.sh
+
+      - name: Install ffmpeg, post build
+        run: bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
+
+      # Deliberately install test deps WITHOUT libheif.
+      - name: Install test dependencies (no libheif)
+        run: TORCHCODEC_TEST_WITHOUT_HEIC=1 bash packaging/install_test_dependencies.sh
+
+      - name: Assert HEIC tests are skipped, and the rest still pass
+        run: |
+          # heic_is_available() is False, so needs_heic tests skip; every other
+          # image decoder is still required.
+          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 \
+            pytest --override-ini="addopts=-v" test/test_decoders.py::TestImageDecoder
+
+      - name: Assert decode_heic raises an actionable error without libheif
+        run: |
+          python -c "import torchcodec; print('OK: torchcodec imported without libheif')"
+          python -c "
+          import torch
+          from torchcodec.decoders._image_decoders import decode_heic
+          from test.utils import HEIC_TEST_FILES
+          heic = HEIC_TEST_FILES[0]
+          try:
+              decode_heic(str(heic.path))
+              raise SystemExit('decode_heic should have raised without libheif')
+          except ImportError as e:
+              assert 'libheif' in str(e), str(e)
+              print('OK: decode_heic raised an actionable ImportError')
+          "
 
   install-and-test-third-party-interface:
     runs-on: ubuntu-latest

@@ -6,6 +6,7 @@ import torch
 
 from .utils import (
     avif_is_available,
+    heic_is_available,
     in_fbcode,
     jpeg_is_available,
     png_is_available,
@@ -33,6 +34,9 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "needs_avif: mark for tests that rely on libavif support"
     )
+    config.addinivalue_line(
+        "markers", "needs_heic: mark for tests that rely on libheif support"
+    )
 
 
 def pytest_collection_modifyitems(items):
@@ -56,6 +60,7 @@ def pytest_collection_modifyitems(items):
         needs_png = item.get_closest_marker("needs_png") is not None
         needs_webp = item.get_closest_marker("needs_webp") is not None
         needs_avif = item.get_closest_marker("needs_avif") is not None
+        needs_heic = item.get_closest_marker("needs_heic") is not None
         has_skip_marker = item.get_closest_marker("skip") is not None
 
         # For skipif, the marker is always present regardless of whether the
@@ -129,6 +134,17 @@ def pytest_collection_modifyitems(items):
             and os.environ.get("FAIL_WITHOUT_AVIF") is None
         ):
             item.add_marker(pytest.mark.skip(reason="libavif support not available."))
+
+        # Same rationale as needs_jpeg, but libheif is never bundled (it's an
+        # optional user-supplied runtime dependency), so it's the most likely to
+        # be absent. Skip unless FAIL_WITHOUT_HEIC is set (CI sets it in the jobs
+        # that install libheif, so its absence surfaces as a failure there).
+        if (
+            needs_heic
+            and not heic_is_available()
+            and os.environ.get("FAIL_WITHOUT_HEIC") is None
+        ):
+            item.add_marker(pytest.mark.skip(reason="libheif support not available."))
 
         out_items.append(item)
 

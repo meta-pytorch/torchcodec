@@ -12,12 +12,12 @@ from dataclasses import dataclass, field
 import numpy as np
 import pytest
 import torch
-
 from torchcodec import ffmpeg_major_version
 from torchcodec._core import get_ffmpeg_library_versions
 from torchcodec.decoders import set_cuda_backend, VideoDecoder
 from torchcodec.decoders._image_decoders import (
     decode_avif,
+    decode_heic,
     decode_jpeg,
     decode_png,
     decode_webp,
@@ -83,6 +83,14 @@ def needs_webp(test_item):
 # without it). Handled in pytest_collection_modifyitems() of conftest.py.
 def needs_avif(test_item):
     return pytest.mark.needs_avif(test_item)
+
+
+# Decorator for skipping tests that need libheif. Unlike the other image libs,
+# libheif is never bundled: it's an optional user-supplied runtime dependency,
+# so it may simply be absent. Handled in pytest_collection_modifyitems() of
+# conftest.py.
+def needs_heic(test_item):
+    return pytest.mark.needs_heic(test_item)
 
 
 # This is a special device string that we use to test the legacy "ffmpeg" CUDA
@@ -461,6 +469,56 @@ def avif_is_available() -> bool:
         decode_avif(GRADIENT_AVIF.path)
     except RuntimeError as e:
         if "libavif" in str(e):
+            return False
+        raise
+    return True
+
+
+# 720p RGB gradient HEIC, the SAME gradient as GRADIENT_PNG, saved losslessly
+# (4:4:4, no chroma subsampling) so decode is exact up to rounding. Generated
+# with the GRADIENT_PNG recipe above, then (needs pillow-heif):
+# import pillow_heif; pillow_heif.register_heif_opener()
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save(
+#     "gradient.heic", quality=-1, chroma=444)
+GRADIENT_HEIC = TestImage(
+    filename="gradient.heic", width=1280, height=720, num_channels=3
+)
+
+# 720p RGBA HEIC (lossless 4:4:4): same gradient as GRADIENT_HEIC with the
+# diagonal alpha ramp of RGBA_PNG. Generated with the GRADIENT_PNG recipe, then:
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# rgba = np.concatenate([np.stack([r, g, b], axis=-1), a[..., None]], axis=-1)
+# Image.fromarray(rgba, mode="RGBA").save("rgba.heic", quality=-1, chroma=444)
+RGBA_HEIC = TestImage(filename="rgba.heic", width=1280, height=720, num_channels=4)
+
+# 48x64 genuine 10-bit HEIC (a real >8-bit source). PIL only writes 8-bit HEIC,
+# so it's authored from raw 10-bit samples via pillow-heif's low-level API:
+# h, w = 48, 64
+# r = np.linspace(0, 1023, w)[None].repeat(h, 0)
+# g = np.linspace(0, 1023, h)[:, None].repeat(w, 1)
+# b = np.linspace(1023, 0, w)[None].repeat(h, 0)
+# data = (np.stack([r, g, b], -1).astype(np.uint16) << 6).astype("<u2").tobytes()
+# heif = pillow_heif.from_bytes(mode="RGB;16", size=(w, h), data=data)
+# heif.save("gradient_10bit.heic", quality=-1, chroma=444)
+GRADIENT_10BIT_HEIC = TestImage(
+    filename="gradient_10bit.heic", width=64, height=48, num_channels=3
+)
+
+# HEIC files used by the "libheif absent" CI job to assert decode_heic raises an
+# actionable error when libheif isn't installed (see load_heic_library).
+HEIC_TEST_FILES = (GRADIENT_HEIC, RGBA_HEIC, GRADIENT_10BIT_HEIC)
+
+
+@functools.cache
+def heic_is_available() -> bool:
+    # libheif is optional and user-supplied: decode_heic raises RuntimeError
+    # ("not compiled with libheif") for a stub build, or ImportError ("requires
+    # libheif") when the runtime lib is missing. Either means HEIC is
+    # unavailable; anything else is a real failure.
+    try:
+        decode_heic(GRADIENT_HEIC.path)
+    except (RuntimeError, ImportError) as e:
+        if "libheif" in str(e):
             return False
         raise
     return True

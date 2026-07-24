@@ -7,6 +7,8 @@
 import functools
 import importlib
 import importlib.util
+import os
+import shutil
 import sys
 import traceback
 from pathlib import Path
@@ -69,6 +71,56 @@ def load_image_library() -> None:
     """Load the FFmpeg-free image library"""
     image_library_path = _get_extension_path("libtorchcodec_image")
     torch.ops.load_library(image_library_path)
+
+
+@functools.cache
+def load_heic_library() -> None:
+    """Lazily load the HEIC library (libtorchcodec_heic).
+
+    Unlike the other image decoders (which live in libtorchcodec_image and are
+    loaded eagerly at import), the HEIC decoder links libheif, an LGPL library
+    we do NOT bundle in our wheels: it's an optional, user-supplied runtime
+    dependency, treated like FFmpeg. So this library is loaded lazily, only on
+    the first decode_heic (or decode_image of an HEIC file), NEVER at import
+    time -- otherwise `import torchcodec` would hard-require libheif.
+
+    On failure (typically because libheif isn't installed / findable) we raise
+    an actionable ImportError. This is @functools.cache'd so we only ever load
+    once on success; failures aren't cached, so they re-raise on each call.
+    """
+    heic_library_path = _get_extension_path("libtorchcodec_heic")
+
+    # On Windows there's no LD_LIBRARY_PATH equivalent, so a non-bundled
+    # libheif.dll must be discoverable. If we can find it (typically in an
+    # active conda env's Library/bin, or on PATH), add its dir to the DLL
+    # search path, mirroring how ops.py exposes the FFmpeg DLLs.
+    dll_directory_cm = None
+    if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+        candidate_dirs = []
+        if conda_prefix := os.environ.get("CONDA_PREFIX"):
+            candidate_dirs.append(Path(conda_prefix) / "Library" / "bin")
+        if heif_on_path := shutil.which("heif-enc") or shutil.which("libheif"):
+            candidate_dirs.append(Path(heif_on_path).parent)
+        for candidate in candidate_dirs:
+            if candidate.is_dir():
+                dll_directory_cm = os.add_dll_directory(str(candidate))
+                break
+
+    try:
+        if dll_directory_cm is not None:
+            with dll_directory_cm:
+                torch.ops.load_library(heic_library_path)
+        else:
+            torch.ops.load_library(heic_library_path)
+    except Exception as e:
+        raise ImportError(
+            "Failed to load the HEIC decoding library. HEIC decoding requires "
+            "libheif to be installed and discoverable at runtime; TorchCodec "
+            "does not bundle it (it's LGPL). Install it, e.g. with "
+            "`conda install -c conda-forge libheif`, `apt install libheif1`, or "
+            "`brew install libheif`, and make sure it's on your library search "
+            f"path. Original error: {e}"
+        ) from e
 
 
 @functools.cache

@@ -49,6 +49,20 @@ foreach(_codec JPEG PNG WEBP AVIF GIF)
     endif()
 endforeach()
 
+# HEIC is handled separately from the codecs above: it goes into its own
+# libtorchcodec_heic library (linking LGPL libheif, which we do not bundle) and
+# its default is intentionally "soft". TORCHCODEC_BUILD_HEIC:
+#   - AUTO (default): build the real decoder if libheif is found, otherwise
+#     build a stub (decode_heic raises an actionable error at call time). A dev
+#     without libheif still gets a working build.
+#   - ON: require libheif (fatal error if it can't be found).
+#   - OFF: force the stub (don't even look for libheif).
+# Unlike the other codecs, AUTO does NOT inherit TORCHCODEC_BUILD_IMAGE: HEIC is
+# genuinely optional, so a missing libheif must not fail the build by default.
+if(NOT DEFINED TORCHCODEC_BUILD_HEIC)
+    set(TORCHCODEC_BUILD_HEIC "AUTO")
+endif()
+
 # Returns true (via out_want) if TORCHCODEC_BUILD_IMAGE is on, or if that
 # specific codec flag is explicitly on, and false otherwise.
 function(resolve_image_codec codec_flag out_want)
@@ -192,6 +206,8 @@ read_sources_from_bzl(TORCHCODEC_PYBIND_OPS_SOURCES pybind_ops_sources)
 read_sources_from_bzl(TORCHCODEC_IMAGE_SOURCES image_sources)
 read_sources_from_bzl(TORCHCODEC_IMAGE_OPS_SOURCES image_ops_sources)
 read_sources_from_bzl(TORCHCODEC_GIFLIB_SOURCES giflib_sources)
+read_sources_from_bzl(TORCHCODEC_HEIC_SOURCES heic_sources)
+read_sources_from_bzl(TORCHCODEC_HEIC_OPS_SOURCES heic_ops_sources)
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -603,7 +619,116 @@ function(make_torchcodec_image_library)
     endif()
 endfunction()
 
+# Create libtorchcodec_heic, a SEPARATE library holding just the HEIC decoder.
+#
+# HEIC links libheif (+ its HEVC decoder libde265), which are LGPL and therefore
+# NOT bundled in our wheels: we treat libheif like FFmpeg, an optional
+# user-supplied runtime dependency. Because this library carries a DT_NEEDED on
+# libheif, it must NOT be loaded at import time (that would make `import
+# torchcodec` hard-require libheif). Instead it's loaded lazily on the first
+# decode_heic (see load_heic_library() in _internally_replaced_utils.py), which
+# is why it can't live in libtorchcodec_image (that one is loaded eagerly).
+#
+# We ALWAYS build and ship this library: a real build linking libheif when
+# libheif is found (or TORCHCODEC_BUILD_HEIC=ON), otherwise a small stub whose
+# decode_heic raises an actionable "rebuild with libheif" error.
+function(make_torchcodec_heic_library)
+    set(heic_library_name "libtorchcodec_heic")
+    set(heic_library_sources
+        ${TORCHCODEC_HEIC_SOURCES}
+        ${TORCHCODEC_HEIC_OPS_SOURCES}
+    )
+
+    make_torchcodec_sublibrary(
+        "${heic_library_name}"
+        SHARED
+        "${heic_library_sources}"
+        "${TORCH_LIBRARIES}"
+    )
+
+    # Resolve whether we want to look for libheif at all. We rely on CMake's
+    # boolean truthiness so this handles ON/OFF, 1/0, TRUE/FALSE and AUTO (a
+    # non-false constant, hence truthy) uniformly.
+    if(TORCHCODEC_BUILD_HEIC)
+        set(want_heic TRUE)
+    else()
+        set(want_heic FALSE)
+    endif()
+    # "Required" means the user explicitly asked for HEIC (ON/1/TRUE), as opposed
+    # to the soft AUTO default: a missing libheif is fatal only when required.
+    if(want_heic AND NOT TORCHCODEC_BUILD_HEIC STREQUAL "AUTO")
+        set(heic_required TRUE)
+    else()
+        set(heic_required FALSE)
+    endif()
+
+    set(heic_found FALSE)
+    if(want_heic)
+        # conda-forge's libheif ships a CMake package config (libheif-config.cmake)
+        # exposing the `heif` imported target. Fall back to pkg-config otherwise.
+        if(NOT DEFINED libheif_ROOT AND DEFINED ENV{CONDA_PREFIX})
+            if(WIN32)
+                set(libheif_ROOT "$ENV{CONDA_PREFIX}/Library")
+            else()
+                set(libheif_ROOT "$ENV{CONDA_PREFIX}")
+            endif()
+        endif()
+        find_package(libheif CONFIG QUIET)
+        if(libheif_FOUND)
+            set(heic_found TRUE)
+            target_link_libraries(${heic_library_name} PRIVATE heif)
+        else()
+            find_package(PkgConfig QUIET)
+            if(PkgConfig_FOUND)
+                pkg_check_modules(HEIF QUIET IMPORTED_TARGET libheif)
+                if(HEIF_FOUND)
+                    set(heic_found TRUE)
+                    target_link_libraries(${heic_library_name} PRIVATE PkgConfig::HEIF)
+                endif()
+            endif()
+        endif()
+    endif()
+
+    if(heic_found)
+        target_compile_definitions(${heic_library_name} PRIVATE TORCHCODEC_ENABLE_HEIC=1)
+        message(STATUS "libheif found: building torchcodec with HEIC image decoding support.")
+    elseif(heic_required)
+        message(FATAL_ERROR
+            "libheif not found, but HEIC image decoding was explicitly requested "
+            "(TORCHCODEC_BUILD_HEIC=ON). Install libheif and its development "
+            "headers (e.g. `conda install -c conda-forge libheif`), or leave "
+            "TORCHCODEC_BUILD_HEIC=AUTO to build a stub, or set "
+            "TORCHCODEC_BUILD_HEIC=0 to force the stub.")
+    else()
+        message(STATUS
+            "libheif not found: building torchcodec with a HEIC stub. decode_heic "
+            "will raise an actionable error at call time; rebuild in an env with "
+            "libheif to enable HEIC decoding.")
+    endif()
+
+    # Hide everything except the torch op registration, like the image library.
+    if(LINUX)
+        target_compile_options(${heic_library_name} PRIVATE "-fvisibility=hidden")
+    endif()
+
+    if(SKBUILD_STATE STREQUAL "editable")
+        get_filename_component(
+            TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+        set_target_properties(${heic_library_name} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
+        )
+    else()
+        install(
+            TARGETS ${heic_library_name}
+            LIBRARY DESTINATION torchcodec
+            RUNTIME DESTINATION torchcodec  # For Windows
+        )
+    endif()
+endfunction()
+
 make_torchcodec_image_library()
+make_torchcodec_heic_library()
 
 if(DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3})
     message(
