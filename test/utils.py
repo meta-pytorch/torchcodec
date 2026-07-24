@@ -302,8 +302,7 @@ BAD_HUFFMAN_JPEG = TestImage(
 #
 # CORRUPT_JPEG has a valid header but a corrupt entropy stream, which trips an
 # "Unsupported marker type" error late in the decode (during
-# jpeg_finish_decompress). Regression guard for a segfault: that late error used
-# to longjmp into an already-returned stack frame and crash.
+# jpeg_finish_decompress).
 CORRUPT_JPEG = TestImage(filename="corrupt.jpg", width=120, height=90, num_channels=3)
 # PNG crashers found by fuzzing libpng (out-of-bound reads).
 SIGSEGV_PNG = TestImage(filename="sigsegv.png", width=0, height=0, num_channels=0)

@@ -4136,19 +4136,14 @@ class TestImageDecoder:
 
     @needs_jpeg
     def test_corrupt_jpeg_raises(self):
-        # Regression test for a segfault: CORRUPT_JPEG has a valid header but a
-        # corrupt entropy stream, so the error ("Unsupported marker type") is
-        # only raised late in the decode, during jpeg_finish_decompress. That
-        # call used to run outside any setjmp scope, so the error would longjmp
-        # into an already-returned stack frame and crash. It must raise cleanly.
+        # Non-regression test ported from torchvision.
         with pytest.raises(RuntimeError, match="Unsupported marker type"):
             decode_jpeg(CORRUPT_JPEG.path)
 
     @needs_png
     @pytest.mark.parametrize("asset", (SIGSEGV_PNG, HEAPBOF_PNG))
     def test_corrupt_png_out_of_bound_read_raises(self, asset):
-        # Fuzzer-found libpng crashers (a sigsegv and a heap buffer overflow).
-        # They must raise cleanly rather than crash. Ported from torchvision.
+        # Non-regression test ported from torchvision.
         with pytest.raises(RuntimeError, match="Out of bound read"):
             decode_png(asset.path)
 
@@ -4172,9 +4167,6 @@ class TestImageDecoder:
         ),
     )
     def test_bad_encoded_data_raises(self, decode_fn, make_bad, match):
-        # The C++ decoders validate the encoded-bytes tensor before touching any
-        # image library. A non-1D, non-uint8, non-contiguous, or empty tensor
-        # must raise a clear error. Ported from torchvision.
         data = torch.randint(0, 256, (100,), dtype=torch.uint8)
         with pytest.raises(RuntimeError, match=match):
             decode_fn(make_bad(data))
@@ -4185,7 +4177,8 @@ class TestImageDecoder:
         # 1-bit (black & white) PNGs are an edge case for the bit-depth handling:
         # libpng packs 8 pixels per byte and we must expand them to full uint8.
         # Ported from torchvision.
-        pixels = numpy.random.RandomState(0).rand(*shape) > 0.5
+        gen = torch.Generator().manual_seed(0)
+        pixels = (torch.rand(shape, generator=gen) > 0.5).numpy()
         path = tmp_path / "1bit.png"
         Image.fromarray(pixels).save(path)
 
@@ -4197,11 +4190,8 @@ class TestImageDecoder:
     @needs_png
     @pytest.mark.parametrize("mode, pil_mode", (("UNCHANGED", None), ("RGB", "RGB")))
     def test_interlaced_png(self, mode, pil_mode):
-        # Adam7-interlaced PNGs are decoded pass-by-pass (a code path no other
-        # asset exercises). The result must match a non-interlaced decode, so we
-        # compare against PIL, which handles interlacing transparently.
+        # Ported from torchvision
         asset = GRADIENT_INTERLACED_PNG
-        # Sanity check that the asset really is interlaced, else the test is moot.
         assert Image.open(asset.path).info.get("interlace") == 1
 
         decoded = decode_png(asset.path, mode=mode)
