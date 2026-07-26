@@ -40,6 +40,43 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
 
 namespace facebook::torchcodec {
 
+// ---------------------------------------------------------------------------
+// nvJPEG terminology: "hardware"/"software" paths vs nvJPEG "backends"
+// ---------------------------------------------------------------------------
+//
+// nvJPEG can decode a JPEG using different implementations, which it calls
+// "backends" (nvjpegBackend_t). They fall into two families:
+//
+//   * The fixed-function JPEG decoder -- dedicated silicon present only on
+//     A100-class (data-center Ampere+) GPUs. nvJPEG backend NVJPEG_BACKEND_HARDWARE.
+//     Reachable ONLY through the batched API (nvjpegDecodeBatchedInitialize +
+//     nvjpegDecodeBatched); there is no single-image hardware entry point, which
+//     is why our hardware path uses the batched API even for one image. It only
+//     handles baseline, single-scan JPEGs (no 4:1:0 / 4:1:1 subsampling).
+//
+//   * Everything else -- decoding on the regular CUDA cores, via
+//     NVJPEG_BACKEND_DEFAULT / HYBRID / GPU_HYBRID. We reach this through the
+//     simple one-shot nvjpegDecode(), which is "backend-agnostic" and picks one
+//     of these internally (never the fixed-function engine).
+//
+// We call these our "hardware path" (decode_batched_hardware) and "software
+// path" (decode_software). NOTE: "software" does NOT mean CPU -- it still decodes
+// on the GPU. It only means "not the dedicated JPEG engine" (though the Huffman
+// step may run on the CPU with the DEFAULT/HYBRID backends).
+//
+// hw_decode_available_ records whether the fixed-function engine exists: the
+// constructor tries to create the handle with NVJPEG_BACKEND_HARDWARE and falls
+// back to NVJPEG_BACKEND_DEFAULT on NVJPEG_STATUS_ARCH_MISMATCH (no engine). When
+// it exists, split_images_by_backend routes each image to the hardware path if
+// the engine supports it (nvjpegDecodeBatchedSupported) and to the software path
+// otherwise (progressive JPEGs, unsupported subsampling). When it doesn't exist,
+// every image goes to the software path.
+//
+// State objects: nvjpeg_state_hw_ / nvjpeg_stream_ back the hardware path (only
+// created when hw_decode_available_); nvjpeg_state_sw_ backs the software path
+// (always created).
+// ---------------------------------------------------------------------------
+
 using namespace exif_private;
 
 namespace {
@@ -234,64 +271,25 @@ CUDAJpegDecoder::CUDAJpegDecoder(const torch::stable::Device& target_device)
   // Batched (hardware) path state -- only ever used when the HW engine is
   // available, so only create it then.
   if (hw_decode_available_) {
-    status = nvjpegJpegStateCreate(nvjpeg_handle_, &nvjpeg_state_);
+    status = nvjpegJpegStateCreate(nvjpeg_handle_, &nvjpeg_state_hw_);
     STD_TORCH_CHECK(
         status == NVJPEG_STATUS_SUCCESS,
         "Failed to create nvjpeg state: ",
         status);
+
+    status = nvjpegJpegStreamCreate(nvjpeg_handle_, &nvjpeg_stream_);
+    STD_TORCH_CHECK(
+        status == NVJPEG_STATUS_SUCCESS,
+        "Failed to create jpeg stream: ",
+        status);
   }
 
-  // Decoupled (software) path state. Needed regardless of the HW engine, since
-  // progressive JPEGs always fall back to this path. The pinned/device buffers
-  // are created empty and only allocate memory when first used.
-  status = nvjpegDecoderCreate(
-      nvjpeg_handle_, NVJPEG_BACKEND_DEFAULT, &nvjpeg_decoder_);
+  // Software path state, used by nvjpegDecode() for progressive JPEGs and for
+  // everything when there's no HW engine.
+  status = nvjpegJpegStateCreate(nvjpeg_handle_, &nvjpeg_state_sw_);
   STD_TORCH_CHECK(
       status == NVJPEG_STATUS_SUCCESS,
-      "Failed to create nvjpeg decoder: ",
-      status);
-
-  status = nvjpegDecoderStateCreate(
-      nvjpeg_handle_, nvjpeg_decoder_, &nvjpeg_decoupled_state_);
-  STD_TORCH_CHECK(
-      status == NVJPEG_STATUS_SUCCESS,
-      "Failed to create nvjpeg decoder state: ",
-      status);
-
-  status = nvjpegBufferPinnedCreate(nvjpeg_handle_, NULL, &pinned_buffers_[0]);
-  STD_TORCH_CHECK(
-      status == NVJPEG_STATUS_SUCCESS,
-      "Failed to create pinned buffer: ",
-      status);
-
-  status = nvjpegBufferPinnedCreate(nvjpeg_handle_, NULL, &pinned_buffers_[1]);
-  STD_TORCH_CHECK(
-      status == NVJPEG_STATUS_SUCCESS,
-      "Failed to create pinned buffer: ",
-      status);
-
-  status = nvjpegBufferDeviceCreate(nvjpeg_handle_, NULL, &device_buffer_);
-  STD_TORCH_CHECK(
-      status == NVJPEG_STATUS_SUCCESS,
-      "Failed to create device buffer: ",
-      status);
-
-  status = nvjpegJpegStreamCreate(nvjpeg_handle_, &jpeg_streams_[0]);
-  STD_TORCH_CHECK(
-      status == NVJPEG_STATUS_SUCCESS,
-      "Failed to create jpeg stream: ",
-      status);
-
-  status = nvjpegJpegStreamCreate(nvjpeg_handle_, &jpeg_streams_[1]);
-  STD_TORCH_CHECK(
-      status == NVJPEG_STATUS_SUCCESS,
-      "Failed to create jpeg stream: ",
-      status);
-
-  status = nvjpegDecodeParamsCreate(nvjpeg_handle_, &nvjpeg_decode_params_);
-  STD_TORCH_CHECK(
-      status == NVJPEG_STATUS_SUCCESS,
-      "Failed to create decode params: ",
+      "Failed to create nvjpeg decode state: ",
       status);
 }
 
@@ -301,16 +299,10 @@ CUDAJpegDecoder::~CUDAJpegDecoder() {
   // in NVJpegCache, whose per-device instances are intentionally leaked (never
   // statically destroyed), so this destructor only runs during normal cache
   // eviction while CUDA is alive -- not at process teardown.
-  nvjpegDecodeParamsDestroy(nvjpeg_decode_params_);
-  nvjpegJpegStreamDestroy(jpeg_streams_[0]);
-  nvjpegJpegStreamDestroy(jpeg_streams_[1]);
-  nvjpegBufferPinnedDestroy(pinned_buffers_[0]);
-  nvjpegBufferPinnedDestroy(pinned_buffers_[1]);
-  nvjpegBufferDeviceDestroy(device_buffer_);
-  nvjpegJpegStateDestroy(nvjpeg_decoupled_state_);
-  nvjpegDecoderDestroy(nvjpeg_decoder_);
+  nvjpegJpegStateDestroy(nvjpeg_state_sw_);
   if (hw_decode_available_) {
-    nvjpegJpegStateDestroy(nvjpeg_state_);
+    nvjpegJpegStreamDestroy(nvjpeg_stream_);
+    nvjpegJpegStateDestroy(nvjpeg_state_hw_);
   }
   nvjpegDestroy(nvjpeg_handle_);
 }
@@ -396,10 +388,9 @@ CUDAJpegDecoder::split_images_by_backend(
           nvjpeg_handle_,
           encoded_images[i].const_data_ptr<uint8_t>(),
           encoded_images[i].numel(),
-          jpeg_streams_[0]);
+          nvjpeg_stream_);
       int is_supported = -1;
-      nvjpegDecodeBatchedSupported(
-          nvjpeg_handle_, jpeg_streams_[0], &is_supported);
+      nvjpegDecodeBatchedSupported(nvjpeg_handle_, nvjpeg_stream_, &is_supported);
       supports_hw = is_supported == 0; // nvJPEG sets 0 when supported
     }
     (supports_hw ? hw_indices : sw_indices).push_back(i);
@@ -436,7 +427,7 @@ void CUDAJpegDecoder::decode_batched_hardware(
   // may want both grayscale and RGB images here. So we need to split the input
   // into two groups and decode them separately. To be safe, we add  stream sync
   // point between the groups: the calls of the first group may read/write
-  // scratch buffers inside the shared nvjpeg_state_, and the second group's
+  // scratch buffers inside the shared nvjpeg_state_hw_, and the second group's
   // nvjpegDecodeBatchedInitialize can reconfigure that same state. This is an
   // assumption, but the sync point shouldn't hurt perf.
   bool needs_sync = false;
@@ -465,7 +456,7 @@ void CUDAJpegDecoder::decode_batched_hardware(
 
     // Should we expose max_cpu_threads????
     nvjpegStatus_t status = nvjpegDecodeBatchedInitialize(
-        nvjpeg_handle_, nvjpeg_state_, group_images.size(), /*max_cpu_threads=*/1, group_format);
+        nvjpeg_handle_, nvjpeg_state_hw_, group_images.size(), /*max_cpu_threads=*/1, group_format);
     STD_TORCH_CHECK(
         status == NVJPEG_STATUS_SUCCESS,
         "Failed to initialize batch decoding: ",
@@ -473,7 +464,7 @@ void CUDAJpegDecoder::decode_batched_hardware(
 
     status = nvjpegDecodeBatched(
         nvjpeg_handle_,
-        nvjpeg_state_,
+        nvjpeg_state_hw_,
         group_inputs.data(),
         group_sizes.data(),
         group_images.data(),
@@ -491,98 +482,21 @@ void CUDAJpegDecoder::decode_software(
     ImageReadMode mode,
     cudaStream_t stream,
     std::vector<torch::stable::Tensor>& output_tensors) {
-  // Decoupled host/device pipeline: Huffman decode runs on the CPU
-  // (DecodeJpegHost), the coefficients are copied to the device
-  // (TransferToDevice), and IDCT/upsampling/color conversion run on the GPU
-  // (DecodeJpegDevice). Two pinned buffers are ping-ponged so image i+1's host
-  // work overlaps image i's device work.
-  nvjpegStatus_t status =
-      nvjpegStateAttachDeviceBuffer(nvjpeg_decoupled_state_, device_buffer_);
-  STD_TORCH_CHECK(
-      status == NVJPEG_STATUS_SUCCESS,
-      "Failed to attach device buffer: ",
-      status);
-
-  int buffer_index = 0;
   for (size_t idx : indices) {
     auto [output_tensor, nvjpeg_image, output_format] =
         allocate_output(encoded_images[idx], mode);
-
     // Decode each image straight to its own native format (see
     // output_format_for_image), so grayscale sources stay single-channel.
-    status = nvjpegDecodeParamsSetOutputFormat(
-        nvjpeg_decode_params_, output_format);
-    STD_TORCH_CHECK(
-        status == NVJPEG_STATUS_SUCCESS,
-        "Failed to set output format: ",
-        status);
-
-    status = nvjpegJpegStreamParse(
+    nvjpegStatus_t status = nvjpegDecode(
         nvjpeg_handle_,
+        nvjpeg_state_sw_,
         encoded_images[idx].const_data_ptr<uint8_t>(),
         encoded_images[idx].numel(),
-        /*save_metadata=*/0,
-        /*save_stream=*/0,
-        jpeg_streams_[buffer_index]);
-    STD_TORCH_CHECK(
-        status == NVJPEG_STATUS_SUCCESS,
-        "Failed to parse jpeg stream: ",
-        status);
-
-    status = nvjpegStateAttachPinnedBuffer(
-        nvjpeg_decoupled_state_, pinned_buffers_[buffer_index]);
-    STD_TORCH_CHECK(
-        status == NVJPEG_STATUS_SUCCESS,
-        "Failed to attach pinned buffer: ",
-        status);
-
-    status = nvjpegDecodeJpegHost(
-        nvjpeg_handle_,
-        nvjpeg_decoder_,
-        nvjpeg_decoupled_state_,
-        nvjpeg_decode_params_,
-        jpeg_streams_[buffer_index]);
-    STD_TORCH_CHECK(
-        status == NVJPEG_STATUS_SUCCESS,
-        "Failed to decode jpeg stream: ",
-        status);
-
-    cudaError_t cuda_status = cudaStreamSynchronize(stream);
-    STD_TORCH_CHECK(
-        cuda_status == cudaSuccess,
-        "Failed to synchronize CUDA stream: ",
-        cuda_status);
-
-    status = nvjpegDecodeJpegTransferToDevice(
-        nvjpeg_handle_,
-        nvjpeg_decoder_,
-        nvjpeg_decoupled_state_,
-        jpeg_streams_[buffer_index],
-        stream);
-    STD_TORCH_CHECK(
-        status == NVJPEG_STATUS_SUCCESS,
-        "Failed to transfer jpeg to device: ",
-        status);
-
-    // Switch pinned buffer to pipeline host and device work (double buffering:
-    // host-decode image i+1 while image i's device work is in flight).
-    // TODO_IMAGE: benchmark whether this ping-pong pipelining actually helps vs
-    // a single buffer / no pipelining -- it adds complexity (two pinned buffers
-    // and jpeg streams) and may not be worth it. If we don't need it, we can
-    // probably rely on the much simpler  nvjpegDecode API.
-    buffer_index = 1 - buffer_index;
-
-    status = nvjpegDecodeJpegDevice(
-        nvjpeg_handle_,
-        nvjpeg_decoder_,
-        nvjpeg_decoupled_state_,
+        output_format,
         &nvjpeg_image,
         stream);
     STD_TORCH_CHECK(
-        status == NVJPEG_STATUS_SUCCESS,
-        "Failed to decode jpeg stream: ",
-        status);
-
+        status == NVJPEG_STATUS_SUCCESS, "nvjpegDecode failed: ", status);
     output_tensors[idx] = output_tensor;
   }
 }

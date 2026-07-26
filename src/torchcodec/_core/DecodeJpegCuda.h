@@ -67,7 +67,7 @@ class CUDAJpegDecoder {
       std::vector<torch::stable::Tensor>& output_tensors);
 
   // ...everything else (e.g. progressive JPEGs, or all images when there's no
-  // HW engine) via the decoupled host/device software pipeline.
+  // HW engine) via nvjpegDecode(), one image at a time.
   void decode_software(
       const std::vector<torch::stable::Tensor>& encoded_images,
       const std::vector<size_t>& indices,
@@ -82,20 +82,14 @@ class CUDAJpegDecoder {
   nvjpegHandle_t nvjpeg_handle_;
   bool hw_decode_available_{false};
 
-  // Batched (hardware) path: state for nvjpegDecodeBatched. Only created/used
-  // when hw_decode_available_.
-  nvjpegJpegState_t nvjpeg_state_;
+  // Hardware path: state for nvjpegDecodeBatched, and a jpeg stream used to
+  // query per-image hardware-batch support. Only created/used when
+  // hw_decode_available_.
+  nvjpegJpegState_t nvjpeg_state_hw_;
+  nvjpegJpegStream_t nvjpeg_stream_;
 
-  // Decoupled (software) path: the phased host->device pipeline. jpeg_streams_
-  // (parsed bitstream) and pinned_buffers_ (host Huffman output) are doubled so
-  // image i+1's host work can overlap image i's device work; device_buffer_ is
-  // single because device work is already serialized on the stream.
-  nvjpegJpegDecoder_t nvjpeg_decoder_;
-  nvjpegJpegState_t nvjpeg_decoupled_state_;
-  nvjpegDecodeParams_t nvjpeg_decode_params_;
-  nvjpegBufferDevice_t device_buffer_;
-  nvjpegBufferPinned_t pinned_buffers_[2];
-  nvjpegJpegStream_t jpeg_streams_[2];
+  // Software path: state for nvjpegDecode(). Always created.
+  nvjpegJpegState_t nvjpeg_state_sw_;
 };
 
 // A genuine per-device pool of reusable CUDAJpegDecoder objects. This replaces
