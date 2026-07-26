@@ -315,10 +315,9 @@ CUDAJpegDecoder::~CUDAJpegDecoder() {
   nvjpegDestroy(nvjpeg_handle_);
 }
 
-// Scan the JPEG header to size and allocate the output tensor, point an
-// nvjpegImage_t's channel pointers into that tensor's memory, and pick the
-// nvJPEG output format for this image (from the mode and the source's channel
-// count). Returns {output_tensor, nvjpeg_image, output_format}.
+// Allocates the output tensor and creates its corresponding nvjpegImage_t for a
+// single encoded image. Also figures out the output mode (nvjpegOutputFormat_t)
+// based on the requested ImageReadMode and the source.
 std::tuple<torch::stable::Tensor, nvjpegImage_t, nvjpegOutputFormat_t>
 CUDAJpegDecoder::allocate_output(
     const torch::stable::Tensor& encoded_image,
@@ -340,11 +339,6 @@ CUDAJpegDecoder::allocate_output(
   STD_TORCH_CHECK(
       subsampling != NVJPEG_CSS_UNKNOWN, "Unknown chroma subsampling");
 
-  // The nvJPEG output format to decode this image into. UNCHANGED keeps the
-  // source's native channel count -- a grayscale JPEG (1 component) decodes to a
-  // single Y plane, everything else to RGB. nvJPEG has no usable "unchanged"
-  // output: NVJPEG_OUTPUT_UNCHANGED returns raw, subsampling-dependent component
-  // planes rather than a uniform HxW image, so we never use it.
   nvjpegOutputFormat_t output_format;
   switch (mode) {
     case ImageReadMode::GRAY:
@@ -419,11 +413,7 @@ void CUDAJpegDecoder::decode_batched_hardware(
     ImageReadMode mode,
     cudaStream_t stream,
     std::vector<torch::stable::Tensor>& output_tensors) {
-  // Allocate every output and record its input pointer/size/nvjpegImage_t and
-  // per-image output format. nvjpegDecodeBatchedInitialize decodes a whole batch
-  // to a single format, so we group images by format below and issue one batched
-  // decode per group -- UNCHANGED can produce both grayscale (Y) and color (RGB)
-  // images in the same batch; GRAY and RGB always yield a single group.
+
   std::vector<const unsigned char*> inputs;
   std::vector<size_t> sizes;
   std::vector<nvjpegImage_t> nvjpeg_images;
@@ -442,7 +432,14 @@ void CUDAJpegDecoder::decode_batched_hardware(
     formats.push_back(output_format);
   }
 
-  bool decoded_a_group = false;
+  // The batch nvjpeg API only support a single output format per call, but we
+  // may have both grayscale and RGB images here. So we need to split the input
+  // into two groups. To be safe, we add  stream sync point between the groups:
+  // the calls of the first group may read/write scratch buffers inside the
+  // shared nvjpeg_state_, and the second group's nvjpegDecodeBatchedInitialize
+  // can reconfigure that same state. This is an assumption, but the sync point
+  // shouldn't hurt perf.
+  bool needs_sync = false;
   for (nvjpegOutputFormat_t group_format : {NVJPEG_OUTPUT_Y, NVJPEG_OUTPUT_RGB}) {
     std::vector<const unsigned char*> group_inputs;
     std::vector<size_t> group_sizes;
@@ -458,24 +455,17 @@ void CUDAJpegDecoder::decode_batched_hardware(
       continue;
     }
 
-    // nvjpeg_state_ is shared across groups, so don't re-initialize it while a
-    // previous group's decode is still in flight on the stream.
-    if (decoded_a_group) {
+    if (needs_sync) {
       cudaError_t cuda_status = cudaStreamSynchronize(stream);
       STD_TORCH_CHECK(
           cuda_status == cudaSuccess,
           "Failed to synchronize CUDA stream: ",
           cuda_status);
     }
-    decoded_a_group = true;
 
-    // We use the batched API even for a single image (batch size 1) on purpose:
-    // it's the only entry point to nvJPEG's dedicated hardware JPEG engine, and
-    // this path only runs when that engine is available (hw_decode_available_,
-    // A100+). The simple single-image nvjpegDecode() uses the default/hybrid GPU
-    // backend, not the HW engine, so it wouldn't be faster here.
+    // Should we expose max_cpu_threads????
     nvjpegStatus_t status = nvjpegDecodeBatchedInitialize(
-        nvjpeg_handle_, nvjpeg_state_, group_images.size(), 1, group_format);
+        nvjpeg_handle_, nvjpeg_state_, group_images.size(), /*max_cpu_threads=*/1, group_format);
     STD_TORCH_CHECK(
         status == NVJPEG_STATUS_SUCCESS,
         "Failed to initialize batch decoding: ",
@@ -490,6 +480,8 @@ void CUDAJpegDecoder::decode_batched_hardware(
         stream);
     STD_TORCH_CHECK(
         status == NVJPEG_STATUS_SUCCESS, "Failed to decode batch: ", status);
+
+    needs_sync = true;
   }
 }
 
@@ -613,6 +605,7 @@ std::vector<torch::stable::Tensor> CUDAJpegDecoder::decode_images(
   // Host-synchronize before returning: the decoder (and its internal nvJPEG
   // buffers) goes back to the pool and may be reused immediately by the next
   // call, so all GPU work using them must complete first.
+  // TODO_IMAGE: Should we? What does the NVDEC decoder do?
   cudaError_t cuda_status = cudaStreamSynchronize(stream);
   STD_TORCH_CHECK(
       cuda_status == cudaSuccess,
