@@ -170,13 +170,13 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
   int device_index = get_device_index(device);
   StableDeviceGuard device_guard(device_index);
 
-  // Decode on the caller's current stream (honors torch.cuda.Stream()).
   cudaStream_t stream = get_current_cuda_stream(device_index);
 
   NVJpegCache& cache = NVJpegCache::get_cache(device);
   std::unique_ptr<CUDAJpegDecoder> decoder = cache.get_decoder(device);
 
   std::vector<torch::stable::Tensor> result;
+  // TODO_IMAGE Do we really need a try/except here?
   try {
     result = decoder->decode_images(
         contig_images, static_cast<ImageReadMode>(mode), stream);
@@ -568,7 +568,8 @@ void CUDAJpegDecoder::decode_software(
     // host-decode image i+1 while image i's device work is in flight).
     // TODO_IMAGE: benchmark whether this ping-pong pipelining actually helps vs
     // a single buffer / no pipelining -- it adds complexity (two pinned buffers
-    // and jpeg streams) and may not be worth it.
+    // and jpeg streams) and may not be worth it. If we don't need it, we can
+    // probably rely on the much simpler  nvjpegDecode API.
     buffer_index = 1 - buffer_index;
 
     status = nvjpegDecodeJpegDevice(
