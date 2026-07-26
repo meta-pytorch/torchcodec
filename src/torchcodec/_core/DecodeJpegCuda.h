@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "ImageCommon.h"
 #include "StableABICompat.h"
 
 #if TORCHCODEC_ENABLE_NVJPEG
@@ -43,17 +44,15 @@ class CUDAJpegDecoder {
 
   std::vector<torch::stable::Tensor> decode_images(
       const std::vector<torch::stable::Tensor>& encoded_images,
-      const nvjpegOutputFormat_t& output_format,
+      ImageReadMode mode,
       cudaStream_t stream);
 
  private:
-  std::tuple<torch::stable::Tensor, nvjpegImage_t, int> allocate_output(
+  std::tuple<torch::stable::Tensor, nvjpegImage_t, nvjpegOutputFormat_t>
+  allocate_output(
       const torch::stable::Tensor& encoded_image,
-      const nvjpegOutputFormat_t& output_format);
+      ImageReadMode mode);
 
-  // Split image indices into the hardware-batched group (baseline JPEGs when
-  // the HW engine is available) and the software group (everything else).
-  // Returns {hw_indices, sw_indices} into encoded_images / output_tensors.
   std::pair<std::vector<size_t>, std::vector<size_t>> split_images_by_backend(
       const std::vector<torch::stable::Tensor>& encoded_images);
 
@@ -63,7 +62,7 @@ class CUDAJpegDecoder {
   void decode_batched_hardware(
       const std::vector<torch::stable::Tensor>& encoded_images,
       const std::vector<size_t>& indices,
-      const nvjpegOutputFormat_t& output_format,
+      ImageReadMode mode,
       cudaStream_t stream,
       std::vector<torch::stable::Tensor>& output_tensors);
 
@@ -72,7 +71,7 @@ class CUDAJpegDecoder {
   void decode_software(
       const std::vector<torch::stable::Tensor>& encoded_images,
       const std::vector<size_t>& indices,
-      const nvjpegOutputFormat_t& output_format,
+      ImageReadMode mode,
       cudaStream_t stream,
       std::vector<torch::stable::Tensor>& output_tensors);
 

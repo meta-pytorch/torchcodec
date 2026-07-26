@@ -4555,20 +4555,29 @@ class TestImageDecoder:
 
     @needs_cuda
     @needs_jpeg
-    def test_cuda_jpeg_batch(self):
+    @pytest.mark.parametrize("mode", ("UNCHANGED", "GRAY", "RGB"))
+    def test_cuda_jpeg_batch(self, mode):
         # A list of sources decodes to a list of tensors (one per input), and
         # each must match the corresponding single-image decode. The batch mixes
-        # an RGB and a grayscale source, which have different shapes.
+        # an RGB and a grayscale source. In UNCHANGED mode they decode to
+        # different channel counts (3 vs 1) within a single batch, exercising the
+        # per-format grouping of the hardware batched path.
         assets = [GRADIENT_JPEG, GRAYSCALE_JPEG, GRADIENT_JPEG]
         sources = [a.path for a in assets]
-        batch = decode_jpeg(sources, mode="RGB", device="cuda")
+        batch = decode_jpeg(sources, mode=mode, device="cuda")
         assert isinstance(batch, list)
         assert len(batch) == len(sources)
         for decoded, asset in zip(batch, assets):
             assert decoded.device.type == "cuda"
-            single = decode_jpeg(asset.path, mode="RGB", device="cuda")
+            single = decode_jpeg(asset.path, mode=mode, device="cuda")
             assert decoded.shape == single.shape
             torch.testing.assert_close(decoded, single, atol=0, rtol=0)
+
+        # UNCHANGED must preserve each source's native channel count.
+        if mode == "UNCHANGED":
+            assert batch[0].shape[0] == 3
+            assert batch[1].shape[0] == 1
+            assert batch[2].shape[0] == 3
 
     @needs_cuda
     @needs_jpeg
