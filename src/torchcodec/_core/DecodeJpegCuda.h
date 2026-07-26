@@ -32,11 +32,6 @@ FORCE_PUBLIC_VISIBILITY std::vector<torch::stable::Tensor> decode_jpegs_cuda(
 
 #if TORCHCODEC_ENABLE_NVJPEG
 
-// Owns all the nvJPEG handles/state/buffers for one GPU device. Reused across
-// calls via NVJpegCache (see DecodeJpegCuda.cpp). The decode runs on the CUDA
-// stream passed to decode_images (the caller's current stream), which the
-// decoder does not own -- so it honors torch.cuda.Stream() and each call can
-// use a different stream.
 class CUDAJpegDecoder {
  public:
   explicit CUDAJpegDecoder(const torch::stable::Device& target_device);
@@ -56,9 +51,6 @@ class CUDAJpegDecoder {
   std::pair<std::vector<size_t>, std::vector<size_t>> split_images_by_backend(
       const std::vector<torch::stable::Tensor>& encoded_images);
 
-  // Decode the images at `indices` and write each result into
-  // output_tensors[idx]. Baseline JPEGs go via nvJPEG's hardware batched API
-  // (A100+ HW engine)...
   void decode_batched_hardware(
       const std::vector<torch::stable::Tensor>& encoded_images,
       const std::vector<size_t>& indices,
@@ -66,8 +58,6 @@ class CUDAJpegDecoder {
       cudaStream_t stream,
       std::vector<torch::stable::Tensor>& output_tensors);
 
-  // ...everything else (e.g. progressive JPEGs, or all images when there's no
-  // HW engine) via nvjpegDecode(), one image at a time.
   void decode_software(
       const std::vector<torch::stable::Tensor>& encoded_images,
       const std::vector<size_t>& indices,
@@ -77,36 +67,28 @@ class CUDAJpegDecoder {
 
   const torch::stable::Device target_device_;
 
-  // The nvJPEG library handle, and whether this GPU has the fixed-function JPEG
-  // engine. Both used everywhere.
+  // The nvJPEG library handle, and whether this GPU has the fixed-function HW
+  // JPEG engine. Both used everywhere.
   nvjpegHandle_t nvjpeg_handle_;
   bool hw_decode_available_{false};
 
-  // Hardware path: state for nvjpegDecodeBatched, and a jpeg stream used to
-  // query per-image hardware-batch support. Only created/used when
-  // hw_decode_available_.
+  // HW path only
   nvjpegJpegState_t nvjpeg_state_hw_;
   nvjpegJpegStream_t nvjpeg_stream_;
 
-  // Software path: state for nvjpegDecode(). Always created.
+  // SW path: state for nvjpegDecode(). Always created, even when the HW engine
+  // is available, because not all JPEGs are supported by the HW engine.
   nvjpegJpegState_t nvjpeg_state_sw_;
 };
 
-// A genuine per-device pool of reusable CUDAJpegDecoder objects. This replaces
-// torchvision's single global decoder + coarse mutex (which was keyed only on
-// device and rebuilt on every device switch): there is one pool instance per
-// GPU, so switching devices no longer destroys and recreates the decoder, and
-// concurrent callers each take their own decoder instead of serializing on one.
-// Modeled on NVDECCache.
+// A per-device pool of reusable CUDAJpegDecoder objects. Modeled on NVDECCache.
 class NVJpegCache {
  public:
   static NVJpegCache& get_cache(const torch::stable::Device& device);
 
-  // Take a decoder from the pool, or create a fresh one if the pool is empty.
   std::unique_ptr<CUDAJpegDecoder> get_decoder(
       const torch::stable::Device& device);
 
-  // Return a decoder to the pool for reuse (dropped if the pool is full).
   void return_decoder(std::unique_ptr<CUDAJpegDecoder> decoder);
 
  private:

@@ -40,53 +40,24 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
 
 namespace facebook::torchcodec {
 
-// ---------------------------------------------------------------------------
-// nvJPEG terminology: "hardware"/"software" paths vs nvJPEG "backends"
-// ---------------------------------------------------------------------------
-//
-// nvJPEG can decode a JPEG using different implementations, which it calls
-// "backends" (nvjpegBackend_t). They fall into two families:
-//
-//   * The fixed-function JPEG decoder -- dedicated silicon present only on
-//     A100-class (data-center Ampere+) GPUs. nvJPEG backend NVJPEG_BACKEND_HARDWARE.
-//     Reachable ONLY through the batched API (nvjpegDecodeBatchedInitialize +
-//     nvjpegDecodeBatched); there is no single-image hardware entry point, which
-//     is why our hardware path uses the batched API even for one image. It only
-//     handles baseline, single-scan JPEGs (no 4:1:0 / 4:1:1 subsampling).
-//
-//   * Everything else -- decoding on the regular CUDA cores, via
-//     NVJPEG_BACKEND_DEFAULT / HYBRID / GPU_HYBRID. We reach this through the
-//     simple one-shot nvjpegDecode(), which is "backend-agnostic" and picks one
-//     of these internally (never the fixed-function engine).
-//
-// We call these our "hardware path" (decode_batched_hardware) and "software
-// path" (decode_software). NOTE: "software" does NOT mean CPU -- it still decodes
-// on the GPU. It only means "not the dedicated JPEG engine" (though the Huffman
-// step may run on the CPU with the DEFAULT/HYBRID backends).
-//
-// hw_decode_available_ records whether the fixed-function engine exists: the
-// constructor tries to create the handle with NVJPEG_BACKEND_HARDWARE and falls
-// back to NVJPEG_BACKEND_DEFAULT on NVJPEG_STATUS_ARCH_MISMATCH (no engine). When
-// it exists, split_images_by_backend routes each image to the hardware path if
-// the engine supports it (nvjpegDecodeBatchedSupported) and to the software path
-// otherwise (progressive JPEGs, unsupported subsampling). When it doesn't exist,
-// every image goes to the software path.
-//
-// State objects: nvjpeg_state_hw_ / nvjpeg_stream_ back the hardware path (only
-// created when hw_decode_available_); nvjpeg_state_sw_ backs the software path
-// (always created).
-// ---------------------------------------------------------------------------
+// TODO_IMAGE write a quick blurb about the hardware vs software paths (software
+// does NOT mean CPU-only), the 'backends', the simple entry-points vs decoupled
+// API.
+// nvjpegDecodeBatch appears to be the only entry-point for the HW path, but
+// unclear.
+// TODO_IMAGE Should verify on a machien that supports the HW path whether:
+// - always calling nvjpegDecodeBatch even on single images is indeed faster than using the 'sw' path
+// - whether we can just rely on calls to nvjpegDeode to dispatch to the HW path
+//   and if that's as fast as calling nvjpegDecodeBatch, then maybe we don't
+//   need to publicly expose an API that accepts batches (decode_jpeg(batch...)).
 
 using namespace exif_private;
 
 namespace {
 
-// Scan a full JPEG bitstream for the APP1/EXIF segment and return its
-// orientation. The CPU decoder gets EXIF markers from libjpeg's marker list,
-// but nvJPEG doesn't expose them, so here we parse the raw bytes ourselves. A
-// JPEG is a sequence of marker segments: 0xFFD8 (SOI), then segments of the
-// form 0xFF <marker> <2-byte big-endian length> <payload>. The EXIF payload
-// lives in an APP1 (0xFFE1) segment and starts with "Exif\0\0".
+// Scan a JPEG bitstream for the APP1/EXIF segment and return its orientation.
+// On the CPU jpeg decoder, we rely on libjpeg for that. Here, we have to parse
+// it ourselves.
 ExifOrientation fetch_exif_orientation_from_jpeg_bytes(
     const unsigned char* jpeg,
     size_t size) {
@@ -187,6 +158,8 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
   orientations.reserve(encoded_images.size());
 
   for (const auto& encoded_image : encoded_images) {
+    // TODO_IMAGE: use validate_encoded_data instead? And let it return the
+    // contiguous tensor instead of erroring?
     STD_TORCH_CHECK(
         encoded_image.scalar_type() == torch::headeronly::ScalarType::Byte,
         "Expected a torch.uint8 tensor");
