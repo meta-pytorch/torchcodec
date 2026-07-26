@@ -32,10 +32,9 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
 
 #else
 
-#include <torch/csrc/inductor/aoti_torch/c/shim.h>
-
 #include <cstring>
 
+#include "CUDACommon.h"
 #include "Exif.h"
 #include "ImageCommon.h"
 
@@ -98,26 +97,6 @@ ExifOrientation fetch_exif_orientation_from_jpeg_bytes(
 // many hw decoders there can be concurrently (for hw and sw paths?)
 constexpr size_t kMaxCachedDecodersPerDevice = 4;
 
-// PyTorch supports up to 128 GPUs (see CUDACommon.h's MAX_CUDA_GPUS). Kept
-// local so the FFmpeg-free image library doesn't need to include CUDACommon.h.
-constexpr int kMaxCudaGpus = 128;
-
-// Resolve a concrete device index, turning the "current device" (-1) into a
-// real index. Mirrors get_device_index() in CUDACommon.cpp.
-int resolve_device_index(const torch::stable::Device& device) {
-  int device_index = static_cast<int>(device.index());
-  STD_TORCH_CHECK(
-      device_index >= -1 && device_index < kMaxCudaGpus,
-      "Invalid device index = ",
-      device_index);
-  if (device_index == -1) {
-    STD_TORCH_CHECK(
-        cudaGetDevice(&device_index) == cudaSuccess,
-        "Failed to get current CUDA device.");
-  }
-  return device_index;
-}
-
 nvjpegOutputFormat_t output_format_from_mode(int64_t mode) {
   switch (static_cast<ImageReadMode>(mode)) {
     case ImageReadMode::UNCHANGED:
@@ -157,12 +136,12 @@ NVJpegCache* NVJpegCache::get_cache_instances() {
   // Intentionally leaked to avoid calling into CUDA/nvJPEG during static
   // destruction, when the CUDA runtime may already be torn down (same reasoning
   // as NVDECCache).
-  static NVJpegCache* cache_instances = new NVJpegCache[kMaxCudaGpus];
+  static NVJpegCache* cache_instances = new NVJpegCache[MAX_CUDA_GPUS];
   return cache_instances;
 }
 
 NVJpegCache& NVJpegCache::get_cache(const torch::stable::Device& device) {
-  return get_cache_instances()[resolve_device_index(device)];
+  return get_cache_instances()[get_device_index(device)];
 }
 
 std::unique_ptr<CUDAJpegDecoder> NVJpegCache::get_decoder(
@@ -221,16 +200,11 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
     contig_images.push_back(std::move(contig));
   }
 
-  int device_index = resolve_device_index(device);
+  int device_index = get_device_index(device);
   StableDeviceGuard device_guard(device_index);
 
-  // Decode on the caller's current stream (honors torch.cuda.Stream()), fetched
-  // via the stable-ABI shim so the FFmpeg-free image lib needs no FFmpeg
-  // headers.
-  void* stream_ptr = nullptr;
-  TORCH_ERROR_CODE_CHECK(
-      aoti_torch_get_current_cuda_stream(device_index, &stream_ptr));
-  cudaStream_t stream = static_cast<cudaStream_t>(stream_ptr);
+  // Decode on the caller's current stream (honors torch.cuda.Stream()).
+  cudaStream_t stream = get_current_cuda_stream(device_index);
 
   nvjpegOutputFormat_t output_format = output_format_from_mode(mode);
 

@@ -5,25 +5,11 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "CUDACommon.h"
-#include <torch/csrc/inductor/aoti_torch/c/shim.h>
+#include "Frame.h"
 #include "StableABICompat.h"
 #include "ValidationUtils.h"
 
 namespace facebook::torchcodec {
-
-cudaStream_t get_current_cuda_stream(int32_t device_index) {
-  // This is the documented and blessed way to get the current CUDA stream with
-  // the stable ABI. aoti_torch_get_current_cuda_stream, TORCH_ERROR_CODE_CHECK,
-  // and the corresponding torch/csrc/inductor/aoti_torch/c/shim.h header are
-  // all safe to use:
-  // https://github.com/pytorch/pytorch/blob/7bc8d4b0648e1d364dce0104c3aea2e7e3c1640a/docs/cpp/source/stable.rst?plain=1#L172-L179
-  void* stream = nullptr;
-  TORCH_ERROR_CODE_CHECK(
-      aoti_torch_get_current_cuda_stream(device_index, &stream));
-  // Note: no need for checking against nullptr stream, it's a valid default
-  // stream value.
-  return static_cast<cudaStream_t>(stream);
-}
 
 // Make waitingStream wait until all work currently enqueued on runningStream
 // has completed.
@@ -71,23 +57,6 @@ void validate_pre_allocated_tensor_shape(
         "x3, got ",
         int_array_ref_to_string(shape));
   }
-}
-
-int get_device_index(const StableDevice& device) {
-  // PyTorch uses int8_t as its torch::DeviceIndex, but FFmpeg and CUDA
-  // libraries use int. So we use int, too.
-  int device_index = static_cast<int>(device.index());
-  STD_TORCH_CHECK(
-      device_index >= -1 && device_index < MAX_CUDA_GPUS,
-      "Invalid device index = ",
-      device_index);
-
-  if (device_index == -1) {
-    STD_TORCH_CHECK(
-        cudaGetDevice(&device_index) == cudaSuccess,
-        "Failed to get current CUDA device.");
-  }
-  return device_index;
 }
 
 } // namespace facebook::torchcodec
