@@ -45,11 +45,13 @@ namespace facebook::torchcodec {
 // API.
 // nvjpegDecodeBatch appears to be the only entry-point for the HW path, but
 // unclear.
-// TODO_IMAGE Should verify on a machien that supports the HW path whether:
-// - always calling nvjpegDecodeBatch even on single images is indeed faster than using the 'sw' path
+// TODO_IMAGE Should verify on a machine that supports the HW path whether:
+// - always calling nvjpegDecodeBatch even on single images is indeed faster
+// than using the 'sw' path
 // - whether we can just rely on calls to nvjpegDeode to dispatch to the HW path
 //   and if that's as fast as calling nvjpegDecodeBatch, then maybe we don't
-//   need to publicly expose an API that accepts batches (decode_jpeg(batch...)).
+//   need to publicly expose an API that accepts batches
+//   (decode_jpeg(batch...)).
 
 using namespace exif_private;
 
@@ -129,8 +131,6 @@ std::unique_ptr<CUDAJpegDecoder> NVJpegCache::get_decoder(
       return decoder;
     }
   }
-  // Create outside the lock: constructing nvJPEG state is relatively expensive
-  // and doesn't need the pool.
   return std::make_unique<CUDAJpegDecoder>(device);
 }
 
@@ -180,16 +180,16 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
   int device_index = get_device_index(device);
   StableDeviceGuard device_guard(device_index);
 
-  cudaStream_t stream = get_current_cuda_stream(device_index);
+  cudaStream_t current_stream = get_current_cuda_stream(device_index);
 
   NVJpegCache& cache = NVJpegCache::get_cache(device);
   std::unique_ptr<CUDAJpegDecoder> decoder = cache.get_decoder(device);
 
-  std::vector<torch::stable::Tensor> result;
+  std::vector<torch::stable::Tensor> output;
   // TODO_IMAGE Do we really need a try/except here?
   try {
-    result = decoder->decode_images(
-        contig_images, static_cast<ImageReadMode>(mode), stream);
+    output = decoder->decode_images(
+        contig_images, static_cast<ImageReadMode>(mode), current_stream);
   } catch (const std::exception& e) {
     // Return the decoder to the pool even on failure so we don't leak it.
     cache.return_decoder(std::move(decoder));
@@ -197,14 +197,10 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
   }
   cache.return_decoder(std::move(decoder));
 
-  // decode_images() host-synchronizes the decode stream before returning, so
-  // the decoded tensors are fully materialized; applying the EXIF transform
-  // (aten flip/transpose on the current stream) is safe. This matches the CPU
-  // decoder, which also applies EXIF orientation.
-  for (size_t i = 0; i < result.size(); ++i) {
-    result[i] = exif_orientation_transform(result[i], orientations[i]);
+  for (size_t i = 0; i < output.size(); ++i) {
+    output[i] = exif_orientation_transform(output[i], orientations[i]);
   }
-  return result;
+  return output;
 }
 
 CUDAJpegDecoder::CUDAJpegDecoder(const torch::stable::Device& target_device)
@@ -241,8 +237,6 @@ CUDAJpegDecoder::CUDAJpegDecoder(const torch::stable::Device& target_device)
         status);
   }
 
-  // Batched (hardware) path state -- only ever used when the HW engine is
-  // available, so only create it then.
   if (hw_decode_available_) {
     status = nvjpegJpegStateCreate(nvjpeg_handle_, &nvjpeg_state_hw_);
     STD_TORCH_CHECK(
@@ -267,11 +261,11 @@ CUDAJpegDecoder::CUDAJpegDecoder(const torch::stable::Device& target_device)
 }
 
 CUDAJpegDecoder::~CUDAJpegDecoder() {
-  // Unlike torchvision (which leaks these to dodge a Windows atexit-vs-CUDA
-  // teardown crash), we destroy the nvJPEG handles here. Our decoders are held
-  // in NVJpegCache, whose per-device instances are intentionally leaked (never
-  // statically destroyed), so this destructor only runs during normal cache
-  // eviction while CUDA is alive -- not at process teardown.
+  // We properly destroy the nvjpeg stuff here. Note that this destructor is
+  // only called when a decoder cannot return to the cache. This is never
+  // reached during normal process teardown, because we just leak the entire
+  // decoder cache, just like we leak the NVDEC cache to avoid weird CUDA
+  // teardown issues.
   nvjpegJpegStateDestroy(nvjpeg_state_sw_);
   if (hw_decode_available_) {
     nvjpegJpegStreamDestroy(nvjpeg_stream_);
@@ -313,7 +307,8 @@ CUDAJpegDecoder::allocate_output(
       output_format = NVJPEG_OUTPUT_RGB;
       break;
     case ImageReadMode::UNCHANGED:
-      output_format = source_channels == 1 ? NVJPEG_OUTPUT_Y : NVJPEG_OUTPUT_RGB;
+      output_format =
+          source_channels == 1 ? NVJPEG_OUTPUT_Y : NVJPEG_OUTPUT_RGB;
       break;
     default:
       STD_TORCH_CHECK(
@@ -363,7 +358,8 @@ CUDAJpegDecoder::split_images_by_backend(
           encoded_images[i].numel(),
           nvjpeg_stream_);
       int is_supported = -1;
-      nvjpegDecodeBatchedSupported(nvjpeg_handle_, nvjpeg_stream_, &is_supported);
+      nvjpegDecodeBatchedSupported(
+          nvjpeg_handle_, nvjpeg_stream_, &is_supported);
       supports_hw = is_supported == 0; // nvJPEG sets 0 when supported
     }
     (supports_hw ? hw_indices : sw_indices).push_back(i);
@@ -377,7 +373,6 @@ void CUDAJpegDecoder::decode_batched_hardware(
     ImageReadMode mode,
     cudaStream_t stream,
     std::vector<torch::stable::Tensor>& output_tensors) {
-
   std::vector<const unsigned char*> inputs;
   std::vector<size_t> sizes;
   std::vector<nvjpegImage_t> nvjpeg_images;
@@ -404,7 +399,8 @@ void CUDAJpegDecoder::decode_batched_hardware(
   // nvjpegDecodeBatchedInitialize can reconfigure that same state. This is an
   // assumption, but the sync point shouldn't hurt perf.
   bool needs_sync = false;
-  for (nvjpegOutputFormat_t group_format : {NVJPEG_OUTPUT_Y, NVJPEG_OUTPUT_RGB}) {
+  for (nvjpegOutputFormat_t group_format :
+       {NVJPEG_OUTPUT_Y, NVJPEG_OUTPUT_RGB}) {
     std::vector<const unsigned char*> group_inputs;
     std::vector<size_t> group_sizes;
     std::vector<nvjpegImage_t> group_images;
@@ -429,7 +425,11 @@ void CUDAJpegDecoder::decode_batched_hardware(
 
     // Should we expose max_cpu_threads????
     nvjpegStatus_t status = nvjpegDecodeBatchedInitialize(
-        nvjpeg_handle_, nvjpeg_state_hw_, group_images.size(), /*max_cpu_threads=*/1, group_format);
+        nvjpeg_handle_,
+        nvjpeg_state_hw_,
+        group_images.size(),
+        /*max_cpu_threads=*/1,
+        group_format);
     STD_TORCH_CHECK(
         status == NVJPEG_STATUS_SUCCESS,
         "Failed to initialize batch decoding: ",
@@ -486,8 +486,7 @@ std::vector<torch::stable::Tensor> CUDAJpegDecoder::decode_images(
         encoded_images, hw_indices, mode, stream, output_tensors);
   }
   if (!sw_indices.empty()) {
-    decode_software(
-        encoded_images, sw_indices, mode, stream, output_tensors);
+    decode_software(encoded_images, sw_indices, mode, stream, output_tensors);
   }
 
   // Host-synchronize before returning: the decoder (and its internal nvJPEG
