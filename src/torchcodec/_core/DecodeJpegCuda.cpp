@@ -433,12 +433,12 @@ void CUDAJpegDecoder::decode_batched_hardware(
   }
 
   // The batch nvjpeg API only support a single output format per call, but we
-  // may have both grayscale and RGB images here. So we need to split the input
-  // into two groups. To be safe, we add  stream sync point between the groups:
-  // the calls of the first group may read/write scratch buffers inside the
-  // shared nvjpeg_state_, and the second group's nvjpegDecodeBatchedInitialize
-  // can reconfigure that same state. This is an assumption, but the sync point
-  // shouldn't hurt perf.
+  // may want both grayscale and RGB images here. So we need to split the input
+  // into two groups and decode them separately. To be safe, we add  stream sync
+  // point between the groups: the calls of the first group may read/write
+  // scratch buffers inside the shared nvjpeg_state_, and the second group's
+  // nvjpegDecodeBatchedInitialize can reconfigure that same state. This is an
+  // assumption, but the sync point shouldn't hurt perf.
   bool needs_sync = false;
   for (nvjpegOutputFormat_t group_format : {NVJPEG_OUTPUT_Y, NVJPEG_OUTPUT_RGB}) {
     std::vector<const unsigned char*> group_inputs;
@@ -521,8 +521,8 @@ void CUDAJpegDecoder::decode_software(
         nvjpeg_handle_,
         encoded_images[idx].const_data_ptr<uint8_t>(),
         encoded_images[idx].numel(),
-        0,
-        0,
+        /*save_metadata=*/0,
+        /*save_stream=*/0,
         jpeg_streams_[buffer_index]);
     STD_TORCH_CHECK(
         status == NVJPEG_STATUS_SUCCESS,
