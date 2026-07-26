@@ -47,16 +47,9 @@ class CUDAJpegDecoder {
       cudaStream_t stream);
 
  private:
-  // Allocate the (C,H,W) uint8 CUDA output tensor for one image and return it
-  // with an nvjpegImage_t whose channel pointers reference that tensor's
-  // memory, plus the number of channels in the source (for UNCHANGED grayscale
-  // pruning).
-  std::tuple<torch::stable::Tensor, nvjpegImage_t, int> allocate_output_image(
+  std::tuple<torch::stable::Tensor, nvjpegImage_t, int> allocate_output(
       const torch::stable::Tensor& encoded_image,
       const nvjpegOutputFormat_t& output_format);
-
-  // Whether an image can be decoded by the hardware batched path.
-  bool is_hw_batched_supported(const unsigned char* data, size_t size);
 
   // Split image indices into the hardware-batched group (baseline JPEGs when
   // the HW engine is available) and the software group (everything else).

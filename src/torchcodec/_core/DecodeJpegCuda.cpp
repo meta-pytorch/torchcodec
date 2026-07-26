@@ -349,8 +349,10 @@ CUDAJpegDecoder::~CUDAJpegDecoder() {
   nvjpegDestroy(nvjpeg_handle_);
 }
 
+// Allocate the output tensor and its corresponding nvjpegImage_t struct.
+// Also returns the number of channels in the source (for UNCHANGED grayscale pruning).
 std::tuple<torch::stable::Tensor, nvjpegImage_t, int>
-CUDAJpegDecoder::allocate_output_image(
+CUDAJpegDecoder::allocate_output(
     const torch::stable::Tensor& encoded_image,
     const nvjpegOutputFormat_t& output_format) {
   // Scan the JPEG header to size the output tensor, allocate it, and point an
@@ -396,15 +398,6 @@ CUDAJpegDecoder::allocate_output_image(
   return {output_tensor, nvjpeg_image, source_channels};
 }
 
-bool CUDAJpegDecoder::is_hw_batched_supported(
-    const unsigned char* data,
-    size_t size) {
-  nvjpegJpegStreamParseHeader(nvjpeg_handle_, data, size, jpeg_streams_[0]);
-  int is_supported = -1;
-  nvjpegDecodeBatchedSupported(nvjpeg_handle_, jpeg_streams_[0], &is_supported);
-  return is_supported == 0; // nvJPEG sets 0 when supported
-}
-
 std::pair<std::vector<size_t>, std::vector<size_t>>
 CUDAJpegDecoder::split_images_by_backend(
     const std::vector<torch::stable::Tensor>& encoded_images) {
@@ -414,10 +407,18 @@ CUDAJpegDecoder::split_images_by_backend(
   // https://github.com/NVIDIA/CUDALibrarySamples/blob/f17940ac4e705bf47a8c39f5365925c1665f6c98/nvJPEG/nvJPEG-Decoder/nvjpegDecoder.cpp#L33
   std::vector<size_t> hw_indices, sw_indices;
   for (size_t i = 0; i < encoded_images.size(); ++i) {
-    bool supports_hw = hw_decode_available_ &&
-        is_hw_batched_supported(
-                           encoded_images[i].const_data_ptr<uint8_t>(),
-                           encoded_images[i].numel());
+    bool supports_hw = false;
+    if (hw_decode_available_) {
+      nvjpegJpegStreamParseHeader(
+          nvjpeg_handle_,
+          encoded_images[i].const_data_ptr<uint8_t>(),
+          encoded_images[i].numel(),
+          jpeg_streams_[0]);
+      int is_supported = -1;
+      nvjpegDecodeBatchedSupported(
+          nvjpeg_handle_, jpeg_streams_[0], &is_supported);
+      supports_hw = is_supported == 0; // nvJPEG sets 0 when supported
+    }
     (supports_hw ? hw_indices : sw_indices).push_back(i);
   }
   return {std::move(hw_indices), std::move(sw_indices)};
@@ -442,7 +443,7 @@ void CUDAJpegDecoder::decode_batched_hardware(
   source_channels.reserve(indices.size());
   for (size_t idx : indices) {
     auto [output_tensor, nvjpeg_image, channels] =
-        allocate_output_image(encoded_images[idx], output_format);
+        allocate_output(encoded_images[idx], output_format);
     output_tensors[idx] = output_tensor;
     inputs.push_back(encoded_images[idx].const_data_ptr<uint8_t>());
     sizes.push_back(encoded_images[idx].numel());
@@ -514,7 +515,7 @@ void CUDAJpegDecoder::decode_software(
   int buffer_index = 0;
   for (size_t idx : indices) {
     auto [output_tensor, nvjpeg_image, source_channels] =
-        allocate_output_image(encoded_images[idx], output_format);
+        allocate_output(encoded_images[idx], output_format);
 
     status = nvjpegJpegStreamParse(
         nvjpeg_handle_,
