@@ -160,17 +160,16 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
         )
 
 
-# Maps the output_dtype API values to the integer codes understood by the C++
-# decoders. Must be kept in-sync with the OutputDtype enum in ImageCommon.h.
-_OUTPUT_DTYPE_TO_CODE = {torch.uint8: 0, torch.uint16: 1, "auto": 2}
-
-
-def _validate_output_dtype(output_dtype) -> None:
-    if output_dtype not in _OUTPUT_DTYPE_TO_CODE:
+def _validate_output_dtype(output_dtype) -> int:
+    # Validates output_dtype and returns the integer code understood by the C++
+    # decoders. Must be kept in-sync with the OutputDtype enum in ImageCommon.h.
+    output_dtype_to_code = {torch.uint8: 0, torch.uint16: 1, "auto": 2}
+    if output_dtype not in output_dtype_to_code:
         raise ValueError(
             f"Invalid output_dtype ({output_dtype}). "
             "Supported values are torch.uint8, torch.uint16, and 'auto'."
         )
+    return output_dtype_to_code[output_dtype]
 
 
 def _to_output_dtype(
@@ -290,10 +289,9 @@ def decode_png(
     case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
     module note above for the semantics of ``output_dtype``.
     """
-    _validate_output_dtype(output_dtype)
+    code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    code = _OUTPUT_DTYPE_TO_CODE[output_dtype]
     return _decode_with_mode(
         lambda d, m: _decode_png(d, m, code), data, mode, _PNG_NATIVE_OUTPUT_MODES
     )
@@ -375,10 +373,9 @@ def decode_avif(
     sources carry more than 8 bits per channel, so ``"auto"`` and
     ``torch.uint16`` preserve that precision.
     """
-    _validate_output_dtype(output_dtype)
+    code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    code = _OUTPUT_DTYPE_TO_CODE[output_dtype]
     return _decode_with_mode(
         lambda d, m: _decode_avif(d, m, code, num_threads),
         data,
@@ -411,11 +408,16 @@ def decode_heic(
     of a multi-image HEIC file is decoded (image sequences are not yet
     supported).
     """
-    _validate_output_dtype(output_dtype)
+    code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     decode_heic_op = _get_decode_heic()
-    decoded = _decode_with_mode(decode_heic_op, data, mode, _HEIC_NATIVE_OUTPUT_MODES)
+    decoded = _decode_with_mode(
+        lambda d, m: decode_heic_op(d, m, code),
+        data,
+        mode,
+        _HEIC_NATIVE_OUTPUT_MODES,
+    )
     return _to_output_dtype(decoded, output_dtype)
 
 

@@ -18,7 +18,8 @@ namespace facebook::torchcodec {
 
 torch::stable::Tensor decode_heic(
     [[maybe_unused]] const torch::stable::Tensor& input,
-    [[maybe_unused]] int64_t mode) {
+    [[maybe_unused]] int64_t mode,
+    [[maybe_unused]] int64_t output_dtype) {
   STD_TORCH_CHECK(
       false,
       "decode_heic: torchcodec was not compiled with libheif support. "
@@ -69,7 +70,8 @@ using UniqueHeifImage = std::unique_ptr<heif_image, HeifImageDeleter>;
 
 torch::stable::Tensor decode_heic(
     const torch::stable::Tensor& input,
-    int64_t mode) {
+    int64_t mode,
+    int64_t output_dtype) {
   validate_encoded_data(input);
 
   UniqueHeifContext ctx(heif_context_alloc());
@@ -105,13 +107,18 @@ torch::stable::Tensor decode_heic(
       should_return_rgb(static_cast<ImageReadMode>(mode), has_alpha);
   int num_channels = return_rgb ? 3 : 4;
 
-  // libheif doesn't support decoding a 10/12-bit image into uint8 (libavif
-  // does!) or decoding an 8bit image into uint16. We decode into 8bit or uint16
-  // for >8bit images, and run the necessary post-processing in Python to
-  // respect the desired output_dtype.
+  // Decode into a 16-bit container only when the source actually carries >8 bits
+  // AND 16-bit output is wanted. For uint8 output we let libheif downscale a
+  // >8-bit source straight to 8-bit. We never ask libheif to *widen* an 8-bit
+  // source to 16 bits: that would be a lossy 8->10->16 hop, so 8->16 is done
+  // exactly as `* 257` in Python instead.
+  bool output_16 = should_output_uint16(
+      static_cast<OutputDtype>(output_dtype), source_gt_8bit);
+  bool decode_16 = source_gt_8bit && output_16;
+
   constexpr bool little_endian = std::endian::native == std::endian::little;
   heif_chroma chroma;
-  if (source_gt_8bit) {
+  if (decode_16) {
     if (return_rgb) {
       chroma = little_endian ? heif_chroma_interleaved_RRGGBB_LE
                              : heif_chroma_interleaved_RRGGBB_BE;
@@ -160,10 +167,10 @@ torch::stable::Tensor decode_heic(
   // wrap it with from_blob.
   torch::stable::Tensor output = torch::stable::empty(
       {height, width, static_cast<int64_t>(num_channels)},
-      source_gt_8bit ? kStableUInt16 : kStableUInt8);
+      decode_16 ? kStableUInt16 : kStableUInt8);
   auto* output_ptr = static_cast<uint8_t*>(output.mutable_data_ptr());
 
-  int64_t row_num_bytes = width * num_channels * (source_gt_8bit ? 2 : 1);
+  int64_t row_num_bytes = width * num_channels * (decode_16 ? 2 : 1);
   for (int64_t h = 0; h < height; ++h) {
     std::memcpy(
         output_ptr + h * row_num_bytes,
@@ -171,15 +178,21 @@ torch::stable::Tensor decode_heic(
         static_cast<size_t>(row_num_bytes));
   }
 
-  if (source_gt_8bit) {
-    // 10bit and 12bit images are decoded into uint16 but are not scaled, so we
-    // do the scaling ourselves below into the uint16 range - that's what our
-    // Python side expects.
-
+  if (decode_16) {
+    // libheif writes the decoded values at their native bit depth (e.g. in
+    // [0, 1023] for 10-bit), NOT scaled to the full uint16 range, so we expand
+    // them ourselves.
+    STD_TORCH_CHECK(
+        bit_depth <= 16,
+        "Unexpected HEIC bit depth greater than 16: ",
+        bit_depth);
+    int shift = 16 - bit_depth;
     auto* output_ptr_16 = reinterpret_cast<uint16_t*>(output_ptr);
     int64_t num_values = height * width * num_channels;
     for (int64_t p = 0; p < num_values; ++p) {
-      output_ptr_16[p] <<= (16 - bit_depth);
+      uint16_t v = output_ptr_16[p];
+      output_ptr_16[p] =
+          static_cast<uint16_t>((v << shift) | (v >> (bit_depth - shift)));
     }
   }
 

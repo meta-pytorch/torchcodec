@@ -10,7 +10,7 @@
 namespace facebook::torchcodec {
 
 STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
-  m.def("decode_heic(Tensor input, int mode) -> Tensor");
+  m.def("decode_heic(Tensor input, int mode, int output_dtype=0) -> Tensor");
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

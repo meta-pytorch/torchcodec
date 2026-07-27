@@ -3696,7 +3696,9 @@ class TestImageDecoder:
 
         monkeypatch.setattr(torch.ops, "load_library", boom)
         try:
-            with pytest.raises(ImportError, match="Failed to load the HEIC decoding library"):
+            with pytest.raises(
+                ImportError, match="Failed to load the HEIC decoding library"
+            ):
                 decode_heic(GRADIENT_HEIC.path)
         finally:
             # Don't leak the (failure-poisoned) cache to other tests.
@@ -4028,11 +4030,10 @@ class TestImageDecoder:
 
         # The alpha channel of a source without alpha is a constant "opaque"
         # value. libheif fills it at the source's native bit depth (e.g. 1023 for
-        # 10-bit), which our >8-bit remap turns into 1023<<6 = 65472 rather than a
-        # true 65535 -- consistent with how the color channels are remapped.
+        # 10-bit), which our >8-bit remap bit-replicates to a true 65535 (the top
+        # of the uint16 range), the same as for a fully-saturated color channel.
         if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
-            assert (uint16[-1] == uint16[-1].flatten()[0]).all()  # constant
-            assert uint16[-1].to(torch.int64).min() > 60000  # ~opaque
+            assert (uint16[-1] == 65535).all()  # constant, fully opaque
 
     @pytest.mark.parametrize(
         "decode_fn, asset",

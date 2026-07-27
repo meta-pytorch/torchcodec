@@ -23,10 +23,11 @@ enum class ImageReadMode : int64_t {
   RGB_ALPHA = 4,
 };
 
-// Requested output dtype. Must be kept in-sync with _OUTPUT_DTYPE_TO_CODE in
-// torchcodec/decoders/_image_decoders.py. Only relevant for the decoders whose
-// source can carry more than 8 bits per channel (PNG, AVIF); AUTO keeps the
-// source's native precision (16-bit for >8-bit sources, 8-bit otherwise).
+// Requested output dtype. Must be kept in-sync with the codes in
+// _validate_output_dtype in torchcodec/decoders/_image_decoders.py. Only
+// relevant for the decoders whose source can carry more than 8 bits per channel
+// (PNG, AVIF, HEIC); AUTO keeps the source's native precision (16-bit for >8-bit
+// sources, 8-bit otherwise).
 enum class OutputDtype : int64_t {
   UINT8 = 0,
   UINT16 = 1,
