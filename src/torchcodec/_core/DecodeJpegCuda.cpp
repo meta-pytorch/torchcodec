@@ -40,20 +40,32 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
 
 namespace facebook::torchcodec {
 
-// TODO_IMAGE write a quick blurb about the hardware vs software paths (software
-// does NOT mean CPU-only), the 'backends', the simple entry-points vs decoupled
-// API.
-// nvjpegDecodeBatch appears to be the only entry-point for the HW path, but
-// unclear.
-// Benchmarked on an A100 with the HW JPEG engine. Conclusions:
-// - nvjpegDecodeBatched (HW) beats looped nvjpegDecode (SW) and scales with
-//   batch size (up to ~4x at batch 64); the SW per-image cost is flat, i.e. it
-//   does not benefit from batching. So a batched API is worth exposing.
-// - Even for a single image, nvjpegDecodeBatched is marginally faster than the
-//   SW path (once warmed up), so always routing through the HW batched call is
-//   fine.
-// - nvjpegDecode does NOT dispatch to the HW engine; only nvjpegDecodeBatched
-//   does (confirmed via nsys: the HW path shows no Huffman/IDCT GPU kernels).
+// number of cores / nvdec
+//
+//
+// There are two main paths for decoding JPEGs with nvJPEG: the hardware path
+// (which uses the built-in silicon 'fixed function' JPEG engine), and the
+// software path with will use a mix of CPU and GPU kernels (the software path
+// is NOT CPU-only). The software path has 'backends' which determine how to
+// split the work between CPU and GPU.
+//
+// In our implementation, we try to use the HW path if it's available via
+// nvjpegDecodeBatched(), and we fallback to the SW path with the 'default
+// backend' if HW isn't available, or for those (typically progressive) JPEGs
+// that the HW path doesn't support.
+//
+// A few things worth nothing:
+// - Not super clear from the docs, but nvjpegDecodeBatched() seems to be the
+// only
+//   entry-point for the HW path.
+// - nvjpegDecode(), which we use for the SW path, does not seem to support the
+//   HW path (but we don't need it to)
+// - Calling nvjpegDecodeBatched() on batch_size is much faster than calling it
+//   N times on batch_size // N. This justifies why we publicly expose a batched
+//   API and batched inputs.
+// - Even for a single image, calling nvjpegDecodeBatched() is not slower than
+//   the SW path, so there's no reason to have a smart dispatching logic based
+//   on batch size. We always route through the HW path when we can.
 
 using namespace exif_private;
 
@@ -101,21 +113,23 @@ ExifOrientation fetch_exif_orientation_from_jpeg_bytes(
   return ExifOrientation::Unspecified;
 }
 
-// How many idle decoders to keep around per GPU. Each decoder holds nvJPEG
-// handles plus pinned/device buffers, so calls reuse a cached one instead of
-// rebuilding.
+// We cache decoder objects for the same reason we cache NVDEC decoders: they're
+// expensive to create and destroy. To determine the ideal cache size, I ran
+// benchmarks on a A100 where each thread calls its own decode_jpeg():
+// - The best throughput is achieved when num_threads ==
+//   kMaxCachedDecodersPerDevice. As soon as num_threads >
+//   kMaxCachedDecodersPerDevice, throughput collapses sharply, because the cost
+//   of creating a new decoder is so prohibitive.
+// - Provided the batch size is large enough, num_threads=1 in the HW path is
+//   pretty close to the roofline already (~6k fps @ 720p) because
+//   jpegDecodeBatched() will dispatch to the jpeg cores itself. So the benefits
+//   of multithreading the jpeg decoding is small-ish anyway.
 //
-// This is a multi-threading scaling bottleneck: throughput scales with the
-// number of concurrent callers only up to this cap, then collapses sharply once
-// threads > cap. The reason is that building a decoder is expensive (~530ms,
-// dominated by nvjpegCreateEx(HARDWARE)) while the decode itself is ~1-2ms, so
-// any thread that can't get a cached decoder pays that ~530ms on every call. A
-// decoder's memory footprint is small (~29 MiB GPU, ~17 MiB CPU), and the pool
-// grows lazily (the cap only bounds *retention*, not pre-allocation), so a
-// generous cap is nearly free unless that many callers are actually concurrent.
-// Hence we size this for typical dataloader concurrency rather than a small
-// value.
-constexpr size_t kMaxCachedDecodersPerDevice = 16;
+// One decoder takes <30Mb of GPU memory and RAM, so it's fairly cheap. Since
+// the downside of not being able to cache a decoder is so high, we allow a
+// generous amount of decoders in the cache. This isn't exposed for now, it
+// probably shouldn't be.
+constexpr size_t kMaxCachedDecodersPerDevice = 32;
 
 } // namespace
 
@@ -195,13 +209,6 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
   NVJpegCache& cache = NVJpegCache::get_cache(device);
   std::unique_ptr<CUDAJpegDecoder> decoder = cache.get_decoder(device);
 
-  // decode_images() host-synchronizes before returning, so on success all GPU
-  // work is done and the decoder is safe to recycle. If it throws, we
-  // deliberately let `decoder` go out of scope and be destroyed instead of
-  // returning it: a decoder that failed mid-decode may hold in-flight or failed
-  // nvJPEG state (the end-of-decode sync was never reached), so it shouldn't be
-  // handed to the next caller. Dropping it just costs one decoder rebuild on the
-  // (rare) error path -- no leak, since unique_ptr cleans it up.
   std::vector<torch::stable::Tensor> output = decoder->decode_images(
       contig_images, static_cast<ImageReadMode>(mode), current_stream);
   cache.return_decoder(std::move(decoder));
