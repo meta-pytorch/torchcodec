@@ -255,7 +255,7 @@ def decode_jpeg(
     device = torch.device(device)
 
     is_batch = isinstance(source, (list, tuple))
-    sources: list = list(source) if is_batch else [source]
+    sources: list = list(source) if is_batch else [source]  # type: ignore[arg-type]
 
     if device.type == "cpu":
         decoded_list = [
