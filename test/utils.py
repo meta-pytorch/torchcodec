@@ -484,6 +484,25 @@ GRADIENT_HEIC = TestImage(
     filename="gradient.heic", width=1280, height=720, num_channels=3
 )
 
+# GRADIENT_HEIC saved with orientation metadata (stored by pillow-heif as the
+# HEIF irot/imir transform properties, which libheif applies on decode). Used to
+# check we respect orientation. width/height are the DECODED (post-orientation)
+# dimensions. Generated with the GRADIENT_PNG recipe above, then (needs
+# pillow-heif):
+# import pillow_heif; pillow_heif.register_heif_opener()
+# for orientation, fname in ((6, "gradient_rotated.heic"),
+#                            (2, "gradient_mirrored.heic")):
+#     img = Image.fromarray(np.stack([r, g, b], axis=-1))
+#     exif = img.getexif(); exif[0x0112] = orientation  # EXIF orientation tag
+#     img.save(fname, exif=exif.tobytes(), quality=-1, chroma=444)
+# 6 is a 90-degree rotation (exercises irot); 2 is a horizontal mirror (imir).
+GRADIENT_ROTATED_HEIC = TestImage(
+    filename="gradient_rotated.heic", width=720, height=1280, num_channels=3
+)
+GRADIENT_MIRRORED_HEIC = TestImage(
+    filename="gradient_mirrored.heic", width=1280, height=720, num_channels=3
+)
+
 # 720p RGBA HEIC (lossless 4:4:4): same gradient as GRADIENT_HEIC with the
 # diagonal alpha ramp of RGBA_PNG. Generated with the GRADIENT_PNG recipe, then:
 # a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)

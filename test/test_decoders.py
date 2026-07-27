@@ -76,7 +76,9 @@ from .utils import (
     GRADIENT_HEIC,
     GRADIENT_INTERLACED_PNG,
     GRADIENT_JPEG,
+    GRADIENT_MIRRORED_HEIC,
     GRADIENT_PNG,
+    GRADIENT_ROTATED_HEIC,
     GRADIENT_WEBP,
     GRAYSCALE_16BIT_PNG,
     GRAYSCALE_ALPHA_PNG,
@@ -3991,6 +3993,26 @@ class TestImageDecoder:
         reference = decode_png(png_asset.path, mode=mode)
         assert decoded.shape == reference.shape
         assert decoded.dtype == reference.dtype == torch.uint8
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_heic
+    @needs_png
+    @pytest.mark.parametrize(
+        "asset, orientation",
+        (
+            (GRADIENT_ROTATED_HEIC, 6),  # 90-degree rotation (HEIF irot)
+            (GRADIENT_MIRRORED_HEIC, 2),  # horizontal mirror (HEIF imir)
+        ),
+    )
+    def test_heic_orientation(self, asset, orientation):
+        # We check against a png reference decoded by PIL because encoding an
+        # HEIC would require pillow_heic which we don't want to install on the
+        # CI.
+        decoded = decode_heic(asset.path, mode="RGB")
+        ref_img = Image.open(GRADIENT_PNG.path).convert("RGB")
+        ref_img.getexif()[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
+        reference = self._pil_to_tensor(ImageOps.exif_transpose(ref_img))
+        assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
     @needs_heic
