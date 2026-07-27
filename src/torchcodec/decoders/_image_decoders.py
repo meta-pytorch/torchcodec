@@ -390,7 +390,7 @@ def decode_heic(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode an HEIC/HEIF image into a tensor of shape ``(C, H, W)``.
+    """Decode an HEIC/HEIF image into a tensor.
 
     ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
     or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
@@ -399,12 +399,16 @@ def decode_heic(
     sources carry more than 8 bits per channel, so ``"auto"`` and
     ``torch.uint16`` preserve that precision.
 
+    The shape is ``(C, H, W)`` for a single-image HEIC and ``(N, C, H, W)`` for
+    a multi-image one (an image sequence / burst), one frame per top-level image
+    in file order. All frames must share the same dimensions and bit depth. The
+    mode-conversion helpers (see _decode_with_mode) operate on the channel dim,
+    so they handle both the single- and multi-image shapes.
+
     HEIC decoding requires **libheif** to be installed and discoverable at
     runtime. TorchCodec does not bundle it (libheif is LGPL): install it via
     e.g. ``conda install -c conda-forge libheif`` (or ``apt``/``brew``). If it
-    isn't available, this raises an :class:`ImportError`. Only the primary image
-    of a multi-image HEIC file is decoded (image sequences are not yet
-    supported).
+    isn't available, this raises an :class:`ImportError`.
     """
     code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)

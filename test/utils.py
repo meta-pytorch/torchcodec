@@ -524,6 +524,18 @@ GRADIENT_10BIT_HEIC = TestImage(
 )
 
 
+# Small 3-frame HEIC image sequence with full-canvas solid-color frames, saved
+# losslessly (4:4:4) so the solid colors survive the YUV round-trip. Each frame
+# is a distinct color so frame ordering is verifiable. Used to test the
+# (N, C, H, W) multi-image output. Generated (needs pillow-heif):
+# import pillow_heif; pillow_heif.register_heif_opener()
+# colors = [(200, 30, 30), (30, 200, 30), (30, 30, 200)]
+# frames = [Image.fromarray(np.full((48, 64, 3), c, np.uint8)) for c in colors]
+# frames[0].save("animated.heic", save_all=True, append_images=frames[1:],
+#                quality=-1, chroma=444)
+ANIMATED_HEIC = TestImage(filename="animated.heic", width=64, height=48, num_channels=3)
+
+
 @functools.cache
 def heic_is_available() -> bool:
     # "Available" means we can actually DECODE a HEIC here. We probe with a real
