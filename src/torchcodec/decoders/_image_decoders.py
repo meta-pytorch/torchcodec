@@ -241,10 +241,12 @@ def decode_jpeg(
     module note above for the semantics of ``output_dtype``.
 
     ``device`` selects where decoding happens: ``"cpu"`` (the default) uses
-    libjpeg-turbo, while a CUDA device (e.g. ``"cuda"``) decodes on the GPU with
-    nvJPEG and returns tensors on that device. On CUDA, ``source`` may also be a
-    list of sources, in which case a list of ``(C, H, W)`` tensors (one per
-    input) is returned and the batch is decoded together for higher throughput.
+    libjpeg-turbo, while a CUDA device (e.g. ``"cuda"``) decodes on the GPU and
+    returns tensors on that device -- with nvJPEG on NVIDIA GPUs and rocJPEG on
+    AMD/ROCm GPUs (both exposed under the ``"cuda"`` device string). On GPU,
+    ``source`` may also be a list of sources, in which case a list of
+    ``(C, H, W)`` tensors (one per input) is returned and the batch is decoded
+    together for higher throughput.
     """
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)

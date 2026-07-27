@@ -56,10 +56,10 @@ jobs:
       package-name: torchcodec
       trigger-event: ${{ github.event_name }}
       build-platform: "python-build-package"
-      # CPU-only compile: we build against torch-ROCm, but no ROCm/GPU decode
-      # sources exist yet (rocJPEG is a follow-up), so ENABLE_CUDA/ENABLE_ROCM
-      # are intentionally unset and this produces a CPU-only wheel.
-      build-command: "BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1 python -m build --wheel -vvv --no-isolation"
+      # ENABLE_ROCM=1 compiles the rocJPEG GPU JPEG decoder into
+      # libtorchcodec_image.so (the ROCm counterpart of nvJPEG). Video decoding
+      # stays on CPU. The FFmpeg core libs are still built against all FFmpeg.
+      build-command: "BUILD_AGAINST_ALL_FFMPEG_FROM_S3=1 ENABLE_ROCM=1 python -m build --wheel -vvv --no-isolation"
 
   install-and-test:
     # ROCm runners are not on EC2 and authenticate to AWS (ECR) via GitHub OIDC.
