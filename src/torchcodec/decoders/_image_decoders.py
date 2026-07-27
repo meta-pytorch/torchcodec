@@ -242,33 +242,39 @@ def decode_jpeg(
 
     ``device`` selects where decoding happens: ``"cpu"`` (the default) uses
     libjpeg-turbo, while a CUDA device (e.g. ``"cuda"``) decodes on the GPU with
-    nvJPEG and returns tensors on that device. On CUDA, ``source`` may also be a
-    list of sources, in which case a list of ``(C, H, W)`` tensors (one per
-    input) is returned and the batch is decoded together for higher throughput.
+    nvJPEG and returns tensors on that device.
+
+    ``source`` may also be a list of sources, in which case a list of
+    ``(C, H, W)`` tensors (one per input) is returned. On CUDA the batch is
+    decoded together for higher throughput; on CPU each source is decoded
+    independently (there is no batched CPU kernel), but a list is still accepted
+    and returned so the API is the same across devices.
     """
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     device = torch.device(device)
 
-    if device.type == "cpu":
-        if isinstance(source, (list, tuple)):
-            raise ValueError(
-                "Batch decoding (a list of sources) is only supported on CUDA "
-                "devices. Pass device='cuda' or decode sources one at a time."
-            )
-        data = _source_to_tensor(source)
-        decoded = _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
-        return _to_output_dtype(decoded, output_dtype)
+    is_batch = isinstance(source, (list, tuple))
+    sources: list = list(source) if is_batch else [source]
 
-    if isinstance(source, (list, tuple)):
-        is_batch = True
-        sources: list = list(source)
+    if device.type == "cpu":
+        decoded_list = [
+            _to_output_dtype(
+                _decode_with_mode(
+                    _decode_jpeg,
+                    _source_to_tensor(s),
+                    mode,
+                    _JPEG_NATIVE_OUTPUT_MODES,
+                ),
+                output_dtype,
+            )
+            for s in sources
+        ]
     else:
-        is_batch = False
-        sources = [source]
-    tensors = [_source_to_tensor(s) for s in sources]
-    decoded_list = _decode_jpegs_cuda_with_mode(tensors, mode, device)
-    decoded_list = [_to_output_dtype(img, output_dtype) for img in decoded_list]
+        tensors = [_source_to_tensor(s) for s in sources]
+        decoded_list = _decode_jpegs_cuda_with_mode(tensors, mode, device)
+        decoded_list = [_to_output_dtype(img, output_dtype) for img in decoded_list]
+
     return decoded_list if is_batch else decoded_list[0]
 
 

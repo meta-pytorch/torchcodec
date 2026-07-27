@@ -4072,6 +4072,25 @@ class TestImageDecoder:
             assert (decoded[-1] == 255).all()
 
     @needs_jpeg
+    def test_jpeg_batch_cpu(self):
+        # A list of sources decodes each independently and returns a list (one
+        # tensor per source), matching the CUDA batch API. a single source still
+        # returns a bare tensor.
+        sources = [GRADIENT_JPEG.path, GRAYSCALE_JPEG.path, GRADIENT_JPEG.path]
+        batch = decode_jpeg(sources, mode="RGB")
+        assert isinstance(batch, list)
+        assert len(batch) == len(sources)
+        for decoded, src in zip(batch, sources):
+            single = decode_jpeg(src, mode="RGB")
+            assert isinstance(single, torch.Tensor)
+            assert_frames_equal(decoded, single)
+
+        # A one-element list returns a one-element list, not a bare tensor.
+        as_list = decode_jpeg([GRADIENT_JPEG.path], mode="RGB")
+        assert isinstance(as_list, list) and len(as_list) == 1
+        assert_frames_equal(as_list[0], decode_jpeg(GRADIENT_JPEG.path, mode="RGB"))
+
+    @needs_jpeg
     def test_bad_huffman_decodes(self):
         # A JPEG with a bad Huffman table is still decodable; just make sure it
         # doesn't raise.
@@ -4143,10 +4162,6 @@ class TestImageDecoder:
         ).cuda()
         with pytest.raises(RuntimeError, match="must be on the CPU"):
             decode_jpeg(cuda_data, device="cuda")
-
-        with pytest.raises(ValueError, match="only supported on CUDA"):
-            # TODO_IMAGE maybe we should support it on CPU for consistency?
-            decode_jpeg([GRADIENT_JPEG.path, GRADIENT_JPEG.path])
 
     @needs_cuda
     @needs_jpeg
