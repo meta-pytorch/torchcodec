@@ -4542,10 +4542,8 @@ class TestImageDecoder:
         "mode", ("UNCHANGED", "RGB", "GRAY", "RGB_ALPHA", "GRAY_ALPHA")
     )
     def test_cuda_jpeg_matches_cpu(self, asset, mode):
-        # The GPU (nvJPEG) decode must produce a CUDA tensor of the same shape as
-        # the CPU (libjpeg) decode, and near-identical values. nvJPEG and libjpeg
-        # use different IDCT/color-conversion math, so we allow a small tolerance
-        # (empirically the diff is 100% within atol=3).
+        # Note that this will only exercise either the HW path or SW path
+        # depending on the GPU.
         cpu = decode_jpeg(asset.path, mode=mode)
         gpu = decode_jpeg(asset.path, mode=mode, device="cuda")
         assert gpu.device.type == "cuda"
@@ -4557,11 +4555,6 @@ class TestImageDecoder:
     @needs_jpeg
     @pytest.mark.parametrize("mode", ("UNCHANGED", "GRAY", "RGB"))
     def test_cuda_jpeg_batch(self, mode):
-        # A list of sources decodes to a list of tensors (one per input), and
-        # each must match the corresponding single-image decode. The batch mixes
-        # an RGB and a grayscale source. In UNCHANGED mode they decode to
-        # different channel counts (3 vs 1) within a single batch, exercising the
-        # per-format grouping of the hardware batched path.
         assets = [GRADIENT_JPEG, GRAYSCALE_JPEG, GRADIENT_JPEG]
         sources = [a.path for a in assets]
         batch = decode_jpeg(sources, mode=mode, device="cuda")
@@ -4582,8 +4575,6 @@ class TestImageDecoder:
     @needs_cuda
     @needs_jpeg
     def test_cuda_jpeg_single_vs_list_return_type(self):
-        # A single source returns a Tensor; a length-1 list returns a length-1
-        # list holding the same tensor.
         single = decode_jpeg(GRADIENT_JPEG.path, mode="RGB", device="cuda")
         assert isinstance(single, torch.Tensor)
         as_list = decode_jpeg([GRADIENT_JPEG.path], mode="RGB", device="cuda")
@@ -4592,12 +4583,10 @@ class TestImageDecoder:
 
     @needs_cuda
     @needs_jpeg
-    @pytest.mark.parametrize("orientation", (1, 3, 6, 8))
+    @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
+    # TODO_IMAGE: consider merging this with the existing exif test? Consider
+    # adding CUDA jpeg to most tests that are parametrized over other formats?
     def test_cuda_jpeg_exif_orientation(self, orientation):
-        # nvJPEG doesn't surface EXIF markers, so we parse them from the raw bytes
-        # and apply the orientation transform on the GPU tensor, matching the CPU
-        # decoder. Orientations 6/8 rotate 90/270 degrees (swapping H and W), so
-        # CPU and CUDA must agree on the transformed shape too.
         import io
 
         base = Image.open(GRADIENT_JPEG.path).convert("RGB")
@@ -4627,29 +4616,23 @@ class TestImageDecoder:
     @needs_jpeg
     def test_cuda_jpeg_errors(self):
         # Corrupt input raises.
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="nvjpegDecode failed:"):
             decode_jpeg(CORRUPT_JPEG.path, device="cuda")
 
-        # The encoded input must be on CPU (nvJPEG reads host memory).
         cuda_data = torch.frombuffer(
             bytearray(GRADIENT_JPEG.path.read_bytes()), dtype=torch.uint8
         ).cuda()
         with pytest.raises(RuntimeError, match="must be on CPU"):
             decode_jpeg(cuda_data, device="cuda")
 
-        # Batch (list) input is only valid on CUDA.
         with pytest.raises(ValueError, match="only supported on CUDA"):
+            # TODO_IMAGE maybe we should support it on CPU for consistency?
             decode_jpeg([GRADIENT_JPEG.path, GRADIENT_JPEG.path])
 
     @needs_cuda
     @needs_jpeg
     def test_cuda_jpeg_multithreaded(self):
-        # Many threads decoding concurrently on CUDA. Unlike torchvision (single
-        # global decoder + lock), our NVJpegCache hands each thread its own
-        # decoder from a per-device pool, so this genuinely exercises concurrent
-        # decodes: pool get/return under contention, multiple live decoders, and
-        # each decode running on its thread's own current stream. Every thread
-        # must produce results matching the CPU decode.
+        # Many threads decoding concurrently on CUDA.
         sources = [GRADIENT_JPEG.path, GRAYSCALE_JPEG.path, GRADIENT_JPEG.path]
         reference = [decode_jpeg(s, mode="RGB") for s in sources]
 
