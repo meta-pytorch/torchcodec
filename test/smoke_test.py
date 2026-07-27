@@ -270,6 +270,25 @@ class TestImageDecoder:
         assert img.dtype == torch.uint8
         assert img.shape == (3, h, w)
 
+    @needs_cuda
+    @needs_jpeg
+    def test_decode_jpeg_cuda(self):
+        path = GRADIENT_JPEG.path
+        h, w = GRADIENT_JPEG.height, GRADIENT_JPEG.width
+
+        img = decode_jpeg(path, device="cuda")
+        assert img.dtype == torch.uint8
+        assert img.device.type == "cuda"
+        assert img.shape == (3, h, w)
+
+        # Batch decoding is CUDA-only; check it returns one tensor per source.
+        imgs = decode_jpeg([path, path], device="cuda")
+        assert isinstance(imgs, list)
+        assert len(imgs) == 2
+        for i in imgs:
+            assert i.device.type == "cuda"
+            assert i.shape == (3, h, w)
+
     @needs_png
     def test_decode_png(self):
         path = GRADIENT_PNG.path
