@@ -52,6 +52,7 @@ from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 from .utils import (
     all_supported_devices,
     ANIMATED_GIF,
+    ANIMATED_HEIC,
     assert_frames_equal,
     assert_tensor_close_on_at_least,
     AV1_VIDEO,
@@ -4056,6 +4057,50 @@ class TestImageDecoder:
         # of the uint16 range), the same as for a fully-saturated color channel.
         if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
             assert (uint16[-1] == 65535).all()  # constant, fully opaque
+
+    @needs_heic
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            ("UNCHANGED", "RGB"),  # opaque source -> RGB
+            ("GRAY", "L"),
+            ("GRAY_ALPHA", "LA"),
+            ("RGB", "RGB"),
+            ("RGB_ALPHA", "RGBA"),
+        ),
+    )
+    def test_animated_heic(self, mode, pil_mode):
+        # A multi-image HEIC decodes to a batched (N, C, H, W) tensor, one frame
+        # per top-level image. The asset's frames are distinct solid colors
+        # (which survive the YUV round-trip cleanly), so we assert their values
+        # directly rather than against PIL, which would need pillow-heif.
+        colors = [(200, 30, 30), (30, 200, 30), (30, 30, 200)]
+
+        decoded = decode_heic(ANIMATED_HEIC.path, mode=mode)
+
+        assert decoded.ndim == 4
+        assert decoded.shape[0] == len(colors)
+        assert decoded.shape[2:] == (ANIMATED_HEIC.height, ANIMATED_HEIC.width)
+        assert decoded.dtype == torch.uint8
+
+        for i, color in enumerate(colors):
+            reference = self._pil_to_tensor(
+                Image.fromarray(
+                    numpy.full(
+                        (ANIMATED_HEIC.height, ANIMATED_HEIC.width, 3),
+                        color,
+                        dtype=numpy.uint8,
+                    )
+                ).convert(pil_mode)
+            )
+            assert decoded[i].shape == reference.shape
+            assert_tensor_close_on_at_least(
+                decoded[i], reference, percentage=99, atol=3
+            )
+
+        if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
+            # The source is opaque, so the alpha channel must be fully opaque.
+            assert (decoded[:, -1] == 255).all()
 
     @pytest.mark.parametrize(
         "decode_fn, asset",
