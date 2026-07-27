@@ -107,7 +107,7 @@ with encoder.open_file("output.mp4"):
    conda install "ffmpeg" -c conda-forge
    ```
 
-   HELLO
+   HELLO HELLO
 
    > **Note:** FFmpeg is an *optional* dependency. It is needed for video
    > and audio decoding and encoding (`VideoDecoder`, `AudioDecoder`,
