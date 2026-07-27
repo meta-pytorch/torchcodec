@@ -124,11 +124,14 @@ jobs:
       - name: Install torchcodec from the wheel
         run: ${CONDA_RUN} bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}-cp${{ env.python_version_without_periods }}*.whl"
 
+      # We skip installing libheif on CUDA 12.6: for whatever confusing and
+      # annoying reason, conda refuses to solve. HEIC is CPU-only anyway *and*
+      # it's still covered on CUDA 13 jobs, so this loses no real coverage.
       - name: Install test dependencies
-        run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh ${{ matrix.ffmpeg-version-for-tests }}
+        run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh ${{ matrix.ffmpeg-version-for-tests != '4' && matrix.cuda-version != '12.6' }}
       - name: Run Python tests
         run: |
-          if [ "${{ matrix.ffmpeg-version-for-tests }}" != "4" ]; then export FAIL_WITHOUT_HEIC=1; fi
+          if [ "${{ matrix.ffmpeg-version-for-tests }}" != "4" ] && [ "${{ matrix.cuda-version }}" != "12.6" ]; then export FAIL_WITHOUT_HEIC=1; fi
           ${CONDA_RUN} FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 pytest --override-ini="addopts=-v" test --tb=short
       - name: Run Python benchmark
         run: |
@@ -187,7 +190,7 @@ jobs:
         run: bash packaging/install_ffmpeg.sh ${{ env.FFMPEG_VERSION }}
 
       - name: Install test dependencies
-        run: bash packaging/install_test_dependencies.sh ${{ env.FFMPEG_VERSION }}
+        run: bash packaging/install_test_dependencies.sh ${{ env.FFMPEG_VERSION != '4' }}
 
       - name: Assert CUDA is not available
         run: |

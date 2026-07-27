@@ -103,7 +103,7 @@ jobs:
         run: bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
 
       - name: Install test dependencies
-        run: bash packaging/install_test_dependencies.sh ${{ matrix.ffmpeg-version-for-tests }}
+        run: bash packaging/install_test_dependencies.sh ${{ matrix.ffmpeg-version-for-tests != '4' }}
 
       - name: Run Python smoke tests
         run: |
