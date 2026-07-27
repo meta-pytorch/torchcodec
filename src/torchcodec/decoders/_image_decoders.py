@@ -178,14 +178,12 @@ def _to_output_dtype(
     if output_dtype == "auto" or decoded.dtype == output_dtype:
         return decoded
     elif output_dtype == torch.uint16:
-        assert (
-            decoded.dtype == torch.uint8
-        ), "Oops, please report a bug to the TorchCodec repo."
+        if decoded.dtype != torch.uint8:
+            raise RuntimeError("Oops, please report a bug to the TorchCodec repo.")
         return (decoded.to(torch.int32) * 257).to(torch.uint16)
     elif output_dtype == torch.uint8:
-        assert (
-            decoded.dtype == torch.uint16
-        ), "Oops, please report a bug to the TorchCodec repo."
+        if decoded.dtype != torch.uint16:
+            raise RuntimeError("Oops, please report a bug to the TorchCodec repo.")
         return (decoded.to(torch.float32) / 257).round().clamp(0, 255).to(torch.uint8)
     else:
         raise RuntimeError(

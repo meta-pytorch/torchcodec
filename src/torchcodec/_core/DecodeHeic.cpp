@@ -107,9 +107,9 @@ torch::stable::Tensor decode_heic(
       should_return_rgb(static_cast<ImageReadMode>(mode), has_alpha);
   int num_channels = return_rgb ? 3 : 4;
 
-  // Decode into a 16-bit container only when the source actually carries >8 bits
-  // AND 16-bit output is wanted. For uint8 output we let libheif downscale a
-  // >8-bit source straight to 8-bit. We never ask libheif to *widen* an 8-bit
+  // Decode into a 16-bit container only when the source actually carries >8
+  // bits AND 16-bit output is wanted. For uint8 output we let libheif downscale
+  // a >8-bit source straight to 8-bit. We never ask libheif to *widen* an 8-bit
   // source to 16 bits: that would be a lossy 8->10->16 hop, so 8->16 is done
   // exactly as `* 257` in Python instead.
   bool output_16 = should_output_uint16(
