@@ -168,6 +168,34 @@ def repair_linux(wheels):
         "libnvshmem*",
         "libnvfatbin*",
         "libnvcuvid*",
+        # ROCm/HIP runtime and its system deps: provided by the torch-ROCm wheel
+        # (torch/lib/) at runtime, exactly like the CUDA libs above. Never bundle
+        # them — they'd duplicate torch's copies and bloat the wheel.
+        "libamdhip64*",
+        "libamd_comgr*",
+        "libhsa-runtime64*",
+        "libhiprtc*",
+        "librocm-core*",
+        "librocprofiler-register*",
+        "libroctx64*",
+        "librocroller*",
+        "libMIOpen*",
+        "libhipblas*",
+        "libhipfft*",
+        "libhiprand*",
+        "libhipsolver*",
+        "libhipsparse*",
+        "librocblas*",
+        "librocfft*",
+        "librocrand*",
+        "librocsolver*",
+        "librocsparse*",
+        "librccl*",
+        "libnuma*",
+        "libdrm*",
+        "libelf*",
+        "libbz2*",
+        "liblzma*",
     ):
         excludes += ["--exclude", pattern]
     for wheel in wheels:
