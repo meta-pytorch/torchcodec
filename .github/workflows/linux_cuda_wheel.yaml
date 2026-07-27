@@ -131,8 +131,8 @@ jobs:
         run: ${CONDA_RUN} bash packaging/install_test_dependencies.sh ${{ matrix.ffmpeg-version-for-tests != '4' && matrix.cuda-version != '12.6' }}
       - name: Run Python tests
         run: |
-          if [ "${{ matrix.ffmpeg-version-for-tests }}" != "4" ] && [ "${{ matrix.cuda-version }}" != "12.6" ]; then export FAIL_WITHOUT_HEIC=1; fi
-          ${CONDA_RUN} FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 pytest --override-ini="addopts=-v" test --tb=short
+          if [ "${{ matrix.ffmpeg-version-for-tests }}" = "4" ] || [ "${{ matrix.cuda-version }}" = "12.6" ]; then export FAIL_WITHOUT_HEIC=0; fi
+          ${CONDA_RUN} FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_IMAGE_DECODERS=1 pytest --override-ini="addopts=-v" test --tb=short
       - name: Run Python benchmark
         run: |
           ${CONDA_RUN} time python benchmarks/decoders/gpu_benchmark.py --devices=cuda:0,cpu --resize_devices=none
@@ -198,8 +198,8 @@ jobs:
 
       - name: Run Python tests
         run: |
-          if [ "${{ env.FFMPEG_VERSION }}" != "4" ]; then export FAIL_WITHOUT_HEIC=1; fi
-          pytest --override-ini="addopts=-v" test --tb=short
+          if [ "${{ env.FFMPEG_VERSION }}" = "4" ]; then export FAIL_WITHOUT_HEIC=0; fi
+          FAIL_WITHOUT_IMAGE_DECODERS=1 pytest --override-ini="addopts=-v" test --tb=short
 
   install-and-test-no-ffmpeg:
     # Asserts that the CUDA wheel works WITHOUT FFmpeg installed: it must import,
@@ -257,7 +257,7 @@ jobs:
 
       - name: Run FFmpeg-free Python tests
         run: |
-          FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 \
+          FAIL_WITHOUT_IMAGE_DECODERS=1 FAIL_WITHOUT_HEIC=0 \
             pytest --override-ini="addopts=-v" test/test_ffmpeg_optional.py test/test_decoders.py::TestImageDecoder
 
   build-docs:
