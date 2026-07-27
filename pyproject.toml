@@ -63,6 +63,7 @@ TORCHCODEC_BUILD_PNG = {env = "TORCHCODEC_BUILD_PNG", default = "AUTO"}
 TORCHCODEC_BUILD_WEBP = {env = "TORCHCODEC_BUILD_WEBP", default = "AUTO"}
 TORCHCODEC_BUILD_AVIF = {env = "TORCHCODEC_BUILD_AVIF", default = "AUTO"}
 TORCHCODEC_BUILD_GIF = {env = "TORCHCODEC_BUILD_GIF", default = "AUTO"}
+TORCHCODEC_BUILD_NVJPEG = {env = "TORCHCODEC_BUILD_NVJPEG", default = "AUTO"}
 
 [project.optional-dependencies]
 dev = [
