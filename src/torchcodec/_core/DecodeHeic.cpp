@@ -105,10 +105,10 @@ torch::stable::Tensor decode_heic(
       should_return_rgb(static_cast<ImageReadMode>(mode), has_alpha);
   int num_channels = return_rgb ? 3 : 4;
 
-  // We always decode at the source's NATIVE bit depth: 8-bit interleaved RGB(A)
-  // for 8-bit sources, and 16-bit interleaved RGB(A) for >8-bit sources
-  // (remapped into the full uint16 range below). Forcing a different output
-  // dtype (uint8/uint16) is done in Python.
+  // libheif doesn't support decoding a 10/12-bit image into uint8 (libavif
+  // does!) or decoding an 8bit image into uint16. We decode into 8bit or uint16
+  // for >8bit images, and run the necessary post-processing in Python to
+  // respect the desired output_dtype.
   constexpr bool little_endian = std::endian::native == std::endian::little;
   heif_chroma chroma;
   if (source_gt_8bit) {
@@ -172,10 +172,10 @@ torch::stable::Tensor decode_heic(
   }
 
   if (source_gt_8bit) {
-    // e.g. for a 10-bit source, decoded values are 10-bit numbers stored in
-    // uint16. torchcodec/torchvision expect a uint16 value to span [0, 2**16),
-    // so we left-shift by (16 - bit_depth) to map into the full range. (Other
-    // libraries like libavif do this remap automatically; libheif does not.)
+    // 10bit and 12bit images are decoded into uint16 but are not scaled, so we
+    // do the scaling ourselves below into the uint16 range - that's what our
+    // Python side expects.
+
     auto* output_ptr_16 = reinterpret_cast<uint16_t*>(output_ptr);
     int64_t num_values = height * width * num_channels;
     for (int64_t p = 0; p < num_values; ++p) {
