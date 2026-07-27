@@ -3685,8 +3685,8 @@ class TestImageDecoder:
     def test_heic_missing_libheif_raises_import_error(self, monkeypatch):
         # If loading libtorchcodec_heic fails (typically because the optional,
         # non-bundled libheif isn't installed), decode_heic must raise a clear,
-        # actionable ImportError -- never a raw OSError. We simulate the failure
-        # so this runs regardless of whether libheif is actually present.
+        # actionable ImportError. We simulate the failure so this runs
+        # regardless of whether libheif is actually present.
         from torchcodec import _internally_replaced_utils as iru
 
         iru.load_heic_library.cache_clear()
@@ -3696,7 +3696,7 @@ class TestImageDecoder:
 
         monkeypatch.setattr(torch.ops, "load_library", boom)
         try:
-            with pytest.raises(ImportError, match="libheif"):
+            with pytest.raises(ImportError, match="Failed to load the HEIC decoding library"):
                 decode_heic(GRADIENT_HEIC.path)
         finally:
             # Don't leak the (failure-poisoned) cache to other tests.
@@ -3984,9 +3984,7 @@ class TestImageDecoder:
         # The HEIC assets are the SAME gradients as the corresponding PNGs, saved
         # losslessly (4:4:4), so decode_heic must match decode_png up to the tiny
         # rounding of the RGB<->YUV round-trip. We compare against PNG rather than
-        # PIL because Pillow needs the extra pillow-heif plugin to read HEIC,
-        # which we don't require for the test suite. This also exercises the
-        # shared Python mode-emulation helpers (GRAY/GRAY_ALPHA).
+        # PIL because Pillow needs the extra pillow-heif plugin to read HEIC.
         decoded = decode_heic(heic_asset.path, mode=mode)
         reference = decode_png(png_asset.path, mode=mode)
         assert decoded.shape == reference.shape
