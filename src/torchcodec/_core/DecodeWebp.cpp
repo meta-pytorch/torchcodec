@@ -225,10 +225,10 @@ torch::stable::Tensor decode_still_webp(
 torch::stable::Tensor decode_webp(
     const torch::stable::Tensor& input,
     int64_t mode) {
-  validate_encoded_data(input);
+  auto contig_input = validate_encoded_data(input);
 
-  auto input_ptr = input.const_data_ptr<uint8_t>();
-  auto input_size = input.numel();
+  auto input_ptr = contig_input.const_data_ptr<uint8_t>();
+  auto input_size = contig_input.numel();
 
   WebPBitstreamFeatures features;
   auto res = WebPGetFeatures(input_ptr, input_size, &features);

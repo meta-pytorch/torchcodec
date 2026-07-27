@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <torch/csrc/stable/ops.h>
 #include <torch/headeronly/util/Exception.h>
 
 #include "StableABICompat.h"
@@ -80,8 +81,15 @@ inline bool should_return_rgb(ImageReadMode mode, bool has_alpha) {
   }
 }
 
-inline void validate_encoded_data(const torch::stable::Tensor& input) {
-  STD_TORCH_CHECK(input.is_contiguous(), "Input tensor must be contiguous.");
+// Validates that `input` is a non-empty, 1-dimensional, uint8 CPU tensor of
+// encoded image bytes, and returns a contiguous version of it.
+inline torch::stable::Tensor validate_encoded_data(
+    const torch::stable::Tensor& input) {
+  STD_TORCH_CHECK(
+      input.device().type() == kStableCPU,
+      "Input tensor must be on the CPU, got a tensor on ",
+      device_type_name(input.device().type()),
+      ".");
   STD_TORCH_CHECK(
       input.scalar_type() == kStableUInt8,
       "Input tensor must have uint8 data type, got ",
@@ -93,6 +101,7 @@ inline void validate_encoded_data(const torch::stable::Tensor& input) {
       " dims  and ",
       input.numel(),
       " numels.");
+  return torch::stable::contiguous(input);
 }
 
 } // namespace facebook::torchcodec

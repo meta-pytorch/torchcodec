@@ -4339,7 +4339,6 @@ class TestImageDecoder:
         (
             (lambda t: t[None], "1-dimensional"),
             (lambda t: t.to(torch.float32), "uint8"),
-            (lambda t: t[::2], "contiguous"),
             (lambda t: t[:0], "non-empty"),
         ),
     )
@@ -4347,6 +4346,31 @@ class TestImageDecoder:
         data = torch.randint(0, 256, (100,), dtype=torch.uint8)
         with pytest.raises(RuntimeError, match=match):
             decode_fn(make_bad(data))
+
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (
+            _jpeg_param(GRADIENT_JPEG),
+            _png_param(GRADIENT_PNG),
+            _webp_param(GRADIENT_WEBP),
+            _gif_param(GRADIENT_GIF),
+            _avif_param(GRADIENT_AVIF),
+            _heic_param(GRADIENT_HEIC),
+        ),
+    )
+    def test_non_contiguous_encoded_data(self, decode_fn, asset):
+        # A non-contiguous tensor of encoded bytes must decode to the same result
+        # as the contiguous data: the decoders make it contiguous internally
+        # rather than erroring.
+        contiguous = torch.frombuffer(
+            bytearray(asset.path.read_bytes()), dtype=torch.uint8
+        )
+        padded = torch.empty(contiguous.numel() * 2, dtype=torch.uint8)
+        padded[::2] = contiguous
+        non_contiguous = padded[::2]
+        assert not non_contiguous.is_contiguous()
+        assert torch.equal(non_contiguous, contiguous)
+        assert_frames_equal(decode_fn(non_contiguous), decode_fn(contiguous))
 
     @needs_png
     @pytest.mark.parametrize("shape", ((27, 27), (60, 60), (105, 105)))
@@ -4798,7 +4822,7 @@ class TestImageDecoder:
         cuda_data = torch.frombuffer(
             bytearray(GRADIENT_JPEG.path.read_bytes()), dtype=torch.uint8
         ).cuda()
-        with pytest.raises(RuntimeError, match="must be on CPU"):
+        with pytest.raises(RuntimeError, match="must be on the CPU"):
             decode_jpeg(cuda_data, device="cuda")
 
         with pytest.raises(ValueError, match="only supported on CUDA"):
