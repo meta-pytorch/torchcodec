@@ -31,18 +31,5 @@ python -m pip install "scikit-build-core>=0.10" ninja
 
 if [[ "${TORCHCODEC_BUILD_IMAGE:-ON}" != "0" ]]; then
     conda install -y libjpeg-turbo -c pytorch
-    conda install -y libpng -c conda-forge
-    conda install -y "libwebp>=1.3" -c conda-forge
-    # libheif is *built against* (for libtorchcodec_heic) but, unlike the image
-    # libs above, it is NOT bundled into the wheel: it's LGPL and treated as a
-    # user-supplied runtime dependency (see packaging/repair_wheel.py, which
-    # excludes it). We install it here alongside the other image libs (gated on
-    # the same TORCHCODEC_BUILD_IMAGE flag) purely so the build can link the real
-    # HEIC decoder; without it the build falls back to a stub. Installing it in
-    # the build env is safe (FFmpeg comes from S3, not conda, so there's no
-    # aom/svt-av1 pin to conflict with -- unlike the *test* envs).
-    conda install -y libheif -c conda-forge
-
-    echo "=== image build deps installed; libheif info: ==="
-    conda list 2>/dev/null | grep -iE "libheif|libde265|libavif|libjpeg|libpng|libwebp" || true
+    conda install -y libpng "libwebp>=1.3" libheif -c conda-forge
 fi

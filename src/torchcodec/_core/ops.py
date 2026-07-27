@@ -42,11 +42,19 @@ decode_avif = torch.ops.torchcodec_ns.decode_avif.default
 
 def get_decode_heic():
     # decode_heic lives in the separate, lazily-loaded libtorchcodec_heic (see
-    # load_heic_library), so unlike the decoders above we can't bind its op at
-    # import time: the op isn't registered until the library is loaded. This
-    # helper loads the library (raising an actionable ImportError if libheif
-    # isn't available) and returns the op.
-    load_heic_library()
+    # load_heic_library), so its op isn't registered until that library loads,
+    # and loading fails if the user hasn't installed libheif. Turn that into an
+    # actionable error.
+    try:
+        load_heic_library()
+    except Exception as e:
+        raise ImportError(
+            "Failed to load the HEIC decoding library. HEIC decoding requires "
+            "libheif to be installed and discoverable at runtime; TorchCodec "
+            "does not bundle it (it's LGPL). Install it, e.g. with "
+            "`conda install -c conda-forge libheif`, `apt install libheif1`, or "
+            "`brew install libheif`."
+        ) from e
     return torch.ops.torchcodec_ns.decode_heic.default
 
 

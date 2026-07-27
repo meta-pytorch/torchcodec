@@ -371,11 +371,7 @@ def decode_heic(
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    # _get_decode_heic() lazily loads libtorchcodec_heic (and thus libheif),
-    # raising an actionable ImportError if libheif isn't available.
     decode_heic_op = _get_decode_heic()
-    # The C++ op returns the source's native precision (uint8 for 8-bit sources,
-    # uint16 for 10/12-bit ones); we apply the requested output_dtype here.
     decoded = _decode_with_mode(decode_heic_op, data, mode, _HEIC_NATIVE_OUTPUT_MODES)
     return _to_output_dtype(decoded, output_dtype)
 

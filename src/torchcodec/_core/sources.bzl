@@ -85,11 +85,6 @@ image_ops_sources = [
     "image_custom_ops.cpp",
 ]
 
-# HEIC decoder, built into its OWN separately-loadable library
-# (libtorchcodec_heic), NOT into the image library. It links libheif (LGPL),
-# which we do not bundle in wheels and treat as an optional, user-supplied
-# runtime dependency. Kept out of image_sources/image_ops_sources so it never
-# gets compiled into libtorchcodec_image.
 heic_sources = [
     "DecodeHeic.cpp",
 ]
