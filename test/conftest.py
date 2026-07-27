@@ -39,6 +39,33 @@ def pytest_configure(config):
     )
 
 
+def skip_image_decoder_test(codec):
+    # Whether to skip a test that needs the given image codec: we skip when the
+    # backing library isn't available, unless we're told to fail loudly (on CI
+    # we are, so a missing library surfaces as a failure rather than a silent
+    # skip).
+    #
+    # FAIL_WITHOUT_IMAGE_DECODERS is a catch-all default covering every image
+    # codec. A per-codec FAIL_WITHOUT_<CODEC> overrides the catch-all, so a CI
+    # job can enable the catch-all and still opt a single codec out, e.g.
+    # FAIL_WITHOUT_IMAGE_DECODERS=1 FAIL_WITHOUT_HEIC=0.
+    if {
+        "jpeg": jpeg_is_available,
+        "png": png_is_available,
+        "webp": webp_is_available,
+        "avif": avif_is_available,
+        "heic": heic_is_available,
+    }[codec]():
+        return False
+    override = os.environ.get(f"FAIL_WITHOUT_{codec.upper()}")
+    fail_without = (
+        override
+        if override is not None
+        else os.environ.get("FAIL_WITHOUT_IMAGE_DECODERS")
+    )
+    return fail_without in (None, "0")
+
+
 def pytest_collection_modifyitems(items):
     # This hook is called by pytest after it has collected the tests (google its
     # name to check out its doc!). We can ignore some tests as we see fit here,
@@ -95,52 +122,20 @@ def pytest_collection_modifyitems(items):
             # those for whatever reason, we need to know.
             item.add_marker(pytest.mark.skip(reason="CUDA not available."))
 
-        # Same rationale as needs_cuda: skip when libjpeg support isn't built in,
-        # unless FAIL_WITHOUT_JPEG is set (on CI it is, so a missing libjpeg
-        # surfaces as a failure rather than a silent skip).
-        if (
-            needs_jpeg
-            and not jpeg_is_available()
-            and os.environ.get("FAIL_WITHOUT_JPEG") is None
-        ):
+        # Same rationale as needs_cuda; see skip_image_decoder_test().
+        if needs_jpeg and skip_image_decoder_test("jpeg"):
             item.add_marker(pytest.mark.skip(reason="libjpeg support not available."))
 
-        # Same rationale as needs_jpeg: skip when libpng support isn't built in,
-        # unless FAIL_WITHOUT_PNG is set (on CI it is, so a missing libpng
-        # surfaces as a failure rather than a silent skip).
-        if (
-            needs_png
-            and not png_is_available()
-            and os.environ.get("FAIL_WITHOUT_PNG") is None
-        ):
+        if needs_png and skip_image_decoder_test("png"):
             item.add_marker(pytest.mark.skip(reason="libpng support not available."))
 
-        # Same rationale as needs_jpeg: skip when libwebp support isn't built in,
-        # unless FAIL_WITHOUT_WEBP is set (on CI it is, so a missing libwebp
-        # surfaces as a failure rather than a silent skip).
-        if (
-            needs_webp
-            and not webp_is_available()
-            and os.environ.get("FAIL_WITHOUT_WEBP") is None
-        ):
+        if needs_webp and skip_image_decoder_test("webp"):
             item.add_marker(pytest.mark.skip(reason="libwebp support not available."))
 
-        # Same rationale as needs_jpeg: skip when libavif support isn't built in,
-        # unless FAIL_WITHOUT_AVIF is set (on CI it is, so a missing libavif
-        # surfaces as a failure rather than a silent skip).
-        if (
-            needs_avif
-            and not avif_is_available()
-            and os.environ.get("FAIL_WITHOUT_AVIF") is None
-        ):
+        if needs_avif and skip_image_decoder_test("avif"):
             item.add_marker(pytest.mark.skip(reason="libavif support not available."))
 
-        # Same rationale as needs_jpeg
-        if (
-            needs_heic
-            and not heic_is_available()
-            and os.environ.get("FAIL_WITHOUT_HEIC") is None
-        ):
+        if needs_heic and skip_image_decoder_test("heic"):
             item.add_marker(pytest.mark.skip(reason="libheif support not available."))
 
         out_items.append(item)
