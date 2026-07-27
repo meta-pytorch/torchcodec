@@ -3458,6 +3458,15 @@ def _jpeg_param(*values):
     return pytest.param(decode_jpeg, *values, marks=pytest.mark.needs_jpeg, id="jpeg")
 
 
+def _jpeg_cuda_param(*values):
+    return pytest.param(
+        partial(decode_jpeg, device="cuda"),
+        *values,
+        marks=(pytest.mark.needs_jpeg, pytest.mark.needs_cuda),
+        id="jpeg_cuda",
+    )
+
+
 def _png_param(*values):
     return pytest.param(decode_png, *values, marks=pytest.mark.needs_png, id="png")
 
@@ -3543,6 +3552,7 @@ class TestImageDecoder:
         "decode_fn, asset",
         (
             _jpeg_param(GRAYSCALE_JPEG),
+            _jpeg_cuda_param(GRAYSCALE_JPEG),
             _png_param(GRAYSCALE_PNG),
             _webp_param(RGBA_WEBP),
             _gif_param(GRADIENT_GIF),
@@ -3593,6 +3603,7 @@ class TestImageDecoder:
         "decode_fn, asset",
         (
             _jpeg_param(GRADIENT_JPEG),
+            _jpeg_cuda_param(GRADIENT_JPEG),
             _png_param(GRADIENT_PNG),
             _webp_param(GRADIENT_WEBP),
             _gif_param(GRADIENT_GIF),
@@ -4185,6 +4196,7 @@ class TestImageDecoder:
         "decode_fn, fmt, ext, save_kwargs",
         (
             _jpeg_param("JPEG", "jpg", {"quality": 95}),
+            _jpeg_cuda_param("JPEG", "jpg", {"quality": 95}),
             _png_param("PNG", "png", {}),
             _webp_param("WEBP", "webp", {"lossless": True}),
             # Note that avif doesn't encode exif data, it has its own metadata
@@ -4206,8 +4218,11 @@ class TestImageDecoder:
         decoded = decode_fn(path, mode="RGB")
         reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
 
+        # nvJPEG differs a bit more from PIL/libjpeg than our CPU decoder does.
+        atol = 3 if decoded.device.type == "cuda" else 2
+        decoded = decoded.cpu()
         assert decoded.shape == reference.shape
-        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=atol)
 
     @pytest.mark.parametrize(
         "decode_fn, fmt, ext, save_kwargs",
@@ -4351,6 +4366,7 @@ class TestImageDecoder:
         "decode_fn, asset",
         (
             _jpeg_param(GRADIENT_JPEG),
+            _jpeg_cuda_param(GRADIENT_JPEG),
             _png_param(GRADIENT_PNG),
             _webp_param(GRADIENT_WEBP),
             _gif_param(GRADIENT_GIF),
@@ -4780,26 +4796,6 @@ class TestImageDecoder:
         as_list = decode_jpeg([GRADIENT_JPEG.path], mode="RGB", device="cuda")
         assert isinstance(as_list, list) and len(as_list) == 1
         torch.testing.assert_close(as_list[0], single, atol=0, rtol=0)
-
-    @needs_cuda
-    @needs_jpeg
-    @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
-    # TODO_IMAGE: consider merging this with the existing exif test? Consider
-    # adding CUDA jpeg to most tests that are parametrized over other formats?
-    def test_cuda_jpeg_exif_orientation(self, orientation):
-        import io
-
-        base = Image.open(GRADIENT_JPEG.path).convert("RGB")
-        exif = base.getexif()
-        exif[0x0112] = orientation  # 0x0112 == EXIF Orientation tag
-        buf = io.BytesIO()
-        base.save(buf, format="JPEG", exif=exif, quality=95)
-        data = torch.frombuffer(bytearray(buf.getvalue()), dtype=torch.uint8)
-
-        cpu = decode_jpeg(data, mode="RGB")
-        gpu = decode_jpeg(data, mode="RGB", device="cuda")
-        assert gpu.shape == cpu.shape
-        assert_tensor_close_on_at_least(gpu.cpu(), cpu, percentage=99, atol=3)
 
     @needs_cuda
     @needs_jpeg
