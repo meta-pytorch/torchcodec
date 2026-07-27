@@ -43,25 +43,11 @@ endif()
 if(NOT DEFINED TORCHCODEC_BUILD_IMAGE)
     set(TORCHCODEC_BUILD_IMAGE "ON")
 endif()
-foreach(_codec JPEG PNG WEBP AVIF GIF)
+foreach(_codec JPEG PNG WEBP AVIF GIF HEIC)
     if(NOT DEFINED TORCHCODEC_BUILD_${_codec})
         set(TORCHCODEC_BUILD_${_codec} "AUTO")
     endif()
 endforeach()
-
-# HEIC is handled separately from the codecs above: it goes into its own
-# libtorchcodec_heic library (linking LGPL libheif, which we do not bundle) and
-# its default is intentionally "soft". TORCHCODEC_BUILD_HEIC:
-#   - AUTO (default): build the real decoder if libheif is found, otherwise
-#     build a stub (decode_heic raises an actionable error at call time). A dev
-#     without libheif still gets a working build.
-#   - ON: require libheif (fatal error if it can't be found).
-#   - OFF: force the stub (don't even look for libheif).
-# Unlike the other codecs, AUTO does NOT inherit TORCHCODEC_BUILD_IMAGE: HEIC is
-# genuinely optional, so a missing libheif must not fail the build by default.
-if(NOT DEFINED TORCHCODEC_BUILD_HEIC)
-    set(TORCHCODEC_BUILD_HEIC "AUTO")
-endif()
 
 # Returns true (via out_want) if TORCHCODEC_BUILD_IMAGE is on, or if that
 # specific codec flag is explicitly on, and false otherwise.
@@ -623,15 +609,9 @@ endfunction()
 #
 # HEIC links libheif (+ its HEVC decoder libde265), which are LGPL and therefore
 # NOT bundled in our wheels: we treat libheif like FFmpeg, an optional
-# user-supplied runtime dependency. Because this library carries a DT_NEEDED on
-# libheif, it must NOT be loaded at import time (that would make `import
-# torchcodec` hard-require libheif). Instead it's loaded lazily on the first
-# decode_heic (see load_heic_library() in _internally_replaced_utils.py), which
-# is why it can't live in libtorchcodec_image (that one is loaded eagerly).
-#
-# We ALWAYS build and ship this library: a real build linking libheif when
-# libheif is found (or TORCHCODEC_BUILD_HEIC=ON), otherwise a small stub whose
-# decode_heic raises an actionable "rebuild with libheif" error.
+# user-supplied runtime dependency, and most of torchcodec should just work
+# without libheif - we should only fail at runtime if it can't be found *and* if
+# it's needed.
 function(make_torchcodec_heic_library)
     set(heic_library_name "libtorchcodec_heic")
     set(heic_library_sources
@@ -646,23 +626,7 @@ function(make_torchcodec_heic_library)
         "${TORCH_LIBRARIES}"
     )
 
-    # Resolve whether we want to look for libheif at all. We rely on CMake's
-    # boolean truthiness so this handles ON/OFF, 1/0, TRUE/FALSE and AUTO (a
-    # non-false constant, hence truthy) uniformly.
-    if(TORCHCODEC_BUILD_HEIC)
-        set(want_heic TRUE)
-    else()
-        set(want_heic FALSE)
-    endif()
-    # "Required" means the user explicitly asked for HEIC (ON/1/TRUE), as opposed
-    # to the soft AUTO default: a missing libheif is fatal only when required.
-    if(want_heic AND NOT TORCHCODEC_BUILD_HEIC STREQUAL "AUTO")
-        set(heic_required TRUE)
-    else()
-        set(heic_required FALSE)
-    endif()
-
-    set(heic_found FALSE)
+    resolve_image_codec("${TORCHCODEC_BUILD_HEIC}" want_heic)
     if(want_heic)
         # conda-forge's libheif ships a CMake package config (libheif-config.cmake)
         # exposing the `heif` imported target. Fall back to pkg-config otherwise.
@@ -673,6 +637,7 @@ function(make_torchcodec_heic_library)
                 set(libheif_ROOT "$ENV{CONDA_PREFIX}")
             endif()
         endif()
+        set(heic_found FALSE)
         find_package(libheif CONFIG QUIET)
         if(libheif_FOUND)
             set(heic_found TRUE)
@@ -687,23 +652,20 @@ function(make_torchcodec_heic_library)
                 endif()
             endif()
         endif()
-    endif()
 
-    if(heic_found)
-        target_compile_definitions(${heic_library_name} PRIVATE TORCHCODEC_ENABLE_HEIC=1)
-        message(STATUS "libheif found: building torchcodec with HEIC image decoding support.")
-    elseif(heic_required)
-        message(FATAL_ERROR
-            "libheif not found, but HEIC image decoding was explicitly requested "
-            "(TORCHCODEC_BUILD_HEIC=ON). Install libheif and its development "
-            "headers (e.g. `conda install -c conda-forge libheif`), or leave "
-            "TORCHCODEC_BUILD_HEIC=AUTO to build a stub, or set "
-            "TORCHCODEC_BUILD_HEIC=0 to force the stub.")
+        if(heic_found)
+            target_compile_definitions(${heic_library_name} PRIVATE TORCHCODEC_ENABLE_HEIC=1)
+            message(STATUS "libheif found: building torchcodec with HEIC image decoding support.")
+        else()
+            message(FATAL_ERROR
+                "libheif not found, but HEIC image decoding is enabled. Install "
+                "libheif and its development headers (e.g. `conda install -c "
+                "conda-forge libheif`), or set TORCHCODEC_BUILD_HEIC=0 to build "
+                "without HEIC support (decode_heic will raise at runtime), or "
+                "TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders.")
+        endif()
     else()
-        message(STATUS
-            "libheif not found: building torchcodec with a HEIC stub. decode_heic "
-            "will raise an actionable error at call time; rebuild in an env with "
-            "libheif to enable HEIC decoding.")
+        message(STATUS "Not building torchcodec with HEIC image decoding support (disabled via TORCHCODEC_BUILD_HEIC/TORCHCODEC_BUILD_IMAGE): decode_heic will raise at runtime.")
     endif()
 
     # Hide everything except the torch op registration, like the image library.
