@@ -3819,6 +3819,7 @@ class TestImageDecoder:
         "decode_fn, asset",
         (
             _jpeg_param(GRADIENT_JPEG),
+            _jpeg_cuda_param(GRADIENT_JPEG),
             _png_param(GRADIENT_PNG),
             _webp_param(GRADIENT_WEBP),
             _gif_param(GRADIENT_GIF),
@@ -4796,17 +4797,6 @@ class TestImageDecoder:
         as_list = decode_jpeg([GRADIENT_JPEG.path], mode="RGB", device="cuda")
         assert isinstance(as_list, list) and len(as_list) == 1
         torch.testing.assert_close(as_list[0], single, atol=0, rtol=0)
-
-    @needs_cuda
-    @needs_jpeg
-    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.uint16, "auto"))
-    def test_cuda_jpeg_output_dtype(self, output_dtype):
-        gpu = decode_jpeg(
-            GRADIENT_JPEG.path, mode="RGB", output_dtype=output_dtype, device="cuda"
-        )
-        assert gpu.device.type == "cuda"
-        expected = torch.uint16 if output_dtype is torch.uint16 else torch.uint8
-        assert gpu.dtype == expected
 
     @needs_cuda
     @needs_jpeg
