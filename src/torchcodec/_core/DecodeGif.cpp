@@ -94,7 +94,7 @@ torch::stable::Tensor decode_gif(
   //
   // LibGif API docs: https://giflib.sourceforge.net/intro.html
 
-  validate_encoded_data(input);
+  auto contig_input = validate_encoded_data(input);
 
   int error = D_GIF_SUCCEEDED;
 
@@ -113,8 +113,8 @@ torch::stable::Tensor decode_gif(
   // If we do that, we'd have to make sure the buffers are never written to by
   // GIFLIB, otherwise we'd be overriding the tensor data.
   SourceCtx source_ctx{
-      .ptr = input.const_data_ptr<uint8_t>(),
-      .count = static_cast<size_t>(input.numel())};
+      .ptr = contig_input.const_data_ptr<uint8_t>(),
+      .count = static_cast<size_t>(contig_input.numel())};
   GifFileType* gif_file =
       DGifOpen(static_cast<void*>(&source_ctx), read_callback, &error);
 

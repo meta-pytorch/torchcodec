@@ -94,7 +94,7 @@ torch::stable::Tensor decode_avif(
     int64_t num_threads) {
   // Based on
   // https://github.com/AOMediaCodec/libavif/blob/main/examples/avif_example_decode_memory.c
-  validate_encoded_data(input);
+  auto contig_input = validate_encoded_data(input);
   STD_TORCH_CHECK(
       num_threads >= 1, "num_threads must be >= 1, got ", num_threads);
 
@@ -104,7 +104,9 @@ torch::stable::Tensor decode_avif(
   decoder->maxThreads = static_cast<int>(num_threads);
 
   auto result = avifDecoderSetIOMemory(
-      decoder.get(), input.const_data_ptr<uint8_t>(), input.numel());
+      decoder.get(),
+      contig_input.const_data_ptr<uint8_t>(),
+      contig_input.numel());
   STD_TORCH_CHECK(
       result == AVIF_RESULT_OK,
       "avifDecoderSetIOMemory failed: ",

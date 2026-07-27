@@ -340,9 +340,9 @@ torch::stable::Tensor decode_png(
     const torch::stable::Tensor& input,
     int64_t mode,
     int64_t output_dtype) {
-  validate_encoded_data(input);
+  auto contig_input = validate_encoded_data(input);
 
-  auto input_ptr = input.const_data_ptr<uint8_t>();
+  auto input_ptr = contig_input.const_data_ptr<uint8_t>();
 
   auto png_ptr =
       png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
@@ -359,7 +359,7 @@ torch::stable::Tensor decode_png(
 
   SourceCtx source_ctx;
   source_ctx.ptr = reinterpret_cast<png_const_bytep>(input_ptr);
-  source_ctx.count = input.numel();
+  source_ctx.count = contig_input.numel();
 
   torch::stable::Tensor output;
 
