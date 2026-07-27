@@ -3861,7 +3861,6 @@ class TestImageDecoder:
         "decode_fn, fmt, ext, save_kwargs",
         (
             _jpeg_param("JPEG", "jpg", {"quality": 95}),
-            _jpeg_cuda_param("JPEG", "jpg", {"quality": 95}),
             _png_param("PNG", "png", {}),
             _webp_param("WEBP", "webp", {"lossless": True}),
             # Note that avif doesn't encode exif data, it has its own metadata
@@ -3883,11 +3882,8 @@ class TestImageDecoder:
         decoded = decode_fn(path, mode="RGB")
         reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
 
-        # nvJPEG differs a bit more from PIL/libjpeg than our CPU decoder does.
-        atol = 3 if decoded.device.type == "cuda" else 2
-        decoded = decoded.cpu()
         assert decoded.shape == reference.shape
-        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=atol)
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
     @pytest.mark.parametrize(
         "decode_fn, fmt, ext, save_kwargs",
@@ -4103,6 +4099,24 @@ class TestImageDecoder:
             decode_jpeg(CORRUPT_JPEG.path)
 
     # ===== JPEG on CUDA (nvJPEG) =====
+
+    @needs_cuda
+    @needs_jpeg
+    @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
+    def test_cuda_jpeg_exif_orientation(self, orientation):
+        import io
+
+        base = Image.open(GRADIENT_JPEG.path).convert("RGB")
+        exif = base.getexif()
+        exif[0x0112] = orientation  # 0x0112 == EXIF Orientation tag
+        buf = io.BytesIO()
+        base.save(buf, format="JPEG", exif=exif, quality=95)
+        data = torch.frombuffer(bytearray(buf.getvalue()), dtype=torch.uint8)
+
+        cpu = decode_jpeg(data, mode="RGB")
+        gpu = decode_jpeg(data, mode="RGB", device="cuda")
+        assert gpu.shape == cpu.shape
+        assert_tensor_close_on_at_least(gpu.cpu(), cpu, percentage=99, atol=3)
 
     @needs_cuda
     @needs_jpeg
