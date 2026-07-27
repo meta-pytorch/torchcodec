@@ -30,6 +30,7 @@ torch::stable::Tensor decode_heic(
 
 #else
 
+#include <bit>
 #include <cstring>
 #include <memory>
 
@@ -41,11 +42,6 @@ namespace facebook::torchcodec {
 
 namespace {
 
-// RAII deleters for the libheif C-API handles, so we free resources on every
-// path (including errors) without a try/catch. We use the C API rather than
-// libheif/heif_cxx.h because the C++ wrapper isn't always installed and throws
-// heif::Error across the op boundary, which surfaces to Python as "An unknown
-// exception occurred".
 struct HeifContextDeleter {
   void operator()(heif_context* ctx) const {
     heif_context_free(ctx);
@@ -64,10 +60,10 @@ struct HeifImageDeleter {
   }
 };
 
-using ContextPtr = std::unique_ptr<heif_context, HeifContextDeleter>;
-using ImageHandlePtr =
+using UniqueHeifContext = std::unique_ptr<heif_context, HeifContextDeleter>;
+using UniqueHeifImageHandle =
     std::unique_ptr<heif_image_handle, HeifImageHandleDeleter>;
-using ImagePtr = std::unique_ptr<heif_image, HeifImageDeleter>;
+using UniqueHeifImage = std::unique_ptr<heif_image, HeifImageDeleter>;
 
 } // namespace
 
@@ -76,7 +72,7 @@ torch::stable::Tensor decode_heic(
     int64_t mode) {
   validate_encoded_data(input);
 
-  ContextPtr ctx(heif_context_alloc());
+  UniqueHeifContext ctx(heif_context_alloc());
   STD_TORCH_CHECK(ctx != nullptr, "Failed to allocate libheif context.");
 
   heif_error err = heif_context_read_from_memory_without_copy(
@@ -89,19 +85,14 @@ torch::stable::Tensor decode_heic(
       "heif_context_read_from_memory_without_copy failed: ",
       err.message);
 
-  // TODO: properly support (or error on) image sequences. We only decode the
-  // primary image, so multi-image HEIC files silently return just that one.
-  // This is inconsistent with decode_gif (returns a batch) and decode_avif
-  // (errors loudly), but libheif's get_number_of_top_level_images() doesn't
-  // reliably tell sequences from grids/derived images (it disagrees with
-  // libavif's imageCount), so we punt for now.
+  // TODO: properly support (or error on) image sequences.
   heif_image_handle* raw_handle = nullptr;
   err = heif_context_get_primary_image_handle(ctx.get(), &raw_handle);
   STD_TORCH_CHECK(
       err.code == heif_error_Ok,
       "heif_context_get_primary_image_handle failed: ",
       err.message);
-  ImageHandlePtr handle(raw_handle);
+  UniqueHeifImageHandle handle(raw_handle);
 
   int bit_depth = heif_image_handle_get_luma_bits_per_pixel(handle.get());
   STD_TORCH_CHECK(
@@ -115,15 +106,19 @@ torch::stable::Tensor decode_heic(
   int num_channels = return_rgb ? 3 : 4;
 
   // We always decode at the source's NATIVE bit depth: 8-bit interleaved RGB(A)
-  // for 8-bit sources, and little-endian 16-bit interleaved RGB(A)
-  // (RRGGBB[AA]_LE) for >8-bit sources (remapped into the full uint16 range
-  // below). Forcing a different output dtype (uint8/uint16) is done in Python.
-  // Note: the _LE choice and the range remap may be wrong on big-endian
-  // platforms (same caveat as the reference implementation).
+  // for 8-bit sources, and 16-bit interleaved RGB(A) for >8-bit sources
+  // (remapped into the full uint16 range below). Forcing a different output
+  // dtype (uint8/uint16) is done in Python.
+  constexpr bool little_endian = std::endian::native == std::endian::little;
   heif_chroma chroma;
   if (source_gt_8bit) {
-    chroma = return_rgb ? heif_chroma_interleaved_RRGGBB_LE
-                        : heif_chroma_interleaved_RRGGBBAA_LE;
+    if (return_rgb) {
+      chroma = little_endian ? heif_chroma_interleaved_RRGGBB_LE
+                             : heif_chroma_interleaved_RRGGBB_BE;
+    } else {
+      chroma = little_endian ? heif_chroma_interleaved_RRGGBBAA_LE
+                             : heif_chroma_interleaved_RRGGBBAA_BE;
+    }
   } else {
     chroma =
         return_rgb ? heif_chroma_interleaved_RGB : heif_chroma_interleaved_RGBA;
@@ -148,7 +143,7 @@ torch::stable::Tensor decode_heic(
       "was built/installed without a decoder for this image's codec (typically "
       "libde265 for HEVC-coded HEIC). Install a libheif with HEVC decode support "
       "(e.g. `conda install -c conda-forge libheif`, which pulls libde265).");
-  ImagePtr img(raw_img);
+  UniqueHeifImage img(raw_img);
 
   int stride = 0;
   const uint8_t* decoded_data = heif_image_get_plane_readonly(

@@ -158,9 +158,6 @@ def repair_linux(wheels):
         "libc10*",
         "libcu*",
         "libcupti*",
-        # libheif and its HEVC codecs are LGPL/GPL: we build libtorchcodec_heic
-        # against libheif but must NEVER bundle it (it's a user-supplied runtime
-        # dependency, like FFmpeg). See check_bundling() for the safety net.
         "libheif*",
         "libde265*",
         "libx265*",
@@ -205,8 +202,6 @@ def repair_macos(wheels):
             "libtorch_",
             "libc10",
             "libomp",
-            # LGPL/GPL: build against libheif but never bundle it (see the Linux
-            # excludes above and check_bundling()).
             "libheif",
             "libde265",
             "libx265",

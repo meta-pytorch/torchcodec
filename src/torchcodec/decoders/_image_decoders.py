@@ -173,33 +173,25 @@ def _validate_output_dtype(output_dtype) -> None:
         )
 
 
-def _maybe_widen_to_uint16(
-    decoded: torch.Tensor, output_dtype: torch.dtype | str
-) -> torch.Tensor:
-    # For the always-8-bit codecs, the codec cannot emit 16-bit samples, so
-    # uint16 output is produced here by scaling the 8-bit values up to the full
-    # 16-bit range (a factor of 257 == 65535 / 255, so 255 -> 65535).
-    if decoded.dtype != torch.uint8:
-        raise RuntimeError("should never happen, please report a bug")
-    if output_dtype == torch.uint16:
-        return (decoded.to(torch.int32) * 257).to(torch.uint16)
-    else:
-        return decoded
-
-
 def _to_output_dtype(
     decoded: torch.Tensor, output_dtype: torch.dtype | str
 ) -> torch.Tensor:
-    # For decoders (like HEIC) whose native output may be either uint8 (8-bit
-    # sources) or uint16 (>8-bit sources), coerce to the requested output_dtype,
-    # rescaling between the full uint8 and uint16 ranges as needed. "auto" keeps
-    # the native precision.
     if output_dtype == "auto" or decoded.dtype == output_dtype:
         return decoded
-    if output_dtype == torch.uint16:  # widen uint8 -> uint16 (x * 257)
+    elif output_dtype == torch.uint16:
+        assert (
+            decoded.dtype == torch.uint8
+        ), "Oops, please report a bug to the TorchCodec repo."
         return (decoded.to(torch.int32) * 257).to(torch.uint16)
-    # narrow uint16 -> uint8 (round(x / 257), the inverse of the widen above)
-    return (decoded.to(torch.float32) / 257).round().clamp(0, 255).to(torch.uint8)
+    elif output_dtype == torch.uint8:
+        assert (
+            decoded.dtype == torch.uint16
+        ), "Oops, please report a bug to the TorchCodec repo."
+        return (decoded.to(torch.float32) / 257).round().clamp(0, 255).to(torch.uint8)
+    else:
+        raise RuntimeError(
+            "This should never happen, please report a bug to the TorchCodec repo."
+        )
 
 
 # TODO_IMAGE: DOCS!! and docstrings.
@@ -269,7 +261,7 @@ def decode_jpeg(
             )
         data = _source_to_tensor(source)
         decoded = _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
-        return _maybe_widen_to_uint16(decoded, output_dtype)
+        return _to_output_dtype(decoded, output_dtype)
 
     if isinstance(source, (list, tuple)):
         is_batch = True
@@ -279,7 +271,7 @@ def decode_jpeg(
         sources = [source]
     tensors = [_source_to_tensor(s) for s in sources]
     decoded_list = _decode_jpegs_cuda_with_mode(tensors, mode, device)
-    decoded_list = [_maybe_widen_to_uint16(img, output_dtype) for img in decoded_list]
+    decoded_list = [_to_output_dtype(img, output_dtype) for img in decoded_list]
     return decoded_list if is_batch else decoded_list[0]
 
 
@@ -333,7 +325,7 @@ def decode_webp(
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     decoded = _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
-    return _maybe_widen_to_uint16(decoded, output_dtype)
+    return _to_output_dtype(decoded, output_dtype)
 
 
 def decode_gif(
@@ -362,7 +354,7 @@ def decode_gif(
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     decoded = _decode_with_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
-    return _maybe_widen_to_uint16(decoded, output_dtype)
+    return _to_output_dtype(decoded, output_dtype)
 
 
 def decode_avif(

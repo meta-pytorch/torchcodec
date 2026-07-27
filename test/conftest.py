@@ -135,10 +135,7 @@ def pytest_collection_modifyitems(items):
         ):
             item.add_marker(pytest.mark.skip(reason="libavif support not available."))
 
-        # Same rationale as needs_jpeg, but libheif is never bundled (it's an
-        # optional user-supplied runtime dependency), so it's the most likely to
-        # be absent. Skip unless FAIL_WITHOUT_HEIC is set (CI sets it in the jobs
-        # that install libheif, so its absence surfaces as a failure there).
+        # Same rationale as needs_jpeg
         if (
             needs_heic
             and not heic_is_available()
