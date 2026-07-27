@@ -39,6 +39,7 @@ from torchcodec.decoders._image_decoders import (
     _source_to_tensor,
     decode_avif,
     decode_gif,
+    decode_heic,
     decode_image,
     decode_jpeg,
     decode_png,
@@ -67,13 +68,17 @@ from .utils import (
     get_ffmpeg_minor_version,
     get_python_version,
     GRADIENT_10BIT_AVIF,
+    GRADIENT_10BIT_HEIC,
     GRADIENT_12BIT_AVIF,
     GRADIENT_16BIT_PNG,
     GRADIENT_AVIF,
     GRADIENT_GIF,
+    GRADIENT_HEIC,
     GRADIENT_INTERLACED_PNG,
     GRADIENT_JPEG,
+    GRADIENT_MIRRORED_HEIC,
     GRADIENT_PNG,
+    GRADIENT_ROTATED_HEIC,
     GRADIENT_WEBP,
     GRAYSCALE_16BIT_PNG,
     GRAYSCALE_ALPHA_PNG,
@@ -93,11 +98,13 @@ from .utils import (
     needs_avif,
     needs_cuda,
     needs_ffmpeg_cli,
+    needs_heic,
     needs_jpeg,
     needs_png,
     needs_webp,
     psnr,
     RGBA_AVIF,
+    RGBA_HEIC,
     RGBA_PNG,
     RGBA_WEBP,
     SIGSEGV_PNG,
@@ -3466,6 +3473,10 @@ def _avif_param(*values):
     return pytest.param(decode_avif, *values, marks=pytest.mark.needs_avif, id="avif")
 
 
+def _heic_param(*values):
+    return pytest.param(decode_heic, *values, marks=pytest.mark.needs_heic, id="heic")
+
+
 class TestImageDecoder:
     def _save_debug(self, decoded, reference, path="debug.png"):
         # Debugging helper: dump decoded and reference frames side-by-side.
@@ -3535,6 +3546,7 @@ class TestImageDecoder:
             _webp_param(RGBA_WEBP),
             _gif_param(GRADIENT_GIF),
             _avif_param(RGBA_AVIF),
+            _heic_param(RGBA_HEIC),
         ),
     )
     def test_default_mode_is_rgb(self, decode_fn, asset):
@@ -3584,6 +3596,7 @@ class TestImageDecoder:
             _webp_param(GRADIENT_WEBP),
             _gif_param(GRADIENT_GIF),
             _avif_param(GRADIENT_AVIF),
+            _heic_param(GRADIENT_HEIC),
         ),
     )
     def test_source_kinds(self, decode_fn, asset, make_source):
@@ -3593,7 +3606,14 @@ class TestImageDecoder:
 
     @pytest.mark.parametrize(
         "decode_fn",
-        (_jpeg_param(), _png_param(), _webp_param(), _gif_param(), _avif_param()),
+        (
+            _jpeg_param(),
+            _png_param(),
+            _webp_param(),
+            _gif_param(),
+            _avif_param(),
+            _heic_param(),
+        ),
     )
     def test_bad_source_type_raises(self, decode_fn):
         with pytest.raises(TypeError, match="Unknown source type"):
@@ -3625,6 +3645,7 @@ class TestImageDecoder:
             _webp_param(RGBA_WEBP),
             _gif_param(GRADIENT_GIF),
             _avif_param(RGBA_AVIF),
+            _heic_param(RGBA_HEIC),
         ),
     )
     def test_decode_image(self, decode_fn, asset, mode, make_source):
@@ -3644,6 +3665,7 @@ class TestImageDecoder:
             _webp_param(GRADIENT_WEBP),
             _gif_param(GRADIENT_GIF),
             _avif_param(GRADIENT_10BIT_AVIF),
+            _heic_param(GRADIENT_10BIT_HEIC),
         ),
     )
     def test_decode_image_output_dtype(self, decode_fn, asset, output_dtype):
@@ -3661,6 +3683,28 @@ class TestImageDecoder:
         garbage = torch.arange(64, dtype=torch.uint8)
         with pytest.raises(ValueError, match="Unsupported or unrecognized"):
             decode_image(garbage)
+
+    def test_heic_missing_libheif_raises_import_error(self, monkeypatch):
+        # If loading libtorchcodec_heic fails (typically because the optional,
+        # non-bundled libheif isn't installed), decode_heic must raise a clear,
+        # actionable ImportError. We simulate the failure so this runs
+        # regardless of whether libheif is actually present.
+        from torchcodec import _internally_replaced_utils as iru
+
+        iru.load_heic_library.cache_clear()
+
+        def boom(path):
+            raise OSError("libheif.so.1: cannot open shared object file")
+
+        monkeypatch.setattr(torch.ops, "load_library", boom)
+        try:
+            with pytest.raises(
+                ImportError, match="Failed to load the HEIC decoding library"
+            ):
+                decode_heic(GRADIENT_HEIC.path)
+        finally:
+            # Don't leak the (failure-poisoned) cache to other tests.
+            iru.load_heic_library.cache_clear()
 
     @needs_jpeg
     @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, CMYK_JPEG))
@@ -3767,6 +3811,7 @@ class TestImageDecoder:
             _webp_param(GRADIENT_WEBP),
             _gif_param(GRADIENT_GIF),
             _avif_param(GRADIENT_AVIF),
+            _heic_param(GRADIENT_HEIC),
         ),
     )
     @pytest.mark.parametrize(
@@ -3927,6 +3972,91 @@ class TestImageDecoder:
         assert uint8.shape == reference.shape
         assert_tensor_close_on_at_least(uint8, reference, percentage=99, atol=2)
 
+    @needs_heic
+    @needs_png
+    @pytest.mark.parametrize(
+        "heic_asset, png_asset",
+        (
+            (GRADIENT_HEIC, GRADIENT_PNG),
+            (RGBA_HEIC, RGBA_PNG),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "mode", ("UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA")
+    )
+    def test_heic_against_png(self, heic_asset, png_asset, mode):
+        # The HEIC assets are the SAME gradients as the corresponding PNGs, saved
+        # losslessly (4:4:4), so decode_heic must match decode_png up to the tiny
+        # rounding of the RGB<->YUV round-trip. We compare against PNG rather than
+        # PIL because Pillow needs the extra pillow-heif plugin to read HEIC.
+        decoded = decode_heic(heic_asset.path, mode=mode)
+        reference = decode_png(png_asset.path, mode=mode)
+        assert decoded.shape == reference.shape
+        assert decoded.dtype == reference.dtype == torch.uint8
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_heic
+    @needs_png
+    @pytest.mark.parametrize(
+        "asset, orientation",
+        (
+            (GRADIENT_ROTATED_HEIC, 6),  # 90-degree rotation (HEIF irot)
+            (GRADIENT_MIRRORED_HEIC, 2),  # horizontal mirror (HEIF imir)
+        ),
+    )
+    def test_heic_orientation(self, asset, orientation):
+        # We check against a png reference decoded by PIL because encoding an
+        # HEIC would require pillow_heic which we don't want to install on the
+        # CI.
+        decoded = decode_heic(asset.path, mode="RGB")
+        ref_img = Image.open(GRADIENT_PNG.path).convert("RGB")
+        ref_img.getexif()[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
+        reference = self._pil_to_tensor(ImageOps.exif_transpose(ref_img))
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_heic
+    @pytest.mark.parametrize(
+        "mode", ("UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA")
+    )
+    def test_output_dtype_high_bit_depth_heic(self, mode):
+        # A 10-bit HEIC is a genuine >8-bit source, so "auto" preserves 16 bits
+        # while the default stays uint8.
+        asset = GRADIENT_10BIT_HEIC
+        default = decode_heic(asset.path, mode=mode)
+        uint8 = decode_heic(asset.path, mode=mode, output_dtype=torch.uint8)
+        uint16 = decode_heic(asset.path, mode=mode, output_dtype=torch.uint16)
+        auto = decode_heic(asset.path, mode=mode, output_dtype="auto")
+
+        assert uint8.dtype == torch.uint8
+        torch.testing.assert_close(default, uint8, atol=0, rtol=0)
+        assert uint16.dtype == torch.uint16
+        assert auto.dtype == torch.uint16  # >8-bit source
+        torch.testing.assert_close(
+            auto.to(torch.int64), uint16.to(torch.int64), atol=0, rtol=0
+        )
+        assert uint16.shape == uint8.shape
+
+        # Genuine >8-bit precision: not merely 8-bit values scaled by 257. A
+        # full-range color channel also reaches the top of the 16-bit range;
+        # GRAY luma of a gradient never does, so we skip that check for gray.
+        assert (uint16.to(torch.int64) % 257 != 0).any()
+        if mode not in ("GRAY", "GRAY_ALPHA"):
+            assert uint16.to(torch.int64).max() > 60000
+
+        # The uint8 output is the 16-bit output scaled down by 257 (full range).
+        expected8 = (uint16.to(torch.float32) / 257).round()
+        assert_tensor_close_on_at_least(
+            uint8.to(torch.float32), expected8, percentage=99, atol=1
+        )
+
+        # The alpha channel of a source without alpha is a constant "opaque"
+        # value. libheif fills it at the source's native bit depth (e.g. 1023 for
+        # 10-bit), which our >8-bit remap bit-replicates to a true 65535 (the top
+        # of the uint16 range), the same as for a fully-saturated color channel.
+        if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
+            assert (uint16[-1] == 65535).all()  # constant, fully opaque
+
     @pytest.mark.parametrize(
         "decode_fn, asset",
         (
@@ -3935,6 +4065,7 @@ class TestImageDecoder:
             _webp_param(GRADIENT_WEBP),
             _gif_param(GRADIENT_GIF),
             _avif_param(GRADIENT_AVIF),
+            _heic_param(GRADIENT_HEIC),
         ),
     )
     @pytest.mark.parametrize("bad_dtype", (torch.float32, torch.int32, "uint8"))

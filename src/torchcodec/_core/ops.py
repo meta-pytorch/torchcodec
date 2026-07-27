@@ -15,9 +15,9 @@ import torch
 from torchcodec._core._ffmpeg_op_names import FFMPEG_OP_NAMES
 from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchcodec/src:internally_replaced_utils
     load_core_libraries,
+    load_heic_library,
     load_image_library,
 )
-
 
 expose_ffmpeg_dlls = nullcontext
 if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
@@ -39,6 +39,25 @@ decode_png = torch.ops.torchcodec_ns.decode_png.default
 decode_webp = torch.ops.torchcodec_ns.decode_webp.default
 decode_gif = torch.ops.torchcodec_ns.decode_gif.default
 decode_avif = torch.ops.torchcodec_ns.decode_avif.default
+
+
+def get_decode_heic():
+    # decode_heic lives in the separate, lazily-loaded libtorchcodec_heic (see
+    # load_heic_library), so its op isn't registered until that library loads,
+    # and loading fails if the user hasn't installed libheif. Turn that into an
+    # actionable error.
+    try:
+        load_heic_library()
+    except Exception as e:
+        raise ImportError(
+            "Failed to load the HEIC decoding library. HEIC decoding requires "
+            "libheif to be installed and discoverable at runtime; TorchCodec "
+            "does not bundle it (it's LGPL). Install it, e.g. with "
+            "`conda install -c conda-forge libheif`, `apt install libheif1`, or "
+            "`brew install libheif`."
+        ) from e
+    return torch.ops.torchcodec_ns.decode_heic.default
+
 
 # FFmpeg is now an optional dependency, since the image decoders above don't
 # need it, and we want users to be able to use them without having FFmpeg

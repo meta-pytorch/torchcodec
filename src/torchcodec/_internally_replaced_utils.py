@@ -72,6 +72,17 @@ def load_image_library() -> None:
 
 
 @functools.cache
+def load_heic_library() -> None:
+    """Load the HEIC library (libtorchcodec_heic).
+
+    It's loaded lazily, only when HEIC decoding is requested, never at import:
+    because it links libheif, an optional runtime dependency we don't bundle.
+    importing torchcodec must not require libheif to be installed.
+    """
+    torch.ops.load_library(_get_extension_path("libtorchcodec_heic"))
+
+
+@functools.cache
 def load_core_libraries() -> tuple[int, str, ModuleType]:
     """Load the FFmpeg-dependent shared libraries, memoizing the result.
 

@@ -9,11 +9,13 @@ from test.utils import (
     cuda_version_used_for_building_torch,
     GRADIENT_AVIF,
     GRADIENT_GIF,
+    GRADIENT_HEIC,
     GRADIENT_JPEG,
     GRADIENT_PNG,
     GRADIENT_WEBP,
     needs_avif,
     needs_cuda,
+    needs_heic,
     needs_jpeg,
     needs_png,
     needs_webp,
@@ -25,6 +27,7 @@ from torchcodec.decoders import AudioDecoder, VideoDecoder
 from torchcodec.decoders._image_decoders import (
     decode_avif,
     decode_gif,
+    decode_heic,
     decode_jpeg,
     decode_png,
     decode_webp,
@@ -318,6 +321,15 @@ class TestImageDecoder:
         h, w = GRADIENT_AVIF.height, GRADIENT_AVIF.width
 
         img = decode_avif(path)
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, h, w)
+
+    @needs_heic
+    def test_decode_heic(self):
+        path = GRADIENT_HEIC.path
+        h, w = GRADIENT_HEIC.height, GRADIENT_HEIC.width
+
+        img = decode_heic(path)
         assert img.dtype == torch.uint8
         assert img.shape == (3, h, w)
 
