@@ -75,15 +75,15 @@ torch::stable::Tensor decode_heic(
     const torch::stable::Tensor& input,
     int64_t mode,
     int64_t output_dtype) {
-  validate_encoded_data(input);
+  auto contig_input = validate_encoded_data(input);
 
   UniqueHeifContext ctx(heif_context_alloc());
   STD_TORCH_CHECK(ctx != nullptr, "Failed to allocate libheif context.");
 
   heif_error err = heif_context_read_from_memory_without_copy(
       ctx.get(),
-      input.const_data_ptr<uint8_t>(),
-      static_cast<size_t>(input.numel()),
+      contig_input.const_data_ptr<uint8_t>(),
+      static_cast<size_t>(contig_input.numel()),
       /*options=*/nullptr);
   STD_TORCH_CHECK(
       err.code == heif_error_Ok,

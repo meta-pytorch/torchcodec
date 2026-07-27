@@ -3458,6 +3458,15 @@ def _jpeg_param(*values):
     return pytest.param(decode_jpeg, *values, marks=pytest.mark.needs_jpeg, id="jpeg")
 
 
+def _jpeg_cuda_param(*values):
+    return pytest.param(
+        partial(decode_jpeg, device="cuda"),
+        *values,
+        marks=(pytest.mark.needs_jpeg, pytest.mark.needs_cuda),
+        id="jpeg_cuda",
+    )
+
+
 def _png_param(*values):
     return pytest.param(decode_png, *values, marks=pytest.mark.needs_png, id="png")
 
@@ -3479,6 +3488,9 @@ def _heic_param(*values):
 
 
 class TestImageDecoder:
+
+    # ===== shared helpers =====
+
     def _save_debug(self, decoded, reference, path="debug.png"):
         # Debugging helper: dump decoded and reference frames side-by-side.
         from torchvision.io import write_png
@@ -3505,6 +3517,33 @@ class TestImageDecoder:
         else:
             assert kind == "avif"
             return torch.ops.torchcodec_ns.decode_avif(data, mode)
+
+    @staticmethod
+    def _make_transparent_png(path, kind):
+        # A PNG can encode transparency via a tRNS chunk instead of a full alpha
+        # channel: a transparent colorkey for gray/RGB images, or per-palette-
+        # entry alpha for palette images. The left half is transparent.
+        h, w = 16, 20
+        if kind == "rgb":
+            arr = numpy.empty((h, w, 3), numpy.uint8)
+            arr[:, : w // 2] = (10, 20, 30)
+            arr[:, w // 2 :] = (200, 100, 50)
+            Image.fromarray(arr, "RGB").save(path, transparency=(10, 20, 30))
+        elif kind == "gray":
+            arr = numpy.empty((h, w), numpy.uint8)
+            arr[:, : w // 2] = 42
+            arr[:, w // 2 :] = 200
+            Image.fromarray(arr, "L").save(path, transparency=42)
+        else:
+            assert kind == "palette"
+            px = numpy.zeros((h, w), numpy.uint8)
+            px[:, w // 2 :] = 1
+            im = Image.fromarray(px, "P")
+            im.putpalette([10, 20, 30, 200, 100, 50])
+            im.info["transparency"] = bytes([0, 255])  # per-index alpha
+            im.save(path)
+
+    # ===== cross-codec tests: basics & API =====
 
     @pytest.mark.filterwarnings(
         "ignore:`torch.jit.script` is deprecated:DeprecationWarning"
@@ -3543,6 +3582,7 @@ class TestImageDecoder:
         "decode_fn, asset",
         (
             _jpeg_param(GRAYSCALE_JPEG),
+            _jpeg_cuda_param(GRAYSCALE_JPEG),
             _png_param(GRAYSCALE_PNG),
             _webp_param(RGBA_WEBP),
             _gif_param(GRADIENT_GIF),
@@ -3556,25 +3596,6 @@ class TestImageDecoder:
         # 1 channel, an RGBA source has its alpha stripped.
         decoded = decode_fn(asset.path)
         assert decoded.shape[0] == 3
-
-    @needs_jpeg
-    def test_mode_str_and_enum(self):
-        # The canonical mode form is an uppercase string (used everywhere else in
-        # the suite), but the argument is case-insensitive, and the ImageReadMode
-        # enum is still accepted for backward compatibility with torchvision. All
-        # these spellings must produce the same result.
-        path = GRADIENT_JPEG.path
-        reference = decode_jpeg(path, mode="GRAY_ALPHA")
-        for mode in (
-            "gray_alpha",
-            "Gray_Alpha",
-            "GRAY_ALPHA",
-            ImageReadMode.GRAY_ALPHA,
-        ):
-            assert_frames_equal(decode_jpeg(path, mode=mode), reference)
-
-        with pytest.raises(ValueError, match="Invalid mode"):
-            decode_jpeg(path, mode="not_a_mode")
 
     @pytest.mark.parametrize(
         "make_source",
@@ -3593,6 +3614,7 @@ class TestImageDecoder:
         "decode_fn, asset",
         (
             _jpeg_param(GRADIENT_JPEG),
+            _jpeg_cuda_param(GRADIENT_JPEG),
             _png_param(GRADIENT_PNG),
             _webp_param(GRADIENT_WEBP),
             _gif_param(GRADIENT_GIF),
@@ -3619,6 +3641,8 @@ class TestImageDecoder:
     def test_bad_source_type_raises(self, decode_fn):
         with pytest.raises(TypeError, match="Unknown source type"):
             decode_fn(123)
+
+    # ===== cross-codec tests: decode_image (format autodetection) =====
 
     @pytest.mark.parametrize(
         "make_source",
@@ -3685,51 +3709,7 @@ class TestImageDecoder:
         with pytest.raises(ValueError, match="Unsupported or unrecognized"):
             decode_image(garbage)
 
-    def test_heic_missing_libheif_raises_import_error(self, monkeypatch):
-        # If loading libtorchcodec_heic fails (typically because the optional,
-        # non-bundled libheif isn't installed), decode_heic must raise a clear,
-        # actionable ImportError. We simulate the failure so this runs
-        # regardless of whether libheif is actually present.
-        from torchcodec import _internally_replaced_utils as iru
-
-        iru.load_heic_library.cache_clear()
-
-        def boom(path):
-            raise OSError("libheif.so.1: cannot open shared object file")
-
-        monkeypatch.setattr(torch.ops, "load_library", boom)
-        try:
-            with pytest.raises(
-                ImportError, match="Failed to load the HEIC decoding library"
-            ):
-                decode_heic(GRADIENT_HEIC.path)
-        finally:
-            # Don't leak the (failure-poisoned) cache to other tests.
-            iru.load_heic_library.cache_clear()
-
-    @needs_jpeg
-    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, CMYK_JPEG))
-    @pytest.mark.parametrize(
-        "mode, pil_mode",
-        (
-            ("UNCHANGED", None),
-            ("GRAY", "L"),
-            ("GRAY_ALPHA", "LA"),
-            ("RGB", "RGB"),
-            ("RGB_ALPHA", "RGBA"),
-        ),
-    )
-    def test_jpeg_against_pil(self, asset, mode, pil_mode):
-        decoded = decode_jpeg(asset.path, mode=mode)
-
-        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
-
-        assert decoded.shape == reference.shape
-        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
-
-        if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
-            # The synthesized alpha channel must be fully opaque.
-            assert (decoded[-1] == 255).all()
+    # ===== cross-codec tests: output modes =====
 
     @pytest.mark.parametrize(
         "decode_fn, fmt, ext, save_kwargs, source_mode",
@@ -3804,10 +3784,13 @@ class TestImageDecoder:
         if output_mode in ("GRAY_ALPHA", "RGB_ALPHA") and not source_has_alpha:
             assert (decoded[-1] == 255).all()
 
+    # ===== cross-codec tests: output_dtype =====
+
     @pytest.mark.parametrize(
         "decode_fn, asset",
         (
             _jpeg_param(GRADIENT_JPEG),
+            _jpeg_cuda_param(GRADIENT_JPEG),
             _png_param(GRADIENT_PNG),
             _webp_param(GRADIENT_WEBP),
             _gif_param(GRADIENT_GIF),
@@ -3854,6 +3837,392 @@ class TestImageDecoder:
             torch.testing.assert_close(
                 uint16.to(torch.int64), uint8.to(torch.int64) * 257, atol=0, rtol=0
             )
+
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (
+            _jpeg_param(GRADIENT_JPEG),
+            _png_param(GRADIENT_PNG),
+            _webp_param(GRADIENT_WEBP),
+            _gif_param(GRADIENT_GIF),
+            _avif_param(GRADIENT_AVIF),
+            _heic_param(GRADIENT_HEIC),
+        ),
+    )
+    @pytest.mark.parametrize("bad_dtype", (torch.float32, torch.int32, "uint8"))
+    def test_output_dtype_invalid(self, decode_fn, asset, bad_dtype):
+        # Only torch.uint8, torch.uint16 and the string "auto" are accepted.
+        with pytest.raises(ValueError, match="Invalid output_dtype"):
+            decode_fn(asset.path, output_dtype=bad_dtype)
+
+    # ===== cross-codec tests: EXIF / orientation =====
+
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, ext, save_kwargs",
+        (
+            _jpeg_param("JPEG", "jpg", {"quality": 95}),
+            _png_param("PNG", "png", {}),
+            _webp_param("WEBP", "webp", {"lossless": True}),
+            # Note that avif doesn't encode exif data, it has its own metadata
+            # for it, but it seems that PIL can still encode this fine.
+            _avif_param("AVIF", "avif", {"quality": 100}),
+        ),
+    )
+    @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
+    def test_exif_orientation(
+        self, tmp_path, orientation, decode_fn, fmt, ext, save_kwargs
+    ):
+        arr = torch.randint(0, 256, (100, 101, 3), dtype=torch.uint8).numpy()
+        img = Image.fromarray(arr)
+        exif = img.getexif()
+        exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
+        path = tmp_path / f"exif_{orientation}.{ext}"
+        img.save(path, fmt, exif=exif.tobytes(), **save_kwargs)
+
+        decoded = decode_fn(path, mode="RGB")
+        reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
+
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @pytest.mark.parametrize(
+        "decode_fn, fmt, ext, save_kwargs",
+        (
+            _jpeg_param("JPEG", "jpg", {"quality": 95}),
+            _png_param("PNG", "png", {}),
+            _webp_param("WEBP", "webp", {"lossless": True}),
+        ),
+    )
+    @pytest.mark.parametrize("size", (65533, 1, 7, 10, 23, 33))
+    def test_invalid_exif(self, tmp_path, size, decode_fn, fmt, ext, save_kwargs):
+        # Malformed EXIF must not crash. Inspired by a Pillow test.
+        arr = torch.randint(0, 256, (100, 101, 3), dtype=torch.uint8).numpy()
+        img = Image.fromarray(arr)
+        path = tmp_path / f"invalid_exif_{size}.{ext}"
+        img.save(path, fmt, exif=b"1" * size, **save_kwargs)
+
+        decoded = decode_fn(path, mode="RGB")
+        assert decoded.shape == (3, 100, 101)
+
+        # For JPEG the output should also match PIL, which ignores the bad EXIF.
+        # We can't check this for PNG: PIL's exif_transpose raises on a malformed
+        # eXIf chunk instead of ignoring it, so there's no clean reference.
+        if decode_fn is decode_jpeg:
+            reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
+            assert decoded.shape == reference.shape
+            assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_heic
+    @needs_png
+    @pytest.mark.parametrize(
+        "asset, orientation",
+        (
+            (GRADIENT_ROTATED_HEIC, 6),  # 90-degree rotation (HEIF irot)
+            (GRADIENT_MIRRORED_HEIC, 2),  # horizontal mirror (HEIF imir)
+        ),
+    )
+    def test_heic_orientation(self, asset, orientation):
+        # Grouped with the EXIF orientation test above: HEIC carries orientation
+        # through its own HEIF transforms (irot/imir) rather than EXIF, so it
+        # needs a separate test but exercises the same orientation behavior.
+        #
+        # We check against a png reference decoded by PIL because encoding an
+        # HEIC would require pillow_heic which we don't want to install on the
+        # CI.
+        decoded = decode_heic(asset.path, mode="RGB")
+        ref_img = Image.open(GRADIENT_PNG.path).convert("RGB")
+        ref_img.getexif()[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
+        reference = self._pil_to_tensor(ImageOps.exif_transpose(ref_img))
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    # ===== cross-codec tests: malformed / corrupt input =====
+
+    @pytest.mark.parametrize(
+        "decode_fn, ext, match",
+        (
+            _jpeg_param("jpg", "Not a JPEG"),
+            _png_param("png", "Not a PNG file"),
+            _webp_param("webp", "WebPGetFeatures failed"),
+            _gif_param("gif", "DGifOpen"),
+            _avif_param("avif", "avifDecoderParse failed"),
+        ),
+    )
+    def test_not_an_image_raises(self, tmp_path, decode_fn, ext, match):
+        path = tmp_path / f"garbage.{ext}"
+        path.write_bytes(b"\x00" * 100)
+        with pytest.raises(RuntimeError, match=match):
+            decode_fn(path)
+
+    @pytest.mark.parametrize(
+        "decode_fn, asset, ext, match",
+        (
+            _jpeg_param(GRADIENT_JPEG, "jpg", "Image is incomplete or truncated"),
+            _png_param(GRADIENT_PNG, "png", "Out of bound read"),
+            _webp_param(GRADIENT_WEBP, "webp", "Failed to decode the WebP bitstream"),
+            _gif_param(GRADIENT_GIF, "gif", "DGifSlurp"),
+            _avif_param(GRADIENT_AVIF, "avif", "avifDecoderParse failed"),
+        ),
+    )
+    @pytest.mark.parametrize("div", (2, 3, 4))
+    def test_truncated_raises(self, tmp_path, div, decode_fn, asset, ext, match):
+        # A file truncated mid-stream must raise, not crash.
+        data = asset.path.read_bytes()
+        path = tmp_path / f"truncated.{ext}"
+        path.write_bytes(data[: len(data) // div])
+        with pytest.raises(RuntimeError, match=match):
+            decode_fn(path)
+
+    @pytest.mark.parametrize(
+        "decode_fn",
+        (
+            _jpeg_param(),
+            _png_param(),
+            _webp_param(),
+            _gif_param(),
+            _avif_param(),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "make_bad, match",
+        (
+            (lambda t: t[None], "1-dimensional"),
+            (lambda t: t.to(torch.float32), "uint8"),
+            (lambda t: t[:0], "non-empty"),
+        ),
+    )
+    def test_bad_encoded_data_raises(self, decode_fn, make_bad, match):
+        data = torch.randint(0, 256, (100,), dtype=torch.uint8)
+        with pytest.raises(RuntimeError, match=match):
+            decode_fn(make_bad(data))
+
+    @pytest.mark.parametrize(
+        "decode_fn, asset",
+        (
+            _jpeg_param(GRADIENT_JPEG),
+            _jpeg_cuda_param(GRADIENT_JPEG),
+            _png_param(GRADIENT_PNG),
+            _webp_param(GRADIENT_WEBP),
+            _gif_param(GRADIENT_GIF),
+            _avif_param(GRADIENT_AVIF),
+            _heic_param(GRADIENT_HEIC),
+        ),
+    )
+    def test_non_contiguous_encoded_data(self, decode_fn, asset):
+        # A non-contiguous tensor of encoded bytes must decode to the same result
+        # as the contiguous data: the decoders make it contiguous internally
+        # rather than erroring.
+        contiguous = torch.frombuffer(
+            bytearray(asset.path.read_bytes()), dtype=torch.uint8
+        )
+        padded = torch.empty(contiguous.numel() * 2, dtype=torch.uint8)
+        padded[::2] = contiguous
+        non_contiguous = padded[::2]
+        assert not non_contiguous.is_contiguous()
+        torch.testing.assert_close(non_contiguous, contiguous, atol=0, rtol=0)
+        assert_frames_equal(decode_fn(non_contiguous), decode_fn(contiguous))
+
+    # ===== JPEG =====
+
+    @needs_jpeg
+    def test_mode_str_and_enum(self):
+        # The canonical mode form is an uppercase string (used everywhere else in
+        # the suite), but the argument is case-insensitive, and the ImageReadMode
+        # enum is still accepted for backward compatibility with torchvision. All
+        # these spellings must produce the same result.
+        path = GRADIENT_JPEG.path
+        reference = decode_jpeg(path, mode="GRAY_ALPHA")
+        for mode in (
+            "gray_alpha",
+            "Gray_Alpha",
+            "GRAY_ALPHA",
+            ImageReadMode.GRAY_ALPHA,
+        ):
+            assert_frames_equal(decode_jpeg(path, mode=mode), reference)
+
+        with pytest.raises(ValueError, match="Invalid mode"):
+            decode_jpeg(path, mode="not_a_mode")
+
+    @needs_jpeg
+    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG, CMYK_JPEG))
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            ("UNCHANGED", None),
+            ("GRAY", "L"),
+            ("GRAY_ALPHA", "LA"),
+            ("RGB", "RGB"),
+            ("RGB_ALPHA", "RGBA"),
+        ),
+    )
+    def test_jpeg_against_pil(self, asset, mode, pil_mode):
+        decoded = decode_jpeg(asset.path, mode=mode)
+
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+        if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
+            # The synthesized alpha channel must be fully opaque.
+            assert (decoded[-1] == 255).all()
+
+    @needs_jpeg
+    def test_jpeg_batch_cpu(self):
+        # A list of sources decodes each independently and returns a list (one
+        # tensor per source), matching the CUDA batch API. a single source still
+        # returns a bare tensor.
+        sources = [GRADIENT_JPEG.path, GRAYSCALE_JPEG.path, GRADIENT_JPEG.path]
+        batch = decode_jpeg(sources, mode="RGB")
+        assert isinstance(batch, list)
+        assert len(batch) == len(sources)
+        for decoded, src in zip(batch, sources):
+            single = decode_jpeg(src, mode="RGB")
+            assert isinstance(single, torch.Tensor)
+            assert_frames_equal(decoded, single)
+
+        # A one-element list returns a one-element list, not a bare tensor.
+        as_list = decode_jpeg([GRADIENT_JPEG.path], mode="RGB")
+        assert isinstance(as_list, list) and len(as_list) == 1
+        assert_frames_equal(as_list[0], decode_jpeg(GRADIENT_JPEG.path, mode="RGB"))
+
+    @needs_jpeg
+    def test_bad_huffman_decodes(self):
+        # A JPEG with a bad Huffman table is still decodable; just make sure it
+        # doesn't raise.
+        decode_jpeg(BAD_HUFFMAN_JPEG.path)
+
+    @needs_jpeg
+    def test_corrupt_jpeg_raises(self):
+        # Non-regression test ported from torchvision.
+        with pytest.raises(RuntimeError, match="Unsupported marker type"):
+            decode_jpeg(CORRUPT_JPEG.path)
+
+    # ===== JPEG on CUDA (nvJPEG) =====
+
+    @needs_cuda
+    @needs_jpeg
+    @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
+    def test_cuda_jpeg_exif_orientation(self, orientation):
+        import io
+
+        base = Image.open(GRADIENT_JPEG.path).convert("RGB")
+        exif = base.getexif()
+        exif[0x0112] = orientation  # 0x0112 == EXIF Orientation tag
+        buf = io.BytesIO()
+        base.save(buf, format="JPEG", exif=exif, quality=95)
+        data = torch.frombuffer(bytearray(buf.getvalue()), dtype=torch.uint8)
+
+        cpu = decode_jpeg(data, mode="RGB")
+        gpu = decode_jpeg(data, mode="RGB", device="cuda")
+        assert gpu.shape == cpu.shape
+        assert_tensor_close_on_at_least(gpu.cpu(), cpu, percentage=99, atol=3)
+
+    @needs_cuda
+    @needs_jpeg
+    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG))
+    @pytest.mark.parametrize(
+        "mode", ("UNCHANGED", "RGB", "GRAY", "RGB_ALPHA", "GRAY_ALPHA")
+    )
+    def test_cuda_jpeg_matches_cpu(self, asset, mode):
+        # Note that this will only exercise either the HW path or SW path
+        # depending on the GPU.
+        cpu = decode_jpeg(asset.path, mode=mode)
+        gpu = decode_jpeg(asset.path, mode=mode, device="cuda")
+        assert gpu.device.type == "cuda"
+        assert gpu.dtype == torch.uint8
+        assert gpu.shape == cpu.shape
+        assert_tensor_close_on_at_least(gpu.cpu(), cpu, percentage=99, atol=3)
+
+    @needs_cuda
+    @needs_jpeg
+    @pytest.mark.parametrize("mode", ("UNCHANGED", "GRAY", "RGB"))
+    def test_cuda_jpeg_batch(self, mode):
+        assets = [GRADIENT_JPEG, GRAYSCALE_JPEG, GRADIENT_JPEG]
+        sources = [a.path for a in assets]
+        batch = decode_jpeg(sources, mode=mode, device="cuda")
+        assert isinstance(batch, list)
+        assert len(batch) == len(sources)
+        for decoded, asset in zip(batch, assets):
+            assert decoded.device.type == "cuda"
+            single = decode_jpeg(asset.path, mode=mode, device="cuda")
+            assert decoded.shape == single.shape
+            torch.testing.assert_close(decoded, single, atol=0, rtol=0)
+
+        # UNCHANGED must preserve each source's native channel count.
+        if mode == "UNCHANGED":
+            assert batch[0].shape[0] == 3
+            assert batch[1].shape[0] == 1
+            assert batch[2].shape[0] == 3
+
+    @needs_cuda
+    @needs_jpeg
+    def test_cuda_jpeg_single_vs_list_return_type(self):
+        single = decode_jpeg(GRADIENT_JPEG.path, mode="RGB", device="cuda")
+        assert isinstance(single, torch.Tensor)
+        as_list = decode_jpeg([GRADIENT_JPEG.path], mode="RGB", device="cuda")
+        assert isinstance(as_list, list) and len(as_list) == 1
+        torch.testing.assert_close(as_list[0], single, atol=0, rtol=0)
+
+    @needs_cuda
+    @needs_jpeg
+    def test_cuda_jpeg_errors(self):
+        # Corrupt input raises.
+        with pytest.raises(RuntimeError, match="nvjpegDecode failed:"):
+            decode_jpeg(CORRUPT_JPEG.path, device="cuda")
+
+        cuda_data = torch.frombuffer(
+            bytearray(GRADIENT_JPEG.path.read_bytes()), dtype=torch.uint8
+        ).cuda()
+        with pytest.raises(RuntimeError, match="must be on the CPU"):
+            decode_jpeg(cuda_data, device="cuda")
+
+    @needs_cuda
+    @needs_jpeg
+    def test_cuda_jpeg_multithreaded(self):
+        # Many threads decoding concurrently on CUDA.
+        sources = [GRADIENT_JPEG.path, GRAYSCALE_JPEG.path, GRADIENT_JPEG.path]
+        reference = [decode_jpeg(s, mode="RGB") for s in sources]
+
+        num_workers = 10
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as ex:
+            futures = [
+                ex.submit(decode_jpeg, sources, mode="RGB", device="cuda")
+                for _ in range(num_workers)
+            ]
+            results = [f.result() for f in futures]
+
+        assert len(results) == num_workers
+        for decoded in results:
+            assert len(decoded) == len(sources)
+            for got, ref in zip(decoded, reference):
+                assert got.device.type == "cuda"
+                assert got.shape == ref.shape
+                assert_tensor_close_on_at_least(got.cpu(), ref, percentage=99, atol=3)
+
+    # ===== PNG =====
+
+    @needs_png
+    @pytest.mark.parametrize(
+        "asset", (GRADIENT_PNG, GRAYSCALE_PNG, GRAYSCALE_ALPHA_PNG, RGBA_PNG)
+    )
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            ("UNCHANGED", None),
+            ("GRAY", "L"),
+            ("GRAY_ALPHA", "LA"),
+            ("RGB", "RGB"),
+            ("RGB_ALPHA", "RGBA"),
+        ),
+    )
+    def test_png_against_pil(self, asset, mode, pil_mode):
+        decoded = decode_png(asset.path, mode=mode)
+
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
     @needs_png
     @pytest.mark.parametrize("asset", (GRAYSCALE_16BIT_PNG, GRADIENT_16BIT_PNG))
@@ -3919,231 +4288,6 @@ class TestImageDecoder:
                     uint16[c].to(torch.int64), src, atol=0, rtol=0
                 )
 
-    @needs_avif
-    @pytest.mark.parametrize("asset", (GRADIENT_10BIT_AVIF, GRADIENT_12BIT_AVIF))
-    @pytest.mark.parametrize(
-        "mode",
-        (
-            "UNCHANGED",
-            "GRAY",
-            "GRAY_ALPHA",
-            "RGB",
-            "RGB_ALPHA",
-        ),
-    )
-    def test_output_dtype_high_bit_depth_avif(self, asset, mode):
-        # A 10/12-bit AVIF is a genuine >8-bit source.
-        default = decode_avif(asset.path, mode=mode)
-        uint8 = decode_avif(asset.path, mode=mode, output_dtype=torch.uint8)
-        uint16 = decode_avif(asset.path, mode=mode, output_dtype=torch.uint16)
-        auto = decode_avif(asset.path, mode=mode, output_dtype="auto")
-
-        # >8-bit source: "auto" preserves the precision, but the default is uint8.
-        assert uint8.dtype == torch.uint8
-        torch.testing.assert_close(default, uint8, atol=0, rtol=0)
-        assert uint16.dtype == torch.uint16
-        assert auto.dtype == torch.uint16
-        torch.testing.assert_close(
-            auto.to(torch.int64), uint16.to(torch.int64), atol=0, rtol=0
-        )
-        assert uint16.shape == uint8.shape
-
-        # Genuine >8-bit precision: the 16-bit samples are not merely 8-bit
-        # values scaled by 257 (which would make every sample divisible by 257).
-        # A full-range color channel also reaches the top of the 16-bit range;
-        # GRAY luma of a gradient never does, so we skip that check for gray.
-        assert (uint16.to(torch.int64) % 257 != 0).any()
-        if mode not in ("GRAY", "GRAY_ALPHA"):
-            assert uint16.to(torch.int64).max() > 60000
-
-        # The uint8 output matches PIL's (8-bit) AVIF decode. Note libavif
-        # decodes to 8- and 16-bit independently (they aren't related by a clean
-        # 257x factor), so we validate the 8-bit path against PIL rather than
-        # against the 16-bit output. GRAY/GRAY_ALPHA additionally exercise the
-        # Python uint16 gray-conversion helpers (the source has no alpha, so
-        # there's no alpha-drop divergence from PIL).
-        pil_mode = {
-            "UNCHANGED": "RGB",  # source has no alpha
-            "GRAY": "L",
-            "GRAY_ALPHA": "LA",
-            "RGB": "RGB",
-            "RGB_ALPHA": "RGBA",
-        }[mode]
-        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
-        assert uint8.shape == reference.shape
-        assert_tensor_close_on_at_least(uint8, reference, percentage=99, atol=2)
-
-    @needs_heic
-    @needs_png
-    @pytest.mark.parametrize(
-        "heic_asset, png_asset",
-        (
-            (GRADIENT_HEIC, GRADIENT_PNG),
-            (RGBA_HEIC, RGBA_PNG),
-        ),
-    )
-    @pytest.mark.parametrize(
-        "mode", ("UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA")
-    )
-    def test_heic_against_png(self, heic_asset, png_asset, mode):
-        # The HEIC assets are the SAME gradients as the corresponding PNGs, saved
-        # losslessly (4:4:4), so decode_heic must match decode_png up to the tiny
-        # rounding of the RGB<->YUV round-trip. We compare against PNG rather than
-        # PIL because Pillow needs the extra pillow-heif plugin to read HEIC.
-        decoded = decode_heic(heic_asset.path, mode=mode)
-        reference = decode_png(png_asset.path, mode=mode)
-        assert decoded.shape == reference.shape
-        assert decoded.dtype == reference.dtype == torch.uint8
-        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
-
-    @needs_heic
-    @needs_png
-    @pytest.mark.parametrize(
-        "asset, orientation",
-        (
-            (GRADIENT_ROTATED_HEIC, 6),  # 90-degree rotation (HEIF irot)
-            (GRADIENT_MIRRORED_HEIC, 2),  # horizontal mirror (HEIF imir)
-        ),
-    )
-    def test_heic_orientation(self, asset, orientation):
-        # We check against a png reference decoded by PIL because encoding an
-        # HEIC would require pillow_heic which we don't want to install on the
-        # CI.
-        decoded = decode_heic(asset.path, mode="RGB")
-        ref_img = Image.open(GRADIENT_PNG.path).convert("RGB")
-        ref_img.getexif()[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
-        reference = self._pil_to_tensor(ImageOps.exif_transpose(ref_img))
-        assert decoded.shape == reference.shape
-        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
-
-    @needs_heic
-    @pytest.mark.parametrize(
-        "mode", ("UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA")
-    )
-    def test_output_dtype_high_bit_depth_heic(self, mode):
-        # A 10-bit HEIC is a genuine >8-bit source, so "auto" preserves 16 bits
-        # while the default stays uint8.
-        asset = GRADIENT_10BIT_HEIC
-        default = decode_heic(asset.path, mode=mode)
-        uint8 = decode_heic(asset.path, mode=mode, output_dtype=torch.uint8)
-        uint16 = decode_heic(asset.path, mode=mode, output_dtype=torch.uint16)
-        auto = decode_heic(asset.path, mode=mode, output_dtype="auto")
-
-        assert uint8.dtype == torch.uint8
-        torch.testing.assert_close(default, uint8, atol=0, rtol=0)
-        assert uint16.dtype == torch.uint16
-        assert auto.dtype == torch.uint16  # >8-bit source
-        torch.testing.assert_close(
-            auto.to(torch.int64), uint16.to(torch.int64), atol=0, rtol=0
-        )
-        assert uint16.shape == uint8.shape
-
-        # Genuine >8-bit precision: not merely 8-bit values scaled by 257. A
-        # full-range color channel also reaches the top of the 16-bit range;
-        # GRAY luma of a gradient never does, so we skip that check for gray.
-        assert (uint16.to(torch.int64) % 257 != 0).any()
-        if mode not in ("GRAY", "GRAY_ALPHA"):
-            assert uint16.to(torch.int64).max() > 60000
-
-        # The uint8 output is the 16-bit output scaled down by 257 (full range).
-        expected8 = (uint16.to(torch.float32) / 257).round()
-        assert_tensor_close_on_at_least(
-            uint8.to(torch.float32), expected8, percentage=99, atol=1
-        )
-
-        # The alpha channel of a source without alpha is a constant "opaque"
-        # value. libheif fills it at the source's native bit depth (e.g. 1023 for
-        # 10-bit), which our >8-bit remap bit-replicates to a true 65535 (the top
-        # of the uint16 range), the same as for a fully-saturated color channel.
-        if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
-            assert (uint16[-1] == 65535).all()  # constant, fully opaque
-
-    @needs_heic
-    @pytest.mark.parametrize(
-        "mode, pil_mode",
-        (
-            ("UNCHANGED", "RGB"),  # opaque source -> RGB
-            ("GRAY", "L"),
-            ("GRAY_ALPHA", "LA"),
-            ("RGB", "RGB"),
-            ("RGB_ALPHA", "RGBA"),
-        ),
-    )
-    def test_animated_heic(self, mode, pil_mode):
-        # A multi-image HEIC decodes to a batched (N, C, H, W) tensor, one frame
-        # per top-level image. The asset's frames are distinct solid colors
-        # (which survive the YUV round-trip cleanly), so we assert their values
-        # directly rather than against PIL, which would need pillow-heif.
-        colors = [(200, 30, 30), (30, 200, 30), (30, 30, 200)]
-
-        decoded = decode_heic(ANIMATED_HEIC.path, mode=mode)
-
-        assert decoded.ndim == 4
-        assert decoded.shape[0] == len(colors)
-        assert decoded.shape[2:] == (ANIMATED_HEIC.height, ANIMATED_HEIC.width)
-        assert decoded.dtype == torch.uint8
-
-        for i, color in enumerate(colors):
-            reference = self._pil_to_tensor(
-                Image.fromarray(
-                    numpy.full(
-                        (ANIMATED_HEIC.height, ANIMATED_HEIC.width, 3),
-                        color,
-                        dtype=numpy.uint8,
-                    )
-                ).convert(pil_mode)
-            )
-            assert decoded[i].shape == reference.shape
-            assert_tensor_close_on_at_least(
-                decoded[i], reference, percentage=99, atol=3
-            )
-
-        if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
-            # The source is opaque, so the alpha channel must be fully opaque.
-            assert (decoded[:, -1] == 255).all()
-
-    @pytest.mark.parametrize(
-        "decode_fn, asset",
-        (
-            _jpeg_param(GRADIENT_JPEG),
-            _png_param(GRADIENT_PNG),
-            _webp_param(GRADIENT_WEBP),
-            _gif_param(GRADIENT_GIF),
-            _avif_param(GRADIENT_AVIF),
-            _heic_param(GRADIENT_HEIC),
-        ),
-    )
-    @pytest.mark.parametrize("bad_dtype", (torch.float32, torch.int32, "uint8"))
-    def test_output_dtype_invalid(self, decode_fn, asset, bad_dtype):
-        # Only torch.uint8, torch.uint16 and the string "auto" are accepted.
-        with pytest.raises(ValueError, match="Invalid output_dtype"):
-            decode_fn(asset.path, output_dtype=bad_dtype)
-
-    @staticmethod
-    def _make_transparent_png(path, kind):
-        # A PNG can encode transparency via a tRNS chunk instead of a full alpha
-        # channel: a transparent colorkey for gray/RGB images, or per-palette-
-        # entry alpha for palette images. The left half is transparent.
-        h, w = 16, 20
-        if kind == "rgb":
-            arr = numpy.empty((h, w, 3), numpy.uint8)
-            arr[:, : w // 2] = (10, 20, 30)
-            arr[:, w // 2 :] = (200, 100, 50)
-            Image.fromarray(arr, "RGB").save(path, transparency=(10, 20, 30))
-        elif kind == "gray":
-            arr = numpy.empty((h, w), numpy.uint8)
-            arr[:, : w // 2] = 42
-            arr[:, w // 2 :] = 200
-            Image.fromarray(arr, "L").save(path, transparency=42)
-        else:
-            assert kind == "palette"
-            px = numpy.zeros((h, w), numpy.uint8)
-            px[:, w // 2 :] = 1
-            im = Image.fromarray(px, "P")
-            im.putpalette([10, 20, 30, 200, 100, 50])
-            im.info["transparency"] = bytes([0, 255])  # per-index alpha
-            im.save(path)
-
     @needs_png
     @pytest.mark.parametrize("kind", ("rgb", "gray", "palette"))
     @pytest.mark.parametrize(
@@ -4181,173 +4325,6 @@ class TestImageDecoder:
             atol=2,
         )
 
-    @pytest.mark.parametrize(
-        "decode_fn, fmt, ext, save_kwargs",
-        (
-            _jpeg_param("JPEG", "jpg", {"quality": 95}),
-            _png_param("PNG", "png", {}),
-            _webp_param("WEBP", "webp", {"lossless": True}),
-            # Note that avif doesn't encode exif data, it has its own metadata
-            # for it, but it seems that PIL can still encode this fine.
-            _avif_param("AVIF", "avif", {"quality": 100}),
-        ),
-    )
-    @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
-    def test_exif_orientation(
-        self, tmp_path, orientation, decode_fn, fmt, ext, save_kwargs
-    ):
-        arr = torch.randint(0, 256, (100, 101, 3), dtype=torch.uint8).numpy()
-        img = Image.fromarray(arr)
-        exif = img.getexif()
-        exif[0x0112] = orientation  # 0x0112 is the EXIF orientation tag
-        path = tmp_path / f"exif_{orientation}.{ext}"
-        img.save(path, fmt, exif=exif.tobytes(), **save_kwargs)
-
-        decoded = decode_fn(path, mode="RGB")
-        reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
-
-        assert decoded.shape == reference.shape
-        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
-
-    @pytest.mark.parametrize(
-        "decode_fn, fmt, ext, save_kwargs",
-        (
-            _jpeg_param("JPEG", "jpg", {"quality": 95}),
-            _png_param("PNG", "png", {}),
-            _webp_param("WEBP", "webp", {"lossless": True}),
-        ),
-    )
-    @pytest.mark.parametrize("size", (65533, 1, 7, 10, 23, 33))
-    def test_invalid_exif(self, tmp_path, size, decode_fn, fmt, ext, save_kwargs):
-        # Malformed EXIF must not crash. Inspired by a Pillow test.
-        arr = torch.randint(0, 256, (100, 101, 3), dtype=torch.uint8).numpy()
-        img = Image.fromarray(arr)
-        path = tmp_path / f"invalid_exif_{size}.{ext}"
-        img.save(path, fmt, exif=b"1" * size, **save_kwargs)
-
-        decoded = decode_fn(path, mode="RGB")
-        assert decoded.shape == (3, 100, 101)
-
-        # For JPEG the output should also match PIL, which ignores the bad EXIF.
-        # We can't check this for PNG: PIL's exif_transpose raises on a malformed
-        # eXIf chunk instead of ignoring it, so there's no clean reference.
-        if decode_fn is decode_jpeg:
-            reference = self._pil_to_tensor(ImageOps.exif_transpose(Image.open(path)))
-            assert decoded.shape == reference.shape
-            assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
-
-    @needs_jpeg
-    def test_bad_huffman_decodes(self):
-        # A JPEG with a bad Huffman table is still decodable; just make sure it
-        # doesn't raise.
-        decode_jpeg(BAD_HUFFMAN_JPEG.path)
-
-    @pytest.mark.parametrize(
-        "decode_fn, ext, match",
-        (
-            _jpeg_param("jpg", "Not a JPEG"),
-            _png_param("png", "Not a PNG file"),
-            _webp_param("webp", "WebPGetFeatures failed"),
-            _gif_param("gif", "DGifOpen"),
-            _avif_param("avif", "avifDecoderParse failed"),
-        ),
-    )
-    def test_not_an_image_raises(self, tmp_path, decode_fn, ext, match):
-        path = tmp_path / f"garbage.{ext}"
-        path.write_bytes(b"\x00" * 100)
-        with pytest.raises(RuntimeError, match=match):
-            decode_fn(path)
-
-    @pytest.mark.parametrize(
-        "decode_fn, asset, ext, match",
-        (
-            _jpeg_param(GRADIENT_JPEG, "jpg", "Image is incomplete or truncated"),
-            _png_param(GRADIENT_PNG, "png", "Out of bound read"),
-            _webp_param(GRADIENT_WEBP, "webp", "Failed to decode the WebP bitstream"),
-            _gif_param(GRADIENT_GIF, "gif", "DGifSlurp"),
-            _avif_param(GRADIENT_AVIF, "avif", "avifDecoderParse failed"),
-        ),
-    )
-    @pytest.mark.parametrize("div", (2, 3, 4))
-    def test_truncated_raises(self, tmp_path, div, decode_fn, asset, ext, match):
-        # A file truncated mid-stream must raise, not crash.
-        data = asset.path.read_bytes()
-        path = tmp_path / f"truncated.{ext}"
-        path.write_bytes(data[: len(data) // div])
-        with pytest.raises(RuntimeError, match=match):
-            decode_fn(path)
-
-    @needs_png
-    @pytest.mark.parametrize(
-        "asset", (GRADIENT_PNG, GRAYSCALE_PNG, GRAYSCALE_ALPHA_PNG, RGBA_PNG)
-    )
-    @pytest.mark.parametrize(
-        "mode, pil_mode",
-        (
-            ("UNCHANGED", None),
-            ("GRAY", "L"),
-            ("GRAY_ALPHA", "LA"),
-            ("RGB", "RGB"),
-            ("RGB_ALPHA", "RGBA"),
-        ),
-    )
-    def test_png_against_pil(self, asset, mode, pil_mode):
-        decoded = decode_png(asset.path, mode=mode)
-
-        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
-
-        assert decoded.shape == reference.shape
-        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
-
-    @needs_png
-    def test_corrupt_png_raises(self, tmp_path):
-        # Corrupting the IHDR chunk type makes libpng raise an error (its stored
-        # CRC no longer matches). This exercizes the error callback and the
-        # setjmp/longjmp handling.
-        data = bytearray(GRADIENT_PNG.path.read_bytes())
-        data[12:16] = b"XXXX"  # the "IHDR" chunk type, at a fixed offset
-        path = tmp_path / "corrupt.png"
-        path.write_bytes(bytes(data))
-        with pytest.raises(RuntimeError, match="CRC error"):
-            decode_png(path)
-
-    @needs_jpeg
-    def test_corrupt_jpeg_raises(self):
-        # Non-regression test ported from torchvision.
-        with pytest.raises(RuntimeError, match="Unsupported marker type"):
-            decode_jpeg(CORRUPT_JPEG.path)
-
-    @needs_png
-    @pytest.mark.parametrize("asset", (SIGSEGV_PNG, HEAPBOF_PNG))
-    def test_corrupt_png_out_of_bound_read_raises(self, asset):
-        # Non-regression test ported from torchvision.
-        with pytest.raises(RuntimeError, match="Out of bound read"):
-            decode_png(asset.path)
-
-    @pytest.mark.parametrize(
-        "decode_fn",
-        (
-            _jpeg_param(),
-            _png_param(),
-            _webp_param(),
-            _gif_param(),
-            _avif_param(),
-        ),
-    )
-    @pytest.mark.parametrize(
-        "make_bad, match",
-        (
-            (lambda t: t[None], "1-dimensional"),
-            (lambda t: t.to(torch.float32), "uint8"),
-            (lambda t: t[::2], "contiguous"),
-            (lambda t: t[:0], "non-empty"),
-        ),
-    )
-    def test_bad_encoded_data_raises(self, decode_fn, make_bad, match):
-        data = torch.randint(0, 256, (100,), dtype=torch.uint8)
-        with pytest.raises(RuntimeError, match=match):
-            decode_fn(make_bad(data))
-
     @needs_png
     @pytest.mark.parametrize("shape", ((27, 27), (60, 60), (105, 105)))
     def test_1bit_png(self, tmp_path, shape):
@@ -4376,6 +4353,27 @@ class TestImageDecoder:
         assert decoded.shape == reference.shape
         assert_frames_equal(decoded, reference)
 
+    @needs_png
+    def test_corrupt_png_raises(self, tmp_path):
+        # Corrupting the IHDR chunk type makes libpng raise an error (its stored
+        # CRC no longer matches). This exercizes the error callback and the
+        # setjmp/longjmp handling.
+        data = bytearray(GRADIENT_PNG.path.read_bytes())
+        data[12:16] = b"XXXX"  # the "IHDR" chunk type, at a fixed offset
+        path = tmp_path / "corrupt.png"
+        path.write_bytes(bytes(data))
+        with pytest.raises(RuntimeError, match="CRC error"):
+            decode_png(path)
+
+    @needs_png
+    @pytest.mark.parametrize("asset", (SIGSEGV_PNG, HEAPBOF_PNG))
+    def test_corrupt_png_out_of_bound_read_raises(self, asset):
+        # Non-regression test ported from torchvision.
+        with pytest.raises(RuntimeError, match="Out of bound read"):
+            decode_png(asset.path)
+
+    # ===== WEBP =====
+
     @needs_webp
     @pytest.mark.parametrize("asset", (GRADIENT_WEBP, RGBA_WEBP))
     @pytest.mark.parametrize(
@@ -4395,98 +4393,6 @@ class TestImageDecoder:
 
         assert decoded.shape == reference.shape
         assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
-
-    @needs_avif
-    @pytest.mark.parametrize("asset", (GRADIENT_AVIF, RGBA_AVIF))
-    @pytest.mark.parametrize(
-        "mode, pil_mode",
-        (
-            ("UNCHANGED", None),
-            ("GRAY", "L"),
-            ("GRAY_ALPHA", "LA"),
-            ("RGB", "RGB"),
-            ("RGB_ALPHA", "RGBA"),
-        ),
-    )
-    def test_avif_against_pil(self, asset, mode, pil_mode):
-        if asset.num_channels == 4 and mode in (
-            "RGB",
-            "GRAY",
-        ):
-            # For an AVIF that carries a real alpha channel, decoding to a mode
-            # that drops the alpha (RGB, and GRAY which is derived from RGB)
-            # diverges from PIL: libavif plainly ignores the alpha channel, so
-            # transparent pixels keep their raw (often dark) color, while PIL
-            # blends. Both are defensible, so we don't compare in that case.
-            pytest.skip("AVIF RGB/GRAY on an alpha image diverges from PIL by design")
-
-        decoded = decode_avif(asset.path, mode=mode)
-
-        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
-
-        assert decoded.shape == reference.shape
-        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
-
-    @needs_avif
-    def test_avif_num_threads(self):
-        reference = decode_avif(GRADIENT_AVIF.path)
-        for num_threads in (1, 2, 4):
-            decoded = decode_avif(GRADIENT_AVIF.path, num_threads=num_threads)
-            assert torch.equal(decoded, reference)
-
-        for bad in (0, -1):
-            with pytest.raises(RuntimeError, match="num_threads must be >= 1"):
-                decode_avif(GRADIENT_AVIF.path, num_threads=bad)
-
-    @needs_avif
-    @pytest.mark.parametrize(
-        "mode, pil_mode",
-        (
-            ("UNCHANGED", None),
-            ("GRAY", "L"),
-            ("GRAY_ALPHA", "LA"),
-            ("RGB", "RGB"),
-            ("RGB_ALPHA", "RGBA"),
-        ),
-    )
-    def test_animated_avif(self, tmp_path, mode, pil_mode):
-        # An animated AVIF decodes to a batched (N, C, H, W) tensor, one frame
-        # per image. We use distinct solid-color frames: AVIF is lossy, but
-        # solid colors survive the YUV round-trip cleanly, so the frames match
-        # PIL's per-frame decode closely and the frame ordering is verifiable.
-        from PIL import ImageSequence
-
-        path = tmp_path / "animated.avif"
-        colors = [(200, 30, 30), (30, 200, 30), (30, 30, 200)]
-        frames = [
-            Image.fromarray(numpy.full((16, 16, 3), c, dtype=numpy.uint8))
-            for c in colors
-        ]
-        frames[0].save(
-            path,
-            "AVIF",
-            save_all=True,
-            append_images=frames[1:],
-            duration=100,
-            quality=100,
-        )
-
-        decoded = decode_avif(path, mode=mode)
-        pil = Image.open(path)
-
-        assert decoded.ndim == 4
-        assert decoded.shape[0] == pil.n_frames == len(colors)
-
-        for i, frame in enumerate(ImageSequence.Iterator(pil)):
-            reference = self._pil_to_tensor(frame.convert(pil_mode))
-            assert decoded[i].shape == reference.shape
-            assert_tensor_close_on_at_least(
-                decoded[i], reference, percentage=99, atol=3
-            )
-
-        if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
-            # The source is opaque, so the alpha channel must be fully opaque.
-            assert (decoded[:, -1] == 255).all()
 
     @needs_webp
     @pytest.mark.parametrize(
@@ -4573,6 +4479,8 @@ class TestImageDecoder:
             bg_mask = torch.ones((16, 24), dtype=torch.bool)
             bg_mask[4:12, i * 6 : i * 6 + 6] = False
             assert (frame[bg_mask] == 0).all()
+
+    # ===== GIF =====
 
     @pytest.mark.parametrize(
         "mode, pil_mode",
@@ -4679,7 +4587,7 @@ class TestImageDecoder:
             # only meaningful where opaque: the value under a fully-transparent
             # pixel is unspecified and differs between decoders.
             alpha = reference[-1]
-            assert torch.equal(decoded[-1], alpha)
+            torch.testing.assert_close(decoded[-1], alpha, atol=0, rtol=0)
             opaque = alpha > 0
             assert_tensor_close_on_at_least(
                 decoded[:-1, opaque], reference[:-1, opaque], percentage=99, atol=2
@@ -4707,123 +4615,285 @@ class TestImageDecoder:
         decoded = decode_gif(asset.path, mode="RGB_ALPHA")
         reference = self._pil_to_tensor(Image.open(asset.path).convert("RGBA"))
         assert decoded.shape == reference.shape == (4, asset.height, asset.width)
-        assert torch.equal(decoded[-1], reference[-1])
+        torch.testing.assert_close(decoded[-1], reference[-1], atol=0, rtol=0)
 
-    # ---- CUDA JPEG decoding (nvJPEG) ----
+    # ===== AVIF =====
 
-    @needs_cuda
-    @needs_jpeg
-    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG))
+    @needs_avif
+    @pytest.mark.parametrize("asset", (GRADIENT_AVIF, RGBA_AVIF))
     @pytest.mark.parametrize(
-        "mode", ("UNCHANGED", "RGB", "GRAY", "RGB_ALPHA", "GRAY_ALPHA")
+        "mode, pil_mode",
+        (
+            ("UNCHANGED", None),
+            ("GRAY", "L"),
+            ("GRAY_ALPHA", "LA"),
+            ("RGB", "RGB"),
+            ("RGB_ALPHA", "RGBA"),
+        ),
     )
-    def test_cuda_jpeg_matches_cpu(self, asset, mode):
-        # Note that this will only exercise either the HW path or SW path
-        # depending on the GPU.
-        cpu = decode_jpeg(asset.path, mode=mode)
-        gpu = decode_jpeg(asset.path, mode=mode, device="cuda")
-        assert gpu.device.type == "cuda"
-        assert gpu.dtype == torch.uint8
-        assert gpu.shape == cpu.shape
-        assert_tensor_close_on_at_least(gpu.cpu(), cpu, percentage=99, atol=3)
+    def test_avif_against_pil(self, asset, mode, pil_mode):
+        if asset.num_channels == 4 and mode in (
+            "RGB",
+            "GRAY",
+        ):
+            # For an AVIF that carries a real alpha channel, decoding to a mode
+            # that drops the alpha (RGB, and GRAY which is derived from RGB)
+            # diverges from PIL: libavif plainly ignores the alpha channel, so
+            # transparent pixels keep their raw (often dark) color, while PIL
+            # blends. Both are defensible, so we don't compare in that case.
+            pytest.skip("AVIF RGB/GRAY on an alpha image diverges from PIL by design")
 
-    @needs_cuda
-    @needs_jpeg
-    @pytest.mark.parametrize("mode", ("UNCHANGED", "GRAY", "RGB"))
-    def test_cuda_jpeg_batch(self, mode):
-        assets = [GRADIENT_JPEG, GRAYSCALE_JPEG, GRADIENT_JPEG]
-        sources = [a.path for a in assets]
-        batch = decode_jpeg(sources, mode=mode, device="cuda")
-        assert isinstance(batch, list)
-        assert len(batch) == len(sources)
-        for decoded, asset in zip(batch, assets):
-            assert decoded.device.type == "cuda"
-            single = decode_jpeg(asset.path, mode=mode, device="cuda")
-            assert decoded.shape == single.shape
-            torch.testing.assert_close(decoded, single, atol=0, rtol=0)
+        decoded = decode_avif(asset.path, mode=mode)
 
-        # UNCHANGED must preserve each source's native channel count.
-        if mode == "UNCHANGED":
-            assert batch[0].shape[0] == 3
-            assert batch[1].shape[0] == 1
-            assert batch[2].shape[0] == 3
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
 
-    @needs_cuda
-    @needs_jpeg
-    def test_cuda_jpeg_single_vs_list_return_type(self):
-        single = decode_jpeg(GRADIENT_JPEG.path, mode="RGB", device="cuda")
-        assert isinstance(single, torch.Tensor)
-        as_list = decode_jpeg([GRADIENT_JPEG.path], mode="RGB", device="cuda")
-        assert isinstance(as_list, list) and len(as_list) == 1
-        torch.testing.assert_close(as_list[0], single, atol=0, rtol=0)
+        assert decoded.shape == reference.shape
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
 
-    @needs_cuda
-    @needs_jpeg
-    @pytest.mark.parametrize("orientation", (0, 1, 2, 3, 4, 5, 6, 7, 8))
-    # TODO_IMAGE: consider merging this with the existing exif test? Consider
-    # adding CUDA jpeg to most tests that are parametrized over other formats?
-    def test_cuda_jpeg_exif_orientation(self, orientation):
-        import io
+    @needs_avif
+    @pytest.mark.parametrize("asset", (GRADIENT_10BIT_AVIF, GRADIENT_12BIT_AVIF))
+    @pytest.mark.parametrize(
+        "mode",
+        (
+            "UNCHANGED",
+            "GRAY",
+            "GRAY_ALPHA",
+            "RGB",
+            "RGB_ALPHA",
+        ),
+    )
+    def test_output_dtype_high_bit_depth_avif(self, asset, mode):
+        # A 10/12-bit AVIF is a genuine >8-bit source.
+        default = decode_avif(asset.path, mode=mode)
+        uint8 = decode_avif(asset.path, mode=mode, output_dtype=torch.uint8)
+        uint16 = decode_avif(asset.path, mode=mode, output_dtype=torch.uint16)
+        auto = decode_avif(asset.path, mode=mode, output_dtype="auto")
 
-        base = Image.open(GRADIENT_JPEG.path).convert("RGB")
-        exif = base.getexif()
-        exif[0x0112] = orientation  # 0x0112 == EXIF Orientation tag
-        buf = io.BytesIO()
-        base.save(buf, format="JPEG", exif=exif, quality=95)
-        data = torch.frombuffer(bytearray(buf.getvalue()), dtype=torch.uint8)
-
-        cpu = decode_jpeg(data, mode="RGB")
-        gpu = decode_jpeg(data, mode="RGB", device="cuda")
-        assert gpu.shape == cpu.shape
-        assert_tensor_close_on_at_least(gpu.cpu(), cpu, percentage=99, atol=3)
-
-    @needs_cuda
-    @needs_jpeg
-    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.uint16, "auto"))
-    def test_cuda_jpeg_output_dtype(self, output_dtype):
-        gpu = decode_jpeg(
-            GRADIENT_JPEG.path, mode="RGB", output_dtype=output_dtype, device="cuda"
+        # >8-bit source: "auto" preserves the precision, but the default is uint8.
+        assert uint8.dtype == torch.uint8
+        torch.testing.assert_close(default, uint8, atol=0, rtol=0)
+        assert uint16.dtype == torch.uint16
+        assert auto.dtype == torch.uint16
+        torch.testing.assert_close(
+            auto.to(torch.int64), uint16.to(torch.int64), atol=0, rtol=0
         )
-        assert gpu.device.type == "cuda"
-        expected = torch.uint16 if output_dtype is torch.uint16 else torch.uint8
-        assert gpu.dtype == expected
+        assert uint16.shape == uint8.shape
 
-    @needs_cuda
-    @needs_jpeg
-    def test_cuda_jpeg_errors(self):
-        # Corrupt input raises.
-        with pytest.raises(RuntimeError, match="nvjpegDecode failed:"):
-            decode_jpeg(CORRUPT_JPEG.path, device="cuda")
+        # Genuine >8-bit precision: the 16-bit samples are not merely 8-bit
+        # values scaled by 257 (which would make every sample divisible by 257).
+        # A full-range color channel also reaches the top of the 16-bit range;
+        # GRAY luma of a gradient never does, so we skip that check for gray.
+        assert (uint16.to(torch.int64) % 257 != 0).any()
+        if mode not in ("GRAY", "GRAY_ALPHA"):
+            assert uint16.to(torch.int64).max() > 60000
 
-        cuda_data = torch.frombuffer(
-            bytearray(GRADIENT_JPEG.path.read_bytes()), dtype=torch.uint8
-        ).cuda()
-        with pytest.raises(RuntimeError, match="must be on CPU"):
-            decode_jpeg(cuda_data, device="cuda")
+        # The uint8 output matches PIL's (8-bit) AVIF decode. Note libavif
+        # decodes to 8- and 16-bit independently (they aren't related by a clean
+        # 257x factor), so we validate the 8-bit path against PIL rather than
+        # against the 16-bit output. GRAY/GRAY_ALPHA additionally exercise the
+        # Python uint16 gray-conversion helpers (the source has no alpha, so
+        # there's no alpha-drop divergence from PIL).
+        pil_mode = {
+            "UNCHANGED": "RGB",  # source has no alpha
+            "GRAY": "L",
+            "GRAY_ALPHA": "LA",
+            "RGB": "RGB",
+            "RGB_ALPHA": "RGBA",
+        }[mode]
+        reference = self._pil_to_tensor(Image.open(asset.path).convert(pil_mode))
+        assert uint8.shape == reference.shape
+        assert_tensor_close_on_at_least(uint8, reference, percentage=99, atol=2)
 
-        with pytest.raises(ValueError, match="only supported on CUDA"):
-            # TODO_IMAGE maybe we should support it on CPU for consistency?
-            decode_jpeg([GRADIENT_JPEG.path, GRADIENT_JPEG.path])
+    @needs_avif
+    def test_avif_num_threads(self):
+        reference = decode_avif(GRADIENT_AVIF.path)
+        for num_threads in (1, 2, 4):
+            decoded = decode_avif(GRADIENT_AVIF.path, num_threads=num_threads)
+            torch.testing.assert_close(decoded, reference, atol=0, rtol=0)
 
-    @needs_cuda
-    @needs_jpeg
-    def test_cuda_jpeg_multithreaded(self):
-        # Many threads decoding concurrently on CUDA.
-        sources = [GRADIENT_JPEG.path, GRAYSCALE_JPEG.path, GRADIENT_JPEG.path]
-        reference = [decode_jpeg(s, mode="RGB") for s in sources]
+        for bad in (0, -1):
+            with pytest.raises(RuntimeError, match="num_threads must be >= 1"):
+                decode_avif(GRADIENT_AVIF.path, num_threads=bad)
 
-        num_workers = 10
-        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as ex:
-            futures = [
-                ex.submit(decode_jpeg, sources, mode="RGB", device="cuda")
-                for _ in range(num_workers)
-            ]
-            results = [f.result() for f in futures]
+    @needs_avif
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            ("UNCHANGED", None),
+            ("GRAY", "L"),
+            ("GRAY_ALPHA", "LA"),
+            ("RGB", "RGB"),
+            ("RGB_ALPHA", "RGBA"),
+        ),
+    )
+    def test_animated_avif(self, tmp_path, mode, pil_mode):
+        # An animated AVIF decodes to a batched (N, C, H, W) tensor, one frame
+        # per image. We use distinct solid-color frames: AVIF is lossy, but
+        # solid colors survive the YUV round-trip cleanly, so the frames match
+        # PIL's per-frame decode closely and the frame ordering is verifiable.
+        from PIL import ImageSequence
 
-        assert len(results) == num_workers
-        for decoded in results:
-            assert len(decoded) == len(sources)
-            for got, ref in zip(decoded, reference):
-                assert got.device.type == "cuda"
-                assert got.shape == ref.shape
-                assert_tensor_close_on_at_least(got.cpu(), ref, percentage=99, atol=3)
+        path = tmp_path / "animated.avif"
+        colors = [(200, 30, 30), (30, 200, 30), (30, 30, 200)]
+        frames = [
+            Image.fromarray(numpy.full((16, 16, 3), c, dtype=numpy.uint8))
+            for c in colors
+        ]
+        frames[0].save(
+            path,
+            "AVIF",
+            save_all=True,
+            append_images=frames[1:],
+            duration=100,
+            quality=100,
+        )
+
+        decoded = decode_avif(path, mode=mode)
+        pil = Image.open(path)
+
+        assert decoded.ndim == 4
+        assert decoded.shape[0] == pil.n_frames == len(colors)
+
+        for i, frame in enumerate(ImageSequence.Iterator(pil)):
+            reference = self._pil_to_tensor(frame.convert(pil_mode))
+            assert decoded[i].shape == reference.shape
+            assert_tensor_close_on_at_least(
+                decoded[i], reference, percentage=99, atol=3
+            )
+
+        if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
+            # The source is opaque, so the alpha channel must be fully opaque.
+            assert (decoded[:, -1] == 255).all()
+
+    # ===== HEIC =====
+
+    @needs_heic
+    @needs_png
+    @pytest.mark.parametrize(
+        "heic_asset, png_asset",
+        (
+            (GRADIENT_HEIC, GRADIENT_PNG),
+            (RGBA_HEIC, RGBA_PNG),
+        ),
+    )
+    @pytest.mark.parametrize(
+        "mode", ("UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA")
+    )
+    def test_heic_against_png(self, heic_asset, png_asset, mode):
+        # The HEIC assets are the SAME gradients as the corresponding PNGs, saved
+        # losslessly (4:4:4), so decode_heic must match decode_png up to the tiny
+        # rounding of the RGB<->YUV round-trip. We compare against PNG rather than
+        # PIL because Pillow needs the extra pillow-heif plugin to read HEIC.
+        decoded = decode_heic(heic_asset.path, mode=mode)
+        reference = decode_png(png_asset.path, mode=mode)
+        assert decoded.shape == reference.shape
+        assert decoded.dtype == reference.dtype == torch.uint8
+        assert_tensor_close_on_at_least(decoded, reference, percentage=99, atol=2)
+
+    @needs_heic
+    @pytest.mark.parametrize(
+        "mode", ("UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA")
+    )
+    def test_output_dtype_high_bit_depth_heic(self, mode):
+        # A 10-bit HEIC is a genuine >8-bit source, so "auto" preserves 16 bits
+        # while the default stays uint8.
+        asset = GRADIENT_10BIT_HEIC
+        default = decode_heic(asset.path, mode=mode)
+        uint8 = decode_heic(asset.path, mode=mode, output_dtype=torch.uint8)
+        uint16 = decode_heic(asset.path, mode=mode, output_dtype=torch.uint16)
+        auto = decode_heic(asset.path, mode=mode, output_dtype="auto")
+
+        assert uint8.dtype == torch.uint8
+        torch.testing.assert_close(default, uint8, atol=0, rtol=0)
+        assert uint16.dtype == torch.uint16
+        assert auto.dtype == torch.uint16  # >8-bit source
+        torch.testing.assert_close(
+            auto.to(torch.int64), uint16.to(torch.int64), atol=0, rtol=0
+        )
+        assert uint16.shape == uint8.shape
+
+        # Genuine >8-bit precision: not merely 8-bit values scaled by 257. A
+        # full-range color channel also reaches the top of the 16-bit range;
+        # GRAY luma of a gradient never does, so we skip that check for gray.
+        assert (uint16.to(torch.int64) % 257 != 0).any()
+        if mode not in ("GRAY", "GRAY_ALPHA"):
+            assert uint16.to(torch.int64).max() > 60000
+
+        # The uint8 output is the 16-bit output scaled down by 257 (full range).
+        expected8 = (uint16.to(torch.float32) / 257).round()
+        assert_tensor_close_on_at_least(
+            uint8.to(torch.float32), expected8, percentage=99, atol=1
+        )
+
+        # The alpha channel of a source without alpha is a constant "opaque"
+        # value. libheif fills it at the source's native bit depth (e.g. 1023 for
+        # 10-bit), which our >8-bit remap bit-replicates to a true 65535 (the top
+        # of the uint16 range), the same as for a fully-saturated color channel.
+        if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
+            assert (uint16[-1] == 65535).all()  # constant, fully opaque
+
+    @needs_heic
+    @pytest.mark.parametrize(
+        "mode, pil_mode",
+        (
+            ("UNCHANGED", "RGB"),  # opaque source -> RGB
+            ("GRAY", "L"),
+            ("GRAY_ALPHA", "LA"),
+            ("RGB", "RGB"),
+            ("RGB_ALPHA", "RGBA"),
+        ),
+    )
+    def test_animated_heic(self, mode, pil_mode):
+        # A multi-image HEIC decodes to a batched (N, C, H, W) tensor, one frame
+        # per top-level image. The asset's frames are distinct solid colors
+        # (which survive the YUV round-trip cleanly), so we assert their values
+        # directly rather than against PIL, which would need pillow-heif.
+        colors = [(200, 30, 30), (30, 200, 30), (30, 30, 200)]
+
+        decoded = decode_heic(ANIMATED_HEIC.path, mode=mode)
+
+        assert decoded.ndim == 4
+        assert decoded.shape[0] == len(colors)
+        assert decoded.shape[2:] == (ANIMATED_HEIC.height, ANIMATED_HEIC.width)
+        assert decoded.dtype == torch.uint8
+
+        for i, color in enumerate(colors):
+            reference = self._pil_to_tensor(
+                Image.fromarray(
+                    numpy.full(
+                        (ANIMATED_HEIC.height, ANIMATED_HEIC.width, 3),
+                        color,
+                        dtype=numpy.uint8,
+                    )
+                ).convert(pil_mode)
+            )
+            assert decoded[i].shape == reference.shape
+            assert_tensor_close_on_at_least(
+                decoded[i], reference, percentage=99, atol=3
+            )
+
+        if mode in ("GRAY_ALPHA", "RGB_ALPHA"):
+            # The source is opaque, so the alpha channel must be fully opaque.
+            assert (decoded[:, -1] == 255).all()
+
+    def test_heic_missing_libheif_raises_import_error(self, monkeypatch):
+        # If loading libtorchcodec_heic fails (typically because the optional,
+        # non-bundled libheif isn't installed), decode_heic must raise a clear,
+        # actionable ImportError. We simulate the failure so this runs
+        # regardless of whether libheif is actually present.
+        from torchcodec import _internally_replaced_utils as iru
+
+        iru.load_heic_library.cache_clear()
+
+        def boom(path):
+            raise OSError("libheif.so.1: cannot open shared object file")
+
+        monkeypatch.setattr(torch.ops, "load_library", boom)
+        try:
+            with pytest.raises(
+                ImportError, match="Failed to load the HEIC decoding library"
+            ):
+                decode_heic(GRADIENT_HEIC.path)
+        finally:
+            # Don't leak the (failure-poisoned) cache to other tests.
+            iru.load_heic_library.cache_clear()

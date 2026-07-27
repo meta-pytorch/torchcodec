@@ -281,7 +281,6 @@ class TestImageDecoder:
         assert img.device.type == "cuda"
         assert img.shape == (3, h, w)
 
-        # Batch decoding is CUDA-only; check it returns one tensor per source.
         imgs = decode_jpeg([path, path], device="cuda")
         assert isinstance(imgs, list)
         assert len(imgs) == 2

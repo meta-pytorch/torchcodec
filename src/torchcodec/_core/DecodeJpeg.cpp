@@ -422,7 +422,7 @@ void decode_rows(
 torch::stable::Tensor decode_jpeg(
     const torch::stable::Tensor& input,
     int64_t mode) {
-  validate_encoded_data(input);
+  auto contig_input = validate_encoded_data(input);
 
   torch::stable::Tensor output;
   torch::stable::Tensor cmyk_line_tensor;
@@ -435,8 +435,8 @@ torch::stable::Tensor decode_jpeg(
   auto [num_output_channels, cmyk_to_rgb_or_gray] = read_header_and_start(
       jpeg_ctx,
       error_ctx,
-      input.const_data_ptr<uint8_t>(),
-      input.numel(),
+      contig_input.const_data_ptr<uint8_t>(),
+      contig_input.numel(),
       static_cast<ImageReadMode>(mode));
 
   // Note: this must be called before jpeg_finish_decompress(), otherwise we get
