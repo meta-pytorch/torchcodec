@@ -12,7 +12,7 @@ that the wheel runs standalone on a system that doesn't have those libraries
 installed.
 
 We bundle some third-party native libraries like libjpeg(-turbo), libpng, zlib,
-libwebp (+libsharpyuv) and libavif, while making sure we EXCLUDE FFmpeg
+libwebp (+libsharpyuv), libavif, libnvjpeg, while making sure we EXCLUDE FFmpeg
 (user-provided at runtime) and torch/CUDA (provided by the torch wheel).
 
 Because we redistribute those libraries as binaries inside the wheel, their
@@ -24,7 +24,9 @@ import io
 import json
 import os
 import platform
+import re
 import shutil
+import site
 import subprocess
 import sys
 import zipfile
@@ -32,6 +34,11 @@ from pathlib import Path
 
 DIST_DIR = Path("dist")
 REPAIRED_DIR = Path("dist_repaired")
+
+
+def _is_cuda_wheel(wheel):
+    # Detect a CUDA wheel from its local-version tag (e.g. "+cu126") in the filename.
+    return re.search(r"[+_]cu\d", Path(wheel).name) is not None
 
 
 def run(cmd, **kwargs):
@@ -49,16 +56,89 @@ def _avif_lib_dir():
     return dirs[0]
 
 
+def _find_nvjpeg_libs():
+    # Find the nvJPEG runtime lib(s) to bundle. Its location varies a lot across
+    # CI setups so we search a wide set of CUDA roots recursively (+ ldconfig on
+    # Linux).
+    is_windows = platform.system() == "Windows"
+    pattern = "nvjpeg64*.dll" if is_windows else "libnvjpeg.so*"
+
+    roots = []
+    for var in ("CUDA_HOME", "CUDA_PATH", "CUDAToolkit_ROOT", "CONDA_PREFIX"):
+        if v := os.environ.get(var):
+            roots.append(Path(v))
+    # nvcc on PATH -> toolkit root (e.g. /usr/local/cuda/bin/nvcc -> /usr/local/cuda).
+    if nvcc := shutil.which("nvcc"):
+        roots.append(Path(nvcc).resolve().parent.parent)
+    if is_windows:
+        roots += list(
+            Path("C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA").glob("*")
+        )
+    else:
+        roots += list(Path("/usr/local").glob("cuda*"))
+    for site_dir in site.getsitepackages():
+        roots.append(Path(site_dir) / "nvidia")  # pip nvidia-*-cu12 packages
+
+    matches = []
+    for root in roots:
+        try:
+            matches.extend(root.rglob(pattern))
+        except OSError:
+            pass
+    if not is_windows:
+        try:
+            out = subprocess.run(
+                ["ldconfig", "-p"], capture_output=True, text=True, check=False
+            ).stdout
+            for line in out.splitlines():
+                if "libnvjpeg.so" in line and "=>" in line:
+                    matches.append(Path(line.split("=>")[-1].strip()))
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    found = set()
+    for m in matches:
+        # Skip the CUDA "stubs" libs: they're link-time placeholders (unversioned
+        # libnvjpeg.so with no real code), not the runtime lib we must bundle.
+        if "stubs" in m.parts:
+            continue
+        try:
+            resolved = m.resolve()
+        except OSError:
+            continue
+        if resolved.is_file():
+            found.add(resolved)
+    return list(found)
+
+
+def _find_nvjpeg_license():
+    # Try to find EULA.txt, fallback to LICENSE
+    dirs = []
+    for lib in _find_nvjpeg_libs():
+        dirs.extend(lib.parents)
+    for var in ("CUDA_HOME", "CUDA_PATH", "CUDAToolkit_ROOT"):
+        if v := os.environ.get(var):
+            dirs.append(Path(v))
+    for filename in ("EULA.txt", "LICENSE"):
+        for d in dirs:
+            candidate = d / filename
+            if candidate.is_file():
+                return candidate
+    return None
+
+
 def repair_linux(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "auditwheel"])
     run(["auditwheel", "--version"])
     env = os.environ.copy()
     # for auditwheel to graft libs, it must be able to find them, so we set
     # LD_LIBRARY_PATH: jpeg/png/webp are from conda, libavif is from the S3
-    # build dir.
+    # build dir, and (for CUDA wheels) libnvjpeg is from the CUDA toolkit.
     lib_dirs = [str(_avif_lib_dir())]
     if conda_prefix := env.get("CONDA_PREFIX"):
         lib_dirs.append(str(Path(conda_prefix) / "lib"))
+    if any(_is_cuda_wheel(w) for w in wheels):
+        lib_dirs.extend(sorted({str(f.parent) for f in _find_nvjpeg_libs()}))
     env["LD_LIBRARY_PATH"] = os.pathsep.join(
         [*lib_dirs, env.get("LD_LIBRARY_PATH", "")]
     )
@@ -77,8 +157,14 @@ def repair_linux(wheels):
         "libtorch*",
         "libc10*",
         "libcu*",
-        "libnv*",
         "libcupti*",
+        "libnvrtc*",
+        "libnvToolsExt*",
+        "libnvtx*",
+        "libnvjitlink*",
+        "libnvshmem*",
+        "libnvfatbin*",
+        "libnvcuvid*",
     ):
         excludes += ["--exclude", pattern]
     for wheel in wheels:
@@ -165,9 +251,20 @@ def repair_windows(wheels):
     if not avif_dlls:
         raise FileNotFoundError("No libavif DLL under build/*/_deps/avif_s3-src/bin")
 
-    dlls = sorted(
-        jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls | avif_dlls
-    )
+    dlls = jpeg_dlls | png_dlls | zlib_dlls | webp_dlls | sharpyuv_dlls | avif_dlls
+
+    if any(_is_cuda_wheel(w) for w in wheels):
+        nvjpeg_dlls = set(_find_nvjpeg_libs())
+        # Also check the conda Library\bin next to the other image DLLs.
+        nvjpeg_dlls |= set(bin_dir.glob("nvjpeg64*.dll"))
+        if not nvjpeg_dlls:
+            raise FileNotFoundError(
+                "No nvjpeg64*.dll found for a CUDA build. See the CUDA bundling "
+                "debug above for the roots searched."
+            )
+        dlls |= nvjpeg_dlls
+
+    dlls = sorted(dlls)
 
     for wheel in wheels:
         unpack_dir = REPAIRED_DIR / "unpack"
@@ -193,7 +290,8 @@ def bundle_third_party_licenses():
     statically embeds dav1d and libyuv) as binaries inside the wheel. Their
     permissive licenses (IJG/BSD/zlib) require reproducing the copyright notice
     and license text in binary redistributions, so we ship them next to our own
-    LICENSE.
+    LICENSE. CUDA wheels additionally bundle libnvjpeg, redistributed under the
+    NVIDIA CUDA Toolkit EULA, which we ship as well.
     """
 
     def _resolve_conda_licenses():
@@ -268,9 +366,9 @@ def bundle_third_party_licenses():
         return {f.name: f for f in sorted(dirs[0].iterdir()) if f.is_file()}
 
     run([sys.executable, "-m", "pip", "install", "-U", "wheel"])
-    licenses = {**_resolve_conda_licenses(), **_resolve_avif_licenses()}
+    base_licenses = {**_resolve_conda_licenses(), **_resolve_avif_licenses()}
     print("Third-party license files to bundle:")
-    for name, src in sorted(licenses.items()):
+    for name, src in sorted(base_licenses.items()):
         print(f"  {name} <- {src}")
 
     scratch = Path("dist_licenses")
@@ -279,6 +377,16 @@ def bundle_third_party_licenses():
     scratch.mkdir(parents=True)
 
     for wheel in sorted(DIST_DIR.glob("*.whl")):
+        licenses = dict(base_licenses)
+        if _is_cuda_wheel(wheel):
+            if (nvjpeg_license := _find_nvjpeg_license()) is None:
+                raise RuntimeError(
+                    f"{wheel.name} bundles libnvjpeg but the NVIDIA CUDA EULA "
+                    "could not be located to ship alongside it."
+                )
+            licenses["LICENSE.libnvjpeg-NVIDIA-CUDA-EULA.txt"] = nvjpeg_license
+            print(f"  LICENSE.libnvjpeg-NVIDIA-CUDA-EULA.txt <- {nvjpeg_license}")
+
         unpack_dir = scratch / "unpack"
         if unpack_dir.is_dir():
             shutil.rmtree(unpack_dir)
@@ -325,17 +433,13 @@ def check_bundling():
     - the wheel bundles an AV1 encoder library: our libavif is decode-only, so
       encoders (aom/rav1e/svtav1) must never ship (all platforms). This is not
       for licensing concern, this is to keep wheel size low.
+    - a CUDA wheel does NOT bundle libnvjpeg (the GPU JPEG decoder lib), or a
+      non-CUDA wheel DOES bundle it.
     - the compressed wheel is larger than MAX_WHEEL_BYTES: the slim decode-only
       libavif should keep us under it.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
     - (Linux only) libtorchcodec_image.so links FFmpeg.
     """
-    # 6 MB, bumped to 8 MB for Windows CUDA wheels. Bump if a legitimate
-    # dependency growth pushes us over.
-    if platform.system() == "Windows" and os.environ.get("ENABLE_CUDA") == "1":
-        MAX_WHEEL_BYTES = 8 * 1024 * 1024
-    else:
-        MAX_WHEEL_BYTES = 6 * 1024 * 1024
 
     def _is_shared_lib(name):
         base = name.rsplit("/", 1)[-1]
@@ -365,6 +469,11 @@ def check_bundling():
             stem.startswith("avif") and stem.endswith(".dll")
         )
 
+    def _is_nvjpeg(lib):
+        return lib.startswith("libnvjpeg") or (
+            lib.startswith("nvjpeg") and lib.endswith(".dll")
+        )
+
     def _is_avif_encoder(lib):
         stem = lib.lower()
         return stem.startswith(("libaom", "librav1e", "libsvtav1", "libdav1d")) or (
@@ -387,6 +496,7 @@ def check_bundling():
             or _is_zlib(lib)
             or _is_webp(lib)
             or _is_avif(lib)
+            or _is_nvjpeg(lib)
         ):
             return True
         if platform.system() == "Darwin" and lib.startswith(("libc++", "libpython")):
@@ -467,7 +577,7 @@ def check_bundling():
                 "found at build time."
             )
 
-    def _assert_third_party_licenses(zf):
+    def _assert_third_party_licenses(zf, is_cuda):
         """Every bundled third-party lib must ship its license text under
         .dist-info/licenses/third_party/ (see bundle_third_party_licenses)."""
         license_files = [
@@ -475,8 +585,12 @@ def check_bundling():
             for n in zf.namelist()
             if "/licenses/third_party/" in n and not n.endswith("/")
         ]
-        # keyword each bundled lib's license file must be identifiable by.
-        for keyword in ("jpeg", "png", "zlib", "webp", "avif", "dav1d", "yuv"):
+        # keyword each bundled lib's license file must be identifiable by. CUDA
+        # wheels also bundle libnvjpeg, whose NVIDIA CUDA EULA must ship too.
+        keywords = ["jpeg", "png", "zlib", "webp", "avif", "dav1d", "yuv"]
+        if is_cuda:
+            keywords.append("nvjpeg")
+        for keyword in keywords:
             if not any(keyword in n.lower() for n in license_files):
                 raise RuntimeError(
                     f"No third-party license file matching '{keyword}' found in "
@@ -486,7 +600,7 @@ def check_bundling():
     for wheel in DIST_DIR.glob("*.whl"):
         print(f"Checking bundled libraries in {wheel.name}")
         with zipfile.ZipFile(wheel) as zf:
-            _assert_third_party_licenses(zf)
+            _assert_third_party_licenses(zf, _is_cuda_wheel(wheel))
             names = zf.namelist()
             libs = sorted({n.rsplit("/", 1)[-1] for n in names if _is_shared_lib(n)})
             if unexpected := [lib for lib in libs if not _is_allowed(lib)]:
@@ -507,12 +621,26 @@ def check_bundling():
                     f"{wheel.name} does not bundle libwebpdemux (needed for "
                     "animated webp decoding)."
                 )
+            is_cuda = _is_cuda_wheel(wheel)
+            bundles_nvjpeg = any(_is_nvjpeg(lib) for lib in libs)
+            if is_cuda and not bundles_nvjpeg:
+                raise RuntimeError(
+                    f"{wheel.name} is a CUDA wheel but does not bundle libnvjpeg. "
+                    "GPU JPEG decoding (decode_jpeg(..., device='cuda')) needs it, "
+                    "and torch does not ship it. Check that libnvjpeg is findable "
+                    "at repair time (see _find_nvjpeg_libs) and not excluded."
+                )
+            if not is_cuda and bundles_nvjpeg:
+                raise RuntimeError(
+                    f"{wheel.name} is not a CUDA wheel but bundles libnvjpeg."
+                )
             if encoders := [lib for lib in libs if _is_avif_encoder(lib)]:
                 raise RuntimeError(
                     f"{wheel.name} bundles AV1 codec libraries that must not "
                     "ship with our decode-only libavif (they should be "
                     "statically embedded or absent): " + " ".join(encoders)
                 )
+            MAX_WHEEL_BYTES = (14 if is_cuda else 6) * 1024 * 1024
             wheel_bytes = wheel.stat().st_size
             if wheel_bytes > MAX_WHEEL_BYTES:
                 raise RuntimeError(
