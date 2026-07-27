@@ -139,9 +139,10 @@ jobs:
         run: bash packaging/install_torchcodec_wheel.sh "*cu${{ env.cuda_version_without_periods }}-cp${{ env.python_version_without_periods }}*.whl"
 
       - name: Install test dependencies
-        run: bash packaging/install_test_dependencies.sh
+        run: bash -l packaging/install_test_dependencies.sh ${{ matrix.ffmpeg-version-for-tests }}
       - name: Run Python tests
         run: |
+          if [ "${{ matrix.ffmpeg-version-for-tests }}" != "4" ]; then export FAIL_WITHOUT_HEIC=1; fi
           FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 pytest --override-ini="addopts=-v" test/smoke_test.py --tb=short
       - name: Run Python benchmark
         run: |
@@ -199,8 +200,10 @@ jobs:
       - name: Install ffmpeg
         run: bash -l packaging/install_ffmpeg.sh ${{ env.FFMPEG_VERSION }}
 
+      # -l exposes the conda CLI so the script can install libheif (the optional
+      # HEIC runtime dep) for the HEIC smoke test.
       - name: Install test dependencies
-        run: bash packaging/install_test_dependencies.sh
+        run: bash -l packaging/install_test_dependencies.sh ${{ env.FFMPEG_VERSION }}
 
       - name: Assert CUDA is not available
         run: |
@@ -208,4 +211,5 @@ jobs:
 
       - name: Run Python tests
         run: |
+          if [ "${{ env.FFMPEG_VERSION }}" != "4" ]; then export FAIL_WITHOUT_HEIC=1; fi
           FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 pytest --override-ini="addopts=-v" test/smoke_test.py --tb=short
