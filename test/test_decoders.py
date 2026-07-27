@@ -4369,7 +4369,7 @@ class TestImageDecoder:
         padded[::2] = contiguous
         non_contiguous = padded[::2]
         assert not non_contiguous.is_contiguous()
-        assert torch.equal(non_contiguous, contiguous)
+        torch.testing.assert_close(non_contiguous, contiguous, atol=0, rtol=0)
         assert_frames_equal(decode_fn(non_contiguous), decode_fn(contiguous))
 
     @needs_png
@@ -4456,7 +4456,7 @@ class TestImageDecoder:
         reference = decode_avif(GRADIENT_AVIF.path)
         for num_threads in (1, 2, 4):
             decoded = decode_avif(GRADIENT_AVIF.path, num_threads=num_threads)
-            assert torch.equal(decoded, reference)
+            torch.testing.assert_close(decoded, reference, atol=0, rtol=0)
 
         for bad in (0, -1):
             with pytest.raises(RuntimeError, match="num_threads must be >= 1"):
@@ -4703,7 +4703,7 @@ class TestImageDecoder:
             # only meaningful where opaque: the value under a fully-transparent
             # pixel is unspecified and differs between decoders.
             alpha = reference[-1]
-            assert torch.equal(decoded[-1], alpha)
+            torch.testing.assert_close(decoded[-1], alpha, atol=0, rtol=0)
             opaque = alpha > 0
             assert_tensor_close_on_at_least(
                 decoded[:-1, opaque], reference[:-1, opaque], percentage=99, atol=2
@@ -4731,7 +4731,7 @@ class TestImageDecoder:
         decoded = decode_gif(asset.path, mode="RGB_ALPHA")
         reference = self._pil_to_tensor(Image.open(asset.path).convert("RGBA"))
         assert decoded.shape == reference.shape == (4, asset.height, asset.width)
-        assert torch.equal(decoded[-1], reference[-1])
+        torch.testing.assert_close(decoded[-1], reference[-1], atol=0, rtol=0)
 
     # ---- CUDA JPEG decoding (nvJPEG) ----
 
