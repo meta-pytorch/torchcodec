@@ -334,8 +334,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 1958.91ms +- 11.45
-torchvision transform: times_med = 4232.20ms +- 107.45
+decoder transforms: times_med = 1951.58ms +- 6.89
+torchvision transform: times_med = 4182.53ms +- 113.53
 ```
 
 The reason is that FFmpeg is applying the decoder transforms in parallel.
@@ -349,8 +349,8 @@ print(f"torchvision transform: {bench(sample_torchvision_transforms, num_threads
 ```
 
 ```
-decoder transforms: times_med = 10781.81ms +- 30.46
-torchvision transform: times_med = 12484.60ms +- 24.65
+decoder transforms: times_med = 10731.57ms +- 54.91
+torchvision transform: times_med = 12536.90ms +- 31.91
 ```
 
 In brief, our performance guidance is:
@@ -367,7 +367,7 @@ In brief, our performance guidance is:
 shutil.rmtree(temp_dir)
 ```
 
-**Total running time of the script:** (2 minutes 26.397 seconds)
+**Total running time of the script:** (2 minutes 27.048 seconds)
 
 [`Download Jupyter notebook: transforms.ipynb`](../../_downloads/f189e474be55fc74900ac94fda37f6f0/transforms.ipynb)
 
