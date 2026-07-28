@@ -65,59 +65,55 @@ void error_exit_cb(j_common_ptr jpeg_ctx) {
   longjmp(error_ctx->setjmp_buffer, 1);
 }
 
-// The libjpeg compression pipeline. Owns the setjmp() point, so per Note
-// [libjpeg error handling] in DecodeJpeg.cpp it must not declare anything with
-// a non-trivial destructor, and everything it touches on the longjmp error path
-// (cinfo, error_ctx, jpeg_buf) is owned by the caller and passed by reference:
-// automatic locals modified between setjmp() and longjmp() have indeterminate
-// values once we jump back into the setjmp block.
-//
-// libjpeg allocates jpeg_buf with malloc() and grows it as needed; ownership is
-// handed back to the caller via the reference.
-void compress_jpeg(
-    jpeg_compress_struct& cinfo,
+int64_t compress_jpeg(
+    jpeg_compress_struct& jpeg_ctx,
     ErrorCtx& error_ctx,
     const uint8_t* input_ptr,
     int width,
     int height,
-    int channels,
+    int num_channels,
     int quality,
-    uint8_t*& jpeg_buf,
-    JpegSizeType& jpeg_size) {
+    uint8_t*& jpeg_buf /* OUT */) {
   if (setjmp(error_ctx.setjmp_buffer)) {
-    jpeg_destroy_compress(&cinfo);
+    jpeg_destroy_compress(&jpeg_ctx);
     std::free(jpeg_buf);
     jpeg_buf = nullptr;
     STD_TORCH_CHECK(false, error_ctx.last_error_message);
   }
 
-  jpeg_create_compress(&cinfo);
+  jpeg_create_compress(&jpeg_ctx);
 
-  cinfo.image_width = static_cast<JDIMENSION>(width);
-  cinfo.image_height = static_cast<JDIMENSION>(height);
-  cinfo.input_components = channels;
-  cinfo.in_color_space = channels == 1 ? JCS_GRAYSCALE : JCS_RGB;
+  jpeg_ctx.image_width = static_cast<JDIMENSION>(width);
+  jpeg_ctx.image_height = static_cast<JDIMENSION>(height);
+  jpeg_ctx.input_components = num_channels;
+  jpeg_ctx.in_color_space = num_channels == 1 ? JCS_GRAYSCALE : JCS_RGB;
 
-  jpeg_set_defaults(&cinfo);
-  jpeg_set_quality(&cinfo, quality, /*force_baseline=*/TRUE);
-  jpeg_mem_dest(&cinfo, &jpeg_buf, &jpeg_size);
-  jpeg_start_compress(&cinfo, /*write_all_tables=*/TRUE);
+  jpeg_set_defaults(&jpeg_ctx);
+  jpeg_set_quality(&jpeg_ctx, quality, /*force_baseline=*/TRUE);
 
-  const int64_t stride = static_cast<int64_t>(width) * channels;
-  // jpeg_write_scanlines wants a mutable JSAMPARRAY, but it only reads the
-  // rows.
+  // libjpeg allocates jpeg_buf and grows it as needed
+  JpegSizeType jpeg_size = 0;
+  jpeg_mem_dest(&jpeg_ctx, &jpeg_buf, &jpeg_size);
+  jpeg_start_compress(&jpeg_ctx, /*write_all_tables=*/TRUE);
+
+  const int64_t stride = static_cast<int64_t>(width) * num_channels;
   auto* row = const_cast<JSAMPROW>(input_ptr);
-  while (cinfo.next_scanline < cinfo.image_height) {
-    jpeg_write_scanlines(&cinfo, &row, /*num_lines=*/1);
+  while (jpeg_ctx.next_scanline < jpeg_ctx.image_height) {
+    jpeg_write_scanlines(&jpeg_ctx, &row, /*num_lines=*/1);
     row += stride;
   }
 
-  jpeg_finish_compress(&cinfo);
-  jpeg_destroy_compress(&cinfo);
+  jpeg_finish_compress(&jpeg_ctx);
+  jpeg_destroy_compress(&jpeg_ctx);
+  return static_cast<int64_t>(jpeg_size);
 }
 
 } // namespace
 
+// Important: see Note [libjpeg error handling] in the jpeg decoder: everything
+// applies here too. We must not throw a C++ exception through libjpeg's C stack
+// (and callbacks), and we must not allocate anything that needs proper
+// destruction in a function that defines a setjmp() point.
 torch::stable::Tensor encode_jpeg(
     const torch::stable::Tensor& img,
     int64_t quality) {
@@ -131,41 +127,38 @@ torch::stable::Tensor encode_jpeg(
   STD_TORCH_CHECK(
       img.dim() == 3, "Input data should be a 3-dimensional tensor");
 
-  const auto channels = static_cast<int>(img.size(0));
+  const auto num_channels = static_cast<int>(img.size(0));
   const auto height = static_cast<int>(img.size(1));
   const auto width = static_cast<int>(img.size(2));
   STD_TORCH_CHECK(
-      channels == 1 || channels == 3,
+      num_channels == 1 || num_channels == 3,
       "The number of channels should be 1 or 3, got: ",
-      channels);
+      num_channels);
 
   // libjpeg consumes samples channels-last (HWC), one contiguous row at a time.
   const auto input = torch::stable::contiguous(stable_permute(img, {1, 2, 0}));
 
   // Owned here rather than in compress_jpeg(): that function runs the
-  // setjmp/longjmp dance and must keep these alive across it (see its doc).
-  jpeg_compress_struct cinfo;
+  // setjmp/longjmp dance and must keep these alive across it
+  jpeg_compress_struct jpeg_ctx;
   ErrorCtx error_ctx;
-  cinfo.err = jpeg_std_error(&error_ctx.base);
+  jpeg_ctx.err = jpeg_std_error(&error_ctx.base);
   error_ctx.base.error_exit = error_exit_cb;
 
   uint8_t* jpeg_buf = nullptr;
-  JpegSizeType jpeg_size = 0;
-  compress_jpeg(
-      cinfo,
+  const int64_t jpeg_size = compress_jpeg(
+      jpeg_ctx,
       error_ctx,
       input.const_data_ptr<uint8_t>(),
       width,
       height,
-      channels,
+      num_channels,
       static_cast<int>(quality),
-      jpeg_buf,
-      jpeg_size);
+      jpeg_buf);
 
-  // Hand the malloc'd buffer to the tensor; from_blob's deleter frees it.
   return torch::stable::from_blob(
       jpeg_buf,
-      {static_cast<int64_t>(jpeg_size)},
+      {jpeg_size},
       {1},
       StableDevice(kStableCPU),
       kStableUInt8,
