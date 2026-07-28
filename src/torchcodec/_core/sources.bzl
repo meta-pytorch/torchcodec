@@ -80,6 +80,7 @@ image_sources = [
     "DecodeWebp.cpp",
     "DecodeGif.cpp",
     "DecodeAvif.cpp",
+    "EncodePng.cpp",
 ]
 
 image_ops_sources = [
