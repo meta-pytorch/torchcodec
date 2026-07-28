@@ -2369,17 +2369,27 @@ class TestEncoder:
             self._open_encoder(enc, open_kwargs)
 
 
+# The encoders under test, one per codec, each tagged with its skip marker so
+# the shared validation tests below run for both.
+_encoders = (
+    pytest.param(encode_png, marks=pytest.mark.needs_png, id="png"),
+    pytest.param(encode_jpeg, marks=pytest.mark.needs_jpeg, id="jpeg"),
+)
+
+
 class TestImageEncoders:
     def _decode(self, asset, mode):
         # Decode an asset into a CHW uint8 tensor to use as encoder input.
         return decode_png(asset.path, mode=mode)
+
+    # ===== PNG =====
 
     @needs_png
     @pytest.mark.parametrize(
         "asset, mode", ((GRADIENT_PNG, "RGB"), (GRAYSCALE_PNG, "GRAY"))
     )
     @pytest.mark.parametrize("compression_level", (0, 6, 9))
-    def test_round_trip(self, asset, mode, compression_level):
+    def test_round_trip_png(self, asset, mode, compression_level):
         source = self._decode(asset, mode)
         encoded = encode_png(source, compression_level=compression_level)
 
@@ -2394,7 +2404,7 @@ class TestImageEncoders:
         )
 
     @needs_png
-    def test_against_pil(self):
+    def test_against_pil_png(self):
         source = self._decode(GRADIENT_PNG, "RGB")
         encoded = encode_png(source)
 
@@ -2404,14 +2414,14 @@ class TestImageEncoders:
         torch.testing.assert_close(pil_tensor, source, rtol=0, atol=0)
 
     @needs_png
-    def test_compression_level_affects_size(self):
+    def test_compression_level_affects_size_png(self):
         source = self._decode(GRADIENT_PNG, "RGB")
         least = encode_png(source, compression_level=0).numel()
         most = encode_png(source, compression_level=9).numel()
         assert least > most
 
     @needs_png
-    def test_default_compression_level(self):
+    def test_default_compression_level_png(self):
         source = self._decode(GRADIENT_PNG, "RGB")
         torch.testing.assert_close(
             encode_png(source),
@@ -2422,33 +2432,17 @@ class TestImageEncoders:
 
     @needs_png
     @pytest.mark.parametrize("compression_level", (-1, 10))
-    def test_bad_compression_level(self, compression_level):
+    def test_bad_compression_level_png(self, compression_level):
         source = self._decode(GRADIENT_PNG, "RGB")
         with pytest.raises(RuntimeError, match="between 0 and 9"):
             encode_png(source, compression_level=compression_level)
 
-    @needs_png
-    def test_bad_dtype(self):
-        source = self._decode(GRADIENT_PNG, "RGB")
-        with pytest.raises(RuntimeError, match="uint8 data type"):
-            encode_png(source.to(torch.float32))
-
-    @needs_png
-    @pytest.mark.parametrize("shape", ((720, 1280), (3, 3, 8, 8)))
-    def test_bad_ndim(self, shape):
-        with pytest.raises(RuntimeError, match="3-dimensional"):
-            encode_png(torch.zeros(shape, dtype=torch.uint8))
-
-    @needs_png
-    @pytest.mark.parametrize("num_channels", (2, 4))
-    def test_bad_num_channels(self, num_channels):
-        with pytest.raises(RuntimeError, match="channels should be 1 or 3"):
-            encode_png(torch.zeros(num_channels, 8, 8, dtype=torch.uint8))
+    # ===== JPEG =====
 
     @needs_jpeg
     @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG))
     @pytest.mark.parametrize("quality", (25, 75, 95))
-    def test_jpeg_round_trip(self, asset, quality):
+    def test_round_trip_jpeg(self, asset, quality):
         # Encode a CHW uint8 tensor, then decode it back and check the round trip
         # is faithful (JPEG is lossy, so we compare with PSNR, which rises with
         # quality) and that the output is a valid JPEG PIL can open.
@@ -2463,12 +2457,12 @@ class TestImageEncoders:
 
         decoded = decode_jpeg(encoded, mode="UNCHANGED")
         assert decoded.shape == img.shape
-        # A smooth gradient compresses extremely well; even quality 25 stays well
-        # above the ~20-25 dB "acceptable" floor.
+        # A smooth gradient compresses extremely well. Even quality 25 stays
+        # well above the ~20-25 dB "acceptable" floor.
         assert psnr(decoded, img) > 30
 
     @needs_jpeg
-    def test_jpeg_against_pil(self):
+    def test_against_pil_jpeg(self):
         # Our encoder and PIL both wrap libjpeg with the same defaults, so at a
         # given quality they should produce near-identical output. We decode both
         # with our own decoder and compare pixels (byte-exactness is too fragile
@@ -2489,40 +2483,36 @@ class TestImageEncoders:
         assert_tensor_close_on_at_least(ours, pil, percentage=99, atol=2)
 
     @needs_jpeg
-    def test_jpeg_quality_affects_size(self):
+    def test_quality_affects_size_jpeg(self):
         img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB")
         low = encode_jpeg(img, quality=10)
         high = encode_jpeg(img, quality=95)
         assert high.numel() > low.numel()
 
     @needs_jpeg
-    def test_jpeg_errors(self):
-        with pytest.raises(RuntimeError, match="Input tensor dtype should be uint8"):
-            encode_jpeg(torch.empty((3, 100, 100), dtype=torch.float32))
-
+    @pytest.mark.parametrize("quality", (-1, 101))
+    def test_bad_quality_jpeg(self, quality):
         with pytest.raises(
             ValueError,
             match="Image quality should be a positive number between 1 and 100",
         ):
-            encode_jpeg(torch.empty((3, 100, 100), dtype=torch.uint8), quality=-1)
+            encode_jpeg(torch.zeros(3, 8, 8, dtype=torch.uint8), quality=quality)
 
-        with pytest.raises(
-            ValueError,
-            match="Image quality should be a positive number between 1 and 100",
-        ):
-            encode_jpeg(torch.empty((3, 100, 100), dtype=torch.uint8), quality=101)
+    # ===== shared validation, both codecs =====
 
-        with pytest.raises(
-            RuntimeError, match="The number of channels should be 1 or 3, got: 5"
-        ):
-            encode_jpeg(torch.empty((5, 100, 100), dtype=torch.uint8))
+    @pytest.mark.parametrize("encode", _encoders)
+    def test_bad_dtype(self, encode):
+        with pytest.raises(RuntimeError, match="uint8"):
+            encode(torch.zeros(3, 8, 8, dtype=torch.float32))
 
-        with pytest.raises(
-            RuntimeError, match="Input data should be a 3-dimensional tensor"
-        ):
-            encode_jpeg(torch.empty((1, 3, 100, 100), dtype=torch.uint8))
+    @pytest.mark.parametrize("encode", _encoders)
+    @pytest.mark.parametrize("shape", ((720, 1280), (3, 3, 8, 8)))
+    def test_bad_ndim(self, encode, shape):
+        with pytest.raises(RuntimeError, match="3-dimensional"):
+            encode(torch.zeros(shape, dtype=torch.uint8))
 
-        with pytest.raises(
-            RuntimeError, match="Input data should be a 3-dimensional tensor"
-        ):
-            encode_jpeg(torch.empty((100, 100), dtype=torch.uint8))
+    @pytest.mark.parametrize("encode", _encoders)
+    @pytest.mark.parametrize("num_channels", (2, 4))
+    def test_bad_num_channels(self, encode, num_channels):
+        with pytest.raises(RuntimeError, match="channels should be 1 or 3"):
+            encode(torch.zeros(num_channels, 8, 8, dtype=torch.uint8))
