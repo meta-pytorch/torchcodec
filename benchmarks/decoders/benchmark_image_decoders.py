@@ -22,6 +22,7 @@ for _var in (
 import io
 import tempfile
 from argparse import ArgumentParser
+from functools import partial
 from pathlib import Path
 from time import perf_counter_ns
 
@@ -41,6 +42,7 @@ except ImportError:
 
 from torchcodec._core.ops import (  # noqa: E402
     add_video_stream,
+    create_from_file,
     create_from_tensor,
     get_next_frame,
 )
@@ -58,6 +60,7 @@ from torchvision.io import (  # noqa: E402
     decode_jpeg as tv_decode_jpeg,
     decode_png as tv_decode_png,
     decode_webp as tv_decode_webp,
+    read_file as tv_read_file,
 )
 from torchvision.transforms.v2.functional import pil_to_tensor  # noqa: E402
 
@@ -170,27 +173,28 @@ def encode_images(image: Image.Image, resolutions, out_dir: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Backends: each takes preloaded uint8 byte tensor -> (C, H, W) uint8 RGB tensor
+# Backends: decode to a (C, H, W) uint8 RGB tensor, either from a preloaded
+# uint8 byte tensor (from_file=False, timing pure decode) or straight from a
+# file path (from_file=True, timing decode + I/O).
 # ---------------------------------------------------------------------------
-def decode_torchcodec(data: Tensor, fmt: str) -> Tensor:
-    return _TC_DECODERS[fmt](data, mode="RGB")
+def decode_torchcodec(fmt: str, path: Path, data: Tensor, from_file: bool) -> Tensor:
+    return _TC_DECODERS[fmt](path if from_file else data, mode="RGB")
 
 
-def decode_torchvision(data: Tensor, fmt: str) -> Tensor:
-    return _TV_DECODERS[fmt](data)
+def decode_torchvision(fmt: str, path: Path, data: Tensor, from_file: bool) -> Tensor:
+    return _TV_DECODERS[fmt](tv_read_file(str(path)) if from_file else data)
 
 
-def decode_pil(raw: bytes) -> Tensor:
-    img = Image.open(io.BytesIO(raw)).convert("RGB")
+def decode_pil(path: Path, raw: bytes, from_file: bool) -> Tensor:
+    img = Image.open(path if from_file else io.BytesIO(raw)).convert("RGB")
     return pil_to_tensor(img)
 
 
-def decode_ffmpeg(data: Tensor) -> Tensor:
-    # Equivalent to the file-based path:
-    #   dec = create_from_file(path, "approximate"); add_video_stream(dec, num_threads=1)
-    #   frame, _, _ = get_next_frame(dec)
-    # create_from_tensor keeps bytes in memory so we time pure decode.
-    dec = create_from_tensor(data, "approximate")
+def decode_ffmpeg(path: Path, data: Tensor, from_file: bool) -> Tensor:
+    if from_file:
+        dec = create_from_file(str(path), "approximate")
+    else:
+        dec = create_from_tensor(data, "approximate")
     add_video_stream(dec, num_threads=1)
     frame, _, _ = get_next_frame(dec)
     return frame
@@ -211,6 +215,20 @@ def main():
         default=None,
         help="override source image (default: scipy.datasets.face())",
     )
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
+        "--from-bytes",
+        dest="from_file",
+        action="store_false",
+        default=False,
+        help="decode from preloaded in-memory bytes; times pure decode (default)",
+    )
+    source.add_argument(
+        "--from-file",
+        dest="from_file",
+        action="store_true",
+        help="decode straight from a file path; times decode + I/O",
+    )
     args = parser.parse_args()
 
     print(
@@ -219,6 +237,7 @@ def main():
     print(
         "Note: libavif/dav1d internal threading is not exposed by decode_avif (library default)."
     )
+    print(f"Source: {'file path' if args.from_file else 'in-memory bytes'}")
 
     image = load_source_image(args.image)
     tmp = tempfile.TemporaryDirectory()
@@ -240,14 +259,15 @@ def main():
                     results[backend] = None
                     continue
                 try:
+                    ff = args.from_file
                     if backend == "torchcodec":
-                        fn = lambda: decode_torchcodec(data, fmt)  # noqa: E731
+                        fn = partial(decode_torchcodec, fmt, path, data, ff)
                     elif backend == "PIL":
-                        fn = lambda: decode_pil(raw)  # noqa: E731
+                        fn = partial(decode_pil, path, raw, ff)
                     elif backend == "torchvision":
-                        fn = lambda: decode_torchvision(data, fmt)  # noqa: E731
+                        fn = partial(decode_torchvision, fmt, path, data, ff)
                     else:
-                        fn = lambda: decode_ffmpeg(data)  # noqa: E731
+                        fn = partial(decode_ffmpeg, path, data, ff)
                     fn()  # smoke
                     times = bench(fn, num_exp=args.num_exp)
                     results[backend] = _median_ms(times)
