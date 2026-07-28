@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, Literal
 
 import torch
-
 from torchcodec._core.ops import (
     decode_avif as _decode_avif,
     decode_gif as _decode_gif,
@@ -19,6 +18,7 @@ from torchcodec._core.ops import (
     decode_jpegs_cuda as _decode_jpegs_cuda,
     decode_png as _decode_png,
     decode_webp as _decode_webp,
+    get_decode_heic as _get_decode_heic,
 )
 
 # GIF vs Pillow: our animated-GIF compositing (disposal methods, transparency,
@@ -47,6 +47,7 @@ class ImageReadMode(Enum):
     GRAY_ALPHA = 2
     RGB = 3
     RGB_ALPHA = 4
+    RGBA = 4  # undocumented alias for RGB_ALPHA
 
 
 def _normalize_mode(
@@ -101,8 +102,8 @@ _JPEG_NATIVE_OUTPUT_MODES = frozenset(
 )
 _PNG_NATIVE_OUTPUT_MODES = frozenset(ImageReadMode)
 _WEBP_NATIVE_OUTPUT_MODES = _GIF_NATIVE_OUTPUT_MODES = _AVIF_NATIVE_OUTPUT_MODES = (
-    frozenset((ImageReadMode.UNCHANGED, ImageReadMode.RGB, ImageReadMode.RGB_ALPHA))
-)
+    _HEIC_NATIVE_OUTPUT_MODES
+) = frozenset((ImageReadMode.UNCHANGED, ImageReadMode.RGB, ImageReadMode.RGB_ALPHA))
 
 
 def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
@@ -160,35 +161,36 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
         )
 
 
-# Maps the output_dtype API values to the integer codes understood by the C++
-# decoders. Must be kept in-sync with the OutputDtype enum in ImageCommon.h.
-_OUTPUT_DTYPE_TO_CODE = {torch.uint8: 0, torch.uint16: 1, "auto": 2}
-
-
-def _validate_output_dtype(output_dtype) -> None:
-    if output_dtype not in _OUTPUT_DTYPE_TO_CODE:
+def _validate_output_dtype(output_dtype) -> int:
+    # Validates output_dtype and returns the integer code understood by the C++
+    # decoders. Must be kept in-sync with the OutputDtype enum in ImageCommon.h.
+    output_dtype_to_code = {torch.uint8: 0, torch.uint16: 1, "auto": 2}
+    if output_dtype not in output_dtype_to_code:
         raise ValueError(
             f"Invalid output_dtype ({output_dtype}). "
             "Supported values are torch.uint8, torch.uint16, and 'auto'."
         )
+    return output_dtype_to_code[output_dtype]
 
 
-def _maybe_widen_to_uint16(
+def _to_output_dtype(
     decoded: torch.Tensor, output_dtype: torch.dtype | str
 ) -> torch.Tensor:
-    # For the always-8-bit codecs, the codec cannot emit 16-bit samples, so
-    # uint16 output is produced here by scaling the 8-bit values up to the full
-    # 16-bit range (a factor of 257 == 65535 / 255, so 255 -> 65535).
-    if decoded.dtype != torch.uint8:
-        raise RuntimeError("should never happen, please report a bug")
-    if output_dtype == torch.uint16:
-        return (decoded.to(torch.int32) * 257).to(torch.uint16)
-    else:
+    if output_dtype == "auto" or decoded.dtype == output_dtype:
         return decoded
+    elif output_dtype == torch.uint16:
+        if decoded.dtype != torch.uint8:
+            raise RuntimeError("Oops, please report a bug to the TorchCodec repo.")
+        return (decoded.to(torch.int32) * 257).to(torch.uint16)
+    elif output_dtype == torch.uint8:
+        if decoded.dtype != torch.uint16:
+            raise RuntimeError("Oops, please report a bug to the TorchCodec repo.")
+        return (decoded.to(torch.float32) / 257).round().clamp(0, 255).to(torch.uint8)
+    else:
+        raise RuntimeError(
+            "This should never happen, please report a bug to the TorchCodec repo."
+        )
 
-
-# TODO_IMAGE: Since we're updating the decoders code a bit, we should run sanity
-# checks ensure we're not leaking anything (there was a leak on webp back then!).
 
 # TODO_IMAGE: DOCS!! and docstrings.
 
@@ -241,33 +243,39 @@ def decode_jpeg(
 
     ``device`` selects where decoding happens: ``"cpu"`` (the default) uses
     libjpeg-turbo, while a CUDA device (e.g. ``"cuda"``) decodes on the GPU with
-    nvJPEG and returns tensors on that device. On CUDA, ``source`` may also be a
-    list of sources, in which case a list of ``(C, H, W)`` tensors (one per
-    input) is returned and the batch is decoded together for higher throughput.
+    nvJPEG and returns tensors on that device.
+
+    ``source`` may also be a list of sources, in which case a list of
+    ``(C, H, W)`` tensors (one per input) is returned. On CUDA the batch is
+    decoded together for higher throughput; on CPU each source is decoded
+    independently (there is no batched CPU kernel), but a list is still accepted
+    and returned so the API is the same across devices.
     """
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     device = torch.device(device)
 
-    if device.type == "cpu":
-        if isinstance(source, (list, tuple)):
-            raise ValueError(
-                "Batch decoding (a list of sources) is only supported on CUDA "
-                "devices. Pass device='cuda' or decode sources one at a time."
-            )
-        data = _source_to_tensor(source)
-        decoded = _decode_with_mode(_decode_jpeg, data, mode, _JPEG_NATIVE_OUTPUT_MODES)
-        return _maybe_widen_to_uint16(decoded, output_dtype)
+    is_batch = isinstance(source, (list, tuple))
+    sources: list = list(source) if is_batch else [source]  # type: ignore[arg-type]
 
-    if isinstance(source, (list, tuple)):
-        is_batch = True
-        sources: list = list(source)
+    if device.type == "cpu":
+        decoded_list = [
+            _to_output_dtype(
+                _decode_with_mode(
+                    _decode_jpeg,
+                    _source_to_tensor(s),
+                    mode,
+                    _JPEG_NATIVE_OUTPUT_MODES,
+                ),
+                output_dtype,
+            )
+            for s in sources
+        ]
     else:
-        is_batch = False
-        sources = [source]
-    tensors = [_source_to_tensor(s) for s in sources]
-    decoded_list = _decode_jpegs_cuda_with_mode(tensors, mode, device)
-    decoded_list = [_maybe_widen_to_uint16(img, output_dtype) for img in decoded_list]
+        tensors = [_source_to_tensor(s) for s in sources]
+        decoded_list = _decode_jpegs_cuda_with_mode(tensors, mode, device)
+        decoded_list = [_to_output_dtype(img, output_dtype) for img in decoded_list]
+
     return decoded_list if is_batch else decoded_list[0]
 
 
@@ -286,10 +294,9 @@ def decode_png(
     case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
     module note above for the semantics of ``output_dtype``.
     """
-    _validate_output_dtype(output_dtype)
+    code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    code = _OUTPUT_DTYPE_TO_CODE[output_dtype]
     return _decode_with_mode(
         lambda d, m: _decode_png(d, m, code), data, mode, _PNG_NATIVE_OUTPUT_MODES
     )
@@ -321,7 +328,7 @@ def decode_webp(
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     decoded = _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
-    return _maybe_widen_to_uint16(decoded, output_dtype)
+    return _to_output_dtype(decoded, output_dtype)
 
 
 def decode_gif(
@@ -350,7 +357,7 @@ def decode_gif(
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     decoded = _decode_with_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
-    return _maybe_widen_to_uint16(decoded, output_dtype)
+    return _to_output_dtype(decoded, output_dtype)
 
 
 def decode_avif(
@@ -371,16 +378,56 @@ def decode_avif(
     sources carry more than 8 bits per channel, so ``"auto"`` and
     ``torch.uint16`` preserve that precision.
     """
-    _validate_output_dtype(output_dtype)
+    code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    code = _OUTPUT_DTYPE_TO_CODE[output_dtype]
     return _decode_with_mode(
         lambda d, m: _decode_avif(d, m, code, num_threads),
         data,
         mode,
         _AVIF_NATIVE_OUTPUT_MODES,
     )
+
+
+def decode_heic(
+    source: str | Path | bytes | torch.Tensor,
+    *,
+    mode: (
+        Literal["UNCHANGED", "GRAY", "GRAY_ALPHA", "RGB", "RGB_ALPHA"] | ImageReadMode
+    ) = "RGB",
+    output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
+) -> torch.Tensor:
+    """Decode an HEIC/HEIF image into a tensor.
+
+    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
+    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
+    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
+    module note above for the semantics of ``output_dtype``; 10- and 12-bit HEIC
+    sources carry more than 8 bits per channel, so ``"auto"`` and
+    ``torch.uint16`` preserve that precision.
+
+    The shape is ``(C, H, W)`` for a single-image HEIC and ``(N, C, H, W)`` for
+    a multi-image one (an image sequence / burst), one frame per top-level image
+    in file order. All frames must share the same dimensions and bit depth. The
+    mode-conversion helpers (see _decode_with_mode) operate on the channel dim,
+    so they handle both the single- and multi-image shapes.
+
+    HEIC decoding requires **libheif** to be installed and discoverable at
+    runtime. TorchCodec does not bundle it (libheif is LGPL): install it via
+    e.g. ``conda install -c conda-forge libheif`` (or ``apt``/``brew``). If it
+    isn't available, this raises an :class:`ImportError`.
+    """
+    code = _validate_output_dtype(output_dtype)
+    mode = _normalize_mode(mode)
+    data = _source_to_tensor(source)
+    decode_heic_op = _get_decode_heic()
+    decoded = _decode_with_mode(
+        lambda d, m: decode_heic_op(d, m, code),
+        data,
+        mode,
+        _HEIC_NATIVE_OUTPUT_MODES,
+    )
+    return _to_output_dtype(decoded, output_dtype)
 
 
 # Maps a detected format to its public decoder, so decode_image reuses the exact
@@ -392,6 +439,7 @@ _FORMAT_TO_DECODER: dict[str, Callable[..., Any]] = {
     "webp": decode_webp,
     "gif": decode_gif,
     "avif": decode_avif,
+    "heic": decode_heic,
 }
 
 
@@ -411,15 +459,28 @@ def _detect_image_format(data: torch.Tensor) -> str:
     if header[4:8] == b"ftyp":
         # ISOBMFF container (AVIF/HEIC/...). The major brand is at [8:12], with
         # compatible brands following. AVIF uses the "avif" (still) or "avis"
-        # (animated) brands; HEIC (which we don't support) uses "heic"/"heix"
-        # and is deliberately not matched here.
+        # (animated) brands; HEIC/HEIF uses "heic"/"heix" (HEVC-coded) and the
+        # generic "mif1"/"msf1" brands. We check avif first (it can also carry
+        # mif1/msf1), then fall back to the HEIC-specific brands.
         brands = header[8:]
         if b"avif" in brands or b"avis" in brands:
             return "avif"
+        if (
+            b"heic" in brands
+            or b"heix" in brands
+            or b"heim" in brands
+            or b"heis" in brands
+            or b"hevc" in brands
+            or b"hevx" in brands
+            or b"mif1" in brands
+            or b"msf1" in brands
+        ):
+            return "heic"
     raise ValueError(
         "Unsupported or unrecognized image format. Supported formats are "
-        "JPEG, PNG, WebP, GIF and AVIF. If you know you have a valid image, "
-        "try using the dedicated decode_* functions like decode_jpeg() instead."
+        "JPEG, PNG, WebP, GIF, AVIF and HEIC. If you know you have a valid "
+        "image, try using the dedicated decode_* functions like decode_jpeg() "
+        "instead."
     )
 
 

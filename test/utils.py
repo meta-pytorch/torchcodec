@@ -12,12 +12,12 @@ from dataclasses import dataclass, field
 import numpy as np
 import pytest
 import torch
-
 from torchcodec import ffmpeg_major_version
 from torchcodec._core import get_ffmpeg_library_versions
 from torchcodec.decoders import set_cuda_backend, VideoDecoder
 from torchcodec.decoders._image_decoders import (
     decode_avif,
+    decode_heic,
     decode_jpeg,
     decode_png,
     decode_webp,
@@ -83,6 +83,14 @@ def needs_webp(test_item):
 # without it). Handled in pytest_collection_modifyitems() of conftest.py.
 def needs_avif(test_item):
     return pytest.mark.needs_avif(test_item)
+
+
+# Decorator for skipping tests that need libheif. Unlike the other image libs,
+# libheif is never bundled: it's an optional user-supplied runtime dependency,
+# so it may simply be absent. Handled in pytest_collection_modifyitems() of
+# conftest.py.
+def needs_heic(test_item):
+    return pytest.mark.needs_heic(test_item)
 
 
 # This is a special device string that we use to test the legacy "ffmpeg" CUDA
@@ -463,6 +471,84 @@ def avif_is_available() -> bool:
         if "libavif" in str(e):
             return False
         raise
+    return True
+
+
+# 720p RGB gradient HEIC, the SAME gradient as GRADIENT_PNG, saved losslessly
+# (4:4:4, no chroma subsampling) so decode is exact up to rounding. Generated
+# with the GRADIENT_PNG recipe above, then (needs pillow-heif):
+# import pillow_heif; pillow_heif.register_heif_opener()
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save(
+#     "gradient.heic", quality=-1, chroma=444)
+GRADIENT_HEIC = TestImage(
+    filename="gradient.heic", width=1280, height=720, num_channels=3
+)
+
+# GRADIENT_HEIC saved with orientation metadata (stored by pillow-heif as the
+# HEIF irot/imir transform properties, which libheif applies on decode). Used to
+# check we respect orientation. width/height are the DECODED (post-orientation)
+# dimensions. Generated with the GRADIENT_PNG recipe above, then (needs
+# pillow-heif):
+# import pillow_heif; pillow_heif.register_heif_opener()
+# for orientation, fname in ((6, "gradient_rotated.heic"),
+#                            (2, "gradient_mirrored.heic")):
+#     img = Image.fromarray(np.stack([r, g, b], axis=-1))
+#     exif = img.getexif(); exif[0x0112] = orientation  # EXIF orientation tag
+#     img.save(fname, exif=exif.tobytes(), quality=-1, chroma=444)
+# 6 is a 90-degree rotation (exercises irot); 2 is a horizontal mirror (imir).
+GRADIENT_ROTATED_HEIC = TestImage(
+    filename="gradient_rotated.heic", width=720, height=1280, num_channels=3
+)
+GRADIENT_MIRRORED_HEIC = TestImage(
+    filename="gradient_mirrored.heic", width=1280, height=720, num_channels=3
+)
+
+# 720p RGBA HEIC (lossless 4:4:4): same gradient as GRADIENT_HEIC with the
+# diagonal alpha ramp of RGBA_PNG. Generated with the GRADIENT_PNG recipe, then:
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# rgba = np.concatenate([np.stack([r, g, b], axis=-1), a[..., None]], axis=-1)
+# Image.fromarray(rgba, mode="RGBA").save("rgba.heic", quality=-1, chroma=444)
+RGBA_HEIC = TestImage(filename="rgba.heic", width=1280, height=720, num_channels=4)
+
+# 48x64 genuine 10-bit HEIC (a real >8-bit source). PIL only writes 8-bit HEIC,
+# so it's authored from raw 10-bit samples via pillow-heif's low-level API:
+# h, w = 48, 64
+# r = np.linspace(0, 1023, w)[None].repeat(h, 0)
+# g = np.linspace(0, 1023, h)[:, None].repeat(w, 1)
+# b = np.linspace(1023, 0, w)[None].repeat(h, 0)
+# data = (np.stack([r, g, b], -1).astype(np.uint16) << 6).astype("<u2").tobytes()
+# heif = pillow_heif.from_bytes(mode="RGB;16", size=(w, h), data=data)
+# heif.save("gradient_10bit.heic", quality=-1, chroma=444)
+GRADIENT_10BIT_HEIC = TestImage(
+    filename="gradient_10bit.heic", width=64, height=48, num_channels=3
+)
+
+
+# Small 3-frame HEIC image sequence with full-canvas solid-color frames, saved
+# losslessly (4:4:4) so the solid colors survive the YUV round-trip. Each frame
+# is a distinct color so frame ordering is verifiable. Used to test the
+# (N, C, H, W) multi-image output. Generated (needs pillow-heif):
+# import pillow_heif; pillow_heif.register_heif_opener()
+# colors = [(200, 30, 30), (30, 200, 30), (30, 30, 200)]
+# frames = [Image.fromarray(np.full((48, 64, 3), c, np.uint8)) for c in colors]
+# frames[0].save("animated.heic", save_all=True, append_images=frames[1:],
+#                quality=-1, chroma=444)
+ANIMATED_HEIC = TestImage(filename="animated.heic", width=64, height=48, num_channels=3)
+
+
+@functools.cache
+def heic_is_available() -> bool:
+    # "Available" means we can actually DECODE a HEIC here. We probe with a real
+    # decode (not just a library load): a libheif can load fine yet fail to
+    # decode with "Unsupported codec" when it lacks an HEVC decoder (libde265).
+    # This must never raise -- it's called from conftest's collection hook, so
+    # any exception would abort the whole session -- and every failure mode
+    # (missing libheif, stub build, missing codec) just means "skip".
+    try:
+        decode_heic(GRADIENT_HEIC.path)
+    except Exception as e:
+        print(f"heic_is_available() -> False: {type(e).__name__}: {e}")
+        return False
     return True
 
 

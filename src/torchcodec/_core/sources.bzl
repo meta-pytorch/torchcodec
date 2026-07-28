@@ -86,6 +86,14 @@ image_ops_sources = [
     "image_custom_ops.cpp",
 ]
 
+heic_sources = [
+    "DecodeHeic.cpp",
+]
+
+heic_ops_sources = [
+    "heic_custom_ops.cpp",
+]
+
 # Vendored giflib (decode-only subset, MIT licensed). Compiled directly from
 # source into the image library, so the GIF decoder needs no external dependency.
 # See giflib/README for the license and local mods.

@@ -11,9 +11,9 @@
 # so it can't live in pyproject's build-system.requires), pip does not install
 # build-system.requires for us -- we must do it here.
 #
-# Also installs the image decoder libs (libjpeg-turbo, libpng, libwebp) by
-# default. Builds that don't need image decoding (e.g. the mypy CI job) can skip
-# them by setting TORCHCODEC_BUILD_IMAGE=0.
+# Also installs the image decoder libs (libjpeg-turbo, libpng, libwebp, and
+# libheif) by default. Builds that don't need image decoding (e.g. the mypy CI
+# job) can skip them by setting TORCHCODEC_BUILD_IMAGE=0.
 #
 # This script intentionally does NOT install:
 # - torch: install it separately (a nightly matching your CPU/CUDA variant).
@@ -31,6 +31,5 @@ python -m pip install "scikit-build-core>=0.10" ninja
 
 if [[ "${TORCHCODEC_BUILD_IMAGE:-ON}" != "0" ]]; then
     conda install -y libjpeg-turbo -c pytorch
-    conda install -y libpng -c conda-forge
-    conda install -y "libwebp>=1.3" -c conda-forge
+    conda install -y libpng "libwebp>=1.3" libheif -c conda-forge
 fi
