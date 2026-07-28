@@ -39,6 +39,7 @@ decode_png = torch.ops.torchcodec_ns.decode_png.default
 decode_webp = torch.ops.torchcodec_ns.decode_webp.default
 decode_gif = torch.ops.torchcodec_ns.decode_gif.default
 decode_avif = torch.ops.torchcodec_ns.decode_avif.default
+encode_png = torch.ops.torchcodec_ns.encode_png.default
 
 
 def get_decode_heic():
