@@ -184,11 +184,6 @@ torch::stable::Tensor encode_png(
 
   png_destroy_write_struct(&png_write, &info_ptr);
 
-  // Hand the encoded bytes to the output tensor without copying: from_blob
-  // wraps the buffer in place, and the deleter owns the vector and frees it
-  // when the tensor's storage is released. The vector's data pointer stays
-  // valid after moving the owning unique_ptr (the vector's storage doesn't
-  // move), so buffer_data remains correct.
   auto buffer = std::make_unique<std::vector<uint8_t>>(std::move(out_buffer));
   const std::array<int64_t, 1> sizes{static_cast<int64_t>(buffer->size())};
   const std::array<int64_t, 1> strides{1};
