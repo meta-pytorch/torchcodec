@@ -14,21 +14,19 @@ import torch
 from PIL import Image
 from torchcodec import ffmpeg_major_version
 from torchcodec.decoders import AudioDecoder, VideoDecoder
-from torchcodec.decoders._image_decoders import decode_png
-from torchcodec.decoders._image_decoders import decode_jpeg
+from torchcodec.decoders._image_decoders import decode_jpeg, decode_png
 
 from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
-from torchcodec.encoders._image_encoders import encode_png
-from torchcodec.encoders._image_encoders import encode_jpeg
+from torchcodec.encoders._image_encoders import encode_jpeg, encode_png
 
 from .utils import (
     assert_tensor_close_on_at_least,
     call_ffprobe,
     get_ffmpeg_minor_version,
-    GRADIENT_PNG,
-    GRAYSCALE_PNG,
     GRADIENT_JPEG,
+    GRADIENT_PNG,
     GRAYSCALE_JPEG,
+    GRAYSCALE_PNG,
     in_fbcode,
     IN_GITHUB_CI,
     IS_WINDOWS,
@@ -37,8 +35,8 @@ from .utils import (
     NASA_VIDEO,
     needs_cuda,
     needs_ffmpeg_cli,
-    needs_png,
     needs_jpeg,
+    needs_png,
     psnr,
     SINE_MONO_S32,
     TEST_SRC_2_720P,
@@ -2447,15 +2445,10 @@ class TestImageEncoders:
         with pytest.raises(RuntimeError, match="channels should be 1 or 3"):
             encode_png(torch.zeros(num_channels, 8, 8, dtype=torch.uint8))
 
-    @staticmethod
-    def _pil_to_tensor(img):
-        t = torch.from_numpy(numpy.array(img))
-        return t.permute(2, 0, 1) if t.ndim == 3 else t.unsqueeze(0)
-
     @needs_jpeg
     @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG))
     @pytest.mark.parametrize("quality", (25, 75, 95))
-    def test_round_trip(self, asset, quality):
+    def test_jpeg_round_trip(self, asset, quality):
         # Encode a CHW uint8 tensor, then decode it back and check the round trip
         # is faithful (JPEG is lossy, so we compare with PSNR, which rises with
         # quality) and that the output is a valid JPEG PIL can open.
@@ -2475,7 +2468,7 @@ class TestImageEncoders:
         assert psnr(decoded, img) > 30
 
     @needs_jpeg
-    def test_against_pil(self):
+    def test_jpeg_against_pil(self):
         # Our encoder and PIL both wrap libjpeg with the same defaults, so at a
         # given quality they should produce near-identical output. We decode both
         # with our own decoder and compare pixels (byte-exactness is too fragile
@@ -2496,14 +2489,14 @@ class TestImageEncoders:
         assert_tensor_close_on_at_least(ours, pil, percentage=99, atol=2)
 
     @needs_jpeg
-    def test_quality_affects_size(self):
+    def test_jpeg_quality_affects_size(self):
         img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB")
         low = encode_jpeg(img, quality=10)
         high = encode_jpeg(img, quality=95)
         assert high.numel() > low.numel()
 
     @needs_jpeg
-    def test_errors(self):
+    def test_jpeg_errors(self):
         with pytest.raises(RuntimeError, match="Input tensor dtype should be uint8"):
             encode_jpeg(torch.empty((3, 100, 100), dtype=torch.float32))
 
