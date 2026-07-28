@@ -25,14 +25,33 @@ dnf repolist --all 2>&1 | head -40 || true
 dnf list --refresh --available 'rocjpeg*' 'libva-amdgpu*' 2>&1 | head -30 || true
 echo "::endgroup::"
 
-# rocjpeg-devel is in the ROCm dnf repo; its VA-API dependency (libva-amdgpu*)
-# is in the separate amdgpu-graphics repo. --refresh forces a metadata download:
-# the manylinux build images ship with stale dnf cache that can miss
-# libva-amdgpu-devel ("No match for argument"). If the amdgpu repo still isn't
-# visible, fall back to installing rocjpeg-devel alone and let dnf resolve its
-# deps (surfacing a clear error if libva genuinely can't be satisfied).
+# rocjpeg-devel (in the ROCm repo) requires "(libva-devel >= 2.16.0 or
+# libva-amdgpu-devel)". libva-amdgpu-devel lives in the amdgpu-graphics repo,
+# which is NOT configured in the manylinux build image (only 'amdgpu' + 'ROCm'
+# are), and AlmaLinux 8's libva-devel is older than 2.16.0 -- so a plain
+# `dnf install rocjpeg-devel` can't satisfy that dep here.
+#
+# Preferred path: if libva-amdgpu-devel is reachable, do a normal install.
+# Fallback (build image): install rocjpeg's files with rpm --nodeps. We only
+# need rocjpeg.h + librocjpeg.so to compile/link; librocjpeg's runtime VA-API
+# dependency resolves by the libva.so.2 SONAME, which base AlmaLinux 'libva'
+# provides (the >= 2.16.0 rpm constraint is stricter than the SONAME we link
+# against). Full hardware VA-API decode at runtime still needs the ROCm graphics
+# stack present, but that's a runtime concern, not a build one.
+install_rocjpeg_nodeps() {
+    echo "libva-amdgpu-devel unavailable in this image; installing rocJPEG via rpm --nodeps."
+    # base libva provides libva.so.2 for linking librocjpeg.
+    dnf install -y --refresh libva || true
+    dnf install -y "dnf-command(download)" >/dev/null 2>&1 \
+        || dnf install -y dnf-plugins-core
+    local rpm_dir
+    rpm_dir="$(mktemp -d)"
+    dnf download --destdir "${rpm_dir}" rocjpeg rocjpeg-devel
+    rpm -Uvh --nodeps "${rpm_dir}"/rocjpeg*.rpm
+}
+
 dnf install -y --refresh libva-amdgpu-devel rocjpeg-devel \
-    || dnf install -y --refresh rocjpeg-devel
+    || install_rocjpeg_nodeps
 
 # Diagnostics: where rocJPEG landed (feeds the CMake discovery), and the real
 # header API surface. DecodeJpegRocm.cpp is written against the documented API;
