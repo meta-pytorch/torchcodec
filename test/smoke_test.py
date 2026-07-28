@@ -270,6 +270,8 @@ class TestImageDecoder:
         assert img.dtype == torch.uint8
         assert img.shape == (3, h, w)
 
+    # HELLO
+
     @needs_cuda
     @needs_jpeg
     def test_decode_jpeg_cuda(self):
