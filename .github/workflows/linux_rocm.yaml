@@ -115,6 +115,12 @@ jobs:
         # Prevent the checked-out src/ tree from shadowing the installed wheel.
         bash packaging/remove_src.sh
 
+        echo '::group::Install rocJPEG runtime'
+        # The wheel deliberately does not bundle librocjpeg (see repair_wheel.py),
+        # so decode_jpeg(device="cuda") needs it present at runtime.
+        bash packaging/install_rocjpeg.sh
+        echo '::endgroup::'
+
         echo '::group::Install torchcodec from the wheel'
         python -m pip install "${RUNNER_ARTIFACT_DIR}"/*.whl -vvv
         echo '::endgroup::'

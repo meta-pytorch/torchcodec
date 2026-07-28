@@ -568,32 +568,59 @@ function(make_torchcodec_image_library)
     # device="cuda") routes to the same decode_jpegs_cuda op, backed by rocJPEG.
     resolve_image_codec("${TORCHCODEC_BUILD_ROCJPEG}" want_rocjpeg)
     if(ENABLE_ROCM AND want_rocjpeg)
-        if(DEFINED ENV{ROCM_PATH})
-            set(ROCM_PATH "$ENV{ROCM_PATH}")
-        elseif(NOT DEFINED ROCM_PATH)
-            set(ROCM_PATH "/opt/rocm")
+        # Resolve the ROCm install root. torch's ROCM_HOME is the source of truth
+        # torchvision uses and it handles versioned installs (e.g. /opt/rocm-7.2.0)
+        # that a bare /opt/rocm may not point at. We fall back to the usual env
+        # vars and /opt/rocm* globs if torch can't tell us.
+        set(_rocm_candidates "")
+        execute_process(
+            COMMAND "${Python3_EXECUTABLE}" -c
+                "from torch.utils.cpp_extension import ROCM_HOME; print(ROCM_HOME or '')"
+            OUTPUT_VARIABLE _torch_rocm_home
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+        if(_torch_rocm_home)
+            list(APPEND _rocm_candidates "${_torch_rocm_home}")
         endif()
+        foreach(_var ROCM_HOME ROCM_PATH HIP_PATH)
+            if(DEFINED ENV{${_var}})
+                list(APPEND _rocm_candidates "$ENV{${_var}}")
+            endif()
+        endforeach()
+        file(GLOB _rocm_globs "/opt/rocm" "/opt/rocm-*")
+        list(APPEND _rocm_candidates ${_rocm_globs})
+        list(REMOVE_DUPLICATES _rocm_candidates)
+        set(ROCM_PATH "")
+        foreach(_cand ${_rocm_candidates})
+            if(IS_DIRECTORY "${_cand}")
+                set(ROCM_PATH "${_cand}")
+                break()
+            endif()
+        endforeach()
+        message(STATUS "ROCm candidates: ${_rocm_candidates} -> using ROCM_PATH=${ROCM_PATH}")
+
         # So find_package(hip) locates ${ROCM_PATH}/lib/cmake/hip/hip-config.cmake.
         list(APPEND CMAKE_PREFIX_PATH "${ROCM_PATH}")
         find_package(hip REQUIRED)
         find_path(ROCJPEG_INCLUDE_DIR
             NAMES rocjpeg/rocjpeg.h
-            PATHS "${ROCM_PATH}/include")
+            HINTS "${ROCM_PATH}/include" "${ROCM_PATH}")
         find_library(ROCJPEG_LIBRARY
             NAMES rocjpeg
-            PATHS "${ROCM_PATH}/lib")
+            HINTS "${ROCM_PATH}/lib" "${ROCM_PATH}/lib64" "${ROCM_PATH}")
         if(NOT ROCJPEG_INCLUDE_DIR OR NOT ROCJPEG_LIBRARY)
             message(FATAL_ERROR
-                "rocJPEG not found (looked under ${ROCM_PATH}), but ROCm GPU JPEG "
-                "decoding is enabled. Install the rocJPEG runtime and dev headers, "
-                "or set TORCHCODEC_BUILD_ROCJPEG=0 to build without it "
+                "rocJPEG not found (searched ROCm roots: ${_rocm_candidates}). "
+                "include=${ROCJPEG_INCLUDE_DIR} lib=${ROCJPEG_LIBRARY}. Install the "
+                "rocJPEG runtime and dev headers (e.g. the 'rocjpeg' / 'rocjpeg-devel' "
+                "package), or set TORCHCODEC_BUILD_ROCJPEG=0 to build without it "
                 "(decode_jpeg(device='cuda') will raise at runtime).")
         endif()
         target_include_directories(${image_library_name} PRIVATE ${ROCJPEG_INCLUDE_DIR})
         target_link_libraries(${image_library_name} PRIVATE ${ROCJPEG_LIBRARY} hip::host)
         target_compile_definitions(${image_library_name} PRIVATE
             TORCHCODEC_ENABLE_ROCJPEG=1 USE_ROCM __HIP_PLATFORM_AMD__)
-        message(STATUS "Building torchcodec with rocJPEG GPU JPEG decoding support.")
+        message(STATUS "Building torchcodec with rocJPEG GPU JPEG decoding support (${ROCJPEG_LIBRARY}).")
     elseif(ENABLE_ROCM)
         message(STATUS "Not building torchcodec with rocJPEG support (disabled via TORCHCODEC_BUILD_ROCJPEG/TORCHCODEC_BUILD_IMAGE): decode_jpeg(device='cuda') will raise at runtime.")
     endif()
