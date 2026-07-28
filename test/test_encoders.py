@@ -2375,17 +2375,20 @@ class TestImageEncoders:
     @pytest.mark.parametrize(
         "asset, mode", ((GRADIENT_PNG, "RGB"), (GRAYSCALE_PNG, "GRAY"))
     )
-    def test_round_trip(self, asset, mode):
+    @pytest.mark.parametrize("compression_level", (0, 6, 9))
+    def test_round_trip(self, asset, mode, compression_level):
         source = self._decode(asset, mode)
-        encoded = encode_png(source)
+        encoded = encode_png(source, compression_level=compression_level)
 
         assert encoded.dtype == torch.uint8
         assert encoded.ndim == 1
         # PNG file signature.
         assert encoded[:8].tolist() == [137, 80, 78, 71, 13, 10, 26, 10]
 
-        # PNG is lossless, so the round-trip must be exact.
-        assert torch.equal(decode_png(encoded, mode=mode), source)
+        # PNG is lossless, so the round-trip must be exact at any compression level.
+        torch.testing.assert_close(
+            decode_png(encoded, mode=mode), source, rtol=0, atol=0
+        )
 
     @needs_png
     def test_against_pil(self):
@@ -2395,14 +2398,7 @@ class TestImageEncoders:
         pil_img = Image.open(io.BytesIO(encoded.numpy().tobytes()))
         assert pil_img.format == "PNG"
         pil_tensor = torch.from_numpy(np.asarray(pil_img).copy()).permute(2, 0, 1)
-        assert torch.equal(pil_tensor, source)
-
-    @needs_png
-    @pytest.mark.parametrize("compression_level", (0, 6, 9))
-    def test_compression_level_is_lossless(self, compression_level):
-        source = self._decode(GRADIENT_PNG, "RGB")
-        encoded = encode_png(source, compression_level=compression_level)
-        assert torch.equal(decode_png(encoded, mode="RGB"), source)
+        torch.testing.assert_close(pil_tensor, source, rtol=0, atol=0)
 
     @needs_png
     def test_compression_level_affects_size(self):
@@ -2414,7 +2410,12 @@ class TestImageEncoders:
     @needs_png
     def test_default_compression_level(self):
         source = self._decode(GRADIENT_PNG, "RGB")
-        assert torch.equal(encode_png(source), encode_png(source, compression_level=6))
+        torch.testing.assert_close(
+            encode_png(source),
+            encode_png(source, compression_level=6),
+            rtol=0,
+            atol=0,
+        )
 
     @needs_png
     @pytest.mark.parametrize("compression_level", (-1, 10))
