@@ -15,9 +15,11 @@ from PIL import Image
 from torchcodec import ffmpeg_major_version
 from torchcodec.decoders import AudioDecoder, VideoDecoder
 from torchcodec.decoders._image_decoders import decode_png
+from torchcodec.decoders._image_decoders import decode_jpeg
 
 from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
 from torchcodec.encoders._image_encoders import encode_png
+from torchcodec.encoders._image_encoders import encode_jpeg
 
 from .utils import (
     assert_tensor_close_on_at_least,
@@ -25,6 +27,8 @@ from .utils import (
     get_ffmpeg_minor_version,
     GRADIENT_PNG,
     GRAYSCALE_PNG,
+    GRADIENT_JPEG,
+    GRAYSCALE_JPEG,
     in_fbcode,
     IN_GITHUB_CI,
     IS_WINDOWS,
@@ -34,6 +38,7 @@ from .utils import (
     needs_cuda,
     needs_ffmpeg_cli,
     needs_png,
+    needs_jpeg,
     psnr,
     SINE_MONO_S32,
     TEST_SRC_2_720P,
@@ -2441,3 +2446,90 @@ class TestImageEncoders:
     def test_bad_num_channels(self, num_channels):
         with pytest.raises(RuntimeError, match="channels should be 1 or 3"):
             encode_png(torch.zeros(num_channels, 8, 8, dtype=torch.uint8))
+
+    @staticmethod
+    def _pil_to_tensor(img):
+        t = torch.from_numpy(numpy.array(img))
+        return t.permute(2, 0, 1) if t.ndim == 3 else t.unsqueeze(0)
+
+    @needs_jpeg
+    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG))
+    @pytest.mark.parametrize("quality", (25, 75, 95))
+    def test_round_trip(self, asset, quality):
+        # Encode a CHW uint8 tensor, then decode it back and check the round trip
+        # is faithful (JPEG is lossy, so we compare with PSNR, which rises with
+        # quality) and that the output is a valid JPEG PIL can open.
+        img = decode_jpeg(asset.path, mode="UNCHANGED")
+
+        encoded = encode_jpeg(img, quality=quality)
+        assert encoded.dtype == torch.uint8
+        assert encoded.ndim == 1
+
+        pil_decoded = Image.open(io.BytesIO(encoded.numpy().tobytes()))
+        assert pil_decoded.format == "JPEG"
+
+        decoded = decode_jpeg(encoded, mode="UNCHANGED")
+        assert decoded.shape == img.shape
+        # A smooth gradient compresses extremely well; even quality 25 stays well
+        # above the ~20-25 dB "acceptable" floor.
+        assert psnr(decoded, img) > 30
+
+    @needs_jpeg
+    def test_against_pil(self):
+        # Our encoder and PIL both wrap libjpeg with the same defaults, so at a
+        # given quality they should produce near-identical output. We decode both
+        # with our own decoder and compare pixels (byte-exactness is too fragile
+        # across libjpeg builds).
+        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB")
+
+        ours = decode_jpeg(encode_jpeg(img, quality=75), mode="RGB")
+
+        buf = io.BytesIO()
+        Image.fromarray(img.permute(1, 2, 0).numpy()).save(
+            buf, format="JPEG", quality=75
+        )
+        pil = decode_jpeg(
+            torch.frombuffer(buf.getvalue(), dtype=torch.uint8), mode="RGB"
+        )
+
+        assert ours.shape == pil.shape
+        assert_tensor_close_on_at_least(ours, pil, percentage=99, atol=2)
+
+    @needs_jpeg
+    def test_quality_affects_size(self):
+        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB")
+        low = encode_jpeg(img, quality=10)
+        high = encode_jpeg(img, quality=95)
+        assert high.numel() > low.numel()
+
+    @needs_jpeg
+    def test_errors(self):
+        with pytest.raises(RuntimeError, match="Input tensor dtype should be uint8"):
+            encode_jpeg(torch.empty((3, 100, 100), dtype=torch.float32))
+
+        with pytest.raises(
+            ValueError,
+            match="Image quality should be a positive number between 1 and 100",
+        ):
+            encode_jpeg(torch.empty((3, 100, 100), dtype=torch.uint8), quality=-1)
+
+        with pytest.raises(
+            ValueError,
+            match="Image quality should be a positive number between 1 and 100",
+        ):
+            encode_jpeg(torch.empty((3, 100, 100), dtype=torch.uint8), quality=101)
+
+        with pytest.raises(
+            RuntimeError, match="The number of channels should be 1 or 3, got: 5"
+        ):
+            encode_jpeg(torch.empty((5, 100, 100), dtype=torch.uint8))
+
+        with pytest.raises(
+            RuntimeError, match="Input data should be a 3-dimensional tensor"
+        ):
+            encode_jpeg(torch.empty((1, 3, 100, 100), dtype=torch.uint8))
+
+        with pytest.raises(
+            RuntimeError, match="Input data should be a 3-dimensional tensor"
+        ):
+            encode_jpeg(torch.empty((100, 100), dtype=torch.uint8))

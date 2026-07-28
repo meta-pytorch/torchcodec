@@ -7,7 +7,6 @@
 import concurrent.futures
 import contextlib
 import gc
-import io
 import queue
 import threading
 from functools import partial
@@ -48,7 +47,6 @@ from torchcodec.decoders._image_decoders import (
     ImageReadMode,
 )
 from torchcodec.encoders import VideoEncoder
-from torchcodec.encoders._image_encoders import encode_jpeg
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 
 from .utils import (
@@ -4905,92 +4903,3 @@ class TestImageDecoder:
         finally:
             # Don't leak the (failure-poisoned) cache to other tests.
             iru.load_heic_library.cache_clear()
-
-
-class TestImageEncoder:
-
-    @staticmethod
-    def _pil_to_tensor(img):
-        t = torch.from_numpy(numpy.array(img))
-        return t.permute(2, 0, 1) if t.ndim == 3 else t.unsqueeze(0)
-
-    @needs_jpeg
-    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG))
-    @pytest.mark.parametrize("quality", (25, 75, 95))
-    def test_encode_jpeg_round_trip(self, asset, quality):
-        # Encode a CHW uint8 tensor, then decode it back and check the round trip
-        # is faithful (JPEG is lossy, so we compare with PSNR, which rises with
-        # quality) and that the output is a valid JPEG PIL can open.
-        img = decode_jpeg(asset.path, mode="UNCHANGED")
-
-        encoded = encode_jpeg(img, quality=quality)
-        assert encoded.dtype == torch.uint8
-        assert encoded.ndim == 1
-
-        pil_decoded = Image.open(io.BytesIO(encoded.numpy().tobytes()))
-        assert pil_decoded.format == "JPEG"
-
-        decoded = decode_jpeg(encoded, mode="UNCHANGED")
-        assert decoded.shape == img.shape
-        # A smooth gradient compresses extremely well; even quality 25 stays well
-        # above the ~20-25 dB "acceptable" floor.
-        assert psnr(decoded, img) > 30
-
-    @needs_jpeg
-    def test_encode_jpeg_against_pil(self):
-        # Our encoder and PIL both wrap libjpeg with the same defaults, so at a
-        # given quality they should produce near-identical output. We decode both
-        # with our own decoder and compare pixels (byte-exactness is too fragile
-        # across libjpeg builds).
-        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB")
-
-        ours = decode_jpeg(encode_jpeg(img, quality=75), mode="RGB")
-
-        buf = io.BytesIO()
-        F_pil = Image.fromarray(img.permute(1, 2, 0).numpy())
-        F_pil.save(buf, format="JPEG", quality=75)
-        pil = decode_jpeg(
-            torch.frombuffer(buf.getvalue(), dtype=torch.uint8), mode="RGB"
-        )
-
-        assert ours.shape == pil.shape
-        assert_tensor_close_on_at_least(ours, pil, percentage=99, atol=2)
-
-    @needs_jpeg
-    def test_encode_jpeg_quality_affects_size(self):
-        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB")
-        low = encode_jpeg(img, quality=10)
-        high = encode_jpeg(img, quality=95)
-        assert high.numel() > low.numel()
-
-    @needs_jpeg
-    def test_encode_jpeg_errors(self):
-        with pytest.raises(RuntimeError, match="Input tensor dtype should be uint8"):
-            encode_jpeg(torch.empty((3, 100, 100), dtype=torch.float32))
-
-        with pytest.raises(
-            ValueError,
-            match="Image quality should be a positive number between 1 and 100",
-        ):
-            encode_jpeg(torch.empty((3, 100, 100), dtype=torch.uint8), quality=-1)
-
-        with pytest.raises(
-            ValueError,
-            match="Image quality should be a positive number between 1 and 100",
-        ):
-            encode_jpeg(torch.empty((3, 100, 100), dtype=torch.uint8), quality=101)
-
-        with pytest.raises(
-            RuntimeError, match="The number of channels should be 1 or 3, got: 5"
-        ):
-            encode_jpeg(torch.empty((5, 100, 100), dtype=torch.uint8))
-
-        with pytest.raises(
-            RuntimeError, match="Input data should be a 3-dimensional tensor"
-        ):
-            encode_jpeg(torch.empty((1, 3, 100, 100), dtype=torch.uint8))
-
-        with pytest.raises(
-            RuntimeError, match="Input data should be a 3-dimensional tensor"
-        ):
-            encode_jpeg(torch.empty((100, 100), dtype=torch.uint8))
