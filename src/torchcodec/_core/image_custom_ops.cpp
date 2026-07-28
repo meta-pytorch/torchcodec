@@ -30,7 +30,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "decode_avif(Tensor input, int mode, int output_dtype=0, int num_threads=1) -> Tensor");
   m.def(
       "decode_jpegs_cuda(Tensor[] encoded_images, int mode, Device device) -> Tensor[]");
-  m.def("encode_png(Tensor data, int compression_level) -> Tensor");
+  m.def("encode_png(Tensor img, int compression_level) -> Tensor");
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {

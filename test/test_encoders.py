@@ -8,17 +8,23 @@ import warnings
 from functools import partial
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
+from PIL import Image
 from torchcodec import ffmpeg_major_version
 from torchcodec.decoders import AudioDecoder, VideoDecoder
+from torchcodec.decoders._image_decoders import decode_png
 
 from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
+from torchcodec.encoders._image_encoders import encode_png
 
 from .utils import (
     assert_tensor_close_on_at_least,
     call_ffprobe,
     get_ffmpeg_minor_version,
+    GRADIENT_PNG,
+    GRAYSCALE_PNG,
     in_fbcode,
     IN_GITHUB_CI,
     IS_WINDOWS,
@@ -27,6 +33,7 @@ from .utils import (
     NASA_VIDEO,
     needs_cuda,
     needs_ffmpeg_cli,
+    needs_png,
     psnr,
     SINE_MONO_S32,
     TEST_SRC_2_720P,
@@ -2357,3 +2364,80 @@ class TestEncoder:
             ),
         ):
             self._open_encoder(enc, open_kwargs)
+
+
+class TestImageEncoders:
+    def _decode(self, asset, mode):
+        # Decode an asset into a CHW uint8 tensor to use as encoder input.
+        return decode_png(asset.path, mode=mode)
+
+    @needs_png
+    @pytest.mark.parametrize(
+        "asset, mode", ((GRADIENT_PNG, "RGB"), (GRAYSCALE_PNG, "GRAY"))
+    )
+    @pytest.mark.parametrize("compression_level", (0, 6, 9))
+    def test_round_trip(self, asset, mode, compression_level):
+        source = self._decode(asset, mode)
+        encoded = encode_png(source, compression_level=compression_level)
+
+        assert encoded.dtype == torch.uint8
+        assert encoded.ndim == 1
+        # PNG file signature.
+        assert encoded[:8].tolist() == [137, 80, 78, 71, 13, 10, 26, 10]
+
+        # PNG is lossless, so the round-trip must be exact at any compression level.
+        torch.testing.assert_close(
+            decode_png(encoded, mode=mode), source, rtol=0, atol=0
+        )
+
+    @needs_png
+    def test_against_pil(self):
+        source = self._decode(GRADIENT_PNG, "RGB")
+        encoded = encode_png(source)
+
+        pil_img = Image.open(io.BytesIO(encoded.numpy().tobytes()))
+        assert pil_img.format == "PNG"
+        pil_tensor = torch.from_numpy(np.asarray(pil_img).copy()).permute(2, 0, 1)
+        torch.testing.assert_close(pil_tensor, source, rtol=0, atol=0)
+
+    @needs_png
+    def test_compression_level_affects_size(self):
+        source = self._decode(GRADIENT_PNG, "RGB")
+        least = encode_png(source, compression_level=0).numel()
+        most = encode_png(source, compression_level=9).numel()
+        assert least > most
+
+    @needs_png
+    def test_default_compression_level(self):
+        source = self._decode(GRADIENT_PNG, "RGB")
+        torch.testing.assert_close(
+            encode_png(source),
+            encode_png(source, compression_level=6),
+            rtol=0,
+            atol=0,
+        )
+
+    @needs_png
+    @pytest.mark.parametrize("compression_level", (-1, 10))
+    def test_bad_compression_level(self, compression_level):
+        source = self._decode(GRADIENT_PNG, "RGB")
+        with pytest.raises(RuntimeError, match="between 0 and 9"):
+            encode_png(source, compression_level=compression_level)
+
+    @needs_png
+    def test_bad_dtype(self):
+        source = self._decode(GRADIENT_PNG, "RGB")
+        with pytest.raises(RuntimeError, match="uint8 data type"):
+            encode_png(source.to(torch.float32))
+
+    @needs_png
+    @pytest.mark.parametrize("shape", ((720, 1280), (3, 3, 8, 8)))
+    def test_bad_ndim(self, shape):
+        with pytest.raises(RuntimeError, match="3-dimensional"):
+            encode_png(torch.zeros(shape, dtype=torch.uint8))
+
+    @needs_png
+    @pytest.mark.parametrize("num_channels", (2, 4))
+    def test_bad_num_channels(self, num_channels):
+        with pytest.raises(RuntimeError, match="channels should be 1 or 3"):
+            encode_png(torch.zeros(num_channels, 8, 8, dtype=torch.uint8))
