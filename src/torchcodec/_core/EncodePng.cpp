@@ -196,7 +196,6 @@ torch::stable::Tensor encode_png(
       kStableUInt8,
       [buffer = std::move(buffer)](void*) mutable { buffer.reset(); });
 }
-
 } // namespace facebook::torchcodec
 
 #endif // !TORCHCODEC_ENABLE_PNG
