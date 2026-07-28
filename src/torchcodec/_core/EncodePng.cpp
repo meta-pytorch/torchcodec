@@ -17,7 +17,7 @@
 namespace facebook::torchcodec {
 
 torch::stable::Tensor encode_png(
-    [[maybe_unused]] const torch::stable::Tensor& data,
+    [[maybe_unused]] const torch::stable::Tensor& img,
     [[maybe_unused]] int64_t compression_level) {
   STD_TORCH_CHECK(
       false,
@@ -34,9 +34,10 @@ torch::stable::Tensor encode_png(
 #include <png.h>
 #include <setjmp.h>
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
+#include <memory>
 #include <vector>
 
 namespace facebook::torchcodec {
@@ -73,13 +74,6 @@ void write_callback(png_structp png_ptr, png_bytep data, png_size_t length) {
   }
 }
 
-// Encodes the HWC-contiguous rows at `input_ptr` into `out_buffer`. This is the
-// function that defines the setjmp() point, so per Note [libjpeg error
-// handling] (see DecodeJpeg.cpp) it must not own any object with a non-trivial
-// destructor: the tensors live in encode_png(), and the libpng structs are
-// owned by encode_png() and passed by reference so this function can destroy
-// them on the error path (where the STD_TORCH_CHECK throws, skipping the
-// caller's normal cleanup).
 void write_png_to_buffer(
     png_structp& png_write,
     png_infop& info_ptr,
@@ -88,17 +82,18 @@ void write_png_to_buffer(
     const uint8_t* input_ptr,
     int64_t width,
     int64_t height,
-    int64_t channels,
+    int64_t num_channels,
     int64_t compression_level) {
   if (setjmp(png_jmpbuf(png_write)) != 0) {
     png_destroy_write_struct(&png_write, &info_ptr);
     STD_TORCH_CHECK(false, "encode_png failed: ", error_ctx.error_message);
   }
 
-  png_set_write_fn(png_write, &out_buffer, write_callback, /*flush_fn=*/nullptr);
+  png_set_write_fn(
+      png_write, &out_buffer, write_callback, /*flush_fn=*/nullptr);
 
   const int color_type =
-      (channels == 1) ? PNG_COLOR_TYPE_GRAY : PNG_COLOR_TYPE_RGB;
+      (num_channels == 1) ? PNG_COLOR_TYPE_GRAY : PNG_COLOR_TYPE_RGB;
   png_set_IHDR(
       png_write,
       info_ptr,
@@ -112,7 +107,7 @@ void write_png_to_buffer(
   png_set_compression_level(png_write, static_cast<int>(compression_level));
   png_write_info(png_write, info_ptr);
 
-  const int64_t stride = width * channels;
+  const int64_t stride = width * num_channels;
   for (int64_t row = 0; row < height; ++row) {
     png_write_row(png_write, input_ptr + row * stride);
   }
@@ -124,11 +119,9 @@ void write_png_to_buffer(
 // Important: see Note [libjpeg error handling] in the jpeg decoder: everything
 // applies here too. We must not throw a C++ exception through libpng's C stack
 // (and callbacks), and we must not allocate anything that needs proper
-// destruction in a function that defines a setjmp() point. This is why the
-// tensors are allocated here in encode_png() and the setjmp() lives in
-// write_png_to_buffer().
+// destruction in a function that defines a setjmp() point.
 torch::stable::Tensor encode_png(
-    const torch::stable::Tensor& data,
+    const torch::stable::Tensor& img,
     int64_t compression_level) {
   STD_TORCH_CHECK(
       compression_level >= 0 && compression_level <= 9,
@@ -136,33 +129,33 @@ torch::stable::Tensor encode_png(
       compression_level,
       ".");
   STD_TORCH_CHECK(
-      data.device().type() == kStableCPU,
+      img.device().type() == kStableCPU,
       "Input tensor must be on the CPU, got a tensor on ",
-      device_type_name(data.device().type()),
+      device_type_name(img.device().type()),
       ".");
   STD_TORCH_CHECK(
-      data.scalar_type() == kStableUInt8,
+      img.scalar_type() == kStableUInt8,
       "Input tensor must have uint8 data type, got ",
-      torch::headeronly::toString(data.scalar_type()),
+      torch::headeronly::toString(img.scalar_type()),
       ".");
   STD_TORCH_CHECK(
-      data.dim() == 3,
+      img.dim() == 3,
       "Input tensor must be a 3-dimensional (C, H, W) tensor, got ",
-      data.dim(),
+      img.dim(),
       " dimensions.");
 
-  const int64_t channels = data.size(0);
-  const int64_t height = data.size(1);
-  const int64_t width = data.size(2);
+  const int64_t num_channels = img.size(0);
+  const int64_t height = img.size(1);
+  const int64_t width = img.size(2);
   STD_TORCH_CHECK(
-      channels == 1 || channels == 3,
+      num_channels == 1 || num_channels == 3,
       "The number of channels should be 1 or 3, got ",
-      channels,
+      num_channels,
       ".");
 
   // libpng writes rows in HWC interleaved order, so permute from CHW. This
   // contiguous copy is kept alive for the whole encoding below.
-  auto input = torch::stable::contiguous(stable_permute(data, {1, 2, 0}));
+  auto input = torch::stable::contiguous(stable_permute(img, {1, 2, 0}));
 
   auto png_write =
       png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
@@ -186,16 +179,27 @@ torch::stable::Tensor encode_png(
       input.const_data_ptr<uint8_t>(),
       width,
       height,
-      channels,
+      num_channels,
       compression_level);
 
   png_destroy_write_struct(&png_write, &info_ptr);
 
-  auto output = torch::stable::empty(
-      {static_cast<int64_t>(out_buffer.size())}, kStableUInt8);
-  std::memcpy(
-      output.mutable_data_ptr<uint8_t>(), out_buffer.data(), out_buffer.size());
-  return output;
+  // Hand the encoded bytes to the output tensor without copying: from_blob
+  // wraps the buffer in place, and the deleter owns the vector and frees it
+  // when the tensor's storage is released. The vector's data pointer stays
+  // valid after moving the owning unique_ptr (the vector's storage doesn't
+  // move), so buffer_data remains correct.
+  auto buffer = std::make_unique<std::vector<uint8_t>>(std::move(out_buffer));
+  const std::array<int64_t, 1> sizes{static_cast<int64_t>(buffer->size())};
+  const std::array<int64_t, 1> strides{1};
+  uint8_t* buffer_data = buffer->data();
+  return torch::stable::from_blob(
+      buffer_data,
+      sizes,
+      strides,
+      img.device(),
+      kStableUInt8,
+      [buffer = std::move(buffer)](void*) mutable { buffer.reset(); });
 }
 
 } // namespace facebook::torchcodec
