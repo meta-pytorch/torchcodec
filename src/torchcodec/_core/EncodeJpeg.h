@@ -11,7 +11,7 @@
 namespace facebook::torchcodec {
 
 FORCE_PUBLIC_VISIBILITY torch::stable::Tensor encode_jpeg(
-    const torch::stable::Tensor& data,
+    const torch::stable::Tensor& img,
     int64_t quality);
 
 } // namespace facebook::torchcodec

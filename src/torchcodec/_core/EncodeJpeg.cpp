@@ -17,7 +17,7 @@
 namespace facebook::torchcodec {
 
 torch::stable::Tensor encode_jpeg(
-    [[maybe_unused]] const torch::stable::Tensor& data,
+    [[maybe_unused]] const torch::stable::Tensor& img,
     [[maybe_unused]] int64_t quality) {
   STD_TORCH_CHECK(
       false,
@@ -34,7 +34,7 @@ torch::stable::Tensor encode_jpeg(
 namespace facebook::torchcodec {
 
 torch::stable::Tensor encode_jpeg(
-    [[maybe_unused]] const torch::stable::Tensor& data,
+    [[maybe_unused]] const torch::stable::Tensor& img,
     [[maybe_unused]] int64_t quality) {
   STD_TORCH_CHECK(false, "encode_jpeg: not yet implemented.");
 }
