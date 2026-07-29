@@ -27,7 +27,6 @@
 decoder_core_sources = [
     "AVIOContextHolder.cpp",
     "TensorIO.cpp",
-    "FileIO.cpp",
     "FilterGraph.cpp",
     "Frame.cpp",
     "DeviceInterface.cpp",
@@ -52,6 +51,10 @@ ffmpeg_common_sources = [
     "FFMPEGCommon.cpp",
 ]
 
+io_sources = [
+    "FileIO.cpp",
+]
+
 # CUDA sources, added to the core library only for CUDA-enabled builds.
 decoder_core_cuda_sources = [
     "CudaDeviceInterface.cpp",
@@ -63,7 +66,6 @@ decoder_core_cuda_sources = [
     "color_conversion.cu",
 ]
 
-# Shared by both the custom-ops and pybind-ops libraries.
 file_like_context_sources = [
     "FileLikeIO.cpp",
 ]
@@ -106,7 +108,9 @@ giflib_sources = [
     "giflib/openbsd-reallocarray.c",
 ]
 
-# pybind11 bindings.
+# pybind11 bindings (file-like support). Built into the single, FFmpeg-free
+# libtorchcodec_pybind_ops (alongside io_sources and file_like_context_sources)
+# and used by both the image encoders and the FFmpeg encoders/decoders.
 pybind_ops_sources = [
     "pybind_ops.cpp",
 ]
