@@ -335,50 +335,53 @@ class TestImageDecoder:
         assert img.shape == (3, h, w)
 
 
+# CUDA JPEG encoding is triggered by the input tensor's device, so we wrap
+# encode_jpeg to move the input to the GPU.
+def _encode_jpeg_cuda(input, dest):
+    return encode_jpeg(input.cuda(), dest)
+
+
+# Each backend: (encode_fn, decode_fn, suffix, lossless).
+_IMAGE_ENCODERS = (
+    pytest.param(
+        encode_png, decode_png, "png", True, marks=pytest.mark.needs_png, id="png"
+    ),
+    pytest.param(
+        encode_jpeg, decode_jpeg, "jpg", False, marks=pytest.mark.needs_jpeg, id="jpeg"
+    ),
+    pytest.param(
+        _encode_jpeg_cuda,
+        decode_jpeg,
+        "jpg",
+        False,
+        marks=(pytest.mark.needs_jpeg, pytest.mark.needs_cuda),
+        id="jpeg_cuda",
+    ),
+)
+
+
 class TestImageEncoder:
-    def _make_image(self, device="cpu"):
-        return torch.randint(
-            0, 256, (3, HEIGHT, WIDTH), dtype=torch.uint8, device=device
-        )
+    def _make_image(self):
+        return torch.randint(0, 256, (3, HEIGHT, WIDTH), dtype=torch.uint8)
 
-    @needs_png
-    def test_encode_png_to_file(self, tmp_path):
+    @pytest.mark.parametrize("encode_fn,decode_fn,suffix,lossless", _IMAGE_ENCODERS)
+    def test_encode_to_file(self, tmp_path, encode_fn, decode_fn, suffix, lossless):
         img = self._make_image()
-        path = tmp_path / "out.png"
-        encode_png(img, path)
+        path = tmp_path / f"out.{suffix}"
+        encode_fn(img, path)
         assert path.stat().st_size > 0
 
-        decoded = decode_png(str(path))
+        decoded = decode_fn(str(path))
         assert decoded.shape == (3, HEIGHT, WIDTH)
-        torch.testing.assert_close(decoded, img, atol=0, rtol=0)
+        if lossless:
+            torch.testing.assert_close(decoded, img, atol=0, rtol=0)
 
-    @needs_jpeg
-    def test_encode_jpeg_to_file(self, tmp_path):
-        img = self._make_image()
-        path = tmp_path / "out.jpg"
-        encode_jpeg(img, path)
-        assert path.stat().st_size > 0
-
-        decoded = decode_jpeg(str(path))
-        assert decoded.shape == (3, HEIGHT, WIDTH)
-
-    @needs_jpeg
-    def test_encode_jpeg_to_file_like(self):
+    @pytest.mark.parametrize("encode_fn,decode_fn,suffix,lossless", _IMAGE_ENCODERS)
+    def test_encode_to_file_like(self, encode_fn, decode_fn, suffix, lossless):
         img = self._make_image()
         buf = io.BytesIO()
-        encode_jpeg(img, buf)
+        encode_fn(img, buf)
         assert buf.getbuffer().nbytes > 0
-
-    @needs_cuda
-    @needs_jpeg
-    def test_encode_jpeg_cuda(self, tmp_path):
-        img = self._make_image(device="cuda")
-        path = tmp_path / "out_cuda.jpg"
-        encode_jpeg(img, path)
-        assert path.stat().st_size > 0
-
-        decoded = decode_jpeg(str(path))
-        assert decoded.shape == (3, HEIGHT, WIDTH)
 
 
 class TestVideoEncoder:
