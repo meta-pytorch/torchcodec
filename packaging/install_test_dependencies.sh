@@ -12,9 +12,9 @@
 #
 # INSTALL_LIBHEIF: whether to install libheif, the optional HEIC runtime
 # dependency (LGPL, never bundled). Defaults to "true"; callers pass "false"
-# where it can't be installed: on FFmpeg 4 (its aom/svt-av1 pins can't be
-# satisfied alongside conda's libheif) and on some CUDA jobs whose conda env can
-# no longer be re-solved.
+# where it can't be installed: on FFmpeg 4 and 5 (their aom/svt-av1 pins can't
+# be satisfied alongside conda's libheif) and on some CUDA jobs whose conda env
+# can no longer be re-solved.
 
 set -euo pipefail
 
