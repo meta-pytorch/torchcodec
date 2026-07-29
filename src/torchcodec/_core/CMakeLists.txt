@@ -185,6 +185,7 @@ endfunction()
 
 read_sources_from_bzl(TORCHCODEC_DECODER_CORE_SOURCES decoder_core_sources)
 read_sources_from_bzl(TORCHCODEC_FFMPEG_COMMON_SOURCES ffmpeg_common_sources)
+read_sources_from_bzl(TORCHCODEC_IO_SOURCES io_sources)
 read_sources_from_bzl(TORCHCODEC_DECODER_CORE_CUDA_SOURCES decoder_core_cuda_sources)
 read_sources_from_bzl(TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES file_like_context_sources)
 read_sources_from_bzl(TORCHCODEC_CUSTOM_OPS_SOURCES custom_ops_sources)
@@ -323,6 +324,7 @@ function(make_torchcodec_libraries
     set(core_sources
         ${TORCHCODEC_DECODER_CORE_SOURCES}
         ${TORCHCODEC_FFMPEG_COMMON_SOURCES}
+        ${TORCHCODEC_IO_SOURCES}
     )
 
     if(ENABLE_CUDA)
@@ -379,56 +381,15 @@ function(make_torchcodec_libraries
         "${custom_ops_dependencies}"
     )
 
-    # 3. Create libtorchcodec_pybind_opsN.so.
-    set(pybind_ops_library_name "libtorchcodec_pybind_ops${ffmpeg_major_version}")
-    set(pybind_ops_sources
-        ${TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES}
-        ${TORCHCODEC_PYBIND_OPS_SOURCES}
-    )
-    set(pybind_ops_dependencies
-       ${core_library_name}
-       pybind11::module # This library dependency makes sure we have the right
-                        # Python libraries included as well as all of the right
-                        # settings so that we can successfully load the shared
-                        # library as a Python module on Mac. If we instead use
-                        # ${Python3_LIBRARIES}, it works on Linux but not on
-                        # Mac.
-    )
-    make_torchcodec_sublibrary(
-        "${pybind_ops_library_name}"
-        MODULE # Note that this not SHARED; otherwise we build the wrong kind
-               # of library on Mac. On Mac, SHARED becomes .dylib and MODULE becomes
-               # a .so. We want pybind11 libraries to become .so. If this is
-               # changed to SHARED, we will be able to succesfully compile a
-               # .dylib, but we will not be able to succesfully import that as
-               # a Python module on Mac.
-        "${pybind_ops_sources}"
-        "${pybind_ops_dependencies}"
-    )
-
-    if(WIN32)
-      # On Windows, we need to set the suffix to .pyd so that Python can
-      # import the shared library as a module. Just setting the MODULE type
-      # isn't enough.
-      set_target_properties(${pybind_ops_library_name} PROPERTIES SUFFIX ".pyd")
-    endif()
-
     # pybind11 limits the visibility of symbols in the shared library to prevent
     # stray initialization of py::objects. The rest of the object code must
     # match. See:
     #   https://pybind11.readthedocs.io/en/stable/faq.html#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclass-member-wattributes
-    # We have to do this for both pybind_ops and custom_ops because they include
-    # some of the same headers.
     #
     # Note that this is Linux only. It's not necessary on Windows, and on Mac
     # hiding visibility can actually break dyanmic casts across share libraries
     # because the type infos don't get exported.
     if(LINUX)
-        target_compile_options(
-            ${pybind_ops_library_name}
-            PUBLIC
-            "-fvisibility=hidden"
-        )
         target_compile_options(
             ${custom_ops_library_name}
             PUBLIC
@@ -464,33 +425,11 @@ function(make_torchcodec_libraries
         )
     endif()
 
-    # The value we use here must match _PYBIND_OPS_MODULE_NAME in
-    # torchcodec/_internally_replaced_utils.py. If the values do not
-    # match, then we will be unable to import the C++ shared library as a
-    # Python module at runtime.
-    target_compile_definitions(
-        ${pybind_ops_library_name}
-        PRIVATE
-        PYBIND_OPS_MODULE_NAME=core_pybind_ops
-    )
-
-    if(APPLE)
-        # If we don't make sure this flag is set, we run into segfauls at import
-        # time on Mac. See:
-        # https://github.com/pybind/pybind11/issues/3907#issuecomment-1170412764
-        target_link_options(
-            ${pybind_ops_library_name}
-            PUBLIC
-            "LINKER:-undefined,dynamic_lookup"
-        )
-    endif()
-
     # Install all libraries.
     set(
         all_libraries
         ${core_library_name}
         ${custom_ops_library_name}
-        ${pybind_ops_library_name}
     )
 
     # We want the built libraries to end up in [src/]torchcodec so that the
@@ -541,6 +480,7 @@ function(make_torchcodec_image_library)
     set(image_library_sources
         ${TORCHCODEC_IMAGE_SOURCES}
         ${TORCHCODEC_IMAGE_OPS_SOURCES}
+        ${TORCHCODEC_IO_SOURCES}
     )
     if(want_gif)
         list(APPEND image_library_sources ${TORCHCODEC_GIFLIB_SOURCES})
@@ -609,6 +549,68 @@ function(make_torchcodec_image_library)
     else()
         install(
             TARGETS ${image_library_name}
+            LIBRARY DESTINATION torchcodec
+            RUNTIME DESTINATION torchcodec  # For Windows
+        )
+    endif()
+endfunction()
+
+# Create libtorchcodec_pybind_ops, the single pybind11 module providing file-like
+# support (create_file_like_context). It links NO FFmpeg (only pybind11 + torch)
+# and is version-independent, so it's built once and shared by both the
+# FFmpeg-free image encoders and the FFmpeg encoders/decoders. Being FFmpeg-free
+# lets it load eagerly, so importing torchcodec and encoding images works even
+# without FFmpeg installed.
+function(make_torchcodec_pybind_library)
+    set(pybind_ops_library_name "libtorchcodec_pybind_ops")
+    set(pybind_ops_sources
+        ${TORCHCODEC_IO_SOURCES}
+        ${TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES}
+        ${TORCHCODEC_PYBIND_OPS_SOURCES}
+    )
+    make_torchcodec_sublibrary(
+        "${pybind_ops_library_name}"
+        MODULE # Not SHARED; see the note in make_torchcodec_libraries. On Mac,
+               # MODULE becomes .so (importable), SHARED becomes .dylib.
+        "${pybind_ops_sources}"
+        "pybind11::module;${TORCH_LIBRARIES}"
+    )
+
+    if(WIN32)
+        set_target_properties(
+            ${pybind_ops_library_name} PROPERTIES SUFFIX ".pyd")
+    endif()
+
+    # See the matching comment in make_torchcodec_libraries: pybind11 hides
+    # symbols, and the rest of the object code must match.
+    if(LINUX)
+        target_compile_options(
+            ${pybind_ops_library_name} PUBLIC "-fvisibility=hidden")
+    endif()
+
+    # Must match _PYBIND_OPS_MODULE_NAME in _internally_replaced_utils.py.
+    target_compile_definitions(
+        ${pybind_ops_library_name}
+        PRIVATE
+        PYBIND_OPS_MODULE_NAME=core_pybind_ops)
+
+    if(APPLE)
+        target_link_options(
+            ${pybind_ops_library_name}
+            PUBLIC
+            "LINKER:-undefined,dynamic_lookup")
+    endif()
+
+    if(SKBUILD_STATE STREQUAL "editable")
+        get_filename_component(
+            TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+        set_target_properties(${pybind_ops_library_name} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
+        )
+    else()
+        install(
+            TARGETS ${pybind_ops_library_name}
             LIBRARY DESTINATION torchcodec
             RUNTIME DESTINATION torchcodec  # For Windows
         )
@@ -700,6 +702,7 @@ function(make_torchcodec_heic_library)
 endfunction()
 
 make_torchcodec_image_library()
+make_torchcodec_pybind_library()
 make_torchcodec_heic_library()
 
 if(DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3})

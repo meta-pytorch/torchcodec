@@ -72,6 +72,18 @@ def load_image_library() -> None:
 
 
 @functools.cache
+def load_pybind_ops() -> ModuleType:
+    """Load the pybind module providing file-like support (create_file_like_context).
+
+    This module links no FFmpeg, so it's loaded eagerly (regardless of whether
+    FFmpeg is available) and shared by both the image encoders and the FFmpeg
+    encoders/decoders.
+    """
+    library_path = _get_extension_path("libtorchcodec_pybind_ops")
+    return _load_pybind11_module(_PYBIND_OPS_MODULE_NAME, library_path)
+
+
+@functools.cache
 def load_heic_library() -> None:
     """Load the HEIC library (libtorchcodec_heic).
 
@@ -83,7 +95,7 @@ def load_heic_library() -> None:
 
 
 @functools.cache
-def load_core_libraries() -> tuple[int, str, ModuleType]:
+def load_core_libraries() -> tuple[int, str]:
     """Load the FFmpeg-dependent shared libraries, memoizing the result.
 
       This raises if the libraries cannot be loaded, typically because FFmpeg
@@ -105,36 +117,23 @@ def load_core_libraries() -> tuple[int, str, ModuleType]:
 
     We successively try to load the shared libraries for each version of FFmpeg
     that we support, starting with the highest version and working our way down.
-    Once we can load ALL shared libraries for a version of FFmpeg, we have
-    succeeded and we stop.
+    Once we can load the core and custom-ops libraries for a version of FFmpeg,
+    we have succeeded and we stop.
 
-    Note that we use two different methods for loading shared libraries:
-
-      1. torch.ops.load_library(): For PyTorch custom ops and the C++ only
-         libraries the custom ops depend on. Loading libraries through PyTorch
-         registers the custom ops with PyTorch's runtime and the ops can be
-         accessed through torch.ops after loading.
-
-      2. importlib: For pybind11 modules. We load them dynamically, rather
-         than using a plain import statement. A plain import statement only
-         works when the module name and file name match exactly. Our shared
-         libraries do not meet those conditions.
+    We load them via torch.ops.load_library(), which registers the custom ops
+    with PyTorch's runtime so they're accessible through torch.ops. The pybind
+    file-like module is FFmpeg-independent and loaded separately; see
+    load_pybind_ops().
     """
     exceptions = []
     for ffmpeg_major_version in (8, 7, 6, 5, 4):
         core_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
         custom_ops_library_name = f"libtorchcodec_custom_ops{ffmpeg_major_version}"
-        pybind_ops_library_name = f"libtorchcodec_pybind_ops{ffmpeg_major_version}"
         try:
             core_library_path = _get_extension_path(core_library_name)
             torch.ops.load_library(core_library_path)
             torch.ops.load_library(_get_extension_path(custom_ops_library_name))
-
-            pybind_ops_library_path = _get_extension_path(pybind_ops_library_name)
-            pybind_ops = _load_pybind11_module(
-                _PYBIND_OPS_MODULE_NAME, pybind_ops_library_path
-            )
-            return (ffmpeg_major_version, core_library_path, pybind_ops)
+            return (ffmpeg_major_version, core_library_path)
         except Exception:
             # Capture the full traceback for this exception
             exc_traceback = traceback.format_exc()

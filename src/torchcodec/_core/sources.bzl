@@ -27,7 +27,6 @@
 decoder_core_sources = [
     "AVIOContextHolder.cpp",
     "TensorIO.cpp",
-    "FileIO.cpp",
     "FilterGraph.cpp",
     "Frame.cpp",
     "DeviceInterface.cpp",
@@ -52,6 +51,15 @@ ffmpeg_common_sources = [
     "FFMPEGCommon.cpp",
 ]
 
+# FFmpeg-free on-disk file I/O (FileIO, an IOInterface). Compiled into the
+# FFmpeg core library, the FFmpeg-free image library, and the (also FFmpeg-free)
+# pybind-ops library so the image encoders can write to files without pulling in
+# FFmpeg. IOInterface itself is header-only, and the Python file-like bridge
+# (FileLikeIO) is in file_like_context_sources.
+io_sources = [
+    "FileIO.cpp",
+]
+
 # CUDA sources, added to the core library only for CUDA-enabled builds.
 decoder_core_cuda_sources = [
     "CudaDeviceInterface.cpp",
@@ -63,7 +71,7 @@ decoder_core_cuda_sources = [
     "color_conversion.cu",
 ]
 
-# Shared by both the custom-ops and pybind-ops libraries.
+# The FFmpeg-free Python file-like bridge. Compiled into the pybind-ops library.
 file_like_context_sources = [
     "FileLikeIO.cpp",
 ]
@@ -106,7 +114,9 @@ giflib_sources = [
     "giflib/openbsd-reallocarray.c",
 ]
 
-# pybind11 bindings.
+# pybind11 bindings (file-like support). Built into the single, FFmpeg-free
+# libtorchcodec_pybind_ops (alongside io_sources and file_like_context_sources)
+# and used by both the image encoders and the FFmpeg encoders/decoders.
 pybind_ops_sources = [
     "pybind_ops.cpp",
 ]
