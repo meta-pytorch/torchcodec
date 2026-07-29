@@ -275,7 +275,10 @@ torch::stable::Tensor CUDAJpegEncoder::encode_to_device_tensor(
 
   // Retrieve straight into a device tensor (no device-to-host copy).
   auto output = torch::stable::empty(
-      {static_cast<int64_t>(length)}, kStableUInt8, std::nullopt, target_device_);
+      {static_cast<int64_t>(length)},
+      kStableUInt8,
+      std::nullopt,
+      target_device_);
   nvjpegStatus_t status = nvjpegEncodeRetrieveBitstreamDevice(
       nvjpeg_handle_,
       nvjpeg_enc_state_,

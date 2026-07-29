@@ -45,11 +45,6 @@ class CUDAJpegEncoder {
   ~CUDAJpegEncoder();
 
   // Encodes `image` and returns the JPEG bitstream as host (CPU) bytes.
-<<<<<<< Updated upstream
-  std::vector<uint8_t> encode_image(
-||||||| Stash base
-  std::vector<uint8_t> encode_image(
-=======
   std::vector<uint8_t> encode_to_host_vector(
       const torch::stable::Tensor& image,
       int64_t quality,
@@ -58,14 +53,13 @@ class CUDAJpegEncoder {
   // Encodes `image` and returns the JPEG bitstream as a 1-D uint8 tensor on the
   // encoder's CUDA device (no device-to-host copy).
   torch::stable::Tensor encode_to_device_tensor(
->>>>>>> Stashed changes
       const torch::stable::Tensor& image,
       int64_t quality,
       cudaStream_t stream);
 
  private:
-  // Runs nvjpegEncodeImage for `image` and returns the encoded bitstream length,
-  // leaving the bitstream in nvjpeg_enc_state_ for retrieval.
+  // Runs nvjpegEncodeImage for `image` and returns the encoded bitstream
+  // length, leaving the bitstream in nvjpeg_enc_state_ for retrieval.
   size_t encode_and_get_length(
       const torch::stable::Tensor& image,
       int64_t quality,
