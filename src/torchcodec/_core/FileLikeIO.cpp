@@ -4,39 +4,34 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include "AVIOFileLikeContext.h"
+#include "FileLikeIO.h"
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
-AVIOFileLikeContext::AVIOFileLikeContext(
-    const py::object& file_like,
-    bool is_for_writing)
+FileLikeIO::FileLikeIO(const py::object& file_like, bool is_for_writing)
     : file_like_{UniquePyObject(new py::object(file_like))} {
-  {
-    // TODO: Is it necessary to acquire the GIL here? Is it maybe even
-    // harmful? At the moment, this is only called from within a pybind
-    // function, and pybind guarantees we have the GIL.
-    py::gil_scoped_acquire gil;
+  // TODO: Is it necessary to acquire the GIL here? Is it maybe even
+  // harmful? At the moment, this is only called from within a pybind
+  // function, and pybind guarantees we have the GIL.
+  py::gil_scoped_acquire gil;
 
-    if (is_for_writing) {
-      STD_TORCH_CHECK(
-          py::hasattr(file_like, "write"),
-          "File like object must implement a write method for writing.");
-    } else {
-      STD_TORCH_CHECK(
-          py::hasattr(file_like, "read"),
-          "File like object must implement a read method for reading.");
-    }
-
+  if (is_for_writing) {
     STD_TORCH_CHECK(
-        py::hasattr(file_like, "seek"),
-        "File like object must implement a seek method.");
+        py::hasattr(file_like, "write"),
+        "File like object must implement a write method for writing.");
+  } else {
+    STD_TORCH_CHECK(
+        py::hasattr(file_like, "read"),
+        "File like object must implement a read method for reading.");
   }
-  create_avio_context(is_for_writing);
+
+  STD_TORCH_CHECK(
+      py::hasattr(file_like, "seek"),
+      "File like object must implement a seek method.");
 }
 
-int AVIOFileLikeContext::read(uint8_t* buf, int size) {
+int FileLikeIO::read(uint8_t* buf, int size) {
   py::gil_scoped_acquire gil;
 
   int total_num_read = 0;
@@ -74,18 +69,18 @@ int AVIOFileLikeContext::read(uint8_t* buf, int size) {
   return total_num_read == 0 ? -1 : total_num_read;
 }
 
-int AVIOFileLikeContext::write(const uint8_t* buf, int size) {
+int FileLikeIO::write(const uint8_t* buf, int size) {
   py::gil_scoped_acquire gil;
   py::bytes bytes_obj(reinterpret_cast<const char*>(buf), size);
   return py::cast<int>(file_like_->attr("write")(bytes_obj));
 }
 
-int64_t AVIOFileLikeContext::seek(int64_t offset, int whence) {
+int64_t FileLikeIO::seek(int64_t offset, int whence) {
   py::gil_scoped_acquire gil;
   return py::cast<int64_t>(file_like_->attr("seek")(offset, whence));
 }
 
-int64_t AVIOFileLikeContext::get_size() {
+int64_t FileLikeIO::get_size() {
   // Size of file-like is typically unknown, since the data is potentially
   // streaming.
   return INT64_MAX;

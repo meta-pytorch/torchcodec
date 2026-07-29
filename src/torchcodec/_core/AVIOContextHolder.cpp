@@ -10,12 +10,12 @@
 namespace facebook::torchcodec {
 
 // --------------------------------------------------------------------------
-// FFmpeg AVIO callbacks — delegate to virtual methods via opaque=this
+// FFmpeg AVIO callbacks — delegate to the wrapped IOInterface via opaque
 // --------------------------------------------------------------------------
 
 int AVIOContextHolder::read_callback(void* opaque, uint8_t* buf, int buf_size) {
-  auto self = static_cast<AVIOContextHolder*>(opaque);
-  int result = self->read(buf, buf_size);
+  auto io = static_cast<IOInterface*>(opaque);
+  int result = io->read(buf, buf_size);
   return result < 0 ? AVERROR_EOF : result;
 }
 
@@ -23,29 +23,32 @@ int AVIOContextHolder::write_callback(
     void* opaque,
     const uint8_t* buf,
     int buf_size) {
-  auto self = static_cast<AVIOContextHolder*>(opaque);
-  return self->write(buf, buf_size);
+  auto io = static_cast<IOInterface*>(opaque);
+  return io->write(buf, buf_size);
 }
 
 int64_t
 AVIOContextHolder::seek_callback(void* opaque, int64_t offset, int whence) {
-  auto self = static_cast<AVIOContextHolder*>(opaque);
+  auto io = static_cast<IOInterface*>(opaque);
   if (whence == AVSEEK_SIZE) {
-    int64_t size = self->get_size();
+    int64_t size = io->get_size();
     // INT64_MAX means "unknown size" (e.g. streaming file-like objects).
     // Tell FFmpeg the size is unavailable rather than passing a bogus value.
     return size == INT64_MAX ? AVERROR(EIO) : size;
   }
-  return self->seek(offset, whence);
+  return io->seek(offset, whence);
 }
 
 // --------------------------------------------------------------------------
 // AVIO context creation and lifecycle
 // --------------------------------------------------------------------------
 
-void AVIOContextHolder::create_avio_context(
+AVIOContextHolder::AVIOContextHolder(
+    std::unique_ptr<IOInterface> io,
     bool is_for_writing,
-    int buffer_size) {
+    int buffer_size)
+    : io_(std::move(io)) {
+  STD_TORCH_CHECK(io_ != nullptr, "IOInterface must not be null");
   STD_TORCH_CHECK(
       buffer_size > 0,
       "Buffer size must be greater than 0; is " + std::to_string(buffer_size));
@@ -58,7 +61,7 @@ void AVIOContextHolder::create_avio_context(
       buffer,
       buffer_size,
       /*write_flag=*/is_for_writing,
-      /*opaque=*/this,
+      /*opaque=*/io_.get(),
       is_for_writing ? nullptr : &read_callback,
       is_for_writing ? &write_callback : nullptr,
       &seek_callback));
@@ -77,27 +80,6 @@ AVIOContextHolder::~AVIOContextHolder() {
 
 AVIOContext* AVIOContextHolder::get_avio_context() {
   return avio_context_.get();
-}
-
-// --------------------------------------------------------------------------
-// Default virtual method implementations
-// --------------------------------------------------------------------------
-
-int AVIOContextHolder::read(uint8_t*, int) {
-  STD_TORCH_CHECK(false, "read() is not supported by this AVIOContextHolder");
-}
-
-int AVIOContextHolder::write(const uint8_t*, int) {
-  STD_TORCH_CHECK(false, "write() is not supported by this AVIOContextHolder");
-}
-
-int64_t AVIOContextHolder::seek(int64_t, int) {
-  STD_TORCH_CHECK(false, "seek() is not supported by this AVIOContextHolder");
-}
-
-int64_t AVIOContextHolder::get_size() {
-  STD_TORCH_CHECK(
-      false, "getSize() is not supported by this AVIOContextHolder");
 }
 
 } // namespace facebook::torchcodec

@@ -4,7 +4,7 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include "AVIOTensorContext.h"
+#include "TensorIO.h"
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
@@ -15,18 +15,17 @@ constexpr int64_t MAX_TENSOR_SIZE = 320'000'000; // 320 MB
 } // namespace
 
 // --------------------------------------------------------------------------
-// AVIOFromTensorContext
+// TensorReadIO
 // --------------------------------------------------------------------------
 
-AVIOFromTensorContext::AVIOFromTensorContext(torch::stable::Tensor data)
+TensorReadIO::TensorReadIO(torch::stable::Tensor data)
     : tensor_context_{data, 0, 0} {
   STD_TORCH_CHECK(data.numel() > 0, "data must not be empty");
   STD_TORCH_CHECK(data.is_contiguous(), "data must be contiguous");
   STD_TORCH_CHECK(data.scalar_type() == kStableUInt8, "data must be kUInt8");
-  create_avio_context(/*isForWriting=*/false);
 }
 
-int AVIOFromTensorContext::read(uint8_t* buf, int size) {
+int TensorReadIO::read(uint8_t* buf, int size) {
   if (tensor_context_.current_pos >= tensor_context_.data.numel()) {
     return -1;
   }
@@ -57,7 +56,7 @@ int AVIOFromTensorContext::read(uint8_t* buf, int size) {
   return static_cast<int>(num_bytes_read);
 }
 
-int64_t AVIOFromTensorContext::seek(int64_t offset, int whence) {
+int64_t TensorReadIO::seek(int64_t offset, int whence) {
   switch (whence) {
     case SEEK_SET:
       tensor_context_.current_pos = offset;
@@ -67,23 +66,21 @@ int64_t AVIOFromTensorContext::seek(int64_t offset, int whence) {
   }
 }
 
-int64_t AVIOFromTensorContext::get_size() {
+int64_t TensorReadIO::get_size() {
   return tensor_context_.data.numel();
 }
 
 // --------------------------------------------------------------------------
-// AVIOToTensorContext
+// TensorWriteIO
 // --------------------------------------------------------------------------
 
-AVIOToTensorContext::AVIOToTensorContext()
+TensorWriteIO::TensorWriteIO()
     : tensor_context_{
           torch::stable::empty({INITIAL_TENSOR_SIZE}, kStableUInt8),
           0,
-          0} {
-  create_avio_context(/*isForWriting=*/true);
-}
+          0} {}
 
-int AVIOToTensorContext::write(const uint8_t* buf, int size) {
+int TensorWriteIO::write(const uint8_t* buf, int size) {
   int64_t buf_size = static_cast<int64_t>(size);
   if (tensor_context_.current_pos + buf_size > tensor_context_.data.numel()) {
     STD_TORCH_CHECK(
@@ -114,7 +111,7 @@ int AVIOToTensorContext::write(const uint8_t* buf, int size) {
   return size;
 }
 
-int64_t AVIOToTensorContext::seek(int64_t offset, int whence) {
+int64_t TensorWriteIO::seek(int64_t offset, int whence) {
   switch (whence) {
     case SEEK_SET:
       tensor_context_.current_pos = offset;
@@ -124,11 +121,11 @@ int64_t AVIOToTensorContext::seek(int64_t offset, int whence) {
   }
 }
 
-int64_t AVIOToTensorContext::get_size() {
+int64_t TensorWriteIO::get_size() {
   return tensor_context_.data.numel();
 }
 
-torch::stable::Tensor AVIOToTensorContext::get_output_tensor() {
+torch::stable::Tensor TensorWriteIO::get_output_tensor() {
   return torch::stable::narrow(
       tensor_context_.data,
       /*dim=*/0,
