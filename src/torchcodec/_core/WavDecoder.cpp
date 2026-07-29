@@ -77,7 +77,7 @@ bool matches_four_cc(
       0;
 }
 
-void safe_read(AVIOContextHolder& avio, uint8_t* buf, int64_t bytes_to_read) {
+void safe_read(IOInterface& avio, uint8_t* buf, int64_t bytes_to_read) {
   STD_TORCH_CHECK(bytes_to_read >= 0);
   int64_t total_read = 0;
   while (total_read < bytes_to_read) {
@@ -103,10 +103,7 @@ void safe_read(AVIOContextHolder& avio, uint8_t* buf, int64_t bytes_to_read) {
 }
 
 template <typename Container>
-void safe_read(
-    AVIOContextHolder& avio,
-    Container& buffer,
-    int64_t bytes_to_read) {
+void safe_read(IOInterface& avio, Container& buffer, int64_t bytes_to_read) {
   static_assert(
       sizeof(typename Container::value_type) == 1,
       "Container value_type must be a 1-byte type");
@@ -116,29 +113,28 @@ void safe_read(
   safe_read(avio, reinterpret_cast<uint8_t*>(buffer.data()), bytes_to_read);
 }
 
-void safe_seek(AVIOContextHolder& avio, int64_t pos) {
+void safe_seek(IOInterface& avio, int64_t pos) {
   int64_t result = avio.seek(pos, SEEK_SET);
   STD_TORCH_CHECK(result >= 0, "Failed to seek to ", pos, " in WAV file");
 }
 
 } // namespace
 
-WavDecoder::WavDecoder(std::unique_ptr<AVIOContextHolder> avio)
-    : avio_(std::move(avio)) {
+WavDecoder::WavDecoder(std::unique_ptr<IOInterface> io) : io_(std::move(io)) {
   STD_TORCH_CHECK(
       std::endian::native == std::endian::little,
       "WAV decoder requires little-endian architecture");
-  STD_TORCH_CHECK(avio_ != nullptr, "AVIO context cannot be null");
-  source_size_ = static_cast<uint64_t>(avio_->get_size());
+  STD_TORCH_CHECK(io_ != nullptr, "AVIO context cannot be null");
+  source_size_ = static_cast<uint64_t>(io_->get_size());
   parse_header();
   validate_header();
 }
 
 void WavDecoder::parse_header() {
-  safe_seek(*avio_, 0);
+  safe_seek(*io_, 0);
 
   std::array<uint8_t, RIFF_HEADER_SIZE> riff_header;
-  safe_read(*avio_, riff_header, RIFF_HEADER_SIZE);
+  safe_read(*io_, riff_header, RIFF_HEADER_SIZE);
 
   STD_TORCH_CHECK(
       matches_four_cc(riff_header.data(), RIFF_HEADER_SIZE, 0, "RIFF"),
@@ -156,7 +152,7 @@ void WavDecoder::parse_header() {
       " bytes");
 
   // Use ChunkInfo to seek to and read the fmt chunk data
-  safe_seek(*avio_, static_cast<int64_t>(fmt_chunk.offset));
+  safe_seek(*io_, static_cast<int64_t>(fmt_chunk.offset));
   STD_TORCH_CHECK(
       fmt_chunk.size <= MAX_FMT_CHUNK_SIZE,
       "fmt chunk too large for allocation: ",
@@ -165,7 +161,7 @@ void WavDecoder::parse_header() {
       MAX_FMT_CHUNK_SIZE,
       " bytes");
   std::vector<uint8_t> fmt_data(static_cast<size_t>(fmt_chunk.size));
-  safe_read(*avio_, fmt_data, fmt_chunk.size);
+  safe_read(*io_, fmt_data, fmt_chunk.size);
 
   header_.audio_format = safe_read_value<uint16_t>(fmt_data, 0);
   header_.num_channels = safe_read_value<uint16_t>(fmt_data, 2);
@@ -278,10 +274,10 @@ WavDecoder::ChunkInfo WavDecoder::find_chunk(
       "File too small to contain chunk:",
       chunk_id);
   while (start_pos <= source_size_ - CHUNK_HEADER_SIZE) {
-    safe_seek(*avio_, static_cast<int64_t>(start_pos));
+    safe_seek(*io_, static_cast<int64_t>(start_pos));
 
     std::array<uint8_t, CHUNK_HEADER_SIZE> chunk_header;
-    safe_read(*avio_, chunk_header, CHUNK_HEADER_SIZE);
+    safe_read(*io_, chunk_header, CHUNK_HEADER_SIZE);
     // Read chunk size which immediately follows the chunk ID
     uint32_t chunk_size = safe_read_value<uint32_t>(chunk_header, 4);
 
@@ -421,7 +417,7 @@ AudioFramesOutput WavDecoder::get_samples_in_range(
       "dataPosition calculation would overflow: dataOffset + byteOffset ");
   byte_offset += static_cast<int64_t>(header_.data_offset);
 
-  safe_seek(*avio_, byte_offset);
+  safe_seek(*io_, byte_offset);
 
   auto samples =
       torch::stable::empty({num_samples, header_.num_channels}, kStableFloat32);
@@ -431,7 +427,7 @@ AudioFramesOutput WavDecoder::get_samples_in_range(
     // Float32 samples can be read directly into the output tensor.
     int64_t total_bytes = num_samples * header_.num_bytes_per_sample;
     safe_read(
-        *avio_,
+        *io_,
         reinterpret_cast<uint8_t*>(samples.mutable_data_ptr<float>()),
         total_bytes);
   } else {
@@ -459,9 +455,7 @@ AudioFramesOutput WavDecoder::get_samples_in_range(
       const int64_t samples_this_iteration =
           std::min(num_samples - samples_processed, samples_per_buffer);
       safe_read(
-          *avio_,
-          buffer,
-          samples_this_iteration * header_.num_bytes_per_sample);
+          *io_, buffer, samples_this_iteration * header_.num_bytes_per_sample);
 
       float* output_ptr = samples.mutable_data_ptr<float>() +
           (samples_processed * header_.num_channels);

@@ -14,7 +14,8 @@
 #pragma pop_macro("TORCH_TARGET_VERSION")
 #include <cstdint>
 
-#include "AVIOFileLikeContext.h"
+#include "FileLikeIO.h"
+#include "IOInterface.h"
 
 namespace py = pybind11;
 
@@ -40,8 +41,7 @@ namespace facebook::torchcodec {
 //       again. We want to investigate if we can do something cleaner by
 //       defining proper pybind objects.
 int64_t create_file_like_context(py::object file_like, bool is_for_writing) {
-  AVIOFileLikeContext* context =
-      new AVIOFileLikeContext(file_like, is_for_writing);
+  IOInterface* context = new FileLikeIO(file_like, is_for_writing);
   return reinterpret_cast<int64_t>(context);
 }
 

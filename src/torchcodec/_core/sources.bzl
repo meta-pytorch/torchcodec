@@ -26,8 +26,8 @@
 # "core_common" target.
 decoder_core_sources = [
     "AVIOContextHolder.cpp",
-    "AVIOTensorContext.cpp",
-    "AVIOFileContext.cpp",
+    "TensorIO.cpp",
+    "FileIO.cpp",
     "FilterGraph.cpp",
     "Frame.cpp",
     "DeviceInterface.cpp",
@@ -65,7 +65,7 @@ decoder_core_cuda_sources = [
 
 # Shared by both the custom-ops and pybind-ops libraries.
 file_like_context_sources = [
-    "AVIOFileLikeContext.cpp",
+    "FileLikeIO.cpp",
 ]
 
 # PyTorch custom ops registration.

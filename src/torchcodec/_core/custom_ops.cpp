@@ -19,17 +19,18 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
-#include "AVIOFileContext.h"
-#include "AVIOFileLikeContext.h"
-#include "AVIOTensorContext.h"
+#include "AVIOContextHolder.h"
 #include "ColorConverter.h"
 #include "Demuxer.h"
 #include "Encoder.h"
+#include "FileIO.h"
+#include "IOInterface.h"
 #include "Logging.h"
 #include "NVDECCacheConfig.h"
 #include "PacketDecoder.h"
 #include "SingleStreamDecoder.h"
 #include "StableABICompat.h"
+#include "TensorIO.h"
 #include "ValidationUtils.h"
 #include "WavDecoder.h"
 
@@ -560,8 +561,8 @@ torch::stable::Tensor create_from_tensor(
     real_seek = seek_mode_from_string(seek_mode.value());
   }
 
-  auto avio_context_holder =
-      std::make_unique<AVIOFromTensorContext>(video_tensor);
+  auto avio_context_holder = std::make_unique<AVIOContextHolder>(
+      std::make_unique<TensorReadIO>(video_tensor), /*is_for_writing=*/false);
 
   std::unique_ptr<SingleStreamDecoder> unique_decoder =
       std::make_unique<SingleStreamDecoder>(
@@ -573,12 +574,13 @@ torch::stable::Tensor _create_from_file_like(
     int64_t file_like_context,
     std::optional<std::string> seek_mode) {
   auto file_like_context_ptr =
-      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+      reinterpret_cast<IOInterface*>(file_like_context);
   STD_TORCH_CHECK(
       file_like_context_ptr != nullptr,
       "file_like_context must be a valid pointer");
-  std::unique_ptr<AVIOFileLikeContext> avio_context_holder(
-      file_like_context_ptr);
+  auto avio_context_holder = std::make_unique<AVIOContextHolder>(
+      std::unique_ptr<IOInterface>(file_like_context_ptr),
+      /*is_for_writing=*/false);
 
   SeekMode real_seek = SeekMode::exact;
   if (seek_mode.has_value()) {
@@ -1290,12 +1292,13 @@ void streaming_encoder_open_file_like(
     std::string format,
     int64_t file_like_context) {
   auto file_like_context_ptr =
-      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
+      reinterpret_cast<IOInterface*>(file_like_context);
   STD_TORCH_CHECK(
       file_like_context_ptr != nullptr,
       "file_like_context must be a valid pointer");
-  std::unique_ptr<AVIOFileLikeContext> avio_context_holder(
-      file_like_context_ptr);
+  auto avio_context_holder = std::make_unique<AVIOContextHolder>(
+      std::unique_ptr<IOInterface>(file_like_context_ptr),
+      /*is_for_writing=*/true);
   unwrap_tensor_to_get_multi_stream_encoder(encoder)->open(
       format, std::move(avio_context_holder));
 }
@@ -1336,24 +1339,24 @@ void streaming_encoder_add_samples(
 
 torch::stable::Tensor create_wav_decoder_from_file(
     const std::string& filename) {
-  auto avio_context = std::make_unique<AVIOFileContext>(filename);
-  auto decoder = std::make_unique<WavDecoder>(std::move(avio_context));
+  auto io = std::make_unique<FileIO>(filename, FileIO::Mode::Read);
+  auto decoder = std::make_unique<WavDecoder>(std::move(io));
   return wrap_wav_decoder_pointer_to_tensor(std::move(decoder));
 }
 
 torch::stable::Tensor create_wav_decoder_from_tensor(
     const torch::stable::Tensor& data) {
-  auto avio_context = std::make_unique<AVIOFromTensorContext>(data);
-  auto decoder = std::make_unique<WavDecoder>(std::move(avio_context));
+  auto io = std::make_unique<TensorReadIO>(data);
+  auto decoder = std::make_unique<WavDecoder>(std::move(io));
   return wrap_wav_decoder_pointer_to_tensor(std::move(decoder));
 }
 
 torch::stable::Tensor _create_wav_decoder_from_file_like(
     int64_t file_like_context) {
   auto file_like_context_ptr =
-      reinterpret_cast<AVIOFileLikeContext*>(file_like_context);
-  std::unique_ptr<AVIOFileLikeContext> avio_context(file_like_context_ptr);
-  auto decoder = std::make_unique<WavDecoder>(std::move(avio_context));
+      reinterpret_cast<IOInterface*>(file_like_context);
+  std::unique_ptr<IOInterface> io(file_like_context_ptr);
+  auto decoder = std::make_unique<WavDecoder>(std::move(io));
   return wrap_wav_decoder_pointer_to_tensor(std::move(decoder));
 }
 
