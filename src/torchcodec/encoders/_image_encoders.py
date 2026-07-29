@@ -89,6 +89,10 @@ def encode_jpeg(
         raise ValueError("Image quality should be a positive number between 1 and 100")
 
     if dest is None:
+        # TODO_IMAGE since we're going to expose to-tensor support, we should
+        # probably see if we can benefit for custom implementations like this
+        # one with nvjpeg, but for the other 'backends' (png CPU and jpeg CPU)
+        # vs the currently-recommended way to go through BytesIO + getbuffer().
         if input.is_cuda:
             # Zero-copy: the encoded bytes are retrieved straight into a CUDA
             # tensor and never leave the GPU.
