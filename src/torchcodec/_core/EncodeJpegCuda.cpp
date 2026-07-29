@@ -33,54 +33,29 @@ void encode_jpeg_cuda(
 #else
 
 #include "CUDACommon.h"
+#include "Cache.h"
 
 namespace facebook::torchcodec {
 
 namespace {
 
-// Encoders are cheap to keep around and expensive to create, so we cache a
-// generous number per device, same reasoning as the JPEG decoder's
-// kMaxCachedDecodersPerDevice.
-constexpr size_t kMaxCachedEncodersPerDevice = 32;
+// Encoders are, like the JPEG decoders, expensive to create (~270ms) and cheap
+// to keep resident (~40Mb of GPU memory), so we cache a generous number per
+// device (same cap as the decoder). Caching gives a ~300x speedup over
+// constructing an encoder per call.
+constexpr int kMaxCachedEncodersPerDevice = 32;
+
+PerGpuCache<CUDAJpegEncoder>& encoder_cache() {
+  // Intentionally leaked (allocated with new, never freed) to avoid calling
+  // into CUDA/nvJPEG during static destruction, when the CUDA runtime may
+  // already be torn down (same reasoning as NVDECCache): the cached encoders'
+  // destructors call nvjpegDestroy, which we must not run at process exit.
+  static auto* cache = new PerGpuCache<CUDAJpegEncoder>(
+      MAX_CUDA_GPUS, kMaxCachedEncodersPerDevice);
+  return *cache;
+}
 
 } // namespace
-
-NVJpegEncoderCache* NVJpegEncoderCache::get_cache_instances() {
-  // Intentionally leaked to avoid calling into CUDA/nvJPEG during static
-  // destruction, when the CUDA runtime may already be torn down (same reasoning
-  // as NVDECCache and the JPEG decoder's NVJpegCache).
-  static NVJpegEncoderCache* cache_instances =
-      new NVJpegEncoderCache[MAX_CUDA_GPUS];
-  return cache_instances;
-}
-
-NVJpegEncoderCache& NVJpegEncoderCache::get_cache(
-    const torch::stable::Device& device) {
-  return get_cache_instances()[get_device_index(device)];
-}
-
-std::unique_ptr<CUDAJpegEncoder> NVJpegEncoderCache::get_encoder(
-    const torch::stable::Device& device) {
-  {
-    std::lock_guard<std::mutex> lock(pool_lock_);
-    if (!pool_.empty()) {
-      auto encoder = std::move(pool_.back());
-      pool_.pop_back();
-      return encoder;
-    }
-  }
-  return std::make_unique<CUDAJpegEncoder>(device);
-}
-
-void NVJpegEncoderCache::return_encoder(
-    std::unique_ptr<CUDAJpegEncoder> encoder) {
-  STD_TORCH_CHECK(encoder != nullptr, "encoder must not be null");
-  std::lock_guard<std::mutex> lock(pool_lock_);
-  if (pool_.size() < kMaxCachedEncodersPerDevice) {
-    pool_.push_back(std::move(encoder));
-  }
-  // Otherwise let `encoder` go out of scope and be destroyed.
-}
 
 void encode_jpeg_cuda(
     const torch::stable::Tensor& image,
@@ -98,12 +73,15 @@ void encode_jpeg_cuda(
 
   cudaStream_t current_stream = get_current_cuda_stream(device_index);
 
-  NVJpegEncoderCache& cache = NVJpegEncoderCache::get_cache(device);
-  std::unique_ptr<CUDAJpegEncoder> encoder = cache.get_encoder(device);
+  PerGpuCache<CUDAJpegEncoder>& cache = encoder_cache();
+  std::unique_ptr<CUDAJpegEncoder> encoder = cache.get(device);
+  if (encoder == nullptr) {
+    encoder = std::make_unique<CUDAJpegEncoder>(device);
+  }
 
   std::vector<uint8_t> encoded =
       encoder->encode_image(image, quality, current_stream);
-  cache.return_encoder(std::move(encoder));
+  cache.add_if_cache_has_capacity(device, std::move(encoder));
 
   interface.write(encoded.data(), static_cast<int>(encoded.size()));
 }

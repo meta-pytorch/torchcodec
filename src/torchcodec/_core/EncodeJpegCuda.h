@@ -10,8 +10,6 @@
 #include <torch/csrc/stable/tensor.h>
 
 #include <cstdint>
-#include <memory>
-#include <mutex>
 #include <vector>
 
 #include "IOInterface.h"
@@ -50,25 +48,6 @@ class CUDAJpegEncoder {
   nvjpegHandle_t nvjpeg_handle_;
   nvjpegEncoderState_t nvjpeg_enc_state_;
   nvjpegEncoderParams_t nvjpeg_enc_params_;
-};
-
-// A per-device pool of reusable CUDAJpegEncoder objects. Modeled on NVJpegCache
-// (the JPEG decoder's cache): encoders are expensive to create, so we reuse
-// them across calls.
-class NVJpegEncoderCache {
- public:
-  static NVJpegEncoderCache& get_cache(const torch::stable::Device& device);
-
-  std::unique_ptr<CUDAJpegEncoder> get_encoder(
-      const torch::stable::Device& device);
-
-  void return_encoder(std::unique_ptr<CUDAJpegEncoder> encoder);
-
- private:
-  static NVJpegEncoderCache* get_cache_instances();
-
-  std::vector<std::unique_ptr<CUDAJpegEncoder>> pool_;
-  std::mutex pool_lock_;
 };
 
 #endif // TORCHCODEC_ENABLE_NVJPEG

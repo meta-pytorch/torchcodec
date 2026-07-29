@@ -9,8 +9,6 @@
 #include <torch/csrc/stable/device.h>
 #include <torch/csrc/stable/tensor.h>
 
-#include <memory>
-#include <mutex>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -79,23 +77,6 @@ class CUDAJpegDecoder {
   // SW path: state for nvjpegDecode(). Always created, even when the HW engine
   // is available, because not all JPEGs are supported by the HW engine.
   nvjpegJpegState_t nvjpeg_state_sw_;
-};
-
-// A per-device pool of reusable CUDAJpegDecoder objects. Modeled on NVDECCache.
-class NVJpegCache {
- public:
-  static NVJpegCache& get_cache(const torch::stable::Device& device);
-
-  std::unique_ptr<CUDAJpegDecoder> get_decoder(
-      const torch::stable::Device& device);
-
-  void return_decoder(std::unique_ptr<CUDAJpegDecoder> decoder);
-
- private:
-  static NVJpegCache* get_cache_instances();
-
-  std::vector<std::unique_ptr<CUDAJpegDecoder>> pool_;
-  std::mutex pool_lock_;
 };
 
 #endif // TORCHCODEC_ENABLE_NVJPEG
