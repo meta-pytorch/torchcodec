@@ -69,6 +69,10 @@ def encode_jpeg(
             ``io.BytesIO()`` or an open file in binary write mode.
         quality (int): Quality of the resulting JPEG, between 1 and 100. Higher
             means better quality and larger file size. Default: 75.
+
+    If ``input`` is on a CUDA device, encoding is performed on the GPU with
+    nvJPEG. Only 3-channel RGB tensors are supported on CUDA (grayscale must be
+    encoded on the CPU).
     """
     if quality < 1 or quality > 100:
         raise ValueError("Image quality should be a positive number between 1 and 100")

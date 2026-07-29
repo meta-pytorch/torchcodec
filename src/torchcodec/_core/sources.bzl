@@ -84,6 +84,7 @@ image_sources = [
     "DecodeAvif.cpp",
     "EncodePng.cpp",
     "EncodeJpeg.cpp",
+    "EncodeJpegCuda.cpp",
 ]
 
 image_ops_sources = [
