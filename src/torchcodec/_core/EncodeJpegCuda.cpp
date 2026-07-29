@@ -67,40 +67,10 @@ PerGpuCache<CUDAJpegEncoder>& encoder_cache() {
   return *cache;
 }
 
-} // namespace
-
-void encode_jpeg_cuda(
+torch::stable::Tensor encode_to_tensor(
     const torch::stable::Tensor& image,
     int64_t quality,
-    IOInterface& interface) {
-  STD_TORCH_CHECK(
-      image.device().is_cuda(),
-      "Input tensor must be on a CUDA device, got a tensor on ",
-      device_type_name(image.device().type()),
-      ".");
-
-  torch::stable::Device device = image.device();
-  int device_index = get_device_index(device);
-  StableDeviceGuard device_guard(device_index);
-
-  cudaStream_t current_stream = get_current_cuda_stream(device_index);
-
-  PerGpuCache<CUDAJpegEncoder>& cache = encoder_cache();
-  std::unique_ptr<CUDAJpegEncoder> encoder = cache.get(device);
-  if (encoder == nullptr) {
-    encoder = std::make_unique<CUDAJpegEncoder>(device);
-  }
-
-  std::vector<uint8_t> encoded =
-      encoder->encode_to_host_vector(image, quality, current_stream);
-  cache.add_if_cache_has_capacity(device, std::move(encoder));
-
-  interface.write(encoded.data(), static_cast<int>(encoded.size()));
-}
-
-torch::stable::Tensor encode_jpeg_to_tensor_cuda(
-    const torch::stable::Tensor& image,
-    int64_t quality) {
+    const torch::stable::Device& output_device) {
   STD_TORCH_CHECK(
       image.device().is_cuda(),
       "Input tensor must be on a CUDA device, got a tensor on ",
@@ -120,10 +90,35 @@ torch::stable::Tensor encode_jpeg_to_tensor_cuda(
   }
 
   torch::stable::Tensor output =
-      encoder->encode_to_device_tensor(image, quality, current_stream);
+      encoder->encode_to_tensor(image, quality, current_stream, output_device);
   cache.add_if_cache_has_capacity(device, std::move(encoder));
 
   return output;
+}
+
+} // namespace
+
+// This one is for to_file and to_file_like while encode_jpeg_to_tensor_cuda is
+// a dedicated path to encode to tensor. We have a dedicated path for encoding
+// to tensor, instead of relying on the generic BytesIO().getbuffer() solution,
+// because here the output tensor is on CUDA! And going through BytesIO() would
+// require to send it to the CPU.
+// There are good reasons one would want to keep the encoded data on CUDA, e.g.
+// to use cuFile.
+void encode_jpeg_cuda(
+    const torch::stable::Tensor& image,
+    int64_t quality,
+    IOInterface& interface) {
+  torch::stable::Tensor encoded =
+      encode_to_tensor(image, quality, torch::stable::Device(kStableCPU));
+  interface.write(
+      encoded.const_data_ptr<uint8_t>(), static_cast<int>(encoded.numel()));
+}
+
+torch::stable::Tensor encode_jpeg_to_tensor_cuda(
+    const torch::stable::Tensor& image,
+    int64_t quality) {
+  return encode_to_tensor(image, quality, image.device());
 }
 
 CUDAJpegEncoder::CUDAJpegEncoder(const torch::stable::Device& target_device)
@@ -161,10 +156,11 @@ CUDAJpegEncoder::~CUDAJpegEncoder() {
   nvjpegDestroy(nvjpeg_handle_);
 }
 
-size_t CUDAJpegEncoder::encode_and_get_length(
+torch::stable::Tensor CUDAJpegEncoder::encode_to_tensor(
     const torch::stable::Tensor& image,
     int64_t quality,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    const torch::stable::Device& output_device) {
   STD_TORCH_CHECK(
       image.scalar_type() == kStableUInt8,
       "Input tensor dtype should be uint8");
@@ -223,8 +219,8 @@ size_t CUDAJpegEncoder::encode_and_get_length(
   STD_TORCH_CHECK(
       status == NVJPEG_STATUS_SUCCESS, "Failed to encode image: ", status);
 
-  // Query the encoded bitstream length (with a null buffer); the bitstream
-  // stays in nvjpeg_enc_state_ for the caller to retrieve.
+  // Query the encoded bitstream length (with a null buffer), then allocate the
+  // output on `output_device` and retrieve into it.
   size_t length = 0;
   status = nvjpegEncodeRetrieveBitstream(
       nvjpeg_handle_, nvjpeg_enc_state_, nullptr, &length, stream);
@@ -238,53 +234,24 @@ size_t CUDAJpegEncoder::encode_and_get_length(
       cuda_status == cudaSuccess,
       "Failed to synchronize CUDA stream: ",
       cuda_status);
-  return length;
-}
 
-std::vector<uint8_t> CUDAJpegEncoder::encode_to_host_vector(
-    const torch::stable::Tensor& image,
-    int64_t quality,
-    cudaStream_t stream) {
-  size_t length = encode_and_get_length(image, quality, stream);
-
-  std::vector<uint8_t> output(length);
-  nvjpegStatus_t status = nvjpegEncodeRetrieveBitstream(
-      nvjpeg_handle_, nvjpeg_enc_state_, output.data(), &length, stream);
-  STD_TORCH_CHECK(
-      status == NVJPEG_STATUS_SUCCESS,
-      "Failed to retrieve encoded bitstream: ",
-      status);
-
-  // Host-synchronize before returning: the encoder (and its internal nvJPEG
-  // buffers) goes back to the pool and may be reused immediately by the next
-  // call, so the copy into `output` must complete first.
-  cudaError_t cuda_status = cudaStreamSynchronize(stream);
-  STD_TORCH_CHECK(
-      cuda_status == cudaSuccess,
-      "Failed to synchronize CUDA stream: ",
-      cuda_status);
-
-  return output;
-}
-
-torch::stable::Tensor CUDAJpegEncoder::encode_to_device_tensor(
-    const torch::stable::Tensor& image,
-    int64_t quality,
-    cudaStream_t stream) {
-  size_t length = encode_and_get_length(image, quality, stream);
-
-  // Retrieve straight into a device tensor (no device-to-host copy).
   auto output = torch::stable::empty(
       {static_cast<int64_t>(length)},
       kStableUInt8,
       std::nullopt,
-      target_device_);
-  nvjpegStatus_t status = nvjpegEncodeRetrieveBitstreamDevice(
-      nvjpeg_handle_,
-      nvjpeg_enc_state_,
-      output.mutable_data_ptr<uint8_t>(),
-      &length,
-      stream);
+      output_device);
+  status = output_device.is_cuda() ? nvjpegEncodeRetrieveBitstreamDevice(
+                                         nvjpeg_handle_,
+                                         nvjpeg_enc_state_,
+                                         output.mutable_data_ptr<uint8_t>(),
+                                         &length,
+                                         stream)
+                                   : nvjpegEncodeRetrieveBitstream(
+                                         nvjpeg_handle_,
+                                         nvjpeg_enc_state_,
+                                         output.mutable_data_ptr<uint8_t>(),
+                                         &length,
+                                         stream);
   STD_TORCH_CHECK(
       status == NVJPEG_STATUS_SUCCESS,
       "Failed to retrieve encoded bitstream: ",
@@ -292,7 +259,7 @@ torch::stable::Tensor CUDAJpegEncoder::encode_to_device_tensor(
 
   // Sync before returning the encoder to the pool: its internal nvJPEG buffers
   // may be reused by the next call, so the retrieve into `output` must finish.
-  cudaError_t cuda_status = cudaStreamSynchronize(stream);
+  cuda_status = cudaStreamSynchronize(stream);
   STD_TORCH_CHECK(
       cuda_status == cudaSuccess,
       "Failed to synchronize CUDA stream: ",
