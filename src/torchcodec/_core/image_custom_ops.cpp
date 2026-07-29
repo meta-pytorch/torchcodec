@@ -35,42 +35,42 @@ namespace {
 // Python object under the GIL.
 std::unique_ptr<IOInterface> adopt_file_like_context(
     int64_t file_like_context) {
-  auto* io_ptr = reinterpret_cast<IOInterface*>(file_like_context);
+  auto* interface = reinterpret_cast<IOInterface*>(file_like_context);
   STD_TORCH_CHECK(
-      io_ptr != nullptr, "file_like_context must be a valid pointer");
-  return std::unique_ptr<IOInterface>(io_ptr);
+      interface != nullptr, "file_like_context must be a valid pointer");
+  return std::unique_ptr<IOInterface>(interface);
 }
 
 void encode_png_to_file(
     const torch::stable::Tensor& img,
     std::string filename,
     int64_t compression_level) {
-  FileIO io(filename, FileIO::Mode::Write);
-  encode_png(img, compression_level, io);
+  FileIO interface(filename, FileIO::Mode::Write);
+  encode_png(img, compression_level, interface);
 }
 
 void encode_png_to_file_like(
     const torch::stable::Tensor& img,
     int64_t file_like_context,
     int64_t compression_level) {
-  auto io = adopt_file_like_context(file_like_context);
-  encode_png(img, compression_level, *io);
+  auto interface = adopt_file_like_context(file_like_context);
+  encode_png(img, compression_level, *interface);
 }
 
 void encode_jpeg_to_file(
     const torch::stable::Tensor& img,
     std::string filename,
     int64_t quality) {
-  FileIO io(filename, FileIO::Mode::Write);
-  encode_jpeg(img, quality, io);
+  FileIO interface(filename, FileIO::Mode::Write);
+  encode_jpeg(img, quality, interface);
 }
 
 void encode_jpeg_to_file_like(
     const torch::stable::Tensor& img,
     int64_t file_like_context,
     int64_t quality) {
-  auto io = adopt_file_like_context(file_like_context);
-  encode_jpeg(img, quality, *io);
+  auto interface = adopt_file_like_context(file_like_context);
+  encode_jpeg(img, quality, *interface);
 }
 
 } // namespace

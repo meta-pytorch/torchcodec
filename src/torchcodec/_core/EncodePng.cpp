@@ -19,7 +19,7 @@ namespace facebook::torchcodec {
 void encode_png(
     [[maybe_unused]] const torch::stable::Tensor& img,
     [[maybe_unused]] int64_t compression_level,
-    [[maybe_unused]] IOInterface& io) {
+    [[maybe_unused]] IOInterface& interface) {
   STD_TORCH_CHECK(
       false,
       "encode_png: torchcodec was not compiled with libpng support. "
@@ -138,7 +138,7 @@ void write_png_to_io(
 void encode_png(
     const torch::stable::Tensor& img,
     int64_t compression_level,
-    IOInterface& io) {
+    IOInterface& interface) {
   STD_TORCH_CHECK(
       compression_level >= 0 && compression_level <= 9,
       "Compression level should be between 0 and 9, got ",
@@ -187,7 +187,7 @@ void encode_png(
   png_set_error_fn(png_write, &error_ctx, error_callback, /*warn_fn=*/nullptr);
 
   IOCtx io_ctx;
-  io_ctx.interface = &io;
+  io_ctx.interface = &interface;
 
   write_png_to_io(
       png_write,

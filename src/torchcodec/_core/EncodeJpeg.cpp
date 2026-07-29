@@ -19,7 +19,7 @@ namespace facebook::torchcodec {
 void encode_jpeg(
     [[maybe_unused]] const torch::stable::Tensor& img,
     [[maybe_unused]] int64_t quality,
-    [[maybe_unused]] IOInterface& io) {
+    [[maybe_unused]] IOInterface& interface) {
   STD_TORCH_CHECK(
       false,
       "encode_jpeg: torchcodec was not compiled with libjpeg support. "
@@ -175,7 +175,7 @@ void compress_jpeg(
 void encode_jpeg(
     const torch::stable::Tensor& img,
     int64_t quality,
-    IOInterface& io) {
+    IOInterface& interface) {
   STD_TORCH_CHECK(
       img.device().type() == kStableCPU,
       "Input tensor must be on the CPU, got a tensor on ",
@@ -205,7 +205,7 @@ void encode_jpeg(
   error_ctx.base.error_exit = error_exit_cb;
 
   IOCtx io_ctx;
-  io_ctx.interface = &io;
+  io_ctx.interface = &interface;
   io_ctx.buffer.resize(OUTPUT_BUFFER_SIZE);
 
   compress_jpeg(
