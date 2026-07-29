@@ -10,7 +10,7 @@
 namespace facebook::torchcodec {
 
 // --------------------------------------------------------------------------
-// FFmpeg AVIO callbacks — delegate to the wrapped IOInterface via opaque
+// FFmpeg AVIO callbacks - delegate to the wrapped IOInterface via opaque
 // --------------------------------------------------------------------------
 
 int AVIOContextHolder::read_callback(void* opaque, uint8_t* buf, int buf_size) {
