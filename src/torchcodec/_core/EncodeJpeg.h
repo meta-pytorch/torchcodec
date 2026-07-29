@@ -11,8 +11,7 @@
 
 namespace facebook::torchcodec {
 
-FORCE_PUBLIC_VISIBILITY void
-encode_jpeg(
+FORCE_PUBLIC_VISIBILITY void encode_jpeg(
     const torch::stable::Tensor& img,
     int64_t quality,
     IOInterface& interface);
