@@ -46,7 +46,7 @@ void encode_png_to_file(
     std::string filename,
     int64_t compression_level) {
   FileIO io(filename, FileIO::Mode::Write);
-  encode_png_to_io(img, compression_level, io);
+  encode_png(img, compression_level, io);
 }
 
 void encode_png_to_file_like(
@@ -54,7 +54,7 @@ void encode_png_to_file_like(
     int64_t file_like_context,
     int64_t compression_level) {
   auto io = adopt_file_like_context(file_like_context);
-  encode_png_to_io(img, compression_level, *io);
+  encode_png(img, compression_level, *io);
 }
 
 void encode_jpeg_to_file(
@@ -62,7 +62,7 @@ void encode_jpeg_to_file(
     std::string filename,
     int64_t quality) {
   FileIO io(filename, FileIO::Mode::Write);
-  encode_jpeg_to_io(img, quality, io);
+  encode_jpeg(img, quality, io);
 }
 
 void encode_jpeg_to_file_like(
@@ -70,7 +70,7 @@ void encode_jpeg_to_file_like(
     int64_t file_like_context,
     int64_t quality) {
   auto io = adopt_file_like_context(file_like_context);
-  encode_jpeg_to_io(img, quality, *io);
+  encode_jpeg(img, quality, *io);
 }
 
 } // namespace

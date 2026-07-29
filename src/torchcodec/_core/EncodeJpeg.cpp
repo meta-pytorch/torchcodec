@@ -16,7 +16,7 @@
 
 namespace facebook::torchcodec {
 
-void encode_jpeg_to_io(
+void encode_jpeg(
     [[maybe_unused]] const torch::stable::Tensor& img,
     [[maybe_unused]] int64_t quality,
     [[maybe_unused]] IOInterface& io) {
@@ -61,62 +61,65 @@ void error_exit_cb(j_common_ptr jpeg_ctx) {
 }
 
 // Custom libjpeg destination manager that streams compressed bytes into an
-// IOInterface. jpeg_destination_mgr must be the first field so libjpeg's
-// `dest` pointer can be cast back to an IODestMgr* in the callbacks.
-//
-// The io.write() calls may throw (e.g. a Python file-like raising, or a disk
-// error). We must not let a C++ exception unwind through libjpeg's C stack, so
-// each callback catches it and stashes it in `write_error`; the caller rethrows
-// it after compression finishes. On error we stop writing but let libjpeg run
-// to completion (its output is discarded).
-struct IODestMgr {
-  jpeg_destination_mgr pub;
-  IOInterface* io;
+// IOInterface. The jpeg_destination_mgr must be the first field so libjpeg's
+// `dest` pointer can be cast back to an IOCtx* in the callbacks.
+struct IOCtx {
+  jpeg_destination_mgr jpeg_dest_mgr;
+  IOInterface* interface;
+  // libjpeg writes to this buffer in chunks, and we flush it to the IOInterface
+  // whenever it fills up.
   std::vector<JOCTET> buffer;
-  std::exception_ptr write_error;
+  std::exception_ptr interface_exception;
 };
 
-void init_destination(j_compress_ptr jpeg_ctx) {
-  auto* dest = reinterpret_cast<IODestMgr*>(jpeg_ctx->dest);
-  dest->pub.next_output_byte = dest->buffer.data();
-  dest->pub.free_in_buffer = dest->buffer.size();
+// Flushes the first `size` bytes of io_ctx->buffer to the IOInterface. The
+// interface->write() call may throw (e.g. a Python file-like raising, or a disk
+// error), but a C++ exception must not unwind through libjpeg's C stack. So we
+// capture it and abort compression by longjmp-ing to the setjmp point in
+// compress_jpeg, which rethrows it.
+void write_or_longjmp(j_compress_ptr jpeg_ctx, IOCtx* io_ctx, int size) {
+  try {
+    io_ctx->interface->write(io_ctx->buffer.data(), size);
+    return;
+  } catch (...) {
+    io_ctx->interface_exception = std::current_exception();
+  }
+  longjmp(reinterpret_cast<ErrorCtx*>(jpeg_ctx->err)->setjmp_buffer, 1);
 }
 
+// Called by jpeg_start_compress() before any data is written.
+void init_destination(j_compress_ptr jpeg_ctx) {
+  auto* io_ctx = reinterpret_cast<IOCtx*>(jpeg_ctx->dest);
+  io_ctx->jpeg_dest_mgr.next_output_byte = io_ctx->buffer.data();
+  io_ctx->jpeg_dest_mgr.free_in_buffer = io_ctx->buffer.size();
+}
+
+// Called whenever libjpeg runs out of space in the output buffer. We flush the
+// buffer to the IOInterface and reset the buffer.
 boolean empty_output_buffer(j_compress_ptr jpeg_ctx) {
-  auto* dest = reinterpret_cast<IODestMgr*>(jpeg_ctx->dest);
-  if (!dest->write_error) {
-    try {
-      dest->io->write(
-          dest->buffer.data(), static_cast<int>(dest->buffer.size()));
-    } catch (...) {
-      dest->write_error = std::current_exception();
-    }
-  }
-  dest->pub.next_output_byte = dest->buffer.data();
-  dest->pub.free_in_buffer = dest->buffer.size();
+  auto* io_ctx = reinterpret_cast<IOCtx*>(jpeg_ctx->dest);
+  write_or_longjmp(jpeg_ctx, io_ctx, static_cast<int>(io_ctx->buffer.size()));
+  io_ctx->jpeg_dest_mgr.next_output_byte = io_ctx->buffer.data();
+  io_ctx->jpeg_dest_mgr.free_in_buffer = io_ctx->buffer.size();
   return TRUE;
 }
 
+// called by jpeg_finish_compress() after all data has been written. There might
+// still be some data in the buffer which needs to be flushed to the
+// IOInterface.
 void term_destination(j_compress_ptr jpeg_ctx) {
-  auto* dest = reinterpret_cast<IODestMgr*>(jpeg_ctx->dest);
-  if (dest->write_error) {
-    return;
-  }
-  int64_t remaining =
-      static_cast<int64_t>(dest->buffer.size() - dest->pub.free_in_buffer);
-  if (remaining > 0) {
-    try {
-      dest->io->write(dest->buffer.data(), static_cast<int>(remaining));
-    } catch (...) {
-      dest->write_error = std::current_exception();
-    }
+  auto* io_ctx = reinterpret_cast<IOCtx*>(jpeg_ctx->dest);
+  int size = static_cast<int>(
+      io_ctx->buffer.size() - io_ctx->jpeg_dest_mgr.free_in_buffer);
+  if (size > 0) {
+    write_or_longjmp(jpeg_ctx, io_ctx, size);
   }
 }
 
 void compress_jpeg(
     jpeg_compress_struct& jpeg_ctx,
     ErrorCtx& error_ctx,
-    IODestMgr& dest,
+    IOCtx& io_ctx,
     const uint8_t* input_ptr,
     int width,
     int height,
@@ -124,7 +127,14 @@ void compress_jpeg(
     int quality) {
   if (setjmp(error_ctx.setjmp_buffer)) {
     jpeg_destroy_compress(&jpeg_ctx);
-    STD_TORCH_CHECK(false, error_ctx.last_error_message);
+    // We land here on either a libjpeg error (via error_exit_cb) or a failed
+    // write (via write_or_longjmp). The latter sets interface_exception, which
+    // we rethrow to surface the original exception.
+    if (io_ctx.interface_exception) {
+      std::rethrow_exception(io_ctx.interface_exception);
+    } else {
+      STD_TORCH_CHECK(false, error_ctx.last_error_message);
+    }
   }
 
   jpeg_create_compress(&jpeg_ctx);
@@ -137,10 +147,10 @@ void compress_jpeg(
   jpeg_set_defaults(&jpeg_ctx);
   jpeg_set_quality(&jpeg_ctx, quality, /*force_baseline=*/TRUE);
 
-  dest.pub.init_destination = &init_destination;
-  dest.pub.empty_output_buffer = &empty_output_buffer;
-  dest.pub.term_destination = &term_destination;
-  jpeg_ctx.dest = &dest.pub;
+  io_ctx.jpeg_dest_mgr.init_destination = &init_destination;
+  io_ctx.jpeg_dest_mgr.empty_output_buffer = &empty_output_buffer;
+  io_ctx.jpeg_dest_mgr.term_destination = &term_destination;
+  jpeg_ctx.dest = &io_ctx.jpeg_dest_mgr;
 
   jpeg_start_compress(&jpeg_ctx, /*write_all_tables=*/TRUE);
 
@@ -160,9 +170,9 @@ void compress_jpeg(
 // Important: see Note [libjpeg error handling] in the jpeg decoder: everything
 // applies here too. We must not throw a C++ exception through libjpeg's C stack
 // (and callbacks), and we must not allocate anything that needs proper
-// destruction in a function that defines a setjmp() point. The IODestMgr (which
+// destruction in a function that defines a setjmp() point. The IOCtx (which
 // owns a std::vector) therefore lives here, outside compress_jpeg's setjmp.
-void encode_jpeg_to_io(
+void encode_jpeg(
     const torch::stable::Tensor& img,
     int64_t quality,
     IOInterface& io) {
@@ -194,23 +204,19 @@ void encode_jpeg_to_io(
   jpeg_ctx.err = jpeg_std_error(&error_ctx.base);
   error_ctx.base.error_exit = error_exit_cb;
 
-  IODestMgr dest;
-  dest.io = &io;
-  dest.buffer.resize(OUTPUT_BUFFER_SIZE);
+  IOCtx io_ctx;
+  io_ctx.interface = &io;
+  io_ctx.buffer.resize(OUTPUT_BUFFER_SIZE);
 
   compress_jpeg(
       jpeg_ctx,
       error_ctx,
-      dest,
+      io_ctx,
       input.const_data_ptr<uint8_t>(),
       width,
       height,
       num_channels,
       static_cast<int>(quality));
-
-  if (dest.write_error) {
-    std::rethrow_exception(dest.write_error);
-  }
 }
 
 } // namespace facebook::torchcodec
