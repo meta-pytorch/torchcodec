@@ -1,3 +1,4 @@
+import io
 import sys
 from pathlib import Path
 
@@ -33,6 +34,7 @@ from torchcodec.decoders._image_decoders import (
     decode_webp,
 )
 from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
+from torchcodec.encoders._image_encoders import encode_jpeg, encode_png
 
 
 @pytest.fixture(autouse=True)
@@ -331,6 +333,52 @@ class TestImageDecoder:
         img = decode_heic(path)
         assert img.dtype == torch.uint8
         assert img.shape == (3, h, w)
+
+
+class TestImageEncoder:
+    def _make_image(self, device="cpu"):
+        return torch.randint(
+            0, 256, (3, HEIGHT, WIDTH), dtype=torch.uint8, device=device
+        )
+
+    @needs_png
+    def test_encode_png_to_file(self, tmp_path):
+        img = self._make_image()
+        path = tmp_path / "out.png"
+        encode_png(img, path)
+        assert path.stat().st_size > 0
+
+        decoded = decode_png(str(path))
+        assert decoded.shape == (3, HEIGHT, WIDTH)
+        torch.testing.assert_close(decoded, img, atol=0, rtol=0)
+
+    @needs_jpeg
+    def test_encode_jpeg_to_file(self, tmp_path):
+        img = self._make_image()
+        path = tmp_path / "out.jpg"
+        encode_jpeg(img, path)
+        assert path.stat().st_size > 0
+
+        decoded = decode_jpeg(str(path))
+        assert decoded.shape == (3, HEIGHT, WIDTH)
+
+    @needs_jpeg
+    def test_encode_jpeg_to_file_like(self):
+        img = self._make_image()
+        buf = io.BytesIO()
+        encode_jpeg(img, buf)
+        assert buf.getbuffer().nbytes > 0
+
+    @needs_cuda
+    @needs_jpeg
+    def test_encode_jpeg_cuda(self, tmp_path):
+        img = self._make_image(device="cuda")
+        path = tmp_path / "out_cuda.jpg"
+        encode_jpeg(img, path)
+        assert path.stat().st_size > 0
+
+        decoded = decode_jpeg(str(path))
+        assert decoded.shape == (3, HEIGHT, WIDTH)
 
 
 class TestVideoEncoder:
