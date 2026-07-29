@@ -47,6 +47,7 @@ encode_png_to_file = torch.ops.torchcodec_ns.encode_png_to_file.default
 encode_png_to_file_like = torch.ops.torchcodec_ns.encode_png_to_file_like.default
 encode_jpeg_to_file = torch.ops.torchcodec_ns.encode_jpeg_to_file.default
 encode_jpeg_to_file_like = torch.ops.torchcodec_ns.encode_jpeg_to_file_like.default
+encode_jpeg_to_tensor_cuda = torch.ops.torchcodec_ns.encode_jpeg_to_tensor_cuda.default
 
 
 def get_decode_heic():

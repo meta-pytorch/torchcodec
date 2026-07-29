@@ -103,6 +103,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("encode_jpeg_to_file(Tensor img, str filename, int quality) -> ()");
   m.def(
       "encode_jpeg_to_file_like(Tensor img, int file_like_context, int quality) -> ()");
+  m.def("encode_jpeg_to_tensor_cuda(Tensor img, int quality) -> Tensor");
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
@@ -122,6 +123,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CompositeExplicitAutograd, m) {
   m.impl("decode_jpegs_cuda", TORCH_BOX(&decode_jpegs_cuda));
   m.impl("encode_jpeg_to_file", TORCH_BOX(&encode_jpeg_to_file));
   m.impl("encode_jpeg_to_file_like", TORCH_BOX(&encode_jpeg_to_file_like));
+  m.impl("encode_jpeg_to_tensor_cuda", TORCH_BOX(&encode_jpeg_to_tensor_cuda));
 }
 
 } // namespace facebook::torchcodec
