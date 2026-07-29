@@ -16,6 +16,8 @@
 #include "DecodeJpegCuda.h"
 #include "DecodePng.h"
 #include "DecodeWebp.h"
+#include "EncodeJpeg.h"
+#include "EncodePng.h"
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
@@ -29,6 +31,8 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "decode_avif(Tensor input, int mode, int output_dtype=0, int num_threads=1) -> Tensor");
   m.def(
       "decode_jpegs_cuda(Tensor[] encoded_images, int mode, Device device) -> Tensor[]");
+  m.def("encode_png(Tensor img, int compression_level) -> Tensor");
+  m.def("encode_jpeg(Tensor img, int quality) -> Tensor");
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
@@ -37,6 +41,8 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("decode_webp", TORCH_BOX(&decode_webp));
   m.impl("decode_gif", TORCH_BOX(&decode_gif));
   m.impl("decode_avif", TORCH_BOX(&decode_avif));
+  m.impl("encode_png", TORCH_BOX(&encode_png));
+  m.impl("encode_jpeg", TORCH_BOX(&encode_jpeg));
 }
 
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CompositeExplicitAutograd, m) {

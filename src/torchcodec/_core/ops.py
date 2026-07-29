@@ -17,6 +17,7 @@ from torchcodec._internally_replaced_utils import (  # @manual=//pytorch/torchco
     load_core_libraries,
     load_heic_library,
     load_image_library,
+    load_pybind_ops,
 )
 
 expose_ffmpeg_dlls = nullcontext
@@ -33,12 +34,17 @@ if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
 
 load_image_library()
 
+_pybind_ops = load_pybind_ops()
+create_file_like_context = _pybind_ops.create_file_like_context
+
 decode_jpeg = torch.ops.torchcodec_ns.decode_jpeg.default
 decode_jpegs_cuda = torch.ops.torchcodec_ns.decode_jpegs_cuda.default
 decode_png = torch.ops.torchcodec_ns.decode_png.default
 decode_webp = torch.ops.torchcodec_ns.decode_webp.default
 decode_gif = torch.ops.torchcodec_ns.decode_gif.default
 decode_avif = torch.ops.torchcodec_ns.decode_avif.default
+encode_png = torch.ops.torchcodec_ns.encode_png.default
+encode_jpeg = torch.ops.torchcodec_ns.encode_jpeg.default
 
 
 def get_decode_heic():
@@ -67,7 +73,7 @@ def get_decode_heic():
 # will raise a proper error when called.
 try:
     with expose_ffmpeg_dlls():
-        ffmpeg_major_version, core_library_path, _ = load_core_libraries()
+        ffmpeg_major_version, core_library_path = load_core_libraries()
     _FFMPEG_AVAILABLE = True
 except Exception:
     _FFMPEG_AVAILABLE = False
