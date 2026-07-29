@@ -6,12 +6,14 @@
 
 #pragma once
 
+#include "IOInterface.h"
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
 
-FORCE_PUBLIC_VISIBILITY torch::stable::Tensor encode_png(
+FORCE_PUBLIC_VISIBILITY void encode_png(
     const torch::stable::Tensor& img,
-    int64_t compression_level);
+    int64_t compression_level,
+    IOInterface& interface);
 
 } // namespace facebook::torchcodec

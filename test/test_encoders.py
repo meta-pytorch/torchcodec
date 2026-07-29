@@ -2382,6 +2382,57 @@ class TestImageEncoders:
         # Decode an asset into a CHW uint8 tensor to use as encoder input.
         return decode_png(asset.path, mode=mode)
 
+    def _encode_to_bytes(self, encode, source, **kwargs):
+        # Encode into an in-memory file-like and return the raw bytes as a 1D
+        # uint8 tensor, so the codec-specific tests below can inspect the output.
+        buf = io.BytesIO()
+        encode(source, buf, **kwargs)
+        return torch.frombuffer(buf.getvalue(), dtype=torch.uint8)
+
+    # ===== destination handling, both codecs =====
+
+    @pytest.mark.parametrize("encode", _encoders)
+    def test_dest_path_matches_file_like(self, encode, tmp_path):
+        # Encoding to a file path and to a file-like object must produce
+        # identical bytes (encoding is deterministic for a given input).
+        source = self._decode(GRADIENT_PNG, "RGB")
+
+        path = tmp_path / "out"
+        encode(source, path)
+        from_path = torch.frombuffer(path.read_bytes(), dtype=torch.uint8)
+
+        from_file_like = self._encode_to_bytes(encode, source)
+        torch.testing.assert_close(from_path, from_file_like, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("encode", _encoders)
+    def test_dest_str_and_pathlib(self, encode, tmp_path):
+        # dest accepts both str and pathlib.Path.
+        source = self._decode(GRADIENT_PNG, "RGB")
+        as_str = tmp_path / "str_out"
+        as_path = tmp_path / "path_out"
+        encode(source, str(as_str))
+        encode(source, as_path)
+        torch.testing.assert_close(
+            torch.frombuffer(as_str.read_bytes(), dtype=torch.uint8),
+            torch.frombuffer(as_path.read_bytes(), dtype=torch.uint8),
+            rtol=0,
+            atol=0,
+        )
+
+    @pytest.mark.parametrize("encode", _encoders)
+    def test_dest_open_file_object(self, encode, tmp_path):
+        # A real open file (in binary write mode) is a valid file-like dest.
+        source = self._decode(GRADIENT_PNG, "RGB")
+        path = tmp_path / "out"
+        with open(path, "wb") as f:
+            encode(source, f)
+        torch.testing.assert_close(
+            torch.frombuffer(path.read_bytes(), dtype=torch.uint8),
+            self._encode_to_bytes(encode, source),
+            rtol=0,
+            atol=0,
+        )
+
     # ===== PNG =====
 
     @needs_png
@@ -2391,7 +2442,9 @@ class TestImageEncoders:
     @pytest.mark.parametrize("compression_level", (0, 6, 9))
     def test_round_trip_png(self, asset, mode, compression_level):
         source = self._decode(asset, mode)
-        encoded = encode_png(source, compression_level=compression_level)
+        encoded = self._encode_to_bytes(
+            encode_png, source, compression_level=compression_level
+        )
 
         assert encoded.dtype == torch.uint8
         assert encoded.ndim == 1
@@ -2406,7 +2459,7 @@ class TestImageEncoders:
     @needs_png
     def test_against_pil_png(self):
         source = self._decode(GRADIENT_PNG, "RGB")
-        encoded = encode_png(source)
+        encoded = self._encode_to_bytes(encode_png, source)
 
         pil_img = Image.open(io.BytesIO(encoded.numpy().tobytes()))
         assert pil_img.format == "PNG"
@@ -2416,16 +2469,16 @@ class TestImageEncoders:
     @needs_png
     def test_compression_level_affects_size_png(self):
         source = self._decode(GRADIENT_PNG, "RGB")
-        least = encode_png(source, compression_level=0).numel()
-        most = encode_png(source, compression_level=9).numel()
+        least = self._encode_to_bytes(encode_png, source, compression_level=0).numel()
+        most = self._encode_to_bytes(encode_png, source, compression_level=9).numel()
         assert least > most
 
     @needs_png
     def test_default_compression_level_png(self):
         source = self._decode(GRADIENT_PNG, "RGB")
         torch.testing.assert_close(
-            encode_png(source),
-            encode_png(source, compression_level=6),
+            self._encode_to_bytes(encode_png, source),
+            self._encode_to_bytes(encode_png, source, compression_level=6),
             rtol=0,
             atol=0,
         )
@@ -2435,7 +2488,7 @@ class TestImageEncoders:
     def test_bad_compression_level_png(self, compression_level):
         source = self._decode(GRADIENT_PNG, "RGB")
         with pytest.raises(RuntimeError, match="between 0 and 9"):
-            encode_png(source, compression_level=compression_level)
+            encode_png(source, io.BytesIO(), compression_level=compression_level)
 
     # ===== JPEG =====
 
@@ -2448,7 +2501,7 @@ class TestImageEncoders:
         # quality) and that the output is a valid JPEG PIL can open.
         img = decode_jpeg(asset.path, mode="UNCHANGED")
 
-        encoded = encode_jpeg(img, quality=quality)
+        encoded = self._encode_to_bytes(encode_jpeg, img, quality=quality)
         assert encoded.dtype == torch.uint8
         assert encoded.ndim == 1
 
@@ -2469,7 +2522,9 @@ class TestImageEncoders:
         # across libjpeg builds).
         img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB")
 
-        ours = decode_jpeg(encode_jpeg(img, quality=75), mode="RGB")
+        ours = decode_jpeg(
+            self._encode_to_bytes(encode_jpeg, img, quality=75), mode="RGB"
+        )
 
         buf = io.BytesIO()
         Image.fromarray(img.permute(1, 2, 0).numpy()).save(
@@ -2485,9 +2540,9 @@ class TestImageEncoders:
     @needs_jpeg
     def test_quality_affects_size_jpeg(self):
         img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB")
-        low = encode_jpeg(img, quality=10)
-        high = encode_jpeg(img, quality=95)
-        assert high.numel() > low.numel()
+        low = self._encode_to_bytes(encode_jpeg, img, quality=10).numel()
+        high = self._encode_to_bytes(encode_jpeg, img, quality=95).numel()
+        assert high > low
 
     @needs_jpeg
     @pytest.mark.parametrize("quality", (-1, 101))
@@ -2496,23 +2551,52 @@ class TestImageEncoders:
             ValueError,
             match="Image quality should be a positive number between 1 and 100",
         ):
-            encode_jpeg(torch.zeros(3, 8, 8, dtype=torch.uint8), quality=quality)
+            encode_jpeg(
+                torch.zeros(3, 8, 8, dtype=torch.uint8), io.BytesIO(), quality=quality
+            )
 
     # ===== shared validation, both codecs =====
 
     @pytest.mark.parametrize("encode", _encoders)
     def test_bad_dtype(self, encode):
         with pytest.raises(RuntimeError, match="uint8"):
-            encode(torch.zeros(3, 8, 8, dtype=torch.float32))
+            encode(torch.zeros(3, 8, 8, dtype=torch.float32), io.BytesIO())
 
     @pytest.mark.parametrize("encode", _encoders)
     @pytest.mark.parametrize("shape", ((720, 1280), (3, 3, 8, 8)))
     def test_bad_ndim(self, encode, shape):
         with pytest.raises(RuntimeError, match="3-dimensional"):
-            encode(torch.zeros(shape, dtype=torch.uint8))
+            encode(torch.zeros(shape, dtype=torch.uint8), io.BytesIO())
 
     @pytest.mark.parametrize("encode", _encoders)
     @pytest.mark.parametrize("num_channels", (2, 4))
     def test_bad_num_channels(self, encode, num_channels):
         with pytest.raises(RuntimeError, match="channels should be 1 or 3"):
-            encode(torch.zeros(num_channels, 8, 8, dtype=torch.uint8))
+            encode(torch.zeros(num_channels, 8, 8, dtype=torch.uint8), io.BytesIO())
+
+    @pytest.mark.parametrize("encode", _encoders)
+    def test_bad_file_like(self, encode):
+        img = torch.zeros(3, 8, 8, dtype=torch.uint8)
+
+        class NoWriteMethod:
+            def seek(self, offset, whence=0):
+                return 0
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a write method"
+        ):
+            encode(img, NoWriteMethod())
+
+        class NoSeekMethod:
+            def write(self, data):
+                return len(data)
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a seek method"
+        ):
+            encode(img, NoSeekMethod())
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a write method"
+        ):
+            encode(img, dest=3)
