@@ -21,9 +21,7 @@ def _encode_to_dest(input, dest, param, *, to_file, to_file_like) -> None:
     if isinstance(dest, (str, Path)):
         to_file(input, str(dest), param)
     else:
-        # Assume a file-like object with a write() (and seek()) method. The C++
-        # side takes ownership of the returned context and releases it (and the
-        # underlying Python object) when encoding is done.
+        # Assume file-like, it gets validated in C++ (it's tested).
         to_file_like(input, create_file_like_context(dest, True), param)
 
 

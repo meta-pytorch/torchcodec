@@ -11,8 +11,6 @@
 
 namespace facebook::torchcodec {
 
-// Encodes a CHW uint8 image tensor as PNG, streaming the bytes directly into
-// the given IOInterface (a file on disk or a Python file-like object).
 FORCE_PUBLIC_VISIBILITY void encode_png(
     const torch::stable::Tensor& img,
     int64_t compression_level,

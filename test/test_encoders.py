@@ -2573,3 +2573,30 @@ class TestImageEncoders:
     def test_bad_num_channels(self, encode, num_channels):
         with pytest.raises(RuntimeError, match="channels should be 1 or 3"):
             encode(torch.zeros(num_channels, 8, 8, dtype=torch.uint8), io.BytesIO())
+
+    @pytest.mark.parametrize("encode", _encoders)
+    def test_bad_file_like(self, encode):
+        img = torch.zeros(3, 8, 8, dtype=torch.uint8)
+
+        class NoWriteMethod:
+            def seek(self, offset, whence=0):
+                return 0
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a write method"
+        ):
+            encode(img, NoWriteMethod())
+
+        class NoSeekMethod:
+            def write(self, data):
+                return len(data)
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a seek method"
+        ):
+            encode(img, NoSeekMethod())
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a write method"
+        ):
+            encode(img, dest=3)
