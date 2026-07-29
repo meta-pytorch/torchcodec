@@ -135,8 +135,7 @@ constexpr int kMaxCachedDecodersPerDevice = 32;
 PerGpuCache<CUDAJpegDecoder>& decoder_cache() {
   // Intentionally leaked (allocated with new, never freed) to avoid calling
   // into CUDA/nvJPEG during static destruction, when the CUDA runtime may
-  // already be torn down (same reasoning as NVDECCache): the cached decoders'
-  // destructors call nvjpegDestroy, which we must not run at process exit.
+  // already be torn down (same reasoning as NVDECCache).
   static auto* cache = new PerGpuCache<CUDAJpegDecoder>(
       MAX_CUDA_GPUS, kMaxCachedDecodersPerDevice);
   return *cache;

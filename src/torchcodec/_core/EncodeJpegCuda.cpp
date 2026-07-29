@@ -41,15 +41,13 @@ namespace {
 
 // Encoders are, like the JPEG decoders, expensive to create (~270ms) and cheap
 // to keep resident (~40Mb of GPU memory), so we cache a generous number per
-// device (same cap as the decoder). Caching gives a ~300x speedup over
-// constructing an encoder per call.
+// device (same cap as the decoder)
 constexpr int kMaxCachedEncodersPerDevice = 32;
 
 PerGpuCache<CUDAJpegEncoder>& encoder_cache() {
   // Intentionally leaked (allocated with new, never freed) to avoid calling
   // into CUDA/nvJPEG during static destruction, when the CUDA runtime may
-  // already be torn down (same reasoning as NVDECCache): the cached encoders'
-  // destructors call nvjpegDestroy, which we must not run at process exit.
+  // already be torn down (same reasoning as NVDECCache).
   static auto* cache = new PerGpuCache<CUDAJpegEncoder>(
       MAX_CUDA_GPUS, kMaxCachedEncodersPerDevice);
   return *cache;

@@ -85,7 +85,7 @@ function(discover_image_codecs)
                 "libjpeg[-turbo] and its development headers, or set "
                 "TORCHCODEC_BUILD_JPEG=0 to build without JPEG support (decode_jpeg "
                 "will raise at runtime), or TORCHCODEC_BUILD_IMAGE=0 to disable all "
-                "image decoders.")
+                "image decoders/encoders.")
         endif()
     else()
         message(STATUS "Not building torchcodec with JPEG image decoding support (disabled via TORCHCODEC_BUILD_JPEG/TORCHCODEC_BUILD_IMAGE): decode_jpeg will raise at runtime.")
@@ -102,13 +102,13 @@ function(discover_image_codecs)
         endif()
         find_package(PNG)  # Transitively pulls in ZLIB.
         if(PNG_FOUND)
-            message(STATUS "libpng found: building torchcodec with PNG image decoding support.")
+            message(STATUS "libpng found: building torchcodec with PNG image decoding and encoding support.")
         else()
             message(FATAL_ERROR
-                "libpng not found, but PNG image decoding is enabled. Install libpng "
+                "libpng not found, but PNG image decoding/encoding is enabled. Install libpng "
                 "and its development headers, or set TORCHCODEC_BUILD_PNG=0 to build "
                 "without PNG support (decode_png will raise at runtime), or "
-                "TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders.")
+                "TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders/encoders.")
         endif()
     else()
         message(STATUS "Not building torchcodec with PNG image decoding support (disabled via TORCHCODEC_BUILD_PNG/TORCHCODEC_BUILD_IMAGE): decode_png will raise at runtime.")
@@ -131,7 +131,7 @@ function(discover_image_codecs)
                 "libwebp not found, but WebP image decoding is enabled. Install "
                 "libwebp and its development headers, or set TORCHCODEC_BUILD_WEBP=0 "
                 "to build without WebP support (decode_webp will raise at runtime), "
-                "or TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders.")
+                "or TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders/encoders.")
         endif()
     else()
         message(STATUS "Not building torchcodec with WebP image decoding support (disabled via TORCHCODEC_BUILD_WEBP/TORCHCODEC_BUILD_IMAGE): decode_webp will raise at runtime.")
@@ -672,7 +672,7 @@ function(make_torchcodec_heic_library)
                 "libheif and its development headers (e.g. `conda install -c "
                 "conda-forge libheif`), or set TORCHCODEC_BUILD_HEIC=0 to build "
                 "without HEIC support (decode_heic will raise at runtime), or "
-                "TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders.")
+                "TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders/encoders.")
         endif()
     else()
         message(STATUS "Not building torchcodec with HEIC image decoding support (disabled via TORCHCODEC_BUILD_HEIC/TORCHCODEC_BUILD_IMAGE): decode_heic will raise at runtime.")

@@ -22,8 +22,6 @@
 
 namespace facebook::torchcodec {
 
-// Encodes a single CHW uint8 CUDA image tensor into a JPEG, writing the encoded
-// bytes to `interface` (a file or file-like), mirroring the CPU encode_jpeg.
 FORCE_PUBLIC_VISIBILITY void encode_jpeg_cuda(
     const torch::stable::Tensor& image,
     int64_t quality,
@@ -36,7 +34,6 @@ class CUDAJpegEncoder {
   explicit CUDAJpegEncoder(const torch::stable::Device& target_device);
   ~CUDAJpegEncoder();
 
-  // Encodes `image` and returns the JPEG bitstream as host (CPU) bytes.
   std::vector<uint8_t> encode_image(
       const torch::stable::Tensor& image,
       int64_t quality,

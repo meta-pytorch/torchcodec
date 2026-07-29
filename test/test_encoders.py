@@ -2373,9 +2373,6 @@ _cpu_and_cuda = ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
 
 
 def _encode_jpeg_cuda(input, dest, **kwargs):
-    # Encode with the input moved to the GPU, so encode_jpeg dispatches to
-    # nvJPEG. Lets the shared encoder tests below exercise the CUDA path through
-    # the exact same public API as the CPU encoders.
     return encode_jpeg(input.cuda(), dest, **kwargs)
 
 
