@@ -16,9 +16,10 @@
 
 namespace facebook::torchcodec {
 
-torch::stable::Tensor encode_png(
+void encode_png_to_io(
     [[maybe_unused]] const torch::stable::Tensor& img,
-    [[maybe_unused]] int64_t compression_level) {
+    [[maybe_unused]] int64_t compression_level,
+    [[maybe_unused]] IOInterface& io) {
   STD_TORCH_CHECK(
       false,
       "encode_png: torchcodec was not compiled with libpng support. "
@@ -34,11 +35,9 @@ torch::stable::Tensor encode_png(
 #include <png.h>
 #include <setjmp.h>
 
-#include <array>
 #include <cstdint>
 #include <cstdio>
-#include <memory>
-#include <vector>
+#include <exception>
 
 namespace facebook::torchcodec {
 
@@ -60,25 +59,35 @@ void error_callback(png_structp png_ptr, png_const_charp error_message) {
   png_longjmp(png_ptr, 1);
 }
 
-// libpng calls this to append encoded bytes to our output buffer. It runs on
-// libpng's C stack, so a C++ exception must not escape it: on allocation
-// failure we route through png_error(), which longjmps back to our setjmp
-// point instead of unwinding through C frames.
+// libpng calls write_callback with chunks of encoded output, which we forward
+// to the IOInterface. The io.write() call may throw (e.g. a Python file-like
+// raising, or a disk error). We must not let a C++ exception unwind through
+// libpng's C stack, so we catch it and stash it in `write_error`; the caller
+// rethrows it after encoding finishes. On error we stop writing but let libpng
+// run to completion (its output is discarded).
+struct IOWriteCtx {
+  IOInterface* io;
+  std::exception_ptr write_error;
+};
+
 void write_callback(png_structp png_ptr, png_bytep data, png_size_t length) {
-  auto* out_buffer =
-      static_cast<std::vector<uint8_t>*>(png_get_io_ptr(png_ptr));
+  auto* ctx = static_cast<IOWriteCtx*>(png_get_io_ptr(png_ptr));
+  if (ctx->write_error) {
+    return;
+  }
   try {
-    out_buffer->insert(out_buffer->end(), data, data + length);
+    ctx->io->write(
+        reinterpret_cast<const uint8_t*>(data), static_cast<int>(length));
   } catch (...) {
-    png_error(png_ptr, "encode_png: failed to grow the output buffer.");
+    ctx->write_error = std::current_exception();
   }
 }
 
-void write_png_to_buffer(
+void write_png_to_io(
     png_structp& png_write,
     png_infop& info_ptr,
     ErrorCtx& error_ctx,
-    std::vector<uint8_t>& out_buffer,
+    IOWriteCtx& write_ctx,
     const uint8_t* input_ptr,
     int64_t width,
     int64_t height,
@@ -89,8 +98,7 @@ void write_png_to_buffer(
     STD_TORCH_CHECK(false, "encode_png failed: ", error_ctx.error_message);
   }
 
-  png_set_write_fn(
-      png_write, &out_buffer, write_callback, /*flush_fn=*/nullptr);
+  png_set_write_fn(png_write, &write_ctx, write_callback, /*flush_fn=*/nullptr);
 
   const int color_type =
       (num_channels == 1) ? PNG_COLOR_TYPE_GRAY : PNG_COLOR_TYPE_RGB;
@@ -119,10 +127,13 @@ void write_png_to_buffer(
 // Important: see Note [libjpeg error handling] in the jpeg decoder: everything
 // applies here too. We must not throw a C++ exception through libpng's C stack
 // (and callbacks), and we must not allocate anything that needs proper
-// destruction in a function that defines a setjmp() point.
-torch::stable::Tensor encode_png(
+// destruction in a function that defines a setjmp() point. The IOWriteCtx
+// (which owns a std::exception_ptr) therefore lives here, outside
+// write_png_to_io's setjmp.
+void encode_png_to_io(
     const torch::stable::Tensor& img,
-    int64_t compression_level) {
+    int64_t compression_level,
+    IOInterface& io) {
   STD_TORCH_CHECK(
       compression_level >= 0 && compression_level <= 9,
       "Compression level should be between 0 and 9, got ",
@@ -170,12 +181,14 @@ torch::stable::Tensor encode_png(
   ErrorCtx error_ctx;
   png_set_error_fn(png_write, &error_ctx, error_callback, /*warn_fn=*/nullptr);
 
-  std::vector<uint8_t> out_buffer;
-  write_png_to_buffer(
+  IOWriteCtx write_ctx;
+  write_ctx.io = &io;
+
+  write_png_to_io(
       png_write,
       info_ptr,
       error_ctx,
-      out_buffer,
+      write_ctx,
       input.const_data_ptr<uint8_t>(),
       width,
       height,
@@ -184,18 +197,11 @@ torch::stable::Tensor encode_png(
 
   png_destroy_write_struct(&png_write, &info_ptr);
 
-  auto buffer = std::make_unique<std::vector<uint8_t>>(std::move(out_buffer));
-  const std::array<int64_t, 1> sizes{static_cast<int64_t>(buffer->size())};
-  const std::array<int64_t, 1> strides{1};
-  uint8_t* buffer_data = buffer->data();
-  return torch::stable::from_blob(
-      buffer_data,
-      sizes,
-      strides,
-      img.device(),
-      kStableUInt8,
-      [buffer = std::move(buffer)](void*) mutable { buffer.reset(); });
+  if (write_ctx.write_error) {
+    std::rethrow_exception(write_ctx.write_error);
+  }
 }
+
 } // namespace facebook::torchcodec
 
 #endif // !TORCHCODEC_ENABLE_PNG
