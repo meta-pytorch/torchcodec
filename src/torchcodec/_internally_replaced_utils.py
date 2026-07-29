@@ -121,9 +121,7 @@ def load_core_libraries() -> tuple[int, str]:
     we have succeeded and we stop.
 
     We load them via torch.ops.load_library(), which registers the custom ops
-    with PyTorch's runtime so they're accessible through torch.ops. The pybind
-    file-like module is FFmpeg-independent and loaded separately; see
-    load_pybind_ops().
+    with PyTorch's runtime so they're accessible through torch.ops.
     """
     exceptions = []
     for ffmpeg_major_version in (8, 7, 6, 5, 4):

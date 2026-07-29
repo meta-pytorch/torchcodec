@@ -558,9 +558,7 @@ endfunction()
 # Create libtorchcodec_pybind_ops, the single pybind11 module providing file-like
 # support (create_file_like_context). It links NO FFmpeg (only pybind11 + torch)
 # and is version-independent, so it's built once and shared by both the
-# FFmpeg-free image encoders and the FFmpeg encoders/decoders. Being FFmpeg-free
-# lets it load eagerly, so importing torchcodec and encoding images works even
-# without FFmpeg installed.
+# FFmpeg-free image encoders and the FFmpeg encoders/decoders.
 function(make_torchcodec_pybind_library)
     set(pybind_ops_library_name "libtorchcodec_pybind_ops")
     set(pybind_ops_sources
@@ -570,7 +568,7 @@ function(make_torchcodec_pybind_library)
     )
     make_torchcodec_sublibrary(
         "${pybind_ops_library_name}"
-        MODULE # Not SHARED; see the note in make_torchcodec_libraries. On Mac,
+        MODULE # Not SHARED. On Mac,
                # MODULE becomes .so (importable), SHARED becomes .dylib.
         "${pybind_ops_sources}"
         "pybind11::module;${TORCH_LIBRARIES}"

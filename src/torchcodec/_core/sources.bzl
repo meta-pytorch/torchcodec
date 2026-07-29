@@ -51,11 +51,6 @@ ffmpeg_common_sources = [
     "FFMPEGCommon.cpp",
 ]
 
-# FFmpeg-free on-disk file I/O (FileIO, an IOInterface). Compiled into the
-# FFmpeg core library, the FFmpeg-free image library, and the (also FFmpeg-free)
-# pybind-ops library so the image encoders can write to files without pulling in
-# FFmpeg. IOInterface itself is header-only, and the Python file-like bridge
-# (FileLikeIO) is in file_like_context_sources.
 io_sources = [
     "FileIO.cpp",
 ]
@@ -71,7 +66,6 @@ decoder_core_cuda_sources = [
     "color_conversion.cu",
 ]
 
-# The FFmpeg-free Python file-like bridge. Compiled into the pybind-ops library.
 file_like_context_sources = [
     "FileLikeIO.cpp",
 ]
