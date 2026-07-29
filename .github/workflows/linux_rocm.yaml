@@ -80,7 +80,7 @@ jobs:
       contents: read
     with:
       repository: meta-pytorch/torchcodec
-      runner: "linux.rocm.gpu.gfx950.1"
+      runner: "linux.rocm.gpu.meta-pytorch.mi350.1"
       gpu-arch-type: "rocm"
       gpu-arch-version: ${{ matrix.rocm-version }}
       # ROCm self-hosted runners are not on EC2, so they can't pull the default
