@@ -22,10 +22,9 @@ torch::stable::Tensor decode_avif(
     [[maybe_unused]] int64_t output_dtype) {
   STD_TORCH_CHECK(
       false,
-      "decode_avif: torchcodec was not compiled with libavif support. "
-      "Rebuild torchcodec in an environment where libavif (and its development "
-      "headers) are available. If you see this error in a prebuilt wheel, "
-      "please report it to the TorchCodec repo.");
+      "decode_avif: torchcodec was not compiled with libavif support. Rebuild "
+      "torchcodec with TORCHCODEC_BUILD_AVIF=1. If you see this error in a "
+      "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
 } // namespace facebook::torchcodec

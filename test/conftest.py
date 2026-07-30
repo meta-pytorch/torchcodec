@@ -45,11 +45,10 @@ def skip_image_decoder_test(codec):
     # we are, so a missing library surfaces as a failure rather than a silent
     # skip).
     #
-    # TODO_IMAGE probably should rename this into FAIL_WITHOUT_IMAGE_CODECS
-    # FAIL_WITHOUT_IMAGE_DECODERS is a catch-all default covering every image
+    # FAIL_WITHOUT_IMAGE_CODECS is a catch-all default covering every image
     # codec. A per-codec FAIL_WITHOUT_<CODEC> overrides the catch-all, so a CI
     # job can enable the catch-all and still opt a single codec out, e.g.
-    # FAIL_WITHOUT_IMAGE_DECODERS=1 FAIL_WITHOUT_HEIC=0.
+    # FAIL_WITHOUT_IMAGE_CODECS=1 FAIL_WITHOUT_HEIC=0.
     if {
         "jpeg": jpeg_is_available,
         "png": png_is_available,
@@ -62,7 +61,7 @@ def skip_image_decoder_test(codec):
     fail_without = (
         override
         if override is not None
-        else os.environ.get("FAIL_WITHOUT_IMAGE_DECODERS")
+        else os.environ.get("FAIL_WITHOUT_IMAGE_CODECS")
     )
     return fail_without in (None, "0")
 

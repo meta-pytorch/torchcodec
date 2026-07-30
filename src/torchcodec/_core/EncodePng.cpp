@@ -22,10 +22,9 @@ void encode_png(
     [[maybe_unused]] IOInterface& interface) {
   STD_TORCH_CHECK(
       false,
-      "encode_png: torchcodec was not compiled with libpng support. "
-      "Rebuild torchcodec in an environment where libpng (and its development "
-      "headers) are available. If you see this error in a prebuilt wheel, "
-      "please report it to the TorchCodec repo.");
+      "encode_png: torchcodec was not compiled with libpng support. Rebuild "
+      "torchcodec with TORCHCODEC_BUILD_PNG=1. If you see this error in a "
+      "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
 } // namespace facebook::torchcodec

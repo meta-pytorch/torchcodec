@@ -21,9 +21,8 @@ namespace {
       false,
       "encode_jpeg: torchcodec was not compiled with nvJPEG support, so JPEG "
       "images cannot be encoded on a CUDA device. Rebuild torchcodec with "
-      "ENABLE_CUDA=1 in an environment where the CUDA toolkit (which provides "
-      "nvJPEG) is available. If you see this error in a prebuilt wheel, please "
-      "report it to the TorchCodec repo.");
+      "ENABLE_CUDA=1 and TORCHCODEC_BUILD_NVJPEG=1. If you see this error in a "
+      "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 } // namespace
 
