@@ -13,8 +13,7 @@ import pytest
 import torch
 from PIL import Image
 from torchcodec import ffmpeg_major_version
-from torchcodec.decoders import AudioDecoder, VideoDecoder
-from torchcodec.decoders._image_decoders import decode_jpeg, decode_png
+from torchcodec.decoders import AudioDecoder, decode_jpeg, decode_png, VideoDecoder
 
 from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
 from torchcodec.encoders._image_encoders import encode_jpeg, encode_png

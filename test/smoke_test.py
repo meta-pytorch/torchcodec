@@ -24,14 +24,15 @@ from test.utils import (
 
 from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
-from torchcodec.decoders import AudioDecoder, VideoDecoder
-from torchcodec.decoders._image_decoders import (
+from torchcodec.decoders import (
+    AudioDecoder,
     decode_avif,
     decode_gif,
     decode_heic,
     decode_jpeg,
     decode_png,
     decode_webp,
+    VideoDecoder,
 )
 from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
 from torchcodec.encoders._image_encoders import encode_jpeg, encode_png
