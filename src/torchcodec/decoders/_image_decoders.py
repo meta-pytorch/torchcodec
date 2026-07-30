@@ -111,7 +111,7 @@ def _rgb_to_gray(img: torch.Tensor) -> torch.Tensor:
     return gray.round().clamp(0, torch.iinfo(img.dtype).max).to(img.dtype)
 
 
-def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tensor:
+def _decode_to_mode(decode_fn, data, mode, native_output_modes) -> torch.Tensor:
     if mode in native_output_modes:
         return decode_fn(data, mode.value)
 
@@ -172,7 +172,7 @@ def _to_output_dtype(
 def _decode_jpegs_cuda_with_mode(
     tensors: list[torch.Tensor], mode: ImageReadMode, device: torch.device
 ) -> list[torch.Tensor]:
-    # Batched GPU equivalent of _decode_with_mode for JPEG: decode the whole
+    # Batched GPU equivalent of _decode_to_mode for JPEG: decode the whole
     # batch in one nvJPEG call using a native mode, then emulate the alpha modes
     # per-image in Python (nvJPEG natively supports UNCHANGED, GRAY and RGB, same
     # as libjpeg on CPU).
@@ -244,7 +244,7 @@ def decode_jpeg(
     if device.type == "cpu":
         decoded_list = [
             _to_output_dtype(
-                _decode_with_mode(
+                _decode_to_mode(
                     _decode_jpeg,
                     _source_to_tensor(s),
                     mode,
@@ -277,11 +277,14 @@ def decode_png(
     case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
     module note above for the semantics of ``output_dtype``.
     """
-    code = _validate_output_dtype(output_dtype)
+    output_dtype_code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    return _decode_with_mode(
-        lambda d, m: _decode_png(d, m, code), data, mode, _PNG_NATIVE_OUTPUT_MODES
+    return _decode_to_mode(
+        lambda d, m: _decode_png(d, m, output_dtype_code),
+        data,
+        mode,
+        _PNG_NATIVE_OUTPUT_MODES,
     )
 
 
@@ -302,7 +305,7 @@ def decode_webp(
     The shape is ``(C, H, W)`` for a still WebP and ``(N, C, H, W)`` for an
     animated one, with 4 channels when the output carries an alpha channel.
     Animated frames are composited by libwebpdemux (disposal, blending, per-frame
-    offsets). The mode-conversion helpers (see _decode_with_mode) operate on the
+    offsets). The mode-conversion helpers (see _decode_to_mode) operate on the
     channel dim, so they handle both the still and animated shapes.
 
     See the module note above for the semantics of ``output_dtype``.
@@ -310,7 +313,7 @@ def decode_webp(
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    decoded = _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
+    decoded = _decode_to_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
     return _to_output_dtype(decoded, output_dtype)
 
 
@@ -331,7 +334,7 @@ def decode_gif(
     The shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for an
     animated one, with 4 channels when the output carries an alpha channel (see
     the module note on GIF transparency). The mode-conversion helpers (see
-    _decode_with_mode) operate on the channel dim, so they handle both the still
+    _decode_to_mode) operate on the channel dim, so they handle both the still
     and animated shapes.
 
     See the module note above for the semantics of ``output_dtype``.
@@ -339,7 +342,7 @@ def decode_gif(
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    decoded = _decode_with_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
+    decoded = _decode_to_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
     return _to_output_dtype(decoded, output_dtype)
 
 
@@ -361,11 +364,11 @@ def decode_avif(
     sources carry more than 8 bits per channel, so ``"auto"`` and
     ``torch.uint16`` preserve that precision.
     """
-    code = _validate_output_dtype(output_dtype)
+    output_dtype_code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    return _decode_with_mode(
-        lambda d, m: _decode_avif(d, m, code, num_threads),
+    return _decode_to_mode(
+        lambda d, m: _decode_avif(d, m, output_dtype_code, num_threads),
         data,
         mode,
         _AVIF_NATIVE_OUTPUT_MODES,
@@ -392,7 +395,7 @@ def decode_heic(
     The shape is ``(C, H, W)`` for a single-image HEIC and ``(N, C, H, W)`` for
     a multi-image one (an image sequence / burst), one frame per top-level image
     in file order. All frames must share the same dimensions and bit depth. The
-    mode-conversion helpers (see _decode_with_mode) operate on the channel dim,
+    mode-conversion helpers (see _decode_to_mode) operate on the channel dim,
     so they handle both the single- and multi-image shapes.
 
     HEIC decoding requires **libheif** to be installed and discoverable at
@@ -400,12 +403,12 @@ def decode_heic(
     e.g. ``conda install -c conda-forge libheif`` (or ``apt``/``brew``). If it
     isn't available, this raises an :class:`ImportError`.
     """
-    code = _validate_output_dtype(output_dtype)
+    output_dtype_code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     decode_heic_op = _get_decode_heic()
-    decoded = _decode_with_mode(
-        lambda d, m: decode_heic_op(d, m, code),
+    decoded = _decode_to_mode(
+        lambda d, m: decode_heic_op(d, m, output_dtype_code),
         data,
         mode,
         _HEIC_NATIVE_OUTPUT_MODES,
