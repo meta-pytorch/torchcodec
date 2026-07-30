@@ -40,7 +40,7 @@ Decoding
 
 .. only:: html
 
-  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_image_decoding_thumb.jpg
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_image_decoding_thumb.png
     :alt:
 
   :doc:`/generated_examples/decoding/image_decoding`

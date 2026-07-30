@@ -32,7 +32,7 @@ import torch
 import requests
 
 
-url = "https://raw.githubusercontent.com/meta-pytorch/torchcodec/refs/heads/main/docs/source/_static/thumbnails/grumps_6.jpg"
+url = "https://raw.githubusercontent.com/meta-pytorch/torchcodec/refs/heads/main/docs/source/_static/thumbnails/cat_decoding.jpeg"
 response = requests.get(url, headers={"User-Agent": ""})
 if response.status_code != 200:
     raise RuntimeError(f"Failed to download image. {response.status_code = }.")
@@ -140,4 +140,4 @@ print(f"{image_16bit.to(torch.int32).max() = }")  # scaled up to the 16-bit rang
 #     # A whole batch in one call (much faster than one-by-one):
 #     images = decode_jpeg([img_0, img_1, img_2], device="cuda")
 
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_6.jpg'
+# sphinx_gallery_thumbnail_path = '_static/thumbnails/cat_decoding.jpeg'

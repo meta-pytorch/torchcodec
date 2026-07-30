@@ -42,7 +42,7 @@ plotting utility. You can ignore that part and jump right below to
     import requests
 
 
-    url = "https://raw.githubusercontent.com/meta-pytorch/torchcodec/refs/heads/main/docs/source/_static/thumbnails/grumps_6.jpg"
+    url = "https://raw.githubusercontent.com/meta-pytorch/torchcodec/refs/heads/main/docs/source/_static/thumbnails/cat_decoding.jpeg"
     response = requests.get(url, headers={"User-Agent": ""})
     if response.status_code != 200:
         raise RuntimeError(f"Failed to download image. {response.status_code = }.")
@@ -111,7 +111,7 @@ PNG, a WebP, etc.
 
  .. code-block:: none
 
-    image.shape = torch.Size([3, 400, 300])
+    image.shape = torch.Size([3, 1024, 768])
     image.dtype = torch.uint8
 
 
@@ -153,7 +153,7 @@ It can be ``"RGB"`` (the default), ``"GRAY"``, ``"RGB_ALPHA"``, and a few more.
 
  .. code-block:: none
 
-    gray.shape = torch.Size([1, 400, 300])
+    gray.shape = torch.Size([1, 1024, 768])
 
 
 
@@ -233,7 +233,7 @@ in one nvJPEG call, which is much faster than decoding images one at a time.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 0.166 seconds)
+   **Total running time of the script:** (0 minutes 0.712 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_image_decoding.py:

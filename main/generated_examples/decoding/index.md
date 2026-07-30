@@ -5,7 +5,7 @@
 [Decoding a video with VideoDecoder](basic_example.html)
 
 Decoding a video with VideoDecoder
-![](../../_images/sphx_glr_image_decoding_thumb.jpg)
+![](../../_images/sphx_glr_image_decoding_thumb.png)
 
 [Decoding images](image_decoding.html)
 

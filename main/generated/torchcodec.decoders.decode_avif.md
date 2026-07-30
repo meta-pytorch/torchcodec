@@ -46,7 +46,7 @@ Return type:
 
 Examples using `decode_avif`:
 
-![](../_images/sphx_glr_image_decoding_thumb.jpg)
+![](../_images/sphx_glr_image_decoding_thumb.png)
 
 [Decoding images](../generated_examples/decoding/image_decoding.html)
 
