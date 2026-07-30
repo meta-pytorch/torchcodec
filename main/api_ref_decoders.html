@@ -1000,14 +1000,23 @@ document.write(`
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">torchcodec.decoders</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.VideoDecoder.html">VideoDecoder</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.AudioDecoder.html">AudioDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.WavDecoder.html">WavDecoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.VideoStreamMetadata.html">VideoStreamMetadata</a></li>
-<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.AudioStreamMetadata.html">AudioStreamMetadata</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.set_cuda_backend.html">set_cuda_backend</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.set_nvdec_cache_capacity.html">set_nvdec_cache_capacity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.get_nvdec_cache_capacity.html">get_nvdec_cache_capacity</a></li>
 <li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.CpuFallbackStatus.html">CpuFallbackStatus</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.AudioDecoder.html">AudioDecoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.WavDecoder.html">WavDecoder</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.AudioStreamMetadata.html">AudioStreamMetadata</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.decode_image.html">decode_image</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.decode_jpeg.html">decode_jpeg</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.decode_png.html">decode_png</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.decode_webp.html">decode_webp</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.decode_gif.html">decode_gif</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.decode_avif.html">decode_avif</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.decode_heic.html">decode_heic</a></li>
+<li class="toctree-l2"><a class="reference internal" href="generated/torchcodec.decoders.ImageReadMode.html">ImageReadMode</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="api_ref_encoders.html">torchcodec.encoders</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -1136,17 +1145,15 @@ document.write(`
                   
   <section id="torchcodec-decoders">
 <span id="decoders"></span><h1>torchcodec.decoders<a class="headerlink" href="#torchcodec-decoders" title="Link to this heading">#</a></h1>
-<p>For a video decoder tutorial, see: <a class="reference internal" href="generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py"><span class="std std-ref">Decoding a video with VideoDecoder</span></a>.
-For an audio decoder tutorial, see: <a class="reference internal" href="generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py"><span class="std std-ref">Decoding audio streams with AudioDecoder</span></a>.</p>
+<section id="video-decoding">
+<h2>Video Decoding<a class="headerlink" href="#video-decoding" title="Link to this heading">#</a></h2>
+<p>For a video decoder tutorial, see: <a class="reference internal" href="generated_examples/decoding/basic_example.html#sphx-glr-generated-examples-decoding-basic-example-py"><span class="std std-ref">Decoding a video with VideoDecoder</span></a>.</p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.VideoDecoder.html#torchcodec.decoders.VideoDecoder" title="torchcodec.decoders.VideoDecoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">VideoDecoder</span></code></a></p></td>
 <td><p>A single-stream video decoder.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a></p></td>
-<td><p>A single-stream audio decoder.</p></td>
-</tr>
-<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder" title="torchcodec.decoders.WavDecoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">WavDecoder</span></code></a></p></td>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder" title="torchcodec.decoders.WavDecoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">WavDecoder</span></code></a></p></td>
 <td><p>A fast decoder for WAV audio files.</p></td>
 </tr>
 </tbody>
@@ -1157,14 +1164,10 @@ For an audio decoder tutorial, see: <a class="reference internal" href="generate
 <tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.VideoStreamMetadata.html#torchcodec.decoders.VideoStreamMetadata" title="torchcodec.decoders.VideoStreamMetadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">VideoStreamMetadata</span></code></a></p></td>
 <td><p>Metadata of a single video stream.</p></td>
 </tr>
-<tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata" title="torchcodec.decoders.AudioStreamMetadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AudioStreamMetadata</span></code></a></p></td>
-<td><p>Metadata of a single audio stream.</p></td>
-</tr>
 </tbody>
 </table>
 </div>
-<section id="cuda-decoding-utils">
-<h2>CUDA decoding utils<a class="headerlink" href="#cuda-decoding-utils" title="Link to this heading">#</a></h2>
+<p><strong>CUDA decoding utils:</strong></p>
 <div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.set_cuda_backend.html#torchcodec.decoders.set_cuda_backend" title="torchcodec.decoders.set_cuda_backend"><code class="xref py py-obj docutils literal notranslate"><span class="pre">set_cuda_backend</span></code></a></p></td>
@@ -1183,6 +1186,66 @@ For an audio decoder tutorial, see: <a class="reference internal" href="generate
 <tbody>
 <tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.CpuFallbackStatus.html#torchcodec.decoders.CpuFallbackStatus" title="torchcodec.decoders.CpuFallbackStatus"><code class="xref py py-obj docutils literal notranslate"><span class="pre">CpuFallbackStatus</span></code></a></p></td>
 <td><p>Information about CPU fallback status.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="audio-decoding">
+<h2>Audio Decoding<a class="headerlink" href="#audio-decoding" title="Link to this heading">#</a></h2>
+<p>For an audio decoder tutorial, see: <a class="reference internal" href="generated_examples/decoding/audio_decoding.html#sphx-glr-generated-examples-decoding-audio-decoding-py"><span class="std std-ref">Decoding audio streams with AudioDecoder</span></a>.</p>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.AudioDecoder.html#torchcodec.decoders.AudioDecoder" title="torchcodec.decoders.AudioDecoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AudioDecoder</span></code></a></p></td>
+<td><p>A single-stream audio decoder.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.decoders.WavDecoder.html#torchcodec.decoders.WavDecoder" title="torchcodec.decoders.WavDecoder"><code class="xref py py-obj docutils literal notranslate"><span class="pre">WavDecoder</span></code></a></p></td>
+<td><p>A fast decoder for WAV audio files.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.AudioStreamMetadata.html#torchcodec.decoders.AudioStreamMetadata" title="torchcodec.decoders.AudioStreamMetadata"><code class="xref py py-obj docutils literal notranslate"><span class="pre">AudioStreamMetadata</span></code></a></p></td>
+<td><p>Metadata of a single audio stream.</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+<section id="image-decoding">
+<h2>Image Decoding<a class="headerlink" href="#image-decoding" title="Link to this heading">#</a></h2>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.decode_image.html#torchcodec.decoders.decode_image" title="torchcodec.decoders.decode_image"><code class="xref py py-obj docutils literal notranslate"><span class="pre">decode_image</span></code></a></p></td>
+<td><p>Decode an image into a <code class="docutils literal notranslate"><span class="pre">[N]CHW</span></code> tensor, detecting the format automatically.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.decoders.decode_jpeg.html#torchcodec.decoders.decode_jpeg" title="torchcodec.decoders.decode_jpeg"><code class="xref py py-obj docutils literal notranslate"><span class="pre">decode_jpeg</span></code></a></p></td>
+<td><p>Decode a JPEG image into a <code class="docutils literal notranslate"><span class="pre">CHW</span></code> tensor, on CPU or CUDA.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.decode_png.html#torchcodec.decoders.decode_png" title="torchcodec.decoders.decode_png"><code class="xref py py-obj docutils literal notranslate"><span class="pre">decode_png</span></code></a></p></td>
+<td><p>Decode a PNG image into a <code class="docutils literal notranslate"><span class="pre">CHW</span></code> tensor.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.decoders.decode_webp.html#torchcodec.decoders.decode_webp" title="torchcodec.decoders.decode_webp"><code class="xref py py-obj docutils literal notranslate"><span class="pre">decode_webp</span></code></a></p></td>
+<td><p>Decode a WebP image into a <code class="docutils literal notranslate"><span class="pre">[N]CHW</span></code> tensor.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.decode_gif.html#torchcodec.decoders.decode_gif" title="torchcodec.decoders.decode_gif"><code class="xref py py-obj docutils literal notranslate"><span class="pre">decode_gif</span></code></a></p></td>
+<td><p>Decode a GIF image into a <code class="docutils literal notranslate"><span class="pre">[N]CHW</span></code> tensor.</p></td>
+</tr>
+<tr class="row-even"><td><p><a class="reference internal" href="generated/torchcodec.decoders.decode_avif.html#torchcodec.decoders.decode_avif" title="torchcodec.decoders.decode_avif"><code class="xref py py-obj docutils literal notranslate"><span class="pre">decode_avif</span></code></a></p></td>
+<td><p>Decode an AVIF image into a <code class="docutils literal notranslate"><span class="pre">[N]CHW</span></code> tensor.</p></td>
+</tr>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.decode_heic.html#torchcodec.decoders.decode_heic" title="torchcodec.decoders.decode_heic"><code class="xref py py-obj docutils literal notranslate"><span class="pre">decode_heic</span></code></a></p></td>
+<td><p>Decode an HEIC/HEIF image into a <code class="docutils literal notranslate"><span class="pre">[N]CHW</span></code> tensor - requires <code class="docutils literal notranslate"><span class="pre">libheif</span></code>!</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="pst-scrollable-table-container"><table class="autosummary longtable table autosummary">
+<tbody>
+<tr class="row-odd"><td><p><a class="reference internal" href="generated/torchcodec.decoders.ImageReadMode.html#torchcodec.decoders.ImageReadMode" title="torchcodec.decoders.ImageReadMode"><code class="xref py py-obj docutils literal notranslate"><span class="pre">ImageReadMode</span></code></a></p></td>
+<td><p>Color mode for image decoding.</p></td>
 </tr>
 </tbody>
 </table>
@@ -1307,7 +1370,13 @@ For an audio decoder tutorial, see: <a class="reference internal" href="generate
   </div>
   <nav class="bd-toc-nav page-toc" aria-labelledby="pst-page-navigation-heading-2">
     <ul class="visible nav section-nav flex-column">
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#cuda-decoding-utils">CUDA decoding utils</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#video-decoding">Video Decoding</a><ul class="nav section-nav flex-column">
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#audio-decoding">Audio Decoding</a><ul class="nav section-nav flex-column">
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#image-decoding">Image Decoding</a><ul class="nav section-nav flex-column">
 </ul>
 </li>
 </ul>
@@ -1535,7 +1604,7 @@ For an audio decoder tutorial, see: <a class="reference internal" href="generate
        "headline": "torchcodec.decoders",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/api_ref_decoders.html",
-       "articleBody": "torchcodec.decoders# For a video decoder tutorial, see: Decoding a video with VideoDecoder. For an audio decoder tutorial, see: Decoding audio streams with AudioDecoder. VideoDecoder A single-stream video decoder. AudioDecoder A single-stream audio decoder. WavDecoder A fast decoder for WAV audio files. VideoStreamMetadata Metadata of a single video stream. AudioStreamMetadata Metadata of a single audio stream. CUDA decoding utils# set_cuda_backend Context Manager to set the CUDA backend for VideoDecoder. set_nvdec_cache_capacity Set the maximum number of NVDEC decoders that can be cached (per GPU). get_nvdec_cache_capacity Get the capacity of the per-device NVDEC decoder cache. CpuFallbackStatus Information about CPU fallback status.",
+       "articleBody": "torchcodec.decoders# Video Decoding# For a video decoder tutorial, see: Decoding a video with VideoDecoder. VideoDecoder A single-stream video decoder. WavDecoder A fast decoder for WAV audio files. VideoStreamMetadata Metadata of a single video stream. CUDA decoding utils: set_cuda_backend Context Manager to set the CUDA backend for VideoDecoder. set_nvdec_cache_capacity Set the maximum number of NVDEC decoders that can be cached (per GPU). get_nvdec_cache_capacity Get the capacity of the per-device NVDEC decoder cache. CpuFallbackStatus Information about CPU fallback status. Audio Decoding# For an audio decoder tutorial, see: Decoding audio streams with AudioDecoder. AudioDecoder A single-stream audio decoder. WavDecoder A fast decoder for WAV audio files. AudioStreamMetadata Metadata of a single audio stream. Image Decoding# decode_image Decode an image into a [N]CHW tensor, detecting the format automatically. decode_jpeg Decode a JPEG image into a CHW tensor, on CPU or CUDA. decode_png Decode a PNG image into a CHW tensor. decode_webp Decode a WebP image into a [N]CHW tensor. decode_gif Decode a GIF image into a [N]CHW tensor. decode_avif Decode an AVIF image into a [N]CHW tensor. decode_heic Decode an HEIC/HEIF image into a [N]CHW tensor - requires libheif! ImageReadMode Color mode for image decoding.",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",
