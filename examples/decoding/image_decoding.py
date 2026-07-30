@@ -5,13 +5,22 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-==================================
-Decoding images with decode_image
-==================================
+===============
+Decoding images
+===============
 
 In this example, we'll learn how to decode an image into a PyTorch tensor using
 :func:`~torchcodec.decoders.decode_image`. It supports JPEG, PNG, WebP, GIF,
-AVIF and HEIC, and automatically detects the format for you.
+AVIF and HEIC, and automatically detects the format for you. You can also call
+any of the format-specific decoders directly, as they expose more fine-grained
+options (like CUDA decoding with :func:`~torchcodec.decoders.decode_jpeg`).:
+
+- :func:`~torchcodec.decoders.decode_jpeg` for CPU and CUDA
+- :func:`~torchcodec.decoders.decode_png`
+- :func:`~torchcodec.decoders.decode_webp`
+- :func:`~torchcodec.decoders.decode_gif`
+- :func:`~torchcodec.decoders.decode_avif`
+- :func:`~torchcodec.decoders.decode_heic`
 """
 
 # %%
@@ -41,7 +50,6 @@ def plot(image: torch.Tensor):
 
     pil_image = to_pil_image(image)
     fig = plt.figure(figsize=(pil_image.width / 100, pil_image.height / 100))
-    # Let the image fill the whole figure, with no surrounding whitespace.
     ax = fig.add_axes([0, 0, 1, 1])
     # cmap only kicks in for single-channel (grayscale) images.
     ax.imshow(pil_image, cmap="gray")
@@ -78,7 +86,6 @@ plot(image)
 #
 # The ``mode`` parameter controls the number and meaning of the output channels.
 # It can be ``"RGB"`` (the default), ``"GRAY"``, ``"RGB_ALPHA"``, and a few more.
-# It's case-insensitive.
 
 gray = decode_image(raw_image_bytes, mode="GRAY")
 print(f"{gray.shape = }")  # single channel
@@ -103,31 +110,14 @@ print(f"{image_16bit.to(torch.int32).max() = }")  # scaled up to the 16-bit rang
 # extra precision when you pass ``torch.uint16`` or ``"auto"``.
 
 # %%
-# Format-specific decoders
-# ------------------------
-#
-# :func:`~torchcodec.decoders.decode_image` is a convenience wrapper that
-# dispatches to a format-specific decoder based on the detected format. You can
-# also call any of them directly:
-#
-# - :func:`~torchcodec.decoders.decode_jpeg`
-# - :func:`~torchcodec.decoders.decode_png`
-# - :func:`~torchcodec.decoders.decode_webp`
-# - :func:`~torchcodec.decoders.decode_gif`
-# - :func:`~torchcodec.decoders.decode_avif`
-# - :func:`~torchcodec.decoders.decode_heic`
-#
-# They all accept the same ``mode`` and ``output_dtype`` parameters, and expose
-# extra format-specific options on top.
-
-# %%
 # Decoding animated images
 # ------------------------
 #
 # GIF, WebP and AVIF can hold a *sequence* of frames (an animation). In that
 # case :func:`~torchcodec.decoders.decode_gif`,
-# :func:`~torchcodec.decoders.decode_webp` and
-# :func:`~torchcodec.decoders.decode_avif` return an ``(N, C, H, W)`` tensor,
+# :func:`~torchcodec.decoders.decode_webp,
+# :func:`~torchcodec.decoders.decode_avif`, and
+# :func:`~torchcodec.decoders.decode_heic` return an ``(N, C, H, W)`` tensor,
 # with one frame per animation frame, instead of the ``(C, H, W)`` you get for a
 # still image.
 
@@ -148,6 +138,6 @@ print(f"{image_16bit.to(torch.int32).max() = }")  # scaled up to the 16-bit rang
 #     image = decode_jpeg(raw_image_bytes, device="cuda")
 #
 #     # A whole batch in one call (much faster than one-by-one):
-#     images = decode_jpeg([bytes_0, bytes_1, bytes_2], device="cuda")
+#     images = decode_jpeg([img_0, img_1, img_2], device="cuda")
 
 # sphinx_gallery_thumbnail_path = '_static/thumbnails/grumps_6.jpg'

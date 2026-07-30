@@ -47,7 +47,7 @@ Decoding
         :link: generated_examples/decoding/image_decoding.html
         :link-type: url
 
-        How to decode images (JPEG, PNG, WebP, and more)
+        How to decode images (JPEG on CPU and CUDA, PNG, WebP, and more)
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Audio Decoding
