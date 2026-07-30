@@ -2369,11 +2369,24 @@ class TestEncoder:
             self._open_encoder(enc, open_kwargs)
 
 
-# The encoders under test, one per codec, each tagged with its skip marker so
-# the shared validation tests below run for both.
+_cpu_and_cuda = ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+
+
+def _encode_jpeg_cuda(input, dest=None, **kwargs):
+    # Encode with the input moved to the GPU, so encode_jpeg dispatches to
+    # nvJPEG. Lets the shared encoder tests below exercise the CUDA path through
+    # the exact same public API as the CPU encoders.
+    return encode_jpeg(input.cuda(), dest, **kwargs)
+
+
 _encoders = (
     pytest.param(encode_png, marks=pytest.mark.needs_png, id="png"),
     pytest.param(encode_jpeg, marks=pytest.mark.needs_jpeg, id="jpeg"),
+    pytest.param(
+        _encode_jpeg_cuda,
+        marks=(pytest.mark.needs_jpeg, pytest.mark.needs_cuda),
+        id="jpeg_cuda",
+    ),
 )
 
 
@@ -2381,6 +2394,60 @@ class TestImageEncoders:
     def _decode(self, asset, mode):
         # Decode an asset into a CHW uint8 tensor to use as encoder input.
         return decode_png(asset.path, mode=mode)
+
+    def _encode_to_bytes(self, encode, source, **kwargs):
+        # Encode into an in-memory file-like and return the raw bytes as a 1D
+        # uint8 tensor, so the codec-specific tests below can inspect the output.
+        buf = io.BytesIO()
+        encode(source, buf, **kwargs)
+        return torch.frombuffer(buf.getvalue(), dtype=torch.uint8)
+
+    # ===== destination handling, all codecs =====
+
+    @pytest.mark.parametrize("encode", _encoders)
+    def test_dest_variants_match(self, encode, tmp_path):
+        # All three destinations must produce identical bytes: a file path, a
+        # file-like object, and a tensor
+        source = self._decode(GRADIENT_PNG, "RGB")
+
+        path = tmp_path / "out"
+        encode(source, path)
+        from_path = torch.frombuffer(path.read_bytes(), dtype=torch.uint8)
+
+        from_file_like = self._encode_to_bytes(encode, source)
+        from_tensor = encode(source).cpu()  # dest=None
+
+        torch.testing.assert_close(from_path, from_file_like, rtol=0, atol=0)
+        torch.testing.assert_close(from_path, from_tensor, rtol=0, atol=0)
+
+    @pytest.mark.parametrize("encode", _encoders)
+    def test_dest_str_and_pathlib(self, encode, tmp_path):
+        # dest accepts both str and pathlib.Path.
+        source = self._decode(GRADIENT_PNG, "RGB")
+        as_str = tmp_path / "str_out"
+        as_path = tmp_path / "path_out"
+        encode(source, str(as_str))
+        encode(source, as_path)
+        torch.testing.assert_close(
+            torch.frombuffer(as_str.read_bytes(), dtype=torch.uint8),
+            torch.frombuffer(as_path.read_bytes(), dtype=torch.uint8),
+            rtol=0,
+            atol=0,
+        )
+
+    @pytest.mark.parametrize("encode", _encoders)
+    def test_dest_open_file_object(self, encode, tmp_path):
+        # A real open file (in binary write mode) is a valid file-like dest.
+        source = self._decode(GRADIENT_PNG, "RGB")
+        path = tmp_path / "out"
+        with open(path, "wb") as f:
+            encode(source, f)
+        torch.testing.assert_close(
+            torch.frombuffer(path.read_bytes(), dtype=torch.uint8),
+            self._encode_to_bytes(encode, source),
+            rtol=0,
+            atol=0,
+        )
 
     # ===== PNG =====
 
@@ -2391,7 +2458,9 @@ class TestImageEncoders:
     @pytest.mark.parametrize("compression_level", (0, 6, 9))
     def test_round_trip_png(self, asset, mode, compression_level):
         source = self._decode(asset, mode)
-        encoded = encode_png(source, compression_level=compression_level)
+        encoded = self._encode_to_bytes(
+            encode_png, source, compression_level=compression_level
+        )
 
         assert encoded.dtype == torch.uint8
         assert encoded.ndim == 1
@@ -2406,7 +2475,7 @@ class TestImageEncoders:
     @needs_png
     def test_against_pil_png(self):
         source = self._decode(GRADIENT_PNG, "RGB")
-        encoded = encode_png(source)
+        encoded = self._encode_to_bytes(encode_png, source)
 
         pil_img = Image.open(io.BytesIO(encoded.numpy().tobytes()))
         assert pil_img.format == "PNG"
@@ -2416,16 +2485,16 @@ class TestImageEncoders:
     @needs_png
     def test_compression_level_affects_size_png(self):
         source = self._decode(GRADIENT_PNG, "RGB")
-        least = encode_png(source, compression_level=0).numel()
-        most = encode_png(source, compression_level=9).numel()
+        least = self._encode_to_bytes(encode_png, source, compression_level=0).numel()
+        most = self._encode_to_bytes(encode_png, source, compression_level=9).numel()
         assert least > most
 
     @needs_png
     def test_default_compression_level_png(self):
         source = self._decode(GRADIENT_PNG, "RGB")
         torch.testing.assert_close(
-            encode_png(source),
-            encode_png(source, compression_level=6),
+            self._encode_to_bytes(encode_png, source),
+            self._encode_to_bytes(encode_png, source, compression_level=6),
             rtol=0,
             atol=0,
         )
@@ -2435,59 +2504,107 @@ class TestImageEncoders:
     def test_bad_compression_level_png(self, compression_level):
         source = self._decode(GRADIENT_PNG, "RGB")
         with pytest.raises(RuntimeError, match="between 0 and 9"):
-            encode_png(source, compression_level=compression_level)
+            encode_png(source, io.BytesIO(), compression_level=compression_level)
+
+    @needs_png
+    def test_dest_none_returns_tensor_png(self):
+        # dest=None returns the encoded bytes as a 1-D uint8 CPU tensor.
+        source = self._decode(GRADIENT_PNG, "RGB")
+
+        encoded = encode_png(source)
+        assert isinstance(encoded, torch.Tensor)
+        assert encoded.dtype == torch.uint8
+        assert encoded.ndim == 1
+        assert encoded.device.type == "cpu"
+
+        assert encoded[:8].tolist() == [137, 80, 78, 71, 13, 10, 26, 10]
+        # PNG is lossless, so the round trip is exact.
+        torch.testing.assert_close(
+            decode_png(encoded, mode="RGB"), source, rtol=0, atol=0
+        )
 
     # ===== JPEG =====
 
-    @needs_jpeg
-    @pytest.mark.parametrize("asset", (GRADIENT_JPEG, GRAYSCALE_JPEG))
-    @pytest.mark.parametrize("quality", (25, 75, 95))
-    def test_round_trip_jpeg(self, asset, quality):
-        # Encode a CHW uint8 tensor, then decode it back and check the round trip
-        # is faithful (JPEG is lossy, so we compare with PSNR, which rises with
-        # quality) and that the output is a valid JPEG PIL can open.
-        img = decode_jpeg(asset.path, mode="UNCHANGED")
+    # (quality, min_psnr): minimum acceptable round-trip PSNR (dB) per JPEG
+    # quality on a smooth gradient. Higher quality preserves more, so the floor
+    # rises with quality. The floors sit safely below what both the CPU (libjpeg)
+    # and CUDA (nvJPEG) encoders achieve.
+    _JPEG_QUALITY_AND_MIN_PSNR = ((25, 35), (75, 40), (95, 42))
 
-        encoded = encode_jpeg(img, quality=quality)
+    @needs_jpeg
+    @pytest.mark.parametrize("device", _cpu_and_cuda)
+    @pytest.mark.parametrize("quality, min_psnr", _JPEG_QUALITY_AND_MIN_PSNR)
+    def test_round_trip_jpeg(self, device, quality, min_psnr):
+        # Encode a CHW uint8 tensor (on CPU via libjpeg, on CUDA via nvJPEG),
+        # then decode it back and check the round trip is faithful
+        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB").to(device)
+
+        encoded = self._encode_to_bytes(encode_jpeg, img, quality=quality)
         assert encoded.dtype == torch.uint8
         assert encoded.ndim == 1
 
         pil_decoded = Image.open(io.BytesIO(encoded.numpy().tobytes()))
         assert pil_decoded.format == "JPEG"
 
-        decoded = decode_jpeg(encoded, mode="UNCHANGED")
+        decoded = decode_jpeg(encoded, mode="RGB")
         assert decoded.shape == img.shape
-        # A smooth gradient compresses extremely well. Even quality 25 stays
-        # well above the ~20-25 dB "acceptable" floor.
-        assert psnr(decoded, img) > 30
-
-    @needs_jpeg
-    def test_against_pil_jpeg(self):
-        # Our encoder and PIL both wrap libjpeg with the same defaults, so at a
-        # given quality they should produce near-identical output. We decode both
-        # with our own decoder and compare pixels (byte-exactness is too fragile
-        # across libjpeg builds).
-        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB")
-
-        ours = decode_jpeg(encode_jpeg(img, quality=75), mode="RGB")
+        assert psnr(decoded, img.cpu()) > min_psnr
 
         buf = io.BytesIO()
-        Image.fromarray(img.permute(1, 2, 0).numpy()).save(
-            buf, format="JPEG", quality=75
+        Image.fromarray(img.cpu().permute(1, 2, 0).numpy()).save(
+            buf, format="JPEG", quality=quality
         )
         pil = decode_jpeg(
             torch.frombuffer(buf.getvalue(), dtype=torch.uint8), mode="RGB"
         )
-
-        assert ours.shape == pil.shape
-        assert_tensor_close_on_at_least(ours, pil, percentage=99, atol=2)
+        if device == "cpu":
+            # Our CPU encoder and PIL both wrap libjpeg with the same defaults,
+            # so they produce near-identical output. We compare decoded pixels
+            # (byte-exactness is too fragile across libjpeg builds).
+            assert_tensor_close_on_at_least(decoded, pil, percentage=99, atol=2)
+        else:
+            # nvJPEG is a different implementation from libjpeg (and encodes
+            # 4:4:4 chroma vs PIL's default 4:2:0), so we only require perceptual
+            # closeness rather than near-identical pixels.
+            assert psnr(decoded, pil) > min_psnr
 
     @needs_jpeg
-    def test_quality_affects_size_jpeg(self):
-        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB")
-        low = encode_jpeg(img, quality=10)
-        high = encode_jpeg(img, quality=95)
-        assert high.numel() > low.numel()
+    @pytest.mark.parametrize("quality, min_psnr", _JPEG_QUALITY_AND_MIN_PSNR)
+    def test_round_trip_jpeg_grayscale(self, quality, min_psnr):
+        # Grayscale round trip, CPU only: nvJPEG encoding is RGB-only (see
+        # test_grayscale_jpeg_cuda_errors).
+        img = decode_jpeg(GRAYSCALE_JPEG.path, mode="UNCHANGED")
+        assert img.shape[0] == 1
+
+        encoded = self._encode_to_bytes(encode_jpeg, img, quality=quality)
+        decoded = decode_jpeg(encoded, mode="UNCHANGED")
+        assert decoded.shape == img.shape
+        assert psnr(decoded, img) > min_psnr
+
+    @needs_jpeg
+    @pytest.mark.parametrize("device", _cpu_and_cuda)
+    def test_quality_affects_size_jpeg(self, device):
+        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB").to(device)
+        low = self._encode_to_bytes(encode_jpeg, img, quality=10).numel()
+        high = self._encode_to_bytes(encode_jpeg, img, quality=95).numel()
+        assert high > low
+
+    @needs_jpeg
+    @pytest.mark.parametrize("device", _cpu_and_cuda)
+    def test_dest_none_returns_tensor(self, device):
+        # dest=None returns the encoded bytes as a 1-D uint8 tensor on the same
+        # device as the input (CUDA in -> CUDA out, zero-copy).
+        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB").to(device)
+
+        encoded = encode_jpeg(img, quality=90)
+        assert isinstance(encoded, torch.Tensor)
+        assert encoded.dtype == torch.uint8
+        assert encoded.ndim == 1
+        assert encoded.device.type == device
+
+        pil_decoded = Image.open(io.BytesIO(encoded.cpu().numpy().tobytes()))
+        assert pil_decoded.format == "JPEG"
+        assert decode_jpeg(encoded.cpu(), mode="RGB").shape == img.shape
 
     @needs_jpeg
     @pytest.mark.parametrize("quality", (-1, 101))
@@ -2496,23 +2613,62 @@ class TestImageEncoders:
             ValueError,
             match="Image quality should be a positive number between 1 and 100",
         ):
-            encode_jpeg(torch.zeros(3, 8, 8, dtype=torch.uint8), quality=quality)
+            encode_jpeg(
+                torch.zeros(3, 8, 8, dtype=torch.uint8), io.BytesIO(), quality=quality
+            )
 
-    # ===== shared validation, both codecs =====
+    @needs_cuda
+    @needs_jpeg
+    def test_grayscale_jpeg_cuda_errors(self):
+        # nvJPEG encoding only supports 3-channel RGB; grayscale must use the CPU.
+        img = torch.zeros(1, 8, 8, dtype=torch.uint8, device="cuda")
+        with pytest.raises(RuntimeError, match="number of channels should be 3"):
+            encode_jpeg(img, io.BytesIO())
+
+    # ===== shared validation - all codecs =====
 
     @pytest.mark.parametrize("encode", _encoders)
     def test_bad_dtype(self, encode):
         with pytest.raises(RuntimeError, match="uint8"):
-            encode(torch.zeros(3, 8, 8, dtype=torch.float32))
+            encode(torch.zeros(3, 8, 8, dtype=torch.float32), io.BytesIO())
 
     @pytest.mark.parametrize("encode", _encoders)
     @pytest.mark.parametrize("shape", ((720, 1280), (3, 3, 8, 8)))
     def test_bad_ndim(self, encode, shape):
         with pytest.raises(RuntimeError, match="3-dimensional"):
-            encode(torch.zeros(shape, dtype=torch.uint8))
+            encode(torch.zeros(shape, dtype=torch.uint8), io.BytesIO())
 
     @pytest.mark.parametrize("encode", _encoders)
     @pytest.mark.parametrize("num_channels", (2, 4))
     def test_bad_num_channels(self, encode, num_channels):
-        with pytest.raises(RuntimeError, match="channels should be 1 or 3"):
-            encode(torch.zeros(num_channels, 8, 8, dtype=torch.uint8))
+        # CPU encoders accept 1 or 3 channels; the CUDA (nvJPEG) path is RGB-only,
+        # so its message differs. Both reject 2 and 4 channels.
+        with pytest.raises(RuntimeError, match="number of channels should be"):
+            encode(torch.zeros(num_channels, 8, 8, dtype=torch.uint8), io.BytesIO())
+
+    @pytest.mark.parametrize("encode", _encoders)
+    def test_bad_file_like(self, encode):
+        img = torch.zeros(3, 8, 8, dtype=torch.uint8)
+
+        class NoWriteMethod:
+            def seek(self, offset, whence=0):
+                return 0
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a write method"
+        ):
+            encode(img, NoWriteMethod())
+
+        class NoSeekMethod:
+            def write(self, data):
+                return len(data)
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a seek method"
+        ):
+            encode(img, NoSeekMethod())
+
+        with pytest.raises(
+            RuntimeError, match="File like object must implement a write method"
+        ):
+            encode(img, dest=3)

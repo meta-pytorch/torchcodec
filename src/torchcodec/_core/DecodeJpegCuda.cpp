@@ -23,9 +23,8 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
       false,
       "decode_jpeg: torchcodec was not compiled with nvJPEG support, so JPEG "
       "images cannot be decoded on a CUDA device. Rebuild torchcodec with "
-      "ENABLE_CUDA=1 in an environment where the CUDA toolkit (which provides "
-      "nvJPEG) is available. If you see this error in a prebuilt wheel, please "
-      "report it to the TorchCodec repo.");
+      "ENABLE_CUDA=1 and TORCHCODEC_BUILD_NVJPEG=1. If you see this error in a "
+      "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
 } // namespace facebook::torchcodec
@@ -35,6 +34,7 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
 #include <cstring>
 
 #include "CUDACommon.h"
+#include "Cache.h"
 #include "Exif.h"
 #include "ImageCommon.h"
 
@@ -129,43 +129,19 @@ ExifOrientation fetch_exif_orientation_from_jpeg_bytes(
 // the downside of not being able to cache a decoder is so high, we allow a
 // generous amount of decoders in the cache. This isn't exposed for now, it
 // probably shouldn't be.
-constexpr size_t kMaxCachedDecodersPerDevice = 32;
+constexpr int kMaxCachedDecodersPerDevice = 32;
+
+PerGpuCache<CUDAJpegDecoder>& decoder_cache() {
+  // Intentionally leaked (allocated with new, never freed) to avoid calling
+  // into CUDA/nvJPEG during static destruction, when the CUDA runtime may
+  // already be torn down (same reasoning as NVDECCache): the cached decoders'
+  // destructors call nvjpegDestroy, which we must not run at process exit.
+  static auto* cache = new PerGpuCache<CUDAJpegDecoder>(
+      MAX_CUDA_GPUS, kMaxCachedDecodersPerDevice);
+  return *cache;
+}
 
 } // namespace
-
-NVJpegCache* NVJpegCache::get_cache_instances() {
-  // Intentionally leaked to avoid calling into CUDA/nvJPEG during static
-  // destruction, when the CUDA runtime may already be torn down (same reasoning
-  // as NVDECCache).
-  static NVJpegCache* cache_instances = new NVJpegCache[MAX_CUDA_GPUS];
-  return cache_instances;
-}
-
-NVJpegCache& NVJpegCache::get_cache(const torch::stable::Device& device) {
-  return get_cache_instances()[get_device_index(device)];
-}
-
-std::unique_ptr<CUDAJpegDecoder> NVJpegCache::get_decoder(
-    const torch::stable::Device& device) {
-  {
-    std::lock_guard<std::mutex> lock(pool_lock_);
-    if (!pool_.empty()) {
-      auto decoder = std::move(pool_.back());
-      pool_.pop_back();
-      return decoder;
-    }
-  }
-  return std::make_unique<CUDAJpegDecoder>(device);
-}
-
-void NVJpegCache::return_decoder(std::unique_ptr<CUDAJpegDecoder> decoder) {
-  STD_TORCH_CHECK(decoder != nullptr, "decoder must not be null");
-  std::lock_guard<std::mutex> lock(pool_lock_);
-  if (pool_.size() < kMaxCachedDecodersPerDevice) {
-    pool_.push_back(std::move(decoder));
-  }
-  // Otherwise let `decoder` go out of scope and be destroyed.
-}
 
 std::vector<torch::stable::Tensor> decode_jpegs_cuda(
     std::vector<torch::stable::Tensor> encoded_images,
@@ -193,12 +169,15 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
 
   cudaStream_t current_stream = get_current_cuda_stream(device_index);
 
-  NVJpegCache& cache = NVJpegCache::get_cache(device);
-  std::unique_ptr<CUDAJpegDecoder> decoder = cache.get_decoder(device);
+  PerGpuCache<CUDAJpegDecoder>& cache = decoder_cache();
+  std::unique_ptr<CUDAJpegDecoder> decoder = cache.get(device);
+  if (decoder == nullptr) {
+    decoder = std::make_unique<CUDAJpegDecoder>(device);
+  }
 
   std::vector<torch::stable::Tensor> output = decoder->decode_images(
       contig_images, static_cast<ImageReadMode>(mode), current_stream);
-  cache.return_decoder(std::move(decoder));
+  cache.add_if_cache_has_capacity(device, std::move(decoder));
 
   for (size_t i = 0; i < output.size(); ++i) {
     output[i] = exif_orientation_transform(output[i], orientations[i]);

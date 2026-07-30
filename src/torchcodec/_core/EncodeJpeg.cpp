@@ -16,15 +16,15 @@
 
 namespace facebook::torchcodec {
 
-torch::stable::Tensor encode_jpeg(
+void encode_jpeg(
     [[maybe_unused]] const torch::stable::Tensor& img,
-    [[maybe_unused]] int64_t quality) {
+    [[maybe_unused]] int64_t quality,
+    [[maybe_unused]] IOInterface& interface) {
   STD_TORCH_CHECK(
       false,
-      "encode_jpeg: torchcodec was not compiled with libjpeg support. "
-      "Rebuild torchcodec in an environment where libjpeg-turbo (and its "
-      "development headers) are available. If you see this error in a prebuilt "
-      "wheel, please report it to the TorchCodec repo.");
+      "encode_jpeg: torchcodec was not compiled with libjpeg support. Rebuild "
+      "torchcodec with TORCHCODEC_BUILD_JPEG=1. If you see this error in a "
+      "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
 } // namespace facebook::torchcodec
@@ -35,20 +35,14 @@ torch::stable::Tensor encode_jpeg(
 #include <setjmp.h>
 
 #include <cstdint>
-#include <cstdlib>
+#include <exception>
+#include <vector>
 
 namespace facebook::torchcodec {
 
 namespace {
 
-// For libjpeg <= 9b the out_size parameter of jpeg_mem_dest() is declared as
-// `unsigned long`; later versions declare it as `size_t`.
-#if !defined(JPEG_LIB_VERSION_MAJOR) || JPEG_LIB_VERSION_MAJOR < 9 || \
-    (JPEG_LIB_VERSION_MAJOR == 9 && JPEG_LIB_VERSION_MINOR <= 2)
-using JpegSizeType = unsigned long;
-#else
-using JpegSizeType = std::size_t;
-#endif
+constexpr int OUTPUT_BUFFER_SIZE = 64 * 1024;
 
 // Error context passed to libjpeg. Same shape and rationale as the one in
 // DecodeJpeg.cpp: the jpeg_error_mgr base must be the first field so we can
@@ -65,20 +59,81 @@ void error_exit_cb(j_common_ptr jpeg_ctx) {
   longjmp(error_ctx->setjmp_buffer, 1);
 }
 
-int64_t compress_jpeg(
+// Custom libjpeg destination manager that streams compressed bytes into an
+// IOInterface. The jpeg_destination_mgr must be the first field so libjpeg's
+// `dest` pointer can be cast back to an IOCtx* in the callbacks.
+struct IOCtx {
+  jpeg_destination_mgr jpeg_dest_mgr;
+  IOInterface* interface;
+  // libjpeg writes to this buffer in chunks, and we flush it to the IOInterface
+  // whenever it fills up.
+  std::vector<JOCTET> buffer;
+  std::exception_ptr interface_exception;
+};
+
+// Flushes the first `size` bytes of io_ctx->buffer to the IOInterface. The
+// interface->write() call may throw (e.g. a Python file-like raising, or a disk
+// error), but a C++ exception must not unwind through libjpeg's C stack. So we
+// capture it and abort compression by longjmp-ing to the setjmp point in
+// compress_jpeg, which rethrows it.
+void write_or_longjmp(j_compress_ptr jpeg_ctx, IOCtx* io_ctx, int size) {
+  try {
+    io_ctx->interface->write(io_ctx->buffer.data(), size);
+    return;
+  } catch (...) {
+    io_ctx->interface_exception = std::current_exception();
+  }
+  longjmp(reinterpret_cast<ErrorCtx*>(jpeg_ctx->err)->setjmp_buffer, 1);
+}
+
+// Called by jpeg_start_compress() before any data is written.
+void init_destination(j_compress_ptr jpeg_ctx) {
+  auto* io_ctx = reinterpret_cast<IOCtx*>(jpeg_ctx->dest);
+  io_ctx->jpeg_dest_mgr.next_output_byte = io_ctx->buffer.data();
+  io_ctx->jpeg_dest_mgr.free_in_buffer = io_ctx->buffer.size();
+}
+
+// Called whenever libjpeg runs out of space in the output buffer. We flush the
+// buffer to the IOInterface and reset the buffer.
+boolean empty_output_buffer(j_compress_ptr jpeg_ctx) {
+  auto* io_ctx = reinterpret_cast<IOCtx*>(jpeg_ctx->dest);
+  write_or_longjmp(jpeg_ctx, io_ctx, static_cast<int>(io_ctx->buffer.size()));
+  io_ctx->jpeg_dest_mgr.next_output_byte = io_ctx->buffer.data();
+  io_ctx->jpeg_dest_mgr.free_in_buffer = io_ctx->buffer.size();
+  return TRUE;
+}
+
+// called by jpeg_finish_compress() after all data has been written. There might
+// still be some data in the buffer which needs to be flushed to the
+// IOInterface.
+void term_destination(j_compress_ptr jpeg_ctx) {
+  auto* io_ctx = reinterpret_cast<IOCtx*>(jpeg_ctx->dest);
+  int size = static_cast<int>(
+      io_ctx->buffer.size() - io_ctx->jpeg_dest_mgr.free_in_buffer);
+  if (size > 0) {
+    write_or_longjmp(jpeg_ctx, io_ctx, size);
+  }
+}
+
+void compress_jpeg(
     jpeg_compress_struct& jpeg_ctx,
     ErrorCtx& error_ctx,
+    IOCtx& io_ctx,
     const uint8_t* input_ptr,
     int width,
     int height,
     int num_channels,
-    int quality,
-    uint8_t*& jpeg_buf /* OUT */) {
+    int quality) {
   if (setjmp(error_ctx.setjmp_buffer)) {
     jpeg_destroy_compress(&jpeg_ctx);
-    std::free(jpeg_buf);
-    jpeg_buf = nullptr;
-    STD_TORCH_CHECK(false, error_ctx.last_error_message);
+    // We land here on either a libjpeg error (via error_exit_cb) or a failed
+    // write (via write_or_longjmp). The latter sets interface_exception, which
+    // we rethrow to surface the original exception.
+    if (io_ctx.interface_exception) {
+      std::rethrow_exception(io_ctx.interface_exception);
+    } else {
+      STD_TORCH_CHECK(false, error_ctx.last_error_message);
+    }
   }
 
   jpeg_create_compress(&jpeg_ctx);
@@ -91,9 +146,11 @@ int64_t compress_jpeg(
   jpeg_set_defaults(&jpeg_ctx);
   jpeg_set_quality(&jpeg_ctx, quality, /*force_baseline=*/TRUE);
 
-  // libjpeg allocates jpeg_buf and grows it as needed
-  JpegSizeType jpeg_size = 0;
-  jpeg_mem_dest(&jpeg_ctx, &jpeg_buf, &jpeg_size);
+  io_ctx.jpeg_dest_mgr.init_destination = &init_destination;
+  io_ctx.jpeg_dest_mgr.empty_output_buffer = &empty_output_buffer;
+  io_ctx.jpeg_dest_mgr.term_destination = &term_destination;
+  jpeg_ctx.dest = &io_ctx.jpeg_dest_mgr;
+
   jpeg_start_compress(&jpeg_ctx, /*write_all_tables=*/TRUE);
 
   const int64_t stride = static_cast<int64_t>(width) * num_channels;
@@ -105,7 +162,6 @@ int64_t compress_jpeg(
 
   jpeg_finish_compress(&jpeg_ctx);
   jpeg_destroy_compress(&jpeg_ctx);
-  return static_cast<int64_t>(jpeg_size);
 }
 
 } // namespace
@@ -113,10 +169,12 @@ int64_t compress_jpeg(
 // Important: see Note [libjpeg error handling] in the jpeg decoder: everything
 // applies here too. We must not throw a C++ exception through libjpeg's C stack
 // (and callbacks), and we must not allocate anything that needs proper
-// destruction in a function that defines a setjmp() point.
-torch::stable::Tensor encode_jpeg(
+// destruction in a function that defines a setjmp() point. The IOCtx (which
+// owns a std::vector) therefore lives here, outside compress_jpeg's setjmp.
+void encode_jpeg(
     const torch::stable::Tensor& img,
-    int64_t quality) {
+    int64_t quality,
+    IOInterface& interface) {
   STD_TORCH_CHECK(
       img.device().type() == kStableCPU,
       "Input tensor must be on the CPU, got a tensor on ",
@@ -139,30 +197,25 @@ torch::stable::Tensor encode_jpeg(
   const auto input = torch::stable::contiguous(stable_permute(img, {1, 2, 0}));
 
   // Owned here rather than in compress_jpeg(): that function runs the
-  // setjmp/longjmp dance and must keep these alive across it
+  // setjmp/longjmp dance and must keep these alive across it.
   jpeg_compress_struct jpeg_ctx;
   ErrorCtx error_ctx;
   jpeg_ctx.err = jpeg_std_error(&error_ctx.base);
   error_ctx.base.error_exit = error_exit_cb;
 
-  uint8_t* jpeg_buf = nullptr;
-  const int64_t jpeg_size = compress_jpeg(
+  IOCtx io_ctx;
+  io_ctx.interface = &interface;
+  io_ctx.buffer.resize(OUTPUT_BUFFER_SIZE);
+
+  compress_jpeg(
       jpeg_ctx,
       error_ctx,
+      io_ctx,
       input.const_data_ptr<uint8_t>(),
       width,
       height,
       num_channels,
-      static_cast<int>(quality),
-      jpeg_buf);
-
-  return torch::stable::from_blob(
-      jpeg_buf,
-      {jpeg_size},
-      {1},
-      StableDevice(kStableCPU),
-      kStableUInt8,
-      [](void* ptr) { std::free(ptr); });
+      static_cast<int>(quality));
 }
 
 } // namespace facebook::torchcodec
