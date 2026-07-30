@@ -8,6 +8,7 @@ import io
 from pathlib import Path
 
 import torch
+from torch import Tensor
 
 from torchcodec._core.ops import (
     create_file_like_context,
@@ -19,112 +20,65 @@ from torchcodec._core.ops import (
 )
 
 
-def _encode_to_dest(input, dest, param, *, to_file, to_file_like) -> None:
-    if isinstance(dest, (str, Path)):
-        to_file(input, str(dest), param)
-    else:
-        # Assume file-like, it gets validated in C++ (it's tested).
-        to_file_like(input, create_file_like_context(dest, True), param)
-
-
-def _encode_to_tensor_through_bytesio(input, param, to_file_like) -> torch.Tensor:
+def _encode_to_tensor_through_bytesio(img, param, to_file_like) -> Tensor:
     # Encode into an in-memory BytesIO and wrap its buffer as a 1-D uint8 tensor.
     # getbuffer() (unlike getvalue()) exposes the buffer without copying. We
     # could have native C++ implementation for that in each encoder, but it's
     # not always worth it (based on benchmarks). Currently, the only encoder
     # that really needs a dedicated C++ path is JPEG on CUDA.
     buf = io.BytesIO()
-    to_file_like(input, create_file_like_context(buf, True), param)
+    to_file_like(img, create_file_like_context(buf, True), param)
     return torch.frombuffer(buf.getbuffer(), dtype=torch.uint8)
 
 
-def encode_png(
-    input: torch.Tensor,
-    dest: str | Path | None = None,
-    compression_level: int = 6,
-) -> torch.Tensor | None:
-    """Encode a CHW uint8 image tensor into a PNG.
+class JpegEncoder:
+    def __init__(self, img: Tensor) -> None:
+        self._img = img
 
-    Args:
-        input (``torch.Tensor``): The image to encode, a 3-dimensional uint8
-            tensor in CHW layout with 1 (grayscale) or 3 (RGB) channels.
-        dest (str, ``pathlib.Path``, file-like object, or ``None``): The
-            destination to write the encoded PNG to. Either a path to the output
-            file, or a file-like object that supports
-            ``write(data: bytes) -> int`` and
-            ``seek(offset: int, whence: int = 0) -> int``, such as
-            ``io.BytesIO()`` or an open file in binary write mode. If ``None``
-            (the default), the encoded bytes are returned as a 1-D uint8 tensor
-            instead of being written anywhere.
-        compression_level (int): zlib compression level between 0 (no
-            compression, fastest) and 9 (max compression, slowest). Default: 6.
+    def to_file(self, dest: str | Path, *, quality: int = 75) -> None:
+        self._validate_quality(quality)
+        _encode_jpeg_to_file(self._img, str(dest), quality)
 
-    Returns:
-        ``None`` if ``dest`` is a path or file-like object, otherwise a 1-D uint8
-        tensor of the encoded bytes.
-    """
-    if dest is None:
-        return _encode_to_tensor_through_bytesio(
-            input, compression_level, _encode_png_to_file_like
+    def to_file_like(
+        self, dest: io.RawIOBase | io.BufferedIOBase, *, quality: int = 75
+    ) -> None:
+        self._validate_quality(quality)
+        _encode_jpeg_to_file_like(
+            self._img, create_file_like_context(dest, True), quality
         )
-    else:
-        _encode_to_dest(
-            input,
-            dest,
-            compression_level,
-            to_file=_encode_png_to_file,
-            to_file_like=_encode_png_to_file_like,
-        )
-        return None
 
-
-def encode_jpeg(
-    input: torch.Tensor,
-    dest: str | Path | None = None,
-    quality: int = 75,
-) -> torch.Tensor | None:
-    """Encode a CHW uint8 image tensor into a JPEG.
-
-    Args:
-        input (``torch.Tensor``): The image to encode, a 3-dimensional uint8
-            tensor in CHW layout with 1 (grayscale) or 3 (RGB) channels.
-        dest (str, ``pathlib.Path``, file-like object, or ``None``): The
-            destination to write the encoded JPEG to. Either a path to the output
-            file, or a file-like object that supports
-            ``write(data: bytes) -> int`` and
-            ``seek(offset: int, whence: int = 0) -> int``, such as
-            ``io.BytesIO()`` or an open file in binary write mode. If ``None``
-            (the default), the encoded bytes are returned as a 1-D uint8 tensor
-            instead of being written anywhere.
-        quality (int): Quality of the resulting JPEG, between 1 and 100. Higher
-            means better quality and larger file size. Default: 75.
-
-    Returns:
-        ``None`` if ``dest`` is a path or file-like object. If ``dest`` is
-        ``None``, a 1-D uint8 tensor of the encoded bytes, on the same device as
-        ``input`` (a CUDA input yields a CUDA tensor; call ``.cpu()`` for host
-        bytes).
-
-    If ``input`` is on a CUDA device, encoding is performed on the GPU with
-    nvJPEG. Only 3-channel RGB tensors are supported on CUDA (grayscale must be
-    encoded on the CPU).
-    """
-    if quality < 1 or quality > 100:
-        raise ValueError("Image quality should be a positive number between 1 and 100")
-
-    if dest is None:
-        if input.is_cuda:
-            return _encode_jpeg_to_tensor_cuda(input, quality)
+    def to_tensor(self, *, quality: int = 75) -> Tensor:
+        self._validate_quality(quality)
+        if self._img.is_cuda:
+            return _encode_jpeg_to_tensor_cuda(self._img, quality)
         else:
             return _encode_to_tensor_through_bytesio(
-                input, quality, _encode_jpeg_to_file_like
+                self._img, quality, _encode_jpeg_to_file_like
             )
-    else:
-        _encode_to_dest(
-            input,
-            dest,
-            quality,
-            to_file=_encode_jpeg_to_file,
-            to_file_like=_encode_jpeg_to_file_like,
+
+    @staticmethod
+    def _validate_quality(quality: int) -> None:
+        if quality < 1 or quality > 100:
+            raise ValueError(
+                "Image quality should be a positive number between 1 and 100"
+            )
+
+
+class PngEncoder:
+    def __init__(self, img: Tensor) -> None:
+        self._img = img
+
+    def to_file(self, dest: str | Path, *, compression_level: int = 6) -> None:
+        _encode_png_to_file(self._img, str(dest), compression_level)
+
+    def to_file_like(
+        self, dest: io.RawIOBase | io.BufferedIOBase, *, compression_level: int = 6
+    ) -> None:
+        _encode_png_to_file_like(
+            self._img, create_file_like_context(dest, True), compression_level
         )
-        return None
+
+    def to_tensor(self, *, compression_level: int = 6) -> Tensor:
+        return _encode_to_tensor_through_bytesio(
+            self._img, compression_level, _encode_png_to_file_like
+        )
