@@ -5,6 +5,11 @@
 [Decoding a video with VideoDecoder](basic_example.html)
 
 Decoding a video with VideoDecoder
+![](../../_images/sphx_glr_image_decoding_thumb.jpg)
+
+[Decoding images](image_decoding.html)
+
+Decoding images
 ![](../../_images/sphx_glr_audio_decoding_thumb.jpg)
 
 [Decoding audio streams with AudioDecoder](audio_decoding.html)

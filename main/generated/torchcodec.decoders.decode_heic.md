@@ -48,3 +48,11 @@ or `(N, C, H, W)` (multi-image).
 Return type:
 
 [torch.Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)
+
+Examples using `decode_heic`:
+
+![](../_images/sphx_glr_image_decoding_thumb.jpg)
+
+[Decoding images](../generated_examples/decoding/image_decoding.html)
+
+Decoding images

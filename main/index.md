@@ -33,6 +33,12 @@ A simple video decoding example
 
 [generated_examples/decoding/basic_example.html](generated_examples/decoding/basic_example.html)
 
+Image Decoding
+
+How to decode images (JPEG on CPU and CUDA, PNG, WebP, and more)
+
+[generated_examples/decoding/image_decoding.html](generated_examples/decoding/image_decoding.html)
+
 Audio Decoding
 
 A simple audio decoding example

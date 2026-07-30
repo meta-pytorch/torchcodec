@@ -50,3 +50,11 @@ a batch.
 Return type:
 
 torch.Tensor or list of torch.Tensor of shape `C, H, W`
+
+Examples using `decode_jpeg`:
+
+![](../_images/sphx_glr_image_decoding_thumb.jpg)
+
+[Decoding images](../generated_examples/decoding/image_decoding.html)
+
+Decoding images
