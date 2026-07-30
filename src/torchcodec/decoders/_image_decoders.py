@@ -21,6 +21,7 @@ from torchcodec._core.ops import (
     get_decode_heic as _get_decode_heic,
 )
 
+
 class ImageReadMode(Enum):
     """Color mode for image decoding.
 
@@ -199,6 +200,39 @@ def decode_jpeg(
     device: str | torch.device = "cpu",
 ) -> torch.Tensor | list[torch.Tensor]:
     """Decode a JPEG into a tensor of shape ``(C, H, W)``, on CPU or CUDA.
+
+    .. note::
+
+        For CUDA decoding, prefer passing a batch (a list of sources) in a
+        single call: the whole batch is decoded in one nvJPEG call, which is
+        much faster than decoding images one at a time.
+        Passing a batch of sources is supported on CPU too, but it won't be
+        faster than decoding them one at a time.
+
+    Args:
+        source (str, ``pathlib.Path``, bytes, ``torch.Tensor``, or list of these):
+            The encoded JPEG data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes. Pass a list (or tuple) to decode a batch, in which case a list of
+            tensors is returned instead of a single tensor. The encoded bytes must
+            live on CPU, even when decoding to a CUDA device.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. Since JPEG is an 8-bit format,
+            ``"auto"`` and ``torch.uint8`` are equivalent. ``torch.uint16``
+            emulates a 16-bit output by scaling the 8-bit values to the full
+            16-bit range (0-255 -> 0-65535).
+        device (str or torch.device, optional): Device to decode on, ``"cpu"``
+            (default) or a CUDA device. CUDA decoding uses nvJPEG. We recommend
+            passing a batch of sources when decoding on CUDA, for speed.
+
+    Returns:
+        torch.Tensor or list of torch.Tensor of shape ``C, H, W``: The decoded
+        image(s). A single tensor for a single source, or a list of tensors for
+        a batch.
     """
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
