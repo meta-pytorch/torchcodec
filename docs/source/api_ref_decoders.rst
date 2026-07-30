@@ -76,6 +76,7 @@ Image Decoding
     :nosignatures:
     :template: function.rst
 
+    decode_image
     decode_jpeg
     decode_png
     decode_webp

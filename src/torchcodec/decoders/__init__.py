@@ -15,6 +15,7 @@ from ._image_decoders import (  # noqa
     decode_avif,
     decode_gif,
     decode_heic,
+    decode_image,
     decode_jpeg,
     decode_png,
     decode_webp,

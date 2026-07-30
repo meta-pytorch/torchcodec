@@ -5,10 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 import warnings
-from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 import torch
 from torchcodec._core.ops import (
@@ -484,19 +483,6 @@ def decode_heic(
     return _to_output_dtype(decoded, output_dtype)
 
 
-# Maps a detected format to its public decoder, so decode_image reuses the exact
-# same decoding path (mode emulation and output_dtype handling) as the
-# format-specific decoders above.
-_FORMAT_TO_DECODER: dict[str, Callable[..., Any]] = {
-    "jpeg": decode_jpeg,
-    "png": decode_png,
-    "webp": decode_webp,
-    "gif": decode_gif,
-    "avif": decode_avif,
-    "heic": decode_heic,
-}
-
-
 def _detect_image_format(data: torch.Tensor) -> str:
     # Sniff the codec from the leading "magic" bytes of the encoded data.
     # This used to be implemented in C++ in torchvision, but benchmarks show
@@ -541,9 +527,9 @@ def _detect_image_format(data: torch.Tensor) -> str:
 # Design note: the parameters of decode_image must apply to *all* codecs
 # uniformly. That's why all modes are supported by decode_image even though not
 # all codec would natively support all mode - e.g. jpeg has no alpha support, so
-# we prepend an opaque alpha channel as a post-processing step.  As a resut, all
-# codec-specific entry points like decode_jpeg, decode_png etc.  must still
-# expose the same parameters that decode_image exposes.  The codec-specific
+# we prepend an opaque alpha channel as a post-processing step. As a resut, all
+# codec-specific entry points like decode_jpeg, decode_png etc. must still
+# expose the same parameters that decode_image exposes. The codec-specific
 # parameters should live in the codec-specific entry points, e.g. decode_avif
 # has its `num_threads`, decode_jpeg has `device`, etc.
 def decode_image(
@@ -554,14 +540,46 @@ def decode_image(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode an image into a tensor, detecting the format automatically.
+    """Decode an image into a ``[N]CHW`` tensor, detecting the format automatically.
 
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
-    module note above for the semantics of ``output_dtype``.
+    The format is detected from the encoded data (not the file extension), and
+    decoding is delegated to the matching format-specific decoder. Supported
+    formats are JPEG, PNG, WebP, GIF, AVIF and HEIC (requires ``libheif``). The
+    output shape is ``(C, H, W)`` for a single image and ``(N, C, H, W)`` for
+    animated or multi-image formats (WebP, GIF, AVIF, HEIC).
+
+    For finer control, or for format-specific options (e.g. ``device`` for CUDA
+    JPEG decoding, ``num_threads`` for AVIF), use the dedicated decoders
+    directly: :func:`decode_jpeg`, :func:`decode_png`, :func:`decode_webp`,
+    :func:`decode_gif`, :func:`decode_avif`, :func:`decode_heic`.
+
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded image data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. Formats that can carry more than 8
+            bits per channel (PNG, AVIF, HEIC) preserve that precision with
+            ``torch.uint16`` and ``"auto"``. See the format-specific decoders
+            for details.
+
+    Returns:
+        torch.Tensor: The decoded image, of shape ``[N]CHW``.
+
     """
-    _validate_output_dtype(output_dtype)
     data = _source_to_tensor(source)
+    format_to_decoder = {
+        "jpeg": decode_jpeg,
+        "png": decode_png,
+        "webp": decode_webp,
+        "gif": decode_gif,
+        "avif": decode_avif,
+        "heic": decode_heic,
+    }
     fmt = _detect_image_format(data)
-    return _FORMAT_TO_DECODER[fmt](data, mode=mode, output_dtype=output_dtype)
+    return format_to_decoder[fmt](data, mode=mode, output_dtype=output_dtype)
