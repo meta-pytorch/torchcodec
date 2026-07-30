@@ -208,6 +208,15 @@ def decode_jpeg(
         Passing a batch of sources is supported on CPU too, but it won't be
         faster than decoding them one at a time.
 
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_jpeg
+
+            img = decode_jpeg("image.jpg")
+            img = decode_jpeg("image.jpg", device="cuda")  # decode on GPU
+
     Args:
         source (str, ``pathlib.Path``, bytes, ``torch.Tensor``, or list of these):
             The encoded JPEG data: a path (``str`` or ``pathlib.Path``), a
@@ -271,6 +280,14 @@ def decode_png(
 ) -> torch.Tensor:
     """Decode a PNG image into a ``CHW`` tensor.
 
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_png
+
+            img = decode_png("image.png")
+
     Args:
         source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
             The encoded PNG data: a path (``str`` or ``pathlib.Path``), a
@@ -314,6 +331,14 @@ def decode_webp(
     The output shape is ``(C, H, W)`` for a still WebP and ``(N, C, H, W)`` for
     an animated one (N frames).
 
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_webp
+
+            img = decode_webp("image.webp")
+
     Args:
         source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
             The encoded WebP data: a path (``str`` or ``pathlib.Path``), a
@@ -352,6 +377,14 @@ def decode_gif(
 
     The output shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for
     an animated one (N frames).
+
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_gif
+
+            img = decode_gif("image.gif")
 
     Args:
         source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
@@ -392,6 +425,14 @@ def decode_avif(
 
     The output shape is ``(C, H, W)`` for a still AVIF and ``(N, C, H, W)`` for
     an animated one (N frames).
+
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_avif
+
+            img = decode_avif("image.avif")
 
     Args:
         source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
@@ -447,6 +488,14 @@ def decode_heic(
         HEIC decoding requires **libheif** to be installed and discoverable at
         runtime. TorchCodec does not bundle it (libheif is LGPL): install it via
         e.g. ``conda install -c conda-forge libheif``.
+
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_heic
+
+            img = decode_heic("image.heic")
 
     Args:
         source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
@@ -553,6 +602,15 @@ def decode_image(
     directly: :func:`decode_jpeg`, :func:`decode_png`, :func:`decode_webp`,
     :func:`decode_gif`, :func:`decode_avif`, :func:`decode_heic`.
 
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_image
+
+            jpeg_img = decode_image("image.jpg")
+            png_img = decode_image("image.png")
+
     Args:
         source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
             The encoded image data: a path (``str`` or ``pathlib.Path``), a
@@ -570,7 +628,6 @@ def decode_image(
 
     Returns:
         torch.Tensor: The decoded image, of shape ``[N]CHW``.
-
     """
     data = _source_to_tensor(source)
     format_to_decoder = {
