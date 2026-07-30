@@ -37,9 +37,9 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       SeekMode seek_mode = SeekMode::exact);
 
   // Creates a SingleStreamDecoder using the provided AVIOContext inside the
-  // AVIOContextHolder. The AVIOContextHolder is the base class, and the
-  // derived class will have specialized how the custom read, seek and writes
-  // work.
+  // AVIOContextHolder. The AVIOContextHolder wraps an IOInterface that
+  // specializes how the custom read, seek and writes work (in-memory tensor,
+  // Python file-like, ...).
   explicit SingleStreamDecoder(
       std::unique_ptr<AVIOContextHolder> context,
       SeekMode seek_mode = SeekMode::exact);

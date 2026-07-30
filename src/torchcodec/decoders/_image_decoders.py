@@ -47,6 +47,7 @@ class ImageReadMode(Enum):
     GRAY_ALPHA = 2
     RGB = 3
     RGB_ALPHA = 4
+    RGBA = 4  # undocumented alias for RGB_ALPHA
 
 
 def _normalize_mode(

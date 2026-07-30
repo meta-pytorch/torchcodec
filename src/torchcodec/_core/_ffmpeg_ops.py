@@ -16,13 +16,11 @@ import warnings
 import torch
 from torch.library import get_ctx, register_fake
 from torchcodec._core._ffmpeg_op_names import FFMPEG_OP_NAMES
-from torchcodec._internally_replaced_utils import load_core_libraries
+from torchcodec._internally_replaced_utils import load_pybind_ops
 
 __all__ = sorted(FFMPEG_OP_NAMES)
 
-# Only imported when FFmpeg is available, so this always succeeds; it's @cache'd
-# so it's instant. We need _pybind_ops for the file-like helpers below.
-_, _, _pybind_ops = load_core_libraries()
+_pybind_ops = load_pybind_ops()
 
 
 # Note: We use disallow_in_graph because PyTorch does constant propagation of

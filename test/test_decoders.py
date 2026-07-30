@@ -3709,6 +3709,12 @@ class TestImageDecoder:
         with pytest.raises(ValueError, match="Unsupported or unrecognized"):
             decode_image(garbage)
 
+    @pytest.mark.parametrize("mode", ("RGBA", ImageReadMode.RGBA))
+    def test_decode_image_rgba_alias(self, mode):
+        # "RGBA" (string or enum) is an undocumented alias for "RGB_ALPHA".
+        reference = decode_image(RGBA_PNG.path, mode="RGB_ALPHA")
+        assert_frames_equal(decode_image(RGBA_PNG.path, mode=mode), reference)
+
     # ===== cross-codec tests: output modes =====
 
     @pytest.mark.parametrize(

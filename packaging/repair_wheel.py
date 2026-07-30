@@ -482,7 +482,8 @@ def check_bundling():
     - the compressed wheel is larger than MAX_WHEEL_BYTES: the slim decode-only
       libavif should keep us under it.
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
-    - (Linux only) libtorchcodec_image.so links FFmpeg.
+    - (Linux only) libtorchcodec_image.so or libtorchcodec_pybind_ops.so links
+      FFmpeg.
     """
 
     def _is_shared_lib(name):
@@ -569,29 +570,30 @@ def check_bundling():
         "libpostproc",
     )
 
-    def _assert_linux_image_lib_no_ffmpeg(zf):
-        """Enforce that libtorchcodec_image.so NOT link FFmpeg (no FFmpeg
-        soname in DT_NEEDED; see _FFMPEG_SONAME_PREFIXES).
+    def _assert_linux_lib_no_ffmpeg(zf, lib_name):
+        """Enforce that `lib_name` does NOT link FFmpeg (no FFmpeg soname in
+        DT_NEEDED; see _FFMPEG_SONAME_PREFIXES).
 
-        We built libtorchcodec_image.so separately from the FFmpeg-dependent
-        core{4,5,6,7,8}.so libraries: the whole point is to avoid symbol
-        interposition between the bundled image codec libs
-        (libjpeg/libpng/libwebp) and the user's FFmpeg: FFmpeg may come with its
-        own libjpeg/libpng too!
+        Both libtorchcodec_image.so (the image decoders/encoders) and
+        libtorchcodec_pybind_ops.so (the Python file-like bridge) are built
+        separately from the FFmpeg-dependent core{4,5,6,7,8}.so libraries and
+        must stay FFmpeg-free:
+        - the image lib, to avoid symbol interposition between the bundled image
+          codec libs (libjpeg/libpng/libwebp) and the user's FFmpeg, which may
+          come with its own libjpeg/libpng too;
+        - the pybind lib, so it can be loaded (and image encoding used) even when
+          FFmpeg isn't installed.
 
-        This check ensures that we didn't accidentally link FFmpeg into
-        libtorchcodec_image.so, which would defeat the purpose of building it
-        separately.
+        This check ensures we didn't accidentally link FFmpeg into them, which
+        would defeat the purpose of building them separately.
         """
         from elftools.elf.elffile import ELFFile
 
-        members = [
-            n for n in zf.namelist() if n.rsplit("/", 1)[-1] == "libtorchcodec_image.so"
-        ]
+        members = [n for n in zf.namelist() if n.rsplit("/", 1)[-1] == lib_name]
         if not members:
             raise RuntimeError(
-                "libtorchcodec_image.so not found in wheel; the image decoders "
-                "are expected to live in their own shared library."
+                f"{lib_name} not found in wheel; it's expected to live in its "
+                "own shared library."
             )
         elf = ELFFile(io.BytesIO(zf.read(members[0])))
         dynamic = elf.get_section_by_name(".dynamic")
@@ -599,8 +601,8 @@ def check_bundling():
         ffmpeg_needed = [n for n in needed if n.startswith(_FFMPEG_SONAME_PREFIXES)]
         if ffmpeg_needed:
             raise RuntimeError(
-                "libtorchcodec_image.so must not link FFmpeg, but its DT_NEEDED "
-                "lists: " + " ".join(ffmpeg_needed)
+                f"{lib_name} must not link FFmpeg, but its DT_NEEDED lists: "
+                + " ".join(ffmpeg_needed)
             )
 
     def _assert_linux_libjpeg_is_turbo(zf):
@@ -708,7 +710,8 @@ def check_bundling():
                 )
             if platform.system() == "Linux":
                 _assert_linux_libjpeg_is_turbo(zf)
-                _assert_linux_image_lib_no_ffmpeg(zf)
+                _assert_linux_lib_no_ffmpeg(zf, "libtorchcodec_image.so")
+                _assert_linux_lib_no_ffmpeg(zf, "libtorchcodec_pybind_ops.so")
         print("OK: only libjpeg (and allowed libs) bundled.")
 
 
