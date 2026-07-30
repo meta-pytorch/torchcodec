@@ -85,6 +85,7 @@ class CustomGalleryExampleSortKey:
         else:
             assert "examples/encoding" in self.src_dir
             order = [
+                "image_encoding.py",
                 "audio_encoding.py",
                 "video_encoding.py",
                 "multi_stream_encoding.py",
