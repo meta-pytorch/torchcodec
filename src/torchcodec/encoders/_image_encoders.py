@@ -34,6 +34,9 @@ def _encode_to_tensor_through_bytesio(img, param, to_file_like) -> Tensor:
 class JpegEncoder:
     """Encoder for JPEG images.
 
+    For a tutorial, see:
+    :ref:`sphx_glr_generated_examples_encoding_image_encoding.py`.
+
     Example:
 
         .. code-block:: python
@@ -113,6 +116,9 @@ class JpegEncoder:
 
 class PngEncoder:
     """Encoder for PNG images.
+
+    For a tutorial, see:
+    :ref:`sphx_glr_generated_examples_encoding_image_encoding.py`.
 
     Example:
 
