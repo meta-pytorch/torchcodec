@@ -20,14 +20,16 @@ import torch
 
 import torchcodec
 from torchcodec._core import ops as _ops
-from torchcodec.decoders import AudioDecoder, VideoDecoder, WavDecoder
-from torchcodec.decoders._image_decoders import (
+from torchcodec.decoders import (
+    AudioDecoder,
     decode_avif,
     decode_gif,
     decode_image,
     decode_jpeg,
     decode_png,
     decode_webp,
+    VideoDecoder,
+    WavDecoder,
 )
 from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
 

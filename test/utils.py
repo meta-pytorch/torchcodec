@@ -14,13 +14,14 @@ import pytest
 import torch
 from torchcodec import ffmpeg_major_version
 from torchcodec._core import get_ffmpeg_library_versions
-from torchcodec.decoders import set_cuda_backend, VideoDecoder
-from torchcodec.decoders._image_decoders import (
+from torchcodec.decoders import (
     decode_avif,
     decode_heic,
     decode_jpeg,
     decode_png,
     decode_webp,
+    set_cuda_backend,
+    VideoDecoder,
 )
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
