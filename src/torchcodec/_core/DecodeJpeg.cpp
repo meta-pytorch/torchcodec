@@ -229,7 +229,7 @@ std::tuple<int, bool> read_header_and_start(
 
   // libjpeg natively decodes to UNCHANGED, GRAY or RGB. The alpha modes
   // (GRAY_ALPHA, RGB_ALPHA) are emulated in Python at the single
-  // _decode_with_mode() callsite (see _image_decoders.py), which requests a
+  // _decode_to_mode() callsite (see _image_decoders.py), which requests a
   // native mode here and appends an alpha channel. The cpp decode_jpeg is not a
   // public API and is only ever called from there, so the default branch is
   // unreachable.

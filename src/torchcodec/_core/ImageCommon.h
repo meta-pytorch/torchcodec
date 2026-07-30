@@ -60,7 +60,7 @@ inline bool should_output_uint16(
 // Whether a decoder should produce a 3-channel RGB tensor (true) or a 4-channel
 // RGBA one (false) for the given read mode. `has_alpha` is whether the source
 // actually carries transparency. Only RGB, RGB_ALPHA and UNCHANGED are handled:
-// the grayscale modes are emulated in Python (see _decode_with_mode() in
+// the grayscale modes are emulated in Python (see _decode_to_mode() in
 // _image_decoders.py), which requests RGB/RGBA from the C++ decoders and
 // converts, so the default branch below is unreachable in practice. Shared by
 // the decoders whose native output is RGB/RGBA (e.g. webp, gif).
