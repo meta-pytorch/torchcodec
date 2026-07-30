@@ -272,10 +272,24 @@ def decode_png(
 ) -> torch.Tensor:
     """Decode a PNG into a tensor of shape ``(C, H, W)``.
 
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
-    module note above for the semantics of ``output_dtype``.
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded PNG data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. PNG images can natively store
+            16-bit samples: ``torch.uint16`` preserves that precision (8-bit
+            sources are scaled up, 0-255 -> 0-65535), while ``torch.uint8``
+            scales 16-bit sources down. ``"auto"`` keeps the source's native bit
+            depth, yielding uint8 for 8-bit PNGs and uint16 for 16-bit ones.
+
+    Returns:
+        torch.Tensor: The decoded image, of shape ``(C, H, W)``.
     """
     output_dtype_code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)

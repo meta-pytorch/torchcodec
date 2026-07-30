@@ -11,7 +11,7 @@ from ._decoder_utils import (  # noqa
     set_cuda_backend,
     set_nvdec_cache_capacity,
 )
-from ._image_decoders import decode_jpeg, ImageReadMode  # noqa
+from ._image_decoders import decode_jpeg, decode_png, ImageReadMode  # noqa
 from ._video_decoder import CpuFallbackStatus, VideoDecoder  # noqa
 from ._wav_decoder import WavDecoder  # noqa
 

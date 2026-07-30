@@ -77,6 +77,7 @@ Image Decoding
     :template: function.rst
 
     decode_jpeg
+    decode_png
 
 .. autosummary::
     :toctree: generated/
