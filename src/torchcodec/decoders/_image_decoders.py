@@ -5,10 +5,9 @@
 # LICENSE file in the root directory of this source tree.
 
 import warnings
-from collections.abc import Callable
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 import torch
 from torchcodec._core.ops import (
@@ -21,25 +20,11 @@ from torchcodec._core.ops import (
     get_decode_heic as _get_decode_heic,
 )
 
-# GIF vs Pillow: our animated-GIF compositing (disposal methods, transparency,
-# frame offsets) matches Pillow. GIF transparency is handled per output mode:
-# - RGB/GRAY: transparent pixels are composited over the GIF background color
-#   (per the GIF spec / giflib), so the output has no alpha.
-# - RGB_ALPHA/GRAY_ALPHA, and UNCHANGED when the GIF has any transparent index:
-#   transparency is preserved as a real alpha channel (transparent -> alpha 0,
-#   uncovered/disposed regions -> fully transparent), matching Pillow and web
-#   browsers, which ignore the background color for transparent GIFs.
-# So UNCHANGED returns RGBA for a transparent GIF and RGB otherwise (like PNG,
-# whose UNCHANGED preserves the source's native channels).
-
 
 class ImageReadMode(Enum):
-    """Color mode for image decoding, mirroring torchvision's ``ImageReadMode``.
+    """Color mode for image decoding.
 
-    The recommended way to specify a color mode is a (case-insensitive) string
-    such as ``"rgb"``; this enum is only kept for backward compatibility and is
-    accepted anywhere a mode string is. Its integer values match torchvision's
-    ``ImageReadMode`` and the C++ ``ImageReadMode`` constants.
+    You don't have to use this, you can just pass strings like "RGB" or "GRAY" instead.
     """
 
     UNCHANGED = 0
@@ -107,8 +92,8 @@ _WEBP_NATIVE_OUTPUT_MODES = _GIF_NATIVE_OUTPUT_MODES = _AVIF_NATIVE_OUTPUT_MODES
 
 
 def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
-    # img is (..., C, H, W); append a fully-opaque alpha channel on the channel
-    # dim so this works for both (C, H, W) and animated GIF (N, C, H, W) tensors.
+    # Append a fully-opaque alpha channel on the channel dim
+    # works on CHW and NCHW tensors.
     alpha_shape = list(img.shape)
     alpha_shape[-3] = 1
     alpha = torch.full(
@@ -118,40 +103,31 @@ def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
 
 
 def _rgb_to_gray(img: torch.Tensor) -> torch.Tensor:
-    # ITU-R 601-2 luma weights, matching torchvision's rgb_to_grayscale. img is
-    # (..., C, H, W); reduce over the channel dim so this works for both
-    # (C, H, W) and animated GIF (N, C, H, W) tensors.
+    # ITU-R 601-2 luma weights, matching torchvision's rgb_to_grayscale.
+    # works on CHW and NCHW tensors.
     weights = torch.tensor([0.2989, 0.587, 0.114])
     gray = (img.to(torch.float32) * weights[:, None, None]).sum(dim=-3, keepdim=True)
     return gray.round().clamp(0, torch.iinfo(img.dtype).max).to(img.dtype)
 
 
-def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tensor:
+def _decode_to_mode(decode_fn, data, mode, native_output_modes) -> torch.Tensor:
     if mode in native_output_modes:
         return decode_fn(data, mode.value)
 
     if mode is ImageReadMode.GRAY:
-        # No native grayscale (e.g. webp, gif): decode RGB and reduce to luma.
         return _rgb_to_gray(decode_fn(data, ImageReadMode.RGB.value))
     elif mode is ImageReadMode.RGB_ALPHA:
-        # Not native (else handled above), so the source has no real alpha:
-        # synthesize an opaque one on top of RGB.
         return _append_opaque_alpha(decode_fn(data, ImageReadMode.RGB.value))
     elif mode is ImageReadMode.GRAY_ALPHA:
         if ImageReadMode.RGB_ALPHA in native_output_modes:
             # Real alpha available (e.g. webp): decode RGBA and reduce the color
-            # channels to luma while preserving the alpha channel. Index the
-            # channel dim (-3) so this works for both (C, H, W) and animated
-            # (N, C, H, W) tensors.
+            # channels to luma while preserving the alpha channel.
             rgba = decode_fn(data, ImageReadMode.RGB_ALPHA.value)
             rgb, alpha = rgba[..., :3, :, :], rgba[..., 3:, :, :]
             return torch.cat([_rgb_to_gray(rgb), alpha], dim=-3)
         elif ImageReadMode.GRAY in native_output_modes:
-            # Native gray but no alpha (e.g. jpeg): synthesize an opaque alpha.
             return _append_opaque_alpha(decode_fn(data, ImageReadMode.GRAY.value))
         else:
-            # No native gray or alpha (e.g. gif): reduce RGB to luma and
-            # synthesize an opaque alpha.
             gray = _rgb_to_gray(decode_fn(data, ImageReadMode.RGB.value))
             return _append_opaque_alpha(gray)
     else:
@@ -192,22 +168,10 @@ def _to_output_dtype(
         )
 
 
-# TODO_IMAGE: DOCS!! and docstrings.
-
-
-# Shared semantics of ``output_dtype`` for all decoders below: ``torch.uint8``
-# (the default) always yields an 8-bit tensor and ``torch.uint16`` always a
-# 16-bit one, rescaling to the full range of the target dtype as needed.
-# ``"auto"`` keeps the source's native precision: uint8 for 8-bit sources and
-# uint16 for sources carrying more than 8 bits per channel (16-bit PNG, 10/12-bit
-# AVIF). JPEG, WebP and GIF are always 8-bit, so for them "auto" is equivalent to
-# torch.uint8 and torch.uint16 simply widens the 8-bit values.
-
-
 def _decode_jpegs_cuda_with_mode(
     tensors: list[torch.Tensor], mode: ImageReadMode, device: torch.device
 ) -> list[torch.Tensor]:
-    # Batched GPU equivalent of _decode_with_mode for JPEG: decode the whole
+    # Batched GPU equivalent of _decode_to_mode for JPEG: decode the whole
     # batch in one nvJPEG call using a native mode, then emulate the alpha modes
     # per-image in Python (nvJPEG natively supports UNCHANGED, GRAY and RGB, same
     # as libjpeg on CPU).
@@ -234,7 +198,52 @@ def decode_jpeg(
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
     device: str | torch.device = "cpu",
 ) -> torch.Tensor | list[torch.Tensor]:
-    """Decode a JPEG into a tensor of shape ``(C, H, W)``."""
+    """Decode a JPEG image into a ``CHW`` tensor, on CPU or CUDA.
+
+    .. note::
+
+        For CUDA decoding, prefer passing a batch (a list of sources) in a
+        single call: the whole batch is decoded in one nvJPEG/rocJPEG call, which
+        is much faster than decoding images one at a time.
+        Passing a batch of sources is supported on CPU too, but it won't be
+        faster than decoding them one at a time.
+
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_jpeg
+
+            img = decode_jpeg("image.jpg")
+            img = decode_jpeg("image.jpg", device="cuda")  # decode on GPU
+
+    Args:
+        source (str, ``pathlib.Path``, bytes, ``torch.Tensor``, or list of these):
+            The encoded JPEG data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes. Pass a list (or tuple) to decode a batch, in which case a list of
+            tensors is returned instead of a single tensor. The encoded bytes must
+            live on CPU, even when decoding to a CUDA device.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. Since JPEG is an 8-bit format,
+            ``"auto"`` and ``torch.uint8`` are equivalent. ``torch.uint16``
+            emulates a 16-bit output by scaling the 8-bit values to the full
+            16-bit range (0-255 -> 0-65535).
+        device (str or torch.device, optional): Device to decode on, ``"cpu"``
+            (default) or a CUDA device. On a CUDA device, decoding uses nvJPEG on
+            NVIDIA GPUs and rocJPEG on AMD/ROCm GPUs (both exposed under the
+            ``"cuda"`` device string). We recommend passing a batch of sources
+            when decoding on CUDA, for speed.
+
+    Returns:
+        torch.Tensor or list of torch.Tensor of shape ``C, H, W``: The decoded
+        image(s). A single tensor for a single source, or a list of tensors for
+        a batch.
+    """
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     device = torch.device(device)
@@ -245,7 +254,7 @@ def decode_jpeg(
     if device.type == "cpu":
         decoded_list = [
             _to_output_dtype(
-                _decode_with_mode(
+                _decode_to_mode(
                     _decode_jpeg,
                     _source_to_tensor(s),
                     mode,
@@ -271,18 +280,43 @@ def decode_png(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a PNG into a tensor of shape ``(C, H, W)``.
+    """Decode a PNG image into a ``CHW`` tensor.
 
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
-    module note above for the semantics of ``output_dtype``.
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_png
+
+            img = decode_png("image.png")
+
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded PNG data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. PNG images can natively store
+            16-bit samples: ``torch.uint16`` preserves that precision (8-bit
+            sources are scaled up, 0-255 -> 0-65535), while ``torch.uint8``
+            scales 16-bit sources down. ``"auto"`` keeps the source's native bit
+            depth, yielding uint8 for 8-bit PNGs and uint16 for 16-bit ones.
+
+    Returns:
+        torch.Tensor: The decoded image, of shape ``(C, H, W)``.
     """
-    code = _validate_output_dtype(output_dtype)
+    output_dtype_code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    return _decode_with_mode(
-        lambda d, m: _decode_png(d, m, code), data, mode, _PNG_NATIVE_OUTPUT_MODES
+    return _decode_to_mode(
+        lambda d, m: _decode_png(d, m, output_dtype_code),
+        data,
+        mode,
+        _PNG_NATIVE_OUTPUT_MODES,
     )
 
 
@@ -294,24 +328,42 @@ def decode_webp(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a WebP into a tensor.
+    """Decode a WebP image into a ``[N]CHW`` tensor.
 
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``).
+    The output shape is ``(C, H, W)`` for a still WebP and ``(N, C, H, W)`` for
+    an animated one (N frames).
 
-    The shape is ``(C, H, W)`` for a still WebP and ``(N, C, H, W)`` for an
-    animated one, with 4 channels when the output carries an alpha channel.
-    Animated frames are composited by libwebpdemux (disposal, blending, per-frame
-    offsets). The mode-conversion helpers (see _decode_with_mode) operate on the
-    channel dim, so they handle both the still and animated shapes.
+    Example:
 
-    See the module note above for the semantics of ``output_dtype``.
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_webp
+
+            img = decode_webp("image.webp")
+
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded WebP data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. Since WebP is an 8-bit format,
+            ``"auto"`` and ``torch.uint8`` are equivalent. ``torch.uint16``
+            emulates a 16-bit output by scaling the 8-bit values to the full
+            16-bit range (0-255 -> 0-65535).
+
+    Returns:
+        torch.Tensor: The decoded image, of shape ``(C, H, W)`` (still) or
+        ``(N, C, H, W)`` (animated).
     """
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    decoded = _decode_with_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
+    decoded = _decode_to_mode(_decode_webp, data, mode, _WEBP_NATIVE_OUTPUT_MODES)
     return _to_output_dtype(decoded, output_dtype)
 
 
@@ -323,24 +375,42 @@ def decode_gif(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a GIF into a tensor.
+    """Decode a GIF image into a ``[N]CHW`` tensor.
 
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``).
+    The output shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for
+    an animated one (N frames).
 
-    The shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for an
-    animated one, with 4 channels when the output carries an alpha channel (see
-    the module note on GIF transparency). The mode-conversion helpers (see
-    _decode_with_mode) operate on the channel dim, so they handle both the still
-    and animated shapes.
+    Example:
 
-    See the module note above for the semantics of ``output_dtype``.
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_gif
+
+            img = decode_gif("image.gif")
+
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded GIF data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. Since GIF is an 8-bit format,
+            ``"auto"`` and ``torch.uint8`` are equivalent. ``torch.uint16``
+            emulates a 16-bit output by scaling the 8-bit values to the full
+            16-bit range (0-255 -> 0-65535).
+
+    Returns:
+        torch.Tensor: The decoded image, of shape ``(C, H, W)`` (still) or
+        ``(N, C, H, W)`` (animated).
     """
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    decoded = _decode_with_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
+    decoded = _decode_to_mode(_decode_gif, data, mode, _GIF_NATIVE_OUTPUT_MODES)
     return _to_output_dtype(decoded, output_dtype)
 
 
@@ -353,20 +423,48 @@ def decode_avif(
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
     num_threads: int = 1,
 ) -> torch.Tensor:
-    """Decode an AVIF into a tensor of shape ``(C, H, W)``.
+    """Decode an AVIF image into a ``[N]CHW`` tensor.
 
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
-    module note above for the semantics of ``output_dtype``; 10- and 12-bit AVIF
-    sources carry more than 8 bits per channel, so ``"auto"`` and
-    ``torch.uint16`` preserve that precision.
+    The output shape is ``(C, H, W)`` for a still AVIF and ``(N, C, H, W)`` for
+    an animated one (N frames).
+
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_avif
+
+            img = decode_avif("image.avif")
+
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded AVIF data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. AVIF can store more than 8 bits per
+            channel (e.g. 10- or 12-bit sources). ``torch.uint16`` always scales
+            the samples up to fill the full 16-bit range ``[0, 65535]`` (8-bit
+            0-255, 10-bit 0-1023 and 12-bit 0-4095 sources are all upscaled),
+            while ``torch.uint8`` scales higher-bit sources down. ``"auto"``
+            yields uint8 for 8-bit AVIFs and uint16 (again filling ``[0, 65535]``)
+            for higher-bit ones.
+        num_threads (int, optional): Number of threads to use for decoding,
+            directly passed to libavif. Default is 1.
+
+    Returns:
+        torch.Tensor: The decoded image, of shape ``(C, H, W)`` (still) or
+        ``(N, C, H, W)`` (animated).
     """
-    code = _validate_output_dtype(output_dtype)
+    output_dtype_code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
-    return _decode_with_mode(
-        lambda d, m: _decode_avif(d, m, code, num_threads),
+    return _decode_to_mode(
+        lambda d, m: _decode_avif(d, m, output_dtype_code, num_threads),
         data,
         mode,
         _AVIF_NATIVE_OUTPUT_MODES,
@@ -381,50 +479,59 @@ def decode_heic(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode an HEIC/HEIF image into a tensor.
+    """Decode an HEIC/HEIF image into a ``[N]CHW`` tensor - requires ``libheif``!
 
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
-    module note above for the semantics of ``output_dtype``; 10- and 12-bit HEIC
-    sources carry more than 8 bits per channel, so ``"auto"`` and
-    ``torch.uint16`` preserve that precision.
+    The output shape is ``(C, H, W)`` for a single-image HEIC and
+    ``(N, C, H, W)`` for a multi-image one. All images must share the same
+    dimensions and bit depth.
 
-    The shape is ``(C, H, W)`` for a single-image HEIC and ``(N, C, H, W)`` for
-    a multi-image one (an image sequence / burst), one frame per top-level image
-    in file order. All frames must share the same dimensions and bit depth. The
-    mode-conversion helpers (see _decode_with_mode) operate on the channel dim,
-    so they handle both the single- and multi-image shapes.
+    .. important::
 
-    HEIC decoding requires **libheif** to be installed and discoverable at
-    runtime. TorchCodec does not bundle it (libheif is LGPL): install it via
-    e.g. ``conda install -c conda-forge libheif`` (or ``apt``/``brew``). If it
-    isn't available, this raises an :class:`ImportError`.
+        HEIC decoding requires **libheif** to be installed and discoverable at
+        runtime. TorchCodec does not bundle it (libheif is LGPL): install it via
+        e.g. ``conda install -c conda-forge libheif``.
+
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_heic
+
+            img = decode_heic("image.heic")
+
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded HEIC/HEIF data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. HEIC can store more than 8 bits per
+            channel (e.g. 10- or 12-bit sources). ``torch.uint16`` always scales
+            the samples up to fill the full 16-bit range ``[0, 65535]`` (8-bit
+            0-255, 10-bit 0-1023 and 12-bit 0-4095 sources are all upscaled),
+            while ``torch.uint8`` scales higher-bit sources down. ``"auto"``
+            yields uint8 for 8-bit HEICs and uint16 (again filling ``[0, 65535]``)
+            for higher-bit ones.
+
+    Returns:
+        torch.Tensor: The decoded image, of shape ``(C, H, W)`` (single-image)
+        or ``(N, C, H, W)`` (multi-image).
     """
-    code = _validate_output_dtype(output_dtype)
+    output_dtype_code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
     data = _source_to_tensor(source)
     decode_heic_op = _get_decode_heic()
-    decoded = _decode_with_mode(
-        lambda d, m: decode_heic_op(d, m, code),
+    decoded = _decode_to_mode(
+        lambda d, m: decode_heic_op(d, m, output_dtype_code),
         data,
         mode,
         _HEIC_NATIVE_OUTPUT_MODES,
     )
     return _to_output_dtype(decoded, output_dtype)
-
-
-# Maps a detected format to its public decoder, so decode_image reuses the exact
-# same decoding path (mode emulation and output_dtype handling) as the
-# format-specific decoders above.
-_FORMAT_TO_DECODER: dict[str, Callable[..., Any]] = {
-    "jpeg": decode_jpeg,
-    "png": decode_png,
-    "webp": decode_webp,
-    "gif": decode_gif,
-    "avif": decode_avif,
-    "heic": decode_heic,
-}
 
 
 def _detect_image_format(data: torch.Tensor) -> str:
@@ -471,9 +578,9 @@ def _detect_image_format(data: torch.Tensor) -> str:
 # Design note: the parameters of decode_image must apply to *all* codecs
 # uniformly. That's why all modes are supported by decode_image even though not
 # all codec would natively support all mode - e.g. jpeg has no alpha support, so
-# we prepend an opaque alpha channel as a post-processing step.  As a resut, all
-# codec-specific entry points like decode_jpeg, decode_png etc.  must still
-# expose the same parameters that decode_image exposes.  The codec-specific
+# we prepend an opaque alpha channel as a post-processing step. As a resut, all
+# codec-specific entry points like decode_jpeg, decode_png etc. must still
+# expose the same parameters that decode_image exposes. The codec-specific
 # parameters should live in the codec-specific entry points, e.g. decode_avif
 # has its `num_threads`, decode_jpeg has `device`, etc.
 def decode_image(
@@ -484,14 +591,54 @@ def decode_image(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode an image into a tensor, detecting the format automatically.
+    """Decode an image into a ``[N]CHW`` tensor, detecting the format automatically.
 
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
-    module note above for the semantics of ``output_dtype``.
+    The format is detected from the encoded data (not the file extension), and
+    decoding is delegated to the matching format-specific decoder. Supported
+    formats are JPEG, PNG, WebP, GIF, AVIF and HEIC (requires ``libheif``). The
+    output shape is ``(C, H, W)`` for a single image and ``(N, C, H, W)`` for
+    animated or multi-image formats (WebP, GIF, AVIF, HEIC).
+
+    For finer control, or for format-specific options (e.g. ``device`` for CUDA
+    JPEG decoding, ``num_threads`` for AVIF), use the dedicated decoders
+    directly: :func:`decode_jpeg`, :func:`decode_png`, :func:`decode_webp`,
+    :func:`decode_gif`, :func:`decode_avif`, :func:`decode_heic`.
+
+    Example:
+
+        .. code-block:: python
+
+            from torchcodec.decoders import decode_image
+
+            jpeg_img = decode_image("image.jpg")
+            png_img = decode_image("image.png")
+
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded image data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. Formats that can carry more than 8
+            bits per channel (PNG, AVIF, HEIC) preserve that precision with
+            ``torch.uint16`` and ``"auto"``. See the format-specific decoders
+            for details.
+
+    Returns:
+        torch.Tensor: The decoded image, of shape ``[N]CHW``.
     """
-    _validate_output_dtype(output_dtype)
     data = _source_to_tensor(source)
+    format_to_decoder = {
+        "jpeg": decode_jpeg,
+        "png": decode_png,
+        "webp": decode_webp,
+        "gif": decode_gif,
+        "avif": decode_avif,
+        "heic": decode_heic,
+    }
     fmt = _detect_image_format(data)
-    return _FORMAT_TO_DECODER[fmt](data, mode=mode, output_dtype=output_dtype)
+    return format_to_decoder[fmt](data, mode=mode, output_dtype=output_dtype)  # type: ignore[operator]

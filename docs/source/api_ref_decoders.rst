@@ -7,9 +7,11 @@ torchcodec.decoders
 .. currentmodule:: torchcodec.decoders
 
 
-For a video decoder tutorial, see: :ref:`sphx_glr_generated_examples_decoding_basic_example.py`.
-For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_decoding_audio_decoding.py`.
 
+Video Decoding
+--------------
+
+For a video decoder tutorial, see: :ref:`sphx_glr_generated_examples_decoding_basic_example.py`.
 
 .. autosummary::
     :toctree: generated/
@@ -17,7 +19,6 @@ For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_decoding_a
     :template: class.rst
 
     VideoDecoder
-    AudioDecoder
     WavDecoder
 
 .. autosummary::
@@ -26,11 +27,8 @@ For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_decoding_a
     :template: dataclass.rst
 
     VideoStreamMetadata
-    AudioStreamMetadata
 
-
-CUDA decoding utils
--------------------
+**CUDA decoding utils:**
 
 .. autosummary::
     :toctree: generated/
@@ -41,9 +39,54 @@ CUDA decoding utils
     set_nvdec_cache_capacity
     get_nvdec_cache_capacity
 
+
 .. autosummary::
     :toctree: generated/
     :nosignatures:
     :template: dataclass.rst
 
     CpuFallbackStatus
+
+Audio Decoding
+--------------
+
+For an audio decoder tutorial, see: :ref:`sphx_glr_generated_examples_decoding_audio_decoding.py`.
+
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
+    :template: class.rst
+
+    AudioDecoder
+    WavDecoder
+
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
+    :template: dataclass.rst
+
+    AudioStreamMetadata
+
+
+Image Decoding
+--------------
+
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
+    :template: function.rst
+
+    decode_image
+    decode_jpeg
+    decode_png
+    decode_webp
+    decode_gif
+    decode_avif
+    decode_heic
+
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
+    :template: enum.rst
+
+    ImageReadMode

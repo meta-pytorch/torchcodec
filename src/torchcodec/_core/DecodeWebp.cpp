@@ -21,10 +21,9 @@ torch::stable::Tensor decode_webp(
     [[maybe_unused]] int64_t mode) {
   STD_TORCH_CHECK(
       false,
-      "decode_webp: torchcodec was not compiled with libwebp support. "
-      "Rebuild torchcodec in an environment where libwebp (and its development "
-      "headers) are available. If you see this error in a prebuilt wheel, "
-      "please report it to the TorchCodec repo.");
+      "decode_webp: torchcodec was not compiled with libwebp support. Rebuild "
+      "torchcodec with TORCHCODEC_BUILD_WEBP=1. If you see this error in a "
+      "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
 } // namespace facebook::torchcodec

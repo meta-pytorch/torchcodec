@@ -20,7 +20,15 @@ from torchcodec._frame import Frame
 from torchcodec.decoders import (
     AudioDecoder,
     AudioStreamMetadata,
+    decode_avif,
+    decode_gif,
+    decode_heic,
+    decode_image,
+    decode_jpeg,
+    decode_png,
+    decode_webp,
     get_nvdec_cache_capacity,
+    ImageReadMode,
     set_cuda_backend,
     set_nvdec_cache_capacity,
     VideoDecoder,
@@ -35,17 +43,7 @@ from torchcodec.decoders._blocks import (
     PacketDecoder,
 )
 from torchcodec.decoders._decoder_utils import _get_cuda_backend
-from torchcodec.decoders._image_decoders import (
-    _source_to_tensor,
-    decode_avif,
-    decode_gif,
-    decode_heic,
-    decode_image,
-    decode_jpeg,
-    decode_png,
-    decode_webp,
-    ImageReadMode,
-)
+from torchcodec.decoders._image_decoders import _source_to_tensor
 from torchcodec.encoders import VideoEncoder
 from torchcodec.transforms import CenterCrop, RandomCrop, Resize
 

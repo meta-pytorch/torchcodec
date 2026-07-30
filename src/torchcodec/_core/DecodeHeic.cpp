@@ -22,9 +22,9 @@ torch::stable::Tensor decode_heic(
     [[maybe_unused]] int64_t output_dtype) {
   STD_TORCH_CHECK(
       false,
-      "decode_heic: torchcodec was not compiled with libheif support. "
-      "Rebuild torchcodec in an environment where libheif (and its development "
-      "headers) are available, e.g. `conda install -c conda-forge libheif`.");
+      "decode_heic: torchcodec was not compiled with libheif support. Rebuild "
+      "torchcodec with TORCHCODEC_BUILD_HEIC=1. If you see this error in a "
+      "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
 } // namespace facebook::torchcodec
