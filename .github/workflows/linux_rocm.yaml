@@ -159,12 +159,16 @@ jobs:
         bash packaging/install_test_dependencies.sh false
         echo '::endgroup::'
 
-        echo '::group::Run FFmpeg-free image decoder tests'
+        echo '::group::Run FFmpeg-free image decoder tests (incl. rocJPEG GPU)'
         # torch.cuda.is_available() is True on ROCm (HIP masquerades as CUDA), so
-        # conftest.py won't auto-skip needs_cuda tests. The rocJPEG GPU decode
-        # path isn't validated yet (no ROCm-specific GPU tests), so we deselect
-        # them for now; drop this filter once rocJPEG decode is exercised.
-        FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 \
-          pytest -m "not needs_cuda" --override-ini="addopts=-v" \
+        # the needs_cuda image tests run here and exercise the GPU JPEG decoder,
+        # which is rocJPEG on ROCm: the jpeg_cuda params call
+        # decode_jpeg(device="cuda"). FAIL_WITHOUT_CUDA=1 makes the job fail
+        # loudly rather than silently skip them if no GPU is visible.
+        # FAIL_WITHOUT_IMAGE_CODECS=1 is the catch-all requiring every image codec
+        # to be present; FAIL_WITHOUT_HEIC=0 opts out of HEIC (libheif isn't
+        # installed here), so HEIC tests skip instead of failing.
+        FAIL_WITHOUT_CUDA=1 FAIL_WITHOUT_IMAGE_CODECS=1 FAIL_WITHOUT_HEIC=0 \
+          pytest --override-ini="addopts=-v" \
           test/test_ffmpeg_optional.py test/test_decoders.py::TestImageDecoder --tb=short
         echo '::endgroup::'
