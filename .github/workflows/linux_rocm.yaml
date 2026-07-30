@@ -73,7 +73,6 @@ jobs:
       matrix:
         python-version: ['3.10']
         rocm-version: ['7.1']
-        ffmpeg-version-for-tests: ['7']
     uses: pytorch/test-infra/.github/workflows/linux_job_v2.yml@main
     permissions:
       id-token: write
@@ -94,20 +93,14 @@ jobs:
       script: |
         set -euo pipefail
 
-        # The image's base conda uses the classic solver, which takes *hours* to
-        # solve conda-forge installs (ffmpeg's solve previously hit the 2h job
-        # timeout). Switch to libmamba, which solves in seconds. Install the
-        # plugin first in case this conda doesn't bundle it.
+        # We use conda only to get a Python env matching the cp310 wheel (the
+        # image's base env may be a different Python). Point conda at conda-forge
+        # only, with libmamba, so env creation is fast and never touches the
+        # 'defaults'/pkgs/main channel (repo.anaconda.com), which hangs from the
+        # ROCm runners.
         echo '::group::Configure conda (libmamba solver, conda-forge only)'
         conda install -n base -y -c conda-forge conda-libmamba-solver
         conda config --set solver libmamba
-        # Use conda-forge EXCLUSIVELY. Root cause of the 2h timeouts: the ffmpeg
-        # solve finished in minutes, but its dep tree resolves libglib & wayland
-        # from the 'defaults' (pkgs/main) channel, and downloading those from
-        # repo.anaconda.com hangs forever on the ROCm runners (no timeout).
-        # conda-forge egress works fine here (python/pip download in seconds), so
-        # we wipe the channel list down to conda-forge only so pkgs/main can
-        # never be selected.
         conda config --remove-key channels 2>/dev/null || true
         conda config --add channels conda-forge
         conda config --set channel_priority strict
@@ -155,18 +148,23 @@ jobs:
         python -m pip install "${RUNNER_ARTIFACT_DIR}"/*.whl -vvv
         echo '::endgroup::'
 
-        echo '::group::Install FFmpeg and test dependencies'
-        bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
-        # Pass false to skip the optional libheif conda install: HEIC is CPU-only,
-        # covered on other platforms, and not needed for this ROCm smoke test.
+        # This job intentionally does NOT install FFmpeg: the rocJPEG decoder and
+        # the other image decoders don't need it, and conda's heavy ffmpeg
+        # install (~110MB, 100+ pkgs) is unreliable on the ROCm runners. So we
+        # run only the FFmpeg-free image-decoder tests, mirroring the no-ffmpeg
+        # CUDA job. Video decoding on ROCm (which needs FFmpeg) is a later step.
+        echo '::group::Install test dependencies (no FFmpeg)'
+        # false: skip the optional libheif conda install (HEIC is CPU-only and
+        # covered elsewhere); this leaves a pip-only install (numpy/pytest/pillow).
         bash packaging/install_test_dependencies.sh false
         echo '::endgroup::'
 
-        echo '::group::Run Python tests'
+        echo '::group::Run FFmpeg-free image decoder tests'
         # torch.cuda.is_available() is True on ROCm (HIP masquerades as CUDA), so
         # conftest.py won't auto-skip needs_cuda tests. The rocJPEG GPU decode
         # path isn't validated yet (no ROCm-specific GPU tests), so we deselect
         # them for now; drop this filter once rocJPEG decode is exercised.
         FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 \
-          pytest -m "not needs_cuda" --override-ini="addopts=-v" test --tb=short
+          pytest -m "not needs_cuda" --override-ini="addopts=-v" \
+          test/test_ffmpeg_optional.py test/test_decoders.py::TestImageDecoder --tb=short
         echo '::endgroup::'
