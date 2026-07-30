@@ -145,18 +145,7 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
   orientations.reserve(encoded_images.size());
 
   for (const auto& encoded_image : encoded_images) {
-    STD_TORCH_CHECK(
-        encoded_image.scalar_type() == torch::headeronly::ScalarType::Byte,
-        "Expected a torch.uint8 tensor");
-    STD_TORCH_CHECK(
-        !encoded_image.is_cuda(),
-        "The input tensor must be on CPU when decoding with rocJPEG");
-    STD_TORCH_CHECK(
-        encoded_image.dim() == 1 && encoded_image.numel() > 0,
-        "Expected a non empty 1-dimensional tensor");
-
-    // rocJPEG requires images to be contiguous.
-    auto contig = torch::stable::contiguous(encoded_image);
+    auto contig = validate_encoded_data(encoded_image);
     orientations.push_back(fetch_exif_orientation_from_jpeg_bytes(
         contig.const_data_ptr<uint8_t>(), contig.numel()));
     contig_images.push_back(std::move(contig));
