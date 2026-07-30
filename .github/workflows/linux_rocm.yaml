@@ -94,6 +94,16 @@ jobs:
       script: |
         set -euo pipefail
 
+        # linux_job_v2 runs the script in the manylinux container's base conda
+        # env, whose Python isn't necessarily 3.10. The wheel is built cp310, so
+        # pip would reject it ("not a supported wheel on this platform"). Create
+        # and activate a matching Python env (conda is sourced by linux_job_v2).
+        echo '::group::Create Python ${{ matrix.python-version }} env'
+        conda create -y -n test -c conda-forge python=${{ matrix.python-version }} pip
+        conda activate test
+        python --version
+        echo '::endgroup::'
+
         python -m pip install --upgrade pip
 
         echo '::group::Install PyTorch (ROCm)'
@@ -132,9 +142,9 @@ jobs:
 
         echo '::group::Run Python tests'
         # torch.cuda.is_available() is True on ROCm (HIP masquerades as CUDA), so
-        # conftest.py won't auto-skip needs_cuda tests. This wheel has no GPU
-        # decode compiled, so we deselect them explicitly. When the rocJPEG
-        # decoder lands, its GPU tests get wired in here.
+        # conftest.py won't auto-skip needs_cuda tests. The rocJPEG GPU decode
+        # path isn't validated yet (no ROCm-specific GPU tests), so we deselect
+        # them for now; drop this filter once rocJPEG decode is exercised.
         FAIL_WITHOUT_JPEG=1 FAIL_WITHOUT_PNG=1 FAIL_WITHOUT_WEBP=1 FAIL_WITHOUT_AVIF=1 \
           pytest -m "not needs_cuda" --override-ini="addopts=-v" test --tb=short
         echo '::endgroup::'

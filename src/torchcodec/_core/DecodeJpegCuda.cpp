@@ -36,9 +36,9 @@ std::vector<torch::stable::Tensor> decode_jpegs_cuda(
 #elif TORCHCODEC_ENABLE_NVJPEG
 
 #include "CUDACommon.h"
+#include "Cache.h"
 #include "DecodeJpegCommon.h"
 #include "Exif.h"
-#include "Cache.h"
 #include "ImageCommon.h"
 
 namespace facebook::torchcodec {
