@@ -98,9 +98,20 @@ jobs:
         # solve conda-forge installs (ffmpeg's solve previously hit the 2h job
         # timeout). Switch to libmamba, which solves in seconds. Install the
         # plugin first in case this conda doesn't bundle it.
-        echo '::group::Enable libmamba conda solver'
+        echo '::group::Configure conda (libmamba solver, conda-forge only)'
         conda install -n base -y -c conda-forge conda-libmamba-solver
         conda config --set solver libmamba
+        # Use conda-forge EXCLUSIVELY. Root cause of the 2h timeouts: the ffmpeg
+        # solve finished in minutes, but its dep tree resolves libglib & wayland
+        # from the 'defaults' (pkgs/main) channel, and downloading those from
+        # repo.anaconda.com hangs forever on the ROCm runners (no timeout).
+        # conda-forge egress works fine here (python/pip download in seconds), so
+        # we wipe the channel list down to conda-forge only so pkgs/main can
+        # never be selected.
+        conda config --remove-key channels 2>/dev/null || true
+        conda config --add channels conda-forge
+        conda config --set channel_priority strict
+        conda config --show channels
         echo '::endgroup::'
 
         # linux_job_v2 runs the script in the manylinux container's base conda
