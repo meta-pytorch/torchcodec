@@ -2372,7 +2372,7 @@ class TestEncoder:
 _cpu_and_cuda = ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
 
 
-def _encode_jpeg_cuda(input, dest, **kwargs):
+def _encode_jpeg_cuda(input, dest=None, **kwargs):
     # Encode with the input moved to the GPU, so encode_jpeg dispatches to
     # nvJPEG. Lets the shared encoder tests below exercise the CUDA path through
     # the exact same public API as the CPU encoders.
@@ -2405,9 +2405,9 @@ class TestImageEncoders:
     # ===== destination handling, all codecs =====
 
     @pytest.mark.parametrize("encode", _encoders)
-    def test_dest_path_matches_file_like(self, encode, tmp_path):
-        # Encoding to a file path and to a file-like object must produce
-        # identical bytes (encoding is deterministic for a given input).
+    def test_dest_variants_match(self, encode, tmp_path):
+        # All three destinations must produce identical bytes: a file path, a
+        # file-like object, and a tensor
         source = self._decode(GRADIENT_PNG, "RGB")
 
         path = tmp_path / "out"
@@ -2415,7 +2415,10 @@ class TestImageEncoders:
         from_path = torch.frombuffer(path.read_bytes(), dtype=torch.uint8)
 
         from_file_like = self._encode_to_bytes(encode, source)
+        from_tensor = encode(source).cpu()  # dest=None
+
         torch.testing.assert_close(from_path, from_file_like, rtol=0, atol=0)
+        torch.testing.assert_close(from_path, from_tensor, rtol=0, atol=0)
 
     @pytest.mark.parametrize("encode", _encoders)
     def test_dest_str_and_pathlib(self, encode, tmp_path):
@@ -2503,6 +2506,23 @@ class TestImageEncoders:
         with pytest.raises(RuntimeError, match="between 0 and 9"):
             encode_png(source, io.BytesIO(), compression_level=compression_level)
 
+    @needs_png
+    def test_dest_none_returns_tensor_png(self):
+        # dest=None returns the encoded bytes as a 1-D uint8 CPU tensor.
+        source = self._decode(GRADIENT_PNG, "RGB")
+
+        encoded = encode_png(source)
+        assert isinstance(encoded, torch.Tensor)
+        assert encoded.dtype == torch.uint8
+        assert encoded.ndim == 1
+        assert encoded.device.type == "cpu"
+
+        assert encoded[:8].tolist() == [137, 80, 78, 71, 13, 10, 26, 10]
+        # PNG is lossless, so the round trip is exact.
+        torch.testing.assert_close(
+            decode_png(encoded, mode="RGB"), source, rtol=0, atol=0
+        )
+
     # ===== JPEG =====
 
     # (quality, min_psnr): minimum acceptable round-trip PSNR (dB) per JPEG
@@ -2585,16 +2605,6 @@ class TestImageEncoders:
         pil_decoded = Image.open(io.BytesIO(encoded.cpu().numpy().tobytes()))
         assert pil_decoded.format == "JPEG"
         assert decode_jpeg(encoded.cpu(), mode="RGB").shape == img.shape
-
-    @needs_jpeg
-    @pytest.mark.parametrize("device", _cpu_and_cuda)
-    def test_dest_none_matches_file_like(self, device):
-        # The dest=None bytes must be identical to the file-like path's bytes.
-        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB").to(device)
-
-        from_none = encode_jpeg(img, quality=90).cpu()
-        from_file_like = self._encode_to_bytes(encode_jpeg, img, quality=90)
-        torch.testing.assert_close(from_none, from_file_like, rtol=0, atol=0)
 
     @needs_jpeg
     @pytest.mark.parametrize("quality", (-1, 101))

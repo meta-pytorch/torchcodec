@@ -27,31 +27,55 @@ def _encode_to_dest(input, dest, param, *, to_file, to_file_like) -> None:
         to_file_like(input, create_file_like_context(dest, True), param)
 
 
+def _encode_to_tensor_through_bytesio(input, param, to_file_like) -> torch.Tensor:
+    # Encode into an in-memory BytesIO and wrap its buffer as a 1-D uint8 tensor.
+    # getbuffer() (unlike getvalue()) exposes the buffer without copying. We
+    # could have native C++ implementation for that in each encoder, but it's
+    # not always worth it (based on benchmarks). Currently, the only encoder
+    # that really needs a dedicated C++ path is JPEG on CUDA.
+    buf = io.BytesIO()
+    to_file_like(input, create_file_like_context(buf, True), param)
+    return torch.frombuffer(buf.getbuffer(), dtype=torch.uint8)
+
+
 def encode_png(
     input: torch.Tensor,
-    dest: str | Path,
+    dest: str | Path | None = None,
     compression_level: int = 6,
-) -> None:
-    """Encode a CHW uint8 image tensor into a PNG file.
+) -> torch.Tensor | None:
+    """Encode a CHW uint8 image tensor into a PNG.
 
     Args:
         input (``torch.Tensor``): The image to encode, a 3-dimensional uint8
             tensor in CHW layout with 1 (grayscale) or 3 (RGB) channels.
-        dest (str, ``pathlib.Path`` or file-like object): The destination to
-            write the encoded PNG to. Either a path to the output file, or a
-            file-like object that supports ``write(data: bytes) -> int`` and
+        dest (str, ``pathlib.Path``, file-like object, or ``None``): The
+            destination to write the encoded PNG to. Either a path to the output
+            file, or a file-like object that supports
+            ``write(data: bytes) -> int`` and
             ``seek(offset: int, whence: int = 0) -> int``, such as
-            ``io.BytesIO()`` or an open file in binary write mode.
+            ``io.BytesIO()`` or an open file in binary write mode. If ``None``
+            (the default), the encoded bytes are returned as a 1-D uint8 tensor
+            instead of being written anywhere.
         compression_level (int): zlib compression level between 0 (no
             compression, fastest) and 9 (max compression, slowest). Default: 6.
+
+    Returns:
+        ``None`` if ``dest`` is a path or file-like object, otherwise a 1-D uint8
+        tensor of the encoded bytes.
     """
-    _encode_to_dest(
-        input,
-        dest,
-        compression_level,
-        to_file=_encode_png_to_file,
-        to_file_like=_encode_png_to_file_like,
-    )
+    if dest is None:
+        return _encode_to_tensor_through_bytesio(
+            input, compression_level, _encode_png_to_file_like
+        )
+    else:
+        _encode_to_dest(
+            input,
+            dest,
+            compression_level,
+            to_file=_encode_png_to_file,
+            to_file_like=_encode_png_to_file_like,
+        )
+        return None
 
 
 def encode_jpeg(
@@ -89,25 +113,18 @@ def encode_jpeg(
         raise ValueError("Image quality should be a positive number between 1 and 100")
 
     if dest is None:
-        # TODO_IMAGE since we're going to expose to-tensor support, we should
-        # probably see if we can benefit for custom implementations like this
-        # one with nvjpeg, but for the other 'backends' (png CPU and jpeg CPU)
-        # vs the currently-recommended way to go through BytesIO + getbuffer().
         if input.is_cuda:
-            # Zero-copy: the encoded bytes are retrieved straight into a CUDA
-            # tensor and never leave the GPU.
             return _encode_jpeg_to_tensor_cuda(input, quality)
-        # On CPU, encode into a BytesIO and wrap its buffer without an extra copy
-        # (getbuffer() doesn't copy, unlike getvalue()).
-        buf = io.BytesIO()
-        _encode_jpeg_to_file_like(input, create_file_like_context(buf, True), quality)
-        return torch.frombuffer(buf.getbuffer(), dtype=torch.uint8)
-
-    _encode_to_dest(
-        input,
-        dest,
-        quality,
-        to_file=_encode_jpeg_to_file,
-        to_file_like=_encode_jpeg_to_file_like,
-    )
-    return None
+        else:
+            return _encode_to_tensor_through_bytesio(
+                input, quality, _encode_jpeg_to_file_like
+            )
+    else:
+        _encode_to_dest(
+            input,
+            dest,
+            quality,
+            to_file=_encode_jpeg_to_file,
+            to_file_like=_encode_jpeg_to_file_like,
+        )
+        return None
