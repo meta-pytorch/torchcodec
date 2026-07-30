@@ -94,6 +94,15 @@ jobs:
       script: |
         set -euo pipefail
 
+        # The image's base conda uses the classic solver, which takes *hours* to
+        # solve conda-forge installs (ffmpeg's solve previously hit the 2h job
+        # timeout). Switch to libmamba, which solves in seconds. Install the
+        # plugin first in case this conda doesn't bundle it.
+        echo '::group::Enable libmamba conda solver'
+        conda install -n base -y -c conda-forge conda-libmamba-solver
+        conda config --set solver libmamba
+        echo '::endgroup::'
+
         # linux_job_v2 runs the script in the manylinux container's base conda
         # env, whose Python isn't necessarily 3.10. The wheel is built cp310, so
         # pip would reject it ("not a supported wheel on this platform"). Create
@@ -137,7 +146,9 @@ jobs:
 
         echo '::group::Install FFmpeg and test dependencies'
         bash packaging/install_ffmpeg.sh ${{ matrix.ffmpeg-version-for-tests }}
-        bash packaging/install_test_dependencies.sh
+        # Pass false to skip the optional libheif conda install: HEIC is CPU-only,
+        # covered on other platforms, and not needed for this ROCm smoke test.
+        bash packaging/install_test_dependencies.sh false
         echo '::endgroup::'
 
         echo '::group::Run Python tests'
