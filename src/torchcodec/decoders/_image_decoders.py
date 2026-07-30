@@ -199,7 +199,7 @@ def decode_jpeg(
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
     device: str | torch.device = "cpu",
 ) -> torch.Tensor | list[torch.Tensor]:
-    """Decode a JPEG image into a tensor of shape ``(C, H, W)``, on CPU or CUDA.
+    """Decode a JPEG image into a ``CHW`` tensor, on CPU or CUDA.
 
     .. note::
 
@@ -270,7 +270,7 @@ def decode_png(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a PNG image into a tensor of shape ``(C, H, W)``.
+    """Decode a PNG image into a ``CHW`` tensor.
 
     Args:
         source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
@@ -310,7 +310,7 @@ def decode_webp(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a still or animated WebP image into a tensor.
+    """Decode a WebP image into a ``[N]CHW`` tensor.
 
     The output shape is ``(C, H, W)`` for a still WebP and ``(N, C, H, W)`` for
     an animated one (N frames).
@@ -349,7 +349,7 @@ def decode_gif(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a still or animated GIF image into a tensor.
+    """Decode a GIF image into a ``[N]CHW`` tensor.
 
     The output shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for
     an animated one (N frames).
@@ -389,7 +389,10 @@ def decode_avif(
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
     num_threads: int = 1,
 ) -> torch.Tensor:
-    """Decode an AVIF into a tensor of shape ``(C, H, W)``.
+    """Decode an AVIF image into a ``[N]CHW`` tensor.
+
+    The output shape is ``(C, H, W)`` for a still AVIF and ``(N, C, H, W)`` for
+    an animated one (N frames).
 
     Args:
         source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
@@ -412,7 +415,8 @@ def decode_avif(
             directly passed to libavif. Default is 1.
 
     Returns:
-        torch.Tensor: The decoded image, of shape ``(C, H, W)``.
+        torch.Tensor: The decoded image, of shape ``(C, H, W)`` (still) or
+        ``(N, C, H, W)`` (animated).
     """
     output_dtype_code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
@@ -433,25 +437,39 @@ def decode_heic(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode an HEIC/HEIF image into a tensor.
+    """Decode an HEIC/HEIF image into a ``[N]CHW`` tensor - requires ``libheif``!
 
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
-    module note above for the semantics of ``output_dtype``; 10- and 12-bit HEIC
-    sources carry more than 8 bits per channel, so ``"auto"`` and
-    ``torch.uint16`` preserve that precision.
+    The output shape is ``(C, H, W)`` for a single-image HEIC and
+    ``(N, C, H, W)`` for a multi-image one. All images must share the same
+    dimensions and bit depth.
 
-    The shape is ``(C, H, W)`` for a single-image HEIC and ``(N, C, H, W)`` for
-    a multi-image one (an image sequence / burst), one frame per top-level image
-    in file order. All frames must share the same dimensions and bit depth. The
-    mode-conversion helpers (see _decode_to_mode) operate on the channel dim,
-    so they handle both the single- and multi-image shapes.
+    .. important::
 
-    HEIC decoding requires **libheif** to be installed and discoverable at
-    runtime. TorchCodec does not bundle it (libheif is LGPL): install it via
-    e.g. ``conda install -c conda-forge libheif`` (or ``apt``/``brew``). If it
-    isn't available, this raises an :class:`ImportError`.
+        HEIC decoding requires **libheif** to be installed and discoverable at
+        runtime. TorchCodec does not bundle it (libheif is LGPL): install it via
+        e.g. ``conda install -c conda-forge libheif``.
+
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded HEIC/HEIF data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. HEIC can store more than 8 bits per
+            channel (e.g. 10- or 12-bit sources). ``torch.uint16`` always scales
+            the samples up to fill the full 16-bit range ``[0, 65535]`` (8-bit
+            0-255, 10-bit 0-1023 and 12-bit 0-4095 sources are all upscaled),
+            while ``torch.uint8`` scales higher-bit sources down. ``"auto"``
+            yields uint8 for 8-bit HEICs and uint16 (again filling ``[0, 65535]``)
+            for higher-bit ones.
+
+    Returns:
+        torch.Tensor: The decoded image, of shape ``(C, H, W)`` (single-image)
+        or ``(N, C, H, W)`` (multi-image).
     """
     output_dtype_code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
