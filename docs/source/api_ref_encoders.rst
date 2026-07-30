@@ -32,3 +32,15 @@ Single-stream encoders
 
     VideoEncoder
     AudioEncoder
+
+
+Image encoders
+--------------
+
+.. autosummary::
+    :toctree: generated/
+    :nosignatures:
+    :template: class.rst
+
+    JpegEncoder
+    PngEncoder
