@@ -10,7 +10,6 @@
 #include <torch/csrc/stable/tensor.h>
 
 #include <cstdint>
-#include <vector>
 
 #include "IOInterface.h"
 #include "StableABICompat.h"
@@ -22,12 +21,14 @@
 
 namespace facebook::torchcodec {
 
-// Encodes a single CHW uint8 CUDA image tensor into a JPEG, writing the encoded
-// bytes to `interface` (a file or file-like), mirroring the CPU encode_jpeg.
 FORCE_PUBLIC_VISIBILITY void encode_jpeg_cuda(
     const torch::stable::Tensor& image,
     int64_t quality,
     IOInterface& interface);
+
+FORCE_PUBLIC_VISIBILITY torch::stable::Tensor encode_jpeg_to_tensor_cuda(
+    const torch::stable::Tensor& image,
+    int64_t quality);
 
 #if TORCHCODEC_ENABLE_NVJPEG
 
@@ -36,11 +37,11 @@ class CUDAJpegEncoder {
   explicit CUDAJpegEncoder(const torch::stable::Device& target_device);
   ~CUDAJpegEncoder();
 
-  // Encodes `image` and returns the JPEG bitstream as host (CPU) bytes.
-  std::vector<uint8_t> encode_image(
+  torch::stable::Tensor encode_to_tensor(
       const torch::stable::Tensor& image,
       int64_t quality,
-      cudaStream_t stream);
+      cudaStream_t stream,
+      const torch::stable::Device& output_device);
 
  private:
   const torch::stable::Device target_device_;

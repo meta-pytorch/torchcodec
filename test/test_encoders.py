@@ -2570,6 +2570,33 @@ class TestImageEncoders:
         assert high > low
 
     @needs_jpeg
+    @pytest.mark.parametrize("device", _cpu_and_cuda)
+    def test_dest_none_returns_tensor(self, device):
+        # dest=None returns the encoded bytes as a 1-D uint8 tensor on the same
+        # device as the input (CUDA in -> CUDA out, zero-copy).
+        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB").to(device)
+
+        encoded = encode_jpeg(img, quality=90)
+        assert isinstance(encoded, torch.Tensor)
+        assert encoded.dtype == torch.uint8
+        assert encoded.ndim == 1
+        assert encoded.device.type == device
+
+        pil_decoded = Image.open(io.BytesIO(encoded.cpu().numpy().tobytes()))
+        assert pil_decoded.format == "JPEG"
+        assert decode_jpeg(encoded.cpu(), mode="RGB").shape == img.shape
+
+    @needs_jpeg
+    @pytest.mark.parametrize("device", _cpu_and_cuda)
+    def test_dest_none_matches_file_like(self, device):
+        # The dest=None bytes must be identical to the file-like path's bytes.
+        img = decode_jpeg(GRADIENT_JPEG.path, mode="RGB").to(device)
+
+        from_none = encode_jpeg(img, quality=90).cpu()
+        from_file_like = self._encode_to_bytes(encode_jpeg, img, quality=90)
+        torch.testing.assert_close(from_none, from_file_like, rtol=0, atol=0)
+
+    @needs_jpeg
     @pytest.mark.parametrize("quality", (-1, 101))
     def test_bad_quality_jpeg(self, quality):
         with pytest.raises(
