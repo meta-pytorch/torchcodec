@@ -80,6 +80,7 @@ Image Decoding
     decode_png
     decode_webp
     decode_gif
+    decode_avif
 
 .. autosummary::
     :toctree: generated/

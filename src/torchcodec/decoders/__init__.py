@@ -12,6 +12,7 @@ from ._decoder_utils import (  # noqa
     set_nvdec_cache_capacity,
 )
 from ._image_decoders import (  # noqa
+    decode_avif,
     decode_gif,
     decode_jpeg,
     decode_png,

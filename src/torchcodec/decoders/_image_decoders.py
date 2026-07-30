@@ -391,12 +391,28 @@ def decode_avif(
 ) -> torch.Tensor:
     """Decode an AVIF into a tensor of shape ``(C, H, W)``.
 
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
-    module note above for the semantics of ``output_dtype``; 10- and 12-bit AVIF
-    sources carry more than 8 bits per channel, so ``"auto"`` and
-    ``torch.uint16`` preserve that precision.
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded AVIF data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. AVIF can store more than 8 bits per
+            channel (e.g. 10- or 12-bit sources). ``torch.uint16`` always scales
+            the samples up to fill the full 16-bit range ``[0, 65535]`` (8-bit
+            0-255, 10-bit 0-1023 and 12-bit 0-4095 sources are all upscaled),
+            while ``torch.uint8`` scales higher-bit sources down. ``"auto"``
+            yields uint8 for 8-bit AVIFs and uint16 (again filling ``[0, 65535]``)
+            for higher-bit ones.
+        num_threads (int, optional): Number of threads to use for decoding,
+            directly passed to libavif. Default is 1.
+
+    Returns:
+        torch.Tensor: The decoded image, of shape ``(C, H, W)``.
     """
     output_dtype_code = _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
