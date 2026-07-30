@@ -199,7 +199,7 @@ def decode_jpeg(
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
     device: str | torch.device = "cpu",
 ) -> torch.Tensor | list[torch.Tensor]:
-    """Decode a JPEG into a tensor of shape ``(C, H, W)``, on CPU or CUDA.
+    """Decode a JPEG image into a tensor of shape ``(C, H, W)``, on CPU or CUDA.
 
     .. note::
 
@@ -270,7 +270,7 @@ def decode_png(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a PNG into a tensor of shape ``(C, H, W)``.
+    """Decode a PNG image into a tensor of shape ``(C, H, W)``.
 
     Args:
         source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
@@ -310,7 +310,7 @@ def decode_webp(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a WebP into a tensor.
+    """Decode a still or animated WebP image into a tensor.
 
     The output shape is ``(C, H, W)`` for a still WebP and ``(N, C, H, W)`` for
     an animated one (N frames).
@@ -349,19 +349,29 @@ def decode_gif(
     ) = "RGB",
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
 ) -> torch.Tensor:
-    """Decode a GIF into a tensor.
+    """Decode a still or animated GIF image into a tensor.
 
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``).
+    The output shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for
+    an animated one (N frames).
 
-    The shape is ``(C, H, W)`` for a still GIF and ``(N, C, H, W)`` for an
-    animated one, with 4 channels when the output carries an alpha channel (see
-    the module note on GIF transparency). The mode-conversion helpers (see
-    _decode_to_mode) operate on the channel dim, so they handle both the still
-    and animated shapes.
+    Args:
+        source (str, ``pathlib.Path``, bytes, or ``torch.Tensor``):
+            The encoded GIF data: a path (``str`` or ``pathlib.Path``), a
+            ``bytes`` object, or a 1-D uint8 ``torch.Tensor`` of the raw encoded
+            bytes.
+        mode (str or ImageReadMode, optional): Desired color mode of the output
+            image. Can be one of ``"UNCHANGED"``, ``"GRAY"``, ``"GRAY_ALPHA"``,
+            ``"RGB"``, or ``"RGB_ALPHA"``. Default is ``"RGB"``.
+        output_dtype (torch.dtype or ``"auto"``, optional): desired dtype of the
+            output image tensor. Accepted values are ``torch.uint8`` (default),
+            ``torch.uint16``, and ``"auto"``. Since GIF is an 8-bit format,
+            ``"auto"`` and ``torch.uint8`` are equivalent. ``torch.uint16``
+            emulates a 16-bit output by scaling the 8-bit values to the full
+            16-bit range (0-255 -> 0-65535).
 
-    See the module note above for the semantics of ``output_dtype``.
+    Returns:
+        torch.Tensor: The decoded image, of shape ``(C, H, W)`` (still) or
+        ``(N, C, H, W)`` (animated).
     """
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
