@@ -21,10 +21,9 @@ torch::stable::Tensor decode_jpeg(
     [[maybe_unused]] int64_t mode) {
   STD_TORCH_CHECK(
       false,
-      "decode_jpeg: torchcodec was not compiled with libjpeg support. "
-      "Rebuild torchcodec in an environment where libjpeg-turbo (and its "
-      "development headers) are available. If you see this error in a prebuilt "
-      "wheel, please report it to the TorchCodec repo.");
+      "decode_jpeg: torchcodec was not compiled with libjpeg support. Rebuild "
+      "torchcodec with TORCHCODEC_BUILD_JPEG=1. If you see this error in a "
+      "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
 } // namespace facebook::torchcodec

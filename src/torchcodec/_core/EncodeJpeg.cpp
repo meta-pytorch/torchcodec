@@ -22,10 +22,9 @@ void encode_jpeg(
     [[maybe_unused]] IOInterface& interface) {
   STD_TORCH_CHECK(
       false,
-      "encode_jpeg: torchcodec was not compiled with libjpeg support. "
-      "Rebuild torchcodec in an environment where libjpeg-turbo (and its "
-      "development headers) are available. If you see this error in a prebuilt "
-      "wheel, please report it to the TorchCodec repo.");
+      "encode_jpeg: torchcodec was not compiled with libjpeg support. Rebuild "
+      "torchcodec with TORCHCODEC_BUILD_JPEG=1. If you see this error in a "
+      "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
 } // namespace facebook::torchcodec

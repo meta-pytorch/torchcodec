@@ -22,9 +22,8 @@ torch::stable::Tensor decode_gif(
   STD_TORCH_CHECK(
       false,
       "decode_gif: torchcodec was not compiled with GIF support. Rebuild "
-      "torchcodec with TORCHCODEC_BUILD_GIF=1 (and without TORCHCODEC_BUILD_IMAGE"
-      "=0). If you see this error in a prebuilt wheel, please report it to the "
-      "TorchCodec repo.");
+      "torchcodec with TORCHCODEC_BUILD_GIF=1. If you see this error in a "
+      "prebuilt wheel, please report it to the TorchCodec repo.");
 }
 
 } // namespace facebook::torchcodec
