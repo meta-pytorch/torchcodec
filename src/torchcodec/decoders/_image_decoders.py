@@ -21,25 +21,10 @@ from torchcodec._core.ops import (
     get_decode_heic as _get_decode_heic,
 )
 
-# GIF vs Pillow: our animated-GIF compositing (disposal methods, transparency,
-# frame offsets) matches Pillow. GIF transparency is handled per output mode:
-# - RGB/GRAY: transparent pixels are composited over the GIF background color
-#   (per the GIF spec / giflib), so the output has no alpha.
-# - RGB_ALPHA/GRAY_ALPHA, and UNCHANGED when the GIF has any transparent index:
-#   transparency is preserved as a real alpha channel (transparent -> alpha 0,
-#   uncovered/disposed regions -> fully transparent), matching Pillow and web
-#   browsers, which ignore the background color for transparent GIFs.
-# So UNCHANGED returns RGBA for a transparent GIF and RGB otherwise (like PNG,
-# whose UNCHANGED preserves the source's native channels).
-
-
 class ImageReadMode(Enum):
-    """Color mode for image decoding, mirroring torchvision's ``ImageReadMode``.
+    """Color mode for image decoding.
 
-    The recommended way to specify a color mode is a (case-insensitive) string
-    such as ``"rgb"``; this enum is only kept for backward compatibility and is
-    accepted anywhere a mode string is. Its integer values match torchvision's
-    ``ImageReadMode`` and the C++ ``ImageReadMode`` constants.
+    You don't have to use this, you can just pass strings like "RGB" or "GRAY" instead.
     """
 
     UNCHANGED = 0
@@ -107,8 +92,8 @@ _WEBP_NATIVE_OUTPUT_MODES = _GIF_NATIVE_OUTPUT_MODES = _AVIF_NATIVE_OUTPUT_MODES
 
 
 def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
-    # img is (..., C, H, W); append a fully-opaque alpha channel on the channel
-    # dim so this works for both (C, H, W) and animated GIF (N, C, H, W) tensors.
+    # Append a fully-opaque alpha channel on the channel dim
+    # works on CHW and NCHW tensors.
     alpha_shape = list(img.shape)
     alpha_shape[-3] = 1
     alpha = torch.full(
@@ -118,9 +103,8 @@ def _append_opaque_alpha(img: torch.Tensor) -> torch.Tensor:
 
 
 def _rgb_to_gray(img: torch.Tensor) -> torch.Tensor:
-    # ITU-R 601-2 luma weights, matching torchvision's rgb_to_grayscale. img is
-    # (..., C, H, W); reduce over the channel dim so this works for both
-    # (C, H, W) and animated GIF (N, C, H, W) tensors.
+    # ITU-R 601-2 luma weights, matching torchvision's rgb_to_grayscale.
+    # works on CHW and NCHW tensors.
     weights = torch.tensor([0.2989, 0.587, 0.114])
     gray = (img.to(torch.float32) * weights[:, None, None]).sum(dim=-3, keepdim=True)
     return gray.round().clamp(0, torch.iinfo(img.dtype).max).to(img.dtype)
@@ -131,27 +115,19 @@ def _decode_with_mode(decode_fn, data, mode, native_output_modes) -> torch.Tenso
         return decode_fn(data, mode.value)
 
     if mode is ImageReadMode.GRAY:
-        # No native grayscale (e.g. webp, gif): decode RGB and reduce to luma.
         return _rgb_to_gray(decode_fn(data, ImageReadMode.RGB.value))
     elif mode is ImageReadMode.RGB_ALPHA:
-        # Not native (else handled above), so the source has no real alpha:
-        # synthesize an opaque one on top of RGB.
         return _append_opaque_alpha(decode_fn(data, ImageReadMode.RGB.value))
     elif mode is ImageReadMode.GRAY_ALPHA:
         if ImageReadMode.RGB_ALPHA in native_output_modes:
             # Real alpha available (e.g. webp): decode RGBA and reduce the color
-            # channels to luma while preserving the alpha channel. Index the
-            # channel dim (-3) so this works for both (C, H, W) and animated
-            # (N, C, H, W) tensors.
+            # channels to luma while preserving the alpha channel.
             rgba = decode_fn(data, ImageReadMode.RGB_ALPHA.value)
             rgb, alpha = rgba[..., :3, :, :], rgba[..., 3:, :, :]
             return torch.cat([_rgb_to_gray(rgb), alpha], dim=-3)
         elif ImageReadMode.GRAY in native_output_modes:
-            # Native gray but no alpha (e.g. jpeg): synthesize an opaque alpha.
             return _append_opaque_alpha(decode_fn(data, ImageReadMode.GRAY.value))
         else:
-            # No native gray or alpha (e.g. gif): reduce RGB to luma and
-            # synthesize an opaque alpha.
             gray = _rgb_to_gray(decode_fn(data, ImageReadMode.RGB.value))
             return _append_opaque_alpha(gray)
     else:
@@ -192,18 +168,6 @@ def _to_output_dtype(
         )
 
 
-# TODO_IMAGE: DOCS!! and docstrings.
-
-
-# Shared semantics of ``output_dtype`` for all decoders below: ``torch.uint8``
-# (the default) always yields an 8-bit tensor and ``torch.uint16`` always a
-# 16-bit one, rescaling to the full range of the target dtype as needed.
-# ``"auto"`` keeps the source's native precision: uint8 for 8-bit sources and
-# uint16 for sources carrying more than 8 bits per channel (16-bit PNG, 10/12-bit
-# AVIF). JPEG, WebP and GIF are always 8-bit, so for them "auto" is equivalent to
-# torch.uint8 and torch.uint16 simply widens the 8-bit values.
-
-
 def _decode_jpegs_cuda_with_mode(
     tensors: list[torch.Tensor], mode: ImageReadMode, device: torch.device
 ) -> list[torch.Tensor]:
@@ -234,22 +198,7 @@ def decode_jpeg(
     output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
     device: str | torch.device = "cpu",
 ) -> torch.Tensor | list[torch.Tensor]:
-    """Decode a JPEG into a tensor of shape ``(C, H, W)``.
-
-    ``source`` can be a path (``str`` or ``pathlib.Path``), a ``bytes`` object,
-    or a 1-D uint8 ``torch.Tensor`` of the raw encoded data. ``mode`` is a
-    case-insensitive color mode string (e.g. ``"rgb"``, ``"gray"``). See the
-    module note above for the semantics of ``output_dtype``.
-
-    ``device`` selects where decoding happens: ``"cpu"`` (the default) uses
-    libjpeg-turbo, while a CUDA device (e.g. ``"cuda"``) decodes on the GPU with
-    nvJPEG and returns tensors on that device.
-
-    ``source`` may also be a list of sources, in which case a list of
-    ``(C, H, W)`` tensors (one per input) is returned. On CUDA the batch is
-    decoded together for higher throughput; on CPU each source is decoded
-    independently (there is no batched CPU kernel), but a list is still accepted
-    and returned so the API is the same across devices.
+    """Decode a JPEG into a tensor of shape ``(C, H, W)``, on CPU or CUDA.
     """
     _validate_output_dtype(output_dtype)
     mode = _normalize_mode(mode)
