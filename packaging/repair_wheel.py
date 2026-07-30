@@ -174,10 +174,11 @@ def repair_linux(wheels):
         # (hashed) sonames. So we treat it as a runtime dependency provided by the
         # ROCm install, like FFmpeg. decode_jpeg(device='cuda') therefore needs
         # ROCm (with rocJPEG) present at runtime.
+        # TODO_ROCM: Should we still try to ship librocjpeg?
         "librocjpeg*",
         # ROCm/HIP runtime and its system deps: provided by the torch-ROCm wheel
         # (torch/lib/) at runtime, exactly like the CUDA libs above. Never bundle
-        # them — they'd duplicate torch's copies and bloat the wheel.
+        # them, they'd duplicate torch's copies and bloat the wheel.
         "libamdhip64*",
         "libamd_comgr*",
         "libhsa-runtime64*",

@@ -189,6 +189,8 @@ def _decode_jpegs_cuda_with_mode(
     )
 
 
+# TODO_ROCM: How do we document ROCm support? "CUDA" isn't enough to know ROCm is supported.
+# TODO_ROCM: Install instructions on README etc.
 def decode_jpeg(
     source: str | Path | bytes | torch.Tensor | list,
     *,
