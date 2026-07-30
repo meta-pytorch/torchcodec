@@ -14,3 +14,9 @@ For a tutorial, see: [Encoding audio and video streams with the Encoder](generat
 | [`VideoEncoder`](generated/torchcodec.encoders.VideoEncoder.html#torchcodec.encoders.VideoEncoder) | A single-stream video encoder on CPU or CUDA. |
 | --- | --- |
 | [`AudioEncoder`](generated/torchcodec.encoders.AudioEncoder.html#torchcodec.encoders.AudioEncoder) | A single-stream audio encoder. |
+
+## Image encoders
+
+| [`JpegEncoder`](generated/torchcodec.encoders.JpegEncoder.html#torchcodec.encoders.JpegEncoder) | Encoder for JPEG images. |
+| --- | --- |
+| [`PngEncoder`](generated/torchcodec.encoders.PngEncoder.html#torchcodec.encoders.PngEncoder) | Encoder for PNG images. |

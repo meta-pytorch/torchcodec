@@ -33,6 +33,8 @@
 - [AudioEncoder](https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.encoders.AudioEncoder.md)
 - [AudioStream](https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.encoders.AudioStream.md)
 - [Encoder](https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.encoders.Encoder.md)
+- [JpegEncoder](https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.encoders.JpegEncoder.md)
+- [PngEncoder](https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.encoders.PngEncoder.md)
 - [VideoEncoder](https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.encoders.VideoEncoder.md)
 - [VideoStream](https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.encoders.VideoStream.md)
 - [clips_at_random_indices](https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.samplers.clips_at_random_indices.md)
