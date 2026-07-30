@@ -639,4 +639,4 @@ def decode_image(
         "heic": decode_heic,
     }
     fmt = _detect_image_format(data)
-    return format_to_decoder[fmt](data, mode=mode, output_dtype=output_dtype)
+    return format_to_decoder[fmt](data, mode=mode, output_dtype=output_dtype)  # type: ignore[operator]
