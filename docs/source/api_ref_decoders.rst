@@ -78,6 +78,7 @@ Image Decoding
 
     decode_jpeg
     decode_png
+    decode_webp
 
 .. autosummary::
     :toctree: generated/
