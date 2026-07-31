@@ -24,7 +24,7 @@ import torch
 
 from torchcodec.decoders import decode_image
 
-url = "https://raw.githubusercontent.com/meta-pytorch/torchcodec/refs/heads/main/docs/source/_static/thumbnails/cat_encoding.jpeg"
+url = "https://raw.githubusercontent.com/meta-pytorch/torchcodec/refs/heads/main/docs/source/_static/thumbnails/pigeon_encoding.jpeg"
 response = requests.get(url, headers={"User-Agent": ""})
 if response.status_code != 200:
     raise RuntimeError(f"Failed to download image. {response.status_code = }.")
@@ -125,5 +125,3 @@ print(f"{small.numel() = }, {large.numel() = }")
 # %%
 # Check the docstrings of the encoding methods to learn about the different
 # encoding options.
-
-# sphinx_gallery_thumbnail_path = '_static/thumbnails/cat_encoding.jpeg'
