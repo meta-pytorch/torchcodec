@@ -91,9 +91,15 @@ How to decode HDR videos with the `output_dtype` parameter
 
 Video and Audio Encoding
 
-How encode audio and video streams
+How encode audio and video streams (CPU and CUDA)
 
 [generated_examples/encoding/multi_stream_encoding.html](generated_examples/encoding/multi_stream_encoding.html)
+
+Image Encoding
+
+How to encode image tensors into JPEG (CPU and CUDA) or PNG
+
+[generated_examples/encoding/image_encoding.html](generated_examples/encoding/image_encoding.html)
 
 Video Encoding
 

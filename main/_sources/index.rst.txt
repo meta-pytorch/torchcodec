@@ -116,7 +116,14 @@ Encoding
         :link: generated_examples/encoding/multi_stream_encoding.html
         :link-type: url
 
-        How encode audio and video streams
+        How encode audio and video streams (CPU and CUDA)
+
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Image Encoding
+        :link: generated_examples/encoding/image_encoding.html
+        :link-type: url
+
+        How to encode image tensors into JPEG (CPU and CUDA) or PNG
 
      .. grid-item-card:: :octicon:`file-code;1em`
         Video Encoding
@@ -131,6 +138,7 @@ Encoding
         :link-type: url
 
         How to encode audio samples into an audio file
+
 
 .. toctree::
    :maxdepth: 1

@@ -54,3 +54,8 @@ Examples using `decode_image`:
 [Decoding images](../generated_examples/decoding/image_decoding.html)
 
 Decoding images
+![](../_images/sphx_glr_image_encoding_thumb.png)
+
+[Encoding images](../generated_examples/encoding/image_encoding.html)
+
+Encoding images

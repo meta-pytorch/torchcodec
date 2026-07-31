@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Encoding &#8212; TorchCodec 0.16.0.dev20260730+cu126 Documentation</title>
+    <title>Encoding &#8212; TorchCodec 0.16.0.dev20260731+cu126 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../../_static/documentation_options.js?v=6a46c745"></script>
+    <script src="../../_static/documentation_options.js?v=7a03ff8b"></script>
     <script src="../../_static/doctools.js?v=888ff710"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -59,7 +59,7 @@
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated_examples/encoding/index.html" />
     <link rel="index" title="Index" href="../../genindex.html" />
     <link rel="search" title="Search" href="../../search.html" />
-    <link rel="next" title="Encoding audio samples with AudioEncoder" href="audio_encoding.html" />
+    <link rel="next" title="Encoding images" href="image_encoding.html" />
     <link rel="prev" title="Decoding HDR videos" href="../decoding/hdr_decoding.html" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -1008,6 +1008,7 @@ document.write(`
 </ul>
 </details></li>
 <li class="toctree-l1 current active has-children"><a class="current reference internal" href="#">Encoding</a><details open="open"><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
+<li class="toctree-l2"><a class="reference internal" href="image_encoding.html">Encoding images</a></li>
 <li class="toctree-l2"><a class="reference internal" href="audio_encoding.html">Encoding audio samples with AudioEncoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="video_encoding.html">Encoding video with the Encoder</a></li>
 <li class="toctree-l2"><a class="reference internal" href="multi_stream_encoding.html">Encoding audio and video streams with the Encoder</a></li>
@@ -1117,7 +1118,10 @@ document.write(`
                   
   <section id="encoding">
 <span id="sphx-glr-generated-examples-encoding"></span><h1>Encoding<a class="headerlink" href="#encoding" title="Link to this heading">#</a></h1>
-<div id='sg-tag-list' class='sphx-glr-tag-list'></div><div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode audio samples to a file or to raw bytes using the AudioEncoder class."><img alt="" src="../../_images/sphx_glr_audio_encoding_thumb.jpg" />
+<div id='sg-tag-list' class='sphx-glr-tag-list'></div><div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode an image tensor to JPEG or PNG using the JpegEncoder and PngEncoder classes."><img alt="" src="../../_images/sphx_glr_image_encoding_thumb.png" />
+<p><a class="reference internal" href="image_encoding.html"><span class="doc">Encoding images</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Encoding images</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode audio samples to a file or to raw bytes using the AudioEncoder class."><img alt="" src="../../_images/sphx_glr_audio_encoding_thumb.jpg" />
 <p><a class="reference internal" href="audio_encoding.html"><span class="doc">Encoding audio samples with AudioEncoder</span></a></p>
   <div class="sphx-glr-thumbnail-title">Encoding audio samples with AudioEncoder</div>
 </div><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode video frames using the Encoder class, and we&#x27;ll explore the different encoding parameters available."><img alt="" src="../../_images/sphx_glr_video_encoding_thumb.jpg" />
@@ -1182,11 +1186,11 @@ document.write(`
       </div>
     </a>
     <a class="right-next"
-       href="audio_encoding.html"
+       href="image_encoding.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Encoding audio samples with AudioEncoder</p>
+        <p class="prev-next-title">Encoding images</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1221,11 +1225,11 @@ document.write(`
       </div>
     </a>
     <a class="right-next"
-       href="audio_encoding.html"
+       href="image_encoding.html"
        title="next page">
       <div class="prev-next-info">
         <p class="prev-next-subtitle">next</p>
-        <p class="prev-next-title">Encoding audio samples with AudioEncoder</p>
+        <p class="prev-next-title">Encoding images</p>
       </div>
       <i class="fa-solid fa-angle-right"></i>
     </a>
@@ -1461,7 +1465,7 @@ document.write(`
        "headline": "Encoding",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated_examples/encoding/index.html",
-       "articleBody": "Encoding# Encoding audio samples with AudioEncoder Encoding audio samples with AudioEncoder Encoding video with the Encoder Encoding video with the Encoder Encoding audio and video streams with the Encoder Encoding audio and video streams with the Encoder",
+       "articleBody": "Encoding# Encoding images Encoding images Encoding audio samples with AudioEncoder Encoding audio samples with AudioEncoder Encoding video with the Encoder Encoding video with the Encoder Encoding audio and video streams with the Encoder Encoding audio and video streams with the Encoder",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

@@ -4,6 +4,9 @@
 
 Encoder for JPEG images.
 
+For a tutorial, see:
+[Encoding images](../generated_examples/encoding/image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py).
+
 Example
 
 ```
@@ -19,6 +22,14 @@ Parameters:
 in CHW layout with 1 (grayscale) or 3 (RGB) channels. If on a CUDA
 device, encoding is performed on the GPU with nvJPEG, and only
 3-channel RGB is supported.
+
+Examples using `JpegEncoder`:
+
+![](../_images/sphx_glr_image_encoding_thumb.png)
+
+[Encoding images](../generated_examples/encoding/image_encoding.html)
+
+Encoding images
 
 to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *quality: [int](https://docs.python.org/3/library/functions.html#int) = 75*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_file)
 

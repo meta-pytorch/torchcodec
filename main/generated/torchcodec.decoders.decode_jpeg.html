@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>decode_jpeg &#8212; TorchCodec 0.16.0.dev20260730+cu126 Documentation</title>
+    <title>decode_jpeg &#8212; TorchCodec 0.16.0.dev20260731+cu126 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=6a46c745"></script>
+    <script src="../_static/documentation_options.js?v=7a03ff8b"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1210,6 +1210,9 @@ a batch.</p>
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode an image into a PyTorch tensor using decode_image. It supports JPEG, PNG, WebP, GIF, AVIF and HEIC, and automatically detects the format for you. You can also call any of the format-specific decoders directly, as they expose more fine-grained options (like CUDA decoding with decode_jpeg).:"><img alt="" src="../_images/sphx_glr_image_decoding_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/decoding/image_decoding.html"><span class="doc">Decoding images</span></a></p>
   <div class="sphx-glr-thumbnail-title">Decoding images</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode an image tensor to JPEG or PNG using the JpegEncoder and PngEncoder classes."><img alt="" src="../_images/sphx_glr_image_encoding_thumb.png" />
+<p><a class="reference internal" href="../generated_examples/encoding/image_encoding.html"><span class="doc">Encoding images</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Encoding images</div>
 </div></div></dd></dl>
 
 </section>
@@ -1557,7 +1560,7 @@ a batch.</p>
        "headline": "decode_jpeg",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders.decode_jpeg.html",
-       "articleBody": "decode_jpeg# torchcodec.decoders.decode_jpeg(source: str | Path | bytes | Tensor | list, *, mode: Literal[\u0027UNCHANGED\u0027, \u0027GRAY\u0027, \u0027GRAY_ALPHA\u0027, \u0027RGB\u0027, \u0027RGB_ALPHA\u0027] | ImageReadMode = \u0027RGB\u0027, output_dtype: dtype | Literal[\u0027auto\u0027] = torch.uint8, device: str | device = \u0027cpu\u0027) \u2192 Tensor | list[Tensor][source]# Decode a JPEG image into a CHW tensor, on CPU or CUDA. Note For CUDA decoding, prefer passing a batch (a list of sources) in a single call: the whole batch is decoded in one nvJPEG call, which is much faster than decoding images one at a time. Passing a batch of sources is supported on CPU too, but it won\u2019t be faster than decoding them one at a time. Example from torchcodec.decoders import decode_jpeg img = decode_jpeg(\"image.jpg\") img = decode_jpeg(\"image.jpg\", device=\"cuda\") # decode on GPU Parameters: source (str, pathlib.Path, bytes, torch.Tensor, or list of these) \u2013 The encoded JPEG data: a path (str or pathlib.Path), a bytes object, or a 1-D uint8 torch.Tensor of the raw encoded bytes. Pass a list (or tuple) to decode a batch, in which case a list of tensors is returned instead of a single tensor. The encoded bytes must live on CPU, even when decoding to a CUDA device. mode (str or ImageReadMode, optional) \u2013 Desired color mode of the output image. Can be one of \"UNCHANGED\", \"GRAY\", \"GRAY_ALPHA\", \"RGB\", or \"RGB_ALPHA\". Default is \"RGB\". output_dtype (torch.dtype or \"auto\", optional) \u2013 desired dtype of the output image tensor. Accepted values are torch.uint8 (default), torch.uint16, and \"auto\". Since JPEG is an 8-bit format, \"auto\" and torch.uint8 are equivalent. torch.uint16 emulates a 16-bit output by scaling the 8-bit values to the full 16-bit range (0-255 -\u003e 0-65535). device (str or torch.device, optional) \u2013 Device to decode on, \"cpu\" (default) or a CUDA device. CUDA decoding uses nvJPEG. We recommend passing a batch of sources when decoding on CUDA, for speed. Returns: The decoded image(s). A single tensor for a single source, or a list of tensors for a batch. Return type: torch.Tensor or list of torch.Tensor of shape C, H, W Examples using decode_jpeg: Decoding images Decoding images",
+       "articleBody": "decode_jpeg# torchcodec.decoders.decode_jpeg(source: str | Path | bytes | Tensor | list, *, mode: Literal[\u0027UNCHANGED\u0027, \u0027GRAY\u0027, \u0027GRAY_ALPHA\u0027, \u0027RGB\u0027, \u0027RGB_ALPHA\u0027] | ImageReadMode = \u0027RGB\u0027, output_dtype: dtype | Literal[\u0027auto\u0027] = torch.uint8, device: str | device = \u0027cpu\u0027) \u2192 Tensor | list[Tensor][source]# Decode a JPEG image into a CHW tensor, on CPU or CUDA. Note For CUDA decoding, prefer passing a batch (a list of sources) in a single call: the whole batch is decoded in one nvJPEG call, which is much faster than decoding images one at a time. Passing a batch of sources is supported on CPU too, but it won\u2019t be faster than decoding them one at a time. Example from torchcodec.decoders import decode_jpeg img = decode_jpeg(\"image.jpg\") img = decode_jpeg(\"image.jpg\", device=\"cuda\") # decode on GPU Parameters: source (str, pathlib.Path, bytes, torch.Tensor, or list of these) \u2013 The encoded JPEG data: a path (str or pathlib.Path), a bytes object, or a 1-D uint8 torch.Tensor of the raw encoded bytes. Pass a list (or tuple) to decode a batch, in which case a list of tensors is returned instead of a single tensor. The encoded bytes must live on CPU, even when decoding to a CUDA device. mode (str or ImageReadMode, optional) \u2013 Desired color mode of the output image. Can be one of \"UNCHANGED\", \"GRAY\", \"GRAY_ALPHA\", \"RGB\", or \"RGB_ALPHA\". Default is \"RGB\". output_dtype (torch.dtype or \"auto\", optional) \u2013 desired dtype of the output image tensor. Accepted values are torch.uint8 (default), torch.uint16, and \"auto\". Since JPEG is an 8-bit format, \"auto\" and torch.uint8 are equivalent. torch.uint16 emulates a 16-bit output by scaling the 8-bit values to the full 16-bit range (0-255 -\u003e 0-65535). device (str or torch.device, optional) \u2013 Device to decode on, \"cpu\" (default) or a CUDA device. CUDA decoding uses nvJPEG. We recommend passing a batch of sources when decoding on CUDA, for speed. Returns: The decoded image(s). A single tensor for a single source, or a list of tensors for a batch. Return type: torch.Tensor or list of torch.Tensor of shape C, H, W Examples using decode_jpeg: Decoding images Decoding images Encoding images Encoding images",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

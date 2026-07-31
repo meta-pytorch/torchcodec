@@ -19,6 +19,23 @@ Encoding
 
 .. raw:: html
 
+    <div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode an image tensor to JPEG or PNG using the JpegEncoder and PngEncoder classes.">
+
+.. only:: html
+
+  .. image:: /generated_examples/encoding/images/thumb/sphx_glr_image_encoding_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/encoding/image_encoding`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Encoding images</div>
+    </div>
+
+
+.. raw:: html
+
     <div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode audio samples to a file or to raw bytes using the AudioEncoder class.">
 
 .. only:: html
@@ -78,6 +95,7 @@ Encoding
 .. toctree::
    :hidden:
 
+   /generated_examples/encoding/image_encoding
    /generated_examples/encoding/audio_encoding
    /generated_examples/encoding/video_encoding
    /generated_examples/encoding/multi_stream_encoding

@@ -1,5 +1,10 @@
 # Encoding
 
+![](../../_images/sphx_glr_image_encoding_thumb.png)
+
+[Encoding images](image_encoding.html)
+
+Encoding images
 ![](../../_images/sphx_glr_audio_encoding_thumb.jpg)
 
 [Encoding audio samples with AudioEncoder](audio_encoding.html)

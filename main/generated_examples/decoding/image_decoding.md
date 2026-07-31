@@ -21,7 +21,7 @@ Decoding an image.
 import torch
 import requests
 
-url = "https://raw.githubusercontent.com/meta-pytorch/torchcodec/refs/heads/main/docs/source/_static/thumbnails/cat_decoding.jpeg"
+url = "https://raw.githubusercontent.com/meta-pytorch/torchcodec/refs/heads/main/docs/source/_static/thumbnails/pigeon_decoding.jpeg"
 response = requests.get(url, headers={"User-Agent": ""})
 if response.status_code != 200:
  raise RuntimeError(f"Failed to download image. {response.status_code = }.")
@@ -65,7 +65,7 @@ plot(image)
 ![image decoding](../../_images/sphx_glr_image_decoding_001.png)
 
 ```
-image.shape = torch.Size([3, 1024, 768])
+image.shape = torch.Size([3, 222, 234])
 image.dtype = torch.uint8
 ```
 
@@ -87,7 +87,7 @@ plot(gray)
 ![image decoding](../../_images/sphx_glr_image_decoding_002.png)
 
 ```
-gray.shape = torch.Size([1, 1024, 768])
+gray.shape = torch.Size([1, 222, 234])
 ```
 
 ## Controlling the output dtype
@@ -138,7 +138,7 @@ image = decode_jpeg(raw_image_bytes, device="cuda")
 images = decode_jpeg([img_0, img_1, img_2], device="cuda")
 ```
 
-**Total running time of the script:** (0 minutes 0.712 seconds)
+**Total running time of the script:** (0 minutes 0.127 seconds)
 
 [`Download Jupyter notebook: image_decoding.ipynb`](../../_downloads/f5cba4a26e1c617bc387e9f05406c8f2/image_decoding.ipynb)
 

@@ -60,6 +60,7 @@
 - [Computation times](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/sg_execution_times.md)
 - [Decoder Transforms: Applying transforms during decoding](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/transforms.md)
 - [Encoding audio samples with AudioEncoder](https://meta-pytorch.org/torchcodec/stable/generated_examples/encoding/audio_encoding.md)
+- [Encoding images](https://meta-pytorch.org/torchcodec/stable/generated_examples/encoding/image_encoding.md)
 - [Encoding](https://meta-pytorch.org/torchcodec/stable/generated_examples/encoding/index.md)
 - [Encoding audio and video streams with the Encoder](https://meta-pytorch.org/torchcodec/stable/generated_examples/encoding/multi_stream_encoding.md)
 - [Computation times](https://meta-pytorch.org/torchcodec/stable/generated_examples/encoding/sg_execution_times.md)

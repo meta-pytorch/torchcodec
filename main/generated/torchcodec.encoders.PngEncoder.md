@@ -4,6 +4,9 @@
 
 Encoder for PNG images.
 
+For a tutorial, see:
+[Encoding images](../generated_examples/encoding/image_encoding.html#sphx-glr-generated-examples-encoding-image-encoding-py).
+
 Example
 
 ```
@@ -17,6 +20,14 @@ Parameters:
 
 **img** (`torch.Tensor`) - The image to encode, a 3-dimensional uint8 tensor
 in CHW layout with 1 (grayscale) or 3 (RGB) channels.
+
+Examples using `PngEncoder`:
+
+![](../_images/sphx_glr_image_encoding_thumb.png)
+
+[Encoding images](../generated_examples/encoding/image_encoding.html)
+
+Encoding images
 
 to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *compression_level: [int](https://docs.python.org/3/library/functions.html#int) = 6*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#PngEncoder.to_file)
 

@@ -65,6 +65,11 @@ Decoding HDR videos
 
 ## Encoding
 
+![](../_images/sphx_glr_image_encoding_thumb.png)
+
+[Encoding images](encoding/image_encoding.html)
+
+Encoding images
 ![](../_images/sphx_glr_audio_encoding_thumb.jpg)
 
 [Encoding audio samples with AudioEncoder](encoding/audio_encoding.html)
