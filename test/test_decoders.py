@@ -3470,20 +3470,17 @@ class TestBlocks:
         # uses the same backend so the color conversion matches.
         video = NASA_VIDEO
         with set_cuda_backend("ffmpeg"):
-            got = self._to_frame_batch(
-                decode_method(self, video.path, device="cuda")
-            )
+            got = self._to_frame_batch(decode_method(self, video.path, device="cuda"))
             ref = VideoDecoder(video.path, device="cuda").get_all_frames()
 
         assert got.data.device.type == "cuda"
         assert got.data.shape == ref.data.shape
         assert_frames_equal(got.data, ref.data)
-        torch.testing.assert_close(
-            got.pts_seconds, ref.pts_seconds, atol=0, rtol=0
-        )
+        torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
         torch.testing.assert_close(
             got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
         )
+
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn
 def _jpeg_param(*values):
