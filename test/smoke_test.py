@@ -24,17 +24,23 @@ from test.utils import (
 
 from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
-from torchcodec.decoders import AudioDecoder, VideoDecoder
-from torchcodec.decoders._image_decoders import (
+from torchcodec.decoders import (
+    AudioDecoder,
     decode_avif,
     decode_gif,
     decode_heic,
     decode_jpeg,
     decode_png,
     decode_webp,
+    VideoDecoder,
 )
-from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
-from torchcodec.encoders._image_encoders import encode_jpeg, encode_png
+from torchcodec.encoders import (
+    AudioEncoder,
+    Encoder,
+    JpegEncoder,
+    PngEncoder,
+    VideoEncoder,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -335,22 +341,30 @@ class TestImageDecoder:
         assert img.shape == (3, h, w)
 
 
-# CUDA JPEG encoding is triggered by the input tensor's device, so we wrap
-# encode_jpeg to move the input to the GPU.
-def _encode_jpeg_cuda(input, dest):
-    return encode_jpeg(input.cuda(), dest)
-
-
-# Each backend: (encode_fn, decode_fn, suffix, lossless).
+# Each backend: (Encoder, device, decode_fn, suffix, lossless). CUDA JPEG
+# encoding is triggered by the input tensor's device.
 _IMAGE_ENCODERS = (
     pytest.param(
-        encode_png, decode_png, "png", True, marks=pytest.mark.needs_png, id="png"
+        PngEncoder,
+        "cpu",
+        decode_png,
+        "png",
+        True,
+        marks=pytest.mark.needs_png,
+        id="png",
     ),
     pytest.param(
-        encode_jpeg, decode_jpeg, "jpg", False, marks=pytest.mark.needs_jpeg, id="jpeg"
+        JpegEncoder,
+        "cpu",
+        decode_jpeg,
+        "jpg",
+        False,
+        marks=pytest.mark.needs_jpeg,
+        id="jpeg",
     ),
     pytest.param(
-        _encode_jpeg_cuda,
+        JpegEncoder,
+        "cuda",
         decode_jpeg,
         "jpg",
         False,
@@ -361,26 +375,34 @@ _IMAGE_ENCODERS = (
 
 
 class TestImageEncoder:
-    def _make_image(self):
-        return torch.randint(0, 256, (3, HEIGHT, WIDTH), dtype=torch.uint8)
+    def _make_image(self, device):
+        return torch.randint(
+            0, 256, (3, HEIGHT, WIDTH), dtype=torch.uint8, device=device
+        )
 
-    @pytest.mark.parametrize("encode_fn,decode_fn,suffix,lossless", _IMAGE_ENCODERS)
-    def test_encode_to_file(self, tmp_path, encode_fn, decode_fn, suffix, lossless):
-        img = self._make_image()
+    @pytest.mark.parametrize(
+        "Encoder,device,decode_fn,suffix,lossless", _IMAGE_ENCODERS
+    )
+    def test_encode_to_file(
+        self, tmp_path, Encoder, device, decode_fn, suffix, lossless
+    ):
+        img = self._make_image(device)
         path = tmp_path / f"out.{suffix}"
-        encode_fn(img, path)
+        Encoder(img).to_file(path)
         assert path.stat().st_size > 0
 
         decoded = decode_fn(str(path))
         assert decoded.shape == (3, HEIGHT, WIDTH)
         if lossless:
-            torch.testing.assert_close(decoded, img, atol=0, rtol=0)
+            torch.testing.assert_close(decoded, img.cpu(), atol=0, rtol=0)
 
-    @pytest.mark.parametrize("encode_fn,decode_fn,suffix,lossless", _IMAGE_ENCODERS)
-    def test_encode_to_file_like(self, encode_fn, decode_fn, suffix, lossless):
-        img = self._make_image()
+    @pytest.mark.parametrize(
+        "Encoder,device,decode_fn,suffix,lossless", _IMAGE_ENCODERS
+    )
+    def test_encode_to_file_like(self, Encoder, device, decode_fn, suffix, lossless):
+        img = self._make_image(device)
         buf = io.BytesIO()
-        encode_fn(img, buf)
+        Encoder(img).to_file_like(buf)
         assert buf.getbuffer().nbytes > 0
 
 

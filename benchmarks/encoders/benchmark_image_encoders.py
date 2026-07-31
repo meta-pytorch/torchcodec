@@ -42,9 +42,9 @@ from torch import Tensor
 
 torch.set_num_threads(1)
 
-from torchcodec.encoders._image_encoders import (  # noqa: E402
-    encode_jpeg as tc_encode_jpeg,
-    encode_png as tc_encode_png,
+from torchcodec.encoders import (  # noqa: E402
+    JpegEncoder as TCJpegEncoder,
+    PngEncoder as TCPngEncoder,
 )
 from torchvision.io import (  # noqa: E402
     encode_jpeg as tv_encode_jpeg,
@@ -111,18 +111,18 @@ def load_source_image(override: Path | None) -> Tensor:
 def make_encode_fn(backend, fmt, dest, img, path, param):
     """Return a zero-arg callable that encodes `img` (in `fmt`) to `dest`, or
     None if the backend doesn't support that destination. `param` is the quality
-    (jpeg) or compression_level (png). torchcodec/torchvision take the encode
-    param positionally so this stays format-agnostic."""
+    (jpeg) or compression_level (png)."""
     is_png = fmt == "png"
     if backend == "torchcodec":
-        tc_encode = tc_encode_png if is_png else tc_encode_jpeg
+        Encoder = TCPngEncoder if is_png else TCJpegEncoder
+        kwargs = {"compression_level" if is_png else "quality": param}
         if dest == "file":
-            return lambda: tc_encode(img, path, param)
+            return lambda: Encoder(img).to_file(path, **kwargs)
         if dest == "file_like":
-            return lambda: tc_encode(img, io.BytesIO(), param)
-        # tensor: native dest=None. On CUDA it returns a device tensor
+            return lambda: Encoder(img).to_file_like(io.BytesIO(), **kwargs)
+        # tensor: native to_tensor(). On CUDA it returns a device tensor
         # (zero-copy); .cpu() brings it to host to match torchvision's path.
-        return lambda: tc_encode(img, None, param).cpu()
+        return lambda: Encoder(img).to_tensor(**kwargs).cpu()
 
     if backend == "torchvision":
         if is_png:
@@ -177,7 +177,9 @@ def make_batch_encode_fn(backend, imgs, quality):
     return the encoded bytes on the host (torchvision's live on the input
     device, so we .cpu() them)."""
     if backend == "torchcodec":
-        return lambda: [tc_encode_jpeg(img, quality=quality).cpu() for img in imgs]
+        return lambda: [
+            TCJpegEncoder(img).to_tensor(quality=quality).cpu() for img in imgs
+        ]
 
     if backend == "torchvision":
         return lambda: [t.cpu() for t in tv_encode_jpeg(list(imgs), quality=quality)]

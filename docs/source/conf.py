@@ -70,6 +70,7 @@ class CustomGalleryExampleSortKey:
         if "examples/decoding" in self.src_dir:
             order = [
                 "basic_example.py",
+                "image_decoding.py",
                 "audio_decoding.py",
                 "basic_cuda_example.py",
                 "file_like.py",
@@ -84,6 +85,7 @@ class CustomGalleryExampleSortKey:
         else:
             assert "examples/encoding" in self.src_dir
             order = [
+                "image_encoding.py",
                 "audio_encoding.py",
                 "video_encoding.py",
                 "multi_stream_encoding.py",
