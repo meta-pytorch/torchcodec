@@ -264,19 +264,86 @@ std::optional<cudaVideoSurfaceFormat> get_nvdec_surface_format(
   return std::nullopt;
 }
 
+// NVCUVID, like the whole CUDA driver API, resolves the context from the
+// *calling thread*, and a thread starts out with no context bound. That's fine
+// for VideoDecoder, which is driven from one thread, but the building-block API
+// lets a caller run each stage on a thread of its own. Every entry point that
+// may reach NVCUVID or CUDA therefore binds PyTorch's primary context first.
+class CudaContextGuard {
+ public:
+  explicit CudaContextGuard(int device_index) : device_guard_(device_index) {
+    // The device guard only calls cudaSetDevice(), which is lazy. This is the
+    // documented idiom to force the primary context to be created and made
+    // current on this thread. We deliberately don't check the result: this only
+    // fails when CUDA itself is unusable, and we're also used from a
+    // destructor, where throwing would terminate the process. The CUDA call
+    // that follows reports the failure with a lot more context anyway.
+    (void)cudaFree(nullptr);
+  }
+
+ private:
+  StableDeviceGuard device_guard_;
+};
+
 // Callback for freeing CUDA memory associated with AVFrame see where it's used
 // for more details.
 void cuda_buffer_free_callback(void* opaque, [[maybe_unused]] uint8_t* data) {
   cudaFree(opaque);
 }
 
+void nvdec_frame_info_free_callback(
+    [[maybe_unused]] void* opaque,
+    uint8_t* data) {
+  delete reinterpret_cast<NvdecFrameInfo*>(data);
+}
+
+// Attach `info` to `av_frame`, see Note: [Self-describing NVDEC frames].
+void attach_nvdec_frame_info(
+    UniqueAVFrame& av_frame,
+    std::unique_ptr<NvdecFrameInfo> info) {
+  AVBufferRef* buffer_ref = av_buffer_create(
+      reinterpret_cast<uint8_t*>(info.get()),
+      sizeof(NvdecFrameInfo),
+      nvdec_frame_info_free_callback,
+      nullptr,
+      0);
+  STD_TORCH_CHECK(buffer_ref != nullptr, "Failed to attach NVDEC frame info");
+  info.release();
+
+  av_buffer_unref(&av_frame->opaque_ref);
+  av_frame->opaque_ref = buffer_ref;
+}
+
+// The bit depth a CPU frame was decoded at. Unlike the NVDEC path, where the
+// surface format doesn't tell us (P016 is used for 10 and 12 bits alike), the
+// pixel format of a CPU frame is precise.
+int get_cpu_frame_bit_depth(const UniqueAVFrame& av_frame) {
+  const AVPixFmtDescriptor* desc =
+      av_pix_fmt_desc_get(static_cast<AVPixelFormat>(av_frame->format));
+  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
+  return desc->comp[0].depth;
+}
+
 } // namespace
+
+NvdecFrameInfo* get_nvdec_frame_info(const UniqueAVFrame& av_frame) {
+  if (av_frame == nullptr || av_frame->opaque_ref == nullptr ||
+      av_frame->opaque_ref->size != sizeof(NvdecFrameInfo)) {
+    return nullptr;
+  }
+  auto* info = reinterpret_cast<NvdecFrameInfo*>(av_frame->opaque_ref->data);
+  return (info->magic == NvdecFrameInfo::kMagic) ? info : nullptr;
+}
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
     : DeviceInterface(device) {
   STD_TORCH_CHECK(g_cuda_nvdec, "NvdecCudaDeviceInterface was not registered!");
   STD_TORCH_CHECK(
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
+
+  // Resolve unspecified device index (-1) to the actual current CUDA device, so
+  // that CudaContextGuard binds a real device on every thread we're used from.
+  device_.set_index(get_device_index(device_));
 
   initialize_cuda_context_with_pytorch(device_);
 
@@ -304,11 +371,10 @@ void BetaCudaDeviceInterface::initialize_video(
       TC_LOG(
           "Video stream not supported by NVDEC; falling back to CPU decoding.");
     }
-    cpu_fallback_ = create_device_interface(kStableCPU);
-    STD_TORCH_CHECK(
-        cpu_fallback_ != nullptr, "Failed to create CPU device interface");
-    cpu_fallback_->initialize(codec_context_);
-    cpu_fallback_->initialize_video(
+    nvdec_unsupported_ = true;
+    create_cpu_interface();
+    cpu_interface_->initialize(codec_context_);
+    cpu_interface_->initialize_video(
         av_stream,
         av_format_ctx,
         video_stream_options,
@@ -374,6 +440,25 @@ void BetaCudaDeviceInterface::initialize_video(
   send_seqhdr_packet();
 }
 
+void BetaCudaDeviceInterface::create_cpu_interface() {
+  cpu_interface_ = create_device_interface(kStableCPU);
+  STD_TORCH_CHECK(
+      cpu_interface_ != nullptr, "Failed to create CPU device interface");
+}
+
+void BetaCudaDeviceInterface::initialize_color_conversion(
+    const VideoStreamOptions& video_stream_options) {
+  // Standalone color conversion: no stream, no NVDEC decoder and no parser.
+  // Everything we need comes from each frame, see Note: [Self-describing NVDEC
+  // frames].
+  output_dtype_ = video_stream_options.output_dtype;
+
+  // Frames that aren't on the device (produced by the CPU fallback of the
+  // interface that decoded them) still have to be color-converted.
+  create_cpu_interface();
+  cpu_interface_->initialize_color_conversion(video_stream_options);
+}
+
 void BetaCudaDeviceInterface::send_seqhdr_packet() {
   // This must be called at parser initialization, and after each flush.
   // See TODO for details.
@@ -393,6 +478,7 @@ void BetaCudaDeviceInterface::send_seqhdr_packet() {
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
+  CudaContextGuard context_guard(device_.index());
   if (decoder_) {
     // DALI doesn't seem to do any particular cleanup of the decoder before
     // sending it to the cache, so we probably don't need to do anything either.
@@ -544,8 +630,9 @@ int BetaCudaDeviceInterface::stream_property_change(
 // Moral equivalent of avcodec_send_packet(). Here, we pass the AVPacket down to
 // the NVCUVID parser.
 int BetaCudaDeviceInterface::send_packet(ReferenceAVPacket& packet) {
-  if (cpu_fallback_) {
-    return cpu_fallback_->send_packet(packet);
+  CudaContextGuard context_guard(device_.index());
+  if (nvdec_unsupported_) {
+    return cpu_interface_->send_packet(packet);
   }
 
   STD_TORCH_CHECK(
@@ -571,8 +658,9 @@ int BetaCudaDeviceInterface::send_packet(ReferenceAVPacket& packet) {
 }
 
 int BetaCudaDeviceInterface::send_eof_packet() {
-  if (cpu_fallback_) {
-    return cpu_fallback_->send_eof_packet();
+  CudaContextGuard context_guard(device_.index());
+  if (nvdec_unsupported_) {
+    return cpu_interface_->send_eof_packet();
   }
 
   CUVIDSOURCEDATAPACKET cuvid_packet = {};
@@ -646,8 +734,9 @@ int BetaCudaDeviceInterface::frame_ready_in_display_order(
 
 // Moral equivalent of avcodec_receive_frame().
 int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
-  if (cpu_fallback_) {
-    return cpu_fallback_->receive_frame(av_frame);
+  CudaContextGuard context_guard(device_.index());
+  if (nvdec_unsupported_) {
+    return cpu_interface_->receive_frame(av_frame);
   }
 
   if (ready_frames_.empty()) {
@@ -667,8 +756,8 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   // by the color conversion stream before any color conversion.
   // Re types: we get a cudaStream_t from PyTorch but it's interchangeable with
   // CUstream
-  proc_params.output_stream =
-      reinterpret_cast<CUstream>(get_current_cuda_stream(device_.index()));
+  cudaStream_t nvdec_stream = get_current_cuda_stream(device_.index());
+  proc_params.output_stream = reinterpret_cast<CUstream>(nvdec_stream);
 
   CUdeviceptr frame_ptr = 0;
   unsigned int pitch = 0;
@@ -700,9 +789,58 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   }
   previously_mapped_frame_ = frame_ptr;
 
-  av_frame = convert_cuda_frame_to_av_frame(frame_ptr, pitch, disp_info);
+  av_frame =
+      convert_cuda_frame_to_av_frame(frame_ptr, pitch, disp_info, nvdec_stream);
 
   return AVSUCCESS;
+}
+
+// See Note: [Self-describing NVDEC frames]. The frame handed to us still points
+// into the decoder's output surface, which gets recycled by the next
+// receive_frame() call, so we copy it out into memory we own and release the
+// surface right away. Same map -> async copy -> unmap ordering as FFmpeg's
+// cuviddec.c.
+void BetaCudaDeviceInterface::make_frame_self_contained(
+    UniqueAVFrame& av_frame) {
+  CudaContextGuard context_guard(device_.index());
+  NvdecFrameInfo* info = get_nvdec_frame_info(av_frame);
+  bool points_at_mapped_surface = info != nullptr &&
+      previously_mapped_frame_ != 0 &&
+      av_frame->data[0] == reinterpret_cast<uint8_t*>(previously_mapped_frame_);
+  if (!points_at_mapped_surface) {
+    // Either a CPU-fallback frame, which FFmpeg allocated and refcounts, or a
+    // frame we already detached.
+    return;
+  }
+
+  // NVDEC lays the UV plane right after the Y plane in a single allocation, so
+  // the whole frame is one contiguous copy. The Y plane always has an even
+  // number of rows, see convert_cuda_frame_to_av_frame().
+  int64_t pitch = av_frame->linesize[0];
+  int64_t even_height = round_up_to_even(av_frame->height);
+  int64_t num_bytes = pitch * even_height * 3 / 2;
+
+  cudaStream_t stream = get_current_cuda_stream(device_.index());
+  torch::stable::Tensor storage =
+      torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
+  cudaError_t err = cudaMemcpyAsync(
+      storage.mutable_data_ptr(),
+      av_frame->data[0],
+      static_cast<size_t>(num_bytes),
+      cudaMemcpyDeviceToDevice,
+      stream);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy NVDEC surface: ",
+      cudaGetErrorString(err));
+
+  unmap_previous_frame();
+
+  auto* base = static_cast<uint8_t*>(storage.mutable_data_ptr());
+  av_frame->data[0] = base;
+  av_frame->data[1] = base + pitch * even_height;
+  info->producing_stream = stream;
+  info->storage = std::move(storage);
 }
 
 void BetaCudaDeviceInterface::unmap_previous_frame() {
@@ -719,7 +857,8 @@ void BetaCudaDeviceInterface::unmap_previous_frame() {
 UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
     CUdeviceptr frame_ptr,
     unsigned int pitch,
-    const CUVIDPARSERDISPINFO& disp_info) {
+    const CUVIDPARSERDISPINFO& disp_info,
+    cudaStream_t nvdec_stream) {
   STD_TORCH_CHECK(frame_ptr != 0, "Invalid CUDA frame pointer");
 
   // Get frame dimensions from video format display area (not coded dimensions)
@@ -799,12 +938,18 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
   av_frame->linesize[2] = 0;
   av_frame->linesize[3] = 0;
 
+  auto info = std::make_unique<NvdecFrameInfo>();
+  info->bit_depth = static_cast<int>(video_format_.bit_depth_luma_minus8) + 8;
+  info->producing_stream = nvdec_stream;
+  attach_nvdec_frame_info(av_frame, std::move(info));
+
   return av_frame;
 }
 
 void BetaCudaDeviceInterface::flush() {
-  if (cpu_fallback_) {
-    cpu_fallback_->flush();
+  CudaContextGuard context_guard(device_.index());
+  if (nvdec_unsupported_) {
+    cpu_interface_->flush();
     return;
   }
 
@@ -970,20 +1115,31 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     UniqueAVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
-  if (cpu_fallback_) {
-    // When the CPU fallback happens, we'll try to run the color-conversion on
-    // GPU by sending those CPU frames to the GPU as NV12 or P016 (See
-    // transferCpuFrameToGpu() below). However, it's not always
-    // possible: NV12/P016 would downsample 4:4:4 frames and lose chroma
-    // resolution, resulting in poorly decoded frames. So for those, we still
-    // do the color conversion on the CPU and then send the full RGB frame to
-    // the GPU.
+  CudaContextGuard context_guard(device_.index());
+
+  // Whether the frame is on the device is a property of the frame, not of this
+  // interface: a standalone ColorConverter is handed frames it didn't decode.
+  // See Note: [Self-describing NVDEC frames].
+  const NvdecFrameInfo* info = get_nvdec_frame_info(av_frame);
+
+  if (info == nullptr) {
+    // The frame is on the CPU, because NVDEC couldn't decode this stream. We'll
+    // try to run the color-conversion on GPU by sending those CPU frames to the
+    // GPU as NV12 or P016 (See transferCpuFrameToGpu() below). However, it's
+    // not always possible: NV12/P016 would downsample 4:4:4 frames and lose
+    // chroma resolution, resulting in poorly decoded frames. So for those, we
+    // still do the color conversion on the CPU and then send the full RGB frame
+    // to the GPU.
+    STD_TORCH_CHECK(
+        cpu_interface_ != nullptr,
+        "Got a CPU frame but no CPU interface to convert it with. "
+        "That's unexpected, please report this to the TorchCodec repo.");
     const AVPixFmtDescriptor* desc =
         av_pix_fmt_desc_get(static_cast<AVPixelFormat>(av_frame->format));
     bool is444 = desc && desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0;
     if (is444) {
       FrameOutput cpu_frame_output;
-      cpu_fallback_->convert_av_frame_to_frame_output(
+      cpu_interface_->convert_av_frame_to_frame_output(
           av_frame, cpu_frame_output);
       if (pre_allocated_output_tensor.has_value()) {
         torch::stable::copy_(
@@ -1003,31 +1159,35 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   // may round them up to even.
   FrameDims original_dims(av_frame->height, av_frame->width);
 
-  UniqueAVFrame gpu_frame;
-  if (cpu_fallback_) {
+  // `uploaded` is only set for CPU frames. We must never take ownership of
+  // av_frame: the caller may own it through a handle that outlives us.
+  UniqueAVFrame uploaded;
+  if (info == nullptr) {
     AVPixelFormat target_pix_fmt = (output_dtype_ == OutputDtype::FLOAT32)
         ? AV_PIX_FMT_P016LE
         : AV_PIX_FMT_NV12;
-    gpu_frame = transfer_cpu_frame_to_gpu(av_frame, target_pix_fmt);
-  } else {
-    gpu_frame = std::move(av_frame);
+    uploaded = transfer_cpu_frame_to_gpu(av_frame, target_pix_fmt);
   }
+  UniqueAVFrame& gpu_frame = uploaded ? uploaded : av_frame;
 
   STD_TORCH_CHECK(
       gpu_frame->format == AV_PIX_FMT_NV12 ||
           gpu_frame->format == AV_PIX_FMT_P016LE,
       "Expected NV12 or P016LE format frame");
 
-  cudaStream_t nvdec_stream = get_current_cuda_stream(device_.index());
+  // The frame may have been produced on another thread, hence on another
+  // stream: convert_yuv_frame_to_rgb() waits on it before converting.
+  cudaStream_t nvdec_stream = (info != nullptr)
+      ? info->producing_stream
+      : get_current_cuda_stream(device_.index());
 
   auto convert_frame = [&](std::optional<torch::stable::Tensor> pre_alloc)
       -> torch::stable::Tensor {
     bool is_p016 = (gpu_frame->format == AV_PIX_FMT_P016LE);
     int bit_depth = 8;
     if (is_p016) {
-      bit_depth = cpu_fallback_
-          ? codec_context_->bits_per_raw_sample
-          : static_cast<int>(video_format_.bit_depth_luma_minus8) + 8;
+      bit_depth = (info != nullptr) ? info->bit_depth
+                                    : get_cpu_frame_bit_depth(av_frame);
     }
     return convert_yuv_frame_to_rgb(
         gpu_frame,
@@ -1096,7 +1256,7 @@ OutputDtype BetaCudaDeviceInterface::get_pre_allocation_dtype(
 
 std::string BetaCudaDeviceInterface::get_details() {
   std::string details = "NVDEC CUDA Device Interface.";
-  if (cpu_fallback_) {
+  if (nvdec_unsupported_) {
     details += " Using CPU fallback.";
     if (!nvcuvid_available_) {
       details += " NVCUVID not available!";

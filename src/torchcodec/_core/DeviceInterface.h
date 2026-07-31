@@ -66,6 +66,23 @@ class DeviceInterface {
           transforms,
       [[maybe_unused]] const std::optional<FrameDims>& resized_output_dims) {}
 
+  // Configure the interface for standalone color conversion: no stream, no
+  // decoding. Everything else needed to convert a frame must be derived from
+  // the frame itself. This is what the ColorConverter building block uses.
+  virtual void initialize_color_conversion(
+      [[maybe_unused]] const VideoStreamOptions& video_stream_options) {
+    STD_TORCH_CHECK(
+        false, "This device interface doesn't support standalone conversion.");
+  }
+
+  // Detach `av_frame` from any transient, interface-owned resource, so that it
+  // stays valid independently of subsequent decode calls and can be moved to
+  // another thread. Frames are self-contained on most interfaces, hence the
+  // default no-op. The NVDEC interface, whose frames point into a decoder-owned
+  // surface that is recycled on the next receive_frame(), overrides this.
+  virtual void make_frame_self_contained(
+      [[maybe_unused]] UniqueAVFrame& av_frame) {}
+
   // Initialize the device with parameters specific to audio decoding. There is
   // a default empty implementation.
   virtual void initialize_audio(
@@ -98,6 +115,9 @@ class DeviceInterface {
     return requested_dtype;
   }
 
+  // Implementations must *borrow* av_frame: they may neither free it nor
+  // replace it with another frame. Callers may own the frame through a handle
+  // that outlives the conversion (see the Frame handles in custom_ops.cpp).
   virtual void convert_av_frame_to_frame_output(
       UniqueAVFrame& av_frame,
       FrameOutput& frame_output,

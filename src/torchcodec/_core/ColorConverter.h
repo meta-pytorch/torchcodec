@@ -15,6 +15,9 @@
 
 namespace facebook::torchcodec {
 
+// Color-conversion building block: turns a decoded (YUV) frame into an RGB
+// tensor. Not bound to any decoder or stream: everything it needs is derived
+// from each frame, so one converter can process frames from any video.
 class FORCE_PUBLIC_VISIBILITY ColorConverter {
  public:
   explicit ColorConverter(

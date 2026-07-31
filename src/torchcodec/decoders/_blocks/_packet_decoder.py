@@ -13,6 +13,7 @@ from torchcodec._core.ops import (
     _blocks_packet_decoder_send_packet,
 )
 
+from ._common import _DEVICE_VARIANT
 from ._demuxer import Demuxer
 from ._frame import DecodedFrame, Packet
 
@@ -29,10 +30,20 @@ class PacketDecoder:
     use one ``PacketDecoder`` per thread. FFmpeg's internal codec thread count
     is kept at 1 for now (not exposed); parallelism comes from composing blocks
     on your own threads.
+
+    With ``device="cuda"`` the decoding happens on NVDEC, falling back to the
+    CPU for streams NVDEC can't handle. The blocks always use the NVDEC CUDA
+    backend; :func:`~torchcodec.decoders.set_cuda_backend` has no effect on
+    them.
     """
 
-    def __init__(self, demuxer: Demuxer):
-        self._handle = _blocks_create_packet_decoder(demuxer._handle, num_threads=1)
+    def __init__(self, demuxer: Demuxer, *, device: str = "cpu"):
+        self._handle = _blocks_create_packet_decoder(
+            demuxer._handle,
+            num_threads=1,
+            device=device,
+            device_variant=_DEVICE_VARIANT,
+        )
 
     def _drain(self) -> list[DecodedFrame]:
         frames = []

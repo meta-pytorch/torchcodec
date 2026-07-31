@@ -34,6 +34,9 @@ class CpuDeviceInterface : public DeviceInterface {
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resized_output_dims) override;
 
+  virtual void initialize_color_conversion(
+      const VideoStreamOptions& video_stream_options) override;
+
   virtual void initialize_audio(
       const AudioStreamOptions& audio_stream_options) override;
 

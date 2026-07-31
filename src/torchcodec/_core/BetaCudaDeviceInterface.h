@@ -34,6 +34,40 @@
 
 namespace facebook::torchcodec {
 
+// Note: [Self-describing NVDEC frames]
+//
+// Frames produced by this interface are plain AV_PIX_FMT_NV12 / P016LE
+// AVFrames whose data pointers are *device* pointers, and which have no
+// hw_frames_ctx (we deliberately don't depend on FFmpeg being built with CUDA
+// support). From the AVFrame alone there is therefore no way to tell such a
+// frame apart from a regular CPU frame, nor to recover its luma bit depth.
+//
+// We attach this struct to AVFrame::opaque_ref to answer those questions. It's
+// what lets a ColorConverter that never decoded anything - the standalone
+// building block - convert a frame it's handed.
+struct NvdecFrameInfo {
+  // Guards against mistaking somebody else's opaque_ref for ours.
+  static constexpr uint64_t kMagic = 0x4e56444543544331ULL; // "NVDECTC1"
+  uint64_t magic = kMagic;
+
+  // Actual luma bit depth: 8 for NV12, 10 or 12 for P016.
+  int bit_depth = 8;
+
+  // Stream the frame's content is produced on. Consumers must wait on it
+  // before reading the data, as they may run on a different thread and hence a
+  // different current stream.
+  cudaStream_t producing_stream = nullptr;
+
+  // Owns the frame's memory once the frame has been detached from the
+  // decoder's output surface by make_frame_self_contained(). Undefined while
+  // the frame still points into that surface.
+  torch::stable::Tensor storage;
+};
+
+// Returns nullptr for any frame that wasn't produced by this interface, i.e.
+// any frame whose data is on the CPU.
+NvdecFrameInfo* get_nvdec_frame_info(const UniqueAVFrame& av_frame);
+
 class BetaCudaDeviceInterface : public DeviceInterface {
  public:
   explicit BetaCudaDeviceInterface(const StableDevice& device);
@@ -47,6 +81,11 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const VideoStreamOptions& video_stream_options,
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resized_output_dims) override;
+
+  void initialize_color_conversion(
+      const VideoStreamOptions& video_stream_options) override;
+
+  void make_frame_self_contained(UniqueAVFrame& av_frame) override;
 
   OutputDtype get_pre_allocation_dtype(
       OutputDtype requested_dtype) const override;
@@ -89,7 +128,10 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   UniqueAVFrame convert_cuda_frame_to_av_frame(
       CUdeviceptr frame_ptr,
       unsigned int pitch,
-      const CUVIDPARSERDISPINFO& disp_info);
+      const CUVIDPARSERDISPINFO& disp_info,
+      cudaStream_t nvdec_stream);
+
+  void create_cpu_interface();
 
   UniqueAVFrame transfer_cpu_frame_to_gpu(
       UniqueAVFrame& cpu_frame,
@@ -113,7 +155,11 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   UniqueAVBSFContext bitstream_filter_;
 
-  std::unique_ptr<DeviceInterface> cpu_fallback_;
+  // Used to decode, and/or color-convert, frames that aren't on the device:
+  // either because NVDEC can't handle this stream (nvdec_unsupported_), or
+  // because we're a standalone converter being handed a CPU frame.
+  std::unique_ptr<DeviceInterface> cpu_interface_;
+  bool nvdec_unsupported_ = false;
   bool nvcuvid_available_ = false;
   UniqueSwsContext sws_context_;
 

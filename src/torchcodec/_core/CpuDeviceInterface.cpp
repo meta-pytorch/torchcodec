@@ -86,14 +86,8 @@ void CpuDeviceInterface::initialize_video(
     const VideoStreamOptions& video_stream_options,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resized_output_dims) {
-  // TODO_API_BREAKDOWN this used to be:
-  // STD_TORCH_CHECK(av_stream != nullptr, "avStream is null");
-  // time_base_ = av_stream->time_base;
-  // but now that avStrean can be null (to create a standalone color converter)
-  // we need this workaround. This is bad, we need to preserve the previous
-  // check somehow.
-  time_base_ = (av_stream != nullptr) ? av_stream->time_base
-                                      : AVRational{1, AV_TIME_BASE};
+  STD_TORCH_CHECK(av_stream != nullptr, "avStream is null");
+  time_base_ = av_stream->time_base;
   av_media_type_ = AVMEDIA_TYPE_VIDEO;
   video_stream_options_ = video_stream_options;
   resized_output_dims_ = resized_output_dims;
@@ -159,6 +153,21 @@ void CpuDeviceInterface::initialize_video(
     filters_ = get_format_filter_string(output_pixel_format_) + filters.str();
   }
 
+  initialized_ = true;
+}
+
+void CpuDeviceInterface::initialize_color_conversion(
+    const VideoStreamOptions& video_stream_options) {
+  // No stream, so no time base: it's only used to stamp the filtergraph's
+  // input frames, and it doesn't affect pixel values.
+  time_base_ = AVRational{1, AV_TIME_BASE};
+  av_media_type_ = AVMEDIA_TYPE_VIDEO;
+  video_stream_options_ = video_stream_options;
+  output_pixel_format_ =
+      get_output_pixel_format(video_stream_options_.output_dtype);
+  are_transforms_sw_scale_compatible_ = true;
+  user_requested_sw_scale_ = video_stream_options_.color_conversion_library ==
+      ColorConversionLibrary::SWSCALE;
   initialized_ = true;
 }
 
