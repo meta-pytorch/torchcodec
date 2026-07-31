@@ -8,6 +8,7 @@ import concurrent.futures
 import contextlib
 import gc
 import queue
+import subprocess
 import threading
 from functools import partial
 
@@ -84,6 +85,7 @@ from .utils import (
     GRAYSCALE_JPEG,
     GRAYSCALE_PNG,
     H264_10BITS,
+    H265_10BITS,
     H265_VIDEO,
     HEAPBOF_PNG,
     in_fbcode,
@@ -3467,6 +3469,114 @@ class TestBlocks:
             ref = VideoDecoder(video.path, device=device).get_all_frames()
             assert got.data.shape == ref.data.shape
             torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
+
+    @staticmethod
+    def _first_decoded_frame(path, device, output_dtype="uint8"):
+        demuxer = Demuxer(path)
+        decoder = PacketDecoder(demuxer, device=device, output_dtype=output_dtype)
+        for packet in demuxer:
+            frames = decoder.decode(packet)
+            if frames:
+                return decoder, frames[0]
+        raise AssertionError("no frame decoded")
+
+    def test_to_planes(self, device):
+        # to_planes() hands out the frame's own samples as views: same address
+        # every time (nothing is copied), valid after the DecodedFrame is
+        # dropped, and holding the same samples the CPU decoder produces.
+        _, decoded = self._first_decoded_frame(NASA_VIDEO.path, device)
+        raw = decoded.to_planes()
+
+        height, width = NASA_VIDEO.get_height(), NASA_VIDEO.get_width()
+        assert raw.component_names == ("Y", "U", "V")
+        assert not raw.is_rgb
+        assert raw["Y"].shape == (height, width)
+        assert raw["U"].shape == raw["V"].shape == (height // 2, width // 2)
+        assert raw["Y"].dtype == torch.uint8
+        assert raw["Y"].device.type == device
+        assert raw.bit_depth == 8
+
+        again = decoded.to_planes()
+        assert [p.data_ptr() for p in again.planes] == [
+            p.data_ptr() for p in raw.planes
+        ]
+
+        expected_y = raw["Y"].clone()
+        del decoded
+        torch.testing.assert_close(raw["Y"], expected_y, atol=0, rtol=0)
+
+        _, cpu_decoded = self._first_decoded_frame(NASA_VIDEO.path, "cpu")
+        cpu_raw = cpu_decoded.to_planes()
+        for name in ("Y", "U", "V"):
+            torch.testing.assert_close(raw[name].cpu(), cpu_raw[name], atol=0, rtol=0)
+
+    def test_to_planes_preserves_bit_depth(self, device):
+        # 10-bit content must come back with all 10 bits. On CUDA that means
+        # asking NVDEC for its high-precision surface, where samples are
+        # MSB-aligned in a 16-bit container.
+        output_dtype = "uint8" if device == "cpu" else "float32"
+        decoder, decoded = self._first_decoded_frame(
+            H265_10BITS.path, device, output_dtype=output_dtype
+        )
+        raw = decoded.to_planes()
+
+        assert decoder.bit_depth == 10
+        assert raw.bit_depth == 10
+        assert raw["Y"].dtype == torch.uint16
+
+        y = raw["Y"].cpu().int()
+        if raw.msb_aligned:
+            shift = raw.container_bit_depth - raw.bit_depth
+            assert (y % (1 << shift) == 0).all()
+            y = y >> shift
+        assert y.max() > 255
+        assert torch.unique(y).numel() > 256
+
+        _, cpu_decoded = self._first_decoded_frame(H265_10BITS.path, "cpu")
+        torch.testing.assert_close(
+            y, cpu_decoded.to_planes()["Y"].int(), atol=0, rtol=0
+        )
+
+    def test_to_planes_non_yuv(self, device, tmp_path):
+        # Not every video is YUV. An RGB codec must come back described as RGB
+        # rather than mislabelled or refused.
+        path = str(tmp_path / "rgb.mkv")
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=64x64:rate=10:duration=0.5",
+                "-c:v",
+                "libx264rgb",
+                "-pix_fmt",
+                "gbrp",
+                path,
+            ],
+            check=True,
+        )
+        _, decoded = self._first_decoded_frame(path, device)
+        raw = decoded.to_planes()
+        assert raw.is_rgb
+        assert raw.component_names == ("R", "G", "B")
+        assert all(p.shape == (64, 64) for p in raw.planes)
+
+    @needs_cuda
+    def test_to_planes_cpu_fallback_frames(self, device):
+        # NVDEC can't decode H265_VIDEO, so a "cuda" decoder hands back frames
+        # whose samples are really in host memory. Building CUDA tensors over
+        # those host pointers would be a bug, so the frame reports where it is.
+        if device != "cuda":
+            pytest.skip("CUDA-only")
+        _, decoded = self._first_decoded_frame(H265_VIDEO.path, "cuda")
+        assert decoded.device == "cpu"
+        raw = decoded.to_planes()
+        assert all(p.device.type == "cpu" for p in raw.planes)
 
     def test_set_cuda_backend_is_a_noop(self, device):
         # The blocks always use the NVDEC CUDA backend. Asking for the "ffmpeg"

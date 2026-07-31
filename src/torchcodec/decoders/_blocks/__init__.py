@@ -17,7 +17,14 @@ API_breakdown_claude_plan.md for the design and rationale.
 
 from ._color_converter import ColorConverter
 from ._demuxer import Demuxer
-from ._frame import DecodedFrame, Packet
+from ._frame import DecodedFrame, Packet, RawFrame
 from ._packet_decoder import PacketDecoder
 
-__all__ = ["Demuxer", "PacketDecoder", "ColorConverter", "Packet", "DecodedFrame"]
+__all__ = [
+    "Demuxer",
+    "PacketDecoder",
+    "ColorConverter",
+    "Packet",
+    "DecodedFrame",
+    "RawFrame",
+]

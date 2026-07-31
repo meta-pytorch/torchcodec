@@ -843,6 +843,11 @@ void BetaCudaDeviceInterface::make_frame_self_contained(
   info->storage = std::move(storage);
 }
 
+bool BetaCudaDeviceInterface::is_device_frame(
+    const UniqueAVFrame& av_frame) const {
+  return get_nvdec_frame_info(av_frame) != nullptr;
+}
+
 void BetaCudaDeviceInterface::unmap_previous_frame() {
   if (previously_mapped_frame_ == 0) {
     return;

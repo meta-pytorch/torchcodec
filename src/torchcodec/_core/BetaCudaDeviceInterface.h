@@ -87,6 +87,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void make_frame_self_contained(UniqueAVFrame& av_frame) override;
 
+  bool is_device_frame(const UniqueAVFrame& av_frame) const override;
+
   OutputDtype get_pre_allocation_dtype(
       OutputDtype requested_dtype) const override;
 

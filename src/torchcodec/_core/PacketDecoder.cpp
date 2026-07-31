@@ -11,6 +11,10 @@
 #include "StreamOptions.h"
 #include "Transform.h"
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 namespace facebook::torchcodec {
 
 // TODO_API_BREAKDOWN: we should make sure the block APIs can dispatch to
@@ -64,7 +68,8 @@ PacketDecoder::PacketDecoder(
     const Demuxer& demuxer,
     const StableDevice& device,
     std::string_view device_variant,
-    std::optional<int> ffmpeg_thread_count) {
+    std::optional<int> ffmpeg_thread_count,
+    OutputDtype output_dtype) {
   device_interface_ = create_device_interface(device, device_variant);
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
@@ -77,8 +82,12 @@ PacketDecoder::PacketDecoder(
       stream, av_codec, device_interface_.get(), ffmpeg_thread_count);
   device_interface_->initialize(codec_context_);
 
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(codec_context_->pix_fmt);
+  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on stream");
+  bit_depth_ = desc->comp[0].depth;
+
   VideoStreamOptions options;
-  options.output_dtype = OutputDtype::UINT8; // dtype not exposed yet
+  options.output_dtype = output_dtype;
   options.device = device;
 
   // Interfaces that implement their own decoding path (NVDEC) do all of their

@@ -77,15 +77,18 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_create_demuxer(str filename, int? stream_index=None) -> Tensor");
   m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
   m.def(
-      "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\", str device_variant=\"default\") -> Tensor");
+      "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\", str device_variant=\"default\", str output_dtype=\"uint8\") -> Tensor");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def(
-      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float)");
+      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, bool)");
+  m.def("_blocks_packet_decoder_bit_depth(Tensor decoder) -> int");
   m.def(
       "_blocks_create_color_converter(str device=\"cpu\", str device_variant=\"default\") -> Tensor");
   m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
+  m.def(
+      "_blocks_frame_to_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor, str)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -861,16 +864,31 @@ torch::stable::Tensor _blocks_create_packet_decoder(
     torch::stable::Tensor& demuxer,
     std::optional<int64_t> num_threads,
     std::string device,
-    std::string device_variant) {
+    std::string device_variant,
+    std::string output_dtype) {
   Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
   validate_device_interface(device, device_variant);
   std::optional<int> thread_count;
   if (num_threads.has_value()) {
     thread_count = static_cast<int>(num_threads.value());
   }
+  STD_TORCH_CHECK(
+      output_dtype == "uint8" || output_dtype == "float32",
+      "Invalid output_dtype=",
+      output_dtype,
+      ". Supported values are 'uint8' and 'float32'.");
   auto decoder = std::make_unique<PacketDecoder>(
-      *demuxer_ptr, StableDevice(device), device_variant, thread_count);
+      *demuxer_ptr,
+      StableDevice(device),
+      device_variant,
+      thread_count,
+      output_dtype == "float32" ? OutputDtype::FLOAT32 : OutputDtype::UINT8);
   return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));
+}
+
+int64_t _blocks_packet_decoder_bit_depth(torch::stable::Tensor& decoder) {
+  PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
+  return static_cast<int64_t>(decoder_ptr->bit_depth());
 }
 
 int64_t _blocks_packet_decoder_send_packet(
@@ -886,13 +904,15 @@ int64_t _blocks_packet_decoder_send_eof(torch::stable::Tensor& decoder) {
   return static_cast<int64_t>(decoder_ptr->send_eof());
 }
 
-// (frame_handle, status, pts_seconds, duration_seconds). status == 0 means a
-// frame was produced; nonzero (EAGAIN/EOF) means no frame (dummy handle,
-// zeros). pts/duration are stamped here (the decoder knows the stream time
-// base) so the ColorConverter doesn't need to be bound to a stream. Native
-// scalars avoid per-frame .item() overhead.
+// (frame_handle, status, pts_seconds, duration_seconds, is_device_frame).
+// status == 0 means a frame was produced; nonzero (EAGAIN/EOF) means no frame
+// (dummy handle, zeros). pts/duration are stamped here (the decoder knows the
+// stream time base) so the ColorConverter doesn't need to be bound to a stream.
+// is_device_frame says whether the samples are in device or host memory, which
+// isn't implied by the decoder's device: a CUDA decoder yields host frames for
+// streams NVDEC can't handle. Native scalars avoid per-frame .item() overhead.
 using OpsReceiveFrameOutput =
-    std::tuple<torch::stable::Tensor, int64_t, double, double>;
+    std::tuple<torch::stable::Tensor, int64_t, double, double, bool>;
 
 OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
     torch::stable::Tensor& decoder) {
@@ -905,17 +925,20 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
         torch::stable::full({1}, 0, kStableInt64),
         static_cast<int64_t>(status),
         0.0,
-        0.0);
+        0.0,
+        false);
   }
   AVRational time_base = decoder_ptr->time_base();
   double pts_seconds = pts_to_seconds(get_pts_or_dts(av_frame), time_base);
   double duration_seconds = pts_to_seconds(get_duration(av_frame), time_base);
+  bool is_device_frame = decoder_ptr->is_device_frame(av_frame);
   AVFrame* raw_frame = av_frame.release();
   return std::make_tuple(
       wrap_frame_pointer_to_tensor(raw_frame),
       static_cast<int64_t>(0),
       pts_seconds,
-      duration_seconds);
+      duration_seconds,
+      is_device_frame);
 }
 
 torch::stable::Tensor _blocks_create_color_converter(
@@ -925,6 +948,142 @@ torch::stable::Tensor _blocks_create_color_converter(
   auto converter =
       std::make_unique<ColorConverter>(StableDevice(device), device_variant);
   return wrap_pointer_to_tensor<ColorConverter>(std::move(converter));
+}
+
+// Zero-copy access to a decoded frame's own samples, whatever its pixel format:
+// planar (yuv420p), semi-planar (nv12, p016), packed (yuyv422, bgra), RGB
+// (gbrp), grayscale, with or without alpha. Every layout FFmpeg describes as
+// whole bytes per sample is just a strided view over the frame's memory, which
+// is what AVPixFmtDescriptor's per-component plane/offset/step encodes.
+//
+// Returns 4 component views (unused ones are empty) plus a JSON description
+// naming the components that are real.
+using OpsPlanesOutput = std::tuple<
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    std::string>;
+
+// The name of component `index` in a frame of format `desc`.
+const char* component_name(const AVPixFmtDescriptor* desc, int index) {
+  bool is_rgb = (desc->flags & AV_PIX_FMT_FLAG_RGB) != 0;
+  bool is_alpha = (desc->flags & AV_PIX_FMT_FLAG_ALPHA) != 0 &&
+      index == desc->nb_components - 1;
+  if (is_alpha) {
+    return "A";
+  }
+  static const char* rgb_names[] = {"R", "G", "B"};
+  static const char* yuv_names[] = {"Y", "U", "V"};
+  return is_rgb ? rgb_names[index] : yuv_names[index];
+}
+
+OpsPlanesOutput _blocks_frame_to_planes(
+    torch::stable::Tensor& frame,
+    std::string device) {
+  AVFrame* av_frame = unwrap_tensor_to_frame(frame);
+  auto pix_fmt = static_cast<AVPixelFormat>(av_frame->format);
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
+  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
+  const char* pix_fmt_name = av_get_pix_fmt_name(pix_fmt);
+  std::string fmt_name = pix_fmt_name ? pix_fmt_name : "unknown";
+
+  // Sub-byte and palettised layouts can't be addressed by a tensor stride, and
+  // there's no way to hand them over without unpacking them into a copy.
+  STD_TORCH_CHECK(
+      !(desc->flags & AV_PIX_FMT_FLAG_BITSTREAM),
+      "Cannot expose ",
+      fmt_name,
+      " without a copy: its samples are not byte-aligned.");
+  STD_TORCH_CHECK(
+      !(desc->flags & AV_PIX_FMT_FLAG_PAL),
+      "Cannot expose ",
+      fmt_name,
+      " without a copy: it is palettised.");
+  STD_TORCH_CHECK(
+      !(desc->flags & AV_PIX_FMT_FLAG_FLOAT),
+      "Cannot expose ",
+      fmt_name,
+      ": floating point pixel formats are not supported yet.");
+  STD_TORCH_CHECK(
+      desc->nb_components >= 1 && desc->nb_components <= 4,
+      fmt_name,
+      " has ",
+      static_cast<int>(desc->nb_components),
+      " components, expected between 1 and 4.");
+
+  StableDevice tensor_device(device);
+  std::vector<torch::stable::Tensor> views;
+  std::stringstream component_names;
+
+  for (int c = 0; c < desc->nb_components; ++c) {
+    const AVComponentDescriptor& comp = desc->comp[c];
+    STD_TORCH_CHECK(
+        comp.shift == 0 && comp.depth <= 16,
+        "Cannot expose component ",
+        c,
+        " of ",
+        fmt_name,
+        " without a copy: its samples don't start on a byte boundary.");
+
+    int64_t bytes_per_sample = (comp.depth > 8) ? 2 : 1;
+    int64_t linesize = av_frame->linesize[comp.plane];
+    STD_TORCH_CHECK(
+        linesize > 0,
+        "Cannot expose ",
+        fmt_name,
+        ": the frame has a negative line size (it is stored bottom-up), "
+        "which a tensor stride cannot express.");
+    STD_TORCH_CHECK(
+        comp.step % bytes_per_sample == 0 && linesize % bytes_per_sample == 0,
+        "Cannot expose component ",
+        c,
+        " of ",
+        fmt_name,
+        ": its byte layout isn't a whole number of samples.");
+
+    // Only the chroma components are subsampled; luma and alpha are full size.
+    bool is_chroma = !(desc->flags & AV_PIX_FMT_FLAG_RGB) && (c == 1 || c == 2);
+    int64_t height = is_chroma
+        ? AV_CEIL_RSHIFT(av_frame->height, desc->log2_chroma_h)
+        : av_frame->height;
+    int64_t width = is_chroma
+        ? AV_CEIL_RSHIFT(av_frame->width, desc->log2_chroma_w)
+        : av_frame->width;
+
+    // The view keeps the frame handle alive, so the planes stay valid even if
+    // the caller drops the frame they came from. Copying the handle tensor is
+    // just a refcount bump; the AVFrame is freed when the last view goes.
+    auto keep_frame_alive = frame;
+    int64_t sizes[] = {height, width};
+    int64_t strides[] = {
+        linesize / bytes_per_sample, comp.step / bytes_per_sample};
+    views.push_back(torch::stable::from_blob(
+        av_frame->data[comp.plane] + comp.offset,
+        {sizes, 2},
+        {strides, 2},
+        tensor_device,
+        (comp.depth > 8) ? kStableUInt16 : kStableUInt8,
+        [keep_frame_alive](void*) {}));
+
+    component_names << (c == 0 ? "\"" : ", \"") << component_name(desc, c)
+                    << "\"";
+  }
+
+  std::stringstream metadata;
+  metadata << "{\"pix_fmt\": \"" << fmt_name << "\", \"components\": ["
+           << component_names.str() << "], \"container_bit_depth\": "
+           << static_cast<int>(desc->comp[0].depth)
+           << ", \"colorspace\": " << static_cast<int>(av_frame->colorspace)
+           << ", \"color_range\": " << static_cast<int>(av_frame->color_range)
+           << ", \"is_rgb\": "
+           << ((desc->flags & AV_PIX_FMT_FLAG_RGB) ? "true" : "false") << "}";
+
+  // Absent components come back as empty tensors; `components` above says how
+  // many are real.
+  views.resize(4, torch::stable::empty({0}, kStableUInt8));
+  return std::make_tuple(
+      views[0], views[1], views[2], views[3], metadata.str());
 }
 
 torch::stable::Tensor _blocks_convert_frame(
@@ -1503,7 +1662,11 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl(
       "_blocks_packet_decoder_receive_frame",
       TORCH_BOX(&_blocks_packet_decoder_receive_frame));
+  m.impl(
+      "_blocks_packet_decoder_bit_depth",
+      TORCH_BOX(&_blocks_packet_decoder_bit_depth));
   m.impl("_blocks_convert_frame", TORCH_BOX(&_blocks_convert_frame));
+  m.impl("_blocks_frame_to_planes", TORCH_BOX(&_blocks_frame_to_planes));
   m.impl("_test_frame_pts_equality", TORCH_BOX(&_test_frame_pts_equality));
   m.impl(
       "scan_all_streams_to_update_metadata",

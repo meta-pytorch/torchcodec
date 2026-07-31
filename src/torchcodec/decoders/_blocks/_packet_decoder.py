@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from torchcodec._core.ops import (
     _blocks_create_packet_decoder,
+    _blocks_packet_decoder_bit_depth,
     _blocks_packet_decoder_receive_frame,
     _blocks_packet_decoder_send_eof,
     _blocks_packet_decoder_send_packet,
@@ -37,23 +38,48 @@ class PacketDecoder:
     them.
     """
 
-    def __init__(self, demuxer: Demuxer, *, device: str = "cpu"):
+    def __init__(
+        self,
+        demuxer: Demuxer,
+        *,
+        device: str = "cpu",
+        output_dtype: str = "uint8",
+    ):
         self._handle = _blocks_create_packet_decoder(
             demuxer._handle,
             num_threads=1,
             device=device,
             device_variant=_DEVICE_VARIANT,
+            output_dtype=output_dtype,
         )
+        self._device = device
+        self._bit_depth = _blocks_packet_decoder_bit_depth(self._handle)
+
+    @property
+    def bit_depth(self) -> int:
+        """Significant bits per sample of the decoded frames (8, 10, 12...)."""
+        return self._bit_depth
 
     def _drain(self) -> list[DecodedFrame]:
         frames = []
         while True:
-            handle, status, pts_seconds, duration_seconds = (
+            handle, status, pts_seconds, duration_seconds, on_device = (
                 _blocks_packet_decoder_receive_frame(self._handle)
             )
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
                 break
-            frames.append(DecodedFrame(handle, pts_seconds, duration_seconds))
+            frames.append(
+                DecodedFrame(
+                    handle,
+                    pts_seconds,
+                    duration_seconds,
+                    # Not always self._device: NVDEC falls back to decoding on
+                    # the CPU for streams it can't handle, and those frames'
+                    # samples really are in host memory.
+                    device=self._device if on_device else "cpu",
+                    bit_depth=self._bit_depth,
+                )
+            )
         return frames
 
     def decode(self, packet: Packet) -> list[DecodedFrame]:

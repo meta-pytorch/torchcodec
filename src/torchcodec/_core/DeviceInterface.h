@@ -83,6 +83,15 @@ class DeviceInterface {
   virtual void make_frame_self_contained(
       [[maybe_unused]] UniqueAVFrame& av_frame) {}
 
+  // Whether av_frame's pixel data lives on this interface's device rather than
+  // in host memory. This is a property of the frame, not of the interface: a
+  // hardware interface that had to fall back to CPU decoding hands out frames
+  // in host memory.
+  virtual bool is_device_frame(
+      [[maybe_unused]] const UniqueAVFrame& av_frame) const {
+    return false;
+  }
+
   // Initialize the device with parameters specific to audio decoding. There is
   // a default empty implementation.
   virtual void initialize_audio(
