@@ -8,25 +8,27 @@
 
 #include <fstream>
 #include <string>
-#include "AVIOContextHolder.h"
+#include "IOInterface.h"
 
 namespace facebook::torchcodec {
 
-// For reading from a file on disk. Unlike the other AVIOContextHolder
-// subclasses, this one does NOT create an FFmpeg AVIOContext — it only
-// provides the read/seek/getSize primitives for consumers like
-// WavDecoder that do their own parsing.
-class AVIOFileContext : public AVIOContextHolder {
+// file I/O on disk, backed by std::fstream. Opened for either
+// reading or writing. Reading is used by consumers that parse bytes themselves
+// (e.g. WavDecoder); writing is used by the image encoders.
+class FileIO : public IOInterface {
  public:
-  explicit AVIOFileContext(const std::string& path);
+  enum class Mode { Read, Write };
+  FileIO(const std::string& path, Mode mode);
 
   int read(uint8_t* buf, int size) override;
+  int write(const uint8_t* buf, int size) override;
   int64_t seek(int64_t offset, int whence) override;
   int64_t get_size() override;
 
  private:
-  std::ifstream file_;
-  int64_t file_size_;
+  std::fstream file_;
+  Mode mode_;
+  int64_t file_size_ = 0;
 };
 
 } // namespace facebook::torchcodec

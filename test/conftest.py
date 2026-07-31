@@ -4,7 +4,14 @@ import random
 import pytest
 import torch
 
-from .utils import in_fbcode
+from .utils import (
+    avif_is_available,
+    heic_is_available,
+    in_fbcode,
+    jpeg_is_available,
+    png_is_available,
+    webp_is_available,
+)
 
 
 def pytest_configure(config):
@@ -15,6 +22,48 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "needs_ffmpeg_cli: mark for tests that rely on ffmpeg"
     )
+    config.addinivalue_line(
+        "markers", "needs_jpeg: mark for tests that rely on libjpeg support"
+    )
+    config.addinivalue_line(
+        "markers", "needs_png: mark for tests that rely on libpng support"
+    )
+    config.addinivalue_line(
+        "markers", "needs_webp: mark for tests that rely on libwebp support"
+    )
+    config.addinivalue_line(
+        "markers", "needs_avif: mark for tests that rely on libavif support"
+    )
+    config.addinivalue_line(
+        "markers", "needs_heic: mark for tests that rely on libheif support"
+    )
+
+
+def skip_image_decoder_test(codec):
+    # Whether to skip a test that needs the given image codec: we skip when the
+    # backing library isn't available, unless we're told to fail loudly (on CI
+    # we are, so a missing library surfaces as a failure rather than a silent
+    # skip).
+    #
+    # FAIL_WITHOUT_IMAGE_CODECS is a catch-all default covering every image
+    # codec. A per-codec FAIL_WITHOUT_<CODEC> overrides the catch-all, so a CI
+    # job can enable the catch-all and still opt a single codec out, e.g.
+    # FAIL_WITHOUT_IMAGE_CODECS=1 FAIL_WITHOUT_HEIC=0.
+    if {
+        "jpeg": jpeg_is_available,
+        "png": png_is_available,
+        "webp": webp_is_available,
+        "avif": avif_is_available,
+        "heic": heic_is_available,
+    }[codec]():
+        return False
+    override = os.environ.get(f"FAIL_WITHOUT_{codec.upper()}")
+    fail_without = (
+        override
+        if override is not None
+        else os.environ.get("FAIL_WITHOUT_IMAGE_CODECS")
+    )
+    return fail_without in (None, "0")
 
 
 def pytest_collection_modifyitems(items):
@@ -34,6 +83,11 @@ def pytest_collection_modifyitems(items):
         # mark.
         needs_cuda = item.get_closest_marker("needs_cuda") is not None
         needs_ffmpeg_cli = item.get_closest_marker("needs_ffmpeg_cli") is not None
+        needs_jpeg = item.get_closest_marker("needs_jpeg") is not None
+        needs_png = item.get_closest_marker("needs_png") is not None
+        needs_webp = item.get_closest_marker("needs_webp") is not None
+        needs_avif = item.get_closest_marker("needs_avif") is not None
+        needs_heic = item.get_closest_marker("needs_heic") is not None
         has_skip_marker = item.get_closest_marker("skip") is not None
 
         # For skipif, the marker is always present regardless of whether the
@@ -67,6 +121,22 @@ def pytest_collection_modifyitems(items):
             # supposed to run the CUDA tests, so if CUDA isn't available on
             # those for whatever reason, we need to know.
             item.add_marker(pytest.mark.skip(reason="CUDA not available."))
+
+        # Same rationale as needs_cuda; see skip_image_decoder_test().
+        if needs_jpeg and skip_image_decoder_test("jpeg"):
+            item.add_marker(pytest.mark.skip(reason="libjpeg support not available."))
+
+        if needs_png and skip_image_decoder_test("png"):
+            item.add_marker(pytest.mark.skip(reason="libpng support not available."))
+
+        if needs_webp and skip_image_decoder_test("webp"):
+            item.add_marker(pytest.mark.skip(reason="libwebp support not available."))
+
+        if needs_avif and skip_image_decoder_test("avif"):
+            item.add_marker(pytest.mark.skip(reason="libavif support not available."))
+
+        if needs_heic and skip_image_decoder_test("heic"):
+            item.add_marker(pytest.mark.skip(reason="libheif support not available."))
 
         out_items.append(item)
 

@@ -1,3 +1,4 @@
+import io
 import sys
 from pathlib import Path
 
@@ -7,13 +8,39 @@ import torch
 from test.utils import (
     assert_tensor_close_on_at_least,
     cuda_version_used_for_building_torch,
+    GRADIENT_AVIF,
+    GRADIENT_GIF,
+    GRADIENT_HEIC,
+    GRADIENT_JPEG,
+    GRADIENT_PNG,
+    GRADIENT_WEBP,
+    needs_avif,
     needs_cuda,
+    needs_heic,
+    needs_jpeg,
+    needs_png,
+    needs_webp,
 )
 
 from torchcodec import ffmpeg_major_version
 from torchcodec._frame import AudioSamples, Frame, FrameBatch
-from torchcodec.decoders import AudioDecoder, VideoDecoder
-from torchcodec.encoders import AudioEncoder, Encoder, VideoEncoder
+from torchcodec.decoders import (
+    AudioDecoder,
+    decode_avif,
+    decode_gif,
+    decode_heic,
+    decode_jpeg,
+    decode_png,
+    decode_webp,
+    VideoDecoder,
+)
+from torchcodec.encoders import (
+    AudioEncoder,
+    Encoder,
+    JpegEncoder,
+    PngEncoder,
+    VideoEncoder,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -239,6 +266,144 @@ class TestAudioDecoder:
         samples = decoder.get_all_samples()
         assert samples.sample_rate == target_sr
         assert samples.data.shape[0] == 1
+
+
+class TestImageDecoder:
+    @needs_jpeg
+    def test_decode_jpeg(self):
+        path = GRADIENT_JPEG.path
+        h, w = GRADIENT_JPEG.height, GRADIENT_JPEG.width
+
+        img = decode_jpeg(path)
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, h, w)
+
+    @needs_cuda
+    @needs_jpeg
+    def test_decode_jpeg_cuda(self):
+        path = GRADIENT_JPEG.path
+        h, w = GRADIENT_JPEG.height, GRADIENT_JPEG.width
+
+        img = decode_jpeg(path, device="cuda")
+        assert img.dtype == torch.uint8
+        assert img.device.type == "cuda"
+        assert img.shape == (3, h, w)
+
+        imgs = decode_jpeg([path, path], device="cuda")
+        assert isinstance(imgs, list)
+        assert len(imgs) == 2
+        for i in imgs:
+            assert i.device.type == "cuda"
+            assert i.shape == (3, h, w)
+
+    @needs_png
+    def test_decode_png(self):
+        path = GRADIENT_PNG.path
+        h, w = GRADIENT_PNG.height, GRADIENT_PNG.width
+
+        img = decode_png(path)
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, h, w)
+
+    @needs_webp
+    def test_decode_webp(self):
+        path = GRADIENT_WEBP.path
+        h, w = GRADIENT_WEBP.height, GRADIENT_WEBP.width
+
+        img = decode_webp(path)
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, h, w)
+
+    def test_decode_gif(self):
+        path = GRADIENT_GIF.path
+        h, w = GRADIENT_GIF.height, GRADIENT_GIF.width
+
+        img = decode_gif(path)
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, h, w)
+
+    @needs_avif
+    def test_decode_avif(self):
+        path = GRADIENT_AVIF.path
+        h, w = GRADIENT_AVIF.height, GRADIENT_AVIF.width
+
+        img = decode_avif(path)
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, h, w)
+
+    @needs_heic
+    def test_decode_heic(self):
+        path = GRADIENT_HEIC.path
+        h, w = GRADIENT_HEIC.height, GRADIENT_HEIC.width
+
+        img = decode_heic(path)
+        assert img.dtype == torch.uint8
+        assert img.shape == (3, h, w)
+
+
+# Each backend: (Encoder, device, decode_fn, suffix, lossless). CUDA JPEG
+# encoding is triggered by the input tensor's device.
+_IMAGE_ENCODERS = (
+    pytest.param(
+        PngEncoder,
+        "cpu",
+        decode_png,
+        "png",
+        True,
+        marks=pytest.mark.needs_png,
+        id="png",
+    ),
+    pytest.param(
+        JpegEncoder,
+        "cpu",
+        decode_jpeg,
+        "jpg",
+        False,
+        marks=pytest.mark.needs_jpeg,
+        id="jpeg",
+    ),
+    pytest.param(
+        JpegEncoder,
+        "cuda",
+        decode_jpeg,
+        "jpg",
+        False,
+        marks=(pytest.mark.needs_jpeg, pytest.mark.needs_cuda),
+        id="jpeg_cuda",
+    ),
+)
+
+
+class TestImageEncoder:
+    def _make_image(self, device):
+        return torch.randint(
+            0, 256, (3, HEIGHT, WIDTH), dtype=torch.uint8, device=device
+        )
+
+    @pytest.mark.parametrize(
+        "Encoder,device,decode_fn,suffix,lossless", _IMAGE_ENCODERS
+    )
+    def test_encode_to_file(
+        self, tmp_path, Encoder, device, decode_fn, suffix, lossless
+    ):
+        img = self._make_image(device)
+        path = tmp_path / f"out.{suffix}"
+        Encoder(img).to_file(path)
+        assert path.stat().st_size > 0
+
+        decoded = decode_fn(str(path))
+        assert decoded.shape == (3, HEIGHT, WIDTH)
+        if lossless:
+            torch.testing.assert_close(decoded, img.cpu(), atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "Encoder,device,decode_fn,suffix,lossless", _IMAGE_ENCODERS
+    )
+    def test_encode_to_file_like(self, Encoder, device, decode_fn, suffix, lossless):
+        img = self._make_image(device)
+        buf = io.BytesIO()
+        Encoder(img).to_file_like(buf)
+        assert buf.getbuffer().nbytes > 0
 
 
 class TestVideoEncoder:

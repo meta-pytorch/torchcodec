@@ -5,6 +5,7 @@ from typing import Any
 import torch
 from torch import Tensor
 
+from torchcodec._internally_replaced_utils import load_core_libraries
 from torchcodec.encoders._multi_stream_encoder import Encoder
 
 
@@ -31,6 +32,7 @@ class VideoEncoder:
 
     def __init__(self, frames: Tensor, *, frame_rate: float):
         torch._C._log_api_usage_once("torchcodec.encoders.VideoEncoder")
+        load_core_libraries()
         if not isinstance(frames, Tensor):
             raise ValueError(f"Expected frames to be a Tensor, got {type(frames) = }.")
         if frames.ndim != 4:
@@ -167,7 +169,7 @@ class VideoEncoder:
         )
         with encoder.open_file_like(buf, format=format):
             video.add_frames(self._frames)
-        return torch.frombuffer(buf.getvalue(), dtype=torch.uint8).clone()
+        return torch.frombuffer(buf.getbuffer(), dtype=torch.uint8)
 
     def to_file_like(
         self,

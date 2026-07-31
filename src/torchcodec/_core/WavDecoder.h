@@ -11,8 +11,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include "AVIOContextHolder.h"
 #include "Frame.h"
+#include "IOInterface.h"
 #include "Metadata.h"
 #include "StableABICompat.h"
 
@@ -20,7 +20,7 @@ namespace facebook::torchcodec {
 
 class FORCE_PUBLIC_VISIBILITY WavDecoder {
  public:
-  explicit WavDecoder(std::unique_ptr<AVIOContextHolder> avio);
+  explicit WavDecoder(std::unique_ptr<IOInterface> io);
   // Delete copy constructor and copy assignment operator since
   // unique_ptr is not copyable.
   WavDecoder(const WavDecoder&) = delete;
@@ -64,7 +64,7 @@ class FORCE_PUBLIC_VISIBILITY WavDecoder {
       int64_t samples_in_buffer,
       float* output_ptr) const;
 
-  std::unique_ptr<AVIOContextHolder> avio_;
+  std::unique_ptr<IOInterface> io_;
   WavHeader header_;
   uint64_t source_size_ = 0;
   std::string sample_format_;

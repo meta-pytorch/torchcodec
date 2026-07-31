@@ -15,19 +15,19 @@
 #include <pybind11/stl.h>
 #pragma pop_macro("TORCH_TARGET_VERSION")
 
-#include "AVIOContextHolder.h"
+#include "IOInterface.h"
 
 namespace py = pybind11;
 
 namespace facebook::torchcodec {
 
-// Enables uers to pass in a Python file-like object. We then forward all read
-// and seek calls back up to the methods on the Python object.
-class AVIOFileLikeContext : public AVIOContextHolder {
+// FFmpeg-free bridge to a Python file-like object: read/write/seek are
+// forwarded to the corresponding methods on the Python object. Wrap it in an
+// AVIOContextHolder to feed FFmpeg, or use it directly (e.g. the image
+// encoders write straight through it).
+class FileLikeIO : public IOInterface {
  public:
-  explicit AVIOFileLikeContext(
-      const py::object& file_like,
-      bool is_for_writing);
+  explicit FileLikeIO(const py::object& file_like, bool is_for_writing);
 
   int read(uint8_t* buf, int size) override;
   int write(const uint8_t* buf, int size) override;

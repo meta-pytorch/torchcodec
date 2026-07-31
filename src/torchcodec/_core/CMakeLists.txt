@@ -3,10 +3,163 @@ project(TorchCodec)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Guard against accidentally building a distributable wheel that dynamically
+# links against a GPL build of FFmpeg (e.g. from conda/system), which would be a
+# license violation. Wheels are expected to link against our pre-built non-GPL
+# FFmpeg (BUILD_AGAINST_ALL_FFMPEG_FROM_S3).
+if(SKBUILD_STATE STREQUAL "wheel"
+   AND NOT DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3}
+   AND NOT DEFINED ENV{I_CONFIRM_THIS_IS_NOT_A_LICENSE_VIOLATION})
+    message(FATAL_ERROR
+        "It looks like you're trying to build a wheel. You probably want to set "
+        "BUILD_AGAINST_ALL_FFMPEG_FROM_S3. If you have a good reason *not* to, "
+        "then set I_CONFIRM_THIS_IS_NOT_A_LICENSE_VIOLATION.")
+endif()
+
 set(PYBIND11_FINDPYTHON ON)
 find_package(pybind11 REQUIRED)
 find_package(Torch REQUIRED)
-find_package(Python3 ${PYTHON_VERSION} EXACT COMPONENTS Development Interpreter)
+find_package(Python3 COMPONENTS Development Interpreter)
+
+if(APPLE)
+    # Some CI runners ship a Mono.framework which contains headers for libjpeg,
+    # libpng, etc. We do not want those headers to be found - they're old and
+    # incompatible with what we do here (e.g. missing eXIf support in libpng).
+    # On the CI we want the conda-forge-provided libraries to be found first. So
+    # we tell CMake to search for 'frameworks' last.
+    set(CMAKE_FIND_FRAMEWORK LAST)
+endif()
+
+# Image decoder build toggles. By default all image decoders are built and
+# *required*: if a codec's lib can't be found/fetched the build fails loudly,
+# telling the user how to opt out. This is controlled by:
+#   - TORCHCODEC_BUILD_IMAGE (catch-all, default ON)
+#   - TORCHCODEC_BUILD_{JPEG,PNG,WEBP,AVIF,GIF} (default AUTO = inherit catch-all)
+# A codec set to OFF is not built; its decode_*() then raises an actionable error
+# at call time (see e.g. DecodeJpeg.cpp's !TORCHCODEC_ENABLE_JPEG stub), while importing
+# torchcodec still works. We default the flags here too so that direct `cmake`
+# invocations (e.g. the C++ tests build) behave like the scikit-build path,
+# which passes them via pyproject.toml.
+if(NOT DEFINED TORCHCODEC_BUILD_IMAGE)
+    set(TORCHCODEC_BUILD_IMAGE "ON")
+endif()
+foreach(_codec JPEG PNG WEBP AVIF GIF HEIC NVJPEG)
+    if(NOT DEFINED TORCHCODEC_BUILD_${_codec})
+        set(TORCHCODEC_BUILD_${_codec} "AUTO")
+    endif()
+endforeach()
+
+# Returns true (via out_want) if TORCHCODEC_BUILD_IMAGE is on, or if that
+# specific codec flag is explicitly on, and false otherwise.
+function(resolve_image_codec codec_flag out_want)
+    if(codec_flag STREQUAL "AUTO")
+        set(_resolved "${TORCHCODEC_BUILD_IMAGE}")
+    else()
+        set(_resolved "${codec_flag}")
+    endif()
+    if(_resolved)
+        set(${out_want} TRUE PARENT_SCOPE)
+    else()
+        set(${out_want} FALSE PARENT_SCOPE)
+    endif()
+endfunction()
+
+function(discover_image_codecs)
+    resolve_image_codec("${TORCHCODEC_BUILD_JPEG}" want_jpeg)
+    if(want_jpeg)
+        if(NOT DEFINED JPEG_ROOT AND DEFINED ENV{CONDA_PREFIX})
+            # JPEG_ROOT will automatically be passed to find_package(JPEG) by CMake
+            # if it is set. We fallback to the conda prefix if it is not set.
+            if(WIN32)
+                set(JPEG_ROOT "$ENV{CONDA_PREFIX}/Library")
+            else()
+                set(JPEG_ROOT "$ENV{CONDA_PREFIX}")
+            endif()
+        endif()
+        find_package(JPEG)  # Not REQUIRED: we emit our own actionable error below.
+        if(JPEG_FOUND)
+            message(STATUS "libjpeg found: building torchcodec with JPEG image decoding support.")
+        else()
+            message(FATAL_ERROR
+                "libjpeg not found, but JPEG image decoding is enabled. Install "
+                "libjpeg[-turbo] and its development headers, or set "
+                "TORCHCODEC_BUILD_JPEG=0 to build without JPEG support (decode_jpeg "
+                "will raise at runtime), or TORCHCODEC_BUILD_IMAGE=0 to disable all "
+                "image decoders.")
+        endif()
+    else()
+        message(STATUS "Not building torchcodec with JPEG image decoding support (disabled via TORCHCODEC_BUILD_JPEG/TORCHCODEC_BUILD_IMAGE): decode_jpeg will raise at runtime.")
+    endif()
+
+    resolve_image_codec("${TORCHCODEC_BUILD_PNG}" want_png)
+    if(want_png)
+        if(NOT DEFINED PNG_ROOT AND DEFINED ENV{CONDA_PREFIX})
+            if(WIN32)
+                set(PNG_ROOT "$ENV{CONDA_PREFIX}/Library")
+            else()
+                set(PNG_ROOT "$ENV{CONDA_PREFIX}")
+            endif()
+        endif()
+        find_package(PNG)  # Transitively pulls in ZLIB.
+        if(PNG_FOUND)
+            message(STATUS "libpng found: building torchcodec with PNG image decoding support.")
+        else()
+            message(FATAL_ERROR
+                "libpng not found, but PNG image decoding is enabled. Install libpng "
+                "and its development headers, or set TORCHCODEC_BUILD_PNG=0 to build "
+                "without PNG support (decode_png will raise at runtime), or "
+                "TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders.")
+        endif()
+    else()
+        message(STATUS "Not building torchcodec with PNG image decoding support (disabled via TORCHCODEC_BUILD_PNG/TORCHCODEC_BUILD_IMAGE): decode_png will raise at runtime.")
+    endif()
+
+    resolve_image_codec("${TORCHCODEC_BUILD_WEBP}" want_webp)
+    if(want_webp)
+        if(NOT DEFINED WebP_ROOT AND DEFINED ENV{CONDA_PREFIX})
+            if(WIN32)
+                set(WebP_ROOT "$ENV{CONDA_PREFIX}/Library")
+            else()
+                set(WebP_ROOT "$ENV{CONDA_PREFIX}")
+            endif()
+        endif()
+        find_package(WebP)  # Provides the WebP::webp and WebP::webpdemux targets.
+        if(WebP_FOUND)
+            message(STATUS "libwebp found: building torchcodec with WebP image decoding support.")
+        else()
+            message(FATAL_ERROR
+                "libwebp not found, but WebP image decoding is enabled. Install "
+                "libwebp and its development headers, or set TORCHCODEC_BUILD_WEBP=0 "
+                "to build without WebP support (decode_webp will raise at runtime), "
+                "or TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders.")
+        endif()
+    else()
+        message(STATUS "Not building torchcodec with WebP image decoding support (disabled via TORCHCODEC_BUILD_WEBP/TORCHCODEC_BUILD_IMAGE): decode_webp will raise at runtime.")
+    endif()
+
+    resolve_image_codec("${TORCHCODEC_BUILD_AVIF}" want_avif)
+    if(want_avif)
+        include(${CMAKE_CURRENT_SOURCE_DIR}/fetch_avif_from_s3.cmake)
+        set(libavif_FOUND TRUE)
+        message(STATUS "Building torchcodec with AVIF image decoding support (libavif from S3).")
+    else()
+        message(STATUS "Not building torchcodec with AVIF image decoding support (disabled via TORCHCODEC_BUILD_AVIF/TORCHCODEC_BUILD_IMAGE): decode_avif will raise at runtime.")
+    endif()
+
+    resolve_image_codec("${TORCHCODEC_BUILD_GIF}" want_gif)
+    if(want_gif)
+        message(STATUS "Building torchcodec with GIF image decoding support (vendored giflib).")
+    else()
+        message(STATUS "Not building torchcodec with GIF image decoding support (disabled via TORCHCODEC_BUILD_GIF/TORCHCODEC_BUILD_IMAGE): decode_gif will raise at runtime.")
+    endif()
+
+    # Re-export the resolved want_<codec> booleans and (for Windows) the avif
+    # runtime lib path to make_torchcodec_image_library, our caller.
+    foreach(_codec jpeg png webp avif gif)
+        set(want_${_codec} "${want_${_codec}}" PARENT_SCOPE)
+    endforeach()
+    set(avif_runtime_lib "${avif_runtime_lib}" PARENT_SCOPE)
+endfunction()
 
 # Read a list variable from sources.bzl, the single source of truth for the
 # _core C++ source files shared with the internal Buck build. The .bzl file is
@@ -32,10 +185,16 @@ endfunction()
 
 read_sources_from_bzl(TORCHCODEC_DECODER_CORE_SOURCES decoder_core_sources)
 read_sources_from_bzl(TORCHCODEC_FFMPEG_COMMON_SOURCES ffmpeg_common_sources)
+read_sources_from_bzl(TORCHCODEC_IO_SOURCES io_sources)
 read_sources_from_bzl(TORCHCODEC_DECODER_CORE_CUDA_SOURCES decoder_core_cuda_sources)
 read_sources_from_bzl(TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES file_like_context_sources)
 read_sources_from_bzl(TORCHCODEC_CUSTOM_OPS_SOURCES custom_ops_sources)
 read_sources_from_bzl(TORCHCODEC_PYBIND_OPS_SOURCES pybind_ops_sources)
+read_sources_from_bzl(TORCHCODEC_IMAGE_SOURCES image_sources)
+read_sources_from_bzl(TORCHCODEC_IMAGE_OPS_SOURCES image_ops_sources)
+read_sources_from_bzl(TORCHCODEC_GIFLIB_SOURCES giflib_sources)
+read_sources_from_bzl(TORCHCODEC_HEIC_SOURCES heic_sources)
+read_sources_from_bzl(TORCHCODEC_HEIC_OPS_SOURCES heic_ops_sources)
 
 if(DEFINED TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR AND TORCHCODEC_DISABLE_COMPILE_WARNING_AS_ERROR)
     set(TORCHCODEC_WERROR_OPTION "")
@@ -80,6 +239,14 @@ function(make_torchcodec_sublibrary
         "${TORCH_INSTALL_PREFIX}/include"
         ${Python3_INCLUDE_DIRS}
     )
+    # On Windows, the pybind ops library links the Python import library
+    # (python3XX.lib) by bare name via pybind11::module, so the Python library
+    # directory must be on the linker search path or linking fails with
+    # "LNK1104: cannot open file 'python3XX.lib'". This is a no-op on
+    # Linux/macOS, where extension modules resolve Python symbols dynamically.
+    if(WIN32)
+        target_link_directories(${library_name} PRIVATE ${Python3_LIBRARY_DIRS})
+    endif()
     # Use fmt library in header-only mode (bundled with PyTorch): the fmt
     # library is bundled with PyTorch and the headers are available in
     # TORCH_INSTALL_PREFIX/include/, which we add above. To be compatible with
@@ -157,6 +324,7 @@ function(make_torchcodec_libraries
     set(core_sources
         ${TORCHCODEC_DECODER_CORE_SOURCES}
         ${TORCHCODEC_FFMPEG_COMMON_SOURCES}
+        ${TORCHCODEC_IO_SOURCES}
     )
 
     if(ENABLE_CUDA)
@@ -199,7 +367,12 @@ function(make_torchcodec_libraries
     )
     set(custom_ops_dependencies
         ${core_library_name}
-        ${Python3_LIBRARIES}
+        pybind11::module # Links Python correctly per-platform (nothing extra on
+                         # Linux, dynamic-lookup on Mac, import lib on Windows).
+                         # Using ${Python3_LIBRARIES} instead adds a DT_NEEDED on
+                         # a shared libpython (e.g. free-threaded builds ship
+                         # libpython3.XXt.so), which auditwheel then wrongly
+                         # bundles into the wheel.
     )
     make_torchcodec_sublibrary(
         "${custom_ops_library_name}"
@@ -208,56 +381,15 @@ function(make_torchcodec_libraries
         "${custom_ops_dependencies}"
     )
 
-    # 3. Create libtorchcodec_pybind_opsN.so.
-    set(pybind_ops_library_name "libtorchcodec_pybind_ops${ffmpeg_major_version}")
-    set(pybind_ops_sources
-        ${TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES}
-        ${TORCHCODEC_PYBIND_OPS_SOURCES}
-    )
-    set(pybind_ops_dependencies
-       ${core_library_name}
-       pybind11::module # This library dependency makes sure we have the right
-                        # Python libraries included as well as all of the right
-                        # settings so that we can successfully load the shared
-                        # library as a Python module on Mac. If we instead use
-                        # ${Python3_LIBRARIES}, it works on Linux but not on
-                        # Mac.
-    )
-    make_torchcodec_sublibrary(
-        "${pybind_ops_library_name}"
-        MODULE # Note that this not SHARED; otherwise we build the wrong kind
-               # of library on Mac. On Mac, SHARED becomes .dylib and MODULE becomes
-               # a .so. We want pybind11 libraries to become .so. If this is
-               # changed to SHARED, we will be able to succesfully compile a
-               # .dylib, but we will not be able to succesfully import that as
-               # a Python module on Mac.
-        "${pybind_ops_sources}"
-        "${pybind_ops_dependencies}"
-    )
-
-    if(WIN32)
-      # On Windows, we need to set the suffix to .pyd so that Python can
-      # import the shared library as a module. Just setting the MODULE type
-      # isn't enough.
-      set_target_properties(${pybind_ops_library_name} PROPERTIES SUFFIX ".pyd")
-    endif()
-
     # pybind11 limits the visibility of symbols in the shared library to prevent
     # stray initialization of py::objects. The rest of the object code must
     # match. See:
     #   https://pybind11.readthedocs.io/en/stable/faq.html#someclass-declared-with-greater-visibility-than-the-type-of-its-field-someclass-member-wattributes
-    # We have to do this for both pybind_ops and custom_ops because they include
-    # some of the same headers.
     #
     # Note that this is Linux only. It's not necessary on Windows, and on Mac
     # hiding visibility can actually break dyanmic casts across share libraries
     # because the type infos don't get exported.
     if(LINUX)
-        target_compile_options(
-            ${pybind_ops_library_name}
-            PUBLIC
-            "-fvisibility=hidden"
-        )
         target_compile_options(
             ${custom_ops_library_name}
             PUBLIC
@@ -293,47 +425,283 @@ function(make_torchcodec_libraries
         )
     endif()
 
-    # The value we use here must match _PYBIND_OPS_MODULE_NAME in
-    # torchcodec/_internally_replaced_utils.py. If the values do not
-    # match, then we will be unable to import the C++ shared library as a
-    # Python module at runtime.
-    target_compile_definitions(
-        ${pybind_ops_library_name}
-        PRIVATE
-        PYBIND_OPS_MODULE_NAME=core_pybind_ops
-    )
-
-    if(APPLE)
-        # If we don't make sure this flag is set, we run into segfauls at import
-        # time on Mac. See:
-        # https://github.com/pybind/pybind11/issues/3907#issuecomment-1170412764
-        target_link_options(
-            ${pybind_ops_library_name}
-            PUBLIC
-            "LINKER:-undefined,dynamic_lookup"
-        )
-    endif()
-
     # Install all libraries.
     set(
         all_libraries
         ${core_library_name}
         ${custom_ops_library_name}
-        ${pybind_ops_library_name}
     )
 
-    # The install step is invoked within CMakeBuild.build_library() in
-    # setup.py and just copies the built files from the temp
-    # cmake/setuptools build folder into the CMAKE_INSTALL_PREFIX folder. We
-    # still need to manually pass "DESTINATION ..." for cmake to copy those
-    # files in CMAKE_INSTALL_PREFIX instead of CMAKE_INSTALL_PREFIX/lib.
-    install(
-        TARGETS ${all_libraries}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_PREFIX}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}  # For Windows
-    )
+    # We want the built libraries to end up in [src/]torchcodec so that the
+    # Python runtime loader can find them. This is done in two mutually exclusive
+    # ways depending on the build mode. Crucially, scikit-build-core doesn't
+    # trigger cmake's install() step on editable installs:
+    #
+    # - Editable installs (`pip install -e .`, SKBUILD_STATE=="editable"): build
+    #   the compiled libraries directly into the source package dir
+    #   (src/torchcodec).
+    # - Wheel builds and `pip install .`: install() copies the libraries into
+    #   scikit-build-core's staging dir (which becomes the wheel).
+    #  scikit-build-core manages the prefix, so we give a destination *relative* to it: "torchcodec/".
+    if(SKBUILD_STATE STREQUAL "editable")
+        # src/torchcodec, the parent of this _core dir.
+        get_filename_component(
+            TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+        set_target_properties(${all_libraries} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
+        )
+    else()
+        install(
+            TARGETS ${all_libraries}
+            LIBRARY DESTINATION torchcodec
+            RUNTIME DESTINATION torchcodec  # For Windows
+        )
+    endif()
 
 endfunction()
+
+# Create libtorchcodec_image, the shared library holding the CPU image decoders
+# (JPEG/PNG/WebP/GIF) and their custom-op registration.
+#
+# This is deliberately SEPARATE from the FFmpeg-linked core libraries and links
+# NO FFmpeg. It is loaded at runtime via its own torch.ops.load_library call (see
+# load_torchcodec_shared_libraries), which puts it in its own RTLD_LOCAL symbol
+# group. That isolation is the whole point: our bundled image codec libs
+# (libjpeg/libpng/libwebp) and the codec libs pulled in by the user's FFmpeg
+# (which also links libpng/libjpeg/... with the same sonames) then live in
+# separate scopes and cannot interpose on each other.
+function(make_torchcodec_image_library)
+    # This will expose the want_<codec> booleans and (for Windows) the avif
+    # runtime lib path
+    discover_image_codecs()
+
+    set(image_library_name "libtorchcodec_image")
+    set(image_library_sources
+        ${TORCHCODEC_IMAGE_SOURCES}
+        ${TORCHCODEC_IMAGE_OPS_SOURCES}
+        ${TORCHCODEC_IO_SOURCES}
+    )
+    if(want_gif)
+        list(APPEND image_library_sources ${TORCHCODEC_GIFLIB_SOURCES})
+    endif()
+
+    make_torchcodec_sublibrary(
+        "${image_library_name}"
+        SHARED
+        "${image_library_sources}"
+        "${TORCH_LIBRARIES}"
+    )
+
+    resolve_image_codec("${TORCHCODEC_BUILD_NVJPEG}" want_nvjpeg)
+    if(ENABLE_CUDA AND want_nvjpeg)
+        find_package(CUDAToolkit REQUIRED)
+        target_link_libraries(${image_library_name} PRIVATE CUDA::nvjpeg CUDA::cudart)
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_NVJPEG=1 USE_CUDA)
+        message(STATUS "Building torchcodec with nvJPEG GPU JPEG decoding/encoding support.")
+    elseif(ENABLE_CUDA)
+        message(STATUS "Not building torchcodec with nvJPEG support (disabled via TORCHCODEC_BUILD_NVJPEG/TORCHCODEC_BUILD_IMAGE): decode_jpeg(device='cuda') and encode_jpeg() on CUDA tensors will raise at runtime.")
+    endif()
+
+    if(want_jpeg)
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_JPEG=1)
+        target_link_libraries(${image_library_name} PRIVATE JPEG::JPEG)
+    endif()
+    if(want_png)
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_PNG=1)
+        target_link_libraries(${image_library_name} PRIVATE PNG::PNG)
+    endif()
+    if(want_webp)
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_WEBP=1)
+        # WebP::webpdemux provides the WebPAnimDecoder API used for animated
+        # webp files.
+        target_link_libraries(${image_library_name} PRIVATE WebP::webp WebP::webpdemux)
+    endif()
+    if(want_avif)
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_AVIF=1)
+        target_link_libraries(${image_library_name} PRIVATE avif)
+    endif()
+    if(want_gif)
+        target_compile_definitions(${image_library_name} PRIVATE TORCHCODEC_ENABLE_GIF=1)
+    endif()
+
+    # Hide our own (and statically linked giflib's) symbols so the only thing
+    # exported is the torch op registration. Belt-and-suspenders on top of the
+    # RTLD_LOCAL isolation.
+    if(LINUX)
+        target_compile_options(${image_library_name} PRIVATE "-fvisibility=hidden")
+    endif()
+
+    if(SKBUILD_STATE STREQUAL "editable")
+        get_filename_component(
+            TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+        set_target_properties(${image_library_name} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
+        )
+        if(WIN32 AND want_avif)
+            # Windows editable build needs the libavif DLL next to the image
+            # lib. Note that the other image codec lib don't, because they are
+            # already on the DLL search path. This is speculative and untested,
+            # we're just trying to be nice to Windows editable builds.
+            file(COPY "${avif_runtime_lib}" DESTINATION "${TORCHCODEC_PACKAGE_DIR}")
+        endif()
+    else()
+        install(
+            TARGETS ${image_library_name}
+            LIBRARY DESTINATION torchcodec
+            RUNTIME DESTINATION torchcodec  # For Windows
+        )
+    endif()
+endfunction()
+
+# Create libtorchcodec_pybind_ops, the single pybind11 module providing file-like
+# support (create_file_like_context). It links NO FFmpeg (only pybind11 + torch)
+# and is version-independent, so it's built once and shared by both the
+# FFmpeg-free image encoders and the FFmpeg encoders/decoders.
+function(make_torchcodec_pybind_library)
+    set(pybind_ops_library_name "libtorchcodec_pybind_ops")
+    set(pybind_ops_sources
+        ${TORCHCODEC_IO_SOURCES}
+        ${TORCHCODEC_FILE_LIKE_CONTEXT_SOURCES}
+        ${TORCHCODEC_PYBIND_OPS_SOURCES}
+    )
+    make_torchcodec_sublibrary(
+        "${pybind_ops_library_name}"
+        MODULE # Not SHARED. On Mac,
+               # MODULE becomes .so (importable), SHARED becomes .dylib.
+        "${pybind_ops_sources}"
+        "pybind11::module;${TORCH_LIBRARIES}"
+    )
+
+    if(WIN32)
+        set_target_properties(
+            ${pybind_ops_library_name} PROPERTIES SUFFIX ".pyd")
+    endif()
+
+    # See the matching comment in make_torchcodec_libraries: pybind11 hides
+    # symbols, and the rest of the object code must match.
+    if(LINUX)
+        target_compile_options(
+            ${pybind_ops_library_name} PUBLIC "-fvisibility=hidden")
+    endif()
+
+    # Must match _PYBIND_OPS_MODULE_NAME in _internally_replaced_utils.py.
+    target_compile_definitions(
+        ${pybind_ops_library_name}
+        PRIVATE
+        PYBIND_OPS_MODULE_NAME=core_pybind_ops)
+
+    if(APPLE)
+        target_link_options(
+            ${pybind_ops_library_name}
+            PUBLIC
+            "LINKER:-undefined,dynamic_lookup")
+    endif()
+
+    if(SKBUILD_STATE STREQUAL "editable")
+        get_filename_component(
+            TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+        set_target_properties(${pybind_ops_library_name} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
+        )
+    else()
+        install(
+            TARGETS ${pybind_ops_library_name}
+            LIBRARY DESTINATION torchcodec
+            RUNTIME DESTINATION torchcodec  # For Windows
+        )
+    endif()
+endfunction()
+
+# Create libtorchcodec_heic, a SEPARATE library holding just the HEIC decoder.
+#
+# HEIC links libheif (+ its HEVC decoder libde265), which are LGPL and therefore
+# NOT bundled in our wheels: we treat libheif like FFmpeg, an optional
+# user-supplied runtime dependency, and most of torchcodec should just work
+# without libheif - we should only fail at runtime if it can't be found *and* if
+# it's needed.
+function(make_torchcodec_heic_library)
+    set(heic_library_name "libtorchcodec_heic")
+    set(heic_library_sources
+        ${TORCHCODEC_HEIC_SOURCES}
+        ${TORCHCODEC_HEIC_OPS_SOURCES}
+    )
+
+    make_torchcodec_sublibrary(
+        "${heic_library_name}"
+        SHARED
+        "${heic_library_sources}"
+        "${TORCH_LIBRARIES}"
+    )
+
+    resolve_image_codec("${TORCHCODEC_BUILD_HEIC}" want_heic)
+    if(want_heic)
+        # conda-forge's libheif ships a CMake package config (libheif-config.cmake)
+        # exposing the `heif` imported target. Fall back to pkg-config otherwise.
+        if(NOT DEFINED libheif_ROOT AND DEFINED ENV{CONDA_PREFIX})
+            if(WIN32)
+                set(libheif_ROOT "$ENV{CONDA_PREFIX}/Library")
+            else()
+                set(libheif_ROOT "$ENV{CONDA_PREFIX}")
+            endif()
+        endif()
+        set(heic_found FALSE)
+        find_package(libheif CONFIG QUIET)
+        if(libheif_FOUND)
+            set(heic_found TRUE)
+            target_link_libraries(${heic_library_name} PRIVATE heif)
+        else()
+            find_package(PkgConfig QUIET)
+            if(PkgConfig_FOUND)
+                pkg_check_modules(HEIF QUIET IMPORTED_TARGET libheif)
+                if(HEIF_FOUND)
+                    set(heic_found TRUE)
+                    target_link_libraries(${heic_library_name} PRIVATE PkgConfig::HEIF)
+                endif()
+            endif()
+        endif()
+
+        if(heic_found)
+            target_compile_definitions(${heic_library_name} PRIVATE TORCHCODEC_ENABLE_HEIC=1)
+            message(STATUS "libheif found: building torchcodec with HEIC image decoding support.")
+        else()
+            message(FATAL_ERROR
+                "libheif not found, but HEIC image decoding is enabled. Install "
+                "libheif and its development headers (e.g. `conda install -c "
+                "conda-forge libheif`), or set TORCHCODEC_BUILD_HEIC=0 to build "
+                "without HEIC support (decode_heic will raise at runtime), or "
+                "TORCHCODEC_BUILD_IMAGE=0 to disable all image decoders.")
+        endif()
+    else()
+        message(STATUS "Not building torchcodec with HEIC image decoding support (disabled via TORCHCODEC_BUILD_HEIC/TORCHCODEC_BUILD_IMAGE): decode_heic will raise at runtime.")
+    endif()
+
+    # Hide everything except the torch op registration, like the image library.
+    if(LINUX)
+        target_compile_options(${heic_library_name} PRIVATE "-fvisibility=hidden")
+    endif()
+
+    if(SKBUILD_STATE STREQUAL "editable")
+        get_filename_component(
+            TORCHCODEC_PACKAGE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+        set_target_properties(${heic_library_name} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"
+            RUNTIME_OUTPUT_DIRECTORY "${TORCHCODEC_PACKAGE_DIR}"  # Windows
+        )
+    else()
+        install(
+            TARGETS ${heic_library_name}
+            LIBRARY DESTINATION torchcodec
+            RUNTIME DESTINATION torchcodec  # For Windows
+        )
+    endif()
+endfunction()
+
+make_torchcodec_image_library()
+make_torchcodec_pybind_library()
+make_torchcodec_heic_library()
 
 if(DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3})
     message(

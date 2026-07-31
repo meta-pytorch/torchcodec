@@ -6,8 +6,6 @@
 
 #pragma once
 
-#include "FFMPEGCommon.h"
-#include "Metadata.h"
 #include "StableABICompat.h"
 #include "StreamOptions.h"
 

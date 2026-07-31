@@ -1,3 +1,4 @@
+import functools
 import importlib
 import json
 import os
@@ -11,10 +12,17 @@ from dataclasses import dataclass, field
 import numpy as np
 import pytest
 import torch
-
 from torchcodec import ffmpeg_major_version
 from torchcodec._core import get_ffmpeg_library_versions
-from torchcodec.decoders import set_cuda_backend, VideoDecoder
+from torchcodec.decoders import (
+    decode_avif,
+    decode_heic,
+    decode_jpeg,
+    decode_png,
+    decode_webp,
+    set_cuda_backend,
+    VideoDecoder,
+)
 from torchcodec.decoders._video_decoder import _read_custom_frame_mappings
 
 IS_WINDOWS = sys.platform in ("win32", "cygwin")
@@ -52,6 +60,38 @@ def needs_cuda(test_item):
 # conftest.py
 def needs_ffmpeg_cli(test_item):
     return pytest.mark.needs_ffmpeg_cli(test_item)
+
+
+# Decorator for skipping tests that need libjpeg (torchcodec may be built without
+# it). Handled in pytest_collection_modifyitems() of conftest.py.
+def needs_jpeg(test_item):
+    return pytest.mark.needs_jpeg(test_item)
+
+
+# Decorator for skipping tests that need libpng (torchcodec may be built without
+# it). Handled in pytest_collection_modifyitems() of conftest.py.
+def needs_png(test_item):
+    return pytest.mark.needs_png(test_item)
+
+
+# Decorator for skipping tests that need libwebp (torchcodec may be built
+# without it). Handled in pytest_collection_modifyitems() of conftest.py.
+def needs_webp(test_item):
+    return pytest.mark.needs_webp(test_item)
+
+
+# Decorator for skipping tests that need libavif (torchcodec may be built
+# without it). Handled in pytest_collection_modifyitems() of conftest.py.
+def needs_avif(test_item):
+    return pytest.mark.needs_avif(test_item)
+
+
+# Decorator for skipping tests that need libheif. Unlike the other image libs,
+# libheif is never bundled: it's an optional user-supplied runtime dependency,
+# so it may simply be absent. Handled in pytest_collection_modifyitems() of
+# conftest.py.
+def needs_heic(test_item):
+    return pytest.mark.needs_heic(test_item)
 
 
 # This is a special device string that we use to test the legacy "ffmpeg" CUDA
@@ -216,6 +256,347 @@ def _get_file_path(filename: str) -> pathlib.Path:
             return path
     else:
         return pathlib.Path(__file__).parent / "resources" / filename
+
+
+@dataclass
+class TestImage:
+    __test__ = False  # prevents pytest from thinking this is a test class
+
+    filename: str
+    width: int
+    height: int
+    num_channels: int
+
+    @property
+    def path(self) -> pathlib.Path:
+        return _get_file_path(self.filename)
+
+
+# 720p RGB gradient JPEG. Generated with:
+# h, w = 720, 1280
+# r = np.linspace(0, 255, w, dtype=np.uint8)[None, :].repeat(h, 0)
+# g = np.linspace(0, 255, h, dtype=np.uint8)[:, None].repeat(w, 1)
+# b = ((r.astype(int) + g.astype(int)) // 2).astype(np.uint8)
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save("gradient.jpg", quality=90)
+GRADIENT_JPEG = TestImage(
+    filename="gradient.jpg", width=1280, height=720, num_channels=3
+)
+
+# 720p grayscale gradient JPEG. Generated with:
+# h, w = 720, 1280
+# r = np.linspace(0, 255, w, dtype=np.uint8)[None, :].repeat(h, 0)
+# g = np.linspace(0, 255, h, dtype=np.uint8)[:, None].repeat(w, 1)
+# gray = ((r.astype(int) + g.astype(int)) // 2).astype(np.uint8)
+# Image.fromarray(gray, mode="L").save("grayscale.jpg", quality=90)
+GRAYSCALE_JPEG = TestImage(
+    filename="grayscale.jpg", width=1280, height=720, num_channels=1
+)
+
+# 720p CMYK JPEG, same gradient as GRADIENT_JPEG but stored as CMYK. Generated
+# with the GRADIENT_JPEG recipe above, then:
+# Image.fromarray(rgb).convert("CMYK").save("cmyk.jpg", quality=90)
+CMYK_JPEG = TestImage(filename="cmyk.jpg", width=1280, height=720, num_channels=4)
+
+# JPEG with a bad Huffman table (damaged but still decodable). Taken from
+# torchvision's test assets (test/assets/damaged_jpeg/bad_huffman.jpg).
+BAD_HUFFMAN_JPEG = TestImage(
+    filename="bad_huffman.jpg", width=1024, height=768, num_channels=3
+)
+
+# Malformed images ported from torchvision's fuzzer-derived test assets. They
+# are never decoded successfully - they only exist to check that the decoders
+# raise cleanly instead of crashing, so only their `.path` matters (the
+# width/height/num_channels are the nominal header values, or 0 when the header
+# itself is unreadable).
+#
+# CORRUPT_JPEG has a valid header but a corrupt entropy stream, which trips an
+# "Unsupported marker type" error late in the decode (during
+# jpeg_finish_decompress).
+CORRUPT_JPEG = TestImage(filename="corrupt.jpg", width=120, height=90, num_channels=3)
+# PNG crashers found by fuzzing libpng (out-of-bound reads).
+SIGSEGV_PNG = TestImage(filename="sigsegv.png", width=0, height=0, num_channels=0)
+HEAPBOF_PNG = TestImage(filename="heapbof.png", width=0, height=0, num_channels=0)
+
+# Adam7-interlaced version of a small RGB gradient. It exercises the decoder's
+# multi-pass interlace-handling path (png_set_interlace_handling), which no other
+# asset covers. PIL can't write interlaced PNGs, so this was authored once with
+# ImageMagick: `magick gradient.png -interlace PNG gradient_interlaced.png`.
+GRADIENT_INTERLACED_PNG = TestImage(
+    filename="gradient_interlaced.png", width=64, height=48, num_channels=3
+)
+
+
+@functools.cache
+def jpeg_is_available() -> bool:
+    try:
+        decode_jpeg(GRADIENT_JPEG.path)
+    except RuntimeError as e:
+        if "libjpeg" in str(e):
+            return False
+        raise
+    return True
+
+
+# 720p RGB gradient PNG, same gradient as GRADIENT_JPEG. Generated with:
+# h, w = 720, 1280
+# r = np.linspace(0, 255, w, dtype=np.uint8)[None, :].repeat(h, 0)
+# g = np.linspace(0, 255, h, dtype=np.uint8)[:, None].repeat(w, 1)
+# b = ((r.astype(int) + g.astype(int)) // 2).astype(np.uint8)
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save("gradient.png")
+GRADIENT_PNG = TestImage(
+    filename="gradient.png", width=1280, height=720, num_channels=3
+)
+
+# 720p grayscale gradient PNG. Generated with the GRADIENT_PNG recipe above, then:
+# gray = ((r.astype(int) + g.astype(int)) // 2).astype(np.uint8)
+# Image.fromarray(gray, mode="L").save("grayscale.png")
+GRAYSCALE_PNG = TestImage(
+    filename="grayscale.png", width=1280, height=720, num_channels=1
+)
+
+# 720p RGBA PNG: same gradient as GRADIENT_PNG with a diagonal alpha ramp.
+# Generated with the GRADIENT_PNG recipe above, then:
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# rgba = np.concatenate([np.stack([r, g, b], axis=-1), a[..., None]], axis=-1)
+# Image.fromarray(rgba, mode="RGBA").save("rgba.png")
+RGBA_PNG = TestImage(filename="rgba.png", width=1280, height=720, num_channels=4)
+
+# 720p grayscale-alpha (LA) PNG: grayscale gradient with the same diagonal alpha
+# ramp as RGBA_PNG. Generated with the GRADIENT_PNG recipe above, then:
+# gray = ((r.astype(int) + g.astype(int)) // 2).astype(np.uint8)
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# la = np.stack([gray, a], axis=-1)
+# Image.fromarray(la, mode="LA").save("grayscale_alpha.png")
+GRAYSCALE_ALPHA_PNG = TestImage(
+    filename="grayscale_alpha.png", width=1280, height=720, num_channels=2
+)
+
+# 48x64 16-bit grayscale PNG (a full-range gradient, so the low byte carries real
+# information). Exercises the decoder's 16-bit path. Generated with:
+# h, w = 48, 64
+# gray = np.linspace(0, 65535, h * w).reshape(h, w).astype(np.uint16)
+# Image.fromarray(gray).save("grayscale_16bit.png")  # PIL infers the I;16 mode
+GRAYSCALE_16BIT_PNG = TestImage(
+    filename="grayscale_16bit.png", width=64, height=48, num_channels=1
+)
+
+# 48x64 16-bit RGB PNG with smooth full-range per-channel gradients. PIL can't
+# write 16-bit RGB, so it's authored with ffmpeg from raw rgb48 samples:
+# h, w = 48, 64
+# r = np.linspace(0, 65535, w, dtype=np.uint16)[None].repeat(h, 0)
+# g = np.linspace(0, 65535, h, dtype=np.uint16)[:, None].repeat(w, 1)
+# b = np.linspace(65535, 0, w, dtype=np.uint16)[None].repeat(h, 0)
+# np.stack([r, g, b], -1).astype("<u2").tofile("rgb48.bin")
+# ffmpeg -f rawvideo -pixel_format rgb48le -video_size 64x48 -i rgb48.bin \
+#     -frames:v 1 -pix_fmt rgb48be gradient_16bit.png
+GRADIENT_16BIT_PNG = TestImage(
+    filename="gradient_16bit.png", width=64, height=48, num_channels=3
+)
+
+
+@functools.cache
+def png_is_available() -> bool:
+    try:
+        decode_png(GRADIENT_PNG.path)
+    except RuntimeError as e:
+        if "libpng" in str(e):
+            return False
+        raise
+    return True
+
+
+# 720p RGB gradient WebP (lossless), same gradient as GRADIENT_JPEG. Generated
+# with the GRADIENT_JPEG recipe above, then:
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save(
+#     "gradient.webp", "WEBP", lossless=True)
+GRADIENT_WEBP = TestImage(
+    filename="gradient.webp", width=1280, height=720, num_channels=3
+)
+
+# 720p RGBA WebP (lossless): same gradient as GRADIENT_WEBP with the diagonal
+# alpha ramp of RGBA_PNG. Generated with the GRADIENT_PNG recipe above, then:
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# rgba = np.concatenate([np.stack([r, g, b], axis=-1), a[..., None]], axis=-1)
+# Image.fromarray(rgba, mode="RGBA").save("rgba.webp", "WEBP", lossless=True)
+RGBA_WEBP = TestImage(filename="rgba.webp", width=1280, height=720, num_channels=4)
+
+
+@functools.cache
+def webp_is_available() -> bool:
+    try:
+        decode_webp(GRADIENT_WEBP.path)
+    except RuntimeError as e:
+        if "libwebp" in str(e):
+            return False
+        raise
+    return True
+
+
+# 720p RGB gradient AVIF (lossy, libavif defaults), same gradient as
+# GRADIENT_JPEG. Generated with the GRADIENT_JPEG recipe above, then:
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save("gradient.avif")
+GRADIENT_AVIF = TestImage(
+    filename="gradient.avif", width=1280, height=720, num_channels=3
+)
+
+# 720p RGBA AVIF (lossy): same gradient as GRADIENT_AVIF with the diagonal alpha
+# ramp of RGBA_PNG. Generated with the GRADIENT_PNG recipe above, then:
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# rgba = np.concatenate([np.stack([r, g, b], axis=-1), a[..., None]], axis=-1)
+# Image.fromarray(rgba, mode="RGBA").save("rgba.avif")
+RGBA_AVIF = TestImage(filename="rgba.avif", width=1280, height=720, num_channels=4)
+
+# 48x64 10- and 12-bit AVIFs (genuine >8-bit sources). PIL only writes 8-bit
+# AVIF, so they're authored with ffmpeg from an 8-bit RGB gradient. Generated
+# with:
+# h, w = 48, 64
+# r = np.linspace(0, 255, w)[None].repeat(h, 0)
+# g = np.linspace(0, 255, h)[:, None].repeat(w, 1)
+# b = np.linspace(255, 0, w)[None].repeat(h, 0)
+# Image.fromarray(np.stack([r, g, b], -1).astype(np.uint8), "RGB").save("src.png")
+# ffmpeg -i src.png -c:v libaom-av1 -pix_fmt yuv444p10le -still-picture 1 \
+#     gradient_10bit.avif    # (yuv444p12le for the 12-bit one)
+GRADIENT_10BIT_AVIF = TestImage(
+    filename="gradient_10bit.avif", width=64, height=48, num_channels=3
+)
+GRADIENT_12BIT_AVIF = TestImage(
+    filename="gradient_12bit.avif", width=64, height=48, num_channels=3
+)
+
+
+@functools.cache
+def avif_is_available() -> bool:
+    try:
+        decode_avif(GRADIENT_AVIF.path)
+    except RuntimeError as e:
+        if "libavif" in str(e):
+            return False
+        raise
+    return True
+
+
+# 720p RGB gradient HEIC, the SAME gradient as GRADIENT_PNG, saved losslessly
+# (4:4:4, no chroma subsampling) so decode is exact up to rounding. Generated
+# with the GRADIENT_PNG recipe above, then (needs pillow-heif):
+# import pillow_heif; pillow_heif.register_heif_opener()
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save(
+#     "gradient.heic", quality=-1, chroma=444)
+GRADIENT_HEIC = TestImage(
+    filename="gradient.heic", width=1280, height=720, num_channels=3
+)
+
+# GRADIENT_HEIC saved with orientation metadata (stored by pillow-heif as the
+# HEIF irot/imir transform properties, which libheif applies on decode). Used to
+# check we respect orientation. width/height are the DECODED (post-orientation)
+# dimensions. Generated with the GRADIENT_PNG recipe above, then (needs
+# pillow-heif):
+# import pillow_heif; pillow_heif.register_heif_opener()
+# for orientation, fname in ((6, "gradient_rotated.heic"),
+#                            (2, "gradient_mirrored.heic")):
+#     img = Image.fromarray(np.stack([r, g, b], axis=-1))
+#     exif = img.getexif(); exif[0x0112] = orientation  # EXIF orientation tag
+#     img.save(fname, exif=exif.tobytes(), quality=-1, chroma=444)
+# 6 is a 90-degree rotation (exercises irot); 2 is a horizontal mirror (imir).
+GRADIENT_ROTATED_HEIC = TestImage(
+    filename="gradient_rotated.heic", width=720, height=1280, num_channels=3
+)
+GRADIENT_MIRRORED_HEIC = TestImage(
+    filename="gradient_mirrored.heic", width=1280, height=720, num_channels=3
+)
+
+# 720p RGBA HEIC (lossless 4:4:4): same gradient as GRADIENT_HEIC with the
+# diagonal alpha ramp of RGBA_PNG. Generated with the GRADIENT_PNG recipe, then:
+# a = ((r.astype(int) + (255 - g.astype(int))) // 2).astype(np.uint8)
+# rgba = np.concatenate([np.stack([r, g, b], axis=-1), a[..., None]], axis=-1)
+# Image.fromarray(rgba, mode="RGBA").save("rgba.heic", quality=-1, chroma=444)
+RGBA_HEIC = TestImage(filename="rgba.heic", width=1280, height=720, num_channels=4)
+
+# 48x64 genuine 10-bit HEIC (a real >8-bit source). PIL only writes 8-bit HEIC,
+# so it's authored from raw 10-bit samples via pillow-heif's low-level API:
+# h, w = 48, 64
+# r = np.linspace(0, 1023, w)[None].repeat(h, 0)
+# g = np.linspace(0, 1023, h)[:, None].repeat(w, 1)
+# b = np.linspace(1023, 0, w)[None].repeat(h, 0)
+# data = (np.stack([r, g, b], -1).astype(np.uint16) << 6).astype("<u2").tobytes()
+# heif = pillow_heif.from_bytes(mode="RGB;16", size=(w, h), data=data)
+# heif.save("gradient_10bit.heic", quality=-1, chroma=444)
+GRADIENT_10BIT_HEIC = TestImage(
+    filename="gradient_10bit.heic", width=64, height=48, num_channels=3
+)
+
+
+# Small 3-frame HEIC image sequence with full-canvas solid-color frames, saved
+# losslessly (4:4:4) so the solid colors survive the YUV round-trip. Each frame
+# is a distinct color so frame ordering is verifiable. Used to test the
+# (N, C, H, W) multi-image output. Generated (needs pillow-heif):
+# import pillow_heif; pillow_heif.register_heif_opener()
+# colors = [(200, 30, 30), (30, 200, 30), (30, 30, 200)]
+# frames = [Image.fromarray(np.full((48, 64, 3), c, np.uint8)) for c in colors]
+# frames[0].save("animated.heic", save_all=True, append_images=frames[1:],
+#                quality=-1, chroma=444)
+ANIMATED_HEIC = TestImage(filename="animated.heic", width=64, height=48, num_channels=3)
+
+
+@functools.cache
+def heic_is_available() -> bool:
+    # "Available" means we can actually DECODE a HEIC here. We probe with a real
+    # decode (not just a library load): a libheif can load fine yet fail to
+    # decode with "Unsupported codec" when it lacks an HEVC decoder (libde265).
+    # This must never raise -- it's called from conftest's collection hook, so
+    # any exception would abort the whole session -- and every failure mode
+    # (missing libheif, stub build, missing codec) just means "skip".
+    try:
+        decode_heic(GRADIENT_HEIC.path)
+    except Exception as e:
+        print(f"heic_is_available() -> False: {type(e).__name__}: {e}")
+        return False
+    return True
+
+
+# 720p RGB gradient GIF, same gradient as GRADIENT_JPEG.
+# Generated with the GRADIENT_JPEG recipe above, then:
+# Image.fromarray(np.stack([r, g, b], axis=-1)).save("gradient.gif")
+GRADIENT_GIF = TestImage(
+    filename="gradient.gif", width=1280, height=720, num_channels=3
+)
+
+# Small 4-frame animated GIF with full-canvas opaque frames (no partial frames
+# or transparency, so giflib and PIL composite identically). Used to test the
+# (N, C, H, W) animated output. Generated with:
+# ah, aw = 48, 64
+# frames = []
+# for i in range(4):
+#     fr = np.zeros((ah, aw, 3), dtype=np.uint8)
+#     fr[..., i % 3] = 40 + 60 * i
+#     fr[:, i * 12 : i * 12 + 12, :] = 255
+#     frames.append(Image.fromarray(fr).convert("P", palette=Image.ADAPTIVE))
+# frames[0].save("animated.gif", save_all=True, append_images=frames[1:],
+#                duration=100, loop=0, disposal=1)
+ANIMATED_GIF = TestImage(filename="animated.gif", width=64, height=48, num_channels=3)
+
+# Palette GIF with a transparent index over a (non-zero) red background, so it
+# exercises the RGBA transparency path and the "welcome2" background-vs-
+# transparency case. num_channels=4: UNCHANGED decodes it to RGBA. Generated
+# with:
+# palette = [255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255]  # 0=red(bg), ...
+# idx = np.full((48, 64), 2, np.uint8)  # index 2 will be transparent
+# idx[8:40, 8:32] = 1; idx[20:28, 40:56] = 3  # opaque green + white rectangles
+# im = Image.fromarray(idx, "P"); im.putpalette(palette)
+# im.save("transparent.gif", transparency=2)
+TRANSPARENT_GIF = TestImage(
+    filename="transparent.gif", width=64, height=48, num_channels=4
+)
+
+# Hand-crafted GIF whose logical screen is 4x4 but whose single first frame is
+# 8x8 (larger than the screen), so the output is sized to the frame (8x8). The
+# out-of-screen border is transparent, which regression-tests that those pixels
+# are initialized (transparent) rather than left as uninitialized memory.
+# Palette 0=red(bg), 1=green, 2=blue(transparent), 3=white; the top-left 4x4 is
+# opaque green and the rest is the transparent index. See git history for the
+# raw GIF89a builder used to author it (PIL can't emit a frame > logical screen).
+FRAME_EXCEEDS_SCREEN_GIF = TestImage(
+    filename="frame_exceeds_screen.gif", width=8, height=8, num_channels=4
+)
 
 
 @dataclass

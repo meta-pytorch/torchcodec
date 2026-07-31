@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "AVIOContextHolder.h"
+#include "IOInterface.h"
 #include "StableABICompat.h"
 
 namespace facebook::torchcodec {
@@ -21,11 +21,11 @@ struct TensorContext {
 
 } // namespace detail
 
-// For Decoding: enables users to pass in the entire video or audio as bytes.
-// Our read and seek functions then traverse the bytes in memory.
-class FORCE_PUBLIC_VISIBILITY AVIOFromTensorContext : public AVIOContextHolder {
+// For decoding: reads/seeks over an entire video or audio passed in as a bytes
+// tensor. FFmpeg-free.
+class FORCE_PUBLIC_VISIBILITY TensorReadIO : public IOInterface {
  public:
-  explicit AVIOFromTensorContext(torch::stable::Tensor data);
+  explicit TensorReadIO(torch::stable::Tensor data);
 
   int read(uint8_t* buf, int size) override;
   int64_t seek(int64_t offset, int whence) override;
@@ -35,10 +35,11 @@ class FORCE_PUBLIC_VISIBILITY AVIOFromTensorContext : public AVIOContextHolder {
   detail::TensorContext tensor_context_;
 };
 
-// For Encoding: used to encode into an output uint8 (bytes) tensor.
-class FORCE_PUBLIC_VISIBILITY AVIOToTensorContext : public AVIOContextHolder {
+// For encoding: writes into a growable output uint8 (bytes) tensor.
+// FFmpeg-free.
+class FORCE_PUBLIC_VISIBILITY TensorWriteIO : public IOInterface {
  public:
-  explicit AVIOToTensorContext();
+  explicit TensorWriteIO();
   torch::stable::Tensor get_output_tensor();
 
   int write(const uint8_t* buf, int size) override;

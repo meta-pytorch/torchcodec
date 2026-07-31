@@ -4,8 +4,9 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-#include "src/torchcodec/_core/AVIOTensorContext.h"
+#include "src/torchcodec/_core/AVIOContextHolder.h"
 #include "src/torchcodec/_core/SingleStreamDecoder.h"
+#include "src/torchcodec/_core/TensorIO.h"
 
 #include <c10/util/Flags.h>
 #include <gtest/gtest.h>
@@ -71,8 +72,9 @@ class SingleStreamDecoderTest : public testing::TestWithParam<bool> {
       torch::Tensor tensor = torch::from_blob(
           static_cast<void*>(data), {length}, deleter, {torch::kUInt8});
 
-      auto context_holder =
-          std::make_unique<AVIOFromTensorContext>(to_stable_tensor(tensor));
+      auto context_holder = std::make_unique<AVIOContextHolder>(
+          std::make_unique<TensorReadIO>(to_stable_tensor(tensor)),
+          /*is_for_writing=*/false);
       return std::make_unique<SingleStreamDecoder>(
           std::move(context_holder), SeekMode::approximate);
     } else {
