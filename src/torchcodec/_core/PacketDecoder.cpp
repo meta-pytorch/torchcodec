@@ -71,6 +71,21 @@ PacketDecoder::PacketDecoder(
   codec_context_ = create_and_open_codec_context(
       stream, av_codec, device_interface_.get(), ffmpeg_thread_count);
   device_interface_->initialize(codec_context_);
+
+  VideoStreamOptions options;
+  options.output_dtype = OutputDtype::UINT8; // dtype not exposed yet
+  options.device = device;
+
+  // TODO_API_BREAKDOWN: This isn't right, it's needed only for the NVDEC
+  // interface. This should probably be initialize_video_only - there's a
+  // sibling TODO in the ColorConverter code (about color-conversion only.)
+  std::vector<std::unique_ptr<Transform>> no_transforms;
+  device_interface_->initialize_video(
+      stream,
+      demuxer.format_context(),
+      options,
+      no_transforms,
+      /*resized_output_dims=*/std::nullopt);
 }
 
 int PacketDecoder::send_packet(AVPacket* packet) {
@@ -90,7 +105,11 @@ int PacketDecoder::send_eof() {
 }
 
 int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
-  return device_interface_->receive_frame(av_frame);
+  int status = device_interface_->receive_frame(av_frame);
+  if (status == AVSUCCESS) {
+    device_interface_->make_frame_standalone(av_frame);
+  }
+  return status;
 }
 
 } // namespace facebook::torchcodec

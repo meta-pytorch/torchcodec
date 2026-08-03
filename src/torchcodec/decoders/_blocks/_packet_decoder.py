@@ -31,8 +31,11 @@ class PacketDecoder:
     on your own threads.
     """
 
-    def __init__(self, demuxer: Demuxer):
-        self._handle = _blocks_create_packet_decoder(demuxer._handle, num_threads=1)
+    # TODO_API_BREAKDOWN: device default should be None
+    def __init__(self, demuxer: Demuxer, device="cpu"):
+        self._handle = _blocks_create_packet_decoder(
+            demuxer._handle, num_threads=1, device=device
+        )
 
     def _drain(self) -> list[DecodedFrame]:
         frames = []

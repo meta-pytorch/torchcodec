@@ -30,8 +30,12 @@ class ColorConverter:
     block is intentionally stream-agnostic.
     """
 
-    def __init__(self):
-        self._handle = _blocks_create_color_converter()
+    # TODO_API_BREAKDOWN: device default should be None
+    # TODO_API_BREAKDOWN: add checks for coupling between device param of
+    # PacketDecoder and ColorConverter. What if one is CPU and the other is
+    # CUDA? What if they're different CUDA devices? Maybe we should just error.
+    def __init__(self, device="cpu"):
+        self._handle = _blocks_create_color_converter(device=device)
 
     def convert(self, decoded_frame: DecodedFrame) -> Frame:
         data = _blocks_convert_frame(self._handle, decoded_frame._handle)

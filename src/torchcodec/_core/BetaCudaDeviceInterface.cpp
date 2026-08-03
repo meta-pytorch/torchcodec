@@ -289,6 +289,10 @@ void BetaCudaDeviceInterface::initialize_video(
     const VideoStreamOptions& video_stream_options,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resized_output_dims) {
+  // TODO_API_BREAKDOWN ewwwww
+  if (!av_stream){
+    return;
+  }
   STD_TORCH_CHECK(av_stream != nullptr, "AVStream cannot be null");
   rotation_ = rotation_from_degrees(get_rotation_from_stream(av_stream));
   output_dtype_ = video_stream_options.output_dtype;
@@ -585,6 +589,7 @@ int BetaCudaDeviceInterface::send_eof_packet() {
 int BetaCudaDeviceInterface::send_cuvid_packet(
     CUVIDSOURCEDATAPACKET& cuvid_packet) {
   CUresult result = cuvidParseVideoData(video_parser_, &cuvid_packet);
+  printf("cuvidParseVideoData returned %d\n", result);
   return result == CUDA_SUCCESS ? AVSUCCESS : AVERROR_EXTERNAL;
 }
 
@@ -794,12 +799,75 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
       reinterpret_cast<uint8_t*>(frame_ptr + (pitch * even_height));
   av_frame->data[2] = nullptr;
   av_frame->data[3] = nullptr;
-  av_frame->linesize[0] = pitch;
-  av_frame->linesize[1] = pitch;
+  // TODO_API_BREAKDOWN_CUDA: Check range before cast?
+  av_frame->linesize[0] = static_cast<int>(pitch);
+  av_frame->linesize[1] = static_cast<int>(pitch);
   av_frame->linesize[2] = 0;
   av_frame->linesize[3] = 0;
 
   return av_frame;
+}
+
+void nvdec_info_free_callback(
+    [[maybe_unused]] void* opaque,
+    [[maybe_unused]] uint8_t* data) {
+  printf("Freeing standalone frame attached data\n");
+  fflush(stdout);
+  // delete reinterpret_cast<StandAloneFrameAttachedData*>(data);
+}
+
+void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
+  // TODO_API_BREAKDOWN_CUDA: stongly assumes NVDEC frame, we might want to
+  // account for CPU fallback frames as well
+
+  // Roughly, the number of bytes an NV12 image takes is:
+  // num_bytes =  len(Y) + len(UV)
+  //           = num_pixels + num_pixels / 2
+  //           = num_pixels * 3 / 2
+  //
+  // To make it correct, we should use num_pixels = pitch * height, not
+  // num_pixels = pitch * height. The pitch value also accounts for the data
+  // size (uint8 vs uint16) so this is also correct for P016.
+  int64_t even_height =
+      static_cast<int64_t>(round_up_to_even(av_frame->height));
+  int64_t pitch = static_cast<int64_t>(av_frame->linesize[0]);
+  int64_t num_bytes = pitch * even_height * 3 / 2;
+
+  // TODO_API_BREAKDOWN_CUDA: How the hell do we know that the underlying
+  // storage isn't freed at the end of this scope??
+  auto storage =
+      torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
+
+  // TODO_API_BREAKDOWN_CUDA: Sync with the nvdec stream before copying?
+  cudaStream_t stream = get_current_cuda_stream(device_.index());
+  cudaError_t err = cudaMemcpyAsync(
+      storage.mutable_data_ptr(),
+      av_frame->data[0],
+      static_cast<size_t>(num_bytes),
+      cudaMemcpyDeviceToDevice,
+      stream);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy NVDEC surface: ",
+      cudaGetErrorString(err));
+
+  // TODO_API_BREAKDOWN_CUDA: Should we unmap here? Or let the next
+  // receive_frame() call do it?
+  // unmap_previous_frame();
+
+  auto y_plane = static_cast<uint8_t*>(storage.mutable_data_ptr());
+  av_frame->data[0] = y_plane;
+  av_frame->data[1] = y_plane + (pitch * even_height);
+  printf("Returning copied frame\n");
+  fflush(stdout);
+
+  auto attached_data = new StandAloneFrameAttachedData();
+  // TODO_API_BREAKDOWN_CUDA: We don't *really* need to std::move it I guess?
+  attached_data->storage = std::move(storage);
+
+  // av_frame->opaque_ref = av_buffer_create(reinterpret_cast<uint8_t*>(attached_data), sizeof(StandAloneFrameAttachedData), nvdec_info_free_callback, nullptr, 0);
+  // Intentionally leak storage, just todebug.
+  av_frame->opaque_ref = av_buffer_create(reinterpret_cast<uint8_t*>(attached_data), sizeof(StandAloneFrameAttachedData), nullptr, nullptr, 0);
 }
 
 void BetaCudaDeviceInterface::flush() {
@@ -810,10 +878,10 @@ void BetaCudaDeviceInterface::flush() {
 
   // The NVCUVID docs mention that after seeking, i.e. when flush() is called,
   // we should send a packet with the CUVID_PKT_DISCONTINUITY flag. The docs
-  // don't say whether this should be an empty packet, or whether it should be a
-  // flag on the next non-empty packet. It doesn't matter: neither work :)
-  // Sending an EOF packet, however, does work. So we do that. And we re-set the
-  // eofSent_ flag to false because that's not a true EOF notification.
+  // don't say whether this should be an empty packet, or whether it should be
+  // a flag on the next non-empty packet. It doesn't matter: neither work :)
+  // Sending an EOF packet, however, does work. So we do that. And we re-set
+  // the eofSent_ flag to false because that's not a true EOF notification.
   send_eof_packet();
   eof_sent_ = false;
 
@@ -826,17 +894,17 @@ void BetaCudaDeviceInterface::flush() {
 UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
     UniqueAVFrame& cpu_frame,
     AVPixelFormat target_pix_fmt) {
-  // This is called in the context of the CPU fallback: the frame was decoded on
-  // the CPU, and in this function we convert that frame into NV12 or P016
+  // This is called in the context of the CPU fallback: the frame was decoded
+  // on the CPU, and in this function we convert that frame into NV12 or P016
   // format and send it to the GPU.
   // We do that in 2 steps:
   // - First we convert the input CPU frame into an intermediate NV12/P016 CPU
   //   frame using sws_scale.
   // - Then we allocate GPU memory and copy the CPU frame to the GPU. This
   //   is what we return.
-  // Since NV12/P016 require even dimensions, the returned frame will have even
-  // (rounded up) width and height, even if the original CPU frame had odd
-  // dimensions.
+  // Since NV12/P016 require even dimensions, the returned frame will have
+  // even (rounded up) width and height, even if the original CPU frame had
+  // odd dimensions.
 
   STD_TORCH_CHECK(cpu_frame != nullptr, "CPU frame cannot be null");
   // NV12 = 1 byte per sample, P016 = 2 bytes per sample
@@ -950,9 +1018,9 @@ UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
       "Failed to copy frame properties: ",
       get_ffmpeg_error_string_from_error_code(ret));
 
-  // We need to make sure the CUDA memory is freed properly. Since we allocated
-  // it ourselves, FFmpeg doesn't know how to free it. We associate a `free`
-  // callback via opaque_ref that will be called by av_frame_free().
+  // We need to make sure the CUDA memory is freed properly. Since we
+  // allocated it ourselves, FFmpeg doesn't know how to free it. We associate
+  // a `free` callback via opaque_ref that will be called by av_frame_free().
   gpu_frame->opaque_ref = av_buffer_create(
       nullptr, // data - we don't need any
       0, // data size
@@ -971,6 +1039,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   if (cpu_fallback_) {
+        
     // When the CPU fallback happens, we'll try to run the color-conversion on
     // GPU by sending those CPU frames to the GPU as NV12 or P016 (See
     // transferCpuFrameToGpu() below). However, it's not always

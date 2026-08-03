@@ -138,6 +138,9 @@ class DeviceInterface {
     return avcodec_receive_frame(codec_context_.get(), av_frame.get());
   }
 
+  virtual void make_frame_standalone([[maybe_unused]] UniqueAVFrame& av_frame) {
+  };
+
   // Flush remaining frames from decoder
   virtual void flush() {
     STD_TORCH_CHECK(

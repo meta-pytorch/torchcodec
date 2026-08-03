@@ -33,6 +33,9 @@
 #include "nvcuvid_include/nvcuvid.h"
 
 namespace facebook::torchcodec {
+  struct StandAloneFrameAttachedData{
+    torch::stable::Tensor storage;
+  };
 
 class BetaCudaDeviceInterface : public DeviceInterface {
  public:
@@ -90,6 +93,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       CUdeviceptr frame_ptr,
       unsigned int pitch,
       const CUVIDPARSERDISPINFO& disp_info);
+
+
+  void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
   UniqueAVFrame transfer_cpu_frame_to_gpu(
       UniqueAVFrame& cpu_frame,
