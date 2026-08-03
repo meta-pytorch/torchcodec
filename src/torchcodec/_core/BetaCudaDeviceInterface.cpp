@@ -1003,8 +1003,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   // may round them up to even.
   FrameDims original_dims(av_frame->height, av_frame->width);
 
-  // On the CPU fallback we own the GPU frame we just created; otherwise the
-  // input frame is already what we need, and it's only borrowed.
   UniqueAVFrame transferred_frame;
   if (cpu_fallback_) {
     AVPixelFormat target_pix_fmt = (output_dtype_ == OutputDtype::FLOAT32)

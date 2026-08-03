@@ -98,11 +98,6 @@ class DeviceInterface {
     return requested_dtype;
   }
 
-  // The caller retains ownership of the frame, and keeps using it after this
-  // call returns (the building-block ops hand out frames that live in Python).
-  // Implementations must not take ownership of it, and must not free it.
-  // Implementations needing a different frame, e.g. after a format conversion,
-  // must allocate their own and leave this one alone.
   virtual void convert_av_frame_to_frame_output(
       const UniqueAVFrame& av_frame,
       FrameOutput& frame_output,
