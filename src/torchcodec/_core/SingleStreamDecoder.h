@@ -282,7 +282,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       torch::stable::Tensor& tensor);
 
   FrameOutput convert_av_frame_to_frame_output(
-      UniqueAVFrame& av_frame,
+      const UniqueAVFrame& av_frame,
       std::optional<torch::stable::Tensor> pre_allocated_output_tensor =
           std::nullopt);
 

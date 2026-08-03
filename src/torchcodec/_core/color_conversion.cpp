@@ -189,7 +189,7 @@ void compute_rgb_to_yuv_matrix(
 }
 
 torch::stable::Tensor convert_yuv_frame_to_rgb(
-    UniqueAVFrame& av_frame,
+    const UniqueAVFrame& av_frame,
     const StableDevice& device,
     cudaStream_t nvdec_stream,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor,

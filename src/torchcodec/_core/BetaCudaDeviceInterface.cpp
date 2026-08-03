@@ -824,7 +824,7 @@ void BetaCudaDeviceInterface::flush() {
 }
 
 UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
-    UniqueAVFrame& cpu_frame,
+    const UniqueAVFrame& cpu_frame,
     AVPixelFormat target_pix_fmt) {
   // This is called in the context of the CPU fallback: the frame was decoded on
   // the CPU, and in this function we convert that frame into NV12 or P016
@@ -967,7 +967,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
 }
 
 void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
-    UniqueAVFrame& av_frame,
+    const UniqueAVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   if (cpu_fallback_) {
@@ -1003,15 +1003,16 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   // may round them up to even.
   FrameDims original_dims(av_frame->height, av_frame->width);
 
-  UniqueAVFrame gpu_frame;
+  // On the CPU fallback we own the GPU frame we just created; otherwise the
+  // input frame is already what we need, and it's only borrowed.
+  UniqueAVFrame transferred_frame;
   if (cpu_fallback_) {
     AVPixelFormat target_pix_fmt = (output_dtype_ == OutputDtype::FLOAT32)
         ? AV_PIX_FMT_P016LE
         : AV_PIX_FMT_NV12;
-    gpu_frame = transfer_cpu_frame_to_gpu(av_frame, target_pix_fmt);
-  } else {
-    gpu_frame = std::move(av_frame);
+    transferred_frame = transfer_cpu_frame_to_gpu(av_frame, target_pix_fmt);
   }
+  const UniqueAVFrame& gpu_frame = cpu_fallback_ ? transferred_frame : av_frame;
 
   STD_TORCH_CHECK(
       gpu_frame->format == AV_PIX_FMT_NV12 ||

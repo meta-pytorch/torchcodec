@@ -41,7 +41,7 @@ class CpuDeviceInterface : public DeviceInterface {
       override;
 
   void convert_av_frame_to_frame_output(
-      UniqueAVFrame& av_frame,
+      const UniqueAVFrame& av_frame,
       FrameOutput& frame_output,
       std::optional<torch::stable::Tensor> pre_allocated_output_tensor)
       override;
@@ -59,11 +59,11 @@ class CpuDeviceInterface : public DeviceInterface {
 
  private:
   void convert_audio_av_frame_to_frame_output(
-      UniqueAVFrame& src_av_frame,
+      const UniqueAVFrame& src_av_frame,
       FrameOutput& frame_output);
 
   void convert_video_av_frame_to_frame_output(
-      UniqueAVFrame& av_frame,
+      const UniqueAVFrame& av_frame,
       FrameOutput& frame_output,
       std::optional<torch::stable::Tensor> pre_allocated_output_tensor);
 

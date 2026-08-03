@@ -200,7 +200,7 @@ ColorConversionLibrary CpuDeviceInterface::get_color_conversion_library(
 }
 
 void CpuDeviceInterface::convert_av_frame_to_frame_output(
-    UniqueAVFrame& av_frame,
+    const UniqueAVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   STD_TORCH_CHECK(initialized_, "CpuDeviceInterface was not initialized.");
@@ -223,7 +223,7 @@ void CpuDeviceInterface::convert_av_frame_to_frame_output(
 // Dimension order of the preAllocatedOutputTensor must be HWC, regardless of
 // `dimension_order` parameter. It's up to callers to re-shape it if needed.
 void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
-    UniqueAVFrame& av_frame,
+    const UniqueAVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   // Note that we ignore the dimensions from the metadata; we don't even bother
@@ -350,7 +350,7 @@ CpuDeviceInterface::convert_av_frame_to_tensor_using_filter_graph(
 }
 
 void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
-    UniqueAVFrame& src_av_frame,
+    const UniqueAVFrame& src_av_frame,
     FrameOutput& frame_output) {
   AVSampleFormat src_sample_format =
       static_cast<AVSampleFormat>(src_av_frame->format);

@@ -1573,7 +1573,7 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
 // --------------------------------------------------------------------------
 
 FrameOutput SingleStreamDecoder::convert_av_frame_to_frame_output(
-    UniqueAVFrame& av_frame,
+    const UniqueAVFrame& av_frame,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   // Convert the frame to tensor.
   FrameOutput frame_output;

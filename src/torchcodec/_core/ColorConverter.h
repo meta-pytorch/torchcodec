@@ -21,7 +21,7 @@ class FORCE_PUBLIC_VISIBILITY ColorConverter {
       const StableDevice& device = StableDevice(kStableCPU),
       std::string_view device_variant = "default");
 
-  torch::stable::Tensor convert(UniqueAVFrame& av_frame);
+  torch::stable::Tensor convert(const UniqueAVFrame& av_frame);
 
  private:
   std::unique_ptr<DeviceInterface> device_interface_;

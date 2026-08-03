@@ -84,7 +84,7 @@ void launch_p016_to_rgb16_kernel(
 // outputDims: desired output size; if the frame was rounded up to even
 //   dimensions, the result is cropped back to outputDims.
 torch::stable::Tensor convert_yuv_frame_to_rgb(
-    UniqueAVFrame& av_frame,
+    const UniqueAVFrame& av_frame,
     const StableDevice& device,
     cudaStream_t nvdec_stream,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor,

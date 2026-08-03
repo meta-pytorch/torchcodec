@@ -146,7 +146,7 @@ void CudaDeviceInterface::register_hardware_device_with_codec(
 }
 
 UniqueAVFrame CudaDeviceInterface::maybe_convert_av_frame_to_nv12_or_rgb24(
-    UniqueAVFrame& av_frame) {
+    const UniqueAVFrame& av_frame) {
   // We need FFmpeg filters to handle those conversion cases which are not
   // directly implemented in CUDA or CPU device interface (in case of a
   // fallback).
@@ -155,7 +155,7 @@ UniqueAVFrame CudaDeviceInterface::maybe_convert_av_frame_to_nv12_or_rgb24(
   // skipping filters context as CPU device interface will handle everything for
   // us.
   if (av_frame->format != AV_PIX_FMT_CUDA) {
-    return std::move(av_frame);
+    return UniqueAVFrame{};
   }
 
   auto hw_frames_ctx =
@@ -169,7 +169,7 @@ UniqueAVFrame CudaDeviceInterface::maybe_convert_av_frame_to_nv12_or_rgb24(
 
   // If the frame is already in NV12 format, we don't need to do anything.
   if (actual_format == AV_PIX_FMT_NV12) {
-    return std::move(av_frame);
+    return UniqueAVFrame{};
   }
 
   AVPixelFormat output_format;
@@ -237,18 +237,21 @@ UniqueAVFrame CudaDeviceInterface::maybe_convert_av_frame_to_nv12_or_rgb24(
 }
 
 void CudaDeviceInterface::convert_av_frame_to_frame_output(
-    UniqueAVFrame& av_frame,
+    const UniqueAVFrame& input_av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   validate_pre_allocated_tensor_shape(
       pre_allocated_output_tensor,
-      FrameDims(av_frame->height, av_frame->width));
+      FrameDims(input_av_frame->height, input_av_frame->width));
 
   has_decoded_frame_ = true;
 
   // All of our CUDA decoding assumes NV12 format. We handle non-NV12 formats by
   // converting them to NV12.
-  av_frame = maybe_convert_av_frame_to_nv12_or_rgb24(av_frame);
+  UniqueAVFrame converted_av_frame =
+      maybe_convert_av_frame_to_nv12_or_rgb24(input_av_frame);
+  const UniqueAVFrame& av_frame =
+      converted_av_frame ? converted_av_frame : input_av_frame;
 
   if (av_frame->format != AV_PIX_FMT_CUDA) {
     // The frame's format is AV_PIX_FMT_CUDA if and only if its content is on
