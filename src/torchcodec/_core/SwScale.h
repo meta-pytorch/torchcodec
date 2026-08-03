@@ -29,9 +29,7 @@ class SwScale {
   // >8-bit.
   SwScale(const SwsConfig& config, int sws_flags = SWS_BILINEAR);
 
-  int convert(
-      const UniqueAVFrame& av_frame,
-      torch::stable::Tensor& output_tensor);
+  int convert(const AVFrame& av_frame, torch::stable::Tensor& output_tensor);
 
   const SwsConfig& get_config() const {
     return config_;

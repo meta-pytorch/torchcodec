@@ -31,10 +31,9 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
       const std::string& file_path,
       std::optional<int> stream_index = std::nullopt);
 
-  // Returns the next packet for the active stream as a freshly-allocated,
-  // owning AVPacket (the caller takes ownership and must av_packet_free it), or
-  // nullptr at end of stream.
-  AVPacket* next_packet();
+  // Returns the next packet for the active stream as a freshly-allocated
+  // packet, or a null packet at end of stream.
+  UniqueAVPacket next_packet();
 
   AVStream* active_stream() const {
     return stream_;
