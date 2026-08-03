@@ -794,7 +794,7 @@ UniqueAVFrame MultiStreamEncoder::maybe_convert_audio_av_frame(
     AudioStream& audio_stream) {
   if (static_cast<AVSampleFormat>(av_frame->format) ==
           audio_stream.av_codec_context->sample_fmt &&
-      get_num_channels(av_frame) == audio_stream.out_num_channels &&
+      get_num_channels(*av_frame) == audio_stream.out_num_channels &&
       av_frame->sample_rate == audio_stream.out_sample_rate) {
     // Note: the clone references the same underlying data, it's a cheap copy.
     return UniqueAVFrame(av_frame_clone(av_frame.get()));
@@ -806,7 +806,7 @@ UniqueAVFrame MultiStreamEncoder::maybe_convert_audio_av_frame(
         audio_stream.av_codec_context->sample_fmt,
         av_frame->sample_rate,
         audio_stream.out_sample_rate,
-        av_frame,
+        *av_frame,
         audio_stream.out_num_channels));
   }
   // convertAudioAVFrameSamples uses avFrame's extended_data field, so we ensure
@@ -817,7 +817,7 @@ UniqueAVFrame MultiStreamEncoder::maybe_convert_audio_av_frame(
       "Codec context data and extended_data pointers differ, this is unexpected.");
   UniqueAVFrame converted_av_frame = convert_audio_av_frame_samples(
       audio_stream.swr_context,
-      av_frame,
+      *av_frame,
       audio_stream.av_codec_context->sample_fmt,
       audio_stream.out_sample_rate,
       audio_stream.out_num_channels);

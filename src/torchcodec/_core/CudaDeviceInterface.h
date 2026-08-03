@@ -41,7 +41,7 @@ class CudaDeviceInterface : public DeviceInterface {
       AVCodecContext* codec_context) override;
 
   void convert_av_frame_to_frame_output(
-      UniqueAVFrame& av_frame,
+      const AVFrame& av_frame,
       FrameOutput& frame_output,
       std::optional<torch::stable::Tensor> pre_allocated_output_tensor)
       override;
@@ -63,9 +63,10 @@ class CudaDeviceInterface : public DeviceInterface {
  private:
   // Our CUDA decoding code assumes NV12 format. In order to handle other
   // kinds of input, we need to convert them to NV12. Our current implementation
-  // does this using filtergraph.
+  // does this using filtergraph. Returns a null frame when no conversion is
+  // needed, i.e. when the input frame can be used as-is.
   UniqueAVFrame maybe_convert_av_frame_to_nv12_or_rgb24(
-      UniqueAVFrame& av_frame);
+      const AVFrame& av_frame);
 
   // We sometimes encounter frames that cannot be decoded on the CUDA device.
   // Rather than erroring out, we decode them on the CPU.

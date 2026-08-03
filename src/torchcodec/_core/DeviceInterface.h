@@ -99,7 +99,7 @@ class DeviceInterface {
   }
 
   virtual void convert_av_frame_to_frame_output(
-      UniqueAVFrame& av_frame,
+      const AVFrame& av_frame,
       FrameOutput& frame_output,
       std::optional<torch::stable::Tensor> pre_allocated_output_tensor =
           std::nullopt) = 0;
@@ -210,6 +210,6 @@ create_device_interface(
     const StableDevice& device,
     const std::string_view variant = "default");
 
-torch::stable::Tensor rgb_av_frame_to_tensor(const UniqueAVFrame& av_frame);
+torch::stable::Tensor rgb_av_frame_to_tensor(const AVFrame& av_frame);
 
 } // namespace facebook::torchcodec

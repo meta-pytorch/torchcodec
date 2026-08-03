@@ -52,7 +52,7 @@ SwScale::SwScale(const SwsConfig& config, int sws_flags)
 }
 
 int SwScale::convert(
-    const UniqueAVFrame& av_frame,
+    const AVFrame& av_frame,
     torch::stable::Tensor& output_tensor) {
   // When resizing is needed, we do sws_scale twice: first convert to output
   // RGB at original resolution, then resize in output RGB space. This ensures
@@ -85,19 +85,19 @@ int SwScale::convert(
 
   int color_converted_height = sws_scale(
       color_conversion_sws_context_.get(),
-      av_frame->data,
-      av_frame->linesize,
+      av_frame.data,
+      av_frame.linesize,
       0,
-      av_frame->height,
+      av_frame.height,
       color_converted_pointers,
       color_converted_linesizes);
 
   STD_TORCH_CHECK(
-      color_converted_height == av_frame->height,
+      color_converted_height == av_frame.height,
       "Color conversion swscale pass failed: colorConvertedHeight != avFrame->height: ",
       color_converted_height,
       " != ",
-      av_frame->height);
+      av_frame.height);
 
   if (needs_resize_) {
     uint8_t* src_pointers[4] = {

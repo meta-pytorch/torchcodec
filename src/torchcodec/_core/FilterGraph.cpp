@@ -150,8 +150,8 @@ FilterGraph::FilterGraph(
       ", provided filters: " + filters_config.filtergraph_str);
 }
 
-UniqueAVFrame FilterGraph::convert(const UniqueAVFrame& av_frame) {
-  int status = av_buffersrc_write_frame(source_context_, av_frame.get());
+UniqueAVFrame FilterGraph::convert(const AVFrame& av_frame) {
+  int status = av_buffersrc_write_frame(source_context_, &av_frame);
   STD_TORCH_CHECK(
       status >= AVSUCCESS, "Failed to add frame to buffer source context");
 

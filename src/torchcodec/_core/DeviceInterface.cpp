@@ -116,16 +116,16 @@ std::unique_ptr<DeviceInterface> create_device_interface(
       "'");
 }
 
-torch::stable::Tensor rgb_av_frame_to_tensor(const UniqueAVFrame& av_frame) {
-  auto format = static_cast<AVPixelFormat>(av_frame->format);
+torch::stable::Tensor rgb_av_frame_to_tensor(const AVFrame& av_frame) {
+  auto format = static_cast<AVPixelFormat>(av_frame.format);
   STD_TORCH_CHECK(
       format == AV_PIX_FMT_RGB24 || format == AV_PIX_FMT_RGB48,
       "Expected RGB24 or RGB48 format, got ",
       (av_get_pix_fmt_name(format) ? av_get_pix_fmt_name(format) : "unknown"));
 
-  int height = av_frame->height;
-  int width = av_frame->width;
-  AVFrame* cloned_av_frame = av_frame_clone(av_frame.get());
+  int height = av_frame.height;
+  int width = av_frame.width;
+  AVFrame* cloned_av_frame = av_frame_clone(&av_frame);
 
   auto deleter = [cloned_av_frame](void*) {
     UniqueAVFrame av_frame_to_delete(cloned_av_frame);

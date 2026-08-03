@@ -54,11 +54,11 @@ std::string get_ffmpeg_error_string_from_error_code(int error_code) {
   return std::string(error_buffer);
 }
 
-int64_t get_duration(const UniqueAVFrame& av_frame) {
+int64_t get_duration(const AVFrame& av_frame) {
 #if LIBAVUTIL_VERSION_MAJOR < 58
-  return av_frame->pkt_duration;
+  return av_frame.pkt_duration;
 #else
-  return av_frame->duration;
+  return av_frame.duration;
 #endif
 }
 
@@ -71,15 +71,15 @@ int64_t get_pts_or_dts(ReferenceAVPacket& packet) {
   return packet->pts == INT64_MIN ? packet->dts : packet->pts;
 }
 
-int64_t get_pts_or_dts(const UniqueAVFrame& av_frame) {
-  return av_frame->pts == INT64_MIN ? av_frame->pkt_dts : av_frame->pts;
+int64_t get_pts_or_dts(const AVFrame& av_frame) {
+  return av_frame.pts == INT64_MIN ? av_frame.pkt_dts : av_frame.pts;
 }
 
-void set_duration(const UniqueAVFrame& av_frame, int64_t duration) {
+void set_duration(AVFrame& av_frame, int64_t duration) {
 #if LIBAVUTIL_VERSION_MAJOR < 58
-  av_frame->pkt_duration = duration;
+  av_frame.pkt_duration = duration;
 #else
-  av_frame->duration = duration;
+  av_frame.duration = duration;
 #endif
 }
 
@@ -148,20 +148,18 @@ const AVSampleFormat* get_supported_output_sample_formats(
   return supported_sample_formats;
 }
 
-int get_num_channels(const UniqueAVFrame& av_frame) {
+int get_num_channels(const AVFrame& av_frame) {
 #if LIBAVFILTER_VERSION_MAJOR > 8 || \
     (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44)
-  return av_frame->ch_layout.nb_channels;
+  return av_frame.ch_layout.nb_channels;
 #else
-  int num_channels =
-      av_get_channel_layout_nb_channels(av_frame->channel_layout);
+  int num_channels = av_get_channel_layout_nb_channels(av_frame.channel_layout);
   // Handle FFmpeg 4 bug where channel_layout and num_channels are 0 or unset
-  // Set values based on av_frame->channels which appears to be correct
+  // Set values based on av_frame.channels which appears to be correct
   // to allow successful initialization of SwrContext
-  if (num_channels == 0 && av_frame->channels > 0) {
-    av_frame->channel_layout =
-        av_get_default_channel_layout(av_frame->channels);
-    num_channels = av_frame->channels;
+  if (num_channels == 0 && av_frame.channels > 0) {
+    av_frame.channel_layout = av_get_default_channel_layout(av_frame.channels);
+    num_channels = av_frame.channels;
   }
   return num_channels;
 #endif
@@ -200,15 +198,15 @@ void set_default_channel_layout(
 #endif
 }
 
-void set_default_channel_layout(UniqueAVFrame& av_frame, int num_channels) {
+void set_default_channel_layout(AVFrame& av_frame, int num_channels) {
 #if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
   AVChannelLayout channel_layout;
   av_channel_layout_default(&channel_layout, num_channels);
-  av_frame->ch_layout = channel_layout;
+  av_frame.ch_layout = channel_layout;
 #else
   uint64_t channel_layout = av_get_default_channel_layout(num_channels);
-  av_frame->channel_layout = channel_layout;
-  av_frame->channels = num_channels;
+  av_frame.channel_layout = channel_layout;
+  av_frame.channels = num_channels;
 #endif
 }
 
@@ -300,10 +298,10 @@ namespace {
 // - the default channel layout with out_num_channels otherwise.
 AVChannelLayout get_output_channel_layout(
     int out_num_channels,
-    const UniqueAVFrame& src_av_frame) {
+    const AVFrame& src_av_frame) {
   AVChannelLayout out_layout;
   if (out_num_channels == get_num_channels(src_av_frame)) {
-    out_layout = src_av_frame->ch_layout;
+    out_layout = src_av_frame.ch_layout;
   } else {
     av_channel_layout_default(&out_layout, out_num_channels);
   }
@@ -315,10 +313,10 @@ AVChannelLayout get_output_channel_layout(
 // Same as above
 int64_t get_output_channel_layout(
     int out_num_channels,
-    const UniqueAVFrame& src_av_frame) {
+    const AVFrame& src_av_frame) {
   int64_t out_layout;
   if (out_num_channels == get_num_channels(src_av_frame)) {
-    out_layout = src_av_frame->channel_layout;
+    out_layout = src_av_frame.channel_layout;
   } else {
     out_layout = av_get_default_channel_layout(out_num_channels);
   }
@@ -330,21 +328,21 @@ int64_t get_output_channel_layout(
 // Sets dst_av_frame' channel layout to get_output_channel_layout(): see doc
 // above
 void set_channel_layout(
-    UniqueAVFrame& dst_av_frame,
-    const UniqueAVFrame& src_av_frame,
+    AVFrame& dst_av_frame,
+    const AVFrame& src_av_frame,
     int out_num_channels) {
 #if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
   AVChannelLayout out_layout =
       get_output_channel_layout(out_num_channels, src_av_frame);
-  auto status = av_channel_layout_copy(&dst_av_frame->ch_layout, &out_layout);
+  auto status = av_channel_layout_copy(&dst_av_frame.ch_layout, &out_layout);
   STD_TORCH_CHECK(
       status == AVSUCCESS,
       "Couldn't copy channel layout to av_frame: ",
       get_ffmpeg_error_string_from_error_code(status));
 #else
-  dst_av_frame->channel_layout =
+  dst_av_frame.channel_layout =
       get_output_channel_layout(out_num_channels, src_av_frame);
-  dst_av_frame->channels = out_num_channels;
+  dst_av_frame.channels = out_num_channels;
 #endif
 }
 
@@ -358,7 +356,7 @@ UniqueAVFrame allocate_av_frame(
 
   av_frame->nb_samples = num_samples;
   av_frame->sample_rate = sample_rate;
-  set_default_channel_layout(av_frame, num_channels);
+  set_default_channel_layout(*av_frame, num_channels);
   av_frame->format = sample_format;
   auto status = av_frame_get_buffer(av_frame.get(), 0);
 
@@ -380,7 +378,7 @@ SwrContext* create_swr_context(
     AVSampleFormat out_sample_format,
     int src_sample_rate,
     int out_sample_rate,
-    const UniqueAVFrame& src_av_frame,
+    const AVFrame& src_av_frame,
     int out_num_channels) {
   SwrContext* swr_context = nullptr;
   int status = AVSUCCESS;
@@ -392,7 +390,7 @@ SwrContext* create_swr_context(
       &out_layout,
       out_sample_format,
       out_sample_rate,
-      &src_av_frame->ch_layout,
+      &src_av_frame.ch_layout,
       src_sample_format,
       src_sample_rate,
       0,
@@ -410,7 +408,7 @@ SwrContext* create_swr_context(
       out_layout,
       out_sample_format,
       out_sample_rate,
-      src_av_frame->channel_layout,
+      src_av_frame.channel_layout,
       src_sample_format,
       src_sample_rate,
       0,
@@ -493,7 +491,7 @@ AVFilterContext* create_av_filter_context_with_options(
 
 UniqueAVFrame convert_audio_av_frame_samples(
     const UniqueSwrContext& swr_context,
-    const UniqueAVFrame& src_av_frame,
+    const AVFrame& src_av_frame,
     AVSampleFormat out_sample_format,
     int out_sample_rate,
     int out_num_channels) {
@@ -502,11 +500,11 @@ UniqueAVFrame convert_audio_av_frame_samples(
       converted_av_frame,
       "Could not allocate frame for sample format conversion.");
 
-  converted_av_frame->pts = src_av_frame->pts;
+  converted_av_frame->pts = src_av_frame.pts;
   converted_av_frame->format = static_cast<int>(out_sample_format);
 
   converted_av_frame->sample_rate = out_sample_rate;
-  int src_sample_rate = src_av_frame->sample_rate;
+  int src_sample_rate = src_av_frame.sample_rate;
   if (src_sample_rate != out_sample_rate) {
     // Note that this is an upper bound on the number of output samples.
     // `swr_convert()` will likely not fill convertedAVFrame with that many
@@ -518,15 +516,15 @@ UniqueAVFrame convert_audio_av_frame_samples(
     // tighter bound.
     converted_av_frame->nb_samples = av_rescale_rnd(
         swr_get_delay(swr_context.get(), src_sample_rate) +
-            src_av_frame->nb_samples,
+            src_av_frame.nb_samples,
         out_sample_rate,
         src_sample_rate,
         AV_ROUND_UP);
   } else {
-    converted_av_frame->nb_samples = src_av_frame->nb_samples;
+    converted_av_frame->nb_samples = src_av_frame.nb_samples;
   }
 
-  set_channel_layout(converted_av_frame, src_av_frame, out_num_channels);
+  set_channel_layout(*converted_av_frame, src_av_frame, out_num_channels);
 
   auto status = av_frame_get_buffer(converted_av_frame.get(), 0);
   STD_TORCH_CHECK(
@@ -543,8 +541,8 @@ UniqueAVFrame convert_audio_av_frame_samples(
       converted_av_frame->extended_data,
       converted_av_frame->nb_samples,
       static_cast<const uint8_t**>(
-          const_cast<const uint8_t**>(src_av_frame->extended_data)),
-      src_av_frame->nb_samples);
+          const_cast<const uint8_t**>(src_av_frame.extended_data)),
+      src_av_frame.nb_samples);
   // numConvertedSamples can be 0 if we're downsampling by a great factor and
   // the first frame doesn't contain a lot of samples. It should be handled
   // properly by the caller.

@@ -55,7 +55,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       OutputDtype requested_dtype) const override;
 
   void convert_av_frame_to_frame_output(
-      UniqueAVFrame& av_frame,
+      const AVFrame& av_frame,
       FrameOutput& frame_output,
       std::optional<torch::stable::Tensor> pre_allocated_output_tensor)
       override;
@@ -98,7 +98,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
   UniqueAVFrame transfer_cpu_frame_to_gpu(
-      UniqueAVFrame& cpu_frame,
+      const AVFrame& cpu_frame,
       AVPixelFormat target_pix_fmt);
 
   void apply_rotation(

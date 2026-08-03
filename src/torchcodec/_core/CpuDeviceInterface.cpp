@@ -201,7 +201,7 @@ ColorConversionLibrary CpuDeviceInterface::get_color_conversion_library(
 }
 
 void CpuDeviceInterface::convert_av_frame_to_frame_output(
-    UniqueAVFrame& av_frame,
+    const AVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   STD_TORCH_CHECK(initialized_, "CpuDeviceInterface was not initialized.");
@@ -224,7 +224,7 @@ void CpuDeviceInterface::convert_av_frame_to_frame_output(
 // Dimension order of the preAllocatedOutputTensor must be HWC, regardless of
 // `dimension_order` parameter. It's up to callers to re-shape it if needed.
 void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
-    UniqueAVFrame& av_frame,
+    const AVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   // Note that we ignore the dimensions from the metadata; we don't even bother
@@ -240,7 +240,7 @@ void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
   // Both cases cause problems for our batch APIs, as we allocate
   // FrameBatchOutputs based on the the stream metadata. But single-frame APIs
   // can still work in such situations, so they should.
-  auto input_dims = FrameDims(av_frame->height, av_frame->width);
+  auto input_dims = FrameDims(av_frame.height, av_frame.width);
   auto output_dims = resized_output_dims_.value_or(input_dims);
 
   if (pre_allocated_output_tensor.has_value()) {
@@ -265,12 +265,12 @@ void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
         pre_allocated_output_tensor.value_or(allocate_empty_hwc_tensor(
             output_dims, kStableCPU, video_stream_options_.output_dtype));
 
-    auto av_frame_format = static_cast<AVPixelFormat>(av_frame->format);
+    auto av_frame_format = static_cast<AVPixelFormat>(av_frame.format);
     SwsConfig sws_config(
-        av_frame->width,
-        av_frame->height,
+        av_frame.width,
+        av_frame.height,
         av_frame_format,
-        av_frame->colorspace,
+        av_frame.colorspace,
         output_dims.width,
         output_dims.height,
         output_pixel_format_);
@@ -327,15 +327,15 @@ void CpuDeviceInterface::convert_video_av_frame_to_frame_output(
 
 torch::stable::Tensor
 CpuDeviceInterface::convert_av_frame_to_tensor_using_filter_graph(
-    const UniqueAVFrame& av_frame,
+    const AVFrame& av_frame,
     const FrameDims& output_dims) {
-  auto av_frame_format = static_cast<AVPixelFormat>(av_frame->format);
+  auto av_frame_format = static_cast<AVPixelFormat>(av_frame.format);
 
   FiltersConfig filters_config(
-      av_frame->width,
-      av_frame->height,
+      av_frame.width,
+      av_frame.height,
       av_frame_format,
-      av_frame->sample_aspect_ratio,
+      av_frame.sample_aspect_ratio,
       output_dims.width,
       output_dims.height,
       output_pixel_format_,
@@ -347,17 +347,17 @@ CpuDeviceInterface::convert_av_frame_to_tensor_using_filter_graph(
         std::make_unique<FilterGraph>(filters_config, video_stream_options_);
     prev_filters_config_ = std::move(filters_config);
   }
-  return rgb_av_frame_to_tensor(filter_graph_->convert(av_frame));
+  return rgb_av_frame_to_tensor(*filter_graph_->convert(av_frame));
 }
 
 void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
-    UniqueAVFrame& src_av_frame,
+    const AVFrame& src_av_frame,
     FrameOutput& frame_output) {
   AVSampleFormat src_sample_format =
-      static_cast<AVSampleFormat>(src_av_frame->format);
+      static_cast<AVSampleFormat>(src_av_frame.format);
   AVSampleFormat out_sample_format = AV_SAMPLE_FMT_FLTP;
 
-  int src_sample_rate = src_av_frame->sample_rate;
+  int src_sample_rate = src_av_frame.sample_rate;
   int out_sample_rate =
       audio_stream_options_.sample_rate.value_or(src_sample_rate);
 
@@ -398,10 +398,9 @@ void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
         out_sample_rate,
         out_num_channels);
   }
-  const UniqueAVFrame& av_frame =
-      must_convert ? converted_av_frame : src_av_frame;
+  const AVFrame& av_frame = must_convert ? *converted_av_frame : src_av_frame;
 
-  AVSampleFormat format = static_cast<AVSampleFormat>(av_frame->format);
+  AVSampleFormat format = static_cast<AVSampleFormat>(av_frame.format);
   STD_TORCH_CHECK(
       format == out_sample_format,
       "Something went wrong, the frame didn't get converted to the desired format. ",
@@ -420,7 +419,7 @@ void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
       num_channels,
       " instead.");
 
-  auto num_samples = av_frame->nb_samples;
+  auto num_samples = av_frame.nb_samples;
 
   frame_output.data = torch::stable::empty({num_channels, num_samples});
 
@@ -432,7 +431,7 @@ void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
          ++channel, output_channel_data += num_bytes_per_channel) {
       std::memcpy(
           output_channel_data,
-          av_frame->extended_data[channel],
+          av_frame.extended_data[channel],
           num_bytes_per_channel);
     }
   }

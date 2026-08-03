@@ -46,7 +46,7 @@ ColorConverter::ColorConverter(
       /*resized_output_dims=*/std::nullopt);
 }
 
-torch::stable::Tensor ColorConverter::convert(UniqueAVFrame& av_frame) {
+torch::stable::Tensor ColorConverter::convert(const AVFrame& av_frame) {
   FrameOutput frame_output;
   device_interface_->convert_av_frame_to_frame_output(
       av_frame, frame_output, std::nullopt);

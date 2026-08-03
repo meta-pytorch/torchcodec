@@ -270,7 +270,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   void maybe_seek_to_before_desired_pts();
 
   UniqueAVFrame decode_av_frame(
-      std::function<bool(const UniqueAVFrame&)> filter_function);
+      std::function<bool(const AVFrame&)> filter_function);
 
   FrameOutput get_next_frame_internal(
       std::optional<torch::stable::Tensor> pre_allocated_output_tensor =
@@ -282,7 +282,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
       torch::stable::Tensor& tensor);
 
   FrameOutput convert_av_frame_to_frame_output(
-      UniqueAVFrame& av_frame,
+      const AVFrame& av_frame,
       std::optional<torch::stable::Tensor> pre_allocated_output_tensor =
           std::nullopt);
 

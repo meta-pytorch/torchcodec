@@ -83,6 +83,8 @@ inline SharedAVCodecContext make_shared_av_codec_context(AVCodecContext* ctx) {
 
 using UniqueAVFrame =
     std::unique_ptr<AVFrame, Deleterp<AVFrame, void, av_frame_free>>;
+using UniqueAVPacket =
+    std::unique_ptr<AVPacket, Deleterp<AVPacket, void, av_packet_free>>;
 using UniqueAVFilterGraph = std::unique_ptr<
     AVFilterGraph,
     Deleterp<AVFilterGraph, void, avfilter_graph_free>>;
@@ -206,20 +208,20 @@ std::string get_ffmpeg_error_string_from_error_code(int error_code);
 // Returns duration from the frame. Abstracted into a function because the
 // struct member representing duration has changed across the versions we
 // support.
-int64_t get_duration(const UniqueAVFrame& frame);
-void set_duration(const UniqueAVFrame& frame, int64_t duration);
+int64_t get_duration(const AVFrame& frame);
+void set_duration(AVFrame& frame, int64_t duration);
 
 // pts accessors that fall back to dts when pts is unset (INT64_MIN). See the
 // definitions for details.
 int64_t get_pts_or_dts(ReferenceAVPacket& packet);
-int64_t get_pts_or_dts(const UniqueAVFrame& av_frame);
+int64_t get_pts_or_dts(const AVFrame& av_frame);
 
 const int* get_supported_sample_rates(const AVCodec& av_codec);
 const AVSampleFormat* get_supported_output_sample_formats(
     const AVCodec& av_codec);
 const AVPixelFormat* get_supported_pixel_formats(const AVCodec& av_codec);
 
-int get_num_channels(const UniqueAVFrame& av_frame);
+int get_num_channels(const AVFrame& av_frame);
 int get_num_channels(const SharedAVCodecContext& av_codec_context);
 int get_num_channels(const AVCodecParameters* codecpar);
 
@@ -227,13 +229,13 @@ void set_default_channel_layout(
     UniqueAVCodecContext& av_codec_context,
     int num_channels);
 
-void set_default_channel_layout(UniqueAVFrame& av_frame, int num_channels);
+void set_default_channel_layout(AVFrame& av_frame, int num_channels);
 
 void validate_num_channels(const AVCodec& av_codec, int num_channels);
 
 void set_channel_layout(
-    UniqueAVFrame& dst_av_frame,
-    const UniqueAVFrame& src_av_frame,
+    AVFrame& dst_av_frame,
+    const AVFrame& src_av_frame,
     int desired_num_channels);
 
 UniqueAVFrame allocate_av_frame(
@@ -247,7 +249,7 @@ SwrContext* create_swr_context(
     AVSampleFormat desired_sample_format,
     int src_sample_rate,
     int desired_sample_rate,
-    const UniqueAVFrame& src_av_frame,
+    const AVFrame& src_av_frame,
     int desired_num_channels);
 
 // Converts, if needed:
@@ -257,7 +259,7 @@ SwrContext* create_swr_context(
 // createSwrContext must have been previously called with matching parameters.
 UniqueAVFrame convert_audio_av_frame_samples(
     const UniqueSwrContext& swr_context,
-    const UniqueAVFrame& src_av_frame,
+    const AVFrame& src_av_frame,
     AVSampleFormat desired_sample_format,
     int desired_sample_rate,
     int desired_num_channels);
