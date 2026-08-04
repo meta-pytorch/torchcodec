@@ -34,6 +34,7 @@
 
 namespace facebook::torchcodec {
 struct StandAloneFrameAttachedData {
+  cudaStream_t producer_stream = nullptr;
   torch::stable::Tensor storage;
 };
 

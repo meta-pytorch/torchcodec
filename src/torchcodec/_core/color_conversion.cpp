@@ -191,7 +191,7 @@ void compute_rgb_to_yuv_matrix(
 torch::stable::Tensor convert_yuv_frame_to_rgb(
     const AVFrame& av_frame,
     const StableDevice& device,
-    cudaStream_t nvdec_stream,
+    cudaStream_t producer_stream,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor,
     const FrameDims& output_dims,
     bool is_p016,
@@ -221,9 +221,14 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
         FrameDims(out_height, out_width), device, out_dtype);
   }
 
+  // TODO_API_BREAKDOWN: This may not be the semantic that we want: this will
+  // wait for all ongoin work on the producer stream to finish. But maybe the
+  // producer stream produced the frame data a long time ago, and lots of
+  // kernels have been launched on it already. We'd be waiting on those to
+  // finish even though the data we need is already available.
   cudaStream_t stream = get_current_cuda_stream(device.index());
   sync_streams(
-      /*runningStream=*/nvdec_stream, /*waitingStream=*/stream);
+      /*runningStream=*/producer_stream, /*waitingStream=*/stream);
 
   maybe_update_color_matrix(
       cached_color_matrix,

@@ -698,6 +698,8 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   // color-converted (with a copy), or that's a frame that was discarded in
   // SingleStreamDecoder. Either way, the underlying output surface can be
   // safely re-used.
+  // TODO_API_BREAKDOWN: We should update this comment slightly to now account
+  // for the frame copy we do in make_frame_standalone()
   unmap_previous_frame();
   CUresult result = cuvidMapVideoFrame(
       *decoder_.get(),
@@ -840,19 +842,16 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   auto storage =
       torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
 
-  // TODO_API_BREAKDOWN_CUDA: This copies on the current stream, but the frame
-  // was produced by NVDEC on a potentially different stream. If they differ we
-  // must wait on the producing stream before copying, otherwise we read the
-  // surface before NVDEC finished writing it. We also need to record the
-  // producing stream on the attached data below, so the ColorConverter - which
-  // may run on yet another thread/stream - can wait on it before converting.
-  cudaStream_t stream = get_current_cuda_stream(device_.index());
+  // TODO_API_BREAKDOWN_CUDA: I suspect we don't need to wait on the nvdec
+  // stream here, because we can only arrive here from a path where the frame
+  // has already been mapped so its data is available - worth double checking.
+  cudaStream_t current_stream = get_current_cuda_stream(device_.index());
   cudaError_t err = cudaMemcpyAsync(
       storage.mutable_data_ptr(),
       av_frame->data[0],
       static_cast<size_t>(num_bytes),
       cudaMemcpyDeviceToDevice,
-      stream);
+      current_stream);
   STD_TORCH_CHECK(
       err == cudaSuccess,
       "Failed to copy NVDEC surface: ",
@@ -867,6 +866,7 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   av_frame->data[1] = y_plane + (pitch * even_height);
 
   auto attached_data = new StandAloneFrameAttachedData();
+  attached_data->producer_stream = current_stream;
   // TODO_API_BREAKDOWN_CUDA: We don't *really* need to std::move it I guess?
   attached_data->storage = std::move(storage);
   av_frame->opaque_ref = av_buffer_create(
@@ -1044,9 +1044,9 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     const AVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
-  
   // TODO_API_BREAKDOWN_CUDA is that accurate and safe? Can there be a CPU NV12
-  // frame in our code? Should we create a helper used in the make_standalone function too?
+  // frame in our code? Should we create a helper used in the make_standalone
+  // function too?
   bool cpu_fallback = av_frame.format != AV_PIX_FMT_NV12 &&
       av_frame.format != AV_PIX_FMT_P016LE;
 
@@ -1098,12 +1098,18 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
           gpu_frame.format == AV_PIX_FMT_P016LE,
       "Expected NV12 or P016LE format frame");
 
-  // TODO_API_BREAKDOWN_CUDA: In convert-only mode the frame was produced on
-  // another interface, possibly on another thread and hence another stream.
-  // Using the current stream is only correct when this same interface decoded
-  // the frame. We should read the producing stream off the frame (via the
-  // attached data set in make_frame_standalone) and wait on it here.
-  cudaStream_t nvdec_stream = get_current_cuda_stream(device_.index());
+  // TODO_API_BREAKDOWN: Cleanup how we get the attached data? Make it more
+  // robust? Should we couple it to a flag on the interface saying "I'm
+  // color-conversion only, I absolutely expect frames to be standalone"?
+  cudaStream_t producer_stream;
+  if (av_frame.opaque_ref != nullptr &&
+      av_frame.opaque_ref->size == sizeof(StandAloneFrameAttachedData)) {
+    auto attached_data = reinterpret_cast<StandAloneFrameAttachedData*>(
+        av_frame.opaque_ref->data);
+    producer_stream = attached_data->producer_stream;
+  } else {
+    producer_stream = get_current_cuda_stream(device_.index());
+  }
 
   // TODO_API_BREAKDOWN: we don't suppor output_dtype so some of that is not
   // execrcized.
@@ -1119,7 +1125,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     return convert_yuv_frame_to_rgb(
         gpu_frame,
         device_,
-        nvdec_stream,
+        producer_stream,
         pre_alloc,
         original_dims,
         is_p016,

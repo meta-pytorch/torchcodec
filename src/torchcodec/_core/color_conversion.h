@@ -86,7 +86,7 @@ void launch_p016_to_rgb16_kernel(
 torch::stable::Tensor convert_yuv_frame_to_rgb(
     const AVFrame& av_frame,
     const StableDevice& device,
-    cudaStream_t nvdec_stream,
+    cudaStream_t producer_stream,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor,
     const FrameDims& output_dims,
     bool is_p016,

@@ -3282,9 +3282,9 @@ def _block_devices():
     return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
 
 
-@pytest.mark.parametrize("device", _block_devices())
 class TestBlocks:
 
+    @pytest.mark.parametrize("device", _block_devices())
     def test_block_output_types(self, device):
         # Demuxer yields Packets, PacketDecoder yields DecodedFrames, and
         # ColorConverter yields Frames with the expected shape/dtype.
@@ -3455,6 +3455,7 @@ class TestBlocks:
         ),
         ids=lambda f: f.__name__.removeprefix("_decode_"),
     )
+    @pytest.mark.parametrize("device", _block_devices())
     def test_matches_video_decoder(self, video, decode_method, device):
         got = self._to_frame_batch(decode_method(self, video.path, device))
         ref = VideoDecoder(video.path, device=device).get_all_frames()
@@ -3467,6 +3468,7 @@ class TestBlocks:
             got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
         )
 
+    @pytest.mark.parametrize("device", _block_devices())
     def test_color_converter_reused_across_videos(self, device):
         # A single unbound ColorConverter must correctly convert frames from two
         # different videos - here interleaved frame-by-frame, so the converter
@@ -3493,6 +3495,7 @@ class TestBlocks:
             assert got.data.shape == ref.data.shape
             torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
+    @pytest.mark.parametrize("device", _block_devices())
     def test_set_cuda_backend_is_a_noop(self, device):
         # The blocks always use the NVDEC CUDA backend. Asking for the "ffmpeg"
         # one changes nothing, rather than silently producing something else.
