@@ -148,17 +148,27 @@ const AVSampleFormat* get_supported_output_sample_formats(
   return supported_sample_formats;
 }
 
+#if !(                               \
+    LIBAVFILTER_VERSION_MAJOR > 8 || \
+    (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44))
+// FFmpeg 4 leaves channel_layout unset (0) on some decoded frames even though
+// .channels is correct. Everything we feed to swresample needs a real layout,
+// so fall back to the default layout for that channel count.
+int64_t get_channel_layout(const AVFrame& av_frame) {
+  if (av_frame.channel_layout != 0 || av_frame.channels <= 0) {
+    return static_cast<int64_t>(av_frame.channel_layout);
+  }
+  return av_get_default_channel_layout(av_frame.channels);
+}
+#endif
+
 int get_num_channels(const AVFrame& av_frame) {
 #if LIBAVFILTER_VERSION_MAJOR > 8 || \
     (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44)
   return av_frame.ch_layout.nb_channels;
 #else
   int num_channels = av_get_channel_layout_nb_channels(av_frame.channel_layout);
-  // Handle FFmpeg 4 bug where channel_layout and num_channels are 0 or unset
-  // Set values based on av_frame.channels which appears to be correct
-  // to allow successful initialization of SwrContext
   if (num_channels == 0 && av_frame.channels > 0) {
-    av_frame.channel_layout = av_get_default_channel_layout(av_frame.channels);
     num_channels = av_frame.channels;
   }
   return num_channels;
@@ -316,7 +326,7 @@ int64_t get_output_channel_layout(
     const AVFrame& src_av_frame) {
   int64_t out_layout;
   if (out_num_channels == get_num_channels(src_av_frame)) {
-    out_layout = src_av_frame.channel_layout;
+    out_layout = get_channel_layout(src_av_frame);
   } else {
     out_layout = av_get_default_channel_layout(out_num_channels);
   }
@@ -390,7 +400,10 @@ SwrContext* create_swr_context(
       &out_layout,
       out_sample_format,
       out_sample_rate,
-      &src_av_frame.ch_layout,
+      // swr_alloc_set_opts2() only became const-correct in FFmpeg 6
+      // (libswresample 4.12): before that it asks for a non-const layout that
+      // it doesn't modify.
+      const_cast<AVChannelLayout*>(&src_av_frame.ch_layout),
       src_sample_format,
       src_sample_rate,
       0,
@@ -408,7 +421,7 @@ SwrContext* create_swr_context(
       out_layout,
       out_sample_format,
       out_sample_rate,
-      src_av_frame.channel_layout,
+      get_channel_layout(src_av_frame),
       src_sample_format,
       src_sample_rate,
       0,
