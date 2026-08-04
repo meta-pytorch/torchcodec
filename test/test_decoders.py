@@ -3381,8 +3381,20 @@ class TestBlocks:
 
     def _decode_prefetch_frames(self, path, device):
         # [demux + decode] on one thread || [color-convert] on another.
-        demuxer, decoder, converter = self._make_blocks(path, device)
-        frames = self.prefetch(self._decode(decoder, self._demux(demuxer)))
+        demuxer = Demuxer(path)
+        converter = ColorConverter(device=device)
+
+        def demux_and_decode():
+            # Constructed here so the PacketDecoder (and thus the CUDA context it
+            # binds via its device interface) lives on the prefetch worker
+            # thread that actually runs the cuvid* calls.
+            # TODO_API_BREAKDOWN_CUDA: this is a temporary workaroun for a real
+            # issue - needs fixing. Things should work when the objects are
+            # constructed in a different thread than where they're consumed.
+            decoder = PacketDecoder(demuxer, device=device)
+            yield from self._decode(decoder, self._demux(demuxer))
+
+        frames = self.prefetch(demux_and_decode())
         return list(self._convert(converter, frames))
 
     def _decode_prefetch_packets(self, path, device):
@@ -3393,9 +3405,19 @@ class TestBlocks:
 
     def _decode_prefetch_packets_and_frames(self, path, device):
         # [demux] || [decode] || [color-convert], each on its own thread.
-        demuxer, decoder, converter = self._make_blocks(path, device)
+        demuxer = Demuxer(path)
+        converter = ColorConverter(device=device)
         packets = self.prefetch(self._demux(demuxer))
-        frames = self.prefetch(self._decode(decoder, packets))
+
+        def decode(packets):
+            # Constructed here so the PacketDecoder (and thus the CUDA context it
+            # binds via its device interface) lives on the prefetch worker
+            # thread that actually runs the cuvid* calls.
+            # TODO_API_BREAKDOWN_CUDA: same TODO as ab
+            decoder = PacketDecoder(demuxer, device=device)
+            yield from self._decode(decoder, packets)
+
+        frames = self.prefetch(decode(packets))
         return list(self._convert(converter, frames))
 
     def _to_frame_batch(self, frames):
