@@ -270,6 +270,12 @@ void cuda_buffer_free_callback(void* opaque, [[maybe_unused]] uint8_t* data) {
   cudaFree(opaque);
 }
 
+void standalone_frame_free_callback(
+    [[maybe_unused]] void* opaque,
+    uint8_t* data) {
+  delete reinterpret_cast<StandAloneFrameAttachedData*>(data);
+}
+
 } // namespace
 
 BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
@@ -290,7 +296,7 @@ void BetaCudaDeviceInterface::initialize_video(
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resized_output_dims) {
   // TODO_API_BREAKDOWN ewwwww
-  if (!av_stream){
+  if (!av_stream) {
     return;
   }
   STD_TORCH_CHECK(av_stream != nullptr, "AVStream cannot be null");
@@ -809,14 +815,6 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
   return av_frame;
 }
 
-void nvdec_info_free_callback(
-    [[maybe_unused]] void* opaque,
-    [[maybe_unused]] uint8_t* data) {
-  printf("Freeing standalone frame attached data\n");
-  fflush(stdout);
-  // delete reinterpret_cast<StandAloneFrameAttachedData*>(data);
-}
-
 void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   // TODO_API_BREAKDOWN_CUDA: stongly assumes NVDEC frame, we might want to
   // account for CPU fallback frames as well
@@ -834,8 +832,6 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   int64_t pitch = static_cast<int64_t>(av_frame->linesize[0]);
   int64_t num_bytes = pitch * even_height * 3 / 2;
 
-  // TODO_API_BREAKDOWN_CUDA: How the hell do we know that the underlying
-  // storage isn't freed at the end of this scope??
   auto storage =
       torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
 
@@ -865,10 +861,12 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   auto attached_data = new StandAloneFrameAttachedData();
   // TODO_API_BREAKDOWN_CUDA: We don't *really* need to std::move it I guess?
   attached_data->storage = std::move(storage);
-
-  // av_frame->opaque_ref = av_buffer_create(reinterpret_cast<uint8_t*>(attached_data), sizeof(StandAloneFrameAttachedData), nvdec_info_free_callback, nullptr, 0);
-  // Intentionally leak storage, just todebug.
-  av_frame->opaque_ref = av_buffer_create(reinterpret_cast<uint8_t*>(attached_data), sizeof(StandAloneFrameAttachedData), nullptr, nullptr, 0);
+  av_frame->opaque_ref = av_buffer_create(
+      reinterpret_cast<uint8_t*>(attached_data),
+      sizeof(StandAloneFrameAttachedData),
+      standalone_frame_free_callback,
+      nullptr,
+      0);
 }
 
 void BetaCudaDeviceInterface::flush() {
@@ -1039,7 +1037,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   if (cpu_fallback_) {
-        
     // When the CPU fallback happens, we'll try to run the color-conversion on
     // GPU by sending those CPU frames to the GPU as NV12 or P016 (See
     // transferCpuFrameToGpu() below). However, it's not always
