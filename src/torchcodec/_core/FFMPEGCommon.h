@@ -31,6 +31,33 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
+// FFmpeg 5.1 replaced the .channels + .channel_layout pair on AVFrame and
+// AVCodecContext with a single AVChannelLayout .ch_layout, and added the
+// av_channel_layout_* / swr_alloc_set_opts2() APIs that go with it.
+// libavutil 57.24 is the real marker, but libavfilter 8.44 is the equivalent
+// and is what this codebase has always tested against.
+#if LIBAVFILTER_VERSION_MAJOR > 8 || \
+    (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44)
+#define FFMPEG_HAS_CH_LAYOUT 1
+#else
+#define FFMPEG_HAS_CH_LAYOUT 0
+#endif
+
+// FFmpeg 7.1 added avcodec_get_supported_config(), replacing the codec's
+// pix_fmts / sample_fmts / supported_samplerates / ch_layouts arrays.
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100)
+#define FFMPEG_HAS_SUPPORTED_CONFIG 1
+#else
+#define FFMPEG_HAS_SUPPORTED_CONFIG 0
+#endif
+
+// FFmpeg 6 renamed AVFrame.pkt_duration to AVFrame.duration.
+#if LIBAVUTIL_VERSION_MAJOR < 58
+#define FFMPEG_HAS_FRAME_DURATION 0
+#else
+#define FFMPEG_HAS_FRAME_DURATION 1
+#endif
+
 namespace facebook::torchcodec {
 
 // FFMPEG uses special delete functions for some structures. These template
