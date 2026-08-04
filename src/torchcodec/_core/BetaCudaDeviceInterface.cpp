@@ -386,7 +386,7 @@ void BetaCudaDeviceInterface::initialize_video(
 
 void BetaCudaDeviceInterface::send_seqhdr_packet() {
   // This must be called at parser initialization, and after each flush.
-  // See TODO for details.
+  // See https://github.com/meta-pytorch/torchcodec/pull/1503 for details.
   // FFmpeg's nvcuviddec.c does the same thing (not the nvdec.c one, because it
   // doesn't rely on the nvcuvid parser):
   // -
