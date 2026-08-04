@@ -58,9 +58,8 @@ const AVCodec* find_decoder(
 PacketDecoder::PacketDecoder(
     const Demuxer& demuxer,
     const StableDevice& device,
-    std::string_view device_variant,
     std::optional<int> ffmpeg_thread_count) {
-  device_interface_ = create_device_interface(device, device_variant);
+  device_interface_ = create_device_interface(device);
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");

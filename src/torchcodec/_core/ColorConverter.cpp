@@ -15,10 +15,8 @@
 
 namespace facebook::torchcodec {
 
-ColorConverter::ColorConverter(
-    const StableDevice& device,
-    std::string_view device_variant) {
-  device_interface_ = create_device_interface(device, device_variant);
+ColorConverter::ColorConverter(const StableDevice& device) {
+  device_interface_ = create_device_interface(device);
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");

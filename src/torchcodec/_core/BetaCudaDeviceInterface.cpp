@@ -595,7 +595,6 @@ int BetaCudaDeviceInterface::send_eof_packet() {
 int BetaCudaDeviceInterface::send_cuvid_packet(
     CUVIDSOURCEDATAPACKET& cuvid_packet) {
   CUresult result = cuvidParseVideoData(video_parser_, &cuvid_packet);
-  printf("cuvidParseVideoData returned %d\n", result);
   return result == CUDA_SUCCESS ? AVSUCCESS : AVERROR_EXTERNAL;
 }
 
@@ -819,11 +818,11 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
 // a function that just lives in the PacketDecoder so we don't need to expose
 // another API to the DeviceInterface?
 void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
-
-    if (!(av_frame->format == AV_PIX_FMT_P016LE || av_frame->format == AV_PIX_FMT_NV12)) {
-      // The CPU frames are already standalone, so we don't need to do anything.
-      return;
-    }
+  if (!(av_frame->format == AV_PIX_FMT_P016LE ||
+        av_frame->format == AV_PIX_FMT_NV12)) {
+    // The CPU frames are already standalone, so we don't need to do anything.
+    return;
+  }
 
   // TODO_API_BREAKDOWN_CUDA: stongly assumes NVDEC frame, we might want to
   // account for CPU fallback frames as well
@@ -843,8 +842,6 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
   auto storage =
       torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
-  printf("MAKING FRAME STANDLONE\n");
-  fflush(stdout);
 
   // TODO_API_BREAKDOWN_CUDA: Sync with the nvdec stream before copying?
   cudaStream_t stream = get_current_cuda_stream(device_.index());
@@ -866,8 +863,6 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   auto y_plane = static_cast<uint8_t*>(storage.mutable_data_ptr());
   av_frame->data[0] = y_plane;
   av_frame->data[1] = y_plane + (pitch * even_height);
-  printf("Returning copied frame\n");
-  fflush(stdout);
 
   auto attached_data = new StandAloneFrameAttachedData();
   // TODO_API_BREAKDOWN_CUDA: We don't *really* need to std::move it I guess?
@@ -1047,9 +1042,9 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     const AVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
-  
-  bool cpu_fallback = av_frame.format != AV_PIX_FMT_NV12 && av_frame.format != AV_PIX_FMT_P016LE;
-  
+  bool cpu_fallback = av_frame.format != AV_PIX_FMT_NV12 &&
+      av_frame.format != AV_PIX_FMT_P016LE;
+
   if (cpu_fallback) {
     // When the CPU fallback happens, we'll try to run the color-conversion on
     // GPU by sending those CPU frames to the GPU as NV12 or P016 (See

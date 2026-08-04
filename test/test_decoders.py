@@ -3414,7 +3414,9 @@ class TestBlocks:
         (
             NASA_VIDEO,
             BT709_FULL_RANGE,
-            NASA_VIDEO_HDR, TEST_SRC_2_720P_HDR, TEST_SRC_2_12BIT_HDR,
+            NASA_VIDEO_HDR,
+            TEST_SRC_2_720P_HDR,
+            TEST_SRC_2_12BIT_HDR,
             # NVDEC can't decode this one (too small), so on CUDA this covers
             # the CPU-fallback path: the decoder hands out CPU frames and the
             # converter has to notice and upload them itself.
