@@ -815,7 +815,16 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
   return av_frame;
 }
 
+// TODO_API_BREAKDOWN_CUDA: Does this even nede to be a method? Maybe it can be
+// a function that just lives in the PacketDecoder so we don't need to expose
+// another API to the DeviceInterface?
 void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
+
+    if (!(av_frame->format == AV_PIX_FMT_P016LE || av_frame->format == AV_PIX_FMT_NV12)) {
+      // The CPU frames are already standalone, so we don't need to do anything.
+      return;
+    }
+
   // TODO_API_BREAKDOWN_CUDA: stongly assumes NVDEC frame, we might want to
   // account for CPU fallback frames as well
 
@@ -834,6 +843,8 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
   auto storage =
       torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
+  printf("MAKING FRAME STANDLONE\n");
+  fflush(stdout);
 
   // TODO_API_BREAKDOWN_CUDA: Sync with the nvdec stream before copying?
   cudaStream_t stream = get_current_cuda_stream(device_.index());
@@ -1036,7 +1047,10 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     const AVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
-  if (cpu_fallback_) {
+  
+  bool cpu_fallback = av_frame.format != AV_PIX_FMT_NV12 && av_frame.format != AV_PIX_FMT_P016LE;
+  
+  if (cpu_fallback) {
     // When the CPU fallback happens, we'll try to run the color-conversion on
     // GPU by sending those CPU frames to the GPU as NV12 or P016 (See
     // transferCpuFrameToGpu() below). However, it's not always
@@ -1048,6 +1062,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         av_pix_fmt_desc_get(static_cast<AVPixelFormat>(av_frame.format));
     bool is444 = desc && desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0;
     if (is444) {
+      // TODO_API_BREAKDOWN we need to handle this
       FrameOutput cpu_frame_output;
       cpu_fallback_->convert_av_frame_to_frame_output(
           av_frame, cpu_frame_output);
@@ -1070,13 +1085,13 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   FrameDims original_dims(av_frame.height, av_frame.width);
 
   UniqueAVFrame transferred_frame;
-  if (cpu_fallback_) {
+  if (cpu_fallback) {
     AVPixelFormat target_pix_fmt = (output_dtype_ == OutputDtype::FLOAT32)
         ? AV_PIX_FMT_P016LE
         : AV_PIX_FMT_NV12;
     transferred_frame = transfer_cpu_frame_to_gpu(av_frame, target_pix_fmt);
   }
-  const AVFrame& gpu_frame = cpu_fallback_ ? *transferred_frame : av_frame;
+  const AVFrame& gpu_frame = cpu_fallback ? *transferred_frame : av_frame;
 
   STD_TORCH_CHECK(
       gpu_frame.format == AV_PIX_FMT_NV12 ||
@@ -1090,7 +1105,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     bool is_p016 = (gpu_frame.format == AV_PIX_FMT_P016LE);
     int bit_depth = 8;
     if (is_p016) {
-      bit_depth = cpu_fallback_
+      bit_depth = cpu_fallback
           ? codec_context_->bits_per_raw_sample
           : static_cast<int>(video_format_.bit_depth_luma_minus8) + 8;
     }
