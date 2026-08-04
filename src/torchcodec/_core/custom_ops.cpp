@@ -13,6 +13,8 @@
 #include <pybind11/pybind11.h>
 #pragma pop_macro("TORCH_TARGET_VERSION")
 #include <cstdint>
+#include <cstring>
+#include <limits>
 #include <string>
 
 extern "C" {
@@ -76,6 +78,8 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "_blocks_create_demuxer(str filename, int? stream_index=None) -> Tensor");
   m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
+  m.def(
+      "_blocks_packet_from_tensor(Tensor data, *, int pts, int duration, bool is_key_frame) -> Tensor");
   m.def(
       "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\", str device_variant=\"default\") -> Tensor");
   m.def(
@@ -669,10 +673,11 @@ void _add_video_stream(
       "None. This is a bug in TorchCodec, please report it.");
 
   std::optional<SingleStreamDecoder::FrameMappings> converted_mappings = has_pts
-      ? std::make_optional(SingleStreamDecoder::FrameMappings{
-            std::move(*custom_frame_mappings_pts),
-            std::move(*custom_frame_mappings_keyframe_indices),
-            std::move(*custom_frame_mappings_duration)})
+      ? std::make_optional(
+            SingleStreamDecoder::FrameMappings{
+                std::move(*custom_frame_mappings_pts),
+                std::move(*custom_frame_mappings_keyframe_indices),
+                std::move(*custom_frame_mappings_duration)})
       : std::nullopt;
   auto video_decoder = unwrap_tensor_to_get_decoder(decoder);
   video_decoder->add_video_stream(
@@ -855,6 +860,43 @@ OpsPacketOutput _blocks_demuxer_next_packet(torch::stable::Tensor& demuxer) {
     return std::make_tuple(torch::stable::full({1}, 0, kStableInt64), true);
   }
   return std::make_tuple(wrap_packet_pointer_to_tensor(packet), false);
+}
+
+// Build an owning packet handle from raw compressed bytes, for feeding a
+// PacketDecoder with packets that did not come from a Demuxer. pts and duration
+// are in the decoder's stream time_base units. dts is set to pts, which is only
+// correct for streams without frame reordering (no B-frames).
+torch::stable::Tensor _blocks_packet_from_tensor(
+    const torch::stable::Tensor& data,
+    int64_t pts,
+    int64_t duration,
+    bool is_key_frame) {
+  STD_TORCH_CHECK(data.is_contiguous(), "data must be contiguous");
+  STD_TORCH_CHECK(data.scalar_type() == kStableUInt8, "data must be kUInt8");
+  STD_TORCH_CHECK(data.numel() > 0, "data must not be empty");
+  STD_TORCH_CHECK(
+      data.numel() <= std::numeric_limits<int>::max(), "data is too large");
+
+  AVPacket* packet = av_packet_alloc();
+  STD_TORCH_CHECK(packet != nullptr, "Failed to allocate AVPacket");
+  // av_new_packet allocates data with the required AV_INPUT_BUFFER_PADDING_SIZE
+  // zero padding.
+  int status = av_new_packet(packet, static_cast<int>(data.numel()));
+  if (status != AVSUCCESS) {
+    av_packet_free(&packet);
+    STD_TORCH_CHECK(
+        false,
+        "av_new_packet failed: ",
+        get_ffmpeg_error_string_from_error_code(status));
+  }
+  std::memcpy(packet->data, data.const_data_ptr<uint8_t>(), data.numel());
+  packet->pts = pts;
+  packet->dts = pts;
+  packet->duration = duration;
+  if (is_key_frame) {
+    packet->flags |= AV_PKT_FLAG_KEY;
+  }
+  return wrap_packet_pointer_to_tensor(packet);
 }
 
 torch::stable::Tensor _blocks_create_packet_decoder(
@@ -1491,6 +1533,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("get_frames_by_pts", TORCH_BOX(&get_frames_by_pts));
   m.impl(
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
+  m.impl("_blocks_packet_from_tensor", TORCH_BOX(&_blocks_packet_from_tensor));
   m.impl(
       "_blocks_create_packet_decoder",
       TORCH_BOX(&_blocks_create_packet_decoder));

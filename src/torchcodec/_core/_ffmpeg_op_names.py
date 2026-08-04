@@ -31,6 +31,7 @@ FFMPEG_OP_NAMES = frozenset(
         "get_json_metadata",
         "_blocks_create_demuxer",
         "_blocks_demuxer_next_packet",
+        "_blocks_packet_from_tensor",
         "_blocks_create_packet_decoder",
         "_blocks_packet_decoder_send_packet",
         "_blocks_packet_decoder_send_eof",

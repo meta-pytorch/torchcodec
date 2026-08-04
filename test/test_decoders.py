@@ -8,6 +8,7 @@ import concurrent.futures
 import contextlib
 import gc
 import queue
+import subprocess
 import threading
 from functools import partial
 
@@ -3156,7 +3157,6 @@ class TestAudioDecoder:
 
 
 class TestWavDecoder:
-
     def test_non_wav_file_raises_error(self):
         with pytest.raises(RuntimeError, match="Missing RIFF header"):
             WavDecoder(NASA_AUDIO.path)
@@ -3276,7 +3276,6 @@ class TestWavDecoder:
 
 
 class TestBlocks:
-
     def test_block_output_types(self):
         # Demuxer yields Packets, PacketDecoder yields DecodedFrames, and
         # ColorConverter yields Frames with the expected shape/dtype.
@@ -3298,6 +3297,67 @@ class TestBlocks:
                 assert frame.duration_seconds >= 0
 
         assert num_packets > 0
+
+    def test_packet_from_tensor(self, tmp_path):
+        # Packets built from bytes must decode to the exact frames as the demuxed packets they were copied from.
+        mjpeg_avi = str(tmp_path / "mjpeg.avi")
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(NASA_VIDEO.path), "-frames:v", "5"]
+            + ["-c:v", "mjpeg", "-q:v", "2", mjpeg_avi],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", mjpeg_avi, "-c:v", "copy", "-f", "image2"]
+            + [str(tmp_path / "pkt%03d.jpg")],
+            check=True,
+            capture_output=True,
+        )
+        payloads = [p.read_bytes() for p in sorted(tmp_path.glob("pkt*.jpg"))]
+        assert len(payloads) == 5
+
+        def decode_all(decoder, packets):
+            converter = ColorConverter()
+            decoded = [frame for packet in packets for frame in decoder.decode(packet)]
+            decoded += decoder.flush()
+            return [converter.convert(frame) for frame in decoded]
+
+        demuxer = Demuxer(mjpeg_avi)
+        reference = decode_all(PacketDecoder(demuxer), demuxer)
+
+        # The decoder still needs a Demuxer for its codec parameters, but the packets themselves are built from bytes.
+        packets = [
+            (
+                Packet.from_bytes(payload, pts=i, duration=1, is_key_frame=True)
+                if i % 2
+                else Packet.from_tensor(
+                    torch.frombuffer(bytearray(payload), dtype=torch.uint8),
+                    pts=i,
+                    duration=1,
+                    is_key_frame=True,
+                )
+            )
+            for i, payload in enumerate(payloads)
+        ]
+        from_bytes = decode_all(PacketDecoder(Demuxer(mjpeg_avi)), packets)
+
+        assert len(from_bytes) == len(reference)
+        for got, ref in zip(from_bytes, reference):
+            torch.testing.assert_close(got.data, ref.data, rtol=0, atol=0)
+        pts_list = [frame.pts_seconds for frame in from_bytes]
+        assert pts_list == sorted(pts_list) and len(set(pts_list)) == len(pts_list)
+
+        with pytest.raises(RuntimeError, match="data must be kUInt8"):
+            Packet.from_tensor(
+                torch.zeros(4, dtype=torch.float32),
+                pts=0,
+                duration=1,
+                is_key_frame=True,
+            )
+        with pytest.raises(RuntimeError, match="data must not be empty"):
+            Packet.from_tensor(
+                torch.empty(0, dtype=torch.uint8), pts=0, duration=1, is_key_frame=True
+            )
 
     # The three decode stages, each expressed as a generator that transforms an
     # iterator of inputs into an iterator of outputs. They compose directly (the
@@ -3486,7 +3546,6 @@ def _heic_param(*values):
 
 
 class TestImageDecoder:
-
     # ===== shared helpers =====
 
     def _save_debug(self, decoded, reference, path="debug.png"):
