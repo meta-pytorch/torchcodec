@@ -55,10 +55,10 @@ std::string get_ffmpeg_error_string_from_error_code(int error_code) {
 }
 
 int64_t get_duration(const AVFrame& av_frame) {
-#if LIBAVUTIL_VERSION_MAJOR < 58
-  return av_frame.pkt_duration;
-#else
+#if FFMPEG_HAS_FRAME_DURATION
   return av_frame.duration;
+#else
+  return av_frame.pkt_duration;
 #endif
 }
 
@@ -76,16 +76,16 @@ int64_t get_pts_or_dts(const AVFrame& av_frame) {
 }
 
 void set_duration(AVFrame& av_frame, int64_t duration) {
-#if LIBAVUTIL_VERSION_MAJOR < 58
-  av_frame.pkt_duration = duration;
-#else
+#if FFMPEG_HAS_FRAME_DURATION
   av_frame.duration = duration;
+#else
+  av_frame.pkt_duration = duration;
 #endif
 }
 
 const int* get_supported_sample_rates(const AVCodec& av_codec) {
   const int* supported_sample_rates = nullptr;
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100) // FFmpeg >= 7.1
+#if FFMPEG_HAS_SUPPORTED_CONFIG
   int num_sample_rates = 0;
   int ret = avcodec_get_supported_config(
       nullptr,
@@ -106,7 +106,7 @@ const int* get_supported_sample_rates(const AVCodec& av_codec) {
 
 const AVPixelFormat* get_supported_pixel_formats(const AVCodec& av_codec) {
   const AVPixelFormat* supported_pixel_formats = nullptr;
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100) // FFmpeg >= 7.1
+#if FFMPEG_HAS_SUPPORTED_CONFIG
   int num_pixel_formats = 0;
   int ret = avcodec_get_supported_config(
       nullptr,
@@ -128,7 +128,7 @@ const AVPixelFormat* get_supported_pixel_formats(const AVCodec& av_codec) {
 const AVSampleFormat* get_supported_output_sample_formats(
     const AVCodec& av_codec) {
   const AVSampleFormat* supported_sample_formats = nullptr;
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100) // FFmpeg >= 7.1
+#if FFMPEG_HAS_SUPPORTED_CONFIG
   int num_sample_formats = 0;
   int ret = avcodec_get_supported_config(
       nullptr,
@@ -148,9 +148,7 @@ const AVSampleFormat* get_supported_output_sample_formats(
   return supported_sample_formats;
 }
 
-#if !(                               \
-    LIBAVFILTER_VERSION_MAJOR > 8 || \
-    (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44))
+#if !FFMPEG_HAS_CH_LAYOUT
 // FFmpeg 4 leaves channel_layout unset (0) on some decoded frames even though
 // .channels is correct. Everything we feed to swresample needs a real layout,
 // so fall back to the default layout for that channel count.
@@ -163,8 +161,7 @@ int64_t get_channel_layout(const AVFrame& av_frame) {
 #endif
 
 int get_num_channels(const AVFrame& av_frame) {
-#if LIBAVFILTER_VERSION_MAJOR > 8 || \
-    (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44)
+#if FFMPEG_HAS_CH_LAYOUT
   return av_frame.ch_layout.nb_channels;
 #else
   int num_channels = av_get_channel_layout_nb_channels(av_frame.channel_layout);
@@ -176,8 +173,7 @@ int get_num_channels(const AVFrame& av_frame) {
 }
 
 int get_num_channels(const SharedAVCodecContext& av_codec_context) {
-#if LIBAVFILTER_VERSION_MAJOR > 8 || \
-    (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44)
+#if FFMPEG_HAS_CH_LAYOUT
   return av_codec_context->ch_layout.nb_channels;
 #else
   return av_codec_context->channels;
@@ -186,8 +182,7 @@ int get_num_channels(const SharedAVCodecContext& av_codec_context) {
 
 int get_num_channels(const AVCodecParameters* codecpar) {
   STD_TORCH_CHECK(codecpar != nullptr, "codecpar is null");
-#if LIBAVFILTER_VERSION_MAJOR > 8 || \
-    (LIBAVFILTER_VERSION_MAJOR == 8 && LIBAVFILTER_VERSION_MINOR >= 44)
+#if FFMPEG_HAS_CH_LAYOUT
   return codecpar->ch_layout.nb_channels;
 #else
   return codecpar->channels;
@@ -197,7 +192,7 @@ int get_num_channels(const AVCodecParameters* codecpar) {
 void set_default_channel_layout(
     UniqueAVCodecContext& av_codec_context,
     int num_channels) {
-#if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
+#if FFMPEG_HAS_CH_LAYOUT
   AVChannelLayout channel_layout;
   av_channel_layout_default(&channel_layout, num_channels);
   av_codec_context->ch_layout = channel_layout;
@@ -209,7 +204,7 @@ void set_default_channel_layout(
 }
 
 void set_default_channel_layout(AVFrame& av_frame, int num_channels) {
-#if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
+#if FFMPEG_HAS_CH_LAYOUT
   AVChannelLayout channel_layout;
   av_channel_layout_default(&channel_layout, num_channels);
   av_frame.ch_layout = channel_layout;
@@ -221,7 +216,7 @@ void set_default_channel_layout(AVFrame& av_frame, int num_channels) {
 }
 
 void validate_num_channels(const AVCodec& av_codec, int num_channels) {
-#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100) // FFmpeg >= 7.1
+#if FFMPEG_HAS_SUPPORTED_CONFIG
   std::stringstream supported_num_channels;
   const AVChannelLayout* supported_layouts = nullptr;
   int num_layouts = 0;
@@ -246,7 +241,7 @@ void validate_num_channels(const AVCodec& av_codec, int num_channels) {
       return;
     }
   }
-#elif LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
+#elif FFMPEG_HAS_CH_LAYOUT
   if (av_codec.ch_layouts == nullptr) {
     // If we can't validate, we must assume it'll be fine. If not, FFmpeg will
     // eventually raise.
@@ -301,7 +296,7 @@ void validate_num_channels(const AVCodec& av_codec, int num_channels) {
 }
 
 namespace {
-#if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
+#if FFMPEG_HAS_CH_LAYOUT
 
 // Returns:
 // - the src_av_frame's channel layout if src_av_frame has out_num_channels
@@ -341,7 +336,7 @@ void set_channel_layout(
     AVFrame& dst_av_frame,
     const AVFrame& src_av_frame,
     int out_num_channels) {
-#if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
+#if FFMPEG_HAS_CH_LAYOUT
   AVChannelLayout out_layout =
       get_output_channel_layout(out_num_channels, src_av_frame);
   auto status = av_channel_layout_copy(&dst_av_frame.ch_layout, &out_layout);
@@ -392,7 +387,7 @@ SwrContext* create_swr_context(
     int out_num_channels) {
   SwrContext* swr_context = nullptr;
   int status = AVSUCCESS;
-#if LIBAVFILTER_VERSION_MAJOR > 7 // FFmpeg > 4
+#if FFMPEG_HAS_CH_LAYOUT
   AVChannelLayout out_layout =
       get_output_channel_layout(out_num_channels, src_av_frame);
   status = swr_alloc_set_opts2(
