@@ -185,9 +185,7 @@ SingleStreamDecoder* unwrap_tensor_to_get_decoder(
 // (Demuxer / PacketDecoder / ColorConverter / AVPacket / AVFrame). Same trick
 // as wrap_decoder_pointer_to_tensor: the tensor's data pointer IS the raw
 // pointer, and the tensor is the owner. Taking the unique_ptr by value is what
-// makes the ownership transfer explicit at the call site; the unique_ptr's own
-// deleter is what frees the object, so FFmpeg types work here as long as they
-// arrive in their UniqueAVXxx alias.
+// makes the ownership transfer explicit at the call site.
 template <typename T, typename D>
 torch::stable::Tensor wrap_pointer_to_tensor(std::unique_ptr<T, D> ptr) {
   D object_deleter = ptr.get_deleter();
@@ -832,6 +830,7 @@ int64_t _blocks_packet_decoder_send_packet(
     torch::stable::Tensor& packet) {
   PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
   AVPacket* raw_packet = unwrap_tensor_to_pointer<AVPacket>(packet);
+  // TODO_API_BREAKDOWN: Do we really need this to be a raw AVPacket*?
   return static_cast<int64_t>(decoder_ptr->send_packet(raw_packet));
 }
 
