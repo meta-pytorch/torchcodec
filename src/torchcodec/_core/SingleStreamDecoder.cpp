@@ -677,12 +677,11 @@ FrameOutput SingleStreamDecoder::get_next_frame() {
 FrameOutput SingleStreamDecoder::get_next_frame_internal(
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   validate_active_stream();
-  UniqueAVFrame av_frame =
-      decode_av_frame([this](const UniqueAVFrame& av_frame) {
-        return get_pts_or_dts(av_frame) >= cursor_;
-      });
+  UniqueAVFrame av_frame = decode_av_frame([this](const AVFrame& av_frame) {
+    return get_pts_or_dts(av_frame) >= cursor_;
+  });
   return convert_av_frame_to_frame_output(
-      av_frame, pre_allocated_output_tensor);
+      *av_frame, pre_allocated_output_tensor);
 }
 
 FrameOutput SingleStreamDecoder::get_frame_at_index(int64_t frame_index) {
@@ -867,7 +866,7 @@ FrameOutput SingleStreamDecoder::get_frame_played_at(double seconds) {
 
   set_cursor_pts_in_seconds(seconds);
   UniqueAVFrame av_frame =
-      decode_av_frame([seconds, this](const UniqueAVFrame& av_frame) {
+      decode_av_frame([seconds, this](const AVFrame& av_frame) {
         StreamInfo& stream_info = stream_infos_[active_stream_index_];
         double frame_start_time =
             pts_to_seconds(get_pts_or_dts(av_frame), stream_info.time_base);
@@ -888,7 +887,7 @@ FrameOutput SingleStreamDecoder::get_frame_played_at(double seconds) {
       });
 
   // Convert the frame to tensor.
-  FrameOutput frame_output = convert_av_frame_to_frame_output(av_frame);
+  FrameOutput frame_output = convert_av_frame_to_frame_output(*av_frame);
   frame_output.data = maybe_permute_and_convert_to_float32(frame_output.data);
   return frame_output;
 }
@@ -1241,12 +1240,12 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   while (!finished) {
     try {
       UniqueAVFrame av_frame =
-          decode_av_frame([start_pts, stop_pts](const UniqueAVFrame& av_frame) {
+          decode_av_frame([start_pts, stop_pts](const AVFrame& av_frame) {
             return start_pts <
                 get_pts_or_dts(av_frame) + get_duration(av_frame) &&
                 stop_pts > get_pts_or_dts(av_frame);
           });
-      auto frame_output = convert_av_frame_to_frame_output(av_frame);
+      auto frame_output = convert_av_frame_to_frame_output(*av_frame);
       if (!first_frame_pts_seconds.has_value()) {
         first_frame_pts_seconds = frame_output.pts_seconds;
       }
@@ -1458,7 +1457,7 @@ void SingleStreamDecoder::maybe_seek_to_before_desired_pts() {
 // --------------------------------------------------------------------------
 
 UniqueAVFrame SingleStreamDecoder::decode_av_frame(
-    std::function<bool(const UniqueAVFrame&)> filter_function) {
+    std::function<bool(const AVFrame&)> filter_function) {
   validate_active_stream();
 
   reset_decode_stats();
@@ -1484,7 +1483,7 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
 
     decode_stats_.num_frames_received_by_decoder++;
     // Is this the kind of frame we're looking for?
-    if (status == AVSUCCESS && filter_function(av_frame)) {
+    if (status == AVSUCCESS && filter_function(*av_frame)) {
       // Yes, this is the frame we'll return; break out of the decoding loop.
       break;
     } else if (status == AVSUCCESS) {
@@ -1562,8 +1561,8 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
   // received as frames. Eventually we will either hit AVERROR_EOF from
   // av_receive_frame() or the user will have seeked to a different location
   // in the file and that will flush the decoder.
-  last_decoded_av_frame_pts_ = get_pts_or_dts(av_frame);
-  last_decoded_av_frame_duration_ = get_duration(av_frame);
+  last_decoded_av_frame_pts_ = get_pts_or_dts(*av_frame);
+  last_decoded_av_frame_duration_ = get_duration(*av_frame);
 
   return av_frame;
 }
@@ -1573,7 +1572,7 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
 // --------------------------------------------------------------------------
 
 FrameOutput SingleStreamDecoder::convert_av_frame_to_frame_output(
-    UniqueAVFrame& av_frame,
+    const AVFrame& av_frame,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   // Convert the frame to tensor.
   FrameOutput frame_output;

@@ -182,13 +182,17 @@ SingleStreamDecoder* unwrap_tensor_to_get_decoder(
 }
 
 // Generic pointer<->tensor laundering for the building-block handle types
-// (Demuxer / PacketDecoder / ColorConverter). Same trick as
-// wrap_decoder_pointer_to_tensor: the tensor's data pointer IS the raw pointer,
-// with a deleter that deletes the owned object when the handle is dropped.
-template <typename T>
-torch::stable::Tensor wrap_pointer_to_tensor(std::unique_ptr<T> ptr) {
+// (Demuxer / PacketDecoder / ColorConverter / AVPacket / AVFrame). Same trick
+// as wrap_decoder_pointer_to_tensor: the tensor's data pointer IS the raw
+// pointer, and the tensor is the owner. Taking the unique_ptr by value is what
+// makes the ownership transfer explicit at the call site; the unique_ptr's own
+// deleter is what frees the object, so FFmpeg types work here as long as they
+// arrive in their UniqueAVXxx alias.
+template <typename T, typename D>
+torch::stable::Tensor wrap_pointer_to_tensor(std::unique_ptr<T, D> ptr) {
+  D object_deleter = ptr.get_deleter();
   T* raw = ptr.release();
-  auto deleter = [raw](void*) { delete raw; };
+  auto deleter = [raw, object_deleter](void*) { object_deleter(raw); };
   int64_t sizes[] = {static_cast<int64_t>(sizeof(T*))};
   int64_t strides[] = {1};
   return torch::stable::from_blob(
@@ -204,56 +208,6 @@ template <typename T>
 T* unwrap_tensor_to_pointer(torch::stable::Tensor& tensor) {
   STD_TORCH_CHECK(tensor.is_contiguous(), "handle tensor must be contiguous");
   return static_cast<T*>(tensor.mutable_data_ptr());
-}
-
-// Opaque packet/frame handles: launder a raw AVPacket*/AVFrame* through a [1]
-// int64 CPU tensor whose data pointer IS the raw pointer, with a deleter that
-// frees it. Thread-movable, process-local.
-torch::stable::Tensor wrap_packet_pointer_to_tensor(AVPacket* packet) {
-  auto deleter = [packet](void*) {
-    AVPacket* p = packet;
-    av_packet_free(&p);
-  };
-  int64_t sizes[] = {1};
-  int64_t strides[] = {1};
-  return torch::stable::from_blob(
-      packet,
-      {sizes, 1},
-      {strides, 1},
-      StableDevice(kStableCPU),
-      kStableInt64,
-      deleter);
-}
-
-AVPacket* unwrap_tensor_to_packet(torch::stable::Tensor& tensor) {
-  STD_TORCH_CHECK(tensor.is_contiguous(), "packet handle must be contiguous");
-  return static_cast<AVPacket*>(tensor.mutable_data_ptr());
-}
-
-torch::stable::Tensor wrap_frame_pointer_to_tensor(AVFrame* frame) {
-  // Owning handle: the frame is freed when the handle tensor's refcount drops.
-  // ColorConverter borrows the frame during conversion (on CPU it does not free
-  // it), so the handle stays the sole owner and there is no leak even if a
-  // frame is never converted. (GPU conversion would consume the frame; GPU is
-  // not exposed through these ops yet.)
-  auto deleter = [frame](void*) {
-    AVFrame* f = frame;
-    av_frame_free(&f);
-  };
-  int64_t sizes[] = {1};
-  int64_t strides[] = {1};
-  return torch::stable::from_blob(
-      frame,
-      {sizes, 1},
-      {strides, 1},
-      StableDevice(kStableCPU),
-      kStableInt64,
-      deleter);
-}
-
-AVFrame* unwrap_tensor_to_frame(torch::stable::Tensor& tensor) {
-  STD_TORCH_CHECK(tensor.is_contiguous(), "frame handle must be contiguous");
-  return static_cast<AVFrame*>(tensor.mutable_data_ptr());
 }
 
 torch::stable::Tensor wrap_multi_stream_encoder_pointer_to_tensor(
@@ -850,11 +804,11 @@ using OpsPacketOutput = std::tuple<torch::stable::Tensor, bool>;
 
 OpsPacketOutput _blocks_demuxer_next_packet(torch::stable::Tensor& demuxer) {
   Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
-  AVPacket* packet = demuxer_ptr->next_packet();
+  UniqueAVPacket packet = demuxer_ptr->next_packet();
   if (packet == nullptr) {
     return std::make_tuple(torch::stable::full({1}, 0, kStableInt64), true);
   }
-  return std::make_tuple(wrap_packet_pointer_to_tensor(packet), false);
+  return std::make_tuple(wrap_pointer_to_tensor(std::move(packet)), false);
 }
 
 torch::stable::Tensor _blocks_create_packet_decoder(
@@ -877,7 +831,7 @@ int64_t _blocks_packet_decoder_send_packet(
     torch::stable::Tensor& decoder,
     torch::stable::Tensor& packet) {
   PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
-  AVPacket* raw_packet = unwrap_tensor_to_packet(packet);
+  AVPacket* raw_packet = unwrap_tensor_to_pointer<AVPacket>(packet);
   return static_cast<int64_t>(decoder_ptr->send_packet(raw_packet));
 }
 
@@ -908,11 +862,10 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
         0.0);
   }
   AVRational time_base = decoder_ptr->time_base();
-  double pts_seconds = pts_to_seconds(get_pts_or_dts(av_frame), time_base);
-  double duration_seconds = pts_to_seconds(get_duration(av_frame), time_base);
-  AVFrame* raw_frame = av_frame.release();
+  double pts_seconds = pts_to_seconds(get_pts_or_dts(*av_frame), time_base);
+  double duration_seconds = pts_to_seconds(get_duration(*av_frame), time_base);
   return std::make_tuple(
-      wrap_frame_pointer_to_tensor(raw_frame),
+      wrap_pointer_to_tensor(std::move(av_frame)),
       static_cast<int64_t>(0),
       pts_seconds,
       duration_seconds);
@@ -932,13 +885,7 @@ torch::stable::Tensor _blocks_convert_frame(
     torch::stable::Tensor& frame) {
   ColorConverter* converter_ptr =
       unwrap_tensor_to_pointer<ColorConverter>(converter);
-  AVFrame* raw_frame = unwrap_tensor_to_frame(frame);
-  // Borrow the frame for conversion, then release() so the handle keeps
-  // ownership and frees it when its tensor is dropped (CPU path).
-  UniqueAVFrame borrowed(raw_frame);
-  torch::stable::Tensor data = converter_ptr->convert(borrowed);
-  borrowed.release();
-  return data;
+  return converter_ptr->convert(*unwrap_tensor_to_pointer<AVFrame>(frame));
 }
 
 // For testing only. We need to implement this operation as a core library

@@ -68,12 +68,12 @@ Demuxer::Demuxer(
   }
 }
 
-AVPacket* Demuxer::next_packet() {
+UniqueAVPacket Demuxer::next_packet() {
   ReferenceAVPacket packet(auto_packet_);
   int status =
       read_next_packet(format_context_.get(), active_stream_index_, packet);
   if (status == AVERROR_EOF) {
-    return nullptr;
+    return UniqueAVPacket{};
   }
   STD_TORCH_CHECK(
       status >= AVSUCCESS,
@@ -82,9 +82,9 @@ AVPacket* Demuxer::next_packet() {
 
   // Move the reference out into a fresh, independent packet the caller owns.
   // This is what makes the packet safe to hand to another thread.
-  AVPacket* owned = av_packet_alloc();
+  UniqueAVPacket owned(av_packet_alloc());
   STD_TORCH_CHECK(owned != nullptr, "Failed to allocate AVPacket");
-  av_packet_move_ref(owned, packet.get());
+  av_packet_move_ref(owned.get(), packet.get());
   return owned;
 }
 
