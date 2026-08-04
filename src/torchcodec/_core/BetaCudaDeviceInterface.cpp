@@ -824,9 +824,6 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
     return;
   }
 
-  // TODO_API_BREAKDOWN_CUDA: stongly assumes NVDEC frame, we might want to
-  // account for CPU fallback frames as well
-
   // Roughly, the number of bytes an NV12 image takes is:
   // num_bytes =  len(Y) + len(UV)
   //           = num_pixels + num_pixels / 2
@@ -843,7 +840,12 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   auto storage =
       torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
 
-  // TODO_API_BREAKDOWN_CUDA: Sync with the nvdec stream before copying?
+  // TODO_API_BREAKDOWN_CUDA: This copies on the current stream, but the frame
+  // was produced by NVDEC on a potentially different stream. If they differ we
+  // must wait on the producing stream before copying, otherwise we read the
+  // surface before NVDEC finished writing it. We also need to record the
+  // producing stream on the attached data below, so the ColorConverter - which
+  // may run on yet another thread/stream - can wait on it before converting.
   cudaStream_t stream = get_current_cuda_stream(device_.index());
   cudaError_t err = cudaMemcpyAsync(
       storage.mutable_data_ptr(),
@@ -1042,6 +1044,9 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     const AVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
+  
+  // TODO_API_BREAKDOWN_CUDA is that accurate and safe? Can there be a CPU NV12
+  // frame in our code? Should we create a helper used in the make_standalone function too?
   bool cpu_fallback = av_frame.format != AV_PIX_FMT_NV12 &&
       av_frame.format != AV_PIX_FMT_P016LE;
 
@@ -1093,8 +1098,15 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
           gpu_frame.format == AV_PIX_FMT_P016LE,
       "Expected NV12 or P016LE format frame");
 
+  // TODO_API_BREAKDOWN_CUDA: In convert-only mode the frame was produced on
+  // another interface, possibly on another thread and hence another stream.
+  // Using the current stream is only correct when this same interface decoded
+  // the frame. We should read the producing stream off the frame (via the
+  // attached data set in make_frame_standalone) and wait on it here.
   cudaStream_t nvdec_stream = get_current_cuda_stream(device_.index());
 
+  // TODO_API_BREAKDOWN: we don't suppor output_dtype so some of that is not
+  // execrcized.
   auto convert_frame = [&](std::optional<torch::stable::Tensor> pre_alloc)
       -> torch::stable::Tensor {
     bool is_p016 = (gpu_frame.format == AV_PIX_FMT_P016LE);
