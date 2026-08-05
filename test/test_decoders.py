@@ -3405,8 +3405,6 @@ class TestBlocks:
             ),
         )
 
-    # TODO_API_BREAKDOWN P0: We need to test all assets. Generally we need more
-    # tests for all features / edge cases that were eventually fixed.
     @pytest.mark.parametrize(
         "video",
         (
@@ -3447,9 +3445,12 @@ class TestBlocks:
     )
     @pytest.mark.parametrize("device", _block_devices())
     def test_matches_video_decoder(self, video, decode_method, device):
-        # TODO_API_BREAKDOWN P0: this fails on CUDA and must be fixed. The blocks
+        # TODO_API_BREAKDOWN P1: this fails on CUDA and must be fixed. The blocks
         # Demuxer doesn't honor AV_PKT_FLAG_DISCARD (unlike SingleStreamDecoder),
         # so it emits the extra frames trimmed away by the mp4 edit list.
+        # This is kinda related to exact and approximate mode (not exposed on
+        # Blocks (yet??)) so we might want to address that once we have
+        # addressed seeking in the blocks - if we ever support that.
         if device == "cuda" and video is DISCARD_FIRST_KEYFRAME_VIDEO:
             pytest.skip("Blocks pipeline does not handle this asset on CUDA yet.")
 
