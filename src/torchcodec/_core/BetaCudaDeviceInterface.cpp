@@ -965,6 +965,13 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
       0);
 }
 
+bool BetaCudaDeviceInterface::is_device_frame(
+    const UniqueAVFrame& av_frame) const {
+  // Frames NVDEC couldn't handle were decoded on the CPU and their samples are
+  // in host memory; only genuine NVDEC surfaces (NV12/P016) live on the GPU.
+  return !is_cpu_fallback(av_frame->format);
+}
+
 void BetaCudaDeviceInterface::flush() {
   CudaContextGuard context_guard(device_.index());
   if (decoding_on_cpu_) {

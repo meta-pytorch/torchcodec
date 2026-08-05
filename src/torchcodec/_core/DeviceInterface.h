@@ -40,7 +40,7 @@ class DeviceInterface {
  public:
   DeviceInterface(const StableDevice& device) : device_(device) {}
 
-  virtual ~DeviceInterface(){};
+  virtual ~DeviceInterface() {};
 
   StableDevice& device() {
     return device_;
@@ -158,6 +158,15 @@ class DeviceInterface {
 
   virtual void make_frame_standalone([[maybe_unused]] UniqueAVFrame& av_frame) {
   };
+
+  // Whether av_frame's pixel data lives on this interface's device rather than
+  // in host memory. This is a property of the frame, not of the interface: a
+  // hardware interface that had to fall back to CPU decoding hands out frames
+  // in host memory.
+  virtual bool is_device_frame(
+      [[maybe_unused]] const UniqueAVFrame& av_frame) const {
+    return false;
+  }
 
   // Flush remaining frames from decoder
   virtual void flush() {

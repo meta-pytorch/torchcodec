@@ -43,6 +43,18 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   // if more input is needed, AVERROR_EOF at end, or a negative error code.
   int receive_frame(UniqueAVFrame& av_frame);
 
+  // Whether the frame's pixel data is on this decoder's device or in host
+  // memory. A CUDA decoder yields host frames for streams NVDEC can't handle.
+  bool is_device_frame(const UniqueAVFrame& av_frame) const {
+    return device_interface_->is_device_frame(av_frame);
+  }
+
+  // The device this decoder decodes on. Frames may still be in host memory (see
+  // is_device_frame).
+  const StableDevice& device() const {
+    return device_interface_->device();
+  }
+
   // The stream time base, used to convert frame pts/duration to seconds.
   AVRational time_base() const {
     return time_base_;
