@@ -80,6 +80,9 @@ cudaVideoSurfaceFormat get_preferred_surface_format(OutputDtype output_dtype) {
 // inferred from its pixel format. This works today because our CPU fallback
 // never yields NV12/P016 frames, but it's only a proxy, and it's not super
 // robust to future changes.
+// Note that we don't rely on decode_on_cpu_ because that field is only relevant
+// when decoding happens, but this interface can be used in
+// color-conversion-only mode.
 bool is_cpu_fallback(int format) {
   return format != AV_PIX_FMT_NV12 && format != AV_PIX_FMT_P016LE;
 }
@@ -348,8 +351,17 @@ void BetaCudaDeviceInterface::initialize_color_conversion(
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resized_output_dims) {
   output_dtype_ = video_stream_options.output_dtype;
-  if (cpu_fallback_) {
-    cpu_fallback_->initialize_color_conversion(
+
+  if (!decoding_initialized_) {
+    // A ColorConverter (in ColorConverterOnly mode) might need a CPU interface
+    // to color-convert 4:4:4 frames. We create it here unconditionally.
+    cpu_interface_ = create_device_interface(kStableCPU);
+    STD_TORCH_CHECK(
+        cpu_interface_ != nullptr, "Failed to create CPU device interface");
+  }
+
+  if (cpu_interface_) {
+    cpu_interface_->initialize_color_conversion(
         video_stream_options, transforms, resized_output_dims);
   }
   color_conversion_initialized_ = true;
@@ -376,11 +388,12 @@ void BetaCudaDeviceInterface::initialize_video_decoding(
       TC_LOG(
           "Video stream not supported by NVDEC; falling back to CPU decoding.");
     }
-    cpu_fallback_ = create_device_interface(kStableCPU);
+    decoding_on_cpu_ = true;
+    cpu_interface_ = create_device_interface(kStableCPU);
     STD_TORCH_CHECK(
-        cpu_fallback_ != nullptr, "Failed to create CPU device interface");
-    cpu_fallback_->initialize(codec_context_);
-    cpu_fallback_->initialize_video_decoding(
+        cpu_interface_ != nullptr, "Failed to create CPU device interface");
+    cpu_interface_->initialize(codec_context_);
+    cpu_interface_->initialize_video_decoding(
         av_stream, av_format_ctx, video_stream_options);
     return;
   }
@@ -614,8 +627,8 @@ int BetaCudaDeviceInterface::stream_property_change(
 // the NVCUVID parser.
 int BetaCudaDeviceInterface::send_packet(ReferenceAVPacket& packet) {
   CudaContextGuard context_guard(device_.index());
-  if (cpu_fallback_) {
-    return cpu_fallback_->send_packet(packet);
+  if (decoding_on_cpu_) {
+    return cpu_interface_->send_packet(packet);
   }
 
   STD_TORCH_CHECK(
@@ -642,8 +655,8 @@ int BetaCudaDeviceInterface::send_packet(ReferenceAVPacket& packet) {
 
 int BetaCudaDeviceInterface::send_eof_packet() {
   CudaContextGuard context_guard(device_.index());
-  if (cpu_fallback_) {
-    return cpu_fallback_->send_eof_packet();
+  if (decoding_on_cpu_) {
+    return cpu_interface_->send_eof_packet();
   }
 
   CUVIDSOURCEDATAPACKET cuvid_packet = {};
@@ -718,8 +731,8 @@ int BetaCudaDeviceInterface::frame_ready_in_display_order(
 // Moral equivalent of avcodec_receive_frame().
 int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   CudaContextGuard context_guard(device_.index());
-  if (cpu_fallback_) {
-    return cpu_fallback_->receive_frame(av_frame);
+  if (decoding_on_cpu_) {
+    return cpu_interface_->receive_frame(av_frame);
   }
 
   if (ready_frames_.empty()) {
@@ -954,8 +967,8 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
 void BetaCudaDeviceInterface::flush() {
   CudaContextGuard context_guard(device_.index());
-  if (cpu_fallback_) {
-    cpu_fallback_->flush();
+  if (decoding_on_cpu_) {
+    cpu_interface_->flush();
     return;
   }
 
@@ -1137,7 +1150,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     if (is444) {
       // TODO_API_BREAKDOWN P1: we need to handle this
       FrameOutput cpu_frame_output;
-      cpu_fallback_->convert_av_frame_to_frame_output(
+      cpu_interface_->convert_av_frame_to_frame_output(
           av_frame, cpu_frame_output);
       if (pre_allocated_output_tensor.has_value()) {
         torch::stable::copy_(
@@ -1266,7 +1279,7 @@ OutputDtype BetaCudaDeviceInterface::get_pre_allocation_dtype(
 
 std::string BetaCudaDeviceInterface::get_details() {
   std::string details = "NVDEC CUDA Device Interface.";
-  if (cpu_fallback_) {
+  if (decoding_on_cpu_) {
     details += " Using CPU fallback.";
     if (!nvcuvid_available_) {
       details += " NVCUVID not available!";

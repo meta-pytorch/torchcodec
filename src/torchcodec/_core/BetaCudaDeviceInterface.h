@@ -128,7 +128,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   bool decoding_initialized_ = false;
   bool color_conversion_initialized_ = false;
 
-  std::unique_ptr<DeviceInterface> cpu_fallback_;
+  std::unique_ptr<DeviceInterface> cpu_interface_;
+  // Whether this instance decodes on CPU because NVDEC can't handle the stream.
+  bool decoding_on_cpu_ = false;
   bool nvcuvid_available_ = false;
   UniqueSwsContext sws_context_;
 
