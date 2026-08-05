@@ -3275,9 +3275,6 @@ class TestWavDecoder:
             assert wav_samples.pts_seconds == audio_samples.pts_seconds
 
 
-# The blocks support CPU and the NVDEC CUDA backend, and nothing else. In
-# particular they never use the "ffmpeg" CUDA backend, so this is deliberately
-# not all_supported_devices().
 def _block_devices():
     return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
 
@@ -3362,8 +3359,6 @@ class TestBlocks:
     def _make_blocks(path, device):
         demuxer = Demuxer(path)
         decoder = PacketDecoder(demuxer, device=device)
-        # The converter is standalone on every device: it is not bound to the
-        # decoder that produced the frames.
         converter = ColorConverter(device=device)
         return demuxer, decoder, converter
 

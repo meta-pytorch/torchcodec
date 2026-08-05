@@ -733,14 +733,14 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   // unmap will cause map to eventually fail. DALI unmaps frames almost
   // immediately  after mapping them: they do the color-conversion in-between,
   // which involves a copy of the data, so that works.
-  // We, OTOH, will do the color-conversion later, outside of ReceiveFrame(). So
-  // we unmap here: just before mapping a new frame. At that point we know that
-  // the previously-mapped frame is no longer needed: it was either
-  // color-converted (with a copy), or that's a frame that was discarded in
-  // SingleStreamDecoder. Either way, the underlying output surface can be
-  // safely re-used.
-  // TODO_API_BREAKDOWN P1: We should update this comment slightly to now
-  // account for the frame copy we do in make_frame_standalone()
+  // We, OTOH, will do the color-conversion later, outside of receive_frame().
+  // So we unmap here: just before mapping a new frame. At that point we know
+  // that the previously-mapped frame is no longer needed:
+  // - With SingleStreamDecoder, that frame was either color-converted (with a
+  //   copy), or that's a frame that was discarded in SingleStreamDecoder.
+  //   Either way, the underlying output surface can be safely re-used.
+  // - With the "Blocks" APIs, the PacketDecoder forces a copy in
+  //   make_frame_standalone().
   unmap_previous_frame();
   CUresult result = cuvidMapVideoFrame(
       *decoder_.get(),
@@ -858,6 +858,15 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
 }
 
 void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
+  // Make the frame standalone:
+  // - Crucially, we copy the frame data so that its surface can be unmapped in
+  //   receive_frame() (see comment there).
+  // - We put the frame in a state such that it can be safely used by a
+  //   ColorConverter (i.e. a *different* instance of this
+  //   BetaCudaDeviceInterface): we attach relevant metadata as the
+  //   StandAloneFrameAttachedData struct, which is then used by the
+  //   ColorConverter in convert_cuda_frame_to_av_frame() to perform the
+  //   color-conversion correctly.
   CudaContextGuard context_guard(device_.index());
   if (!(av_frame->format == AV_PIX_FMT_P016LE ||
         av_frame->format == AV_PIX_FMT_NV12)) {
@@ -865,14 +874,14 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
     return;
   }
 
-  // Roughly, the number of bytes an NV12 image takes is:
+  // The amount of bytes an NV12 image takes is:
   // num_bytes =  len(Y) + len(UV)
   //           = num_pixels + num_pixels / 2
   //           = num_pixels * 3 / 2
   //
-  // To make it correct, we should use num_pixels = pitch * height, not
-  // num_pixels = width * height. The pitch value also accounts for the data
-  // size (uint8 vs uint16) so this is also correct for P016.
+  // where num_pixels = pitch * height, not num_pixels = width * height. The
+  // pitch value also accounts for the data size (uint8 vs uint16) so this is
+  // also correct for P016.
   int64_t even_height =
       static_cast<int64_t>(round_up_to_even(av_frame->height));
   int64_t pitch = static_cast<int64_t>(av_frame->linesize[0]);
