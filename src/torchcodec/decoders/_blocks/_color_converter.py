@@ -11,10 +11,10 @@ from torchcodec._frame import Frame
 
 from ._frame import DecodedFrame
 
-# TODO_API_BREAKDOWN support output_dtype?
-# TODO_API_BREAKDOWN Expose output_shape?
-
-# TODO_API_BREAKDOWN We need to support rotation metadata!!
+# TODO_API_BREAKDOWN FEAT support output_dtype?
+# TODO_API_BREAKDOWN FEAT We need to support rotation metadata!!
+# TODO_API_BREAKDOWN FEAT Implement seeking?
+# TODO_API_BREAKDOWN FEAT Implement range-getting (start/end time) for decoding?
 
 
 class ColorConverter:
@@ -30,8 +30,8 @@ class ColorConverter:
     block is intentionally stream-agnostic.
     """
 
-    # TODO_API_BREAKDOWN: device default should be None
-    # TODO_API_BREAKDOWN: add checks for coupling between device param of
+    # TODO_API_BREAKDOWN P1: device default should be None
+    # TODO_API_BREAKDOWN P1: add checks for coupling between device param of
     # PacketDecoder and ColorConverter. What if one is CPU and the other is
     # CUDA? What if they're different CUDA devices? Maybe we should just error.
     def __init__(self, device="cpu"):

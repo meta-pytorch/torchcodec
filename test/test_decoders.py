@@ -3381,20 +3381,9 @@ class TestBlocks:
 
     def _decode_prefetch_frames(self, path, device):
         # [demux + decode] on one thread || [color-convert] on another.
-        demuxer = Demuxer(path)
-        converter = ColorConverter(device=device)
+        demuxer, decoder, converter = self._make_blocks(path, device)
 
-        def demux_and_decode():
-            # Constructed here so the PacketDecoder (and thus the CUDA context it
-            # binds via its device interface) lives on the prefetch worker
-            # thread that actually runs the cuvid* calls.
-            # TODO_API_BREAKDOWN_CUDA: this is a temporary workaroun for a real
-            # issue - needs fixing. Things should work when the objects are
-            # constructed in a different thread than where they're consumed.
-            decoder = PacketDecoder(demuxer, device=device)
-            yield from self._decode(decoder, self._demux(demuxer))
-
-        frames = self.prefetch(demux_and_decode())
+        frames = self.prefetch(self._decode(decoder, self._demux(demuxer)))
         return list(self._convert(converter, frames))
 
     def _decode_prefetch_packets(self, path, device):
@@ -3405,19 +3394,9 @@ class TestBlocks:
 
     def _decode_prefetch_packets_and_frames(self, path, device):
         # [demux] || [decode] || [color-convert], each on its own thread.
-        demuxer = Demuxer(path)
-        converter = ColorConverter(device=device)
+        demuxer, decoder, converter = self._make_blocks(path, device)
         packets = self.prefetch(self._demux(demuxer))
-
-        def decode(packets):
-            # Constructed here so the PacketDecoder (and thus the CUDA context it
-            # binds via its device interface) lives on the prefetch worker
-            # thread that actually runs the cuvid* calls.
-            # TODO_API_BREAKDOWN_CUDA: same TODO as above.
-            decoder = PacketDecoder(demuxer, device=device)
-            yield from self._decode(decoder, packets)
-
-        frames = self.prefetch(decode(packets))
+        frames = self.prefetch(self._decode(decoder, packets))
         return list(self._convert(converter, frames))
 
     def _to_frame_batch(self, frames):
@@ -3431,6 +3410,8 @@ class TestBlocks:
             ),
         )
 
+    # TODO_API_BREAKDOWN P0: We need to test all assets. Generally we need more
+    # tests for all features / edge cases that were eventually fixed.
     @pytest.mark.parametrize(
         "video",
         (
@@ -3499,7 +3480,7 @@ class TestBlocks:
     def test_set_cuda_backend_is_a_noop(self, device):
         # The blocks always use the NVDEC CUDA backend. Asking for the "ffmpeg"
         # one changes nothing, rather than silently producing something else.
-        # TODO_API_BREAKDOWN: let's just error?
+        # TODO_API_BREAKDOWN P2: let's just error?
         with set_cuda_backend("ffmpeg"):
             got = self._to_frame_batch(self._decode_sequential(NASA_VIDEO.path, device))
         ref = self._to_frame_batch(self._decode_sequential(NASA_VIDEO.path, device))

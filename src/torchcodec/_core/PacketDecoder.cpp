@@ -8,7 +8,7 @@
 
 namespace facebook::torchcodec {
 
-// TODO_API_BREAKDOWN: we should make sure the block APIs can dispatch to
+// TODO_API_BREAKDOWN P1: we should make sure the block APIs can dispatch to
 // third-party extensions - all of them.
 
 SharedAVCodecContext create_and_open_codec_context(
@@ -75,7 +75,7 @@ PacketDecoder::PacketDecoder(
   options.output_dtype = OutputDtype::UINT8; // dtype not exposed yet
   options.device = device;
 
-  // TODO_API_BREAKDOWN: This isn't right, it's needed only for the NVDEC
+  // TODO_API_BREAKDOWN P0: This isn't right, it's needed only for the NVDEC
   // interface. This should probably be initialize_video_only - there's a
   // sibling TODO in the ColorConverter code (about color-conversion only.)
   std::vector<std::unique_ptr<Transform>> no_transforms;
