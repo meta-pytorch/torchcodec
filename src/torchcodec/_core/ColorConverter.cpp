@@ -28,20 +28,10 @@ ColorConverter::ColorConverter(const StableDevice& device) {
   // TODO_API_BREAKDOWN P1 It seems unnatural that the color-converter needs its
   // own device_interface_, but at the same time the color-conversion *must* be
   // third-party aware, and the only way to achieve that for now is via the
-  // interface. Should at the very least write a note about this design that now
-  // the DeviceInterface has different modes: decode only, color-convert only,
-  // and decode+color-convert (which used to be the only mode).
-
-  // TODO_API_BREAKDOWN P0: we shouldn't call initialize_video here, this is for
-  // the decoding+color-convert mode. We should do something cleaner e.g.
-  // initialize_color_convertion_only()
+  // interface.
   std::vector<std::unique_ptr<Transform>> no_transforms;
-  device_interface_->initialize_video(
-      /*av_stream=*/nullptr,
-      UniqueDecodingAVFormatContext{},
-      options,
-      no_transforms,
-      /*resized_output_dims=*/std::nullopt);
+  device_interface_->initialize_color_conversion(
+      options, no_transforms, /*resized_output_dims=*/std::nullopt);
 }
 
 torch::stable::Tensor ColorConverter::convert(const AVFrame& av_frame) {

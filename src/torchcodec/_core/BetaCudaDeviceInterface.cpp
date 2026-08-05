@@ -324,16 +324,21 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
   nvcuvid_available_ = load_nvcuvid_library();
 }
 
-void BetaCudaDeviceInterface::initialize_video(
-    const AVStream* av_stream,
-    const UniqueDecodingAVFormatContext& av_format_ctx,
+void BetaCudaDeviceInterface::initialize_color_conversion(
     const VideoStreamOptions& video_stream_options,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resized_output_dims) {
-  // TODO_API_BREAKDOWN P0
-  if (!av_stream) {
-    return;
+  output_dtype_ = video_stream_options.output_dtype;
+  if (cpu_fallback_) {
+    cpu_fallback_->initialize_color_conversion(
+        video_stream_options, transforms, resized_output_dims);
   }
+}
+
+void BetaCudaDeviceInterface::initialize_video_decoding(
+    const AVStream* av_stream,
+    const UniqueDecodingAVFormatContext& av_format_ctx,
+    const VideoStreamOptions& video_stream_options) {
   STD_TORCH_CHECK(av_stream != nullptr, "AVStream cannot be null");
   CudaContextGuard context_guard(device_.index());
   rotation_ = rotation_from_degrees(get_rotation_from_stream(av_stream));
@@ -354,12 +359,8 @@ void BetaCudaDeviceInterface::initialize_video(
     STD_TORCH_CHECK(
         cpu_fallback_ != nullptr, "Failed to create CPU device interface");
     cpu_fallback_->initialize(codec_context_);
-    cpu_fallback_->initialize_video(
-        av_stream,
-        av_format_ctx,
-        video_stream_options,
-        transforms,
-        resized_output_dims);
+    cpu_fallback_->initialize_video_decoding(
+        av_stream, av_format_ctx, video_stream_options);
     return;
   }
 

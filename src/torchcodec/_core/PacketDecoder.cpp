@@ -75,16 +75,8 @@ PacketDecoder::PacketDecoder(
   options.output_dtype = OutputDtype::UINT8; // dtype not exposed yet
   options.device = device;
 
-  // TODO_API_BREAKDOWN P0: This isn't right, it's needed only for the NVDEC
-  // interface. This should probably be initialize_video_only - there's a
-  // sibling TODO in the ColorConverter code (about color-conversion only.)
-  std::vector<std::unique_ptr<Transform>> no_transforms;
-  device_interface_->initialize_video(
-      stream,
-      demuxer.format_context(),
-      options,
-      no_transforms,
-      /*resized_output_dims=*/std::nullopt);
+  device_interface_->initialize_video_decoding(
+      stream, demuxer.format_context(), options);
 }
 
 int PacketDecoder::send_packet(AVPacket* packet) {

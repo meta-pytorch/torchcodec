@@ -56,15 +56,33 @@ class DeviceInterface {
   // default sendPacket/receiveFrame/flush implementations.
   virtual void initialize(const SharedAVCodecContext& codec_context) = 0;
 
-  // Initialize the device with parameters specific to video decoding. There is
-  // a default empty implementation.
-  virtual void initialize_video(
+  // Initialize state needed to decode packets into raw AVFrames.
+  virtual void initialize_video_decoding(
       [[maybe_unused]] const AVStream* av_stream,
       [[maybe_unused]] const UniqueDecodingAVFormatContext& av_format_ctx,
+      [[maybe_unused]] const VideoStreamOptions& video_stream_options) {}
+
+  // Initialize state needed to color-convert decoded AVFrames into output
+  // tensors.
+  virtual void initialize_color_conversion(
       [[maybe_unused]] const VideoStreamOptions& video_stream_options,
       [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>&
-          transforms,
-      [[maybe_unused]] const std::optional<FrameDims>& resized_output_dims) {}
+          transforms = {},
+      [[maybe_unused]] const std::optional<FrameDims>& resized_output_dims =
+          std::nullopt) {}
+
+  // Convenience for the combined decode + color-convert path, kept for BC as
+  // it's used by SingleStreamDecoder and out-of-tree interfaces rely on it.
+  void initialize_video(
+      const AVStream* av_stream,
+      const UniqueDecodingAVFormatContext& av_format_ctx,
+      const VideoStreamOptions& video_stream_options,
+      const std::vector<std::unique_ptr<Transform>>& transforms,
+      const std::optional<FrameDims>& resized_output_dims) {
+    initialize_video_decoding(av_stream, av_format_ctx, video_stream_options);
+    initialize_color_conversion(
+        video_stream_options, transforms, resized_output_dims);
+  }
 
   // Initialize the device with parameters specific to audio decoding. There is
   // a default empty implementation.
