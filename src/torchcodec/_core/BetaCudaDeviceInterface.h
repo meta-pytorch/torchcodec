@@ -77,6 +77,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   std::string get_details() override;
 
  private:
+  enum class Mode { Uninitialized, DecoderOnly, ColorConverterOnly, Both };
+  Mode mode() const;
+
   int send_cuvid_packet(CUVIDSOURCEDATAPACKET& cuvid_packet);
 
   void send_seqhdr_packet();
@@ -121,6 +124,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   AVRational frame_rate_avg_from_ffmpeg_ = {0, 1};
 
   UniqueAVBSFContext bitstream_filter_;
+
+  bool decoding_initialized_ = false;
+  bool color_conversion_initialized_ = false;
 
   std::unique_ptr<DeviceInterface> cpu_fallback_;
   bool nvcuvid_available_ = false;
