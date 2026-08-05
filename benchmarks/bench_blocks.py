@@ -4,6 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
+import argparse
 import queue
 import subprocess
 import threading
@@ -110,44 +111,44 @@ def _consume(frames):
         pass
 
 
-def _decode_sequential(path):
+def _decode_sequential(path, device="cpu"):
     demuxer = Demuxer(path)
-    decoder = PacketDecoder(demuxer)
-    converter = ColorConverter()
+    decoder = PacketDecoder(demuxer, device=device)
+    converter = ColorConverter(device=device)
     _consume(_convert(converter, _decode(decoder, _demux(demuxer))))
 
 
-def _decode_prefetch_frames(path):
+def _decode_prefetch_frames(path, device="cpu"):
     # [demux + decode] on one thread || [color-convert] on another.
     demuxer = Demuxer(path)
-    decoder = PacketDecoder(demuxer)
-    converter = ColorConverter()
+    decoder = PacketDecoder(demuxer, device=device)
+    converter = ColorConverter(device=device)
     frames = prefetch(_decode(decoder, _demux(demuxer)))
     _consume(_convert(converter, frames))
 
 
-def _decode_prefetch_packets(path):
+def _decode_prefetch_packets(path, device="cpu"):
     # [demux] on one thread || [decode + color-convert] on another.
     demuxer = Demuxer(path)
-    decoder = PacketDecoder(demuxer)
-    converter = ColorConverter()
+    decoder = PacketDecoder(demuxer, device=device)
+    converter = ColorConverter(device=device)
     packets = prefetch(_demux(demuxer))
     _consume(_convert(converter, _decode(decoder, packets)))
 
 
-def _decode_prefetch_packets_and_frames(path):
+def _decode_prefetch_packets_and_frames(path, device="cpu"):
     # [demux] || [decode] || [color-convert], each on its own thread.
     demuxer = Demuxer(path)
-    decoder = PacketDecoder(demuxer)
-    converter = ColorConverter()
+    decoder = PacketDecoder(demuxer, device=device)
+    converter = ColorConverter(device=device)
     packets = prefetch(_demux(demuxer))
     frames = prefetch(_decode(decoder, packets))
     _consume(_convert(converter, frames))
 
 
-def _decode_video_decoder(path):
+def _decode_video_decoder(path, device="cpu"):
     # approximate seek mode to match the blocks
-    VideoDecoder(path, seek_mode="approximate").get_all_frames()
+    VideoDecoder(path, seek_mode="approximate", device=device).get_all_frames()
 
 
 def get_num_frames(path):
@@ -161,6 +162,7 @@ def get_num_frames(path):
 
 def bench(f, *args, num_exp=10, warmup=2, **kwargs):
     process = psutil.Process()
+    cuda = kwargs.get("device") == "cuda"
     for _ in range(warmup):
         f(*args, **kwargs)
     times = []
@@ -169,6 +171,8 @@ def bench(f, *args, num_exp=10, warmup=2, **kwargs):
         process.cpu_percent(interval=None)  # reset the measurement window
         start = perf_counter_ns()
         f(*args, **kwargs)
+        if cuda:
+            torch.cuda.synchronize()
         end = perf_counter_ns()
         cpu_utils.append(process.cpu_percent(interval=None))  # since reset
         times.append(end - start)
@@ -176,8 +180,13 @@ def bench(f, *args, num_exp=10, warmup=2, **kwargs):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
+    device = parser.parse_args().device
+
     path = make_video()
-    print(f"Video: {path}  ({_SOURCE} {_WIDTH}x{_HEIGHT} {_FPS}fps {_DURATION_S}s)\n")
+    print(f"Video: {path}  ({_SOURCE} {_WIDTH}x{_HEIGHT} {_FPS}fps {_DURATION_S}s)")
+    print(f"Device: {device}\n")
 
     methods = {
         "VideoDecoder": _decode_video_decoder,
@@ -189,7 +198,7 @@ def main():
 
     results = {}
     for name, fn in methods.items():
-        times_ns, cpu = bench(fn, path)
+        times_ns, cpu = bench(fn, path, device=device)
         results[name] = {
             "mean_ms": (times_ns / 1e6).mean().item(),
             "std_ms": (times_ns / 1e6).std().item(),
