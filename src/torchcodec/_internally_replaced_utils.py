@@ -124,7 +124,7 @@ def load_core_libraries() -> tuple[int, str]:
     with PyTorch's runtime so they're accessible through torch.ops.
     """
     exceptions = []
-    for ffmpeg_major_version in (8, 7, 6, 5, 4):
+    for ffmpeg_major_version in (9, 8, 7, 6, 5, 4):
         core_library_name = f"libtorchcodec_core{ffmpeg_major_version}"
         custom_ops_library_name = f"libtorchcodec_custom_ops{ffmpeg_major_version}"
         try:
@@ -145,7 +145,7 @@ def load_core_libraries() -> tuple[int, str]:
     raise RuntimeError(
         f"""Could not load libtorchcodec. Likely causes:
           1. FFmpeg is not properly installed in your environment. We support
-             versions 4, 5, 6, 7, and 8, and we attempt to load libtorchcodec
+             versions 4, 5, 6, 7, 8, and 9, and we attempt to load libtorchcodec
              for each of those versions. Errors for versions not installed on
              your system are expected; only the error for your installed FFmpeg
              version is relevant. On Windows, ensure you've installed the

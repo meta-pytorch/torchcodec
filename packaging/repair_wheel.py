@@ -541,7 +541,7 @@ def check_bundling():
 
         Both libtorchcodec_image.so (the image decoders/encoders) and
         libtorchcodec_pybind_ops.so (the Python file-like bridge) are built
-        separately from the FFmpeg-dependent core{4,5,6,7,8}.so libraries and
+        separately from the FFmpeg-dependent core{4,5,6,7,8,9}.so libraries and
         must stay FFmpeg-free:
         - the image lib, to avoid symbol interposition between the bundled image
           codec libs (libjpeg/libpng/libwebp) and the user's FFmpeg, which may
