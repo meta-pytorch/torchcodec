@@ -6,7 +6,7 @@
 
 Computation times
 =================
-**05:17.773** total execution time for 12 files **from generated_examples/decoding**:
+**05:17.363** total execution time for 12 files **from generated_examples/decoding**:
 
 .. container::
 
@@ -33,37 +33,37 @@ Computation times
      - Time
      - Mem (MB)
    * - :ref:`sphx_glr_generated_examples_decoding_transforms.py` (``transforms.py``)
-     - 02:26.859
+     - 02:26.384
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_parallel_decoding.py` (``parallel_decoding.py``)
-     - 01:25.524
+     - 01:25.665
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_file_like.py` (``file_like.py``)
-     - 00:27.482
+     - 00:27.492
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_approximate_mode.py` (``approximate_mode.py``)
-     - 00:25.361
+     - 00:25.152
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_custom_frame_mappings.py` (``custom_frame_mappings.py``)
-     - 00:23.794
+     - 00:23.954
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_basic_cuda_example.py` (``basic_cuda_example.py``)
-     - 00:04.717
+     - 00:04.711
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_basic_example.py` (``basic_example.py``)
-     - 00:02.088
+     - 00:02.052
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_audio_decoding.py` (``audio_decoding.py``)
-     - 00:00.949
+     - 00:00.953
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_hdr_decoding.py` (``hdr_decoding.py``)
-     - 00:00.440
+     - 00:00.443
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_sampling.py` (``sampling.py``)
-     - 00:00.407
+     - 00:00.427
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_image_decoding.py` (``image_decoding.py``)
-     - 00:00.151
+     - 00:00.129
      - 0.0
    * - :ref:`sphx_glr_generated_examples_decoding_performance_tips.py` (``performance_tips.py``)
      - 00:00.000
