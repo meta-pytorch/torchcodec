@@ -15,10 +15,8 @@
 
 namespace facebook::torchcodec {
 
-ColorConverter::ColorConverter(
-    const StableDevice& device,
-    std::string_view device_variant) {
-  device_interface_ = create_device_interface(device, device_variant);
+ColorConverter::ColorConverter(const StableDevice& device) {
+  device_interface_ = create_device_interface(device);
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
@@ -27,22 +25,13 @@ ColorConverter::ColorConverter(
   options.output_dtype = OutputDtype::UINT8; // dtype not exposed yet
   options.device = device;
 
-  // No user transforms and no stream: the converter is stream-agnostic and
-  // derives everything it needs from each frame.
-  //
-  // TODO_API_BREAKDOWN Need to refac/rethink all this. It seems unnatural that
-  // the color-converter needs its own device_interface_, but at the same time
-  // the color-conversion *must* be third-party aware, and the only way to
-  // achieve that for now is via the interface.
-  // This will become very relevant when we tackle CUDA, so we can defer until
-  // then. For now this is an OK hack.
+  // TODO_API_BREAKDOWN P1 It seems unnatural that the color-converter needs its
+  // own device_interface_, but at the same time the color-conversion *must* be
+  // third-party aware, and the only way to achieve that for now is via the
+  // interface.
   std::vector<std::unique_ptr<Transform>> no_transforms;
-  device_interface_->initialize_video(
-      /*av_stream=*/nullptr,
-      UniqueDecodingAVFormatContext{},
-      options,
-      no_transforms,
-      /*resized_output_dims=*/std::nullopt);
+  device_interface_->initialize_color_conversion(
+      options, no_transforms, /*resized_output_dims=*/std::nullopt);
 }
 
 torch::stable::Tensor ColorConverter::convert(const AVFrame& av_frame) {

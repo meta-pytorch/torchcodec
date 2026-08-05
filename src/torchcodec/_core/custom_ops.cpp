@@ -77,14 +77,13 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_create_demuxer(str filename, int? stream_index=None) -> Tensor");
   m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
   m.def(
-      "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\", str device_variant=\"default\") -> Tensor");
+      "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\") -> Tensor");
   m.def(
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def(
       "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float)");
-  m.def(
-      "_blocks_create_color_converter(str device=\"cpu\", str device_variant=\"default\") -> Tensor");
+  m.def("_blocks_create_color_converter(str device=\"cpu\") -> Tensor");
   m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
@@ -185,9 +184,7 @@ SingleStreamDecoder* unwrap_tensor_to_get_decoder(
 // (Demuxer / PacketDecoder / ColorConverter / AVPacket / AVFrame). Same trick
 // as wrap_decoder_pointer_to_tensor: the tensor's data pointer IS the raw
 // pointer, and the tensor is the owner. Taking the unique_ptr by value is what
-// makes the ownership transfer explicit at the call site; the unique_ptr's own
-// deleter is what frees the object, so FFmpeg types work here as long as they
-// arrive in their UniqueAVXxx alias.
+// makes the ownership transfer explicit at the call site.
 template <typename T, typename D>
 torch::stable::Tensor wrap_pointer_to_tensor(std::unique_ptr<T, D> ptr) {
   D object_deleter = ptr.get_deleter();
@@ -814,16 +811,15 @@ OpsPacketOutput _blocks_demuxer_next_packet(torch::stable::Tensor& demuxer) {
 torch::stable::Tensor _blocks_create_packet_decoder(
     torch::stable::Tensor& demuxer,
     std::optional<int64_t> num_threads,
-    std::string device,
-    std::string device_variant) {
+    std::string device) {
   Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
-  validate_device_interface(device, device_variant);
+  validate_device_interface(device);
   std::optional<int> thread_count;
   if (num_threads.has_value()) {
     thread_count = static_cast<int>(num_threads.value());
   }
   auto decoder = std::make_unique<PacketDecoder>(
-      *demuxer_ptr, StableDevice(device), device_variant, thread_count);
+      *demuxer_ptr, StableDevice(device), thread_count);
   return wrap_pointer_to_tensor<PacketDecoder>(std::move(decoder));
 }
 
@@ -831,6 +827,7 @@ int64_t _blocks_packet_decoder_send_packet(
     torch::stable::Tensor& decoder,
     torch::stable::Tensor& packet) {
   PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
+  // TODO_API_BREAKDOWN P1: Do we really need this to be a raw AVPacket*?
   AVPacket* raw_packet = unwrap_tensor_to_pointer<AVPacket>(packet);
   return static_cast<int64_t>(decoder_ptr->send_packet(raw_packet));
 }
@@ -871,12 +868,9 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
       duration_seconds);
 }
 
-torch::stable::Tensor _blocks_create_color_converter(
-    std::string device,
-    std::string device_variant) {
-  validate_device_interface(device, device_variant);
-  auto converter =
-      std::make_unique<ColorConverter>(StableDevice(device), device_variant);
+torch::stable::Tensor _blocks_create_color_converter(std::string device) {
+  validate_device_interface(device);
+  auto converter = std::make_unique<ColorConverter>(StableDevice(device));
   return wrap_pointer_to_tensor<ColorConverter>(std::move(converter));
 }
 

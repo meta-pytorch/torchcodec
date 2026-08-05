@@ -8,7 +8,7 @@
 
 namespace facebook::torchcodec {
 
-// TODO_API_BREAKDOWN: we should make sure the block APIs can dispatch to
+// TODO_API_BREAKDOWN P1: we should make sure the block APIs can dispatch to
 // third-party extensions - all of them.
 
 SharedAVCodecContext create_and_open_codec_context(
@@ -58,9 +58,8 @@ const AVCodec* find_decoder(
 PacketDecoder::PacketDecoder(
     const Demuxer& demuxer,
     const StableDevice& device,
-    std::string_view device_variant,
     std::optional<int> ffmpeg_thread_count) {
-  device_interface_ = create_device_interface(device, device_variant);
+  device_interface_ = create_device_interface(device);
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
@@ -71,6 +70,13 @@ PacketDecoder::PacketDecoder(
   codec_context_ = create_and_open_codec_context(
       stream, av_codec, device_interface_.get(), ffmpeg_thread_count);
   device_interface_->initialize(codec_context_);
+
+  VideoStreamOptions options;
+  options.output_dtype = OutputDtype::UINT8; // dtype not exposed yet
+  options.device = device;
+
+  device_interface_->initialize_video_decoding(
+      stream, demuxer.format_context(), options);
 }
 
 int PacketDecoder::send_packet(AVPacket* packet) {
@@ -90,7 +96,11 @@ int PacketDecoder::send_eof() {
 }
 
 int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
-  return device_interface_->receive_frame(av_frame);
+  int status = device_interface_->receive_frame(av_frame);
+  if (status == AVSUCCESS) {
+    device_interface_->make_frame_standalone(av_frame);
+  }
+  return status;
 }
 
 } // namespace facebook::torchcodec

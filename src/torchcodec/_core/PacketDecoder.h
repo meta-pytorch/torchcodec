@@ -33,7 +33,6 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   explicit PacketDecoder(
       const Demuxer& demuxer,
       const StableDevice& device = StableDevice(kStableCPU),
-      std::string_view device_variant = "default",
       std::optional<int> ffmpeg_thread_count = std::nullopt);
 
   // Feed one packet to the decoder. Borrows `packet` (does not take ownership).

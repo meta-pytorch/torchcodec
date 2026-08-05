@@ -266,9 +266,47 @@ std::optional<cudaVideoSurfaceFormat> get_nvdec_surface_format(
 
 // Callback for freeing CUDA memory associated with AVFrame see where it's used
 // for more details.
+// TODO_API_BREAKDOWN P2: Should we align this with the other free callback
+// below?  Why did we use cudaMalloc? Can we just allocate with torch??
 void cuda_buffer_free_callback(void* opaque, [[maybe_unused]] uint8_t* data) {
   cudaFree(opaque);
 }
+
+void standalone_frame_free_callback(
+    [[maybe_unused]] void* opaque,
+    uint8_t* data) {
+  delete reinterpret_cast<StandAloneFrameAttachedData*>(data);
+}
+
+class CudaContextGuard {
+  // There's one CUDA context per process per device. But new threads aren't
+  // bound to a context. The binding often happens automatically when calling
+  // CUDA APIs (like cudaFree), but some APIs like the NVCUVID ones that we use
+  // here aren't automatically binding.
+  // So for a thread to be able to use NVCUVID APIs, it must have a context
+  // bound to it, and we have to enforce that binding manually.
+  // That's what this guard does: it calls cudaFree(nullptr), which is a common
+  // near-free way to force the CUDA runtime to bind the context for the current
+  // thread. And this call must happen within a device guard to make sure we're
+  // binding the context of the device this interface is using.
+  // We must call this guard in every public method of the interface that uses
+  // NVCUVID APIs, because these methods can, in theory, be called from any
+  // thread.
+  // Note that none of this was an issue before when our only entry-point was
+  // the SingleStreamDecoder: all the entry-points were called from the same
+  // thread. Now that we have split the APIs in different blocks (PacketDecoder,
+  // ColorConverter), each of these blocks can be on different threads - and
+  // importantly, they can be created in the main thread (where the context is
+  // bound by our call to initialize_cuda_context_with_pytorch()), but then used
+  // in a different thread that doesn't have the context.
+ public:
+  explicit CudaContextGuard(int device_index) : device_guard_(device_index) {
+    cudaFree(nullptr);
+  }
+
+ private:
+  StableDeviceGuard device_guard_;
+};
 
 } // namespace
 
@@ -278,18 +316,31 @@ BetaCudaDeviceInterface::BetaCudaDeviceInterface(const StableDevice& device)
   STD_TORCH_CHECK(
       device_.type() == kStableCUDA, "Unsupported device: must be CUDA");
 
+  // Note: now that we have the CudaContextGuard, we might not need to do that
+  // anymore. The comment says we need pytorch to create the context - maybe
+  // that's true, but that's a very old comment now.
   initialize_cuda_context_with_pytorch(device_);
 
   nvcuvid_available_ = load_nvcuvid_library();
 }
 
-void BetaCudaDeviceInterface::initialize_video(
-    const AVStream* av_stream,
-    const UniqueDecodingAVFormatContext& av_format_ctx,
+void BetaCudaDeviceInterface::initialize_color_conversion(
     const VideoStreamOptions& video_stream_options,
     const std::vector<std::unique_ptr<Transform>>& transforms,
     const std::optional<FrameDims>& resized_output_dims) {
+  output_dtype_ = video_stream_options.output_dtype;
+  if (cpu_fallback_) {
+    cpu_fallback_->initialize_color_conversion(
+        video_stream_options, transforms, resized_output_dims);
+  }
+}
+
+void BetaCudaDeviceInterface::initialize_video_decoding(
+    const AVStream* av_stream,
+    const UniqueDecodingAVFormatContext& av_format_ctx,
+    const VideoStreamOptions& video_stream_options) {
   STD_TORCH_CHECK(av_stream != nullptr, "AVStream cannot be null");
+  CudaContextGuard context_guard(device_.index());
   rotation_ = rotation_from_degrees(get_rotation_from_stream(av_stream));
   output_dtype_ = video_stream_options.output_dtype;
 
@@ -308,12 +359,8 @@ void BetaCudaDeviceInterface::initialize_video(
     STD_TORCH_CHECK(
         cpu_fallback_ != nullptr, "Failed to create CPU device interface");
     cpu_fallback_->initialize(codec_context_);
-    cpu_fallback_->initialize_video(
-        av_stream,
-        av_format_ctx,
-        video_stream_options,
-        transforms,
-        resized_output_dims);
+    cpu_fallback_->initialize_video_decoding(
+        av_stream, av_format_ctx, video_stream_options);
     return;
   }
 
@@ -393,6 +440,7 @@ void BetaCudaDeviceInterface::send_seqhdr_packet() {
 }
 
 BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
+  CudaContextGuard context_guard(device_.index());
   if (decoder_) {
     // DALI doesn't seem to do any particular cleanup of the decoder before
     // sending it to the cache, so we probably don't need to do anything either.
@@ -544,6 +592,7 @@ int BetaCudaDeviceInterface::stream_property_change(
 // Moral equivalent of avcodec_send_packet(). Here, we pass the AVPacket down to
 // the NVCUVID parser.
 int BetaCudaDeviceInterface::send_packet(ReferenceAVPacket& packet) {
+  CudaContextGuard context_guard(device_.index());
   if (cpu_fallback_) {
     return cpu_fallback_->send_packet(packet);
   }
@@ -571,6 +620,7 @@ int BetaCudaDeviceInterface::send_packet(ReferenceAVPacket& packet) {
 }
 
 int BetaCudaDeviceInterface::send_eof_packet() {
+  CudaContextGuard context_guard(device_.index());
   if (cpu_fallback_) {
     return cpu_fallback_->send_eof_packet();
   }
@@ -646,6 +696,7 @@ int BetaCudaDeviceInterface::frame_ready_in_display_order(
 
 // Moral equivalent of avcodec_receive_frame().
 int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
+  CudaContextGuard context_guard(device_.index());
   if (cpu_fallback_) {
     return cpu_fallback_->receive_frame(av_frame);
   }
@@ -682,12 +733,14 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   // unmap will cause map to eventually fail. DALI unmaps frames almost
   // immediately  after mapping them: they do the color-conversion in-between,
   // which involves a copy of the data, so that works.
-  // We, OTOH, will do the color-conversion later, outside of ReceiveFrame(). So
-  // we unmap here: just before mapping a new frame. At that point we know that
-  // the previously-mapped frame is no longer needed: it was either
-  // color-converted (with a copy), or that's a frame that was discarded in
-  // SingleStreamDecoder. Either way, the underlying output surface can be
-  // safely re-used.
+  // We, OTOH, will do the color-conversion later, outside of receive_frame().
+  // So we unmap here: just before mapping a new frame. At that point we know
+  // that the previously-mapped frame is no longer needed:
+  // - With SingleStreamDecoder, that frame was either color-converted (with a
+  //   copy), or that's a frame that was discarded in SingleStreamDecoder.
+  //   Either way, the underlying output surface can be safely re-used.
+  // - With the "Blocks" APIs, the PacketDecoder forces a copy in
+  //   make_frame_standalone().
   unmap_previous_frame();
   CUresult result = cuvidMapVideoFrame(
       *decoder_.get(),
@@ -795,15 +848,85 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
       reinterpret_cast<uint8_t*>(frame_ptr + (pitch * even_height));
   av_frame->data[2] = nullptr;
   av_frame->data[3] = nullptr;
-  av_frame->linesize[0] = pitch;
-  av_frame->linesize[1] = pitch;
+  // TODO_API_BREAKDOWN_CUDA P2: Check range before cast?
+  av_frame->linesize[0] = static_cast<int>(pitch);
+  av_frame->linesize[1] = static_cast<int>(pitch);
   av_frame->linesize[2] = 0;
   av_frame->linesize[3] = 0;
 
   return av_frame;
 }
 
+void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
+  // Make the frame standalone:
+  // - Crucially, we copy the frame data so that its surface can be unmapped in
+  //   receive_frame() (see comment there).
+  // - We put the frame in a state such that it can be safely used by a
+  //   ColorConverter (i.e. a *different* instance of this
+  //   BetaCudaDeviceInterface): we attach relevant metadata as the
+  //   StandAloneFrameAttachedData struct, which is then used by the
+  //   ColorConverter in convert_cuda_frame_to_av_frame() to perform the
+  //   color-conversion correctly.
+  CudaContextGuard context_guard(device_.index());
+  if (!(av_frame->format == AV_PIX_FMT_P016LE ||
+        av_frame->format == AV_PIX_FMT_NV12)) {
+    // The CPU frames are already standalone, so we don't need to do anything.
+    return;
+  }
+
+  // The amount of bytes an NV12 image takes is:
+  // num_bytes =  len(Y) + len(UV)
+  //           = num_pixels + num_pixels / 2
+  //           = num_pixels * 3 / 2
+  //
+  // where num_pixels = pitch * height, not num_pixels = width * height. The
+  // pitch value also accounts for the data size (uint8 vs uint16) so this is
+  // also correct for P016.
+  int64_t even_height =
+      static_cast<int64_t>(round_up_to_even(av_frame->height));
+  int64_t pitch = static_cast<int64_t>(av_frame->linesize[0]);
+  int64_t num_bytes = pitch * even_height * 3 / 2;
+
+  auto storage =
+      torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
+
+  // TODO_API_BREAKDOWN_CUDA P1: I suspect we don't need to wait on the nvdec
+  // stream here, because we can only arrive here from a path where the frame
+  // has already been mapped so its data is available - worth double checking.
+  cudaStream_t current_stream = get_current_cuda_stream(device_.index());
+  cudaError_t err = cudaMemcpyAsync(
+      storage.mutable_data_ptr(),
+      av_frame->data[0],
+      static_cast<size_t>(num_bytes),
+      cudaMemcpyDeviceToDevice,
+      current_stream);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to copy NVDEC surface: ",
+      cudaGetErrorString(err));
+
+  // TODO_API_BREAKDOWN_CUDA P2: Should we unmap here? Or let the next
+  // receive_frame() call do it?
+  // unmap_previous_frame();
+
+  auto y_plane = static_cast<uint8_t*>(storage.mutable_data_ptr());
+  av_frame->data[0] = y_plane;
+  av_frame->data[1] = y_plane + (pitch * even_height);
+
+  auto attached_data = new StandAloneFrameAttachedData();
+  attached_data->producer_stream = current_stream;
+  // TODO_API_BREAKDOWN_CUDA P2: We don't *really* need to std::move it I guess?
+  attached_data->storage = std::move(storage);
+  av_frame->opaque_ref = av_buffer_create(
+      reinterpret_cast<uint8_t*>(attached_data),
+      sizeof(StandAloneFrameAttachedData),
+      standalone_frame_free_callback,
+      nullptr,
+      0);
+}
+
 void BetaCudaDeviceInterface::flush() {
+  CudaContextGuard context_guard(device_.index());
   if (cpu_fallback_) {
     cpu_fallback_->flush();
     return;
@@ -811,10 +934,10 @@ void BetaCudaDeviceInterface::flush() {
 
   // The NVCUVID docs mention that after seeking, i.e. when flush() is called,
   // we should send a packet with the CUVID_PKT_DISCONTINUITY flag. The docs
-  // don't say whether this should be an empty packet, or whether it should be a
-  // flag on the next non-empty packet. It doesn't matter: neither work :)
-  // Sending an EOF packet, however, does work. So we do that. And we re-set the
-  // eofSent_ flag to false because that's not a true EOF notification.
+  // don't say whether this should be an empty packet, or whether it should be
+  // a flag on the next non-empty packet. It doesn't matter: neither work :)
+  // Sending an EOF packet, however, does work. So we do that. And we re-set
+  // the eofSent_ flag to false because that's not a true EOF notification.
   send_eof_packet();
   eof_sent_ = false;
 
@@ -827,17 +950,17 @@ void BetaCudaDeviceInterface::flush() {
 UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
     const AVFrame& cpu_frame,
     AVPixelFormat target_pix_fmt) {
-  // This is called in the context of the CPU fallback: the frame was decoded on
-  // the CPU, and in this function we convert that frame into NV12 or P016
+  // This is called in the context of the CPU fallback: the frame was decoded
+  // on the CPU, and in this function we convert that frame into NV12 or P016
   // format and send it to the GPU.
   // We do that in 2 steps:
   // - First we convert the input CPU frame into an intermediate NV12/P016 CPU
   //   frame using sws_scale.
   // - Then we allocate GPU memory and copy the CPU frame to the GPU. This
   //   is what we return.
-  // Since NV12/P016 require even dimensions, the returned frame will have even
-  // (rounded up) width and height, even if the original CPU frame had odd
-  // dimensions.
+  // Since NV12/P016 require even dimensions, the returned frame will have
+  // even (rounded up) width and height, even if the original CPU frame had
+  // odd dimensions.
 
   // NV12 = 1 byte per sample, P016 = 2 bytes per sample
   STD_TORCH_CHECK(
@@ -950,9 +1073,9 @@ UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
       "Failed to copy frame properties: ",
       get_ffmpeg_error_string_from_error_code(ret));
 
-  // We need to make sure the CUDA memory is freed properly. Since we allocated
-  // it ourselves, FFmpeg doesn't know how to free it. We associate a `free`
-  // callback via opaque_ref that will be called by av_frame_free().
+  // We need to make sure the CUDA memory is freed properly. Since we
+  // allocated it ourselves, FFmpeg doesn't know how to free it. We associate
+  // a `free` callback via opaque_ref that will be called by av_frame_free().
   gpu_frame->opaque_ref = av_buffer_create(
       nullptr, // data - we don't need any
       0, // data size
@@ -970,7 +1093,14 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     const AVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
-  if (cpu_fallback_) {
+  CudaContextGuard context_guard(device_.index());
+  // TODO_API_BREAKDOWN_CUDA P0 is that accurate and safe? Can there be a CPU
+  // NV12 frame in our code? Should we create a helper used in the
+  // make_standalone function too?
+  bool cpu_fallback = av_frame.format != AV_PIX_FMT_NV12 &&
+      av_frame.format != AV_PIX_FMT_P016LE;
+
+  if (cpu_fallback) {
     // When the CPU fallback happens, we'll try to run the color-conversion on
     // GPU by sending those CPU frames to the GPU as NV12 or P016 (See
     // transferCpuFrameToGpu() below). However, it's not always
@@ -982,6 +1112,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         av_pix_fmt_desc_get(static_cast<AVPixelFormat>(av_frame.format));
     bool is444 = desc && desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0;
     if (is444) {
+      // TODO_API_BREAKDOWN P1: we need to handle this
       FrameOutput cpu_frame_output;
       cpu_fallback_->convert_av_frame_to_frame_output(
           av_frame, cpu_frame_output);
@@ -1003,37 +1134,48 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   // may round them up to even.
   FrameDims original_dims(av_frame.height, av_frame.width);
 
-  // On the CPU fallback we own the GPU frame we just created; otherwise the
-  // input frame is already what we need, and we only observe it.
   UniqueAVFrame transferred_frame;
-  if (cpu_fallback_) {
+  if (cpu_fallback) {
     AVPixelFormat target_pix_fmt = (output_dtype_ == OutputDtype::FLOAT32)
         ? AV_PIX_FMT_P016LE
         : AV_PIX_FMT_NV12;
     transferred_frame = transfer_cpu_frame_to_gpu(av_frame, target_pix_fmt);
   }
-  const AVFrame& gpu_frame = cpu_fallback_ ? *transferred_frame : av_frame;
+  const AVFrame& gpu_frame = cpu_fallback ? *transferred_frame : av_frame;
 
   STD_TORCH_CHECK(
       gpu_frame.format == AV_PIX_FMT_NV12 ||
           gpu_frame.format == AV_PIX_FMT_P016LE,
       "Expected NV12 or P016LE format frame");
 
-  cudaStream_t nvdec_stream = get_current_cuda_stream(device_.index());
+  // TODO_API_BREAKDOWN P1: Cleanup how we get the attached data? Make it more
+  // robust? Should we couple it to a flag on the interface saying "I'm
+  // color-conversion only, I absolutely expect frames to be standalone"?
+  cudaStream_t producer_stream;
+  if (av_frame.opaque_ref != nullptr &&
+      av_frame.opaque_ref->size == sizeof(StandAloneFrameAttachedData)) {
+    auto attached_data = reinterpret_cast<StandAloneFrameAttachedData*>(
+        av_frame.opaque_ref->data);
+    producer_stream = attached_data->producer_stream;
+  } else {
+    producer_stream = get_current_cuda_stream(device_.index());
+  }
 
+  // TODO_API_BREAKDOWN P1: we don't suppor output_dtype so some of that is not
+  // execrcized.
   auto convert_frame = [&](std::optional<torch::stable::Tensor> pre_alloc)
       -> torch::stable::Tensor {
     bool is_p016 = (gpu_frame.format == AV_PIX_FMT_P016LE);
     int bit_depth = 8;
     if (is_p016) {
-      bit_depth = cpu_fallback_
+      bit_depth = cpu_fallback
           ? codec_context_->bits_per_raw_sample
           : static_cast<int>(video_format_.bit_depth_luma_minus8) + 8;
     }
     return convert_yuv_frame_to_rgb(
         gpu_frame,
         device_,
-        nvdec_stream,
+        producer_stream,
         pre_alloc,
         original_dims,
         is_p016,

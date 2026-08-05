@@ -3275,14 +3275,17 @@ class TestWavDecoder:
             assert wav_samples.pts_seconds == audio_samples.pts_seconds
 
 
+def _block_devices():
+    return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
+
+
 class TestBlocks:
 
-    def test_block_output_types(self):
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_block_output_types(self, device):
         # Demuxer yields Packets, PacketDecoder yields DecodedFrames, and
         # ColorConverter yields Frames with the expected shape/dtype.
-        demuxer = Demuxer(NASA_VIDEO.path)
-        decoder = PacketDecoder(demuxer)
-        converter = ColorConverter()
+        demuxer, decoder, converter = self._make_blocks(NASA_VIDEO.path, device)
 
         num_packets = 0
         for packet in demuxer:
@@ -3295,6 +3298,7 @@ class TestBlocks:
                 assert frame.data.ndim == 3  # CHW
                 assert frame.data.shape[0] == 3  # channels first
                 assert frame.data.dtype == torch.uint8
+                assert frame.data.device.type == device
                 assert frame.duration_seconds >= 0
 
         assert num_packets > 0
@@ -3351,42 +3355,41 @@ class TestBlocks:
 
         return drain()
 
-    def _decoded_frames(self, path):
-        # demux + decode, as a single generator of DecodedFrames (pts order).
+    @staticmethod
+    def _make_blocks(path, device):
         demuxer = Demuxer(path)
-        decoder = PacketDecoder(demuxer)
+        decoder = PacketDecoder(demuxer, device=device)
+        converter = ColorConverter(device=device)
+        return demuxer, decoder, converter
+
+    def _decoded_frames(self, path, device):
+        # demux + decode, as a single generator of DecodedFrames (pts order).
+        demuxer, decoder, _ = self._make_blocks(path, device)
         return self._decode(decoder, self._demux(demuxer))
 
-    def _decode_sequential(self, path):
+    def _decode_sequential(self, path, device):
         # demux -> decode -> color-convert, all on the calling thread.
-        demuxer = Demuxer(path)
-        decoder = PacketDecoder(demuxer)
-        converter = ColorConverter()
+        demuxer, decoder, converter = self._make_blocks(path, device)
         return list(
             self._convert(converter, self._decode(decoder, self._demux(demuxer)))
         )
 
-    def _decode_prefetch_frames(self, path):
+    def _decode_prefetch_frames(self, path, device):
         # [demux + decode] on one thread || [color-convert] on another.
-        demuxer = Demuxer(path)
-        decoder = PacketDecoder(demuxer)
-        converter = ColorConverter()
+        demuxer, decoder, converter = self._make_blocks(path, device)
+
         frames = self.prefetch(self._decode(decoder, self._demux(demuxer)))
         return list(self._convert(converter, frames))
 
-    def _decode_prefetch_packets(self, path):
+    def _decode_prefetch_packets(self, path, device):
         # [demux] on one thread || [decode + color-convert] on another.
-        demuxer = Demuxer(path)
-        decoder = PacketDecoder(demuxer)
-        converter = ColorConverter()
+        demuxer, decoder, converter = self._make_blocks(path, device)
         packets = self.prefetch(self._demux(demuxer))
         return list(self._convert(converter, self._decode(decoder, packets)))
 
-    def _decode_prefetch_packets_and_frames(self, path):
+    def _decode_prefetch_packets_and_frames(self, path, device):
         # [demux] || [decode] || [color-convert], each on its own thread.
-        demuxer = Demuxer(path)
-        decoder = PacketDecoder(demuxer)
-        converter = ColorConverter()
+        demuxer, decoder, converter = self._make_blocks(path, device)
         packets = self.prefetch(self._demux(demuxer))
         frames = self.prefetch(self._decode(decoder, packets))
         return list(self._convert(converter, frames))
@@ -3402,7 +3405,22 @@ class TestBlocks:
             ),
         )
 
-    @pytest.mark.parametrize("video", (NASA_VIDEO, BT709_FULL_RANGE))
+    # TODO_API_BREAKDOWN P0: We need to test all assets. Generally we need more
+    # tests for all features / edge cases that were eventually fixed.
+    @pytest.mark.parametrize(
+        "video",
+        (
+            NASA_VIDEO,
+            BT709_FULL_RANGE,
+            NASA_VIDEO_HDR,
+            TEST_SRC_2_720P_HDR,
+            TEST_SRC_2_12BIT_HDR,
+            # NVDEC can't decode this one (too small), so on CUDA this covers
+            # the CPU-fallback path: the decoder hands out CPU frames and the
+            # converter has to notice and upload them itself.
+            H265_VIDEO,
+        ),
+    )
     @pytest.mark.parametrize(
         "decode_method",
         (
@@ -3413,10 +3431,12 @@ class TestBlocks:
         ),
         ids=lambda f: f.__name__.removeprefix("_decode_"),
     )
-    def test_matches_video_decoder(self, video, decode_method):
-        got = self._to_frame_batch(decode_method(self, video.path))
-        ref = VideoDecoder(video.path).get_all_frames()
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_matches_video_decoder(self, video, decode_method, device):
+        got = self._to_frame_batch(decode_method(self, video.path, device))
+        ref = VideoDecoder(video.path, device=device).get_all_frames()
 
+        assert got.data.device.type == device
         assert got.data.shape == ref.data.shape
         torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
         torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
@@ -3424,13 +3444,14 @@ class TestBlocks:
             got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
         )
 
-    def test_color_converter_reused_across_videos(self):
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_color_converter_reused_across_videos(self, device):
         # A single unbound ColorConverter must correctly convert frames from two
         # different videos - here interleaved frame-by-frame, so the converter
         # switches input resolution/format on every call.
-        converter = ColorConverter()
+        converter = ColorConverter(device=device)
         videos = [NASA_VIDEO, BT709_FULL_RANGE]
-        generators = [self._decoded_frames(v.path) for v in videos]
+        generators = [self._decoded_frames(v.path, device) for v in videos]
         outputs = [[] for _ in videos]
 
         done = [False] * len(videos)
@@ -3446,9 +3467,19 @@ class TestBlocks:
 
         for video, frames in zip(videos, outputs):
             got = self._to_frame_batch(frames)
-            ref = VideoDecoder(video.path).get_all_frames()
+            ref = VideoDecoder(video.path, device=device).get_all_frames()
             assert got.data.shape == ref.data.shape
             torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
+
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_set_cuda_backend_is_a_noop(self, device):
+        # The blocks always use the NVDEC CUDA backend. Asking for the "ffmpeg"
+        # one changes nothing, rather than silently producing something else.
+        # TODO_API_BREAKDOWN P2: let's just error?
+        with set_cuda_backend("ffmpeg"):
+            got = self._to_frame_batch(self._decode_sequential(NASA_VIDEO.path, device))
+        ref = self._to_frame_batch(self._decode_sequential(NASA_VIDEO.path, device))
+        torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn

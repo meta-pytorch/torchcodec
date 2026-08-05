@@ -33,6 +33,10 @@
 #include "nvcuvid_include/nvcuvid.h"
 
 namespace facebook::torchcodec {
+struct StandAloneFrameAttachedData {
+  cudaStream_t producer_stream = nullptr;
+  torch::stable::Tensor storage;
+};
 
 class BetaCudaDeviceInterface : public DeviceInterface {
  public:
@@ -41,9 +45,12 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void initialize(const SharedAVCodecContext& codec_context) override;
 
-  void initialize_video(
+  void initialize_video_decoding(
       const AVStream* av_stream,
       const UniqueDecodingAVFormatContext& av_format_ctx,
+      const VideoStreamOptions& video_stream_options) override;
+
+  void initialize_color_conversion(
       const VideoStreamOptions& video_stream_options,
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resized_output_dims) override;
@@ -90,6 +97,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       CUdeviceptr frame_ptr,
       unsigned int pitch,
       const CUVIDPARSERDISPINFO& disp_info);
+
+  void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
   UniqueAVFrame transfer_cpu_frame_to_gpu(
       const AVFrame& cpu_frame,
