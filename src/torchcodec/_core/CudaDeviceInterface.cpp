@@ -146,7 +146,7 @@ void CudaDeviceInterface::register_hardware_device_with_codec(
 }
 
 UniqueAVFrame CudaDeviceInterface::maybe_convert_av_frame_to_nv12_or_rgb24(
-    UniqueAVFrame& av_frame) {
+    const AVFrame& av_frame) {
   // We need FFmpeg filters to handle those conversion cases which are not
   // directly implemented in CUDA or CPU device interface (in case of a
   // fallback).
@@ -154,12 +154,12 @@ UniqueAVFrame CudaDeviceInterface::maybe_convert_av_frame_to_nv12_or_rgb24(
   // Input frame is on CPU, we will just pass it to CPU device interface, so
   // skipping filters context as CPU device interface will handle everything for
   // us.
-  if (av_frame->format != AV_PIX_FMT_CUDA) {
-    return std::move(av_frame);
+  if (av_frame.format != AV_PIX_FMT_CUDA) {
+    return UniqueAVFrame{};
   }
 
   auto hw_frames_ctx =
-      reinterpret_cast<AVHWFramesContext*>(av_frame->hw_frames_ctx->data);
+      reinterpret_cast<AVHWFramesContext*>(av_frame.hw_frames_ctx->data);
   STD_TORCH_CHECK(
       hw_frames_ctx != nullptr,
       "The AVFrame does not have a hw_frames_ctx. "
@@ -169,7 +169,7 @@ UniqueAVFrame CudaDeviceInterface::maybe_convert_av_frame_to_nv12_or_rgb24(
 
   // If the frame is already in NV12 format, we don't need to do anything.
   if (actual_format == AV_PIX_FMT_NV12) {
-    return std::move(av_frame);
+    return UniqueAVFrame{};
   }
 
   AVPixelFormat output_format;
@@ -198,19 +198,19 @@ UniqueAVFrame CudaDeviceInterface::maybe_convert_av_frame_to_nv12_or_rgb24(
   }
 
   enum AVPixelFormat frame_format =
-      static_cast<enum AVPixelFormat>(av_frame->format);
+      static_cast<enum AVPixelFormat>(av_frame.format);
 
   auto new_config = std::make_unique<FiltersConfig>(
-      av_frame->width,
-      av_frame->height,
+      av_frame.width,
+      av_frame.height,
       frame_format,
-      av_frame->sample_aspect_ratio,
-      av_frame->width,
-      av_frame->height,
+      av_frame.sample_aspect_ratio,
+      av_frame.width,
+      av_frame.height,
       output_format,
       filters.str(),
       time_base_,
-      av_buffer_ref(av_frame->hw_frames_ctx));
+      av_buffer_ref(av_frame.hw_frames_ctx));
 
   if (!nv12_conversion_ || *nv12_conversion_config_ != *new_config) {
     nv12_conversion_ =
@@ -237,20 +237,23 @@ UniqueAVFrame CudaDeviceInterface::maybe_convert_av_frame_to_nv12_or_rgb24(
 }
 
 void CudaDeviceInterface::convert_av_frame_to_frame_output(
-    UniqueAVFrame& av_frame,
+    const AVFrame& input_av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   validate_pre_allocated_tensor_shape(
       pre_allocated_output_tensor,
-      FrameDims(av_frame->height, av_frame->width));
+      FrameDims(input_av_frame.height, input_av_frame.width));
 
   has_decoded_frame_ = true;
 
   // All of our CUDA decoding assumes NV12 format. We handle non-NV12 formats by
   // converting them to NV12.
-  av_frame = maybe_convert_av_frame_to_nv12_or_rgb24(av_frame);
+  UniqueAVFrame converted_av_frame =
+      maybe_convert_av_frame_to_nv12_or_rgb24(input_av_frame);
+  const AVFrame& av_frame =
+      converted_av_frame ? *converted_av_frame : input_av_frame;
 
-  if (av_frame->format != AV_PIX_FMT_CUDA) {
+  if (av_frame.format != AV_PIX_FMT_CUDA) {
     // The frame's format is AV_PIX_FMT_CUDA if and only if its content is on
     // the GPU. In this branch, the frame is on the CPU. There are two possible
     // reasons:
@@ -266,7 +269,7 @@ void CudaDeviceInterface::convert_av_frame_to_frame_output(
     // CUDA device when we're done.
 
     enum AVPixelFormat frame_format =
-        static_cast<enum AVPixelFormat>(av_frame->format);
+        static_cast<enum AVPixelFormat>(av_frame.format);
 
     FrameOutput cpu_frame_output;
     if (frame_format == AV_PIX_FMT_RGB24) {
@@ -302,10 +305,10 @@ void CudaDeviceInterface::convert_av_frame_to_frame_output(
   // because this is what our color conversion kernel expects. This SHOULD
   // be enforced by our call to maybeConvertAVFrameToNV12OrRGB24() above.
   STD_TORCH_CHECK(
-      av_frame->hw_frames_ctx != nullptr,
+      av_frame.hw_frames_ctx != nullptr,
       "The AVFrame does not have a hw_frames_ctx. This should never happen");
   AVHWFramesContext* hw_frames_ctx =
-      reinterpret_cast<AVHWFramesContext*>(av_frame->hw_frames_ctx->data);
+      reinterpret_cast<AVHWFramesContext*>(av_frame.hw_frames_ctx->data);
   STD_TORCH_CHECK(
       hw_frames_ctx != nullptr,
       "The AVFrame does not have a valid hw_frames_ctx. This should never happen");
@@ -338,7 +341,7 @@ void CudaDeviceInterface::convert_av_frame_to_frame_output(
       device_,
       nvdec_stream,
       pre_allocated_output_tensor,
-      FrameDims(av_frame->height, av_frame->width),
+      FrameDims(av_frame.height, av_frame.width),
       /*isP016=*/false,
       /*bitDepth=*/8,
       cached_color_matrix_);

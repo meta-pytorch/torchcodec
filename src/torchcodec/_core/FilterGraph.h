@@ -48,7 +48,7 @@ class FilterGraph {
       const FiltersConfig& filters_config,
       const VideoStreamOptions& video_stream_options);
 
-  UniqueAVFrame convert(const UniqueAVFrame& av_frame);
+  UniqueAVFrame convert(const AVFrame& av_frame);
 
  private:
   UniqueAVFilterGraph filter_graph_;

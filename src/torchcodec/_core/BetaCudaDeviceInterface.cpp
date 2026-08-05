@@ -376,7 +376,7 @@ void BetaCudaDeviceInterface::initialize_video(
 
 void BetaCudaDeviceInterface::send_seqhdr_packet() {
   // This must be called at parser initialization, and after each flush.
-  // See TODO for details.
+  // See https://github.com/meta-pytorch/torchcodec/pull/1503 for details.
   // FFmpeg's nvcuviddec.c does the same thing (not the nvdec.c one, because it
   // doesn't rely on the nvcuvid parser):
   // -
@@ -752,7 +752,8 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
   // Note that we used to rely on videoFormat_.frame_rate for this, but that
   // proved less accurate than FFmpeg.
   set_duration(
-      av_frame, compute_safe_duration(frame_rate_avg_from_ffmpeg_, time_base_));
+      *av_frame,
+      compute_safe_duration(frame_rate_avg_from_ffmpeg_, time_base_));
 
   // We need to assign the frame colorspace. This is crucial for proper color
   // conversion. NVCUVID stores that in the matrix_coefficients field, but
@@ -824,7 +825,7 @@ void BetaCudaDeviceInterface::flush() {
 }
 
 UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
-    UniqueAVFrame& cpu_frame,
+    const AVFrame& cpu_frame,
     AVPixelFormat target_pix_fmt) {
   // This is called in the context of the CPU fallback: the frame was decoded on
   // the CPU, and in this function we convert that frame into NV12 or P016
@@ -838,15 +839,14 @@ UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
   // (rounded up) width and height, even if the original CPU frame had odd
   // dimensions.
 
-  STD_TORCH_CHECK(cpu_frame != nullptr, "CPU frame cannot be null");
   // NV12 = 1 byte per sample, P016 = 2 bytes per sample
   STD_TORCH_CHECK(
       target_pix_fmt == AV_PIX_FMT_NV12 || target_pix_fmt == AV_PIX_FMT_P016LE,
       "targetPixFmt must be NV12 or P016LE");
   int bytes_per_sample = (target_pix_fmt == AV_PIX_FMT_P016LE) ? 2 : 1;
 
-  int width = cpu_frame->width;
-  int height = cpu_frame->height;
+  int width = cpu_frame.width;
+  int height = cpu_frame.height;
   int even_width = round_up_to_even(width);
   int even_height = round_up_to_even(height);
 
@@ -868,8 +868,8 @@ UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
   SwsConfig sws_config(
       width,
       height,
-      static_cast<AVPixelFormat>(cpu_frame->format),
-      cpu_frame->colorspace,
+      static_cast<AVPixelFormat>(cpu_frame.format),
+      cpu_frame.colorspace,
       even_width,
       even_height,
       target_pix_fmt);
@@ -881,8 +881,8 @@ UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
 
   int converted_height = sws_scale(
       sws_context_.get(),
-      cpu_frame->data,
-      cpu_frame->linesize,
+      cpu_frame.data,
+      cpu_frame.linesize,
       0,
       height,
       intermediate_cpu_frame->data,
@@ -944,7 +944,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
       "Failed to copy UV plane to GPU: ",
       cudaGetErrorString(err));
 
-  ret = av_frame_copy_props(gpu_frame.get(), cpu_frame.get());
+  ret = av_frame_copy_props(gpu_frame.get(), &cpu_frame);
   STD_TORCH_CHECK(
       ret >= 0,
       "Failed to copy frame properties: ",
@@ -967,7 +967,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
 }
 
 void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
-    UniqueAVFrame& av_frame,
+    const AVFrame& av_frame,
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   if (cpu_fallback_) {
@@ -979,7 +979,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     // do the color conversion on the CPU and then send the full RGB frame to
     // the GPU.
     const AVPixFmtDescriptor* desc =
-        av_pix_fmt_desc_get(static_cast<AVPixelFormat>(av_frame->format));
+        av_pix_fmt_desc_get(static_cast<AVPixelFormat>(av_frame.format));
     bool is444 = desc && desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0;
     if (is444) {
       FrameOutput cpu_frame_output;
@@ -1001,28 +1001,29 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
 
   // Capture original dimensions before transferCpuFrameToGpu()
   // may round them up to even.
-  FrameDims original_dims(av_frame->height, av_frame->width);
+  FrameDims original_dims(av_frame.height, av_frame.width);
 
-  UniqueAVFrame gpu_frame;
+  // On the CPU fallback we own the GPU frame we just created; otherwise the
+  // input frame is already what we need, and we only observe it.
+  UniqueAVFrame transferred_frame;
   if (cpu_fallback_) {
     AVPixelFormat target_pix_fmt = (output_dtype_ == OutputDtype::FLOAT32)
         ? AV_PIX_FMT_P016LE
         : AV_PIX_FMT_NV12;
-    gpu_frame = transfer_cpu_frame_to_gpu(av_frame, target_pix_fmt);
-  } else {
-    gpu_frame = std::move(av_frame);
+    transferred_frame = transfer_cpu_frame_to_gpu(av_frame, target_pix_fmt);
   }
+  const AVFrame& gpu_frame = cpu_fallback_ ? *transferred_frame : av_frame;
 
   STD_TORCH_CHECK(
-      gpu_frame->format == AV_PIX_FMT_NV12 ||
-          gpu_frame->format == AV_PIX_FMT_P016LE,
+      gpu_frame.format == AV_PIX_FMT_NV12 ||
+          gpu_frame.format == AV_PIX_FMT_P016LE,
       "Expected NV12 or P016LE format frame");
 
   cudaStream_t nvdec_stream = get_current_cuda_stream(device_.index());
 
   auto convert_frame = [&](std::optional<torch::stable::Tensor> pre_alloc)
       -> torch::stable::Tensor {
-    bool is_p016 = (gpu_frame->format == AV_PIX_FMT_P016LE);
+    bool is_p016 = (gpu_frame.format == AV_PIX_FMT_P016LE);
     int bit_depth = 8;
     if (is_p016) {
       bit_depth = cpu_fallback_

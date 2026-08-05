@@ -189,7 +189,7 @@ void compute_rgb_to_yuv_matrix(
 }
 
 torch::stable::Tensor convert_yuv_frame_to_rgb(
-    UniqueAVFrame& av_frame,
+    const AVFrame& av_frame,
     const StableDevice& device,
     cudaStream_t nvdec_stream,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor,
@@ -203,8 +203,8 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
   // Dimensions may be odd (NVDEC display area for VP9 etc.). NV12/P016
   // color conversion requires even dimensions, so we round up to even
   // for the kernel, then crop to outputDims.
-  int even_height = round_up_to_even(av_frame->height);
-  int even_width = round_up_to_even(av_frame->width);
+  int even_height = round_up_to_even(av_frame.height);
+  int even_width = round_up_to_even(av_frame.width);
 
   int out_height = output_dims.height;
   int out_width = output_dims.width;
@@ -227,33 +227,33 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
 
   maybe_update_color_matrix(
       cached_color_matrix,
-      av_frame->colorspace,
-      av_frame->color_range,
+      av_frame.colorspace,
+      av_frame.color_range,
       bit_depth,
       out_scale);
 
   if (is_p016) {
     launch_p016_to_rgb16_kernel(
-        reinterpret_cast<const uint16_t*>(av_frame->data[0]),
-        reinterpret_cast<const uint16_t*>(av_frame->data[1]),
+        reinterpret_cast<const uint16_t*>(av_frame.data[0]),
+        reinterpret_cast<const uint16_t*>(av_frame.data[1]),
         dst.mutable_data_ptr<uint16_t>(),
         even_width,
         even_height,
-        av_frame->linesize[0],
-        av_frame->linesize[1],
+        av_frame.linesize[0],
+        av_frame.linesize[1],
         validate_int64_to_int(dst.stride(0) * 2, "dst.stride(0)*2"),
         bit_depth,
         cached_color_matrix.matrix,
         stream);
   } else {
     launch_nv12_to_rgb_kernel(
-        av_frame->data[0],
-        av_frame->data[1],
+        av_frame.data[0],
+        av_frame.data[1],
         dst.mutable_data_ptr<uint8_t>(),
         even_width,
         even_height,
-        av_frame->linesize[0],
-        av_frame->linesize[1],
+        av_frame.linesize[0],
+        av_frame.linesize[1],
         validate_int64_to_int(dst.stride(0), "dst.stride(0)"),
         cached_color_matrix.matrix,
         stream);
