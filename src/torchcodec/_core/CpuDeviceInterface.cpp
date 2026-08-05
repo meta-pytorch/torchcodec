@@ -476,6 +476,11 @@ CpuDeviceInterface::maybe_flush_audio_buffers() {
       /*length=*/actual_num_remaining_samples);
 }
 
+void CpuDeviceInterface::flush() {
+  DeviceInterface::flush();
+  swr_context_.reset();
+}
+
 std::string CpuDeviceInterface::get_details() {
   return std::string("CPU Device Interface.");
 }
