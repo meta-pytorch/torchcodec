@@ -8,7 +8,9 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include "Demuxer.h"
 #include "DeviceInterface.h"
@@ -65,5 +67,37 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   SharedAVCodecContext codec_context_;
   AVRational time_base_ = {};
 };
+
+// A decoded frame's own samples, before any color conversion.
+struct FramePlanes {
+  // One view per component, in the frame's native order: (Y, U, V) for YUV,
+  // (R, G, B) for RGB codecs, (Y,) for grayscale, plus a trailing alpha view
+  // when the format has one.
+  std::vector<torch::stable::Tensor> planes;
+  std::string pix_fmt; // FFmpeg pixel-format name, e.g. "yuv420p"
+  int64_t colorspace = 0; // AVColorSpace
+  int64_t color_range = 0; // AVColorRange
+};
+
+// Zero-copy views of a decoded frame's own samples, one per component, before
+// any color conversion. Each view is a strided window over the frame's memory
+// as described by the pixel format's per-component plane/offset/step, so
+// semi-planar (nv12, p016) and packed (yuyv422, bgra...) layouts come back as
+// clean separate components without a copy -- the interleaving lives in the
+// sample stride. 10-/12-bit samples come back as uint16 views.
+//
+// `device` is where the frame's samples live (its NVDEC surface for GPU frames,
+// host memory otherwise); the views are built on it, so no data is moved.
+//
+// `frame_owner` is whatever owns `av_frame`'s lifetime; each view captures it
+// so the samples stay valid after the caller drops the frame they came from.
+// Note that we can't instead take a reference on the AVFrame itself: GPU frames
+// aren't refcounted (their data points into a torch tensor attached as
+// opaque_ref), so av_frame_ref() would deep-copy them as if they were host
+// memory.
+FORCE_PUBLIC_VISIBILITY FramePlanes frame_to_planes(
+    const AVFrame& av_frame,
+    const StableDevice& device,
+    const torch::stable::Tensor& frame_owner);
 
 } // namespace facebook::torchcodec

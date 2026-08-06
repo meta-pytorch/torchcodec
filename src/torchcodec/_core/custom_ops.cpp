@@ -901,17 +901,9 @@ torch::stable::Tensor _blocks_convert_frame(
   return converter_ptr->convert(*unwrap_tensor_to_pointer<AVFrame>(frame));
 }
 
-// Zero-copy views of a decoded frame's own samples, one per component (Y/U/V,
-// R/G/B, with optional trailing alpha), before any color conversion. Each view
-// is a strided window over the frame's memory as described by the pixel
-// format's per-component plane/offset/step, so semi-planar (nv12, p016) and
-// packed (yuyv422, bgra...) layouts come back as clean separate components
-// without a copy -- the interleaving lives in the sample stride. 10-/12-bit
-// samples come back as uint16 views. Absent component slots come back as empty
-// tensors; the pixel-format name says how to interpret the real ones.
-//
-// `device` is where the frame's samples live (its NVDEC surface for GPU frames,
-// host memory otherwise); the views are built on it, so no data is moved.
+// See frame_to_planes() for what these views are. The op schema is fixed-width,
+// so components the format doesn't have come back as empty tensors; the
+// pixel-format name says how to interpret the real ones.
 using OpsFrameToPlanesOutput = std::tuple<
     torch::stable::Tensor,
     torch::stable::Tensor,
@@ -925,78 +917,21 @@ OpsFrameToPlanesOutput _blocks_frame_to_planes(
     torch::stable::Tensor& frame,
     std::string device) {
   AVFrame* av_frame = unwrap_tensor_to_pointer<AVFrame>(frame);
-  StableDevice tensor_device(device);
-  auto pix_fmt = static_cast<AVPixelFormat>(av_frame->format);
-  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
-  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
-  const char* pix_fmt_name = av_get_pix_fmt_name(pix_fmt);
-  std::string fmt_name = pix_fmt_name ? pix_fmt_name : "unknown";
+  // The frame handle tensor is what owns the AVFrame, so it's what the views
+  // must keep alive.
+  FramePlanes result =
+      frame_to_planes(*av_frame, StableDevice(device), /*frame_owner=*/frame);
 
-  // Sub-byte-packed, palettised, and float layouts can't be addressed by a
-  // tensor stride; handing them over would require unpacking them into a copy.
-  STD_TORCH_CHECK(
-      !(desc->flags &
-        (AV_PIX_FMT_FLAG_BITSTREAM | AV_PIX_FMT_FLAG_PAL |
-         AV_PIX_FMT_FLAG_FLOAT)),
-      "Cannot expose ",
-      fmt_name,
-      " as a view: sub-byte-packed, palettised, and float pixel formats need a copy.");
-  STD_TORCH_CHECK(
-      desc->nb_components >= 1 && desc->nb_components <= 4,
-      fmt_name,
-      " has an unsupported number of components.");
-
-  std::vector<torch::stable::Tensor> views;
-  for (int c = 0; c < desc->nb_components; ++c) {
-    const AVComponentDescriptor& comp = desc->comp[c];
-    int64_t bytes_per_sample = (comp.depth > 8) ? 2 : 1;
-    int64_t linesize = av_frame->linesize[comp.plane];
-    STD_TORCH_CHECK(
-        comp.shift == 0 && comp.depth <= 16 && linesize > 0 &&
-            comp.step % bytes_per_sample == 0 &&
-            linesize % bytes_per_sample == 0,
-        "Cannot expose component ",
-        c,
-        " of ",
-        fmt_name,
-        " as a view: its samples aren't a whole number of bytes, or the frame "
-        "is stored bottom-up (negative line size).");
-
-    // Only the chroma components are subsampled; luma and alpha are full size.
-    bool is_chroma = !(desc->flags & AV_PIX_FMT_FLAG_RGB) && (c == 1 || c == 2);
-    int64_t height = is_chroma
-        ? AV_CEIL_RSHIFT(av_frame->height, desc->log2_chroma_h)
-        : av_frame->height;
-    int64_t width = is_chroma
-        ? AV_CEIL_RSHIFT(av_frame->width, desc->log2_chroma_w)
-        : av_frame->width;
-
-    // The view keeps a refcount on the frame handle tensor, so the samples stay
-    // valid even after the caller drops the DecodedFrame they came from.
-    // Copying the handle is just a refcount bump; the AVFrame is freed with the
-    // last view.
-    auto keep_frame_alive = frame;
-    int64_t sizes[] = {height, width};
-    int64_t strides[] = {
-        linesize / bytes_per_sample, comp.step / bytes_per_sample};
-    views.push_back(torch::stable::from_blob(
-        av_frame->data[comp.plane] + comp.offset,
-        {sizes, 2},
-        {strides, 2},
-        tensor_device,
-        (comp.depth > 8) ? kStableUInt16 : kStableUInt8,
-        [keep_frame_alive](void*) {}));
-  }
-
+  std::vector<torch::stable::Tensor> views = std::move(result.planes);
   views.resize(4, torch::stable::empty({int64_t(0)}, kStableUInt8));
   return std::make_tuple(
       views[0],
       views[1],
       views[2],
       views[3],
-      fmt_name,
-      static_cast<int64_t>(av_frame->colorspace),
-      static_cast<int64_t>(av_frame->color_range));
+      result.pix_fmt,
+      result.colorspace,
+      result.color_range);
 }
 
 // For testing only. We need to implement this operation as a core library

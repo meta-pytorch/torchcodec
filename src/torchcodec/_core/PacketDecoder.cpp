@@ -72,7 +72,8 @@ PacketDecoder::PacketDecoder(
   device_interface_->initialize(codec_context_);
 
   VideoStreamOptions options;
-  // TODO_API_BREAKDOWN P1: Need to design and figure out behavior of Blocks with HDR data.
+  // TODO_API_BREAKDOWN P1: Need to design and figure out behavior of Blocks
+  // with HDR data.
   options.output_dtype = OutputDtype::UINT8; // dtype not exposed yet
   options.device = device;
 
@@ -102,6 +103,77 @@ int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
     device_interface_->make_frame_standalone(av_frame);
   }
   return status;
+}
+
+FramePlanes frame_to_planes(
+    const AVFrame& av_frame,
+    const StableDevice& device,
+    const torch::stable::Tensor& frame_owner) {
+  auto pix_fmt = static_cast<AVPixelFormat>(av_frame.format);
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
+  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
+  const char* pix_fmt_name = av_get_pix_fmt_name(pix_fmt);
+  std::string fmt_name = pix_fmt_name ? pix_fmt_name : "unknown";
+
+  // Sub-byte-packed, palettised, and float layouts can't be addressed by a
+  // tensor stride; handing them over would require unpacking them into a copy.
+  STD_TORCH_CHECK(
+      !(desc->flags &
+        (AV_PIX_FMT_FLAG_BITSTREAM | AV_PIX_FMT_FLAG_PAL |
+         AV_PIX_FMT_FLAG_FLOAT)),
+      "Cannot expose ",
+      fmt_name,
+      " as a view: sub-byte-packed, palettised, and float pixel formats need a copy.");
+  STD_TORCH_CHECK(
+      desc->nb_components >= 1 && desc->nb_components <= 4,
+      fmt_name,
+      " has an unsupported number of components.");
+
+  FramePlanes result;
+  result.pix_fmt = fmt_name;
+  result.colorspace = static_cast<int64_t>(av_frame.colorspace);
+  result.color_range = static_cast<int64_t>(av_frame.color_range);
+
+  for (int c = 0; c < desc->nb_components; ++c) {
+    const AVComponentDescriptor& comp = desc->comp[c];
+    int64_t bytes_per_sample = (comp.depth > 8) ? 2 : 1;
+    int64_t linesize = av_frame.linesize[comp.plane];
+    STD_TORCH_CHECK(
+        comp.shift == 0 && comp.depth <= 16 && linesize > 0 &&
+            comp.step % bytes_per_sample == 0 &&
+            linesize % bytes_per_sample == 0,
+        "Cannot expose component ",
+        c,
+        " of ",
+        fmt_name,
+        " as a view: its samples aren't a whole number of bytes, or the frame "
+        "is stored bottom-up (negative line size).");
+
+    // Only the chroma components are subsampled; luma and alpha are full size.
+    bool is_chroma = !(desc->flags & AV_PIX_FMT_FLAG_RGB) && (c == 1 || c == 2);
+    int64_t height = is_chroma
+        ? AV_CEIL_RSHIFT(av_frame.height, desc->log2_chroma_h)
+        : av_frame.height;
+    int64_t width = is_chroma
+        ? AV_CEIL_RSHIFT(av_frame.width, desc->log2_chroma_w)
+        : av_frame.width;
+
+    // Copying the owner is just a refcount bump; the frame is freed with the
+    // last view.
+    auto keep_frame_alive = frame_owner;
+    int64_t sizes[] = {height, width};
+    int64_t strides[] = {
+        linesize / bytes_per_sample, comp.step / bytes_per_sample};
+    result.planes.push_back(torch::stable::from_blob(
+        av_frame.data[comp.plane] + comp.offset,
+        {sizes, 2},
+        {strides, 2},
+        device,
+        (comp.depth > 8) ? kStableUInt16 : kStableUInt8,
+        [keep_frame_alive](void*) {}));
+  }
+
+  return result;
 }
 
 } // namespace facebook::torchcodec
