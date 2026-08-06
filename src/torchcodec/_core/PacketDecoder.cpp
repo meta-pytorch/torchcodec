@@ -115,8 +115,6 @@ FramePlanes frame_to_planes(
   const char* pix_fmt_name = av_get_pix_fmt_name(pix_fmt);
   std::string fmt_name = pix_fmt_name ? pix_fmt_name : "unknown";
 
-  // Sub-byte-packed, palettised, and float layouts can't be addressed by a
-  // tensor stride; handing them over would require unpacking them into a copy.
   STD_TORCH_CHECK(
       !(desc->flags &
         (AV_PIX_FMT_FLAG_BITSTREAM | AV_PIX_FMT_FLAG_PAL |
@@ -149,6 +147,8 @@ FramePlanes frame_to_planes(
         " as a view: its samples aren't a whole number of bytes, or the frame "
         "is stored bottom-up (negative line size).");
 
+    // Each plan is output as a 2D tensor. Y is full size while U/V (the chroma)
+    // are potentially subsampled by 2.
     // Only the chroma components are subsampled; luma and alpha are full size.
     bool is_chroma = !(desc->flags & AV_PIX_FMT_FLAG_RGB) && (c == 1 || c == 2);
     int64_t height = is_chroma
@@ -160,6 +160,7 @@ FramePlanes frame_to_planes(
 
     // Copying the owner is just a refcount bump; the frame is freed with the
     // last view.
+    // TODO_NOW : I don't understand the ownership model here.
     auto keep_frame_alive = frame_owner;
     int64_t sizes[] = {height, width};
     int64_t strides[] = {

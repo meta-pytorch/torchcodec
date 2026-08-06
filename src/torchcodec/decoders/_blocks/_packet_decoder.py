@@ -46,9 +46,6 @@ class PacketDecoder:
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
                 break
             frames.append(
-                # `device` is per-frame, not the decoder's: NVDEC falls back to
-                # CPU decoding for streams it can't handle, and those frames'
-                # samples are in host memory.
                 DecodedFrame(handle, pts_seconds, duration_seconds, device=device)
             )
         return frames

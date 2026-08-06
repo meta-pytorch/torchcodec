@@ -45,14 +45,10 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   // if more input is needed, AVERROR_EOF at end, or a negative error code.
   int receive_frame(UniqueAVFrame& av_frame);
 
-  // Whether the frame's pixel data is on this decoder's device or in host
-  // memory. A CUDA decoder yields host frames for streams NVDEC can't handle.
   bool is_device_frame(const UniqueAVFrame& av_frame) const {
     return device_interface_->is_device_frame(av_frame);
   }
 
-  // The device this decoder decodes on. Frames may still be in host memory (see
-  // is_device_frame).
   const StableDevice& device() const {
     return device_interface_->device();
   }
@@ -79,22 +75,6 @@ struct FramePlanes {
   int64_t color_range = 0; // AVColorRange
 };
 
-// Zero-copy views of a decoded frame's own samples, one per component, before
-// any color conversion. Each view is a strided window over the frame's memory
-// as described by the pixel format's per-component plane/offset/step, so
-// semi-planar (nv12, p016) and packed (yuyv422, bgra...) layouts come back as
-// clean separate components without a copy -- the interleaving lives in the
-// sample stride. 10-/12-bit samples come back as uint16 views.
-//
-// `device` is where the frame's samples live (its NVDEC surface for GPU frames,
-// host memory otherwise); the views are built on it, so no data is moved.
-//
-// `frame_owner` is whatever owns `av_frame`'s lifetime; each view captures it
-// so the samples stay valid after the caller drops the frame they came from.
-// Note that we can't instead take a reference on the AVFrame itself: GPU frames
-// aren't refcounted (their data points into a torch tensor attached as
-// opaque_ref), so av_frame_ref() would deep-copy them as if they were host
-// memory.
 FORCE_PUBLIC_VISIBILITY FramePlanes frame_to_planes(
     const AVFrame& av_frame,
     const StableDevice& device,

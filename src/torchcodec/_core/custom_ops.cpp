@@ -839,6 +839,7 @@ int64_t _blocks_packet_decoder_send_eof(torch::stable::Tensor& decoder) {
   return static_cast<int64_t>(decoder_ptr->send_eof());
 }
 
+// TODO_API_BREAKDOWN P1: I hate this.
 std::string device_to_string(const StableDevice& device) {
   std::string name = device_type_name(device.type());
   // A negative index means "unspecified" (e.g. device was just "cuda"); leave
@@ -853,9 +854,7 @@ std::string device_to_string(const StableDevice& device) {
 // means a frame was produced; nonzero (EAGAIN/EOF) means no frame (dummy
 // handle, zeros). pts/duration are stamped here (the decoder knows the stream
 // time base) so the ColorConverter doesn't need to be bound to a stream.
-// `device` is where this frame's samples actually are: not necessarily the
-// decoder's device, since a CUDA decoder yields host frames for streams NVDEC
-// can't handle. Native scalars avoid per-frame .item() overhead.
+// Native scalars avoid per-frame .item() overhead.
 using OpsReceiveFrameOutput =
     std::tuple<torch::stable::Tensor, int64_t, double, double, std::string>;
 
@@ -922,6 +921,8 @@ OpsFrameToPlanesOutput _blocks_frame_to_planes(
   FramePlanes result =
       frame_to_planes(*av_frame, StableDevice(device), /*frame_owner=*/frame);
 
+  // Op schema wants a fixed number of planes, so we pad with empty tensors that
+  // then get removed at the Python level.
   std::vector<torch::stable::Tensor> views = std::move(result.planes);
   views.resize(4, torch::stable::empty({int64_t(0)}, kStableUInt8));
   return std::make_tuple(
