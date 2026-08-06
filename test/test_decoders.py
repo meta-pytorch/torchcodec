@@ -3454,6 +3454,17 @@ class TestBlocks:
         if device == "cuda" and video is DISCARD_FIRST_KEYFRAME_VIDEO:
             pytest.skip("Blocks pipeline does not handle this asset on CUDA yet.")
 
+        if (
+            video
+            in (
+                TESTSRC2_ODD_WIDTH_VP9,
+                TESTSRC2_ODD_HEIGHT_VP9,
+                TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
+            )
+            and ffmpeg_major_version == 4
+        ):
+            pytest.skip("FFmpeg 4 returns one more frame")
+
         got = self._to_frame_batch(decode_method(self, video.path, device))
         ref = VideoDecoder(video.path, device=device).get_all_frames()
 
