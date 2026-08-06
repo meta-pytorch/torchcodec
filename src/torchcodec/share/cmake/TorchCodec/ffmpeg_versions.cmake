@@ -3,7 +3,7 @@
 
 # List of FFmpeg versions that TorchCodec can support - that's not a list of
 # FFmpeg versions available on the current system!
-set(TORCHCODEC_SUPPORTED_FFMPEG_VERSIONS "4;5;6;7;8")
+set(TORCHCODEC_SUPPORTED_FFMPEG_VERSIONS "4;5;6;7;8;9")
 
 # Create and expose torchcodec::ffmpeg${ffmpeg_major_version} target which can
 # then be used as a dependency in other targets.
@@ -32,6 +32,8 @@ function(add_ffmpeg_target ffmpeg_major_version prefix)
             set(library_file_names libavutil.so.59 libavcodec.so.61 libavformat.so.61 libavdevice.so.61 libavfilter.so.10 libswscale.so.8 libswresample.so.5)
         elseif (ffmpeg_major_version EQUAL 8)
             set(library_file_names libavutil.so.60 libavcodec.so.62 libavformat.so.62 libavdevice.so.62 libavfilter.so.11 libswscale.so.9 libswresample.so.6)
+        elseif (ffmpeg_major_version EQUAL 9)
+            set(library_file_names libavutil.so.61 libavcodec.so.63 libavformat.so.63 libavdevice.so.63 libavfilter.so.12 libswscale.so.10 libswresample.so.7)
         endif()
     elseif (APPLE)
         if (ffmpeg_major_version EQUAL 4)
@@ -44,6 +46,8 @@ function(add_ffmpeg_target ffmpeg_major_version prefix)
             set(library_file_names libavutil.59.dylib libavcodec.61.dylib libavformat.61.dylib libavdevice.61.dylib libavfilter.10.dylib libswscale.8.dylib libswresample.5.dylib)
         elseif (ffmpeg_major_version EQUAL 8)
             set(library_file_names libavutil.60.dylib libavcodec.62.dylib libavformat.62.dylib libavdevice.62.dylib libavfilter.11.dylib libswscale.9.dylib libswresample.6.dylib)
+        elseif (ffmpeg_major_version EQUAL 9)
+            set(library_file_names libavutil.61.dylib libavcodec.63.dylib libavformat.63.dylib libavdevice.63.dylib libavfilter.12.dylib libswscale.10.dylib libswresample.7.dylib)
         endif()
     elseif (WIN32)
         set(library_file_names avutil.lib avcodec.lib avformat.lib avdevice.lib avfilter.lib swscale.lib swresample.lib)
@@ -112,6 +116,8 @@ function(add_ffmpeg_target_with_pkg_config ret_ffmpeg_major_version_var)
         set(ffmpeg_major_version "7")
     elseif (${libavcodec_major_version} STREQUAL "62")
         set(ffmpeg_major_version "8")
+    elseif (${libavcodec_major_version} STREQUAL "63")
+        set(ffmpeg_major_version "9")
     else()
         message(FATAL_ERROR "Unsupported libavcodec version: ${libavcodec_major_version}")
     endif()
