@@ -86,7 +86,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("_blocks_create_color_converter(str device=\"cpu\") -> Tensor");
   m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
   m.def(
-      "_blocks_frame_to_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor, str, int, int)");
+      "_blocks_frame_to_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor, str, str, str)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -908,9 +908,9 @@ using OpsFrameToPlanesOutput = std::tuple<
     torch::stable::Tensor,
     torch::stable::Tensor,
     torch::stable::Tensor,
-    std::string, // pixel-format name, e.g. "yuv420p"
-    int64_t, // AVColorSpace
-    int64_t>; // AVColorRange
+    std::string, // pixel-format
+    std::string, // colorspace
+    std::string>; // color range
 
 OpsFrameToPlanesOutput _blocks_frame_to_planes(
     torch::stable::Tensor& tensor_handle,

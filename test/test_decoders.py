@@ -3575,9 +3575,8 @@ class TestBlocks:
         planes, pix_fmt, colorspace, color_range = frame.materialize()
 
         assert isinstance(pix_fmt, str) and pix_fmt
-        # TODO_NOW Really? int??
-        assert isinstance(colorspace, int)
-        assert isinstance(color_range, int)
+        assert colorspace in ("bt709", "bt2020nc", "smpte170m", "unknown")
+        assert color_range in ("tv", "pc", "unknown")  # FFmpeg has only these
 
         # All planes are 2D views living on the frame's own device.
         # TODO_API_BREAKDOWN P1: Can there be more planes? Should test?

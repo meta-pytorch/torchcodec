@@ -61,7 +61,7 @@ class DecodedFrame:
     # materialize()?
     # What about the planes - should they be 2D (right now they are)? Should we
     # give them names?
-    def materialize(self) -> tuple[tuple[torch.Tensor, ...], str, int, int]:
+    def materialize(self) -> tuple[tuple[torch.Tensor, ...], str, str, str]:
         p0, p1, p2, p3, pix_fmt, colorspace, color_range = _blocks_frame_to_planes(
             self._handle, self._device
         )

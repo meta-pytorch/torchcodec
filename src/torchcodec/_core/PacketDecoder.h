@@ -71,8 +71,8 @@ struct FramePlanes {
   // when the format has one.
   std::vector<torch::stable::Tensor> planes;
   std::string pix_fmt; // FFmpeg pixel-format name, e.g. "yuv420p"
-  int64_t colorspace = 0; // AVColorSpace
-  int64_t color_range = 0; // AVColorRange
+  std::string colorspace; // AVColorSpace name, e.g. "bt709"
+  std::string color_range; // AVColorRange name: "tv" (limited) or "pc" (full)
 };
 
 FORCE_PUBLIC_VISIBILITY FramePlanes frame_to_planes(

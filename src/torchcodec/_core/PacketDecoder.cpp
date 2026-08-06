@@ -127,10 +127,13 @@ FramePlanes frame_to_planes(
       fmt_name,
       " has an unsupported number of components.");
 
+  const char* colorspace_name = av_color_space_name(av_frame.colorspace);
+  const char* color_range_name = av_color_range_name(av_frame.color_range);
+
   FramePlanes result;
   result.pix_fmt = fmt_name;
-  result.colorspace = static_cast<int64_t>(av_frame.colorspace);
-  result.color_range = static_cast<int64_t>(av_frame.color_range);
+  result.colorspace = colorspace_name ? colorspace_name : "unknown";
+  result.color_range = color_range_name ? color_range_name : "unknown";
 
   for (int c = 0; c < desc->nb_components; ++c) {
     const AVComponentDescriptor& comp = desc->comp[c];
