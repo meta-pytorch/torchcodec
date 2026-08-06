@@ -3428,8 +3428,6 @@ class TestBlocks:
             ),
         )
 
-    # TODO_API_BREAKDOWN P0: We need to test all assets. Generally we need more
-    # tests for all features / edge cases that were eventually fixed.
     @pytest.mark.parametrize(
         "video",
         (
@@ -3442,6 +3440,20 @@ class TestBlocks:
             # the CPU-fallback path: the decoder hands out CPU frames and the
             # converter has to notice and upload them itself.
             H265_VIDEO,
+            # Video with a non-zero start time: exercises pts propagation.
+            TEST_NON_ZERO_START,
+            # Odd dimensions: NVDEC decodes to even-aligned surfaces, so the
+            # converter has to crop back to the real width/height.
+            TESTSRC2_ODD_WIDTH_VP9,
+            TESTSRC2_ODD_HEIGHT_VP9,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
+            # yuv444p (odd dims too). NVDEC can't decode 4:4:4, so on CUDA these
+            # take the CPU-fallback path.
+            TESTSRC2_ODD_WIDTH_444,
+            TESTSRC2_ODD_HEIGHT_444,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
+            # First keyframe is marked AV_PKT_FLAG_DISCARD by an mp4 edit list.
+            DISCARD_FIRST_KEYFRAME_VIDEO,
         ),
     )
     @pytest.mark.parametrize(
@@ -3456,6 +3468,26 @@ class TestBlocks:
     )
     @pytest.mark.parametrize("device", _block_devices())
     def test_matches_video_decoder(self, video, decode_method, device):
+        # TODO_API_BREAKDOWN P1: this fails on CUDA and must be fixed. The blocks
+        # Demuxer doesn't honor AV_PKT_FLAG_DISCARD (unlike SingleStreamDecoder),
+        # so it emits the extra frames trimmed away by the mp4 edit list.
+        # This is kinda related to exact and approximate mode (not exposed on
+        # Blocks (yet??)) so we might want to address that once we have
+        # addressed seeking in the blocks - if we ever support that.
+        if device == "cuda" and video is DISCARD_FIRST_KEYFRAME_VIDEO:
+            pytest.skip("Blocks pipeline does not handle this asset on CUDA yet.")
+
+        if (
+            video
+            in (
+                TESTSRC2_ODD_WIDTH_VP9,
+                TESTSRC2_ODD_HEIGHT_VP9,
+                TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
+            )
+            and ffmpeg_major_version == 4
+        ):
+            pytest.skip("FFmpeg 4 returns one more frame")
+
         got = self._to_frame_batch(decode_method(self, video.path, device))
         ref = VideoDecoder(video.path, device=device).get_all_frames()
 
