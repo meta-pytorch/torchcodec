@@ -40,7 +40,7 @@ class DeviceInterface {
  public:
   DeviceInterface(const StableDevice& device) : device_(device) {}
 
-  virtual ~DeviceInterface() {};
+  virtual ~DeviceInterface(){};
 
   StableDevice& device() {
     return device_;

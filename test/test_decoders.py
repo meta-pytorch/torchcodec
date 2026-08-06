@@ -3629,14 +3629,14 @@ class TestBlocks:
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_materialize_is_a_view(self, device):
-        # Two independent materialize() calls view the SAME underlying buffer,
+        # Two independent materialize() calls view the same underlying buffer,
         # so a write through one is visible through the other.
         frame, _ = self._first_frame(NASA_VIDEO.path, device)
         planes_a, *_ = frame.materialize()
         planes_b, *_ = frame.materialize()
 
         original = int(planes_a[0][0, 0].item())
-        planes_a[0][0, 0] = original ^ 0xFF
+        planes_a[0][0, 0] = original ^ 0xFF  # flip first pixel in Y
         assert int(planes_b[0][0, 0].item()) == (original ^ 0xFF)
 
     @pytest.mark.parametrize("video", _MATERIALIZE_VIDEOS)
@@ -3659,17 +3659,16 @@ class TestBlocks:
     @pytest.mark.parametrize("device", _block_devices())
     def test_materialize_neutral_chroma_is_grayscale(self, video, device):
         # Forcing the chroma planes to neutral (128) yields a gray image
-        # (R == G == B). This pins down which planes are the chroma components
-        # and that the writes land in the buffer the converter reads.
+        # (R == G == B). Not testing much, but fun - isn't it?
         frame, converter = self._first_frame(video.path, device)
         planes, pix_fmt, *_ = frame.materialize()
-        assert planes[0].dtype == torch.uint8  # both assets are 8-bit
+        assert planes[0].dtype == torch.uint8
 
-        for chroma in planes[1:]:
-            chroma.fill_(128)
+        _, U, V = planes
+        U.fill_(128)
+        V.fill_(128)
 
         r, g, b = converter.convert(frame).data.to(torch.int16)
-        # atol=1 for integer rounding in the CUDA color-conversion kernel.
         torch.testing.assert_close(r, g, atol=1, rtol=0)
         torch.testing.assert_close(g, b, atol=1, rtol=0)
 
