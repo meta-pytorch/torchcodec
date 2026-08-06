@@ -3573,7 +3573,7 @@ class TestBlocks:
         torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
 
     def _first_frame(self, path, device):
-        # The first DecodedFrame of a video (demux + decode on this thread).
+        # The first DecodedFrame of a video
         demuxer, decoder, converter = self._make_blocks(path, device)
         frame = next(self._decode(decoder, self._demux(demuxer)))
         return frame, converter
@@ -3591,9 +3591,13 @@ class TestBlocks:
 
         # All planes are 2D views living on the frame's own device.
         for plane in planes:
+            # TODO_API_BREAKDOWN P0 Why 2??
             assert plane.ndim == 2
             assert plane.device.type == frame.device
 
+        # TODO_API_BREAKDOWN P0 getting uint16 isn't expected - we never go
+        # through P016 on CUDA, for example. There's a TODO about handling HDr
+        # in general, should figure that out then.
         expected_dtype = torch.uint16 if _is_high_depth(pix_fmt) else torch.uint8
         assert all(plane.dtype == expected_dtype for plane in planes)
 
@@ -3681,9 +3685,14 @@ class TestBlocks:
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("video", (H265_VIDEO, TESTSRC2_ODD_HEIGHT_AND_WIDTH_444))
     def test_materialize_cpu_fallback_stays_on_cpu(self, video):
-        # NVDEC can't decode these (too small / 4:4:4), so a CUDA decoder falls
-        # back to CPU decoding: the samples are in host memory and materialize()
-        # must expose CPU views even though the decoder is CUDA.
+        # TODO_API_BREAKDOWN P0: This may not be what we want. We probalby want
+        # to output CUDA data.  But how? Do we put the YUV420 on CUDA? Then we
+        # need a specialized kernel to color-convert? Or we put those frames we
+        # can have on NV12 - but for 444 it's a problem becaus ewe can't convert
+        # them to NV12, so we'd need a 444 color-conversion kernel anyway. So
+        # all frames would be NV12 except *some* (the 444 ones)?
+        # Unclear what to do here honestly. Maybe outputting CPU frames is
+        # actually justifiable?
         frame, _ = self._first_frame(video.path, "cuda")
         assert frame.device == "cpu"
 

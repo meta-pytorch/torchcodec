@@ -72,13 +72,7 @@ PacketDecoder::PacketDecoder(
   device_interface_->initialize(codec_context_);
 
   VideoStreamOptions options;
-  // TODO_API_BREAKDOWN P1: HDR/high-bit-depth content. Hardcoding UINT8 makes
-  // NVDEC decode 10-/12-bit content into an 8-bit NV12 surface, silently
-  // dropping the extra precision (only FLOAT32 requests a P016 surface). We
-  // probably don't want to force NV12 for HDR; we should let the caller pick
-  // the output precision (or infer it from the stream) and expose P016 through
-  // the blocks. This needs to stay consistent with what VideoDecoder does for
-  // HDR, so the two paths agree on precision and pixel format.
+  // TODO_API_BREAKDOWN P1: Need to design and figure out behavior of Blocks with HDR data.
   options.output_dtype = OutputDtype::UINT8; // dtype not exposed yet
   options.device = device;
 
