@@ -17,7 +17,7 @@ from ._demuxer import Demuxer
 from ._frame import DecodedFrame, Packet
 
 
-# TODO_API_BREAKDOWN revisit every single docstring / comments at some point.
+# TODO_API_BREAKDOWN P2 revisit every single docstring / comments at some point.
 
 
 class PacketDecoder:
@@ -31,8 +31,11 @@ class PacketDecoder:
     on your own threads.
     """
 
-    def __init__(self, demuxer: Demuxer):
-        self._handle = _blocks_create_packet_decoder(demuxer._handle, num_threads=1)
+    # TODO_API_BREAKDOWN P1: device default should be None, here and everywhere else
+    def __init__(self, demuxer: Demuxer, device="cpu"):
+        self._handle = _blocks_create_packet_decoder(
+            demuxer._handle, num_threads=1, device=device
+        )
 
     def _drain(self) -> list[DecodedFrame]:
         frames = []
@@ -53,7 +56,7 @@ class PacketDecoder:
             raise RuntimeError(f"Failed to send packet to decoder (status {status})")
         return self._drain()
 
-    # TODO_API_BREAKDOWN maybe this shouldn't be called flush, at least not
+    # TODO_API_BREAKDOWN P2 maybe this shouldn't be called flush, at least not
     # as-is. It's not the same flush as the FFmpeg decoder buffer flush.
     def flush(self) -> list[DecodedFrame]:
         """Signal end-of-stream and return all remaining buffered frames. Call

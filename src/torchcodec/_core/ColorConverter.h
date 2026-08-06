@@ -18,8 +18,7 @@ namespace facebook::torchcodec {
 class FORCE_PUBLIC_VISIBILITY ColorConverter {
  public:
   explicit ColorConverter(
-      const StableDevice& device = StableDevice(kStableCPU),
-      std::string_view device_variant = "default");
+      const StableDevice& device = StableDevice(kStableCPU));
 
   torch::stable::Tensor convert(const AVFrame& av_frame);
 

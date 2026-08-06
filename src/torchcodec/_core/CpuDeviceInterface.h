@@ -27,9 +27,12 @@ class CpuDeviceInterface : public DeviceInterface {
 
   virtual void initialize(const SharedAVCodecContext& codec_context) override;
 
-  virtual void initialize_video(
+  virtual void initialize_video_decoding(
       const AVStream* av_stream,
       const UniqueDecodingAVFormatContext& av_format_ctx,
+      const VideoStreamOptions& video_stream_options) override;
+
+  virtual void initialize_color_conversion(
       const VideoStreamOptions& video_stream_options,
       const std::vector<std::unique_ptr<Transform>>& transforms,
       const std::optional<FrameDims>& resized_output_dims) override;
@@ -39,6 +42,8 @@ class CpuDeviceInterface : public DeviceInterface {
 
   virtual std::optional<torch::stable::Tensor> maybe_flush_audio_buffers()
       override;
+
+  void flush() override;
 
   void convert_av_frame_to_frame_output(
       const AVFrame& av_frame,
@@ -76,7 +81,11 @@ class CpuDeviceInterface : public DeviceInterface {
       const FrameDims& output_dims) const;
 
   VideoStreamOptions video_stream_options_;
-  AVRational time_base_;
+  // Default used when color conversion runs standalone (no stream to derive it
+  // from, e.g. the ColorConverter block API). initialize_video_decoding()
+  // overrides it from the stream when there is one. Its value doesn't matter on
+  // color-conversion-only mode, but filtergraph still expects it.
+  AVRational time_base_ = {1, AV_TIME_BASE};
   AVPixelFormat output_pixel_format_;
 
   // If the resized output dimensions are present, then we always use those as

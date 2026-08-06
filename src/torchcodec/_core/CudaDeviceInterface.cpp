@@ -114,17 +114,13 @@ void CudaDeviceInterface::initialize(
   codec_context_ = codec_context;
 }
 
-void CudaDeviceInterface::initialize_video(
+void CudaDeviceInterface::initialize_video_decoding(
     const AVStream* av_stream,
     const UniqueDecodingAVFormatContext& av_format_ctx,
-    const VideoStreamOptions& video_stream_options,
-    [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
-    [[maybe_unused]] const std::optional<FrameDims>& resized_output_dims) {
+    [[maybe_unused]] const VideoStreamOptions& video_stream_options) {
   STD_TORCH_CHECK(av_stream != nullptr, "avStream is null");
   time_base_ = av_stream->time_base;
-  video_stream_options_ = video_stream_options;
 
-  // TODO: Ideally, we should keep all interface implementations independent.
   cpu_interface_ = create_device_interface(kStableCPU);
   STD_TORCH_CHECK(
       cpu_interface_ != nullptr, "Failed to create CPU device interface");
@@ -135,6 +131,13 @@ void CudaDeviceInterface::initialize_video(
       VideoStreamOptions(),
       {},
       /*resizedOutputDims=*/std::nullopt);
+}
+
+void CudaDeviceInterface::initialize_color_conversion(
+    const VideoStreamOptions& video_stream_options,
+    [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
+    [[maybe_unused]] const std::optional<FrameDims>& resized_output_dims) {
+  video_stream_options_ = video_stream_options;
 }
 
 void CudaDeviceInterface::register_hardware_device_with_codec(
