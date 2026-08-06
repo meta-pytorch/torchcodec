@@ -913,13 +913,11 @@ using OpsFrameToPlanesOutput = std::tuple<
     int64_t>; // AVColorRange
 
 OpsFrameToPlanesOutput _blocks_frame_to_planes(
-    torch::stable::Tensor& frame,
+    torch::stable::Tensor& tensor_handle,
     std::string device) {
-  AVFrame* av_frame = unwrap_tensor_to_pointer<AVFrame>(frame);
-  // The frame handle tensor is what owns the AVFrame, so it's what the views
-  // must keep alive.
+  AVFrame* av_frame = unwrap_tensor_to_pointer<AVFrame>(tensor_handle);
   FramePlanes result =
-      frame_to_planes(*av_frame, StableDevice(device), /*frame_owner=*/frame);
+      frame_to_planes(*av_frame, StableDevice(device), tensor_handle);
 
   // Op schema wants a fixed number of planes, so we pad with empty tensors that
   // then get removed at the Python level.

@@ -3644,6 +3644,7 @@ class TestBlocks:
     def test_materialize_planes_outlive_frame(self, video, device):
         # The views keep the frame alive, so they stay valid (readable and
         # writable) after the DecodedFrame they came from is dropped.
+        # grep for this test name to see associated comment in the code.
         frame, _ = self._first_frame(video.path, device)
         planes, *_ = frame.materialize()
         saved = [plane.clone() for plane in planes]

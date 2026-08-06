@@ -78,6 +78,6 @@ struct FramePlanes {
 FORCE_PUBLIC_VISIBILITY FramePlanes frame_to_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
-    const torch::stable::Tensor& frame_owner);
+    const torch::stable::Tensor& tensor_handle);
 
 } // namespace facebook::torchcodec

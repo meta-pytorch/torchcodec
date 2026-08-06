@@ -108,7 +108,7 @@ int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
 FramePlanes frame_to_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
-    const torch::stable::Tensor& frame_owner) {
+    const torch::stable::Tensor& tensor_handle) {
   auto pix_fmt = static_cast<AVPixelFormat>(av_frame.format);
   const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
   STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
@@ -158,20 +158,24 @@ FramePlanes frame_to_planes(
         ? AV_CEIL_RSHIFT(av_frame.width, desc->log2_chroma_w)
         : av_frame.width;
 
-    // Copying the owner is just a refcount bump; the frame is freed with the
-    // last view.
-    // TODO_NOW : I don't understand the ownership model here.
-    auto keep_frame_alive = frame_owner;
     int64_t sizes[] = {height, width};
     int64_t strides[] = {
         linesize / bytes_per_sample, comp.step / bytes_per_sample};
+
+    // The planes are views on the AVFrame's data. The AVFrame and its data are
+    // owned by the tensor_handle. We want the planes to outlive the Python
+    // tensor handle (see test_materialize_planes_outlive_frame). So for each
+    // plane, we create a (shallow) copy of the tensor handle, and capture it in
+    // the plane's deleter. As long as a handle [copy] lives, the AVFrame and
+    // its data are alive.
+    torch::stable::Tensor handle_copy = tensor_handle;
     result.planes.push_back(torch::stable::from_blob(
         av_frame.data[comp.plane] + comp.offset,
         {sizes, 2},
         {strides, 2},
         device,
         (comp.depth > 8) ? kStableUInt16 : kStableUInt8,
-        [keep_frame_alive](void*) {}));
+        [handle_copy](void*) {}));
   }
 
   return result;
