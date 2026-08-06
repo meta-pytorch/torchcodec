@@ -93,7 +93,7 @@ with encoder.open_file("output.mp4"):
 ## Installing TorchCodec
 
 1. Install FFmpeg, if it's not already installed. TorchCodec supports all major
-   FFmpeg versions in [4, 8]. Linux distributions usually come with FFmpeg
+   FFmpeg versions in [4, 9]. Linux distributions usually come with FFmpeg
    pre-installed. You'll need FFmpeg that comes with separate shared libraries.
    This is especially relevant for Windows users: these are usually called the
    "shared" releases.

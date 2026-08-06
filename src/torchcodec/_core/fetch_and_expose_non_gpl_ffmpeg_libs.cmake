@@ -41,6 +41,10 @@ if (LINUX)
             f8_sha256
             b9cfd99ae75a14e58300854967d4dc49de0b3daa551df51ea1f52a3f08d2c8af
         )
+        set(
+            f9_sha256
+            e68d3a5a17705740f0f8cf69a92ab65ae47c9e17eb3969b17966bd11ab12b382
+        )
     elseif (LINUX)  # assume x86_64
         set(
             platform_url
@@ -66,6 +70,10 @@ if (LINUX)
         set(
             f8_sha256
             c55b3c1a4b5e4d5fdd7c632bea3ab6f45b4e37cc8e0999dda3f84a8ed8defad8
+        )
+        set(
+            f9_sha256
+            ac033158731d452858f3248f93e51939547e87e3dda4fc0e1dc08ae9087d5a35
         )
   endif()
 elseif (APPLE)
@@ -93,6 +101,10 @@ elseif (APPLE)
         f8_sha256
         beb936b76f25d2621228a12cdb67c9ae3d1eff7aa713ef8d1167ebf0c25bd5ec
     )
+    set(
+        f9_sha256
+        2cd1114e5139aee070959121e0a03cc40d2f0cb771b4a3ecfa28195176e3fa73
+    )
 elseif (WIN32)
     set(
         platform_url
@@ -117,6 +129,10 @@ elseif (WIN32)
     set(
         f8_sha256
         bac845ac79876b104959cb0e7b9dec772a261116344dd17d2f97e7ddfac4a73f
+    )
+    set(
+        f9_sha256
+        228b9f9123ac07e7ca38907e75b0f4b0d97273787c98fad922b0775fe17b86f1
     )
 else()
     message(
@@ -155,8 +171,14 @@ FetchContent_Declare(
     URL_HASH
     SHA256=${f8_sha256}
 )
+FetchContent_Declare(
+    f9
+    URL ${platform_url}/9.0.tar.gz
+    URL_HASH
+    SHA256=${f9_sha256}
+)
 
-FetchContent_MakeAvailable(f4 f5 f6 f7 f8)
+FetchContent_MakeAvailable(f4 f5 f6 f7 f8 f9)
 
 # makes add_ffmpeg_target available
 include("${CMAKE_CURRENT_SOURCE_DIR}/../share/cmake/TorchCodec/ffmpeg_versions.cmake")
@@ -167,3 +189,4 @@ add_ffmpeg_target(5 "${f5_SOURCE_DIR}")
 add_ffmpeg_target(6 "${f6_SOURCE_DIR}")
 add_ffmpeg_target(7 "${f7_SOURCE_DIR}")
 add_ffmpeg_target(8 "${f8_SOURCE_DIR}")
+add_ffmpeg_target(9 "${f9_SOURCE_DIR}")

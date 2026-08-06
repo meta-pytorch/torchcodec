@@ -541,7 +541,7 @@ def check_bundling():
 
         Both libtorchcodec_image.so (the image decoders/encoders) and
         libtorchcodec_pybind_ops.so (the Python file-like bridge) are built
-        separately from the FFmpeg-dependent core{4,5,6,7,8}.so libraries and
+        separately from the FFmpeg-dependent core{4,5,6,7,8,9}.so libraries and
         must stay FFmpeg-free:
         - the image lib, to avoid symbol interposition between the bundled image
           codec libs (libjpeg/libpng/libwebp) and the user's FFmpeg, which may
@@ -664,7 +664,7 @@ def check_bundling():
                     "ship (libheif is a user-supplied runtime dependency, like "
                     "FFmpeg): " + " ".join(lgpl)
                 )
-            MAX_WHEEL_BYTES = (14 if is_cuda else 6) * 1024 * 1024
+            MAX_WHEEL_BYTES = (17 if is_cuda else 10) * 1024 * 1024
             wheel_bytes = wheel.stat().st_size
             if wheel_bytes > MAX_WHEEL_BYTES:
                 raise RuntimeError(
