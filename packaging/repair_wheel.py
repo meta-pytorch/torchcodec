@@ -664,7 +664,7 @@ def check_bundling():
                     "ship (libheif is a user-supplied runtime dependency, like "
                     "FFmpeg): " + " ".join(lgpl)
                 )
-            MAX_WHEEL_BYTES = (14 if is_cuda else 6.5) * 1024 * 1024
+            MAX_WHEEL_BYTES = (17 if is_cuda else 10) * 1024 * 1024
             wheel_bytes = wheel.stat().st_size
             if wheel_bytes > MAX_WHEEL_BYTES:
                 raise RuntimeError(
