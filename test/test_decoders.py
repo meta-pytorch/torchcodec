@@ -3083,6 +3083,29 @@ class TestAudioDecoder:
             frames_44100_to_8000.data, frames_8000.data, atol=0.03, rtol=0
         )
 
+    def test_resample_seek_sample_count(self):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1601
+        # When resampling, the swresample context buffers samples and tracks a
+        # fractional sample position across calls. If it isn't reset on a
+        # mid-stream seek, stale state leaks into the next range decode and the
+        # output sample count can be off by one.
+        # The exact condition in which this happens is unclear to me but claude
+        # managed to find this test that reproduces consistently - and the fix
+        # was to reset the swresample context on a mid-stream seek, which seems
+        # like a very normal thing to do.
+        asset = SINE_MONO_S32_44100
+        assert asset.sample_rate == 44_100
+        assert asset.duration_seconds == 4
+
+        out_sample_rate = 16_000
+        decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
+
+        decoder.get_samples_played_in_range(start_seconds=2.0, stop_seconds=4.8)
+        tail = decoder.get_samples_played_in_range(start_seconds=3.6, stop_seconds=4.8)
+
+        # [3.6, 4.0) of audio at out_sample_rate.
+        assert tail.data.shape[1] == round(0.4 * out_sample_rate)
+
     def test_decode_s16_ffmpeg4(self):
         # Non-regression test for https://github.com/pytorch/torchcodec/issues/843
         # Ensures that decoding s16 on FFmpeg4 handles

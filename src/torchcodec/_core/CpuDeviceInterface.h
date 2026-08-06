@@ -43,6 +43,8 @@ class CpuDeviceInterface : public DeviceInterface {
   virtual std::optional<torch::stable::Tensor> maybe_flush_audio_buffers()
       override;
 
+  void flush() override;
+
   void convert_av_frame_to_frame_output(
       const AVFrame& av_frame,
       FrameOutput& frame_output,
