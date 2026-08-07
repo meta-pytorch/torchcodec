@@ -72,13 +72,19 @@ PacketDecoder::PacketDecoder(
   device_interface_->initialize(codec_context_);
 
   VideoStreamOptions options;
-  // TODO_API_BREAKDOWN P1: Need to design and figure out behavior of Blocks
-  // with HDR data.
-  options.output_dtype = OutputDtype::UINT8; // dtype not exposed yet
+  // This block hands frames to the caller untouched, so it must not discard
+  // precision a later ColorConverter or materialize() might want.
+  options.decode_precision = DecodePrecision::NATIVE;
   options.device = device;
 
   device_interface_->initialize_video_decoding(
       stream, demuxer.format_context(), options);
+
+  // From the codec context: a hardware decoder may use a wider container.
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(codec_context_->pix_fmt);
+  if (desc != nullptr) {
+    bit_depth_ = static_cast<int64_t>(desc->comp[0].depth);
+  }
 }
 
 int PacketDecoder::send_packet(AVPacket* packet) {
@@ -108,6 +114,7 @@ int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
 FramePlanes frame_to_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
+    int64_t stream_bit_depth,
     const torch::stable::Tensor& tensor_handle) {
   auto pix_fmt = static_cast<AVPixelFormat>(av_frame.format);
   const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
@@ -134,6 +141,14 @@ FramePlanes frame_to_planes(
   result.pix_fmt = fmt_name;
   result.colorspace = colorspace_name ? colorspace_name : "unknown";
   result.color_range = color_range_name ? color_range_name : "unknown";
+
+  // Where container and source depth differ, the samples sit in the high bits.
+  int64_t container_depth = static_cast<int64_t>(desc->comp[0].depth);
+  result.bit_depth =
+      (stream_bit_depth > 0 && stream_bit_depth <= container_depth)
+      ? stream_bit_depth
+      : container_depth;
+  result.sample_shift = container_depth - result.bit_depth;
 
   for (int c = 0; c < desc->nb_components; ++c) {
     const AVComponentDescriptor& comp = desc->comp[c];

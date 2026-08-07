@@ -195,14 +195,21 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor,
     const FrameDims& output_dims,
     AVPixelFormat pix_fmt,
+    OutputDtype requested_dtype,
     CachedColorMatrix& cached_color_matrix) {
-  bool is_p016 = is_nvdec_16bit_surface(pix_fmt);
+  bool is_16bit = is_nvdec_16bit_surface(pix_fmt);
   const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
   STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
   int bit_depth = desc->comp[0].depth;
 
-  float out_scale = is_p016 ? 65535.0f : 255.0f;
-  OutputDtype out_dtype = is_p016 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
+  // The kernel writes the same sample type it reads, so a 16-bit surface always
+  // lands in a uint16 buffer that we narrow afterwards.
+  // TODO: decouple the kernel template's in/out types to fuse this.
+  bool narrow_to_uint8 = is_16bit && requested_dtype == OutputDtype::UINT8;
+
+  float out_scale = (is_16bit && !narrow_to_uint8) ? 65535.0f : 255.0f;
+  OutputDtype buffer_dtype =
+      is_16bit ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 
   // Dimensions may be odd (NVDEC display area for VP9 etc.). NV12/P016
   // color conversion requires even dimensions, so we round up to even
@@ -214,15 +221,18 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
   int out_width = output_dims.width;
   bool needs_crop = (out_height != even_height) || (out_width != even_width);
 
+  bool use_pre_alloc_as_dst = pre_allocated_output_tensor.has_value() &&
+      !needs_crop && !narrow_to_uint8;
+
   torch::stable::Tensor dst;
-  if (needs_crop) {
-    dst = allocate_empty_hwc_tensor(
-        FrameDims(even_height, even_width), device, out_dtype);
-  } else if (pre_allocated_output_tensor.has_value()) {
+  if (use_pre_alloc_as_dst) {
     dst = pre_allocated_output_tensor.value();
   } else {
     dst = allocate_empty_hwc_tensor(
-        FrameDims(out_height, out_width), device, out_dtype);
+        needs_crop ? FrameDims(even_height, even_width)
+                   : FrameDims(out_height, out_width),
+        device,
+        buffer_dtype);
   }
 
   // TODO_API_BREAKDOWN P1: This may not be the semantic that we want: this will
@@ -241,7 +251,7 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
       bit_depth,
       out_scale);
 
-  if (is_p016) {
+  if (is_16bit) {
     launch_p016_to_rgb16_kernel(
         reinterpret_cast<const uint16_t*>(av_frame.data[0]),
         reinterpret_cast<const uint16_t*>(av_frame.data[1]),
@@ -252,6 +262,7 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
         av_frame.linesize[1],
         validate_int64_to_int(dst.stride(0) * 2, "dst.stride(0)*2"),
         bit_depth,
+        out_scale,
         cached_color_matrix.matrix,
         stream);
   } else {
@@ -264,6 +275,7 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
         av_frame.linesize[0],
         av_frame.linesize[1],
         validate_int64_to_int(dst.stride(0), "dst.stride(0)"),
+        out_scale,
         cached_color_matrix.matrix,
         stream);
   }
@@ -276,11 +288,15 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
       dst = torch::stable::narrow(dst, /*dim=*/1, /*start=*/0, out_width);
       dst = torch::stable::contiguous(dst);
     }
-    if (pre_allocated_output_tensor.has_value()) {
-      torch::stable::copy_(pre_allocated_output_tensor.value(), dst);
-      return pre_allocated_output_tensor.value();
-    }
-    return dst;
+  }
+
+  if (narrow_to_uint8) {
+    dst = torch::stable::to(dst, kStableUInt8);
+  }
+
+  if (pre_allocated_output_tensor.has_value() && !use_pre_alloc_as_dst) {
+    torch::stable::copy_(pre_allocated_output_tensor.value(), dst);
+    return pre_allocated_output_tensor.value();
   }
   return dst;
 }

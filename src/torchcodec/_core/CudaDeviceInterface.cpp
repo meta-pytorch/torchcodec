@@ -346,6 +346,7 @@ void CudaDeviceInterface::convert_av_frame_to_frame_output(
       pre_allocated_output_tensor,
       FrameDims(av_frame.height, av_frame.width),
       actual_format,
+      video_stream_options_.output_dtype,
       cached_color_matrix_);
 }
 

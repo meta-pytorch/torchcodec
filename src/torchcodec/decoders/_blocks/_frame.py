@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import torch
 
 from torchcodec._core.ops import _blocks_frame_to_planes
@@ -21,6 +23,32 @@ class Packet:
 
     def __init__(self, handle: torch.Tensor):
         self._handle = handle
+
+
+@dataclass
+class RawFrame:
+    """A decoded frame's own samples, as zero-copy views, before any color
+    conversion. Returned by :meth:`DecodedFrame.materialize`.
+
+    ``planes`` holds one strided view per component, in the frame's native
+    order: ``(Y, U, V)`` for the common YUV formats, ``(R, G, B)`` for RGB
+    codecs, ``(Y,)`` for grayscale, plus a trailing alpha view when the format
+    has one. Chroma planes are subsampled (half-resolution for 4:2:0) and the
+    views are usually non-contiguous, which is what avoids the copy.
+
+    Samples of more than 8 bits come back as uint16. ``bit_depth`` says how many
+    of those bits are significant, and ``sample_shift`` how far to right-shift a
+    raw value to recover it: NVDEC's P016 surfaces are msb-aligned so they need
+    a shift, while FFmpeg's planar yuv420p10le is not. Shifting by
+    ``sample_shift`` unconditionally gives the same numbers on CPU and CUDA.
+    """
+
+    planes: tuple[torch.Tensor, ...]
+    pix_fmt: str  # FFmpeg pixel-format name, e.g. "yuv420p"
+    colorspace: str  # e.g. "bt709"
+    color_range: str  # "tv" (limited) or "pc" (full)
+    bit_depth: int
+    sample_shift: int
 
 
 # TODO_API_BREAKDOWN P1: API design - especially the materialize() method but
@@ -45,9 +73,11 @@ class DecodedFrame:
         pts_seconds: float,
         duration_seconds: float,
         device: str = "cpu",
+        bit_depth: int = 8,
     ):
         self._handle = handle
         self._device = device
+        self._bit_depth = bit_depth
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
 
@@ -62,11 +92,25 @@ class DecodedFrame:
     # materialize()?
     # What about the planes - should they be 2D (right now they are)? Should we
     # give them names?
-    def materialize(self) -> tuple[tuple[torch.Tensor, ...], str, str, str]:
-        p0, p1, p2, p3, pix_fmt, colorspace, color_range = _blocks_frame_to_planes(
-            self._handle, self._device
-        )
+    def materialize(self) -> RawFrame:
+        (
+            p0,
+            p1,
+            p2,
+            p3,
+            pix_fmt,
+            colorspace,
+            color_range,
+            bit_depth,
+            sample_shift,
+        ) = _blocks_frame_to_planes(self._handle, self._device, self._bit_depth)
         # Absent components come back as empty tensors; real ones are 2D views.
         planes = tuple(p for p in (p0, p1, p2, p3) if p.numel() > 0)
-        # TODO_API_BREAKDOWN P1: yeah this should be a dataclass or something.
-        return planes, pix_fmt, colorspace, color_range
+        return RawFrame(
+            planes=planes,
+            pix_fmt=pix_fmt,
+            colorspace=colorspace,
+            color_range=color_range,
+            bit_depth=bit_depth,
+            sample_shift=sample_shift,
+        )

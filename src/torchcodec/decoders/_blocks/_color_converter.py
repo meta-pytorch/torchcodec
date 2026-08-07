@@ -11,7 +11,6 @@ from torchcodec._frame import Frame
 
 from ._frame import DecodedFrame
 
-# TODO_API_BREAKDOWN FEAT support output_dtype?
 # TODO_API_BREAKDOWN FEAT We need to support rotation metadata!!
 # TODO_API_BREAKDOWN FEAT Implement seeking?
 # TODO_API_BREAKDOWN FEAT Implement range-getting (start/end time) for decoding?
@@ -19,12 +18,17 @@ from ._frame import DecodedFrame
 
 class ColorConverter:
     """Color-conversion building block: turns a decoded (YUV)
-    :class:`DecodedFrame` into an RGB :class:`~torchcodec._frame.Frame`
-    (CHW, uint8 -- matching ``VideoDecoder``'s default output).
+    :class:`DecodedFrame` into an RGB :class:`~torchcodec._frame.Frame` (CHW).
 
     Not bound to anything: everything it needs (dims, pixel format, colorspace)
     comes from the frame itself, so one converter can process frames from any
     video. Passive and *not* thread-safe: use one ``ColorConverter`` per thread.
+
+    ``output_dtype`` takes the same values as ``VideoDecoder``'s: ``"uint8"``
+    (default, ``[0, 255]``), ``"float32"`` (``[0, 1]``), or ``"auto"`` (uint8
+    for 8-bit sources, float32 for higher bit depths). Because this block is
+    unbound, ``"auto"`` is resolved per frame rather than once per stream, so
+    feeding it a mix of SDR and HDR frames yields a mix of dtypes.
 
     Note: automatic rotation (from stream side data) is not applied, since this
     block is intentionally stream-agnostic.
@@ -34,8 +38,10 @@ class ColorConverter:
     # TODO_API_BREAKDOWN P1: add checks for coupling between device param of
     # PacketDecoder and ColorConverter. What if one is CPU and the other is
     # CUDA? What if they're different CUDA devices? Maybe we should just error.
-    def __init__(self, device="cpu"):
-        self._handle = _blocks_create_color_converter(device=device)
+    def __init__(self, device="cpu", output_dtype: str = "uint8"):
+        self._handle = _blocks_create_color_converter(
+            device=device, output_dtype=output_dtype
+        )
 
     def convert(self, decoded_frame: DecodedFrame) -> Frame:
         data = _blocks_convert_frame(self._handle, decoded_frame._handle)
