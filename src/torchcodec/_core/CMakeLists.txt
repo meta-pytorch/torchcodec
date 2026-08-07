@@ -711,11 +711,12 @@ if(DEFINED ENV{BUILD_AGAINST_ALL_FFMPEG_FROM_S3})
         you still need a different FFmpeg to be installed for run time!"
     )
 
-    # This will expose the torchcodec::ffmpeg{N} (N=4,5,6,7,8) targets
+    # This will expose the torchcodec::ffmpeg{N} (N=4,5,6,7,8,9) targets
     include(
         ${CMAKE_CURRENT_SOURCE_DIR}/fetch_and_expose_non_gpl_ffmpeg_libs.cmake
     )
 
+    make_torchcodec_libraries(9 torchcodec::ffmpeg9)
     make_torchcodec_libraries(8 torchcodec::ffmpeg8)
     make_torchcodec_libraries(7 torchcodec::ffmpeg7)
     make_torchcodec_libraries(6 torchcodec::ffmpeg6)
