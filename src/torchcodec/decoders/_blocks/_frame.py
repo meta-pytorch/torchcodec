@@ -52,6 +52,7 @@ class DecodedFrame:
         self.duration_seconds = duration_seconds
 
     # TODO_API_BREAKDOWN P2 Why is this a property???
+    # Do we even need to havet this?
     @property
     def device(self) -> str:
         return self._device

@@ -850,11 +850,7 @@ std::string device_to_string(const StableDevice& device) {
   return name;
 }
 
-// (frame_handle, status, pts_seconds, duration_seconds, device). status == 0
-// means a frame was produced; nonzero (EAGAIN/EOF) means no frame (dummy
-// handle, zeros). pts/duration are stamped here (the decoder knows the stream
-// time base) so the ColorConverter doesn't need to be bound to a stream.
-// Native scalars avoid per-frame .item() overhead.
+// (frame_handle, status, pts_seconds, duration_seconds, device).
 using OpsReceiveFrameOutput =
     std::tuple<torch::stable::Tensor, int64_t, double, double, std::string>;
 
@@ -900,9 +896,6 @@ torch::stable::Tensor _blocks_convert_frame(
   return converter_ptr->convert(*unwrap_tensor_to_pointer<AVFrame>(frame));
 }
 
-// See frame_to_planes() for what these views are. The op schema is fixed-width,
-// so components the format doesn't have come back as empty tensors; the
-// pixel-format name says how to interpret the real ones.
 using OpsFrameToPlanesOutput = std::tuple<
     torch::stable::Tensor,
     torch::stable::Tensor,

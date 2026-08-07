@@ -70,9 +70,9 @@ struct FramePlanes {
   // (R, G, B) for RGB codecs, (Y,) for grayscale, plus a trailing alpha view
   // when the format has one.
   std::vector<torch::stable::Tensor> planes;
-  std::string pix_fmt; // FFmpeg pixel-format name, e.g. "yuv420p"
-  std::string colorspace; // AVColorSpace name, e.g. "bt709"
-  std::string color_range; // AVColorRange name: "tv" (limited) or "pc" (full)
+  std::string pix_fmt;
+  std::string colorspace;
+  std::string color_range;
 };
 
 FORCE_PUBLIC_VISIBILITY FramePlanes frame_to_planes(
