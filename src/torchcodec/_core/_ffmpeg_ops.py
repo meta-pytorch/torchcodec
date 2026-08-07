@@ -113,6 +113,9 @@ _blocks_create_color_converter = (
 )
 _blocks_convert_frame = torch.ops.torchcodec_ns._blocks_convert_frame.default
 _blocks_frame_to_planes = torch.ops.torchcodec_ns._blocks_frame_to_planes.default
+_blocks_packet_decoder_bit_depth = (
+    torch.ops.torchcodec_ns._blocks_packet_decoder_bit_depth.default
+)
 
 _test_frame_pts_equality = torch.ops.torchcodec_ns._test_frame_pts_equality.default
 _get_container_json_metadata = (
