@@ -83,10 +83,12 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def(
       "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, str)");
-  m.def("_blocks_create_color_converter(str device=\"cpu\") -> Tensor");
+  m.def(
+      "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
   m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
   m.def(
-      "_blocks_frame_to_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor, str, str, str)");
+      "_blocks_frame_to_planes(Tensor frame, str device, int bit_depth) -> (Tensor, Tensor, Tensor, Tensor, str, str, str, int, int)");
+  m.def("_blocks_packet_decoder_bit_depth(Tensor decoder) -> int");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -882,9 +884,27 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
       device);
 }
 
-torch::stable::Tensor _blocks_create_color_converter(std::string device) {
+OutputDtypeConfig parse_output_dtype_config(const std::string& output_dtype) {
+  if (output_dtype == "uint8") {
+    return OutputDtypeConfig::UINT8;
+  } else if (output_dtype == "float32") {
+    return OutputDtypeConfig::FLOAT32;
+  } else if (output_dtype == "auto") {
+    return OutputDtypeConfig::AUTO;
+  }
+  STD_TORCH_CHECK(
+      false,
+      "Invalid output_dtype=",
+      output_dtype,
+      ". Supported values are: uint8, float32, auto.");
+}
+
+torch::stable::Tensor _blocks_create_color_converter(
+    std::string device,
+    std::string output_dtype) {
   validate_device_interface(device);
-  auto converter = std::make_unique<ColorConverter>(StableDevice(device));
+  auto converter = std::make_unique<ColorConverter>(
+      StableDevice(device), parse_output_dtype_config(output_dtype));
   return wrap_pointer_to_tensor<ColorConverter>(std::move(converter));
 }
 
@@ -903,14 +923,17 @@ using OpsFrameToPlanesOutput = std::tuple<
     torch::stable::Tensor,
     std::string, // pixel-format
     std::string, // colorspace
-    std::string>; // color range
+    std::string, // color range
+    int64_t, // bit depth
+    int64_t>; // sample shift
 
 OpsFrameToPlanesOutput _blocks_frame_to_planes(
     torch::stable::Tensor& tensor_handle,
-    std::string device) {
+    std::string device,
+    int64_t bit_depth) {
   AVFrame* av_frame = unwrap_tensor_to_pointer<AVFrame>(tensor_handle);
-  FramePlanes result =
-      frame_to_planes(*av_frame, StableDevice(device), tensor_handle);
+  FramePlanes result = frame_to_planes(
+      *av_frame, StableDevice(device), bit_depth, tensor_handle);
 
   // Op schema wants a fixed number of planes, so we pad with empty tensors that
   // then get removed at the Python level.
@@ -923,7 +946,13 @@ OpsFrameToPlanesOutput _blocks_frame_to_planes(
       views[3],
       result.pix_fmt,
       result.colorspace,
-      result.color_range);
+      result.color_range,
+      result.bit_depth,
+      result.sample_shift);
+}
+
+int64_t _blocks_packet_decoder_bit_depth(torch::stable::Tensor& decoder) {
+  return unwrap_tensor_to_pointer<PacketDecoder>(decoder)->bit_depth();
 }
 
 // For testing only. We need to implement this operation as a core library
@@ -1490,6 +1519,9 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       TORCH_BOX(&_blocks_packet_decoder_receive_frame));
   m.impl("_blocks_convert_frame", TORCH_BOX(&_blocks_convert_frame));
   m.impl("_blocks_frame_to_planes", TORCH_BOX(&_blocks_frame_to_planes));
+  m.impl(
+      "_blocks_packet_decoder_bit_depth",
+      TORCH_BOX(&_blocks_packet_decoder_bit_depth));
   m.impl("_test_frame_pts_equality", TORCH_BOX(&_test_frame_pts_equality));
   m.impl(
       "scan_all_streams_to_update_metadata",

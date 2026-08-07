@@ -38,9 +38,8 @@ __device__ void write_pair_of_rgb_pixels(
     float v,
     T* rgb_plane_to_write,
     int bit_shift,
+    float clamp_max,
     const ColorMatrix& cm) {
-  constexpr float clamp_max = sizeof(T) == 1 ? 255.0f : 65535.0f;
-
   float ya = static_cast<float>(yayb.x >> bit_shift);
   float yb = static_cast<float>(yayb.y >> bit_shift);
 
@@ -97,6 +96,7 @@ __global__ void yuv_to_rgb_kernel(
     int uv_pitch_elements,
     int rgb_pitch_elements,
     int bit_shift,
+    float clamp_max,
     const ColorMatrix cm) {
   // The kernel operates on 2x2 blocks, so it's called H / 2 * W / 2 times.
   // We have to multiply back by 2 to retrieve the output pixel coordinates x
@@ -122,10 +122,10 @@ __global__ void yuv_to_rgb_kernel(
 
   T* rgb_plane_to_write = rgb_output + y * rgb_pitch_elements + x * 3;
   write_pair_of_rgb_pixels<T, Vec2T>(
-      y1y2, u, v, rgb_plane_to_write, bit_shift, cm);
+      y1y2, u, v, rgb_plane_to_write, bit_shift, clamp_max, cm);
   rgb_plane_to_write += rgb_pitch_elements; // go to next line
   write_pair_of_rgb_pixels<T, Vec2T>(
-      y3y4, u, v, rgb_plane_to_write, bit_shift, cm);
+      y3y4, u, v, rgb_plane_to_write, bit_shift, clamp_max, cm);
 }
 
 void launch_nv12_to_rgb_kernel(
@@ -137,6 +137,7 @@ void launch_nv12_to_rgb_kernel(
     int y_pitch,
     int uv_pitch,
     int rgb_pitch,
+    float clamp_max,
     const float color_matrix[3][4],
     cudaStream_t stream) {
   const auto& cm = *reinterpret_cast<const ColorMatrix*>(color_matrix);
@@ -156,6 +157,7 @@ void launch_nv12_to_rgb_kernel(
       uv_pitch,
       rgb_pitch,
       0, // bitShift = 0 for NV12
+      clamp_max,
       cm);
 }
 
@@ -169,6 +171,7 @@ void launch_p016_to_rgb16_kernel(
     int uv_pitch,
     int rgb_pitch,
     int bit_depth,
+    float clamp_max,
     const float color_matrix[3][4],
     cudaStream_t stream) {
   const auto& cm = *reinterpret_cast<const ColorMatrix*>(color_matrix);
@@ -193,6 +196,7 @@ void launch_p016_to_rgb16_kernel(
       uv_pitch_elements,
       rgb_pitch_elements,
       bit_shift,
+      clamp_max,
       cm);
 }
 

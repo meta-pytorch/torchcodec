@@ -36,6 +36,12 @@ enum class OutputDtype { UINT8, FLOAT32 };
 // AUTO: Output uint8 for SDR (<=8-bit) sources, float32 for HDR (>8-bit).
 enum class OutputDtypeConfig { UINT8, FLOAT32, AUTO };
 
+// Precision of the decoded frames, before color conversion. Only hardware
+// decoders can be asked for this; software decoders are always NATIVE.
+// OUTPUT_DRIVEN decodes HDR into 8-bit surfaces when uint8 output is requested,
+// which is faster but truncates before color conversion.
+enum class DecodePrecision { OUTPUT_DRIVEN, NATIVE };
+
 struct VideoStreamOptions {
   VideoStreamOptions() {}
 
@@ -69,6 +75,8 @@ struct VideoStreamOptions {
   // Set by addVideoStream() after resolving AUTO. All downstream code should
   // read this field.
   OutputDtype output_dtype = OutputDtype::UINT8;
+
+  DecodePrecision decode_precision = DecodePrecision::OUTPUT_DRIVEN;
 
   // Encoding options
   std::optional<std::string> codec;

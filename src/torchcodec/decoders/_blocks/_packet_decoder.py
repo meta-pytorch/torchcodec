@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from torchcodec._core.ops import (
     _blocks_create_packet_decoder,
+    _blocks_packet_decoder_bit_depth,
     _blocks_packet_decoder_receive_frame,
     _blocks_packet_decoder_send_eof,
     _blocks_packet_decoder_send_packet,
@@ -36,6 +37,12 @@ class PacketDecoder:
         self._handle = _blocks_create_packet_decoder(
             demuxer._handle, num_threads=1, device=device
         )
+        self._bit_depth = _blocks_packet_decoder_bit_depth(self._handle)
+
+    @property
+    def bit_depth(self) -> int:
+        """Significant bits per sample of the source (8, 10, 12...)."""
+        return self._bit_depth
 
     def _drain(self) -> list[DecodedFrame]:
         frames = []
@@ -46,7 +53,13 @@ class PacketDecoder:
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
                 break
             frames.append(
-                DecodedFrame(handle, pts_seconds, duration_seconds, device=device)
+                DecodedFrame(
+                    handle,
+                    pts_seconds,
+                    duration_seconds,
+                    device=device,
+                    bit_depth=self._bit_depth,
+                )
             )
         return frames
 

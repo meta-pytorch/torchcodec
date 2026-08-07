@@ -209,7 +209,8 @@ std::optional<cudaVideoCodec> validate_codec_support(AVCodecID codec_id) {
 std::optional<cudaVideoSurfaceFormat> get_nvdec_surface_format(
     const StableDevice& device,
     const SharedAVCodecContext& codec_context,
-    OutputDtype output_dtype) {
+    OutputDtype output_dtype,
+    DecodePrecision decode_precision) {
   // Return the surface format to use for NVDEC decoding if the stream is
   // supported, or nullopt to fall back to CPU.
 
@@ -256,7 +257,12 @@ std::optional<cudaVideoSurfaceFormat> get_nvdec_surface_format(
     return std::nullopt;
   }
 
-  auto preferred_format = get_preferred_surface_format(output_dtype);
+  // NATIVE keeps the source's bit depth: P016 for 10-/12-bit content, NV12 for
+  // 8-bit. This is what the CPU decoder does, so it's what makes the two agree.
+  auto preferred_format = (decode_precision == DecodePrecision::NATIVE)
+      ? (bit_depth_minus8 > 0 ? cudaVideoSurfaceFormat_P016
+                              : cudaVideoSurfaceFormat_NV12)
+      : get_preferred_surface_format(output_dtype);
   if ((caps.nOutputFormatMask >> preferred_format) & 1) {
     return preferred_format;
   }
@@ -378,7 +384,11 @@ void BetaCudaDeviceInterface::initialize_video_decoding(
   output_dtype_ = video_stream_options.output_dtype;
 
   auto maybe_surface_format = nvcuvid_available_
-      ? get_nvdec_surface_format(device_, codec_context_, output_dtype_)
+      ? get_nvdec_surface_format(
+            device_,
+            codec_context_,
+            output_dtype_,
+            video_stream_options.decode_precision)
       : std::nullopt;
 
   if (!maybe_surface_format.has_value()) {
@@ -912,6 +922,8 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
   auto attached_data = new StandAloneFrameAttachedData();
   attached_data->producer_stream = current_stream;
+  attached_data->bit_depth =
+      static_cast<int>(video_format_.bit_depth_luma_minus8) + 8;
 
   if (!is_cpu_fallback(av_frame->format)) {
     // The amount of bytes an NV12 image takes is:
@@ -1194,6 +1206,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
       "Expected NV12 or P016LE format frame");
 
   cudaStream_t producer_stream;
+  std::optional<int> standalone_bit_depth;
   if (mode() == Mode::ColorConverterOnly) {
     STD_TORCH_CHECK(
         av_frame.opaque_ref != nullptr,
@@ -1202,6 +1215,9 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     auto attached_data = reinterpret_cast<StandAloneFrameAttachedData*>(
         av_frame.opaque_ref->data);
     producer_stream = attached_data->producer_stream;
+    // video_format_ is only populated while decoding, so a standalone
+    // ColorConverter has to take the source's bit depth from the frame.
+    standalone_bit_depth = attached_data->bit_depth;
   } else {
     producer_stream = get_current_cuda_stream(device_.index());
   }
@@ -1213,9 +1229,10 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     bool is_p016 = (gpu_frame.format == AV_PIX_FMT_P016LE);
     int bit_depth = 8;
     if (is_p016) {
-      bit_depth = cpu_fallback
-          ? codec_context_->bits_per_raw_sample
-          : static_cast<int>(video_format_.bit_depth_luma_minus8) + 8;
+      bit_depth = standalone_bit_depth.value_or(
+          cpu_fallback
+              ? codec_context_->bits_per_raw_sample
+              : static_cast<int>(video_format_.bit_depth_luma_minus8) + 8);
     }
     return convert_yuv_frame_to_rgb(
         gpu_frame,
@@ -1225,6 +1242,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         original_dims,
         is_p016,
         bit_depth,
+        output_dtype_,
         cached_color_matrix_);
   };
 

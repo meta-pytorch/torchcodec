@@ -347,6 +347,7 @@ void CudaDeviceInterface::convert_av_frame_to_frame_output(
       FrameDims(av_frame.height, av_frame.width),
       /*isP016=*/false,
       /*bitDepth=*/8,
+      video_stream_options_.output_dtype,
       cached_color_matrix_);
 }
 
