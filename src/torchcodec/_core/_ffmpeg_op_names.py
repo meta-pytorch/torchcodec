@@ -37,6 +37,7 @@ FFMPEG_OP_NAMES = frozenset(
         "_blocks_packet_decoder_receive_frame",
         "_blocks_create_color_converter",
         "_blocks_convert_frame",
+        "_blocks_frame_to_planes",
         "_test_frame_pts_equality",
         "_get_container_json_metadata",
         "_get_key_frame_indices",
