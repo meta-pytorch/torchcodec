@@ -82,9 +82,11 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_packet_decoder_send_packet(Tensor(a!) decoder, Tensor packet) -> int");
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def(
-      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float)");
+      "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, str)");
   m.def("_blocks_create_color_converter(str device=\"cpu\") -> Tensor");
   m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
+  m.def(
+      "_blocks_frame_to_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor, str, str, str)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -837,13 +839,20 @@ int64_t _blocks_packet_decoder_send_eof(torch::stable::Tensor& decoder) {
   return static_cast<int64_t>(decoder_ptr->send_eof());
 }
 
-// (frame_handle, status, pts_seconds, duration_seconds). status == 0 means a
-// frame was produced; nonzero (EAGAIN/EOF) means no frame (dummy handle,
-// zeros). pts/duration are stamped here (the decoder knows the stream time
-// base) so the ColorConverter doesn't need to be bound to a stream. Native
-// scalars avoid per-frame .item() overhead.
+// TODO_API_BREAKDOWN P1: I hate this.
+std::string device_to_string(const StableDevice& device) {
+  std::string name = device_type_name(device.type());
+  // A negative index means "unspecified" (e.g. device was just "cuda"); leave
+  // it off so the string round-trips and resolves to the current device.
+  if (device.type() != kStableCPU && device.index() >= 0) {
+    name += ":" + std::to_string(device.index());
+  }
+  return name;
+}
+
+// (frame_handle, status, pts_seconds, duration_seconds, device).
 using OpsReceiveFrameOutput =
-    std::tuple<torch::stable::Tensor, int64_t, double, double>;
+    std::tuple<torch::stable::Tensor, int64_t, double, double, std::string>;
 
 OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
     torch::stable::Tensor& decoder) {
@@ -856,16 +865,21 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
         torch::stable::full({1}, 0, kStableInt64),
         static_cast<int64_t>(status),
         0.0,
-        0.0);
+        0.0,
+        std::string("cpu"));
   }
   AVRational time_base = decoder_ptr->time_base();
   double pts_seconds = pts_to_seconds(get_pts_or_dts(*av_frame), time_base);
   double duration_seconds = pts_to_seconds(get_duration(*av_frame), time_base);
+  std::string device = decoder_ptr->is_device_frame(av_frame)
+      ? device_to_string(decoder_ptr->device())
+      : std::string("cpu");
   return std::make_tuple(
       wrap_pointer_to_tensor(std::move(av_frame)),
       static_cast<int64_t>(0),
       pts_seconds,
-      duration_seconds);
+      duration_seconds,
+      device);
 }
 
 torch::stable::Tensor _blocks_create_color_converter(std::string device) {
@@ -880,6 +894,36 @@ torch::stable::Tensor _blocks_convert_frame(
   ColorConverter* converter_ptr =
       unwrap_tensor_to_pointer<ColorConverter>(converter);
   return converter_ptr->convert(*unwrap_tensor_to_pointer<AVFrame>(frame));
+}
+
+using OpsFrameToPlanesOutput = std::tuple<
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    torch::stable::Tensor,
+    std::string, // pixel-format
+    std::string, // colorspace
+    std::string>; // color range
+
+OpsFrameToPlanesOutput _blocks_frame_to_planes(
+    torch::stable::Tensor& tensor_handle,
+    std::string device) {
+  AVFrame* av_frame = unwrap_tensor_to_pointer<AVFrame>(tensor_handle);
+  FramePlanes result =
+      frame_to_planes(*av_frame, StableDevice(device), tensor_handle);
+
+  // Op schema wants a fixed number of planes, so we pad with empty tensors that
+  // then get removed at the Python level.
+  std::vector<torch::stable::Tensor> views = std::move(result.planes);
+  views.resize(4, torch::stable::empty({int64_t(0)}, kStableUInt8));
+  return std::make_tuple(
+      views[0],
+      views[1],
+      views[2],
+      views[3],
+      result.pix_fmt,
+      result.colorspace,
+      result.color_range);
 }
 
 // For testing only. We need to implement this operation as a core library
@@ -1445,6 +1489,7 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       "_blocks_packet_decoder_receive_frame",
       TORCH_BOX(&_blocks_packet_decoder_receive_frame));
   m.impl("_blocks_convert_frame", TORCH_BOX(&_blocks_convert_frame));
+  m.impl("_blocks_frame_to_planes", TORCH_BOX(&_blocks_frame_to_planes));
   m.impl("_test_frame_pts_equality", TORCH_BOX(&_test_frame_pts_equality));
   m.impl(
       "scan_all_streams_to_update_metadata",

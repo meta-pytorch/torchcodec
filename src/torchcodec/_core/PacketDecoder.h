@@ -8,7 +8,9 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <vector>
 
 #include "Demuxer.h"
 #include "DeviceInterface.h"
@@ -43,6 +45,14 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   // if more input is needed, AVERROR_EOF at end, or a negative error code.
   int receive_frame(UniqueAVFrame& av_frame);
 
+  bool is_device_frame(const UniqueAVFrame& av_frame) const {
+    return device_interface_->is_device_frame(av_frame);
+  }
+
+  const StableDevice& device() const {
+    return device_interface_->device();
+  }
+
   // The stream time base, used to convert frame pts/duration to seconds.
   AVRational time_base() const {
     return time_base_;
@@ -53,5 +63,21 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   SharedAVCodecContext codec_context_;
   AVRational time_base_ = {};
 };
+
+// A decoded frame's own samples, before any color conversion.
+struct FramePlanes {
+  // One view per component, in the frame's native order: (Y, U, V) for YUV,
+  // (R, G, B) for RGB codecs, (Y,) for grayscale, plus a trailing alpha view
+  // when the format has one.
+  std::vector<torch::stable::Tensor> planes;
+  std::string pix_fmt;
+  std::string colorspace;
+  std::string color_range;
+};
+
+FORCE_PUBLIC_VISIBILITY FramePlanes frame_to_planes(
+    const AVFrame& av_frame,
+    const StableDevice& device,
+    const torch::stable::Tensor& tensor_handle);
 
 } // namespace facebook::torchcodec

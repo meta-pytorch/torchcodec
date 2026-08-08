@@ -40,12 +40,14 @@ class PacketDecoder:
     def _drain(self) -> list[DecodedFrame]:
         frames = []
         while True:
-            handle, status, pts_seconds, duration_seconds = (
+            handle, status, pts_seconds, duration_seconds, device = (
                 _blocks_packet_decoder_receive_frame(self._handle)
             )
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
                 break
-            frames.append(DecodedFrame(handle, pts_seconds, duration_seconds))
+            frames.append(
+                DecodedFrame(handle, pts_seconds, duration_seconds, device=device)
+            )
         return frames
 
     def decode(self, packet: Packet) -> list[DecodedFrame]:

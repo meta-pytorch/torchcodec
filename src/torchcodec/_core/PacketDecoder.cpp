@@ -72,6 +72,8 @@ PacketDecoder::PacketDecoder(
   device_interface_->initialize(codec_context_);
 
   VideoStreamOptions options;
+  // TODO_API_BREAKDOWN P1: Need to design and figure out behavior of Blocks
+  // with HDR data.
   options.output_dtype = OutputDtype::UINT8; // dtype not exposed yet
   options.device = device;
 
@@ -101,6 +103,85 @@ int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
     device_interface_->make_frame_standalone(av_frame);
   }
   return status;
+}
+
+FramePlanes frame_to_planes(
+    const AVFrame& av_frame,
+    const StableDevice& device,
+    const torch::stable::Tensor& tensor_handle) {
+  auto pix_fmt = static_cast<AVPixelFormat>(av_frame.format);
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
+  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
+  const char* pix_fmt_name = av_get_pix_fmt_name(pix_fmt);
+  std::string fmt_name = pix_fmt_name ? pix_fmt_name : "unknown";
+
+  STD_TORCH_CHECK(
+      !(desc->flags &
+        (AV_PIX_FMT_FLAG_BITSTREAM | AV_PIX_FMT_FLAG_PAL |
+         AV_PIX_FMT_FLAG_FLOAT)),
+      "Cannot expose ",
+      fmt_name,
+      " as a view: sub-byte-packed, palettised, and float pixel formats need a copy.");
+  STD_TORCH_CHECK(
+      desc->nb_components >= 1 && desc->nb_components <= 4,
+      fmt_name,
+      " has an unsupported number of components.");
+
+  const char* colorspace_name = av_color_space_name(av_frame.colorspace);
+  const char* color_range_name = av_color_range_name(av_frame.color_range);
+
+  FramePlanes result;
+  result.pix_fmt = fmt_name;
+  result.colorspace = colorspace_name ? colorspace_name : "unknown";
+  result.color_range = color_range_name ? color_range_name : "unknown";
+
+  for (int c = 0; c < desc->nb_components; ++c) {
+    const AVComponentDescriptor& comp = desc->comp[c];
+    int64_t bytes_per_sample = (comp.depth > 8) ? 2 : 1;
+    int64_t linesize = av_frame.linesize[comp.plane];
+    STD_TORCH_CHECK(
+        comp.shift == 0 && comp.depth <= 16 && linesize > 0 &&
+            comp.step % bytes_per_sample == 0 &&
+            linesize % bytes_per_sample == 0,
+        "Cannot expose component ",
+        c,
+        " of ",
+        fmt_name,
+        " as a view: its samples aren't a whole number of bytes, or the frame "
+        "is stored bottom-up (negative line size).");
+
+    // Each plan is output as a 2D tensor. Y is full size while U/V (the chroma)
+    // are potentially subsampled by 2.
+    // Only the chroma components are subsampled; luma and alpha are full size.
+    bool is_chroma = !(desc->flags & AV_PIX_FMT_FLAG_RGB) && (c == 1 || c == 2);
+    int64_t height = is_chroma
+        ? AV_CEIL_RSHIFT(av_frame.height, desc->log2_chroma_h)
+        : av_frame.height;
+    int64_t width = is_chroma
+        ? AV_CEIL_RSHIFT(av_frame.width, desc->log2_chroma_w)
+        : av_frame.width;
+
+    int64_t sizes[] = {height, width};
+    int64_t strides[] = {
+        linesize / bytes_per_sample, comp.step / bytes_per_sample};
+
+    // The planes are views on the AVFrame's data. The AVFrame and its data are
+    // owned by the tensor_handle. We want the planes to outlive the Python
+    // tensor handle (see test_materialize_planes_outlive_frame). So for each
+    // plane, we create a (shallow) copy of the tensor handle, and capture it in
+    // the plane's deleter. As long as a handle [copy] lives, the AVFrame and
+    // its data are alive.
+    torch::stable::Tensor handle_copy = tensor_handle;
+    result.planes.push_back(torch::stable::from_blob(
+        av_frame.data[comp.plane] + comp.offset,
+        {sizes, 2},
+        {strides, 2},
+        device,
+        (comp.depth > 8) ? kStableUInt16 : kStableUInt8,
+        [handle_copy](void*) {}));
+  }
+
+  return result;
 }
 
 } // namespace facebook::torchcodec
