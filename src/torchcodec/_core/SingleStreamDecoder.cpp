@@ -6,6 +6,7 @@
 
 #include "SingleStreamDecoder.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
@@ -1186,13 +1187,22 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   // codebase concludes that 1 frame is enough for aac, vorbis, mp3 and others.
   // We use 4 to match libmpg123's default, which provides extra safety.
   // If frame_size is unknown, we fall back to 1 second.
-  // Lossless codecs don't need preroll but the cost should be negligible.
+  // Lossless codecs have no such state to rebuild, and prerolling them isn't
+  // free: preroll frames get decoded and resampled like any other.
   static constexpr int k_num_preroll_frames = 4;
   static constexpr double k_fallback_preroll_seconds = 1.0;
   int src_sample_rate = stream_info.codec_context->sample_rate;
   int frame_size = stream_info.codec_context->frame_size;
+
+  const AVCodecDescriptor* codec_descriptor =
+      avcodec_descriptor_get(stream_info.codec_context->codec_id);
+  bool is_lossless = codec_descriptor != nullptr &&
+      (codec_descriptor->props & AV_CODEC_PROP_LOSSLESS) != 0;
+
   double target_preroll_seconds;
-  if (frame_size > 0) {
+  if (is_lossless) {
+    target_preroll_seconds = 0.0;
+  } else if (frame_size > 0) {
     target_preroll_seconds = static_cast<double>(k_num_preroll_frames) *
         frame_size / src_sample_rate;
   } else {
@@ -1205,12 +1215,27 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   if (is_resampling) {
     // Landing on the output sample grid costs the resampler up to
     // src_rate / gcd(rates) - 1 discarded input samples, see
-    // [Resampler Grid Alignment]. Seeking that far back bounds the discard to
-    // audio that precedes the requested range. That's 1 / gcd(rates) seconds,
-    // which for near-coprime rates is much more than the codec asks for.
+    // [Resampler Grid Alignment], and it needs a filter's worth of input on
+    // top of that before it stops emitting samples influenced by the
+    // fabricated history it starts with. Seeking that far back keeps both off
+    // the requested range.
+    //
+    // swresample sizes that filter at filter_size / min(1, out_rate * cutoff /
+    // src_rate) input samples, defaulting to filter_size=32 and cutoff=0.97
+    // (libswresample/options.c, libswresample/resample.c). The alignment bound
+    // is exact so we take it as-is, and we double the filter to leave some
+    // margin.
+    static constexpr int k_swr_filter_size = 32;
+    static constexpr double k_swr_cutoff = 0.97;
+    double factor =
+        std::min(1.0, out_sample_rate * k_swr_cutoff / src_sample_rate);
+    double filter_input_samples = std::ceil(k_swr_filter_size / factor);
+    int64_t alignment =
+        src_sample_rate / std::gcd(src_sample_rate, out_sample_rate);
+
     target_preroll_seconds = std::max(
         target_preroll_seconds,
-        1.0 / std::gcd(src_sample_rate, out_sample_rate));
+        (alignment - 1 + 2 * filter_input_samples) / src_sample_rate);
   }
   auto target_seek_pts = seconds_to_closest_pts(
       start_seconds - target_preroll_seconds, stream_info.time_base);

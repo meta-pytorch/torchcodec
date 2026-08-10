@@ -7,6 +7,7 @@
 import concurrent.futures
 import contextlib
 import gc
+import math
 import queue
 import threading
 from functools import partial
@@ -3082,82 +3083,87 @@ class TestAudioDecoder:
             frames_44100_to_8000.data, frames_8000.data, atol=0.03, rtol=0
         )
 
-    def test_resample_seek_sample_count(self):
-        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1601
-        # When resampling, the swresample context buffers samples and tracks a
-        # fractional sample position across calls. If it isn't reset on a
-        # mid-stream seek, stale state leaks into the next range decode and the
-        # output sample count can be off by one.
-        # The exact condition in which this happens is unclear to me but claude
-        # managed to find this test that reproduces consistently - and the fix
-        # was to reset the swresample context on a mid-stream seek, which seems
-        # like a very normal thing to do.
-        asset = SINE_MONO_S32_44100
-        assert asset.sample_rate == 44_100
-        assert asset.duration_seconds == 4
-
-        out_sample_rate = 16_000
-        decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
-
-        decoder.get_samples_played_in_range(start_seconds=2.0, stop_seconds=4.8)
-        tail = decoder.get_samples_played_in_range(start_seconds=3.6, stop_seconds=4.8)
-
-        # [3.6, 4.0) of audio at out_sample_rate.
-        assert tail.data.shape[1] == round(0.4 * out_sample_rate)
-
-    # 16_001 is coprime with the asset's 44_100 sample rate, which is the worst
-    # case for [Resampler Grid Alignment]: the resampler then needs a full
-    # second of preroll to be able to align itself.
-    @pytest.mark.parametrize("out_sample_rate", (8_000, 16_000, 22_050, 48_000, 16_001))
-    def test_resample_chunked_matches_full(self, out_sample_rate):
-        # Reading a resampled stream in consecutive chunks must return exactly
-        # the same samples as decoding it in one go. Chunked reads seek, and a
-        # resampler that restarts on an arbitrary frame boundary emits samples
-        # that are offset by a fraction of a sample from the ones a
-        # start-to-finish decode produces. That shows up both as wrong sample
-        # values and as chunks that are one sample too long or too short.
-        # See [Resampler Grid Alignment].
-        asset = SINE_MONO_S32_44100
-        full = (
-            AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples().data
-        )
-
-        decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
-        chunks = [
-            decoder.get_samples_played_in_range(start, start + 1).data
-            for start in range(int(asset.duration_seconds))
-        ]
-
-        torch.testing.assert_close(torch.cat(chunks, dim=1), full, atol=0, rtol=0)
+    # Lossy codecs don't restore their overlap-add state exactly when seeking,
+    # so the samples right after a seek differ from the ones a start-to-finish
+    # decode produces, whatever the resampler does. We can only check how many
+    # samples we get for those.
+    LOSSY_ASSETS = (NASA_AUDIO, NASA_AUDIO_MP3, NASA_AUDIO_MP3_44100)
 
     @pytest.mark.parametrize(
-        "start_seconds", (0.5, 1 / 3, 2.7182818, 40960 / 44100, 41984 / 44100)
+        "asset",
+        (
+            SINE_MONO_S32_44100,
+            SINE_MONO_S32_8000,
+            SINE_MONO_U8,
+            SINE_MONO_F32,
+            SINE_16_CHANNEL_S16,
+            NASA_AUDIO,
+            NASA_AUDIO_MP3_44100,
+        ),
     )
-    def test_resample_seek_matches_full(self, start_seconds):
-        # Same as above, but seeking to a start that isn't a whole second. A
-        # resampler that got reset by the seek needs samples from *before* the
-        # requested start, both to re-align itself on the sample grid and to
-        # build up its filter history. Those have to come from preroll frames:
-        # 40960/44100 lands exactly on an input frame boundary, so the first
-        # decoded frame starts right at the requested start and there is no
-        # slack within it - without preroll, re-aligning eats into the samples
-        # the caller asked for. See [Resampler Preroll].
-        asset = SINE_MONO_S32_44100
-        out_sample_rate = 16_000
-        full = (
-            AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples().data
-        )
+    # Rate and increment are paired rather than crossed, to keep the number of
+    # cases down and to stay clear of one combination that has nothing to do
+    # with resampling: at 16_001Hz, an increment of 0.7 puts a chunk boundary
+    # exactly half a sample off (3.5s is sample 56003.5). Rounding that to a
+    # sample is a tie, and the two chunks meeting at the boundary break it
+    # towards different samples, because each rounds relative to the point its
+    # own decoding started from. The sample then lands in both chunks.
+    #
+    # 16_001 is coprime with 44_100, the worst case for
+    # [Resampler Grid Alignment]: the resampler then needs a full second of
+    # preroll to be able to align itself.
+    @pytest.mark.parametrize(
+        "out_sample_rate, increment",
+        (
+            (8_000, 1 / 3),
+            (8_000, 0.7),
+            (8_000, 0.3),
+            (16_000, 1.0),
+            (16_000, 1.2),
+            (16_000, 1 / 3),
+            (16_000, 0.3),
+            (16_001, 1.0),
+            (16_001, 1 / 3),
+            (22_050, 0.7),
+            (48_000, 1.2),
+        ),
+    )
+    def test_resample_chunked_matches_full(self, asset, out_sample_rate, increment):
+        # Reading a resampled stream in consecutive chunks must return exactly
+        # the same samples as decoding it in one go.
+        #
+        # Every chunk but the first seeks, and each of the three things a seek
+        # does to the resampler breaks this:
+        # - reusing the resampler across the seek resamples the new samples with
+        #   the sample position the previous chunk left behind,
+        # - recreating it makes it emit samples offset by a fraction of a sample
+        #   from the ones a start-to-finish decode produces, unless it is
+        #   re-anchored on the sample grid, see [Resampler Grid Alignment],
+        # - re-anchoring discards input samples, which have to be samples that
+        #   precede the chunk, see [Resampler Preroll].
+        # All three show up as wrong sample values, and as chunks that are one
+        # sample too long or too short.
+        #
+        # The decoder is deliberately reused across chunks: a decoder that is
+        # thrown away after one chunk never carries resampler state into a seek,
+        # and doesn't catch the first of those.
+        full = AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples()
+        # Not asset.duration_seconds: the container's duration can be slightly
+        # beyond the last frame we can actually decode.
+        end_seconds = full.pts_seconds + full.data.shape[1] / out_sample_rate
 
         decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
-        decoder.get_all_samples()  # leaves the decoder past the seek target
-        chunk = decoder.get_samples_played_in_range(
-            start_seconds, start_seconds + 0.5
-        ).data
+        chunks = []
+        for i in range(math.ceil((end_seconds - full.pts_seconds) / increment)):
+            start = full.pts_seconds + i * increment
+            chunks.append(
+                decoder.get_samples_played_in_range(start, start + increment).data
+            )
+        chunks = torch.cat(chunks, dim=1)
 
-        start = round(start_seconds * out_sample_rate)
-        torch.testing.assert_close(
-            chunk, full[:, start : start + chunk.shape[1]], atol=0, rtol=0
-        )
+        assert chunks.shape == full.data.shape
+        if asset not in self.LOSSY_ASSETS:
+            torch.testing.assert_close(chunks, full.data, atol=0, rtol=0)
 
     def test_decode_s16_ffmpeg4(self):
         # Non-regression test for https://github.com/pytorch/torchcodec/issues/843
