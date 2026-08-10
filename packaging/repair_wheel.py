@@ -41,6 +41,11 @@ def _is_cuda_wheel(wheel):
     return re.search(r"[+_]cu\d", Path(wheel).name) is not None
 
 
+def _is_rocm_wheel(wheel):
+    # Detect a ROCm wheel from its local-version tag (e.g. "+rocm7.14") in the filename.
+    return re.search(r"[+_]rocm", Path(wheel).name) is not None
+
+
 def run(cmd, **kwargs):
     cmd = [str(c) for c in cmd]
     print("+ " + " ".join(cmd), flush=True)
@@ -127,6 +132,155 @@ def _find_nvjpeg_license():
     return None
 
 
+def _find_rocjpeg_license():
+    """Find rocjpeg's LICENSE file to ship alongside the bundled binary."""
+    search_roots = []
+    for var in ("ROCM_HOME", "ROCM_PATH"):
+        if v := os.environ.get(var):
+            search_roots.append(Path(v))
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from torch.utils.cpp_extension import ROCM_HOME; print(ROCM_HOME or '')",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            search_roots.append(Path(result.stdout.strip()))
+    except Exception:
+        pass
+    search_roots.append(Path("/opt/rocm"))
+
+    for root in search_roots:
+        candidate = root / "share" / "doc" / "rocjpeg" / "LICENSE"
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _find_rocjpeg_lib():
+    """Find librocjpeg.so at wheel repair time so auditwheel can bundle it.
+
+    Searches ROCM_HOME / ROCM_PATH env vars, torch's ROCM_HOME, and the
+    standard /opt/rocm fallback.
+    """
+    search_roots = []
+    for var in ("ROCM_HOME", "ROCM_PATH"):
+        if v := os.environ.get(var):
+            search_roots.append(Path(v))
+    # Ask torch where it found ROCm at its own build time.
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from torch.utils.cpp_extension import ROCM_HOME; print(ROCM_HOME or '')",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            search_roots.append(Path(result.stdout.strip()))
+    except Exception:
+        pass
+    search_roots.append(Path("/opt/rocm"))
+
+    for root in search_roots:
+        for lib_dir in (root / "lib", root / "lib64"):
+            candidate = lib_dir / "librocjpeg.so.1"
+            if not candidate.exists():
+                # Try unversioned symlink
+                candidate = lib_dir / "librocjpeg.so"
+            if candidate.exists():
+                return lib_dir
+    return None
+
+
+def _patch_rocjpeg_rpath_in_wheel(wheel_path: Path) -> None:
+    """Set RPATH on the bundled librocjpeg-*.so.* inside a repaired wheel so
+    it can find its ROCm runtime deps at the user's install time without
+    LD_LIBRARY_PATH.
+
+    Two layouts are covered:
+      - ROCm >= 7.14 (TheRock / rocm-sdk-* Python wheels):
+          libamdhip64 etc. live in <site-packages>/_rocm_sdk_core/lib/.
+          $ORIGIN/../../_rocm_sdk_core/lib reaches that dir from
+          <site-packages>/torchcodec.libs/librocjpeg-HASH.so.1.
+      - ROCm <= 7.2 (system install):
+          /opt/rocm/lib is the standard path; the AMD installer always
+          creates the /opt/rocm symlink even for versioned installs.
+    """
+    patchelf = shutil.which("patchelf")
+    if not patchelf:
+        raise RuntimeError(
+            "patchelf not found; install it (pip install patchelf) before "
+            "repairing ROCm wheels."
+        )
+
+    rpath = ":".join([
+        "$ORIGIN",
+        # ROCm >= 7.14: rocm-sdk-core Python wheel layout
+        "$ORIGIN/../../_rocm_sdk_core/lib",
+        "$ORIGIN/../../_rocm_sdk_core/lib/rocm_sysdeps/lib",
+        # ROCm <= 7.2: standard system install path (AMD installer always
+        # creates /opt/rocm symlink even for versioned installs like 7.2.0)
+        "/opt/rocm/lib",
+        "/opt/rocm/lib/rocm_sysdeps/lib",
+    ])
+
+    import hashlib, base64, tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        with zipfile.ZipFile(wheel_path, "r") as zf:
+            zf.extractall(tmp_path)
+
+        rocjpeg_libs = list(tmp_path.rglob("librocjpeg*.so*"))
+        if not rocjpeg_libs:
+            print(f"No librocjpeg found in {wheel_path.name}; skipping RPATH patch.", flush=True)
+            return
+        for lib in rocjpeg_libs:
+            print(f"Patching RPATH on {lib.name}: {rpath}", flush=True)
+            subprocess.run([patchelf, "--set-rpath", rpath, str(lib)], check=True)
+
+        # Update the RECORD file so pip's integrity check passes.
+        # RECORD format: path,sha256=<base64url>,size  (or ",," for RECORD itself)
+        record_files = list(tmp_path.rglob("RECORD"))
+        patched_rel_names = {lib.relative_to(tmp_path).as_posix() for lib in rocjpeg_libs}
+        for record_file in record_files:
+            lines = record_file.read_text(encoding="utf-8").splitlines()
+            new_lines = []
+            for line in lines:
+                parts = line.split(",")
+                if len(parts) >= 3 and parts[0] in patched_rel_names:
+                    data = (tmp_path / parts[0]).read_bytes()
+                    h = base64.urlsafe_b64encode(
+                        hashlib.sha256(data).digest()
+                    ).rstrip(b"=").decode()
+                    new_lines.append(f"{parts[0]},sha256={h},{len(data)}")
+                else:
+                    new_lines.append(line)
+            record_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+
+        # Repack wheel preserving zip metadata.
+        patched_path = wheel_path.with_suffix(".patched.whl")
+        with zipfile.ZipFile(wheel_path, "r") as src_zf, \
+             zipfile.ZipFile(patched_path, "w", compression=zipfile.ZIP_DEFLATED) as dst_zf:
+            for item in src_zf.infolist():
+                patched_file = tmp_path / item.filename
+                if patched_file.is_file():
+                    dst_zf.write(patched_file, item.filename)
+                else:
+                    # Directory entries or missing files: copy as-is
+                    dst_zf.writestr(item, src_zf.read(item.filename))
+        wheel_path.unlink()
+        patched_path.rename(wheel_path)
+
+
 def repair_linux(wheels):
     run([sys.executable, "-m", "pip", "install", "--upgrade", "auditwheel"])
     run(["auditwheel", "--version"])
@@ -134,11 +288,22 @@ def repair_linux(wheels):
     # for auditwheel to graft libs, it must be able to find them, so we set
     # LD_LIBRARY_PATH: jpeg/png/webp are from conda, libavif is from the S3
     # build dir, and (for CUDA wheels) libnvjpeg is from the CUDA toolkit.
+    # For ROCm wheels, librocjpeg comes from the ROCm install.
     lib_dirs = [str(_avif_lib_dir())]
     if conda_prefix := env.get("CONDA_PREFIX"):
         lib_dirs.append(str(Path(conda_prefix) / "lib"))
     if any(_is_cuda_wheel(w) for w in wheels):
         lib_dirs.extend(sorted({str(f.parent) for f in _find_nvjpeg_libs()}))
+    if any(_is_rocm_wheel(w) for w in wheels):
+        if rocjpeg_lib_dir := _find_rocjpeg_lib():
+            lib_dirs.append(str(rocjpeg_lib_dir))
+            print(f"Found librocjpeg in {rocjpeg_lib_dir}", flush=True)
+        else:
+            print(
+                "WARNING: librocjpeg not found; rocJPEG will not be bundled. "
+                "Set ROCM_HOME or ROCM_PATH if ROCm is in a non-standard location.",
+                flush=True,
+            )
     env["LD_LIBRARY_PATH"] = os.pathsep.join(
         [*lib_dirs, env.get("LD_LIBRARY_PATH", "")]
     )
@@ -168,17 +333,11 @@ def repair_linux(wheels):
         "libnvshmem*",
         "libnvfatbin*",
         "libnvcuvid*",
-        # rocJPEG: the GPU JPEG decoder our image lib links on ROCm. Unlike
-        # nvJPEG (which we bundle), rocJPEG is not shipped by the torch-ROCm
-        # wheel, and bundling it would drag in torch's ROCm libs under mismatched
-        # (hashed) sonames. So we treat it as a runtime dependency provided by the
-        # ROCm install, like FFmpeg. decode_jpeg(device='cuda') therefore needs
-        # ROCm (with rocJPEG) present at runtime.
-        # TODO_ROCM: Should we still try to ship librocjpeg?
-        "librocjpeg*",
         # ROCm/HIP runtime and its system deps: provided by the torch-ROCm wheel
-        # (torch/lib/) at runtime, exactly like the CUDA libs above. Never bundle
-        # them, they'd duplicate torch's copies and bloat the wheel.
+        # or the system ROCm install at runtime. Never bundle them — they would
+        # duplicate torch's copies and bloat the wheel significantly (libLLVM
+        # alone is ~200 MB).
+        # librocjpeg itself IS bundled (not listed here); only its deps are excluded.
         "libamdhip64*",
         "libamd_comgr*",
         "libhsa-runtime64*",
@@ -204,6 +363,13 @@ def repair_linux(wheels):
         "libelf*",
         "libbz2*",
         "liblzma*",
+        # rocm_sysdeps_* are vendored system libs bundled inside rocm-sdk-core;
+        # librocm_kpack, libLLVM, libclang-cpp are pulled in transitively by
+        # libamd_comgr. All resolved at runtime via _rocm_sdk_core or /opt/rocm.
+        "librocm_sysdeps_*",
+        "librocm_kpack*",
+        "libLLVM*",
+        "libclang-cpp*",
     ):
         excludes += ["--exclude", pattern]
     for wheel in wheels:
@@ -211,6 +377,13 @@ def repair_linux(wheels):
             ["auditwheel", "repair", *excludes, "--wheel-dir", REPAIRED_DIR, wheel],
             env=env,
         )
+
+    # After auditwheel bundles librocjpeg-HASH.so.*, patch its RPATH so the
+    # bundled copy can find its ROCm runtime deps (libamdhip64 etc.) at the
+    # user's install time without requiring LD_LIBRARY_PATH.
+    if any(_is_rocm_wheel(w) for w in wheels):
+        for repaired_whl in REPAIRED_DIR.glob("*.whl"):
+            _patch_rocjpeg_rpath_in_wheel(repaired_whl)
 
 
 def repair_macos(wheels):
@@ -429,6 +602,16 @@ def bundle_third_party_licenses():
             licenses["LICENSE.libnvjpeg-NVIDIA-CUDA-EULA.txt"] = nvjpeg_license
             print(f"  LICENSE.libnvjpeg-NVIDIA-CUDA-EULA.txt <- {nvjpeg_license}")
 
+        if _is_rocm_wheel(wheel):
+            if (rocjpeg_license := _find_rocjpeg_license()) is None:
+                raise RuntimeError(
+                    f"{wheel.name} bundles librocjpeg but the rocjpeg LICENSE "
+                    "could not be located to ship alongside it. "
+                    "Set ROCM_HOME or ROCM_PATH to the ROCm install root."
+                )
+            licenses["LICENSE.librocjpeg-MIT.txt"] = rocjpeg_license
+            print(f"  LICENSE.librocjpeg-MIT.txt <- {rocjpeg_license}")
+
         unpack_dir = scratch / "unpack"
         if unpack_dir.is_dir():
             shutil.rmtree(unpack_dir)
@@ -515,6 +698,9 @@ def check_bundling():
             stem.startswith("avif") and stem.endswith(".dll")
         )
 
+    def _is_rocjpeg(lib):
+        return lib.startswith("librocjpeg")
+
     def _is_nvjpeg(lib):
         return lib.startswith("libnvjpeg") or (
             lib.startswith("nvjpeg") and lib.endswith(".dll")
@@ -550,6 +736,7 @@ def check_bundling():
             or _is_webp(lib)
             or _is_avif(lib)
             or _is_nvjpeg(lib)
+            or _is_rocjpeg(lib)
         ):
             return True
         if platform.system() == "Darwin" and lib.startswith(("libc++", "libpython")):
@@ -631,7 +818,7 @@ def check_bundling():
                 "found at build time."
             )
 
-    def _assert_third_party_licenses(zf, is_cuda):
+    def _assert_third_party_licenses(zf, is_cuda, is_rocm):
         """Every bundled third-party lib must ship its license text under
         .dist-info/licenses/third_party/ (see bundle_third_party_licenses)."""
         license_files = [
@@ -641,9 +828,12 @@ def check_bundling():
         ]
         # keyword each bundled lib's license file must be identifiable by. CUDA
         # wheels also bundle libnvjpeg, whose NVIDIA CUDA EULA must ship too.
+        # ROCm wheels bundle librocjpeg, whose MIT license must ship too.
         keywords = ["jpeg", "png", "zlib", "webp", "avif", "dav1d", "yuv"]
         if is_cuda:
             keywords.append("nvjpeg")
+        if is_rocm:
+            keywords.append("rocjpeg")
         for keyword in keywords:
             if not any(keyword in n.lower() for n in license_files):
                 raise RuntimeError(
@@ -654,7 +844,9 @@ def check_bundling():
     for wheel in DIST_DIR.glob("*.whl"):
         print(f"Checking bundled libraries in {wheel.name}")
         with zipfile.ZipFile(wheel) as zf:
-            _assert_third_party_licenses(zf, _is_cuda_wheel(wheel))
+            is_cuda = _is_cuda_wheel(wheel)
+            is_rocm = _is_rocm_wheel(wheel)
+            _assert_third_party_licenses(zf, is_cuda, is_rocm)
             names = zf.namelist()
             libs = sorted({n.rsplit("/", 1)[-1] for n in names if _is_shared_lib(n)})
             if unexpected := [lib for lib in libs if not _is_allowed(lib)]:
@@ -676,7 +868,9 @@ def check_bundling():
                     "animated webp decoding)."
                 )
             is_cuda = _is_cuda_wheel(wheel)
+            is_rocm = _is_rocm_wheel(wheel)
             bundles_nvjpeg = any(_is_nvjpeg(lib) for lib in libs)
+            bundles_rocjpeg = any(_is_rocjpeg(lib) for lib in libs)
             if is_cuda and not bundles_nvjpeg:
                 raise RuntimeError(
                     f"{wheel.name} is a CUDA wheel but does not bundle libnvjpeg. "
@@ -687,6 +881,17 @@ def check_bundling():
             if not is_cuda and bundles_nvjpeg:
                 raise RuntimeError(
                     f"{wheel.name} is not a CUDA wheel but bundles libnvjpeg."
+                )
+            if is_rocm and not bundles_rocjpeg:
+                raise RuntimeError(
+                    f"{wheel.name} is a ROCm wheel but does not bundle librocjpeg. "
+                    "GPU JPEG decoding (decode_jpeg(..., device='cuda')) needs it. "
+                    "Check that librocjpeg is findable at repair time "
+                    "(set ROCM_HOME or ROCM_PATH) and not excluded."
+                )
+            if not is_rocm and bundles_rocjpeg:
+                raise RuntimeError(
+                    f"{wheel.name} is not a ROCm wheel but bundles librocjpeg."
                 )
             if encoders := [lib for lib in libs if _is_avif_encoder(lib)]:
                 raise RuntimeError(
@@ -700,7 +905,7 @@ def check_bundling():
                     "ship (libheif is a user-supplied runtime dependency, like "
                     "FFmpeg): " + " ".join(lgpl)
                 )
-            MAX_WHEEL_BYTES = (14 if is_cuda else 6) * 1024 * 1024
+            MAX_WHEEL_BYTES = (14 if is_cuda else 7 if is_rocm else 6) * 1024 * 1024
             wheel_bytes = wheel.stat().st_size
             if wheel_bytes > MAX_WHEEL_BYTES:
                 raise RuntimeError(
