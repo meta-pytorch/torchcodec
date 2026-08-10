@@ -5,6 +5,9 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "CpuDeviceInterface.h"
+#include <algorithm>
+#include <cmath>
+#include <numeric>
 #include <sstream>
 
 namespace facebook::torchcodec {
@@ -161,9 +164,11 @@ void CpuDeviceInterface::initialize_color_conversion(
 }
 
 void CpuDeviceInterface::initialize_audio(
-    const AudioStreamOptions& audio_stream_options) {
+    const AudioStreamOptions& audio_stream_options,
+    double stream_start_seconds) {
   av_media_type_ = AVMEDIA_TYPE_AUDIO;
   audio_stream_options_ = audio_stream_options;
+  audio_stream_start_seconds_ = stream_start_seconds;
   initialized_ = true;
 }
 
@@ -386,14 +391,58 @@ void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
           out_sample_rate,
           src_av_frame,
           out_num_channels));
+
+      // Note [Resampler Grid Alignment]
+      // A fresh resampler emits its first output sample at the time of the
+      // first input sample it is fed, and one output sample every
+      // 1/out_rate seconds from there on. Its output grid is therefore
+      // anchored wherever we start feeding it.
+      //
+      // We need that grid to be the one a start-to-finish decode produces,
+      // otherwise the samples of a range request are interpolated at instants
+      // that don't exist in the full decode: values are slightly off and the
+      // number of samples spanning the range can differ by one. swresample
+      // won't let us set that phase (SwrContext's index/frac are private and
+      // only ever initialized to the start of a fresh conversion), so the one
+      // lever we have is which input sample we feed first.
+      //
+      // Counting input samples from the start of the stream, input sample i is
+      // on the output grid when i * out_rate / src_rate is an integer, i.e.
+      // when i is a multiple of src_rate / gcd(rates). Decoding resumes on a
+      // frame boundary, which is an arbitrary input sample, so we discard the
+      // few samples between it and the next such position, and report that
+      // position as the pts of the output.
+      //
+      // Those discarded samples are real audio, so they must not be samples
+      // the caller asked for. What guarantees that is the seek: it lands at
+      // least src_rate / gcd(rates) samples before the requested range, which
+      // bounds this discard. See [Resampler Preroll].
+      int64_t src_sample_index = std::llround(
+          (frame_output.pts_seconds - audio_stream_start_seconds_) *
+          src_sample_rate);
+      int64_t alignment =
+          src_sample_rate / std::gcd(src_sample_rate, out_sample_rate);
+      int64_t remainder = src_sample_index % alignment;
+      if (remainder < 0) {
+        remainder += alignment;
+      }
+      swr_input_samples_to_skip_ = (remainder == 0) ? 0 : alignment - remainder;
+      frame_output.pts_seconds = audio_stream_start_seconds_ +
+          static_cast<double>(src_sample_index + swr_input_samples_to_skip_) /
+              src_sample_rate;
     }
+
+    int src_offset_samples = static_cast<int>(
+        std::min<int64_t>(swr_input_samples_to_skip_, src_av_frame.nb_samples));
+    swr_input_samples_to_skip_ -= src_offset_samples;
 
     converted_av_frame = convert_audio_av_frame_samples(
         swr_context_,
         src_av_frame,
         out_sample_format,
         out_sample_rate,
-        out_num_channels);
+        out_num_channels,
+        src_offset_samples);
   }
   const AVFrame& av_frame = must_convert ? *converted_av_frame : src_av_frame;
 
@@ -478,7 +527,14 @@ CpuDeviceInterface::maybe_flush_audio_buffers() {
 
 void CpuDeviceInterface::flush() {
   DeviceInterface::flush();
+  // A seek makes the audio input discontinuous, and swresample carries a
+  // fractional sample position across swr_convert() calls. Resuming a
+  // conversion on samples that don't follow the ones before them makes that
+  // position meaningless and corrupts the output. Drop the context here; it is
+  // lazily recreated, and re-anchored on the sample grid, in
+  // convert_audio_av_frame_to_frame_output(). See [Resampler Grid Alignment].
   swr_context_.reset();
+  swr_input_samples_to_skip_ = 0;
 }
 
 std::string CpuDeviceInterface::get_details() {

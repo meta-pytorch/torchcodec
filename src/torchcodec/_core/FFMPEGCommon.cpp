@@ -502,7 +502,8 @@ UniqueAVFrame convert_audio_av_frame_samples(
     const AVFrame& src_av_frame,
     AVSampleFormat out_sample_format,
     int out_sample_rate,
-    int out_num_channels) {
+    int out_num_channels,
+    int src_offset_samples) {
   UniqueAVFrame converted_av_frame(av_frame_alloc());
   STD_TORCH_CHECK(
       converted_av_frame,
@@ -510,6 +511,11 @@ UniqueAVFrame convert_audio_av_frame_samples(
 
   converted_av_frame->pts = src_av_frame.pts;
   converted_av_frame->format = static_cast<int>(out_sample_format);
+
+  int num_src_samples = src_av_frame.nb_samples - src_offset_samples;
+  STD_TORCH_CHECK(
+      num_src_samples >= 0,
+      "Trying to skip more samples than the frame contains.");
 
   converted_av_frame->sample_rate = out_sample_rate;
   int src_sample_rate = src_av_frame.sample_rate;
@@ -523,16 +529,19 @@ UniqueAVFrame convert_audio_av_frame_samples(
     // output samples, but empirically `av_rescale_rnd()` seems to provide a
     // tighter bound.
     converted_av_frame->nb_samples = av_rescale_rnd(
-        swr_get_delay(swr_context.get(), src_sample_rate) +
-            src_av_frame.nb_samples,
+        swr_get_delay(swr_context.get(), src_sample_rate) + num_src_samples,
         out_sample_rate,
         src_sample_rate,
         AV_ROUND_UP);
   } else {
-    converted_av_frame->nb_samples = src_av_frame.nb_samples;
+    converted_av_frame->nb_samples = num_src_samples;
   }
 
   set_channel_layout(*converted_av_frame, src_av_frame, out_num_channels);
+
+  if (converted_av_frame->nb_samples == 0) {
+    return converted_av_frame;
+  }
 
   auto status = av_frame_get_buffer(converted_av_frame.get(), 0);
   STD_TORCH_CHECK(
@@ -544,13 +553,29 @@ UniqueAVFrame convert_audio_av_frame_samples(
   // decoding audio with >8 audio channels. extended_data contains pointers
   // for all channels, while data only contains AV_NUM_DATA_POINTERS (8).
   // https://ffmpeg.org/doxygen/trunk/structAVFrame.html#afca04d808393822625e09b5ba91c6756
+  //
+  // Skipping src_offset_samples means advancing each input plane: one plane per
+  // channel for planar formats, a single interleaved plane otherwise.
+  auto src_sample_format = static_cast<AVSampleFormat>(src_av_frame.format);
+  int num_src_planes = av_sample_fmt_is_planar(src_sample_format)
+      ? get_num_channels(src_av_frame)
+      : 1;
+  int src_byte_offset = src_offset_samples *
+      av_get_bytes_per_sample(src_sample_format) *
+      (av_sample_fmt_is_planar(src_sample_format)
+           ? 1
+           : get_num_channels(src_av_frame));
+  std::vector<const uint8_t*> src_planes(num_src_planes);
+  for (int plane = 0; plane < num_src_planes; ++plane) {
+    src_planes[plane] = src_av_frame.extended_data[plane] + src_byte_offset;
+  }
+
   auto num_converted_samples = swr_convert(
       swr_context.get(),
       converted_av_frame->extended_data,
       converted_av_frame->nb_samples,
-      static_cast<const uint8_t**>(
-          const_cast<const uint8_t**>(src_av_frame.extended_data)),
-      src_av_frame.nb_samples);
+      src_planes.data(),
+      num_src_samples);
   // numConvertedSamples can be 0 if we're downsampling by a great factor and
   // the first frame doesn't contain a lot of samples. It should be handled
   // properly by the caller.

@@ -3105,6 +3105,60 @@ class TestAudioDecoder:
         # [3.6, 4.0) of audio at out_sample_rate.
         assert tail.data.shape[1] == round(0.4 * out_sample_rate)
 
+    # 16_001 is coprime with the asset's 44_100 sample rate, which is the worst
+    # case for [Resampler Grid Alignment]: the resampler then needs a full
+    # second of preroll to be able to align itself.
+    @pytest.mark.parametrize("out_sample_rate", (8_000, 16_000, 22_050, 48_000, 16_001))
+    def test_resample_chunked_matches_full(self, out_sample_rate):
+        # Reading a resampled stream in consecutive chunks must return exactly
+        # the same samples as decoding it in one go. Chunked reads seek, and a
+        # resampler that restarts on an arbitrary frame boundary emits samples
+        # that are offset by a fraction of a sample from the ones a
+        # start-to-finish decode produces. That shows up both as wrong sample
+        # values and as chunks that are one sample too long or too short.
+        # See [Resampler Grid Alignment].
+        asset = SINE_MONO_S32_44100
+        full = (
+            AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples().data
+        )
+
+        decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
+        chunks = [
+            decoder.get_samples_played_in_range(start, start + 1).data
+            for start in range(int(asset.duration_seconds))
+        ]
+
+        torch.testing.assert_close(torch.cat(chunks, dim=1), full, atol=0, rtol=0)
+
+    @pytest.mark.parametrize(
+        "start_seconds", (0.5, 1 / 3, 2.7182818, 40960 / 44100, 41984 / 44100)
+    )
+    def test_resample_seek_matches_full(self, start_seconds):
+        # Same as above, but seeking to a start that isn't a whole second. A
+        # resampler that got reset by the seek needs samples from *before* the
+        # requested start, both to re-align itself on the sample grid and to
+        # build up its filter history. Those have to come from preroll frames:
+        # 40960/44100 lands exactly on an input frame boundary, so the first
+        # decoded frame starts right at the requested start and there is no
+        # slack within it - without preroll, re-aligning eats into the samples
+        # the caller asked for. See [Resampler Preroll].
+        asset = SINE_MONO_S32_44100
+        out_sample_rate = 16_000
+        full = (
+            AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples().data
+        )
+
+        decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
+        decoder.get_all_samples()  # leaves the decoder past the seek target
+        chunk = decoder.get_samples_played_in_range(
+            start_seconds, start_seconds + 0.5
+        ).data
+
+        start = round(start_seconds * out_sample_rate)
+        torch.testing.assert_close(
+            chunk, full[:, start : start + chunk.shape[1]], atol=0, rtol=0
+        )
+
     def test_decode_s16_ffmpeg4(self):
         # Non-regression test for https://github.com/pytorch/torchcodec/issues/843
         # Ensures that decoding s16 on FFmpeg4 handles

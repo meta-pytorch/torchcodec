@@ -38,7 +38,8 @@ class CpuDeviceInterface : public DeviceInterface {
       const std::optional<FrameDims>& resized_output_dims) override;
 
   virtual void initialize_audio(
-      const AudioStreamOptions& audio_stream_options) override;
+      const AudioStreamOptions& audio_stream_options,
+      double stream_start_seconds = 0.0) override;
 
   virtual std::optional<torch::stable::Tensor> maybe_flush_audio_buffers()
       override;
@@ -145,6 +146,16 @@ class CpuDeviceInterface : public DeviceInterface {
   // Audio-specific members
   AudioStreamOptions audio_stream_options_;
   UniqueSwrContext swr_context_;
+
+  // Input samples still to be discarded before feeding swresample, so that the
+  // first sample it is fed sits on the stream's output sample grid. Always
+  // less than src_rate / gcd(rates), and can span several frames when a frame
+  // holds fewer samples than that. See [Resampler Grid Alignment].
+  int64_t swr_input_samples_to_skip_ = 0;
+
+  // Start of the stream, which the output sample grid is anchored on. Streams
+  // don't necessarily start at 0.
+  double audio_stream_start_seconds_ = 0.0;
 };
 
 } // namespace facebook::torchcodec

@@ -5,10 +5,12 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "SingleStreamDecoder.h"
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <string_view>
 #include "Demuxer.h"
 #include "Metadata.h"
@@ -659,7 +661,11 @@ void SingleStreamDecoder::add_audio_stream(
   stream_info.codec_context->request_sample_fmt = AV_SAMPLE_FMT_FLTP;
 
   // Initialize device interface for audio
-  device_interface_->initialize_audio(audio_stream_options);
+  double stream_start_seconds = stream_info.stream->start_time != AV_NOPTS_VALUE
+      ? pts_to_seconds(stream_info.stream->start_time, stream_info.time_base)
+      : 0.0;
+  device_interface_->initialize_audio(
+      audio_stream_options, stream_start_seconds);
 }
 
 // --------------------------------------------------------------------------
@@ -1183,13 +1189,28 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   // Lossless codecs don't need preroll but the cost should be negligible.
   static constexpr int k_num_preroll_frames = 4;
   static constexpr double k_fallback_preroll_seconds = 1.0;
+  int src_sample_rate = stream_info.codec_context->sample_rate;
   int frame_size = stream_info.codec_context->frame_size;
   double target_preroll_seconds;
   if (frame_size > 0) {
     target_preroll_seconds = static_cast<double>(k_num_preroll_frames) *
-        frame_size / stream_info.codec_context->sample_rate;
+        frame_size / src_sample_rate;
   } else {
     target_preroll_seconds = k_fallback_preroll_seconds;
+  }
+
+  int out_sample_rate =
+      stream_info.audio_stream_options.sample_rate.value_or(src_sample_rate);
+  bool is_resampling = out_sample_rate != src_sample_rate;
+  if (is_resampling) {
+    // Landing on the output sample grid costs the resampler up to
+    // src_rate / gcd(rates) - 1 discarded input samples, see
+    // [Resampler Grid Alignment]. Seeking that far back bounds the discard to
+    // audio that precedes the requested range. That's 1 / gcd(rates) seconds,
+    // which for near-coprime rates is much more than the codec asks for.
+    target_preroll_seconds = std::max(
+        target_preroll_seconds,
+        1.0 / std::gcd(src_sample_rate, out_sample_rate));
   }
   auto target_seek_pts = seconds_to_closest_pts(
       start_seconds - target_preroll_seconds, stream_info.time_base);
@@ -1236,12 +1257,26 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   auto stop_pts = stop_seconds_optional.has_value()
       ? seconds_to_closest_pts(*stop_seconds_optional, stream_info.time_base)
       : INT64_MAX;
+  // Note [Resampler Preroll]
+  // When resampling, the preroll frames are converted and returned like any
+  // other, and the caller trims them off. They exist so that everything a
+  // freshly-created resampler gets wrong happens on audio nobody asked for:
+  // it discards input samples to reach the sample grid (see
+  // [Resampler Grid Alignment]), and it starts with fabricated filter history
+  // rather than the samples that really precede the ones it is fed.
+  //
+  // This makes the returned range wider than what was asked for. Callers
+  // already have to trim it - frames are decoded whole, so the range never
+  // lined up with the requested boundaries in the first place.
+  auto output_start_pts =
+      is_resampling ? std::min(start_pts, target_seek_pts) : start_pts;
+
   auto finished = false;
   while (!finished) {
     try {
-      UniqueAVFrame av_frame =
-          decode_av_frame([start_pts, stop_pts](const AVFrame& av_frame) {
-            return start_pts <
+      UniqueAVFrame av_frame = decode_av_frame(
+          [output_start_pts, stop_pts](const AVFrame& av_frame) {
+            return output_start_pts <
                 get_pts_or_dts(av_frame) + get_duration(av_frame) &&
                 stop_pts > get_pts_or_dts(av_frame);
           });

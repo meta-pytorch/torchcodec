@@ -284,12 +284,16 @@ SwrContext* create_swr_context(
 // - sample rate
 // - number of channels.
 // createSwrContext must have been previously called with matching parameters.
+// The first src_offset_samples samples of src_av_frame are dropped instead of
+// being converted. They must not reach swresample: it anchors its output on the
+// first sample it is fed. See [Resampler Grid Alignment].
 UniqueAVFrame convert_audio_av_frame_samples(
     const UniqueSwrContext& swr_context,
     const AVFrame& src_av_frame,
     AVSampleFormat desired_sample_format,
     int desired_sample_rate,
-    int desired_num_channels);
+    int desired_num_channels,
+    int src_offset_samples = 0);
 
 // Returns true if sws_scale can handle unaligned data.
 bool can_sws_scale_handle_unaligned_data();
