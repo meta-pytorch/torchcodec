@@ -150,7 +150,7 @@ class CpuDeviceInterface : public DeviceInterface {
   // Input samples still to be discarded before feeding swresample, so that the
   // first sample it is fed sits on the stream's output sample grid. Always
   // less than src_rate / gcd(rates), and can span several frames when a frame
-  // holds fewer samples than that. See [Resampler Grid Alignment].
+  // holds fewer samples than that. See [Audio resampling and frame alignment].
   int64_t swr_input_samples_to_skip_ = 0;
 
   // Start of the stream, which the output sample grid is anchored on. Streams

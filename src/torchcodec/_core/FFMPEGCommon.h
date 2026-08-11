@@ -286,7 +286,7 @@ SwrContext* create_swr_context(
 // createSwrContext must have been previously called with matching parameters.
 // The first src_offset_samples samples of src_av_frame are dropped instead of
 // being converted. They must not reach swresample: it anchors its output on the
-// first sample it is fed. See [Resampler Grid Alignment].
+// first sample it is fed. See [Audio resampling and frame alignment].
 UniqueAVFrame convert_audio_av_frame_samples(
     const UniqueSwrContext& swr_context,
     const AVFrame& src_av_frame,

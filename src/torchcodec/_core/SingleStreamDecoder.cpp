@@ -1157,6 +1157,56 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
 // would *always* seek back to the beginning of the file. It works, but it's
 // wasteful when multiple seeks are involved, or when only some samples near the
 // end are needed.
+//
+// Note [Audio resampling, pre-roll and post-roll]
+//
+// In short, in order to properly resample sample x, the resampler needs the
+// samples before it and the samples after it: it is an interpolation filter,
+// with taps on either side of the sample it emits. So when the user asks for
+// get_samples_played_in_range(a, b), we must feed the resampler samples
+// *before* a and *after* b so that both a and b (and everything in-between)
+// are correctly resampled. That's not the only reason we need pre-roll BTW,
+// see [Audio Seek Preroll].
+//
+// This is important in relation to the [Audio resampling and frame alignment]
+// note: when a user asks for get_samples_played_in_range(a, b), we start from
+// a' < a (pre-roll), and then the resampler is told to skip a given amount of
+// samples such that it lands on an aligned sample in input and output space.
+// We need to make sure the pre-roll is large enough such that we can safely
+// find such a boundary.
+//
+// How much pre-roll is enough? The skip is bounded: the next aligned input
+// sample is always less than `align = isr / gcd(isr, osr)` samples away, so
+// `align` input samples of pre-roll are enough to land on an aligned sample at
+// or before `a`. On top of that, the resampler needs a filter's worth of input
+// before it stops emitting samples influenced by the fabricated history it
+// starts with. swresample sizes that filter at
+//
+//     ceil(filter_size / min(1, osr * cutoff / isr))    input samples
+//
+// with filter_size defaulting to 32 and cutoff to 0.97 (libswresample/
+// options.c, libswresample/resample.c). The alignment bound is exact so we
+// take it as-is; the filter length is a heuristic so we double it:
+//
+//     (align - 1 + 2 * filter_length) / isr    seconds
+//
+// clang-format off
+//     isr -> osr      align   filter   pre-roll
+//     24000 -> 16000      3       50    102 samples =    4.25 ms
+//     44100 -> 16000    441       91    622 samples =   14.10 ms
+//     44100 ->  8000    441      182    804 samples =   18.23 ms
+//     44100 -> 16001  44100       91  44281 samples = 1004.10 ms
+// clang-format on
+//
+// Note how the near-coprime pair blows up: gcd == 1 means align == isr, a full
+// second. That's the price of landing on the grid when the two grids only meet
+// once a second.
+//
+// Two cases need no pre-roll at all, which is what makes this airtight:
+// - at the start of the stream, the grid is anchored on the stream's first
+//   sample, so it is aligned by definition and the skip is zero;
+// - when a range is served without seeking, the resampler is not recreated and
+//   there is nothing to re-align.
 AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
     double start_seconds,
     std::optional<double> stop_seconds_optional) {
@@ -1213,18 +1263,8 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
       stream_info.audio_stream_options.sample_rate.value_or(src_sample_rate);
   bool is_resampling = out_sample_rate != src_sample_rate;
   if (is_resampling) {
-    // Landing on the output sample grid costs the resampler up to
-    // src_rate / gcd(rates) - 1 discarded input samples, see
-    // [Resampler Grid Alignment], and it needs a filter's worth of input on
-    // top of that before it stops emitting samples influenced by the
-    // fabricated history it starts with. Seeking that far back keeps both off
-    // the requested range.
-    //
-    // swresample sizes that filter at filter_size / min(1, out_rate * cutoff /
-    // src_rate) input samples, defaulting to filter_size=32 and cutoff=0.97
-    // (libswresample/options.c, libswresample/resample.c). The alignment bound
-    // is exact so we take it as-is, and we double the filter to leave some
-    // margin.
+    // How much pre-roll the resampler needs, see
+    // [Audio resampling, pre-roll and post-roll].
     static constexpr int k_swr_filter_size = 32;
     static constexpr double k_swr_cutoff = 0.97;
     double factor =
@@ -1282,17 +1322,12 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   auto stop_pts = stop_seconds_optional.has_value()
       ? seconds_to_closest_pts(*stop_seconds_optional, stream_info.time_base)
       : INT64_MAX;
-  // Note [Resampler Preroll]
-  // When resampling, the preroll frames are converted and returned like any
-  // other, and the caller trims them off. They exist so that everything a
-  // freshly-created resampler gets wrong happens on audio nobody asked for:
-  // it discards input samples to reach the sample grid (see
-  // [Resampler Grid Alignment]), and it starts with fabricated filter history
-  // rather than the samples that really precede the ones it is fed.
-  //
-  // This makes the returned range wider than what was asked for. Callers
-  // already have to trim it - frames are decoded whole, so the range never
-  // lined up with the requested boundaries in the first place.
+  // When resampling, the pre-roll frames are converted and returned like any
+  // other, and the caller trims them off. See
+  // [Audio resampling, pre-roll and post-roll]. This makes the returned range
+  // wider than what was asked for, but callers already have to trim it: frames
+  // are decoded whole, so the range never lined up with the requested
+  // boundaries in the first place.
   auto output_start_pts =
       is_resampling ? std::min(start_pts, target_seek_pts) : start_pts;
 

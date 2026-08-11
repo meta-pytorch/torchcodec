@@ -3110,7 +3110,7 @@ class TestAudioDecoder:
     # own decoding started from. The sample then lands in both chunks.
     #
     # 16_001 is coprime with 44_100, the worst case for
-    # [Resampler Grid Alignment]: the resampler then needs a full second of
+    # [Audio resampling and frame alignment]: the resampler then needs a full second of
     # preroll to be able to align itself.
     @pytest.mark.parametrize(
         "out_sample_rate, increment",
@@ -3138,9 +3138,9 @@ class TestAudioDecoder:
         #   the sample position the previous chunk left behind,
         # - recreating it makes it emit samples offset by a fraction of a sample
         #   from the ones a start-to-finish decode produces, unless it is
-        #   re-anchored on the sample grid, see [Resampler Grid Alignment],
+        #   re-anchored on the sample grid, see [Audio resampling and frame alignment],
         # - re-anchoring discards input samples, which have to be samples that
-        #   precede the chunk, see [Resampler Preroll].
+        #   precede the chunk, see [Audio resampling, pre-roll and post-roll].
         # All three show up as wrong sample values, and as chunks that are one
         # sample too long or too short.
         #

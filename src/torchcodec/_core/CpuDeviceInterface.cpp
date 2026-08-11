@@ -352,6 +352,71 @@ CpuDeviceInterface::convert_av_frame_to_tensor_using_filter_graph(
   return rgb_av_frame_to_tensor(*filter_graph_->convert(av_frame));
 }
 
+// clang-format off
+// Note [Audio resampling and frame alignment]
+//
+// Say we have some audio at 24kHz that we resample at 16kHz. We want to honor
+// the natural property that `get_all_samples()` should be equal to the
+// concatenation of calls to `get_samples_played_in_range(a, b)` where all the
+// (a, b) pairs are a full partition of the duration.
+//
+// `get_all_samples()` will return this:
+//
+// 0s                                                                                                                                                          1s
+// 0                                                                             12                                                                            24
+// ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||     24Hz
+// ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     16Hz
+// 0                                                                              8                                                                            16
+//
+// Now, the calls to `get_samples_played_in_range(a, b)`. If we don't do
+// something special, we'd get the following.
+//
+// 0s                x                                                                                                                                         1s
+// 0                 [  sample frame  ]                                          12                                                                            24
+// ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||   |   |   ||     24Hz
+// ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     |     ||     16Hz
+// 0            ||   ^                                 ||                         8                                                                            16
+//              ||   |
+//              ||   x', not aligned with output grid!
+//              ||
+//              ||
+//              ||
+//              ||
+//              we tell the resampler to start here! On a sample that is aligned in input and output space.
+//
+// Say we request `get_samples_played_in_range(a, b)` where a is somewhere
+// within the `[sample frame]` - it doesn't matter where it is exactly. Since
+// FFmpeg starts decoding from a frame start, it will start decoding from x:
+// the sample in the input space where that frame starts.
+//
+// **THE PROBLEM** is that this sample `x` in the input space is NOT aligned
+// with a sample boundary in the output space! See how x' doesn't align with a
+// sample that the single call to `get_all_samples()` would have returned?
+// Nothing breaks, the decoder and the resampler happily oblige, but they start
+// returning an output that is stamped with a pts that we would have otherwise
+// never gotten - and all the resulting samples boundaries are shifted by that
+// offset. This breaks our desired property.
+//
+// To fix this, we tell the resampler to NOT start at x, but to start instead
+// at a sample that is aligned in both input space and output space: the ones
+// that start with ||. We know where these samples are: their index is a
+// multiple of k in input space, and of k' in output space, where:
+//
+// - k  = isr / gcd(isr, osr)   -- every 3 samples in input space, since
+//                                 gcd = 8 and 24 = 8 * 3
+// - k' = osr / gcd(isr, osr)   -- every 2 samples in output space, since
+//                                 gcd = 8 and 16 = 8 * 2
+//
+// In practice, we tell the resampler to *drop* some samples. The drop can only
+// ever move forward: we cannot feed the resampler samples we haven't decoded.
+// What makes that safe is that we start feeding it much earlier than the
+// target `a`, because of the pre-roll (see [Audio resampling, pre-roll and
+// post-roll]). The aligned sample we land on is therefore always at or before
+// `a`. Whether it is before the frame containing `a`, as drawn above, or
+// inside that frame depends on how far into that frame `a` falls - but it is
+// never past `a`, so the samples we drop are never samples the caller asked
+// for.
+// clang-format on
 void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
     const AVFrame& src_av_frame,
     FrameOutput& frame_output) {
@@ -392,31 +457,8 @@ void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
           src_av_frame,
           out_num_channels));
 
-      // Note [Resampler Grid Alignment]
-      // A fresh resampler emits its first output sample at the time of the
-      // first input sample it is fed, and one output sample every
-      // 1/out_rate seconds from there on. Its output grid is therefore
-      // anchored wherever we start feeding it.
-      //
-      // We need that grid to be the one a start-to-finish decode produces,
-      // otherwise the samples of a range request are interpolated at instants
-      // that don't exist in the full decode: values are slightly off and the
-      // number of samples spanning the range can differ by one. swresample
-      // won't let us set that phase (SwrContext's index/frac are private and
-      // only ever initialized to the start of a fresh conversion), so the one
-      // lever we have is which input sample we feed first.
-      //
-      // Counting input samples from the start of the stream, input sample i is
-      // on the output grid when i * out_rate / src_rate is an integer, i.e.
-      // when i is a multiple of src_rate / gcd(rates). Decoding resumes on a
-      // frame boundary, which is an arbitrary input sample, so we discard the
-      // few samples between it and the next such position, and report that
-      // position as the pts of the output.
-      //
-      // Those discarded samples are real audio, so they must not be samples
-      // the caller asked for. What guarantees that is the seek: it lands at
-      // least src_rate / gcd(rates) samples before the requested range, which
-      // bounds this discard. See [Resampler Preroll].
+      // See [Audio resampling and frame alignment]. The pts we report is the
+      // one of the aligned sample, not the one of the frame we were handed.
       int64_t src_sample_index = std::llround(
           (frame_output.pts_seconds - audio_stream_start_seconds_) *
           src_sample_rate);
@@ -532,7 +574,8 @@ void CpuDeviceInterface::flush() {
   // conversion on samples that don't follow the ones before them makes that
   // position meaningless and corrupts the output. Drop the context here; it is
   // lazily recreated, and re-anchored on the sample grid, in
-  // convert_audio_av_frame_to_frame_output(). See [Resampler Grid Alignment].
+  // convert_audio_av_frame_to_frame_output(). See [Audio resampling and frame
+  // alignment].
   swr_context_.reset();
   swr_input_samples_to_skip_ = 0;
 }
