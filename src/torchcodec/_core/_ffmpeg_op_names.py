@@ -14,6 +14,7 @@ FFMPEG_OP_NAMES = frozenset(
     {
         "create_from_file",
         "create_from_tensor",
+        "create_video_decoder_from_tensor",
         "_create_from_file_like",
         "_add_video_stream_raw",
         "_add_video_stream",

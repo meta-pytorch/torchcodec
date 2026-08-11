@@ -4,13 +4,12 @@
 // This source code is licensed under the BSD-style license found in the
 // LICENSE file in the root directory of this source tree.
 
-// fmt and pybind11 headers from torch error out if TORCH_TARGET_VERSION is
-// defined, so we temporarily undefine it.
+// The fmt headers from torch error out if TORCH_TARGET_VERSION is defined, so
+// we temporarily undefine it.
 // See https://github.com/pytorch/pytorch/pull/174372 for context
 #pragma push_macro("TORCH_TARGET_VERSION")
 #undef TORCH_TARGET_VERSION
 #include <fmt/format.h>
-#include <pybind11/pybind11.h>
 #pragma pop_macro("TORCH_TARGET_VERSION")
 #include <cstdint>
 #include <string>
@@ -45,10 +44,21 @@ namespace facebook::torchcodec {
 // calls to these functions. For more detail, see:
 //   https://github.com/pytorch/pytorch/tree/main/aten/src/ATen/native#readme
 //
+// Exception: the ops on the torch.export path (create_video_decoder_from_tensor
+// and get_frames_at_indices) take a plain `Tensor` decoder. `(a!)` tells
+// functionalization it may clone the argument, and cloning a handle tensor
+// copies the first bytes of the C++ decoder object rather than the object
+// itself, which is undefined behaviour. Those ops don't need `(a!)` for
+// ordering either: random frame access is self-contained, and the decoder is
+// fully configured by the single factory op that produced the handle, so the
+// handle's data dependency is enough to order the graph.
+//
 STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("create_from_file(str filename, str? seek_mode=None) -> Tensor");
   m.def(
       "create_from_tensor(Tensor video_tensor, str? seek_mode=None) -> Tensor");
+  m.def(
+      "create_video_decoder_from_tensor(Tensor video_data, *, str? seek_mode=None, int? num_threads=None, str? dimension_order=None, int? stream_index=None, str device=\"cpu\", str device_variant=\"default\", str transform_specs=\"\", str output_dtype=\"uint8\") -> Tensor");
   m.def(
       "_create_from_file_like(int file_like_context, str? seek_mode=None) -> Tensor");
   m.def(
@@ -64,7 +74,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "get_frame_at_index(Tensor(a!) decoder, *, int frame_index) -> (Tensor, Tensor, Tensor)");
   m.def(
-      "get_frames_at_indices(Tensor(a!) decoder, *, Tensor frame_indices) -> (Tensor, Tensor, Tensor)");
+      "get_frames_at_indices(Tensor decoder, *, Tensor frame_indices) -> (Tensor, Tensor, Tensor)");
   m.def(
       "get_frames_in_range(Tensor(a!) decoder, *, int start, int stop, int? step=None) -> (Tensor, Tensor, Tensor)");
   m.def(
@@ -664,6 +674,43 @@ void add_video_stream(
       std::move(custom_frame_mappings_keyframe_indices),
       /*color_conversion_library=*/std::nullopt,
       std::move(output_dtype));
+}
+
+// Create a decoder from the raw bytes of a video *and* add its video stream, in
+// a single call.
+//
+// This exists for torch.export. Doing the two steps separately works in eager
+// Python, but in a traced graph add_video_stream is a state mutation with no
+// return value: there is no data dependency keeping it ordered before the
+// frame-reading ops, and nothing keeping it in the graph at all. Fusing the two
+// makes the exported program a pure dataflow DAG - bytes -> handle -> frames -
+// with no mutable arguments and no side effects for the tracer to model.
+torch::stable::Tensor create_video_decoder_from_tensor(
+    const torch::stable::Tensor& video_data,
+    std::optional<std::string> seek_mode = std::nullopt,
+    std::optional<int64_t> num_threads = std::nullopt,
+    std::optional<std::string> dimension_order = std::nullopt,
+    std::optional<int64_t> stream_index = std::nullopt,
+    std::string device = "cpu",
+    std::string device_variant = "default",
+    std::string transform_specs = "",
+    std::string output_dtype = "uint8") {
+  torch::stable::Tensor decoder =
+      create_from_tensor(video_data, std::move(seek_mode));
+  _add_video_stream(
+      decoder,
+      num_threads,
+      std::move(dimension_order),
+      stream_index,
+      std::move(device),
+      std::move(device_variant),
+      std::move(transform_specs),
+      /*custom_frame_mappings_pts=*/std::nullopt,
+      /*custom_frame_mappings_duration=*/std::nullopt,
+      /*custom_frame_mappings_keyframe_indices=*/std::nullopt,
+      /*color_conversion_library=*/std::nullopt,
+      std::move(output_dtype));
+  return decoder;
 }
 
 void add_audio_stream(
@@ -1410,6 +1457,9 @@ int64_t _get_log_level() {
 STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, BackendSelect, m) {
   m.impl("create_from_file", TORCH_BOX(&create_from_file));
   m.impl("create_from_tensor", TORCH_BOX(&create_from_tensor));
+  m.impl(
+      "create_video_decoder_from_tensor",
+      TORCH_BOX(&create_video_decoder_from_tensor));
   m.impl("_create_from_file_like", TORCH_BOX(&_create_from_file_like));
   m.impl("_blocks_create_demuxer", TORCH_BOX(&_blocks_create_demuxer));
   m.impl(

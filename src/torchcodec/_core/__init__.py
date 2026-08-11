@@ -19,6 +19,7 @@ from .ops import (
     _test_frame_pts_equality,
     core_library_path,
     create_streaming_encoder,
+    create_video_decoder_from_tensor,
     create_wav_decoder_from_file,
     ffmpeg_major_version,
     get_ffmpeg_library_versions,

@@ -34,6 +34,11 @@ create_from_tensor = torch._dynamo.disallow_in_graph(
 _create_from_file_like = torch._dynamo.disallow_in_graph(
     torch.ops.torchcodec_ns._create_from_file_like.default
 )
+# Not disallowed in graph: this one is meant to be traced, it's the entry point
+# of the torch.export path.
+create_video_decoder_from_tensor = (
+    torch.ops.torchcodec_ns.create_video_decoder_from_tensor.default
+)
 _add_video_stream_raw = torch.ops.torchcodec_ns.add_video_stream.default
 _add_video_stream = torch.ops.torchcodec_ns._add_video_stream.default
 
@@ -254,23 +259,46 @@ def get_frames_by_pts(
 # ==============================
 # Abstract impl for the operators. Needed by torch.compile.
 # ==============================
+# Note: the `= None` defaults matter. Arguments that are left at their schema
+# default aren't passed down to the fake impl, so a fake whose parameters are
+# all required raises TypeError as soon as the op is traced.
 @register_fake("torchcodec_ns::create_from_file")
-def create_from_file_abstract(filename: str, seek_mode: str | None) -> torch.Tensor:
+def create_from_file_abstract(
+    filename: str, seek_mode: str | None = None
+) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
 
 @register_fake("torchcodec_ns::_create_from_file_like")
 def _create_from_file_like_abstract(
-    file_like: int, seek_mode: str | None
+    file_like: int, seek_mode: str | None = None
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
 
 
 @register_fake("torchcodec_ns::create_from_tensor")
 def create_from_tensor_abstract(
-    video_tensor: torch.Tensor, seek_mode: str | None
+    video_tensor: torch.Tensor, seek_mode: str | None = None
 ) -> torch.Tensor:
     return torch.empty([], dtype=torch.long)
+
+
+@register_fake("torchcodec_ns::create_video_decoder_from_tensor")
+def create_video_decoder_from_tensor_abstract(
+    video_data: torch.Tensor,
+    *,
+    seek_mode: str | None = None,
+    num_threads: int | None = None,
+    dimension_order: str | None = None,
+    stream_index: int | None = None,
+    device: str = "cpu",
+    device_variant: str = "default",
+    transform_specs: str = "",
+    output_dtype: str = "uint8",
+) -> torch.Tensor:
+    # The real handle tensor views the first sizeof(SingleStreamDecoder*)
+    # int64s of the decoder object, i.e. it has shape [8].
+    return torch.empty([8], dtype=torch.long)
 
 
 @register_fake("torchcodec_ns::_add_video_stream")
@@ -380,13 +408,18 @@ def get_frame_at_index_abstract(
 
 @register_fake("torchcodec_ns::get_frames_at_indices")
 def get_frames_at_indices_abstract(
-    decoder: torch.Tensor, *, frame_indices: torch.Tensor | list[int]
+    decoder: torch.Tensor, *, frame_indices: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    image_size = [get_ctx().new_dynamic_size() for _ in range(4)]
+    num_frames = frame_indices.shape[0]
+    # The frame geometry isn't knowable from the decoder handle, which is opaque
+    # to the tracer, so those dims are data-dependent. The output dtype is
+    # assumed to be the default uint8: it actually depends on the output_dtype
+    # the stream was configured with, which the tracer can't see either.
+    frame_shape = [get_ctx().new_dynamic_size() for _ in range(3)]
     return (
-        torch.empty(image_size),
-        torch.empty([], dtype=torch.float),
-        torch.empty([], dtype=torch.float),
+        torch.empty([num_frames, *frame_shape], dtype=torch.uint8),
+        torch.empty([num_frames], dtype=torch.float64),
+        torch.empty([num_frames], dtype=torch.float64),
     )
 
 
