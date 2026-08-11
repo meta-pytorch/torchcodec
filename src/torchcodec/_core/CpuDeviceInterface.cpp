@@ -413,7 +413,7 @@ CpuDeviceInterface::convert_av_frame_to_tensor_using_filter_graph(
 //
 // In practice, we tell the resampler to *drop* some samples. We can do that
 // because in practice, we start feeding it much earlier than the target `a`,
-// because of the pre-roll (see [Audio resampling, pre-roll and post-roll]). The
+// because of the pre-roll (see [Audio pre-roll and post-roll]). The
 // pre-roll is large enough such that the aligned sample we land on is always at
 // or before `a`. Whether it is before the frame containing `a`, as drawn above,
 // or inside that frame depends on how far into that frame `a` falls - but it is

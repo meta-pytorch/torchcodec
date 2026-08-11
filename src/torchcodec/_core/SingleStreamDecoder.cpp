@@ -1102,6 +1102,8 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
   }
 }
 
+// clang-format off
+//
 // Note [Audio Decoding Design]
 // This note explains why audio decoding is implemented the way it is, and why
 // it inherently differs from video decoding.
@@ -1132,81 +1134,57 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
 // batch requires constant (and known) frame dimensions. That's also why
 // *concatenated* along the samples dimension, not stacked.
 //
-// Note [Audio Seek Preroll]
-// Most lossy audio codecs (AAC, MP3, Vorbis, AC-3, etc.) use MDCT
-// (Modified Discrete Cosine Transform) with overlap-add: the decoded
-// output for frame i depends on internal state accumulated from frame
-// i-1 (sometimes, more than -1). When we seek and call avcodec_flush_buffers(),
-// the internal decoder buffers are flushed, emptying that internal state which
-// we need for correct decoding, so the first frame decoded after a seek
-// produces incorrect samples.
+// Note [Audio pre-roll and post-roll]
 //
-// To work around this, when seeking we don't seek directly to the
-// target PTS. Instead, we seek to a few frames *before* the target
-// and decode those extra frames to "prime" the codec state. These
-// preroll frames are automatically discarded by the PTS filter in
-// decodeAVFrame(), so they don't appear in the output. This is the same
-// approach used by libmpg123 (the reference MP3 decoder used by libsndfile),
-// which calls these "ignoreframes":
-// -
+// get_samples_played_in_range(a, b) decodes more than [a, b):
+// target_preroll_seconds before a, and target_postroll_seconds after b, which
+// the Python layer then trims off. Two independent data dependencies need this
+// extra margin:
+//
+// 1. The codec. Most lossy codecs (AAC, MP3, Vorbis, AC-3...) use MDCT with
+// overlap-add the output of frame i depends on state accumulated from frame
+// i-1, sometimes earlier. avcodec_flush_buffers() empties it on a seek, so the
+// first frames decoded after one come out wrong. Decoding k_num_preroll_frames
+// frames before the target primes it back - libmpg123 calls these
+// "ignoreframes" [1][2] and defaults to 4, which is where our 4 comes from.  1
+// is believed to be enough for aac, vorbis and mp3. If frame_size is unknown we
+// fall back to k_fallback_preroll_seconds. Lossless codecs don't need such a
+// pre-roll, so we avoid it for those.
+//
+// 2. The resampler, when resampling. It is an interpolation filter: the sample
+// it emits at a given instant is a weighted sum of the input samples on both
+// sides of it. That is a data dependency of its own, and it holds whether or
+// not the codec has one. On top of it, a freshly created resampler skips up to
+// num_samples_to_skip input samples to land on the grid, see [Audio resampling
+// and frame alignment]. So it needs:
+//
+//   before a:  num_samples_to_skip + filter_length   input samples
+//   after b:                         filter_length   input samples
+//
+// where filter_length is computed like in FFmpeg [3]. To be on the safe side,
+// we actually use 2 * filter_length.
+//
+// Typical values look like:
+//
+//     isr -> osr      num_samples_to_skip         filter_length    target_preroll_seconds
+//     24000 -> 16000                    3                    50      102 smp =    4.25 ms
+//     44100 -> 16000                  441                    91      622 smp =   14.10 ms
+//     44100 ->  8000                  441                   182      804 smp =   18.23 ms
+//     44100 -> 16001                44100                    91    44281 smp = 1004.10 ms
+//
+// Note that at worst, we need to preroll ~1s worth of samples: by definition,
+// the input and output sample rates align every second.
+//
+// target_preroll_seconds is the max of the two: the preroll needed by the
+// codec, and the preroll needed by the resampler.
+//
+// [1]
 // https://github.com/gypified/libmpg123/blob/8cbf2faf994bd999ce2b45869093bd61ecf8416f/src/libmpg123/frame.c#L884-L894
-// -
+// [2]
 // https://github.com/gypified/libmpg123/blob/8cbf2faf994bd999ce2b45869093bd61ecf8416f/src/libmpg123/libmpg123.c#L586
+// [3] https://github.com/FFmpeg/FFmpeg/blob/844e10e1a74929c27dfe0aac1c34e92bb6edbf5a/libswresample/resample.c#L188-L193
 //
-// Note: before this pre-roll logic, we had a much more brutal strategy: we
-// would *always* seek back to the beginning of the file. It works, but it's
-// wasteful when multiple seeks are involved, or when only some samples near the
-// end are needed.
-//
-// Note [Audio resampling, pre-roll and post-roll]
-//
-// In short, in order to properly resample sample x, the resampler needs the
-// samples before it and the samples after it: it is an interpolation filter,
-// with taps on either side of the sample it emits. So when the user asks for
-// get_samples_played_in_range(a, b), we must feed the resampler samples
-// *before* a and *after* b so that both a and b (and everything in-between)
-// are correctly resampled. That's not the only reason we need pre-roll BTW,
-// see [Audio Seek Preroll].
-//
-// This is important in relation to the [Audio resampling and frame alignment]
-// note: when a user asks for get_samples_played_in_range(a, b), we start from
-// a' < a (pre-roll), and then the resampler is told to skip a given amount of
-// samples such that it lands on an aligned sample in input and output space.
-// We need to make sure the pre-roll is large enough such that we can safely
-// find such a boundary.
-//
-// How much pre-roll is enough? The skip is bounded: the next aligned input
-// sample is always less than `align = isr / gcd(isr, osr)` samples away, so
-// `align` input samples of pre-roll are enough to land on an aligned sample at
-// or before `a`. On top of that, the resampler needs a filter's worth of input
-// before it stops emitting samples influenced by the fabricated history it
-// starts with. swresample sizes that filter at
-//
-//     ceil(filter_size / min(1, osr * cutoff / isr))    input samples
-//
-// with filter_size defaulting to 32 and cutoff to 0.97 (libswresample/
-// options.c, libswresample/resample.c). The alignment bound is exact so we
-// take it as-is; the filter length is a heuristic so we double it:
-//
-//     (align - 1 + 2 * filter_length) / isr    seconds
-//
-// clang-format off
-//     isr -> osr      align   filter   pre-roll
-//     24000 -> 16000      3       50    102 samples =    4.25 ms
-//     44100 -> 16000    441       91    622 samples =   14.10 ms
-//     44100 ->  8000    441      182    804 samples =   18.23 ms
-//     44100 -> 16001  44100       91  44281 samples = 1004.10 ms
 // clang-format on
-//
-// Note how the near-coprime pair blows up: gcd == 1 means align == isr, a full
-// second. That's the price of landing on the grid when the two grids only meet
-// once a second.
-//
-// Two cases need no pre-roll at all, which is what makes this airtight:
-// - at the start of the stream, the grid is anchored on the stream's first
-//   sample, so it is aligned by definition and the skip is zero;
-// - when a range is served without seeking, the resampler is not recreated and
-//   there is nothing to re-align.
 AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
     double start_seconds,
     std::optional<double> stop_seconds_optional) {
@@ -1231,14 +1209,10 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
 
   auto start_pts = seconds_to_closest_pts(start_seconds, stream_info.time_base);
 
-  // See [Audio Seek Preroll] above.
-  // How many frames do we need to decode before the target one to correctly
-  // prime the internal decoder buffers?  Claude's analysis of the FFmpeg
-  // codebase concludes that 1 frame is enough for aac, vorbis, mp3 and others.
-  // We use 4 to match libmpg123's default, which provides extra safety.
-  // If frame_size is unknown, we fall back to 1 second.
-  // Lossless codecs have no such state to rebuild, and prerolling them isn't
-  // free: preroll frames get decoded and resampled like any other.
+  // We must figure out if we need to seek, and where to. The following figures
+  // out the value of target_preroll_seconds. See the [Audio pre-roll and
+  // post-roll]  note.
+  // Codec pre-roll
   static constexpr int k_num_preroll_frames = 4;
   static constexpr double k_fallback_preroll_seconds = 1.0;
   int src_sample_rate = stream_info.codec_context->sample_rate;
@@ -1259,23 +1233,29 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
     target_preroll_seconds = k_fallback_preroll_seconds;
   }
 
+  // Resampler pre-roll
   int out_sample_rate =
       stream_info.audio_stream_options.sample_rate.value_or(src_sample_rate);
   bool is_resampling = out_sample_rate != src_sample_rate;
   if (is_resampling) {
-    // How much pre-roll the resampler needs, see
-    // [Audio resampling, pre-roll and post-roll].
+    // See
+    // https://github.com/FFmpeg/FFmpeg/blob/844e10e1a74929c27dfe0aac1c34e92bb6edbf5a/libswresample/resample.c#L188-L193
+    // for constants, and the note mentioned above.
     static constexpr int k_swr_filter_size = 32;
     static constexpr double k_swr_cutoff = 0.97;
     double factor =
         std::min(1.0, out_sample_rate * k_swr_cutoff / src_sample_rate);
-    double filter_input_samples = std::ceil(k_swr_filter_size / factor);
+    double filter_length = std::ceil(k_swr_filter_size / factor);
+    // alignment is k in the  [Audio resampling and frame alignment] note,
+    // alignment - 1 bounds num_samples_to_skip so it's safe to use in our
+    // preroll calculation.
     int64_t alignment =
         src_sample_rate / std::gcd(src_sample_rate, out_sample_rate);
 
+    // double filter length to be safe.
     target_preroll_seconds = std::max(
         target_preroll_seconds,
-        (alignment - 1 + 2 * filter_input_samples) / src_sample_rate);
+        (alignment - 1 + 2 * filter_length) / src_sample_rate);
   }
   auto target_seek_pts = seconds_to_closest_pts(
       start_seconds - target_preroll_seconds, stream_info.time_base);
@@ -1322,12 +1302,8 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   auto stop_pts = stop_seconds_optional.has_value()
       ? seconds_to_closest_pts(*stop_seconds_optional, stream_info.time_base)
       : INT64_MAX;
-  // When resampling, the pre-roll frames are converted and returned like any
-  // other, and the caller trims them off. See
-  // [Audio resampling, pre-roll and post-roll]. This makes the returned range
-  // wider than what was asked for, but callers already have to trim it: frames
-  // are decoded whole, so the range never lined up with the requested
-  // boundaries in the first place.
+
+  // When resampling, we must send the prerolled frames through the resampler!
   auto output_start_pts =
       is_resampling ? std::min(start_pts, target_seek_pts) : start_pts;
 
@@ -1384,7 +1360,7 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
 
 void SingleStreamDecoder::set_cursor_pts_in_seconds(double seconds) {
   // Audio seeking is handled internally by getFramesPlayedInRangeAudio()
-  // with preroll, see [Audio Seek Preroll].
+  // with preroll, see [Audio pre-roll and post-roll].
   validate_active_stream(AVMEDIA_TYPE_VIDEO);
   set_cursor(seconds_to_closest_pts(
       seconds, stream_infos_[active_stream_index_].time_base));
@@ -1402,7 +1378,7 @@ bool SingleStreamDecoder::can_we_avoid_seeking() const {
   const StreamInfo& stream_info = stream_infos_.at(active_stream_index_);
   if (stream_info.av_media_type == AVMEDIA_TYPE_AUDIO) {
     // For audio, seeking is handled internally by
-    // getFramesPlayedInRangeAudio(). See [Audio Seek Preroll].
+    // getFramesPlayedInRangeAudio(). See [Audio pre-roll and post-roll].
     return !cursor_was_just_set_;
   } else if (!cursor_was_just_set_) {
     // For videos, when decoding consecutive frames, we don't need to seek.
