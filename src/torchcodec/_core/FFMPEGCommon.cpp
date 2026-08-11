@@ -503,7 +503,7 @@ UniqueAVFrame convert_audio_av_frame_samples(
     AVSampleFormat out_sample_format,
     int out_sample_rate,
     int out_num_channels,
-    int src_offset_samples) {
+    int num_samples_to_skip) {
   UniqueAVFrame converted_av_frame(av_frame_alloc());
   STD_TORCH_CHECK(
       converted_av_frame,
@@ -512,7 +512,7 @@ UniqueAVFrame convert_audio_av_frame_samples(
   converted_av_frame->pts = src_av_frame.pts;
   converted_av_frame->format = static_cast<int>(out_sample_format);
 
-  int num_src_samples = src_av_frame.nb_samples - src_offset_samples;
+  int num_src_samples = src_av_frame.nb_samples - num_samples_to_skip;
   STD_TORCH_CHECK(
       num_src_samples >= 0,
       "Trying to skip more samples than the frame contains.");
@@ -554,13 +554,13 @@ UniqueAVFrame convert_audio_av_frame_samples(
   // for all channels, while data only contains AV_NUM_DATA_POINTERS (8).
   // https://ffmpeg.org/doxygen/trunk/structAVFrame.html#afca04d808393822625e09b5ba91c6756
   //
-  // Skipping src_offset_samples means advancing each input plane: one plane per
-  // channel for planar formats, a single interleaved plane otherwise.
+  // Skipping num_samples_to_skip means advancing each input plane: one plane
+  // per channel for planar formats, a single interleaved plane otherwise.
   auto src_sample_format = static_cast<AVSampleFormat>(src_av_frame.format);
   int num_src_planes = av_sample_fmt_is_planar(src_sample_format)
       ? get_num_channels(src_av_frame)
       : 1;
-  int src_byte_offset = src_offset_samples *
+  int src_byte_offset = num_samples_to_skip *
       av_get_bytes_per_sample(src_sample_format) *
       (av_sample_fmt_is_planar(src_sample_format)
            ? 1

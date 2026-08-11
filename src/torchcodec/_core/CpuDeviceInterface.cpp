@@ -451,7 +451,37 @@ void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
 
   UniqueAVFrame converted_av_frame;
   if (must_convert) {
+    int64_t num_samples_to_skip = 0;
     if (!swr_context_) {
+      // See [Audio resampling and frame alignment].
+      int64_t frame_sample_index = std::llround(
+          (frame_output.pts_seconds - audio_stream_start_seconds_) *
+          src_sample_rate);
+      int64_t alignment = // k in the note
+          src_sample_rate / std::gcd(src_sample_rate, out_sample_rate);
+      int64_t remainder = frame_sample_index % alignment;
+      if (remainder < 0) {
+        remainder += alignment;
+      }
+      int64_t next_aligned_sample =
+          frame_sample_index + (remainder == 0 ? 0 : alignment - remainder);
+      num_samples_to_skip = next_aligned_sample - frame_sample_index;
+
+      // The pts_seconds field was set upstream to the pts of src_av_frame, but
+      // must adjust it to report the pts of the aligned sample, since this is
+      // where the resampler will start producing output.
+      frame_output.pts_seconds = audio_stream_start_seconds_ +
+          static_cast<double>(next_aligned_sample) / src_sample_rate;
+
+      if (num_samples_to_skip >= src_av_frame.nb_samples) {
+        // The aligned sample isn't in this frame. Skipping it whole leaves the
+        // next one to compute the same aligned sample and land on it.
+        // Yes, it may happen that we have to skip more than one frame worth of
+        // samples in degenerate cases.
+        frame_output.data = torch::stable::empty({out_num_channels, 0});
+        return;
+      }
+
       swr_context_.reset(create_swr_context(
           src_sample_format,
           out_sample_format,
@@ -459,29 +489,7 @@ void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
           out_sample_rate,
           src_av_frame,
           out_num_channels));
-
-      // See [Audio resampling and frame alignment]. The pts we report is the
-      // one of the aligned sample, not the one of the frame we were handed.
-      // TODO_RESAMPLE: should this be here??
-      int64_t src_sample_index = std::llround(
-          (frame_output.pts_seconds - audio_stream_start_seconds_) *
-          src_sample_rate);
-      int64_t alignment =
-          src_sample_rate / std::gcd(src_sample_rate, out_sample_rate);
-      int64_t remainder = src_sample_index % alignment;
-      if (remainder < 0) {
-        remainder += alignment;
-      }
-      swr_input_samples_to_skip_ = (remainder == 0) ? 0 : alignment - remainder;
-      frame_output.pts_seconds = audio_stream_start_seconds_ +
-          static_cast<double>(src_sample_index + swr_input_samples_to_skip_) /
-              src_sample_rate;
     }
-
-    // TODO_RESAMPLE: what is this?
-    int src_offset_samples = static_cast<int>(
-        std::min<int64_t>(swr_input_samples_to_skip_, src_av_frame.nb_samples));
-    swr_input_samples_to_skip_ -= src_offset_samples;
 
     converted_av_frame = convert_audio_av_frame_samples(
         swr_context_,
@@ -489,7 +497,7 @@ void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
         out_sample_format,
         out_sample_rate,
         out_num_channels,
-        src_offset_samples);
+        static_cast<int>(num_samples_to_skip));
   }
   const AVFrame& av_frame = must_convert ? *converted_av_frame : src_av_frame;
 
@@ -582,7 +590,6 @@ void CpuDeviceInterface::flush() {
   // convert_audio_av_frame_to_frame_output(). See [Audio resampling and frame
   // alignment].
   swr_context_.reset();
-  swr_input_samples_to_skip_ = 0;
 }
 
 std::string CpuDeviceInterface::get_details() {
