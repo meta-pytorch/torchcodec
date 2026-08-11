@@ -1309,7 +1309,8 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   // When resampling, we must send the prerolled frames through the resampler!
   auto output_start_pts =
       is_resampling ? std::min(start_pts, target_seek_pts) : start_pts;
-  // See [Resampler Postroll]. Note that stop_pts, not this, is what decides
+  // See [Audio pre-roll and post-roll]. Note that stop_pts, not
+  // this, is what decides
   // whether we've decoded the whole requested range.
   auto output_stop_pts = (stop_pts == INT64_MAX) ? stop_pts
                                                  : stop_pts +

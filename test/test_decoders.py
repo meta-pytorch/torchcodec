@@ -3152,7 +3152,7 @@ class TestAudioDecoder:
         # against silence instead. These stop_seconds make decoding stop a
         # fraction of a millisecond after them, which is not enough to push
         # those samples out of the requested range on its own.
-        # See [Resampler Postroll].
+        # See [Audio pre-roll and post-roll].
         asset = SINE_MONO_S32_44100
         full = (
             AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples().data
