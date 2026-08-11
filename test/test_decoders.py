@@ -3083,10 +3083,6 @@ class TestAudioDecoder:
             frames_44100_to_8000.data, frames_8000.data, atol=0.03, rtol=0
         )
 
-    # Lossy codecs don't restore their overlap-add state exactly when seeking,
-    # so the samples right after a seek differ from the ones a start-to-finish
-    # decode produces, whatever the resampler does. We can only check how many
-    # samples we get for those.
     LOSSY_ASSETS = (NASA_AUDIO, NASA_AUDIO_MP3, NASA_AUDIO_MP3_44100)
 
     @pytest.mark.parametrize(
@@ -3101,17 +3097,6 @@ class TestAudioDecoder:
             NASA_AUDIO_MP3_44100,
         ),
     )
-    # Rate and increment are paired rather than crossed, to keep the number of
-    # cases down and to stay clear of one combination that has nothing to do
-    # with resampling: at 16_001Hz, an increment of 0.7 puts a chunk boundary
-    # exactly half a sample off (3.5s is sample 56003.5). Rounding that to a
-    # sample is a tie, and the two chunks meeting at the boundary break it
-    # towards different samples, because each rounds relative to the point its
-    # own decoding started from. The sample then lands in both chunks.
-    #
-    # 16_001 is coprime with 44_100, the worst case for
-    # [Audio resampling and frame alignment]: the resampler then needs a full second of
-    # preroll to be able to align itself.
     @pytest.mark.parametrize(
         "out_sample_rate, increment",
         (
@@ -3131,30 +3116,16 @@ class TestAudioDecoder:
     def test_resample_chunked_matches_full(self, asset, out_sample_rate, increment):
         # Reading a resampled stream in consecutive chunks must return exactly
         # the same samples as decoding it in one go.
-        #
-        # Every chunk but the first seeks, and each of the three things a seek
-        # does to the resampler breaks this:
-        # - reusing the resampler across the seek resamples the new samples with
-        #   the sample position the previous chunk left behind,
-        # - recreating it makes it emit samples offset by a fraction of a sample
-        #   from the ones a start-to-finish decode produces, unless it is
-        #   re-anchored on the sample grid, see [Audio resampling and frame alignment],
-        # - re-anchoring discards input samples, which have to be samples that
-        #   precede the chunk, see [Audio resampling, pre-roll and post-roll].
-        # All three show up as wrong sample values, and as chunks that are one
-        # sample too long or too short.
-        #
-        # The decoder is deliberately reused across chunks: a decoder that is
-        # thrown away after one chunk never carries resampler state into a seek,
-        # and doesn't catch the first of those.
+        # See [Audio resampling and frame alignment]
+
         full = AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples()
-        # Not asset.duration_seconds: the container's duration can be slightly
-        # beyond the last frame we can actually decode.
-        end_seconds = full.pts_seconds + full.data.shape[1] / out_sample_rate
+        actual_duration = (
+            full.pts_seconds + full.data.shape[1] / out_sample_rate - full.pts_seconds
+        )
 
         decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
         chunks = []
-        for i in range(math.ceil((end_seconds - full.pts_seconds) / increment)):
+        for i in range(math.ceil(actual_duration / increment)):
             start = full.pts_seconds + i * increment
             chunks.append(
                 decoder.get_samples_played_in_range(start, start + increment).data
@@ -3162,7 +3133,14 @@ class TestAudioDecoder:
         chunks = torch.cat(chunks, dim=1)
 
         assert chunks.shape == full.data.shape
-        if asset not in self.LOSSY_ASSETS:
+        if asset in self.LOSSY_ASSETS:
+            assert_tensor_close_on_at_least(
+                chunks, full.data, atol=0, rtol=0, percentage=80
+            )
+            assert_tensor_close_on_at_least(
+                chunks, full.data, atol=0.1, rtol=0, percentage=95
+            )
+        else:
             torch.testing.assert_close(chunks, full.data, atol=0, rtol=0)
 
     def test_decode_s16_ffmpeg4(self):

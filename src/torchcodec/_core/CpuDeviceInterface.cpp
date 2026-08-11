@@ -384,10 +384,14 @@ CpuDeviceInterface::convert_av_frame_to_tensor_using_filter_graph(
 //              ||
 //              we tell the resampler to start here! On a sample that is aligned in input and output space.
 //
+// (side note: the frame above is drawn as containing very few samples,
+// real frames have much more, it doesn't matter for the point being made.)
+//
 // Say we request `get_samples_played_in_range(a, b)` where a is somewhere
 // within the `[sample frame]` - it doesn't matter where it is exactly. Since
 // FFmpeg starts decoding from a frame start, it will start decoding from x:
 // the sample in the input space where that frame starts.
+//
 //
 // **THE PROBLEM** is that this sample `x` in the input space is NOT aligned
 // with a sample boundary in the output space! See how x' doesn't align with a
@@ -407,13 +411,12 @@ CpuDeviceInterface::convert_av_frame_to_tensor_using_filter_graph(
 // - k' = osr / gcd(isr, osr)   -- every 2 samples in output space, since
 //                                 gcd = 8 and 16 = 8 * 2
 //
-// In practice, we tell the resampler to *drop* some samples. The drop can only
-// ever move forward: we cannot feed the resampler samples we haven't decoded.
-// What makes that safe is that we start feeding it much earlier than the
-// target `a`, because of the pre-roll (see [Audio resampling, pre-roll and
-// post-roll]). The aligned sample we land on is therefore always at or before
-// `a`. Whether it is before the frame containing `a`, as drawn above, or
-// inside that frame depends on how far into that frame `a` falls - but it is
+// In practice, we tell the resampler to *drop* some samples. We can do that
+// because in practice, we start feeding it much earlier than the target `a`,
+// because of the pre-roll (see [Audio resampling, pre-roll and post-roll]). The
+// pre-roll is large enough such that the aligned sample we land on is always at
+// or before `a`. Whether it is before the frame containing `a`, as drawn above,
+// or inside that frame depends on how far into that frame `a` falls - but it is
 // never past `a`, so the samples we drop are never samples the caller asked
 // for.
 // clang-format on
@@ -459,6 +462,7 @@ void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
 
       // See [Audio resampling and frame alignment]. The pts we report is the
       // one of the aligned sample, not the one of the frame we were handed.
+      // TODO_RESAMPLE: should this be here??
       int64_t src_sample_index = std::llround(
           (frame_output.pts_seconds - audio_stream_start_seconds_) *
           src_sample_rate);
@@ -474,6 +478,7 @@ void CpuDeviceInterface::convert_audio_av_frame_to_frame_output(
               src_sample_rate;
     }
 
+    // TODO_RESAMPLE: what is this?
     int src_offset_samples = static_cast<int>(
         std::min<int64_t>(swr_input_samples_to_skip_, src_av_frame.nb_samples));
     swr_input_samples_to_skip_ -= src_offset_samples;
