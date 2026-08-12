@@ -3145,14 +3145,13 @@ class TestAudioDecoder:
 
     @pytest.mark.parametrize("out_sample_rate", (8_000, 16_000))
     @pytest.mark.parametrize("stop_seconds", (1.45, 1.91, 2.1))
-    def test_resample_range_end_matches_full(self, out_sample_rate, stop_seconds):
-        # The last samples of a range must match a start-to-finish decode too.
-        # swresample holds samples back until it gets the input that follows
-        # them, and whatever is still held back when the range ends is converted
-        # against silence instead. These stop_seconds make decoding stop a
-        # fraction of a millisecond after them, which is not enough to push
-        # those samples out of the requested range on its own.
-        # See [Audio pre-roll and post-roll].
+    def test_resample_chunked_matches_full_postroll(
+        self, out_sample_rate, stop_seconds
+    ):
+        # Test for resampling post-roll. Basically a subset of
+        # test_resample_chunked_matches_full but with a focus on postroll:
+        # stop_seconds values are chosen such that they actually fail on main
+        # and exercise the post-roll fix.
         asset = SINE_MONO_S32_44100
         full = (
             AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples().data
