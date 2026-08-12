@@ -2307,11 +2307,11 @@ class TestEncoder:
             if color_range is not None:
                 # FFmpeg and torchcodec encode color_range as 'unknown' for
                 # mov and avi when color_range='tv' and color_space=None on
-                # FFmpeg 7/8. Since this failure is rare, I suspect its a bug
+                # FFmpeg >= 7. Since this failure is rare, I suspect its a bug
                 # related to these older container formats on newer FFmpeg
                 # versions.
                 if not (
-                    ffmpeg_major_version in (7, 8)
+                    ffmpeg_major_version >= 7
                     and color_range == "tv"
                     and color_space is None
                     and format in ("mov", "avi")
