@@ -1306,12 +1306,10 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
       ? seconds_to_closest_pts(*stop_seconds_optional, stream_info.time_base)
       : INT64_MAX;
 
-  // When resampling, we must send the prerolled frames through the resampler!
+  // When resampling, we must send the prerolled and postrolled frames through
+  // the resampler!
   auto output_start_pts =
       is_resampling ? std::min(start_pts, target_seek_pts) : start_pts;
-  // See [Audio pre-roll and post-roll]. Note that stop_pts, not
-  // this, is what decides
-  // whether we've decoded the whole requested range.
   auto output_stop_pts = (stop_pts == INT64_MAX) ? stop_pts
                                                  : stop_pts +
           seconds_to_closest_pts(target_postroll_seconds,
@@ -1335,10 +1333,13 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
       finished = true;
     }
 
-    // If stopSeconds is in [begin, end] of the last decoded frame, we should
-    // stop decoding more frames. Note that if we were to use [begin, end),
-    // which may seem more natural, then we would decode the frame starting at
-    // stopSeconds, which isn't what we want!
+    // We're done once output_stop_pts falls within the last decoded frame,
+    // bounds
+    // included. Excluding the upper bound would look more natural, but when
+    // output_stop_pts lands exactly on a frame boundary we'd keep going: the
+    // frame starting there is rejected by the pts filter above, as is every
+    // frame after it, so we'd decode to EOF for the same output.
+
     auto last_decoded_av_frame_end =
         last_decoded_av_frame_pts_ + last_decoded_av_frame_duration_;
     finished |= (last_decoded_av_frame_pts_) <= output_stop_pts &&
