@@ -1,12 +1,12 @@
-[**Installation**](#installing-torchcodec) | [**Simple Example**](#using-torchcodec) | [**Detailed Example**](https://meta-pytorch.org/torchcodec/stable/generated_examples/) | [**Documentation**](https://meta-pytorch.org/torchcodec) | [**Contributing**](CONTRIBUTING.md) | [**License**](#license)
+[**Installation**](#installing-torchcodec) | [**Documentation**](https://meta-pytorch.org/torchcodec) | [**Contributing**](CONTRIBUTING.md) | [**License**](#license)
 
 # TorchCodec
 
-TorchCodec is a Python library for decoding video and audio data into PyTorch
-tensors, on CPU and CUDA GPU. It also supports video and audio encoding on CPU!
-It aims to be fast, easy to use, and well integrated
-into the PyTorch ecosystem.  If you want to use PyTorch to train ML models on
-videos and audio, or run inference, TorchCodec is how you turn these into data.
+TorchCodec is a PyTorch-native library for decoding and encoding media: videos,
+audio, and images, on CPU and CUDA GPU. It aims to be fast, easy to
+use, and well integrated into the PyTorch ecosystem. If you want to use PyTorch
+to train ML models on videos, audio, or images, or run inference, TorchCodec is
+how you turn these into tensors, and back.
 
 We achieve these capabilities through:
 
@@ -16,7 +16,7 @@ We achieve these capabilities through:
   installed. FFmpeg is a mature library with broad coverage available on most
   systems. It is, however, not easy to use. TorchCodec abstracts FFmpeg's
   complexity to ensure it is used correctly and efficiently. (FFmpeg is
-  optional, and the image decoders don't need it: see [Installing
+  optional, and the image decoders and encoders don't need it: see [Installing
   TorchCodec](#installing-torchcodec).)
 * Returning data as PyTorch tensors, ready to be fed into PyTorch transforms
   or used directly to train models.
@@ -70,7 +70,7 @@ the `VideoDecoder`:
 ffmpeg -f lavfi -i testsrc2=size=640x400:duration=10:rate=25 /tmp/output_video.mp4
 ```
 
-#### Encoding
+#### Video and Audio Encoding
 
 ```python
 from torchcodec.encoders import Encoder
@@ -88,6 +88,22 @@ with encoder.open_file("output.mp4"):
     video_stream.add_frames(frames_batch_1)
     audio_stream.add_samples(samples_batch_1)
     # ...
+```
+
+#### Image Decoding and Encoding
+
+```python
+from torchcodec.decoders import decode_image, decode_jpeg
+from torchcodec.encoders import JpegEncoder
+
+# JPEG, PNG, WebP, GIF, AVIF and HEIC, with the format detected automatically.
+image = decode_image("path/to/image.jpg")  # uint8 tensor of shape [C, H, W]
+
+# Or use the format-specific decoders, e.g. to decode JPEGs on GPU:
+image = decode_jpeg("path/to/image.jpg", device="cuda")
+
+# JPEG and PNG encoding. JPEGEncoder also supports CUDA encoding!
+JpegEncoder(image).to_file("output.jpg")  # also .to_tensor() and .to_file_like()
 ```
 
 ## Installing TorchCodec
@@ -109,9 +125,9 @@ with encoder.open_file("output.mp4"):
 
    > **Note:** FFmpeg is an *optional* dependency. It is needed for video
    > and audio decoding and encoding (`VideoDecoder`, `AudioDecoder`,
-   > `VideoEncoder`, `AudioEncoder`, etc.). The image decoders
-   > (`decode_image`, `decode_jpeg`, `decode_png`, etc.)
-   > do **not** require FFmpeg, so if you only need image decoding you can skip
+   > `VideoEncoder`, `AudioEncoder`, etc.). The image decoders and encoders
+   > (`decode_image`, `decode_jpeg`, `JpegEncoder`, `PngEncoder`, etc.)
+   > do **not** require FFmpeg, so if you only need images you can skip
    > this step.
 
 2. Install PyTorch and TorchCodec:
@@ -128,15 +144,15 @@ with encoder.open_file("output.mp4"):
 
 ### CUDA support
 
-CUDA-enabled wheels are installed by default on Linux. For Windows, you'll need
-to pass `--index-url` as described below.
+On CUDA GPUs, TorchCodec supports decoding and encoding of videos and jpeg
+images. CUDA-enabled wheels are installed by default on Linux. For Windows,
+you'll need to pass `--index-url` as described below.
 
-Make sure you have a GPU with NVDEC hardware that can decode the format you
-want. Refer to Nvidia's GPU support matrix
+
+For video, make sure you have a GPU with NVDEC and NVENC hardware that supports
+the formats you want. Refer to Nvidia's GPU support matrix
 [here](https://developer.nvidia.com/video-encode-and-decode-gpu-support-matrix-new).
 
-You will need the `libnvrtc` CUDA library, which is usually part of the CUDA
-Toolkit.
 
 To select a specific CUDA Toolkit version, use `--index-url`. Make sure to
 install the corresponding PyTorch version as well (refer to the
@@ -147,12 +163,16 @@ install the corresponding PyTorch version as well (refer to the
 pip install torch torchcodec --index-url=https://download.pytorch.org/whl/cu130
 ```
 
-Make sure your FFmpeg has NVDEC support:
+Make sure your FFmpeg has NVDEC and NVENC support:
 
 ```bash
 ffmpeg -decoders | grep -i nvidia
 # This should show a line like this:
 # V..... h264_cuvid           Nvidia CUVID H264 decoder (codec h264)
+
+ffmpeg -encoders | grep -i nvidia
+# This should show a line like this:
+# V....D h264_nvenc           NVIDIA NVENC H.264 encoder (codec h264)
 ```
 
 To check that FFmpeg libraries work with NVDEC correctly you can decode a

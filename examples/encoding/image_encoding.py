@@ -12,6 +12,13 @@ Encoding images
 In this example, we'll learn how to encode an image tensor to JPEG or PNG using
 the :class:`~torchcodec.encoders.JpegEncoder` and
 :class:`~torchcodec.encoders.PngEncoder` classes.
+
+.. note::
+
+    These encoders supersede the ones from ``torchvision.io``: they are more
+    robust and support more features. See
+    :ref:`sphx_glr_generated_examples_migration_torchvision_migration.py` for a
+    migration guide.
 """
 
 # %%
