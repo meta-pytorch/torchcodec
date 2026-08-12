@@ -1615,6 +1615,27 @@ WAV_ODD_DATA_TRAILING_CHUNK = TestAudio(
     },
 )
 
+# MPEG program stream. Seeking into one lands on a container-level byte offset,
+# so the parser that rebuilds MP2 frames out of the byte stream resumes
+# mid-frame and emits undecodable packets until it resyncs. The 384k bitrate
+# matters: it makes MP2 frames big enough relative to the 2048-byte PS packs
+# that resyncing takes several packets, not just one. Generated with:
+# ffmpeg -f lavfi -i "testsrc=size=128x128:rate=25:duration=4" -f lavfi -i "sine=frequency=440:sample_rate=44100:duration=4" -c:v mpeg1video -b:v 100k -c:a mp2 -b:a 384k -ac 2 test/resources/sine_stereo_mp2.mpg
+SINE_STEREO_MP2_MPEG_PS = TestAudio(
+    filename="sine_stereo_mp2.mpg",
+    default_stream_index=1,
+    frames={1: {}},
+    stream_infos={
+        1: TestAudioStreamInfo(
+            sample_rate=44_100,
+            num_channels=2,
+            duration_seconds=3.996733,
+            num_frames=154,
+            sample_format="s16p",
+        )
+    },
+)
+
 # 16-channel audio for testing support for >8 channels. Generated with:
 # ffmpeg -i test/resources/sine_mono_s32.wav -t 1 -filter_complex "[0]asplit=16[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15];[s0][s1][s2][s3][s4][s5][s6][s7][s8][s9][s10][s11][s12][s13][s14][s15]amerge=inputs=16" -c:a pcm_s16le test/resources/sine_16ch_s16.wav
 SINE_16_CHANNEL_S16 = TestAudio(
