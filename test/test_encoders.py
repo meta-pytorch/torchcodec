@@ -1096,7 +1096,7 @@ class TestEncoder:
     )
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.skipif(
-        IS_WINDOWS and ffmpeg_major_version == 8,
+        IS_WINDOWS and ffmpeg_major_version >= 8,
         reason="against_cli tests fail on Windows with FFmpeg 8",
     )
     def test_audio_against_cli(
@@ -1195,7 +1195,14 @@ class TestEncoder:
         )
         assert samples_by_us.sample_rate == samples_by_ffmpeg.sample_rate
 
-        if method == "to_file":
+        # On FFmpeg >= 9 the CLI encodes FLAC with a block size equal to the
+        # number of samples of the first frame it feeds to the encoder (e.g. 47
+        # for NASA_AUDIO_MP3, whose first decoded frame is short because of the
+        # mp3 encoder delay), instead of the block size that the FLAC encoder
+        # picks by default from the sample rate, which is what we use. The
+        # decoded samples still match, but the packets can't.
+        cli_flac_block_size_differs = format == "flac" and ffmpeg_major_version >= 9
+        if method == "to_file" and not cli_flac_block_size_differs:
             validate_frames_properties(
                 actual=encoder_output, expected=encoded_by_ffmpeg
             )
@@ -2300,11 +2307,11 @@ class TestEncoder:
             if color_range is not None:
                 # FFmpeg and torchcodec encode color_range as 'unknown' for
                 # mov and avi when color_range='tv' and color_space=None on
-                # FFmpeg 7/8. Since this failure is rare, I suspect its a bug
+                # FFmpeg >= 7. Since this failure is rare, I suspect its a bug
                 # related to these older container formats on newer FFmpeg
                 # versions.
                 if not (
-                    ffmpeg_major_version in (7, 8)
+                    ffmpeg_major_version >= 7
                     and color_range == "tv"
                     and color_space is None
                     and format in ("mov", "avi")
