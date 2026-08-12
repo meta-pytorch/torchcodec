@@ -141,6 +141,19 @@ Encoding
         How to encode audio samples into an audio file
 
 
+Migrating from torchvision
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. grid:: 3
+
+     .. grid-item-card:: :octicon:`file-code;1em`
+        Migrating from torchvision
+        :link: generated_examples/migration/torchvision_migration.html
+        :link-type: url
+
+        How to port ``torchvision.io`` image decoding and encoding code
+
+
 .. toctree::
    :maxdepth: 1
    :hidden:
