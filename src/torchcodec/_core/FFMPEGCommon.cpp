@@ -328,6 +328,29 @@ int64_t get_output_channel_layout(
   return out_layout;
 }
 #endif
+
+// Returns av_frame's data planes, advanced by num_samples_to_skip samples:
+// one plane per channel for planar formats, a single interleaved one
+// otherwise.
+std::vector<const uint8_t*> maybe_skip_samples(
+    const AVFrame& av_frame,
+    int num_samples_to_skip) {
+  auto sample_format = static_cast<AVSampleFormat>(av_frame.format);
+  bool is_planar = av_sample_fmt_is_planar(sample_format);
+  int num_planes = is_planar ? get_num_channels(av_frame) : 1;
+  int byte_offset = num_samples_to_skip *
+      av_get_bytes_per_sample(sample_format) *
+      (is_planar ? 1 : get_num_channels(av_frame));
+
+  std::vector<const uint8_t*> planes(num_planes);
+  for (int plane = 0; plane < num_planes; ++plane) {
+    // We use extended_data instead of data to support more than 8 channels:
+    // data only holds AV_NUM_DATA_POINTERS (8) pointers.
+    // https://ffmpeg.org/doxygen/trunk/structAVFrame.html#afca04d808393822625e09b5ba91c6756
+    planes[plane] = av_frame.extended_data[plane] + byte_offset;
+  }
+  return planes;
+}
 } // namespace
 
 // Sets dst_av_frame' channel layout to get_output_channel_layout(): see doc
@@ -516,6 +539,8 @@ UniqueAVFrame convert_audio_av_frame_samples(
   STD_TORCH_CHECK(
       num_src_samples >= 0,
       "Trying to skip more samples than the frame contains.");
+  std::vector<const uint8_t*> src_planes =
+      maybe_skip_samples(src_av_frame, num_samples_to_skip);
 
   converted_av_frame->sample_rate = out_sample_rate;
   int src_sample_rate = src_av_frame.sample_rate;
@@ -548,27 +573,6 @@ UniqueAVFrame convert_audio_av_frame_samples(
       status == AVSUCCESS,
       "Could not allocate frame buffers for sample format conversion: ",
       get_ffmpeg_error_string_from_error_code(status));
-
-  // Below we use AVFrame->extended_data instead of AVFrame->data to support
-  // decoding audio with >8 audio channels. extended_data contains pointers
-  // for all channels, while data only contains AV_NUM_DATA_POINTERS (8).
-  // https://ffmpeg.org/doxygen/trunk/structAVFrame.html#afca04d808393822625e09b5ba91c6756
-  //
-  // Skipping num_samples_to_skip means advancing each input plane: one plane
-  // per channel for planar formats, a single interleaved plane otherwise.
-  auto src_sample_format = static_cast<AVSampleFormat>(src_av_frame.format);
-  int num_src_planes = av_sample_fmt_is_planar(src_sample_format)
-      ? get_num_channels(src_av_frame)
-      : 1;
-  int src_byte_offset = num_samples_to_skip *
-      av_get_bytes_per_sample(src_sample_format) *
-      (av_sample_fmt_is_planar(src_sample_format)
-           ? 1
-           : get_num_channels(src_av_frame));
-  std::vector<const uint8_t*> src_planes(num_src_planes);
-  for (int plane = 0; plane < num_src_planes; ++plane) {
-    src_planes[plane] = src_av_frame.extended_data[plane] + src_byte_offset;
-  }
 
   auto num_converted_samples = swr_convert(
       swr_context.get(),

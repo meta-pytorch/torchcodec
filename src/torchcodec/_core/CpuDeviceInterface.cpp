@@ -582,13 +582,6 @@ CpuDeviceInterface::maybe_flush_audio_buffers() {
 
 void CpuDeviceInterface::flush() {
   DeviceInterface::flush();
-  // A seek makes the audio input discontinuous, and swresample carries a
-  // fractional sample position across swr_convert() calls. Resuming a
-  // conversion on samples that don't follow the ones before them makes that
-  // position meaningless and corrupts the output. Drop the context here; it is
-  // lazily recreated, and re-anchored on the sample grid, in
-  // convert_audio_av_frame_to_frame_output(). See [Audio resampling and frame
-  // alignment].
   swr_context_.reset();
 }
 

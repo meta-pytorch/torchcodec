@@ -10,6 +10,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -284,9 +285,6 @@ SwrContext* create_swr_context(
 // - sample rate
 // - number of channels.
 // createSwrContext must have been previously called with matching parameters.
-// The first num_samples_to_skip samples of src_av_frame are dropped instead of
-// being converted. They must not reach swresample: it anchors its output on the
-// first sample it is fed. See [Audio resampling and frame alignment].
 UniqueAVFrame convert_audio_av_frame_samples(
     const UniqueSwrContext& swr_context,
     const AVFrame& src_av_frame,
