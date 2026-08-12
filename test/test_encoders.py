@@ -1096,7 +1096,7 @@ class TestEncoder:
     )
     @pytest.mark.parametrize("method", ("to_file", "to_file_like"))
     @pytest.mark.skipif(
-        IS_WINDOWS and ffmpeg_major_version == 8,
+        IS_WINDOWS and ffmpeg_major_version >= 8,
         reason="against_cli tests fail on Windows with FFmpeg 8",
     )
     def test_audio_against_cli(
