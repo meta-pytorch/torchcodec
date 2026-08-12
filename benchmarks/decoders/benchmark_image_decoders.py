@@ -118,6 +118,15 @@ def _median_ms(times: Tensor) -> float:
     return (times * 1e-6).median().item()
 
 
+def cuda_synced(fn):
+    # Wrap fn so device-side work completes inside the timed region.
+    def g():
+        fn()
+        torch.cuda.synchronize()
+
+    return g
+
+
 # ---------------------------------------------------------------------------
 # Test image generation
 # ---------------------------------------------------------------------------
@@ -177,17 +186,51 @@ def encode_images(image: Image.Image, resolutions, out_dir: Path) -> dict:
 # uint8 byte tensor (from_file=False, timing pure decode) or straight from a
 # file path (from_file=True, timing decode + I/O).
 # ---------------------------------------------------------------------------
-def decode_torchcodec(fmt: str, path: Path, data: Tensor, from_file: bool) -> Tensor:
-    return _TC_DECODERS[fmt](path if from_file else data, mode="RGB")
+def decode_torchcodec(
+    fmt: str, path: Path, data: Tensor, from_file: bool, device: str = "cpu"
+) -> Tensor:
+    source = path if from_file else data
+    if device == "cpu":
+        return _TC_DECODERS[fmt](source, mode="RGB")
+    return decode_jpeg(source, mode="RGB", device=device)
 
 
-def decode_torchvision(fmt: str, path: Path, data: Tensor, from_file: bool) -> Tensor:
-    return _TV_DECODERS[fmt](tv_read_file(str(path)) if from_file else data)
+def decode_torchvision(
+    fmt: str, path: Path, data: Tensor, from_file: bool, device: str = "cpu"
+) -> Tensor:
+    source = tv_read_file(str(path)) if from_file else data
+    if device == "cpu":
+        return _TV_DECODERS[fmt](source)
+    return tv_decode_jpeg(source, "RGB", device=device)
 
 
 def decode_pil(path: Path, raw: bytes, from_file: bool) -> Tensor:
     img = Image.open(path if from_file else io.BytesIO(raw)).convert("RGB")
     return pil_to_tensor(img)
+
+
+def make_batch_decode_fn(
+    backend: str,
+    path: Path,
+    data: Tensor,
+    from_file: bool,
+    batch_size: int,
+    device: str,
+):
+    """Decode a batch of identical JPEGs in a single call. Both libraries return
+    a list of decoded device tensors. torchvision only takes byte tensors, so
+    with --from-file we read the files inside the timed region, which is what
+    torchcodec does internally when handed paths."""
+    if backend == "torchcodec":
+        sources = [path if from_file else data] * batch_size
+        return lambda: decode_jpeg(sources, mode="RGB", device=device)
+
+    if from_file:
+        return lambda: tv_decode_jpeg(
+            [tv_read_file(str(path)) for _ in range(batch_size)], "RGB", device=device
+        )
+    sources = [data] * batch_size
+    return lambda: tv_decode_jpeg(sources, "RGB", device=device)
 
 
 def decode_ffmpeg(path: Path, data: Tensor, from_file: bool) -> Tensor:
@@ -209,6 +252,19 @@ def main():
         "--resolutions", nargs="+", default=list(RESOLUTIONS), choices=list(RESOLUTIONS)
     )
     parser.add_argument("--num-exp", type=int, default=DEFAULT_NUM_EXP)
+    parser.add_argument(
+        "--devices",
+        nargs="+",
+        default=["cpu", "cuda"] if torch.cuda.is_available() else ["cpu"],
+        choices=["cpu", "cuda"],
+    )
+    parser.add_argument(
+        "--batch-sizes",
+        nargs="+",
+        type=int,
+        default=[1, 16, 64],
+        help="batch sizes for the CUDA batch-decode comparison",
+    )
     parser.add_argument(
         "--image",
         type=Path,
@@ -234,9 +290,6 @@ def main():
     print(
         f"torch.get_num_threads()={torch.get_num_threads()}, OMP_NUM_THREADS={os.environ.get('OMP_NUM_THREADS')}"
     )
-    print(
-        "Note: libavif/dav1d internal threading is not exposed by decode_avif (library default)."
-    )
     print(f"Source: {'file path' if args.from_file else 'in-memory bytes'}")
 
     image = load_source_image(args.image)
@@ -244,42 +297,55 @@ def main():
     paths = encode_images(image, args.resolutions, Path(tmp.name))
 
     backends = ["torchcodec", "PIL", "torchvision", "FFmpeg"]
-    rows = []  # (fmt, res, sizes_kb, {backend: median_ms})
+    rows = []  # (fmt, device, res, sizes_kb, {backend: median_ms})
 
-    for fmt in _EXT:
-        for res_label in args.resolutions:
-            path = paths[(fmt, res_label)]
-            raw = path.read_bytes()
-            data = torch.frombuffer(bytearray(raw), dtype=torch.uint8)
-            size_kb = len(raw) / 1024.0
-            results = {}
-            for backend in backends:
-                # torchvision has no avif/heic decoder; leave those cells blank.
-                if backend == "torchvision" and fmt not in _TV_DECODERS:
-                    results[backend] = None
-                    continue
-                try:
-                    ff = args.from_file
-                    if backend == "torchcodec":
-                        fn = partial(decode_torchcodec, fmt, path, data, ff)
-                    elif backend == "PIL":
-                        fn = partial(decode_pil, path, raw, ff)
-                    elif backend == "torchvision":
-                        fn = partial(decode_torchvision, fmt, path, data, ff)
-                    else:
-                        fn = partial(decode_ffmpeg, path, data, ff)
-                    fn()  # smoke
-                    times = bench(fn, num_exp=args.num_exp)
-                    results[backend] = _median_ms(times)
-                except Exception as e:
-                    results[backend] = None
-                    print(f"  [skip] {fmt} {res_label} {backend}: {str(e)[:80]}")
-            rows.append((fmt, res_label, size_kb, results))
+    for device in args.devices:
+        # nvJPEG is the only GPU decoder available on either side.
+        formats = ["jpeg"] if device == "cuda" else list(_EXT)
+        for fmt in formats:
+            for res_label in args.resolutions:
+                path = paths[(fmt, res_label)]
+                raw = path.read_bytes()
+                data = torch.frombuffer(bytearray(raw), dtype=torch.uint8)
+                size_kb = len(raw) / 1024.0
+                results = {}
+                for backend in backends:
+                    # torchvision has no avif/heic decoder; leave those cells blank.
+                    if backend == "torchvision" and fmt not in _TV_DECODERS:
+                        results[backend] = None
+                        continue
+                    # PIL is CPU-only and the FFmpeg path has no GPU JPEG decoder.
+                    if device == "cuda" and backend in ("PIL", "FFmpeg"):
+                        results[backend] = None
+                        continue
+                    try:
+                        ff = args.from_file
+                        if backend == "torchcodec":
+                            fn = partial(decode_torchcodec, fmt, path, data, ff, device)
+                        elif backend == "PIL":
+                            fn = partial(decode_pil, path, raw, ff)
+                        elif backend == "torchvision":
+                            fn = partial(
+                                decode_torchvision, fmt, path, data, ff, device
+                            )
+                        else:
+                            fn = partial(decode_ffmpeg, path, data, ff)
+                        if device == "cuda":
+                            fn = cuda_synced(fn)
+                        fn()  # smoke
+                        times = bench(fn, num_exp=args.num_exp)
+                        results[backend] = _median_ms(times)
+                    except Exception as e:
+                        results[backend] = None
+                        print(
+                            f"  [skip] {fmt} {device} {res_label} {backend}: {str(e)[:80]}"
+                        )
+                rows.append((fmt, device, res_label, size_kb, results))
 
     # ---- results table ----
     print(f"\n## Decode-to-tensor median latency (ms), 1 thread, {args.num_exp} runs\n")
     hdr = (
-        f"{'format':<7}{'res':<7}{'size KB':>9}{'torchcodec':>12}{'PIL':>9}"
+        f"{'format':<7}{'device':<7}{'res':<7}{'size KB':>9}{'torchcodec':>12}{'PIL':>9}"
         f"{'tv':>9}{'FFmpeg':>9}{'PIL/tc':>9}{'tv/tc':>9}{'FFmpeg/tc':>11}"
     )
     print(hdr)
@@ -293,7 +359,7 @@ def main():
             return "N/A"
         return f"{num / den:.2f}x"
 
-    for fmt, res_label, size_kb, r in rows:
+    for fmt, device, res_label, size_kb, r in rows:
         tc, pil, tv, ff = (
             r["torchcodec"],
             r["PIL"],
@@ -301,12 +367,53 @@ def main():
             r["FFmpeg"],
         )
         print(
-            f"{fmt:<7}{res_label:<7}{size_kb:>9.1f}{fmt_ms(tc):>12}{fmt_ms(pil):>9}"
-            f"{fmt_ms(tv):>9}{fmt_ms(ff):>9}{ratio(pil, tc):>9}{ratio(tv, tc):>9}"
-            f"{ratio(ff, tc):>11}"
+            f"{fmt:<7}{device:<7}{res_label:<7}{size_kb:>9.1f}{fmt_ms(tc):>12}"
+            f"{fmt_ms(pil):>9}{fmt_ms(tv):>9}{fmt_ms(ff):>9}{ratio(pil, tc):>9}"
+            f"{ratio(tv, tc):>9}{ratio(ff, tc):>11}"
         )
 
     print("\n(PIL/tc, tv/tc and FFmpeg/tc > 1.0 mean torchcodec is faster.)")
+
+    # ---- CUDA batch decode: torchcodec vs torchvision, both batched ----
+    if "cuda" in args.devices:
+        print(
+            f"\n## Batch decode JPEG on CUDA, median ms, {args.num_exp} runs "
+            f"(same image repeated)\n"
+        )
+        bhdr = (
+            f"{'res':<7}{'batch':<7}{'torchcodec':>12}{'tv':>9}{'tv/tc':>9}"
+            f"{'tc/img':>10}{'tv/img':>10}"
+        )
+        print(bhdr)
+        print("-" * len(bhdr))
+        for res_label in args.resolutions:
+            path = paths[("jpeg", res_label)]
+            data = torch.frombuffer(bytearray(path.read_bytes()), dtype=torch.uint8)
+            for bs in args.batch_sizes:
+                b = {}
+                for backend in ("torchcodec", "torchvision"):
+                    fn = cuda_synced(
+                        make_batch_decode_fn(
+                            backend, path, data, args.from_file, bs, "cuda"
+                        )
+                    )
+                    try:
+                        fn()  # smoke
+                        b[backend] = _median_ms(bench(fn, num_exp=args.num_exp))
+                    except Exception as e:
+                        b[backend] = None
+                        print(
+                            f"  [skip] batch {res_label} {bs} {backend}: {str(e)[:80]}"
+                        )
+                tc, tv = b["torchcodec"], b["torchvision"]
+                tc_img = tc / bs if tc is not None else None
+                tv_img = tv / bs if tv is not None else None
+                print(
+                    f"{res_label:<7}{bs:<7}{fmt_ms(tc):>12}{fmt_ms(tv):>9}"
+                    f"{ratio(tv, tc):>9}{fmt_ms(tc_img):>10}{fmt_ms(tv_img):>10}"
+                )
+        print("\n(tv/tc > 1.0 means torchcodec is faster.)")
+
     tmp.cleanup()
 
 
