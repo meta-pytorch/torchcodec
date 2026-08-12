@@ -149,8 +149,10 @@ class AudioDecoder:
             # This is morally equivalent to round((seconds - first_pts) *
             # sample_rate), but round() is not stable across calls for a fixed
             # value of `seconds` because it rounds to the nearest even interger,
-            # so where it rounds is dependent on the value of first_pts.
+            # so where it rounds is dependent on the value of `first_pts`.
             # This formulation forces ties to always round up.
+            # The non-regression test for this is
+            # test_chunk_boundary_half_sample
             return math.floor((seconds - first_pts) * sample_rate + 0.5)
 
         if first_pts < start_seconds:

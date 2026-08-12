@@ -3143,27 +3143,6 @@ class TestAudioDecoder:
         else:
             torch.testing.assert_close(chunks, full.data, atol=0, rtol=0)
 
-    @pytest.mark.parametrize("asset", (SINE_MONO_S32_44100, SINE_MONO_U8))
-    def test_resample_chunk_boundary_tie(self, asset):
-        # 0.7s at 16_001Hz puts the boundary between two chunks exactly half a
-        # sample off: 3.5s is sample 56003.5. Both chunks have to round that to
-        # the same sample, or the sample on the boundary ends up in both of
-        # them, or in neither.
-        out_sample_rate, increment = 16_001, 0.7
-        full = AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples()
-        end_seconds = full.pts_seconds + full.data.shape[1] / out_sample_rate
-
-        decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
-        chunks = [
-            decoder.get_samples_played_in_range(
-                full.pts_seconds + i * increment,
-                full.pts_seconds + i * increment + increment,
-            ).data
-            for i in range(math.ceil((end_seconds - full.pts_seconds) / increment))
-        ]
-
-        torch.testing.assert_close(torch.cat(chunks, dim=1), full.data, atol=0, rtol=0)
-
     @pytest.mark.parametrize("out_sample_rate", (8_000, 16_000))
     @pytest.mark.parametrize("stop_seconds", (1.45, 1.91, 2.1))
     def test_resample_chunked_matches_full_postroll(
@@ -3185,6 +3164,26 @@ class TestAudioDecoder:
         torch.testing.assert_close(
             samples, full[:, start : start + samples.shape[1]], atol=0, rtol=0
         )
+
+    @pytest.mark.parametrize("boundary_sample", (6_000, 20_000, 30_000))
+    def test_chunk_boundary_half_sample(self, boundary_sample):
+        # Reading the stream in two chunks, splitting right in the middle of a
+        # sample. That sample must be returned by exactly one of the two chunks,
+        # and the two chunks must independently agree on which one.
+        # This is ensured by a stable rounding (see offset_of()).
+        asset = SINE_MONO_S32
+        boundary = (boundary_sample + 0.5) / asset.sample_rate
+
+        full = AudioDecoder(asset.path).get_all_samples()
+        end_seconds = full.pts_seconds + full.data.shape[1] / asset.sample_rate
+
+        decoder = AudioDecoder(asset.path)
+        chunks = [
+            decoder.get_samples_played_in_range(full.pts_seconds, boundary).data,
+            decoder.get_samples_played_in_range(boundary, end_seconds).data,
+        ]
+
+        torch.testing.assert_close(torch.cat(chunks, dim=1), full.data, atol=0, rtol=0)
 
     def test_decode_s16_ffmpeg4(self):
         # Non-regression test for https://github.com/pytorch/torchcodec/issues/843
