@@ -79,6 +79,8 @@ SingleStreamDecoder::SingleStreamDecoder(
 void SingleStreamDecoder::initialize_decoder() {
   STD_TORCH_CHECK(!initialized_, "Attempted double initialization.");
 
+  is_mpeg_ps_ = std::string_view(format_context_->iformat->name) == "mpeg";
+
   // In principle, the AVFormatContext should be filled in by the call to
   // avformat_open_input() which reads the header. However, some formats do not
   // store enough info in the header, so we call avformat_find_stream_info()
@@ -1485,14 +1487,15 @@ bool SingleStreamDecoder::can_we_avoid_seeking() const {
 // This method looks at currentPts and desiredPts and seeks in the
 // AVFormatContext if it is needed. We can skip seeking in certain cases. See
 // the comment of canWeAvoidSeeking() for details.
-void SingleStreamDecoder::maybe_seek_to_before_desired_pts() {
+// Returns true iff we seeked.
+bool SingleStreamDecoder::maybe_seek_to_before_desired_pts() {
   validate_active_stream();
   StreamInfo& stream_info = stream_infos_[active_stream_index_];
 
   decode_stats_.num_seeks_attempted++;
   if (can_we_avoid_seeking()) {
     decode_stats_.num_seeks_skipped++;
-    return;
+    return false;
   }
 
   int64_t desired_pts = cursor_;
@@ -1532,6 +1535,7 @@ void SingleStreamDecoder::maybe_seek_to_before_desired_pts() {
 
   decode_stats_.num_flushes++;
   device_interface_->flush();
+  return true;
 }
 
 // --------------------------------------------------------------------------
@@ -1544,8 +1548,11 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
 
   reset_decode_stats();
 
-  maybe_seek_to_before_desired_pts();
+  bool seeked = maybe_seek_to_before_desired_pts();
   cursor_was_just_set_ = false;
+
+  // See below where it's used
+  bool packet_data_may_be_misaligned = seeked && is_mpeg_ps_;
 
   UniqueAVFrame av_frame(av_frame_alloc());
   AutoAVPacket auto_av_packet;
@@ -1616,10 +1623,22 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
     // We got a valid packet. Send it to the decoder, and we'll receive it in
     // the next iteration.
     status = device_interface_->send_packet(packet);
+
+    if (status == AVERROR_INVALIDDATA && packet_data_may_be_misaligned) {
+      // The MPEG-PS demuxer doesn't return proper packets just after a seek, so
+      // we skip (potentially more than one) packets until we find a valid one.
+      // We *only* do this for MPEG-PS, not for other demuxers. It is
+      // unfortunate that we need a format-specific condition in this generic
+      // decoding loop.
+      continue;
+    }
     STD_TORCH_CHECK(
         status >= AVSUCCESS,
         "Could not push packet to decoder: ",
         get_ffmpeg_error_string_from_error_code(status));
+    // The decoder accepted a packet, so we're aligned again: from now on
+    // invalid data means the file is corrupt, and we want to report it.
+    packet_data_may_be_misaligned = false;
 
     decode_stats_.num_packets_sent_to_decoder++;
   }

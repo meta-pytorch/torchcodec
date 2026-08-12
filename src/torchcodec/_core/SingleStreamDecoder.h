@@ -267,7 +267,7 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   void set_cursor(double) = delete; // prevent calls with doubles and floats
   bool can_we_avoid_seeking() const;
 
-  void maybe_seek_to_before_desired_pts();
+  bool maybe_seek_to_before_desired_pts();
 
   UniqueAVFrame decode_av_frame(
       std::function<bool(const AVFrame&)> filter_function);
@@ -362,6 +362,9 @@ class FORCE_PUBLIC_VISIBILITY SingleStreamDecoder {
   // pts to the user when they request a frame.
   int64_t cursor_ = INT64_MIN;
   bool cursor_was_just_set_ = false;
+  // Whether the container is an MPEG program stream, whose demuxer needs
+  // special care after a seek. See decode_av_frame().
+  bool is_mpeg_ps_ = false;
   // Initialized to INT64_MIN instead of 0. With 0, canWeAvoidSeeking() could
   // incorrectly skip a seek when the internal FFmpeg frame index (used by
   // av_index_search_timestamp() in approximate mode) had not yet been built,

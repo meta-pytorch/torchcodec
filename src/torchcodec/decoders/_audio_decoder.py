@@ -6,6 +6,7 @@
 
 
 import io
+import math
 from pathlib import Path
 
 import torch
@@ -144,8 +145,18 @@ class AudioDecoder:
         # TODO: metadata's sample_rate should probably not be Optional
         assert sample_rate is not None  # mypy.
 
+        def offset_of(seconds: float) -> int:
+            # This is morally equivalent to round((seconds - first_pts) *
+            # sample_rate), but round() is not stable across calls for a fixed
+            # value of `seconds` because it rounds to the nearest even interger,
+            # so where it rounds is dependent on the value of `first_pts`.
+            # This formulation forces ties to always round up.
+            # The non-regression test for this is
+            # test_chunk_boundary_half_sample
+            return math.floor((seconds - first_pts) * sample_rate + 0.5)
+
         if first_pts < start_seconds:
-            offset_beginning = round((start_seconds - first_pts) * sample_rate)
+            offset_beginning = offset_of(start_seconds)
             output_pts_seconds = start_seconds
         else:
             # In normal cases we'll have first_pts <= start_pts, but in some
@@ -155,9 +166,8 @@ class AudioDecoder:
             output_pts_seconds = first_pts
 
         num_samples = frames.shape[1]
-        last_pts = first_pts + num_samples / sample_rate
-        if stop_seconds is not None and stop_seconds < last_pts:
-            offset_end = num_samples - round((last_pts - stop_seconds) * sample_rate)
+        if stop_seconds is not None:
+            offset_end = min(num_samples, offset_of(stop_seconds))
         else:
             offset_end = num_samples
 
