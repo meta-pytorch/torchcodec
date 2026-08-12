@@ -10,6 +10,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -289,7 +290,8 @@ UniqueAVFrame convert_audio_av_frame_samples(
     const AVFrame& src_av_frame,
     AVSampleFormat desired_sample_format,
     int desired_sample_rate,
-    int desired_num_channels);
+    int desired_num_channels,
+    int num_samples_to_skip = 0);
 
 // Returns true if sws_scale can handle unaligned data.
 bool can_sws_scale_handle_unaligned_data();

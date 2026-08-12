@@ -87,7 +87,8 @@ class DeviceInterface {
   // Initialize the device with parameters specific to audio decoding. There is
   // a default empty implementation.
   virtual void initialize_audio(
-      [[maybe_unused]] const AudioStreamOptions& audio_stream_options) {}
+      [[maybe_unused]] const AudioStreamOptions& audio_stream_options,
+      [[maybe_unused]] double stream_start_seconds = 0.0) {}
 
   // Flush any remaining samples from the audio resampler buffer.
   // When sample rate conversion is involved, some samples may be buffered

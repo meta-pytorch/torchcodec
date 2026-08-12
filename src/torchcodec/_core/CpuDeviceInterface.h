@@ -38,7 +38,8 @@ class CpuDeviceInterface : public DeviceInterface {
       const std::optional<FrameDims>& resized_output_dims) override;
 
   virtual void initialize_audio(
-      const AudioStreamOptions& audio_stream_options) override;
+      const AudioStreamOptions& audio_stream_options,
+      double stream_start_seconds = 0.0) override;
 
   virtual std::optional<torch::stable::Tensor> maybe_flush_audio_buffers()
       override;
@@ -145,6 +146,8 @@ class CpuDeviceInterface : public DeviceInterface {
   // Audio-specific members
   AudioStreamOptions audio_stream_options_;
   UniqueSwrContext swr_context_;
+
+  double audio_stream_start_seconds_ = 0.0;
 };
 
 } // namespace facebook::torchcodec

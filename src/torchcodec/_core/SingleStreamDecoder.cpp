@@ -5,10 +5,13 @@
 // LICENSE file in the root directory of this source tree.
 
 #include "SingleStreamDecoder.h"
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
 #include <limits>
+#include <numeric>
 #include <string_view>
 #include "Demuxer.h"
 #include "Metadata.h"
@@ -75,6 +78,8 @@ SingleStreamDecoder::SingleStreamDecoder(
 
 void SingleStreamDecoder::initialize_decoder() {
   STD_TORCH_CHECK(!initialized_, "Attempted double initialization.");
+
+  is_mpeg_ps_ = std::string_view(format_context_->iformat->name) == "mpeg";
 
   // In principle, the AVFormatContext should be filled in by the call to
   // avformat_open_input() which reads the header. However, some formats do not
@@ -659,7 +664,11 @@ void SingleStreamDecoder::add_audio_stream(
   stream_info.codec_context->request_sample_fmt = AV_SAMPLE_FMT_FLTP;
 
   // Initialize device interface for audio
-  device_interface_->initialize_audio(audio_stream_options);
+  double stream_start_seconds = stream_info.stream->start_time != AV_NOPTS_VALUE
+      ? pts_to_seconds(stream_info.stream->start_time, stream_info.time_base)
+      : 0.0;
+  device_interface_->initialize_audio(
+      audio_stream_options, stream_start_seconds);
 }
 
 // --------------------------------------------------------------------------
@@ -1095,6 +1104,8 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
   }
 }
 
+// clang-format off
+//
 // Note [Audio Decoding Design]
 // This note explains why audio decoding is implemented the way it is, and why
 // it inherently differs from video decoding.
@@ -1125,31 +1136,57 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
 // batch requires constant (and known) frame dimensions. That's also why
 // *concatenated* along the samples dimension, not stacked.
 //
-// Note [Audio Seek Preroll]
-// Most lossy audio codecs (AAC, MP3, Vorbis, AC-3, etc.) use MDCT
-// (Modified Discrete Cosine Transform) with overlap-add: the decoded
-// output for frame i depends on internal state accumulated from frame
-// i-1 (sometimes, more than -1). When we seek and call avcodec_flush_buffers(),
-// the internal decoder buffers are flushed, emptying that internal state which
-// we need for correct decoding, so the first frame decoded after a seek
-// produces incorrect samples.
+// Note [Audio pre-roll and post-roll]
 //
-// To work around this, when seeking we don't seek directly to the
-// target PTS. Instead, we seek to a few frames *before* the target
-// and decode those extra frames to "prime" the codec state. These
-// preroll frames are automatically discarded by the PTS filter in
-// decodeAVFrame(), so they don't appear in the output. This is the same
-// approach used by libmpg123 (the reference MP3 decoder used by libsndfile),
-// which calls these "ignoreframes":
-// -
+// get_samples_played_in_range(a, b) decodes more than [a, b):
+// target_preroll_seconds before a, and target_postroll_seconds after b, which
+// the Python layer then trims off. Two independent data dependencies need this
+// extra margin:
+//
+// 1. The codec. Most lossy codecs (AAC, MP3, Vorbis, AC-3...) use MDCT with
+// overlap-add the output of frame i depends on state accumulated from frame
+// i-1, sometimes earlier. avcodec_flush_buffers() empties it on a seek, so the
+// first frames decoded after one come out wrong. Decoding k_num_preroll_frames
+// frames before the target primes it back - libmpg123 calls these
+// "ignoreframes" [1][2] and defaults to 4, which is where our 4 comes from.  1
+// is believed to be enough for aac, vorbis and mp3. If frame_size is unknown we
+// fall back to k_fallback_preroll_seconds. Lossless codecs don't need such a
+// pre-roll, so we avoid it for those.
+//
+// 2. The resampler, when resampling. It is an interpolation filter: the sample
+// it emits at a given instant is a weighted sum of the input samples on both
+// sides of it. That is a data dependency of its own, and it holds whether or
+// not the codec has one. On top of it, a freshly created resampler skips up to
+// num_samples_to_skip input samples to land on the grid, see [Audio resampling
+// and frame alignment]. So it needs:
+//
+//   before a:  num_samples_to_skip + filter_length   input samples
+//   after b:                         filter_length   input samples
+//
+// where filter_length is computed like in FFmpeg [3]. To be on the safe side,
+// we actually use 2 * filter_length.
+//
+// Typical values look like:
+//
+//     isr -> osr      num_samples_to_skip         filter_length    target_preroll_seconds
+//     24000 -> 16000                    3                    50      102 smp =    4.25 ms
+//     44100 -> 16000                  441                    91      622 smp =   14.10 ms
+//     44100 ->  8000                  441                   182      804 smp =   18.23 ms
+//     44100 -> 16001                44100                    91    44281 smp = 1004.10 ms
+//
+// Note that at worst, we need to preroll ~1s worth of samples: by definition,
+// the input and output sample rates align every second.
+//
+// target_preroll_seconds is the max of the two: the preroll needed by the
+// codec, and the preroll needed by the resampler.
+//
+// [1]
 // https://github.com/gypified/libmpg123/blob/8cbf2faf994bd999ce2b45869093bd61ecf8416f/src/libmpg123/frame.c#L884-L894
-// -
+// [2]
 // https://github.com/gypified/libmpg123/blob/8cbf2faf994bd999ce2b45869093bd61ecf8416f/src/libmpg123/libmpg123.c#L586
+// [3] https://github.com/FFmpeg/FFmpeg/blob/844e10e1a74929c27dfe0aac1c34e92bb6edbf5a/libswresample/resample.c#L188-L193
 //
-// Note: before this pre-roll logic, we had a much more brutal strategy: we
-// would *always* seek back to the beginning of the file. It works, but it's
-// wasteful when multiple seeks are involved, or when only some samples near the
-// end are needed.
+// clang-format on
 AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
     double start_seconds,
     std::optional<double> stop_seconds_optional) {
@@ -1174,22 +1211,56 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
 
   auto start_pts = seconds_to_closest_pts(start_seconds, stream_info.time_base);
 
-  // See [Audio Seek Preroll] above.
-  // How many frames do we need to decode before the target one to correctly
-  // prime the internal decoder buffers?  Claude's analysis of the FFmpeg
-  // codebase concludes that 1 frame is enough for aac, vorbis, mp3 and others.
-  // We use 4 to match libmpg123's default, which provides extra safety.
-  // If frame_size is unknown, we fall back to 1 second.
-  // Lossless codecs don't need preroll but the cost should be negligible.
+  // We must figure out if we need to seek, and where to. The following figures
+  // out the value of target_preroll_seconds. See the [Audio pre-roll and
+  // post-roll]  note.
+  // Codec pre-roll
   static constexpr int k_num_preroll_frames = 4;
   static constexpr double k_fallback_preroll_seconds = 1.0;
+  int src_sample_rate = stream_info.codec_context->sample_rate;
   int frame_size = stream_info.codec_context->frame_size;
+
+  const AVCodecDescriptor* codec_descriptor =
+      avcodec_descriptor_get(stream_info.codec_context->codec_id);
+  bool is_lossless = codec_descriptor != nullptr &&
+      (codec_descriptor->props & AV_CODEC_PROP_LOSSLESS) != 0;
+
   double target_preroll_seconds;
-  if (frame_size > 0) {
+  double target_postroll_seconds = 0.0;
+  if (is_lossless) {
+    target_preroll_seconds = 0.0;
+  } else if (frame_size > 0) {
     target_preroll_seconds = static_cast<double>(k_num_preroll_frames) *
-        frame_size / stream_info.codec_context->sample_rate;
+        frame_size / src_sample_rate;
   } else {
     target_preroll_seconds = k_fallback_preroll_seconds;
+  }
+
+  // Resampler pre-roll
+  int out_sample_rate =
+      stream_info.audio_stream_options.sample_rate.value_or(src_sample_rate);
+  bool is_resampling = out_sample_rate != src_sample_rate;
+  if (is_resampling) {
+    // See
+    // https://github.com/FFmpeg/FFmpeg/blob/844e10e1a74929c27dfe0aac1c34e92bb6edbf5a/libswresample/resample.c#L188-L193
+    // for constants, and the note mentioned above.
+    static constexpr int k_swr_filter_size = 32;
+    static constexpr double k_swr_cutoff = 0.97;
+    double factor =
+        std::min(1.0, out_sample_rate * k_swr_cutoff / src_sample_rate);
+    double filter_length = std::ceil(k_swr_filter_size / factor);
+    // alignment is k in the  [Audio resampling and frame alignment] note,
+    // alignment - 1 bounds num_samples_to_skip so it's safe to use in our
+    // preroll calculation.
+    int64_t alignment =
+        src_sample_rate / std::gcd(src_sample_rate, out_sample_rate);
+
+    // double filter length to be safe.
+    target_preroll_seconds = std::max(
+        target_preroll_seconds,
+        (alignment - 1 + 2 * filter_length) / src_sample_rate);
+
+    target_postroll_seconds = 2 * filter_length / src_sample_rate;
   }
   auto target_seek_pts = seconds_to_closest_pts(
       start_seconds - target_preroll_seconds, stream_info.time_base);
@@ -1236,14 +1307,24 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
   auto stop_pts = stop_seconds_optional.has_value()
       ? seconds_to_closest_pts(*stop_seconds_optional, stream_info.time_base)
       : INT64_MAX;
+
+  // When resampling, we must send the prerolled and postrolled frames through
+  // the resampler!
+  auto output_start_pts =
+      is_resampling ? std::min(start_pts, target_seek_pts) : start_pts;
+  auto output_stop_pts = (stop_pts == INT64_MAX) ? stop_pts
+                                                 : stop_pts +
+          seconds_to_closest_pts(target_postroll_seconds,
+                                 stream_info.time_base);
+
   auto finished = false;
   while (!finished) {
     try {
-      UniqueAVFrame av_frame =
-          decode_av_frame([start_pts, stop_pts](const AVFrame& av_frame) {
-            return start_pts <
+      UniqueAVFrame av_frame = decode_av_frame(
+          [output_start_pts, output_stop_pts](const AVFrame& av_frame) {
+            return output_start_pts <
                 get_pts_or_dts(av_frame) + get_duration(av_frame) &&
-                stop_pts > get_pts_or_dts(av_frame);
+                output_stop_pts > get_pts_or_dts(av_frame);
           });
       auto frame_output = convert_av_frame_to_frame_output(*av_frame);
       if (!first_frame_pts_seconds.has_value()) {
@@ -1254,14 +1335,17 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
       finished = true;
     }
 
-    // If stopSeconds is in [begin, end] of the last decoded frame, we should
-    // stop decoding more frames. Note that if we were to use [begin, end),
-    // which may seem more natural, then we would decode the frame starting at
-    // stopSeconds, which isn't what we want!
+    // We're done once output_stop_pts falls within the last decoded frame,
+    // bounds
+    // included. Excluding the upper bound would look more natural, but when
+    // output_stop_pts lands exactly on a frame boundary we'd keep going: the
+    // frame starting there is rejected by the pts filter above, as is every
+    // frame after it, so we'd decode to EOF for the same output.
+
     auto last_decoded_av_frame_end =
         last_decoded_av_frame_pts_ + last_decoded_av_frame_duration_;
-    finished |= (last_decoded_av_frame_pts_) <= stop_pts &&
-        (stop_pts <= last_decoded_av_frame_end);
+    finished |= (last_decoded_av_frame_pts_) <= output_stop_pts &&
+        (output_stop_pts <= last_decoded_av_frame_end);
   }
 
   auto last_samples = device_interface_->maybe_flush_audio_buffers();
@@ -1289,7 +1373,7 @@ AudioFramesOutput SingleStreamDecoder::get_frames_played_in_range_audio(
 
 void SingleStreamDecoder::set_cursor_pts_in_seconds(double seconds) {
   // Audio seeking is handled internally by getFramesPlayedInRangeAudio()
-  // with preroll, see [Audio Seek Preroll].
+  // with preroll, see [Audio pre-roll and post-roll].
   validate_active_stream(AVMEDIA_TYPE_VIDEO);
   set_cursor(seconds_to_closest_pts(
       seconds, stream_infos_[active_stream_index_].time_base));
@@ -1307,7 +1391,7 @@ bool SingleStreamDecoder::can_we_avoid_seeking() const {
   const StreamInfo& stream_info = stream_infos_.at(active_stream_index_);
   if (stream_info.av_media_type == AVMEDIA_TYPE_AUDIO) {
     // For audio, seeking is handled internally by
-    // getFramesPlayedInRangeAudio(). See [Audio Seek Preroll].
+    // getFramesPlayedInRangeAudio(). See [Audio pre-roll and post-roll].
     return !cursor_was_just_set_;
   } else if (!cursor_was_just_set_) {
     // For videos, when decoding consecutive frames, we don't need to seek.
@@ -1403,14 +1487,15 @@ bool SingleStreamDecoder::can_we_avoid_seeking() const {
 // This method looks at currentPts and desiredPts and seeks in the
 // AVFormatContext if it is needed. We can skip seeking in certain cases. See
 // the comment of canWeAvoidSeeking() for details.
-void SingleStreamDecoder::maybe_seek_to_before_desired_pts() {
+// Returns true iff we seeked.
+bool SingleStreamDecoder::maybe_seek_to_before_desired_pts() {
   validate_active_stream();
   StreamInfo& stream_info = stream_infos_[active_stream_index_];
 
   decode_stats_.num_seeks_attempted++;
   if (can_we_avoid_seeking()) {
     decode_stats_.num_seeks_skipped++;
-    return;
+    return false;
   }
 
   int64_t desired_pts = cursor_;
@@ -1450,6 +1535,7 @@ void SingleStreamDecoder::maybe_seek_to_before_desired_pts() {
 
   decode_stats_.num_flushes++;
   device_interface_->flush();
+  return true;
 }
 
 // --------------------------------------------------------------------------
@@ -1462,8 +1548,11 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
 
   reset_decode_stats();
 
-  maybe_seek_to_before_desired_pts();
+  bool seeked = maybe_seek_to_before_desired_pts();
   cursor_was_just_set_ = false;
+
+  // See below where it's used
+  bool packet_data_may_be_misaligned = seeked && is_mpeg_ps_;
 
   UniqueAVFrame av_frame(av_frame_alloc());
   AutoAVPacket auto_av_packet;
@@ -1534,10 +1623,22 @@ UniqueAVFrame SingleStreamDecoder::decode_av_frame(
     // We got a valid packet. Send it to the decoder, and we'll receive it in
     // the next iteration.
     status = device_interface_->send_packet(packet);
+
+    if (status == AVERROR_INVALIDDATA && packet_data_may_be_misaligned) {
+      // The MPEG-PS demuxer doesn't return proper packets just after a seek, so
+      // we skip (potentially more than one) packets until we find a valid one.
+      // We *only* do this for MPEG-PS, not for other demuxers. It is
+      // unfortunate that we need a format-specific condition in this generic
+      // decoding loop.
+      continue;
+    }
     STD_TORCH_CHECK(
         status >= AVSUCCESS,
         "Could not push packet to decoder: ",
         get_ffmpeg_error_string_from_error_code(status));
+    // The decoder accepted a packet, so we're aligned again: from now on
+    // invalid data means the file is corrupt, and we want to report it.
+    packet_data_may_be_misaligned = false;
 
     decode_stats_.num_packets_sent_to_decoder++;
   }

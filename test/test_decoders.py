@@ -7,6 +7,7 @@
 import concurrent.futures
 import contextlib
 import gc
+import math
 import queue
 import threading
 from functools import partial
@@ -116,6 +117,7 @@ from .utils import (
     SINE_MONO_S32_44100,
     SINE_MONO_S32_8000,
     SINE_MONO_U8,
+    SINE_STEREO_MP2_MPEG_PS,
     TEST_NON_ZERO_START,
     TEST_SRC_2_12BIT_HDR,
     TEST_SRC_2_720P,
@@ -2853,6 +2855,40 @@ class TestAudioDecoder:
             samples_from_path.data, samples_from_tensor.data, rtol=0, atol=0
         )
 
+    @pytest.mark.parametrize("start_seconds", (1, 2, 2.5, 3))
+    def test_seek_mpeg_program_stream(self, start_seconds):
+        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1610
+        # Seeking in an MPEG program stream lands on a container-level byte
+        # offset, so the packets we get back until the parser resyncs onto a
+        # frame boundary don't decode. We used to error out instead of skipping
+        # them. It takes more than one packet at some of the offsets below.
+        decoder = AudioDecoder(SINE_STEREO_MP2_MPEG_PS.path)
+
+        all_samples = decoder.get_all_samples()
+        samples = decoder.get_samples_played_in_range(start_seconds=start_seconds)
+
+        assert samples.pts_seconds == start_seconds
+        offset = round(
+            (start_seconds - all_samples.pts_seconds) * decoder.metadata.sample_rate
+        )
+        reference = all_samples.data[:, offset:]
+        assert samples.data.shape == reference.shape
+        torch.testing.assert_close(samples.data, reference, rtol=0, atol=1e-4)
+
+    def test_corrupt_data_raises(self, tmp_path):
+        # We tolerate undecodable packets right after a seek (see
+        # test_seek_mpeg_program_stream), but corrupt data in the middle of a
+        # stream must still be reported rather than silently truncating the
+        # output.
+        data = bytearray(NASA_AUDIO_MP3.path.read_bytes()[:20_000])
+        for i in range(4_000, len(data), 7):
+            data[i] ^= 0xFF
+        path = tmp_path / "corrupt.mp3"
+        path.write_bytes(bytes(data))
+
+        with pytest.raises(RuntimeError, match="Invalid data found"):
+            AudioDecoder(path).get_all_samples()
+
     @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
     def test_at_frame_boundaries(self, asset):
         decoder = AudioDecoder(asset.path)
@@ -3082,28 +3118,107 @@ class TestAudioDecoder:
             frames_44100_to_8000.data, frames_8000.data, atol=0.03, rtol=0
         )
 
-    def test_resample_seek_sample_count(self):
-        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1601
-        # When resampling, the swresample context buffers samples and tracks a
-        # fractional sample position across calls. If it isn't reset on a
-        # mid-stream seek, stale state leaks into the next range decode and the
-        # output sample count can be off by one.
-        # The exact condition in which this happens is unclear to me but claude
-        # managed to find this test that reproduces consistently - and the fix
-        # was to reset the swresample context on a mid-stream seek, which seems
-        # like a very normal thing to do.
-        asset = SINE_MONO_S32_44100
-        assert asset.sample_rate == 44_100
-        assert asset.duration_seconds == 4
+    LOSSY_ASSETS = (NASA_AUDIO, NASA_AUDIO_MP3, NASA_AUDIO_MP3_44100)
 
-        out_sample_rate = 16_000
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            SINE_MONO_S32_44100,
+            SINE_MONO_S32_8000,
+            SINE_MONO_U8,
+            SINE_MONO_F32,
+            SINE_16_CHANNEL_S16,
+            NASA_AUDIO,
+            NASA_AUDIO_MP3_44100,
+        ),
+    )
+    @pytest.mark.parametrize(
+        "out_sample_rate, increment",
+        (
+            (8_000, 1 / 3),
+            (8_000, 0.7),
+            (8_000, 0.3),
+            (16_000, 1.0),
+            (16_000, 1.2),
+            (16_000, 1 / 3),
+            (16_000, 0.3),
+            (16_001, 1.0),
+            (16_001, 1 / 3),
+            (22_050, 0.7),
+            (48_000, 1.2),
+        ),
+    )
+    def test_resample_chunked_matches_full(self, asset, out_sample_rate, increment):
+        # Reading a resampled stream in consecutive chunks must return exactly
+        # the same samples as decoding it in one go.
+        # See [Audio resampling and frame alignment]
+
+        full = AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples()
+        actual_duration = (
+            full.pts_seconds + full.data.shape[1] / out_sample_rate - full.pts_seconds
+        )
+
         decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
+        chunks = []
+        for i in range(math.ceil(actual_duration / increment)):
+            start = full.pts_seconds + i * increment
+            chunks.append(
+                decoder.get_samples_played_in_range(start, start + increment).data
+            )
+        chunks = torch.cat(chunks, dim=1)
 
-        decoder.get_samples_played_in_range(start_seconds=2.0, stop_seconds=4.8)
-        tail = decoder.get_samples_played_in_range(start_seconds=3.6, stop_seconds=4.8)
+        assert chunks.shape == full.data.shape
+        if asset in self.LOSSY_ASSETS:
+            assert_tensor_close_on_at_least(
+                chunks, full.data, atol=0, rtol=0, percentage=80
+            )
+            assert_tensor_close_on_at_least(
+                chunks, full.data, atol=0.1, rtol=0, percentage=95
+            )
+        else:
+            torch.testing.assert_close(chunks, full.data, atol=0, rtol=0)
 
-        # [3.6, 4.0) of audio at out_sample_rate.
-        assert tail.data.shape[1] == round(0.4 * out_sample_rate)
+    @pytest.mark.parametrize("out_sample_rate", (8_000, 16_000))
+    @pytest.mark.parametrize("stop_seconds", (1.45, 1.91, 2.1))
+    def test_resample_chunked_matches_full_postroll(
+        self, out_sample_rate, stop_seconds
+    ):
+        # Test for resampling post-roll. Basically a subset of
+        # test_resample_chunked_matches_full but with a focus on postroll:
+        # stop_seconds values are chosen such that they actually fail on main
+        # and exercise the post-roll fix.
+        asset = SINE_MONO_S32_44100
+        full = (
+            AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples().data
+        )
+
+        decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
+        samples = decoder.get_samples_played_in_range(1.0, stop_seconds).data
+
+        start = round(1.0 * out_sample_rate)
+        torch.testing.assert_close(
+            samples, full[:, start : start + samples.shape[1]], atol=0, rtol=0
+        )
+
+    @pytest.mark.parametrize("boundary_sample", (6_000, 20_000, 30_000))
+    def test_chunk_boundary_half_sample(self, boundary_sample):
+        # Reading the stream in two chunks, splitting right in the middle of a
+        # sample. That sample must be returned by exactly one of the two chunks,
+        # and the two chunks must independently agree on which one.
+        # This is ensured by a stable rounding (see offset_of()).
+        asset = SINE_MONO_S32
+        boundary = (boundary_sample + 0.5) / asset.sample_rate
+
+        full = AudioDecoder(asset.path).get_all_samples()
+        end_seconds = full.pts_seconds + full.data.shape[1] / asset.sample_rate
+
+        decoder = AudioDecoder(asset.path)
+        chunks = [
+            decoder.get_samples_played_in_range(full.pts_seconds, boundary).data,
+            decoder.get_samples_played_in_range(boundary, end_seconds).data,
+        ]
+
+        torch.testing.assert_close(torch.cat(chunks, dim=1), full.data, atol=0, rtol=0)
 
     def test_decode_s16_ffmpeg4(self):
         # Non-regression test for https://github.com/pytorch/torchcodec/issues/843

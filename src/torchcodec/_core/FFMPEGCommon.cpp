@@ -328,6 +328,29 @@ int64_t get_output_channel_layout(
   return out_layout;
 }
 #endif
+
+// Returns av_frame's data planes, advanced by num_samples_to_skip samples:
+// one plane per channel for planar formats, a single interleaved one
+// otherwise.
+std::vector<const uint8_t*> maybe_skip_samples(
+    const AVFrame& av_frame,
+    int num_samples_to_skip) {
+  auto sample_format = static_cast<AVSampleFormat>(av_frame.format);
+  bool is_planar = av_sample_fmt_is_planar(sample_format);
+  int num_planes = is_planar ? get_num_channels(av_frame) : 1;
+  int byte_offset = num_samples_to_skip *
+      av_get_bytes_per_sample(sample_format) *
+      (is_planar ? 1 : get_num_channels(av_frame));
+
+  std::vector<const uint8_t*> planes(num_planes);
+  for (int plane = 0; plane < num_planes; ++plane) {
+    // We use extended_data instead of data to support more than 8 channels:
+    // data only holds AV_NUM_DATA_POINTERS (8) pointers.
+    // https://ffmpeg.org/doxygen/trunk/structAVFrame.html#afca04d808393822625e09b5ba91c6756
+    planes[plane] = av_frame.extended_data[plane] + byte_offset;
+  }
+  return planes;
+}
 } // namespace
 
 // Sets dst_av_frame' channel layout to get_output_channel_layout(): see doc
@@ -502,7 +525,8 @@ UniqueAVFrame convert_audio_av_frame_samples(
     const AVFrame& src_av_frame,
     AVSampleFormat out_sample_format,
     int out_sample_rate,
-    int out_num_channels) {
+    int out_num_channels,
+    int num_samples_to_skip) {
   UniqueAVFrame converted_av_frame(av_frame_alloc());
   STD_TORCH_CHECK(
       converted_av_frame,
@@ -510,6 +534,13 @@ UniqueAVFrame convert_audio_av_frame_samples(
 
   converted_av_frame->pts = src_av_frame.pts;
   converted_av_frame->format = static_cast<int>(out_sample_format);
+
+  int num_src_samples = src_av_frame.nb_samples - num_samples_to_skip;
+  STD_TORCH_CHECK(
+      num_src_samples >= 0,
+      "Trying to skip more samples than the frame contains.");
+  std::vector<const uint8_t*> src_planes =
+      maybe_skip_samples(src_av_frame, num_samples_to_skip);
 
   converted_av_frame->sample_rate = out_sample_rate;
   int src_sample_rate = src_av_frame.sample_rate;
@@ -523,16 +554,19 @@ UniqueAVFrame convert_audio_av_frame_samples(
     // output samples, but empirically `av_rescale_rnd()` seems to provide a
     // tighter bound.
     converted_av_frame->nb_samples = av_rescale_rnd(
-        swr_get_delay(swr_context.get(), src_sample_rate) +
-            src_av_frame.nb_samples,
+        swr_get_delay(swr_context.get(), src_sample_rate) + num_src_samples,
         out_sample_rate,
         src_sample_rate,
         AV_ROUND_UP);
   } else {
-    converted_av_frame->nb_samples = src_av_frame.nb_samples;
+    converted_av_frame->nb_samples = num_src_samples;
   }
 
   set_channel_layout(*converted_av_frame, src_av_frame, out_num_channels);
+
+  if (converted_av_frame->nb_samples == 0) {
+    return converted_av_frame;
+  }
 
   auto status = av_frame_get_buffer(converted_av_frame.get(), 0);
   STD_TORCH_CHECK(
@@ -540,17 +574,12 @@ UniqueAVFrame convert_audio_av_frame_samples(
       "Could not allocate frame buffers for sample format conversion: ",
       get_ffmpeg_error_string_from_error_code(status));
 
-  // Below we use AVFrame->extended_data instead of AVFrame->data to support
-  // decoding audio with >8 audio channels. extended_data contains pointers
-  // for all channels, while data only contains AV_NUM_DATA_POINTERS (8).
-  // https://ffmpeg.org/doxygen/trunk/structAVFrame.html#afca04d808393822625e09b5ba91c6756
   auto num_converted_samples = swr_convert(
       swr_context.get(),
       converted_av_frame->extended_data,
       converted_av_frame->nb_samples,
-      static_cast<const uint8_t**>(
-          const_cast<const uint8_t**>(src_av_frame.extended_data)),
-      src_av_frame.nb_samples);
+      src_planes.data(),
+      num_src_samples);
   // numConvertedSamples can be 0 if we're downsampling by a great factor and
   // the first frame doesn't contain a lot of samples. It should be handled
   // properly by the caller.
