@@ -146,12 +146,11 @@ class AudioDecoder:
         assert sample_rate is not None  # mypy.
 
         def offset_of(seconds: float) -> int:
-            # Ties go up. round() sends them to the nearest *even* sample
-            # instead, which isn't stable from one call to the next: each call
-            # measures its boundaries from its own first_pts, and how far that
-            # is from the boundary decides which of the two samples is the even
-            # one. Consecutive ranges would then disagree on who owns the sample
-            # on their common boundary, and return it twice or not at all.
+            # This is morally equivalent to round((seconds - first_pts) *
+            # sample_rate), but round() is not stable across calls for a fixed
+            # value of `seconds` because it rounds to the nearest even interger,
+            # so where it rounds is dependent on the value of first_pts.
+            # This formulation forces ties to always round up.
             return math.floor((seconds - first_pts) * sample_rate + 0.5)
 
         if first_pts < start_seconds:
