@@ -7,6 +7,7 @@
 import concurrent.futures
 import contextlib
 import gc
+import math
 import queue
 import threading
 from functools import partial
@@ -3082,28 +3083,65 @@ class TestAudioDecoder:
             frames_44100_to_8000.data, frames_8000.data, atol=0.03, rtol=0
         )
 
-    def test_resample_seek_sample_count(self):
-        # Non-regression test for https://github.com/meta-pytorch/torchcodec/issues/1601
-        # When resampling, the swresample context buffers samples and tracks a
-        # fractional sample position across calls. If it isn't reset on a
-        # mid-stream seek, stale state leaks into the next range decode and the
-        # output sample count can be off by one.
-        # The exact condition in which this happens is unclear to me but claude
-        # managed to find this test that reproduces consistently - and the fix
-        # was to reset the swresample context on a mid-stream seek, which seems
-        # like a very normal thing to do.
-        asset = SINE_MONO_S32_44100
-        assert asset.sample_rate == 44_100
-        assert asset.duration_seconds == 4
+    LOSSY_ASSETS = (NASA_AUDIO, NASA_AUDIO_MP3, NASA_AUDIO_MP3_44100)
 
-        out_sample_rate = 16_000
+    @pytest.mark.parametrize(
+        "asset",
+        (
+            SINE_MONO_S32_44100,
+            SINE_MONO_S32_8000,
+            SINE_MONO_U8,
+            SINE_MONO_F32,
+            SINE_16_CHANNEL_S16,
+            NASA_AUDIO,
+            NASA_AUDIO_MP3_44100,
+        ),
+    )
+    @pytest.mark.parametrize(
+        "out_sample_rate, increment",
+        (
+            (8_000, 1 / 3),
+            (8_000, 0.7),
+            (8_000, 0.3),
+            (16_000, 1.0),
+            (16_000, 1.2),
+            (16_000, 1 / 3),
+            (16_000, 0.3),
+            (16_001, 1.0),
+            (16_001, 1 / 3),
+            (22_050, 0.7),
+            (48_000, 1.2),
+        ),
+    )
+    def test_resample_chunked_matches_full(self, asset, out_sample_rate, increment):
+        # Reading a resampled stream in consecutive chunks must return exactly
+        # the same samples as decoding it in one go.
+        # See [Audio resampling and frame alignment]
+
+        full = AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples()
+        actual_duration = (
+            full.pts_seconds + full.data.shape[1] / out_sample_rate - full.pts_seconds
+        )
+
         decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
+        chunks = []
+        for i in range(math.ceil(actual_duration / increment)):
+            start = full.pts_seconds + i * increment
+            chunks.append(
+                decoder.get_samples_played_in_range(start, start + increment).data
+            )
+        chunks = torch.cat(chunks, dim=1)
 
-        decoder.get_samples_played_in_range(start_seconds=2.0, stop_seconds=4.8)
-        tail = decoder.get_samples_played_in_range(start_seconds=3.6, stop_seconds=4.8)
-
-        # [3.6, 4.0) of audio at out_sample_rate.
-        assert tail.data.shape[1] == round(0.4 * out_sample_rate)
+        assert chunks.shape == full.data.shape
+        if asset in self.LOSSY_ASSETS:
+            assert_tensor_close_on_at_least(
+                chunks, full.data, atol=0, rtol=0, percentage=80
+            )
+            assert_tensor_close_on_at_least(
+                chunks, full.data, atol=0.1, rtol=0, percentage=95
+            )
+        else:
+            torch.testing.assert_close(chunks, full.data, atol=0, rtol=0)
 
     def test_decode_s16_ffmpeg4(self):
         # Non-regression test for https://github.com/pytorch/torchcodec/issues/843
