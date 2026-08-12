@@ -3143,6 +3143,28 @@ class TestAudioDecoder:
         else:
             torch.testing.assert_close(chunks, full.data, atol=0, rtol=0)
 
+    @pytest.mark.parametrize("out_sample_rate", (8_000, 16_000))
+    @pytest.mark.parametrize("stop_seconds", (1.45, 1.91, 2.1))
+    def test_resample_chunked_matches_full_postroll(
+        self, out_sample_rate, stop_seconds
+    ):
+        # Test for resampling post-roll. Basically a subset of
+        # test_resample_chunked_matches_full but with a focus on postroll:
+        # stop_seconds values are chosen such that they actually fail on main
+        # and exercise the post-roll fix.
+        asset = SINE_MONO_S32_44100
+        full = (
+            AudioDecoder(asset.path, sample_rate=out_sample_rate).get_all_samples().data
+        )
+
+        decoder = AudioDecoder(asset.path, sample_rate=out_sample_rate)
+        samples = decoder.get_samples_played_in_range(1.0, stop_seconds).data
+
+        start = round(1.0 * out_sample_rate)
+        torch.testing.assert_close(
+            samples, full[:, start : start + samples.shape[1]], atol=0, rtol=0
+        )
+
     def test_decode_s16_ffmpeg4(self):
         # Non-regression test for https://github.com/pytorch/torchcodec/issues/843
         # Ensures that decoding s16 on FFmpeg4 handles
