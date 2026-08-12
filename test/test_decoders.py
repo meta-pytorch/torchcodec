@@ -3165,6 +3165,26 @@ class TestAudioDecoder:
             samples, full[:, start : start + samples.shape[1]], atol=0, rtol=0
         )
 
+    @pytest.mark.parametrize("boundary_sample", (6_000, 20_000, 30_000))
+    def test_chunk_boundary_half_sample(self, boundary_sample):
+        # Reading the stream in two chunks, splitting right in the middle of a
+        # sample. That sample must be returned by exactly one of the two chunks,
+        # and the two chunks must independently agree on which one.
+        # This is ensured by a stable rounding (see offset_of()).
+        asset = SINE_MONO_S32
+        boundary = (boundary_sample + 0.5) / asset.sample_rate
+
+        full = AudioDecoder(asset.path).get_all_samples()
+        end_seconds = full.pts_seconds + full.data.shape[1] / asset.sample_rate
+
+        decoder = AudioDecoder(asset.path)
+        chunks = [
+            decoder.get_samples_played_in_range(full.pts_seconds, boundary).data,
+            decoder.get_samples_played_in_range(boundary, end_seconds).data,
+        ]
+
+        torch.testing.assert_close(torch.cat(chunks, dim=1), full.data, atol=0, rtol=0)
+
     def test_decode_s16_ffmpeg4(self):
         # Non-regression test for https://github.com/pytorch/torchcodec/issues/843
         # Ensures that decoding s16 on FFmpeg4 handles
