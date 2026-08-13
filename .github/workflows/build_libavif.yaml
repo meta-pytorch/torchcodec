@@ -28,7 +28,7 @@ jobs:
       fail-fast: false
       matrix:
         libavif-version: ["1.4.2"]
-    uses: pytorch/test-infra/.github/workflows/linux_job_v2.yml@main
+    uses: pytorch/test-infra/.github/workflows/linux_job_v2.yml@release/2.13
     permissions:
       id-token: write
       contents: read
@@ -54,7 +54,7 @@ jobs:
       fail-fast: false
       matrix:
         libavif-version: ["1.4.2"]
-    uses: pytorch/test-infra/.github/workflows/linux_job_v2.yml@main
+    uses: pytorch/test-infra/.github/workflows/linux_job_v2.yml@release/2.13
     permissions:
       id-token: write
       contents: read
@@ -81,7 +81,7 @@ jobs:
       fail-fast: false
       matrix:
         libavif-version: ["1.4.2"]
-    uses: pytorch/test-infra/.github/workflows/macos_job.yml@main
+    uses: pytorch/test-infra/.github/workflows/macos_job.yml@release/2.13
     with:
       job-name: Build
       upload-artifact: libavif-macos-${{ matrix.libavif-version }}
@@ -104,7 +104,7 @@ jobs:
       fail-fast: false
       matrix:
         libavif-version: ["1.4.2"]
-    uses: pytorch/test-infra/.github/workflows/windows_job.yml@main
+    uses: pytorch/test-infra/.github/workflows/windows_job.yml@release/2.13
     with:
       job-name: Build
       upload-artifact: libavif-windows_x86_64-${{ matrix.libavif-version }}
