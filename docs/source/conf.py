@@ -64,9 +64,9 @@ class CustomGalleryExampleSortKey:
         self.src_dir = src_dir
 
     def __call__(self, filename):
-        # We have two top-level galleries, one for decoding examples and one for
-        # encoding examples. We define the example order within each gallery
-        # individually.
+        # We have three top-level galleries: decoding examples, encoding
+        # examples, and migration guides. We define the example order within
+        # each gallery individually.
         if "examples/decoding" in self.src_dir:
             order = [
                 "basic_example.py",
@@ -82,13 +82,17 @@ class CustomGalleryExampleSortKey:
                 "transforms.py",
                 "hdr_decoding.py",
             ]
-        else:
-            assert "examples/encoding" in self.src_dir
+        elif "examples/encoding" in self.src_dir:
             order = [
                 "image_encoding.py",
                 "audio_encoding.py",
                 "video_encoding.py",
                 "multi_stream_encoding.py",
+            ]
+        else:
+            assert "examples/migration" in self.src_dir
+            order = [
+                "torchvision_migration.py",
             ]
 
         try:
