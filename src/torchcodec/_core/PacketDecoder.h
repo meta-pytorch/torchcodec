@@ -58,7 +58,7 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
     return time_base_;
   }
 
-  // Of the source, not of the frames: NVDEC decodes 10-bit into P016 surfaces.
+  // Of the source - typically 8, 10, 12.
   int64_t bit_depth() const {
     return bit_depth_;
   }

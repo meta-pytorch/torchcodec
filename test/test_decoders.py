@@ -3688,9 +3688,6 @@ class TestBlocks:
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_output_dtype_auto_is_resolved_per_frame(self, device):
-        # ColorConverter is unbound, so "auto" is decided from each frame rather
-        # than once per stream: the same converter yields uint8 for an 8-bit
-        # video and float32 for a 10-bit one.
         converter = ColorConverter(device=device, output_dtype="auto")
         dtypes = []
         for video in (NASA_VIDEO, NASA_VIDEO_HDR, NASA_VIDEO):

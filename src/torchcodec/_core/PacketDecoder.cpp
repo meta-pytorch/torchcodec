@@ -80,7 +80,6 @@ PacketDecoder::PacketDecoder(
   device_interface_->initialize_video_decoding(
       stream, demuxer.format_context(), options);
 
-  // From the codec context: a hardware decoder may use a wider container.
   const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(codec_context_->pix_fmt);
   if (desc != nullptr) {
     bit_depth_ = static_cast<int64_t>(desc->comp[0].depth);
