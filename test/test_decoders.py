@@ -3417,10 +3417,6 @@ def _block_devices():
     return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
 
 
-# Videos spanning the pixel-format axes materialize() has to handle: 4:2:0 vs
-# 4:4:4 chroma, even vs odd dims (chroma rounds up), and 8- vs 10-/12-bit
-# (uint8 vs uint16 planes). All are YUV, so planes are (Y, U, V).
-# Sources with more than 8 bits per sample.
 _HDR_VIDEOS = (
     NASA_VIDEO_HDR,
     TEST_SRC_2_720P_HDR,
@@ -3666,6 +3662,7 @@ class TestBlocks:
     )
     @pytest.mark.parametrize(
         "output_dtype, vd_dtype",
+        # TODO_API_BREAKDOWN P1: lol, the ColorConverter shouldn't accept  string!!!
         (("uint8", torch.uint8), ("float32", torch.float32), ("auto", "auto")),
     )
     @pytest.mark.parametrize("device", _block_devices())
@@ -3673,8 +3670,7 @@ class TestBlocks:
         self, video, output_dtype, vd_dtype, device
     ):
         # The blocks pipeline must agree with VideoDecoder for every dtype, on
-        # both devices. See test_matches_video_decoder for why HDR on CUDA needs
-        # a tolerance rather than exact equality.
+        # both devices.
         demuxer, decoder, _ = self._make_blocks(video.path, device)
         converter = ColorConverter(device=device, output_dtype=output_dtype)
         got = self._to_frame_batch(
@@ -3775,11 +3771,15 @@ class TestBlocks:
         expected_dtype = torch.uint16 if _is_high_depth(pix_fmt) else torch.uint8
         assert all(plane.dtype == expected_dtype for plane in planes)
 
-        # bit_depth is the source's, not the container's: a 10-bit video decoded
-        # into a 16-bit P016 surface still reports 10. sample_shift covers the
-        # difference, so shifting always lands within bit_depth bits.
+        # 10-bit video decoded into a 16-bit P016 surface still reports 10.
+        # sample_shift covers the difference, so shifting always lands within
+        # bit_depth bits.
+        # TODO_API_BREAKDOWN P1: if sample_shift is the diff, do we really need it?
         assert raw.bit_depth == bit_depth
         assert raw.sample_shift >= 0
+        # TODO_API_BREAKDOWN P1: I don't understand this.
+        # Is this to assert the data is in fact only over 10 or 12 bits and not 16?
+        # I need to figure out whether that is actually wanted - probably?
         for plane in planes:
             shifted = plane.to(torch.int32) >> raw.sample_shift
             assert shifted.max().item() < (1 << raw.bit_depth)
