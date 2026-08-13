@@ -71,19 +71,21 @@ PacketDecoder::PacketDecoder(
       stream, av_codec, device_interface_.get(), ffmpeg_thread_count);
   device_interface_->initialize(codec_context_);
 
-  VideoStreamOptions options;
-  // This block hands frames to the caller untouched, so it must not discard
-  // precision a later ColorConverter or materialize() might want.
-  options.decode_precision = DecodePrecision::NATIVE;
-  options.device = device;
-
-  device_interface_->initialize_video_decoding(
-      stream, demuxer.format_context(), options);
-
   const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(codec_context_->pix_fmt);
   if (desc != nullptr) {
     bit_depth_ = static_cast<int64_t>(desc->comp[0].depth);
   }
+
+  VideoStreamOptions options;
+  options.device = device;
+  // This is ugly: what we actually mean is "let the device interface decode
+  // into the native surface", which matters for NVDEC.
+  // TODO_API_BREAKDOWN P2: Find a cleaner way to express this?
+  options.output_dtype =
+      bit_depth_ > 8 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
+
+  device_interface_->initialize_video_decoding(
+      stream, demuxer.format_context(), options);
 }
 
 int PacketDecoder::send_packet(AVPacket* packet) {

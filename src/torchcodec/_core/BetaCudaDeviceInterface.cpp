@@ -209,8 +209,7 @@ std::optional<cudaVideoCodec> validate_codec_support(AVCodecID codec_id) {
 std::optional<cudaVideoSurfaceFormat> get_nvdec_surface_format(
     const StableDevice& device,
     const SharedAVCodecContext& codec_context,
-    OutputDtype output_dtype,
-    DecodePrecision decode_precision) {
+    OutputDtype output_dtype) {
   // Return the surface format to use for NVDEC decoding if the stream is
   // supported, or nullopt to fall back to CPU.
 
@@ -257,12 +256,7 @@ std::optional<cudaVideoSurfaceFormat> get_nvdec_surface_format(
     return std::nullopt;
   }
 
-  // NATIVE keeps the source's bit depth: P016 for 10-/12-bit content, NV12 for
-  // 8-bit. This is what the CPU decoder does, so it's what makes the two agree.
-  auto preferred_format = (decode_precision == DecodePrecision::NATIVE)
-      ? (bit_depth_minus8 > 0 ? cudaVideoSurfaceFormat_P016
-                              : cudaVideoSurfaceFormat_NV12)
-      : get_preferred_surface_format(output_dtype);
+  auto preferred_format = get_preferred_surface_format(output_dtype);
   if ((caps.nOutputFormatMask >> preferred_format) & 1) {
     return preferred_format;
   }
@@ -384,11 +378,7 @@ void BetaCudaDeviceInterface::initialize_video_decoding(
   output_dtype_ = video_stream_options.output_dtype;
 
   auto maybe_surface_format = nvcuvid_available_
-      ? get_nvdec_surface_format(
-            device_,
-            codec_context_,
-            output_dtype_,
-            video_stream_options.decode_precision)
+      ? get_nvdec_surface_format(device_, codec_context_, output_dtype_)
       : std::nullopt;
 
   if (!maybe_surface_format.has_value()) {
