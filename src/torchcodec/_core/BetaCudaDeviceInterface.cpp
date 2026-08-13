@@ -76,6 +76,36 @@ cudaVideoSurfaceFormat get_preferred_surface_format(OutputDtype output_dtype) {
                                               : cudaVideoSurfaceFormat_NV12;
 }
 
+// NVDEC always hands us the same 16-bit semi-planar surface whatever the source
+// depth, so we tag the frame with the format that actually describes its
+// samples: P010/P012 carry both the true depth and the msb alignment, where
+// P016 would claim all 16 bits are significant.
+AVPixelFormat nvdec_pix_fmt(
+    cudaVideoSurfaceFormat surface_format,
+    int bit_depth) {
+  if (surface_format != cudaVideoSurfaceFormat_P016) {
+    return AV_PIX_FMT_NV12;
+  }
+  switch (bit_depth) {
+    case 10:
+      return AV_PIX_FMT_P010LE;
+#if FFMPEG_HAS_P012
+    case 12:
+      return AV_PIX_FMT_P012LE;
+#endif
+    default:
+      return AV_PIX_FMT_P016LE;
+  }
+}
+
+bool is_nvdec_16bit_surface(int format) {
+  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P016LE
+#if FFMPEG_HAS_P012
+      || format == AV_PIX_FMT_P012LE
+#endif
+      ;
+}
+
 // Whether a frame is a CPU-fallback frame rather than a GPU NVDEC surface,
 // inferred from its pixel format. This works today because our CPU fallback
 // never yields NV12/P016 frames, but it's only a proxy, and it's not super
@@ -84,7 +114,7 @@ cudaVideoSurfaceFormat get_preferred_surface_format(OutputDtype output_dtype) {
 // when decoding happens, but this interface can be used in
 // color-conversion-only mode.
 bool is_cpu_fallback(int format) {
-  return format != AV_PIX_FMT_NV12 && format != AV_PIX_FMT_P016LE;
+  return format != AV_PIX_FMT_NV12 && !is_nvdec_16bit_surface(format);
 }
 
 static bool g_cuda_nvdec = register_device_interface(
@@ -825,9 +855,9 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
 
   av_frame->width = width;
   av_frame->height = height;
-  av_frame->format = (surface_format_ == cudaVideoSurfaceFormat_P016)
-      ? AV_PIX_FMT_P016LE
-      : AV_PIX_FMT_NV12;
+  av_frame->format = nvdec_pix_fmt(
+      surface_format_,
+      static_cast<int>(video_format_.bit_depth_luma_minus8) + 8);
   av_frame->pts = disp_info.timestamp;
 
   // TODONVDEC P2: We compute the duration based on average frame rate info, so
@@ -1177,6 +1207,8 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
 
   UniqueAVFrame transferred_frame;
   if (cpu_fallback) {
+    // TODO: uploaded fallback frames stay tagged P016 even for 10-/12-bit
+    // sources, so they report 16 bits where an NVDEC frame reports the truth.
     AVPixelFormat target_pix_fmt = (output_dtype_ == OutputDtype::FLOAT32)
         ? AV_PIX_FMT_P016LE
         : AV_PIX_FMT_NV12;
@@ -1190,8 +1222,8 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
 
   STD_TORCH_CHECK(
       gpu_frame.format == AV_PIX_FMT_NV12 ||
-          gpu_frame.format == AV_PIX_FMT_P016LE,
-      "Expected NV12 or P016LE format frame");
+          is_nvdec_16bit_surface(gpu_frame.format),
+      "Expected NV12 or 16-bit semi-planar format frame");
 
   cudaStream_t producer_stream;
   if (mode() == Mode::ColorConverterOnly) {
@@ -1210,7 +1242,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   // execrcized.
   auto convert_frame = [&](std::optional<torch::stable::Tensor> pre_alloc)
       -> torch::stable::Tensor {
-    bool is_p016 = (gpu_frame.format == AV_PIX_FMT_P016LE);
+    bool is_p016 = is_nvdec_16bit_surface(gpu_frame.format);
     int bit_depth = 8;
     if (is_p016) {
       bit_depth = cpu_fallback
