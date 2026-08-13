@@ -194,9 +194,13 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
     cudaStream_t producer_stream,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor,
     const FrameDims& output_dims,
-    bool is_p016,
-    int bit_depth,
+    AVPixelFormat pix_fmt,
     CachedColorMatrix& cached_color_matrix) {
+  bool is_p016 = is_nvdec_16bit_surface(pix_fmt);
+  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
+  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
+  int bit_depth = desc->comp[0].depth;
+
   float out_scale = is_p016 ? 65535.0f : 255.0f;
   OutputDtype out_dtype = is_p016 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 

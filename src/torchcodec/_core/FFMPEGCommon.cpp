@@ -16,6 +16,42 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
+// NVDEC always outputs the same 16-bit semi-planar surface whatever the source
+// depth, so we tag the frame with the format that actually describes its
+// samples: P010/P012 carry both the true depth and the msb alignment, where
+// P016 would claim all 16 bits are significant.
+#if FFMPEG_HAS_P012
+AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth) {
+  if (!is_p016_surface) {
+    return AV_PIX_FMT_NV12;
+  }
+  switch (bit_depth) {
+    case 10:
+      return AV_PIX_FMT_P010LE;
+    case 12:
+      return AV_PIX_FMT_P012LE;
+    default:
+      return AV_PIX_FMT_P016LE;
+  }
+}
+
+bool is_nvdec_16bit_surface(int format) {
+  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P012LE ||
+      format == AV_PIX_FMT_P016LE;
+}
+#else
+AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth) {
+  if (!is_p016_surface) {
+    return AV_PIX_FMT_NV12;
+  }
+  return bit_depth == 10 ? AV_PIX_FMT_P010LE : AV_PIX_FMT_P016LE;
+}
+
+bool is_nvdec_16bit_surface(int format) {
+  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P016LE;
+}
+#endif
+
 AutoAVPacket::AutoAVPacket() : av_packet_(av_packet_alloc()) {
   STD_TORCH_CHECK(av_packet_ != nullptr, "Couldn't allocate avPacket.");
 }
