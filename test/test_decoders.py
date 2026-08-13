@@ -3576,6 +3576,18 @@ class TestBlocks:
             ),
         )
 
+    @staticmethod
+    def _assert_matches_video_decoder(got, ref, video):
+        # We typically want exact equality but cannot achieve it on CUDA for HDR
+        # videos that are downscaled to uint8: the VideoDecoder will ask NVDEC
+        # to output an 8bit surface while the PacketDecoder will decode on the
+        # 16bit surface (by contract), so there are minor differences.
+        if got.is_cuda and got.dtype == torch.uint8 and video in _HDR_VIDEOS:
+            assert_tensor_close_on_at_least(got, ref, percentage=99, atol=2)
+        else:
+            torch.testing.assert_close(got, ref, atol=0, rtol=0)
+
+
     @pytest.mark.parametrize(
         "video",
         (
@@ -3641,21 +3653,11 @@ class TestBlocks:
 
         assert got.data.device.type == device
         assert got.data.shape == ref.data.shape
-        self._assert_matches_video_decoder(got.data, ref.data, video, device)
+        self._assert_matches_video_decoder(got.data, ref.data, video)
         torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
         torch.testing.assert_close(
             got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
         )
-
-    @staticmethod
-    def _assert_matches_video_decoder(got, ref, video, device, uint8_output=True):
-        # For HDR + uint8, VideoDecoder decodes into an 8-bit NVDEC surface
-        # while the blocks decode natively, so a few pixels differ (blocks being
-        # the more accurate). Everything else matches exactly.
-        if device == "cuda" and uint8_output and video in _HDR_VIDEOS:
-            assert_tensor_close_on_at_least(got, ref, percentage=99, atol=2)
-        else:
-            torch.testing.assert_close(got, ref, atol=0, rtol=0)
 
     @pytest.mark.parametrize(
         "video", (NASA_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_12BIT_HDR)
@@ -3682,9 +3684,7 @@ class TestBlocks:
 
         assert got.data.dtype == ref.data.dtype
         assert got.data.shape == ref.data.shape
-        self._assert_matches_video_decoder(
-            got.data, ref.data, video, device, uint8_output=output_dtype == "uint8"
-        )
+        self._assert_matches_video_decoder(got.data, ref.data, video)
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_output_dtype_auto_is_resolved_per_frame(self, device):
