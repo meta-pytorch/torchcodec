@@ -1,0 +1,11 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.encoders
+
+
+JpegEncoder
+===========
+
+.. autoclass:: JpegEncoder
+    :members:
+    :special-members: __getitem__

@@ -1,0 +1,51 @@
+# PyTorch Documentation - LLM Navigation Guide
+
+> This file helps AI assistants and LLMs navigate PyTorch documentation sites.
+
+## About This Site
+
+This is documentation built with the PyTorch Sphinx Theme, part of the PyTorch ecosystem.
+The documentation covers Python APIs, tutorials, and guides for deep learning development.
+
+## Content Types
+
+- **API Reference**: Generated from docstrings, found under `/generated/` paths
+- **Tutorials**: Step-by-step guides, often under `/tutorials/` or contain "tutorial" in the path
+- **Guides**: Conceptual explanations and best practices
+- **Examples**: Code examples demonstrating features
+
+## Navigation Tips
+
+- Start with the main index page for an overview
+- Use `/genindex.html` for a complete index of all documented items
+- Use `/search.html?q=<query>` for searching
+- Check `/sitemap.xml` for a complete list of all pages
+
+## Key Entry Points
+
+- `/index.html` - Main documentation landing page
+- `/genindex.html` - Complete alphabetical index
+- `/py-modindex.html` - Python module index (if available)
+
+## Page Structure
+
+Each documentation page includes:
+- Navigation sidebar with table of contents
+- Breadcrumb navigation showing page hierarchy
+- Search functionality in the header
+
+## Machine-Readable Metadata
+
+Every HTML page includes meta tags with prefix `llm:` containing:
+- `llm:site-type` - Type of site (documentation)
+- `llm:framework` - Framework name (PyTorch)
+- `llm:project` - Project name
+- `llm:version` - Documentation version
+- `llm:page-type` - Type of current page (api/tutorial/documentation)
+
+## Best Practices for LLMs
+
+1. Check the page's `llm:page-type` meta tag to understand content type
+2. For API questions, prioritize pages under `/generated/`
+3. For how-to questions, look for tutorials
+4. Use the sitemap for comprehensive page discovery

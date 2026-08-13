@@ -1,0 +1,12 @@
+﻿.. role:: hidden
+    :class: hidden-section
+.. currentmodule:: torchcodec.transforms
+
+
+RandomCrop
+==========
+
+.. autoclass:: RandomCrop
+    :members:
+    :undoc-members: __init__
+    :inherited-members:
