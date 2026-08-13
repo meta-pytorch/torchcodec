@@ -58,16 +58,10 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
     return time_base_;
   }
 
-  // Of the source - typically 8, 10, 12.
-  int64_t bit_depth() const {
-    return bit_depth_;
-  }
-
  private:
   std::unique_ptr<DeviceInterface> device_interface_;
   SharedAVCodecContext codec_context_;
   AVRational time_base_ = {};
-  int64_t bit_depth_ = 8;
 };
 
 // A decoded frame's own samples, before any color conversion.
@@ -80,15 +74,11 @@ struct FramePlanes {
   std::string colorspace;
   std::string color_range;
   int64_t bit_depth = 8;
-  // Right-shift to recover a sample's value: P016 is msb-aligned, planar
-  // yuv420p10le is not.
-  int64_t sample_shift = 0;
 };
 
 FORCE_PUBLIC_VISIBILITY FramePlanes frame_to_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
-    int64_t stream_bit_depth,
     const torch::stable::Tensor& tensor_handle);
 
 } // namespace facebook::torchcodec

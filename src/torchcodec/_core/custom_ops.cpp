@@ -87,8 +87,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
   m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
   m.def(
-      "_blocks_frame_to_planes(Tensor frame, str device, int bit_depth) -> (Tensor, Tensor, Tensor, Tensor, str, str, str, int, int)");
-  m.def("_blocks_packet_decoder_bit_depth(Tensor decoder) -> int");
+      "_blocks_frame_to_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor, str, str, str, int)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -924,16 +923,14 @@ using OpsFrameToPlanesOutput = std::tuple<
     std::string, // pixel-format
     std::string, // colorspace
     std::string, // color range
-    int64_t, // bit depth
-    int64_t>; // sample shift
+    int64_t>; // bit depth
 
 OpsFrameToPlanesOutput _blocks_frame_to_planes(
     torch::stable::Tensor& tensor_handle,
-    std::string device,
-    int64_t bit_depth) {
+    std::string device) {
   AVFrame* av_frame = unwrap_tensor_to_pointer<AVFrame>(tensor_handle);
-  FramePlanes result = frame_to_planes(
-      *av_frame, StableDevice(device), bit_depth, tensor_handle);
+  FramePlanes result =
+      frame_to_planes(*av_frame, StableDevice(device), tensor_handle);
 
   // Op schema wants a fixed number of planes, so we pad with empty tensors that
   // then get removed at the Python level.
@@ -947,12 +944,7 @@ OpsFrameToPlanesOutput _blocks_frame_to_planes(
       result.pix_fmt,
       result.colorspace,
       result.color_range,
-      result.bit_depth,
-      result.sample_shift);
-}
-
-int64_t _blocks_packet_decoder_bit_depth(torch::stable::Tensor& decoder) {
-  return unwrap_tensor_to_pointer<PacketDecoder>(decoder)->bit_depth();
+      result.bit_depth);
 }
 
 // For testing only. We need to implement this operation as a core library
@@ -1519,9 +1511,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
       TORCH_BOX(&_blocks_packet_decoder_receive_frame));
   m.impl("_blocks_convert_frame", TORCH_BOX(&_blocks_convert_frame));
   m.impl("_blocks_frame_to_planes", TORCH_BOX(&_blocks_frame_to_planes));
-  m.impl(
-      "_blocks_packet_decoder_bit_depth",
-      TORCH_BOX(&_blocks_packet_decoder_bit_depth));
   m.impl("_test_frame_pts_equality", TORCH_BOX(&_test_frame_pts_equality));
   m.impl(
       "scan_all_streams_to_update_metadata",

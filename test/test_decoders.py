@@ -3437,13 +3437,6 @@ _MATERIALIZE_VIDEOS = (
 )
 
 
-def _is_high_depth(pix_fmt):
-    # Whether samples need uint16. nv12/nv21 contain "12"/"21" but are 8-bit.
-    if pix_fmt in ("nv12", "nv21", "nv16", "nv24"):
-        return False
-    return any(token in pix_fmt for token in ("10", "12", "14", "16"))
-
-
 def _planes_equal(a, b):
     # Elementwise equality that also works for uint16 (some comparison kernels
     # aren't implemented for it, so compare as int32).
@@ -3586,7 +3579,6 @@ class TestBlocks:
             assert_tensor_close_on_at_least(got, ref, percentage=99, atol=2)
         else:
             torch.testing.assert_close(got, ref, atol=0, rtol=0)
-
 
     @pytest.mark.parametrize(
         "video",
@@ -3763,23 +3755,15 @@ class TestBlocks:
             assert plane.ndim == 2
             assert plane.device.type == frame.device
 
-        # High-bit-depth sources decode natively on both devices, so they yield
-        # uint16 planes everywhere: yuv420p10le on CPU, P016 on CUDA.
-        expected_dtype = torch.uint16 if _is_high_depth(pix_fmt) else torch.uint8
-        assert all(plane.dtype == expected_dtype for plane in planes)
+        # FFmpeg < 6 has no P012, so 12-bit NVDEC surfaces stay tagged p016le
+        # and report the container's depth.
+        expected_bit_depth = bit_depth
+        if device == "cuda" and bit_depth == 12 and ffmpeg_major_version < 6:
+            expected_bit_depth = 16
+        assert raw.bit_depth == expected_bit_depth
 
-        # 10-bit video decoded into a 16-bit P016 surface still reports 10.
-        # sample_shift covers the difference, so shifting always lands within
-        # bit_depth bits.
-        # TODO_API_BREAKDOWN P1: if sample_shift is the diff, do we really need it?
-        assert raw.bit_depth == bit_depth
-        assert raw.sample_shift >= 0
-        # TODO_API_BREAKDOWN P1: I don't understand this.
-        # Is this to assert the data is in fact only over 10 or 12 bits and not 16?
-        # I need to figure out whether that is actually wanted - probably?
-        for plane in planes:
-            shifted = plane.to(torch.int32) >> raw.sample_shift
-            assert shifted.max().item() < (1 << raw.bit_depth)
+        expected_dtype = torch.uint16 if raw.bit_depth > 8 else torch.uint8
+        assert all(plane.dtype == expected_dtype for plane in planes)
 
         Y, U, V = planes
         height, width = converter.convert(frame).data.shape[1:]

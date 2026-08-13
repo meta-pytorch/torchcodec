@@ -36,11 +36,9 @@ class RawFrame:
     has one. Chroma planes are subsampled (half-resolution for 4:2:0) and the
     views are usually non-contiguous, which is what avoids the copy.
 
-    Samples of more than 8 bits come back as uint16. ``bit_depth`` says how many
-    of those bits are significant, and ``sample_shift`` how far to right-shift a
-    raw value to recover it: NVDEC's P016 surfaces are msb-aligned so they need
-    a shift, while FFmpeg's planar yuv420p10le is not. Shifting by
-    ``sample_shift`` unconditionally gives the same numbers on CPU and CUDA.
+    Samples of more than 8 bits come back as uint16, with ``bit_depth``
+    significant bits. Where those bits sit within the 16 is a property of
+    ``pix_fmt``: msb-aligned for p010le/p012le, lsb-aligned for yuv420p10le.
     """
 
     planes: tuple[torch.Tensor, ...]
@@ -48,7 +46,6 @@ class RawFrame:
     colorspace: str  # e.g. "bt709"
     color_range: str  # "tv" (limited) or "pc" (full)
     bit_depth: int
-    sample_shift: int
 
 
 # TODO_API_BREAKDOWN P1: API design - especially the materialize() method but
@@ -73,11 +70,9 @@ class DecodedFrame:
         pts_seconds: float,
         duration_seconds: float,
         device: str = "cpu",
-        bit_depth: int = 8,
     ):
         self._handle = handle
         self._device = device
-        self._bit_depth = bit_depth
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
 
@@ -102,8 +97,7 @@ class DecodedFrame:
             colorspace,
             color_range,
             bit_depth,
-            sample_shift,
-        ) = _blocks_frame_to_planes(self._handle, self._device, self._bit_depth)
+        ) = _blocks_frame_to_planes(self._handle, self._device)
         # Absent components come back as empty tensors; real ones are 2D views.
         planes = tuple(p for p in (p0, p1, p2, p3) if p.numel() > 0)
         return RawFrame(
@@ -112,5 +106,4 @@ class DecodedFrame:
             colorspace=colorspace,
             color_range=color_range,
             bit_depth=bit_depth,
-            sample_shift=sample_shift,
         )

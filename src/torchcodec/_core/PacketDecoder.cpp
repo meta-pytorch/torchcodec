@@ -71,10 +71,9 @@ PacketDecoder::PacketDecoder(
       stream, av_codec, device_interface_.get(), ffmpeg_thread_count);
   device_interface_->initialize(codec_context_);
 
-  const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(codec_context_->pix_fmt);
-  if (desc != nullptr) {
-    bit_depth_ = static_cast<int64_t>(desc->comp[0].depth);
-  }
+  const AVPixFmtDescriptor* stream_desc =
+      av_pix_fmt_desc_get(codec_context_->pix_fmt);
+  int stream_bit_depth = stream_desc ? stream_desc->comp[0].depth : 8;
 
   VideoStreamOptions options;
   options.device = device;
@@ -82,7 +81,7 @@ PacketDecoder::PacketDecoder(
   // into the native surface", which matters for NVDEC.
   // TODO_API_BREAKDOWN P2: Find a cleaner way to express this?
   options.output_dtype =
-      bit_depth_ > 8 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
+      stream_bit_depth > 8 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 
   device_interface_->initialize_video_decoding(
       stream, demuxer.format_context(), options);
@@ -115,7 +114,6 @@ int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
 FramePlanes frame_to_planes(
     const AVFrame& av_frame,
     const StableDevice& device,
-    int64_t stream_bit_depth,
     const torch::stable::Tensor& tensor_handle) {
   auto pix_fmt = static_cast<AVPixelFormat>(av_frame.format);
   const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
@@ -143,13 +141,7 @@ FramePlanes frame_to_planes(
   result.colorspace = colorspace_name ? colorspace_name : "unknown";
   result.color_range = color_range_name ? color_range_name : "unknown";
 
-  // Where container and source depth differ, the samples sit in the high bits.
-  int64_t container_depth = static_cast<int64_t>(desc->comp[0].depth);
-  result.bit_depth =
-      (stream_bit_depth > 0 && stream_bit_depth <= container_depth)
-      ? stream_bit_depth
-      : container_depth;
-  result.sample_shift = container_depth - result.bit_depth;
+  result.bit_depth = desc->comp[0].depth;
 
   for (int c = 0; c < desc->nb_components; ++c) {
     const AVComponentDescriptor& comp = desc->comp[c];
