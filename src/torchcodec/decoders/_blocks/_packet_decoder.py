@@ -36,9 +36,6 @@ class PacketDecoder:
         self._handle = _blocks_create_packet_decoder(
             demuxer._handle, num_threads=1, device=device
         )
-        # Bit depth of the source frames (8, 10, 12...).
-        # Stored here to avoid returning it for every frame, since it's constant
-        # for the stream.
 
     def _drain(self) -> list[DecodedFrame]:
         frames = []

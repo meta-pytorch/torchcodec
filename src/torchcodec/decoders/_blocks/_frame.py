@@ -38,13 +38,21 @@ class RawFrame:
 
     Samples of more than 8 bits come back as uint16, with ``bit_depth``
     significant bits. Where those bits sit within the 16 is a property of
-    ``pix_fmt``: msb-aligned for p010le/p012le, lsb-aligned for yuv420p10le.
+    ``pix_fmt``: msb-aligned for p010le/p012le/p016le, lsb-aligned for
+    yuv420p10le.
     """
 
     planes: tuple[torch.Tensor, ...]
     pix_fmt: str  # FFmpeg pixel-format name, e.g. "yuv420p"
     colorspace: str  # e.g. "bt709"
     color_range: str  # "tv" (limited) or "pc" (full)
+    # The depth of pix_fmt, which is the source's except for a 12-bit source on
+    # FFmpeg < 6: that NVDEC surface can only be described as p016le there, so
+    # this says 16 where the source says 12. Everything downstream still reads
+    # right, because those samples are msb-aligned and are therefore genuinely
+    # valid 16-bit ones, with 4 zeroed low bits.
+    # TODO_API_BREAKDOWN P2: is the format's depth what we want to report here,
+    # or the source's?
     bit_depth: int
 
 
