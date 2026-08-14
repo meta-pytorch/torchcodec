@@ -3699,15 +3699,9 @@ class TestBlocks:
     @pytest.mark.parametrize(
         "video", (NASA_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_12BIT_HDR)
     )
-    @pytest.mark.parametrize(
-        "output_dtype, vd_dtype",
-        # TODO_API_BREAKDOWN P1: lol, the ColorConverter shouldn't accept  string!!!
-        (("uint8", torch.uint8), ("float32", torch.float32), ("auto", "auto")),
-    )
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32, "auto"))
     @pytest.mark.parametrize("device", _block_devices())
-    def test_output_dtype_matches_video_decoder(
-        self, video, output_dtype, vd_dtype, device
-    ):
+    def test_output_dtype_matches_video_decoder(self, video, output_dtype, device):
         # The blocks pipeline must agree with VideoDecoder for every dtype, on
         # both devices.
         demuxer, decoder, _ = self._make_blocks(video.path, device)
@@ -3716,7 +3710,7 @@ class TestBlocks:
             list(self._convert(converter, self._decode(decoder, self._demux(demuxer))))
         )
         ref = VideoDecoder(
-            video.path, device=device, output_dtype=vd_dtype
+            video.path, device=device, output_dtype=output_dtype
         ).get_all_frames()
 
         assert got.data.dtype == ref.data.dtype
@@ -3735,8 +3729,8 @@ class TestBlocks:
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_invalid_output_dtype(self, device):
-        with pytest.raises(RuntimeError, match="Invalid output_dtype"):
-            ColorConverter(device=device, output_dtype="uint16")
+        with pytest.raises(ValueError, match="Invalid output_dtype"):
+            ColorConverter(device=device, output_dtype=torch.uint16)
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_color_converter_reused_across_videos(self, device):

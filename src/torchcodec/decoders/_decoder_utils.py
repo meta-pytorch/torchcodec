@@ -9,6 +9,8 @@ import contextvars
 from collections.abc import Generator
 from contextlib import contextmanager
 
+import torch
+
 from torchcodec import _core
 
 
@@ -103,3 +105,16 @@ def get_nvdec_cache_capacity() -> int:
         int: The maximum number of NVDEC decoders that can be cached per GPU device.
     """
     return _core.get_nvdec_cache_capacity()
+
+
+def convert_output_dtype_to_str(output_dtype: torch.dtype | str) -> str:
+    # The core ops take the dtype as a string.
+    dtype_to_str = {torch.uint8: "uint8", torch.float32: "float32"}
+    if output_dtype == "auto":
+        return "auto"
+    if output_dtype not in dtype_to_str:
+        raise ValueError(
+            f"Invalid output_dtype ({output_dtype}). "
+            f"Supported values are torch.uint8, torch.float32, and 'auto'."
+        )
+    return dtype_to_str[output_dtype]

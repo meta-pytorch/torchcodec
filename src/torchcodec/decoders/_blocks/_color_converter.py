@@ -6,9 +6,14 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
+import torch
+
 from torchcodec._core.ops import _blocks_convert_frame, _blocks_create_color_converter
 from torchcodec._frame import Frame
 
+from .._decoder_utils import convert_output_dtype_to_str
 from ._frame import DecodedFrame
 
 # TODO_API_BREAKDOWN FEAT We need to support rotation metadata!!
@@ -24,11 +29,12 @@ class ColorConverter:
     comes from the frame itself, so one converter can process frames from any
     video. Passive and *not* thread-safe: use one ``ColorConverter`` per thread.
 
-    ``output_dtype`` takes the same values as ``VideoDecoder``'s: ``"uint8"``
-    (default, ``[0, 255]``), ``"float32"`` (``[0, 1]``), or ``"auto"`` (uint8
-    for 8-bit sources, float32 for higher bit depths). Because this block is
-    unbound, ``"auto"`` is resolved per frame rather than once per stream, so
-    feeding it a mix of SDR and HDR frames yields a mix of dtypes.
+    ``output_dtype`` takes the same values as ``VideoDecoder``'s:
+    ``torch.uint8`` (default, ``[0, 255]``), ``torch.float32`` (``[0, 1]``), or
+    ``"auto"`` (uint8 for 8-bit sources, float32 for higher bit depths).
+    Because this block is unbound, ``"auto"`` is resolved per frame rather than
+    once per stream, so feeding it a mix of SDR and HDR frames yields a mix of
+    dtypes.
 
     Note: automatic rotation (from stream side data) is not applied, since this
     block is intentionally stream-agnostic.
@@ -38,9 +44,13 @@ class ColorConverter:
     # TODO_API_BREAKDOWN P1: add checks for coupling between device param of
     # PacketDecoder and ColorConverter. What if one is CPU and the other is
     # CUDA? What if they're different CUDA devices? Maybe we should just error.
-    def __init__(self, device="cpu", output_dtype: str = "uint8"):
+    def __init__(
+        self,
+        device="cpu",
+        output_dtype: torch.dtype | Literal["auto"] = torch.uint8,
+    ):
         self._handle = _blocks_create_color_converter(
-            device=device, output_dtype=output_dtype
+            device=device, output_dtype=convert_output_dtype_to_str(output_dtype)
         )
 
     def convert(self, decoded_frame: DecodedFrame) -> Frame:
