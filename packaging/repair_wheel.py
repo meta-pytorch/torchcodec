@@ -27,6 +27,7 @@ import platform
 import re
 import shutil
 import site
+import struct
 import subprocess
 import sys
 import zipfile
@@ -216,7 +217,13 @@ def repair_macos(wheels):
                 # DYLD_LIBRARY_PATH must be set inline on the command ($0=search,
                 # $1=wheel): macOS SIP strips it from inherited env on CI (see
                 # cibuildwheel #816).
-                f'DYLD_LIBRARY_PATH="$0" delocate-wheel -v '
+                #
+                # --no-sanitize-rpaths: delocate otherwise deletes every absolute
+                # LC_RPATH from each lib. They'd lose the
+                # /opt/homebrew/opt/ffmpeg/lib rpath that lets a user's Homebrew
+                # FFmpeg be found at runtime (see the INSTALL_RPATH logic in
+                # _core/CMakeLists.txt).
+                f'DYLD_LIBRARY_PATH="$0" delocate-wheel -v --no-sanitize-rpaths '
                 f'--ignore-missing-dependencies {excludes} -w "{REPAIRED_DIR}" "$1"',
                 search,
                 str(wheel),
@@ -449,6 +456,8 @@ def check_bundling():
     - (Linux only) the bundled libjpeg isn't libjpeg-turbo.
     - (Linux only) libtorchcodec_image.so or libtorchcodec_pybind_ops.so links
       FFmpeg.
+    - (MacOS only) a bundled libtorchcodec_core*.dylib is missing the Homebrew
+      FFmpeg rpath
     """
 
     def _is_shared_lib(name):
@@ -595,6 +604,47 @@ def check_bundling():
                 "found at build time."
             )
 
+    def _assert_macos_homebrew_rpath_is_present(zf):
+        def get_rpaths(dylib_bytes):
+            """return LC_RPATH entries of a thin 64-bit little-endian Mach-O image."""
+            LC_RPATH = 0x8000001C
+            (magic,) = struct.unpack_from("<I", dylib_bytes, 0)
+            if magic != 0xFEEDFACF:
+                raise RuntimeError(
+                    f"Expected a thin 64-bit Mach-O, got magic {magic:#x}"
+                )
+            (num_commands,) = struct.unpack_from("<I", dylib_bytes, 16)
+            offset = 32  # mach_header_64 size
+            rpaths = []
+            for _ in range(num_commands):
+                command, command_size = struct.unpack_from("<II", dylib_bytes, offset)
+                if command == LC_RPATH:
+                    (path_offset,) = struct.unpack_from("<I", dylib_bytes, offset + 8)
+                    path = dylib_bytes[offset + path_offset : offset + command_size]
+                    rpaths.append(path.split(b"\0")[0].decode())
+                offset += command_size
+            return rpaths
+
+        # Mirrors the CMake logic.
+        homebrew_prefix = os.environ.get("HOMEBREW_PREFIX", "/opt/homebrew")
+        expected = f"{homebrew_prefix}/opt/ffmpeg/lib"
+        members = [
+            n
+            for n in zf.namelist()
+            if re.fullmatch(
+                r"libtorchcodec_(core|custom_ops)\d+\.dylib", n.rsplit("/", 1)[-1]
+            )
+        ]
+        if not members:
+            raise RuntimeError("No libtorchcodec_core*.dylib found in wheel.")
+        for member in members:
+            rpaths = get_rpaths(zf.read(member))
+            if expected not in rpaths:
+                raise RuntimeError(
+                    f"{member} is missing the {expected} rpath needed to find a "
+                    f"Homebrew-installed FFmpeg. Its rpaths are: {rpaths}"
+                )
+
     def _assert_third_party_licenses(zf, is_cuda):
         """Every bundled third-party lib must ship its license text under
         .dist-info/licenses/third_party/ (see bundle_third_party_licenses)."""
@@ -677,6 +727,8 @@ def check_bundling():
                 _assert_linux_libjpeg_is_turbo(zf)
                 _assert_linux_lib_no_ffmpeg(zf, "libtorchcodec_image.so")
                 _assert_linux_lib_no_ffmpeg(zf, "libtorchcodec_pybind_ops.so")
+            elif platform.system() == "Darwin":
+                _assert_macos_homebrew_rpath_is_present(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")
 
 
