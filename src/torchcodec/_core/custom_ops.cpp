@@ -547,6 +547,21 @@ torch::stable::Tensor _create_from_file_like(
   return wrap_decoder_pointer_to_tensor(std::move(unique_decoder));
 }
 
+OutputDtypeConfig parse_output_dtype_config(const std::string& output_dtype) {
+  if (output_dtype == "uint8") {
+    return OutputDtypeConfig::UINT8;
+  } else if (output_dtype == "float32") {
+    return OutputDtypeConfig::FLOAT32;
+  } else if (output_dtype == "auto") {
+    return OutputDtypeConfig::AUTO;
+  }
+  STD_TORCH_CHECK(
+      false,
+      "Invalid output_dtype=",
+      output_dtype,
+      ". Supported values are: uint8, float32, auto.");
+}
+
 void _add_video_stream(
     torch::stable::Tensor& decoder,
     std::optional<int64_t> num_threads = std::nullopt,
@@ -566,19 +581,8 @@ void _add_video_stream(
   VideoStreamOptions video_stream_options;
   video_stream_options.ffmpeg_thread_count = num_threads;
 
-  if (output_dtype == "uint8") {
-    video_stream_options.output_dtype_config = OutputDtypeConfig::UINT8;
-  } else if (output_dtype == "float32") {
-    video_stream_options.output_dtype_config = OutputDtypeConfig::FLOAT32;
-  } else if (output_dtype == "auto") {
-    video_stream_options.output_dtype_config = OutputDtypeConfig::AUTO;
-  } else {
-    STD_TORCH_CHECK(
-        false,
-        "Invalid output_dtype=",
-        output_dtype,
-        ". Supported values are: uint8, float32, auto.");
-  }
+  video_stream_options.output_dtype_config =
+      parse_output_dtype_config(output_dtype);
 
   if (dimension_order.has_value()) {
     STD_TORCH_CHECK(
@@ -881,21 +885,6 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
       pts_seconds,
       duration_seconds,
       device);
-}
-
-OutputDtypeConfig parse_output_dtype_config(const std::string& output_dtype) {
-  if (output_dtype == "uint8") {
-    return OutputDtypeConfig::UINT8;
-  } else if (output_dtype == "float32") {
-    return OutputDtypeConfig::FLOAT32;
-  } else if (output_dtype == "auto") {
-    return OutputDtypeConfig::AUTO;
-  }
-  STD_TORCH_CHECK(
-      false,
-      "Invalid output_dtype=",
-      output_dtype,
-      ". Supported values are: uint8, float32, auto.");
 }
 
 torch::stable::Tensor _blocks_create_color_converter(

@@ -559,26 +559,9 @@ void SingleStreamDecoder::add_video_stream(
         active_stream_index_, custom_frame_mappings.value());
   }
 
-  // Resolve the user-facing OutputDtypeConfig (which may be AUTO) into an
-  // OutputDtype that downstream code can use directly.
-  // TODO_HDR: This is basically our heuristic that defines how we identify HDR
-  // videos, we might want to refine it.
-  switch (stream_info.video_stream_options.output_dtype_config) {
-    case OutputDtypeConfig::UINT8:
-      stream_info.video_stream_options.output_dtype = OutputDtype::UINT8;
-      break;
-    case OutputDtypeConfig::FLOAT32:
-      stream_info.video_stream_options.output_dtype = OutputDtype::FLOAT32;
-      break;
-    case OutputDtypeConfig::AUTO: {
-      const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(
-          static_cast<AVPixelFormat>(stream_info.stream->codecpar->format));
-      stream_info.video_stream_options.output_dtype =
-          (desc != nullptr && desc->comp[0].depth > 8) ? OutputDtype::FLOAT32
-                                                       : OutputDtype::UINT8;
-      break;
-    }
-  }
+  stream_info.video_stream_options.output_dtype = resolve_output_dtype(
+      stream_info.video_stream_options.output_dtype_config,
+      static_cast<AVPixelFormat>(stream_info.stream->codecpar->format));
 
   // Set preRotationDims_ for the active stream. These are the raw encoded
   // dimensions from FFmpeg, used as a fallback for tensor pre-allocation when

@@ -23,14 +23,12 @@ ColorConverter::ColorConverter(
   STD_TORCH_CHECK(
       device_interface_ != nullptr,
       "Failed to create device interface. This should never happen, please report.");
-
-  // AUTO needs a frame to resolve; the first one may re-initialize us.
-  initialize_for_output_dtype(
-      output_dtype_config == OutputDtypeConfig::FLOAT32 ? OutputDtype::FLOAT32
-                                                        : OutputDtype::UINT8);
 }
 
-void ColorConverter::initialize_for_output_dtype(OutputDtype output_dtype) {
+void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
+  // Initialization is lazy and re-entrant: with AUTO, the desired output dtype
+  // is only known once we see a frame, and it can differ from one frame to the
+  // next.
   if (initialized_output_dtype_.has_value() &&
       *initialized_output_dtype_ == output_dtype) {
     return;
@@ -50,26 +48,10 @@ void ColorConverter::initialize_for_output_dtype(OutputDtype output_dtype) {
   initialized_output_dtype_ = output_dtype;
 }
 
-OutputDtype ColorConverter::resolve_output_dtype(
-    const AVFrame& av_frame) const {
-  switch (output_dtype_config_) {
-    case OutputDtypeConfig::UINT8:
-      return OutputDtype::UINT8;
-    case OutputDtypeConfig::FLOAT32:
-      return OutputDtype::FLOAT32;
-    case OutputDtypeConfig::AUTO: {
-      const AVPixFmtDescriptor* desc =
-          av_pix_fmt_desc_get(static_cast<AVPixelFormat>(av_frame.format));
-      return (desc != nullptr && desc->comp[0].depth > 8) ? OutputDtype::FLOAT32
-                                                          : OutputDtype::UINT8;
-    }
-  }
-  return OutputDtype::UINT8;
-}
-
 torch::stable::Tensor ColorConverter::convert(const AVFrame& av_frame) {
-  OutputDtype output_dtype = resolve_output_dtype(av_frame);
-  initialize_for_output_dtype(output_dtype);
+  OutputDtype output_dtype = resolve_output_dtype(
+      output_dtype_config_, static_cast<AVPixelFormat>(av_frame.format));
+  maybe_initialize_interface(output_dtype);
 
   FrameOutput frame_output;
   device_interface_->convert_av_frame_to_frame_output(

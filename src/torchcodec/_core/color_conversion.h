@@ -82,10 +82,6 @@ void launch_p016_to_rgb16_kernel(
 // outputDims: desired output size; if the frame was rounded up to even
 //   dimensions, the result is cropped back to outputDims.
 // pixFmt: the format the samples are actually in (NV12, P010, P012, P016).
-//
-// The result is uint8 in [0, 255] for 8-bit surfaces and uint16 spanning
-// [0, 65535] for the rest. Callers bring it to the dtype they want with
-// convert_to_output_dtype().
 torch::stable::Tensor convert_yuv_frame_to_rgb(
     const AVFrame& av_frame,
     const StableDevice& device,

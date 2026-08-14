@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "StreamOptions.h"
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavcodec/bsf.h>
@@ -70,6 +72,12 @@ namespace facebook::torchcodec {
 
 AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth);
 bool is_nvdec_16bit_surface(int format);
+
+// Resolve the user-facing OutputDtypeConfig - which may be AUTO - into the
+// OutputDtype to use for data in the given pixel format.
+OutputDtype resolve_output_dtype(
+    OutputDtypeConfig output_dtype_config,
+    AVPixelFormat pix_fmt);
 
 // FFMPEG uses special delete functions for some structures. These template
 // functions are used to pass into unique_ptr as custom deleters so we can

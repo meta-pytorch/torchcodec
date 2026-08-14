@@ -26,8 +26,7 @@ class FORCE_PUBLIC_VISIBILITY ColorConverter {
   torch::stable::Tensor convert(const AVFrame& av_frame);
 
  private:
-  OutputDtype resolve_output_dtype(const AVFrame& av_frame) const;
-  void initialize_for_output_dtype(OutputDtype output_dtype);
+  void maybe_initialize_interface(OutputDtype output_dtype);
 
   std::unique_ptr<DeviceInterface> device_interface_;
   StableDevice device_;
