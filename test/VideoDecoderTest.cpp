@@ -306,6 +306,38 @@ TEST_P(SingleStreamDecoderTest, GetsFramePlayedAtTimestamp) {
   EXPECT_EQ(output.pts_seconds, k_pts_of_last_frame_in_video_stream);
 }
 
+TEST_P(SingleStreamDecoderTest, TimestampRangeAvoidsSeekWithinSameKeyFrame) {
+  std::string path = get_resource_path("nasa_13013.mp4");
+  std::unique_ptr<SingleStreamDecoder> our_decoder =
+      create_decoder_from_path(path, GetParam());
+  std::vector<Transform*> transforms;
+  our_decoder->add_video_stream(-1, transforms);
+
+  auto output = our_decoder->get_frames_played_in_range(6.006, 6.206, 10);
+  EXPECT_EQ(to_aten_tensor(output.data).size(0), 2);
+  EXPECT_EQ(our_decoder->get_decode_stats().num_seeks_attempted, 1);
+  EXPECT_EQ(our_decoder->get_decode_stats().num_seeks_skipped, 1);
+  EXPECT_LT(our_decoder->get_decode_stats().num_packets_read, 10);
+  EXPECT_LT(our_decoder->get_decode_stats().num_packets_sent_to_decoder, 10);
+}
+
+TEST_P(SingleStreamDecoderTest, TimestampRangeReusesFrameAcrossVfrGap) {
+  std::string path = get_resource_path("nasa_13013_vfr.mp4");
+  std::unique_ptr<SingleStreamDecoder> our_decoder =
+      create_decoder_from_path(path, GetParam());
+  std::vector<Transform*> transforms;
+  our_decoder->add_video_stream(-1, transforms);
+
+  our_decoder->get_frame_played_at(0.267);
+  auto output =
+      our_decoder->get_frames_played_in_range(0.333466, 0.333468, 1'000'000);
+  auto output_data = to_aten_tensor(output.data);
+  EXPECT_EQ(output_data.size(0), 2);
+  EXPECT_TRUE(torch::equal(output_data[0], output_data[1]));
+  EXPECT_EQ(our_decoder->get_decode_stats().num_seeks_attempted, 1);
+  EXPECT_EQ(our_decoder->get_decode_stats().num_seeks_skipped, 1);
+}
+
 TEST_P(SingleStreamDecoderTest, SeeksToFrameWithSpecificPts) {
   std::string path = get_resource_path("nasa_13013.mp4");
   std::unique_ptr<SingleStreamDecoder> our_decoder =

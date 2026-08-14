@@ -6,6 +6,7 @@
 
 import functools
 from fractions import Fraction
+from pathlib import Path
 
 import pytest
 from torchcodec import ffmpeg_major_version
@@ -20,9 +21,11 @@ from torchcodec.decoders import AudioDecoder, VideoDecoder
 
 from .utils import (
     BT2020_LIMITED_RANGE_10BIT,
+    call_ffprobe,
     NASA_AUDIO_MP3,
     NASA_VIDEO,
     NASA_VIDEO_ROTATED,
+    needs_ffmpeg_cli,
 )
 
 
@@ -151,6 +154,33 @@ def test_get_metadata_audio_file(metadata_getter):
     assert best_audio_stream_metadata.bit_rate == 64000
     assert best_audio_stream_metadata.codec == "mp3"
     assert best_audio_stream_metadata.sample_format == "fltp"
+
+
+@needs_ffmpeg_cli
+def test_video_average_fps_uses_avg_frame_rate_not_r_frame_rate():
+    path = Path(__file__).parent / "resources" / "nasa_13013_vfr.mp4"
+
+    ffprobe_stream = call_ffprobe(
+        [
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=r_frame_rate,avg_frame_rate",
+            str(path),
+        ]
+    )["streams"][0]
+    r_frame_rate = Fraction(ffprobe_stream["r_frame_rate"])
+    avg_frame_rate = Fraction(ffprobe_stream["avg_frame_rate"])
+    assert r_frame_rate != avg_frame_rate
+
+    metadata = get_container_metadata_from_header(path)
+
+    assert metadata.best_video_stream.average_fps_from_header == pytest.approx(
+        float(avg_frame_rate)
+    )
+    assert metadata.best_video_stream.average_fps_from_header != pytest.approx(
+        float(r_frame_rate)
+    )
 
 
 def test_rotation_metadata():
