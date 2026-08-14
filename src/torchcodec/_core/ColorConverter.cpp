@@ -26,9 +26,9 @@ ColorConverter::ColorConverter(
 }
 
 void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
-  // Initialization is lazy and re-entrant: with AUTO, the desired output dtype
-  // is only known once we see a frame, and it can differ from one frame to the
-  // next.
+  // Interface initialization is done per-frame, not in the constructor: with
+  // AUTO, the desired output dtype is only known once we see a frame, and it
+  // can differ from one frame to the next.
   if (initialized_output_dtype_.has_value() &&
       *initialized_output_dtype_ == output_dtype) {
     return;

@@ -73,8 +73,6 @@ namespace facebook::torchcodec {
 AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth);
 bool is_nvdec_16bit_surface(int format);
 
-// Resolve the user-facing OutputDtypeConfig - which may be AUTO - into the
-// OutputDtype to use for data in the given pixel format.
 OutputDtype resolve_output_dtype(
     OutputDtypeConfig output_dtype_config,
     AVPixelFormat pix_fmt);
