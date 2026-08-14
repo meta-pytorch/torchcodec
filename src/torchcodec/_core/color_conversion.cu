@@ -39,9 +39,7 @@ __device__ void write_pair_of_rgb_pixels(
     T* rgb_plane_to_write,
     int bit_shift,
     const ColorMatrix& cm) {
-  // The top of the output range, which the color matrix already scales to, so
-  // it doubles as the clamp ceiling.
-  constexpr float out_scale = sizeof(T) == 1 ? 255.0f : 65535.0f;
+  constexpr float clamp_max = sizeof(T) == 1 ? 255.0f : 65535.0f;
 
   float ya = static_cast<float>(yayb.x >> bit_shift);
   float yb = static_cast<float>(yayb.y >> bit_shift);
@@ -50,22 +48,22 @@ __device__ void write_pair_of_rgb_pixels(
   float ga = cm.m[1][0] * ya + cm.m[1][1] * u + cm.m[1][2] * v + cm.m[1][3];
 
   Vec2T raga = {
-      static_cast<T>(fminf(fmaxf(ra, 0.0f), out_scale)),
-      static_cast<T>(fminf(fmaxf(ga, 0.0f), out_scale))};
+      static_cast<T>(fminf(fmaxf(ra, 0.0f), clamp_max)),
+      static_cast<T>(fminf(fmaxf(ga, 0.0f), clamp_max))};
   *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[0])) = raga;
 
   float ba = cm.m[2][0] * ya + cm.m[2][1] * u + cm.m[2][2] * v + cm.m[2][3];
   float rb = cm.m[0][0] * yb + cm.m[0][1] * u + cm.m[0][2] * v + cm.m[0][3];
   Vec2T barb = {
-      static_cast<T>(fminf(fmaxf(ba, 0.0f), out_scale)),
-      static_cast<T>(fminf(fmaxf(rb, 0.0f), out_scale))};
+      static_cast<T>(fminf(fmaxf(ba, 0.0f), clamp_max)),
+      static_cast<T>(fminf(fmaxf(rb, 0.0f), clamp_max))};
   *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[2])) = barb;
 
   float gb = cm.m[1][0] * yb + cm.m[1][1] * u + cm.m[1][2] * v + cm.m[1][3];
   float bb = cm.m[2][0] * yb + cm.m[2][1] * u + cm.m[2][2] * v + cm.m[2][3];
   Vec2T gbbb = {
-      static_cast<T>(fminf(fmaxf(gb, 0.0f), out_scale)),
-      static_cast<T>(fminf(fmaxf(bb, 0.0f), out_scale))};
+      static_cast<T>(fminf(fmaxf(gb, 0.0f), clamp_max)),
+      static_cast<T>(fminf(fmaxf(bb, 0.0f), clamp_max))};
   *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[4])) = gbbb;
 }
 
