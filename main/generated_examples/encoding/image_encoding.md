@@ -4,6 +4,13 @@ In this example, we'll learn how to encode an image tensor to JPEG or PNG using
 the [`JpegEncoder`](../../generated/torchcodec.encoders.JpegEncoder.html#torchcodec.encoders.JpegEncoder) and
 [`PngEncoder`](../../generated/torchcodec.encoders.PngEncoder.html#torchcodec.encoders.PngEncoder) classes.
 
+Note
+
+These encoders supersede the ones from `torchvision.io`: they are more
+robust and support more features. See
+[Migrating from TorchVision to TorchCodec](../migration/torchvision_migration.html#sphx-glr-generated-examples-migration-torchvision-migration-py) for a
+migration guide.
+
 First, a bit of boilerplate: we'll download an image from the web and define a
 plotting utility. You can ignore that part and jump right below to
 Encoding an image.
@@ -142,7 +149,7 @@ PNG encoding is CPU-only.
 Check the docstrings of the encoding methods to learn about the different
 encoding options.
 
-**Total running time of the script:** (0 minutes 0.188 seconds)
+**Total running time of the script:** (0 minutes 0.184 seconds)
 
 [`Download Jupyter notebook: image_encoding.ipynb`](../../_downloads/071d0183e16c5e6ef85b625a2f126867/image_encoding.ipynb)
 

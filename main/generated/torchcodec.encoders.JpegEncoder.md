@@ -30,6 +30,11 @@ Examples using `JpegEncoder`:
 [Encoding images](../generated_examples/encoding/image_encoding.html)
 
 Encoding images
+![](../_images/sphx_glr_torchvision_migration_thumb.png)
+
+[Migrating from TorchVision to TorchCodec](../generated_examples/migration/torchvision_migration.html)
+
+Migrating from TorchVision to TorchCodec
 
 to_file(*dest: [str](https://docs.python.org/3/library/stdtypes.html#str) | [Path](https://docs.python.org/3/library/pathlib.html#pathlib.Path)*, ***, *quality: [int](https://docs.python.org/3/library/functions.html#int) = 75*) → [None](https://docs.python.org/3/library/constants.html#None)[[source]](../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_file)
 

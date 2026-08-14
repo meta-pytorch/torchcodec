@@ -337,6 +337,44 @@ Encoding
 
     </div>
 
+Migrating from torchvision
+--------------------------
+
+
+.. raw:: html
+
+  <div id='sg-tag-list' class='sphx-glr-tag-list'></div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbnails">
+
+.. thumbnail-parent-div-open
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="The image decoders and encoders of torchvision.io now live in torchcodec. This is a short guide to porting your code over. Everything you could do with torchvision.io you can do with TorchCodec, usually with a very similar call. And TorchCodec supports many more features. To learn more about the image decoding and encoding features of TorchCodec, refer to the image decoding &lt;sphx_glr_generated_examples_decoding_image_decoding.py&gt; and image encoding &lt;sphx_glr_generated_examples_encoding_image_encoding.py&gt; tutorials.">
+
+.. only:: html
+
+  .. image:: /generated_examples/migration/images/thumb/sphx_glr_torchvision_migration_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/migration/torchvision_migration`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Migrating from TorchVision to TorchCodec</div>
+    </div>
+
+
+.. thumbnail-parent-div-close
+
+.. raw:: html
+
+    </div>
+
 
 .. toctree::
    :hidden:
@@ -345,6 +383,7 @@ Encoding
 
    /generated_examples/decoding/index.rst
    /generated_examples/encoding/index.rst
+   /generated_examples/migration/index.rst
 
 
 .. only:: html

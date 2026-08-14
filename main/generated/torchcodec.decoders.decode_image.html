@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>decode_image &#8212; TorchCodec 0.16.0.dev20260812+cu126 Documentation</title>
+    <title>decode_image &#8212; TorchCodec 0.17.0.dev20260814+cu126 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=477cc79d"></script>
+    <script src="../_static/documentation_options.js?v=74ff22c3"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -53,7 +53,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.16';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.17';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.decoders.decode_image.html" />
@@ -78,7 +78,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.16">
+<meta name="llm:version" content="0.17">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="api">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -184,7 +184,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.16');
+  document.documentElement.setAttribute('data-version', '0.17');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -535,6 +535,12 @@ document.write(`
                 </a>
               </li>
             
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/migration/index.html">
+                  Migrating from torchvision
+                </a>
+              </li>
+            
           </ul>
         
       </li>
@@ -813,6 +819,12 @@ document.write(`
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/encoding/index.html">
                   Encoding
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/migration/index.html">
+                  Migrating from torchvision
                 </a>
               </li>
             
@@ -1207,6 +1219,9 @@ for details.</p></li>
 </div><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode an image tensor to JPEG or PNG using the JpegEncoder and PngEncoder classes."><img alt="" src="../_images/sphx_glr_image_encoding_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/encoding/image_encoding.html"><span class="doc">Encoding images</span></a></p>
   <div class="sphx-glr-thumbnail-title">Encoding images</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="The image decoders and encoders of torchvision.io now live in torchcodec. This is a short guide to porting your code over. Everything you could do with torchvision.io you can do with TorchCodec, usually with a very similar call. And TorchCodec supports many more features. To learn more about the image decoding and encoding features of TorchCodec, refer to the image decoding &lt;sphx_glr_generated_examples_decoding_image_decoding.py&gt; and image encoding &lt;sphx_glr_generated_examples_encoding_image_encoding.py&gt; tutorials."><img alt="" src="../_images/sphx_glr_torchvision_migration_thumb.png" />
+<p><a class="reference internal" href="../generated_examples/migration/torchvision_migration.html"><span class="doc">Migrating from TorchVision to TorchCodec</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Migrating from TorchVision to TorchCodec</div>
 </div></div></dd></dl>
 
 </section>
@@ -1554,7 +1569,7 @@ for details.</p></li>
        "headline": "decode_image",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.decoders.decode_image.html",
-       "articleBody": "decode_image# torchcodec.decoders.decode_image(source: str | Path | bytes | Tensor, *, mode: Literal[\u0027UNCHANGED\u0027, \u0027GRAY\u0027, \u0027GRAY_ALPHA\u0027, \u0027RGB\u0027, \u0027RGB_ALPHA\u0027] | ImageReadMode = \u0027RGB\u0027, output_dtype: dtype | Literal[\u0027auto\u0027] = torch.uint8) \u2192 Tensor[source]# Decode an image into a [N]CHW tensor, detecting the format automatically. The format is detected from the encoded data (not the file extension), and decoding is delegated to the matching format-specific decoder. Supported formats are JPEG, PNG, WebP, GIF, AVIF and HEIC (requires libheif). The output shape is (C, H, W) for a single image and (N, C, H, W) for animated or multi-image formats (WebP, GIF, AVIF, HEIC). For finer control, or for format-specific options (e.g. device for CUDA JPEG decoding, num_threads for AVIF), use the dedicated decoders directly: decode_jpeg(), decode_png(), decode_webp(), decode_gif(), decode_avif(), decode_heic(). Example from torchcodec.decoders import decode_image jpeg_img = decode_image(\"image.jpg\") png_img = decode_image(\"image.png\") Parameters: source (str, pathlib.Path, bytes, or torch.Tensor) \u2013 The encoded image data: a path (str or pathlib.Path), a bytes object, or a 1-D uint8 torch.Tensor of the raw encoded bytes. mode (str or ImageReadMode, optional) \u2013 Desired color mode of the output image. Can be one of \"UNCHANGED\", \"GRAY\", \"GRAY_ALPHA\", \"RGB\", or \"RGB_ALPHA\". Default is \"RGB\". output_dtype (torch.dtype or \"auto\", optional) \u2013 desired dtype of the output image tensor. Accepted values are torch.uint8 (default), torch.uint16, and \"auto\". Formats that can carry more than 8 bits per channel (PNG, AVIF, HEIC) preserve that precision with torch.uint16 and \"auto\". See the format-specific decoders for details. Returns: The decoded image, of shape [N]CHW. Return type: torch.Tensor Examples using decode_image: Decoding images Decoding images Encoding images Encoding images",
+       "articleBody": "decode_image# torchcodec.decoders.decode_image(source: str | Path | bytes | Tensor, *, mode: Literal[\u0027UNCHANGED\u0027, \u0027GRAY\u0027, \u0027GRAY_ALPHA\u0027, \u0027RGB\u0027, \u0027RGB_ALPHA\u0027] | ImageReadMode = \u0027RGB\u0027, output_dtype: dtype | Literal[\u0027auto\u0027] = torch.uint8) \u2192 Tensor[source]# Decode an image into a [N]CHW tensor, detecting the format automatically. The format is detected from the encoded data (not the file extension), and decoding is delegated to the matching format-specific decoder. Supported formats are JPEG, PNG, WebP, GIF, AVIF and HEIC (requires libheif). The output shape is (C, H, W) for a single image and (N, C, H, W) for animated or multi-image formats (WebP, GIF, AVIF, HEIC). For finer control, or for format-specific options (e.g. device for CUDA JPEG decoding, num_threads for AVIF), use the dedicated decoders directly: decode_jpeg(), decode_png(), decode_webp(), decode_gif(), decode_avif(), decode_heic(). Example from torchcodec.decoders import decode_image jpeg_img = decode_image(\"image.jpg\") png_img = decode_image(\"image.png\") Parameters: source (str, pathlib.Path, bytes, or torch.Tensor) \u2013 The encoded image data: a path (str or pathlib.Path), a bytes object, or a 1-D uint8 torch.Tensor of the raw encoded bytes. mode (str or ImageReadMode, optional) \u2013 Desired color mode of the output image. Can be one of \"UNCHANGED\", \"GRAY\", \"GRAY_ALPHA\", \"RGB\", or \"RGB_ALPHA\". Default is \"RGB\". output_dtype (torch.dtype or \"auto\", optional) \u2013 desired dtype of the output image tensor. Accepted values are torch.uint8 (default), torch.uint16, and \"auto\". Formats that can carry more than 8 bits per channel (PNG, AVIF, HEIC) preserve that precision with torch.uint16 and \"auto\". See the format-specific decoders for details. Returns: The decoded image, of shape [N]CHW. Return type: torch.Tensor Examples using decode_image: Decoding images Decoding images Encoding images Encoding images Migrating from TorchVision to TorchCodec Migrating from TorchVision to TorchCodec",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

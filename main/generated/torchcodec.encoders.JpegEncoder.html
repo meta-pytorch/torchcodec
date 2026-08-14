@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>JpegEncoder &#8212; TorchCodec 0.16.0.dev20260812+cu126 Documentation</title>
+    <title>JpegEncoder &#8212; TorchCodec 0.17.0.dev20260814+cu126 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../_static/documentation_options.js?v=477cc79d"></script>
+    <script src="../_static/documentation_options.js?v=74ff22c3"></script>
     <script src="../_static/doctools.js?v=888ff710"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -53,7 +53,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.16';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.17';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/generated/torchcodec.encoders.JpegEncoder.html" />
@@ -78,7 +78,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.16">
+<meta name="llm:version" content="0.17">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="api">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -184,7 +184,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.16');
+  document.documentElement.setAttribute('data-version', '0.17');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -535,6 +535,12 @@ document.write(`
                 </a>
               </li>
             
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/migration/index.html">
+                  Migrating from torchvision
+                </a>
+              </li>
+            
           </ul>
         
       </li>
@@ -813,6 +819,12 @@ document.write(`
               <li class=" ">
                 <a class="nav-link dropdown-item nav-internal" href="../generated_examples/encoding/index.html">
                   Encoding
+                </a>
+              </li>
+            
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="../generated_examples/migration/index.html">
+                  Migrating from torchvision
                 </a>
               </li>
             
@@ -1181,6 +1193,9 @@ device, encoding is performed on the GPU with nvJPEG, and only
 <div class="sphx-glr-thumbnails"><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to encode an image tensor to JPEG or PNG using the JpegEncoder and PngEncoder classes."><img alt="" src="../_images/sphx_glr_image_encoding_thumb.png" />
 <p><a class="reference internal" href="../generated_examples/encoding/image_encoding.html"><span class="doc">Encoding images</span></a></p>
   <div class="sphx-glr-thumbnail-title">Encoding images</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="The image decoders and encoders of torchvision.io now live in torchcodec. This is a short guide to porting your code over. Everything you could do with torchvision.io you can do with TorchCodec, usually with a very similar call. And TorchCodec supports many more features. To learn more about the image decoding and encoding features of TorchCodec, refer to the image decoding &lt;sphx_glr_generated_examples_decoding_image_decoding.py&gt; and image encoding &lt;sphx_glr_generated_examples_encoding_image_encoding.py&gt; tutorials."><img alt="" src="../_images/sphx_glr_torchvision_migration_thumb.png" />
+<p><a class="reference internal" href="../generated_examples/migration/torchvision_migration.html"><span class="doc">Migrating from TorchVision to TorchCodec</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Migrating from TorchVision to TorchCodec</div>
 </div></div><dl class="py method">
 <dt class="sig sig-object py" id="torchcodec.encoders.JpegEncoder.to_file">
 <span class="sig-name descname"><span class="pre">to_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dest</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/stdtypes.html#str" title="(in Python v3.14)"><span class="pre">str</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><a class="reference external" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path" title="(in Python v3.14)"><span class="pre">Path</span></a></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">quality</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference external" href="https://docs.python.org/3/library/functions.html#int" title="(in Python v3.14)"><span class="pre">int</span></a></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">75</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference external" href="https://docs.python.org/3/library/constants.html#None" title="(in Python v3.14)"><span class="pre">None</span></a></span></span><a class="reference internal" href="../_modules/torchcodec/encoders/_image_encoders.html#JpegEncoder.to_file"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#torchcodec.encoders.JpegEncoder.to_file" title="Link to this definition">#</a></dt>
@@ -1586,7 +1601,7 @@ device as the input image.</p>
        "headline": "JpegEncoder",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated/torchcodec.encoders.JpegEncoder.html",
-       "articleBody": "JpegEncoder# class torchcodec.encoders.JpegEncoder(img: Tensor)[source]# Encoder for JPEG images. For a tutorial, see: Encoding images. Example from torchcodec.encoders import JpegEncoder JpegEncoder(img).to_file(\"image.jpg\") # or encode to a file-like object or to a tensor, see methods below. Parameters: img (torch.Tensor) \u2013 The image to encode, a 3-dimensional uint8 tensor in CHW layout with 1 (grayscale) or 3 (RGB) channels. If on a CUDA device, encoding is performed on the GPU with nvJPEG, and only 3-channel RGB is supported. Examples using JpegEncoder: Encoding images Encoding images to_file(dest: str | Path, *, quality: int = 75) \u2192 None[source]# Encode the image into a JPEG file. Parameters: dest (str or pathlib.Path) \u2013 The path to the output file, e.g. image.jpg. quality (int, optional) \u2013 Quality of the output, between 1 and 100. Higher means better quality and larger file size. Default: 75. to_file_like(dest: RawIOBase | BufferedIOBase, *, quality: int = 75) \u2192 None[source]# Encode the image into a file-like object. Parameters: dest \u2013 A writable file-like object supporting write and seek, such as io.BytesIO() or an open file in binary write mode. quality (int, optional) \u2013 Quality of the output, between 1 and 100. Higher means better quality and larger file size. Default: 75. to_tensor(*, quality: int = 75) \u2192 Tensor[source]# Encode the image into raw bytes, as a 1D uint8 tensor. The returned tensor is on the same device as the input image (a CUDA input yields a CUDA tensor). Parameters: quality (int, optional) \u2013 Quality of the output, between 1 and 100. Higher means better quality and larger file size. Default: 75. Returns: The encoded bytes, a 1D uint8 tensor on the same device as the input image. Return type: torch.Tensor",
+       "articleBody": "JpegEncoder# class torchcodec.encoders.JpegEncoder(img: Tensor)[source]# Encoder for JPEG images. For a tutorial, see: Encoding images. Example from torchcodec.encoders import JpegEncoder JpegEncoder(img).to_file(\"image.jpg\") # or encode to a file-like object or to a tensor, see methods below. Parameters: img (torch.Tensor) \u2013 The image to encode, a 3-dimensional uint8 tensor in CHW layout with 1 (grayscale) or 3 (RGB) channels. If on a CUDA device, encoding is performed on the GPU with nvJPEG, and only 3-channel RGB is supported. Examples using JpegEncoder: Encoding images Encoding images Migrating from TorchVision to TorchCodec Migrating from TorchVision to TorchCodec to_file(dest: str | Path, *, quality: int = 75) \u2192 None[source]# Encode the image into a JPEG file. Parameters: dest (str or pathlib.Path) \u2013 The path to the output file, e.g. image.jpg. quality (int, optional) \u2013 Quality of the output, between 1 and 100. Higher means better quality and larger file size. Default: 75. to_file_like(dest: RawIOBase | BufferedIOBase, *, quality: int = 75) \u2192 None[source]# Encode the image into a file-like object. Parameters: dest \u2013 A writable file-like object supporting write and seek, such as io.BytesIO() or an open file in binary write mode. quality (int, optional) \u2013 Quality of the output, between 1 and 100. Higher means better quality and larger file size. Default: 75. to_tensor(*, quality: int = 75) \u2192 Tensor[source]# Encode the image into raw bytes, as a 1D uint8 tensor. The returned tensor is on the same device as the input image (a CUDA input yields a CUDA tensor). Parameters: quality (int, optional) \u2013 Quality of the output, between 1 and 100. Higher means better quality and larger file size. Default: 75. Returns: The encoded bytes, a 1D uint8 tensor on the same device as the input image. Return type: torch.Tensor",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

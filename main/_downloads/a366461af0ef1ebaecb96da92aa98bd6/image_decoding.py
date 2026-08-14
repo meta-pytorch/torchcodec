@@ -21,6 +21,13 @@ options (like CUDA decoding with :func:`~torchcodec.decoders.decode_jpeg`).:
 - :func:`~torchcodec.decoders.decode_gif`
 - :func:`~torchcodec.decoders.decode_avif`
 - :func:`~torchcodec.decoders.decode_heic`
+
+.. note::
+
+    These decoders supersede the ones from ``torchvision.io``: they are more
+    robust and support more features. See
+    :ref:`sphx_glr_generated_examples_migration_torchvision_migration.py` for a
+    migration guide.
 """
 
 # %%

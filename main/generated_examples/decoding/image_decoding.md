@@ -13,6 +13,13 @@ options (like CUDA decoding with [`decode_jpeg()`](../../generated/torchcodec.de
 - [`decode_avif()`](../../generated/torchcodec.decoders.decode_avif.html#torchcodec.decoders.decode_avif)
 - [`decode_heic()`](../../generated/torchcodec.decoders.decode_heic.html#torchcodec.decoders.decode_heic)
 
+Note
+
+These decoders supersede the ones from `torchvision.io`: they are more
+robust and support more features. See
+[Migrating from TorchVision to TorchCodec](../migration/torchvision_migration.html#sphx-glr-generated-examples-migration-torchvision-migration-py) for a
+migration guide.
+
 First, a bit of boilerplate: we'll download an image from the web and define a
 plotting utility. You can ignore that part and jump right below to
 Decoding an image.
@@ -138,7 +145,7 @@ image = decode_jpeg(raw_image_bytes, device="cuda")
 images = decode_jpeg([img_0, img_1, img_2], device="cuda")
 ```
 
-**Total running time of the script:** (0 minutes 0.160 seconds)
+**Total running time of the script:** (0 minutes 0.168 seconds)
 
 [`Download Jupyter notebook: image_decoding.ipynb`](../../_downloads/f5cba4a26e1c617bc387e9f05406c8f2/image_decoding.ipynb)
 

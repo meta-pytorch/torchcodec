@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Welcome to the TorchCodec documentation! &#8212; TorchCodec 0.16.0.dev20260812+cu126 Documentation</title>
+    <title>Welcome to the TorchCodec documentation! &#8212; TorchCodec 0.17.0.dev20260814+cu126 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="_static/documentation_options.js?v=477cc79d"></script>
+    <script src="_static/documentation_options.js?v=74ff22c3"></script>
     <script src="_static/doctools.js?v=888ff710"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="_static/sg-tags.js?v=d80f6fa4"></script>
@@ -53,7 +53,7 @@
     <script>
         DOCUMENTATION_OPTIONS.theme_version = '0.15.4';
         DOCUMENTATION_OPTIONS.theme_switcher_json_url = 'https://meta-pytorch.org/torchcodec/torchcodec-versions.json';
-        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.16';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '0.17';
         DOCUMENTATION_OPTIONS.show_version_warning_banner = true;
         </script>
     <link rel="canonical" href="https://meta-pytorch.org/torchcodec/stable/index.html" />
@@ -77,7 +77,7 @@
 
 <meta name="llm:navigation-file" content="/llms.txt">
 <meta name="llm:sitemap" content="/sitemap.xml">
-<meta name="llm:version" content="0.16">
+<meta name="llm:version" content="0.17">
 <meta name="llm:project" content="Python">
 <meta name="llm:page-type" content="documentation">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM Navigation Guide">
@@ -183,7 +183,7 @@
   fbq('track', 'PageView');
 </script>
 <script>
-  document.documentElement.setAttribute('data-version', '0.16');
+  document.documentElement.setAttribute('data-version', '0.17');
 </script>
 <noscript>
   <img height="1" width="1" src="https://www.facebook.com/tr?id=243028289693773&ev=PageView&noscript=1" />
@@ -534,6 +534,12 @@ document.write(`
                 </a>
               </li>
             
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="generated_examples/migration/index.html">
+                  Migrating from torchvision
+                </a>
+              </li>
+            
           </ul>
         
       </li>
@@ -817,6 +823,12 @@ document.write(`
                 </a>
               </li>
             
+              <li class=" ">
+                <a class="nav-link dropdown-item nav-internal" href="generated_examples/migration/index.html">
+                  Migrating from torchvision
+                </a>
+              </li>
+            
           </ul>
         
       </li>
@@ -1028,19 +1040,20 @@ document.write(`
                   
   <section id="welcome-to-the-torchcodec-documentation">
 <h1>Welcome to the TorchCodec documentation!<a class="headerlink" href="#welcome-to-the-torchcodec-documentation" title="Link to this heading">#</a></h1>
-<p>TorchCodec is a Python library for decoding video and audio data into PyTorch
-tensors, on CPU and CUDA GPU. It also supports audio and video encoding!
-It aims to be fast, easy to use, and well integrated into the PyTorch ecosystem.
-If you want to use PyTorch to train ML models on videos and audio, TorchCodec is
-how you turn these into data.</p>
+<p>TorchCodec is a PyTorch-native library for decoding and encoding media: videos,
+audio, and images, on CPU and CUDA GPU. It aims to be fast, easy to
+use, and well integrated into the PyTorch ecosystem. If you want to use PyTorch
+to train ML models on videos, audio, or images, TorchCodec is how you turn these
+into tensors, and back.</p>
 <p>We achieve these capabilities through:</p>
 <ul class="simple">
 <li><p>Pythonic APIs that mirror Python and PyTorch conventions.</p></li>
-<li><p>Relying on <a class="reference external" href="https://www.ffmpeg.org/">FFmpeg</a> to do the decoding / encoding.
-TorchCodec uses the version of FFmpeg you already have installed. FFmpeg is a
-mature library with broad coverage available on most systems. It is, however,
-not easy to use.  TorchCodec abstracts FFmpeg’s complexity to ensure it is
-used correctly and efficiently.</p></li>
+<li><p>Relying on <a class="reference external" href="https://www.ffmpeg.org/">FFmpeg</a> to do the video and audio
+decoding / encoding. TorchCodec uses the version of FFmpeg you already have
+installed. FFmpeg is a mature library with broad coverage available on most
+systems. It is, however, not easy to use.  TorchCodec abstracts FFmpeg’s
+complexity to ensure it is used correctly and efficiently. FFmpeg is optional:
+the image decoders and encoders don’t need it.</p></li>
 <li><p>Returning data as PyTorch tensors, ready to be fed into PyTorch transforms
 or used directly to train models.</p></li>
 </ul>
@@ -1214,6 +1227,23 @@ Audio Encoding</div>
 </div>
 </div>
 </div>
+</section>
+<section id="migrating-from-torchvision">
+<h2>Migrating from torchvision<a class="headerlink" href="#migrating-from-torchvision" title="Link to this heading">#</a></h2>
+<div class="sd-container-fluid sd-sphinx-override sd-mb-4 docutils">
+<div class="sd-row sd-row-cols-3 sd-row-cols-xs-3 sd-row-cols-sm-3 sd-row-cols-md-3 sd-row-cols-lg-3 docutils">
+<div class="sd-col sd-d-flex-row docutils">
+<div class="sd-card sd-sphinx-override sd-w-100 sd-shadow-sm sd-card-hover docutils">
+<div class="sd-card-body docutils">
+<div class="sd-card-title sd-font-weight-bold docutils">
+<svg version="1.1" width="1.0em" height="1.0em" class="sd-octicon sd-octicon-file-code" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 1.75C4 .784 4.784 0 5.75 0h5.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v8.586A1.75 1.75 0 0 1 14.25 15h-9a.75.75 0 0 1 0-1.5h9a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 10 4.25V1.5H5.75a.25.25 0 0 0-.25.25v2.5a.75.75 0 0 1-1.5 0Zm1.72 4.97a.75.75 0 0 1 1.06 0l2 2a.75.75 0 0 1 0 1.06l-2 2a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l1.47-1.47-1.47-1.47a.75.75 0 0 1 0-1.06ZM3.28 7.78 1.81 9.25l1.47 1.47a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018l-2-2a.75.75 0 0 1 0-1.06l2-2a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042Zm8.22-6.218V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z"></path></svg>
+Migrating from torchvision</div>
+<p class="sd-card-text">How to port <code class="docutils literal notranslate"><span class="pre">torchvision.io</span></code> image decoding and encoding code</p>
+</div>
+<a class="sd-stretched-link sd-hide-link-text reference external" href="generated_examples/migration/torchvision_migration.html"><span>generated_examples/migration/torchvision_migration.html</span></a></div>
+</div>
+</div>
+</div>
 <div class="toctree-wrapper compound">
 </div>
 <div class="toctree-wrapper compound">
@@ -1266,7 +1296,8 @@ Audio Encoding</div>
     <ul class="visible nav section-nav flex-column">
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#installation-instructions">Installation instructions</a></li>
 <li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#decoding">Decoding</a></li>
-<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#encoding">Encoding</a><ul class="nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#encoding">Encoding</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#migrating-from-torchvision">Migrating from torchvision</a><ul class="nav section-nav flex-column">
 </ul>
 </li>
 </ul>
@@ -1494,7 +1525,7 @@ Audio Encoding</div>
        "headline": "Welcome to the TorchCodec documentation!",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/index.html",
-       "articleBody": "Welcome to the TorchCodec documentation!# TorchCodec is a Python library for decoding video and audio data into PyTorch tensors, on CPU and CUDA GPU. It also supports audio and video encoding! It aims to be fast, easy to use, and well integrated into the PyTorch ecosystem. If you want to use PyTorch to train ML models on videos and audio, TorchCodec is how you turn these into data. We achieve these capabilities through: Pythonic APIs that mirror Python and PyTorch conventions. Relying on FFmpeg to do the decoding / encoding. TorchCodec uses the version of FFmpeg you already have installed. FFmpeg is a mature library with broad coverage available on most systems. It is, however, not easy to use. TorchCodec abstracts FFmpeg\u2019s complexity to ensure it is used correctly and efficiently. Returning data as PyTorch tensors, ready to be fed into PyTorch transforms or used directly to train models. Installation instructions# Installation instructions How to install TorchCodec https://github.com/meta-pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec Decoding# Getting Started with TorchCodec A simple video decoding example generated_examples/decoding/basic_example.html Image Decoding How to decode images (JPEG on CPU and CUDA, PNG, WebP, and more) generated_examples/decoding/image_decoding.html Audio Decoding A simple audio decoding example generated_examples/decoding/audio_decoding.html GPU decoding A simple example demonstrating CUDA GPU decoding generated_examples/decoding/basic_cuda_example.html Streaming video How to efficiently decode videos from the cloud generated_examples/decoding/file_like.html Parallel decoding How to decode a video with multiple processes or threads. generated_examples/decoding/parallel_decoding.html Clip sampling How to sample regular and random clips from a video generated_examples/decoding/sampling.html Decoder transforms How to apply transforms while decoding generated_examples/decoding/transforms.html Performance Tips Tips for optimizing video decoding performance generated_examples/decoding/performance_tips.html HDR Decoding How to decode HDR videos with the output_dtype parameter generated_examples/decoding/hdr_decoding.html Encoding# Video and Audio Encoding How encode audio and video streams (CPU and CUDA) generated_examples/encoding/multi_stream_encoding.html Image Encoding How to encode image tensors into JPEG (CPU and CUDA) or PNG generated_examples/encoding/image_encoding.html Video Encoding How to encode video frames into a video file generated_examples/encoding/video_encoding.html Audio Encoding How to encode audio samples into an audio file generated_examples/encoding/audio_encoding.html",
+       "articleBody": "Welcome to the TorchCodec documentation!# TorchCodec is a PyTorch-native library for decoding and encoding media: videos, audio, and images, on CPU and CUDA GPU. It aims to be fast, easy to use, and well integrated into the PyTorch ecosystem. If you want to use PyTorch to train ML models on videos, audio, or images, TorchCodec is how you turn these into tensors, and back. We achieve these capabilities through: Pythonic APIs that mirror Python and PyTorch conventions. Relying on FFmpeg to do the video and audio decoding / encoding. TorchCodec uses the version of FFmpeg you already have installed. FFmpeg is a mature library with broad coverage available on most systems. It is, however, not easy to use. TorchCodec abstracts FFmpeg\u2019s complexity to ensure it is used correctly and efficiently. FFmpeg is optional: the image decoders and encoders don\u2019t need it. Returning data as PyTorch tensors, ready to be fed into PyTorch transforms or used directly to train models. Installation instructions# Installation instructions How to install TorchCodec https://github.com/meta-pytorch/torchcodec?tab=readme-ov-file#installing-torchcodec Decoding# Getting Started with TorchCodec A simple video decoding example generated_examples/decoding/basic_example.html Image Decoding How to decode images (JPEG on CPU and CUDA, PNG, WebP, and more) generated_examples/decoding/image_decoding.html Audio Decoding A simple audio decoding example generated_examples/decoding/audio_decoding.html GPU decoding A simple example demonstrating CUDA GPU decoding generated_examples/decoding/basic_cuda_example.html Streaming video How to efficiently decode videos from the cloud generated_examples/decoding/file_like.html Parallel decoding How to decode a video with multiple processes or threads. generated_examples/decoding/parallel_decoding.html Clip sampling How to sample regular and random clips from a video generated_examples/decoding/sampling.html Decoder transforms How to apply transforms while decoding generated_examples/decoding/transforms.html Performance Tips Tips for optimizing video decoding performance generated_examples/decoding/performance_tips.html HDR Decoding How to decode HDR videos with the output_dtype parameter generated_examples/decoding/hdr_decoding.html Encoding# Video and Audio Encoding How encode audio and video streams (CPU and CUDA) generated_examples/encoding/multi_stream_encoding.html Image Encoding How to encode image tensors into JPEG (CPU and CUDA) or PNG generated_examples/encoding/image_encoding.html Video Encoding How to encode video frames into a video file generated_examples/encoding/video_encoding.html Audio Encoding How to encode audio samples into an audio file generated_examples/encoding/audio_encoding.html Migrating from torchvision# Migrating from torchvision How to port torchvision.io image decoding and encoding code generated_examples/migration/torchvision_migration.html",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

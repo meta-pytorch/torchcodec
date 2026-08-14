@@ -1,19 +1,20 @@
 # Welcome to the TorchCodec documentation!
 
-TorchCodec is a Python library for decoding video and audio data into PyTorch
-tensors, on CPU and CUDA GPU. It also supports audio and video encoding!
-It aims to be fast, easy to use, and well integrated into the PyTorch ecosystem.
-If you want to use PyTorch to train ML models on videos and audio, TorchCodec is
-how you turn these into data.
+TorchCodec is a PyTorch-native library for decoding and encoding media: videos,
+audio, and images, on CPU and CUDA GPU. It aims to be fast, easy to
+use, and well integrated into the PyTorch ecosystem. If you want to use PyTorch
+to train ML models on videos, audio, or images, TorchCodec is how you turn these
+into tensors, and back.
 
 We achieve these capabilities through:
 
 - Pythonic APIs that mirror Python and PyTorch conventions.
-- Relying on [FFmpeg](https://www.ffmpeg.org/) to do the decoding / encoding.
-TorchCodec uses the version of FFmpeg you already have installed. FFmpeg is a
-mature library with broad coverage available on most systems. It is, however,
-not easy to use. TorchCodec abstracts FFmpeg's complexity to ensure it is
-used correctly and efficiently.
+- Relying on [FFmpeg](https://www.ffmpeg.org/) to do the video and audio
+decoding / encoding. TorchCodec uses the version of FFmpeg you already have
+installed. FFmpeg is a mature library with broad coverage available on most
+systems. It is, however, not easy to use. TorchCodec abstracts FFmpeg's
+complexity to ensure it is used correctly and efficiently. FFmpeg is optional:
+the image decoders and encoders don't need it.
 - Returning data as PyTorch tensors, ready to be fed into PyTorch transforms
 or used directly to train models.
 
@@ -112,3 +113,11 @@ Audio Encoding
 How to encode audio samples into an audio file
 
 [generated_examples/encoding/audio_encoding.html](generated_examples/encoding/audio_encoding.html)
+
+## Migrating from torchvision
+
+Migrating from torchvision
+
+How to port `torchvision.io` image decoding and encoding code
+
+[generated_examples/migration/torchvision_migration.html](generated_examples/migration/torchvision_migration.html)

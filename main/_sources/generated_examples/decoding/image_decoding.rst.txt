@@ -27,13 +27,20 @@ options (like CUDA decoding with :func:`~torchcodec.decoders.decode_jpeg`).:
 - :func:`~torchcodec.decoders.decode_avif`
 - :func:`~torchcodec.decoders.decode_heic`
 
-.. GENERATED FROM PYTHON SOURCE LINES 27-30
+.. note::
+
+    These decoders supersede the ones from ``torchvision.io``: they are more
+    robust and support more features. See
+    :ref:`sphx_glr_generated_examples_migration_torchvision_migration.py` for a
+    migration guide.
+
+.. GENERATED FROM PYTHON SOURCE LINES 34-37
 
 First, a bit of boilerplate: we'll download an image from the web and define a
 plotting utility. You can ignore that part and jump right below to
 :ref:`decoding_image`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 30-59
+.. GENERATED FROM PYTHON SOURCE LINES 37-66
 
 .. code-block:: Python
 
@@ -73,7 +80,7 @@ plotting utility. You can ignore that part and jump right below to
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 60-69
+.. GENERATED FROM PYTHON SOURCE LINES 67-76
 
 .. _decoding_image:
 
@@ -85,7 +92,7 @@ path to a local file, or a ``torch.Tensor`` of encoded bytes. The format is
 detected automatically from the content, so the same call works for a JPEG, a
 PNG, a WebP, etc.
 
-.. GENERATED FROM PYTHON SOURCE LINES 69-78
+.. GENERATED FROM PYTHON SOURCE LINES 76-85
 
 .. code-block:: Python
 
@@ -117,13 +124,13 @@ PNG, a WebP, etc.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 79-82
+.. GENERATED FROM PYTHON SOURCE LINES 86-89
 
 The decoded image is a :class:`torch.Tensor` of shape ``(C, H, W)`` where C is
 the number of channels, H the height and W the width. By default images are
 decoded as RGB (3 channels) with ``torch.uint8`` values.
 
-.. GENERATED FROM PYTHON SOURCE LINES 84-89
+.. GENERATED FROM PYTHON SOURCE LINES 91-96
 
 Choosing the color mode
 -----------------------
@@ -131,7 +138,7 @@ Choosing the color mode
 The ``mode`` parameter controls the number and meaning of the output channels.
 It can be ``"RGB"`` (the default), ``"GRAY"``, ``"RGB_ALPHA"``, and a few more.
 
-.. GENERATED FROM PYTHON SOURCE LINES 89-94
+.. GENERATED FROM PYTHON SOURCE LINES 96-101
 
 .. code-block:: Python
 
@@ -158,7 +165,7 @@ It can be ``"RGB"`` (the default), ``"GRAY"``, ``"RGB_ALPHA"``, and a few more.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 95-100
+.. GENERATED FROM PYTHON SOURCE LINES 102-107
 
 Controlling the output dtype
 ----------------------------
@@ -166,7 +173,7 @@ Controlling the output dtype
 The ``output_dtype`` parameter controls the dtype of the returned tensor. It
 can be ``torch.uint8`` (the default), ``torch.uint16``, or ``"auto"``.
 
-.. GENERATED FROM PYTHON SOURCE LINES 100-106
+.. GENERATED FROM PYTHON SOURCE LINES 107-113
 
 .. code-block:: Python
 
@@ -190,14 +197,14 @@ can be ``torch.uint8`` (the default), ``torch.uint16``, or ``"auto"``.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 107-111
+.. GENERATED FROM PYTHON SOURCE LINES 114-118
 
 For 8-bit formats like JPEG, WebP and GIF, ``torch.uint16`` simply scales the
 8-bit values up to the full 16-bit range (0-255 -> 0-65535). Formats that can
 carry more than 8 bits per channel (PNG, AVIF, HEIC) actually **preserve** that
 extra precision when you pass ``torch.uint16`` or ``"auto"``.
 
-.. GENERATED FROM PYTHON SOURCE LINES 113-123
+.. GENERATED FROM PYTHON SOURCE LINES 120-130
 
 Decoding animated images
 ------------------------
@@ -210,7 +217,7 @@ case :func:`~torchcodec.decoders.decode_gif`,
 with one frame per animation frame, instead of the ``(C, H, W)`` you get for a
 still image.
 
-.. GENERATED FROM PYTHON SOURCE LINES 125-142
+.. GENERATED FROM PYTHON SOURCE LINES 132-149
 
 Decoding JPEGs on GPU
 ---------------------
@@ -233,7 +240,7 @@ in one nvJPEG call, which is much faster than decoding images one at a time.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 0.160 seconds)
+   **Total running time of the script:** (0 minutes 0.168 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_image_decoding.py:

@@ -86,6 +86,14 @@ Encoding video with the Encoder
 
 Encoding audio and video streams with the Encoder
 
+## Migrating from torchvision
+
+![](../_images/sphx_glr_torchvision_migration_thumb.png)
+
+[Migrating from TorchVision to TorchCodec](migration/torchvision_migration.html)
+
+Migrating from TorchVision to TorchCodec
+
 [`Download all examples in Python source code: generated_examples_python.zip`](../_downloads/b2d9639062e3afd5d3a8b3bdfff773cf/generated_examples_python.zip)
 
 [`Download all examples in Jupyter notebooks: generated_examples_jupyter.zip`](../_downloads/e2fcbdd43a3a9785cb21e4b029f3d34b/generated_examples_jupyter.zip)

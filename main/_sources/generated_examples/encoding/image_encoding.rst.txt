@@ -18,13 +18,20 @@ In this example, we'll learn how to encode an image tensor to JPEG or PNG using
 the :class:`~torchcodec.encoders.JpegEncoder` and
 :class:`~torchcodec.encoders.PngEncoder` classes.
 
-.. GENERATED FROM PYTHON SOURCE LINES 18-21
+.. note::
+
+    These encoders supersede the ones from ``torchvision.io``: they are more
+    robust and support more features. See
+    :ref:`sphx_glr_generated_examples_migration_torchvision_migration.py` for a
+    migration guide.
+
+.. GENERATED FROM PYTHON SOURCE LINES 25-28
 
 First, a bit of boilerplate: we'll download an image from the web and define a
 plotting utility. You can ignore that part and jump right below to
 :ref:`encoding_image`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 21-52
+.. GENERATED FROM PYTHON SOURCE LINES 28-59
 
 .. code-block:: Python
 
@@ -66,7 +73,7 @@ plotting utility. You can ignore that part and jump right below to
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 53-60
+.. GENERATED FROM PYTHON SOURCE LINES 60-67
 
 .. _encoding_image:
 
@@ -76,7 +83,7 @@ Encoding an image
 Encoders expect a 3D uint8 tensor in CHW layout (1 or 3 channels), which is
 exactly what our image is:
 
-.. GENERATED FROM PYTHON SOURCE LINES 60-63
+.. GENERATED FROM PYTHON SOURCE LINES 67-70
 
 .. code-block:: Python
 
@@ -101,7 +108,7 @@ exactly what our image is:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 64-69
+.. GENERATED FROM PYTHON SOURCE LINES 71-76
 
 We instantiate a :class:`~torchcodec.encoders.JpegEncoder` with the image, and
 encode it. Three destinations are supported: a file with
@@ -109,7 +116,7 @@ encode it. Three destinations are supported: a file with
 :meth:`~torchcodec.encoders.JpegEncoder.to_file_like`, or a 1D uint8 tensor of
 raw bytes with :meth:`~torchcodec.encoders.JpegEncoder.to_tensor`.
 
-.. GENERATED FROM PYTHON SOURCE LINES 69-81
+.. GENERATED FROM PYTHON SOURCE LINES 76-88
 
 .. code-block:: Python
 
@@ -138,11 +145,11 @@ raw bytes with :meth:`~torchcodec.encoders.JpegEncoder.to_tensor`.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 82-83
+.. GENERATED FROM PYTHON SOURCE LINES 89-90
 
 That's it! We can decode the encoded bytes back to make sure everything worked:
 
-.. GENERATED FROM PYTHON SOURCE LINES 83-89
+.. GENERATED FROM PYTHON SOURCE LINES 90-96
 
 .. code-block:: Python
 
@@ -170,12 +177,12 @@ That's it! We can decode the encoded bytes back to make sure everything worked:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 90-92
+.. GENERATED FROM PYTHON SOURCE LINES 97-99
 
 :class:`~torchcodec.encoders.PngEncoder` works exactly the same way, and PNG is
 lossless (unlike JPEG):
 
-.. GENERATED FROM PYTHON SOURCE LINES 92-97
+.. GENERATED FROM PYTHON SOURCE LINES 99-104
 
 .. code-block:: Python
 
@@ -197,13 +204,13 @@ lossless (unlike JPEG):
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 98-101
+.. GENERATED FROM PYTHON SOURCE LINES 105-108
 
 Both encoders support encoding options: ``JpegEncoder`` takes a ``quality``
 (1-100), and ``PngEncoder`` takes a ``compression_level`` (0-9). For example, a
 lower JPEG quality yields a smaller output:
 
-.. GENERATED FROM PYTHON SOURCE LINES 101-105
+.. GENERATED FROM PYTHON SOURCE LINES 108-112
 
 .. code-block:: Python
 
@@ -224,7 +231,7 @@ lower JPEG quality yields a smaller output:
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 106-124
+.. GENERATED FROM PYTHON SOURCE LINES 113-131
 
 Encoding JPEGs on GPU
 ---------------------
@@ -245,7 +252,7 @@ an image that already lives on the GPU, and the encoding happens there. Only
 
 PNG encoding is CPU-only.
 
-.. GENERATED FROM PYTHON SOURCE LINES 126-128
+.. GENERATED FROM PYTHON SOURCE LINES 133-135
 
 Check the docstrings of the encoding methods to learn about the different
 encoding options.
@@ -253,7 +260,7 @@ encoding options.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 0.188 seconds)
+   **Total running time of the script:** (0 minutes 0.184 seconds)
 
 
 .. _sphx_glr_download_generated_examples_encoding_image_encoding.py:
