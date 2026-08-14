@@ -252,7 +252,6 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
         av_frame.linesize[1],
         validate_int64_to_int(dst.stride(0) * 2, "dst.stride(0)*2"),
         bit_depth,
-        out_scale,
         cached_color_matrix.matrix,
         stream);
   } else {
@@ -265,7 +264,6 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
         av_frame.linesize[0],
         av_frame.linesize[1],
         validate_int64_to_int(dst.stride(0), "dst.stride(0)"),
-        out_scale,
         cached_color_matrix.matrix,
         stream);
   }

@@ -61,7 +61,6 @@ void launch_nv12_to_rgb_kernel(
     int y_pitch,
     int uv_pitch,
     int rgb_pitch,
-    float out_scale,
     const float color_matrix[3][4],
     cudaStream_t stream);
 
@@ -75,7 +74,6 @@ void launch_p016_to_rgb16_kernel(
     int uv_pitch,
     int rgb_pitch,
     int bit_depth,
-    float out_scale,
     const float color_matrix[3][4],
     cudaStream_t stream);
 
