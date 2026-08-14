@@ -3419,8 +3419,14 @@ def _block_devices():
 
 
 def _is_msb_aligned(pix_fmt):
-    # NVDEC's semi-planar surfaces store their samples in the *most* significant
-    # bits of a uint16; the planar CPU formats use the least significant ones.
+    # By msb-aligned we mean 10- or 12-bit samples that are stored in the most
+    # significant bits of a uint16. They thus span the whole uint16 value range
+    # (in steps of 64 or 16) rather than the [0, 1024) or [0, 4_096) ranges of
+    # lsb-aligned samples, so they must be shifted down to be compared to
+    # those. 8-bit samples fill their uint8, so they are msb-aligned by
+    # definition.
+
+    # NVDEC's P010 and P012 are msb-aligned. P016 nominally uses all 16 bits.
     return pix_fmt.startswith("p0")
 
 
@@ -3480,12 +3486,6 @@ _MATERIALIZE_VIDEOS = (
 
 def _materialize_ids(case):
     return case.video.path.stem
-
-
-def _planes_equal(a, b):
-    # Elementwise equality that also works for uint16 (some comparison kernels
-    # aren't implemented for it, so compare as int32).
-    return bool((a.to(torch.int32) == b.to(torch.int32)).all())
 
 
 class TestBlocks:
@@ -3831,17 +3831,17 @@ class TestBlocks:
     @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
     def test_materialize_cuda_planes_match_cpu(self, case):
         # NVDEC and FFmpeg's software decoder produce the very same samples, so
-        # the raw planes must match bit-for-bit across devices - once the NVDEC
-        # ones are shifted back down to the CPU planes' scale. That shift is
-        # what makes decoding a 10-/12-bit source into a 16-bit surface lossless
-        # (and it doesn't depend on whether FFmpeg could tag it p012le).
+        # the raw planes must match bit-for-bit across devices, once the NVDEC
+        # ones are shifted back down to the CPU planes' scale.
         cpu = self._first_frame(case.video.path, "cpu")[0].materialize()
         cuda = self._first_frame(case.video.path, "cuda")[0].materialize()
 
         shift = 16 - case.bit_depth if _is_msb_aligned(cuda.pix_fmt) else 0
         assert len(cpu.planes) == len(cuda.planes)
         for cpu_plane, cuda_plane in zip(cpu.planes, cuda.planes):
-            assert _planes_equal(cpu_plane, cuda_plane.cpu().to(torch.int32) >> shift)
+            torch.testing.assert_close(
+                cpu_plane.to(torch.int32), cuda_plane.cpu().to(torch.int32) >> shift, atol=0, rtol=0
+            )   
 
     @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
     @pytest.mark.parametrize("device", _block_devices())
@@ -3922,7 +3922,7 @@ class TestBlocks:
         gc.collect()
 
         for plane, snapshot in zip(planes, saved):
-            assert _planes_equal(plane, snapshot)
+            torch.testing.assert_close(plane.to(torch.int32), snapshot.to(torch.int32), atol=0, rtol=0)
         planes[0][0, 0] = 0  # still writable: the memory is valid
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, BT709_FULL_RANGE))
