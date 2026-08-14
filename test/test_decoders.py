@@ -3840,8 +3840,11 @@ class TestBlocks:
         assert len(cpu.planes) == len(cuda.planes)
         for cpu_plane, cuda_plane in zip(cpu.planes, cuda.planes):
             torch.testing.assert_close(
-                cpu_plane.to(torch.int32), cuda_plane.cpu().to(torch.int32) >> shift, atol=0, rtol=0
-            )   
+                cpu_plane.to(torch.int32),
+                cuda_plane.cpu().to(torch.int32) >> shift,
+                atol=0,
+                rtol=0,
+            )
 
     @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
     @pytest.mark.parametrize("device", _block_devices())
@@ -3922,7 +3925,9 @@ class TestBlocks:
         gc.collect()
 
         for plane, snapshot in zip(planes, saved):
-            torch.testing.assert_close(plane.to(torch.int32), snapshot.to(torch.int32), atol=0, rtol=0)
+            torch.testing.assert_close(
+                plane.to(torch.int32), snapshot.to(torch.int32), atol=0, rtol=0
+            )
         planes[0][0, 0] = 0  # still writable: the memory is valid
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, BT709_FULL_RANGE))

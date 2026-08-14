@@ -25,34 +25,30 @@ class Packet:
         self._handle = handle
 
 
+# TODO_API_BREAKDOWN P1 API design: should these fields (pix_format, colorspace
+# etc.) also exist on the DecodedFrame class? Should there **just** be the
+# DecodedFrame class and actually just call materialize() transparently whenever
+# the user wants to access the planes? If materialize() is super cheap (it
+# should be???) then this might be a good UX.
 @dataclass
 class RawFrame:
-    """A decoded frame's own samples, as zero-copy views, before any color
-    conversion. Returned by :meth:`DecodedFrame.materialize`.
-
-    ``planes`` holds one strided view per component, in the frame's native
-    order: ``(Y, U, V)`` for the common YUV formats, ``(R, G, B)`` for RGB
-    codecs, ``(Y,)`` for grayscale, plus a trailing alpha view when the format
-    has one. Chroma planes are subsampled (half-resolution for 4:2:0) and the
-    views are usually non-contiguous, which is what avoids the copy.
-
-    Samples of more than 8 bits come back as uint16, with ``bit_depth``
-    significant bits. Where those bits sit within the 16 is a property of
-    ``pix_fmt``: msb-aligned for p010le/p012le/p016le, lsb-aligned for
-    yuv420p10le.
-    """
-
     planes: tuple[torch.Tensor, ...]
     pix_fmt: str  # FFmpeg pixel-format name, e.g. "yuv420p"
     colorspace: str  # e.g. "bt709"
     color_range: str  # "tv" (limited) or "pc" (full)
-    # The depth of pix_fmt, which is the source's except for a 12-bit source on
-    # FFmpeg < 6: that NVDEC surface can only be described as p016le there, so
-    # this says 16 where the source says 12. Everything downstream still reads
-    # right, because those samples are msb-aligned and are therefore genuinely
-    # valid 16-bit ones, with 4 zeroed low bits.
-    # TODO_API_BREAKDOWN P2: is the format's depth what we want to report here,
-    # or the source's?
+    # The depth of pix_fmt (always).
+    # This is also the source's bit depth, except for 12b-bit sources CUDA
+    # frames: those are technically P012, but P012 was only introduced in FFmpeg
+    # 6. So For FFmpeg < 6, we must report those as P016, and so the bit_depth
+    # field here reports 16 (on CPU, it'd still be 12).
+    # Everything downstream still reads right, because those samples are
+    # msb-aligned and are therefore genuinely valid 16-bit ones, with 4 zeroed
+    # low bits.
+    #
+    # TODO_API_BREAKDOWN P2: We can't do anything about the P016 report, but
+    # should this actually report the depth of the source instead of the depth
+    # of the pixel format? Again the only discrepency arises for 12-bit sources
+    # on CUDA for FFmpeg < 6.
     bit_depth: int
 
 
