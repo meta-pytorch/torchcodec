@@ -3858,12 +3858,12 @@ class TestBlocks:
                 value <<= 16 - case.bit_depth(device)
             return value
 
-        _, U, V = raw.planes
+        Y, U, V = raw.planes
         U.fill_(sample(128))  # no color
         V.fill_(sample(128))
 
         for luma, expected in ((235, 255), (16, 0)):
-            raw.planes[0].fill_(sample(luma))
+            Y.fill_(sample(luma))
             data = converter.convert(frame).data.to(torch.int16)
             # Loose bound: swscale's bt2020 handling lands a couple of levels
             # short of the endpoints. Misreading the depth is off by a factor
