@@ -44,6 +44,13 @@ extern "C" {
 #define FFMPEG_HAS_CH_LAYOUT 0
 #endif
 
+// FFmpeg 6 added AV_PIX_FMT_P012, the 12-bit sibling of P010.
+#if LIBAVUTIL_VERSION_MAJOR >= 58
+#define FFMPEG_HAS_P012 1
+#else
+#define FFMPEG_HAS_P012 0
+#endif
+
 // FFmpeg 7.1 added avcodec_get_supported_config(), replacing the codec's
 // pix_fmts / sample_fmts / supported_samplerates / ch_layouts arrays.
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100)
@@ -60,6 +67,9 @@ extern "C" {
 #endif
 
 namespace facebook::torchcodec {
+
+AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth);
+bool is_nvdec_16bit_surface(int format);
 
 // FFMPEG uses special delete functions for some structures. These template
 // functions are used to pass into unique_ptr as custom deleters so we can

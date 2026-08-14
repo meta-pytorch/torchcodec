@@ -345,8 +345,7 @@ void CudaDeviceInterface::convert_av_frame_to_frame_output(
       nvdec_stream,
       pre_allocated_output_tensor,
       FrameDims(av_frame.height, av_frame.width),
-      /*isP016=*/false,
-      /*bitDepth=*/8,
+      actual_format,
       cached_color_matrix_);
 }
 

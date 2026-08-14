@@ -79,18 +79,16 @@ void launch_p016_to_rgb16_kernel(
 
 // Convert a YUV frame (NV12 or P016) on GPU to an interleaved RGB tensor.
 //
-// isP016: true for P016 (uint16 I/O), false for NV12 (uint8 I/O).
-// bitDepth: 8 for NV12, actual bit depth (10 or 12) for P016.
 // outputDims: desired output size; if the frame was rounded up to even
 //   dimensions, the result is cropped back to outputDims.
+// pixFmt: the format the samples are actually in (NV12, P010, P012, P016).
 torch::stable::Tensor convert_yuv_frame_to_rgb(
     const AVFrame& av_frame,
     const StableDevice& device,
     cudaStream_t producer_stream,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor,
     const FrameDims& output_dims,
-    bool is_p016,
-    int bit_depth,
+    AVPixelFormat pix_fmt,
     CachedColorMatrix& cached_color_matrix);
 
 // Compute the RGB -> YUV color conversion matrix (for encoding).

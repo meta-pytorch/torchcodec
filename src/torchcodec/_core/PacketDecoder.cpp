@@ -140,8 +140,7 @@ FramePlanes frame_to_planes(
     int64_t bytes_per_sample = (comp.depth > 8) ? 2 : 1;
     int64_t linesize = av_frame.linesize[comp.plane];
     STD_TORCH_CHECK(
-        comp.shift == 0 && comp.depth <= 16 && linesize > 0 &&
-            comp.step % bytes_per_sample == 0 &&
+        comp.depth <= 16 && linesize > 0 && comp.step % bytes_per_sample == 0 &&
             linesize % bytes_per_sample == 0,
         "Cannot expose component ",
         c,
