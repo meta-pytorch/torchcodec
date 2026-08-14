@@ -55,6 +55,25 @@ bool is_nvdec_16bit_surface(int format) {
 }
 #endif
 
+OutputDtype resolve_output_dtype(
+    OutputDtypeConfig output_dtype_config,
+    AVPixelFormat pix_fmt) {
+  switch (output_dtype_config) {
+    case OutputDtypeConfig::UINT8:
+      return OutputDtype::UINT8;
+    case OutputDtypeConfig::FLOAT32:
+      return OutputDtype::FLOAT32;
+    case OutputDtypeConfig::AUTO: {
+      // TODO_HDR: This is basically our heuristic that defines how we identify
+      // HDR videos, we might want to refine it.
+      const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
+      return (desc != nullptr && desc->comp[0].depth > 8) ? OutputDtype::FLOAT32
+                                                          : OutputDtype::UINT8;
+    }
+  }
+  return OutputDtype::UINT8;
+}
+
 AutoAVPacket::AutoAVPacket() : av_packet_(av_packet_alloc()) {
   STD_TORCH_CHECK(av_packet_ != nullptr, "Couldn't allocate avPacket.");
 }

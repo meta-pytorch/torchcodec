@@ -46,7 +46,12 @@ class PacketDecoder:
             if status != 0:  # EAGAIN (need more packets) or EOF: nothing ready
                 break
             frames.append(
-                DecodedFrame(handle, pts_seconds, duration_seconds, device=device)
+                DecodedFrame(
+                    handle,
+                    pts_seconds,
+                    duration_seconds,
+                    device=device,
+                )
             )
         return frames
 

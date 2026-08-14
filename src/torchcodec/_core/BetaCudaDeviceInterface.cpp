@@ -1208,8 +1208,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     producer_stream = get_current_cuda_stream(device_.index());
   }
 
-  // TODO_API_BREAKDOWN P1: we don't suppor output_dtype so some of that is not
-  // execrcized.
   auto convert_frame = [&](std::optional<torch::stable::Tensor> pre_alloc)
       -> torch::stable::Tensor {
     return convert_yuv_frame_to_rgb(

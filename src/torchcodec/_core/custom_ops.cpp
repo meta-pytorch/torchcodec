@@ -83,10 +83,11 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def("_blocks_packet_decoder_send_eof(Tensor(a!) decoder) -> int");
   m.def(
       "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, str)");
-  m.def("_blocks_create_color_converter(str device=\"cpu\") -> Tensor");
+  m.def(
+      "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
   m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
   m.def(
-      "_blocks_frame_to_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor, str, str, str)");
+      "_blocks_frame_to_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor, str, str, str, int)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
   m.def("get_json_metadata(Tensor(a!) decoder) -> str");
   m.def("get_container_json_metadata(Tensor(a!) decoder) -> str");
@@ -546,6 +547,21 @@ torch::stable::Tensor _create_from_file_like(
   return wrap_decoder_pointer_to_tensor(std::move(unique_decoder));
 }
 
+OutputDtypeConfig parse_output_dtype_config(const std::string& output_dtype) {
+  if (output_dtype == "uint8") {
+    return OutputDtypeConfig::UINT8;
+  } else if (output_dtype == "float32") {
+    return OutputDtypeConfig::FLOAT32;
+  } else if (output_dtype == "auto") {
+    return OutputDtypeConfig::AUTO;
+  }
+  STD_TORCH_CHECK(
+      false,
+      "Invalid output_dtype=",
+      output_dtype,
+      ". Supported values are: uint8, float32, auto.");
+}
+
 void _add_video_stream(
     torch::stable::Tensor& decoder,
     std::optional<int64_t> num_threads = std::nullopt,
@@ -565,19 +581,8 @@ void _add_video_stream(
   VideoStreamOptions video_stream_options;
   video_stream_options.ffmpeg_thread_count = num_threads;
 
-  if (output_dtype == "uint8") {
-    video_stream_options.output_dtype_config = OutputDtypeConfig::UINT8;
-  } else if (output_dtype == "float32") {
-    video_stream_options.output_dtype_config = OutputDtypeConfig::FLOAT32;
-  } else if (output_dtype == "auto") {
-    video_stream_options.output_dtype_config = OutputDtypeConfig::AUTO;
-  } else {
-    STD_TORCH_CHECK(
-        false,
-        "Invalid output_dtype=",
-        output_dtype,
-        ". Supported values are: uint8, float32, auto.");
-  }
+  video_stream_options.output_dtype_config =
+      parse_output_dtype_config(output_dtype);
 
   if (dimension_order.has_value()) {
     STD_TORCH_CHECK(
@@ -882,9 +887,12 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
       device);
 }
 
-torch::stable::Tensor _blocks_create_color_converter(std::string device) {
+torch::stable::Tensor _blocks_create_color_converter(
+    std::string device,
+    std::string output_dtype) {
   validate_device_interface(device);
-  auto converter = std::make_unique<ColorConverter>(StableDevice(device));
+  auto converter = std::make_unique<ColorConverter>(
+      StableDevice(device), parse_output_dtype_config(output_dtype));
   return wrap_pointer_to_tensor<ColorConverter>(std::move(converter));
 }
 
@@ -903,7 +911,8 @@ using OpsFrameToPlanesOutput = std::tuple<
     torch::stable::Tensor,
     std::string, // pixel-format
     std::string, // colorspace
-    std::string>; // color range
+    std::string, // color range
+    int64_t>; // bit depth
 
 OpsFrameToPlanesOutput _blocks_frame_to_planes(
     torch::stable::Tensor& tensor_handle,
@@ -923,7 +932,8 @@ OpsFrameToPlanesOutput _blocks_frame_to_planes(
       views[3],
       result.pix_fmt,
       result.colorspace,
-      result.color_range);
+      result.color_range,
+      result.bit_depth);
 }
 
 // For testing only. We need to implement this operation as a core library

@@ -69,4 +69,8 @@ torch::stable::Tensor allocate_empty_hwc_tensor(
     OutputDtype output_dtype,
     std::optional<int> num_frames = std::nullopt);
 
+torch::stable::Tensor convert_to_output_dtype(
+    const torch::stable::Tensor& tensor,
+    OutputDtype output_dtype);
+
 } // namespace facebook::torchcodec

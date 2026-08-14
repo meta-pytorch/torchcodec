@@ -3418,55 +3418,74 @@ def _block_devices():
     return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
 
 
-# How many of a sample's bits each pixel format we expect to see actually
-# carries. Note that nv12's "12" is about chroma subsampling, not depth.
-_PIX_FMT_DEPTHS = {
-    "yuv420p": 8,
-    "yuv444p": 8,
-    "nv12": 8,
-    "yuv420p10le": 10,
-    "yuv420p12le": 12,
-}
+def _is_msb_aligned(pix_fmt):
+    # By msb-aligned we mean 10- or 12-bit samples that are stored in the most
+    # significant bits of a uint16. They thus span the whole uint16 value range
+    # (in steps of 64 or 16) rather than the [0, 1024) or [0, 4_096) ranges of
+    # lsb-aligned samples, so they must be shifted down to be compared to
+    # those. 8-bit samples fill their uint8, so they are msb-aligned by
+    # definition.
+
+    # NVDEC's P010 and P012 are msb-aligned. P016 nominally uses all 16 bits.
+    return pix_fmt.startswith("p0")
 
 
+# TODO_API_BREAKDOWN P2: this entire class should probably be folded in the
+# test/utils asset class.
 class _MaterializeCase(NamedTuple):
-    """A video, and the pixel format its frames come out in on each device."""
+    """A video, how many significant bits its samples carry, and the pixel
+    format its frames come out in on each device."""
 
     video: object
+    bit_depth: int
     cpu_pix_fmt: str
     cuda_pix_fmt: str
+    # FFmpeg 6 added P012. Before that, NVDEC's 12-bit surface can only be
+    # described as p016le, which claims 16 bits instead of 12. Set this for the
+    # sources that hit it: same samples either way (they're msb-aligned, so
+    # p016le describes them just as validly, with 4 zeroed low bits), but both
+    # the format and the depth we report change with the FFmpeg version.
+    needs_p016_before_ffmpeg6: bool = False
 
     def pix_fmt(self, device):
         return self.cuda_pix_fmt if device == "cuda" else self.cpu_pix_fmt
 
-    def bit_depth(self, device):
-        return _PIX_FMT_DEPTHS[self.pix_fmt(device)]
+
+# Sources with more than 8 bits per sample.
+_HDR_VIDEOS = (
+    NASA_VIDEO_HDR,
+    TEST_SRC_2_720P_HDR,
+    TEST_SRC_2_12BIT_HDR,
+    TESTSRC2_ODD_WIDTH_VP9_10BIT,
+    TESTSRC2_ODD_HEIGHT_VP9_10BIT,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT,
+)
 
 
 # Videos spanning the pixel-format axes materialize() has to handle: 4:2:0 vs
 # 4:4:4 chroma, even vs odd dims (chroma rounds up), and 8- vs 10-/12-bit
 # (uint8 vs uint16 planes). All are YUV, so planes are (Y, U, V).
 _MATERIALIZE_VIDEOS = (
-    _MaterializeCase(NASA_VIDEO, "yuv420p", "nv12"),  # even dims
-    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9, "yuv420p", "nv12"),  # odd dims
+    _MaterializeCase(NASA_VIDEO, 8, "yuv420p", "nv12"),  # even dims
+    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9, 8, "yuv420p", "nv12"),  # odd
     # 4:4:4 (full-res chroma): NVDEC can't decode it, so CUDA falls back to the
     # CPU and the frame keeps its native format.
-    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, "yuv444p", "yuv444p"),
-    # NVDEC is asked for 8-bit surfaces, so the 10-/12-bit sources come out of
-    # it as nv12 - only the CPU sees their native depth.
-    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT, "yuv420p10le", "nv12"),
-    _MaterializeCase(TEST_SRC_2_12BIT_HDR, "yuv420p12le", "nv12"),
+    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, 8, "yuv444p", "yuv444p"),
+    _MaterializeCase(
+        TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT, 10, "yuv420p10le", "p010le"
+    ),
+    _MaterializeCase(
+        TEST_SRC_2_12BIT_HDR,
+        12,
+        "yuv420p12le",
+        "p012le",
+        needs_p016_before_ffmpeg6=True,
+    ),
 )
 
 
 def _materialize_ids(case):
     return case.video.path.stem
-
-
-def _planes_equal(a, b):
-    # Elementwise equality that also works for uint16 (some comparison kernels
-    # aren't implemented for it, so compare as int32).
-    return bool((a.to(torch.int32) == b.to(torch.int32)).all())
 
 
 class TestBlocks:
@@ -3595,6 +3614,17 @@ class TestBlocks:
             ),
         )
 
+    @staticmethod
+    def _assert_matches_video_decoder(got, ref, video):
+        # We typically want exact equality but cannot achieve it on CUDA for HDR
+        # videos that are downscaled to uint8: the VideoDecoder will ask NVDEC
+        # to output an 8bit surface while the PacketDecoder will decode on the
+        # 16bit surface (by contract), so there are minor differences.
+        if got.is_cuda and got.dtype == torch.uint8 and video in _HDR_VIDEOS:
+            assert_tensor_close_on_at_least(got, ref, percentage=99, atol=2)
+        else:
+            torch.testing.assert_close(got, ref, atol=0, rtol=0)
+
     @pytest.mark.parametrize(
         "video",
         (
@@ -3660,11 +3690,47 @@ class TestBlocks:
 
         assert got.data.device.type == device
         assert got.data.shape == ref.data.shape
-        torch.testing.assert_close(got.data, ref.data, atol=0, rtol=0)
+        self._assert_matches_video_decoder(got.data, ref.data, video)
         torch.testing.assert_close(got.pts_seconds, ref.pts_seconds, atol=0, rtol=0)
         torch.testing.assert_close(
             got.duration_seconds, ref.duration_seconds, atol=0, rtol=0
         )
+
+    @pytest.mark.parametrize(
+        "video", (NASA_VIDEO, NASA_VIDEO_HDR, TEST_SRC_2_12BIT_HDR)
+    )
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32, "auto"))
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_output_dtype_matches_video_decoder(self, video, output_dtype, device):
+        # The blocks pipeline must agree with VideoDecoder for every dtype, on
+        # both devices.
+        demuxer, decoder, _ = self._make_blocks(video.path, device)
+        converter = ColorConverter(device=device, output_dtype=output_dtype)
+        got = self._to_frame_batch(
+            list(self._convert(converter, self._decode(decoder, self._demux(demuxer))))
+        )
+        ref = VideoDecoder(
+            video.path, device=device, output_dtype=output_dtype
+        ).get_all_frames()
+
+        assert got.data.dtype == ref.data.dtype
+        assert got.data.shape == ref.data.shape
+        self._assert_matches_video_decoder(got.data, ref.data, video)
+
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_output_dtype_auto_is_resolved_per_frame(self, device):
+        converter = ColorConverter(device=device, output_dtype="auto")
+        dtypes = []
+        for video in (NASA_VIDEO, NASA_VIDEO_HDR, NASA_VIDEO):
+            frame = next(self._decoded_frames(video.path, device))
+            dtypes.append(converter.convert(frame).data.dtype)
+
+        assert dtypes == [torch.uint8, torch.float32, torch.uint8]
+
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_invalid_output_dtype(self, device):
+        with pytest.raises(ValueError, match="Invalid output_dtype"):
+            ColorConverter(device=device, output_dtype=torch.uint16)
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_color_converter_reused_across_videos(self, device):
@@ -3714,11 +3780,21 @@ class TestBlocks:
     def test_materialize_structure(self, case, device):
         # planes shape/dtype/device and the accompanying metadata.
         frame, converter = self._first_frame(case.video.path, device)
-        planes, pix_fmt, colorspace, color_range = frame.materialize()
+        raw = frame.materialize()
+        planes, pix_fmt = raw.planes, raw.pix_fmt
 
-        assert pix_fmt == case.pix_fmt(device)
-        assert colorspace in ("bt709", "bt2020nc", "smpte170m", "unknown")
-        assert color_range in ("tv", "pc", "unknown")  # FFmpeg has only these
+        expected_pix_fmt = case.pix_fmt(device)
+        expected_bit_depth = case.bit_depth
+        if (
+            device == "cuda"
+            and case.needs_p016_before_ffmpeg6
+            and ffmpeg_major_version < 6
+        ):
+            expected_pix_fmt, expected_bit_depth = "p016le", 16
+
+        assert pix_fmt == expected_pix_fmt
+        assert raw.colorspace in ("bt709", "bt2020nc", "smpte170m", "unknown")
+        assert raw.color_range in ("tv", "pc", "unknown")  # FFmpeg has only these
 
         # All planes are 2D views living on the frame's own device.
         # TODO_API_BREAKDOWN P1: Can there be more planes? Should test?
@@ -3727,7 +3803,9 @@ class TestBlocks:
             assert plane.ndim == 2
             assert plane.device.type == frame.device
 
-        expected_dtype = torch.uint16 if case.bit_depth(device) > 8 else torch.uint8
+        assert raw.bit_depth == expected_bit_depth
+
+        expected_dtype = torch.uint16 if raw.bit_depth > 8 else torch.uint8
         assert all(plane.dtype == expected_dtype for plane in planes)
 
         Y, U, V = planes
@@ -3747,16 +3825,20 @@ class TestBlocks:
     @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
     def test_materialize_cuda_planes_match_cpu(self, case):
         # NVDEC and FFmpeg's software decoder produce the very same samples, so
-        # the raw planes must match bit-for-bit across devices.
-        if case.bit_depth("cuda") != case.bit_depth("cpu"):
-            pytest.skip("NVDEC gives us 8-bit surfaces for this source.")
+        # the raw planes must match bit-for-bit across devices, once the NVDEC
+        # ones are shifted back down to the CPU planes' scale.
+        cpu = self._first_frame(case.video.path, "cpu")[0].materialize()
+        cuda = self._first_frame(case.video.path, "cuda")[0].materialize()
 
-        cpu_planes, *_ = self._first_frame(case.video.path, "cpu")[0].materialize()
-        cuda_planes, *_ = self._first_frame(case.video.path, "cuda")[0].materialize()
-
-        assert len(cpu_planes) == len(cuda_planes)
-        for cpu_plane, cuda_plane in zip(cpu_planes, cuda_planes):
-            assert _planes_equal(cpu_plane, cuda_plane.cpu())
+        shift = 16 - case.bit_depth if _is_msb_aligned(cuda.pix_fmt) else 0
+        assert len(cpu.planes) == len(cuda.planes)
+        for cpu_plane, cuda_plane in zip(cpu.planes, cuda.planes):
+            torch.testing.assert_close(
+                cpu_plane.to(torch.int32),
+                cuda_plane.cpu().to(torch.int32) >> shift,
+                atol=0,
+                rtol=0,
+            )
 
     @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)
     @pytest.mark.parametrize("device", _block_devices())
@@ -3764,16 +3846,19 @@ class TestBlocks:
         # Paint the planes with the limited-range black and white points,
         # expressed in the frame's own sample scale, and check the converter
         # maps them to 0 and 255. This is what pins its notion of how many bits
-        # a sample carries: misreading the depth in either direction sends both
-        # ends to the same extreme.
+        # a sample carries and where they sit: misreading either sends both ends
+        # to the same extreme.
         frame, converter = self._first_frame(case.video.path, device)
-        planes, _, _, color_range = frame.materialize()
-        assert color_range in ("tv", "unknown")  # unknown is treated as tv
+        raw = frame.materialize()
+        assert raw.color_range in ("tv", "unknown")  # unknown is treated as tv
 
         def sample(value_8bit):
-            return value_8bit << (case.bit_depth(device) - 8)
+            value = value_8bit << (raw.bit_depth - 8)
+            if _is_msb_aligned(raw.pix_fmt):
+                value <<= 16 - raw.bit_depth
+            return value
 
-        Y, U, V = planes
+        Y, U, V = raw.planes
         U.fill_(sample(128))  # no color
         V.fill_(sample(128))
 
@@ -3794,7 +3879,7 @@ class TestBlocks:
 
         original = converter.convert(frame).data.clone()
 
-        planes, *_ = frame.materialize()
+        planes = frame.materialize().planes
         for value, plane in zip((50, 100, 150), planes):
             plane.fill_(value)  # overwrite Y, U, V with distinct constants
         edited = converter.convert(frame).data
@@ -3813,8 +3898,8 @@ class TestBlocks:
         # Two independent materialize() calls view the same underlying buffer,
         # so a write through one is visible through the other.
         frame, _ = self._first_frame(NASA_VIDEO.path, device)
-        planes_a, *_ = frame.materialize()
-        planes_b, *_ = frame.materialize()
+        planes_a = frame.materialize().planes
+        planes_b = frame.materialize().planes
 
         original = int(planes_a[0][0, 0].item())
         planes_a[0][0, 0] = original ^ 0xFF  # flip first pixel in Y
@@ -3827,14 +3912,16 @@ class TestBlocks:
         # writable) after the DecodedFrame they came from is dropped.
         # grep for this test name to see associated comment in the code.
         frame, _ = self._first_frame(case.video.path, device)
-        planes, *_ = frame.materialize()
+        planes = frame.materialize().planes
         saved = [plane.clone() for plane in planes]
 
         del frame
         gc.collect()
 
         for plane, snapshot in zip(planes, saved):
-            assert _planes_equal(plane, snapshot)
+            torch.testing.assert_close(
+                plane.to(torch.int32), snapshot.to(torch.int32), atol=0, rtol=0
+            )
         planes[0][0, 0] = 0  # still writable: the memory is valid
 
     @pytest.mark.parametrize("video", (NASA_VIDEO, BT709_FULL_RANGE))
@@ -3843,7 +3930,7 @@ class TestBlocks:
         # Forcing the chroma planes to neutral (128) yields a gray image
         # (R == G == B). Not testing much, but fun - isn't it?
         frame, converter = self._first_frame(video.path, device)
-        planes, pix_fmt, *_ = frame.materialize()
+        planes = frame.materialize().planes
         assert planes[0].dtype == torch.uint8
 
         _, U, V = planes
@@ -3868,7 +3955,8 @@ class TestBlocks:
         frame, _ = self._first_frame(video.path, "cuda")
         assert frame.device == "cpu"
 
-        planes, pix_fmt, *_ = frame.materialize()
+        raw = frame.materialize()
+        planes, pix_fmt = raw.planes, raw.pix_fmt
         assert pix_fmt != "nv12"
         assert all(plane.device.type == "cpu" for plane in planes)
 
