@@ -1219,7 +1219,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         pre_alloc,
         original_dims,
         static_cast<AVPixelFormat>(gpu_frame.format),
-        output_dtype_,
         cached_color_matrix_);
   };
 

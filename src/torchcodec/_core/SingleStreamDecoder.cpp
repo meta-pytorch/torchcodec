@@ -678,7 +678,7 @@ void SingleStreamDecoder::add_audio_stream(
 FrameOutput SingleStreamDecoder::get_next_frame() {
   auto output = get_next_frame_internal();
   if (stream_infos_[active_stream_index_].av_media_type == AVMEDIA_TYPE_VIDEO) {
-    output.data = maybe_permute_and_convert_to_float32(output.data);
+    output.data = maybe_permute_and_convert_dtype(output.data);
   }
   return output;
 }
@@ -695,7 +695,7 @@ FrameOutput SingleStreamDecoder::get_next_frame_internal(
 
 FrameOutput SingleStreamDecoder::get_frame_at_index(int64_t frame_index) {
   auto frame_output = get_frame_at_index_internal(frame_index);
-  frame_output.data = maybe_permute_and_convert_to_float32(frame_output.data);
+  frame_output.data = maybe_permute_and_convert_dtype(frame_output.data);
   return frame_output;
 }
 
@@ -805,7 +805,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_at_indices(
     previous_index_in_video = index_in_video;
   }
   frame_batch_output.data =
-      maybe_permute_and_convert_to_float32(frame_batch_output.data);
+      maybe_permute_and_convert_dtype(frame_batch_output.data);
   return frame_batch_output;
 }
 
@@ -855,7 +855,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_in_range(
     frame_batch_output_duration_seconds[f] = frame_output.duration_seconds;
   }
   frame_batch_output.data =
-      maybe_permute_and_convert_to_float32(frame_batch_output.data);
+      maybe_permute_and_convert_dtype(frame_batch_output.data);
   return frame_batch_output;
 }
 
@@ -897,7 +897,7 @@ FrameOutput SingleStreamDecoder::get_frame_played_at(double seconds) {
 
   // Convert the frame to tensor.
   FrameOutput frame_output = convert_av_frame_to_frame_output(*av_frame);
-  frame_output.data = maybe_permute_and_convert_to_float32(frame_output.data);
+  frame_output.data = maybe_permute_and_convert_dtype(frame_output.data);
   return frame_output;
 }
 
@@ -987,7 +987,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
         device_interface_->get_pre_allocation_dtype(
             video_stream_options.output_dtype));
     frame_batch_output.data =
-        maybe_permute_and_convert_to_float32(frame_batch_output.data);
+        maybe_permute_and_convert_dtype(frame_batch_output.data);
     return frame_batch_output;
   }
 
@@ -1061,7 +1061,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
     }
 
     frame_batch_output.data =
-        maybe_permute_and_convert_to_float32(frame_batch_output.data);
+        maybe_permute_and_convert_dtype(frame_batch_output.data);
     return frame_batch_output;
   } else {
     // Note that we look at nextPts for a frame, and not its pts or duration.
@@ -1098,7 +1098,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
       frame_batch_output_duration_seconds[f] = frame_output.duration_seconds;
     }
     frame_batch_output.data =
-        maybe_permute_and_convert_to_float32(frame_batch_output.data);
+        maybe_permute_and_convert_dtype(frame_batch_output.data);
 
     return frame_batch_output;
   }
@@ -1692,7 +1692,7 @@ FrameOutput SingleStreamDecoder::convert_av_frame_to_frame_output(
 // OUTPUT ALLOCATION AND SHAPE CONVERSION
 // --------------------------------------------------------------------------
 
-torch::stable::Tensor SingleStreamDecoder::maybe_permute_and_convert_to_float32(
+torch::stable::Tensor SingleStreamDecoder::maybe_permute_and_convert_dtype(
     torch::stable::Tensor& hwc_tensor) {
   // Permute HWC to CHW if needed. Returns a view of the input tensor, the
   // leading batch-dimension [N] is optional i.e. the input tensor can be 3D or
@@ -1718,19 +1718,9 @@ torch::stable::Tensor SingleStreamDecoder::maybe_permute_and_convert_to_float32(
     }
   }
 
-  // Convert to float32 and normalize to [0, 1] if needed.
-  OutputDtype output_dtype =
-      stream_infos_[active_stream_index_].video_stream_options.output_dtype;
-  if (output_dtype != OutputDtype::FLOAT32) {
-    return tensor;
-  }
-  bool is_uint16 =
-      tensor.scalar_type() == torch::headeronly::ScalarType::UInt16;
-  double max_val = static_cast<double>(
-      is_uint16 ? std::numeric_limits<uint16_t>::max()
-                : std::numeric_limits<uint8_t>::max());
-  auto as_float = torch::stable::to(tensor, kStableFloat32);
-  return stable_div(as_float, max_val);
+  return convert_to_output_dtype(
+      tensor,
+      stream_infos_[active_stream_index_].video_stream_options.output_dtype);
 }
 
 // --------------------------------------------------------------------------

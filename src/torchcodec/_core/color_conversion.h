@@ -61,7 +61,7 @@ void launch_nv12_to_rgb_kernel(
     int y_pitch,
     int uv_pitch,
     int rgb_pitch,
-    float clamp_max,
+    float out_scale,
     const float color_matrix[3][4],
     cudaStream_t stream);
 
@@ -75,7 +75,7 @@ void launch_p016_to_rgb16_kernel(
     int uv_pitch,
     int rgb_pitch,
     int bit_depth,
-    float clamp_max,
+    float out_scale,
     const float color_matrix[3][4],
     cudaStream_t stream);
 
@@ -84,7 +84,10 @@ void launch_p016_to_rgb16_kernel(
 // outputDims: desired output size; if the frame was rounded up to even
 //   dimensions, the result is cropped back to outputDims.
 // pixFmt: the format the samples are actually in (NV12, P010, P012, P016).
-// requestedDtype: P016 destined for UINT8 is narrowed here; FLOAT32 callers get
+//
+// The result is uint8 in [0, 255] for 8-bit surfaces and uint16 spanning
+// [0, 65535] for the rest. Callers bring it to the dtype they want with
+// convert_to_output_dtype().
 torch::stable::Tensor convert_yuv_frame_to_rgb(
     const AVFrame& av_frame,
     const StableDevice& device,
@@ -92,7 +95,6 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor,
     const FrameDims& output_dims,
     AVPixelFormat pix_fmt,
-    OutputDtype requested_dtype,
     CachedColorMatrix& cached_color_matrix);
 
 // Compute the RGB -> YUV color conversion matrix (for encoding).

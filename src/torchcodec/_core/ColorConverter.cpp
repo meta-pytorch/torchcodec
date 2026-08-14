@@ -15,23 +15,6 @@
 
 namespace facebook::torchcodec {
 
-namespace {
-
-// Mirrors SingleStreamDecoder::maybe_permute_and_convert_to_float32().
-torch::stable::Tensor maybe_convert_to_float32(
-    torch::stable::Tensor& data,
-    OutputDtype output_dtype) {
-  if (output_dtype != OutputDtype::FLOAT32) {
-    return data;
-  }
-  bool is_uint16 = data.scalar_type() == kStableUInt16;
-  double max_val = is_uint16 ? 65535.0 : 255.0;
-  auto as_float = torch::stable::to(data, kStableFloat32);
-  return stable_div(as_float, max_val);
-}
-
-} // namespace
-
 ColorConverter::ColorConverter(
     const StableDevice& device,
     OutputDtypeConfig output_dtype_config)
@@ -91,7 +74,7 @@ torch::stable::Tensor ColorConverter::convert(const AVFrame& av_frame) {
   FrameOutput frame_output;
   device_interface_->convert_av_frame_to_frame_output(
       av_frame, frame_output, std::nullopt);
-  return maybe_convert_to_float32(frame_output.data, output_dtype);
+  return convert_to_output_dtype(frame_output.data, output_dtype);
 }
 
 } // namespace facebook::torchcodec

@@ -31,6 +31,8 @@ struct ColorMatrix {
 // T is the sample type: uint8_t for NV12, uint16_t for P016.
 // Vec2T is the corresponding 2-element vector: uchar2 (2 uint8 values for NV12)
 // or ushort2 (2 uint16 values for P016).
+// out_scale is the top of the output range, which the color matrix already
+// scales to, so it doubles as the clamp ceiling.
 template <typename T, typename Vec2T>
 __device__ void write_pair_of_rgb_pixels(
     Vec2T yayb,
@@ -38,7 +40,7 @@ __device__ void write_pair_of_rgb_pixels(
     float v,
     T* rgb_plane_to_write,
     int bit_shift,
-    float clamp_max,
+    float out_scale,
     const ColorMatrix& cm) {
   float ya = static_cast<float>(yayb.x >> bit_shift);
   float yb = static_cast<float>(yayb.y >> bit_shift);
@@ -47,22 +49,22 @@ __device__ void write_pair_of_rgb_pixels(
   float ga = cm.m[1][0] * ya + cm.m[1][1] * u + cm.m[1][2] * v + cm.m[1][3];
 
   Vec2T raga = {
-      static_cast<T>(fminf(fmaxf(ra, 0.0f), clamp_max)),
-      static_cast<T>(fminf(fmaxf(ga, 0.0f), clamp_max))};
+      static_cast<T>(fminf(fmaxf(ra, 0.0f), out_scale)),
+      static_cast<T>(fminf(fmaxf(ga, 0.0f), out_scale))};
   *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[0])) = raga;
 
   float ba = cm.m[2][0] * ya + cm.m[2][1] * u + cm.m[2][2] * v + cm.m[2][3];
   float rb = cm.m[0][0] * yb + cm.m[0][1] * u + cm.m[0][2] * v + cm.m[0][3];
   Vec2T barb = {
-      static_cast<T>(fminf(fmaxf(ba, 0.0f), clamp_max)),
-      static_cast<T>(fminf(fmaxf(rb, 0.0f), clamp_max))};
+      static_cast<T>(fminf(fmaxf(ba, 0.0f), out_scale)),
+      static_cast<T>(fminf(fmaxf(rb, 0.0f), out_scale))};
   *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[2])) = barb;
 
   float gb = cm.m[1][0] * yb + cm.m[1][1] * u + cm.m[1][2] * v + cm.m[1][3];
   float bb = cm.m[2][0] * yb + cm.m[2][1] * u + cm.m[2][2] * v + cm.m[2][3];
   Vec2T gbbb = {
-      static_cast<T>(fminf(fmaxf(gb, 0.0f), clamp_max)),
-      static_cast<T>(fminf(fmaxf(bb, 0.0f), clamp_max))};
+      static_cast<T>(fminf(fmaxf(gb, 0.0f), out_scale)),
+      static_cast<T>(fminf(fmaxf(bb, 0.0f), out_scale))};
   *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[4])) = gbbb;
 }
 
@@ -96,7 +98,7 @@ __global__ void yuv_to_rgb_kernel(
     int uv_pitch_elements,
     int rgb_pitch_elements,
     int bit_shift,
-    float clamp_max,
+    float out_scale,
     const ColorMatrix cm) {
   // The kernel operates on 2x2 blocks, so it's called H / 2 * W / 2 times.
   // We have to multiply back by 2 to retrieve the output pixel coordinates x
@@ -122,10 +124,10 @@ __global__ void yuv_to_rgb_kernel(
 
   T* rgb_plane_to_write = rgb_output + y * rgb_pitch_elements + x * 3;
   write_pair_of_rgb_pixels<T, Vec2T>(
-      y1y2, u, v, rgb_plane_to_write, bit_shift, clamp_max, cm);
+      y1y2, u, v, rgb_plane_to_write, bit_shift, out_scale, cm);
   rgb_plane_to_write += rgb_pitch_elements; // go to next line
   write_pair_of_rgb_pixels<T, Vec2T>(
-      y3y4, u, v, rgb_plane_to_write, bit_shift, clamp_max, cm);
+      y3y4, u, v, rgb_plane_to_write, bit_shift, out_scale, cm);
 }
 
 void launch_nv12_to_rgb_kernel(
@@ -137,7 +139,7 @@ void launch_nv12_to_rgb_kernel(
     int y_pitch,
     int uv_pitch,
     int rgb_pitch,
-    float clamp_max,
+    float out_scale,
     const float color_matrix[3][4],
     cudaStream_t stream) {
   const auto& cm = *reinterpret_cast<const ColorMatrix*>(color_matrix);
@@ -157,7 +159,7 @@ void launch_nv12_to_rgb_kernel(
       uv_pitch,
       rgb_pitch,
       0, // bitShift = 0 for NV12
-      clamp_max,
+      out_scale,
       cm);
 }
 
@@ -171,7 +173,7 @@ void launch_p016_to_rgb16_kernel(
     int uv_pitch,
     int rgb_pitch,
     int bit_depth,
-    float clamp_max,
+    float out_scale,
     const float color_matrix[3][4],
     cudaStream_t stream) {
   const auto& cm = *reinterpret_cast<const ColorMatrix*>(color_matrix);
@@ -196,7 +198,7 @@ void launch_p016_to_rgb16_kernel(
       uv_pitch_elements,
       rgb_pitch_elements,
       bit_shift,
-      clamp_max,
+      out_scale,
       cm);
 }
 

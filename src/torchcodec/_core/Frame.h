@@ -69,4 +69,12 @@ torch::stable::Tensor allocate_empty_hwc_tensor(
     OutputDtype output_dtype,
     std::optional<int> num_frames = std::nullopt);
 
+// Bring a decoded RGB tensor to the requested output dtype. Color conversion
+// leaves us with either uint8 samples in [0, 255], or - for high-bit-depth
+// sources - uint16 ones spanning [0, 65535]; this is the single place where
+// that range becomes what the caller asked for.
+torch::stable::Tensor convert_to_output_dtype(
+    const torch::stable::Tensor& tensor,
+    OutputDtype output_dtype);
+
 } // namespace facebook::torchcodec
