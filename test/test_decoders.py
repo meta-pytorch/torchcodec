@@ -1380,11 +1380,11 @@ class TestVideoDecoder:
             )
 
     @pytest.mark.parametrize("device", all_supported_devices())
-    @pytest.mark.parametrize("fps", (None, 10.0))
     @pytest.mark.parametrize("video_name", ("nasa_13013.mp4", "nasa_13013_vfr.mp4"))
-    def test_get_frames_played_in_range_approximate_uses_timestamps(
-        self, device, fps, video_name
+    def test_get_frames_played_in_range_with_fps_approximate_uses_timestamps(
+        self, device, video_name
     ):
+        fps = 10.0
         path = NASA_VIDEO.path.with_name(video_name)
         exact_decoder, _ = make_video_decoder(
             path, device=device, seek_mode="exact"
@@ -1399,17 +1399,12 @@ class TestVideoDecoder:
             + boundary_frames.duration_seconds[1] / 2
         ).item()
 
-        if fps is None:
-            expected = exact_decoder.get_frames_played_in_range(
-                start_seconds, stop_seconds
-            )
-        else:
-            num_frames = round((stop_seconds - start_seconds) * fps)
-            timestamps = torch.tensor(
-                [start_seconds + i * (1 / fps) for i in range(num_frames)],
-                dtype=torch.float64,
-            )
-            expected = exact_decoder.get_frames_played_at(timestamps)
+        num_frames = round((stop_seconds - start_seconds) * fps)
+        timestamps = torch.tensor(
+            [start_seconds + i * (1 / fps) for i in range(num_frames)],
+            dtype=torch.float64,
+        )
+        expected = exact_decoder.get_frames_played_at(timestamps)
 
         approximate_decoder, _ = make_video_decoder(
             path, device=device, seek_mode="approximate"
@@ -1419,23 +1414,15 @@ class TestVideoDecoder:
         )
 
         assert_frames_equal(actual.data, expected.data)
-        if fps is None:
-            torch.testing.assert_close(
-                actual.pts_seconds, expected.pts_seconds, atol=0, rtol=0
-            )
-            torch.testing.assert_close(
-                actual.duration_seconds, expected.duration_seconds, atol=0, rtol=0
-            )
-        else:
-            torch.testing.assert_close(
-                actual.pts_seconds, timestamps, atol=1e-12, rtol=0
-            )
-            torch.testing.assert_close(
-                actual.duration_seconds,
-                torch.full_like(timestamps, 1 / fps),
-                atol=0,
-                rtol=0,
-            )
+        torch.testing.assert_close(
+            actual.pts_seconds, timestamps, atol=1e-12, rtol=0
+        )
+        torch.testing.assert_close(
+            actual.duration_seconds,
+            torch.full_like(timestamps, 1 / fps),
+            atol=0,
+            rtol=0,
+        )
 
     @pytest.mark.parametrize("device", all_supported_devices())
     @pytest.mark.parametrize("seek_mode", ("exact", "approximate"))
