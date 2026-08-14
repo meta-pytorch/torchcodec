@@ -728,7 +728,7 @@ def check_bundling():
                 _assert_linux_lib_no_ffmpeg(zf, "libtorchcodec_image.so")
                 _assert_linux_lib_no_ffmpeg(zf, "libtorchcodec_pybind_ops.so")
             elif platform.system() == "Darwin":
-                _assert_macos_homebrew_rpath(zf)
+                _assert_macos_homebrew_rpath_is_present(zf)
         print("OK: only libjpeg (and allowed libs) bundled.")
 
 
