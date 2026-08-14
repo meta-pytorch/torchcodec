@@ -103,11 +103,10 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
-  bool is_device_frame(const UniqueAVFrame& av_frame) const override;
+  bool is_device_frame(
+      [[maybe_unused]] const UniqueAVFrame& av_frame) const override;
 
-  UniqueAVFrame transfer_cpu_frame_to_gpu(
-      const AVFrame& cpu_frame,
-      AVPixelFormat target_pix_fmt);
+  UniqueAVFrame transfer_cpu_frame_to_gpu(const AVFrame& cpu_frame);
 
   void apply_rotation(
       FrameOutput& frame_output,

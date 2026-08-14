@@ -130,6 +130,7 @@ from .utils import (
     TEST_SRC_2_MPEG4_MP4,
     TESTSRC2_ODD_HEIGHT_444,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT,
     TESTSRC2_ODD_HEIGHT_VP9,
@@ -1681,14 +1682,15 @@ class TestVideoDecoder:
             TESTSRC2_ODD_WIDTH_444,
             TESTSRC2_ODD_HEIGHT_444,
             TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
         ),
     )
     @pytest.mark.parametrize("device", ("cuda", "cuda:ffmpeg"))
     @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32))
     def test_odd_sized_videos_444(self, asset, device, output_dtype):
         # These are yuv444p H264 videos. On the beta CUDA backend, 4:4:4
-        # chroma isn't supported by NVDEC so these go through the CPU
-        # fallback path entirely (decoding + color conversion on CPU).
+        # chroma isn't supported by NVDEC, so these are decoded on the CPU and
+        # uploaded as yuv444p for color conversion.
         if output_dtype == torch.float32 and device == "cuda:ffmpeg":
             pytest.skip("float32 output not relevant for cuda:ffmpeg here")
 
@@ -2259,7 +2261,9 @@ class TestVideoDecoder:
         cpu_frames = cpu_decoder.get_frames_in_range(start=0, stop=num_frames).data
         cuda_frames = cuda_decoder.get_frames_in_range(start=0, stop=num_frames).data
 
-        torch.testing.assert_close(cpu_frames, cuda_frames.cpu(), rtol=0, atol=0)
+        # The CUDA path uploads these as yuv444p and color-converts them with
+        # our kernel, which truncates where swscale rounds.
+        torch.testing.assert_close(cpu_frames, cuda_frames.cpu(), rtol=0, atol=1)
 
     @needs_cuda
     def test_nvdec_cuda_interface_error(self):
@@ -3440,6 +3444,10 @@ class _MaterializeCase(NamedTuple):
     bit_depth: int
     cpu_pix_fmt: str
     cuda_pix_fmt: str
+    # The depth materialize() reports on CUDA, when the surface format's
+    # container is wider than the source's samples (yuv444p16le for a 10-bit
+    # 4:4:4 source). Defaults to bit_depth.
+    cuda_bit_depth: int | None = None
     # FFmpeg 6 added P012. Before that, NVDEC's 12-bit surface can only be
     # described as p016le, which claims 16 bits instead of 12. Set this for the
     # sources that hit it: same samples either way (they're msb-aligned, so
@@ -3450,6 +3458,11 @@ class _MaterializeCase(NamedTuple):
     def pix_fmt(self, device):
         return self.cuda_pix_fmt if device == "cuda" else self.cpu_pix_fmt
 
+    def reported_bit_depth(self, device):
+        if device == "cuda" and self.cuda_bit_depth is not None:
+            return self.cuda_bit_depth
+        return self.bit_depth
+
 
 # Sources with more than 8 bits per sample.
 _HDR_VIDEOS = (
@@ -3459,6 +3472,7 @@ _HDR_VIDEOS = (
     TESTSRC2_ODD_WIDTH_VP9_10BIT,
     TESTSRC2_ODD_HEIGHT_VP9_10BIT,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT,
+    TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
 )
 
 
@@ -3469,8 +3483,15 @@ _MATERIALIZE_VIDEOS = (
     _MaterializeCase(NASA_VIDEO, 8, "yuv420p", "nv12"),  # even dims
     _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9, 8, "yuv420p", "nv12"),  # odd
     # 4:4:4 (full-res chroma): NVDEC can't decode it, so CUDA falls back to the
-    # CPU and the frame keeps its native format.
+    # CPU and uploads the frame as 4:4:4 rather than halve its chroma.
     _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, 8, "yuv444p", "yuv444p"),
+    _MaterializeCase(
+        TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
+        10,
+        "yuv444p10le",
+        "yuv444p16le",
+        cuda_bit_depth=16,
+    ),
     _MaterializeCase(
         TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT, 10, "yuv420p10le", "p010le"
     ),
@@ -3649,6 +3670,7 @@ class TestBlocks:
             TESTSRC2_ODD_WIDTH_444,
             TESTSRC2_ODD_HEIGHT_444,
             TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
+            TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
             # First keyframe is marked AV_PKT_FLAG_DISCARD by an mp4 edit list.
             DISCARD_FIRST_KEYFRAME_VIDEO,
         ),
@@ -3784,7 +3806,7 @@ class TestBlocks:
         planes, pix_fmt = raw.planes, raw.pix_fmt
 
         expected_pix_fmt = case.pix_fmt(device)
-        expected_bit_depth = case.bit_depth
+        expected_bit_depth = case.reported_bit_depth(device)
         if (
             device == "cuda"
             and case.needs_p016_before_ffmpeg6
@@ -3830,7 +3852,11 @@ class TestBlocks:
         cpu = self._first_frame(case.video.path, "cpu")[0].materialize()
         cuda = self._first_frame(case.video.path, "cuda")[0].materialize()
 
-        shift = 16 - case.bit_depth if _is_msb_aligned(cuda.pix_fmt) else 0
+        # Every 16-bit CUDA surface spans the full uint16 range, whether it says
+        # so (p016le, yuv444p16le) or reports the source's depth (p010le,
+        # p012le). The CPU planes are at the source's own scale.
+        is_uint16 = cuda.planes[0].dtype == torch.uint16
+        shift = 16 - case.bit_depth if is_uint16 else 0
         assert len(cpu.planes) == len(cuda.planes)
         for cpu_plane, cuda_plane in zip(cpu.planes, cuda.planes):
             torch.testing.assert_close(
@@ -3942,23 +3968,27 @@ class TestBlocks:
         torch.testing.assert_close(g, b, atol=1, rtol=0)
 
     @pytest.mark.needs_cuda
-    @pytest.mark.parametrize("video", (H265_VIDEO, TESTSRC2_ODD_HEIGHT_AND_WIDTH_444))
-    def test_materialize_cpu_fallback_stays_on_cpu(self, video):
-        # TODO_NOW: This may not be what we want. We probalby want
-        # to output CUDA data.  But how? Do we put the YUV420 on CUDA? Then we
-        # need a specialized kernel to color-convert? Or we put those frames we
-        # can have on NV12 - but for 444 it's a problem becaus ewe can't convert
-        # them to NV12, so we'd need a 444 color-conversion kernel anyway. So
-        # all frames would be NV12 except *some* (the 444 ones)?
-        # Unclear what to do here honestly. Maybe outputting CPU frames is
-        # actually justifiable?
+    @pytest.mark.parametrize(
+        "video, expected_pix_fmt",
+        (
+            # Too small for NVDEC.
+            (H265_VIDEO, "nv12"),
+            # 4:4:4, which NVDEC can't decode here. Uploading it as NV12 would
+            # halve its chroma resolution, so it stays 4:4:4.
+            (TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, "yuv444p"),
+            (TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT, "yuv444p16le"),
+        ),
+    )
+    def test_materialize_cpu_fallback_is_on_cuda(self, video, expected_pix_fmt):
+        # A CUDA PacketDecoder hands out CUDA frames even for the streams it has
+        # to decode on the CPU, and they're in an NVDEC surface format like any
+        # other CUDA frame.
         frame, _ = self._first_frame(video.path, "cuda")
-        assert frame.device == "cpu"
+        assert frame.device == "cuda"
 
         raw = frame.materialize()
-        planes, pix_fmt = raw.planes, raw.pix_fmt
-        assert pix_fmt != "nv12"
-        assert all(plane.device.type == "cpu" for plane in planes)
+        assert raw.pix_fmt == expected_pix_fmt
+        assert all(plane.device.type == "cuda" for plane in raw.planes)
 
 
 # Small helpers to avoid having to always specify the same skip marks and decode_fn

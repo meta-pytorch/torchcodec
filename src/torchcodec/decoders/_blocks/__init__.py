@@ -4,7 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""Private, experimental building-block decode API (CPU only, for now).
+"""Private, experimental building-block decode API.
 
 Exposes the three decode stages -- :class:`Demuxer`, :class:`PacketDecoder`,
 :class:`ColorConverter` -- as passive, composable, GIL-releasing units, so a
