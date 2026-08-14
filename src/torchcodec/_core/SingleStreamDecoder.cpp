@@ -744,6 +744,8 @@ FrameBatchOutput SingleStreamDecoder::get_frames_at_indices(
     }
   }
 
+  // Decode in timestamp order to minimize seeking and make requests for the
+  // same frame adjacent. Results are written in the caller's original order.
   std::vector<size_t> argsort;
   if (!indices_are_sorted) {
     // if frameIndices is [13, 10, 12, 11]
@@ -860,7 +862,16 @@ FrameBatchOutput SingleStreamDecoder::get_frames_in_range(
 }
 
 FrameOutput SingleStreamDecoder::get_frame_played_at(double seconds) {
+  FrameOutput frame_output = get_frame_played_at_internal(seconds);
+  frame_output.data = maybe_permute_and_convert_to_float32(frame_output.data);
+  return frame_output;
+}
+
+FrameOutput SingleStreamDecoder::get_frame_played_at_internal(
+    double seconds,
+    std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   validate_active_stream(AVMEDIA_TYPE_VIDEO);
+  last_decoded_frame_index_ = INT64_MIN;
   StreamInfo& stream_info = stream_infos_[active_stream_index_];
   double last_decoded_start_time =
       pts_to_seconds(last_decoded_av_frame_pts_, stream_info.time_base);
@@ -895,10 +906,8 @@ FrameOutput SingleStreamDecoder::get_frame_played_at(double seconds) {
         return seconds >= frame_start_time && seconds < frame_end_time;
       });
 
-  // Convert the frame to tensor.
-  FrameOutput frame_output = convert_av_frame_to_frame_output(*av_frame);
-  frame_output.data = maybe_permute_and_convert_to_float32(frame_output.data);
-  return frame_output;
+  return convert_av_frame_to_frame_output(
+      *av_frame, std::move(pre_allocated_output_tensor));
 }
 
 FrameBatchOutput SingleStreamDecoder::get_frames_played_at(
@@ -912,16 +921,9 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_at(
   std::optional<double> max_seconds =
       stream_metadata.get_end_stream_seconds(seek_mode_);
 
-  // The frame played at timestamp t and the one played at timestamp `t +
-  // eps` are probably the same frame, with the same index. The easiest way to
-  // avoid decoding that unique frame twice is to convert the input timestamps
-  // to indices, and leverage the de-duplication logic of getFramesAtIndices.
-
-  torch::stable::Tensor frame_indices =
-      torch::stable::empty({timestamps.numel()}, kStableInt64);
-  auto frame_indices_accessor = mutable_accessor<int64_t, 1>(frame_indices);
   auto timestamps_accessor = const_accessor<double, 1>(timestamps);
 
+  bool timestamps_are_sorted = true;
   for (int64_t i = 0; i < timestamps.numel(); ++i) {
     auto frame_seconds = timestamps_accessor[i];
     STD_TORCH_CHECK(
@@ -940,10 +942,79 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_at(
               ".");
     }
 
-    frame_indices_accessor[i] = seconds_to_index_lower_bound(frame_seconds);
+    if (i > 0 && frame_seconds < timestamps_accessor[i - 1]) {
+      timestamps_are_sorted = false;
+    }
   }
 
-  return get_frames_at_indices(frame_indices);
+  std::vector<size_t> argsort;
+  if (!timestamps_are_sorted) {
+    argsort.resize(timestamps.numel());
+    for (size_t i = 0; i < argsort.size(); ++i) {
+      argsort[i] = i;
+    }
+    std::sort(
+        argsort.begin(),
+        argsort.end(),
+        [&timestamps_accessor](size_t a, size_t b) {
+          return timestamps_accessor[a] < timestamps_accessor[b];
+        });
+  }
+
+  const auto& stream_info = stream_infos_[active_stream_index_];
+  const auto& video_stream_options = stream_info.video_stream_options;
+  FrameBatchOutput frame_batch_output(
+      timestamps.numel(),
+      get_output_dims(),
+      video_stream_options.device,
+      device_interface_->get_pre_allocation_dtype(
+          video_stream_options.output_dtype));
+
+  auto frame_batch_output_pts_seconds =
+      mutable_accessor<double, 1>(frame_batch_output.pts_seconds);
+  auto frame_batch_output_duration_seconds =
+      mutable_accessor<double, 1>(frame_batch_output.duration_seconds);
+
+  for (int64_t f = 0; f < timestamps.numel(); ++f) {
+    auto index_in_output = timestamps_are_sorted ? f : argsort[f];
+    double timestamp_seconds = timestamps_accessor[index_in_output];
+
+    if (f > 0) {
+      auto previous_index_in_output =
+          timestamps_are_sorted ? f - 1 : argsort[f - 1];
+      double previous_frame_start_seconds =
+          frame_batch_output_pts_seconds[previous_index_in_output];
+      double previous_frame_end_seconds = pts_to_seconds(
+          last_decoded_av_frame_pts_ + last_decoded_av_frame_duration_,
+          stream_info.time_base);
+      if (timestamp_seconds < previous_frame_end_seconds &&
+          (seek_mode_ == SeekMode::approximate ||
+           timestamp_seconds >= previous_frame_start_seconds)) {
+        // Avoid decoding the same frame twice.
+        copy_frame(
+            frame_batch_output.data,
+            index_in_output,
+            frame_batch_output.data,
+            previous_index_in_output);
+        frame_batch_output_pts_seconds[index_in_output] =
+            frame_batch_output_pts_seconds[previous_index_in_output];
+        frame_batch_output_duration_seconds[index_in_output] =
+            frame_batch_output_duration_seconds[previous_index_in_output];
+        continue;
+      }
+    }
+
+    FrameOutput frame_output = get_frame_played_at_internal(
+        timestamp_seconds,
+        select_row(frame_batch_output.data, index_in_output));
+    frame_batch_output_pts_seconds[index_in_output] = frame_output.pts_seconds;
+    frame_batch_output_duration_seconds[index_in_output] =
+        frame_output.duration_seconds;
+  }
+
+  frame_batch_output.data =
+      maybe_permute_and_convert_to_float32(frame_batch_output.data);
+  return frame_batch_output;
 }
 
 FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
@@ -1028,6 +1099,26 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
     double product = (stop_seconds - start_seconds) * fps_val;
     int64_t num_output_frames = static_cast<int64_t>(std::round(product));
 
+    if (seek_mode_ == SeekMode::approximate) {
+      torch::stable::Tensor timestamps =
+          torch::stable::empty({num_output_frames}, kStableFloat64);
+      auto timestamps_accessor = mutable_accessor<double, 1>(timestamps);
+      for (int64_t i = 0; i < num_output_frames; ++i) {
+        timestamps_accessor[i] = start_seconds + i * frame_duration_seconds;
+      }
+
+      FrameBatchOutput frame_batch_output = get_frames_played_at(timestamps);
+      auto frame_batch_output_pts_seconds =
+          mutable_accessor<double, 1>(frame_batch_output.pts_seconds);
+      auto frame_batch_output_duration_seconds =
+          mutable_accessor<double, 1>(frame_batch_output.duration_seconds);
+      for (int64_t i = 0; i < num_output_frames; ++i) {
+        frame_batch_output_pts_seconds[i] = timestamps_accessor[i];
+        frame_batch_output_duration_seconds[i] = frame_duration_seconds;
+      }
+      return frame_batch_output;
+    }
+
     FrameBatchOutput frame_batch_output(
         num_output_frames,
         get_output_dims(),
@@ -1060,6 +1151,83 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
       frame_batch_output_duration_seconds[i] = frame_duration_seconds;
     }
 
+    frame_batch_output.data =
+        maybe_permute_and_convert_to_float32(frame_batch_output.data);
+    return frame_batch_output;
+  } else if (seek_mode_ == SeekMode::approximate) {
+    // Use the header FPS only to size the output, with a small allowance for
+    // VFR. The tensor grows below if the estimate is still too small.
+    int64_t capacity = std::max<int64_t>(
+        seconds_to_index_upper_bound(stop_seconds) -
+            seconds_to_index_lower_bound(start_seconds) + 2,
+        1);
+    FrameBatchOutput frame_batch_output(
+        capacity,
+        get_output_dims(),
+        video_stream_options.device,
+        device_interface_->get_pre_allocation_dtype(
+            video_stream_options.output_dtype));
+
+    int64_t num_frames = 0;
+    auto frame_batch_output_pts_seconds =
+        mutable_accessor<double, 1>(frame_batch_output.pts_seconds);
+    auto frame_batch_output_duration_seconds =
+        mutable_accessor<double, 1>(frame_batch_output.duration_seconds);
+    FrameOutput frame_output = get_frame_played_at_internal(
+        start_seconds, select_row(frame_batch_output.data, num_frames));
+    frame_batch_output_pts_seconds[num_frames] = frame_output.pts_seconds;
+    frame_batch_output_duration_seconds[num_frames] =
+        frame_output.duration_seconds;
+    ++num_frames;
+
+    while (true) {
+      try {
+        if (num_frames == capacity) {
+          FrameBatchOutput expanded_frame_batch_output(
+              capacity * 2,
+              get_output_dims(),
+              video_stream_options.device,
+              device_interface_->get_pre_allocation_dtype(
+                  video_stream_options.output_dtype));
+          auto expanded_data = torch::stable::narrow(
+              expanded_frame_batch_output.data, 0, 0, num_frames);
+          auto expanded_pts_seconds = torch::stable::narrow(
+              expanded_frame_batch_output.pts_seconds, 0, 0, num_frames);
+          auto expanded_duration_seconds = torch::stable::narrow(
+              expanded_frame_batch_output.duration_seconds, 0, 0, num_frames);
+          torch::stable::copy_(expanded_data, frame_batch_output.data);
+          torch::stable::copy_(
+              expanded_pts_seconds, frame_batch_output.pts_seconds);
+          torch::stable::copy_(
+              expanded_duration_seconds, frame_batch_output.duration_seconds);
+          frame_batch_output = std::move(expanded_frame_batch_output);
+          capacity *= 2;
+          frame_batch_output_pts_seconds =
+              mutable_accessor<double, 1>(frame_batch_output.pts_seconds);
+          frame_batch_output_duration_seconds =
+              mutable_accessor<double, 1>(frame_batch_output.duration_seconds);
+        }
+
+        frame_output = get_next_frame_internal(
+            select_row(frame_batch_output.data, num_frames));
+        if (frame_output.pts_seconds >= stop_seconds) {
+          break;
+        }
+        frame_batch_output_pts_seconds[num_frames] = frame_output.pts_seconds;
+        frame_batch_output_duration_seconds[num_frames] =
+            frame_output.duration_seconds;
+        ++num_frames;
+      } catch (const EndOfFileException&) {
+        break;
+      }
+    }
+
+    frame_batch_output.data =
+        torch::stable::narrow(frame_batch_output.data, 0, 0, num_frames);
+    frame_batch_output.pts_seconds =
+        torch::stable::narrow(frame_batch_output.pts_seconds, 0, 0, num_frames);
+    frame_batch_output.duration_seconds = torch::stable::narrow(
+        frame_batch_output.duration_seconds, 0, 0, num_frames);
     frame_batch_output.data =
         maybe_permute_and_convert_to_float32(frame_batch_output.data);
     return frame_batch_output;
