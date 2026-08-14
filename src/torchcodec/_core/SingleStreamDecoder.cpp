@@ -1155,98 +1155,12 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
         maybe_permute_and_convert_to_float32(frame_batch_output.data);
     return frame_batch_output;
   } else if (seek_mode_ == SeekMode::approximate) {
-    const int64_t start_pts =
-        seconds_to_closest_pts(start_seconds, stream_info.time_base);
-    const int64_t stop_pts =
-        seconds_to_closest_pts(stop_seconds, stream_info.time_base);
-    int status = avformat_seek_file(
-        format_context_.get(),
-        stream_info.stream_index,
-        INT64_MIN,
-        start_pts,
-        start_pts,
-        0);
-    STD_TORCH_CHECK(
-        status >= 0,
-        "Could not seek file to pts=",
-        std::to_string(start_pts),
-        ": ",
-        get_ffmpeg_error_string_from_error_code(status));
-
-    // First scan the compressed packets so that the output can be allocated
-    // at the right size before decoding. Packet PTS may be out of order for
-    // codecs with B-frames, so keep reading past stop by the codec's reorder
-    // delay and sort the collected packet metadata by PTS.
-    std::vector<int64_t> packet_frame_pts;
-    int64_t packets_to_read_after_stop = -1;
-    const int64_t reorder_delay = std::max<int64_t>(
-        {stream_info.codec_context->has_b_frames,
-         stream_info.stream->codecpar->video_delay,
-         0});
-    AutoAVPacket auto_av_packet;
-    while (true) {
-      ReferenceAVPacket packet(auto_av_packet);
-      status =
-          read_next_packet(format_context_.get(), active_stream_index_, packet);
-      if (status == AVERROR_EOF) {
-        break;
-      }
-      STD_TORCH_CHECK(
-          status >= AVSUCCESS,
-          "Could not read frame from input file: ",
-          get_ffmpeg_error_string_from_error_code(status));
-
-      if (!(packet->flags & AV_PKT_FLAG_DISCARD)) {
-        packet_frame_pts.push_back(get_pts_or_dts(packet));
-      }
-
-      const int64_t packet_decode_pts =
-          packet->dts == AV_NOPTS_VALUE ? get_pts_or_dts(packet) : packet->dts;
-      if (packets_to_read_after_stop < 0 && packet_decode_pts >= stop_pts) {
-        packets_to_read_after_stop = reorder_delay + 1;
-      } else if (packets_to_read_after_stop > 0) {
-        --packets_to_read_after_stop;
-        if (packets_to_read_after_stop == 0) {
-          break;
-        }
-      }
-    }
-
-    std::sort(packet_frame_pts.begin(), packet_frame_pts.end());
-    auto first_packet_frame = std::upper_bound(
-        packet_frame_pts.begin(),
-        packet_frame_pts.end(),
-        start_seconds,
-        [&stream_info](double seconds, int64_t pts) {
-          return seconds < pts_to_seconds(pts, stream_info.time_base);
-        });
-    if (first_packet_frame != packet_frame_pts.begin()) {
-      --first_packet_frame;
-    }
-    int64_t capacity = 0;
-    double decode_start_seconds = start_seconds;
-    if (first_packet_frame != packet_frame_pts.end()) {
-      auto stop_packet_frame = std::lower_bound(
-          first_packet_frame,
-          packet_frame_pts.end(),
-          stop_seconds,
-          [&stream_info](int64_t pts, double seconds) {
-            return pts_to_seconds(pts, stream_info.time_base) < seconds;
-          });
-      capacity = stop_packet_frame - first_packet_frame;
-      decode_start_seconds =
-          pts_to_seconds(*first_packet_frame, stream_info.time_base);
-    }
-    // Preserve the existing approximate-mode behavior of returning the frame
-    // selected at start_seconds even when no packet PTS falls in the interval.
-    capacity = std::max<int64_t>(capacity, 1);
-
-    // The packet scan moved the demuxer independently of the decoder. Force
-    // the first decode below to seek and flush the decoder before using it.
-    last_decoded_av_frame_pts_ = INT64_MIN;
-    last_decoded_av_frame_duration_ = 0;
-    last_decoded_frame_index_ = INT64_MIN;
-
+    // Use the header FPS only to size the output, with a small allowance for
+    // VFR. The tensor grows below if the estimate is still too small.
+    int64_t capacity = std::max<int64_t>(
+        seconds_to_index_upper_bound(stop_seconds) -
+            seconds_to_index_lower_bound(start_seconds) + 2,
+        1);
     FrameBatchOutput frame_batch_output(
         capacity,
         get_output_dims(),
@@ -1260,7 +1174,7 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
     auto frame_batch_output_duration_seconds =
         mutable_accessor<double, 1>(frame_batch_output.duration_seconds);
     FrameOutput frame_output = get_frame_played_at_internal(
-        decode_start_seconds, select_row(frame_batch_output.data, num_frames));
+        start_seconds, select_row(frame_batch_output.data, num_frames));
     frame_batch_output_pts_seconds[num_frames] = frame_output.pts_seconds;
     frame_batch_output_duration_seconds[num_frames] =
         frame_output.duration_seconds;
@@ -1308,28 +1222,19 @@ FrameBatchOutput SingleStreamDecoder::get_frames_played_in_range(
       }
     }
 
-    if (num_frames != capacity) {
-      // Packet/frame counts can differ for unusual codecs. Compact the output
-      // on that exceptional path so a range overestimate does not retain the
-      // larger backing allocation through a narrow view.
-      FrameBatchOutput compact_frame_batch_output(
-          num_frames,
-          get_output_dims(),
-          video_stream_options.device,
-          device_interface_->get_pre_allocation_dtype(
-              video_stream_options.output_dtype));
-      torch::stable::copy_(
-          compact_frame_batch_output.data,
-          torch::stable::narrow(frame_batch_output.data, 0, 0, num_frames));
-      torch::stable::copy_(
-          compact_frame_batch_output.pts_seconds,
-          torch::stable::narrow(
-              frame_batch_output.pts_seconds, 0, 0, num_frames));
-      torch::stable::copy_(
-          compact_frame_batch_output.duration_seconds,
-          torch::stable::narrow(
-              frame_batch_output.duration_seconds, 0, 0, num_frames));
-      frame_batch_output = std::move(compact_frame_batch_output);
+    frame_batch_output.data =
+        torch::stable::narrow(frame_batch_output.data, 0, 0, num_frames);
+    frame_batch_output.pts_seconds =
+        torch::stable::narrow(frame_batch_output.pts_seconds, 0, 0, num_frames);
+    frame_batch_output.duration_seconds = torch::stable::narrow(
+        frame_batch_output.duration_seconds, 0, 0, num_frames);
+    if (capacity > num_frames + 2) {
+      // Do not retain a substantially oversized backing allocation.
+      frame_batch_output.data = torch::stable::clone(frame_batch_output.data);
+      frame_batch_output.pts_seconds =
+          torch::stable::clone(frame_batch_output.pts_seconds);
+      frame_batch_output.duration_seconds =
+          torch::stable::clone(frame_batch_output.duration_seconds);
     }
     frame_batch_output.data =
         maybe_permute_and_convert_to_float32(frame_batch_output.data);

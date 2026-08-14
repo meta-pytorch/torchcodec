@@ -1389,12 +1389,14 @@ class TestVideoDecoder:
         exact_decoder, _ = make_video_decoder(
             path, device=device, seek_mode="exact"
         )
-        boundary_frames = exact_decoder.get_frames_at([3, 4, 35, 36])
+        boundary_frames = exact_decoder.get_frames_at([3, 35])
         start_seconds = (
-            (boundary_frames.pts_seconds[0] + boundary_frames.pts_seconds[1]) / 2
+            boundary_frames.pts_seconds[0]
+            + boundary_frames.duration_seconds[0] / 2
         ).item()
         stop_seconds = (
-            (boundary_frames.pts_seconds[2] + boundary_frames.pts_seconds[3]) / 2
+            boundary_frames.pts_seconds[1]
+            + boundary_frames.duration_seconds[1] / 2
         ).item()
 
         if fps is None:
