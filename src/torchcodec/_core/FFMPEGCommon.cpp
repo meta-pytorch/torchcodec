@@ -16,11 +16,9 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-// NVDEC always outputs the same 16-bit semi-planar surface whatever the source
-// depth, so we tag the frame with the format that actually describes its
-// samples: P010/P012 carry both the true depth and the msb alignment, where
-// P016 would claim all 16 bits are significant.
 #if FFMPEG_HAS_P012
+// takes is_p016_surface as input instead of the actual NVDEC surface type so we
+// don't have to include the NVDEC headers here
 AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth) {
   if (!is_p016_surface) {
     return AV_PIX_FMT_NV12;
@@ -34,18 +32,23 @@ AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth) {
       return AV_PIX_FMT_P016LE;
   }
 }
-
-bool is_nvdec_16bit_surface(int format) {
-  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P012LE ||
-      format == AV_PIX_FMT_P016LE;
-}
 #else
 AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth) {
+  // TODO_API_BREAKDOWN P2: needs a comment about P012 missing and why it's
+  // still OK to return P016LE.
   if (!is_p016_surface) {
     return AV_PIX_FMT_NV12;
   }
   return bit_depth == 10 ? AV_PIX_FMT_P010LE : AV_PIX_FMT_P016LE;
 }
+#endif // FFMPEG_HAS_P012
+
+#if FFMPEG_HAS_P012
+bool is_nvdec_16bit_surface(int format) {
+  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P012LE ||
+      format == AV_PIX_FMT_P016LE;
+}
+#else
 
 bool is_nvdec_16bit_surface(int format) {
   return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P016LE;

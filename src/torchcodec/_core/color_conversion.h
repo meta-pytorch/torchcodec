@@ -79,9 +79,9 @@ void launch_p016_to_rgb16_kernel(
 
 // Convert a YUV frame (NV12 or P016) on GPU to an interleaved RGB tensor.
 //
-// pixFmt: the format the samples are actually in (NV12, P010, P012, P016).
 // outputDims: desired output size; if the frame was rounded up to even
 //   dimensions, the result is cropped back to outputDims.
+// pixFmt: the format the samples are actually in (NV12, P010, P012, P016).
 torch::stable::Tensor convert_yuv_frame_to_rgb(
     const AVFrame& av_frame,
     const StableDevice& device,

@@ -51,7 +51,6 @@ extern "C" {
 #define FFMPEG_HAS_P012 0
 #endif
 
-
 // FFmpeg 7.1 added avcodec_get_supported_config(), replacing the codec's
 // pix_fmts / sample_fmts / supported_samplerates / ch_layouts arrays.
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 13, 100)
