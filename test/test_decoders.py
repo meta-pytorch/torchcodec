@@ -3418,38 +3418,31 @@ def _block_devices():
     return ("cpu", pytest.param("cuda", marks=pytest.mark.needs_cuda))
 
 
-# How many of a sample's bits each pixel format we expect to see actually
-# carries. Note that nv12's "12" is about chroma subsampling, not depth.
-_PIX_FMT_DEPTHS = {
-    "yuv420p": 8,
-    "yuv444p": 8,
-    "nv12": 8,
-    "yuv420p10le": 10,
-    "yuv420p12le": 12,
-    "p010le": 10,
-    "p012le": 12,
-    "p016le": 16,
-}
+def _is_msb_aligned(pix_fmt):
+    # NVDEC's semi-planar surfaces store their samples in the *most* significant
+    # bits of a uint16; the planar CPU formats use the least significant ones.
+    return pix_fmt.startswith("p0")
 
 
+# TODO_API_BREAKDOWN P2: this entire class should probably be folded in the
+# test/utils asset class.
 class _MaterializeCase(NamedTuple):
-    """A video, and the pixel format its frames come out in on each device."""
+    """A video, how many significant bits its samples carry, and the pixel
+    format its frames come out in on each device."""
 
     video: object
+    bit_depth: int
     cpu_pix_fmt: str
     cuda_pix_fmt: str
+    # FFmpeg 6 added P012. Before that, NVDEC's 12-bit surface can only be
+    # described as p016le, which claims 16 bits instead of 12. Set this for the
+    # sources that hit it: same samples either way (they're msb-aligned, so
+    # p016le describes them just as validly, with 4 zeroed low bits), but both
+    # the format and the depth we report change with the FFmpeg version.
+    needs_p016_before_ffmpeg6: bool = False
 
     def pix_fmt(self, device):
         return self.cuda_pix_fmt if device == "cuda" else self.cpu_pix_fmt
-
-    def bit_depth(self, device):
-        return _PIX_FMT_DEPTHS[self.pix_fmt(device)]
-
-    def msb_aligned(self, device):
-        # NVDEC's semi-planar surfaces store their samples in the *most*
-        # significant bits of a uint16; the planar CPU formats use the least
-        # significant ones.
-        return self.pix_fmt(device).startswith("p0")
 
 
 # Sources with more than 8 bits per sample.
@@ -3467,19 +3460,20 @@ _HDR_VIDEOS = (
 # 4:4:4 chroma, even vs odd dims (chroma rounds up), and 8- vs 10-/12-bit
 # (uint8 vs uint16 planes). All are YUV, so planes are (Y, U, V).
 _MATERIALIZE_VIDEOS = (
-    _MaterializeCase(NASA_VIDEO, "yuv420p", "nv12"),  # even dims
-    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9, "yuv420p", "nv12"),  # odd dims
+    _MaterializeCase(NASA_VIDEO, 8, "yuv420p", "nv12"),  # even dims
+    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9, 8, "yuv420p", "nv12"),  # odd
     # 4:4:4 (full-res chroma): NVDEC can't decode it, so CUDA falls back to the
     # CPU and the frame keeps its native format.
-    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, "yuv444p", "yuv444p"),
-    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT, "yuv420p10le", "p010le"),
+    _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, 8, "yuv444p", "yuv444p"),
+    _MaterializeCase(
+        TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT, 10, "yuv420p10le", "p010le"
+    ),
     _MaterializeCase(
         TEST_SRC_2_12BIT_HDR,
+        12,
         "yuv420p12le",
-        # FFmpeg < 6 has no P012, so the same NVDEC surface is tagged p016le
-        # there. The samples are identical either way: they're msb-aligned, so
-        # p016le describes them just as validly, with 4 zeroed low bits.
-        "p012le" if ffmpeg_major_version >= 6 else "p016le",
+        "p012le",
+        needs_p016_before_ffmpeg6=True,
     ),
 )
 
@@ -3795,7 +3789,16 @@ class TestBlocks:
         raw = frame.materialize()
         planes, pix_fmt = raw.planes, raw.pix_fmt
 
-        assert pix_fmt == case.pix_fmt(device)
+        expected_pix_fmt = case.pix_fmt(device)
+        expected_bit_depth = case.bit_depth
+        if (
+            device == "cuda"
+            and case.needs_p016_before_ffmpeg6
+            and ffmpeg_major_version < 6
+        ):
+            expected_pix_fmt, expected_bit_depth = "p016le", 16
+
+        assert pix_fmt == expected_pix_fmt
         assert raw.colorspace in ("bt709", "bt2020nc", "smpte170m", "unknown")
         assert raw.color_range in ("tv", "pc", "unknown")  # FFmpeg has only these
 
@@ -3806,7 +3809,7 @@ class TestBlocks:
             assert plane.ndim == 2
             assert plane.device.type == frame.device
 
-        assert raw.bit_depth == case.bit_depth(device)
+        assert raw.bit_depth == expected_bit_depth
 
         expected_dtype = torch.uint16 if raw.bit_depth > 8 else torch.uint8
         assert all(plane.dtype == expected_dtype for plane in planes)
@@ -3835,7 +3838,7 @@ class TestBlocks:
         cpu = self._first_frame(case.video.path, "cpu")[0].materialize()
         cuda = self._first_frame(case.video.path, "cuda")[0].materialize()
 
-        shift = 16 - case.bit_depth("cpu") if case.msb_aligned("cuda") else 0
+        shift = 16 - case.bit_depth if _is_msb_aligned(cuda.pix_fmt) else 0
         assert len(cpu.planes) == len(cuda.planes)
         for cpu_plane, cuda_plane in zip(cpu.planes, cuda.planes):
             assert _planes_equal(cpu_plane, cuda_plane.cpu().to(torch.int32) >> shift)
@@ -3853,9 +3856,9 @@ class TestBlocks:
         assert raw.color_range in ("tv", "unknown")  # unknown is treated as tv
 
         def sample(value_8bit):
-            value = value_8bit << (case.bit_depth(device) - 8)
-            if case.msb_aligned(device):
-                value <<= 16 - case.bit_depth(device)
+            value = value_8bit << (raw.bit_depth - 8)
+            if _is_msb_aligned(raw.pix_fmt):
+                value <<= 16 - raw.bit_depth
             return value
 
         Y, U, V = raw.planes
