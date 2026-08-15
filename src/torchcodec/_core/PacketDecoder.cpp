@@ -71,11 +71,17 @@ PacketDecoder::PacketDecoder(
       stream, av_codec, device_interface_.get(), ffmpeg_thread_count);
   device_interface_->initialize(codec_context_);
 
+  const AVPixFmtDescriptor* stream_desc =
+      av_pix_fmt_desc_get(codec_context_->pix_fmt);
+  int stream_bit_depth = stream_desc ? stream_desc->comp[0].depth : 8;
+
   VideoStreamOptions options;
-  // TODO_API_BREAKDOWN P1: Need to design and figure out behavior of Blocks
-  // with HDR data.
-  options.output_dtype = OutputDtype::UINT8; // dtype not exposed yet
   options.device = device;
+  // This is ugly: what we actually mean is "let the device interface decode
+  // into the native surface", which matters for NVDEC.
+  // TODO_API_BREAKDOWN P2: Find a cleaner way to express this?
+  options.output_dtype =
+      stream_bit_depth > 8 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 
   device_interface_->initialize_video_decoding(
       stream, demuxer.format_context(), options);
@@ -134,6 +140,8 @@ FramePlanes frame_to_planes(
   result.pix_fmt = fmt_name;
   result.colorspace = colorspace_name ? colorspace_name : "unknown";
   result.color_range = color_range_name ? color_range_name : "unknown";
+
+  result.bit_depth = desc->comp[0].depth;
 
   for (int c = 0; c < desc->nb_components; ++c) {
     const AVComponentDescriptor& comp = desc->comp[c];

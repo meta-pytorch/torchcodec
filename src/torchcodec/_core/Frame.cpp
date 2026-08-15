@@ -53,4 +53,23 @@ torch::stable::Tensor allocate_empty_hwc_tensor(
   }
 }
 
+torch::stable::Tensor convert_to_output_dtype(
+    const torch::stable::Tensor& tensor,
+    OutputDtype output_dtype) {
+  bool is_uint16 = tensor.scalar_type() == kStableUInt16;
+
+  if (output_dtype == OutputDtype::FLOAT32) {
+    double max_val = is_uint16 ? 65535.0 : 255.0;
+    return stable_div(torch::stable::to(tensor, kStableFloat32), max_val);
+  }
+
+  if (!is_uint16) {
+    return tensor;
+  }
+  // uint16 -> uint8. 257 is 65535 / 255.
+  return torch::stable::to(
+      stable_div(torch::stable::to(tensor, kStableFloat32), 257.0),
+      kStableUInt8);
+}
+
 } // namespace facebook::torchcodec

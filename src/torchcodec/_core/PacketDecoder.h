@@ -73,6 +73,7 @@ struct FramePlanes {
   std::string pix_fmt;
   std::string colorspace;
   std::string color_range;
+  int64_t bit_depth = 8;
 };
 
 FORCE_PUBLIC_VISIBILITY FramePlanes frame_to_planes(

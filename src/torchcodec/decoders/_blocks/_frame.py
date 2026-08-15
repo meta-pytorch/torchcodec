@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import torch
 
 from torchcodec._core.ops import _blocks_frame_to_planes
@@ -21,6 +23,33 @@ class Packet:
 
     def __init__(self, handle: torch.Tensor):
         self._handle = handle
+
+
+# TODO_API_BREAKDOWN P1 API design: should these fields (pix_format, colorspace
+# etc.) also exist on the DecodedFrame class? Should there **just** be the
+# DecodedFrame class and actually just call materialize() transparently whenever
+# the user wants to access the planes? If materialize() is super cheap (it
+# should be???) then this might be a good UX.
+@dataclass
+class RawFrame:
+    planes: tuple[torch.Tensor, ...]
+    pix_fmt: str  # FFmpeg pixel-format name, e.g. "yuv420p"
+    colorspace: str  # e.g. "bt709"
+    color_range: str  # "tv" (limited) or "pc" (full)
+    # The depth of pix_fmt (always).
+    # This is also the source's bit depth, except for 12b-bit sources CUDA
+    # frames: those are technically P012, but P012 was only introduced in FFmpeg
+    # 6. So For FFmpeg < 6, we must report those as P016, and so the bit_depth
+    # field here reports 16 (on CPU, it'd still be 12).
+    # Everything downstream still reads right, because those samples are
+    # msb-aligned and are therefore genuinely valid 16-bit ones, with 4 zeroed
+    # low bits.
+    #
+    # TODO_API_BREAKDOWN P2: We can't do anything about the P016 report, but
+    # should this actually report the depth of the source instead of the depth
+    # of the pixel format? Again the only discrepency arises for 12-bit sources
+    # on CUDA for FFmpeg < 6.
+    bit_depth: int
 
 
 # TODO_API_BREAKDOWN P1: API design - especially the materialize() method but
@@ -62,11 +91,23 @@ class DecodedFrame:
     # materialize()?
     # What about the planes - should they be 2D (right now they are)? Should we
     # give them names?
-    def materialize(self) -> tuple[tuple[torch.Tensor, ...], str, str, str]:
-        p0, p1, p2, p3, pix_fmt, colorspace, color_range = _blocks_frame_to_planes(
-            self._handle, self._device
-        )
+    def materialize(self) -> RawFrame:
+        (
+            p0,
+            p1,
+            p2,
+            p3,
+            pix_fmt,
+            colorspace,
+            color_range,
+            bit_depth,
+        ) = _blocks_frame_to_planes(self._handle, self._device)
         # Absent components come back as empty tensors; real ones are 2D views.
         planes = tuple(p for p in (p0, p1, p2, p3) if p.numel() > 0)
-        # TODO_API_BREAKDOWN P1: yeah this should be a dataclass or something.
-        return planes, pix_fmt, colorspace, color_range
+        return RawFrame(
+            planes=planes,
+            pix_fmt=pix_fmt,
+            colorspace=colorspace,
+            color_range=color_range,
+            bit_depth=bit_depth,
+        )

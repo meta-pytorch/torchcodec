@@ -196,13 +196,13 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
     const FrameDims& output_dims,
     AVPixelFormat pix_fmt,
     CachedColorMatrix& cached_color_matrix) {
-  bool is_p016 = is_nvdec_16bit_surface(pix_fmt);
+  bool is_16bit = is_nvdec_16bit_surface(pix_fmt);
   const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
   STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
   int bit_depth = desc->comp[0].depth;
 
-  float out_scale = is_p016 ? 65535.0f : 255.0f;
-  OutputDtype out_dtype = is_p016 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
+  float out_scale = is_16bit ? 65535.0f : 255.0f;
+  OutputDtype out_dtype = is_16bit ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 
   // Dimensions may be odd (NVDEC display area for VP9 etc.). NV12/P016
   // color conversion requires even dimensions, so we round up to even
@@ -241,7 +241,7 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
       bit_depth,
       out_scale);
 
-  if (is_p016) {
+  if (is_16bit) {
     launch_p016_to_rgb16_kernel(
         reinterpret_cast<const uint16_t*>(av_frame.data[0]),
         reinterpret_cast<const uint16_t*>(av_frame.data[1]),

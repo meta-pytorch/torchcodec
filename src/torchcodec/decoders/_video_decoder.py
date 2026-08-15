@@ -18,7 +18,10 @@ from torch import device as torch_device, nn, Tensor
 from torchcodec import _core as core, Frame, FrameBatch
 from torchcodec._core._decoder_utils import create_video_decoder
 from torchcodec._logging import _LG
-from torchcodec.decoders._decoder_utils import _get_cuda_backend
+from torchcodec.decoders._decoder_utils import (
+    _get_cuda_backend,
+    convert_output_dtype_to_str,
+)
 from torchcodec.transforms import DecoderTransform
 
 
@@ -221,14 +224,7 @@ class VideoDecoder:
         if num_ffmpeg_threads is None:
             raise ValueError(f"{num_ffmpeg_threads = } should be an int.")
 
-        _DTYPE_TO_STR = {torch.uint8: "uint8", torch.float32: "float32"}
-        if output_dtype != "auto":
-            if output_dtype not in _DTYPE_TO_STR:
-                raise ValueError(
-                    f"Invalid output_dtype ({output_dtype}). "
-                    f"Supported values are torch.uint8, torch.float32, and 'auto'."
-                )
-            output_dtype = _DTYPE_TO_STR[output_dtype]
+        output_dtype = convert_output_dtype_to_str(output_dtype)
 
         device_variant = _get_cuda_backend()
         if device is None:
