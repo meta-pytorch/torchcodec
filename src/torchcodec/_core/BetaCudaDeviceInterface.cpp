@@ -760,16 +760,15 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   // When a frame is mapped to an output surface, it needs to be unmapped
   // eventually, so that the decoder can re-use the output surface. Failing to
   // unmap will cause map to eventually fail. DALI unmaps frames almost
-  // immediately  after mapping them: they do the color-conversion in-between,
-  // which involves a copy of the data, so that works.
-  // We, OTOH, will do the color-conversion later, outside of receive_frame().
-  // So we unmap here: just before mapping a new frame. At that point we know
-  // that the previously-mapped frame is no longer needed:
-  // - With SingleStreamDecoder, that frame was either color-converted (with a
-  //   copy), or that's a frame that was discarded in SingleStreamDecoder.
-  //   Either way, the underlying output surface can be safely re-used.
-  // - With the "Blocks" APIs, the PacketDecoder forces a copy in
-  //   make_frame_standalone().
+  // immediately after mapping them: they do the color-conversion in-between,
+  // which involves a copy of the data, so that works. So do the "Blocks" APIs:
+  // make_frame_standalone() copies the surface out and unmaps it right away,
+  // which means the call below is a no-op for them.
+  // With SingleStreamDecoder there is no such copy: the color-conversion reads
+  // the mapped surface in place, later, outside of receive_frame(). So for
+  // those we unmap here instead, just before mapping a new frame. By then the
+  // previously-mapped frame was either color-converted or discarded by
+  // SingleStreamDecoder, so its output surface can be safely re-used.
   unmap_previous_frame();
   CUresult result = cuvidMapVideoFrame(
       *decoder_.get(),
@@ -966,9 +965,14 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
       "Failed to copy NVDEC surface: ",
       cudaGetErrorString(err));
 
-  // TODO_API_BREAKDOWN_CUDA P2: Should we unmap here? Or let the next
-  // receive_frame() call do it?
-  // unmap_previous_frame();
+  // The surface's contents are now ours, so release it instead of leaving it
+  // mapped until the next receive_frame(). It's `previously_mapped_frame_` that
+  // gets unmapped, which is this very frame: receive_frame() mapped it just
+  // before handing it to us.
+  // The copy above is only enqueued, not done, but that's fine: the surface can
+  // only be rewritten by the next cuvidMapVideoFrame()'s post-processing, which
+  // runs on the same stream and is therefore ordered behind the copy.
+  unmap_previous_frame();
 
   auto y_plane = static_cast<uint8_t*>(storage.mutable_data_ptr());
   av_frame->data[0] = y_plane;
