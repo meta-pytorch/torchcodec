@@ -128,6 +128,9 @@ from .utils import (
     TEST_SRC_2_720P_VP8,
     TEST_SRC_2_720P_VP9,
     TEST_SRC_2_MPEG4_MP4,
+    TESTSRC2_444_10BIT_HEVC,
+    TESTSRC2_444_12BIT_HEVC,
+    TESTSRC2_444_8BIT_HEVC,
     TESTSRC2_ODD_HEIGHT_444,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
@@ -1709,6 +1712,40 @@ class TestVideoDecoder:
         cpu_frames = decoder_cpu.get_frames_at([0, 1, 2]).data
         assert gpu_frames.shape == cpu_frames.shape
         assert_tensor_close_on_at_least(gpu_frames, cpu_frames, percentage=89, atol=3)
+
+    @needs_cuda
+    @pytest.mark.parametrize(
+        "asset",
+        (TESTSRC2_444_8BIT_HEVC, TESTSRC2_444_10BIT_HEVC, TESTSRC2_444_12BIT_HEVC),
+    )
+    @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32))
+    def test_nvdec_444_native(self, asset, output_dtype):
+        # HEVC 4:4:4 is decoded by NVDEC into a YUV444 / YUV444_16Bit surface
+        # and color-converted on the GPU: no CPU fallback, at any bit depth or
+        # output dtype. NVDEC offers no 8-bit 4:4:4 surface for the 10- and
+        # 12-bit sources, so those decode into the 16-bit one even when uint8 is
+        # requested, and get narrowed afterwards.
+        decoder_gpu = VideoDecoder(asset.path, device="cuda", output_dtype=output_dtype)
+        decoder_cpu = VideoDecoder(asset.path, device="cpu", output_dtype=output_dtype)
+        assert not decoder_gpu.cpu_fallback
+
+        gpu_frame = decoder_gpu.get_frame_at(0).data
+        cpu_frame = decoder_cpu.get_frame_at(0).data
+        assert gpu_frame.shape == cpu_frame.shape
+        assert gpu_frame.dtype == output_dtype
+        assert_tensor_close_on_at_least(
+            gpu_frame.cpu(), cpu_frame, percentage=99, atol=3
+        )
+
+        # The batch APIs pre-allocate their output, whose dtype has to match
+        # what the color conversion produces for the surface we ended up with.
+        gpu_frames = decoder_gpu.get_frames_at([0, 1, 2]).data
+        cpu_frames = decoder_cpu.get_frames_at([0, 1, 2]).data
+        assert gpu_frames.shape == cpu_frames.shape
+        assert gpu_frames.dtype == output_dtype
+        assert_tensor_close_on_at_least(
+            gpu_frames.cpu(), cpu_frames, percentage=99, atol=3
+        )
 
     @needs_cuda
     @pytest.mark.parametrize(
@@ -3468,9 +3505,15 @@ _HDR_VIDEOS = (
 _MATERIALIZE_VIDEOS = (
     _MaterializeCase(NASA_VIDEO, 8, "yuv420p", "nv12"),  # even dims
     _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9, 8, "yuv420p", "nv12"),  # odd
-    # 4:4:4 (full-res chroma): NVDEC can't decode it, so CUDA falls back to the
-    # CPU and the frame keeps its native format.
+    # 4:4:4 (full-res chroma). NVDEC can't decode H264 4:4:4, so this one falls
+    # back to the CPU and keeps its native format.
     _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, 8, "yuv444p", "yuv444p"),
+    # HEVC 4:4:4, which NVDEC decodes natively into its YUV444 surfaces. The
+    # 16-bit one is the only 4:4:4 surface above 8 bits, so 10- and 12-bit
+    # sources both land in yuv444p16le.
+    _MaterializeCase(TESTSRC2_444_8BIT_HEVC, 8, "yuv444p", "yuv444p"),
+    _MaterializeCase(TESTSRC2_444_10BIT_HEVC, 10, "yuv444p10le", "yuv444p16le"),
+    _MaterializeCase(TESTSRC2_444_12BIT_HEVC, 12, "yuv444p12le", "yuv444p16le"),
     _MaterializeCase(
         TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT, 10, "yuv420p10le", "p010le"
     ),
@@ -3649,6 +3692,10 @@ class TestBlocks:
             TESTSRC2_ODD_WIDTH_444,
             TESTSRC2_ODD_HEIGHT_444,
             TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
+            # HEVC 4:4:4: NVDEC decodes these natively instead.
+            TESTSRC2_444_8BIT_HEVC,
+            TESTSRC2_444_10BIT_HEVC,
+            TESTSRC2_444_12BIT_HEVC,
             # First keyframe is marked AV_PKT_FLAG_DISCARD by an mp4 edit list.
             DISCARD_FIRST_KEYFRAME_VIDEO,
         ),
@@ -3784,13 +3831,22 @@ class TestBlocks:
         planes, pix_fmt = raw.planes, raw.pix_fmt
 
         expected_pix_fmt = case.pix_fmt(device)
-        expected_bit_depth = case.bit_depth
         if (
             device == "cuda"
             and case.needs_p016_before_ffmpeg6
             and ffmpeg_major_version < 6
         ):
-            expected_pix_fmt, expected_bit_depth = "p016le", 16
+            expected_pix_fmt = "p016le"
+
+        # materialize() reports the depth of the pixel format, and every format
+        # states the source's own depth -- except these two, which claim 16 for
+        # lower-depth samples: p016le above, and yuv444p16le, the only 4:4:4
+        # NVDEC surface format wider than 8 bits. They are the whole exception
+        # list: a third one would report 16 where we expect case.bit_depth, and
+        # fail below.
+        expected_bit_depth = (
+            16 if expected_pix_fmt in ("p016le", "yuv444p16le") else case.bit_depth
+        )
 
         assert pix_fmt == expected_pix_fmt
         assert raw.colorspace in ("bt709", "bt2020nc", "smpte170m", "unknown")
@@ -3830,7 +3886,11 @@ class TestBlocks:
         cpu = self._first_frame(case.video.path, "cpu")[0].materialize()
         cuda = self._first_frame(case.video.path, "cuda")[0].materialize()
 
-        shift = 16 - case.bit_depth if _is_msb_aligned(cuda.pix_fmt) else 0
+        # Every 16-bit CUDA surface spans the full uint16 range, whether it says
+        # so (p016le, yuv444p16le) or reports the source's depth (p010le,
+        # p012le). The CPU planes are at the source's own scale.
+        is_uint16 = cuda.planes[0].dtype == torch.uint16
+        shift = 16 - case.bit_depth if is_uint16 else 0
         assert len(cpu.planes) == len(cuda.planes)
         for cpu_plane, cuda_plane in zip(cpu.planes, cuda.planes):
             torch.testing.assert_close(

@@ -70,7 +70,23 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth);
+// Mirrors cudaVideoSurfaceFormat. Declared here rather than taken as the NVDEC
+// type so that this file doesn't have to include the NVDEC headers.
+enum class NvdecSurface {
+  NV12, // semi-planar 4:2:0, 8-bit
+  P016, // semi-planar 4:2:0, 16-bit container
+  YUV444, // planar 4:4:4, 8-bit
+  YUV444_16Bit, // planar 4:4:4, 16-bit container
+};
+
+// The AVPixelFormat describing an NVDEC surface. bit_depth is the source's, and
+// only matters for the 16-bit containers, whose samples are msb-aligned: a
+// 10-bit 4:2:0 surface is exactly P010LE. There is no msb-aligned planar 4:4:4
+// format in FFmpeg, so YUV444_16Bit is always YUV444P16LE and reports 16.
+AVPixelFormat nvdec_pix_fmt(NvdecSurface surface, int bit_depth);
+
+// Whether the format is one of the NVDEC surfaces above.
+bool is_nvdec_surface(int format);
 bool is_nvdec_16bit_surface(int format);
 
 OutputDtype resolve_output_dtype(
