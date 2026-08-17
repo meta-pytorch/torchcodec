@@ -79,6 +79,8 @@ cudaVideoSurfaceFormat get_preferred_surface_format(OutputDtype output_dtype) {
 // The pixel formats a GPU frame can be in: the NVDEC surface formats. Frames
 // decoded by NVDEC are natively in one of these; CPU-fallback frames are
 // converted into one of these when they're uploaded.
+// XXX is this more like "format that nvdec supports"? More than "this can only be an nvdec format"?
+// XXX do we have coverage for color-conversion of all of these (444 and 444-16?)
 bool is_nvdec_surface_format(int format) {
   return format == AV_PIX_FMT_NV12 || is_nvdec_16bit_surface(format) ||
       format == AV_PIX_FMT_YUV444P || format == AV_PIX_FMT_YUV444P16LE;
@@ -89,6 +91,7 @@ bool is_nvdec_surface_format(int format) {
 // get_preferred_surface_format() (a 16-bit surface only buys us something for a
 // float32 output on a high bit depth source), and the chroma subsampling is
 // never reduced, so anything that isn't 4:2:0 goes to 4:4:4.
+// XXX Should this be get_pix_fmt_for_fallback_cpu_frame() ?
 AVPixelFormat fallback_upload_pix_fmt(
     const AVFrame& cpu_frame,
     OutputDtype output_dtype) {
@@ -363,6 +366,9 @@ void BetaCudaDeviceInterface::initialize_color_conversion(
     const VideoStreamOptions& video_stream_options,
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
     [[maybe_unused]] const std::optional<FrameDims>& resized_output_dims) {
+  // XXX We used to create a cpu device interface here - now we don't. Seems
+  // like we have an invariant that if mode == color-convert-only then we don't
+  // have a cpu device interface. Do we need to enforce that in some places?
   output_dtype_ = video_stream_options.output_dtype;
   color_conversion_initialized_ = true;
 }
@@ -912,6 +918,11 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   CudaContextGuard context_guard(device_.index());
 
   if (decoding_on_cpu_) {
+    // XXX OK so it's within transfer_cpu_frame_to_gpu that we'll set the
+    // attached data - can we still do it only here? Maybe we can't because
+    // transfer_cpu_frame_to_gpu() is also called from within
+    // convert_av_frame_to_frame_output in the 'Both' mode?
+    // How can we clean that up?
     av_frame = transfer_cpu_frame_to_gpu(*av_frame);
     return;
   }
@@ -971,6 +982,7 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
       0);
 }
 
+// XXX We may not need this anymore?
 bool BetaCudaDeviceInterface::is_device_frame(
     [[maybe_unused]] const UniqueAVFrame& av_frame) const {
   // make_frame_standalone() uploads CPU-fallback frames, and it is the only
@@ -1000,6 +1012,7 @@ void BetaCudaDeviceInterface::flush() {
   send_seqhdr_packet();
 }
 
+// XXX Nit: rename this into upload_cpu_frame_to_gpu?
 UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
     const AVFrame& cpu_frame) {
   // This is called in the context of the CPU fallback: the frame was decoded
@@ -1010,6 +1023,8 @@ UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
   //   the target format using sws_scale.
   // - Then we allocate GPU memory and copy the CPU frame to the GPU. This
   //   is what we return.
+  // XXX Is it really semi-planar formats that require even dimensions? Is it
+  // truly what characterizes them? Or is it just that they are subsampled (i.e. not 444)?
   // Since the semi-planar formats require even dimensions, the returned frame
   // will have even (rounded up) width and height for those, even if the
   // original CPU frame had odd dimensions.
@@ -1094,6 +1109,7 @@ UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
   gpu_frame->width = target_width;
   gpu_frame->height = target_height;
 
+  // XXX Why do we need seperate uploads per-plane?
   for (int p = 0; p < num_planes; ++p) {
     gpu_frame->data[p] = storage_ptr + plane_offsets[p];
     gpu_frame->linesize[p] = row_bytes;
@@ -1123,6 +1139,11 @@ UniqueAVFrame BetaCudaDeviceInterface::transfer_cpu_frame_to_gpu(
       "Failed to copy frame properties: ",
       get_ffmpeg_error_string_from_error_code(ret));
 
+  // XXX OK but this path can be reached from the Both() mode, i.e.
+  // SingleStreamDecoder. And those frames Don't need to be 'StandAlone' -
+  // although they do need the attached data both for stream sync and for storage.
+  // What would be a better name? Maybe we should split some logic to make it
+  // more atomic.
   // av_frame_copy_props() copies opaque_ref, so this must come after it. The
   // attached storage is what keeps the GPU memory alive.
   auto attached_data = new StandAloneFrameAttachedData();
@@ -1150,6 +1171,8 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   // In ColorConverterOnly mode the frame comes from a PacketDecoder, which
   // already uploaded it. Here, we're the interface that decoded it, so we know
   // first-hand whether it needs uploading.
+  // XXX Should have a clear comment about why this is deliberately done here
+  // and not in receive_frame().
   bool needs_upload = mode() == Mode::Both && decoding_on_cpu_;
 
   // Capture original dimensions before transfer_cpu_frame_to_gpu()
@@ -1168,6 +1191,10 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
       av_get_pix_fmt_name(static_cast<AVPixelFormat>(gpu_frame.format)));
 
   cudaStream_t producer_stream;
+  // XXX it'll work because in Both() mode the upload will set the upload stream
+  // as the current_stream, so the else claude below will implicitly match it,
+  // but it seems brittle. Maybe we should always set producer_stream to
+  // attached_data->producer_stream if it exists.
   if (mode() == Mode::ColorConverterOnly) {
     STD_TORCH_CHECK(
         av_frame.opaque_ref != nullptr,
@@ -1237,6 +1264,7 @@ void BetaCudaDeviceInterface::apply_rotation(
   }
 }
 
+// XXX Might want a TORCH_CHECK(mode == BOTH)???
 OutputDtype BetaCudaDeviceInterface::get_pre_allocation_dtype(
     OutputDtype requested_dtype) const {
   if (requested_dtype != OutputDtype::FLOAT32) {
