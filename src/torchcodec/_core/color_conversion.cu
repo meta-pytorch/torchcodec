@@ -40,33 +40,6 @@ __device__ inline void write_rgb_pixel(
   }
 }
 
-// Takes a pair of consecutive Y values, a pair of UV values, and writes the
-// corresponding two RGB values. Instead of writing each ra ga ba and rb gb bb
-// separately, they are written in pairs as Vec2T for faster writes.
-//
-// T is the sample type: uint8_t for NV12, uint16_t for P016.
-// Vec2T is the corresponding 2-element vector: uchar2 (2 uint8 values for NV12)
-// or ushort2 (2 uint16 values for P016).
-template <typename T, typename Vec2T>
-__device__ void write_pair_of_rgb_pixels(
-    Vec2T yayb,
-    float u,
-    float v,
-    T* rgb_plane_to_write,
-    int bit_shift,
-    const ColorMatrix& cm) {
-  T a[3], b[3];
-  write_rgb_pixel<T>(static_cast<float>(yayb.x >> bit_shift), u, v, cm, a);
-  write_rgb_pixel<T>(static_cast<float>(yayb.y >> bit_shift), u, v, cm, b);
-
-  Vec2T raga = {a[0], a[1]};
-  *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[0])) = raga;
-  Vec2T barb = {a[2], b[0]};
-  *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[2])) = barb;
-  Vec2T gbbb = {b[1], b[2]};
-  *(reinterpret_cast<Vec2T*>(&rgb_plane_to_write[4])) = gbbb;
-}
-
 // Takes the Y and UV plane as input, applies the color-conversion matrix and
 // fills the RGB plane as output.
 // Each thread, i.e. each invocation of yuvToRgbKernel, processes a 2x2 block
@@ -114,18 +87,30 @@ __global__ void yuv_to_rgb_kernel(
   float u = static_cast<float>(uv.x >> bit_shift);
   float v = static_cast<float>(uv.y >> bit_shift);
 
-  // Similarly, we can read 4 Y values in 2 reads
-  Vec2T y1y2 =
-      *reinterpret_cast<const Vec2T*>(&y_plane[y * y_pitch_elements + x]);
-  Vec2T y3y4 =
-      *reinterpret_cast<const Vec2T*>(&y_plane[(y + 1) * y_pitch_elements + x]);
+  // Similarly, we can read 4 Y values in 2 reads: {y1,y2} then {y3,y4}.
+  Vec2T y_pairs[2] = {
+      *reinterpret_cast<const Vec2T*>(&y_plane[y * y_pitch_elements + x]),
+      *reinterpret_cast<const Vec2T*>(&y_plane[(y + 1) * y_pitch_elements + x])};
 
-  T* rgb_plane_to_write = rgb_output + y * rgb_pitch_elements + x * 3;
-  write_pair_of_rgb_pixels<T, Vec2T>(
-      y1y2, u, v, rgb_plane_to_write, bit_shift, cm);
-  rgb_plane_to_write += rgb_pitch_elements; // go to next line
-  write_pair_of_rgb_pixels<T, Vec2T>(
-      y3y4, u, v, rgb_plane_to_write, bit_shift, cm);
+  T* rgb_row = rgb_output + y * rgb_pitch_elements + x * 3;
+#pragma unroll
+  for (int row = 0; row < 2; ++row) {
+    T a[3], b[3]; // a = {ra, ga, ba}, b = {rb, gb, bb}
+    write_rgb_pixel<T>(
+        static_cast<float>(y_pairs[row].x >> bit_shift), u, v, cm, a);
+    write_rgb_pixel<T>(
+        static_cast<float>(y_pairs[row].y >> bit_shift), u, v, cm, b);
+
+    // 3 vectorized stores rather than 6 scalar ones.
+    Vec2T raga = {a[0], a[1]};
+    *(reinterpret_cast<Vec2T*>(&rgb_row[0])) = raga;
+    Vec2T barb = {a[2], b[0]};
+    *(reinterpret_cast<Vec2T*>(&rgb_row[2])) = barb;
+    Vec2T gbbb = {b[1], b[2]};
+    *(reinterpret_cast<Vec2T*>(&rgb_row[4])) = gbbb;
+
+    rgb_row += rgb_pitch_elements; // go to next line
+  }
 }
 
 void launch_nv12_to_rgb_kernel(
