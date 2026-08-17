@@ -33,22 +33,23 @@ class Packet:
 @dataclass
 class RawFrame:
     planes: tuple[torch.Tensor, ...]
-    pix_fmt: str  # FFmpeg pixel-format name, e.g. "yuv420p"
+    # FFmpeg pixel-format name. On CPU this is the source's own format, e.g.
+    # "yuv420p". On CUDA it is always an NVDEC surface format: "nv12",
+    # "p010le", "p012le", "p016le", "yuv444p" or "yuv444p16le".
+    pix_fmt: str
     colorspace: str  # e.g. "bt709"
     color_range: str  # "tv" (limited) or "pc" (full)
-    # The depth of pix_fmt (always).
-    # This is also the source's bit depth, except for 12b-bit sources CUDA
-    # frames: those are technically P012, but P012 was only introduced in FFmpeg
-    # 6. So For FFmpeg < 6, we must report those as P016, and so the bit_depth
-    # field here reports 16 (on CPU, it'd still be 12).
+    # The depth of pix_fmt (always), which is the source's bit depth except
+    # where a CUDA surface format's container is wider than the source samples:
+    # a 10-bit 4:4:4 source is uploaded as yuv444p16le, and a 12-bit source is
+    # tagged p016le on FFmpeg < 6 (which lacks p012le). Both report 16 here (on
+    # CPU they'd report 10 and 12).
     # Everything downstream still reads right, because those samples are
-    # msb-aligned and are therefore genuinely valid 16-bit ones, with 4 zeroed
+    # msb-aligned and are therefore genuinely valid 16-bit ones, with zeroed
     # low bits.
     #
-    # TODO_API_BREAKDOWN P2: We can't do anything about the P016 report, but
-    # should this actually report the depth of the source instead of the depth
-    # of the pixel format? Again the only discrepency arises for 12-bit sources
-    # on CUDA for FFmpeg < 6.
+    # TODO_API_BREAKDOWN P2: should this report the depth of the source instead
+    # of the depth of the pixel format?
     bit_depth: int
 
 
@@ -63,9 +64,10 @@ class DecodedFrame:
     the decoder (which knows the stream time base) and carried here so the
     :class:`ColorConverter` need not be bound to any stream.
 
-    ``device`` is where this frame's samples actually are, which is not
-    necessarily the device its decoder was created with: a CUDA decoder falls
-    back to CPU decoding for streams NVDEC can't handle.
+    ``device`` is where this frame's samples are, and it is always the device
+    its decoder was created with. A CUDA decoder falls back to CPU decoding for
+    streams NVDEC can't handle, but it uploads those frames before handing them
+    out, so they are indistinguishable from NVDEC ones here.
     """
 
     def __init__(
