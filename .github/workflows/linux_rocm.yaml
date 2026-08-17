@@ -144,6 +144,32 @@ jobs:
         bash packaging/install_rocjpeg.sh
         echo '::endgroup::'
 
+        echo '::group::VA-API and DRM diagnostics'
+        # libva libraries present in the container
+        ldconfig -p | grep -E "libva|libdrm" || true
+        # DRM render nodes - permissions and group ownership
+        ls -la /dev/dri/ || true
+        # Current user and groups (container user must be in video/render group)
+        id
+        # Check whether mesa-amdgpu-va-drivers was actually installed
+        # (install_rocjpeg.sh silently falls back and skips it if AMD repo is absent)
+        rpm -q mesa-amdgpu-va-drivers libva-amdgpu rocjpeg 2>&1 || true
+        # Find VA driver .so files - if amdgpu_drv_video.so is missing, vaInit will fail
+        find /usr -name "*drv_video*" 2>/dev/null || true
+        # Try vainfo on every render node (no-sudo: true so we can't install vainfo)
+        if command -v vainfo &>/dev/null; then
+          for node in /dev/dri/renderD*; do
+            echo "--- vainfo on ${node} ---"
+            vainfo --display drm --device "${node}" 2>&1 || true
+          done
+        else
+          echo "vainfo not installed, skipping VA-API smoke test"
+        fi
+        # Show which VA driver is selected
+        echo "LIBVA_DRIVER_NAME=${LIBVA_DRIVER_NAME:-<not set>}"
+        echo "LIBVA_DRIVERS_PATH=${LIBVA_DRIVERS_PATH:-<not set>}"
+        echo '::endgroup::'
+
         echo '::group::Install torchcodec from the wheel'
         python -m pip install "${RUNNER_ARTIFACT_DIR}"/*.whl -vvv
         echo '::endgroup::'
