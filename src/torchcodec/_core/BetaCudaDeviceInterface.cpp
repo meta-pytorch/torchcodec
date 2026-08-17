@@ -76,30 +76,6 @@ cudaVideoSurfaceFormat get_preferred_surface_format(OutputDtype output_dtype) {
                                               : cudaVideoSurfaceFormat_NV12;
 }
 
-// The format a CPU-fallback frame should be uploaded as: whatever NVDEC would
-// have produced for the same content. The depth follows the same rule as
-// get_preferred_surface_format() (a 16-bit surface only buys us something for a
-// float32 output on a high bit depth source), and the chroma subsampling is
-// never reduced, so anything that isn't 4:2:0 goes to 4:4:4.
-AVPixelFormat get_pix_fmt_for_fallback_cpu_frame(
-    const AVFrame& cpu_frame,
-    OutputDtype output_dtype) {
-  const AVPixFmtDescriptor* desc =
-      av_pix_fmt_desc_get(static_cast<AVPixelFormat>(cpu_frame.format));
-  STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
-
-  int bit_depth = desc->comp[0].depth;
-  bool want_16bit = output_dtype == OutputDtype::FLOAT32 && bit_depth > 8;
-  bool is_420_or_mono = desc->nb_components == 1 ||
-      (desc->log2_chroma_w == 1 && desc->log2_chroma_h == 1);
-
-  if (is_420_or_mono) {
-    return want_16bit ? nvdec_pix_fmt(/*is_p016_surface=*/true, bit_depth)
-                      : AV_PIX_FMT_NV12;
-  }
-  return want_16bit ? AV_PIX_FMT_YUV444P16LE : AV_PIX_FMT_YUV444P;
-}
-
 static bool g_cuda_nvdec = register_device_interface(
     DeviceInterfaceKey(kStableCUDA, /*variant=*/"default"),
     [](const StableDevice& device) {
@@ -1013,25 +989,43 @@ GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
   //   the target format using sws_scale.
   // - Then we allocate GPU memory and copy the CPU frame to the GPU. This
   //   is what we return.
+  // We upload as whatever NVDEC would have produced for the same content: a
+  // semi-planar 4:2:0 surface for 4:2:0 and monochrome sources, planar 4:4:4
+  // for everything else since we never reduce chroma. The depth follows the
+  // same rule as get_preferred_surface_format(): a 16-bit surface only buys us
+  // something for a float32 output on a high bit depth source.
+  const AVPixFmtDescriptor* source_desc =
+      av_pix_fmt_desc_get(static_cast<AVPixelFormat>(cpu_frame.format));
+  STD_TORCH_CHECK(
+      source_desc != nullptr, "Unknown pixel format on decoded frame");
+
+  int source_bit_depth = source_desc->comp[0].depth;
+  bool semi_planar_420 = source_desc->nb_components == 1 ||
+      (source_desc->log2_chroma_w == 1 && source_desc->log2_chroma_h == 1);
+  bool want_16bit =
+      output_dtype_ == OutputDtype::FLOAT32 && source_bit_depth > 8;
+
+  AVPixelFormat target_pix_fmt;
+  if (semi_planar_420) {
+    target_pix_fmt = want_16bit
+        ? nvdec_pix_fmt(/*is_p016_surface=*/true, source_bit_depth)
+        : AV_PIX_FMT_NV12;
+  } else {
+    target_pix_fmt = want_16bit ? AV_PIX_FMT_YUV444P16LE : AV_PIX_FMT_YUV444P;
+  }
+
+  int num_planes = semi_planar_420 ? 2 : 3;
+  int bytes_per_sample = want_16bit ? 2 : 1;
+
   // The 4:2:0 kernel works on 2x2 blocks and skips any trailing odd row or
   // column, so for those targets we round the frame up to even dimensions and
   // let the color conversion crop the result back. Nothing about the pixel
   // format itself requires this: FFmpeg is happy with odd-sized 4:2:0 frames.
   // The 4:4:4 kernel is per-pixel, so those are uploaded at their exact size.
-  AVPixelFormat target_pix_fmt =
-      get_pix_fmt_for_fallback_cpu_frame(cpu_frame, output_dtype_);
-  const AVPixFmtDescriptor* target_desc = av_pix_fmt_desc_get(target_pix_fmt);
-  STD_TORCH_CHECK(target_desc != nullptr, "Unknown target pixel format");
-
-  bool is_444 =
-      target_desc->log2_chroma_w == 0 && target_desc->log2_chroma_h == 0;
-  int num_planes = is_444 ? 3 : 2;
-  int bytes_per_sample = target_desc->comp[0].depth > 8 ? 2 : 1;
-
   int width = cpu_frame.width;
   int height = cpu_frame.height;
-  int target_width = is_444 ? width : round_up_to_even(width);
-  int target_height = is_444 ? height : round_up_to_even(height);
+  int target_width = semi_planar_420 ? round_up_to_even(width) : width;
+  int target_height = semi_planar_420 ? round_up_to_even(height) : height;
 
   UniqueAVFrame intermediate_cpu_frame(av_frame_alloc());
   STD_TORCH_CHECK(
@@ -1078,7 +1072,9 @@ GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
   // so it's as wide as the luma plane but half as tall.
   int row_bytes = target_width * bytes_per_sample;
   int plane_heights[3] = {
-      target_height, is_444 ? target_height : target_height / 2, target_height};
+      target_height,
+      semi_planar_420 ? target_height / 2 : target_height,
+      target_height};
 
   int64_t plane_offsets[3] = {0, 0, 0};
   int64_t total_bytes = 0;
@@ -1256,8 +1252,8 @@ OutputDtype BetaCudaDeviceInterface::get_pre_allocation_dtype(
   }
 
   // Color conversion produces uint16 iff the surface it reads is 16-bit, which
-  // for a fallback stream is decided by the source's own depth (see
-  // get_pix_fmt_for_fallback_cpu_frame()).
+  // for a fallback stream is decided by the source's own depth (see how
+  // upload_cpu_frame_to_gpu() picks its target format).
   bool is_16bit_surface;
   if (decoding_on_cpu_) {
     const AVPixFmtDescriptor* desc =
