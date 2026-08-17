@@ -33,8 +33,21 @@
 #include "nvcuvid_include/nvcuvid.h"
 
 namespace facebook::torchcodec {
+// Hung off an AVFrame's opaque_ref by make_frame_standalone(), and only by it,
+// so the frame can outlive this interface and be color-converted by another
+// one. `storage` keeps the frame's GPU buffer alive; `producer_stream` is the
+// stream that filled it, which the consuming ColorConverter must sync against.
 struct StandAloneFrameAttachedData {
   cudaStream_t producer_stream = nullptr;
+  torch::stable::Tensor storage;
+};
+
+// A GPU frame together with the buffer backing it. Returned rather than
+// self-contained because the two callers keep that buffer alive differently:
+// make_frame_standalone() hands it to the frame itself, while a one-shot color
+// conversion just keeps it on the stack.
+struct GpuFrameAndStorage {
+  UniqueAVFrame av_frame;
   torch::stable::Tensor storage;
 };
 
@@ -103,10 +116,13 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
-  bool is_device_frame(
-      [[maybe_unused]] const UniqueAVFrame& av_frame) const override;
+  GpuFrameAndStorage upload_cpu_frame_to_gpu(const AVFrame& cpu_frame);
 
-  UniqueAVFrame transfer_cpu_frame_to_gpu(const AVFrame& cpu_frame);
+  // Copies the mapped NVDEC surface into a buffer we own and repoints
+  // `av_frame`'s planes at it, so the surface can be unmapped.
+  torch::stable::Tensor copy_nvdec_surface(
+      UniqueAVFrame& av_frame,
+      cudaStream_t stream);
 
   void apply_rotation(
       FrameOutput& frame_output,

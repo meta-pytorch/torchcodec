@@ -160,11 +160,6 @@ class DeviceInterface {
   virtual void make_frame_standalone([[maybe_unused]] UniqueAVFrame& av_frame) {
   };
 
-  virtual bool is_device_frame(
-      [[maybe_unused]] const UniqueAVFrame& av_frame) const {
-    return false;
-  }
-
   // Flush remaining frames from decoder
   virtual void flush() {
     STD_TORCH_CHECK(
