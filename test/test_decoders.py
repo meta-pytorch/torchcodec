@@ -3444,24 +3444,15 @@ class _MaterializeCase(NamedTuple):
     bit_depth: int
     cpu_pix_fmt: str
     cuda_pix_fmt: str
-    # The depth materialize() reports on CUDA, when the surface format's
-    # container is wider than the source's samples (yuv444p16le for a 10-bit
-    # 4:4:4 source). Defaults to bit_depth.
-    cuda_bit_depth: int | None = None
     # FFmpeg 6 added P012. Before that, NVDEC's 12-bit surface can only be
     # described as p016le, which claims 16 bits instead of 12. Set this for the
     # sources that hit it: same samples either way (they're msb-aligned, so
-    # p016le describes them just as validly, with 4 zeroed low bits), but both
-    # the format and the depth we report change with the FFmpeg version.
+    # p016le describes them just as validly, with 4 zeroed low bits), but the
+    # format we report changes with the FFmpeg version.
     needs_p016_before_ffmpeg6: bool = False
 
     def pix_fmt(self, device):
         return self.cuda_pix_fmt if device == "cuda" else self.cpu_pix_fmt
-
-    def reported_bit_depth(self, device):
-        if device == "cuda" and self.cuda_bit_depth is not None:
-            return self.cuda_bit_depth
-        return self.bit_depth
 
 
 # Sources with more than 8 bits per sample.
@@ -3486,11 +3477,7 @@ _MATERIALIZE_VIDEOS = (
     # CPU and uploads the frame as 4:4:4 rather than halve its chroma.
     _MaterializeCase(TESTSRC2_ODD_HEIGHT_AND_WIDTH_444, 8, "yuv444p", "yuv444p"),
     _MaterializeCase(
-        TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT,
-        10,
-        "yuv444p10le",
-        "yuv444p16le",
-        cuda_bit_depth=16,
+        TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT, 10, "yuv444p10le", "yuv444p16le"
     ),
     _MaterializeCase(
         TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT, 10, "yuv420p10le", "p010le"
@@ -3805,14 +3792,16 @@ class TestBlocks:
         raw = frame.materialize()
         planes, pix_fmt = raw.planes, raw.pix_fmt
 
-        expected_pix_fmt = case.pix_fmt(device)
-        expected_bit_depth = case.reported_bit_depth(device)
+        expected_pix_fmt, expected_bit_depth = case.pix_fmt(device), case.bit_depth
         if (
             device == "cuda"
             and case.needs_p016_before_ffmpeg6
             and ffmpeg_major_version < 6
         ):
-            expected_pix_fmt, expected_bit_depth = "p016le", 16
+            expected_pix_fmt = "p016le"
+            expected_bit_depth = 16
+        if case.video is TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT and device == "cuda":
+            expected_bit_depth = 16
 
         assert pix_fmt == expected_pix_fmt
         assert raw.colorspace in ("bt709", "bt2020nc", "smpte170m", "unknown")
