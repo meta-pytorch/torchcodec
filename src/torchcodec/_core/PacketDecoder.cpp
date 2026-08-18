@@ -8,9 +8,6 @@
 
 namespace facebook::torchcodec {
 
-// TODO_API_BREAKDOWN P1: we should make sure the block APIs can dispatch to
-// third-party extensions - all of them.
-
 SharedAVCodecContext create_and_open_codec_context(
     AVStream* stream,
     const AVCodec* av_codec,
@@ -79,7 +76,7 @@ PacketDecoder::PacketDecoder(
   options.device = device;
   // This is ugly: what we actually mean is "let the device interface decode
   // into the native surface", which matters for NVDEC.
-  // TODO_API_BREAKDOWN P2: Find a cleaner way to express this?
+  // TODO_API_BREAKDOWN CC P1: Find a cleaner way to express this?
   options.output_dtype =
       stream_bit_depth > 8 ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 

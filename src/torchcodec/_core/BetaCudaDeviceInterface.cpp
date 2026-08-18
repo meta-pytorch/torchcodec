@@ -931,7 +931,7 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
   av_frame->data[1] = plane(1);
   av_frame->data[2] = is_444 ? plane(2) : nullptr;
   av_frame->data[3] = nullptr;
-  // TODO_API_BREAKDOWN_CUDA P2: Check range before cast?
+  // TODO_API_BREAKDOWN CC P2: Check range before cast?
   av_frame->linesize[0] = static_cast<int>(pitch);
   av_frame->linesize[1] = static_cast<int>(pitch);
   av_frame->linesize[2] = is_444 ? static_cast<int>(pitch) : 0;
@@ -1003,9 +1003,10 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
   auto storage =
       torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
 
-  // TODO_API_BREAKDOWN_CUDA P1: I suspect we don't need to wait on the nvdec
-  // stream here, because we can only arrive here from a path where the frame
-  // has already been mapped so its data is available - worth double checking.
+  // TODO_API_BREAKDOWN CORRECTNESS P1: I suspect we don't need to wait on the
+  // nvdec stream here, because we can only arrive here from a path where the
+  // frame has already been mapped so its data is available - worth double
+  // checking.
   cudaError_t err = cudaMemcpyAsync(
       storage.mutable_data_ptr(),
       av_frame->data[0],
@@ -1017,14 +1018,13 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
       "Failed to copy NVDEC surface: ",
       cudaGetErrorString(err));
 
-  // TODO_API_BREADOWN P1:  We might want to unmap here to clearly state that
-  // the surface memory can be reused and that there's no leak (and rename this
-  // into copy_and_unmap_nvdec_surface).
-  // However, regardless of whether we unmap here or let receive_frame() unmap,
-  // I think we have a problem: the copy is async, and nothing prevents a
-  // PacketDecoder from decoding 2 consecutive frames on 2 separate streams.
-  // The following can happen:
-  // with Stream():
+  // TODO_API_BREAKDOWN CORRECTNESS P0:  We might want to unmap here to clearly
+  // state that the surface memory can be reused and that there's no leak (and
+  // rename this into copy_and_unmap_nvdec_surface). However, regardless of
+  // whether we unmap here or let receive_frame() unmap, I think we have a
+  // problem: the copy is async, and nothing prevents a PacketDecoder from
+  // decoding 2 consecutive frames on 2 separate streams. The following can
+  // happen: with Stream():
   //   packet_decoder.decode() -> receive_frame() -> copy_nvdec_surface() ->
   //   cudaMemcpyAsync()
   // with Stream():
@@ -1249,11 +1249,13 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   // In contrast, a PacketDecoder will always upload CPU frames before retuning
   // them because its contract is to respect its device parameter.
   //
-  // TODO_API_BREAKDOWN P1: Should test mismatch between device param of
-  // PacketDecoder and ColorConversion - maybe we're fine not handling this.
-  // TODO_API_BREAKDOWN P1: OK but we want the ColorConverter to be standalone:
-  // can we feed it frames on CPU and then on GPU? Will it be OK with that? Does
-  // that influence the TODO just above?
+  // TODO_API_BREAKDOWN UF P1: Should test mismatch between device param of
+  // PacketDecoder and ColorConversion - maybe we're fine not handling this?
+  // Should check CUDA-CPU, CPU-CUDA, and CUDA-CUDA (with different devices)
+  // cases.
+  // TODO_API_BREAKDOWN UF P1: OK but we want the ColorConverter to be
+  // standalone: can we feed it frames on CPU and then on GPU? Will it be OK
+  // with that? Does that influence the TODO just above?
   bool needs_upload = mode() == Mode::Both && decoding_on_cpu_;
 
   // `uploaded` owns the GPU buffer for as long as it's in scope, which covers
@@ -1282,10 +1284,10 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   } else {
     // In case of CPU fallback, the producer stream is indeed the current
     // stream.
-    // TODO_API_BREAKDOWN P1: when we're not in CPU fallback, what is the
-    // producer stream? It's the NVDEC stream isn't it? I think it works because
-    // we know the data is valid since we mapped the frame, but we might want to
-    // document this
+    // TODO_API_BREAKDOWN CORRECTNESS P1: when we're not in CPU fallback, what
+    // is the producer stream? It's the NVDEC stream isn't it? I think it works
+    // because we know the data is valid since we mapped the frame, but we might
+    // want to document this
     producer_stream = get_current_cuda_stream(device_.index());
   }
 

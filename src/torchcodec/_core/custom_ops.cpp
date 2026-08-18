@@ -834,7 +834,7 @@ int64_t _blocks_packet_decoder_send_packet(
     torch::stable::Tensor& decoder,
     torch::stable::Tensor& packet) {
   PacketDecoder* decoder_ptr = unwrap_tensor_to_pointer<PacketDecoder>(decoder);
-  // TODO_API_BREAKDOWN P1: Do we really need this to be a raw AVPacket*?
+  // TODO_API_BREAKDOWN CC P1: Do we really need this to be a raw AVPacket*?
   AVPacket* raw_packet = unwrap_tensor_to_pointer<AVPacket>(packet);
   return static_cast<int64_t>(decoder_ptr->send_packet(raw_packet));
 }
@@ -844,7 +844,7 @@ int64_t _blocks_packet_decoder_send_eof(torch::stable::Tensor& decoder) {
   return static_cast<int64_t>(decoder_ptr->send_eof());
 }
 
-// TODO_API_BREAKDOWN P1: I hate this.
+// TODO_API_BREAKDOWN CC P1: I hate this.
 std::string device_to_string(const StableDevice& device) {
   std::string name = device_type_name(device.type());
   // A negative index means "unspecified" (e.g. device was just "cuda"); leave
@@ -878,8 +878,8 @@ OpsReceiveFrameOutput _blocks_packet_decoder_receive_frame(
   double duration_seconds = pts_to_seconds(get_duration(*av_frame), time_base);
   // A decoder's frames always live on the decoder's own device, including the
   // ones a CUDA decoder had to decode on the CPU and upload.
-  // TODO_API_BREAKDOWN_P1: Not sure we need to return the device at all, the
-  // device should always match the device parameter now.
+  // TODO_API_BREAKDOWN DESIGN P1: Not sure we need to return the device at all,
+  // the device should always match the device parameter now.
   std::string device = device_to_string(decoder_ptr->device());
   return std::make_tuple(
       wrap_pointer_to_tensor(std::move(av_frame)),

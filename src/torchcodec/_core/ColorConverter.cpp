@@ -38,10 +38,6 @@ void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
   options.output_dtype = output_dtype;
   options.device = device_;
 
-  // TODO_API_BREAKDOWN P1 It seems unnatural that the color-converter needs its
-  // own device_interface_, but at the same time the color-conversion *must* be
-  // third-party aware, and the only way to achieve that for now is via the
-  // interface.
   std::vector<std::unique_ptr<Transform>> no_transforms;
   device_interface_->initialize_color_conversion(
       options, no_transforms, /*resized_output_dims=*/std::nullopt);
