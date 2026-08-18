@@ -947,7 +947,8 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
 void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   // Make the frame standalone, i.e. safely consumable by a user or by a
   // ColorConverter (potentially a different CUDA stream):
-  // - GPU frames are copied: we copy the frame data so that its surface can be unmapped in
+  // - GPU frames are copied: we copy the frame data so that its surface can be
+  // unmapped in
   //   receive_frame() without losing the data.
   // - CPU-fallback frames are uploaded here too, so that a PacketDecoder always
   //   hands out frames that live on its own device.
@@ -1028,9 +1029,10 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
   // PacketDecoder from decoding 2 consecutive frames on 2 separate streams.
   // The following can happen:
   // with Stream():
-  //   packet_decoder.decode() -> receive_frame() -> copy_nvdec_surface() -> cudaMemcpyAsync()
+  //   packet_decoder.decode() -> receive_frame() -> copy_nvdec_surface() ->
+  //   cudaMemcpyAsync()
   // with Stream():
-  //   packet_decoder.decode() -> receive_frame() -> unmap_previous_frame() 
+  //   packet_decoder.decode() -> receive_frame() -> unmap_previous_frame()
   // where unmap_previous_frame() unmaps the surface before the cudaMemcpyAsync
   // is able to finish on the other stream.
 
@@ -1066,7 +1068,8 @@ void BetaCudaDeviceInterface::flush() {
   send_seqhdr_packet();
 }
 
-GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu_on_current_stream(
+GpuFrameAndStorage
+BetaCudaDeviceInterface::upload_cpu_frame_to_gpu_on_current_stream(
     const AVFrame& cpu_frame) {
   // This is called in the context of the CPU fallback: the frame was decoded
   // on the CPU, and in this function we convert that frame into a format we
@@ -1223,8 +1226,8 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   CudaContextGuard context_guard(device_.index());
 
-  // Capture original dimensions before upload_cpu_frame_to_gpu_on_current_stream()
-  // may round them up to even.
+  // Capture original dimensions before
+  // upload_cpu_frame_to_gpu_on_current_stream() may round them up to even.
   FrameDims original_dims(av_frame.height, av_frame.width);
 
   // We may need to upload a frame here in case of the CPU fallback. This is
@@ -1244,7 +1247,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   // can we feed it frames on CPU and then on GPU? Will it be OK with that? Does
   // that influence the TODO just above?
   bool needs_upload = mode() == Mode::Both && decoding_on_cpu_;
-
 
   // `uploaded` owns the GPU buffer for as long as it's in scope, which covers
   // the color conversion below.
@@ -1270,7 +1272,8 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         gpu_frame.opaque_ref->data);
     producer_stream = attached_data->producer_stream;
   } else {
-    // In case of CPU fallback, the producer stream is indeed the current stream.
+    // In case of CPU fallback, the producer stream is indeed the current
+    // stream.
     // TODO_API_BREAKDOWN P1: when we're not in CPU fallback, what is the
     // producer stream? It's the NVDEC stream isn't it? I think it works because
     // we know the data is valid since we mapped the frame, but we might want to

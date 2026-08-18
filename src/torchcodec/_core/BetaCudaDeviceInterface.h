@@ -119,7 +119,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
-  GpuFrameAndStorage upload_cpu_frame_to_gpu_on_current_stream(const AVFrame& cpu_frame);
+  GpuFrameAndStorage upload_cpu_frame_to_gpu_on_current_stream(
+      const AVFrame& cpu_frame);
 
   torch::stable::Tensor copy_nvdec_surface(
       UniqueAVFrame& av_frame,
