@@ -131,6 +131,7 @@ from .utils import (
     TESTSRC2_444_10BIT_HEVC,
     TESTSRC2_444_12BIT_HEVC,
     TESTSRC2_444_8BIT_HEVC,
+    TESTSRC2_AV1_10BIT,
     TESTSRC2_ODD_HEIGHT_444,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_444,
     TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9,
@@ -1715,16 +1716,27 @@ class TestVideoDecoder:
 
     @needs_cuda
     @pytest.mark.parametrize(
-        "asset",
-        (TESTSRC2_444_8BIT_HEVC, TESTSRC2_444_10BIT_HEVC, TESTSRC2_444_12BIT_HEVC),
+        "asset, percentage",
+        (
+            # 4:4:4 carries full-resolution chroma, so our kernel and swscale
+            # agree closely. The 4:2:0 one diverges wherever chroma is
+            # upsampled, which is the usual CUDA-vs-CPU gap on subsampled
+            # content and is not specific to this asset.
+            (TESTSRC2_444_8BIT_HEVC, 99),
+            (TESTSRC2_444_10BIT_HEVC, 99),
+            (TESTSRC2_444_12BIT_HEVC, 99),
+            (TESTSRC2_AV1_10BIT, 89),
+        ),
     )
     @pytest.mark.parametrize("output_dtype", (torch.uint8, torch.float32))
-    def test_nvdec_444_native(self, asset, output_dtype):
-        # HEVC 4:4:4 is decoded by NVDEC into a YUV444 / YUV444_16Bit surface
-        # and color-converted on the GPU: no CPU fallback, at any bit depth or
-        # output dtype. NVDEC offers no 8-bit 4:4:4 surface for the 10- and
-        # 12-bit sources, so those decode into the 16-bit one even when uint8 is
-        # requested, and get narrowed afterwards.
+    def test_nvdec_native_decoding(self, asset, percentage, output_dtype):
+        # Streams NVDEC can decode but that used to hit the CPU fallback,
+        # because we only ever asked it for an NV12 or a P016 surface:
+        # - 4:4:4, which needs the YUV444 surfaces.
+        # - AV1 10-bit, for which NVDEC offers only P016, so a uint8 request
+        #   found no 8-bit surface to decode into (float32 already worked).
+        # Where the surface's depth doesn't match the requested dtype, the
+        # samples are narrowed or widened after color conversion.
         decoder_gpu = VideoDecoder(asset.path, device="cuda", output_dtype=output_dtype)
         decoder_cpu = VideoDecoder(asset.path, device="cpu", output_dtype=output_dtype)
         assert not decoder_gpu.cpu_fallback
@@ -1734,7 +1746,7 @@ class TestVideoDecoder:
         assert gpu_frame.shape == cpu_frame.shape
         assert gpu_frame.dtype == output_dtype
         assert_tensor_close_on_at_least(
-            gpu_frame.cpu(), cpu_frame, percentage=99, atol=3
+            gpu_frame.cpu(), cpu_frame, percentage=percentage, atol=3
         )
 
         # The batch APIs pre-allocate their output, whose dtype has to match
@@ -1744,7 +1756,7 @@ class TestVideoDecoder:
         assert gpu_frames.shape == cpu_frames.shape
         assert gpu_frames.dtype == output_dtype
         assert_tensor_close_on_at_least(
-            gpu_frames.cpu(), cpu_frames, percentage=99, atol=3
+            gpu_frames.cpu(), cpu_frames, percentage=percentage, atol=3
         )
 
     @needs_cuda

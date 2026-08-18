@@ -1216,6 +1216,19 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_444 = TestVideo(
     frames={0: {}},
 )
 
+# AV1 4:2:0 10-bit. NVDEC offers only a P016 output surface for this one, no
+# NV12, which used to send it to the CPU fallback whenever uint8 was requested.
+# ffmpeg -f lavfi -i "testsrc2=size=320x240:rate=25:duration=1" \
+#  -c:v libsvtav1 -pix_fmt yuv420p10le testsrc2_av1_10bit.mp4
+TESTSRC2_AV1_10BIT = TestVideo(
+    filename="testsrc2_av1_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=320, height=240, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
 # HEVC 4:4:4, which NVDEC *can* decode natively (unlike H264 4:4:4 above), at
 # 8, 10 and 12 bits. Odd dimensions, so they also cover the cropping NVDEC's
 # even-aligned surfaces need. Encoded with, for DEPTH in 8/10/12:
