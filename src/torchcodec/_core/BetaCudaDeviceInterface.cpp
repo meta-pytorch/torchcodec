@@ -945,19 +945,15 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
 }
 
 void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
-  // Make the frame standalone:
-  // - Crucially, we copy the frame data so that its surface can be unmapped in
-  //   receive_frame() (see comment there).
-  // - We put the frame in a state such that it can be safely used by a
-  //   ColorConverter (i.e. a *different* instance of this
-  //   BetaCudaDeviceInterface): we attach relevant metadata as the
-  //   StandAloneFrameAttachedData struct, which is then used by the
-  //   ColorConverter in convert_cuda_frame_to_av_frame() to perform the
-  //   color-conversion correctly.
-  // CPU-fallback frames are uploaded here too, so that a PacketDecoder always
-  // hands out frames that live on its own device. This is the only place we do
-  // that: the SingleStreamDecoder never calls this, and uploading at decode
-  // time would waste bandwidth on the frames its seek loop decodes and drops.
+  // Make the frame standalone, i.e. safely consumable by a user or by a
+  // ColorConverter (potentially a different CUDA stream):
+  // - GPU frames are copied: we copy the frame data so that its surface can be unmapped in
+  //   receive_frame() without losing the data.
+  // - CPU-fallback frames are uploaded here too, so that a PacketDecoder always
+  //   hands out frames that live on its own device.
+  // The copy of GPU frames and the upload of CPU frames is async: we thus
+  // record the producer stream in the attached data so that the stream can be
+  // waited upon before running the color-conversion.
   STD_TORCH_CHECK(
       mode() == Mode::DecoderOnly,
       "make_frame_standalone() is only valid in decoder-only mode: standalone "
@@ -971,7 +967,7 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
     av_frame = std::move(uploaded.av_frame);
     storage = std::move(uploaded.storage);
   } else {
-    storage = copy_nvdec_surface_and_unmap(av_frame, current_stream);
+    storage = copy_nvdec_surface(av_frame, current_stream);
   }
 
   auto attached_data = new StandAloneFrameAttachedData();
@@ -988,7 +984,7 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
       "Failed to attach standalone frame data");
 }
 
-torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface_and_unmap(
+torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
     UniqueAVFrame& av_frame,
     cudaStream_t stream) {
   // The amount of bytes an NV12 image takes is:
@@ -1024,16 +1020,19 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface_and_unmap(
       "Failed to copy NVDEC surface: ",
       cudaGetErrorString(err));
 
-  // The surface's contents are now ours, so release it instead of leaving it
-  // mapped until the next receive_frame(). It's `previously_mapped_frame_` that
-  // gets unmapped, which is this very frame: receive_frame() mapped it just
-  // before handing it to us.
-  // The copy above is only enqueued, not done. That's fine as long as the
-  // caller doesn't switch CUDA streams between frames: the surface can only be
-  // rewritten by the next cuvidMapVideoFrame()'s post-processing, which
-  // receive_frame() puts on the then-current stream, so it is ordered behind
-  // this copy.
-  unmap_previous_frame();
+  // TODO_API_BREADOWN P1:  We might want to unmap here to clearly state that
+  // the surface memory can be reused and that there's no leak (and rename this
+  // into copy_and_unmap_nvdec_surface).
+  // However, regardless of whether we unmap here or let receive_frame() unmap,
+  // I think we have a problem: the copy is async, and nothing prevents a
+  // PacketDecoder from decoding 2 consecutive frames on 2 separate streams.
+  // The following can happen:
+  // with Stream():
+  //   packet_decoder.decode() -> receive_frame() -> copy_nvdec_surface() -> cudaMemcpyAsync()
+  // with Stream():
+  //   packet_decoder.decode() -> receive_frame() -> unmap_previous_frame() 
+  // where unmap_previous_frame() unmaps the surface before the cudaMemcpyAsync
+  // is able to finish on the other stream.
 
   auto y_plane = static_cast<uint8_t*>(storage.mutable_data_ptr());
   av_frame->data[0] = y_plane;

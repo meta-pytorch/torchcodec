@@ -121,9 +121,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   GpuFrameAndStorage upload_cpu_frame_to_gpu_on_current_stream(const AVFrame& cpu_frame);
 
-  // Copies the mapped NVDEC surface into a buffer we own, repoints
-  // `av_frame`'s planes at it, and releases the surface.
-  torch::stable::Tensor copy_nvdec_surface_and_unmap(
+  torch::stable::Tensor copy_nvdec_surface(
       UniqueAVFrame& av_frame,
       cudaStream_t stream);
 
