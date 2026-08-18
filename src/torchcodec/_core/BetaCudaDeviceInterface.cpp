@@ -411,9 +411,6 @@ void BetaCudaDeviceInterface::initialize_color_conversion(
     const VideoStreamOptions& video_stream_options,
     [[maybe_unused]] const std::vector<std::unique_ptr<Transform>>& transforms,
     [[maybe_unused]] const std::optional<FrameDims>& resized_output_dims) {
-  // XXX We used to create a cpu device interface here - now we don't. Seems
-  // like we have an invariant that if mode == color-convert-only then we don't
-  // have a cpu device interface. Do we need to enforce that in some places?
   output_dtype_ = video_stream_options.output_dtype;
   color_conversion_initialized_ = true;
 }
@@ -970,16 +967,13 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
   torch::stable::Tensor storage;
   if (decoding_on_cpu_) {
-    auto uploaded = upload_cpu_frame_to_gpu(*av_frame);
+    auto uploaded = upload_cpu_frame_to_gpu_on_current_stream(*av_frame);
     av_frame = std::move(uploaded.av_frame);
     storage = std::move(uploaded.storage);
   } else {
     storage = copy_nvdec_surface_and_unmap(av_frame, current_stream);
   }
 
-  // The one and only place we attach StandAloneFrameAttachedData. Note that
-  // av_frame_copy_props() copies opaque_ref, so any such call must have already
-  // happened by now.
   auto attached_data = new StandAloneFrameAttachedData();
   attached_data->producer_stream = current_stream;
   attached_data->storage = std::move(storage);
@@ -1073,7 +1067,7 @@ void BetaCudaDeviceInterface::flush() {
   send_seqhdr_packet();
 }
 
-GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
+GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu_on_current_stream(
     const AVFrame& cpu_frame) {
   // This is called in the context of the CPU fallback: the frame was decoded
   // on the CPU, and in this function we convert that frame into a format we
@@ -1081,8 +1075,11 @@ GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
   // We do that in 2 steps:
   // - First we convert the input CPU frame into an intermediate CPU frame in
   //   the target format using sws_scale.
-  // - Then we allocate GPU memory and copy the CPU frame to the GPU. This
-  //   is what we return.
+  // - Then we allocate GPU memory and copy the CPU frame to the GPU
+  //   asynchronously on the current stream.
+  // We return the new AVFrame and its associated GPU storage so that the caller
+  // can handle the memory lifetime. The GPU storage is a torch
+  // Tensor because we want to rely on the torch CUDA allocator.
 
   const AVPixFmtDescriptor* source_desc =
       av_pix_fmt_desc_get(static_cast<AVPixelFormat>(cpu_frame.format));
@@ -1227,25 +1224,34 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   CudaContextGuard context_guard(device_.index());
 
-  // A CPU-fallback frame is uploaded lazily, here, rather than eagerly in
-  // receive_frame(): the SingleStreamDecoder's decoding loop decodes and
-  // discards frames while scanning forward to a target pts, and uploading
-  // those would burn host-to-device bandwidth on frames nobody sees. We only
-  // pay for the frames that are actually returned.
-  // In ColorConverterOnly mode there is nothing to do: the frame comes from a
-  // PacketDecoder, which uploaded it in make_frame_standalone(). That one *is*
-  // eager, because every frame a PacketDecoder emits is handed to the caller.
-  bool needs_upload = mode() == Mode::Both && decoding_on_cpu_;
-
-  // Capture original dimensions before upload_cpu_frame_to_gpu()
+  // Capture original dimensions before upload_cpu_frame_to_gpu_on_current_stream()
   // may round them up to even.
   FrameDims original_dims(av_frame.height, av_frame.width);
+
+  // We may need to upload a frame here in case of the CPU fallback. This is
+  // only needed in Both() mode i.e. with the SingleStreamDecoder. The reason we
+  // do it here and not just after decoding is because the `decode_av_frame()`
+  // loop of the SingleStreamDecoder may discard frames while decoding forward
+  // to a target pts - we don't want to upload these frames that will be
+  // discarded anyway. So we upload as late as possible for those frame we
+  // *know* we must return.
+  //
+  // In contrast, a PacketDecoder will always upload CPU frames before retuning
+  // them because its contract is to respect its device parameter.
+  //
+  // TODO_API_BREAKDOWN P1: Should test mismatch between device param of
+  // PacketDecoder and ColorConversion - maybe we're fine not handling this.
+  // TODO_API_BREAKDOWN P1: OK but we want the ColorConverter to be standalone:
+  // can we feed it frames on CPU and then on GPU? Will it be OK with that? Does
+  // that influence the TODO just above?
+  bool needs_upload = mode() == Mode::Both && decoding_on_cpu_;
+
 
   // `uploaded` owns the GPU buffer for as long as it's in scope, which covers
   // the color conversion below.
   GpuFrameAndStorage uploaded;
   if (needs_upload) {
-    uploaded = upload_cpu_frame_to_gpu(av_frame);
+    uploaded = upload_cpu_frame_to_gpu_on_current_stream(av_frame);
   }
   const AVFrame& gpu_frame = needs_upload ? *uploaded.av_frame : av_frame;
 
@@ -1255,10 +1261,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
       "Expected a pixel format we can color-convert on the GPU, got ",
       av_get_pix_fmt_name(gpu_pix_fmt));
 
-  // Only a standalone frame carries a producer stream, and only a
-  // ColorConverter ever sees one: make_frame_standalone() is the sole place
-  // that attaches it, and only a PacketDecoder calls that. Everything we get in
-  // any other mode we produced ourselves, on this thread's current stream.
   cudaStream_t producer_stream;
   if (mode() == Mode::ColorConverterOnly) {
     STD_TORCH_CHECK(
@@ -1269,6 +1271,11 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         gpu_frame.opaque_ref->data);
     producer_stream = attached_data->producer_stream;
   } else {
+    // In case of CPU fallback, the producer stream is indeed the current stream.
+    // TODO_API_BREAKDOWN P1: when we're not in CPU fallback, what is the
+    // producer stream? It's the NVDEC stream isn't it? I think it works because
+    // we know the data is valid since we mapped the frame, but we might want to
+    // document this
     producer_stream = get_current_cuda_stream(device_.index());
   }
 
@@ -1331,10 +1338,7 @@ void BetaCudaDeviceInterface::apply_rotation(
 
 OutputDtype BetaCudaDeviceInterface::get_pre_allocation_dtype(
     [[maybe_unused]] OutputDtype requested_dtype) const {
-  // XXX Might want a TORCH_CHECK(mode == BOTH)???
   if (decoding_on_cpu_) {
-    // There's no NVDEC surface: the upload picks the format, from the source's
-    // own depth (see upload_cpu_frame_to_gpu()).
     const AVPixFmtDescriptor* desc =
         av_pix_fmt_desc_get(codec_context_->pix_fmt);
     bool is_16bit = output_dtype_ == OutputDtype::FLOAT32 && desc != nullptr &&

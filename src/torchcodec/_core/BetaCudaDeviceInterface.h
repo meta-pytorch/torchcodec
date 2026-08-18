@@ -119,7 +119,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
-  GpuFrameAndStorage upload_cpu_frame_to_gpu(const AVFrame& cpu_frame);
+  GpuFrameAndStorage upload_cpu_frame_to_gpu_on_current_stream(const AVFrame& cpu_frame);
 
   // Copies the mapped NVDEC surface into a buffer we own, repoints
   // `av_frame`'s planes at it, and releases the surface.
