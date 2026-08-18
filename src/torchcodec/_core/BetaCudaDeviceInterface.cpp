@@ -81,30 +81,44 @@ static DecoderCapsCache& get_decoder_caps_cache() {
 // - similarly if the user wants float32 output, we try to decode on a >8bit
 //   surface, including for 8bit sources. The caller must handle a similar
 //   fallback.
+// On the chroma side: NVDEC has no 4:2:2 surface, so anything that isn't 4:2:0
+// or monochrome goes on a 4:4:4 surface rather than have its chroma halved.
 cudaVideoSurfaceFormat get_preferred_surface_format(
     cudaVideoChromaFormat chroma_format,
     OutputDtype output_dtype) {
   bool want_uint8 = output_dtype == OutputDtype::UINT8;
-  if (chroma_format == cudaVideoChromaFormat_444) {
-    return want_uint8 ? cudaVideoSurfaceFormat_YUV444
-                      : cudaVideoSurfaceFormat_YUV444_16Bit;
-  } else {
+  bool semi_planar_420 = chroma_format == cudaVideoChromaFormat_420 ||
+      chroma_format == cudaVideoChromaFormat_Monochrome;
+  if (semi_planar_420) {
     return want_uint8 ? cudaVideoSurfaceFormat_NV12
                       : cudaVideoSurfaceFormat_P016;
+  } else {
+    return want_uint8 ? cudaVideoSurfaceFormat_YUV444
+                      : cudaVideoSurfaceFormat_YUV444_16Bit;
   }
 }
 
-NvdecSurface to_nvdec_surface(cudaVideoSurfaceFormat format) {
-  switch (format) {
+// The AVPixelFormat describing a given surface, for a source of that bit depth.
+// nvdec_pix_fmt() takes our own enum rather than the NVDEC type, so that
+// FFMPEGCommon doesn't have to include the NVDEC headers.
+AVPixelFormat surface_to_pix_fmt(
+    cudaVideoSurfaceFormat surface_format,
+    int bit_depth) {
+  NvdecSurface surface = NvdecSurface::NV12;
+  switch (surface_format) {
     case cudaVideoSurfaceFormat_P016:
-      return NvdecSurface::P016;
+      surface = NvdecSurface::P016;
+      break;
     case cudaVideoSurfaceFormat_YUV444:
-      return NvdecSurface::YUV444;
+      surface = NvdecSurface::YUV444;
+      break;
     case cudaVideoSurfaceFormat_YUV444_16Bit:
-      return NvdecSurface::YUV444_16Bit;
+      surface = NvdecSurface::YUV444_16Bit;
+      break;
     default:
-      return NvdecSurface::NV12;
+      break;
   }
+  return nvdec_pix_fmt(surface, bit_depth);
 }
 
 bool is_444_surface_format(cudaVideoSurfaceFormat format) {
@@ -862,8 +876,8 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
 
   av_frame->width = width;
   av_frame->height = height;
-  av_frame->format = nvdec_pix_fmt(
-      to_nvdec_surface(surface_format_),
+  av_frame->format = surface_to_pix_fmt(
+      surface_format_,
       static_cast<int>(video_format_.bit_depth_luma_minus8) + 8);
   av_frame->pts = disp_info.timestamp;
 
@@ -1070,27 +1084,26 @@ GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
   // - Then we allocate GPU memory and copy the CPU frame to the GPU. This
   //   is what we return.
 
-  // We upload as whatever NVDEC would have produced for the same content: a
-  // semi-planar 4:2:0 surface for 4:2:0 and monochrome sources, planar 4:4:4
-  // for everything else since we never reduce chroma. The depth follows the
-  // same rule as get_preferred_surface_format(): a 16-bit surface only buys us
-  // something for a float32 output on a high bit depth source.
   const AVPixFmtDescriptor* source_desc =
       av_pix_fmt_desc_get(static_cast<AVPixelFormat>(cpu_frame.format));
   STD_TORCH_CHECK(
       source_desc != nullptr, "Unknown pixel format on decoded frame");
-
   int source_bit_depth = source_desc->comp[0].depth;
-  bool semi_planar_420 = source_desc->nb_components == 1 ||
-      (source_desc->log2_chroma_w == 1 && source_desc->log2_chroma_h == 1);
-  bool want_16bit =
-      output_dtype_ == OutputDtype::FLOAT32 && source_bit_depth > 8;
 
-  AVPixelFormat target_pix_fmt = nvdec_pix_fmt(
-      semi_planar_420
-          ? (want_16bit ? NvdecSurface::P016 : NvdecSurface::NV12)
-          : (want_16bit ? NvdecSurface::YUV444_16Bit : NvdecSurface::YUV444),
-      source_bit_depth);
+  // We upload onto the surface NVDEC itself would have used for this content.
+  // Two things differ from the decode path: there is no caps check to fall back
+  // on, so we don't ask for a 16-bit surface that an 8-bit source has nothing
+  // to put in; and the formats NVDEC has no chroma class for at all (4:1:1,
+  // RGB, ...) go on a 4:4:4 surface, which never reduces chroma.
+  auto chroma_format =
+      validate_chroma_support(source_desc).value_or(cudaVideoChromaFormat_444);
+  auto surface_format = get_preferred_surface_format(
+      chroma_format, source_bit_depth > 8 ? output_dtype_ : OutputDtype::UINT8);
+
+  bool semi_planar_420 = !is_444_surface_format(surface_format);
+  bool want_16bit = is_16bit_surface_format(surface_format);
+  AVPixelFormat target_pix_fmt =
+      surface_to_pix_fmt(surface_format, source_bit_depth);
 
   int num_planes = semi_planar_420 ? 2 : 3;
   int bytes_per_sample = want_16bit ? 2 : 1;
