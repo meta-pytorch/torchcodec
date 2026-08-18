@@ -71,35 +71,6 @@ static DecoderCapsCache& get_decoder_caps_cache() {
   return cache;
 }
 
-// NVDEC's output surface formats come in a 4:2:0 and a 4:4:4 flavour, each with
-// an 8-bit and a 16-bit variant. We ask for the subsampling the stream actually
-// uses (downsampling 4:4:4 to NV12 would throw away chroma), and for a 16-bit
-// surface only when a float32 output makes the extra precision worth carrying.
-cudaVideoSurfaceFormat get_preferred_surface_format(
-    cudaVideoChromaFormat chroma_format,
-    OutputDtype output_dtype) {
-  bool want_16bit = output_dtype == OutputDtype::FLOAT32;
-  if (chroma_format == cudaVideoChromaFormat_444) {
-    return want_16bit ? cudaVideoSurfaceFormat_YUV444_16Bit
-                      : cudaVideoSurfaceFormat_YUV444;
-  }
-  return want_16bit ? cudaVideoSurfaceFormat_P016 : cudaVideoSurfaceFormat_NV12;
-}
-
-// The other depth variant of a surface, same subsampling. Used to settle for
-// what NVDEC offers rather than falling all the way back to the CPU.
-cudaVideoSurfaceFormat to_8bit_surface_format(cudaVideoSurfaceFormat format) {
-  return format == cudaVideoSurfaceFormat_YUV444_16Bit
-      ? cudaVideoSurfaceFormat_YUV444
-      : cudaVideoSurfaceFormat_NV12;
-}
-
-cudaVideoSurfaceFormat to_16bit_surface_format(cudaVideoSurfaceFormat format) {
-  return format == cudaVideoSurfaceFormat_YUV444
-      ? cudaVideoSurfaceFormat_YUV444_16Bit
-      : cudaVideoSurfaceFormat_P016;
-}
-
 NvdecSurface to_nvdec_surface(cudaVideoSurfaceFormat format) {
   switch (format) {
     case cudaVideoSurfaceFormat_P016:
@@ -292,39 +263,48 @@ std::optional<cudaVideoSurfaceFormat> get_nvdec_surface_format(
     return std::nullopt;
   }
 
-  auto preferred_format =
-      get_preferred_surface_format(chroma_format.value(), output_dtype);
-  if ((caps.nOutputFormatMask >> preferred_format) & 1) {
-    return preferred_format;
-  }
-
+  // NVDEC's output surfaces come in a 4:2:0 and a 4:4:4 flavour, each with an
+  // 8-bit and a 16-bit variant.
+  bool is_444 = chroma_format.value() == cudaVideoChromaFormat_444;
+  auto surface_format = [is_444](bool sixteen_bit) {
+    if (is_444) {
+      return sixteen_bit ? cudaVideoSurfaceFormat_YUV444_16Bit
+                         : cudaVideoSurfaceFormat_YUV444;
+    }
+    return sixteen_bit ? cudaVideoSurfaceFormat_P016
+                       : cudaVideoSurfaceFormat_NV12;
+  };
   auto is_supported = [&](cudaVideoSurfaceFormat format) {
     return ((caps.nOutputFormatMask >> format) & 1) != 0;
   };
 
-  if (is_16bit_surface_format(preferred_format)) {
-    // The 16-bit surface is typically not supported on 8-bit SDR content. In
-    // such cases, we try the 8-bit surface of the same subsampling: NVDEC will
-    // decode to it, our kernel will produce uint8, and
-    // maybePermuteAndConvertToFloat32 will cast uint8 -> float32.
-    // For HDR content, 8 bits would lose precision, so we fall back to CPU
-    // instead.
-    auto narrower = to_8bit_surface_format(preferred_format);
-    if (bit_depth_minus8 == 0 && is_supported(narrower)) {
-      return narrower;
-    }
-  } else {
-    // The reverse: NVDEC offers no 8-bit 4:4:4 surface for high bit depth
-    // content, only YUV444_16Bit. Decoding into that and letting the color
-    // conversion narrow the samples down to the requested dtype beats falling
-    // back to the CPU, and loses nothing on the way.
-    auto wider = to_16bit_surface_format(preferred_format);
-    if (is_supported(wider)) {
-      return wider;
-    }
+  // We want the subsampling the stream actually uses -- downsampling 4:4:4 to
+  // NV12 would throw away chroma -- and a 16-bit surface only when a float32
+  // output makes the extra precision worth carrying.
+  bool want_16bit = output_dtype == OutputDtype::FLOAT32;
+  if (is_supported(surface_format(want_16bit))) {
+    return surface_format(want_16bit);
   }
 
-  return std::nullopt;
+  // Not on offer, so settle for the other depth of the same subsampling rather
+  // than fall all the way back to the CPU.
+  if (!is_supported(surface_format(!want_16bit))) {
+    return std::nullopt;
+  }
+  if (want_16bit) {
+    // The 16-bit surface is typically not supported on 8-bit SDR content, and
+    // the 8-bit one will do: NVDEC decodes into it, our kernel produces uint8,
+    // and maybePermuteAndConvertToFloat32 casts uint8 -> float32. For HDR
+    // content that would lose precision, so we fall back to CPU instead.
+    if (bit_depth_minus8 != 0) {
+      return std::nullopt;
+    }
+  }
+  // Conversely, NVDEC offers no 8-bit 4:4:4 surface for high bit depth content,
+  // only YUV444_16Bit. Decoding into that and letting the color conversion
+  // narrow the samples down to the requested dtype beats falling back, and
+  // loses nothing on the way.
+  return surface_format(!want_16bit);
 }
 
 // Callback for freeing CUDA memory associated with AVFrame see where it's used
