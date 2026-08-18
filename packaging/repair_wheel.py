@@ -360,6 +360,7 @@ def repair_linux(wheels):
         "librccl*",
         "libnuma*",
         "libdrm*",
+        "libva*",  # VA-API libs pulled in by librocjpeg's HYBRID backend; system-provided alongside libdrm
         "libelf*",
         "libbz2*",
         "liblzma*",
