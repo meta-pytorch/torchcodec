@@ -1229,6 +1229,18 @@ TESTSRC2_AV1_10BIT = TestVideo(
     frames={0: {}},
 )
 
+# ffmpeg -f lavfi -i "testsrc2=size=321x241:rate=25:duration=1,format=rgb24" \
+#  -c:v libx264 -pix_fmt yuv444p10le -profile:v high444 \
+#  testsrc2_odd_height_and_width_444_10bit.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_444_10BIT = TestVideo(
+    filename="testsrc2_odd_height_and_width_444_10bit.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=321, height=241, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
 # HEVC 4:4:4, which NVDEC *can* decode natively (unlike H264 4:4:4 above), at
 # 8, 10 and 12 bits. Odd dimensions, so they also cover the cropping NVDEC's
 # even-aligned surfaces need. Encoded with, for DEPTH in 8/10/12:

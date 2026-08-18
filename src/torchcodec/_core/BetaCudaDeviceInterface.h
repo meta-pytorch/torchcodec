@@ -33,14 +33,16 @@
 #include "nvcuvid_include/nvcuvid.h"
 
 namespace facebook::torchcodec {
+// TODO_API_BREAKDOWN P2: the name says "standalone", but this is really about
+// owning a GPU buffer. Find one that covers both.
 struct StandAloneFrameAttachedData {
   cudaStream_t producer_stream = nullptr;
   torch::stable::Tensor storage;
-  // Whether the frame's samples are on the GPU. False for the CPU-fallback
-  // frames a PacketDecoder hands out for streams NVDEC can't decode. The
-  // pixel format can't tell the two apart: a 4:4:4 stream yields yuv444p
-  // either way, natively from NVDEC or from the CPU fallback.
-  bool is_device_frame = false;
+};
+
+struct GpuFrameAndStorage {
+  UniqueAVFrame av_frame;
+  torch::stable::Tensor storage;
 };
 
 class BetaCudaDeviceInterface : public DeviceInterface {
@@ -108,12 +110,12 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
-  bool is_device_frame(
-      [[maybe_unused]] const UniqueAVFrame& av_frame) const override;
+  GpuFrameAndStorage upload_cpu_frame_to_gpu_on_current_stream(
+      const AVFrame& cpu_frame);
 
-  UniqueAVFrame transfer_cpu_frame_to_gpu(
-      const AVFrame& cpu_frame,
-      AVPixelFormat target_pix_fmt);
+  torch::stable::Tensor copy_nvdec_surface(
+      UniqueAVFrame& av_frame,
+      cudaStream_t stream);
 
   void apply_rotation(
       FrameOutput& frame_output,

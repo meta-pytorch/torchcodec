@@ -45,10 +45,6 @@ class FORCE_PUBLIC_VISIBILITY PacketDecoder {
   // if more input is needed, AVERROR_EOF at end, or a negative error code.
   int receive_frame(UniqueAVFrame& av_frame);
 
-  bool is_device_frame(const UniqueAVFrame& av_frame) const {
-    return device_interface_->is_device_frame(av_frame);
-  }
-
   const StableDevice& device() const {
     return device_interface_->device();
   }
