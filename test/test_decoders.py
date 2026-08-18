@@ -3474,7 +3474,7 @@ def _is_msb_aligned(pix_fmt):
     return pix_fmt.startswith("p0")
 
 
-# TODO_API_BREAKDOWN P2: this entire class should probably be folded in the
+# TODO_API_BREAKDOWN CC P2: this entire class should probably be folded in the
 # test/utils asset class.
 class _MaterializeCase(NamedTuple):
     """A video, how many significant bits its samples carry, and the pixel
@@ -3724,7 +3724,7 @@ class TestBlocks:
     )
     @pytest.mark.parametrize("device", _block_devices())
     def test_matches_video_decoder(self, video, decode_method, device):
-        # TODO_API_BREAKDOWN P1: this fails on CUDA and must be fixed. The blocks
+        # TODO_API_BREAKDOWN CORRECTNESS P1: this fails on CUDA and must be fixed. The blocks
         # Demuxer doesn't honor AV_PKT_FLAG_DISCARD (unlike SingleStreamDecoder),
         # so it emits the extra frames trimmed away by the mp4 edit list.
         # This is kinda related to exact and approximate mode (not exposed on
@@ -3822,7 +3822,7 @@ class TestBlocks:
     def test_set_cuda_backend_is_a_noop(self, device):
         # The blocks always use the NVDEC CUDA backend. Asking for the "ffmpeg"
         # one changes nothing, rather than silently producing something else.
-        # TODO_API_BREAKDOWN P2: let's just error?
+        # TODO_API_BREAKDOWN UF P2: let's just error?
         with set_cuda_backend("ffmpeg"):
             got = self._to_frame_batch(self._decode_sequential(NASA_VIDEO.path, device))
         ref = self._to_frame_batch(self._decode_sequential(NASA_VIDEO.path, device))
@@ -3853,8 +3853,6 @@ class TestBlocks:
         # materialize() reports the depth of the pixel format. It usually
         # matches the source's, but not always - it depends on nvdec's
         # capabilities.
-        # TODO_API_BREAKDOWN P1: There's a TODO somewhere else about whether we
-        # should expose the bit depth of the format, or of the source.
         expected_bit_depth = (
             16 if expected_pix_fmt in ("p016le", "yuv444p16le") else case.bit_depth
         )
@@ -3864,7 +3862,7 @@ class TestBlocks:
         assert raw.color_range in ("tv", "pc", "unknown")  # FFmpeg has only these
 
         # All planes are 2D views living on the frame's own device.
-        # TODO_API_BREAKDOWN P1: Can there be more planes? Should test?
+        # TODO_API_BREAKDOWN DESIGN P1: Can there be more planes? Should test?
         assert len(planes) == 3
         for plane in planes:
             assert plane.ndim == 2

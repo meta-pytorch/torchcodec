@@ -40,10 +40,7 @@ class ColorConverter:
     block is intentionally stream-agnostic.
     """
 
-    # TODO_API_BREAKDOWN P1: device default should be None
-    # TODO_API_BREAKDOWN P1: add checks for coupling between device param of
-    # PacketDecoder and ColorConverter. What if one is CPU and the other is
-    # CUDA? What if they're different CUDA devices? Maybe we should just error.
+    # TODO_API_BREAKDOWN UF P1: device default should be None
     def __init__(
         self,
         device="cpu",

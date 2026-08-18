@@ -25,7 +25,7 @@ class Packet:
         self._handle = handle
 
 
-# TODO_API_BREAKDOWN P1 API design: should these fields (pix_format, colorspace
+# TODO_API_BREAKDOWN DESIGN P1: should these fields (pix_format, colorspace
 # etc.) also exist on the DecodedFrame class? Should there **just** be the
 # DecodedFrame class and actually just call materialize() transparently whenever
 # the user wants to access the planes? If materialize() is super cheap (it
@@ -48,12 +48,12 @@ class RawFrame:
     # msb-aligned and are therefore genuinely valid 16-bit ones, with zeroed
     # low bits.
     #
-    # TODO_API_BREAKDOWN P2: should this report the depth of the source instead
+    # TODO_API_BREAKDOWN DESIGN P2: should this report the depth of the source instead
     # of the depth of the pixel format?
     bit_depth: int
 
 
-# TODO_API_BREAKDOWN P1: API design - especially the materialize() method but
+# TODO_API_BREAKDOWN DESIGN P1: API design - especially the materialize() method but
 # also the public fields, class name etc.
 class DecodedFrame:
     """A decoded (YUV) frame: an opaque, thread-movable handle to the raw frame
@@ -82,13 +82,13 @@ class DecodedFrame:
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
 
-    # TODO_API_BREAKDOWN P2 Why is this a property???
+    # TODO_API_BREAKDOWN DESIGN P2 Why is this a property???
     # Do we even need to havet this?
     @property
     def device(self) -> str:
         return self._device
 
-    # TODO_API_BREAKDOWN P1: Really need to think hard about the API of *all* of
+    # TODO_API_BREAKDOWN DESIGN P1: Really need to think hard about the API of *all* of
     # this.
     # materialize()?
     # What about the planes - should they be 2D (right now they are)? Should we
