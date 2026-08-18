@@ -4037,6 +4037,8 @@ class TestBlocks:
         # A CUDA PacketDecoder hands out CUDA frames even for the streams it has
         # to decode on the CPU, and they're in an NVDEC surface format like any
         # other CUDA frame.
+        assert VideoDecoder(video.path, device="cuda").cpu_fallback
+
         frame, _ = self._first_frame(video.path, "cuda")
         assert frame.device == "cuda"
 
