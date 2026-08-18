@@ -1718,10 +1718,6 @@ class TestVideoDecoder:
     @pytest.mark.parametrize(
         "asset, percentage",
         (
-            # 4:4:4 carries full-resolution chroma, so our kernel and swscale
-            # agree closely. The 4:2:0 one diverges wherever chroma is
-            # upsampled, which is the usual CUDA-vs-CPU gap on subsampled
-            # content and is not specific to this asset.
             (TESTSRC2_444_8BIT_HEVC, 99),
             (TESTSRC2_444_10BIT_HEVC, 99),
             (TESTSRC2_444_12BIT_HEVC, 99),
@@ -1735,8 +1731,6 @@ class TestVideoDecoder:
         # - 4:4:4, which needs the YUV444 surfaces.
         # - AV1 10-bit, for which NVDEC offers only P016, so a uint8 request
         #   found no 8-bit surface to decode into (float32 already worked).
-        # Where the surface's depth doesn't match the requested dtype, the
-        # samples are narrowed or widened after color conversion.
         decoder_gpu = VideoDecoder(asset.path, device="cuda", output_dtype=output_dtype)
         decoder_cpu = VideoDecoder(asset.path, device="cpu", output_dtype=output_dtype)
         assert not decoder_gpu.cpu_fallback
@@ -1749,8 +1743,6 @@ class TestVideoDecoder:
             gpu_frame.cpu(), cpu_frame, percentage=percentage, atol=3
         )
 
-        # The batch APIs pre-allocate their output, whose dtype has to match
-        # what the color conversion produces for the surface we ended up with.
         gpu_frames = decoder_gpu.get_frames_at([0, 1, 2]).data
         cpu_frames = decoder_cpu.get_frames_at([0, 1, 2]).data
         assert gpu_frames.shape == cpu_frames.shape
@@ -3850,12 +3842,11 @@ class TestBlocks:
         ):
             expected_pix_fmt = "p016le"
 
-        # materialize() reports the depth of the pixel format, and every format
-        # states the source's own depth -- except these two, which claim 16 for
-        # lower-depth samples: p016le above, and yuv444p16le, the only 4:4:4
-        # NVDEC surface format wider than 8 bits. They are the whole exception
-        # list: a third one would report 16 where we expect case.bit_depth, and
-        # fail below.
+        # materialize() reports the depth of the pixel format. It usually
+        # matches the source's, but not always - it depends on nvdec's
+        # capabilities.
+        # TODO_API_BREAKDOWN P1: There's a TODO somewhere else about whether we
+        # should expose the bit depth of the format, or of the source.
         expected_bit_depth = (
             16 if expected_pix_fmt in ("p016le", "yuv444p16le") else case.bit_depth
         )
