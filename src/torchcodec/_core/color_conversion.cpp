@@ -196,28 +196,33 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
     const FrameDims& output_dims,
     AVPixelFormat pix_fmt,
     CachedColorMatrix& cached_color_matrix) {
-  bool is_16bit = is_nvdec_16bit_surface(pix_fmt);
   const AVPixFmtDescriptor* desc = av_pix_fmt_desc_get(pix_fmt);
   STD_TORCH_CHECK(desc != nullptr, "Unknown pixel format on decoded frame");
   int bit_depth = desc->comp[0].depth;
+  int bit_shift = desc->comp[0].shift;
+  bool is_16bit = bit_depth > 8;
+  bool is_444 = desc->log2_chroma_w == 0 && desc->log2_chroma_h == 0;
 
   float out_scale = is_16bit ? 65535.0f : 255.0f;
   OutputDtype out_dtype = is_16bit ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
 
-  // Dimensions may be odd (NVDEC display area for VP9 etc.). NV12/P016
-  // color conversion requires even dimensions, so we round up to even
-  // for the kernel, then crop to outputDims.
-  int even_height = round_up_to_even(av_frame.height);
-  int even_width = round_up_to_even(av_frame.width);
+  // Dimensions may be odd (NVDEC display area for VP9 etc.). The semi-planar
+  // kernel works on 2x2 blocks and NVDEC surfaces are allocated even-sized, so
+  // we run it over the even-rounded surface and crop to outputDims. The 4:4:4
+  // kernel is per-pixel and its frames are allocated at their exact size.
+  int kernel_height =
+      is_444 ? av_frame.height : round_up_to_even(av_frame.height);
+  int kernel_width = is_444 ? av_frame.width : round_up_to_even(av_frame.width);
 
   int out_height = output_dims.height;
   int out_width = output_dims.width;
-  bool needs_crop = (out_height != even_height) || (out_width != even_width);
+  bool needs_crop =
+      (out_height != kernel_height) || (out_width != kernel_width);
 
   torch::stable::Tensor dst;
   if (needs_crop) {
     dst = allocate_empty_hwc_tensor(
-        FrameDims(even_height, even_width), device, out_dtype);
+        FrameDims(kernel_height, kernel_width), device, out_dtype);
   } else if (pre_allocated_output_tensor.has_value()) {
     dst = pre_allocated_output_tensor.value();
   } else {
@@ -241,17 +246,49 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
       bit_depth,
       out_scale);
 
-  if (is_16bit) {
+  int rgb_pitch = validate_int64_to_int(
+      dst.stride(0) * (is_16bit ? 2 : 1), "dst RGB row size in bytes");
+
+  if (is_444 && is_16bit) {
+    launch_yuv444_to_rgb16_kernel(
+        reinterpret_cast<const uint16_t*>(av_frame.data[0]),
+        reinterpret_cast<const uint16_t*>(av_frame.data[1]),
+        reinterpret_cast<const uint16_t*>(av_frame.data[2]),
+        dst.mutable_data_ptr<uint16_t>(),
+        kernel_width,
+        kernel_height,
+        av_frame.linesize[0],
+        av_frame.linesize[1],
+        av_frame.linesize[2],
+        rgb_pitch,
+        bit_shift,
+        cached_color_matrix.matrix,
+        stream);
+  } else if (is_444) {
+    launch_yuv444_to_rgb_kernel(
+        av_frame.data[0],
+        av_frame.data[1],
+        av_frame.data[2],
+        dst.mutable_data_ptr<uint8_t>(),
+        kernel_width,
+        kernel_height,
+        av_frame.linesize[0],
+        av_frame.linesize[1],
+        av_frame.linesize[2],
+        rgb_pitch,
+        cached_color_matrix.matrix,
+        stream);
+  } else if (is_16bit) {
     launch_p016_to_rgb16_kernel(
         reinterpret_cast<const uint16_t*>(av_frame.data[0]),
         reinterpret_cast<const uint16_t*>(av_frame.data[1]),
         dst.mutable_data_ptr<uint16_t>(),
-        even_width,
-        even_height,
+        kernel_width,
+        kernel_height,
         av_frame.linesize[0],
         av_frame.linesize[1],
-        validate_int64_to_int(dst.stride(0) * 2, "dst.stride(0)*2"),
-        bit_depth,
+        rgb_pitch,
+        bit_shift,
         cached_color_matrix.matrix,
         stream);
   } else {
@@ -259,20 +296,20 @@ torch::stable::Tensor convert_yuv_frame_to_rgb(
         av_frame.data[0],
         av_frame.data[1],
         dst.mutable_data_ptr<uint8_t>(),
-        even_width,
-        even_height,
+        kernel_width,
+        kernel_height,
         av_frame.linesize[0],
         av_frame.linesize[1],
-        validate_int64_to_int(dst.stride(0), "dst.stride(0)"),
+        rgb_pitch,
         cached_color_matrix.matrix,
         stream);
   }
 
   if (needs_crop) {
-    if (out_height != even_height) {
+    if (out_height != kernel_height) {
       dst = torch::stable::narrow(dst, /*dim=*/0, /*start=*/0, out_height);
     }
-    if (out_width != even_width) {
+    if (out_width != kernel_width) {
       dst = torch::stable::narrow(dst, /*dim=*/1, /*start=*/0, out_width);
       dst = torch::stable::contiguous(dst);
     }

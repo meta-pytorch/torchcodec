@@ -71,20 +71,55 @@ static DecoderCapsCache& get_decoder_caps_cache() {
   return cache;
 }
 
-cudaVideoSurfaceFormat get_preferred_surface_format(OutputDtype output_dtype) {
-  return output_dtype == OutputDtype::FLOAT32 ? cudaVideoSurfaceFormat_P016
-                                              : cudaVideoSurfaceFormat_NV12;
+// NVDEC's output surface formats come in a 4:2:0 and a 4:4:4 flavour, each with
+// an 8-bit and a 16-bit variant. We decode on the surface that respects the
+// source chroma, but we don't respect the source bit depth and instead try to
+// honor the user's requested output dtype:
+// - if the user wants uint8 output, we try to decode on a uint8 surface,
+//   including for >8bit sources. It's not always supported by NVDEC, so the
+//   caller must fallback to the >8bit surface in such case.
+// - similarly if the user wants float32 output, we try to decode on a >8bit
+//   surface, including for 8bit sources. The caller must handle a similar
+//   fallback.
+cudaVideoSurfaceFormat get_preferred_surface_format(
+    cudaVideoChromaFormat chroma_format,
+    OutputDtype output_dtype) {
+  bool want_uint8 = output_dtype == OutputDtype::UINT8;
+  if (chroma_format == cudaVideoChromaFormat_444) {
+    return want_uint8 ? cudaVideoSurfaceFormat_YUV444
+                      : cudaVideoSurfaceFormat_YUV444_16Bit;
+  } else {
+    return want_uint8 ? cudaVideoSurfaceFormat_NV12
+                      : cudaVideoSurfaceFormat_P016;
+  }
 }
 
-// Whether a frame is a CPU-fallback frame rather than a GPU NVDEC surface,
-// inferred from its pixel format. This works today because our CPU fallback
-// never yields NV12/P016 frames, but it's only a proxy, and it's not super
-// robust to future changes.
-// Note that we don't rely on decode_on_cpu_ because that field is only relevant
-// when decoding happens, but this interface can be used in
-// color-conversion-only mode.
-bool is_cpu_fallback(int format) {
-  return format != AV_PIX_FMT_NV12 && !is_nvdec_16bit_surface(format);
+NvdecSurface to_nvdec_surface(cudaVideoSurfaceFormat format) {
+  switch (format) {
+    case cudaVideoSurfaceFormat_P016:
+      return NvdecSurface::P016;
+    case cudaVideoSurfaceFormat_YUV444:
+      return NvdecSurface::YUV444;
+    case cudaVideoSurfaceFormat_YUV444_16Bit:
+      return NvdecSurface::YUV444_16Bit;
+    default:
+      return NvdecSurface::NV12;
+  }
+}
+
+bool is_444_surface_format(cudaVideoSurfaceFormat format) {
+  return format == cudaVideoSurfaceFormat_YUV444 ||
+      format == cudaVideoSurfaceFormat_YUV444_16Bit;
+}
+
+bool is_16bit_surface_format(cudaVideoSurfaceFormat format) {
+  return format == cudaVideoSurfaceFormat_P016 ||
+      format == cudaVideoSurfaceFormat_YUV444_16Bit;
+}
+
+bool is_expected_pix_fmt_from_nvdec(AVPixelFormat pix_fmt) {
+  return pix_fmt == AV_PIX_FMT_NV12 || is_nvdec_16bit_pix_fmt(pix_fmt) ||
+      pix_fmt == AV_PIX_FMT_YUV444P || pix_fmt == AV_PIX_FMT_YUV444P16LE;
 }
 
 static bool g_cuda_nvdec = register_device_interface(
@@ -256,20 +291,40 @@ std::optional<cudaVideoSurfaceFormat> get_nvdec_surface_format(
     return std::nullopt;
   }
 
-  auto preferred_format = get_preferred_surface_format(output_dtype);
-  if ((caps.nOutputFormatMask >> preferred_format) & 1) {
+  auto preferred_format =
+      get_preferred_surface_format(chroma_format.value(), output_dtype);
+
+  auto is_supported = [&](cudaVideoSurfaceFormat format) {
+    return ((caps.nOutputFormatMask >> format) & 1) != 0;
+  };
+
+  if (is_supported(preferred_format)) {
     return preferred_format;
   }
 
-  // P016 is typically not supported on 8-bit SDR content. In such cases, we
-  // try to fall back to NV12 if supported:
-  // NVDEC will decode to NV12, our kernel will do NV12 -> RGB producing
-  // uint8, and maybePermuteAndConvertToFloat32 will cast uint8 -> float32.
-  // For HDR content, NV12 would lose precision, so we fall back to CPU instead.
-  if (preferred_format == cudaVideoSurfaceFormat_P016 &&
-      bit_depth_minus8 == 0 &&
-      ((caps.nOutputFormatMask >> cudaVideoSurfaceFormat_NV12) & 1)) {
-    return cudaVideoSurfaceFormat_NV12;
+  // The preferred_format heuristic tries to take a shortcut that might cause us
+  // to miss valid formats. We fallabck here:
+  // if source is 8bit we can try the 8bit surface.
+  // if surface is 8bit we can try the 16bit surface.
+
+  bool source_is_8_bits = bit_depth_minus8 == 0;
+  if (is_16bit_surface_format(preferred_format) && source_is_8_bits) {
+    auto narrower = preferred_format == cudaVideoSurfaceFormat_YUV444_16Bit
+        ? cudaVideoSurfaceFormat_YUV444
+        : cudaVideoSurfaceFormat_NV12;
+
+    if (is_supported(narrower)) {
+      return narrower;
+    }
+  }
+  if (!is_16bit_surface_format(preferred_format)) {
+    auto wider = preferred_format == cudaVideoSurfaceFormat_YUV444
+        ? cudaVideoSurfaceFormat_YUV444_16Bit
+        : cudaVideoSurfaceFormat_P016;
+
+    if (is_supported(wider)) {
+      return wider;
+    }
   }
 
   return std::nullopt;
@@ -826,7 +881,7 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
   av_frame->width = width;
   av_frame->height = height;
   av_frame->format = nvdec_pix_fmt(
-      surface_format_ == cudaVideoSurfaceFormat_P016,
+      to_nvdec_surface(surface_format_),
       static_cast<int>(video_format_.bit_depth_luma_minus8) + 8);
   av_frame->pts = disp_info.timestamp;
 
@@ -873,19 +928,24 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
       ? AVCOL_RANGE_JPEG
       : AVCOL_RANGE_MPEG;
 
-  // NVDEC's surface layout places the UV plane after the Y plane. For
-  // NV12/P016 the Y plane has an even number of rows (NVDEC rounds up
-  // internally), so we must use the rounded-up height for the UV offset.
+  // NVDEC lays the chroma planes out after the Y plane, all with the same
+  // pitch. The Y plane has an even number of rows (NVDEC rounds up internally),
+  // so the offsets must use the rounded-up height.
   unsigned int even_height = round_up_to_even(height);
-  av_frame->data[0] = reinterpret_cast<uint8_t*>(frame_ptr);
-  av_frame->data[1] =
-      reinterpret_cast<uint8_t*>(frame_ptr + (pitch * even_height));
-  av_frame->data[2] = nullptr;
+  auto plane = [&](unsigned int index) {
+    return reinterpret_cast<uint8_t*>(
+        frame_ptr + (pitch * even_height * index));
+  };
+  bool is_444 = is_444_surface_format(surface_format_);
+
+  av_frame->data[0] = plane(0);
+  av_frame->data[1] = plane(1);
+  av_frame->data[2] = is_444 ? plane(2) : nullptr;
   av_frame->data[3] = nullptr;
   // TODO_API_BREAKDOWN_CUDA P2: Check range before cast?
   av_frame->linesize[0] = static_cast<int>(pitch);
   av_frame->linesize[1] = static_cast<int>(pitch);
-  av_frame->linesize[2] = 0;
+  av_frame->linesize[2] = is_444 ? static_cast<int>(pitch) : 0;
   av_frame->linesize[3] = 0;
 
   return av_frame;
@@ -912,8 +972,9 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
   auto attached_data = new StandAloneFrameAttachedData();
   attached_data->producer_stream = current_stream;
+  attached_data->is_device_frame = !decoding_on_cpu_;
 
-  if (!is_cpu_fallback(av_frame->format)) {
+  if (!decoding_on_cpu_) {
     // The amount of bytes an NV12 image takes is:
     // num_bytes =  len(Y) + len(UV)
     //           = num_pixels + num_pixels / 2
@@ -921,11 +982,14 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
     //
     // where num_pixels = pitch * height, not num_pixels = width * height. The
     // pitch value also accounts for the data size (uint8 vs uint16) so this is
-    // also correct for P016.
+    // also correct for P016. A 4:4:4 surface has two full-size chroma planes
+    // instead of one half-height one, so it's num_pixels * 3.
     int64_t even_height =
         static_cast<int64_t>(round_up_to_even(av_frame->height));
     int64_t pitch = static_cast<int64_t>(av_frame->linesize[0]);
-    int64_t num_bytes = pitch * even_height * 3 / 2;
+    bool is_444 = is_444_surface_format(surface_format_);
+    int64_t num_bytes =
+        is_444 ? pitch * even_height * 3 : pitch * even_height * 3 / 2;
 
     auto storage =
         torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
@@ -951,6 +1015,9 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
     auto y_plane = static_cast<uint8_t*>(storage.mutable_data_ptr());
     av_frame->data[0] = y_plane;
     av_frame->data[1] = y_plane + (pitch * even_height);
+    if (is_444) {
+      av_frame->data[2] = y_plane + (2 * pitch * even_height);
+    }
 
     // TODO_API_BREAKDOWN_CUDA P2: We don't *really* need to std::move it I
     // guess?
@@ -966,8 +1033,10 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 }
 
 bool BetaCudaDeviceInterface::is_device_frame(
-    const UniqueAVFrame& av_frame) const {
-  return !is_cpu_fallback(av_frame->format);
+    [[maybe_unused]] const UniqueAVFrame& av_frame) const {
+  // Only reached through a PacketDecoder, i.e. in decoder-only mode, where
+  // whether we decoded on the GPU is decided once for the whole stream.
+  return !decoding_on_cpu_;
 }
 
 void BetaCudaDeviceInterface::flush() {
@@ -1139,7 +1208,21 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   CudaContextGuard context_guard(device_.index());
-  bool cpu_fallback = is_cpu_fallback(av_frame.format);
+
+  // In ColorConverterOnly mode the frame comes from a PacketDecoder, which
+  // recorded where its samples live and which stream produced them. Otherwise
+  // we're the interface that decoded it, and know first-hand.
+  const StandAloneFrameAttachedData* attached_data = nullptr;
+  if (mode() == Mode::ColorConverterOnly) {
+    STD_TORCH_CHECK(
+        av_frame.opaque_ref != nullptr,
+        "ColorConverter received a non-standalone frame; frames fed to a "
+        "standalone ColorConverter must come from a PacketDecoder.");
+    attached_data = reinterpret_cast<const StandAloneFrameAttachedData*>(
+        av_frame.opaque_ref->data);
+  }
+  bool cpu_fallback =
+      attached_data ? !attached_data->is_device_frame : decoding_on_cpu_;
 
   if (cpu_fallback) {
     // When the CPU fallback happens, we'll try to run the color-conversion on
@@ -1190,23 +1273,15 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   }
   const AVFrame& gpu_frame = cpu_fallback ? *transferred_frame : av_frame;
 
+  auto gpu_pix_fmt = static_cast<AVPixelFormat>(gpu_frame.format);
   STD_TORCH_CHECK(
-      gpu_frame.format == AV_PIX_FMT_NV12 ||
-          is_nvdec_16bit_surface(gpu_frame.format),
-      "Expected NV12 or 16-bit semi-planar format frame");
+      is_expected_pix_fmt_from_nvdec(gpu_pix_fmt),
+      "Expected a pixel format we can color-convert on the GPU, got ",
+      av_get_pix_fmt_name(gpu_pix_fmt));
 
-  cudaStream_t producer_stream;
-  if (mode() == Mode::ColorConverterOnly) {
-    STD_TORCH_CHECK(
-        av_frame.opaque_ref != nullptr,
-        "ColorConverter received a non-standalone frame; frames fed to a "
-        "standalone ColorConverter must come from a PacketDecoder.");
-    auto attached_data = reinterpret_cast<StandAloneFrameAttachedData*>(
-        av_frame.opaque_ref->data);
-    producer_stream = attached_data->producer_stream;
-  } else {
-    producer_stream = get_current_cuda_stream(device_.index());
-  }
+  cudaStream_t producer_stream = attached_data
+      ? attached_data->producer_stream
+      : get_current_cuda_stream(device_.index());
 
   auto convert_frame = [&](std::optional<torch::stable::Tensor> pre_alloc)
       -> torch::stable::Tensor {
@@ -1266,12 +1341,9 @@ void BetaCudaDeviceInterface::apply_rotation(
 }
 
 OutputDtype BetaCudaDeviceInterface::get_pre_allocation_dtype(
-    OutputDtype requested_dtype) const {
-  if (requested_dtype == OutputDtype::FLOAT32 &&
-      surface_format_ == cudaVideoSurfaceFormat_NV12) {
-    return OutputDtype::UINT8;
-  }
-  return requested_dtype;
+    [[maybe_unused]] OutputDtype requested_dtype) const {
+  return is_16bit_surface_format(surface_format_) ? OutputDtype::FLOAT32
+                                                  : OutputDtype::UINT8;
 }
 
 std::string BetaCudaDeviceInterface::get_details() {

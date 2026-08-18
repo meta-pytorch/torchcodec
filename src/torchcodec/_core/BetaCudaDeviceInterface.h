@@ -36,6 +36,11 @@ namespace facebook::torchcodec {
 struct StandAloneFrameAttachedData {
   cudaStream_t producer_stream = nullptr;
   torch::stable::Tensor storage;
+  // Whether the frame's samples are on the GPU. False for the CPU-fallback
+  // frames a PacketDecoder hands out for streams NVDEC can't decode. The
+  // pixel format can't tell the two apart: a 4:4:4 stream yields yuv444p
+  // either way, natively from NVDEC or from the CPU fallback.
+  bool is_device_frame = false;
 };
 
 class BetaCudaDeviceInterface : public DeviceInterface {
@@ -56,7 +61,7 @@ class BetaCudaDeviceInterface : public DeviceInterface {
       const std::optional<FrameDims>& resized_output_dims) override;
 
   OutputDtype get_pre_allocation_dtype(
-      OutputDtype requested_dtype) const override;
+      [[maybe_unused]] OutputDtype requested_dtype) const override;
 
   void convert_av_frame_to_frame_output(
       const AVFrame& av_frame,
@@ -103,7 +108,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
-  bool is_device_frame(const UniqueAVFrame& av_frame) const override;
+  bool is_device_frame(
+      [[maybe_unused]] const UniqueAVFrame& av_frame) const override;
 
   UniqueAVFrame transfer_cpu_frame_to_gpu(
       const AVFrame& cpu_frame,

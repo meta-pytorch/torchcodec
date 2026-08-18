@@ -70,8 +70,20 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
-AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth);
-bool is_nvdec_16bit_surface(int format);
+// Mirrors cudaVideoSurfaceFormat. Needed here because we don't want to include
+// the CUDA headers in this file, and it is necessary for
+// ffmpeg-version-dependent helpers like nvdec_pix_fmt() and
+// is_nvdec_16bit_pix_fmt().
+enum class NvdecSurface {
+  NV12,
+  P016,
+  YUV444,
+  YUV444_16Bit,
+};
+
+AVPixelFormat nvdec_pix_fmt(NvdecSurface surface, int bit_depth);
+
+bool is_nvdec_16bit_pix_fmt(int format);
 
 OutputDtype resolve_output_dtype(
     OutputDtypeConfig output_dtype_config,

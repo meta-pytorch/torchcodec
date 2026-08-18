@@ -16,44 +16,40 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
+// The AVPixelFormat describing an NVDEC surface for a given source bit depth.
+// bit_depth is the source's, and only matters for the 16-bit containers.
+// FFmpeg < 6 has no P012LE. P016LE describes the same samples just as
+// validly: they're msb-aligned, so a 12-bit surface is a 16-bit one with
+// 4 zeroed low bits.
+AVPixelFormat nvdec_pix_fmt(NvdecSurface surface, int bit_depth) {
+  switch (surface) {
+    case NvdecSurface::NV12:
+      return AV_PIX_FMT_NV12;
+    case NvdecSurface::YUV444:
+      return AV_PIX_FMT_YUV444P;
+    case NvdecSurface::YUV444_16Bit:
+      return AV_PIX_FMT_YUV444P16LE;
+    case NvdecSurface::P016:
+      if (bit_depth == 10) {
+        return AV_PIX_FMT_P010LE;
+      }
 #if FFMPEG_HAS_P012
-// takes is_p016_surface as input instead of the actual NVDEC surface type so we
-// don't have to include the NVDEC headers here
-AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth) {
-  if (!is_p016_surface) {
-    return AV_PIX_FMT_NV12;
-  }
-  switch (bit_depth) {
-    case 10:
-      return AV_PIX_FMT_P010LE;
-    case 12:
-      return AV_PIX_FMT_P012LE;
-    default:
+      if (bit_depth == 12) {
+        return AV_PIX_FMT_P012LE;
+      }
+#endif
       return AV_PIX_FMT_P016LE;
   }
+  return AV_PIX_FMT_NV12;
 }
-#else
-AVPixelFormat nvdec_pix_fmt(bool is_p016_surface, int bit_depth) {
-  // TODO_API_BREAKDOWN P2: needs a comment about P012 missing and why it's
-  // still OK to return P016LE.
-  if (!is_p016_surface) {
-    return AV_PIX_FMT_NV12;
-  }
-  return bit_depth == 10 ? AV_PIX_FMT_P010LE : AV_PIX_FMT_P016LE;
-}
-#endif // FFMPEG_HAS_P012
 
+bool is_nvdec_16bit_pix_fmt(int format) {
+  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P016LE ||
 #if FFMPEG_HAS_P012
-bool is_nvdec_16bit_surface(int format) {
-  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P012LE ||
-      format == AV_PIX_FMT_P016LE;
-}
-#else
-
-bool is_nvdec_16bit_surface(int format) {
-  return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P016LE;
-}
+      format == AV_PIX_FMT_P012LE ||
 #endif
+      false;
+}
 
 OutputDtype resolve_output_dtype(
     OutputDtypeConfig output_dtype_config,
