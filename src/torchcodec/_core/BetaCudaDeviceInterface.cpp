@@ -81,20 +81,16 @@ static DecoderCapsCache& get_decoder_caps_cache() {
 // - similarly if the user wants float32 output, we try to decode on a >8bit
 //   surface, including for 8bit sources. The caller must handle a similar
 //   fallback.
-// On the chroma side: NVDEC has no 4:2:2 surface, so anything that isn't 4:2:0
-// or monochrome goes on a 4:4:4 surface rather than have its chroma halved.
 cudaVideoSurfaceFormat get_preferred_surface_format(
     cudaVideoChromaFormat chroma_format,
     OutputDtype output_dtype) {
   bool want_uint8 = output_dtype == OutputDtype::UINT8;
-  bool semi_planar_420 = chroma_format == cudaVideoChromaFormat_420 ||
-      chroma_format == cudaVideoChromaFormat_Monochrome;
-  if (semi_planar_420) {
-    return want_uint8 ? cudaVideoSurfaceFormat_NV12
-                      : cudaVideoSurfaceFormat_P016;
-  } else {
+  if (chroma_format == cudaVideoChromaFormat_444) {
     return want_uint8 ? cudaVideoSurfaceFormat_YUV444
                       : cudaVideoSurfaceFormat_YUV444_16Bit;
+  } else {
+    return want_uint8 ? cudaVideoSurfaceFormat_NV12
+                      : cudaVideoSurfaceFormat_P016;
   }
 }
 
@@ -1089,18 +1085,28 @@ BetaCudaDeviceInterface::upload_cpu_frame_to_gpu_on_current_stream(
       source_desc != nullptr, "Unknown pixel format on decoded frame");
   int source_bit_depth = source_desc->comp[0].depth;
 
-  // We upload onto the surface NVDEC itself would have used for this content.
-  // Two things differ from the decode path: there is no caps check to fall back
-  // on, so we don't ask for a 16-bit surface that an 8-bit source has nothing
-  // to put in; and the formats NVDEC has no chroma class for at all (4:1:1,
-  // RGB, ...) go on a 4:4:4 surface, which never reduces chroma.
-  auto chroma_format =
-      validate_chroma_support(source_desc).value_or(cudaVideoChromaFormat_444);
-  auto surface_format = get_preferred_surface_format(
-      chroma_format, source_bit_depth > 8 ? output_dtype_ : OutputDtype::UINT8);
+  // We convert to a format our CUDA color-conversion kernels can read, keeping
+  // the source's chroma and bit depth: 4:2:0 and monochrome go semi-planar,
+  // everything else (4:2:2, 4:1:1, RGB, ...) goes 4:4:4, which is the only
+  // other layout the kernels handle and never reduces chroma. Unlike the decode
+  // path we're not choosing between what NVDEC happens to offer, so the
+  // requested output dtype doesn't come into it: narrowing to uint8, if that's
+  // what was asked for, happens after color conversion.
+  // We go through a cudaVideoSurfaceFormat because that's what
+  // surface_to_pix_fmt, and we need to call that because of the
+  // FFmpeg-version-dependent P012 vs P016 distinction (sad).
+  bool semi_planar_420 = source_desc->nb_components == 1 ||
+      (source_desc->log2_chroma_w == 1 && source_desc->log2_chroma_h == 1);
+  bool want_16bit = source_bit_depth > 8;
 
-  bool semi_planar_420 = !is_444_surface_format(surface_format);
-  bool want_16bit = is_16bit_surface_format(surface_format);
+  cudaVideoSurfaceFormat surface_format;
+  if (semi_planar_420) {
+    surface_format =
+        want_16bit ? cudaVideoSurfaceFormat_P016 : cudaVideoSurfaceFormat_NV12;
+  } else {
+    surface_format = want_16bit ? cudaVideoSurfaceFormat_YUV444_16Bit
+                                : cudaVideoSurfaceFormat_YUV444;
+  }
   AVPixelFormat target_pix_fmt =
       surface_to_pix_fmt(surface_format, source_bit_depth);
 
@@ -1341,10 +1347,11 @@ void BetaCudaDeviceInterface::apply_rotation(
 OutputDtype BetaCudaDeviceInterface::get_pre_allocation_dtype(
     [[maybe_unused]] OutputDtype requested_dtype) const {
   if (decoding_on_cpu_) {
+    // There's no NVDEC surface: the upload keeps the source's own depth, see
+    // upload_cpu_frame_to_gpu().
     const AVPixFmtDescriptor* desc =
         av_pix_fmt_desc_get(codec_context_->pix_fmt);
-    bool is_16bit = output_dtype_ == OutputDtype::FLOAT32 && desc != nullptr &&
-        desc->comp[0].depth > 8;
+    bool is_16bit = desc != nullptr && desc->comp[0].depth > 8;
     return is_16bit ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
   }
   return is_16bit_surface_format(surface_format_) ? OutputDtype::FLOAT32
