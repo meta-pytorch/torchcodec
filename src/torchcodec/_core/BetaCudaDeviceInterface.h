@@ -33,11 +33,6 @@
 #include "nvcuvid_include/nvcuvid.h"
 
 namespace facebook::torchcodec {
-// Hung off an AVFrame's opaque_ref by make_frame_standalone(), and only by it,
-// so the frame can outlive this interface and be color-converted by another
-// one. `storage` keeps the frame's GPU buffer alive; `producer_stream` is the
-// stream that filled it, which the consuming ColorConverter must sync against.
-//
 // TODO_API_BREAKDOWN P2: the name says "standalone", but this is really about
 // owning a GPU buffer. Find one that covers both.
 struct StandAloneFrameAttachedData {
@@ -45,10 +40,6 @@ struct StandAloneFrameAttachedData {
   torch::stable::Tensor storage;
 };
 
-// A GPU frame together with the buffer backing it. Returned rather than
-// self-contained because the two callers keep that buffer alive differently:
-// make_frame_standalone() hands it to the frame itself, while a one-shot color
-// conversion just keeps it on the stack.
 struct GpuFrameAndStorage {
   UniqueAVFrame av_frame;
   torch::stable::Tensor storage;

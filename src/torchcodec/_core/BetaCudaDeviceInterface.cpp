@@ -1118,6 +1118,8 @@ BetaCudaDeviceInterface::upload_cpu_frame_to_gpu_on_current_stream(
   // let the color conversion crop the result back. Nothing about the pixel
   // format itself requires this: FFmpeg is happy with odd-sized 4:2:0 frames.
   // The 4:4:4 kernel is per-pixel, so those are uploaded at their exact size.
+  // TODO_API_BREAKDOW P1: Wait errrr does that mean we don't need this crop
+  // dance anymore?? Should check!!!
   int width = cpu_frame.width;
   int height = cpu_frame.height;
   int target_width = semi_planar_420 ? round_up_to_even(width) : width;
@@ -1347,15 +1349,15 @@ void BetaCudaDeviceInterface::apply_rotation(
 OutputDtype BetaCudaDeviceInterface::get_pre_allocation_dtype(
     [[maybe_unused]] OutputDtype requested_dtype) const {
   if (decoding_on_cpu_) {
-    // There's no NVDEC surface: the upload keeps the source's own depth, see
-    // upload_cpu_frame_to_gpu().
+    // the upload keeps the source's own depth, see upload_cpu_frame_to_gpu().
     const AVPixFmtDescriptor* desc =
         av_pix_fmt_desc_get(codec_context_->pix_fmt);
     bool is_16bit = desc != nullptr && desc->comp[0].depth > 8;
     return is_16bit ? OutputDtype::FLOAT32 : OutputDtype::UINT8;
+  } else {
+    return is_16bit_surface_format(surface_format_) ? OutputDtype::FLOAT32
+                                                    : OutputDtype::UINT8;
   }
-  return is_16bit_surface_format(surface_format_) ? OutputDtype::FLOAT32
-                                                  : OutputDtype::UINT8;
 }
 
 std::string BetaCudaDeviceInterface::get_details() {
