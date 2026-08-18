@@ -117,6 +117,11 @@ bool is_16bit_surface_format(cudaVideoSurfaceFormat format) {
       format == cudaVideoSurfaceFormat_YUV444_16Bit;
 }
 
+bool is_expected_pix_fmt_from_nvdec(AVPixelFormat pix_fmt) {
+  return pix_fmt == AV_PIX_FMT_NV12 || is_nvdec_16bit_pix_fmt(pix_fmt) ||
+      pix_fmt == AV_PIX_FMT_YUV444P || pix_fmt == AV_PIX_FMT_YUV444P16LE;
+}
+
 static bool g_cuda_nvdec = register_device_interface(
     DeviceInterfaceKey(kStableCUDA, /*variant=*/"default"),
     [](const StableDevice& device) {
@@ -925,8 +930,7 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
 
   // NVDEC lays the chroma planes out after the Y plane, all with the same
   // pitch. The Y plane has an even number of rows (NVDEC rounds up internally),
-  // so the offsets must use the rounded-up height. 4:2:0 has one half-height
-  // interleaved UV plane; 4:4:4 has two full-height U and V planes.
+  // so the offsets must use the rounded-up height.
   unsigned int even_height = round_up_to_even(height);
   auto plane = [&](unsigned int index) {
     return reinterpret_cast<uint8_t*>(
@@ -1269,10 +1273,11 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   }
   const AVFrame& gpu_frame = cpu_fallback ? *transferred_frame : av_frame;
 
+  auto gpu_pix_fmt = static_cast<AVPixelFormat>(gpu_frame.format);
   STD_TORCH_CHECK(
-      is_nvdec_surface(gpu_frame.format),
-      "Expected an NVDEC surface format, got ",
-      av_get_pix_fmt_name(static_cast<AVPixelFormat>(gpu_frame.format)));
+      is_expected_pix_fmt_from_nvdec(gpu_pix_fmt),
+      "Expected a pixel format we can color-convert on the GPU, got ",
+      av_get_pix_fmt_name(gpu_pix_fmt));
 
   cudaStream_t producer_stream = attached_data
       ? attached_data->producer_stream
@@ -1337,11 +1342,6 @@ void BetaCudaDeviceInterface::apply_rotation(
 
 OutputDtype BetaCudaDeviceInterface::get_pre_allocation_dtype(
     [[maybe_unused]] OutputDtype requested_dtype) const {
-  // The pre-allocated tensors receive the color conversion's raw output, and
-  // its dtype follows the surface we ended up decoding into, not what the user
-  // asked for: uint16 for a 16-bit surface, uint8 otherwise. Whichever it is,
-  // maybe_permute_and_convert_dtype() casts it to the requested dtype
-  // afterwards.
   return is_16bit_surface_format(surface_format_) ? OutputDtype::FLOAT32
                                                   : OutputDtype::UINT8;
 }

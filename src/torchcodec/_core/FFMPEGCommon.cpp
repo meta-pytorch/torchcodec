@@ -16,6 +16,11 @@ extern "C" {
 
 namespace facebook::torchcodec {
 
+// The AVPixelFormat describing an NVDEC surface for a given source bit depth.
+// bit_depth is the source's, and only matters for the 16-bit containers.
+// FFmpeg < 6 has no P012LE. P016LE describes the same samples just as
+// validly: they're msb-aligned, so a 12-bit surface is a 16-bit one with
+// 4 zeroed low bits.
 AVPixelFormat nvdec_pix_fmt(NvdecSurface surface, int bit_depth) {
   switch (surface) {
     case NvdecSurface::NV12:
@@ -33,25 +38,17 @@ AVPixelFormat nvdec_pix_fmt(NvdecSurface surface, int bit_depth) {
         return AV_PIX_FMT_P012LE;
       }
 #endif
-      // FFmpeg < 6 has no P012LE. P016LE describes the same samples just as
-      // validly: they're msb-aligned, so a 12-bit surface is a 16-bit one with
-      // 4 zeroed low bits. Only the reported depth differs.
       return AV_PIX_FMT_P016LE;
   }
   return AV_PIX_FMT_NV12;
 }
 
-bool is_nvdec_16bit_surface(int format) {
+bool is_nvdec_16bit_pix_fmt(int format) {
   return format == AV_PIX_FMT_P010LE || format == AV_PIX_FMT_P016LE ||
 #if FFMPEG_HAS_P012
       format == AV_PIX_FMT_P012LE ||
 #endif
       false;
-}
-
-bool is_nvdec_surface(int format) {
-  return format == AV_PIX_FMT_NV12 || is_nvdec_16bit_surface(format) ||
-      format == AV_PIX_FMT_YUV444P || format == AV_PIX_FMT_YUV444P16LE;
 }
 
 OutputDtype resolve_output_dtype(
