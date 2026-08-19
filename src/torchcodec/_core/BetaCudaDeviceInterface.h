@@ -103,6 +103,8 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   CUdeviceptr previously_mapped_frame_ = 0;
   void unmap_previous_frame();
 
+  cudaStream_t nvdec_output_stream_ = nullptr;
+
   UniqueAVFrame convert_cuda_frame_to_av_frame(
       CUdeviceptr frame_ptr,
       unsigned int pitch,
@@ -110,8 +112,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
-  GpuFrameAndStorage upload_cpu_frame_to_gpu_on_current_stream(
-      const AVFrame& cpu_frame);
+  GpuFrameAndStorage upload_cpu_frame_to_gpu(
+      const AVFrame& cpu_frame,
+      cudaStream_t stream);
 
   torch::stable::Tensor copy_nvdec_surface(
       UniqueAVFrame& av_frame,
