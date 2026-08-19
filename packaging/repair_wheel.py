@@ -134,7 +134,7 @@ def _find_nvjpeg_license():
 
 
 def _find_rocjpeg_license():
-    """Find rocjpeg's LICENSE file to ship alongside the bundled binary."""
+    """Find rocjpeg's LICENSE file to document the runtime dependency."""
     search_roots = []
     for var in ("ROCM_HOME", "ROCM_PATH"):
         if v := os.environ.get(var):
@@ -665,14 +665,20 @@ def bundle_third_party_licenses():
             print(f"  LICENSE.libnvjpeg-NVIDIA-CUDA-EULA.txt <- {nvjpeg_license}")
 
         if _is_rocm_wheel(wheel):
+            # We don't bundle librocjpeg (it stays in the user's ROCm install)
+            # but we still ship its MIT license as documentation of the runtime
+            # dependency. If the license can't be found, warn but don't fail —
+            # missing a license for an unbundled lib is not a blocking error.
             if (rocjpeg_license := _find_rocjpeg_license()) is None:
-                raise RuntimeError(
-                    f"{wheel.name} bundles librocjpeg but the rocjpeg LICENSE "
-                    "could not be located to ship alongside it. "
-                    "Set ROCM_HOME or ROCM_PATH to the ROCm install root."
+                print(
+                    f"WARNING: {wheel.name}: rocjpeg LICENSE not found; "
+                    "skipping LICENSE.librocjpeg-MIT.txt. "
+                    "Set ROCM_HOME or ROCM_PATH to the ROCm install root.",
+                    flush=True,
                 )
-            licenses["LICENSE.librocjpeg-MIT.txt"] = rocjpeg_license
-            print(f"  LICENSE.librocjpeg-MIT.txt <- {rocjpeg_license}")
+            else:
+                licenses["LICENSE.librocjpeg-MIT.txt"] = rocjpeg_license
+                print(f"  LICENSE.librocjpeg-MIT.txt <- {rocjpeg_license}")
 
         unpack_dir = scratch / "unpack"
         if unpack_dir.is_dir():
@@ -889,11 +895,14 @@ def check_bundling():
         ]
         # keyword each bundled lib's license file must be identifiable by. CUDA
         # wheels also bundle libnvjpeg, whose NVIDIA CUDA EULA must ship too.
-        # ROCm wheels bundle librocjpeg, whose MIT license must ship too.
+        # ROCm wheels ship the rocjpeg MIT license as documentation (even though
+        # librocjpeg itself is NOT bundled — it stays in the user's ROCm install).
+        # The license is optional: if _find_rocjpeg_license() couldn't locate it
+        # at repair time it is skipped, so we only require it when present.
         keywords = ["jpeg", "png", "zlib", "webp", "avif", "dav1d", "yuv"]
         if is_cuda:
             keywords.append("nvjpeg")
-        if is_rocm:
+        if is_rocm and any("rocjpeg" in n.lower() for n in license_files):
             keywords.append("rocjpeg")
         for keyword in keywords:
             if not any(keyword in n.lower() for n in license_files):
