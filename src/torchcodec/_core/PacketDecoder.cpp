@@ -111,10 +111,8 @@ int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
   int status = device_interface_->receive_frame(av_frame);
   if (status == AVSUCCESS) {
     device_interface_->make_frame_standalone(av_frame);
-    // Not all decode paths produce frames carrying the container's display
-    // matrix: FFmpeg only propagates it from 6.1 on, and NVDEC frames are
-    // synthesized by us. Stamping it here is what makes the rotation available
-    // to whoever gets the frame, without them needing the stream.
+    // Attach a copy of the display matrix to the frame, so the ColorConverter
+    // can use it.
     set_display_matrix_on_frame(
         *av_frame, display_matrix_ ? display_matrix_->data() : nullptr);
   }

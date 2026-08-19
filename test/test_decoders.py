@@ -3898,7 +3898,9 @@ class TestBlocks:
         assert U.shape == V.shape == expected_chroma_shape
 
     @pytest.mark.parametrize("device", _block_devices())
-    def test_materialize_planes_are_not_rotated(self, device):
+    def test_materialize_planes_are_not_rotated_but_color_conversion_rotates(
+        self, device
+    ):
         # The planes are views on the decoder's own memory, so they're in the
         # source's pre-rotation geometry. Only the converted frame is rotated.
         frame, converter = self._first_frame(NASA_VIDEO_ROTATED.path, device)
