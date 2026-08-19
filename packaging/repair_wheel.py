@@ -253,11 +253,15 @@ def _patch_rocjpeg_rpath_in_wheel(wheel_path: Path) -> None:
 
     rpath = ":".join([
         "$ORIGIN",
-        # ROCm >= 7.14: rocm-sdk-core Python wheel layout
+        # ROCm >= 7.14 layout A: torch bundles ROCm runtime inside torch/lib/
+        # (same layout PyTorch uses for CUDA runtime on CUDA builds).
+        "$ORIGIN/../../torch/lib",
+        # ROCm >= 7.14 layout B: rocm-sdk-core ships as a separate pip wheel
+        # and ROCm runtime lives in _rocm_sdk_core/lib.
         "$ORIGIN/../../_rocm_sdk_core/lib",
         "$ORIGIN/../../_rocm_sdk_core/lib/rocm_sysdeps/lib",
         # ROCm <= 7.2: standard system install path (AMD installer always
-        # creates /opt/rocm symlink even for versioned installs like 7.2.0)
+        # creates the /opt/rocm symlink even for versioned installs like 7.2.0).
         "/opt/rocm/lib",
         "/opt/rocm/lib/rocm_sysdeps/lib",
     ])
