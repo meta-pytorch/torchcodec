@@ -1444,25 +1444,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
 void BetaCudaDeviceInterface::apply_rotation(
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
-  int k = 0;
-  switch (rotation_) {
-    case Rotation::CCW90:
-      k = 1;
-      break;
-    case Rotation::ROTATE180:
-      k = 2;
-      break;
-    case Rotation::CW90:
-      k = 3;
-      break;
-    default:
-      STD_TORCH_CHECK(false, "Unexpected rotation value");
-      break;
-  }
-  // Apply rotation using rot90 on the H and W dims of our HWC tensor.
-  // stableRot90 returns a view, so we need to make it contiguous.
-  frame_output.data =
-      torch::stable::contiguous(stable_rot90(frame_output.data, k, 0, 1));
+  frame_output.data = rotate_hwc_tensor(frame_output.data, rotation_);
 
   if (pre_allocated_output_tensor.has_value()) {
     torch::stable::copy_(

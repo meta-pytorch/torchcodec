@@ -30,6 +30,11 @@ class Packet:
 # DecodedFrame class and actually just call materialize() transparently whenever
 # the user wants to access the planes? If materialize() is super cheap (it
 # should be???) then this might be a good UX.
+# Similarly we really need to figure out where and how to expose rotation. It's
+# already *applied* - the PacketDecoder puts the display matrix on every frame
+# and the ColorConverter honors it - but nothing surfaces it in Python, so
+# whoever color-converts the planes themselves has no way of knowing the frame
+# needs rotating. And should reported height and width be pre or post rotation?
 @dataclass
 class RawFrame:
     planes: tuple[torch.Tensor, ...]

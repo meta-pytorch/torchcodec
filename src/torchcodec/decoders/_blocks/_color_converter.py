@@ -16,7 +16,6 @@ from torchcodec._frame import Frame
 from .._decoder_utils import convert_output_dtype_to_str
 from ._frame import DecodedFrame
 
-# TODO_API_BREAKDOWN FEAT We need to support rotation metadata!!
 # TODO_API_BREAKDOWN FEAT Implement seeking?
 # TODO_API_BREAKDOWN FEAT Implement range-getting (start/end time) for decoding?
 
@@ -36,8 +35,9 @@ class ColorConverter:
     once per stream, so feeding it a mix of SDR and HDR frames yields a mix of
     dtypes.
 
-    Note: automatic rotation (from stream side data) is not applied, since this
-    block is intentionally stream-agnostic.
+    Rotation is applied too, so the output matches ``VideoDecoder``'s. The angle
+    is part of the frame, like its dims and colorspace, so honoring it doesn't
+    bind the converter to a stream either.
     """
 
     # TODO_API_BREAKDOWN UF P1: device default should be None

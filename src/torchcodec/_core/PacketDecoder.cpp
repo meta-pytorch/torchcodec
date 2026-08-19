@@ -6,6 +6,8 @@
 
 #include "PacketDecoder.h"
 
+#include <algorithm>
+
 namespace facebook::torchcodec {
 
 SharedAVCodecContext create_and_open_codec_context(
@@ -63,6 +65,11 @@ PacketDecoder::PacketDecoder(
 
   AVStream* stream = demuxer.active_stream();
   time_base_ = stream->time_base;
+  if (const int32_t* matrix = get_display_matrix_from_stream(stream)) {
+    display_matrix_.emplace();
+    std::copy(
+        matrix, matrix + display_matrix_->size(), display_matrix_->begin());
+  }
   const AVCodec* av_codec = find_decoder(stream, device_interface_.get());
   codec_context_ = create_and_open_codec_context(
       stream, av_codec, device_interface_.get(), ffmpeg_thread_count);
@@ -104,6 +111,10 @@ int PacketDecoder::receive_frame(UniqueAVFrame& av_frame) {
   int status = device_interface_->receive_frame(av_frame);
   if (status == AVSUCCESS) {
     device_interface_->make_frame_standalone(av_frame);
+    // Attach a copy of the display matrix to the frame, so the ColorConverter
+    // can use it.
+    set_display_matrix_on_frame(
+        *av_frame, display_matrix_ ? display_matrix_->data() : nullptr);
   }
   return status;
 }
