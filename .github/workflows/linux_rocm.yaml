@@ -173,6 +173,17 @@ jobs:
           export LD_LIBRARY_PATH="${rocm_core_lib}:${LD_LIBRARY_PATH:-}"
           echo "LD_LIBRARY_PATH (rocm_sdk_core): ${rocm_core_lib}"
         fi
+        # ROCm 7.14 ships mesa inside _rocm_sdk_core (no separate dnf install
+        # needed). Point libva's driver search path at the DRI drivers bundled
+        # there so vaInitialize() can find the amdgpu/radeonsi VA-API backend.
+        rocm_core_dri=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; d = p/'lib'/'dri' if p else None; print(str(d) if d and d.is_dir() else '')" 2>/dev/null || true)
+        if [ -n "${rocm_core_dri}" ]; then
+          export LIBVA_DRIVERS_PATH="${rocm_core_dri}"
+          echo "LIBVA_DRIVERS_PATH: ${rocm_core_dri}"
+        else
+          echo "WARNING: _rocm_sdk_core/lib/dri not found; listing _rocm_sdk_core/lib/ to diagnose:"
+          python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; [print(x) for x in sorted((p/'lib').iterdir())] if p else None" 2>/dev/null || true
+        fi
         # Diagnostics: dump ldd on the image .so so any missing dep is visible.
         image_so=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('torchcodec'); print(pathlib.Path(spec.origin).parent / 'libtorchcodec_image.so')" 2>/dev/null || true)
         if [ -n "${image_so}" ] && [ -f "${image_so}" ]; then
