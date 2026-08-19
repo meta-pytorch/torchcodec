@@ -374,8 +374,7 @@ void SingleStreamDecoder::scan_file_and_update_metadata_and_index() {
   // Reset the seek-cursor back to the beginning.
   int status = avformat_seek_file(format_context_.get(), 0, INT64_MIN, 0, 0, 0);
   STD_TORCH_CHECK(
-      status >= 0,
-      get_seek_error_message(format_context_.get(), 0, status));
+      status >= 0, get_seek_error_message(format_context_.get(), 0, status));
 
   // Sort all frames by their pts.
   sort_all_frames();
