@@ -197,7 +197,10 @@ def psnr(a, b, max_val=255) -> float:
 def assert_frames_equal(*args, **kwargs):
     if sys.platform == "linux" and "x86" in platform.machine().lower():
         if args[0].device.type == "cuda":
-            atol = 3 if cuda_version_used_for_building_torch() >= (13, 0) else 2
+            cuda_ver = cuda_version_used_for_building_torch()
+            # On ROCm, cuda_ver is None (no CUDA version); use the more
+            # lenient tolerance, same as CUDA >= 13.
+            atol = 3 if (cuda_ver is None or cuda_ver >= (13, 0)) else 2
             if ffmpeg_major_version == 4:
                 assert_tensor_close_on_at_least(
                     args[0], args[1], percentage=95, atol=atol

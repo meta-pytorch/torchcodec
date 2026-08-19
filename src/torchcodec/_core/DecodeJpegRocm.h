@@ -54,6 +54,11 @@ class RocJpegDecoder {
     torch::stable::Tensor output_tensor;
     RocJpegImage output_image{};
     RocJpegOutputFormat output_format{ROCJPEG_OUTPUT_NATIVE};
+    // On some hardware (e.g. MI350X VF), ROCJPEG_BACKEND_HARDWARE +
+    // ROCJPEG_OUTPUT_RGB_PLANAR produces incorrect output (~51% of pixels
+    // correct) for color (YCbCr) JPEG sources. Route those to HYBRID, which
+    // performs YCbCr->RGB conversion in software and is always correct.
+    bool force_hybrid{false};
   };
 
   RocJpegHandle base_handle();
@@ -64,7 +69,8 @@ class RocJpegDecoder {
       ImageReadMode mode);
 
   std::pair<std::vector<size_t>, std::vector<size_t>> split_images_by_backend(
-      const std::vector<torch::stable::Tensor>& encoded_images);
+      const std::vector<torch::stable::Tensor>& encoded_images,
+      const std::vector<ImagePlan>& plans);
 
   void decode_batched_hardware(
       std::vector<ImagePlan>& plans,

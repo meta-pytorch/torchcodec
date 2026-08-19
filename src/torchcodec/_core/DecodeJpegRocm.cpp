@@ -280,6 +280,15 @@ RocJpegDecoder::ImagePlan RocJpegDecoder::make_plan(
   }
   int output_channels = (plan.output_format == ROCJPEG_OUTPUT_Y) ? 1 : 3;
 
+  // On MI350X (and possibly other ROCm hardware), the HW VCN engine returns
+  // incorrect pixel data when asked to produce ROCJPEG_OUTPUT_RGB_PLANAR from
+  // a colour (YCbCr) source: only ~51% of pixels match the CPU reference.
+  // ROCJPEG_OUTPUT_Y is correct in the HW path. The HYBRID backend handles
+  // YCbCr→RGB in software and is always correct, so we force HYBRID for any
+  // colour JPEG that needs RGB output.
+  plan.force_hybrid = (plan.output_format == ROCJPEG_OUTPUT_RGB_PLANAR) &&
+      (subsampling != ROCJPEG_CSS_GRAY);
+
   plan.output_tensor = torch::stable::empty(
       {int64_t(output_channels), int64_t(heights[0]), int64_t(widths[0])},
       kStableUInt8,
@@ -301,10 +310,12 @@ RocJpegDecoder::ImagePlan RocJpegDecoder::make_plan(
 
 std::pair<std::vector<size_t>, std::vector<size_t>>
 RocJpegDecoder::split_images_by_backend(
-    const std::vector<torch::stable::Tensor>& encoded_images) {
+    const std::vector<torch::stable::Tensor>& encoded_images,
+    const std::vector<ImagePlan>& plans) {
   std::vector<size_t> hw_indices, hybrid_indices;
   for (size_t i = 0; i < encoded_images.size(); ++i) {
     bool supports_hw = hw_decode_available_ &&
+        !plans[i].force_hybrid &&
         is_hw_decodable_jpeg(
                            encoded_images[i].const_data_ptr<uint8_t>(),
                            encoded_images[i].numel());
@@ -316,35 +327,20 @@ RocJpegDecoder::split_images_by_backend(
 void RocJpegDecoder::decode_batched_hardware(
     std::vector<ImagePlan>& plans,
     const std::vector<size_t>& indices) {
-  // rocJpegDecodeBatched takes a single output format for the whole batch, but
-  // the batch may mix grayscale (Y) and RGB images, so we split into per-format
-  // sub-batches, same as the nvJPEG HW path.
-  for (RocJpegOutputFormat group_format :
-       {ROCJPEG_OUTPUT_Y, ROCJPEG_OUTPUT_RGB_PLANAR}) {
-    std::vector<RocJpegStreamHandle> group_streams;
-    std::vector<RocJpegImage> group_images;
-    for (size_t idx : indices) {
-      if (plans[idx].output_format == group_format) {
-        group_streams.push_back(plans[idx].stream);
-        group_images.push_back(plans[idx].output_image);
-      }
-    }
-    if (group_streams.empty()) {
-      continue;
-    }
-
+  // Use individual rocJpegDecode calls rather than rocJpegDecodeBatched.
+  // rocJpegDecodeBatched is unreliable when the batch mixes images of
+  // different dimensions: it writes with an internally-chosen (often
+  // aligned) pitch that does not match our tensor's actual row stride,
+  // producing completely wrong output. Individual decodes avoid this.
+  for (size_t idx : indices) {
     RocJpegDecodeParams params = {};
-    params.output_format = group_format;
+    params.output_format = plans[idx].output_format;
 
-    RocJpegStatus status = rocJpegDecodeBatched(
-        handle_hw_,
-        group_streams.data(),
-        static_cast<int>(group_streams.size()),
-        &params,
-        group_images.data());
+    RocJpegStatus status = rocJpegDecode(
+        handle_hw_, plans[idx].stream, &params, &plans[idx].output_image);
     STD_TORCH_CHECK(
         status == ROCJPEG_STATUS_SUCCESS,
-        "rocJpegDecodeBatched failed: ",
+        "rocJpegDecode (HW) failed: ",
         rocJpegGetErrorName(status));
   }
 }
@@ -375,7 +371,7 @@ std::vector<torch::stable::Tensor> RocJpegDecoder::decode_images(
     plans.push_back(make_plan(encoded_image, mode));
   }
 
-  auto [hw_indices, hybrid_indices] = split_images_by_backend(encoded_images);
+  auto [hw_indices, hybrid_indices] = split_images_by_backend(encoded_images, plans);
   if (!hw_indices.empty()) {
     decode_batched_hardware(plans, hw_indices);
   }
