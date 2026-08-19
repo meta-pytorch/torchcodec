@@ -96,6 +96,7 @@ _blocks_create_demuxer = torch.ops.torchcodec_ns._blocks_create_demuxer.default
 _blocks_demuxer_next_packet = (
     torch.ops.torchcodec_ns._blocks_demuxer_next_packet.default
 )
+_blocks_demuxer_rotation = torch.ops.torchcodec_ns._blocks_demuxer_rotation.default
 _blocks_create_packet_decoder = (
     torch.ops.torchcodec_ns._blocks_create_packet_decoder.default
 )

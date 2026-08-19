@@ -3710,6 +3710,8 @@ class TestBlocks:
             TESTSRC2_444_12BIT_HEVC,
             # First keyframe is marked AV_PKT_FLAG_DISCARD by an mp4 edit list.
             DISCARD_FIRST_KEYFRAME_VIDEO,
+            # 90-degree display matrix: the converter must rotate.
+            NASA_VIDEO_ROTATED,
         ),
     )
     @pytest.mark.parametrize(
@@ -3894,6 +3896,33 @@ class TestBlocks:
             (width + (1 << log2_w) - 1) >> log2_w,
         )
         assert U.shape == V.shape == expected_chroma_shape
+
+    @pytest.mark.parametrize("device", _block_devices())
+    @pytest.mark.parametrize(
+        "video, expected_rotation", ((NASA_VIDEO_ROTATED, 90), (NASA_VIDEO, None))
+    )
+    def test_rotation_rides_on_the_frames(self, video, expected_rotation, device):
+        # Rotation is stream metadata: the Demuxer reads it off the display
+        # matrix, the PacketDecoder stamps every frame with it, and
+        # materialize() forwards it - which is what lets the ColorConverter
+        # apply it without being bound to a stream.
+        assert Demuxer(video.path).rotation == expected_rotation
+
+        frame, _ = self._first_frame(video.path, device)
+        assert frame.rotation == expected_rotation
+        assert frame.materialize().rotation == expected_rotation
+
+    @pytest.mark.parametrize("device", _block_devices())
+    def test_materialize_planes_are_not_rotated(self, device):
+        # The planes are views on the decoder's own memory, so they're in the
+        # source's pre-rotation geometry. Only the converted frame is rotated.
+        frame, converter = self._first_frame(NASA_VIDEO_ROTATED.path, device)
+        Y = frame.materialize().planes[0]
+
+        height = NASA_VIDEO_ROTATED.get_height()  # post-rotation
+        width = NASA_VIDEO_ROTATED.get_width()
+        assert Y.shape == (width, height)
+        assert converter.convert(frame).data.shape == (3, height, width)
 
     @pytest.mark.needs_cuda
     @pytest.mark.parametrize("case", _MATERIALIZE_VIDEOS, ids=_materialize_ids)

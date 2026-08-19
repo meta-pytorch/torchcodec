@@ -47,10 +47,17 @@ class FORCE_PUBLIC_VISIBILITY Demuxer {
     return format_context_;
   }
 
+  // Counter-clockwise angle in degrees that makes the stream's frames upright,
+  // from its display matrix. Empty when the stream has no display matrix.
+  std::optional<double> rotation() const {
+    return rotation_;
+  }
+
  private:
   UniqueDecodingAVFormatContext format_context_;
   int active_stream_index_ = -1;
   AVStream* stream_ = nullptr;
+  std::optional<double> rotation_;
   AutoAVPacket auto_packet_;
 };
 

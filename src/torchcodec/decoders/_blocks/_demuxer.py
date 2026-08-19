@@ -8,7 +8,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from torchcodec._core.ops import _blocks_create_demuxer, _blocks_demuxer_next_packet
+from torchcodec._core.ops import (
+    _blocks_create_demuxer,
+    _blocks_demuxer_next_packet,
+    _blocks_demuxer_rotation,
+)
 
 from ._frame import Packet
 
@@ -24,6 +28,11 @@ class Demuxer:
     A :class:`Demuxer` also carries the stream configuration used to build a
     :class:`PacketDecoder` and :class:`ColorConverter`, so those are constructed from
     a demuxer and no extra container is opened.
+
+    ``rotation`` is the stream's rotation in degrees (counter-clockwise, from
+    its display matrix), or ``None`` when the stream has none. A
+    :class:`PacketDecoder` stamps it onto every frame it produces, so you rarely
+    need to read it here.
     """
 
     def __init__(self, source: str | Path, *, stream_index: int | None = None):
@@ -34,6 +43,9 @@ class Demuxer:
                 f"source must be a path (str or pathlib.Path), got {type(source)}"
             )
         self._handle = _blocks_create_demuxer(source, stream_index)
+
+        has_rotation, rotation = _blocks_demuxer_rotation(self._handle)
+        self.rotation: float | None = rotation if has_rotation else None
 
     def next_packet(self) -> Packet | None:
         """Return the next :class:`Packet`, or ``None`` at end of stream."""

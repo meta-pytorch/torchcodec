@@ -44,7 +44,9 @@ void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
   initialized_output_dtype_ = output_dtype;
 }
 
-torch::stable::Tensor ColorConverter::convert(const AVFrame& av_frame) {
+torch::stable::Tensor ColorConverter::convert(
+    const AVFrame& av_frame,
+    std::optional<double> rotation_degrees) {
   OutputDtype output_dtype = resolve_output_dtype(
       output_dtype_config_, static_cast<AVPixelFormat>(av_frame.format));
   maybe_initialize_interface(output_dtype);
@@ -52,6 +54,10 @@ torch::stable::Tensor ColorConverter::convert(const AVFrame& av_frame) {
   FrameOutput frame_output;
   device_interface_->convert_av_frame_to_frame_output(
       av_frame, frame_output, std::nullopt);
+
+  frame_output.data = rotate_hwc_tensor(
+      frame_output.data, rotation_from_degrees(rotation_degrees));
+
   return convert_to_output_dtype(frame_output.data, output_dtype);
 }
 

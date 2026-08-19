@@ -30,6 +30,8 @@ class Packet:
 # DecodedFrame class and actually just call materialize() transparently whenever
 # the user wants to access the planes? If materialize() is super cheap (it
 # should be???) then this might be a good UX.
+# Similarly we really need to figure out where and how to expose rotation. And
+# should reported height and width be pre or post rotation?
 @dataclass
 class RawFrame:
     planes: tuple[torch.Tensor, ...]
@@ -51,6 +53,11 @@ class RawFrame:
     # TODO_API_BREAKDOWN DESIGN P2: should this report the depth of the source instead
     # of the depth of the pixel format?
     bit_depth: int
+    # Counter-clockwise angle in degrees that makes the frame upright, or None
+    # if the stream carries no display matrix. The planes are the decoder's own
+    # samples, so they are *not* rotated - apply this yourself when converting
+    # them by hand. ColorConverter does it for you.
+    rotation: float | None
 
 
 # TODO_API_BREAKDOWN DESIGN P1: API design - especially the materialize() method but
@@ -60,9 +67,10 @@ class DecodedFrame:
     plus its presentation timestamp and duration (in seconds).
 
     Produced by :class:`PacketDecoder`, consumed by :class:`ColorConverter`. The
-    handle wraps a raw pointer and is process-local. pts/duration are stamped by
-    the decoder (which knows the stream time base) and carried here so the
-    :class:`ColorConverter` need not be bound to any stream.
+    handle wraps a raw pointer and is process-local. pts/duration and rotation
+    are stamped by the decoder (which knows the stream time base and display
+    matrix) and carried here so the :class:`ColorConverter` need not be bound to
+    any stream.
 
     ``device`` is where this frame's samples are, and it is always the device
     its decoder was created with. A CUDA decoder falls back to CPU decoding for
@@ -76,11 +84,13 @@ class DecodedFrame:
         pts_seconds: float,
         duration_seconds: float,
         device: str = "cpu",
+        rotation: float | None = None,
     ):
         self._handle = handle
         self._device = device
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
+        self.rotation = rotation
 
     # TODO_API_BREAKDOWN DESIGN P2 Why is this a property???
     # Do we even need to havet this?
@@ -112,4 +122,5 @@ class DecodedFrame:
             colorspace=colorspace,
             color_range=color_range,
             bit_depth=bit_depth,
+            rotation=self.rotation,
         )
