@@ -59,9 +59,9 @@ Checking if Pytorch has CUDA enabled
 
  .. code-block:: none
 
-    torch.__version__='2.15.0.dev20260818+cu126'
+    torch.__version__='2.15.0.dev20260819+cu126'
     torch.cuda.is_available()=True
-    torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=048a5ad3-88f0-5f4b-a03a-6c0779dfe36c, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
+    torch.cuda.get_device_properties(0)=_CudaDeviceProperties(name='NVIDIA A10G', major=8, minor=6, total_memory=22587MB, multi_processor_count=80, uuid=96978043-26d3-b7df-89f0-617a676eb412, pci_bus_id=0, pci_device_id=30, pci_domain_id=0, L2_cache_size=6MB)
 
 
 
@@ -106,7 +106,7 @@ We will use the following video which has the following properties:
  .. code-block:: none
 
 
-    ('video.mp4', <http.client.HTTPMessage object at 0x7f6168165390>)
+    ('video.mp4', <http.client.HTTPMessage object at 0x7fcc05662b60>)
 
 
 
@@ -308,7 +308,7 @@ differences because CUDA math is not bit-exact with respect to CPU math.
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 4.892 seconds)
+   **Total running time of the script:** (0 minutes 4.825 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_basic_cuda_example.py:
