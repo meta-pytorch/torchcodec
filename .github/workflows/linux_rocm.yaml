@@ -139,10 +139,10 @@ jobs:
         bash packaging/remove_src.sh
 
         echo '::group::Install rocJPEG runtime'
-        # librocjpeg is bundled into the wheel by repair_wheel.py (ROCm 7.14
-        # pip-wheel build) or must be present on the system (ROCm <= 7.2 system
-        # install).  install_rocjpeg.sh ensures the runtime side-deps (libva)
-        # are present regardless of how librocjpeg itself was obtained.
+        # librocjpeg is NOT bundled into the wheel.  Instead, libtorchcodec_image.so
+        # has an RPATH entry pointing to _rocm_sdk_core/lib (ROCm 7.14 pip-wheel) and
+        # /opt/rocm/lib (ROCm <= 7.2 system install).  install_rocjpeg.sh ensures the
+        # runtime side-deps (libva) are present regardless of layout.
         bash packaging/install_rocjpeg.sh
         echo '::endgroup::'
 
@@ -162,36 +162,24 @@ jobs:
         echo '::endgroup::'
 
         echo '::group::Run FFmpeg-free image decoder tests (incl. rocJPEG GPU)'
-        # ROCm 7.14 pip-wheel layout: the ROCm runtime and its vendored system
-        # deps (librocm_sysdeps_va.so.2 etc.) live inside _rocm_sdk_core/lib/
-        # and _rocm_sdk_core/lib/rocm_sysdeps/lib/.  The RPATH on the bundled
-        # librocjpeg-HASH.so points there via $ORIGIN, but the dynamic linker
-        # may not expand $ORIGIN correctly without execution permission.  Set
-        # LD_LIBRARY_PATH explicitly as belt-and-suspenders.
-        rocm_core_lib=$(python -c "
-import importlib.util, pathlib, os
-spec = importlib.util.find_spec('_rocm_sdk_core')
-if spec:
-    p = pathlib.Path(spec.submodule_search_locations[0])
-    dirs = [str(p/'lib'), str(p/'lib'/'rocm_sysdeps'/'lib')]
-    print(os.pathsep.join(d for d in dirs if pathlib.Path(d).is_dir()))
-" 2>/dev/null || true)
+        # ROCm 7.14 pip-wheel layout: librocjpeg lives in _rocm_sdk_core/lib and
+        # its transitive deps (librocm_sysdeps_va.so.2 etc.) are in
+        # _rocm_sdk_core/lib/rocm_sysdeps/lib. The RPATH on libtorchcodec_image.so
+        # points to _rocm_sdk_core/lib, and AMD's own RPATH on librocjpeg handles
+        # the sysdeps. Set LD_LIBRARY_PATH as belt-and-suspenders for the HIP
+        # runtime (libamdhip64) that librocjpeg needs.
+        rocm_core_lib=$(python -c "import importlib.util, pathlib, os; spec = importlib.util.find_spec('_rocm_sdk_core'); p = pathlib.Path(spec.submodule_search_locations[0]) if spec else None; dirs = [str(p/'lib'), str(p/'lib'/'rocm_sysdeps'/'lib')] if p else []; print(os.pathsep.join(d for d in dirs if pathlib.Path(d).is_dir()))" 2>/dev/null || true)
         if [ -n "${rocm_core_lib}" ]; then
           export LD_LIBRARY_PATH="${rocm_core_lib}:${LD_LIBRARY_PATH:-}"
           echo "LD_LIBRARY_PATH (rocm_sdk_core): ${rocm_core_lib}"
         fi
-        # Diagnostics: dump ldd and RPATH so any remaining missing dep is visible.
+        # Diagnostics: dump ldd on the image .so so any missing dep is visible.
         image_so=$(python -c "import importlib.util, pathlib; spec = importlib.util.find_spec('torchcodec'); print(pathlib.Path(spec.origin).parent / 'libtorchcodec_image.so')" 2>/dev/null || true)
         if [ -n "${image_so}" ] && [ -f "${image_so}" ]; then
+          echo "RPATH of ${image_so}:"
+          objdump -p "${image_so}" 2>/dev/null | grep -E "RPATH|RUNPATH" || true
           echo "ldd ${image_so}:"
           ldd "${image_so}" || true
-          rocjpeg_so=$(find "$(dirname "${image_so}")/../torchcodec.libs" -name 'librocjpeg*.so*' 2>/dev/null | head -1 || true)
-          if [ -n "${rocjpeg_so}" ]; then
-            echo "ldd ${rocjpeg_so}:"
-            ldd "${rocjpeg_so}" || true
-            echo "RPATH of ${rocjpeg_so}:"
-            objdump -p "${rocjpeg_so}" 2>/dev/null | grep -E "RPATH|RUNPATH" || true
-          fi
         fi
         # torch.cuda.is_available() is True on ROCm (HIP masquerades as CUDA), so
         # the needs_cuda image tests run here and exercise the GPU JPEG decoder,

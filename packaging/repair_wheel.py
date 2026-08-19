@@ -163,7 +163,12 @@ def _find_rocjpeg_license():
 
 
 def _find_rocjpeg_lib():
-    """Find librocjpeg.so at wheel repair time so auditwheel can bundle it.
+    """Find librocjpeg.so at wheel repair time so auditwheel can resolve it.
+
+    auditwheel needs librocjpeg to be resolvable in LD_LIBRARY_PATH during
+    `auditwheel repair` even though we exclude it from bundling (so it stays
+    in the user's ROCm install). This function returns the directory to add to
+    LD_LIBRARY_PATH before calling auditwheel.
 
     Searches ROCM_HOME / ROCM_PATH env vars, torch's ROCM_HOME, the standard
     /opt/rocm fallback, and (for ROCm >= 7.14) the _rocm_sdk_* pip-wheel
@@ -230,16 +235,21 @@ def _find_rocjpeg_lib():
     return None
 
 
-def _patch_rocjpeg_rpath_in_wheel(wheel_path: Path) -> None:
-    """Set RPATH on the bundled librocjpeg-*.so.* inside a repaired wheel so
-    it can find its ROCm runtime deps at the user's install time without
-    LD_LIBRARY_PATH.
+def _patch_image_so_rpath_in_wheel(wheel_path: Path) -> None:
+    """Append ROCm library search paths to libtorchcodec_image.so's RPATH.
+
+    librocjpeg is NOT bundled in the wheel (it is excluded from auditwheel so
+    it stays in the user's ROCm install). At runtime the dynamic linker must
+    find librocjpeg via RPATH on libtorchcodec_image.so itself.
 
     Two layouts are covered:
       - ROCm >= 7.14 (TheRock / rocm-sdk-* Python wheels):
-          libamdhip64 etc. live in <site-packages>/_rocm_sdk_core/lib/.
+          librocjpeg lives in <site-packages>/_rocm_sdk_core/lib/.
           $ORIGIN/../../_rocm_sdk_core/lib reaches that dir from
-          <site-packages>/torchcodec.libs/librocjpeg-HASH.so.1.
+          <site-packages>/torchcodec/libtorchcodec_image.so.
+          AMD already set the correct RPATH inside _rocm_sdk_core's librocjpeg
+          to find librocm_sysdeps_* transitive deps, so we do not need to touch
+          those at all.
       - ROCm <= 7.2 (system install):
           /opt/rocm/lib is the standard path; the AMD installer always
           creates the /opt/rocm symlink even for versioned installs.
@@ -251,39 +261,44 @@ def _patch_rocjpeg_rpath_in_wheel(wheel_path: Path) -> None:
             "repairing ROCm wheels."
         )
 
-    rpath = ":".join([
-        "$ORIGIN",
-        # ROCm >= 7.14 layout A: torch bundles ROCm runtime inside torch/lib/
-        # (same layout PyTorch uses for CUDA runtime on CUDA builds).
-        "$ORIGIN/../../torch/lib",
-        # ROCm >= 7.14 layout B: rocm-sdk-core ships as a separate pip wheel
-        # and ROCm runtime lives in _rocm_sdk_core/lib.
-        "$ORIGIN/../../_rocm_sdk_core/lib",
-        "$ORIGIN/../../_rocm_sdk_core/lib/rocm_sysdeps/lib",
-        # ROCm <= 7.2: standard system install path (AMD installer always
-        # creates the /opt/rocm symlink even for versioned installs like 7.2.0).
-        "/opt/rocm/lib",
-        "/opt/rocm/lib/rocm_sysdeps/lib",
-    ])
-
     import hashlib, base64, tempfile
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         with zipfile.ZipFile(wheel_path, "r") as zf:
             zf.extractall(tmp_path)
 
-        rocjpeg_libs = list(tmp_path.rglob("librocjpeg*.so*"))
-        if not rocjpeg_libs:
-            print(f"No librocjpeg found in {wheel_path.name}; skipping RPATH patch.", flush=True)
+        image_libs = list(tmp_path.rglob("libtorchcodec_image*.so*"))
+        if not image_libs:
+            print(
+                f"No libtorchcodec_image found in {wheel_path.name}; "
+                "skipping ROCm RPATH patch.",
+                flush=True,
+            )
             return
-        for lib in rocjpeg_libs:
-            print(f"Patching RPATH on {lib.name}: {rpath}", flush=True)
-            subprocess.run([patchelf, "--set-rpath", rpath, str(lib)], check=True)
+
+        for lib in image_libs:
+            # Read the RPATH auditwheel already set (e.g. $ORIGIN/../torchcodec.libs)
+            # and append the ROCm search dirs without clobbering them.
+            result = subprocess.run(
+                [patchelf, "--print-rpath", str(lib)],
+                capture_output=True, text=True, check=True,
+            )
+            existing = result.stdout.strip()
+            extra = ":".join([
+                # ROCm >= 7.14: librocjpeg lives in _rocm_sdk_core/lib alongside
+                # the other ROCm libraries shipped as a pip wheel.
+                "$ORIGIN/../../_rocm_sdk_core/lib",
+                # ROCm <= 7.2: standard system install (always symlinked to /opt/rocm).
+                "/opt/rocm/lib",
+            ])
+            new_rpath = f"{existing}:{extra}" if existing else extra
+            print(f"Setting RPATH on {lib.name}: {new_rpath}", flush=True)
+            subprocess.run([patchelf, "--set-rpath", new_rpath, str(lib)], check=True)
 
         # Update the RECORD file so pip's integrity check passes.
         # RECORD format: path,sha256=<base64url>,size  (or ",," for RECORD itself)
         record_files = list(tmp_path.rglob("RECORD"))
-        patched_rel_names = {lib.relative_to(tmp_path).as_posix() for lib in rocjpeg_libs}
+        patched_rel_names = {lib.relative_to(tmp_path).as_posix() for lib in image_libs}
         for record_file in record_files:
             lines = record_file.read_text(encoding="utf-8").splitlines()
             new_lines = []
@@ -333,7 +348,10 @@ def repair_linux(wheels):
             print(f"Found librocjpeg in {rocjpeg_lib_dir}", flush=True)
         else:
             print(
-                "WARNING: librocjpeg not found; rocJPEG will not be bundled. "
+                "WARNING: librocjpeg not found; auditwheel cannot resolve the "
+                "DT_NEEDED entry for librocjpeg. The wheel will still be built "
+                "but ROCm JPEG decoding will fail at runtime unless librocjpeg "
+                "is reachable via /opt/rocm/lib or _rocm_sdk_core/lib. "
                 "Set ROCM_HOME or ROCM_PATH if ROCm is in a non-standard location.",
                 flush=True,
             )
@@ -366,11 +384,18 @@ def repair_linux(wheels):
         "libnvshmem*",
         "libnvfatbin*",
         "libnvcuvid*",
+        # librocjpeg is NOT bundled. Instead, libtorchcodec_image.so gets an RPATH
+        # entry pointing to _rocm_sdk_core/lib (ROCm >= 7.14) and /opt/rocm/lib
+        # (ROCm <= 7.2), so the linker finds librocjpeg in its original location.
+        # This is intentional: AMD already set correct RPATHs inside their
+        # librocjpeg to find librocm_sysdeps_* and other transitive deps relative
+        # to _rocm_sdk_core/lib. Moving it (bundling) breaks those relative paths
+        # and requires us to re-patch them, which is fragile.
+        "librocjpeg*",
         # ROCm/HIP runtime and its system deps: provided by the torch-ROCm wheel
         # or the system ROCm install at runtime. Never bundle them — they would
         # duplicate torch's copies and bloat the wheel significantly (libLLVM
         # alone is ~200 MB).
-        # librocjpeg itself IS bundled (not listed here); only its deps are excluded.
         "libamdhip64*",
         "libamd_comgr*",
         "libhsa-runtime64*",
@@ -412,12 +437,14 @@ def repair_linux(wheels):
             env=env,
         )
 
-    # After auditwheel bundles librocjpeg-HASH.so.*, patch its RPATH so the
-    # bundled copy can find its ROCm runtime deps (libamdhip64 etc.) at the
-    # user's install time without requiring LD_LIBRARY_PATH.
+    # After auditwheel repair, patch libtorchcodec_image.so's RPATH to include
+    # _rocm_sdk_core/lib (ROCm >= 7.14) and /opt/rocm/lib (ROCm <= 7.2) so the
+    # dynamic linker can find librocjpeg at runtime without LD_LIBRARY_PATH.
+    # librocjpeg itself is NOT bundled; it stays in the ROCm install so AMD's
+    # own RPATH inside it correctly resolves all transitive deps.
     if any(_is_rocm_wheel(w) for w in wheels):
         for repaired_whl in REPAIRED_DIR.glob("*.whl"):
-            _patch_rocjpeg_rpath_in_wheel(repaired_whl)
+            _patch_image_so_rpath_in_wheel(repaired_whl)
 
 
 def repair_macos(wheels):
