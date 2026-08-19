@@ -189,10 +189,9 @@ print(f"{Y.shape = }, {U.shape = }, {Y.dtype = }, {Y.stride() = }")
 # line size, and the chroma planes of an NVDEC surface are two interleaved
 # views over a single plane. Writing through them is visible downstream.
 #
-# Being the decoder's own planes, they are also never rotated:
-# ``raw_frame.rotation`` reports the angle the container asks for (in degrees,
-# counter-clockwise, or ``None``) and it's yours to apply. ``ColorConverter``
-# applies it for you.
+# Being the decoder's own planes, they are also never rotated - a video whose
+# container asks for a rotation gives you the samples as they were encoded.
+# ``ColorConverter`` applies the rotation for you.
 #
 # So we can do the color conversion ourselves. Here it's plain PyTorch ops -
 # it could just as well be a Triton or CUDA kernel, fused with whatever your

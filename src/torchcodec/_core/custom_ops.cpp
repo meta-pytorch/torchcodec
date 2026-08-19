@@ -76,7 +76,6 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
   m.def(
       "_blocks_create_demuxer(str filename, int? stream_index=None) -> Tensor");
   m.def("_blocks_demuxer_next_packet(Tensor(a!) demuxer) -> (Tensor, bool)");
-  m.def("_blocks_demuxer_rotation(Tensor demuxer) -> (bool, float)");
   m.def(
       "_blocks_create_packet_decoder(Tensor demuxer, *, int? num_threads=None, str device=\"cpu\") -> Tensor");
   m.def(
@@ -86,8 +85,7 @@ STABLE_TORCH_LIBRARY_FRAGMENT(torchcodec_ns, m) {
       "_blocks_packet_decoder_receive_frame(Tensor(a!) decoder) -> (Tensor, int, float, float, str)");
   m.def(
       "_blocks_create_color_converter(str device=\"cpu\", str output_dtype=\"uint8\") -> Tensor");
-  m.def(
-      "_blocks_convert_frame(Tensor(a!) converter, Tensor frame, float? rotation_degrees=None) -> Tensor");
+  m.def("_blocks_convert_frame(Tensor(a!) converter, Tensor frame) -> Tensor");
   m.def(
       "_blocks_frame_to_planes(Tensor frame, str device) -> (Tensor, Tensor, Tensor, Tensor, str, str, str, int)");
   m.def("_get_key_frame_indices(Tensor(a!) decoder) -> Tensor");
@@ -817,16 +815,6 @@ OpsPacketOutput _blocks_demuxer_next_packet(torch::stable::Tensor& demuxer) {
   return std::make_tuple(wrap_pointer_to_tensor(std::move(packet)), false);
 }
 
-// (has_rotation, rotation_degrees). Op schemas here don't return optionals, so
-// the absence of a display matrix is reported through the leading bool.
-using OpsRotationOutput = std::tuple<bool, double>;
-
-OpsRotationOutput _blocks_demuxer_rotation(torch::stable::Tensor& demuxer) {
-  Demuxer* demuxer_ptr = unwrap_tensor_to_pointer<Demuxer>(demuxer);
-  std::optional<double> rotation = demuxer_ptr->rotation();
-  return std::make_tuple(rotation.has_value(), rotation.value_or(0.0));
-}
-
 torch::stable::Tensor _blocks_create_packet_decoder(
     torch::stable::Tensor& demuxer,
     std::optional<int64_t> num_threads,
@@ -912,12 +900,10 @@ torch::stable::Tensor _blocks_create_color_converter(
 
 torch::stable::Tensor _blocks_convert_frame(
     torch::stable::Tensor& converter,
-    torch::stable::Tensor& frame,
-    std::optional<double> rotation_degrees) {
+    torch::stable::Tensor& frame) {
   ColorConverter* converter_ptr =
       unwrap_tensor_to_pointer<ColorConverter>(converter);
-  return converter_ptr->convert(
-      *unwrap_tensor_to_pointer<AVFrame>(frame), rotation_degrees);
+  return converter_ptr->convert(*unwrap_tensor_to_pointer<AVFrame>(frame));
 }
 
 using OpsFrameToPlanesOutput = std::tuple<
@@ -1502,7 +1488,6 @@ STABLE_TORCH_LIBRARY_IMPL(torchcodec_ns, CPU, m) {
   m.impl("get_frames_by_pts", TORCH_BOX(&get_frames_by_pts));
   m.impl(
       "_blocks_demuxer_next_packet", TORCH_BOX(&_blocks_demuxer_next_packet));
-  m.impl("_blocks_demuxer_rotation", TORCH_BOX(&_blocks_demuxer_rotation));
   m.impl(
       "_blocks_create_packet_decoder",
       TORCH_BOX(&_blocks_create_packet_decoder));

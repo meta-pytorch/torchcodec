@@ -44,9 +44,7 @@ void ColorConverter::maybe_initialize_interface(OutputDtype output_dtype) {
   initialized_output_dtype_ = output_dtype;
 }
 
-torch::stable::Tensor ColorConverter::convert(
-    const AVFrame& av_frame,
-    std::optional<double> rotation_degrees) {
+torch::stable::Tensor ColorConverter::convert(const AVFrame& av_frame) {
   OutputDtype output_dtype = resolve_output_dtype(
       output_dtype_config_, static_cast<AVPixelFormat>(av_frame.format));
   maybe_initialize_interface(output_dtype);
@@ -55,8 +53,21 @@ torch::stable::Tensor ColorConverter::convert(
   device_interface_->convert_av_frame_to_frame_output(
       av_frame, frame_output, std::nullopt);
 
+  // The SingleStreamDecoder rotates through the transform pipeline, which we
+  // can't reuse: being unbound, we have no fixed input dims to build a
+  // RotationTransform from. Rotating the converted RGB frame yields the same
+  // pixels, because the CPU filter graph also applies its transforms after the
+  // format conversion, see Note [Transform and Format Conversion Order].
+  //
+  // TODO_API_BREAKDOWN PERF P2: on CPU this is a lot slower than the filter
+  // graph's transpose (roughly 3x at 480x270, and 1.5-3ms/frame at 720p):
+  // rotating an HWC uint8 tensor is a strided gather with 3-byte inner runs,
+  // where FFmpeg's transpose is SIMD and blocked. Only rotated videos pay it,
+  // and it's ~20us/frame on CUDA, but a CPU pipeline decoding rotated videos
+  // is measurably worse off than the VideoDecoder.
   frame_output.data = rotate_hwc_tensor(
-      frame_output.data, rotation_from_degrees(rotation_degrees));
+      frame_output.data,
+      rotation_from_degrees(get_rotation_from_frame(av_frame)));
 
   return convert_to_output_dtype(frame_output.data, output_dtype);
 }

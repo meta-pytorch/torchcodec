@@ -24,11 +24,11 @@ class PacketDecoder:
     """Decode building block: turns compressed :class:`Packet`\\ s into decoded
     (YUV) :class:`DecodedFrame`\\ s.
 
-    Built from a :class:`Demuxer` (for its codec parameters and its stream's
-    rotation) and stateful (it holds the codec's reference-frame buffer).
-    Passive and *not* thread-safe: use one ``PacketDecoder`` per thread.
-    FFmpeg's internal codec thread count is kept at 1 for now (not exposed);
-    parallelism comes from composing blocks on your own threads.
+    Built from a :class:`Demuxer` (for its codec parameters) and stateful (it
+    holds the codec's reference-frame buffer). Passive and *not* thread-safe:
+    use one ``PacketDecoder`` per thread. FFmpeg's internal codec thread count
+    is kept at 1 for now (not exposed); parallelism comes from composing blocks
+    on your own threads.
     """
 
     # TODO_API_BREAKDOWN UF P1: device default should be None, here and everywhere else
@@ -36,7 +36,6 @@ class PacketDecoder:
         self._handle = _blocks_create_packet_decoder(
             demuxer._handle, num_threads=1, device=device
         )
-        self._rotation = demuxer.rotation
 
     def _drain(self) -> list[DecodedFrame]:
         frames = []
@@ -52,7 +51,6 @@ class PacketDecoder:
                     pts_seconds,
                     duration_seconds,
                     device=device,
-                    rotation=self._rotation,
                 )
             )
         return frames

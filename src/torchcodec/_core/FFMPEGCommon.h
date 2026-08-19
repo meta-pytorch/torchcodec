@@ -352,6 +352,19 @@ int64_t compute_safe_duration(
 // rotated for correct display.
 std::optional<double> get_rotation_from_stream(const AVStream* av_stream);
 
+// Same, from a frame's own display matrix side data.
+std::optional<double> get_rotation_from_frame(const AVFrame& av_frame);
+
+// The stream's raw display matrix, or nullptr when it has none. Points into the
+// stream's side data, so it lives as long as the stream does.
+const int32_t* get_display_matrix_from_stream(const AVStream* av_stream);
+
+// Makes `av_frame` carry `display_matrix` (or no display matrix at all, for
+// nullptr), replacing whatever it had.
+void set_display_matrix_on_frame(
+    AVFrame& av_frame,
+    const int32_t* display_matrix);
+
 AVFilterContext* create_av_filter_context_with_options(
     AVFilterGraph* filter_graph,
     const AVFilter* buffer,

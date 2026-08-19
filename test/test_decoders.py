@@ -3795,11 +3795,11 @@ class TestBlocks:
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_color_converter_reused_across_videos(self, device):
-        # A single unbound ColorConverter must correctly convert frames from two
+        # A single unbound ColorConverter must correctly convert frames from
         # different videos - here interleaved frame-by-frame, so the converter
-        # switches input resolution/format on every call.
+        # switches input resolution/format/rotation on every call.
         converter = ColorConverter(device=device)
-        videos = [NASA_VIDEO, BT709_FULL_RANGE]
+        videos = [NASA_VIDEO, BT709_FULL_RANGE, NASA_VIDEO_ROTATED]
         generators = [self._decoded_frames(v.path, device) for v in videos]
         outputs = [[] for _ in videos]
 
@@ -3896,21 +3896,6 @@ class TestBlocks:
             (width + (1 << log2_w) - 1) >> log2_w,
         )
         assert U.shape == V.shape == expected_chroma_shape
-
-    @pytest.mark.parametrize("device", _block_devices())
-    @pytest.mark.parametrize(
-        "video, expected_rotation", ((NASA_VIDEO_ROTATED, 90), (NASA_VIDEO, None))
-    )
-    def test_rotation_rides_on_the_frames(self, video, expected_rotation, device):
-        # Rotation is stream metadata: the Demuxer reads it off the display
-        # matrix, the PacketDecoder stamps every frame with it, and
-        # materialize() forwards it - which is what lets the ColorConverter
-        # apply it without being bound to a stream.
-        assert Demuxer(video.path).rotation == expected_rotation
-
-        frame, _ = self._first_frame(video.path, device)
-        assert frame.rotation == expected_rotation
-        assert frame.materialize().rotation == expected_rotation
 
     @pytest.mark.parametrize("device", _block_devices())
     def test_materialize_planes_are_not_rotated(self, device):

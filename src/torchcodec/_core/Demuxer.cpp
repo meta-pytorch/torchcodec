@@ -57,7 +57,6 @@ Demuxer::Demuxer(
       stream_index.value_or(-1),
       ").");
   stream_ = format_context_->streams[active_stream_index_];
-  rotation_ = get_rotation_from_stream(stream_);
 
   // We only need packets from the active stream, so tell FFmpeg to discard the
   // others. Note av_read_frame() may still return some of them under certain

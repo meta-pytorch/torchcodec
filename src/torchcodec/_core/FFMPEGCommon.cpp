@@ -6,6 +6,8 @@
 
 #include "FFMPEGCommon.h"
 
+#include <cstring>
+
 #include "StableABICompat.h"
 
 extern "C" {
@@ -729,13 +731,13 @@ int64_t compute_safe_duration(
   }
 }
 
-std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
+const int32_t* get_display_matrix_from_stream(const AVStream* av_stream) {
   // av_stream_get_side_data() was deprecated in FFmpeg 6.0, but its replacement
   // (av_packet_side_data_get() + codecpar->coded_side_data) is only available
   // from FFmpeg 6.1. We need some #pragma magic to silence the deprecation
   // warning which our compile chain would otherwise treat as an error.
   if (av_stream == nullptr) {
-    return std::nullopt;
+    return nullptr;
   }
 
   const int32_t* display_matrix = nullptr;
@@ -776,6 +778,12 @@ std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
   }
 #endif
 
+  return display_matrix;
+}
+
+namespace {
+std::optional<double> rotation_from_display_matrix(
+    const int32_t* display_matrix) {
   if (display_matrix == nullptr) {
     return std::nullopt;
   }
@@ -791,6 +799,42 @@ std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
   }
 
   return rotation;
+}
+} // namespace
+
+std::optional<double> get_rotation_from_stream(const AVStream* av_stream) {
+  return rotation_from_display_matrix(
+      get_display_matrix_from_stream(av_stream));
+}
+
+std::optional<double> get_rotation_from_frame(const AVFrame& av_frame) {
+  const AVFrameSideData* side_data =
+      av_frame_get_side_data(&av_frame, AV_FRAME_DATA_DISPLAYMATRIX);
+  if (side_data == nullptr) {
+    return std::nullopt;
+  }
+  return rotation_from_display_matrix(
+      reinterpret_cast<const int32_t*>(side_data->data));
+}
+
+void set_display_matrix_on_frame(
+    AVFrame& av_frame,
+    const int32_t* display_matrix) {
+  // A decoder may have attached its own display matrix (FFmpeg propagates the
+  // container's from 6.1 on, and codecs can derive one from in-band metadata).
+  // We overwrite it unconditionally so that a frame always reports the rotation
+  // its container asks for, which is the one the SingleStreamDecoder applies.
+  av_frame_remove_side_data(&av_frame, AV_FRAME_DATA_DISPLAYMATRIX);
+  if (display_matrix == nullptr) {
+    return;
+  }
+
+  constexpr size_t kDisplayMatrixSize = 9 * sizeof(int32_t);
+  AVFrameSideData* side_data = av_frame_new_side_data(
+      &av_frame, AV_FRAME_DATA_DISPLAYMATRIX, kDisplayMatrixSize);
+  STD_TORCH_CHECK(
+      side_data != nullptr, "Failed to allocate display matrix side data");
+  std::memcpy(side_data->data, display_matrix, kDisplayMatrixSize);
 }
 
 SwsConfig::SwsConfig(

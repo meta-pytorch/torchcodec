@@ -35,9 +35,9 @@ class ColorConverter:
     once per stream, so feeding it a mix of SDR and HDR frames yields a mix of
     dtypes.
 
-    Rotation is applied, so the output matches ``VideoDecoder``'s. That doesn't
-    bind the converter to a stream either: the angle rides along on the
-    :class:`DecodedFrame`, stamped there by the :class:`PacketDecoder`.
+    Rotation is applied too, so the output matches ``VideoDecoder``'s. The angle
+    is part of the frame, like its dims and colorspace, so honoring it doesn't
+    bind the converter to a stream either.
     """
 
     # TODO_API_BREAKDOWN UF P1: device default should be None
@@ -51,9 +51,7 @@ class ColorConverter:
         )
 
     def convert(self, decoded_frame: DecodedFrame) -> Frame:
-        data = _blocks_convert_frame(
-            self._handle, decoded_frame._handle, decoded_frame.rotation
-        )
+        data = _blocks_convert_frame(self._handle, decoded_frame._handle)
         # The core op produces HWC; permute to CHW to match VideoDecoder (which
         # also returns a non-contiguous permuted view).
         data = data.permute(2, 0, 1)
