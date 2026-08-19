@@ -161,16 +161,10 @@ class DeviceInterface {
   };
 
   // The tensor owning the GPU buffer that make_frame_standalone() attached to
-<<<<<<< Updated upstream
   // `av_frame`, if any. A consumer reading that buffer on a stream other than
   // the one it was allocated on must tell the caching allocator, or the buffer
   // can be recycled mid-read. See BetaCudaDeviceInterface::get_frame_storage()
   // for the full story.
-||||||| Stash base
-=======
-  // `av_frame`, if any. Callers need it to keep the buffer from being recycled
-  // while they read it from another stream.
->>>>>>> Stashed changes
   virtual std::optional<torch::stable::Tensor> get_frame_storage(
       [[maybe_unused]] const AVFrame& av_frame) const {
     return std::nullopt;
