@@ -126,6 +126,11 @@ Accelerated video decoding on GPUs with CUDA and NVDEC
 [Decoding a video with VideoDecoder](../generated_examples/decoding/basic_example.html)
 
 Decoding a video with VideoDecoder
+![](../_images/sphx_glr_blocks_thumb.png)
+
+[Blocks: build your own decoding pipeline](../generated_examples/decoding/blocks.html)
+
+Blocks: build your own decoding pipeline
 ![](../_images/sphx_glr_custom_frame_mappings_thumb.jpg)
 
 [Decoding with custom frame mappings](../generated_examples/decoding/custom_frame_mappings.html)

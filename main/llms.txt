@@ -49,6 +49,7 @@
 - [Decoding audio streams with AudioDecoder](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/audio_decoding.md)
 - [Accelerated video decoding on GPUs with CUDA and NVDEC](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/basic_cuda_example.md)
 - [Decoding a video with VideoDecoder](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/basic_example.md)
+- [Blocks: build your own decoding pipeline](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/blocks.md)
 - [Decoding with custom frame mappings](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/custom_frame_mappings.md)
 - [Streaming data through file-like support](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/file_like.md)
 - [Decoding HDR videos](https://meta-pytorch.org/torchcodec/stable/generated_examples/decoding/hdr_decoding.md)

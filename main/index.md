@@ -88,6 +88,12 @@ How to decode HDR videos with the `output_dtype` parameter
 
 [generated_examples/decoding/hdr_decoding.html](generated_examples/decoding/hdr_decoding.html)
 
+Blocks (experimental)
+
+A preview of the unreleased building-block decoding APIs
+
+[generated_examples/decoding/blocks.html](generated_examples/decoding/blocks.html)
+
 ## Encoding
 
 Video and Audio Encoding

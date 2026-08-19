@@ -11,6 +11,11 @@ Examples using `Frame`:
 [Decoding a video with VideoDecoder](../generated_examples/decoding/basic_example.html)
 
 Decoding a video with VideoDecoder
+![](../_images/sphx_glr_blocks_thumb.png)
+
+[Blocks: build your own decoding pipeline](../generated_examples/decoding/blocks.html)
+
+Blocks: build your own decoding pipeline
 
 data*: [Tensor](https://docs.pytorch.org/docs/stable/tensors.html#torch.Tensor)*
 

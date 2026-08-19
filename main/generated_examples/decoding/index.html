@@ -8,7 +8,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Decoding &#8212; TorchCodec 0.17.0.dev20260818+cu126 Documentation</title>
+    <title>Decoding &#8212; TorchCodec 0.17.0.dev20260819+cu126 Documentation</title>
   
   
   
@@ -42,7 +42,7 @@
 <link rel="preload" as="script" href="../../_static/scripts/pydata-sphinx-theme.js?digest=dfe6caa3a7d634c4db9b" />
   <script src="../../_static/vendor/fontawesome/6.5.2/js/all.min.js?digest=dfe6caa3a7d634c4db9b"></script>
 
-    <script src="../../_static/documentation_options.js?v=b7c2078b"></script>
+    <script src="../../_static/documentation_options.js?v=a7873f45"></script>
     <script src="../../_static/doctools.js?v=888ff710"></script>
     <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../_static/sg-tags.js?v=d80f6fa4"></script>
@@ -1017,6 +1017,7 @@ document.write(`
 <li class="toctree-l2"><a class="reference internal" href="custom_frame_mappings.html">Decoding with custom frame mappings</a></li>
 <li class="toctree-l2"><a class="reference internal" href="transforms.html">Decoder Transforms: Applying transforms during decoding</a></li>
 <li class="toctree-l2"><a class="reference internal" href="hdr_decoding.html">Decoding HDR videos</a></li>
+<li class="toctree-l2"><a class="reference internal" href="blocks.html">Blocks: build your own decoding pipeline</a></li>
 </ul>
 </details></li>
 <li class="toctree-l1 has-children"><a class="reference internal" href="../encoding/index.html">Encoding</a><details><summary><span class="toctree-toggle" role="presentation"><i class="fa-solid fa-chevron-down"></i></span></summary><ul>
@@ -1170,6 +1171,9 @@ document.write(`
 </div><div class="sphx-glr-thumbcontainer" tooltip="In this example, we&#x27;ll learn how to decode HDR (High Dynamic Range) videos using the output_dtype parameter of the VideoDecoder class."><img alt="" src="../../_images/sphx_glr_hdr_decoding_thumb.jpg" />
 <p><a class="reference internal" href="hdr_decoding.html"><span class="doc">Decoding HDR videos</span></a></p>
   <div class="sphx-glr-thumbnail-title">Decoding HDR videos</div>
+</div><div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible."><img alt="" src="../../_images/sphx_glr_blocks_thumb.png" />
+<p><a class="reference internal" href="blocks.html"><span class="doc">Blocks: build your own decoding pipeline</span></a></p>
+  <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
 </div></div><div class="toctree-wrapper compound">
 </div>
 </section>
@@ -1505,7 +1509,7 @@ document.write(`
        "headline": "Decoding",
        "description": "PyTorch Documentation. Explore PyTorch, an open-source machine learning library that accelerates the path from research prototyping to production deployment.",
        "url": "/generated_examples/decoding/index.html",
-       "articleBody": "Decoding# Decoding a video with VideoDecoder Decoding a video with VideoDecoder Decoding images Decoding images Decoding audio streams with AudioDecoder Decoding audio streams with AudioDecoder Accelerated video decoding on GPUs with CUDA and NVDEC Accelerated video decoding on GPUs with CUDA and NVDEC Streaming data through file-like support Streaming data through file-like support Exact vs Approximate seek mode: Performance and accuracy comparison Exact vs Approximate seek mode: Performance and accuracy comparison How to sample video clips How to sample video clips Parallel video decoding: multi-processing and multi-threading Parallel video decoding: multi-processing and multi-threading TorchCodec Performance Tips and Best Practices TorchCodec Performance Tips and Best Practices Decoding with custom frame mappings Decoding with custom frame mappings Decoder Transforms: Applying transforms during decoding Decoder Transforms: Applying transforms during decoding Decoding HDR videos Decoding HDR videos",
+       "articleBody": "Decoding# Decoding a video with VideoDecoder Decoding a video with VideoDecoder Decoding images Decoding images Decoding audio streams with AudioDecoder Decoding audio streams with AudioDecoder Accelerated video decoding on GPUs with CUDA and NVDEC Accelerated video decoding on GPUs with CUDA and NVDEC Streaming data through file-like support Streaming data through file-like support Exact vs Approximate seek mode: Performance and accuracy comparison Exact vs Approximate seek mode: Performance and accuracy comparison How to sample video clips How to sample video clips Parallel video decoding: multi-processing and multi-threading Parallel video decoding: multi-processing and multi-threading TorchCodec Performance Tips and Best Practices TorchCodec Performance Tips and Best Practices Decoding with custom frame mappings Decoding with custom frame mappings Decoder Transforms: Applying transforms during decoding Decoder Transforms: Applying transforms during decoding Decoding HDR videos Decoding HDR videos Blocks: build your own decoding pipeline Blocks: build your own decoding pipeline",
        "author": {
          "@type": "Organization",
          "name": "PyTorch Contributors",

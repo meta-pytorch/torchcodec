@@ -221,6 +221,23 @@ Decoding
     </div>
 
 
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="   The Blocks APIs are under active construction. They are private    and unreleased. Signatures and semantics may change without notice. This    tutorial only exists to show what they will eventually make possible.">
+
+.. only:: html
+
+  .. image:: /generated_examples/decoding/images/thumb/sphx_glr_blocks_thumb.png
+    :alt:
+
+  :doc:`/generated_examples/decoding/blocks`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Blocks: build your own decoding pipeline</div>
+    </div>
+
+
 .. thumbnail-parent-div-close
 
 .. raw:: html
@@ -243,4 +260,5 @@ Decoding
    /generated_examples/decoding/custom_frame_mappings
    /generated_examples/decoding/transforms
    /generated_examples/decoding/hdr_decoding
+   /generated_examples/decoding/blocks
 
