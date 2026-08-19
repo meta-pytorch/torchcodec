@@ -85,6 +85,7 @@ class DecodedFrame:
     ):
         self._handle = handle
         self._device = device
+<<<<<<< Updated upstream
         #: The tensor owning this frame's GPU buffer, or ``None`` on CPU.
         #:
         #: All of :meth:`materialize`'s planes point into it. It comes from
@@ -109,6 +110,13 @@ class DecodedFrame:
         #: threads. ``record_stream()`` on a plane does *not* work: the planes
         #: are not allocator-backed, so the call is silently ignored.
         self.storage = storage
+||||||| Stash base
+=======
+        # The tensor owning this frame's GPU buffer, when it has one. A
+        # consumer reading the frame on another CUDA stream must call
+        # record_stream() on it. See ColorConverter.convert().
+        self._storage = storage
+>>>>>>> Stashed changes
         self.pts_seconds = pts_seconds
         self.duration_seconds = duration_seconds
 

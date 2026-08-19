@@ -52,6 +52,7 @@ class ColorConverter:
 
     def convert(self, decoded_frame: DecodedFrame) -> Frame:
         data = _blocks_convert_frame(self._handle, decoded_frame._handle)
+<<<<<<< Updated upstream
         if decoded_frame.storage is not None:
             # The conversion above only *enqueues* its kernel, and the caller
             # may drop the frame as soon as we return - which releases the
@@ -67,6 +68,17 @@ class ColorConverter:
             # DecodedFrame.storage for the contract users have to follow when
             # they write their own conversion.
             decoded_frame.storage.record_stream(torch.cuda.current_stream())
+||||||| Stash base
+=======
+        if decoded_frame._storage is not None:
+            # The conversion above only *enqueues* its kernel, and the caller
+            # may drop the frame as soon as we return. The frame's buffer was
+            # allocated on the decoder's stream, so the caching allocator would
+            # happily hand it to the decoder's next frame while our kernel is
+            # still reading it. This tells the allocator to hold the block back
+            # until the work we just queued has run.
+            decoded_frame._storage.record_stream(torch.cuda.current_stream())
+>>>>>>> Stashed changes
         # The core op produces HWC; permute to CHW to match VideoDecoder (which
         # also returns a non-contiguous permuted view).
         data = data.permute(2, 0, 1)

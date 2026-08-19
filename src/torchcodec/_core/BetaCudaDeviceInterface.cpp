@@ -1019,6 +1019,41 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
     storage = copy_nvdec_surface(av_frame, current_stream);
   }
 
+<<<<<<< Updated upstream
+||||||| Stash base
+  // TODO_API_BREAKDOWN CORRECTNESS P0: `storage` comes from the PyTorch
+  // caching allocator on `current_stream`, but a ColorConverter reads it from
+  // whatever stream it runs on. The allocator only tracks the allocating
+  // stream: once the frame is dropped, the block returns to `current_stream`'s
+  // pool with no synchronisation, and the next frame's copy - same size, same
+  // stream - lands right in it while the converter is still reading. Frames
+  // are then silently corrupted whenever the converter lags behind the
+  // decoder, which is the normal state of a two-stream pipeline. Measured on a
+  // 4K clip with the converter backlogged: 117 of 119 frames wrong, and clean
+  // again as soon as the frames are kept alive.
+  // The usual remedy is Tensor::record_stream() on the consumer side, but
+  // neither the stable ABI nor the AOTI shim exposes it, and StableIValue has
+  // no Stream conversion, so it isn't reachable through the dispatcher either.
+  // We don't actually need it though: the allocator recycles the block because
+  // *we* drop our reference too early, so it's enough to hold on to the
+  // storage until the consumer is done. Have the ColorConverter record an
+  // event on its own stream into the attached data, and make
+  // standalone_frame_free_callback() hand (storage, event) to a per-device
+  // pending-release list instead of dropping the tensor. Drain that list
+  // opportunistically with cudaEventQuery. No host stall, and a consumer that
+  // permanently lags shows up as a growing list, i.e. as backpressure rather
+  // than as silent corruption.
+  // Frames that were never converted have no event and can be released
+  // straight away. Raw planes handed to the user via materialize() keep the
+  // storage alive on their own, and once the user drops those, ordering their
+  // own kernels is their responsibility, same as for any other tensor.
+=======
+  // The attached data owns the storage for as long as the frame lives, and
+  // records the stream it was produced on. A ColorConverter running on another
+  // stream needs both: the stream to order its read after the copy, and, once
+  // it has read, to order that stream's later writes after the read. See
+  // convert_av_frame_to_frame_output().
+>>>>>>> Stashed changes
   auto attached_data = new StandAloneFrameAttachedData();
   attached_data->producer_stream = current_stream;
   attached_data->storage = std::move(storage);
@@ -1035,6 +1070,7 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
 std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
     const AVFrame& av_frame) const {
+<<<<<<< Updated upstream
   // A standalone frame's samples live in a buffer allocated from the PyTorch
   // caching allocator, on the stream that was current in
   // make_frame_standalone() - the decoder's. A consumer reading that buffer
@@ -1069,6 +1105,9 @@ std::optional<torch::stable::Tensor> BetaCudaDeviceInterface::get_frame_storage(
   // _blocks_packet_decoder_receive_frame and DecodedFrame.storage all go
   // away, replaced by one call at the end of
   // convert_av_frame_to_frame_output().
+||||||| Stash base
+=======
+>>>>>>> Stashed changes
   if (av_frame.opaque_ref == nullptr) {
     return std::nullopt;
   }
