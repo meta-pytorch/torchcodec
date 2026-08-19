@@ -1340,6 +1340,34 @@ TESTSRC2_ODD_HEIGHT_AND_WIDTH_VP9_10BIT = TestVideo(
     frames={0: {}},
 )
 
+# Odd dimensions with 4:2:0 chroma, in a codec NVDEC doesn't decode. That's the
+# only combination that reaches the CPU fallback with a frame our 4:2:0 CUDA
+# kernel can't consume as-is: it has to be padded to even dimensions before
+# color conversion, and cropped back afterwards.
+# ffmpeg -f lavfi -i "testsrc2=rate=25:duration=0.4:size=121x80,format=rgb24" \
+#  -c:v mpeg2video -pix_fmt yuv420p testsrc2_odd_width_mpeg2.mp4
+TESTSRC2_ODD_WIDTH_MPEG2 = TestVideo(
+    filename="testsrc2_odd_width_mpeg2.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=121, height=80, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
+# Also odd in height, which additionally exercises the chroma plane's own
+# rounding: an odd-height 4:2:0 frame has ceil(height / 2) chroma rows.
+# ffmpeg -f lavfi -i "testsrc2=rate=25:duration=0.4:size=121x81,format=rgb24" \
+#  -c:v mpeg2video -pix_fmt yuv420p testsrc2_odd_height_and_width_mpeg2.mp4
+TESTSRC2_ODD_HEIGHT_AND_WIDTH_MPEG2 = TestVideo(
+    filename="testsrc2_odd_height_and_width_mpeg2.mp4",
+    default_stream_index=0,
+    stream_infos={
+        0: TestVideoStreamInfo(width=121, height=81, num_color_channels=3),
+    },
+    frames={0: {}},
+)
+
 
 def supports_approximate_mode(asset: TestVideo) -> bool:
     # Those are missing the `duration` field so they fail in approximate mode (on all devices).

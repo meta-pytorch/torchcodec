@@ -967,13 +967,15 @@ UniqueAVFrame BetaCudaDeviceInterface::convert_cuda_frame_to_av_frame(
       ? AVCOL_RANGE_JPEG
       : AVCOL_RANGE_MPEG;
 
-  // NVDEC lays the chroma planes out after the Y plane, all with the same
-  // pitch. The Y plane has an even number of rows (NVDEC rounds up internally),
-  // so the offsets must use the rounded-up height.
-  unsigned int even_height = round_up_to_even(height);
+  // NVDEC stacks the planes in a single allocation, all with the same pitch,
+  // and it rounds the Y plane's row count up to even. So consecutive planes
+  // start plane_stride bytes apart, which is more than pitch * height for an
+  // odd-height frame. NVIDIA's own NvDecoder addresses the chroma plane the
+  // same way: dpSrcFrame + srcPitch * ((surface_height + 1) & ~1).
+  unsigned int num_luma_plane_rows = round_up_to_even(height);
+  unsigned int plane_stride = pitch * num_luma_plane_rows;
   auto plane = [&](unsigned int index) {
-    return reinterpret_cast<uint8_t*>(
-        frame_ptr + (pitch * even_height * index));
+    return reinterpret_cast<uint8_t*>(frame_ptr + (plane_stride * index));
   };
   bool is_444 = is_444_surface_format(surface_format_);
 
@@ -1088,16 +1090,17 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
   //           = num_pixels + num_pixels / 2
   //           = num_pixels * 3 / 2
   //
-  // where num_pixels = pitch * height, not num_pixels = width * height. The
-  // pitch value also accounts for the data size (uint8 vs uint16) so this is
-  // also correct for P016. A 4:4:4 surface has two full-size chroma planes
-  // instead of one half-height one, so it's num_pixels * 3.
-  int64_t even_height =
+  // where num_pixels = pitch * num_luma_plane_rows, not width * height: the
+  // pitch accounts for both the row padding and the data size (uint8 vs
+  // uint16), and NVDEC rounds the Y plane's row count up to even. A 4:4:4
+  // surface has two full-size chroma planes instead of one half-height one, so
+  // it's num_pixels * 3.
+  int64_t num_luma_plane_rows =
       static_cast<int64_t>(round_up_to_even(av_frame->height));
   int64_t pitch = static_cast<int64_t>(av_frame->linesize[0]);
   bool is_444 = is_444_surface_format(surface_format_);
-  int64_t num_bytes =
-      is_444 ? pitch * even_height * 3 : pitch * even_height * 3 / 2;
+  int64_t num_bytes = is_444 ? pitch * num_luma_plane_rows * 3
+                             : pitch * num_luma_plane_rows * 3 / 2;
 
   auto storage =
       torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
@@ -1126,10 +1129,11 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
   record_surface_read(current_stream);
 
   auto y_plane = static_cast<uint8_t*>(storage.mutable_data_ptr());
+  int64_t plane_stride = pitch * num_luma_plane_rows;
   av_frame->data[0] = y_plane;
-  av_frame->data[1] = y_plane + (pitch * even_height);
+  av_frame->data[1] = y_plane + plane_stride;
   if (is_444) {
-    av_frame->data[2] = y_plane + (2 * pitch * even_height);
+    av_frame->data[2] = y_plane + (2 * plane_stride);
   }
 
   return storage;
@@ -1206,17 +1210,18 @@ GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
   int num_planes = semi_planar_420 ? 2 : 3;
   int bytes_per_sample = want_16bit ? 2 : 1;
 
-  // The 4:2:0 kernel works on 2x2 blocks and skips any trailing odd row or
-  // column, so for those targets we round the frame up to even dimensions and
-  // let the color conversion crop the result back. Nothing about the pixel
-  // format itself requires this: FFmpeg is happy with odd-sized 4:2:0 frames.
-  // The 4:4:4 kernel is per-pixel, so those are uploaded at their exact size.
-  // TODO_API_BREAKDOW P1: Wait errrr does that mean we don't need this crop
-  // dance anymore?? Should check!!!
+  // The 4:2:0 kernel works on 2x2 blocks and never writes a trailing odd row or
+  // column, so its input planes must be even-sized. We allocate the buffer with
+  // even dimensions but keep the frame's real width and height, exactly like
+  // the even-sized surfaces NVDEC hands us for odd-sized videos: the pad
+  // row/column is only read as part of a boundary block, and the color
+  // conversion crops it away. Nothing about the pixel format itself requires
+  // this: FFmpeg is happy with odd-sized 4:2:0 frames. The 4:4:4 kernel is
+  // per-pixel, so those need no padding.
   int width = cpu_frame.width;
   int height = cpu_frame.height;
-  int target_width = semi_planar_420 ? round_up_to_even(width) : width;
-  int target_height = semi_planar_420 ? round_up_to_even(height) : height;
+  int padded_width = semi_planar_420 ? round_up_to_even(width) : width;
+  int padded_height = semi_planar_420 ? round_up_to_even(height) : height;
 
   UniqueAVFrame intermediate_cpu_frame(av_frame_alloc());
   STD_TORCH_CHECK(
@@ -1224,8 +1229,8 @@ GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
       "Failed to allocate intermediate CPU frame");
 
   intermediate_cpu_frame->format = target_pix_fmt;
-  intermediate_cpu_frame->width = target_width;
-  intermediate_cpu_frame->height = target_height;
+  intermediate_cpu_frame->width = padded_width;
+  intermediate_cpu_frame->height = padded_height;
 
   int ret = av_frame_get_buffer(intermediate_cpu_frame.get(), 0);
   STD_TORCH_CHECK(
@@ -1233,13 +1238,16 @@ GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
       "Failed to allocate intermediate CPU frame buffer: ",
       get_ffmpeg_error_string_from_error_code(ret));
 
+  // Source and destination dimensions are the same: this is a pixel format
+  // conversion, not a rescale. sws_scale() writes into the even-sized buffer
+  // allocated above but only fills the real width and height.
   SwsConfig sws_config(
       width,
       height,
       static_cast<AVPixelFormat>(cpu_frame.format),
       cpu_frame.colorspace,
-      target_width,
-      target_height,
+      width,
+      height,
       target_pix_fmt);
 
   if (!sws_context_ || prev_sws_config_ != sws_config) {
@@ -1256,16 +1264,16 @@ GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
       intermediate_cpu_frame->data,
       intermediate_cpu_frame->linesize);
   STD_TORCH_CHECK(
-      converted_height == target_height,
+      converted_height == height,
       "sws_scale failed for the CPU-fallback upload conversion");
 
   // The chroma plane of a semi-planar 4:2:0 frame carries interleaved UV pairs,
   // so it's as wide as the luma plane but half as tall.
-  int row_bytes = target_width * bytes_per_sample;
+  int row_bytes = padded_width * bytes_per_sample;
   int plane_heights[3] = {
-      target_height,
-      semi_planar_420 ? target_height / 2 : target_height,
-      target_height};
+      padded_height,
+      semi_planar_420 ? padded_height / 2 : padded_height,
+      padded_height};
 
   int64_t plane_offsets[3] = {0, 0, 0};
   int64_t total_bytes = 0;
@@ -1283,8 +1291,8 @@ GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
   STD_TORCH_CHECK(gpu_frame != nullptr, "Failed to allocate GPU AVFrame");
 
   gpu_frame->format = target_pix_fmt;
-  gpu_frame->width = target_width;
-  gpu_frame->height = target_height;
+  gpu_frame->width = width;
+  gpu_frame->height = height;
 
   // One copy per plane: av_frame_get_buffer() allocates each plane with its own
   // alignment padding, so they are neither contiguous with each other nor
@@ -1340,10 +1348,6 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   CudaContextGuard context_guard(device_.index());
   cudaStream_t current_stream = get_current_cuda_stream(device_.index());
 
-  // Capture original dimensions before upload_cpu_frame_to_gpu() may round them
-  // up to even.
-  FrameDims original_dims(av_frame.height, av_frame.width);
-
   // We may need to upload a frame here in case of the CPU fallback. This is
   // only needed in Both() mode i.e. with the SingleStreamDecoder. The reason we
   // do it here and not just after decoding is because the `decode_av_frame()`
@@ -1371,6 +1375,11 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     uploaded = upload_cpu_frame_to_gpu(av_frame, current_stream);
   }
   const AVFrame& gpu_frame = needs_upload ? *uploaded.av_frame : av_frame;
+
+  // Both NVDEC surfaces and uploaded CPU frames may be backed by even-sized
+  // buffers while describing an odd-sized frame; the color conversion crops the
+  // padding away.
+  FrameDims output_dims(gpu_frame.height, gpu_frame.width);
 
   auto gpu_pix_fmt = static_cast<AVPixelFormat>(gpu_frame.format);
   STD_TORCH_CHECK(
@@ -1406,14 +1415,14 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         device_,
         producer_stream,
         pre_alloc,
-        original_dims,
+        output_dims,
         static_cast<AVPixelFormat>(gpu_frame.format),
         cached_color_matrix_);
   };
 
   if (rotation_ == Rotation::NONE) {
     validate_pre_allocated_tensor_shape(
-        pre_allocated_output_tensor, original_dims);
+        pre_allocated_output_tensor, output_dims);
     frame_output.data = convert_frame(pre_allocated_output_tensor);
   } else {
     // preAllocatedOutputTensor has post-rotation dimensions, but the
