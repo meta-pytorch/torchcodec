@@ -820,10 +820,18 @@ std::optional<double> get_rotation_from_frame(const AVFrame& av_frame) {
 void set_display_matrix_on_frame(
     AVFrame& av_frame,
     const int32_t* display_matrix) {
-  // A decoder may have attached its own display matrix (FFmpeg propagates the
-  // container's from 6.1 on, and codecs can derive one from in-band metadata).
-  // We overwrite it unconditionally so that a frame always reports the rotation
-  // its container asks for, which is the one the SingleStreamDecoder applies.
+  // The frame may already carry a display matrix of its own: FFmpeg propagates
+  // the container's from 6.1 on, and the H.264/HEVC decoders derive one from a
+  // display-orientation SEI. Since av_frame_new_side_data() appends rather than
+  // replaces, and av_frame_get_side_data() returns the first match, not
+  // clearing first would leave whatever the decoder attached in charge and make
+  // ours dead weight - so which matrix wins would depend on the FFmpeg version
+  // and the codec. Clearing keeps it always the container's, which is the one
+  // the SingleStreamDecoder applies.
+  //
+  // Note that no test covers this: for our assets the decoder's matrix, when
+  // there is one, is the container's, so dropping this line changes nothing
+  // observable. It would take a stream whose SEI disagrees with its container.
   av_frame_remove_side_data(&av_frame, AV_FRAME_DATA_DISPLAYMATRIX);
   if (display_matrix == nullptr) {
     return;
