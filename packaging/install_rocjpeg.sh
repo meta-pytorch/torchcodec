@@ -42,6 +42,10 @@ hits = (glob.glob('/opt/conda/**/librocjpeg.so*', recursive=True) +
 sys.exit(0 if hits else 1)
 " 2>/dev/null; then
     echo "librocjpeg already present (ROCm pip-wheel install); skipping dnf install."
+    # librocjpeg links libva.so.2 at load time even when only the HARDWARE
+    # backend is used. libva ships in AlmaLinux standard repos so install it
+    # regardless of how librocjpeg itself was obtained.
+    dnf install -y libva 2>/dev/null || true
 else
     dnf install -y --refresh rocjpeg-devel libva-amdgpu mesa-amdgpu-va-drivers \
         || install_rocjpeg_build_only
