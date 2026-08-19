@@ -526,9 +526,20 @@ BetaCudaDeviceInterface::~BetaCudaDeviceInterface() {
     // What happens to those decode surfaces that haven't yet been mapped is
     // unclear.
     flush();
+    if (surface_read_done_ != nullptr) {
+      // Whoever picks this decoder up from the cache will map its output
+      // surface and overwrite it. We block the host until the last consumer is
+      // done reading.
+      cudaEventSynchronize(surface_read_done_);
+    }
     unmap_previous_frame();
     NVDECCache::get_cache(device_).return_decoder(
         &video_format_, surface_format_, std::move(decoder_));
+  }
+
+  if (surface_read_done_ != nullptr) {
+    cudaEventDestroy(surface_read_done_);
+    surface_read_done_ = nullptr;
   }
 
   if (video_parser_) {
@@ -792,12 +803,14 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   proc_params.progressive_frame = disp_info.progressive_frame;
   proc_params.top_field_first = disp_info.top_field_first;
   proc_params.unpaired_field = disp_info.repeat_first_field < 0;
-  // We set the NVDEC stream to the current stream. It will be waited upon
-  // by the color conversion stream before any color conversion.
+  // We set the NVDEC stream to the current stream, and remember it: consumers
+  // of the mapped surface run later and possibly on a different stream, so they
+  // need to know which stream produces the surface's content in order to wait
+  // on it.
   // Re types: we get a cudaStream_t from PyTorch but it's interchangeable with
   // CUstream
-  proc_params.output_stream =
-      reinterpret_cast<CUstream>(get_current_cuda_stream(device_.index()));
+  nvdec_output_stream_ = get_current_cuda_stream(device_.index());
+  proc_params.output_stream = reinterpret_cast<CUstream>(nvdec_output_stream_);
 
   CUdeviceptr frame_ptr = 0;
   unsigned int pitch = 0;
@@ -812,13 +825,15 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   // immediately  after mapping them: they do the color-conversion in-between,
   // which involves a copy of the data, so that works.
   // We, OTOH, will do the color-conversion later, outside of receive_frame().
-  // So we unmap here: just before mapping a new frame. At that point we know
-  // that the previously-mapped frame is no longer needed:
+  // So we unmap here: just before mapping a new frame. At that point the
+  // previously-mapped frame has been consumed, or at least its consumption has
+  // been enqueued:
   // - With SingleStreamDecoder, that frame was either color-converted (with a
   //   copy), or that's a frame that was discarded in SingleStreamDecoder.
-  //   Either way, the underlying output surface can be safely re-used.
   // - With the "Blocks" APIs, the PacketDecoder forces a copy in
   //   make_frame_standalone().
+  // Those reads are asynchronous, which is what the call below accounts for.
+  order_mapping_after_surface_read();
   unmap_previous_frame();
   CUresult result = cuvidMapVideoFrame(
       *decoder_.get(),
@@ -834,6 +849,41 @@ int BetaCudaDeviceInterface::receive_frame(UniqueAVFrame& av_frame) {
   av_frame = convert_cuda_frame_to_av_frame(frame_ptr, pitch, disp_info);
 
   return AVSUCCESS;
+}
+
+void BetaCudaDeviceInterface::record_surface_read(cudaStream_t stream) {
+  // Called by every consumer of the mapped surface, once its read has been
+  // enqueued on `stream`.
+  // This sets the surface_read_done_ event that must be waited upon before
+  // mapping a new frame on the surface.
+  if (surface_read_done_ == nullptr) {
+    cudaError_t err =
+        cudaEventCreateWithFlags(&surface_read_done_, cudaEventDisableTiming);
+    STD_TORCH_CHECK(
+        err == cudaSuccess,
+        "cudaEventCreateWithFlags failed: ",
+        cudaGetErrorString(err));
+  }
+  cudaError_t err = cudaEventRecord(surface_read_done_, stream);
+  STD_TORCH_CHECK(
+      err == cudaSuccess, "cudaEventRecord failed: ", cudaGetErrorString(err));
+  surface_reader_stream_ = stream;
+}
+
+void BetaCudaDeviceInterface::order_mapping_after_surface_read() {
+  // The mapping we're about to do on the NVDEC stream writes the output
+  // surface, which the previous frame's consumer may still be reading from
+  // another stream: the NVDEC stream must also wait on that consumer.
+  if (surface_read_done_ == nullptr ||
+      surface_reader_stream_ == nvdec_output_stream_) {
+    return;
+  }
+  cudaError_t err =
+      cudaStreamWaitEvent(nvdec_output_stream_, surface_read_done_, 0);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "cudaStreamWaitEvent failed: ",
+      cudaGetErrorString(err));
 }
 
 void BetaCudaDeviceInterface::unmap_previous_frame() {
@@ -950,9 +1000,9 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
   //   receive_frame() without losing the data.
   // - CPU-fallback frames are uploaded here too, so that a PacketDecoder always
   //   hands out frames that live on its own device.
-  // The copy of GPU frames and the upload of CPU frames is async: we thus
-  // record the producer stream in the attached data so that the stream can be
-  // waited upon before running the color-conversion.
+  // The copy of GPU frames is async, so we record the stream it runs on in the
+  // attached data: a ColorConverter on another stream must wait on it before
+  // reading the frame.
   STD_TORCH_CHECK(
       mode() == Mode::DecoderOnly,
       "make_frame_standalone() is only valid in decoder-only mode: standalone "
@@ -962,13 +1012,39 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
   torch::stable::Tensor storage;
   if (decoding_on_cpu_) {
-    auto uploaded = upload_cpu_frame_to_gpu_on_current_stream(*av_frame);
+    auto uploaded = upload_cpu_frame_to_gpu(*av_frame, current_stream);
     av_frame = std::move(uploaded.av_frame);
     storage = std::move(uploaded.storage);
   } else {
     storage = copy_nvdec_surface(av_frame, current_stream);
   }
 
+  // TODO_API_BREAKDOWN CORRECTNESS P0: `storage` comes from the PyTorch
+  // caching allocator on `current_stream`, but a ColorConverter reads it from
+  // whatever stream it runs on. The allocator only tracks the allocating
+  // stream: once the frame is dropped, the block returns to `current_stream`'s
+  // pool with no synchronisation, and the next frame's copy - same size, same
+  // stream - lands right in it while the converter is still reading. Frames
+  // are then silently corrupted whenever the converter lags behind the
+  // decoder, which is the normal state of a two-stream pipeline. Measured on a
+  // 4K clip with the converter backlogged: 117 of 119 frames wrong, and clean
+  // again as soon as the frames are kept alive.
+  // The usual remedy is Tensor::record_stream() on the consumer side, but
+  // neither the stable ABI nor the AOTI shim exposes it, and StableIValue has
+  // no Stream conversion, so it isn't reachable through the dispatcher either.
+  // We don't actually need it though: the allocator recycles the block because
+  // *we* drop our reference too early, so it's enough to hold on to the
+  // storage until the consumer is done. Have the ColorConverter record an
+  // event on its own stream into the attached data, and make
+  // standalone_frame_free_callback() hand (storage, event) to a per-device
+  // pending-release list instead of dropping the tensor. Drain that list
+  // opportunistically with cudaEventQuery. No host stall, and a consumer that
+  // permanently lags shows up as a growing list, i.e. as backpressure rather
+  // than as silent corruption.
+  // Frames that were never converted have no event and can be released
+  // straight away. Raw planes handed to the user via materialize() keep the
+  // storage alive on their own, and once the user drops those, ordering their
+  // own kernels is their responsibility, same as for any other tensor.
   auto attached_data = new StandAloneFrameAttachedData();
   attached_data->producer_stream = current_stream;
   attached_data->storage = std::move(storage);
@@ -985,7 +1061,7 @@ void BetaCudaDeviceInterface::make_frame_standalone(UniqueAVFrame& av_frame) {
 
 torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
     UniqueAVFrame& av_frame,
-    cudaStream_t stream) {
+    cudaStream_t current_stream) {
   // The amount of bytes an NV12 image takes is:
   // num_bytes =  len(Y) + len(UV)
   //           = num_pixels + num_pixels / 2
@@ -1006,34 +1082,28 @@ torch::stable::Tensor BetaCudaDeviceInterface::copy_nvdec_surface(
   auto storage =
       torch::stable::empty({num_bytes}, kStableUInt8, std::nullopt, device_);
 
-  // TODO_API_BREAKDOWN CORRECTNESS P1: I suspect we don't need to wait on the
-  // nvdec stream here, because we can only arrive here from a path where the
-  // frame has already been mapped so its data is available - worth double
-  // checking.
+  // The surface's content is produced by the mapping post-processing that
+  // receive_frame() enqueued on nvdec_output_stream_, which isn't necessarily
+  // the stream we're copying on.
+  if (current_stream != nvdec_output_stream_) {
+    sync_streams(
+        /*running_stream=*/nvdec_output_stream_,
+        /*waiting_stream=*/current_stream);
+  }
+
   cudaError_t err = cudaMemcpyAsync(
       storage.mutable_data_ptr(),
       av_frame->data[0],
       static_cast<size_t>(num_bytes),
       cudaMemcpyDeviceToDevice,
-      stream);
+      current_stream);
   STD_TORCH_CHECK(
       err == cudaSuccess,
       "Failed to copy NVDEC surface: ",
       cudaGetErrorString(err));
 
-  // TODO_API_BREAKDOWN CORRECTNESS P0:  We might want to unmap here to clearly
-  // state that the surface memory can be reused and that there's no leak (and
-  // rename this into copy_and_unmap_nvdec_surface). However, regardless of
-  // whether we unmap here or let receive_frame() unmap, I think we have a
-  // problem: the copy is async, and nothing prevents a PacketDecoder from
-  // decoding 2 consecutive frames on 2 separate streams. The following can
-  // happen: with Stream():
-  //   packet_decoder.decode() -> receive_frame() -> copy_nvdec_surface() ->
-  //   cudaMemcpyAsync()
-  // with Stream():
-  //   packet_decoder.decode() -> receive_frame() -> unmap_previous_frame()
-  // where unmap_previous_frame() unmaps the surface before the cudaMemcpyAsync
-  // is able to finish on the other stream.
+  // The copy is async, so the next mapping must be ordered after it.
+  record_surface_read(current_stream);
 
   auto y_plane = static_cast<uint8_t*>(storage.mutable_data_ptr());
   int64_t plane_stride = pitch * num_luma_plane_rows;
@@ -1068,17 +1138,17 @@ void BetaCudaDeviceInterface::flush() {
   send_seqhdr_packet();
 }
 
-GpuFrameAndStorage
-BetaCudaDeviceInterface::upload_cpu_frame_to_gpu_on_current_stream(
-    const AVFrame& cpu_frame) {
+GpuFrameAndStorage BetaCudaDeviceInterface::upload_cpu_frame_to_gpu(
+    const AVFrame& cpu_frame,
+    cudaStream_t stream) {
   // This is called in the context of the CPU fallback: the frame was decoded
   // on the CPU, and in this function we convert that frame into a format we
   // can color-convert on the GPU, and send it there.
   // We do that in 2 steps:
   // - First we convert the input CPU frame into an intermediate CPU frame in
   //   the target format using sws_scale.
-  // - Then we allocate GPU memory and copy the CPU frame to the GPU
-  //   asynchronously on the current stream.
+  // - Then we allocate GPU memory and copy the CPU frame to the GPU on the
+  //   given stream.
   // We return the new AVFrame and its associated GPU storage so that the caller
   // can handle the memory lifetime. The GPU storage is a torch
   // Tensor because we want to rely on the torch CUDA allocator.
@@ -1208,17 +1278,18 @@ BetaCudaDeviceInterface::upload_cpu_frame_to_gpu_on_current_stream(
     gpu_frame->data[p] = storage_ptr + plane_offsets[p];
     gpu_frame->linesize[p] = row_bytes;
 
-    // Note that we use cudaMemcpy2D here instead of cudaMemcpy because the
-    // linesizes (strides) may be different than the widths for the input CPU
-    // frame. That's precisely what cudaMemcpy2D is for.
-    cudaError_t err = cudaMemcpy2D(
+    // Note that we use cudaMemcpy2DAsync here instead of cudaMemcpyAsync
+    // because the linesizes (strides) may be different than the widths for the
+    // input CPU frame. That's precisely what the 2D variants are for.
+    cudaError_t err = cudaMemcpy2DAsync(
         gpu_frame->data[p],
         gpu_frame->linesize[p],
         intermediate_cpu_frame->data[p],
         intermediate_cpu_frame->linesize[p],
         row_bytes,
         plane_heights[p],
-        cudaMemcpyHostToDevice);
+        cudaMemcpyHostToDevice,
+        stream);
     STD_TORCH_CHECK(
         err == cudaSuccess,
         "Failed to copy plane ",
@@ -1226,6 +1297,17 @@ BetaCudaDeviceInterface::upload_cpu_frame_to_gpu_on_current_stream(
         " to GPU: ",
         cudaGetErrorString(err));
   }
+
+  // intermediate_cpu_frame is freed when this function returns, so we can't
+  // leave the copies in flight, we must wait for it to finish. Making the
+  // upload truly async would mean allocating the intermediate frame in pinned
+  // memory and keeping it alive until the copies complete. Probably not worth
+  // it for this CPU fallback path that is already slow by nature.
+  cudaError_t err = cudaStreamSynchronize(stream);
+  STD_TORCH_CHECK(
+      err == cudaSuccess,
+      "Failed to wait for the CPU-to-GPU upload: ",
+      cudaGetErrorString(err));
 
   ret = av_frame_copy_props(gpu_frame.get(), &cpu_frame);
   STD_TORCH_CHECK(
@@ -1241,6 +1323,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     FrameOutput& frame_output,
     std::optional<torch::stable::Tensor> pre_allocated_output_tensor) {
   CudaContextGuard context_guard(device_.index());
+  cudaStream_t current_stream = get_current_cuda_stream(device_.index());
 
   // We may need to upload a frame here in case of the CPU fallback. This is
   // only needed in Both() mode i.e. with the SingleStreamDecoder. The reason we
@@ -1266,7 +1349,7 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
   // the color conversion below.
   GpuFrameAndStorage uploaded;
   if (needs_upload) {
-    uploaded = upload_cpu_frame_to_gpu_on_current_stream(av_frame);
+    uploaded = upload_cpu_frame_to_gpu(av_frame, current_stream);
   }
   const AVFrame& gpu_frame = needs_upload ? *uploaded.av_frame : av_frame;
 
@@ -1291,13 +1374,14 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
         gpu_frame.opaque_ref->data);
     producer_stream = attached_data->producer_stream;
   } else {
-    // In case of CPU fallback, the producer stream is indeed the current
-    // stream.
-    // TODO_API_BREAKDOWN CORRECTNESS P1: when we're not in CPU fallback, what
-    // is the producer stream? It's the NVDEC stream isn't it? I think it works
-    // because we know the data is valid since we mapped the frame, but we might
-    // want to document this
-    producer_stream = get_current_cuda_stream(device_.index());
+    STD_TORCH_CHECK(
+        mode() == Mode::Both,
+        "Color conversion requires the interface to be initialized for color "
+        "conversion.");
+    // Either the frame was just uploaded on the current stream, or it's a
+    // mapped NVDEC surface, whose content is produced by the mapping
+    // post-processing that receive_frame() enqueued on nvdec_output_stream_.
+    producer_stream = needs_upload ? current_stream : nvdec_output_stream_;
   }
 
   auto convert_frame = [&](std::optional<torch::stable::Tensor> pre_alloc)
@@ -1324,6 +1408,17 @@ void BetaCudaDeviceInterface::convert_av_frame_to_frame_output(
     // rotation should be handled as part of the transform pipeline instead.
     frame_output.data = convert_frame(/*preAlloc=*/std::nullopt);
     apply_rotation(frame_output, pre_allocated_output_tensor);
+  }
+
+  if (mode() == Mode::Both && !needs_upload) {
+    // The conversion read the mapped surface directly, and did so
+    // asynchronously, so the next mapping must be ordered after it.
+    // This is only needed in Both() mode because in ColorConverterOnly() mode,
+    // the frame is already standalone and doesn't come from the mapped surface.
+    // It's also only needed in the non-fallback mode (needs_upload is false)
+    // because with the fallback, the GPU frame is a copy of the CPU frame, so
+    // the mapped surface isn't read at all.
+    record_surface_read(current_stream);
   }
 }
 

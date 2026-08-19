@@ -103,6 +103,17 @@ class BetaCudaDeviceInterface : public DeviceInterface {
   CUdeviceptr previously_mapped_frame_ = 0;
   void unmap_previous_frame();
 
+  cudaStream_t nvdec_output_stream_ = nullptr;
+
+  // NVDEC gives us a single output surface, so every mapped frame lives at the
+  // same address and a new mapping overwrites whatever the previous frame's
+  // consumer is reading. These track that read so the next mapping can be
+  // ordered after it. See order_mapping_after_surface_read().
+  cudaEvent_t surface_read_done_ = nullptr;
+  cudaStream_t surface_reader_stream_ = nullptr;
+  void record_surface_read(cudaStream_t stream);
+  void order_mapping_after_surface_read();
+
   UniqueAVFrame convert_cuda_frame_to_av_frame(
       CUdeviceptr frame_ptr,
       unsigned int pitch,
@@ -110,8 +121,9 @@ class BetaCudaDeviceInterface : public DeviceInterface {
 
   void make_frame_standalone(UniqueAVFrame& av_frame) override;
 
-  GpuFrameAndStorage upload_cpu_frame_to_gpu_on_current_stream(
-      const AVFrame& cpu_frame);
+  GpuFrameAndStorage upload_cpu_frame_to_gpu(
+      const AVFrame& cpu_frame,
+      cudaStream_t stream);
 
   torch::stable::Tensor copy_nvdec_surface(
       UniqueAVFrame& av_frame,

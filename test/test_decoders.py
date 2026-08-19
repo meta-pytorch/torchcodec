@@ -146,6 +146,7 @@ from .utils import (
     TESTSRC2_ODD_WIDTH_VP9,
     TESTSRC2_ODD_WIDTH_VP9_10BIT,
     TRANSPARENT_GIF,
+    UNSEEKABLE_SWF,
     WAV_ODD_DATA_TRAILING_CHUNK,
 )
 
@@ -2895,6 +2896,14 @@ class TestAudioDecoder:
         path = str(tmp_path / "test.flac")
         AudioEncoder(torch.rand(1, 1000), sample_rate=16000).to_file(path)
         AudioDecoder(path).get_all_samples()
+
+    def test_unseekable_format(self):
+        decoder = AudioDecoder(UNSEEKABLE_SWF.path)
+        samples = decoder.get_all_samples()
+        assert samples.data.shape == (1, 89856)
+
+        with pytest.raises(RuntimeError, match="'swf' format does not support seeking"):
+            decoder.get_samples_played_in_range(start_seconds=1)
 
     @pytest.mark.parametrize("asset", (NASA_AUDIO, NASA_AUDIO_MP3))
     @pytest.mark.parametrize("stop_seconds", (None, "duration", 99999999))

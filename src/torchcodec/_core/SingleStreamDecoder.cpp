@@ -12,6 +12,7 @@
 #include <iostream>
 #include <limits>
 #include <numeric>
+#include <sstream>
 #include <string_view>
 #include "Demuxer.h"
 #include "Metadata.h"
@@ -23,6 +24,29 @@ extern "C" {
 }
 
 namespace facebook::torchcodec {
+
+namespace {
+
+// FFmpeg reports "this seek cannot be performed" as a bare -1, i.e. EPERM,
+// which renders as the very misleading "Operation not permitted". It covers
+// both a target that the demuxer can't reach and a demuxer with no seeking
+// support whatsoever.
+std::string get_seek_error_message(
+    const AVFormatContext* format_context,
+    int64_t desired_pts,
+    int status) {
+  std::stringstream ss;
+  ss << "Could not seek file to pts=" << desired_pts << ": "
+     << get_ffmpeg_error_string_from_error_code(status) << ".";
+  if (status == AVERROR(EPERM)) {
+    ss << " This is either because that timestamp is out of range, or because"
+       << " the '" << format_context->iformat->name << "' format does not"
+       << " support seeking.";
+  }
+  return ss.str();
+}
+
+} // namespace
 
 // --------------------------------------------------------------------------
 // CONSTRUCTORS, INITIALIZATION, DESTRUCTORS
@@ -350,9 +374,7 @@ void SingleStreamDecoder::scan_file_and_update_metadata_and_index() {
   // Reset the seek-cursor back to the beginning.
   int status = avformat_seek_file(format_context_.get(), 0, INT64_MIN, 0, 0, 0);
   STD_TORCH_CHECK(
-      status >= 0,
-      "Could not seek file to pts=0: ",
-      get_ffmpeg_error_string_from_error_code(status));
+      status >= 0, get_seek_error_message(format_context_.get(), 0, status));
 
   // Sort all frames by their pts.
   sort_all_frames();
@@ -1511,10 +1533,7 @@ bool SingleStreamDecoder::maybe_seek_to_before_desired_pts() {
       0);
   STD_TORCH_CHECK(
       status >= 0,
-      "Could not seek file to pts=",
-      std::to_string(desired_pts),
-      ": ",
-      get_ffmpeg_error_string_from_error_code(status));
+      get_seek_error_message(format_context_.get(), desired_pts, status));
 
   decode_stats_.num_flushes++;
   device_interface_->flush();

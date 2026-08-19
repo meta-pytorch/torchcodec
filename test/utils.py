@@ -1753,3 +1753,20 @@ SINE_16_CHANNEL_S16 = TestAudio(
         )
     },
 )
+
+# Generated with:
+# ffmpeg -y -f lavfi -i "sine=frequency=440:duration=2" -c:a mp3 -b:a 32k -ar 44100 -ac 1 test/resources/sine_mono_mp3.swf
+UNSEEKABLE_SWF = TestAudio(
+    filename="sine_mono_mp3.swf",
+    default_stream_index=0,
+    frames={0: {}},
+    stream_infos={
+        0: TestAudioStreamInfo(
+            sample_rate=44_100,
+            num_channels=1,
+            duration_seconds=2.2739909297052154,
+            num_frames=78,
+            sample_format="fltp",
+        )
+    },
+)
