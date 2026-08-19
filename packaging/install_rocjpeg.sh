@@ -43,11 +43,10 @@ hits = (glob.glob('/opt/conda/**/librocjpeg.so*', recursive=True) +
 sys.exit(0 if hits else 1)
 " 2>/dev/null; then
     echo "librocjpeg already present (ROCm pip-wheel install); skipping dnf install."
-    # librocjpeg links libva.so.2 at load time. The AMD VA-API backend driver
-    # (mesa) ships inside _rocm_sdk_core since ROCm 7.14; it does NOT need a
-    # separate dnf install. Install only the base libva soname so the dynamic
-    # linker can resolve libva.so.2 at load time (rocJPEG's vendored
-    # librocm_sysdeps_va.so.2 handles everything else internally).
+    # librocjpeg links libva.so.2 at load time. Since ROCm 7.14, AMD bundles
+    # mesa (incl. the amdgpu/radeonsi VA-API backend DRI driver) inside
+    # _rocm_sdk_core — no separate dnf install needed. Install only the base
+    # libva soname so the dynamic linker can resolve libva.so.2.
     dnf install -y libva 2>/dev/null || true
 else
     dnf install -y --refresh rocjpeg-devel libva-amdgpu mesa-amdgpu-va-drivers \
