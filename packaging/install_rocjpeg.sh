@@ -24,7 +24,8 @@ set -euo pipefail
 # ROCm >= 7.14 distributes the full ROCm stack (including rocJPEG) as pip wheels
 # (_rocm_sdk_core / _rocm_sdk_devel site-packages). In that case librocjpeg.so
 # and rocjpeg.h are already present and the dnf packages don't exist, so we
-# skip the install entirely.
+# skip the rocjpeg dnf install but still need mesa-amdgpu-va-drivers so that
+# vaInitialize() (called by the HYBRID backend) can talk to the GPU.
 install_rocjpeg_build_only() {
     dnf install -y --refresh libva
     dnf install -y "dnf-command(download)" >/dev/null 2>&1 || dnf install -y dnf-plugins-core
@@ -42,10 +43,14 @@ hits = (glob.glob('/opt/conda/**/librocjpeg.so*', recursive=True) +
 sys.exit(0 if hits else 1)
 " 2>/dev/null; then
     echo "librocjpeg already present (ROCm pip-wheel install); skipping dnf install."
-    # librocjpeg links libva.so.2 at load time even when only the HARDWARE
-    # backend is used. libva ships in AlmaLinux standard repos so install it
-    # regardless of how librocjpeg itself was obtained.
-    dnf install -y libva 2>/dev/null || true
+    # rocJPEG's HYBRID backend calls vaInitialize() which needs the AMD VA-API
+    # driver (mesa-amdgpu-va-drivers) to actually talk to the GPU. The base
+    # libva package provides libva.so.2 but without the amdgpu backend driver;
+    # mesa-amdgpu-va-drivers provides the radeonsi/amdgpu DRI plugin that
+    # vaInitialize() loads. Try to install both; fall back to libva only if the
+    # AMD graphics repo is not configured on this machine (build-only runner).
+    dnf install -y libva mesa-amdgpu-va-drivers 2>/dev/null || \
+        dnf install -y libva 2>/dev/null || true
 else
     dnf install -y --refresh rocjpeg-devel libva-amdgpu mesa-amdgpu-va-drivers \
         || install_rocjpeg_build_only
