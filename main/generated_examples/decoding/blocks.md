@@ -50,7 +50,7 @@ subprocess.run(
 ```
 device = 'cuda'
 
-CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp43cd76sm/video.mp4'], returncode=0)
+CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmppxh26_m5/video.mp4'], returncode=0)
 ```
 
 ## The three blocks
@@ -194,6 +194,10 @@ Y.shape = torch.Size([720, 1280]), U.shape = torch.Size([360, 640]), Y.dtype = t
 These are views into the frame's memory: the row stride is the decoder's own
 line size, and the chroma planes of an NVDEC surface are two interleaved
 views over a single plane. Writing through them is visible downstream.
+
+Being the decoder's own planes, they are also never rotated - a video whose
+container asks for a rotation gives you the samples as they were encoded.
+`ColorConverter` applies the rotation for you.
 
 So we can do the color conversion ourselves. Here it's plain PyTorch ops -
 it could just as well be a Triton or CUDA kernel, fused with whatever your
@@ -351,7 +355,7 @@ ffmpeg.wait()
 -9
 ```
 
-**Total running time of the script:** (0 minutes 1.964 seconds)
+**Total running time of the script:** (0 minutes 1.958 seconds)
 
 [`Download Jupyter notebook: blocks.ipynb`](../../_downloads/37e5fa5a5cd2ea49ae5d47920f4cc2fa/blocks.ipynb)
 

@@ -75,7 +75,7 @@ Boilerplate: a test video, and the device we'll run on.
 
     device = 'cuda'
 
-    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmp43cd76sm/video.mp4'], returncode=0)
+    CompletedProcess(args=['ffmpeg', '-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=1280x720:rate=30:duration=5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30', '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '/tmp/tmppxh26_m5/video.mp4'], returncode=0)
 
 
 
@@ -269,17 +269,21 @@ own planes as tensor views, with no copy and no conversion.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 188-195
+.. GENERATED FROM PYTHON SOURCE LINES 188-199
 
 These are views into the frame's memory: the row stride is the decoder's own
 line size, and the chroma planes of an NVDEC surface are two interleaved
 views over a single plane. Writing through them is visible downstream.
 
+Being the decoder's own planes, they are also never rotated - a video whose
+container asks for a rotation gives you the samples as they were encoded.
+``ColorConverter`` applies the rotation for you.
+
 So we can do the color conversion ourselves. Here it's plain PyTorch ops -
 it could just as well be a Triton or CUDA kernel, fused with whatever your
 model needs next.
 
-.. GENERATED FROM PYTHON SOURCE LINES 195-224
+.. GENERATED FROM PYTHON SOURCE LINES 199-228
 
 .. code-block:: Python
 
@@ -325,7 +329,7 @@ model needs next.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 225-231
+.. GENERATED FROM PYTHON SOURCE LINES 229-235
 
 Raw HDR frames
 ~~~~~~~~~~~~~~
@@ -334,7 +338,7 @@ Raw planes come at the source's own precision, so a 10-bit HDR video gives
 ``uint16`` planes with all 10 bits intact - no clipping to 8 bits, and no
 tone mapping.
 
-.. GENERATED FROM PYTHON SOURCE LINES 231-262
+.. GENERATED FROM PYTHON SOURCE LINES 235-266
 
 .. code-block:: Python
 
@@ -383,7 +387,7 @@ tone mapping.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 263-273
+.. GENERATED FROM PYTHON SOURCE LINES 267-277
 
 Streams of unknown length
 -------------------------
@@ -396,7 +400,7 @@ that has no duration, no frame count, and no end.
 
 Let's make one: FFmpeg generating frames forever into a named pipe.
 
-.. GENERATED FROM PYTHON SOURCE LINES 273-290
+.. GENERATED FROM PYTHON SOURCE LINES 277-294
 
 .. code-block:: Python
 
@@ -424,12 +428,12 @@ Let's make one: FFmpeg generating frames forever into a named pipe.
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 291-293
+.. GENERATED FROM PYTHON SOURCE LINES 295-297
 
 ``VideoDecoder`` can't do anything with that (we ask for the approximate
 seek mode; the exact one would scan the stream forever):
 
-.. GENERATED FROM PYTHON SOURCE LINES 293-303
+.. GENERATED FROM PYTHON SOURCE LINES 297-307
 
 .. code-block:: Python
 
@@ -457,11 +461,11 @@ seek mode; the exact one would scan the stream forever):
 
 
 
-.. GENERATED FROM PYTHON SOURCE LINES 304-305
+.. GENERATED FROM PYTHON SOURCE LINES 308-309
 
 The blocks just stream it, and we stop whenever we want:
 
-.. GENERATED FROM PYTHON SOURCE LINES 305-321
+.. GENERATED FROM PYTHON SOURCE LINES 309-325
 
 .. code-block:: Python
 
@@ -498,7 +502,7 @@ The blocks just stream it, and we stop whenever we want:
 
 .. rst-class:: sphx-glr-timing
 
-   **Total running time of the script:** (0 minutes 1.964 seconds)
+   **Total running time of the script:** (0 minutes 1.958 seconds)
 
 
 .. _sphx_glr_download_generated_examples_decoding_blocks.py:
